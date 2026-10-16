@@ -165,7 +165,7 @@ defineExpose({
         :paused="paused"
         :focus-at="mouseFocus"
         :eye-tracking="universalMotionEnabled && live2dEyeTracking"
-        :eye-focus-source-active="universalMotionEnabled && !!activeCursorPosition"
+        :eye-focus-source-active="(universalMotionEnabled || live2dMotionDriver === 'natural') && !!activeCursorPosition"
         :theme-colors-hue="themeColorsHue"
         :theme-colors-hue-dynamic="themeColorsHueDynamic"
         :live2d-idle-animation-enabled="universalMotionEnabled && live2dIdleAnimationEnabled"
