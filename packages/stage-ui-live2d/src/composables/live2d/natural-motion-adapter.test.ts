@@ -243,4 +243,24 @@ describe('natural motion adapter', () => {
     expect(f.frame(1.25).commanded[0]).toBe(2)
     f.adapter.dispose()
   })
+
+  it('yields to an explicit clip during a partial Natural blend', () => {
+    const f = fixture()
+    f.state.eligible = true
+    f.frame(0)
+    const before = f.frame(0.2).commanded
+    expect(before[0]).toBeGreaterThan(2)
+    expect(before[0]).toBeLessThan(9)
+
+    f.state.motion = { ...f.state.motion, group: 'tap_body', priority: 3 }
+    expect(f.frame(0.2).commanded).toEqual(before)
+    expect(f.frame(0.200001).commanded[0]).toBeLessThan(before[0])
+    expect(f.frame(0.4).commanded[0]).toBe(9)
+
+    f.state.motion.group = undefined
+    f.state.motion.priority = 0
+    expect(f.frame(0.5).commanded[0]).toBe(9)
+    expect(f.frame(1).commanded[0]).toBe(2)
+    f.adapter.dispose()
+  })
 })

@@ -22,25 +22,32 @@ describe('natural motion', () => {
     const reference = new Live2DNaturalMotion(randomSource())
     reference.advance(0)
     const samples = [1.4, 1.58, 2, 4, 10, 30, 120]
-    const expected = samples.map(time => reference.advance(time))
+    const expected = samples.map(time => ({ time, frame: reference.advance(time) }))
     for (const step of [1 / 30, 1 / 60, 1 / 144, 0.137]) {
       const motion = new Live2DNaturalMotion(randomSource())
       motion.advance(0)
       let time = 0
-      samples.forEach((sample, index) => {
+      let allValuesFinite = true
+      let maximumMagnitude = 0
+      for (const { time: sample, frame: expectedFrame } of expected) {
         while (time + step < sample) {
           time += step
           const frame = motion.advance(time)
           for (const value of Object.values(frame.pose)) {
-            expect(Number.isFinite(value)).toBe(true)
-            expect(Math.abs(value)).toBeLessThanOrEqual(0.95)
+            allValuesFinite &&= Number.isFinite(value)
+            maximumMagnitude = Math.max(maximumMagnitude, Math.abs(value))
           }
         }
         time = sample
-        expectNear(motion.advance(time), expected[index]!)
-      })
+        expectNear(motion.advance(time), expectedFrame)
+      }
+      expect(allValuesFinite).toBe(true)
+      expect(maximumMagnitude).toBeLessThanOrEqual(0.95)
     }
-    expect(Math.abs(expected[2]!.pose.headX)).toBeGreaterThan(0.001)
+    const restingFrame = expected.find(sample => sample.time === 2)
+    expect(restingFrame).toBeDefined()
+    if (restingFrame)
+      expect(Math.abs(restingFrame.frame.pose.headX)).toBeGreaterThan(0.001)
   })
 
   it('establishes its origin on first advance and preserves zero-duration output', () => {
