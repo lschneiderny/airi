@@ -203,6 +203,9 @@ live2d:
         universal:
           title: Universal
           description: Use model motions, idle eye movement, and mouse tracking.
+        natural:
+          title: Natural
+          description: Use quiet resting poses and coordinated head, body, and eye adjustments.
         magic:
           title: MAGIC
           description: Generate motion from the bundled MAGIC dataset.
@@ -223,6 +226,9 @@ live2d:
         force-view-target:
           title: Force forward view target
           description: Keep the eyes aimed forward while MAGIC moves the head.
+    natural-cursor-attention:
+      title: Cursor attention
+      description: Let Natural follow the moving cursor. Turn this off for autonomous movement only.
     focus:
       title: Enable mouse tracking
       description: Look at the cursor while it is moving. Idle eye movement resumes after the cursor stops.

@@ -30,6 +30,29 @@ describe('useSettingsLive2d', () => {
     const settings = useSettingsLive2d()
 
     expect(settings.live2dMotionDriver).toBe('universal')
+    expect(settings.live2dNaturalCursorAttention).toBe(true)
+  })
+
+  it('resets Natural and Universal preferences independently', async () => {
+    const { useSettingsLive2d } = await import('./live2d')
+    const settings = useSettingsLive2d()
+
+    settings.live2dMotionDriver = 'natural'
+    settings.live2dNaturalCursorAttention = false
+    expect(settings.live2dEyeTracking).toBe(true)
+    settings.live2dEyeTracking = false
+    settings.live2dNaturalCursorAttention = true
+    expect(settings.live2dEyeTracking).toBe(false)
+    settings.live2dNaturalCursorAttention = false
+    settings.live2dForceIdleEyeAnimation = false
+    settings.live2dIdleAnimationEnabled = false
+    settings.resetState()
+
+    expect(settings.live2dMotionDriver).toBe('universal')
+    expect(settings.live2dNaturalCursorAttention).toBe(true)
+    expect(settings.live2dEyeTracking).toBe(true)
+    expect(settings.live2dForceIdleEyeAnimation).toBe(true)
+    expect(settings.live2dIdleAnimationEnabled).toBe(true)
   })
 
   /**
