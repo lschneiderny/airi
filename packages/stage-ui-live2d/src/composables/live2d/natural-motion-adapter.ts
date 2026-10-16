@@ -144,7 +144,10 @@ export class Live2DNaturalMotionAdapter {
     }
     this.controller.setCursor(cursor, this.time)
     const { pose, fixation } = this.controller.advance(this.time)
-    this.originalFocus.call(this.model)
+    // SDK focus creates synthetic values for absent IDs. Full ownership must
+    // bypass those writes, not merely overwrite the model's existing channels.
+    if (this.weight < 1)
+      this.originalFocus.call(this.model)
     if (this.weight === 0)
       return
 

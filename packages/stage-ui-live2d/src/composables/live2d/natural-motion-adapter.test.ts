@@ -28,6 +28,7 @@ function fixture(omit = '', fixed = '') {
   }()
   let physics = 0
   const normalInputs: number[] = []
+  const syntheticFocusValues = new Map<string, number>()
   const model = {
     coreModel: {
       getParameterValueByIndex: (index: number) => values[index],
@@ -39,6 +40,8 @@ function fixture(omit = '', fixed = '') {
         const index = ids.indexOf(id)
         if (index >= 0)
           values[index] += 3
+        else
+          syntheticFocusValues.set(id, (syntheticFocusValues.get(id) ?? 0) + 3)
       }
     },
   }
@@ -61,7 +64,7 @@ function fixture(omit = '', fixed = '') {
     values = saved
     return { commanded, rendered }
   }
-  return { ids, state, visibility, model, original, adapter, frame, normalInputs, passes: () => physics }
+  return { ids, state, visibility, model, original, adapter, frame, normalInputs, syntheticFocusValues, passes: () => physics }
 }
 
 describe('natural motion adapter', () => {
@@ -202,6 +205,16 @@ describe('natural motion adapter', () => {
     expect(commanded[f.ids.indexOf('ParamBodyAngleZ')]).toBe(2)
     expect(commanded.every(Number.isFinite)).toBe(true)
     expect(commanded[0]).toBeLessThan(2)
+    f.adapter.dispose()
+  })
+
+  it('leaves missing SDK focus parameters untouched at full Natural ownership', () => {
+    const f = fixture('ParamAngleX')
+    f.state.eligible = true
+    f.frame(0)
+    expect(f.syntheticFocusValues.get('ParamAngleX')).toBe(3)
+    f.frame(0.45)
+    expect(f.syntheticFocusValues.get('ParamAngleX')).toBe(3)
     f.adapter.dispose()
   })
 
