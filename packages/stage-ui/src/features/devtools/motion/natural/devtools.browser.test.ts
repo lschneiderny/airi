@@ -83,6 +83,25 @@ describe('natural motion lab', () => {
     await expect.poll(() => override.overrideEnergy).toBe(0.5)
   })
 
+  it('disables the energy override while the state override is off', async () => {
+    const { screen, override } = await renderLab()
+    const stateSwitch = screen.getByRole('switch').nth(0)
+    const energySwitch = screen.getByRole('switch').nth(1)
+
+    await expect.element(energySwitch).toBeDisabled()
+
+    await stateSwitch.click()
+    await expect.element(energySwitch).toBeEnabled()
+    await energySwitch.click()
+    await expect.poll(() => override.overrideEnergy).toBe(0.5)
+    const energySlider = screen.getByTestId('natural-override-energy').getByRole('slider')
+    await expect.element(energySlider).toBeEnabled()
+
+    await stateSwitch.click()
+    await expect.element(energySwitch).toBeDisabled()
+    await expect.element(energySlider).toBeDisabled()
+  })
+
   it('advances the emotion pulse sequence for each click', async () => {
     const { screen, override } = await renderLab()
     const happy = screen.getByRole('button', { name: /names\.happy/ })

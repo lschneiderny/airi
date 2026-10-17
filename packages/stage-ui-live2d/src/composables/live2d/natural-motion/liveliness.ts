@@ -26,7 +26,7 @@ export interface LivelinessReport {
 
 const headIds = ['ParamAngleX', 'ParamAngleY', 'ParamAngleZ']
 const sdIds = [...headIds, 'ParamEyeBallX', 'ParamEyeBallY', 'ParamBrowLY', 'ParamMouthOpenY', 'ParamMouthForm', 'ParamEyeLOpen', 'ParamEyeROpen', 'ParamBodyAngleX', 'ParamBodyAngleY', 'ParamBodyAngleZ']
-// The plan lists channel SD as one row, so each channel contributes within it.
+// Channel SD is one score row, so each channel contributes within it.
 // Each row votes once with the mean of its squared distances, so opposite-signed
 // submetric errors cannot cancel.
 const metricRows: Record<string, string> = {
@@ -51,12 +51,12 @@ const metricRows: Record<string, string> = {
   onsetEnrichment: 'talking',
 }
 /**
- * Blink bands for generated traces, from the plan's ultrabrain lane: 8-20 blinks per minute,
+ * Blink bands for generated traces: 8-20 blinks per minute,
  * inter-blink CV 0.35-0.8. Reference mode keeps the measured recording bands.
  *
  * The VTS-tracker recordings undercount blinks: 1.7-5.1 per minute with CV 1.6-4.2 is not
  * human-plausible, because missed blinks lower the rate and inflate the interval spread.
- * The plan marks blink bands provisional, so generated motion is judged on physiology
+ * The blink bands are provisional, so generated motion is judged on physiology
  * until a recording with reliable eyelid tracking replaces these values.
  */
 export const generatedBlinkBands: Record<'blinkRate' | 'blinkCv', MetricReference> = {
@@ -171,7 +171,7 @@ function spectrum(values: number[], padded: boolean) {
  * Head-speed peaks: local maxima above 4 units/s, at least 1 s apart within one span.
  * Higher peaks claim their neighborhood first, so a shoulder never outranks its summit.
  *
- * The plan's starting point (2 units/s, 0.3 s) admits so many continuous micro-motion
+ * A lower setting (2 units/s, 0.3 s) admits so many continuous micro-motion
  * peaks that constant shift amplitudes still pass. Above 4 units/s with 1 s spacing,
  * roughly one peak per posture shift remains. p90/p50 measures the spread of shift
  * sizes and rejects constant amplitudes; the log-quantile asymmetry measures tail shape

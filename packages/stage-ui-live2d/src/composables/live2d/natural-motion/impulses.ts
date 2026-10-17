@@ -43,7 +43,7 @@ interface EmotionSpec {
   glance?: GazePoint
 }
 
-/** Per-emotion directions and hints from the plan's ultrabrain lane. Neutral has no entry: it does nothing. */
+/** Per-emotion directions and hints. Neutral has no entry: it does nothing. */
 const emotions: Partial<Record<Emotion, EmotionSpec>> = {
   [Emotion.Happy]: { head: [0, 0.6, 0.3], sided: [2], hints: { browY: 0.3, eyeSmile: 0.5, mouthForm: 0.5 } },
   [Emotion.Sad]: { head: [0, -0.8, 0.2], sided: [2], hints: { browAngle: 0.3, mouthForm: -0.4, eyeOpen: -0.15 } },
@@ -63,7 +63,7 @@ const tauRange = { min: 0.25, max: 0.5 }
 /** Face hints decay with this time constant (seconds). */
 const hintDecay = 1.5
 // Face hints rise over ~80 ms instead of stepping, so a smile never pops in one frame.
-// The plan specifies only the decay; the rise keeps the hint below its nominal value.
+// The rise keeps the hint below its nominal value; `hintDecay` alone sets how long it lasts.
 const hintRise = 0.08
 const glanceHold = { min: 1.2, max: 2.5 }
 /** The same emotion within this window is ignored, so a repeated tag does not stack. */

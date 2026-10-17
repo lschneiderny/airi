@@ -80,8 +80,8 @@ const followers = {
 type Axis = keyof typeof followers
 
 // Desktop reactions. Wake lifts the head slightly and glances at the camera; a screen
-// change glances at the desk for 0.4 s. The wake nudge size is not specified by the plan;
-// intensity 0.4 gives a 0.063 normalized peak, below the smallest emotion impulse at full intensity.
+// change glances at the desk for 0.4 s. The wake nudge stays small: intensity 0.4 gives a
+// 0.063 normalized peak, below the smallest emotion impulse at full intensity.
 const wakeNudge = { direction: [0, 1, 0] as Vec3, intensity: 0.4 }
 const wakeGlanceHold = 1
 const screenChangeGlanceHold = 0.4

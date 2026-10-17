@@ -130,7 +130,7 @@ The lab runs in the devtools window, and every control and capture applies to th
 The lab provides these controls:
 
 - Performance state: when the override is on, the selected mode (`idle`, `watching`, `listening`, `thinking`, or `talking`) replaces the resolved mode at once. When it is off, the stage resolves the mode from its real signals.
-- Energy: the energy override and its 0 to 1 slider take effect only while "Override the performance state" is also on; otherwise Natural uses the user's Energy setting.
+- Energy: the energy override and its 0 to 1 slider are disabled while "Override the performance state" is off, because only the state override carries the energy to the stage. While they are off or disabled, Natural uses the user's Energy setting.
 - Emotions: each button sends that emotion, at the selected intensity, through the same stage emotion queue that chat replies use.
 - Trace capture: buttons start a 60, 300, or 600 s capture, and a cancel button stops it.
 

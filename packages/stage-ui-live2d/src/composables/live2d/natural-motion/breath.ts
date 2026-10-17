@@ -11,9 +11,8 @@ export interface NaturalBreathOutput {
 
 const center = 0.45
 const amplitude = 0.12
-// The plan bounds head coupling at 0.003 normalized. Deviation: 0.001 is used because the
-// pitch-speed ripple lowered seed 1 speedPeakLogAsymmetry of the liveliness gate below its
-// 1.0509 floor at 0.003 and 0.0015 (orchestrator decision).
+// Head coupling is 0.001 normalized. Couplings of 0.003 and 0.0015 added a pitch-speed ripple
+// that lowered seed 1 speedPeakLogAsymmetry of the liveliness gate below its 1.0509 floor.
 const headCoupling = 0.001
 // The period wanders around 4.8 s as an OU on its logarithm (SD 0.15, tau 20 s).
 // The free OU leaves 3.5-6.5 s about 4% of the time, so the log-period reflects at

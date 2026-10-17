@@ -68,17 +68,26 @@ const energy = computed({
       data-testid="natural-override-energy-enabled"
       :label="t('tamagotchi.settings.devtools.pages.live2d-natural-motion.energy.override.title')"
       :description="t('tamagotchi.settings.devtools.pages.live2d-natural-motion.energy.override.description')"
+      :disabled="!overrideEnabled"
     />
-    <FieldRange
+    <!-- The stage reads the energy only through the state override, so the slider is inert while it is off.
+         FieldRange has no disabled prop; the fieldset disables its range input natively. -->
+    <fieldset
       v-if="energyOverridden"
-      v-model="energy"
-      as="div"
-      :min="0"
-      :max="1"
-      :step="0.05"
-      :format-value="value => value.toFixed(2)"
-      :label="t('tamagotchi.settings.devtools.pages.live2d-natural-motion.energy.title')"
-      :description="t('tamagotchi.settings.devtools.pages.live2d-natural-motion.energy.description')"
-    />
+      data-testid="natural-override-energy"
+      :disabled="!overrideEnabled"
+      :class="['contents']"
+    >
+      <FieldRange
+        v-model="energy"
+        as="div"
+        :min="0"
+        :max="1"
+        :step="0.05"
+        :format-value="value => value.toFixed(2)"
+        :label="t('tamagotchi.settings.devtools.pages.live2d-natural-motion.energy.title')"
+        :description="t('tamagotchi.settings.devtools.pages.live2d-natural-motion.energy.description')"
+      />
+    </fieldset>
   </Section>
 </template>

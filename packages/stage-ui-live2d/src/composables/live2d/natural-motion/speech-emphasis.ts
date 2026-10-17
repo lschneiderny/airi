@@ -14,8 +14,8 @@ const refractorySeconds = 1.2
 const size = { min: 0.02, max: 0.05 }
 /** Share of emphases that nod pitch down; the rest tilt (roll) to a random side. */
 const nodShare = 0.8
-// Envelope time constant (seconds) of one emphasis. The plan gives no value; it reuses
-// the emotion impulse range so emphases share the impulse shape.
+// Envelope time constant (seconds) of one emphasis. It reuses the emotion impulse range so
+// emphases share the impulse shape.
 const tauRange = { min: 0.25, max: 0.5 }
 // A posture shift due within this many seconds of a speech onset starts at the onset instead.
 // See `SpeechOnsetShifts` for why this exists.
@@ -88,8 +88,7 @@ export class NaturalSpeechEmphasis {
 /**
  * Phrase-onset locking of posture shifts while speaking.
  *
- * Orchestrator-approved addition (2026-10-17) to meet the plan's talking criterion
- * `onsetEnrichment > 1.2`. Emphasis nods alone (0.02-0.05 at ~25% acceptance) lift head
+ * It exists to meet the liveliness gate's talking criterion `onsetEnrichment > 1.2`. Emphasis nods alone (0.02-0.05 at ~25% acceptance) lift head
  * speed in the 0.4 s after a phrase onset by only about 0-5% against the ~6 units/s talking
  * baseline, so a larger onset-locked motion is needed. It follows the blink-advance pattern:
  * when an onset is detected (before acceptance sampling) and a posture shift is already due

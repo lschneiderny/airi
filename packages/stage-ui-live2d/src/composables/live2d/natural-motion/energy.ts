@@ -10,7 +10,7 @@ interface Preset {
   cameraFixation: number
 }
 
-/** Per-mode presets (amplitude / shift rate / camera-fixation probability) from the plan's ultrabrain lane. */
+/** Per-mode presets (amplitude / shift rate / camera-fixation probability). */
 const presets: Record<PerformanceMode, Preset> = {
   idle: { amplitude: 1, shiftRate: 1, cameraFixation: 0.5 },
   watching: { amplitude: 0.8, shiftRate: 0.7, cameraFixation: 0.25 },

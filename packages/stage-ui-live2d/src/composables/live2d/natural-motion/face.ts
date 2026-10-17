@@ -31,9 +31,9 @@ export interface NaturalFaceOutput {
   cheek: number
 }
 
-// Shared brow OU SD. Deviation from the plan's 0.025: tuned toward the recording, whose
-// ParamBrowLY SD is 0.0435 (reference band floor 0.0304). With the 0.005 per-side term the
-// gate measures about 0.043; at 0.025 it measured 0.025-0.026 and failed the band.
+// Shared brow OU SD, tuned toward the recording, whose ParamBrowLY SD is 0.0435 (reference
+// band floor 0.0304). With the 0.005 per-side term the gate measures about 0.043; at 0.025
+// it measured 0.025-0.026 and failed the band.
 const browSd = 0.043
 const browSideSd = 0.005
 

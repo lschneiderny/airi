@@ -142,8 +142,8 @@ export const initialResolverMemory: ResolverMemory = Object.freeze({
   nowMs: null,
 })
 
-// NOTICE: Every threshold below is a starting value from the live2d-presence-v2
-// plan. Tune them against rendered output in the devtools Natural lab.
+// NOTICE: Every threshold below is a starting value that has not been measured against
+// rendered output. Tune them in the devtools Natural lab.
 
 /** Shortest time a mode holds before another mode can replace it. Tuning: raise if modes visibly flicker. */
 const MODE_DWELL_MS = 300
