@@ -70,7 +70,7 @@ export class Live2DNaturalMotionAdapter {
     private readonly visibility?: Pick<Document, 'hidden' | 'addEventListener' | 'removeEventListener'>,
     random = Math.random,
   ) {
-    this.controller = new Live2DNaturalMotion(random)
+    this.controller = new Live2DNaturalMotion({ random })
     this.controller.setSuspended(true, 0)
     this.ranges = Object.entries(channels).flatMap(([axis, id]) => {
       const index = parameters.ids.indexOf(id)

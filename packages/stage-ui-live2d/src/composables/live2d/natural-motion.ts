@@ -1,16 +1,35 @@
+import type { PostureHome, Vec3 } from './natural-motion/posture'
+import type { RandomStream } from './natural-motion/random'
+
+import { NaturalPostureLayers, postureHomes } from './natural-motion/posture'
+import { createRandomStream, deriveSeed } from './natural-motion/random'
+
 interface Point {
   x: number
   y: number
 }
 
-interface Posture extends Point {
-  z: number
+export interface Live2DNaturalMotionOptions {
+  /** Seeds every layer stream; equal seeds replay equal motion. Takes precedence over `random`. */
+  seed?: number
+  /** Draws the seed when `seed` is absent. @default Math.random */
+  random?: RandomStream
+  /** Rest posture; `desk` is the calibration fixture of the liveliness gate. @default 'product' */
+  home?: PostureHome
 }
 
+// Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
+const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, fixation: 4 }
+
+// Fixed integration grid. Processes advance only in whole steps and the output is
+// interpolated between the two grid states around the current time, so frame
+// partition never changes the sampled path and draws stay deterministic per seed.
+const step = 1 / 120
+
+// v1 critically damped follower time constants (seconds); body and eyes keep v1 behavior until gaze/body layers land.
 const followers = {
-  headX: 0.14,
-  headY: 0.17,
-  headZ: 0.19,
+  cursorX: 0.14,
+  cursorY: 0.17,
   bodyX: 0.32,
   bodyY: 0.36,
   bodyZ: 0.38,
@@ -20,58 +39,72 @@ const followers = {
 
 type Axis = keyof typeof followers
 
-function createState(): Record<Axis, number> {
-  return { headX: 0, headY: 0, headZ: 0, bodyX: 0, bodyY: 0, bodyZ: 0, fixationX: 0, fixationY: 0 }
+interface Snapshot {
+  head: Vec3
+  body: Vec3
+  fixation: Point
 }
 
 function clamp(value: number, limit: number) {
   return Math.max(-limit, Math.min(limit, value))
 }
 
+function lerp(a: number, b: number, weight: number) {
+  return a + (b - a) * weight
+}
+
 /**
  * Owns autonomous posture and gaze, without model or renderer state.
  * Times are monotonic seconds. The first advance establishes the time origin.
- * Suspension freezes followers and active time, cancelling the pending follow-up.
+ * Suspension freezes every process and active time; resume continues from the frozen state.
  * Cursor expiry and disabled attention are represented by a null cursor.
  */
 export class Live2DNaturalMotion {
-  private posture: Posture = { x: 0, y: 0, z: 0 }
-  private fixation: Point = { x: 0, y: 0 }
+  private readonly posture: NaturalPostureLayers
+  private readonly fixationRandom: RandomStream
   private cursor: Point | null = null
-  private u = createState()
-  private x = createState()
+  private fixationTarget: Point = { x: 0, y: 0 }
+  private shiftCount = 0
+  private readonly u = Object.fromEntries(Object.keys(followers).map(axis => [axis, 0])) as Record<Axis, number>
+  private readonly x = { ...this.u }
   private lastTimestamp: number | undefined
   private activeTime = 0
-  private primaryDeadline = 1.4
-  private followUp: { deadline: number, destination: Posture, strength: number } | undefined
+  private stepIndex = 0
+  private previous: Snapshot
+  private next: Snapshot
   private suspended = false
 
-  /** @param random Random source in [0,1). Defaults to Math.random. */
-  constructor(private readonly random: () => number = Math.random) {}
+  constructor(options: Live2DNaturalMotionOptions = {}) {
+    const seed = options.seed ?? Math.floor((options.random ?? Math.random)() * 2 ** 32)
+    const stream = (layer: keyof typeof streamIndex) => createRandomStream(deriveSeed(seed, streamIndex[layer]))
+    const home = postureHomes[options.home ?? 'product']
+    this.posture = new NaturalPostureLayers([...home], {
+      drift: stream('drift'),
+      continuous: stream('continuous'),
+      gain: stream('gain'),
+      shift: stream('shift'),
+    })
+    this.fixationRandom = stream('fixation')
+    this.previous = { head: [...home], body: [0, 0, 0], fixation: { x: 0, y: 0 } }
+    this.next = this.integrate()
+  }
 
   /** Returns a fresh normalized pose and unclamped filtered fixation metadata. */
   advance(nowSeconds: number) {
     const elapsed = this.lastTimestamp === undefined ? 0 : nowSeconds - this.lastTimestamp
     this.lastTimestamp = nowSeconds
-    if (!this.suspended) {
-      const end = this.activeTime + elapsed
-      while (this.activeTime < end) {
-        const deadline = Math.min(this.primaryDeadline, this.followUp?.deadline ?? Infinity)
-        const next = Math.min(end, deadline)
-        this.integrate(next - this.activeTime)
-        this.activeTime = next
-        if (next === deadline) {
-          if (this.followUp && next === this.followUp.deadline) {
-            this.adjust(this.followUp.destination, this.followUp.strength)
-            this.followUp = undefined
-          }
-          else {
-            this.schedulePrimary()
-          }
-        }
+    if (!this.suspended && elapsed > 0) {
+      this.activeTime += elapsed
+      while (this.activeTime > this.stepIndex * step) {
+        this.previous = this.next
+        this.next = this.integrate()
       }
     }
-    const { headX, headY, headZ, bodyX, bodyY, bodyZ, fixationX, fixationY } = this.x
+    const weight = clamp((this.activeTime - (this.stepIndex - 1) * step) / step, 1)
+    const { previous: a, next: b } = this
+    const [headX, headY, headZ] = a.head.map((value, axis) => lerp(value, b.head[axis], weight))
+    const [bodyX, bodyY, bodyZ] = a.body.map((value, axis) => lerp(value, b.body[axis], weight))
+    const fixation = { x: lerp(a.fixation.x, b.fixation.x, weight), y: lerp(a.fixation.y, b.fixation.y, weight) }
     return {
       pose: {
         headX,
@@ -80,76 +113,65 @@ export class Live2DNaturalMotion {
         bodyX,
         bodyY,
         bodyZ,
-        eyeX: clamp(fixationX - headX, 0.95),
-        eyeY: clamp(fixationY - headY, 0.95),
+        eyeX: clamp(fixation.x - headX, 0.95),
+        eyeY: clamp(fixation.y - headY, 0.95),
       },
-      fixation: { x: fixationX, y: fixationY },
+      fixation,
     }
   }
 
-  /** Changes attention after advancing the preceding target to this timestamp. */
+  /** Changes attention after advancing to this timestamp; it takes effect from the next grid step. */
   setCursor(target: Point | null, nowSeconds: number) {
     this.advance(nowSeconds)
     this.cursor = target === null ? null : { x: clamp(target.x, 1), y: clamp(target.y, 1) }
   }
 
-  /** Resume retains the pose and starts a fresh 1.4 active-second primary hold. */
+  /** Suspension freezes every layer; resume keeps all state, so output continues without a jump. */
   setSuspended(suspended: boolean, nowSeconds: number) {
     this.advance(nowSeconds)
-    if (this.suspended === suspended)
-      return
     this.suspended = suspended
-    this.followUp = undefined
-    if (!suspended)
-      this.primaryDeadline = this.activeTime + 1.4
   }
 
-  private adjust(destination: Posture, strength: number) {
-    this.posture = {
-      x: (1 - strength) * this.posture.x + strength * destination.x,
-      y: (1 - strength) * this.posture.y + strength * destination.y,
-      z: (1 - strength) * this.posture.z + strength * destination.z,
-    }
-  }
-
-  private schedulePrimary() {
-    // Fixed draw order: XYZ, strength, fixation choice, follow-up choice,
-    // optional delay and strength, quiet-range choice, quiet duration.
-    const destination = { x: 2 * this.random() - 1, y: 2 * this.random() - 1, z: 2 * this.random() - 1 }
-    this.adjust(destination, 0.25 + 0.35 * this.random())
-    if (this.random() < 0.35)
-      this.fixation = { x: 0.4 * this.posture.x, y: 0.4 * this.posture.y }
-    if (this.random() < 0.45) {
-      this.followUp = {
-        deadline: this.activeTime + 0.18 + 0.22 * this.random(),
-        destination,
-        strength: 0.08 + 0.12 * this.random(),
-      }
-    }
-    const quiet = this.random() < 0.15 ? 5 + 4 * this.random() : 1.3 + 3.2 * this.random()
-    this.primaryDeadline = this.activeTime + 0.9 + quiet
-  }
-
-  private integrate(dt: number) {
-    const p = this.posture
+  /** Advances every process by one grid step and returns the new grid state. */
+  private integrate(): Snapshot {
+    this.stepIndex++
     const c = this.cursor
-    const target = {
-      headX: 0.36 * p.x + 0.25 * (c?.x ?? 0),
-      headY: 0.24 * p.y + 0.20 * (c?.y ?? 0),
-      headZ: 0.30 * p.z,
-      bodyX: 0.30 * p.x + 0.08 * (c?.x ?? 0),
-      bodyY: 0.18 * p.y,
-      bodyZ: 0.24 * p.z,
-      fixationX: c ? 0.65 * c.x : this.fixation.x,
-      fixationY: c ? 0.65 * c.y : this.fixation.y,
+    // Cursor attention keeps the v1 head bias, smoothed so cursor changes never jump.
+    this.follow({
+      cursorX: 0.25 * (c?.x ?? 0),
+      cursorY: 0.20 * (c?.y ?? 0),
+    })
+    const head = this.posture.step(step, [this.x.cursorX, this.x.cursorY, 0])
+    const shift = this.posture.shiftTarget
+    if (this.posture.shiftCount !== this.shiftCount) {
+      this.shiftCount = this.posture.shiftCount
+      // v1 fixation rule: 35% of posture shifts move fixation with the head (v1 used 0.4 x posture with head 0.36 x posture).
+      if (this.fixationRandom() < 0.35)
+        this.fixationTarget = { x: 0.4 / 0.36 * shift[0], y: 0.4 / 0.24 * shift[1] }
     }
-    for (const axis of Object.keys(followers) as Axis[]) {
-      const h = dt / followers[axis]
+    // v1 body targets as a fraction of the posture destination (v1 body/head gain ratios).
+    this.follow({
+      bodyX: 0.30 / 0.36 * shift[0] + 0.08 * (c?.x ?? 0),
+      bodyY: 0.18 / 0.24 * shift[1],
+      bodyZ: 0.24 / 0.30 * shift[2],
+      fixationX: c ? 0.65 * c.x : this.fixationTarget.x,
+      fixationY: c ? 0.65 * c.y : this.fixationTarget.y,
+    })
+    return {
+      head,
+      body: [clamp(this.x.bodyX, 1), clamp(this.x.bodyY, 1), clamp(this.x.bodyZ, 1)],
+      fixation: { x: this.x.fixationX, y: this.x.fixationY },
+    }
+  }
+
+  /** Exact two-stage critically damped follower update over one grid step. */
+  private follow(targets: Partial<Record<Axis, number>>) {
+    for (const [axis, target] of Object.entries(targets) as [Axis, number][]) {
+      const h = step / followers[axis]
       const e = Math.exp(-h)
-      const g = target[axis]
       const oldU = this.u[axis]
-      this.u[axis] = g + (oldU - g) * e
-      this.x[axis] = g + ((this.x[axis] - g) + (oldU - g) * h) * e
+      this.u[axis] = target + (oldU - target) * e
+      this.x[axis] = target + ((this.x[axis] - target) + (oldU - target) * h) * e
     }
   }
 }

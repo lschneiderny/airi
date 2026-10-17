@@ -2,7 +2,27 @@ import type { Live2DMotionDriver } from './live2d'
 
 import { describe, expect, it } from 'vitest'
 
+import { Live2DNaturalMotion } from './natural-motion'
 import { Live2DNaturalMotionAdapter } from './natural-motion-adapter'
+
+// Fixture ranges: neutral 2, minimum -8, maximum 22.
+const command = (normalized: number) => 2 + normalized * (normalized >= 0 ? 20 : 10)
+const normalize = (value: number) => (value - 2) / (value >= 2 ? 20 : 10)
+const clampEye = (value: number) => Math.max(-0.95, Math.min(0.95, value))
+
+/** Controller output at an adapter active time, seeded like the fixture adapter (`random` = 0.8). */
+function natural(activeSeconds: number, cursor: { x: number, y: number } | null = null) {
+  const motion = new Live2DNaturalMotion({ random: () => 0.8 })
+  motion.advance(0)
+  motion.setCursor(cursor, 0)
+  return motion.advance(activeSeconds)
+}
+
+/** Asserts full Natural ownership of the eight posture channels, with eyes compensating the head. */
+function expectNatural(commanded: number[], { pose, fixation }: ReturnType<typeof natural>) {
+  const expected = [pose.headX, pose.headY, pose.headZ, pose.bodyX, pose.bodyY, pose.bodyZ, clampEye(fixation.x - pose.headX), clampEye(fixation.y - pose.headY)]
+  expected.forEach((value, index) => expect(commanded[index]).toBeCloseTo(command(value), 6))
+}
 
 function fixture(omit = '', fixed = '') {
   const ids = ['ParamAngleX', 'ParamAngleY', 'ParamAngleZ', 'ParamBodyAngleX', 'ParamBodyAngleY', 'ParamBodyAngleZ', 'ParamEyeBallX', 'ParamEyeBallY', 'ParamMouthOpenY', 'ParamEyeLOpen', 'PhysicsOutput'].filter(id => id !== omit)
@@ -74,10 +94,10 @@ describe('natural motion adapter', () => {
     f.frame(0)
     const first = f.frame(0.45, true)
     const second = f.frame(0.46, true)
-    expect(first.commanded.slice(0, 8)).toEqual(Array.from<number>({ length: 8 }).fill(2))
-    expect(second.commanded.slice(0, 8)).toEqual(first.commanded.slice(0, 8))
-    expect(first.rendered[3]).toBe(1)
-    expect(first.rendered[10]).toBe(0.5)
+    expectNatural(first.commanded, natural(0.45))
+    expectNatural(second.commanded, natural(0.46))
+    expect(first.rendered[3]).toBe(first.commanded[0] * 0.5)
+    expect(first.rendered[10]).toBe(first.commanded[0] * 0.25)
     expect(first.commanded[8]).toBe(2)
     expect(first.commanded[9]).toBe(2)
     expect(f.normalInputs).toEqual([2, 6, 6])
@@ -91,10 +111,12 @@ describe('natural motion adapter', () => {
     expect(f.frame(0).commanded[0]).toBe(9)
     f.state.eligible = true
     expect(f.frame(1).commanded[0]).toBe(9)
-    expect(f.frame(1.225).commanded[0]).toBeCloseTo(5.5)
+    // Half-way through the 0.45 s blend-in, after 0.225 active seconds.
+    const half = (9 + command(natural(0.225).pose.headX)) / 2
+    expect(f.frame(1.225).commanded[0]).toBeCloseTo(half, 6)
     f.state.eligible = false
     const start = f.frame(1.225).commanded[0]
-    expect(start).toBeCloseTo(5.5)
+    expect(start).toBeCloseTo(half, 6)
     expect(f.frame(1.425).commanded[0]).toBe(9)
     expect(f.frame(2).commanded[6]).toBe(5)
     f.adapter.dispose()
@@ -106,13 +128,11 @@ describe('natural motion adapter', () => {
     f.state.cursor = { x: -1, y: 0 }
     f.frame(0)
     const result = f.frame(0.225).commanded
-    const head = -0.25 * (1 - (1 + 0.225 / 0.14) * Math.exp(-0.225 / 0.14))
-    const fixation = -0.65 * (1 - (1 + 0.225 / 0.024) * Math.exp(-0.225 / 0.024))
-    const blendedHead = (9 + 2 + head * 10) / 2
-    const normalizedHead = (blendedHead - 2) / 20
-    const eyes = Math.max(-0.95, fixation - normalizedHead)
-    expect(result[0]).toBeCloseTo(blendedHead, 10)
-    expect(result[6]).toBeCloseTo((5 + 2 + eyes * 10) / 2, 10)
+    const { pose, fixation } = natural(0.225, { x: -1, y: 0 })
+    const blendedHead = (9 + command(pose.headX)) / 2
+    const eyes = clampEye(fixation.x - normalize(blendedHead))
+    expect(result[0]).toBeCloseTo(blendedHead, 6)
+    expect(result[6]).toBeCloseTo((5 + command(eyes)) / 2, 6)
     f.adapter.dispose()
   })
 
@@ -172,10 +192,12 @@ describe('natural motion adapter', () => {
     far.state.cursor = { x: 1, y: 0 }
     for (const f of [center, near, far])
       f.frame(0)
-    expect(center.frame(1).commanded[0]).toBe(2)
+    const c = center.frame(1).commanded
+    expect(c[0]).toBeCloseTo(command(natural(1, { x: 0, y: 0 }).pose.headX), 6)
     const n = near.frame(1).commanded
     const full = far.frame(1).commanded
-    expect(n[0] - 2).toBeCloseTo((full[0] - 2) * 0.25)
+    // Equal seeds share autonomous motion, so the cursor bias is the only difference.
+    expect(normalize(n[0]) - normalize(c[0])).toBeCloseTo((normalize(full[0]) - normalize(c[0])) * 0.25)
     far.state.cursor = { x: -1, y: 1 }
     expect(far.frame(1).commanded).toEqual(full)
     for (let index = 1; index <= 100; index++) {
@@ -237,7 +259,8 @@ describe('natural motion adapter', () => {
     expect(f.frame(3).commanded[0]).toBe(9)
     f.state.driver = 'natural'
     f.frame(4)
-    expect(f.frame(4.45).commanded[0]).toBe(2)
+    // Active time froze at 0.5 s and resumed at 4 s.
+    expect(f.frame(4.45).commanded[0]).toBeCloseTo(command(natural(0.95).pose.headX), 6)
     f.adapter.dispose()
   })
 
@@ -246,14 +269,15 @@ describe('natural motion adapter', () => {
     f.state.eligible = true
     f.state.motion = { ...f.state.motion, group: 'SavedIdle', priority: 3 }
     f.frame(0)
-    expect(f.frame(0.45).commanded[0]).toBe(2)
+    expect(f.frame(0.45).commanded[0]).toBeCloseTo(command(natural(0.45).pose.headX), 6)
     f.state.motion.group = 'tap_body'
     f.frame(0.5)
     expect(f.frame(0.7).commanded[0]).toBe(9)
     f.state.motion.group = undefined
     f.state.motion.priority = 0
     f.frame(0.8)
-    expect(f.frame(1.25).commanded[0]).toBe(2)
+    // Active time froze at 0.5 s and resumed at 0.8 s.
+    expect(f.frame(1.25).commanded[0]).toBeCloseTo(command(natural(0.95).pose.headX), 6)
     f.adapter.dispose()
   })
 
@@ -273,7 +297,8 @@ describe('natural motion adapter', () => {
     f.state.motion.group = undefined
     f.state.motion.priority = 0
     expect(f.frame(0.5).commanded[0]).toBe(9)
-    expect(f.frame(1).commanded[0]).toBe(2)
+    // Active time froze at 0.2 s and resumed at 0.5 s.
+    expect(f.frame(1).commanded[0]).toBeCloseTo(command(natural(0.7).pose.headX), 6)
     f.adapter.dispose()
   })
 })
