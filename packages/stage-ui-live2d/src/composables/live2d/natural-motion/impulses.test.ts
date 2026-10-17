@@ -54,13 +54,33 @@ describe('natural emotion impulses', () => {
     expect(early.eyeSmile).toBeGreaterThan(0.35)
     expect(early.mouthForm).toBeGreaterThan(0.35)
     expect(early.browY).toBeGreaterThan(0.2)
-    // tau 1.5 s: about 13% remains after 3 s.
-    expect(impulses.hints(3).eyeSmile).toBeLessThan(0.08)
+    // tau 1.5 s: about 13% of the 0.65 happy eye smile remains after 3 s.
+    expect(impulses.hints(3).eyeSmile).toBeLessThan(0.14 * 0.65)
 
     const surprised = new NaturalImpulses(createRandomStream(4))
     surprised.trigger(Emotion.Surprise, 1, 0)
     expect(surprised.hints(0.3).eyeOpen).toBeGreaterThan(0.1)
     expect(surprised.headOffset(0.4)[1]).toBeGreaterThan(0)
+  })
+
+  it('makes a full happy impulse clearly visible on Bear on every seed', () => {
+    // Bear-range units: the adapter maps head commands onto ParamAngleY [-30, 30] (1 = 30 units)
+    // and adds `eyeSmile` times the ParamEyeLSmile [0, 1] half-range (1 = 0.5). The todo 10
+    // live capture matches: a 0.5 hint peaked at ParamEyeLSmile 0.202.
+    const angleYUnits = 30
+    const eyeSmileUnits = 0.5
+    for (let seed = 1; seed <= 10; seed++) {
+      const impulses = new NaturalImpulses(createRandomStream(seed))
+      impulses.trigger(Emotion.Happy, 1, 0)
+      let rise = 0
+      let smile = 0
+      for (let i = 0; i <= 0.6 / step; i++) {
+        rise = Math.max(rise, impulses.headOffset(i * step)[1] * angleYUnits)
+        smile = Math.max(smile, impulses.hints(i * step).eyeSmile * eyeSmileUnits)
+      }
+      expect(rise, `seed ${seed} head rise`).toBeGreaterThanOrEqual(1.8)
+      expect(smile, `seed ${seed} smile`).toBeGreaterThanOrEqual(0.24)
+    }
   })
 
   it('requests side glances for think and awkward', () => {

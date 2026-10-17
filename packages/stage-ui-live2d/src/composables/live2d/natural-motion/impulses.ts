@@ -43,9 +43,17 @@ interface EmotionSpec {
   glance?: GazePoint
 }
 
-/** Per-emotion directions and hints. Neutral has no entry: it does nothing. */
+/**
+ * Per-emotion directions and hints. Neutral has no entry: it does nothing.
+ *
+ * Happy nods with a 0.9 pitch so that, after the ±20% direction and magnitude perturbation,
+ * the head still rises at least 0.073 normalized (2.2 ParamAngleY units on a ±30 rig; the old
+ * 0.6 pitch fell to 1.4), and its 0.65 eye smile peaks at 0.81 x 0.65 = 0.53 against the hint
+ * rise and decay (0.26 on a [0, 1] smile).
+ * Its length 0.95 keeps the peak within `headGain * 1.2`.
+ */
 const emotions: Partial<Record<Emotion, EmotionSpec>> = {
-  [Emotion.Happy]: { head: [0, 0.6, 0.3], sided: [2], hints: { browY: 0.3, eyeSmile: 0.5, mouthForm: 0.5 } },
+  [Emotion.Happy]: { head: [0, 0.9, 0.3], sided: [2], hints: { browY: 0.3, eyeSmile: 0.65, mouthForm: 0.5 } },
   [Emotion.Sad]: { head: [0, -0.8, 0.2], sided: [2], hints: { browAngle: 0.3, mouthForm: -0.4, eyeOpen: -0.15 } },
   [Emotion.Angry]: { head: [0, -0.4, 0], sided: [], hints: { browY: -0.4, browAngle: -0.4, mouthForm: -0.3 } },
   [Emotion.Surprise]: { head: [0, 0.8, 0], sided: [], hints: { browY: 0.6, eyeOpen: 0.15 } },
