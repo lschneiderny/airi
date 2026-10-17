@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
+import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { Live2DEyeFocusSource } from '../../composables/live2d'
+import type { Emotion } from '../../constants/emotions'
 
 import { presenceBubbleIdle } from '@proj-airi/stage-shared'
 import { useScreenAmbientLightEnvironment, useSettingsScreenAmbientLight } from '@proj-airi/stage-shared/stores/screen-ambient-light'
@@ -32,8 +34,17 @@ const props = withDefaults(defineProps<{
   themeColorsHueDynamic?: boolean
   /** Drives the bubble above the character. */
   presence?: PresenceBubbleState
+  /** Resolved by the stage and read by the Natural motion driver. */
+  performance?: PerformanceState
+  /**
+   * Energy forced on the Natural driver (devtools lab override), 0..1.
+   * When omitted, the user's Natural energy setting applies.
+   */
+  naturalEnergy?: number
 }>(), {
   presence: () => presenceBubbleIdle,
+  performance: () => ({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }),
+  naturalEnergy: undefined,
   paused: false,
   mouthOpenSize: 0,
   nowSpeaking: false,
@@ -65,6 +76,7 @@ const {
   live2dMaxFps,
   live2dRenderScale,
   live2dShadowEnabled,
+  live2dNaturalEnergy,
 } = storeToRefs(useSettingsLive2d())
 const universalMotionEnabled = computed(() => live2dMotionDriver.value === 'universal')
 const {
@@ -136,6 +148,8 @@ defineExpose({
   captureFrame: () => {
     return live2dCanvasRef.value?.captureFrame()
   },
+  /** Queues a Natural emotion impulse. Callers use it only while the Natural driver is selected. */
+  setEmotion: (name: Emotion, intensity: number) => live2dModelRef.value?.setEmotion(name, intensity),
 })
 </script>
 
@@ -170,8 +184,11 @@ defineExpose({
         :theme-colors-hue-dynamic="themeColorsHueDynamic"
         :live2d-idle-animation-enabled="universalMotionEnabled && live2dIdleAnimationEnabled"
         :live2d-force-idle-eye-animation="universalMotionEnabled && live2dForceIdleEyeAnimation"
-        :live2d-auto-blink-enabled="live2dAutoBlinkEnabled"
-        :live2d-force-auto-blink-enabled="live2dForceAutoBlinkEnabled"
+        :live2d-auto-blink-enabled="live2dAutoBlinkEnabled && live2dMotionDriver !== 'natural'"
+        :live2d-force-auto-blink-enabled="live2dForceAutoBlinkEnabled && live2dMotionDriver !== 'natural'"
+        :natural-auto-blink="live2dAutoBlinkEnabled"
+        :performance="props.performance"
+        :natural-energy="props.naturalEnergy ?? live2dNaturalEnergy"
         :live2d-expression-enabled="live2dExpressionEnabled"
         :live2d-shadow-enabled="live2dShadowEnabled"
         :screen-ambient-light-active="screenAmbientLightEnabled && screenAmbientLightActive"

@@ -25,6 +25,14 @@ export const speechOutputGetPlaybackState = defineInvokeEventa<SpeechOutputPlayb
 /** The output host sends its new playback state after `speaking` or `voicing` changes. */
 export const speechOutputPlaybackStateChangedEvent = defineEventa<SpeechOutputPlaybackState>('eventa:audio:speech:output:playback-state-changed')
 
+/**
+ * The voice input host sends it when the user starts or stops holding the floor: a speech input
+ * captures, or a voice draft waits to be sent. A stage in another window resolves its `listening`
+ * performance mode from it. Only changes are sent, so a window that never hosts voice input never
+ * emits, and a stage that mounts later starts from `false` until the next change.
+ */
+export const speechInputUserSpeakingChangedEvent = defineEventa<{ speaking: boolean }>('eventa:audio:speech:input:user-speaking-changed')
+
 const BUS_CHANNEL_NAME = 'proj-airi:pipelines:outputs:speech'
 
 let context: ReturnType<typeof createBroadcastChannelContext>['context'] | undefined

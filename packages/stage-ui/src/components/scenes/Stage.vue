@@ -2,6 +2,7 @@
 import type { Live2DLipSync, Live2DLipSyncOptions } from '@proj-airi/model-driver-lipsync'
 import type { Profile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import type { CaptionChannelEvent, PresenceBubbleState } from '@proj-airi/stage-shared'
+import type { PerformanceState, ResolverMemory } from '@proj-airi/stage-shared/performance-state'
 import type { VrmInteractionTarget } from '@proj-airi/stage-ui-three'
 
 import type { EmotionPayload } from '../../constants/emotions'
@@ -13,6 +14,8 @@ import { createLive2DLipSync } from '@proj-airi/model-driver-lipsync'
 import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import { normalizeActPayload, Playback } from '@proj-airi/pipelines-audio'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
+import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
+import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { MMDScene } from '@proj-airi/stage-ui-mmd'
 import { SpineScene } from '@proj-airi/stage-ui-spine'
@@ -21,7 +24,7 @@ import { ThreeScene } from '@proj-airi/stage-ui-three'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
 import { createQueue } from '@proj-airi/stream-kit'
 import { Callout } from '@proj-airi/ui'
-import { useBroadcastChannel, useEventListener } from '@vueuse/core'
+import { useBroadcastChannel, useDocumentVisibility, useEventListener, useIntervalFn } from '@vueuse/core'
 // import { createTransformers } from '@xsai-transformers/embed'
 // import embedWorkerURL from '@xsai-transformers/embed/worker?worker&url'
 // import { embed } from '@xsai/embed'
@@ -33,7 +36,7 @@ import StageRenderError from './stage-render-error.vue'
 // import { useDuckDb } from '../../composables/use-duck-db'
 import { Emotion, EMOTION_EmotionMotionName_value, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { live2dMotionMagicProfiles, useLive2DMotionMagic, useLive2DMotionMagicSettings } from '../../features/motions/live2d'
-import { getSpeechBusContext, speechOutputGetPlaybackState, speechOutputPlaybackStateChangedEvent } from '../../services/speech/bus'
+import { getSpeechBusContext, speechInputUserSpeakingChangedEvent, speechOutputGetPlaybackState, speechOutputPlaybackStateChangedEvent } from '../../services/speech/bus'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useAudioContext, useSpeakingStore } from '../../stores/audio'
 import { useBackgroundStore } from '../../stores/background'
@@ -41,6 +44,7 @@ import { useChatStore } from '../../stores/chat'
 import { useChatSessionStore } from '../../stores/chat/session-store'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useSpeechStore } from '../../stores/modules/speech'
+import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsPresenceBubble } from '../../stores/presence-bubble'
 import { useSettings } from '../../stores/settings'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
@@ -275,7 +279,12 @@ const emotionsQueue = createQueue<EmotionPayload>({
         await vrmViewerRef.value!.setExpression(value, ctx.data.intensity)
       }
       else if (stageModelRenderer.value === 'live2d') {
-        currentMotion.value = { group: EMOTION_EmotionMotionName_value[ctx.data.name] }
+        // Natural turns an emotion into an impulse on its own layers. Universal and MAGIC play the
+        // emotion's motion group through the store, which also defers it while the model loads.
+        if (live2dMotionDriver.value === 'natural')
+          live2dSceneRef.value?.setEmotion(ctx.data.name, ctx.data.intensity)
+        else
+          currentMotion.value = { group: EMOTION_EmotionMotionName_value[ctx.data.name] }
       }
       else if (stageModelRenderer.value === 'spine') {
         spineSceneRef.value?.setEmotion(ctx.data.name, ctx.data.intensity)
@@ -361,6 +370,67 @@ async function playSpecialToken(
 const lipSyncNode = ref<AudioNode>()
 
 const voice = useVoiceStore()
+
+// --- Performance state for the Natural motion driver
+// This stage is the only writer. It resolves every 250 ms, so dwell and release timers advance
+// without input changes, and at once when an input changes, so the listening release is anchored
+// on the moment user speech ends.
+
+/** User speech reported by a voice input host in another window. The local host is read from the voice store. */
+const remoteUserSpeaking = shallowRef(false)
+const disposeUserSpeakingListener = getSpeechBusContext().on(speechInputUserSpeakingChangedEvent, ({ body }) => {
+  if (body)
+    remoteUserSpeaking.value = body.speaking
+})
+const userSpeaking = computed(() => voice.userSpeaking || remoteUserSpeaking.value)
+/** Epoch milliseconds of the last pointer move the stage received, or `null` before the first one. */
+const cursorMovedAtMs = shallowRef<number | null>(null)
+watch(() => props.cursorPosition, () => {
+  cursorMovedAtMs.value = Date.now()
+})
+const { snapshot: desktopActivity } = storeToRefs(useDesktopActivityStore())
+const visibility = useDocumentVisibility()
+const { performanceOverride, emotionPulse } = storeToRefs(useNaturalPerformanceOverride())
+let performanceMemory: ResolverMemory = initialResolverMemory
+const performance = shallowRef<PerformanceState>(resolvePerformance())
+
+function resolvePerformance(): PerformanceState {
+  const resolution = resolvePerformanceState({
+    nowMs: Date.now(),
+    speaking: nowSpeaking.value,
+    userSpeaking: userSpeaking.value,
+    generating: chatSending.value,
+    cursorMovedAtMs: cursorMovedAtMs.value,
+    desktop: desktopActivity.value,
+    visible: visibility.value === 'visible',
+    override: performanceOverride.value,
+  }, performanceMemory)
+  performanceMemory = resolution.memory
+  return resolution.state
+}
+
+function updatePerformance() {
+  const next = resolvePerformance()
+  const current = performance.value
+  // A new object every tick would re-render the scene four times a second for nothing.
+  if (next.mode !== current.mode || next.attention !== current.attention || next.away !== current.away
+    || next.reactSeq !== current.reactSeq || next.reactKind !== current.reactKind) {
+    performance.value = next
+  }
+}
+
+useIntervalFn(updatePerformance, 250)
+watch([nowSpeaking, userSpeaking, chatSending, cursorMovedAtMs, desktopActivity, visibility, performanceOverride], updatePerformance)
+
+// The devtools Natural lab fires emotions through the same queue the chat uses.
+watch(() => emotionPulse.value?.seq, () => {
+  const pulse = emotionPulse.value
+  if (!pulse)
+    return
+  const emotion = toStageEmotionPayload(pulse)
+  if (emotion)
+    emotionsQueue.enqueue(emotion)
+})
 const speechDestination = audioContext.createGain()
 speechDestination.connect(audioContext.destination)
 const playback = new Playback(new BrowserPlayback(audioContext, {
@@ -616,6 +686,7 @@ async function captureCharacterFrame() {
 
 onUnmounted(() => {
   disposePlaybackStateHandler()
+  disposeUserSpeakingListener()
   resetLive2dLipSync()
   chatHookCleanups.forEach(dispose => dispose?.())
   viewUpdateCleanups.forEach(dispose => dispose?.())
@@ -647,6 +718,8 @@ defineExpose({
         ref="live2dSceneRef"
         v-model:state="componentState"
         :presence="presenceBubble"
+        :performance="performance"
+        :natural-energy="performanceOverride?.energy ?? undefined"
         min-w="50% <lg:full"
         h-full w-full flex-1
         :model-src="stageModelSelectedUrl"

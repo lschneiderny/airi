@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Application } from '@pixi/app'
 import type { Filter } from '@pixi/core'
+import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type {
   AmbientLightEnvironment,
   AmbientLightFilterOptions,
@@ -77,6 +78,15 @@ const props = withDefaults(defineProps<{
   screenAmbientLightMode?: ScreenAmbientLightMode
   screenAmbientLightStrength?: number
   screenAmbientLightSquint?: number
+  /** Resolved by the stage; the Natural driver reads it every frame to pick mode amplitude and gaze. */
+  performance?: PerformanceState
+  /** Natural energy 0..1, 0.5 neutral. */
+  naturalEnergy?: number
+  /**
+   * The user's auto-blink setting before the scene masks the blink plugin props in Natural.
+   * Natural's own blink scheduler blinks only while it is true.
+   */
+  naturalAutoBlink?: boolean
 }>(), {
   mouthOpenSize: 0,
   nowSpeaking: false,
@@ -101,6 +111,9 @@ const props = withDefaults(defineProps<{
   screenAmbientLightMode: ambientLightDefaults.mode,
   screenAmbientLightStrength: ambientLightDefaults.strength,
   screenAmbientLightSquint: ambientLightDefaults.squint,
+  performance: () => ({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }),
+  naturalEnergy: 0.5,
+  naturalAutoBlink: true,
 })
 
 const emits = defineEmits<{
@@ -118,6 +131,14 @@ const {
 const { live2dMotionDriver, live2dNaturalCursorAttention } = storeToRefs(useSettingsLive2d())
 let naturalMotion: Live2DNaturalMotionAdapter | undefined
 const localFocus = new Point()
+/** Emotions for the Natural driver; the adapter drains the queue on its next composition. */
+const pendingNaturalEmotions: { name: Emotion, intensity: number }[] = []
+/** Parameter ids the playing explicit clip animates; Natural masks them. Empty while no clip plays. */
+let clipOwnedIds: ReadonlySet<string> = new Set<string>()
+/** Latest SDK timestamp (seconds) seen by the Natural frame hook; NaN before the first frame of a model. */
+let sdkNowSeconds = Number.NaN
+/** SDK seconds at which assistant speech last ended on the loaded model, for Natural's mouth handoff. */
+let speechEndedAtSeconds: number | null = null
 
 const modelSrcRef = toRef(() => props.modelSrc)
 
@@ -487,13 +508,18 @@ async function performModelLoad() {
     motionManagerUpdate.register(useMotionUpdatePluginLipSync(mouthOpenSize, nowSpeaking), 'final')
     motionManagerUpdate.register(useMotionUpdatePluginBreathControl(manualBreathControl), 'final')
     // NOTICE:
-    // Temporary bridge so todo 9's adapter contract typechecks before scene wiring lands.
-    // Root cause: todo 9 changes the adapter constructor/Attention; todo 10 owns Model.vue wiring.
-    // Source/context: .omo/plans/live2d-presence-v2.md todos 9 and 10.
-    // Removal condition: todo 10 replaces this with the real rig profile, voice clock, clip mask, emotions, blink handoff.
+    // Natural must know which parameters physics drives, and the parsed rig is only reachable
+    // through the framework-internal `_physicsRig` field of the Cubism physics instance.
+    // Source: pixi-live2d-display 0.4.0 types/index.d.ts (CubismPhysics._physicsRig).
+    // Remove when pixi-live2d-display exposes the parsed physics rig through a public API.
+    const readRigProfile = () => readLive2DRigProfile(coreModel.getModel().parameters, internalModel.physics?._physicsRig)
+    sdkNowSeconds = Number.NaN
+    speechEndedAtSeconds = null
+    clipOwnedIds = new Set<string>()
+    pendingNaturalEmotions.length = 0
     const naturalAdapter = new Live2DNaturalMotionAdapter(
       internalModel,
-      readLive2DRigProfile(coreModel.getModel().parameters, undefined),
+      readRigProfile(),
       () => {
         let cursor = null
         if (live2dNaturalCursorAttention.value && props.eyeFocusSourceActive) {
@@ -509,13 +535,13 @@ async function performModelLoad() {
           exclusive: !!exclusiveOwnerId.value,
           manualActive: manualMotionControl.value.active,
           springActive: manualMotionSpring.output.value.active,
-          performance: { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' },
-          energy: 0.5,
-          voice: { speaking: nowSpeaking.value, level: mouthOpenSize.value / 100, speechEndedAtSeconds: null },
-          autoBlink: false,
+          performance: props.performance,
+          energy: props.naturalEnergy,
+          voice: { speaking: nowSpeaking.value, level: mouthOpenSize.value / 100, speechEndedAtSeconds },
+          autoBlink: props.naturalAutoBlink,
           manualBreathActive: manualBreathControl.value.active,
-          clipOwnedIds: new Set<string>(),
-          pendingEmotions: [],
+          clipOwnedIds,
+          pendingEmotions: pendingNaturalEmotions,
           cursor,
         }
       },
@@ -523,7 +549,12 @@ async function performModelLoad() {
     )
     naturalMotion = naturalAdapter
     naturalAdapter.setPaused(paused.value)
-    motionManagerUpdate.register(ctx => naturalAdapter.frame(ctx.now), 'final')
+    // Physics normally loads inside setupLive2DModel; a late load must still hand its outputs back to physics.
+    live2DModel.on('physicsLoaded', () => naturalAdapter.setRigProfile(readRigProfile()))
+    motionManagerUpdate.register((ctx) => {
+      sdkNowSeconds = ctx.now
+      naturalAdapter.frame(ctx.now)
+    }, 'final')
 
     const hookedUpdate = motionManager.update as (model: PixiLive2DInternalModel['coreModel'], now: number) => boolean
     motionManager.update = function (model: PixiLive2DInternalModel['coreModel'], now: number) {
@@ -532,10 +563,18 @@ async function performModelLoad() {
 
     motionManager.on('motionStart', (group, index) => {
       localCurrentMotion.value = { group, index }
+      // NOTICE:
+      // Natural masks the channels the explicit clip animates, and the curve ids are only
+      // reachable through the framework-internal `_motionData` (same access as the idle eyeball patch above).
+      // Source: pixi-live2d-display 0.4.0 CubismMotion._motionData.
+      // Remove when pixi-live2d-display exposes a motion's animated parameter ids.
+      const curves: { id: string }[] = motionManager.motionGroups[group]?.[index]?._motionData.curves ?? []
+      clipOwnedIds = new Set(curves.map(curve => curve.id))
     })
 
     // Listen for motion finish to restart runtime motion for looping
     motionManager.on('motionFinish', () => {
+      clipOwnedIds = new Set<string>()
       const selectedMotionGroup = localStorage.getItem('selected-runtime-motion-group')
       const selectedMotionIndex = localStorage.getItem('selected-runtime-motion-index')
 
@@ -950,6 +989,19 @@ watch(live2dMotionDriver, async (driver, previous) => {
 })
 
 watch(paused, value => naturalMotion?.setPaused(value))
+watch(nowSpeaking, (speaking, wasSpeaking) => {
+  // A speech end before the first SDK frame has no clock value to anchor the handoff to.
+  if (!speaking && wasSpeaking)
+    speechEndedAtSeconds = Number.isNaN(sdkNowSeconds) ? null : sdkNowSeconds
+})
+
+/**
+ * Queues an emotion impulse for the Natural driver. The stage calls it only while Natural drives
+ * the model; Universal and MAGIC play the emotion's motion group instead.
+ */
+function setEmotion(name: Emotion, intensity: number) {
+  pendingNaturalEmotions.push({ name, intensity })
+}
 
 // Watch for expression system toggle — nullify/restore SDK managers at runtime
 watch(live2dExpressionEnabled, (enabled) => {
@@ -1067,6 +1119,7 @@ defineExpose({
   initialModelHeight,
   initialModelWidth,
   headAnchor,
+  setEmotion,
 })
 
 import.meta.hot?.dispose(() => {
