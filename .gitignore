@@ -21,6 +21,7 @@ lerna-debug.log*
 # AI Agents
 .claude/worktrees/
 .superpowers/
+.omo/evidence/
 
 # Anything .local, especially for .env.local
 *.local
