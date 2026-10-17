@@ -17,9 +17,12 @@ import { domStorageExecArgv } from '../../vitest.dom-storage'
 export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
   // Shared settings pages import these optional UI dependencies through the
-  // component barrel. Bundle them before a browser test starts to avoid HMR.
+  // component barrel, and test Workers import the eventa Worker adapter.
+  // Bundle them before a browser test starts to avoid HMR.
   optimizeDeps: {
     include: [
+      '@moeru/eventa/adapters/webworkers',
+      '@moeru/eventa/adapters/webworkers/worker',
       '@moeru/std',
       '@proj-airi/stage-ui-live2d > @pixi/math',
       '@vueuse/core',
