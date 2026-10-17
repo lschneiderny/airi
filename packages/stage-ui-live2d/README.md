@@ -98,6 +98,7 @@ pnpm exec tsx packages/stage-ui-live2d/scripts/score-natural-trace.ts <trace.jso
 ```
 
 Add `--reference` to score a recording against the reference bands as measured. Generated mode judges blinks on physiological bands, which the tracker recordings do not meet, so a recording fails without `--reference`.
+Generated mode also reports mouth-opening SD without a band: Natural opens the mouth during silence only slightly and rarely, so it cannot match the tracker's mouth noise.
 
 ```bash
 pnpm exec tsx packages/stage-ui-live2d/scripts/score-natural-trace.ts --reference <trace.json>

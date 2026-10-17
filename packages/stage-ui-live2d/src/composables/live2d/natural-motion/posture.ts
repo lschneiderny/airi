@@ -34,7 +34,7 @@ const shiftAxisGain: Vec3 = [1.15, 0.7, 0.3]
  * Head posture as `h = softLimit(mu + b + amplitude * (g * n + r) + bias)` per axis.
  *
  * - `b`: slow home drift (OU, tau 90 s, 5 s filter).
- * - `n`: continuous sub-second motion (filtered OU) scaled by gain `g = 0.3 + 1.3 sigmoid(2e)`,
+ * - `n`: continuous sub-second motion (filtered OU) scaled by gain `g = 0.2 + 1.3 sigmoid(2e)`,
  *   where `e` is a unit OU (6 s) filtered over 0.6 s, so activity waxes and wanes.
  * - `r`: heavy-tailed posture shifts. Each shift moves `r` to `0.7 r + A diag(1, 0.8, 0.3) d`
  *   along a min-jerk path, then holds; there is no overshoot.
@@ -66,9 +66,11 @@ export class NaturalPostureLayers {
   constructor(private readonly home: Vec3, streams: PostureStreams) {
     this.drift = [0.08, 0.12, 0.025].map(sd => new FilteredOu(streams.drift, sd, 90, 5))
     this.continuous = [
-      new FilteredOu(streams.continuous, 0.012, 0.20, 0.07),
-      new FilteredOu(streams.continuous, 0.010, 0.24, 0.08),
-      new FilteredOu(streams.continuous, 0.005, 0.32, 0.10),
+      // Filters tuned from 0.07 / 0.08 / 0.10 on rendered rigs: detrended head jitter now averages about
+      // 2.1e-5 on the desk gate (recordings 2.4-2.5e-5) instead of sitting near the 1.5e-5 band floor.
+      new FilteredOu(streams.continuous, 0.012, 0.20, 0.06),
+      new FilteredOu(streams.continuous, 0.010, 0.24, 0.07),
+      new FilteredOu(streams.continuous, 0.005, 0.32, 0.09),
     ]
     this.energy = new FilteredOu(streams.gain, 1, 6, 0.6)
     this.shiftRandom = streams.shift
@@ -106,7 +108,8 @@ export class NaturalPostureLayers {
     this.time += dt
     while (this.time >= this.nextShiftAt)
       this.beginShift(this.nextShiftAt)
-    const gain = 0.3 + 1.3 / (1 + Math.exp(-2 * this.energy.step(dt)))
+    // Gain floor tuned from 0.3: quiet spells reach true stillness (still05 at least 0.02) as in the recordings.
+    const gain = 0.2 + 1.3 / (1 + Math.exp(-2 * this.energy.step(dt)))
     const shift = this.shiftAt(this.time)
     return [0, 1, 2].map((axis) => {
       const drift = this.drift[axis].step(dt)
@@ -127,12 +130,14 @@ export class NaturalPostureLayers {
     const amplitude = truncatedLognormal(this.shiftRandom, 0.22, 0.7, 0.025, 0.75)
     const direction = unitVector3(this.shiftRandom)
     const to = from.map((value, axis) => 0.7 * value + amplitude * shiftAxisGain[axis] * direction[axis]) as Vec3
-    // Larger moves take longer: 0.22 s plus a square-root term of the travelled distance.
+    // Larger moves take longer. Tuned from 0.22 + 0.4 sqrt on rendered rigs: the flatter curve keeps
+    // peak speed nearer linear in distance, which restores the speed-peak tail (Bear measured 0.79
+    // log asymmetry against the 1.05 floor), and the longer floor trims shift-driven jitter outliers.
     const distance = Math.hypot(...to.map((value, axis) => value - from[axis]))
     this.shiftFrom = from
     this.shiftTo = to
     this.shiftStart = at
-    this.shiftDuration = 0.22 + 0.4 * Math.sqrt(distance / 0.35)
+    this.shiftDuration = 0.35 + 0.25 * Math.sqrt(distance / 0.35)
     this.nextShiftAt = at + this.shiftDuration + this.drawHold() + this.holdCarry
     this.holdCarry = 0
     this.shiftCount++

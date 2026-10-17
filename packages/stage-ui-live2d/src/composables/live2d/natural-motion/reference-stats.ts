@@ -32,8 +32,6 @@ import type { MetricReference, ParameterRanges } from './liveliness'
 
 // top10PathShare: widened [0.35,0.52] to [0.35,0.5671054972695604] to include both recorded sessions.
 
-// jitter: widened [0.000015609601360065445,0.00004162560362684119] to [0.000015609601360065445,0.00004765999092394048] to include both recorded sessions.
-
 // speedPeakP90P50: widened [2.0908315057810483,4.1816630115620965] to [2.0908315057810483,5.795340583372552] to include both recorded sessions.
 
 // meanAngleY: widened [-20.4,-12.4] to [-20.4,-5.930436026990339] to include both recorded sessions.
@@ -141,7 +139,7 @@ export const referenceStats: {
       'top10PathShare': 0.4308186958414541,
       'velocityAcfCrossing': 0.26666666666666666,
       'loopPeak': 0.04054612070918109,
-      'jitter': 0.000026016002266775742,
+      'jitter': 0.00002448967433782599,
       'speedPeakP90P50': 2.986902151115783,
       'speedPeakLogAsymmetry': 1.501297862559501,
       'eyeHeadCorrelation': -0.8399972159845418,
@@ -172,7 +170,7 @@ export const referenceStats: {
       'top10PathShare': 0.5671054972695604,
       'velocityAcfCrossing': 0.23333333333333334,
       'loopPeak': 0.02341633229736687,
-      'jitter': 0.00004765999092394048,
+      'jitter': 0.00002536005415467538,
       'speedPeakP90P50': 5.795340583372552,
       'speedPeakLogAsymmetry': 2.010872176026868,
       'eyeHeadCorrelation': -0.7687532156581403,
@@ -259,7 +257,7 @@ export const referenceStats: {
       provisional: false,
     },
     'jitter': {
-      band: [0.000015609601360065445, 0.00004765999092394048],
+      band: [0.000014693804602695593, 0.00003918347894052158],
       provisional: true,
     },
     'speedPeakP90P50': {

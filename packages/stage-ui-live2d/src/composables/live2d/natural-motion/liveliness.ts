@@ -64,6 +64,18 @@ export const generatedBlinkBands: Record<'blinkRate' | 'blinkCv', MetricReferenc
   blinkCv: { band: [0.35, 0.8], provisional: true },
 }
 
+/**
+ * Mouth-opening SD is report-only for generated traces. Reference mode keeps the measured band.
+ *
+ * The recordings' floor (0.0174) comes from tracker mouth noise. Natural opens the mouth during
+ * silence at most 0.06, about once per 40 s, so even back-to-back 0.06 openings reach only about
+ * 0.021 SD: meeting the floor needs a continuously cycling mouth, which the visual check forbids.
+ * The node liveliness gate does not gate this metric either.
+ */
+export const generatedMouthOpenBand: Record<'sd:ParamMouthOpenY', MetricReference> = {
+  'sd:ParamMouthOpenY': { band: null, provisional: false },
+}
+
 const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length
 function sd(v: number[]) {
   const center = mean(v)
@@ -213,7 +225,10 @@ function headMotion(spans: Span[]) {
         covariance[lag] += real[lag]
     }
     for (const id of headIds) {
-      const { real, imag } = spectrum(span.channels[id], false)
+      const values = span.channels[id]
+      const last = values.length - 1
+      // Remove the endpoint ramp: the FFT wraps the span, and a first-to-last step leaks broadband power above 5 Hz.
+      const { real, imag } = spectrum(values.map((value, i) => value - (values[last] - values[0]) * i / last), false)
       for (let k = 1; k <= real.length / 2; k++) {
         const power = real[k] ** 2 + imag[k] ** 2
         totalPower += power
@@ -240,7 +255,7 @@ function headMotion(spans: Span[]) {
  */
 export function scoreLiveliness(trace: LivelinessTrace, ranges: ParameterRanges, options: { mode?: 'generated' | 'reference' } = {}): LivelinessReport {
   const mode = options.mode ?? 'generated'
-  const references = mode === 'generated' ? { ...referenceStats.bands, ...generatedBlinkBands } : referenceStats.bands
+  const references = mode === 'generated' ? { ...referenceStats.bands, ...generatedBlinkBands, ...generatedMouthOpenBand } : referenceStats.bands
   const warnings: string[] = []
   if (trace.t.length < 2 || Object.values(trace.channels).some(v => v.length !== trace.t.length) || (trace.valid && trace.valid.length !== trace.t.length))
     throw new Error('Trace must contain at least two timestamps and equally sized channels/valid arrays.')

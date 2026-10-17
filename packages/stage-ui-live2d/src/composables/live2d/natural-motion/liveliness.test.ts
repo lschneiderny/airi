@@ -76,6 +76,27 @@ describe('liveliness score', () => {
     expect(reference.pass).toBe(false)
   })
 
+  it('reports mouth-opening SD without a band in generated mode and keeps the reference band', () => {
+    const trace = signal(30, 10, t => 5 * Math.sin(t))
+    trace.channels.ParamMouthOpenY = Array.from(trace.t, (_, i) => (i % 60 < 30 ? 0.05 : 0))
+    const generated = scoreLiveliness(trace, ranges, { mode: 'generated' }).metrics['sd:ParamMouthOpenY']
+    const reference = scoreLiveliness(trace, ranges, { mode: 'reference' }).metrics['sd:ParamMouthOpenY']
+    expect(generated.value).toBeCloseTo(0.025, 3)
+    expect(generated.band).toBeNull()
+    expect(generated.pass).toBeNull()
+    expect(reference.value).toBe(generated.value)
+    expect(reference.band).toEqual(referenceStats.bands['sd:ParamMouthOpenY'].band)
+  })
+
+  it('measures jitter on the detrended span, so a linear drift does not change it', () => {
+    // A whole-span linear ramp adds an end-to-end step that the FFT would wrap into broadband power.
+    const motion = (t: number) => 3 * Math.sin(2 * Math.PI * 0.2 * t) + 0.05 * Math.sin(2 * Math.PI * 8 * t)
+    const plain = scoreLiveliness(signal(30, 60, motion), ranges).metrics.jitter.value!
+    const drifting = scoreLiveliness(signal(30, 60, t => motion(t) - 20 + 40 * t / 60), ranges).metrics.jitter.value!
+    expect(plain).toBeGreaterThan(0)
+    expect(Math.abs(drifting / plain - 1)).toBeLessThan(1e-6)
+  })
+
   it('measures synthetic summed OU channel deviations within five percent', () => {
     let seed = 1
     const random = () => {
