@@ -50,7 +50,8 @@ export async function setupSettingsWindowInvokes(params: {
   // manage events within eventa's context system.
   ipcMain.setMaxListeners(0)
 
-  const { context } = createContext(ipcMain, params.settingsWindow)
+  // Keep Settings IPC isolated and dispose its handlers when the window closes.
+  const { context } = createContext(ipcMain, params.settingsWindow, { onlySameWindow: true })
 
   await setupBaseWindowElectronInvokes({ context, window: params.settingsWindow, i18n: params.i18n, serverChannel: params.serverChannel })
 
