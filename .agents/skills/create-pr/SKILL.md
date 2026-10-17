@@ -81,13 +81,13 @@ Distinguish verified facts, assumptions, and unverified conditions. Do not write
 
 ## Visual Evidence Workflow
 
-1. Trace the diff to every affected page, window, dialog, route, responsive state, theme, and locale. Shared primitives and global styles can require several consumers, not one representative page.
+1. Identify affected pages, windows, dialogs, and responsive states. Select captures that demonstrate the changed behavior. Expand coverage for shared primitives or global styles when consumers differ.
 2. Record a stable ID and human-readable title for each state. Prefer existing product-owned Vishot scenarios, Histoire stories, routes, and nearby tests.
 3. Use the recorded merge base. Create a detached temporary worktree for that commit. Never switch or overwrite the contributor's active worktree.
 4. Use `$use-vishot` to capture the same scenario from the merge base and proposed HEAD. It delegates by runtime:
-   - `$use-vishot-with-electron` for Electron windows.
-   - `$use-vishot-with-web` for browser routes.
-   - `$use-vishot-with-capacitor` for Stage Pocket or another Capacitor app.
+   - [Electron reference](../use-vishot/references/electron.md) for Electron windows.
+   - [Web reference](../use-vishot/references/web.md) for browser routes.
+   - [Capacitor reference](../use-vishot/references/capacitor.md) for Stage Pocket or another Capacitor app.
 5. Use identical scenario definitions, viewports, locale, theme, fixture data, and readiness conditions for both revisions.
 6. Construct explicit Vishot output directories using the repository-owned `.vishot/[branch/][group/]` convention. Omit the branch segment for the default branch and use a filesystem-safe segment for other branches. Keep capture group and name identical across revisions.
 7. Inspect every image. Reject blank, loading, error, permission, onboarding, or unstable captures unless that is the documented state.
@@ -102,8 +102,8 @@ Distinguish verified facts, assumptions, and unverified conditions. Do not write
    after: /absolute/repo/.vishot/feat-settings/settings/settings-connection.png
    ```
 
-   Use `before: absent` for a new state and `after: removed` for a deleted state. A capture failure is blocking. Record its reason instead of silently omitting the state.
-9. Upload every local image as a GitHub user asset by invoking `$upload-github-attachment` while composing the PR.
+   Use `before: absent` for a new state and `after: removed` for a deleted state. Record capture failures and their review impact instead of silently omitting them.
+9. Upload every local image as a GitHub user asset with the [attachment procedure](references/attachments.md) while composing the PR.
 10. Put all pairs under `## Visual changes`. Put an image row before its component or page name row:
 
    ```markdown
@@ -113,10 +113,10 @@ Distinguish verified facts, assumptions, and unverified conditions. Do not write
    | Settings / Connection | Settings / Connection |
    ```
 
-11. Verify that every user-asset URL matches the intended capture. Follow `$upload-github-attachment` for upload success criteria. Do not add GET/HEAD probes or block on anonymous 404 responses. Remove temporary worktrees only after upload succeeds. Clear ignored `.vishot` captures when they are no longer useful locally.
+11. Verify that every user-asset URL matches the intended capture. Follow the [attachment procedure](references/attachments.md) for upload success criteria. Do not add GET/HEAD probes or block on anonymous 404 responses. Remove temporary worktrees only after upload succeeds. Clear ignored `.vishot` captures when they are no longer useful locally.
 
 ## Visual Evidence Contract
 
 Treat Vishot output as ephemeral handoff data. GitHub owns the uploaded copy. The repository must remain free of tracked PR-only images.
 
-If GitHub asset upload is unavailable, stop before you create an incomplete UI PR. Report the local image paths that the PR needs.
+If capture or asset upload is unavailable, report the gap and local artifact paths. Ask whether to publish without that evidence.

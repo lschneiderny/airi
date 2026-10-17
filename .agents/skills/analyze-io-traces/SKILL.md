@@ -18,6 +18,8 @@ ls -t "$HOME/Library/Application Support/@proj-airi/stage-tamagotchi/io-traces"/
 
 The first path is the packaged app on macOS. The second is `pnpm dev` on macOS. If `APP_USER_DATA_PATH` is set, use `$APP_USER_DATA_PATH/io-traces`. If recording is off or nothing ran yet, the folder does not exist. Ask the user to turn it on and reproduce the problem.
 
+On Windows, resolve Electron's `app.getPath("userData")` from the running app or its startup configuration, then inspect its `io-traces` directory. `APP_USER_DATA_PATH` takes precedence when configured. Do not assume the macOS paths above apply.
+
 ## Record shape
 
 Each line is one span with `traceId`, `spanId`, `parentSpanId`, `name`, `startTimeNano`, `endTimeNano`, `status.code` (2 means error), `attributes`, and `events`. Time values are decimal strings in nanoseconds. Subsystems are in `attributes["ai.moeru.airi.io.subsystem"]`.

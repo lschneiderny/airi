@@ -210,18 +210,7 @@ curl -sS http://127.0.0.1:9250/json/list
 agent-browser --cdp 9250 tab
 ```
 
-If the controls island is visible but the accessibility refs or CSS icon click do not expand it, inspect the Vue component as a diagnostic fallback. AIRI currently nests tooltip trigger buttons around icon buttons, so a CDP click can report success while landing on the wrapper instead of the Vue `ControlButton` listener. This fallback is for automation/debugging only; do not use it as evidence that end-user clicking works.
-
-```bash
-agent-browser --cdp 9250 eval '(() => {
-  const icon = document.querySelector("[i-solar\\:alt-arrow-up-line-duotone]")
-  let controls = icon.__vueParentComponent
-  for (let i = 0; i < 10; i++) controls = controls.parent
-  controls.devtoolsRawSetupState.expanded.value = true
-  controls.proxy.$nextTick()
-  return controls.devtoolsRawSetupState.expanded.value
-})()'
-```
+If controls do not respond, inspect the owning component and window mouse/focus behavior. Record diagnostic activation separately from pointer success.
 
 Expected verification for chat:
 - `agent-browser --cdp 9250 get url` returns `http://localhost:5173/#/chat`

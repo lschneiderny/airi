@@ -120,14 +120,10 @@ Use pnpm workspace filters to limit a command to one workspace. Replace `<packag
 
 ## Writing
 
-- For text, obey the [`simple-english`](.agents/skills/simple-english/SKILL.md) skill. Text includes documentation, code comments, commit messages, and PR and issue text.
-- Do not apply the skill to code, identifiers, commands, or quoted errors.
-- This repository breaks these rules most often:
-  - Do not write "should", "may", "might", "could", or "would". Write "must" or "can", or state the fact.
-  - Do not use semicolons. Write two sentences.
-  - Write "for example" and "that is". Do not write "e.g.", "i.e.", or "etc.".
-  - Write an instruction in 20 words or fewer. Write a description in 25 words or fewer.
-  - Put a condition before its command.
+- Write clear, complete sentences. Use consistent terms and remove filler.
+- Distinguish requirements, recommendations, and uncertainty.
+- Preserve code, identifiers, commands, and quoted errors.
+- Put conditions before commands.
 
 ## Git and Pull Requests
 
@@ -150,10 +146,10 @@ Skills are in `.agents/skills/<name>/SKILL.md`. Read the listed file before you 
 | Write or change a string that users see, or a glossary term | [`packages/i18n/AGENTS.md`](packages/i18n/AGENTS.md) |
 | Review pending Crowdin translations, or find why approved translations did not reach the repository | [`enforce-rules-for-i18n`](.agents/skills/enforce-rules-for-i18n/SKILL.md) |
 | Work under `server/` | [`server/AGENTS.md`](server/AGENTS.md). For `server/apps/api`, also read [`server/apps/api/AGENTS.md`](server/apps/api/AGENTS.md). |
-| Write documentation, code comments, commit messages, or PR and issue text | [`simple-english`](.agents/skills/simple-english/SKILL.md) |
+| Write documentation, code comments, commit messages, or PR and issue text | Follow the Writing rules above. |
 | Analyze why a chat, speech, or audio turn was slow or failed, using saved IO traces | [`analyze-io-traces`](.agents/skills/analyze-io-traces/SKILL.md) |
 | Create or prepare a pull request | [`create-pr`](.agents/skills/create-pr/SKILL.md) |
-| Upload a local file through a file input or a file chooser in a web or Electron app | [`use-agent-browser-with-input-file`](.agents/skills/use-agent-browser-with-input-file/SKILL.md) and [`agent-browser`](.agents/skills/agent-browser/SKILL.md). For Electron, also read [`agent-browser-electron`](.agents/skills/agent-browser-electron/SKILL.md). |
+| Upload a local file through a file input or a file chooser in a web or Electron app | [Upload reference](.agents/skills/use-agent-browser-for-airi/references/input-file.md) and [`agent-browser`](.agents/skills/agent-browser/SKILL.md). For Electron, also read [`agent-browser-electron`](.agents/skills/agent-browser-electron/SKILL.md). |
 | Test Live2D, VRM, or MMD import and rendering in stage-web, stage-tamagotchi, or stage-pocket | [`use-agent-browser-for-airi`](.agents/skills/use-agent-browser-for-airi/SKILL.md) |
 
 These directories also have their own `AGENTS.md`. Read it before you work in the directory:

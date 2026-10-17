@@ -23,19 +23,16 @@ Apply these rules to every test change in AIRI.
    - Use the Linear issue key for an internal Linear bug.
 3. Put the actual report URL in a comment directly above the regression test. Use the GitHub issue URL, Discord message or thread URL, or Linear issue URL as appropriate.
 4. Confirm that the reproduction fails for the reported reason before you implement the fix.
-5. After the fix, add a comment below the report URL that explains the root cause and the fix. Use this format:
+5. Add concise regression context when the test does not make the root cause clear. Avoid required comment templates.
 
-   ```ts
-   // ROOT CAUSE:
-   //
-   // If XXXX, some XXX case happens.
-   // This happens because where line ...
-   //
-   // <before-patch behavior/code>
-   //
-   // We fixed this by XXX, XXX, XXX.
-   // <after-patch behavior/code>
-   ```
+## Vue Component Tests
+
+- Exercise props, emitted events, and visible results rather than private component state.
+- Mount lifecycle-dependent composables in a small host component and unmount it after the test.
+- Use a real Pinia instance with controlled initial state. Do not stub the store behavior under test.
+- Await Vue updates and the exact async completion signal before assertions. Do not use fixed sleeps.
+- For async setup, mount with a Suspense boundary. For Teleport, create and clean up the destination element.
+- Assert behavior explicitly. Snapshots alone do not prove interactions work.
 
 ## Mock Real Boundaries
 

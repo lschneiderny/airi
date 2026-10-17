@@ -5,7 +5,7 @@ description: Test AIRI display-model imports with agent-browser across stage-tam
 
 # Use Agent Browser for AIRI
 
-Invoke `$agent-browser` and `$use-agent-browser-with-input-file`. The input-file skill owns file-input discovery, temporary instrumentation, upload commands, and generic post-upload verification. Run `agent-browser skills get core --full` before browser commands. For Electron, also invoke `$agent-browser-electron` and run `agent-browser skills get electron --full`.
+Invoke `$agent-browser` and read [input files](references/input-file.md). That reference covers file-input discovery, temporary instrumentation, upload commands, and generic post-upload verification. Run `agent-browser skills get core --full` before browser commands. For Electron, also invoke `$agent-browser-electron` and run `agent-browser skills get electron --full`.
 
 Select the runtime guide:
 
@@ -15,7 +15,7 @@ Select the runtime guide:
 
 ## Model import contract
 
-Use an absolute input path. AIRI currently creates each format input with VueUse `useFileDialog` and keeps it detached from the DOM, so all three formats use the [detached-input method](../use-agent-browser-with-input-file/references/detached-input.md). Apply that method before clicking the format menu item, then use the matching selector and format-specific postcondition:
+Use an absolute input path. AIRI currently creates each format input with VueUse `useFileDialog` and keeps it detached from the DOM, so all three formats use the [detached-input method](references/detached-input.md). Apply that method before clicking the format menu item, then use the matching selector and format-specific postcondition:
 
 | Format | Menu item | Input selector | Format-specific result |
 | --- | --- | --- | --- |
@@ -23,7 +23,7 @@ Use an absolute input path. AIRI currently creates each format input with VueUse
 | VRM | `VRM` | `input[data-agent-browser-upload][accept=".vrm"]` | Wait for the imported card; no Live2D validation confirmation is expected. |
 | MMD | `MMD` | `input[data-agent-browser-upload][accept=".zip,.pmx,.pmd"]` | Verify archive/model storage separately from textures, physics, dynamic imports, and rendering. |
 
-Resolve local Live2D and VRM fixtures from the paths documented by `$use-vishot-for-airi`. For MMD, use a licensed archive containing the model and its texture directories. Do not encode a contributor's private fixture name in tests or source comments.
+Supply an absolute local Live2D or VRM fixture path. See [AIRI captures](../use-vishot/references/airi.md). For MMD, use a licensed archive containing the model and its texture directories. Do not encode a contributor's private fixture name in tests or source comments.
 
 ## Prepare AIRI state
 
@@ -39,7 +39,7 @@ Open `/settings/models`, click `Select model`, and snapshot again.
 
 1. Click the first `Options for Display Models` button.
 2. Re-snapshot and click the exact Live2D, VRM, or MMD menu item.
-3. Upload with the matching selector from the table by following `$use-agent-browser-with-input-file`'s detached-input method.
+3. Upload with the matching selector from the table by following the [detached-input method](references/detached-input.md).
 4. Re-snapshot. If Live2D validation displays a report, inspect it and click `Confirm` only when the report permits import.
 5. Wait for the exact basename to appear on an imported model card with its own `Pick` button. The detached input's displayed filename is not sufficient.
 6. Click that imported card's `Pick` button.

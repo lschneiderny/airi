@@ -1,6 +1,6 @@
 ---
 name: pnpm
-description: Node.js package manager with strict dependency resolution. Use when running pnpm specific commands, configuring workspaces via pnpm-workspace.yaml, or managing dependencies with catalogs, patches, overrides, config dependencies, or the global virtual store.
+description: Use for pnpm workspace configuration, dependency maintenance, catalogs, patches, overrides, and installation failures. Routine test or script commands do not require this skill.
 metadata:
   author: Anthony Fu
   version: "2026.6.22"

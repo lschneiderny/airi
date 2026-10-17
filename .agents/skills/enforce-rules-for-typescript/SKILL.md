@@ -57,7 +57,7 @@ Apply these rules to every TypeScript and Vue source change in AIRI. The root `A
 - Do not attach JSDoc or `@example` blocks to ordinary `describe`, `it`, or `expect*` calls.
 - For exported interfaces and type aliases, keep the top-level JSDoc on what the type represents. Put detailed semantics on the related fields.
 - Document generic parameters with `@param`. Add `@default` to every option that has a default value.
-- Give each runner and CLI entry point `/** ... */` JSDoc with a clear ASCII call-stack diagram. Use `{@link ...}` references where applicable.
+- Add a runner or CLI call-stack diagram only when it explains a non-obvious ownership or lifecycle boundary.
 - For a server orchestrator, add a call-stack diagram only when it clarifies a stable architecture boundary. Do not add diagrams to shallow glue code.
 - Use this format for the call-stack section:
 
@@ -74,7 +74,7 @@ Apply these rules to every TypeScript and Vue source change in AIRI. The root `A
    */
   ```
 
-- Give `/** ... */` JSDoc with an `@example` to each exported normalizer, shared normalizer, and non-obvious local normalizer. This applies to normalizers of outputs, formats, file names, and values. It does not apply to config default normalization.
+- Add a normalizer example when its input/output contract is non-obvious. Do not document trivial transformations mechanically.
 - In the example, show a representative input and output. Use this format:
 
   ```ts
