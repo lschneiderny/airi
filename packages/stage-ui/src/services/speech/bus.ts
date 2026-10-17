@@ -26,8 +26,8 @@ export const speechOutputGetPlaybackState = defineInvokeEventa<SpeechOutputPlayb
 export const speechOutputPlaybackStateChangedEvent = defineEventa<SpeechOutputPlaybackState>('eventa:audio:speech:output:playback-state-changed')
 
 /**
- * The voice input host sends it when the user starts or stops holding the floor: a speech input
- * captures, or a voice draft waits to be sent. A stage in another window resolves its `listening`
+ * The voice input host sends it when the user starts or stops speaking: `speaking` is true while
+ * voice input is capturing. An unsent voice draft does not count. A stage in another window resolves its `listening`
  * performance mode from it. Only changes are sent, so a window that never hosts voice input never
  * emits, and a stage that mounts later starts from `false` until the next change.
  */

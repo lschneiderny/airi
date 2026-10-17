@@ -162,11 +162,12 @@ export const useVoiceStore = defineStore('voice', () => {
   watch(drafts, publishSnapshot, { deep: true })
 
   /**
-   * Whether the user holds the floor: a speech input is capturing, or a voice draft waits for the user
-   * to send it. The stage resolves the character's `listening` mode from it. With voice input off, no
-   * input captures and no draft exists, so it stays false. Changes also cross windows on the speech bus.
+   * Whether the user is speaking: true while voice input is capturing. An unsent voice draft does not count,
+   * so a draft left unsent does not hold the character in `listening`. The stage resolves the
+   * character's `listening` mode from it. With voice input off, no input captures, so it stays false.
+   * Changes also cross windows on the speech bus.
    */
-  const userSpeaking = computed(() => state.value?.phase === 'capturing' || drafts.value.some(draft => !draft.sending))
+  const userSpeaking = computed(() => state.value?.phase === 'capturing')
   watch(userSpeaking, speaking => getSpeechBusContext().emit(speechInputUserSpeakingChangedEvent, { speaking }))
 
   function beginInput(options: BeginSpeechInput) {

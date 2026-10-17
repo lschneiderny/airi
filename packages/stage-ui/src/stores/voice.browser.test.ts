@@ -1,6 +1,6 @@
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createApp, defineComponent, h } from 'vue'
+import { createApp, defineComponent, h, nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import { getSpeechBusContext, speechInputUserSpeakingChangedEvent } from '../services/speech/bus'
@@ -69,21 +69,16 @@ describe('voice store user speech', () => {
     await expect.poll(() => changes).toEqual([true, false])
   })
 
-  it('reports an unsent voice draft until it is discarded and sends each change on the speech bus', async () => {
+  it('does not count an unsent voice draft as user speech while nothing is capturing', async () => {
     const { voice, changes } = mountVoice()
-    const draft = { id: 'draft', sessionId: 'alice', rawText: 'hello', text: 'hello' }
 
-    // A draft the host is already sending is no longer waiting for the user.
-    voice.$patch({ drafts: [{ ...draft, sending: true }] })
-    expect(voice.userSpeaking).toBe(false)
-
-    voice.$patch({ drafts: [{ ...draft, sending: false }] })
+    voice.$patch({ drafts: [{ id: 'draft', sessionId: 'alice', rawText: 'hello', text: 'hello', sending: false }] })
     expect(voice.state).toBeUndefined()
-    expect(voice.userSpeaking).toBe(true)
-    await expect.poll(() => changes).toEqual([true])
-
-    expect(voice.discardDraft('draft')).toBe(true)
     expect(voice.userSpeaking).toBe(false)
-    await expect.poll(() => changes).toEqual([true, false])
+
+    // The speech bus delivers events in order, so a marker sent after the patch arrives after any change the patch caused.
+    await nextTick()
+    getSpeechBusContext().emit(speechInputUserSpeakingChangedEvent, { speaking: false })
+    await expect.poll(() => changes).toEqual([false])
   })
 })
