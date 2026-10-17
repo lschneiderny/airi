@@ -31,7 +31,8 @@ const gatedMetrics = [
   'angleXp95',
   'jitter',
   'nearLimitOccupancy',
-  // Shift-amplitude dispersion: spread rejects constant sizes, log asymmetry rejects tail-less spreads.
+  // Shift-amplitude dispersion: spread rejects constant sizes; log asymmetry rejects the uniform sizes
+  // [0.1, 0.5] and [0.15, 0.45] but not every tail-less spread.
   'speedPeakP90P50',
   'speedPeakLogAsymmetry',
   // Gaze layer: independent fixations with partial head counter-rotation.

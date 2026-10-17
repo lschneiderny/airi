@@ -174,8 +174,10 @@ function spectrum(values: number[], padded: boolean) {
  * A lower setting (2 units/s, 0.3 s) admits so many continuous micro-motion
  * peaks that constant shift amplitudes still pass. Above 4 units/s with 1 s spacing,
  * roughly one peak per posture shift remains. p90/p50 measures the spread of shift
- * sizes and rejects constant amplitudes; the log-quantile asymmetry measures tail shape
- * and rejects wide amplitudes without a tail, such as uniform [0.1, 0.5].
+ * sizes and rejects constant amplitudes; the log-quantile asymmetry compares the upper and
+ * lower log spreads. It rejects the uniform amplitudes [0.1, 0.5] and [0.15, 0.45] on the gate
+ * seeds, but it is not a general tail test: some tail-less spreads, such as two-point
+ * mixtures, can still pass.
  * Peak CV, skewness, and upper-quantile ratios are not gated: at this setting the
  * controller sits below their recording bands.
  */
@@ -281,7 +283,8 @@ export function scoreLiveliness(trace: LivelinessTrace, ranges: ParameterRanges,
   // Shift-amplitude dispersion: constant-size shifts give uniform peak heights.
   const peaks = motion.peaks
   values.speedPeakP90P50 = peaks.length >= 20 ? quantile(peaks, 0.9) / quantile(peaks, 0.5) : null
-  // (ln p90 - ln p50) / (ln p50 - ln p10): 1 for a lognormal, below 1 for a tail-less spread.
+  // (ln p90 - ln p50) / (ln p50 - ln p10): 1 for a lognormal, above 1 when the upper log spread is wider.
+  // A tail-less spread can still score above 1.
   // Undefined (null) when the lower half has no spread, such as identical peaks.
   const lowerLogSpread = peaks.length >= 20 ? Math.log(quantile(peaks, 0.5) / quantile(peaks, 0.1)) : 0
   values.speedPeakLogAsymmetry = lowerLogSpread > 0 ? Math.log(quantile(peaks, 0.9) / quantile(peaks, 0.5)) / lowerLogSpread : null

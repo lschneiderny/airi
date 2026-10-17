@@ -29,6 +29,8 @@ export interface PostureStreams {
 // X 1.15 reaches the reference X p5; Y 0.7 keeps desk-home pitch under the 1% near-limit
 // hard limit (pitch reached 1.7-3.1% near-limit at 0.8).
 const shiftAxisGain: Vec3 = [1.15, 0.7, 0.3]
+/** Largest normalized `|home + shift target|` per axis; drift and continuous motion still add on top. */
+const shiftTargetLimit = 0.75
 
 /**
  * Head posture as `h = softLimit(mu + b + amplitude * (g * n + r) + bias)` per axis.
@@ -36,8 +38,8 @@ const shiftAxisGain: Vec3 = [1.15, 0.7, 0.3]
  * - `b`: slow home drift (OU, tau 90 s, 5 s filter).
  * - `n`: continuous sub-second motion (filtered OU) scaled by gain `g = 0.2 + 1.3 sigmoid(2e)`,
  *   where `e` is a unit OU (6 s) filtered over 0.6 s, so activity waxes and wanes.
- * - `r`: heavy-tailed posture shifts. Each shift moves `r` to `0.7 r + A diag(1, 0.8, 0.3) d`
- *   along a min-jerk path, then holds; there is no overshoot.
+ * - `r`: heavy-tailed posture shifts. Each shift moves `r` to `0.7 r + A diag(1.15, 0.7, 0.3) d`,
+ *   clamped so `|mu + r|` stays within 0.75, along a min-jerk path, then holds; there is no overshoot.
  *
  * Time is seconds of active (unsuspended) motion. Callers step with small `dt`
  * (the facade uses 1/120 s) because the filters use a zero-order hold.
@@ -127,9 +129,14 @@ export class NaturalPostureLayers {
 
   private beginShift(at: number) {
     const from = this.shiftAt(at)
-    const amplitude = truncatedLognormal(this.shiftRandom, 0.22, 0.7, 0.025, 0.75)
+    // Amplitude tuned from median 0.22, log SD 0.7, max 0.75: the wider draw raises speed-peak log
+    // asymmetry from about 1.2 toward the recordings' 1.5-2.0, and the lower median keeps rare large
+    // shifts from inflating total power, which would push detrended jitter below its band.
+    const amplitude = truncatedLognormal(this.shiftRandom, 0.18, 1, 0.025, 1)
     const direction = unitVector3(this.shiftRandom)
-    const to = from.map((value, axis) => 0.7 * value + amplitude * shiftAxisGain[axis] * direction[axis]) as Vec3
+    // The heavier tail would push the desk-home pitch into the head limit (above 1% near-limit), so each
+    // target is clamped to within shiftTargetLimit of center, inside the softLimit knee.
+    const to = from.map((value, axis) => Math.min(shiftTargetLimit - this.home[axis], Math.max(-shiftTargetLimit - this.home[axis], 0.7 * value + amplitude * shiftAxisGain[axis] * direction[axis]))) as Vec3
     // Larger moves take longer. Tuned from 0.22 + 0.4 sqrt on rendered rigs: the flatter curve keeps
     // peak speed nearer linear in distance, which restores the speed-peak tail (Bear measured 0.79
     // log asymmetry against the 1.05 floor), and the longer floor trims shift-driven jitter outliers.
