@@ -19,6 +19,7 @@ export default defineConfig({
   optimizeDeps: {
     include: [
       '@moeru/std',
+      '@proj-airi/stage-ui-live2d > @pixi/math',
       '@vueuse/core',
       'embla-carousel-vue',
       'html2canvas',
