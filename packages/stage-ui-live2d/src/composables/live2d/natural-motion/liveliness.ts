@@ -50,6 +50,20 @@ const metricRows: Record<string, string> = {
   speedRatio: 'talking',
   onsetEnrichment: 'talking',
 }
+/**
+ * Blink bands for generated traces, from the plan's ultrabrain lane: 8-20 blinks per minute,
+ * inter-blink CV 0.35-0.8. Reference mode keeps the measured recording bands.
+ *
+ * The VTS-tracker recordings undercount blinks: 1.7-5.1 per minute with CV 1.6-4.2 is not
+ * human-plausible, because missed blinks lower the rate and inflate the interval spread.
+ * The plan marks blink bands provisional, so generated motion is judged on physiology
+ * until a recording with reliable eyelid tracking replaces these values.
+ */
+export const generatedBlinkBands: Record<'blinkRate' | 'blinkCv', MetricReference> = {
+  blinkRate: { band: [8, 20], provisional: true },
+  blinkCv: { band: [0.35, 0.8], provisional: true },
+}
+
 const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length
 function sd(v: number[]) {
   const center = mean(v)
@@ -226,7 +240,7 @@ function headMotion(spans: Span[]) {
  */
 export function scoreLiveliness(trace: LivelinessTrace, ranges: ParameterRanges, options: { mode?: 'generated' | 'reference' } = {}): LivelinessReport {
   const mode = options.mode ?? 'generated'
-  const references = referenceStats.bands
+  const references = mode === 'generated' ? { ...referenceStats.bands, ...generatedBlinkBands } : referenceStats.bands
   const warnings: string[] = []
   if (trace.t.length < 2 || Object.values(trace.channels).some(v => v.length !== trace.t.length) || (trace.valid && trace.valid.length !== trace.t.length))
     throw new Error('Trace must contain at least two timestamps and equally sized channels/valid arrays.')

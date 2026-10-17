@@ -113,6 +113,33 @@ describe('natural motion', () => {
     expect(pose.eyeX).toBe(expected.eyeX)
   })
 
+  it('drives face, blink, and breath on every advance', () => {
+    const motion = new Live2DNaturalMotion({ seed: 23 })
+    const frames = Array.from({ length: 5 * 60 * 60 + 1 }, (_, frame) => motion.advance(frame / 60))
+    expect(Math.min(...frames.map(frame => frame.blink.blinkFactor))).toBeLessThan(0.1)
+    expect(standardDeviation(frames.map(frame => frame.face.browLY))).toBeGreaterThan(0.01)
+    expect(standardDeviation(frames.map(frame => frame.face.mouthForm))).toBeGreaterThan(0.01)
+    expect(Math.max(...frames.map(frame => frame.face.silentMouthOpen))).toBeGreaterThan(0)
+    const breath = frames.map(frame => frame.breath.value)
+    expect(Math.max(...breath) - Math.min(...breath)).toBeGreaterThan(0.2)
+  })
+
+  it('applies voice activity to mouth, breath, and head pitch only', () => {
+    const voiced = new Live2DNaturalMotion({ seed: 29 })
+    const quiet = new Live2DNaturalMotion({ seed: 29 })
+    voiced.setVoice({ speaking: true, speechActiveOrRecent: true })
+    const pairs = Array.from({ length: 5 * 60 * 60 + 1 }, (_, frame) => [voiced.advance(frame / 60), quiet.advance(frame / 60)])
+    expect(Math.max(...pairs.map(([v]) => v.face.silentMouthOpen))).toBe(0)
+    expect(Math.max(...pairs.map(([, q]) => q.face.silentMouthOpen))).toBeGreaterThan(0)
+    const depth = (index: number) => Math.max(...pairs.map(pair => Math.abs(pair[index].breath.value - 0.45)))
+    expect(depth(0)).toBeLessThan(0.8 * depth(1))
+    // Breath couples into head pitch only, and by at most 0.001 normalized.
+    expect(pairs.every(([v, q]) => v.pose.headX === q.pose.headX)).toBe(true)
+    const pitch = pairs.map(([v, q]) => Math.abs(v.pose.headY - q.pose.headY))
+    expect(Math.max(...pitch)).toBeGreaterThan(0)
+    expect(Math.max(...pitch)).toBeLessThanOrEqual(0.001)
+  })
+
   it('keeps head variability independent of frame partition', () => {
     const deviations = [1 / 30, 1 / 60, 1 / 144].map((frameStep) => {
       const motion = new Live2DNaturalMotion({ seed: 21 })

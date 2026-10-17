@@ -1,9 +1,14 @@
+import type { NaturalBreathOutput } from './natural-motion/breath'
+import type { NaturalFaceOutput } from './natural-motion/face'
 import type { GazePoint } from './natural-motion/gaze'
 import type { PostureHome, Vec3 } from './natural-motion/posture'
 import type { RandomStream } from './natural-motion/random'
 import type { Live2DRigProfile } from './natural-motion/rig-profile'
 
+import { NaturalBlinkScheduler } from './natural-motion/blink'
 import { NaturalBodyLayer } from './natural-motion/body'
+import { NaturalBreathLayer } from './natural-motion/breath'
+import { NaturalFaceLayer } from './natural-motion/face'
 import { NaturalAttentionShifts, NaturalGazeLayer } from './natural-motion/gaze'
 import { NaturalPostureLayers, postureHomes } from './natural-motion/posture'
 import { createRandomStream, deriveSeed } from './natural-motion/random'
@@ -31,9 +36,27 @@ export interface Live2DNaturalMotionPose {
   eyeY: number
 }
 
+/** Voice activity inputs. The host derives both from speech output and voice detection. */
+export interface Live2DNaturalMotionVoice {
+  /** Speech output is playing; breath becomes shallower. */
+  speaking: boolean
+  /** Speech is active or ended moments ago; lipsync owns the mouth, so silent mouth openings stop. */
+  speechActiveOrRecent: boolean
+}
+
+export interface Live2DNaturalMotionFrame {
+  pose: Live2DNaturalMotionPose
+  /** Unclamped gaze point before head compensation. */
+  fixation: GazePoint
+  face: NaturalFaceOutput
+  /** `blinkFactor` multiplies eye openness: 1 open, 0 closed. */
+  blink: { blinkFactor: number }
+  breath: NaturalBreathOutput
+}
+
 // Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
 // Index 4 belonged to the v1 fixation rule and now seeds the gaze layer that replaces it.
-const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6 }
+const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9 }
 
 // Fixed integration grid. Processes advance only in whole steps and the output is
 // interpolated between the two grid states around the current time, so frame
@@ -52,6 +75,9 @@ interface Snapshot {
   head: Vec3
   body: Vec3
   gaze: GazePoint
+  face: NaturalFaceOutput
+  blinkFactor: number
+  breath: NaturalBreathOutput
 }
 
 function clamp(value: number, limit: number) {
@@ -62,8 +88,12 @@ function lerp(a: number, b: number, weight: number) {
   return a + (b - a) * weight
 }
 
+function lerpRecord<T extends Record<keyof T, number>>(a: T, b: T, weight: number): T {
+  return Object.fromEntries(Object.keys(a).map(key => [key, lerp(a[key as keyof T], b[key as keyof T], weight)])) as T
+}
+
 /**
- * Owns autonomous posture, gaze, and body, without model or renderer state.
+ * Owns autonomous posture, gaze, body, face, blink, and breath, without model or renderer state.
  * Times are monotonic seconds. The first advance establishes the time origin.
  * Suspension freezes every process and active time; resume continues from the frozen state.
  * Cursor expiry and disabled attention are represented by a null cursor.
@@ -73,6 +103,11 @@ export class Live2DNaturalMotion {
   private readonly gaze: NaturalGazeLayer
   private readonly body: NaturalBodyLayer
   private readonly attention: NaturalAttentionShifts
+  private readonly face: NaturalFaceLayer
+  private readonly blink: NaturalBlinkScheduler
+  private readonly breath: NaturalBreathLayer
+  private voice: Live2DNaturalMotionVoice = { speaking: false, speechActiveOrRecent: false }
+  private saccadeCount = 0
   private cursor: GazePoint | null = null
   private bodyFromHeadPhysics: Live2DRigProfile['bodyFromHeadPhysics'] = { x: false, y: false, z: false }
   private shiftCount = 0
@@ -98,12 +133,15 @@ export class Live2DNaturalMotion {
     this.gaze = new NaturalGazeLayer(stream('gaze'))
     this.body = new NaturalBodyLayer(stream('body'), home)
     this.attention = new NaturalAttentionShifts(stream('attention'))
-    this.previous = { head: [...home], body: this.body.pose, gaze: { x: 0, y: 0 } }
+    this.face = new NaturalFaceLayer(stream('face'))
+    this.blink = new NaturalBlinkScheduler(stream('blink'))
+    this.breath = new NaturalBreathLayer(stream('breath'))
+    this.previous = { head: [...home], body: this.body.pose, gaze: { x: 0, y: 0 }, face: NaturalFaceLayer.rest(), blinkFactor: 1, breath: this.breath.output }
     this.next = this.integrate()
   }
 
-  /** Returns a fresh normalized pose and the unclamped gaze point (before head compensation) as fixation metadata. */
-  advance(nowSeconds: number): { pose: Live2DNaturalMotionPose, fixation: GazePoint } {
+  /** Returns a fresh normalized pose, the unclamped gaze point (before head compensation), and face, blink, and breath channels. */
+  advance(nowSeconds: number): Live2DNaturalMotionFrame {
     const elapsed = this.lastTimestamp === undefined ? 0 : nowSeconds - this.lastTimestamp
     this.lastTimestamp = nowSeconds
     if (!this.suspended && elapsed > 0) {
@@ -115,7 +153,10 @@ export class Live2DNaturalMotion {
     }
     const weight = clamp((this.activeTime - (this.stepIndex - 1) * step) / step, 1)
     const { previous: a, next: b } = this
-    const [headX, headY, headZ] = a.head.map((value, axis) => lerp(value, b.head[axis], weight))
+    const breath = lerpRecord(a.breath, b.breath, weight)
+    const [headX, postureY, headZ] = a.head.map((value, axis) => lerp(value, b.head[axis], weight))
+    // Breath coupling (0.001, see breath.ts) rides on the applied pitch, so eye compensation sees it too.
+    const headY = clamp(postureY + breath.headY, 1)
     const [bodyX, bodyY, bodyZ] = a.body.map((value, axis) => lerp(value, b.body[axis], weight))
     const fixation = { x: lerp(a.gaze.x, b.gaze.x, weight), y: lerp(a.gaze.y, b.gaze.y, weight) }
     const eye = NaturalGazeLayer.eye(fixation, { x: headX, y: headY })
@@ -132,7 +173,21 @@ export class Live2DNaturalMotion {
         eyeY: clamp(eye.y, 0.95),
       },
       fixation,
+      face: {
+        ...lerpRecord(a.face, b.face, weight),
+        // Grid states integrated before a voice change may still hold an opening.
+        ...(this.voice.speechActiveOrRecent ? { silentMouthOpen: 0 } : {}),
+      },
+      blink: { blinkFactor: lerp(a.blinkFactor, b.blinkFactor, weight) },
+      breath,
     }
+  }
+
+  /** Applies voice activity from the next grid step; the mouth suppression applies immediately. */
+  setVoice(voice: Live2DNaturalMotionVoice) {
+    this.voice = { ...voice }
+    this.face.speechActiveOrRecent = voice.speechActiveOrRecent
+    this.breath.speaking = voice.speaking
   }
 
   /** Changes attention after advancing to this timestamp; it takes effect from the next grid step. */
@@ -172,10 +227,19 @@ export class Live2DNaturalMotion {
       this.shiftCount = this.posture.shiftCount
       this.body.beginShift()
     }
+    const gaze = this.gaze.step(step)
+    if (this.gaze.saccadeCount !== this.saccadeCount) {
+      this.saccadeCount = this.gaze.saccadeCount
+      this.blink.onGazeShift(this.gaze.saccadeSize)
+      this.face.onGazeShift(this.gaze.saccadeSize)
+    }
     return {
       head,
       body: this.body.step(step, head),
-      gaze: this.gaze.step(step),
+      gaze,
+      face: this.face.step(step),
+      blinkFactor: this.blink.step(step),
+      breath: this.breath.step(step),
     }
   }
 

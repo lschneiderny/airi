@@ -50,6 +50,10 @@ const attentionLead = { min: 0.03, max: 0.08 }
 export class NaturalGazeLayer {
   /** Probability that an autonomous fixation targets the camera; state presets drive it in a later layer. @default 0.5 */
   cameraFixationProbability = 0.5
+  /** Increments when a saccade begins, so blink and face layers can react to gaze shifts. */
+  saccadeCount = 0
+  /** Normalized eye-space distance of the latest saccade. */
+  saccadeSize = 0
 
   private time = 0
   private from: GazePoint = { x: 0, y: 0 }
@@ -123,6 +127,8 @@ export class NaturalGazeLayer {
     this.saccadeStart = at
     this.saccadeDuration = Math.min(0.090, Math.max(0.035, 0.030 + 0.0025 * amplitude))
     this.nextFixationAt = at + this.saccadeDuration + this.drawHold()
+    this.saccadeSize = amplitude / 20
+    this.saccadeCount++
   }
 
   private drawTarget(): Target {
