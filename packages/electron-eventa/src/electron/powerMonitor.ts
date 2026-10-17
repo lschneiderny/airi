@@ -12,8 +12,11 @@ export const powerMonitorEvents = {
   unlockScreen: eventUnlockScreen,
 }
 
-/** Whole seconds since the last keyboard or mouse input anywhere on the desktop (`powerMonitor.getSystemIdleTime()`). */
-const getSystemIdleTime = defineInvokeEventa<number>('eventa:invoke:electron:power-monitor:get-system-idle-time')
+/**
+ * Whole seconds since the last keyboard or mouse input anywhere on the desktop (`powerMonitor.getSystemIdleTime()`).
+ * `null` means the host cannot measure idle time, as on a Linux Wayland session.
+ */
+const getSystemIdleTime = defineInvokeEventa<number | null>('eventa:invoke:electron:power-monitor:get-system-idle-time')
 
 export const powerMonitor = {
   getSystemIdleTime,

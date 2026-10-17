@@ -116,7 +116,7 @@ export const useDesktopActivityProducerStore = defineStore('desktop-activity-pro
     desktopActivity.setSnapshot(snapshot)
   }
 
-  async function sample(getSystemIdleTime: () => Promise<number>) {
+  async function sample(getSystemIdleTime: () => Promise<number | null>) {
     // A slow main process must not stack replies; the next tick tries again.
     if (sampleInFlight)
       return
@@ -127,7 +127,7 @@ export const useDesktopActivityProducerStore = defineStore('desktop-activity-pro
       const seconds = await getSystemIdleTime()
       if (generation !== pollGeneration)
         return
-      idleSeconds = Number.isFinite(seconds) && seconds >= 0 ? seconds : null
+      idleSeconds = seconds !== null && Number.isFinite(seconds) && seconds >= 0 ? seconds : null
     }
     catch (error) {
       if (generation !== pollGeneration)
@@ -152,7 +152,7 @@ export const useDesktopActivityProducerStore = defineStore('desktop-activity-pro
     polling.value = false
   }
 
-  function startPolling(getSystemIdleTime: () => Promise<number>) {
+  function startPolling(getSystemIdleTime: () => Promise<number | null>) {
     if (timer !== undefined)
       return
 
