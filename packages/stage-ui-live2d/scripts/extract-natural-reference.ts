@@ -44,7 +44,7 @@ try {
   for (const [id, value] of Object.entries(first)) {
     const provisional = ['velocityAcfCrossing', 'blinkRate', 'blinkCv', 'jitter'].includes(id)
     let band: [number, number] | null = initial[id] ?? null
-    if (value !== null && (provisional || (id.startsWith('sd:') && !/Eye[LR]Open|BodyAngle/.test(id))))
+    if (value !== null && (provisional || id.startsWith('speedPeak') || (id.startsWith('sd:') && !/Eye[LR]Open|BodyAngle/.test(id))))
       band = [value * (provisional ? 0.6 : 0.7), value * (provisional ? 1.6 : 1.4)]
     if (band) {
       const original = [...band]

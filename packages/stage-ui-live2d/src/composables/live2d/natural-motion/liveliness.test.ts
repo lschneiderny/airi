@@ -107,6 +107,50 @@ describe('liveliness score', () => {
       expect(Math.abs(low.metrics[id].value! - high.metrics[id].value!)).toBeLessThan(0.01)
   })
 
+  it('separates heavy-tailed posture shift amplitudes from constant and uniform ones', () => {
+    let seed = 7
+    const random = () => {
+      seed = (1664525 * seed + 1013904223) >>> 0
+      return (seed + 0.5) / 2 ** 32
+    }
+    // Min-jerk yaw shifts of 0.6 s on the 30 Hz grid with 1-2 s holds, so peaks stay over 1 s apart.
+    // Each move crosses back over zero.
+    const shifts = (amplitude: () => number): LivelinessTrace => {
+      const x: number[] = [0]
+      while (x.length < 30 * 1200) {
+        const from = x[x.length - 1]
+        const to = from - Math.sign(from || 1) * amplitude()
+        for (let i = 1; i <= 18; i++) {
+          const u = i / 18
+          x.push(from + (to - from) * (10 * u ** 3 - 15 * u ** 4 + 6 * u ** 5))
+        }
+        for (let i = 30 + Math.floor(random() * 30); i > 0; i--)
+          x.push(to)
+      }
+      const t = x.map((_, i) => i / 30)
+      return { t, channels: { ParamAngleX: x, ParamAngleY: t.map(() => 0), ParamAngleZ: t.map(() => 0) } }
+    }
+    const gaussian = () => Math.sqrt(-2 * Math.log(random())) * Math.cos(2 * Math.PI * random())
+    const constant = scoreLiveliness(shifts(() => 8), ranges).metrics
+    // Uniform [2.7, 13.3] has wide spread and no tail.
+    const uniform = scoreLiveliness(shifts(() => 8 * (1 / 3 + (4 / 3) * random())), ranges).metrics
+    // An offset lognormal is right-skewed in log space, like the recordings.
+    const heavy = scoreLiveliness(shifts(() => 4 + 8 * Math.exp(0.9 * gaussian())), ranges).metrics
+    expect(constant.speedPeakP90P50.value).toBeCloseTo(1, 9)
+    expect(constant.speedPeakP90P50.pass).toBe(false)
+    expect(constant.speedPeakLogAsymmetry.value).toBeNull()
+    expect(uniform.speedPeakLogAsymmetry.pass).toBe(false)
+    expect(heavy.speedPeakP90P50.pass).toBe(true)
+    expect(heavy.speedPeakLogAsymmetry.pass).toBe(true)
+  })
+
+  it('reports no peak dispersion with fewer than twenty peaks', () => {
+    // A 7.9 units/s speed peak every 4 s gives 14 peaks in one minute.
+    const report = scoreLiveliness(signal(30, 60, t => 10 * Math.sin(t * Math.PI / 4)), ranges)
+    expect(report.metrics.speedPeakP90P50.value).toBeNull()
+    expect(report.metrics.speedPeakLogAsymmetry.value).toBeNull()
+  })
+
   it('never differentiates across source gaps or invalid samples', () => {
     const trace: LivelinessTrace = {
       t: [0, 1 / 30, 2 / 30, 10, 10 + 1 / 30, 10 + 2 / 30, 11, 11 + 1 / 30],

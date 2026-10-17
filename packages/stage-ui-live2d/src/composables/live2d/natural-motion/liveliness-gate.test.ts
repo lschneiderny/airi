@@ -26,6 +26,9 @@ const gatedMetrics = [
   'angleXp95',
   'jitter',
   'nearLimitOccupancy',
+  // Shift-amplitude dispersion: spread rejects constant sizes, log asymmetry rejects tail-less spreads.
+  'speedPeakP90P50',
+  'speedPeakLogAsymmetry',
 ]
 
 const simulationRate = 120

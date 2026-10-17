@@ -45,6 +45,8 @@ const metricRows: Record<string, string> = {
   angleXp95: 'pose',
   jitter: 'jitter',
   nearLimitOccupancy: 'nearLimit',
+  speedPeakP90P50: 'shiftDispersion',
+  speedPeakLogAsymmetry: 'shiftDispersion',
   speedRatio: 'talking',
   onsetEnrichment: 'talking',
 }
@@ -139,9 +141,40 @@ function spectrum(values: number[], padded: boolean) {
   return { real, imag }
 }
 
+/**
+ * Head-speed peaks: local maxima above 4 units/s, at least 1 s apart within one span.
+ * Higher peaks claim their neighborhood first, so a shoulder never outranks its summit.
+ *
+ * The plan's starting point (2 units/s, 0.3 s) admits so many continuous micro-motion
+ * peaks that constant shift amplitudes still pass. Above 4 units/s with 1 s spacing,
+ * roughly one peak per posture shift remains. p90/p50 measures the spread of shift
+ * sizes and rejects constant amplitudes; the log-quantile asymmetry measures tail shape
+ * and rejects wide amplitudes without a tail, such as uniform [0.1, 0.5].
+ * Peak CV, skewness, and upper-quantile ratios are not gated: at this setting the
+ * controller sits below their recording bands.
+ */
+function speedPeaks(speeds: number[]) {
+  const candidates = speeds
+    .map((speed, i) => ({ speed, i }))
+    .filter(({ speed, i }) => i > 0 && i < speeds.length - 1 && speed > 4 && speed >= speeds[i - 1] && speed > speeds[i + 1])
+    .sort((a, b) => b.speed - a.speed || a.i - b.i)
+  // Samples are 1/30 s apart, so 1 s is 30 samples.
+  const separation = 30
+  const accepted = new Uint8Array(speeds.length)
+  const peaks: number[] = []
+  for (const { speed, i } of candidates) {
+    if (accepted.subarray(Math.max(0, i - separation + 1), i + separation).includes(1))
+      continue
+    accepted[i] = 1
+    peaks.push(speed)
+  }
+  return peaks
+}
+
 function headMotion(spans: Span[]) {
   const speeds: number[] = []
   const times: number[] = []
+  const peaks: number[] = []
   const covariance = new Float64Array(1802)
   let highPower = 0
   let totalPower = 0
@@ -149,10 +182,12 @@ function headMotion(spans: Span[]) {
     if (!headIds.every(id => span.channels[id]))
       continue
     const velocity = headIds.map(id => span.channels[id].slice(1).map((x, i) => (x - span.channels[id][i]) * 30))
-    velocity[0].forEach((_, i) => {
-      speeds.push(Math.hypot(...velocity.map(axis => axis[i])))
+    const spanSpeeds = velocity[0].map((_, i) => Math.hypot(...velocity.map(axis => axis[i])))
+    spanSpeeds.forEach((speed, i) => {
+      speeds.push(speed)
       times.push(span.t[i + 1])
     })
+    peaks.push(...speedPeaks(spanSpeeds))
     for (const axis of velocity) {
       const { real, imag } = spectrum(axis, true)
       for (let i = 0; i < real.length; i++) {
@@ -181,7 +216,7 @@ function headMotion(spans: Span[]) {
       loop = Math.max(loop, acf[lag])
   }
   const crossing = acf.findIndex(value => value < 1 / Math.E)
-  return { speeds, times, loop, crossing: crossing < 0 ? null : crossing / 30, jitter: totalPower ? highPower / totalPower : 0 }
+  return { speeds, times, peaks, loop, crossing: crossing < 0 ? null : crossing / 30, jitter: totalPower ? highPower / totalPower : 0 }
 }
 
 /**
@@ -214,6 +249,13 @@ export function scoreLiveliness(trace: LivelinessTrace, ranges: ParameterRanges,
   values.velocityAcfCrossing = speeds.length ? motion.crossing : null
   values.loopPeak = speeds.length ? motion.loop : null
   values.jitter = speeds.length ? motion.jitter : null
+  // Shift-amplitude dispersion: constant-size shifts give uniform peak heights.
+  const peaks = motion.peaks
+  values.speedPeakP90P50 = peaks.length >= 20 ? quantile(peaks, 0.9) / quantile(peaks, 0.5) : null
+  // (ln p90 - ln p50) / (ln p50 - ln p10): 1 for a lognormal, below 1 for a tail-less spread.
+  // Undefined (null) when the lower half has no spread, such as identical peaks.
+  const lowerLogSpread = peaks.length >= 20 ? Math.log(quantile(peaks, 0.5) / quantile(peaks, 0.1)) : 0
+  values.speedPeakLogAsymmetry = lowerLogSpread > 0 ? Math.log(quantile(peaks, 0.9) / quantile(peaks, 0.5)) / lowerLogSpread : null
   const x = channels.ParamAngleX
   const eye = channels.ParamEyeBallX
   const headMean = x?.length ? mean(x) : 0
