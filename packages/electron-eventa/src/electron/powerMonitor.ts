@@ -1,4 +1,4 @@
-import { defineEventa } from '@moeru/eventa'
+import { defineEventa, defineInvokeEventa } from '@moeru/eventa'
 
 const eventSuspended = defineEventa('eventa:event:electron:app:suspended')
 const eventResumed = defineEventa('eventa:event:electron:app:resumed')
@@ -10,4 +10,11 @@ export const powerMonitorEvents = {
   resumed: eventResumed,
   suspended: eventSuspended,
   unlockScreen: eventUnlockScreen,
+}
+
+/** Whole seconds since the last keyboard or mouse input anywhere on the desktop (`powerMonitor.getSystemIdleTime()`). */
+const getSystemIdleTime = defineInvokeEventa<number>('eventa:invoke:electron:power-monitor:get-system-idle-time')
+
+export const powerMonitor = {
+  getSystemIdleTime,
 }
