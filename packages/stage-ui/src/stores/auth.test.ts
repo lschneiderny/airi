@@ -88,26 +88,14 @@ describe('auth store sign-in requests', () => {
     vi.unstubAllGlobals()
   })
 
-  it('allows sign-in to be requested again after an external flow is canceled', async () => {
+  it('does not launch sign-in when a hosted request asks for login', async () => {
     const authStore = useAuthStore()
 
-    // ROOT CAUSE:
-    //
-    // Pocket remains mounted after launching the external login page. If the
-    // user returns without authenticating, `needsLogin` used to remain true,
-    // so a later click could not produce the transition that triggers sign-in.
-    // Consuming each request restores the false -> true transition.
-    authStore.needsLogin = true
+    await authStore.requestLogin()
     await nextTick()
 
-    expect(triggerSignIn).toHaveBeenCalledTimes(1)
-    expect(authStore.needsLogin).toBe(false)
-
-    authStore.needsLogin = true
-    await nextTick()
-
-    expect(triggerSignIn).toHaveBeenCalledTimes(2)
-    expect(authStore.needsLogin).toBe(false)
+    expect(triggerSignIn).not.toHaveBeenCalled()
+    expect(authStore.isAuthenticated).toBe(false)
   })
 
   it('queries the session with the token from the completed sign-in', async () => {
@@ -141,20 +129,29 @@ describe('auth store sign-in requests', () => {
     await authStore.clearAllAuthState()
   })
 
-  it('loads persisted credentials only when the store initializes', async () => {
+  it('removes saved AIRI credentials without requesting a hosted session on startup', async () => {
     storage.values.set('auth/v1/token', 'persisted-access-token')
     storage.values.set('auth/v1/refresh-token', 'persisted-refresh-token')
     storage.values.set('auth/v1/oidc-id-token', 'persisted-id-token')
     storage.values.set('auth/v1/oidc-client-id', 'airi-stage-web')
     storage.values.set('auth/v1/oidc-token-expiry', String(Date.now() + 60_000))
+    storage.values.set('direct-provider-key', 'keep-this-key')
     const authStore = useAuthStore()
 
     expect(authStore.token).toBeNull()
 
     await authStore.initialize()
 
-    expect(requestAuthSession).toHaveBeenCalledWith('persisted-access-token')
-    expect(authStore.token).toBe('persisted-access-token')
+    expect(requestAuthSession).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+    expect(authStore.token).toBeNull()
+    expect(authStore.userId).toBe('local')
+    expect(storage.getItem('auth/v1/token')).toBeNull()
+    expect(storage.getItem('auth/v1/refresh-token')).toBeNull()
+    expect(storage.getItem('auth/v1/oidc-id-token')).toBeNull()
+    expect(storage.getItem('auth/v1/oidc-client-id')).toBeNull()
+    expect(storage.getItem('auth/v1/oidc-token-expiry')).toBeNull()
+    expect(storage.getItem('direct-provider-key')).toBe('keep-this-key')
   })
 
   it('reads the capacitor percent and fallback choice with the Flux balance', async () => {

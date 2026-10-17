@@ -252,7 +252,14 @@ export default defineConfig({
           },
           resolve(import.meta.dirname, 'src', 'renderer', 'pages'),
         ],
-        exclude: ['**/components/**'],
+        exclude: [
+          '**/components/**',
+          '**/auth/**',
+          '**/settings/account/**',
+          '**/settings/flux.vue',
+          '**/settings/capacitor.vue',
+          '**/settings/providers/**/official-provider*.vue',
+        ],
       }),
 
       VitePluginVueDevTools(),

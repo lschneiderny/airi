@@ -50,6 +50,15 @@ describe('onboarding store', () => {
     expect(store.needsOnboarding).toBe(false)
   })
 
+  it('offers direct provider setup when only a removed hosted provider was configured', () => {
+    const providerStore = useProviderConfigStore()
+    providerStore.configuredProviders['official-provider'] = true
+
+    const store = useOnboardingStore()
+
+    expect(store.needsOnboarding).toBe(true)
+  })
+
   // ROOT CAUSE:
   //
   // Reactive provider status closed onboarding before model selection (P1).
@@ -77,7 +86,7 @@ describe('onboarding store', () => {
   // https://github.com/moeru-ai/airi/pull/1900
   it('requires onboarding when startup credentials have no validated provider', () => {
     const providerStore = useProviderConfigStore()
-    vi.spyOn(providerStore, 'getProviderConfig').mockImplementation(providerId => providerId === 'azure-openai' ? { apiKey: 'sk-x', baseUrl: '' } : {})
+    vi.spyOn(providerStore, 'getProviderConfig').mockImplementation(providerId => providerId === 'anthropic' ? { apiKey: 'sk-x', baseUrl: '' } : {})
 
     const store = useOnboardingStore()
 

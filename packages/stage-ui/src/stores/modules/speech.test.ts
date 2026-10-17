@@ -2,7 +2,7 @@ import type { Session, User } from 'better-auth'
 
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { nextTick, watch } from 'vue'
 
 import { OFFICIAL_SPEECH_PROVIDER_ID, OFFICIAL_SPEECH_STREAMING_PROVIDER_ID, pickOfficialSpeechVoice } from '../../libs/providers/providers/official'
 import { useAuthStore } from '../auth'
@@ -135,22 +135,28 @@ describe('speech store helpers', () => {
     const providerConfigStore = useProviderConfigStore()
     vi.spyOn(providersStore, 'listProviderVoices').mockResolvedValue([])
     const speechStore = useSpeechStore()
-    await providersStore.initializeProvider(OFFICIAL_SPEECH_PROVIDER_ID)
-    providersStore.forceProviderConfigured(OFFICIAL_SPEECH_PROVIDER_ID)
-    speechStore.activeSpeechProvider = OFFICIAL_SPEECH_PROVIDER_ID
-    speechStore.activeSpeechModel = 'auto'
-    await vi.waitFor(() => {
-      expect(providersStore.configuredSpeechProvidersMetadata.map(provider => provider.id)).toContain(OFFICIAL_SPEECH_PROVIDER_ID)
+    const providerId = 'openai-compatible-audio-speech'
+    const listed = new Promise<void>((resolve) => {
+      const stop = watch(() => providersStore.configuredSpeechProvidersMetadata, (providers) => {
+        if (providers.some(provider => provider.id === providerId)) {
+          stop()
+          resolve()
+        }
+      })
     })
+    await providersStore.initializeProvider(providerId)
+    await providersStore.forceProviderConfigured(providerId)
+    await listed
+    speechStore.activeSpeechProvider = providerId
+    speechStore.activeSpeechModel = 'tts-1'
+    expect(providersStore.configuredSpeechProvidersMetadata.map(provider => provider.id)).toContain(providerId)
 
     providersStore.providerRuntimeState = {}
     providerConfigStore.providers = {}
-    await vi.waitFor(() => {
-      expect(providersStore.configuredSpeechProvidersMetadata.map(provider => provider.id)).not.toContain(OFFICIAL_SPEECH_PROVIDER_ID)
-    })
+    expect(providersStore.configuredSpeechProvidersMetadata.map(provider => provider.id)).not.toContain(providerId)
 
-    expect(speechStore.activeSpeechProvider).toBe(OFFICIAL_SPEECH_PROVIDER_ID)
-    expect(speechStore.activeSpeechModel).toBe('auto')
+    expect(speechStore.activeSpeechProvider).toBe(providerId)
+    expect(speechStore.activeSpeechModel).toBe('tts-1')
   })
 
   /**

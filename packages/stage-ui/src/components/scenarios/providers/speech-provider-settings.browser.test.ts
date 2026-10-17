@@ -12,7 +12,7 @@ import SpeechProviderSettings from './speech-provider-settings.vue'
 
 import { useProviderConfigStore } from '../../../stores/providers/config'
 
-const providerId = 'minimax-speech'
+const providerId = 'openai-audio-speech'
 
 const SAVE_DEBOUNCE_MS = 1000
 
@@ -37,7 +37,7 @@ async function mountSettings(pinia: Pinia) {
   await page.viewport(1100, 1100)
 
   return await render(SpeechProviderSettings, {
-    props: { providerId, defaultModel: 'speech-2.8-hd' },
+    props: { providerId, defaultModel: 'tts-1' },
     global: {
       plugins: [pinia, PiniaColada, i18n, router],
       // The settings layout animates its header. The application installs the

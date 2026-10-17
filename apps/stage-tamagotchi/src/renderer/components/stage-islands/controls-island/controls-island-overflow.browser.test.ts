@@ -287,15 +287,15 @@ describe('controls Island overflow', () => {
   })
 
   // ROOT CAUSE:
-  // Authentication content can grow after the right-docked Island has been
-  // aligned, which changes the horizontal overflow range.
+  // Menu content can grow after the right-docked Island has been aligned,
+  // which changes the horizontal overflow range.
   //
-  // Before the patch, the right edge moved out of view after the user signed in.
+  // Before the patch, the right edge moved out of view after content grew.
   //
   // We fixed this by observing content geometry and realigning the dock edge.
-  it('issue #2400 realigns the right dock after authentication content grows', async () => {
+  it('issue #2400 realigns the right dock after menu content grows', async () => {
     await page.viewport(450, 600)
-    const { auth, i18n, screen } = mountControlsIsland('bottom-right')
+    const { i18n, screen } = mountControlsIsland('bottom-right')
     const label = (key: string) => i18n.global.t(`tamagotchi.stage.controls-island.${key}`)
 
     await screen.getByLabelText(label('expand'), { exact: true }).click()
@@ -305,18 +305,20 @@ describe('controls Island overflow', () => {
     await expect.poll(() => viewport.scrollLeft).toBeGreaterThan(0)
     const previousScrollWidth = viewport.scrollWidth
 
-    auth.credits.value = 999999999
-    auth.isAuthenticated.value = true
-    auth.user.value = {
-      createdAt: new Date('2020-01-01'),
-      email: 'user@example.com',
-      emailVerified: true,
-      id: 'user',
-      name: 'A very long authenticated user name that changes the island width',
-      updatedAt: new Date('2020-01-01'),
-    }
+    const content = viewport.querySelector<HTMLElement>('.w-max')!
+    const resized = new Promise<void>((resolve) => {
+      const observer = new ResizeObserver(() => {
+        if (content.offsetWidth <= previousScrollWidth)
+          return
+        observer.disconnect()
+        resolve()
+      })
+      observer.observe(content)
+    })
+    content.style.minWidth = `${previousScrollWidth + 120}px`
 
-    await expect.poll(() => viewport.scrollWidth).toBeGreaterThan(previousScrollWidth)
+    await resized
+    expect(viewport.scrollWidth).toBeGreaterThan(previousScrollWidth)
     await expect.poll(() => viewport.scrollLeft).toBe(viewport.scrollWidth - viewport.clientWidth)
   })
 
@@ -605,9 +607,9 @@ it('assigns sideways overflow to the necessary menu axes without nested scrollin
   const viewport = menu.querySelector<HTMLElement>('[data-reka-scroll-area-viewport]')!
   const outer = island.querySelector<HTMLElement>('[data-reka-scroll-area-viewport]')!
   await expect.poll(() => scrollOwners(island)).toHaveLength(0)
-  // Extra auth-row spacing exercises content growth with native layout intact.
-  const login = menu.querySelector<HTMLButtonElement>('button')!
-  login.style.paddingBlock = '3rem'
+  // Extra button spacing exercises content growth with native layout intact.
+  const button = menu.querySelector<HTMLButtonElement>('button')!
+  button.style.minHeight = `${window.innerHeight}px`
   await expect.poll(() => content.offsetHeight).toBeGreaterThan(main.offsetHeight + 20)
   const menuHeight = content.offsetHeight
   const narrowWidth = main.offsetWidth + 12 + content.offsetWidth - 20 + 16

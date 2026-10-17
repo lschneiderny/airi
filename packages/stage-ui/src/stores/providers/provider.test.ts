@@ -200,15 +200,7 @@ describe('provider store synchronization boundary', () => {
     }
   })
 
-  // ROOT CAUSE:
-  //
-  // Module pages treated every credential-free provider as available before
-  // configuration. The official providers also have credential-free local
-  // definitions, but their availability belongs to the authenticated session.
-  //
-  // We fixed this by requiring a configured record for official providers
-  // while keeping account-free browser and local providers available.
-  it('lists official providers only after authenticated setup configures them', async () => {
+  it('excludes hosted providers from the catalog even with saved authenticated configuration', async () => {
     const store = useProviderStore()
     const configStore = useProviderConfigStore()
 
@@ -242,11 +234,13 @@ describe('provider store synchronization boundary', () => {
 
     useAuthStore().$patch(createAuthenticatedState())
 
-    expect(store.moduleChatProvidersMetadata.map(provider => provider.id)).toContain('official-provider')
-    expect(store.moduleSpeechProvidersMetadata.map(provider => provider.id)).toContain(OFFICIAL_SPEECH_PROVIDER_ID)
+    expect(store.allChatProvidersMetadata.map(provider => provider.id)).not.toContain('official-provider')
+    expect(store.allChatProvidersMetadata.map(provider => provider.id)).toContain('openai')
+    expect(store.moduleChatProvidersMetadata.map(provider => provider.id)).not.toContain('official-provider')
+    expect(store.moduleSpeechProvidersMetadata.map(provider => provider.id)).not.toContain(OFFICIAL_SPEECH_PROVIDER_ID)
     expect(store.moduleSpeechProvidersMetadata.map(provider => provider.id)).not.toContain(OFFICIAL_SPEECH_STREAMING_PROVIDER_ID)
-    expect(store.moduleTranscriptionProvidersMetadata.map(provider => provider.id)).toContain(OFFICIAL_TRANSCRIPTION_PROVIDER_ID)
-    expect(store.moduleVisionProvidersMetadata.map(provider => provider.id)).toContain('vision-official-provider')
+    expect(store.moduleTranscriptionProvidersMetadata.map(provider => provider.id)).not.toContain(OFFICIAL_TRANSCRIPTION_PROVIDER_ID)
+    expect(store.moduleVisionProvidersMetadata.map(provider => provider.id)).not.toContain('vision-official-provider')
   })
 
   // ROOT CAUSE:

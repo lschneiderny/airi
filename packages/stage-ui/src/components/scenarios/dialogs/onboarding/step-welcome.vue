@@ -10,39 +10,24 @@ import { useI18n } from 'vue-i18n'
 
 import onboardingLogo from '../../../../assets/onboarding.avif'
 
-import { AIRI_FLUX_URL, AIRI_TERMS_URL } from '../../../../constants/public-links'
-import { useAuthStore } from '../../../../stores/auth'
-import { useOnboardingStore } from '../../../../stores/onboarding'
 import { useSettingsGeneral } from '../../../../stores/settings'
 
 interface Props {
-  customProviderSetupEnabled: boolean
   onNext: OnboardingStepNextHandler
 }
 
 const props = defineProps<Props>()
 const { t } = useI18n()
-const authStore = useAuthStore()
-const onboardingStore = useOnboardingStore()
 const settingsStore = useSettingsGeneral()
 const { language } = storeToRefs(settingsStore)
 
 const languages = computed(() => {
   return Object.entries(all).map(([value, label]) => ({ value, label }))
 })
-
-async function handleLogin() {
-  onboardingStore.showingSetup = false
-  await authStore.requestLogin()
-}
-
-function handleLocalSetup() {
-  props.onNext()
-}
 </script>
 
 <template>
-  <div relative h-full flex flex-col>
+  <div :class="['relative h-full flex flex-col']">
     <div :class="['absolute', 'right-0', 'top-0', 'z-10']">
       <DropdownMenu
         align="end"
@@ -64,7 +49,7 @@ function handleLocalSetup() {
             :aria-label="t('settings.language.title')"
             type="button"
           >
-            <div class="i-lucide:globe" h-5 w-5 />
+            <div :class="['i-lucide:globe h-5 w-5']" />
           </button>
         </template>
 
@@ -92,7 +77,7 @@ function handleLocalSetup() {
         :duration="500"
         :class="['mb-1', 'flex', 'justify-center', 'md:mb-4', 'md:pt-8', 'lg:pt-16']"
       >
-        <img :src="onboardingLogo" max-h="50" aspect-square h-auto w-auto select-none object-cover>
+        <img :src="onboardingLogo" :class="['max-h-50 aspect-square h-auto w-auto select-none object-cover']">
       </div>
       <h2
         v-motion
@@ -125,54 +110,9 @@ function handleLocalSetup() {
         color="primary"
         variant="primary"
         size="lg"
-        :label="t('settings.dialogs.onboarding.loginAction')"
-        @click="handleLogin"
-      />
-      <Button
-        v-if="props.customProviderSetupEnabled"
-        v-motion="{
-          initial: { opacity: 0 },
-          enter: { opacity: 1 },
-          duration: 500,
-          delay: 250,
-        }"
-        variant="secondary"
-        :outline="false"
-        :class="['bg-transparent! text-neutral-600 dark:bg-neutral-700/60! dark:text-neutral-200']"
         :label="t('settings.dialogs.onboarding.setupWithoutSigningIn')"
-        @click="handleLocalSetup"
+        @click="props.onNext()"
       />
     </div>
-    <nav
-      v-motion="{
-        initial: { opacity: 0 },
-        enter: { opacity: 1 },
-        duration: 500,
-        delay: 300,
-      }"
-      :class="[
-        'mx-2 mb-1 mt-8 md:mt-10',
-        'flex items-center justify-center gap-3',
-        'text-xs text-neutral-500 dark:text-neutral-500',
-      ]"
-    >
-      <a
-        :href="AIRI_FLUX_URL"
-        target="_blank"
-        rel="noopener noreferrer"
-        :class="['underline-offset-4 transition-colors hover:text-neutral-700 hover:underline dark:hover:text-neutral-200']"
-      >
-        {{ t('settings.dialogs.onboarding.pricingLink') }}
-      </a>
-      <span aria-hidden="true" :class="['size-0.5 rounded-full bg-current']" />
-      <a
-        :href="AIRI_TERMS_URL"
-        target="_blank"
-        rel="noopener noreferrer"
-        :class="['underline-offset-4 transition-colors hover:text-neutral-700 hover:underline dark:hover:text-neutral-200']"
-      >
-        {{ t('settings.dialogs.onboarding.termsLink') }}
-      </a>
-    </nav>
   </div>
 </template>

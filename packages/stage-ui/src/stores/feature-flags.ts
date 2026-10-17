@@ -70,10 +70,14 @@ export const useFeatureFlagsStore = defineStore('feature-flags', () => {
   async function refresh() {
     const version = ++requestVersion
     request?.abort()
-    request = new AbortController()
     policies.value = []
-    loading.value = true
     error.value = undefined
+    if (!auth.user?.id || !auth.token) {
+      loading.value = false
+      return
+    }
+    request = new AbortController()
+    loading.value = true
     try {
       const response = await cloudFetch('/v1/feature-flags', {
         signal: AbortSignal.any([request.signal, AbortSignal.timeout(10_000)]),

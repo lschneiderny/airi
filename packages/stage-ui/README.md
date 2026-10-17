@@ -2,6 +2,13 @@
 
 Shared core for stage
 
+## Account-free clients
+
+This fork uses local data and direct or local inference providers. The clients do not offer AIRI sign-in or hosted providers.
+Startup removes saved AIRI account credentials without contacting the account server. Direct provider credentials remain unchanged.
+Account, billing, and official-provider routes are excluded from the web, Pocket, and Electron clients.
+Cloud sync requires an account and stays inactive. Internal hosted adapters remain available for saved-provider cleanup.
+
 ## OpenCode Go desktop transport
 
 `createOpenCodeGoDesktopProvider` in `libs/providers/providers/opencode-go/index` creates the desktop definition.

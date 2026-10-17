@@ -58,9 +58,6 @@ useSpeechStore()
 useSettingsStageModel()
 useVisionStore()
 
-let stopAuthenticatedSetup: (() => void) | undefined
-let stopLoggedOutSetup: (() => void) | undefined
-
 async function removeAuthenticationProviderConfiguration() {
   if (!syncedPinia.isLeader())
     return
@@ -68,21 +65,10 @@ async function removeAuthenticationProviderConfiguration() {
   await cardStore.configureForAuthentication(false)
 }
 
-function registerAuthenticatedSetup() {
-  stopAuthenticatedSetup ??= authStore.onAuthenticated(async () => {
-    if (!syncedPinia.isLeader())
-      return
-
-    await cardStore.configureForAuthentication(true)
-    await onboardingStore.closeAfterAuthentication()
-  })
-  stopLoggedOutSetup ??= authStore.onLogout(removeAuthenticationProviderConfiguration)
-}
-
 const inferencePreload = useInferencePreload()
 const startup = useStartupResourcesStore()
 startup.reset()
-startup.register(['auth', 'modelIndex', 'card', 'chat', 'services', 'modelData', 'modelSelection', 'audio', 'route', 'model'])
+startup.register(['modelIndex', 'card', 'chat', 'services', 'modelData', 'modelSelection', 'audio', 'route', 'model'])
 useStartupResourceTimeout('model', 120_000, () => i18n.t('stage.startup.model-timeout'))
 const startupOnboarding = ref(false)
 watch(showingSetup, (visible) => {
@@ -149,13 +135,11 @@ watch(settings.themeColorsHueDynamic, () => {
 async function loadStartup() {
   try {
     initializeAnalytics()
-    await startup.run('auth', () => authStore.initialize())
+    await authStore.initialize()
     await startup.run('modelIndex', () => displayModelsStore.initialize())
     await startup.run('card', async () => {
       await cardStore.initialize()
-      registerAuthenticatedSetup()
-      if (!authStore.isAuthenticated)
-        await removeAuthenticationProviderConfiguration()
+      await removeAuthenticationProviderConfiguration()
     })
     await startup.run('chat', () => chatStore.initialize(syncedPinia))
     await startup.run('services', () => {
@@ -188,8 +172,6 @@ watch(() => [startup.resources.find(resource => resource.id === 'modelSelection'
 })
 
 onUnmounted(() => {
-  stopAuthenticatedSetup?.()
-  stopLoggedOutSetup?.()
   chatStore.dispose()
   contextBridgeStore.dispose()
 })

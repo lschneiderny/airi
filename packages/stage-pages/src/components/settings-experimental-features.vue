@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { CHARACTER_CARD_SYNC_FLAG } from '@proj-airi/stage-ui/libs/feature-flags'
 import { useFeatureFlagsStore } from '@proj-airi/stage-ui/stores/feature-flags'
 import { Button, FieldCheckbox } from '@proj-airi/ui'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const experiments = useFeatureFlagsStore()
+const features = computed(() => experiments.features.filter(feature => feature.key !== CHARACTER_CARD_SYNC_FLAG.key))
 const prefix = 'settings.pages.system.experimental'
 </script>
 
@@ -21,14 +24,14 @@ const prefix = 'settings.pages.system.experimental'
         {{ t(`${prefix}.retry`) }}
       </Button>
     </div>
-    <div v-if="!experiments.features.length" :class="['rounded-xl bg-neutral-50 p-6 dark:bg-neutral-900', 'flex flex-col items-center gap-2 text-center']">
+    <div v-if="!features.length" :class="['rounded-xl bg-neutral-50 p-6 dark:bg-neutral-900', 'flex flex-col items-center gap-2 text-center']">
       <div aria-hidden="true" :class="['i-solar:test-tube-bold-duotone', 'size-8 text-primary-500']" />
       <h2 :class="['font-medium']">
         {{ t(`${prefix}.empty-title`) }}
       </h2>
     </div>
     <section
-      v-for="feature in experiments.features"
+      v-for="feature in features"
       :key="feature.key"
       :class="['flex flex-col gap-3', 'rounded-xl bg-neutral-50 p-4 dark:bg-neutral-900']"
     >

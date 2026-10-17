@@ -164,7 +164,14 @@ export default defineConfig({
         resolve(import.meta.dirname, 'src', 'pages'),
         resolve(import.meta.dirname, '..', '..', 'packages', 'stage-pages', 'src', 'pages'),
       ],
-      exclude: ['**/components/**'],
+      exclude: [
+        '**/components/**',
+        '**/auth/**',
+        '**/settings/account/**',
+        '**/settings/flux.vue',
+        '**/settings/capacitor.vue',
+        '**/settings/providers/**/official-provider*.vue',
+      ],
     }),
 
     // https://github.com/JohnCampionJr/vite-plugin-vue-layouts

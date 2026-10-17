@@ -2,14 +2,11 @@ import type { Session, User } from 'better-auth'
 import type {} from 'pinia-plugin-synced'
 
 import { errorMessageFrom } from '@moeru/std'
-import { isStageTamagotchi } from '@proj-airi/stage-shared'
-import { useTimeoutFn, whenever } from '@vueuse/core'
+import { useTimeoutFn } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
 import { client } from '../composables/api'
-import { useBreakpoints } from '../composables/use-breakpoints'
-import { triggerSignIn } from '../libs/auth'
 import { authClient, requestAuthSession } from '../libs/auth-client'
 import { refreshAccessToken } from '../libs/auth-oidc'
 import { SERVER_URL } from '../libs/server'
@@ -36,14 +33,6 @@ function createLocalStorageForAuth() {
     clear() {
       for (const key of Object.values(keys))
         localStorage.removeItem(key)
-    },
-    getAccessToken: () => localStorage.getItem(keys.accessToken),
-    getRefreshToken: () => localStorage.getItem(keys.refreshToken),
-    getIdToken: () => localStorage.getItem(keys.idToken),
-    getOidcClientId: () => localStorage.getItem(keys.oidcClientId),
-    getTokenExpiry() {
-      const expiry = Number.parseInt(localStorage.getItem(keys.tokenExpiry) ?? '', 10)
-      return Number.isFinite(expiry) ? expiry : null
     },
     setAccessToken: (value: string | null) => setOptional(keys.accessToken, value),
     setRefreshToken: (value: string | null) => setOptional(keys.refreshToken, value),
@@ -102,25 +91,7 @@ export const useAuthStore = defineStore('auth', () => {
   const capacitorRechargesAt = ref<string | null>(null)
   const fallbackToFlux = ref(false)
 
-  // The leader owns this cross-window login request. Web consumes it locally;
-  // Electron renderers compete to consume it before starting the IPC flow.
   const needsLogin = ref(false)
-  const { isMobile } = useBreakpoints()
-
-  whenever(needsLogin, async () => {
-    if (isStageTamagotchi())
-      return
-
-    // Consume the request before opening an external browser. Pocket stays
-    // mounted when the user cancels there, so leaving this true would make
-    // the next button click a no-op instead of starting a new OIDC flow.
-    needsLogin.value = false
-    await triggerSignIn()
-  })
-
-  // Reset the flag if the viewport class flips, so a stale needsLogin from a
-  // previous breakpoint does not surface again on resize.
-  watch(isMobile, () => needsLogin.value = false)
 
   // --- Lifecycle hooks ---
   type AuthHook = () => void | Promise<void>
@@ -229,51 +200,14 @@ export const useAuthStore = defineStore('auth', () => {
     startRefreshTimer()
   }
 
-  /**
-   * Restore refresh scheduling from persisted state after page reload.
-   * Returns a promise that resolves after an immediate refresh completes
-   * (when the persisted token is already expired) so callers can avoid
-   * racing `fetchSession()` against a stale Bearer token.
-   */
-  async function restoreRefreshSchedule(): Promise<boolean> {
-    if (!refreshToken.value || !oidcClientId.value)
-      return false
-
-    if (tokenExpiry.value) {
-      const remainingMs = tokenExpiry.value - Date.now()
-      if (remainingMs > 0) {
-        scheduleTokenRefresh(remainingMs / 1000)
-        return false
-      }
-    }
-
-    // Already expired — refresh synchronously so subsequent requests use fresh token
-    return !!(await refreshTokenNow())
-  }
-
+  /** Starts this fork without a hosted account and removes saved AIRI credentials. */
   async function initialize(): Promise<void> {
     if (initialized.value)
       return
 
     initialized.value = true
 
-    token.value = storage.getAccessToken()
-    refreshToken.value = storage.getRefreshToken()
-    idToken.value = storage.getIdToken()
-    oidcClientId.value = storage.getOidcClientId()
-    tokenExpiry.value = storage.getTokenExpiry()
-
-    const hasRefreshToken = !!refreshToken.value
-    const hasClientId = !!oidcClientId.value
-    if (hasRefreshToken !== hasClientId) {
-      sessionVersion.value += 1
-      clearAuthState()
-      return
-    }
-
-    const refreshed = await restoreRefreshSchedule()
-    if (!refreshed && token.value)
-      await fetchSession(token.value)
+    await clearAllAuthState()
   }
 
   async function completeSignIn(tokens: AuthTokenSet): Promise<boolean> {

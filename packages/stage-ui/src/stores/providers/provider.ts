@@ -6,7 +6,6 @@ import type { ChatRequestOptions, ModelInfo, ProviderDefinition, ProviderInstanc
 
 import { errorMessageFrom } from '@moeru/std'
 import { getGenerationProvider } from '@proj-airi/provider-inference'
-import { isCustomProvidersDisabled } from '@proj-airi/stage-shared'
 import { computedAsync, useAsyncState, useIntervalFn } from '@vueuse/core'
 import { listModels } from '@xsai/model'
 import { uniqBy } from 'es-toolkit'
@@ -851,6 +850,9 @@ export const useProviderStore = defineStore('provider', () => {
   }
 
   function projectProvider(providerId: string): ProviderMetadata | undefined {
+    if (findProviderDefinition(providerId)?.configuredBy === 'authentication')
+      return undefined
+
     const configuredProvider = providerConfigStore.providers[providerId]
     const metadata = providerMetadata.value[providerId]
       ?? providerMetadata.value[configuredProvider?.definitionId ?? '']
@@ -988,9 +990,6 @@ export const useProviderStore = defineStore('provider', () => {
         continue
 
       const definition = getProviderDefinition(provider.id)
-      if (isCustomProvidersDisabled() && definition.requiresCredentials !== false)
-        continue
-
       const isAvailableBy = definition.isAvailableBy || (() => true)
 
       const isAvailable = await isAvailableBy()

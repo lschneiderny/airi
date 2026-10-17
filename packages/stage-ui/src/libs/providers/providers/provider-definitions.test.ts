@@ -12,7 +12,7 @@ import {
   providerBrowserLocalAudioSpeech,
   providerBrowserLocalAudioTranscription,
 } from './local-audio'
-import { getDefinedProvider } from './registry'
+import { getDefinedProvider, listProviders } from './registry'
 
 import './index'
 
@@ -52,7 +52,7 @@ describe('migrated provider definitions', () => {
     expect(getDefinedProvider('unknown-provider')).toBeUndefined()
   })
 
-  it('registers every provider that moved out of the legacy store', () => {
+  it('registers the retained speech and transcription providers', () => {
     const providerIds = [
       'speech-noop',
       'app-local-audio-speech',
@@ -71,21 +71,55 @@ describe('migrated provider definitions', () => {
       'index-tts-vllm',
       'alibaba-cloud-model-studio',
       'volcengine',
-      'minimax-speech',
       'openrouter-audio-speech',
-      'mimo-audio-speech',
-      'comet-api-speech',
-      'comet-api-transcription',
-      'mimo-audio-transcription',
       'player2-speech',
       'kokoro-local',
-      'google-gemini-audio-speech',
       'voicevox',
       'aivis-speech',
     ]
 
     for (const providerId of providerIds)
       expect(getDefinedProvider(providerId), providerId).toBeDefined()
+  })
+
+  it.each([
+    '302-ai',
+    'aihubmix',
+    'amazon-bedrock',
+    'atlascloud',
+    'azure-ai-foundry',
+    'azure-openai',
+    'byteplus',
+    'byteplus-coding-plan',
+    'cerebras-ai',
+    'cloudflare-workers-ai',
+    'comet-api',
+    'comet-api-speech',
+    'comet-api-transcription',
+    'featherless-ai',
+    'fireworks-ai',
+    'google-generative-ai',
+    'google-gemini-audio-speech',
+    'groq',
+    'mimo',
+    'mimo-audio-speech',
+    'mimo-audio-transcription',
+    'minimax',
+    'minimax-global',
+    'minimax-speech',
+    'mistral-ai',
+    'modelscope',
+    'moonshot-ai',
+    'n1n',
+    'novita-ai',
+    'nvidia',
+    'perplexity-ai',
+    'together-ai',
+    'volcengine-coding-plan',
+    'xai',
+  ])('does not expose removed provider %s in the app catalog', (id) => {
+    expect(getDefinedProvider(id)).toBeUndefined()
+    expect(listProviders().some(provider => provider.id === id)).toBe(false)
   })
 
   it('creates the no-op speech provider through ProviderDefinition', async () => {
