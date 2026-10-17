@@ -5,6 +5,7 @@ import type { Live2DMotionDriver } from './live2d'
 import type { PixiLive2DInternalModel } from './motion-manager'
 import type { Live2DNaturalMotionFrame, Live2DNaturalMotionPose } from './natural-motion'
 import type { NaturalFaceOutput } from './natural-motion/face'
+import type { PostureHome } from './natural-motion/posture'
 import type { Live2DRigProfile, NaturalChannel } from './natural-motion/rig-profile'
 
 import { Live2DNaturalMotion } from './natural-motion'
@@ -39,6 +40,24 @@ export interface Live2DNaturalMotionAttention {
   /** Host emotion queue; the adapter empties it on every composition. */
   pendingEmotions: { name: Emotion, intensity: number }[]
   cursor: { x: number, y: number } | null
+}
+
+/**
+ * Counters the devtools Natural lab stores in a trace's metadata. They prove which channels the
+ * adapter wrote during a capture; they never change composition. `resetDiagnostics` zeroes them
+ * when a capture starts.
+ */
+export interface Live2DNaturalMotionDiagnostics {
+  /** Rest posture the controller drifts around. */
+  home: PostureHome
+  /** Compositions counted since the last reset. */
+  frames: number
+  /** Mean posture ownership weight (0 released, 1 full Natural) over those compositions, or 0 before any. */
+  weightMean: number
+  /** Writes to ParamBodyAngleX/Y/Z. Stays 0 on a rig whose physics derives the body from the head. */
+  bodyWrites: number
+  /** Natural channels left to physics, summed per composition. */
+  physicsOutputSkips: number
 }
 
 type ChannelRange = NonNullable<ReturnType<Live2DRigProfile['channels']['get']>>
@@ -118,6 +137,13 @@ export class Live2DNaturalMotionAdapter {
   private duration = 0
   private points = [0, 0, 0, 0]
   private disposed = false
+  private readonly home: PostureHome = 'product'
+  /** Natural channels present on the rig that physics outputs own, so composition skips them. */
+  private physicsOwnedChannels = 0
+  private diagnosticFrames = 0
+  private weightSum = 0
+  private bodyWrites = 0
+  private physicsOutputSkips = 0
   private readonly visibilityChanged = () => {
     this.hidden = this.visibility?.hidden ?? false
     this.frameTime = undefined
@@ -131,7 +157,7 @@ export class Live2DNaturalMotionAdapter {
     private readonly visibility?: Pick<Document, 'hidden' | 'addEventListener' | 'removeEventListener'>,
     random = Math.random,
   ) {
-    this.controller = new Live2DNaturalMotion({ random })
+    this.controller = new Live2DNaturalMotion({ random, home: this.home })
     this.controller.setSuspended(true, 0)
     this.setRigProfile(rigProfile)
     this.originalFocus = model.updateFocus
@@ -151,6 +177,7 @@ export class Live2DNaturalMotionAdapter {
       const range = profile.channels.get(channel)
       return range && !profile.physicsOutputs.has(range.id) ? range : undefined
     }
+    this.physicsOwnedChannels = [...profile.channels.values()].filter(range => profile.physicsOutputs.has(range.id)).length
     this.posture = postureAxes.flatMap((axis) => {
       const range = owned(axis)
       return range ? [{ ...range, axis }] : []
@@ -163,6 +190,24 @@ export class Live2DNaturalMotionAdapter {
     this.mouth = owned('mouthOpen')
     this.breath = owned('breath')
     this.controller.setRigProfile(profile)
+  }
+
+  /** Read-only snapshot of the capture counters; the lab reads it once when a capture ends. */
+  get diagnostics(): Live2DNaturalMotionDiagnostics {
+    return {
+      home: this.home,
+      frames: this.diagnosticFrames,
+      weightMean: this.diagnosticFrames ? this.weightSum / this.diagnosticFrames : 0,
+      bodyWrites: this.bodyWrites,
+      physicsOutputSkips: this.physicsOutputSkips,
+    }
+  }
+
+  resetDiagnostics() {
+    this.diagnosticFrames = 0
+    this.weightSum = 0
+    this.bodyWrites = 0
+    this.physicsOutputSkips = 0
   }
 
   setPaused(paused: boolean) {
@@ -232,6 +277,9 @@ export class Live2DNaturalMotionAdapter {
     }
     this.controller.setCursor(attention.cursor, this.time)
     const frame = this.controller.advance(this.time)
+    this.diagnosticFrames++
+    this.weightSum += this.weight
+    this.physicsOutputSkips += this.physicsOwnedChannels
     // SDK focus creates synthetic values for absent IDs. Full ownership must
     // bypass those writes, not merely overwrite the model's existing channels.
     if (this.weight < 1)
@@ -247,8 +295,10 @@ export class Live2DNaturalMotionAdapter {
     for (const range of this.posture) {
       const command = pose[range.axis]
       // Rig physics derives this body axis from the head.
-      if (command === null)
+      if (command === null) {
+        this.physicsOutputSkips++
         continue
+      }
       const base = core.getParameterValueByIndex(range.index)
       const natural = range.neutral + command * (command >= 0 ? range.max - range.neutral : range.neutral - range.min)
       let written: number
@@ -257,6 +307,8 @@ export class Live2DNaturalMotionAdapter {
       else
         written = this.weight === 1 ? natural : base + (natural - base) * this.weight
       core.setParameterValueByIndex(range.index, written)
+      if (range.axis.startsWith('body'))
+        this.bodyWrites++
     }
   }
 

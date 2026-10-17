@@ -93,6 +93,12 @@ const menu = computed(() => [
     to: '/devtools/live2d-motion',
   },
   {
+    title: t('tamagotchi.settings.devtools.pages.live2d-natural-motion.title'),
+    description: t('tamagotchi.settings.devtools.pages.live2d-natural-motion.description'),
+    icon: 'i-solar:graph-new-bold-duotone',
+    to: '/devtools/live2d-natural-motion',
+  },
+  {
     title: 'WebSocket Inspector',
     description: 'Inspect raw WebSocket traffic',
     icon: 'i-solar:transfer-horizontal-bold-duotone',

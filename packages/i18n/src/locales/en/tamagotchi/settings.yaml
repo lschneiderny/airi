@@ -227,6 +227,63 @@ devtools:
       button: Open Editor
     lag-visualizer:
       title: Lag Visualizer
+    live2d-natural-motion:
+      title: Natural Motion Lab
+      description: Force Natural motion states, fire emotions, and score captured motion
+      main-window-note: Changes and captures apply to the character in the main AIRI window.
+      override:
+        title: Performance state
+        enabled:
+          title: Override the performance state
+          description: While this is off, the stage chooses the state from speech, chat, and cursor activity.
+      mode:
+        title: State
+        options:
+          idle: Idle
+          watching: Watching
+          listening: Listening
+          thinking: Thinking
+          talking: Talking
+      energy:
+        title: Energy
+        description: 0 is calm, 0.5 is neutral, and 1 is lively.
+        override:
+          title: Override energy
+          description: While this is off, Natural uses the Energy setting.
+      emotions:
+        title: Emotions
+        description: Send an emotion through the same queue that chat replies use.
+        intensity: Intensity
+        names:
+          happy: Happy
+          sad: Sad
+          angry: Angry
+          think: Think
+          surprised: Surprised
+          awkward: Awkward
+          question: Question
+          curious: Curious
+          neutral: Neutral
+      capture:
+        title: Trace capture
+        description: Record the model's parameter values after physics at 30 Hz, then score them against the reference recordings.
+        start: Capture {seconds} s
+        cancel: Cancel
+        pending: Capturing {seconds} s from the main window. Keep the main window visible.
+        failed: 'The capture failed: {reason}'
+      results:
+        score: Score
+        pass: Pass
+        fail: Fail
+        frames: Frames
+        hard-failures: Hard failures
+        download: Download trace
+        not-saved: The trace has not been saved.
+        columns:
+          metric: Metric
+          value: Value
+          band: Reference band
+          pass: Result
     live2d-motion:
       title: Live2D Motion Control
       description: Control Live2D eye, head, and body motion.

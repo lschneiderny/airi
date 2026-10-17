@@ -1,4 +1,5 @@
 export * from './expression-store'
 export * from './model-parameters'
 export * from './motion-control'
+export * from './natural-motion-diagnostics'
 export * from './view-control'

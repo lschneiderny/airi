@@ -385,6 +385,30 @@ describe('natural motion adapter', () => {
       f.adapter.dispose()
   })
 
+  it('counts body writes and physics skips for the lab trace metadata', () => {
+    const bear = fixture({ physics: physicsRig([['ParamAngleX', 'ParamBodyAngleX'], ['ParamAngleY', 'ParamBodyAngleY'], ['ParamAngleZ', 'ParamBodyAngleZ']]) })
+    const free = fixture()
+    for (const f of [bear, free]) {
+      f.state.eligible = true
+      f.frame(0)
+      f.adapter.resetDiagnostics()
+      for (let index = 1; index <= 60; index++)
+        f.frame(1 + index / 60, true)
+    }
+    expect(bear.adapter.diagnostics.frames).toBe(60)
+    expect(bear.adapter.diagnostics.bodyWrites).toBe(0)
+    // Three body axes per composition are left to physics.
+    expect(bear.adapter.diagnostics.physicsOutputSkips).toBe(180)
+    expect(bear.adapter.diagnostics.weightMean).toBe(1)
+    expect(bear.adapter.diagnostics.home).toBe('product')
+    expect(free.adapter.diagnostics.bodyWrites).toBe(180)
+    expect(free.adapter.diagnostics.physicsOutputSkips).toBe(0)
+    free.adapter.resetDiagnostics()
+    expect(free.adapter.diagnostics).toEqual({ home: 'product', frames: 0, weightMean: 0, bodyWrites: 0, physicsOutputSkips: 0 })
+    for (const f of [bear, free])
+      f.adapter.dispose()
+  })
+
   it('(b) never writes a brow that is a physics output', () => {
     const f = fixture({ physics: physicsRig([['ParamAngleX', 'ParamBrowLY']]) })
     f.state.eligible = true

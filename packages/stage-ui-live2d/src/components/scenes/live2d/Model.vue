@@ -10,7 +10,9 @@ import type {
 } from '@proj-airi/stage-shared/screen-ambient-light'
 
 import type { PixiLive2DInternalModel } from '../../../composables/live2d'
+import type { NaturalCaptureRequest } from '../../../stores'
 
+import { errorMessageFrom } from '@moeru/std'
 import { Point } from '@pixi/math'
 import { listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
 import { ambientLightDefaults, ambientLightNeutralEnvironment, ambientLightPerceptualLevel, wholeWindowRectangle } from '@proj-airi/stage-shared/screen-ambient-light'
@@ -45,10 +47,12 @@ import {
 } from '../../../composables/live2d'
 import { useFitModel } from '../../../composables/live2d/fit-model'
 import { Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-motion-adapter'
+import { scoreLiveliness } from '../../../composables/live2d/natural-motion/liveliness'
 import { readLive2DRigProfile } from '../../../composables/live2d/natural-motion/rig-profile'
+import { NaturalTraceRecorder } from '../../../composables/live2d/natural-motion/trace'
 import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { ScreenAmbientLightFilter } from '../../../filters/screen-ambient-light'
-import { getLive2DMotionControlModelOffset, useL2dViewControl, useLive2DMotionControl, useLive2dParams } from '../../../stores'
+import { getLive2DMotionControlModelOffset, useL2dViewControl, useLive2DMotionControl, useLive2dParams, useNaturalMotionDiagnostics } from '../../../stores'
 
 const props = withDefaults(defineProps<{
   modelSrc?: string
@@ -129,7 +133,11 @@ const {
   exclusiveOwnerId,
 } = storeToRefs(useLive2DMotionControl())
 const { live2dMotionDriver, live2dNaturalCursorAttention } = storeToRefs(useSettingsLive2d())
+const naturalDiagnostics = useNaturalMotionDiagnostics()
+const { pendingRequest: naturalCaptureRequest } = storeToRefs(naturalDiagnostics)
 let naturalMotion: Live2DNaturalMotionAdapter | undefined
+/** Detaches the running trace capture without answering it; set only while a capture runs. */
+let stopNaturalCapture: (() => void) | undefined
 const localFocus = new Point()
 /** Emotions for the Natural driver; the adapter drains the queue on its next composition. */
 const pendingNaturalEmotions: { name: Emotion, intensity: number }[] = []
@@ -306,6 +314,12 @@ const disposeShouldUpdateView = live2dStore.onShouldUpdateView(() => {
 // Each cached texture holds a listener into the renderer that uploaded it, so a
 // texture left there keeps that renderer's WebGL context and GPU memory alive.
 function destroyModel(target: Live2DModel) {
+  // The capture listens on this model's internal model, so it cannot outlive it.
+  if (stopNaturalCapture) {
+    stopNaturalCapture()
+    if (naturalCaptureRequest.value)
+      naturalDiagnostics.failCapture(naturalCaptureRequest.value.id, 'The Live2D model was unloaded during the capture.')
+  }
   naturalMotion?.dispose()
   naturalMotion = undefined
   target.destroy({ texture: true, baseTexture: true })
@@ -993,6 +1007,72 @@ watch(nowSpeaking, (speaking, wasSpeaking) => {
   // A speech end before the first SDK frame has no clock value to anchor the handoff to.
   if (!speaking && wasSpeaking)
     speechEndedAtSeconds = Number.isNaN(sdkNowSeconds) ? null : sdkNowSeconds
+})
+
+/**
+ * Records post-physics parameter values for one lab capture request.
+ *
+ * Samples come from `beforeModelUpdate`, which the SDK emits after focus (where Natural
+ * composes), physics, and pose, and before `model.update()` and `loadParameters()`. A ticker or
+ * `postrender` read would see the restored values from before Natural and physics instead.
+ * Source: pixi-live2d-display cubism4 `Cubism4InternalModel.update()`.
+ *
+ * The listener exists only while a request is pending. It detaches when the duration elapses,
+ * when the request is cancelled, or when the model is destroyed.
+ */
+function startNaturalCapture(request: NaturalCaptureRequest) {
+  stopNaturalCapture?.()
+  const current = model.value
+  const adapter = naturalMotion
+  if (!current || !adapter) {
+    naturalDiagnostics.failCapture(request.id, 'No Live2D model is loaded in the stage.')
+    return
+  }
+  const internalModel = current.internalModel
+  const coreModel = internalModel.coreModel
+  const recorder = new NaturalTraceRecorder(coreModel.getModel().parameters)
+  const capturedAt = new Date().toISOString()
+  const readDiagnostics = () => adapter.diagnostics
+  adapter.resetDiagnostics()
+
+  const stop = () => {
+    internalModel.off('beforeModelUpdate', onFrame)
+    stopNaturalCapture = undefined
+  }
+  function finish() {
+    stop()
+    const { home, weightMean, bodyWrites, physicsOutputSkips } = readDiagnostics()
+    const trace = recorder.build({
+      model: props.modelId ?? null,
+      driver: live2dMotionDriver.value,
+      energy: props.naturalEnergy,
+      home,
+      adapter: { weightMean, bodyWrites, physicsOutputSkips },
+      capturedAt,
+      durationSeconds: request.durationSeconds,
+    })
+    try {
+      naturalDiagnostics.completeCapture(request.id, trace, scoreLiveliness(trace, trace.ranges))
+    }
+    catch (error) {
+      naturalDiagnostics.failCapture(request.id, errorMessageFrom(error) ?? 'The trace could not be scored.')
+    }
+  }
+  function onFrame() {
+    recorder.sample(performance.now() / 1000, index => coreModel.getParameterValueByIndex(index))
+    if (recorder.elapsedSeconds >= request.durationSeconds)
+      finish()
+  }
+
+  internalModel.on('beforeModelUpdate', onFrame)
+  stopNaturalCapture = stop
+}
+
+watch(naturalCaptureRequest, (request, previous) => {
+  if (request && request.id !== previous?.id)
+    startNaturalCapture(request)
+  else if (!request)
+    stopNaturalCapture?.()
 })
 
 /**
