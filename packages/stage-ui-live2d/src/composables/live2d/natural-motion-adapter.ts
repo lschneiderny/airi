@@ -1,54 +1,115 @@
+import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
+
+import type { Emotion } from '../../constants/emotions'
 import type { Live2DMotionDriver } from './live2d'
 import type { PixiLive2DInternalModel } from './motion-manager'
+import type { Live2DNaturalMotionFrame, Live2DNaturalMotionPose } from './natural-motion'
+import type { NaturalFaceOutput } from './natural-motion/face'
+import type { Live2DRigProfile, NaturalChannel } from './natural-motion/rig-profile'
 
 import { Live2DNaturalMotion } from './natural-motion'
 
 type Core = PixiLive2DInternalModel['coreModel']
-type Parameters = ReturnType<Core['getModel']>['parameters']
 interface FocusModel {
   coreModel: Pick<Core, 'getParameterValueByIndex' | 'setParameterValueByIndex'>
   updateFocus: () => void
 }
-interface Attention {
+
+/** Per-frame host inputs. Times share the SDK clock passed to `frame`. */
+export interface Live2DNaturalMotionAttention {
   driver: Live2DMotionDriver
   manualActive: boolean
   springActive: boolean
   exclusive: boolean
-  motion: {
-    group: string | undefined
-    idleGroup: string
-    selectedIdleGroup: string | null
-    priority: number
+  performance: PerformanceState
+  /** User energy 0..1, 0.5 neutral. */
+  energy: number
+  voice: {
+    speaking: boolean
+    /** Lipsync mouth level in [0, 1]. */
+    level: number
+    /** SDK seconds at which `speaking` last turned false; `null` when speech never ended. */
+    speechEndedAtSeconds: number | null
   }
+  /** The user's auto-blink setting; `false` keeps Natural blinks off. */
+  autoBlink: boolean
+  manualBreathActive: boolean
+  /** Parameter ids animated by the playing explicit clip. */
+  clipOwnedIds: ReadonlySet<string>
+  /** Host emotion queue; the adapter empties it on every composition. */
+  pendingEmotions: { name: Emotion, intensity: number }[]
   cursor: { x: number, y: number } | null
 }
 
-const channels = {
-  headX: 'ParamAngleX',
-  headY: 'ParamAngleY',
-  headZ: 'ParamAngleZ',
-  bodyX: 'ParamBodyAngleX',
-  bodyY: 'ParamBodyAngleY',
-  bodyZ: 'ParamBodyAngleZ',
-  eyeX: 'ParamEyeBallX',
-  eyeY: 'ParamEyeBallY',
-} as const
+type ChannelRange = NonNullable<ReturnType<Live2DRigProfile['channels']['get']>>
+type PostureAxis = keyof Live2DNaturalMotionPose & NaturalChannel
 
-const clamp = (value: number, limit = 1) => Math.max(-limit, Math.min(limit, value))
+const postureAxes: readonly PostureAxis[] = ['headX', 'headY', 'headZ', 'bodyX', 'bodyY', 'bodyZ', 'eyeX', 'eyeY']
+const eyelidChannels: readonly NaturalChannel[] = ['eyeLOpen', 'eyeROpen']
+/** Face channels composed as additive offsets, scaled to the channel half-range. */
+const faceOffsets: Partial<Record<NaturalChannel, keyof NaturalFaceOutput>> = {
+  browLY: 'browLY',
+  browRY: 'browRY',
+  browLAngle: 'browLAngle',
+  browRAngle: 'browRAngle',
+  eyeLSmile: 'eyeSmile',
+  eyeRSmile: 'eyeSmile',
+  mouthForm: 'mouthForm',
+  cheek: 'cheek',
+}
+
+/** Share of the Natural posture offset kept on channels an explicit clip animates. */
+const clipResidual = 0.1
+/** Lipsync release (200 ms) plus its handoff hold (500 ms). */
+const speechHandoffSeconds = 0.7
+/** Expression-closed eyes at or below the blink plugin threshold are left untouched. */
+const closedEyeThreshold = 0.15
+/** Natural micro-narrowing never lowers open lids below this outside a blink. */
+const eyelidFloor = 0.2
+
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
+const clampRange = (value: number, range: ChannelRange) => Math.max(range.min, Math.min(range.max, value))
 
 /**
- * Owns late focus composition for one loaded model. Frame timestamps are SDK seconds.
+ * Composes one eyelid on the post-motion value `base`. Blinks close open lids fully, the
+ * micro multiplier and emotion hint never push open lids below 0.2, and expression-closed
+ * lids (`base <= 0.15`) keep their value, so a hint never reopens them.
+ */
+function composeEyelid(base: number, multiplier: number, hint: number, blinkFactor: number) {
+  if (base <= closedEyeThreshold)
+    return base
+  const lifted = base * multiplier + (base > eyelidFloor ? hint : 0)
+  return clamp01(Math.max(lifted, Math.min(base, eyelidFloor)) * blinkFactor)
+}
+
+/**
+ * Owns late Natural composition for one loaded model. Frame timestamps are SDK seconds.
  * The active clock freezes across pause/visibility changes, but not visible stalls.
  * Disposal restores the original SDK method before the model is destroyed.
+ *
+ * Ownership: every write happens inside the SDK `updateFocus` wrap, which the SDK brackets
+ * with `saveParameters()` and `loadParameters()`, so each write is a stateless overlay on
+ * that frame's post-motion values. Physics outputs and physics-derived body axes are never
+ * written. Posture fades out under manual, spring, or exclusive control; clip-owned
+ * posture keeps a 10% residual and clip-owned face channels are skipped.
  */
 export class Live2DNaturalMotionAdapter {
   private readonly controller: Live2DNaturalMotion
   private readonly originalFocus: () => void
-  private readonly ranges
+  private posture: (ChannelRange & { axis: PostureAxis })[] = []
+  private eyelids: ChannelRange[] = []
+  private offsets: (ChannelRange & { key: keyof NaturalFaceOutput })[] = []
+  private mouth: ChannelRange | undefined
+  private breath: ChannelRange | undefined
   private time = 0
   private frameTime: number | undefined
+  /** Last SDK timestamp, kept across pauses for the speech handoff window. */
+  private now = Number.NaN
   private paused = false
   private hidden = false
+  /** Natural driver without an exclusive owner: the controller runs, face, blink, and breath compose. */
+  private active = false
+  /** Posture ownership target; manual and spring control also release it. */
   private eligible = false
   private weight = 0
   private velocity = 0
@@ -60,31 +121,19 @@ export class Live2DNaturalMotionAdapter {
   private readonly visibilityChanged = () => {
     this.hidden = this.visibility?.hidden ?? false
     this.frameTime = undefined
-    this.controller.setSuspended(this.paused || this.hidden || !this.eligible, this.time)
+    this.updateSuspension()
   }
 
   constructor(
     private readonly model: FocusModel,
-    parameters: Pick<Parameters, 'ids' | 'defaultValues' | 'minimumValues' | 'maximumValues'>,
-    private readonly attention: () => Attention,
+    rigProfile: Live2DRigProfile,
+    private readonly attention: () => Live2DNaturalMotionAttention,
     private readonly visibility?: Pick<Document, 'hidden' | 'addEventListener' | 'removeEventListener'>,
     random = Math.random,
   ) {
     this.controller = new Live2DNaturalMotion({ random })
     this.controller.setSuspended(true, 0)
-    this.ranges = Object.entries(channels).flatMap(([axis, id]) => {
-      const index = parameters.ids.indexOf(id)
-      if (index < 0 || parameters.maximumValues[index] === parameters.minimumValues[index])
-        return []
-      return [{
-        axis: axis as keyof typeof channels,
-        id,
-        index,
-        neutral: parameters.defaultValues[index],
-        min: parameters.minimumValues[index],
-        max: parameters.maximumValues[index],
-      }]
-    })
+    this.setRigProfile(rigProfile)
     this.originalFocus = model.updateFocus
     // NOTICE:
     // SDK focus follows AIRI final plugins and precedes physics.
@@ -96,10 +145,30 @@ export class Live2DNaturalMotionAdapter {
     visibility?.addEventListener('visibilitychange', this.visibilityChanged)
   }
 
+  /** Applies rig ownership; call again when physics loads after the model. */
+  setRigProfile(profile: Live2DRigProfile) {
+    const owned = (channel: NaturalChannel) => {
+      const range = profile.channels.get(channel)
+      return range && !profile.physicsOutputs.has(range.id) ? range : undefined
+    }
+    this.posture = postureAxes.flatMap((axis) => {
+      const range = owned(axis)
+      return range ? [{ ...range, axis }] : []
+    })
+    this.eyelids = eyelidChannels.flatMap(channel => owned(channel) ?? [])
+    this.offsets = (Object.entries(faceOffsets) as [NaturalChannel, keyof NaturalFaceOutput][]).flatMap(([channel, key]) => {
+      const range = owned(channel)
+      return range ? [{ ...range, key }] : []
+    })
+    this.mouth = owned('mouthOpen')
+    this.breath = owned('breath')
+    this.controller.setRigProfile(profile)
+  }
+
   setPaused(paused: boolean) {
     this.paused = paused
     this.frameTime = undefined
-    this.controller.setSuspended(paused || this.hidden || !this.eligible, this.time)
+    this.updateSuspension()
   }
 
   frame(nowSeconds: number) {
@@ -108,6 +177,11 @@ export class Live2DNaturalMotionAdapter {
     if (!this.paused && !this.hidden && this.frameTime !== undefined)
       this.time += nowSeconds - this.frameTime
     this.frameTime = nowSeconds
+    this.now = nowSeconds
+  }
+
+  private updateSuspension() {
+    this.controller.setSuspended(this.paused || this.hidden || !this.active, this.time)
   }
 
   private blend() {
@@ -126,11 +200,11 @@ export class Live2DNaturalMotionAdapter {
   }
 
   private compose() {
-    const { driver, manualActive, springActive, exclusive, motion, cursor } = this.attention()
-    const idle = !motion.group || motion.group === motion.idleGroup || motion.group === motion.selectedIdleGroup
-    // SDK MotionPriority.IDLE is 1. Keep this module independent of SDK runtime loading.
-    const eligible = driver === 'natural' && !manualActive && !springActive && !exclusive
-      && (idle || motion.priority <= 1)
+    const attention = this.attention()
+    const { driver, manualActive, springActive, exclusive, voice } = attention
+    // Explicit clips never suspend Natural; the clip mask below limits what it writes.
+    const active = driver === 'natural' && !exclusive
+    const eligible = active && !manualActive && !springActive
     this.blend()
     if (eligible !== this.eligible) {
       this.eligible = eligible
@@ -140,41 +214,70 @@ export class Live2DNaturalMotionAdapter {
       this.duration = this.velocity === 0 ? nominal : Math.min(nominal, 3 * bound / Math.abs(this.velocity))
       this.start = this.time
       this.points = [this.weight, this.weight + this.velocity * this.duration / 3, this.destination, this.destination]
-      this.controller.setSuspended(this.paused || this.hidden || !eligible, this.time)
     }
-    this.controller.setCursor(cursor, this.time)
-    const { pose, fixation } = this.controller.advance(this.time)
+    if (active !== this.active) {
+      this.active = active
+      this.updateSuspension()
+    }
+
+    const ended = voice.speechEndedAtSeconds
+    // NaN before the first frame keeps a recorded speech end inside the handoff window.
+    const mouthAllowed = !voice.speaking && (ended === null || this.now - ended > speechHandoffSeconds)
+    this.controller.setPerformance(attention.performance, attention.energy, this.time)
+    this.controller.setVoice({ speaking: voice.speaking, speechActiveOrRecent: !mouthAllowed, level: voice.level })
+    // Emotions queued while Natural is inactive are stale by the time it resumes.
+    for (const emotion of attention.pendingEmotions.splice(0)) {
+      if (active)
+        this.controller.impulse(emotion.name, emotion.intensity, this.time)
+    }
+    this.controller.setCursor(attention.cursor, this.time)
+    const frame = this.controller.advance(this.time)
     // SDK focus creates synthetic values for absent IDs. Full ownership must
     // bypass those writes, not merely overwrite the model's existing channels.
     if (this.weight < 1)
       this.originalFocus.call(this.model)
-    if (this.weight === 0)
-      return
+    if (this.weight > 0)
+      this.composePosture(frame.pose, attention.clipOwnedIds)
+    if (active)
+      this.composeFace(frame, attention, mouthAllowed)
+  }
 
-    // Head/body are composed first. Fixation remains unclamped metadata so eyes
-    // compensate the commanded head, rather than a reconstructed clamped gaze.
-    const head = { x: 0, y: 0 }
-    for (const range of this.ranges) {
-      const normal = this.model.coreModel.getParameterValueByIndex(range.index)
-      let command = pose[range.axis]
-      if (range.axis === 'eyeX')
-        command = clamp(fixation.x - head.x, 0.95)
-      if (range.axis === 'eyeY')
-        command = clamp(fixation.y - head.y, 0.95)
-      // Physics derives this body axis from the head; todo 9 owns the full ownership rewrite.
+  private composePosture(pose: Live2DNaturalMotionPose, clipOwnedIds: ReadonlySet<string>) {
+    const core = this.model.coreModel
+    for (const range of this.posture) {
+      const command = pose[range.axis]
+      // Rig physics derives this body axis from the head.
       if (command === null)
         continue
+      const base = core.getParameterValueByIndex(range.index)
       const natural = range.neutral + command * (command >= 0 ? range.max - range.neutral : range.neutral - range.min)
-      const blended = this.weight === 1 ? natural : normal + (natural - normal) * this.weight
-      const delta = blended - range.neutral
-      const span = delta >= 0 ? range.max - range.neutral : range.neutral - range.min
-      const normalized = span === 0 ? 0 : delta / span
-      if (range.axis === 'headX')
-        head.x = normalized
-      if (range.axis === 'headY')
-        head.y = normalized
-      this.model.coreModel.setParameterValueByIndex(range.index, blended)
+      let written: number
+      if (clipOwnedIds.has(range.id))
+        written = clampRange(base + (natural - range.neutral) * clipResidual * this.weight, range)
+      else
+        written = this.weight === 1 ? natural : base + (natural - base) * this.weight
+      core.setParameterValueByIndex(range.index, written)
     }
+  }
+
+  private composeFace({ face, blink, breath }: Live2DNaturalMotionFrame, attention: Live2DNaturalMotionAttention, mouthAllowed: boolean) {
+    const core = this.model.coreModel
+    const free = (range: ChannelRange) => !attention.clipOwnedIds.has(range.id)
+    const blinkFactor = attention.autoBlink ? blink.blinkFactor : 1
+    for (const range of this.eyelids.filter(free)) {
+      const base = core.getParameterValueByIndex(range.index)
+      core.setParameterValueByIndex(range.index, composeEyelid(base, face.eyeOpenMultiplier, face.eyeOpenHint, blinkFactor))
+    }
+    for (const range of this.offsets.filter(free)) {
+      const base = core.getParameterValueByIndex(range.index)
+      core.setParameterValueByIndex(range.index, clampRange(base + face[range.key] * (range.max - range.min) / 2, range))
+    }
+    if (this.mouth && free(this.mouth) && mouthAllowed) {
+      const base = core.getParameterValueByIndex(this.mouth.index)
+      core.setParameterValueByIndex(this.mouth.index, clampRange(base + face.silentMouthOpen, this.mouth))
+    }
+    if (this.breath && free(this.breath) && !attention.manualBreathActive)
+      core.setParameterValueByIndex(this.breath.index, clampRange(breath.value, this.breath))
   }
 
   dispose() {

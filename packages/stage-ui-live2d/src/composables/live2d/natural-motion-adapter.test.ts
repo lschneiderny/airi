@@ -1,36 +1,75 @@
+import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
+
 import type { Live2DMotionDriver } from './live2d'
+import type { Live2DNaturalMotionAttention } from './natural-motion-adapter'
+import type { Live2DRigProfile, PhysicsRigLike } from './natural-motion/rig-profile'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import { Emotion } from '../../constants/emotions'
 import { Live2DNaturalMotion } from './natural-motion'
 import { Live2DNaturalMotionAdapter } from './natural-motion-adapter'
+import { readLive2DRigProfile } from './natural-motion/rig-profile'
 
-// Fixture ranges: neutral 2, minimum -8, maximum 22.
+// Posture fixture ranges: neutral 2, minimum -8, maximum 22.
 const command = (normalized: number) => 2 + normalized * (normalized >= 0 ? 20 : 10)
-const normalize = (value: number) => (value - 2) / (value >= 2 ? 20 : 10)
-const clampEye = (value: number) => Math.max(-0.95, Math.min(0.95, value))
+const posture = ['ParamAngleX', 'ParamAngleY', 'ParamAngleZ', 'ParamBodyAngleX', 'ParamBodyAngleY', 'ParamBodyAngleZ', 'ParamEyeBallX', 'ParamEyeBallY']
+// Face fixture ranges as [default, minimum, maximum], shaped like common Cubism rigs.
+const face: Record<string, [number, number, number]> = {
+  ParamMouthOpenY: [0, 0, 1],
+  ParamEyeLOpen: [1, 0, 1],
+  ParamEyeROpen: [1, 0, 1],
+  ParamBrowLY: [0, -1, 1],
+  ParamBrowRY: [0, -1, 1],
+  ParamEyeLSmile: [0, 0, 1],
+  ParamMouthForm: [-0.5, -1, 1],
+  ParamBreath: [0, 0, 1],
+  PhysicsOutput: [2, -8, 22],
+}
 
 /** Controller output at an adapter active time, seeded like the fixture adapter (`random` = 0.8). */
 function natural(activeSeconds: number, cursor: { x: number, y: number } | null = null) {
+  return stream(cursor).advance(activeSeconds)
+}
+
+/** A reference controller advanced in lockstep with a fixture adapter from active time 0. */
+function stream(cursor: { x: number, y: number } | null = null) {
   const motion = new Live2DNaturalMotion({ random: () => 0.8 })
   motion.advance(0)
   motion.setCursor(cursor, 0)
-  return motion.advance(activeSeconds)
+  return motion
 }
 
-/** Asserts full Natural ownership of the eight posture channels, with eyes compensating the head. */
-function expectNatural(commanded: number[], { pose, fixation }: ReturnType<typeof natural>) {
-  const expected = [pose.headX, pose.headY, pose.headZ, pose.bodyX, pose.bodyY, pose.bodyZ, clampEye(fixation.x - pose.headX), clampEye(fixation.y - pose.headY)]
+/** Asserts full Natural ownership of the eight posture channels; eyes follow the controller's compensated eye command. */
+function expectNatural(commanded: number[], { pose }: ReturnType<typeof natural>) {
+  const expected = [pose.headX, pose.headY, pose.headZ, pose.bodyX, pose.bodyY, pose.bodyZ, pose.eyeX, pose.eyeY]
   expected.forEach((value, index) => expect(commanded[index]).toBeCloseTo(command(value ?? 0), 6))
 }
 
-function fixture(omit = '', fixed = '') {
-  const ids = ['ParamAngleX', 'ParamAngleY', 'ParamAngleZ', 'ParamBodyAngleX', 'ParamBodyAngleY', 'ParamBodyAngleZ', 'ParamEyeBallX', 'ParamEyeBallY', 'ParamMouthOpenY', 'ParamEyeLOpen', 'PhysicsOutput'].filter(id => id !== omit)
+/** One physics setting per `[input, output]` link, in the parsed Cubism shape. */
+function physicsRig(links: [string, string][]): PhysicsRigLike {
+  return {
+    settings: links.map((_, index) => ({ baseInputIndex: index, inputCount: 1, baseOutputIndex: index, outputCount: 1 })),
+    inputs: links.map(([source]) => ({ source: { id: source } })),
+    outputs: links.map(([, destination]) => ({ destination: { id: destination } })),
+  }
+}
+
+function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore = true }: {
+  omit?: string
+  fixed?: string
+  physics?: PhysicsRigLike
+  profile?: (profile: Live2DRigProfile) => Live2DRigProfile
+  /** `false` drops the SDK `loadParameters()` restore, so writes would persist across frames. */
+  restore?: boolean
+} = {}) {
+  const ids = [...posture, ...Object.keys(face)].filter(id => id !== omit)
+  const range = (id: string) => face[id] ?? [2, -8, 22]
   const parameters = {
     ids,
-    defaultValues: new Float32Array(ids.map(() => 2)),
-    minimumValues: new Float32Array(ids.map(id => id === fixed ? 2 : -8)),
-    maximumValues: new Float32Array(ids.map(id => id === fixed ? 2 : 22)),
+    defaultValues: new Float32Array(ids.map(id => range(id)[0])),
+    minimumValues: new Float32Array(ids.map(id => id === fixed ? range(id)[0] : range(id)[1])),
+    maximumValues: new Float32Array(ids.map(id => id === fixed ? range(id)[0] : range(id)[2])),
   }
   let values = [...parameters.defaultValues]
   const state = {
@@ -40,19 +79,31 @@ function fixture(omit = '', fixed = '') {
     manualActive: false,
     springActive: false,
     exclusive: false,
-    motion: { group: undefined as string | undefined, idleGroup: 'Idle', selectedIdleGroup: 'SavedIdle', priority: 0 },
+    performance: { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' } as PerformanceState,
+    energy: 0.5,
+    voice: { speaking: false, level: 0, speechEndedAtSeconds: null as number | null },
+    autoBlink: true,
+    manualBreathActive: false,
+    clipOwnedIds: new Set<string>() as ReadonlySet<string>,
+    pendingEmotions: [] as Live2DNaturalMotionAttention['pendingEmotions'],
     cursor: null as { x: number, y: number } | null,
   }
+  /** Values the motion update writes every frame, by parameter id. */
+  const motion: Record<string, number> = {}
   const visibility = new class extends EventTarget {
     hidden = false
   }()
-  let physics = 0
+  let physicsPasses = 0
+  let written = new Set<string>()
   const normalInputs: number[] = []
   const syntheticFocusValues = new Map<string, number>()
   const model = {
     coreModel: {
       getParameterValueByIndex: (index: number) => values[index],
-      setParameterValueByIndex: (index: number, value: number) => { values[index] = value },
+      setParameterValueByIndex: (index: number, value: number) => {
+        written.add(ids[index])
+        values[index] = value
+      },
     },
     updateFocus() {
       expect(this).toBe(model)
@@ -66,25 +117,38 @@ function fixture(omit = '', fixed = '') {
     },
   }
   const original = model.updateFocus
-  const adapter = new Live2DNaturalMotionAdapter(model, parameters, () => state, visibility, () => 0.8)
+  let profile = readLive2DRigProfile(parameters, physics)
+  if (editProfile)
+    profile = editProfile(profile)
+  const adapter = new Live2DNaturalMotionAdapter(model, profile, () => state, visibility, () => 0.8)
+  /**
+   * Emulates `Cubism4InternalModel.update`: motion update (AIRI final plugins, including
+   * `adapter.frame`), `saveParameters`, expression, SDK blink, `updateFocus` (Natural),
+   * breath, physics, pose, `beforeModelUpdate`, `model.update`, `loadParameters`.
+   * Source: node_modules/pixi-live2d-display/dist/cubism4.es.js.
+   */
   function frame(time: number, bear = false) {
-    // SDK order: normal motion/final plugins, save, focus, physics, draw, restore.
     normalInputs.push(values[0])
     values[0] = 6 // beat/manual/clip command, not the previous Natural output
+    for (const [id, value] of Object.entries(motion))
+      values[ids.indexOf(id)] = value
     adapter.frame(time)
     const saved = [...values]
+    written = new Set()
     model.updateFocus()
     const commanded = [...values]
-    physics++
+    physicsPasses++
     const body = ids.indexOf('ParamBodyAngleX')
     if (bear && body >= 0)
       values[body] = values[0] * 0.5
     values[ids.indexOf('PhysicsOutput')] = values[0] * 0.25
     const rendered = [...values]
-    values = saved
-    return { commanded, rendered }
+    if (restore)
+      values = saved
+    return { base: saved, commanded, rendered, written }
   }
-  return { ids, state, visibility, model, original, adapter, frame, normalInputs, syntheticFocusValues, passes: () => physics }
+  const at = (id: string) => ids.indexOf(id)
+  return { ids, at, state, motion, visibility, model, original, adapter, frame, normalInputs, syntheticFocusValues, passes: () => physicsPasses }
 }
 
 describe('natural motion adapter', () => {
@@ -96,10 +160,9 @@ describe('natural motion adapter', () => {
     const second = f.frame(0.46, true)
     expectNatural(first.commanded, natural(0.45))
     expectNatural(second.commanded, natural(0.46))
-    expect(first.rendered[3]).toBe(first.commanded[0] * 0.5)
-    expect(first.rendered[10]).toBe(first.commanded[0] * 0.25)
-    expect(first.commanded[8]).toBe(2)
-    expect(first.commanded[9]).toBe(2)
+    expect(first.rendered[f.at('ParamBodyAngleX')]).toBe(first.commanded[0] * 0.5)
+    expect(first.rendered[f.at('PhysicsOutput')]).toBe(first.commanded[0] * 0.25)
+    expect(first.written.has('PhysicsOutput')).toBe(false)
     expect(f.normalInputs).toEqual([2, 6, 6])
     expect(f.passes()).toBe(3)
     f.adapter.dispose()
@@ -122,17 +185,35 @@ describe('natural motion adapter', () => {
     f.adapter.dispose()
   })
 
-  it('compensates partial eyes from the actual asymmetric blended head', () => {
+  it('blends partial eyes from the compensated controller eye command', () => {
     const f = fixture()
     f.state.eligible = true
     f.state.cursor = { x: -1, y: 0 }
     f.frame(0)
     const result = f.frame(0.225).commanded
-    const { pose, fixation } = natural(0.225, { x: -1, y: 0 })
-    const blendedHead = (9 + command(pose.headX)) / 2
-    const eyes = clampEye(fixation.x - normalize(blendedHead))
-    expect(result[0]).toBeCloseTo(blendedHead, 6)
-    expect(result[6]).toBeCloseTo((5 + command(eyes)) / 2, 6)
+    const { pose } = natural(0.225, { x: -1, y: 0 })
+    expect(result[0]).toBeCloseTo((9 + command(pose.headX)) / 2, 6)
+    expect(result[6]).toBeCloseTo((5 + command(pose.eyeX)) / 2, 6)
+    f.adapter.dispose()
+  })
+
+  it('drives ParamEyeBallX from pose.eyeX, not from fixation minus head', () => {
+    const f = fixture()
+    f.state.eligible = true
+    f.state.cursor = { x: 1, y: -1 }
+    f.frame(0)
+    const reference = stream({ x: 1, y: -1 })
+    let headDiffers = false
+    for (let index = 1; index <= 300; index++) {
+      const time = 0.45 + index / 60
+      const { commanded } = f.frame(time)
+      const { pose, fixation } = reference.advance(time)
+      expect(commanded[f.at('ParamEyeBallX')]).toBeCloseTo(command(pose.eyeX), 6)
+      expect(commanded[f.at('ParamEyeBallY')]).toBeCloseTo(command(pose.eyeY), 6)
+      headDiffers ||= Math.abs(pose.eyeX - Math.max(-0.95, Math.min(0.95, fixation.x - pose.headX))) > 1e-3
+    }
+    // The v1 path would differ: the facade compensates only part of the head turn.
+    expect(headDiffers).toBe(true)
     f.adapter.dispose()
   })
 
@@ -146,7 +227,7 @@ describe('natural motion adapter', () => {
       const before = f.frame(time).commanded
       f.state.eligible = !f.state.eligible
       const after = f.frame(time).commanded
-      after.forEach((value, axis) => expect(value).toBeCloseTo(before[axis], 10))
+      after.slice(0, posture.length).forEach((value, axis) => expect(value).toBeCloseTo(before[axis], 10))
     }
     f.state.eligible = false
     f.frame(0.4)
@@ -192,6 +273,7 @@ describe('natural motion adapter', () => {
     far.state.cursor = { x: 1, y: 0 }
     for (const f of [center, near, far])
       f.frame(0)
+    const normalize = (value: number) => (value - 2) / (value >= 2 ? 20 : 10)
     const c = center.frame(1).commanded
     expect(c[0]).toBeCloseTo(command(natural(1, { x: 0, y: 0 }).pose.headX), 6)
     const n = near.frame(1).commanded
@@ -218,20 +300,21 @@ describe('natural motion adapter', () => {
   })
 
   it('skips missing IDs and zero width ranges without synthetic indices', () => {
-    const f = fixture('ParamAngleY', 'ParamBodyAngleZ')
+    const f = fixture({ omit: 'ParamAngleY', fixed: 'ParamBodyAngleZ' })
     f.state.eligible = true
     f.state.cursor = { x: -1, y: -1 }
     f.frame(0)
-    const { commanded } = f.frame(1)
+    const { commanded, written } = f.frame(1)
     expect(f.ids).not.toContain('ParamAngleY')
-    expect(commanded[f.ids.indexOf('ParamBodyAngleZ')]).toBe(2)
+    expect(commanded[f.at('ParamBodyAngleZ')]).toBe(2)
+    expect(written.has('ParamBodyAngleZ')).toBe(false)
     expect(commanded.every(Number.isFinite)).toBe(true)
     expect(commanded[0]).toBeLessThan(2)
     f.adapter.dispose()
   })
 
   it('leaves missing SDK focus parameters untouched at full Natural ownership', () => {
-    const f = fixture('ParamAngleX')
+    const f = fixture({ omit: 'ParamAngleX' })
     f.state.eligible = true
     f.frame(0)
     expect(f.syntheticFocusValues.get('ParamAngleX')).toBe(3)
@@ -247,58 +330,238 @@ describe('natural motion adapter', () => {
     f.frame(0.45)
     f.state.manualActive = true
     f.frame(0.5)
-    expect(f.frame(0.7).commanded[0]).toBe(9)
+    const manual = f.frame(0.7)
+    expect(manual.commanded[0]).toBe(9)
+    // Manual control releases posture only; blink and breath keep running.
+    expect(manual.written.has('ParamAngleX')).toBe(false)
+    expect(manual.written.has('ParamEyeLOpen')).toBe(true)
+    expect(manual.written.has('ParamBreath')).toBe(true)
     f.state.manualActive = false
     f.state.springActive = true
     expect(f.frame(1).commanded[0]).toBe(9)
     f.state.springActive = false
     f.state.exclusive = true
-    expect(f.frame(2).commanded[0]).toBe(9)
+    const exclusive = f.frame(2)
+    expect(exclusive.commanded[0]).toBe(9)
+    expect(f.frame(2.5).written.size).toBe(0)
     f.state.exclusive = false
     f.state.driver = 'magic'
     expect(f.frame(3).commanded[0]).toBe(9)
+    expect(f.frame(3.5).written.size).toBe(0)
     f.state.driver = 'natural'
     f.frame(4)
-    // Active time froze at 0.5 s and resumed at 4 s.
-    expect(f.frame(4.45).commanded[0]).toBeCloseTo(command(natural(0.95).pose.headX), 6)
+    // The controller ran through manual and spring control and froze from 2 s (exclusive) to 4 s.
+    expect(f.frame(4.45).commanded[0]).toBeCloseTo(command(natural(2.45).pose.headX), 6)
     f.adapter.dispose()
   })
 
-  it('yields to explicit non-idle clips but not forced configured idle loops', () => {
-    const f = fixture()
+  it('(a) never writes physics-derived body axes on a Bear-like rig', () => {
+    const bear = fixture({ physics: physicsRig([['ParamAngleX', 'ParamBodyAngleX']]) })
+    const all = fixture({ physics: physicsRig([['ParamAngleX', 'ParamBodyAngleX'], ['ParamAngleY', 'ParamBodyAngleY'], ['ParamAngleZ', 'ParamBodyAngleZ']]) })
+    // Null axes are skipped even when the profile does not list them as physics outputs.
+    const nullOnly = fixture({
+      physics: physicsRig([['ParamAngleX', 'ParamBodyAngleX'], ['ParamAngleY', 'ParamBodyAngleY'], ['ParamAngleZ', 'ParamBodyAngleZ']]),
+      profile: profile => ({ ...profile, physicsOutputs: new Set() }),
+    })
+    for (const f of [bear, all, nullOnly]) {
+      f.state.eligible = true
+      f.frame(0)
+    }
+    for (let index = 1; index <= 120; index++) {
+      const time = index / 60
+      const b = bear.frame(time, true)
+      expect(b.written.has('ParamBodyAngleX')).toBe(false)
+      expect(b.written.has('ParamBodyAngleY')).toBe(true)
+      expect(b.written.has('ParamBodyAngleZ')).toBe(true)
+      expect(b.written.has('ParamAngleX')).toBe(true)
+      for (const f of [all, nullOnly]) {
+        const { written } = f.frame(time, true)
+        for (const id of ['ParamBodyAngleX', 'ParamBodyAngleY', 'ParamBodyAngleZ'])
+          expect(written.has(id)).toBe(false)
+        expect(written.has('ParamAngleY')).toBe(true)
+      }
+    }
+    for (const f of [bear, all, nullOnly])
+      f.adapter.dispose()
+  })
+
+  it('(b) never writes a brow that is a physics output', () => {
+    const f = fixture({ physics: physicsRig([['ParamAngleX', 'ParamBrowLY']]) })
     f.state.eligible = true
-    f.state.motion = { ...f.state.motion, group: 'SavedIdle', priority: 3 }
     f.frame(0)
-    expect(f.frame(0.45).commanded[0]).toBeCloseTo(command(natural(0.45).pose.headX), 6)
-    f.state.motion.group = 'tap_body'
-    f.frame(0.5)
-    expect(f.frame(0.7).commanded[0]).toBe(9)
-    f.state.motion.group = undefined
-    f.state.motion.priority = 0
-    f.frame(0.8)
-    // Active time froze at 0.5 s and resumed at 0.8 s.
-    expect(f.frame(1.25).commanded[0]).toBeCloseTo(command(natural(0.95).pose.headX), 6)
+    for (let index = 1; index <= 120; index++) {
+      const { written } = f.frame(index / 60)
+      expect(written.has('ParamBrowLY')).toBe(false)
+      expect(written.has('ParamBrowRY')).toBe(true)
+    }
     f.adapter.dispose()
   })
 
-  it('yields to an explicit clip during a partial Natural blend', () => {
+  it('(c) keeps a 10% residual on a clip-owned head axis and full Natural eyes', () => {
+    const f = fixture()
+    const free = fixture()
+    for (const g of [f, free]) {
+      g.state.eligible = true
+      g.frame(0)
+    }
+    // A clip starting mid-blend neither suspends the controller nor changes the posture weight.
+    f.state.clipOwnedIds = new Set(['ParamAngleX', 'ParamEyeLOpen'])
+    const partial = f.frame(0.2)
+    expect(partial.commanded[f.at('ParamAngleY')]).toBe(free.frame(0.2).commanded[f.at('ParamAngleY')])
+    for (let index = 0; index <= 60; index++) {
+      const time = 0.45 + index / 60
+      const { base, commanded, written } = f.frame(time)
+      const unmasked = free.frame(time).commanded
+      const { pose } = natural(time)
+      const naturalDelta = command(pose.headX) - 2
+      const angle = f.at('ParamAngleX')
+      expect(commanded[angle] - base[angle]).toBeCloseTo(0.1 * naturalDelta, 6)
+      expect(Math.abs(commanded[angle] - base[angle])).toBeLessThanOrEqual(0.1 * Math.abs(naturalDelta) + 1e-9)
+      expect(commanded[f.at('ParamEyeBallX')]).toBeCloseTo(command(pose.eyeX), 6)
+      expect(commanded[f.at('ParamEyeBallX')]).toBe(unmasked[f.at('ParamEyeBallX')])
+      expect(commanded[f.at('ParamAngleY')]).toBe(unmasked[f.at('ParamAngleY')])
+      expect(written.has('ParamEyeLOpen')).toBe(false)
+      expect(written.has('ParamEyeROpen')).toBe(true)
+    }
+    f.state.clipOwnedIds = new Set()
+    expect(f.frame(1.5).commanded[0]).toBe(free.frame(1.5).commanded[0])
+    f.adapter.dispose()
+    free.adapter.dispose()
+  })
+
+  it('(d) never writes the mouth while speaking or within 0.7 s after speech', () => {
     const f = fixture()
     f.state.eligible = true
-    f.frame(0)
-    const before = f.frame(0.2).commanded
-    expect(before[0]).toBeGreaterThan(2)
-    expect(before[0]).toBeLessThan(9)
-
-    f.state.motion = { ...f.state.motion, group: 'tap_body', priority: 3 }
-    expect(f.frame(0.2).commanded).toEqual(before)
-    expect(f.frame(0.200001).commanded[0]).toBeLessThan(before[0])
-    expect(f.frame(0.4).commanded[0]).toBe(9)
-
-    f.state.motion.group = undefined
-    f.state.motion.priority = 0
-    expect(f.frame(0.5).commanded[0]).toBe(9)
-    // Active time froze at 0.2 s and resumed at 0.5 s.
-    expect(f.frame(1).commanded[0]).toBeCloseTo(command(natural(0.7).pose.headX), 6)
+    let silentOpenings = 0
+    for (let index = 0; index <= 400 * 30; index++) {
+      const time = index / 30
+      const speaking = time % 20 < 6
+      if (f.state.voice.speaking && !speaking)
+        f.state.voice.speechEndedAtSeconds = time
+      f.state.voice.speaking = speaking
+      f.state.voice.level = speaking ? 0.5 : 0
+      const { base, commanded, written } = f.frame(time)
+      const ended = f.state.voice.speechEndedAtSeconds
+      const mouth = f.at('ParamMouthOpenY')
+      if (speaking || (ended !== null && time - ended <= 0.7))
+        expect(written.has('ParamMouthOpenY')).toBe(false)
+      else if (commanded[mouth] > base[mouth])
+        silentOpenings++
+    }
+    // The schedule leaves silence long enough for the 1/40 s opening rate to show.
+    expect(silentOpenings).toBeGreaterThan(0)
     f.adapter.dispose()
+  })
+
+  it('(e) leaves ParamBreath untouched while manual breath is active', () => {
+    const f = fixture()
+    f.state.eligible = true
+    f.state.manualBreathActive = true
+    f.frame(0)
+    for (let index = 1; index <= 60; index++)
+      expect(f.frame(index / 60).written.has('ParamBreath')).toBe(false)
+    f.state.manualBreathActive = false
+    const { commanded, written } = f.frame(1.5)
+    expect(written.has('ParamBreath')).toBe(true)
+    expect(commanded[f.at('ParamBreath')]).toBeCloseTo(natural(1.5).breath.value, 6)
+    f.adapter.dispose()
+  })
+
+  it('(f) keeps eyelids in their first-frame range over 600 frames of the SDK save/load bracket', () => {
+    const run = (restore: boolean) => {
+      const f = fixture({ restore })
+      f.state.eligible = true
+      // Nothing writes the lids during the motion update, so the base comes only from load.
+      const reference = stream()
+      const open: number[] = []
+      let minimumBase = 1
+      for (let index = 0; index < 600; index++) {
+        const time = index / 60
+        const { base, commanded } = f.frame(time)
+        const lid = f.at('ParamEyeLOpen')
+        minimumBase = Math.min(minimumBase, base[lid])
+        if (reference.advance(time).blink.blinkFactor === 1)
+          open.push(commanded[lid])
+      }
+      f.adapter.dispose()
+      return { open, minimumBase }
+    }
+    const bracketed = run(true)
+    expect(bracketed.minimumBase).toBe(1)
+    const [first] = bracketed.open
+    expect(first).toBeGreaterThanOrEqual(0.85)
+    for (const value of bracketed.open) {
+      expect(value).toBeGreaterThanOrEqual(0.85)
+      expect(value).toBeLessThanOrEqual(1)
+    }
+    // Without the restore the same overlay compounds, so the bracket is what keeps it stateless.
+    expect(run(false).minimumBase).toBeLessThan(0.5)
+  })
+
+  it('(g) keeps open lids at or above 0.2 and closes them fully in a blink', () => {
+    const f = fixture()
+    f.state.eligible = true
+    f.motion.ParamEyeLOpen = 1
+    const reference = stream()
+    let deepest = { blinkFactor: 1, lid: 1 }
+    for (let index = 0; index <= 15 * 120; index++) {
+      const time = index / 120
+      const lid = f.frame(time).commanded[f.at('ParamEyeLOpen')]
+      const { blinkFactor } = reference.advance(time).blink
+      if (blinkFactor === 1)
+        expect(lid).toBeGreaterThanOrEqual(0.2)
+      if (blinkFactor < deepest.blinkFactor)
+        deepest = { blinkFactor, lid }
+    }
+    // The 120 Hz grid samples the closed end of a blink.
+    expect(deepest.blinkFactor).toBeLessThanOrEqual(0.01)
+    expect(deepest.lid).toBeLessThanOrEqual(0.05)
+    f.adapter.dispose()
+  })
+
+  it('(g2) keeps expression-closed lids exactly 0 under a surprised hint', () => {
+    const f = fixture()
+    f.state.eligible = true
+    f.motion.ParamEyeLOpen = 0
+    f.motion.ParamEyeROpen = 0
+    f.state.pendingEmotions.push({ name: Emotion.Surprise, intensity: 1 })
+    const reference = stream()
+    reference.impulse(Emotion.Surprise, 1, 0)
+    let peakHint = 0
+    for (let index = 0; index <= 3 * 120; index++) {
+      const time = index / 120
+      const { commanded } = f.frame(time)
+      peakHint = Math.max(peakHint, reference.advance(time).face.eyeOpenHint)
+      expect(commanded[f.at('ParamEyeLOpen')]).toBe(0)
+      expect(commanded[f.at('ParamEyeROpen')]).toBe(0)
+    }
+    // The +0.15 Surprise hint rides an impulse envelope; its sampled peak is clearly active.
+    expect(peakHint).toBeGreaterThan(0.1)
+    f.adapter.dispose()
+  })
+
+  it('(h) drains pending emotions exactly once', () => {
+    const impulse = vi.spyOn(Live2DNaturalMotion.prototype, 'impulse')
+    try {
+      const f = fixture()
+      f.state.pendingEmotions.push({ name: Emotion.Happy, intensity: 0.5 })
+      // Emotions queued while Natural is inactive are dropped, not replayed on resume.
+      f.frame(0)
+      expect(f.state.pendingEmotions).toHaveLength(0)
+      expect(impulse).not.toHaveBeenCalled()
+      f.state.eligible = true
+      f.state.pendingEmotions.push({ name: Emotion.Happy, intensity: 0.5 })
+      f.frame(0.1)
+      expect(f.state.pendingEmotions).toHaveLength(0)
+      expect(impulse).toHaveBeenCalledTimes(1)
+      expect(impulse).toHaveBeenCalledWith(Emotion.Happy, 0.5, 0.1)
+      f.frame(0.2)
+      f.frame(0.3)
+      expect(impulse).toHaveBeenCalledTimes(1)
+      f.adapter.dispose()
+    }
+    finally {
+      impulse.mockRestore()
+    }
   })
 })

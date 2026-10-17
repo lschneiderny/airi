@@ -44,6 +44,7 @@ import {
 } from '../../../composables/live2d'
 import { useFitModel } from '../../../composables/live2d/fit-model'
 import { Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-motion-adapter'
+import { readLive2DRigProfile } from '../../../composables/live2d/natural-motion/rig-profile'
 import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { ScreenAmbientLightFilter } from '../../../filters/screen-ambient-light'
 import { getLive2DMotionControlModelOffset, useL2dViewControl, useLive2DMotionControl, useLive2dParams } from '../../../stores'
@@ -485,9 +486,14 @@ async function performModelLoad() {
     motionManagerUpdate.register(useMotionUpdatePluginManualControl(manualMotionControl, manualMotionSpring), 'final')
     motionManagerUpdate.register(useMotionUpdatePluginLipSync(mouthOpenSize, nowSpeaking), 'final')
     motionManagerUpdate.register(useMotionUpdatePluginBreathControl(manualBreathControl), 'final')
+    // NOTICE:
+    // Temporary bridge so todo 9's adapter contract typechecks before scene wiring lands.
+    // Root cause: todo 9 changes the adapter constructor/Attention; todo 10 owns Model.vue wiring.
+    // Source/context: .omo/plans/live2d-presence-v2.md todos 9 and 10.
+    // Removal condition: todo 10 replaces this with the real rig profile, voice clock, clip mask, emotions, blink handoff.
     const naturalAdapter = new Live2DNaturalMotionAdapter(
       internalModel,
-      coreModel.getModel().parameters,
+      readLive2DRigProfile(coreModel.getModel().parameters, undefined),
       () => {
         let cursor = null
         if (live2dNaturalCursorAttention.value && props.eyeFocusSourceActive) {
@@ -503,12 +509,13 @@ async function performModelLoad() {
           exclusive: !!exclusiveOwnerId.value,
           manualActive: manualMotionControl.value.active,
           springActive: manualMotionSpring.output.value.active,
-          motion: {
-            group: motionManager.state.currentGroup,
-            idleGroup: motionManager.groups.idle,
-            selectedIdleGroup: localStorage.getItem('selected-runtime-motion-group'),
-            priority: motionManager.state.currentPriority,
-          },
+          performance: { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' },
+          energy: 0.5,
+          voice: { speaking: nowSpeaking.value, level: mouthOpenSize.value / 100, speechEndedAtSeconds: null },
+          autoBlink: false,
+          manualBreathActive: manualBreathControl.value.active,
+          clipOwnedIds: new Set<string>(),
+          pendingEmotions: [],
           cursor,
         }
       },
