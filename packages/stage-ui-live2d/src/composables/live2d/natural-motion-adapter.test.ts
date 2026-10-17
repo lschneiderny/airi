@@ -21,7 +21,7 @@ function natural(activeSeconds: number, cursor: { x: number, y: number } | null 
 /** Asserts full Natural ownership of the eight posture channels, with eyes compensating the head. */
 function expectNatural(commanded: number[], { pose, fixation }: ReturnType<typeof natural>) {
   const expected = [pose.headX, pose.headY, pose.headZ, pose.bodyX, pose.bodyY, pose.bodyZ, clampEye(fixation.x - pose.headX), clampEye(fixation.y - pose.headY)]
-  expected.forEach((value, index) => expect(commanded[index]).toBeCloseTo(command(value), 6))
+  expected.forEach((value, index) => expect(commanded[index]).toBeCloseTo(command(value ?? 0), 6))
 }
 
 function fixture(omit = '', fixed = '') {

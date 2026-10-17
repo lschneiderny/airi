@@ -29,6 +29,10 @@ const gatedMetrics = [
   // Shift-amplitude dispersion: spread rejects constant sizes, log asymmetry rejects tail-less spreads.
   'speedPeakP90P50',
   'speedPeakLogAsymmetry',
+  // Gaze layer: independent fixations with partial head counter-rotation.
+  'sd:ParamEyeBallX',
+  'sd:ParamEyeBallY',
+  'eyeHeadCorrelation',
 ]
 
 const simulationRate = 120
@@ -36,11 +40,11 @@ const traceRate = 30
 const warmUpSeconds = 3 * 60
 const scoredSeconds = 30 * 60
 
-/** Simulates the desk fixture at 120 Hz and samples the head at 30 Hz in reference units (normalized x 30). */
+/** Simulates the desk fixture at 120 Hz and samples at 30 Hz in reference units (head normalized x 30, eyes normalized). */
 function simulate(seed: number): LivelinessTrace {
   const motion = new Live2DNaturalMotion({ seed, home: 'desk' })
   const t: number[] = []
-  const channels: Record<string, number[]> = { ParamAngleX: [], ParamAngleY: [], ParamAngleZ: [] }
+  const channels: Record<string, number[]> = { ParamAngleX: [], ParamAngleY: [], ParamAngleZ: [], ParamEyeBallX: [], ParamEyeBallY: [] }
   const decimation = simulationRate / traceRate
   const total = (warmUpSeconds + scoredSeconds) * simulationRate
   const warmUp = warmUpSeconds * simulationRate
@@ -52,6 +56,8 @@ function simulate(seed: number): LivelinessTrace {
     channels.ParamAngleX.push(pose.headX * 30)
     channels.ParamAngleY.push(pose.headY * 30)
     channels.ParamAngleZ.push(pose.headZ * 30)
+    channels.ParamEyeBallX.push(pose.eyeX)
+    channels.ParamEyeBallY.push(pose.eyeY)
   }
   return { t, channels }
 }
@@ -60,7 +66,8 @@ describe('natural motion liveliness gate', () => {
   it.each([1, 2, 3])('passes every posture metric for seed %i', (seed) => {
     const trace = simulate(seed)
     const traceOut = process.env.NATURAL_TRACE_OUT
-    if (seed === 1 && traceOut)
+    const traceSeed = Number(process.env.NATURAL_TRACE_SEED ?? 1)
+    if (seed === traceSeed && traceOut)
       writeFileSync(traceOut, JSON.stringify({ ...trace, ranges: referenceStats.ranges }))
     const report = scoreLiveliness(trace, referenceStats.ranges, { mode: 'generated' })
     // One assertion lists every hard failure and every gated metric outside its band.

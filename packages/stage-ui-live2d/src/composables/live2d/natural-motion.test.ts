@@ -5,7 +5,11 @@ import { Live2DNaturalMotion } from './natural-motion'
 type Frame = ReturnType<Live2DNaturalMotion['advance']>
 
 function maximumDelta(a: Frame, b: Frame, axes = Object.keys(a.pose) as (keyof Frame['pose'])[]) {
-  return Math.max(...axes.map(axis => Math.abs(a.pose[axis] - b.pose[axis])))
+  // Without a rig profile no axis is null; a null on either side counts as a full-range jump.
+  return Math.max(...axes.map((axis) => {
+    const [from, to] = [a.pose[axis], b.pose[axis]]
+    return from === null || to === null ? 2 : Math.abs(from - to)
+  }))
 }
 
 function standardDeviation(values: number[]) {
@@ -44,8 +48,8 @@ describe('natural motion', () => {
       if (frame % 600 === 0)
         motion.setCursor(frame % 1200 === 0 ? { x: 1, y: -1 } : null, time)
       for (const value of Object.values(motion.advance(time).pose)) {
-        finite &&= Number.isFinite(value)
-        maximum = Math.max(maximum, Math.abs(value))
+        finite &&= value !== null && Number.isFinite(value)
+        maximum = Math.max(maximum, Math.abs(value ?? 0))
       }
     }
     expect(finite).toBe(true)
@@ -92,6 +96,21 @@ describe('natural motion', () => {
       motion.setCursor(null, time)
       expect(motion.advance(time)).toEqual(reference.advance(time))
     }
+  })
+
+  it('reports physics-derived body axes as null without changing other channels', () => {
+    const motion = new Live2DNaturalMotion({ seed: 17 })
+    const reference = new Live2DNaturalMotion({ seed: 17 })
+    motion.setRigProfile({ bodyFromHeadPhysics: { x: true, y: false, z: false } })
+    motion.advance(0)
+    reference.advance(0)
+    const { pose } = motion.advance(4)
+    const expected = reference.advance(4).pose
+    expect(pose.bodyX).toBeNull()
+    expect(pose.bodyY).toBe(expected.bodyY)
+    expect(pose.bodyZ).toBe(expected.bodyZ)
+    expect(pose.headX).toBe(expected.headX)
+    expect(pose.eyeX).toBe(expected.eyeX)
   })
 
   it('keeps head variability independent of frame partition', () => {

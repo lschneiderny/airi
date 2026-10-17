@@ -1,13 +1,12 @@
+import type { GazePoint } from './natural-motion/gaze'
 import type { PostureHome, Vec3 } from './natural-motion/posture'
 import type { RandomStream } from './natural-motion/random'
+import type { Live2DRigProfile } from './natural-motion/rig-profile'
 
+import { NaturalBodyLayer } from './natural-motion/body'
+import { NaturalAttentionShifts, NaturalGazeLayer } from './natural-motion/gaze'
 import { NaturalPostureLayers, postureHomes } from './natural-motion/posture'
 import { createRandomStream, deriveSeed } from './natural-motion/random'
-
-interface Point {
-  x: number
-  y: number
-}
 
 export interface Live2DNaturalMotionOptions {
   /** Seeds every layer stream; equal seeds replay equal motion. Takes precedence over `random`. */
@@ -18,23 +17,33 @@ export interface Live2DNaturalMotionOptions {
   home?: PostureHome
 }
 
+/** Normalized pose commands in [-1, 1]. */
+export interface Live2DNaturalMotionPose {
+  headX: number
+  headY: number
+  headZ: number
+  /** `null` when rig physics derives this body axis from the head, so the consumer skips the write. */
+  bodyX: number | null
+  bodyY: number | null
+  bodyZ: number | null
+  /** Shared by both eyes, so pupils stay conjugate. */
+  eyeX: number
+  eyeY: number
+}
+
 // Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
-const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, fixation: 4 }
+// Index 4 belonged to the v1 fixation rule and now seeds the gaze layer that replaces it.
+const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6 }
 
 // Fixed integration grid. Processes advance only in whole steps and the output is
 // interpolated between the two grid states around the current time, so frame
 // partition never changes the sampled path and draws stay deterministic per seed.
 const step = 1 / 120
 
-// v1 critically damped follower time constants (seconds); body and eyes keep v1 behavior until gaze/body layers land.
+// Critically damped follower time constants (seconds) of the v1 cursor head bias.
 const followers = {
   cursorX: 0.14,
   cursorY: 0.17,
-  bodyX: 0.32,
-  bodyY: 0.36,
-  bodyZ: 0.38,
-  fixationX: 0.024,
-  fixationY: 0.028,
 }
 
 type Axis = keyof typeof followers
@@ -42,7 +51,7 @@ type Axis = keyof typeof followers
 interface Snapshot {
   head: Vec3
   body: Vec3
-  fixation: Point
+  gaze: GazePoint
 }
 
 function clamp(value: number, limit: number) {
@@ -54,16 +63,18 @@ function lerp(a: number, b: number, weight: number) {
 }
 
 /**
- * Owns autonomous posture and gaze, without model or renderer state.
+ * Owns autonomous posture, gaze, and body, without model or renderer state.
  * Times are monotonic seconds. The first advance establishes the time origin.
  * Suspension freezes every process and active time; resume continues from the frozen state.
  * Cursor expiry and disabled attention are represented by a null cursor.
  */
 export class Live2DNaturalMotion {
   private readonly posture: NaturalPostureLayers
-  private readonly fixationRandom: RandomStream
-  private cursor: Point | null = null
-  private fixationTarget: Point = { x: 0, y: 0 }
+  private readonly gaze: NaturalGazeLayer
+  private readonly body: NaturalBodyLayer
+  private readonly attention: NaturalAttentionShifts
+  private cursor: GazePoint | null = null
+  private bodyFromHeadPhysics: Live2DRigProfile['bodyFromHeadPhysics'] = { x: false, y: false, z: false }
   private shiftCount = 0
   private readonly u = Object.fromEntries(Object.keys(followers).map(axis => [axis, 0])) as Record<Axis, number>
   private readonly x = { ...this.u }
@@ -84,13 +95,15 @@ export class Live2DNaturalMotion {
       gain: stream('gain'),
       shift: stream('shift'),
     })
-    this.fixationRandom = stream('fixation')
-    this.previous = { head: [...home], body: [0, 0, 0], fixation: { x: 0, y: 0 } }
+    this.gaze = new NaturalGazeLayer(stream('gaze'))
+    this.body = new NaturalBodyLayer(stream('body'), home)
+    this.attention = new NaturalAttentionShifts(stream('attention'))
+    this.previous = { head: [...home], body: this.body.pose, gaze: { x: 0, y: 0 } }
     this.next = this.integrate()
   }
 
-  /** Returns a fresh normalized pose and unclamped filtered fixation metadata. */
-  advance(nowSeconds: number) {
+  /** Returns a fresh normalized pose and the unclamped gaze point (before head compensation) as fixation metadata. */
+  advance(nowSeconds: number): { pose: Live2DNaturalMotionPose, fixation: GazePoint } {
     const elapsed = this.lastTimestamp === undefined ? 0 : nowSeconds - this.lastTimestamp
     this.lastTimestamp = nowSeconds
     if (!this.suspended && elapsed > 0) {
@@ -104,24 +117,26 @@ export class Live2DNaturalMotion {
     const { previous: a, next: b } = this
     const [headX, headY, headZ] = a.head.map((value, axis) => lerp(value, b.head[axis], weight))
     const [bodyX, bodyY, bodyZ] = a.body.map((value, axis) => lerp(value, b.body[axis], weight))
-    const fixation = { x: lerp(a.fixation.x, b.fixation.x, weight), y: lerp(a.fixation.y, b.fixation.y, weight) }
+    const fixation = { x: lerp(a.gaze.x, b.gaze.x, weight), y: lerp(a.gaze.y, b.gaze.y, weight) }
+    const eye = NaturalGazeLayer.eye(fixation, { x: headX, y: headY })
+    const physics = this.bodyFromHeadPhysics
     return {
       pose: {
         headX,
         headY,
         headZ,
-        bodyX,
-        bodyY,
-        bodyZ,
-        eyeX: clamp(fixation.x - headX, 0.95),
-        eyeY: clamp(fixation.y - headY, 0.95),
+        bodyX: physics.x ? null : bodyX,
+        bodyY: physics.y ? null : bodyY,
+        bodyZ: physics.z ? null : bodyZ,
+        eyeX: clamp(eye.x, 0.95),
+        eyeY: clamp(eye.y, 0.95),
       },
       fixation,
     }
   }
 
   /** Changes attention after advancing to this timestamp; it takes effect from the next grid step. */
-  setCursor(target: Point | null, nowSeconds: number) {
+  setCursor(target: GazePoint | null, nowSeconds: number) {
     this.advance(nowSeconds)
     this.cursor = target === null ? null : { x: clamp(target.x, 1), y: clamp(target.y, 1) }
   }
@@ -132,40 +147,40 @@ export class Live2DNaturalMotion {
     this.suspended = suspended
   }
 
+  /**
+   * Applies rig ownership. Body axes that rig physics derives from the head are
+   * reported as `null`; their processes keep running, so ownership changes never reset motion.
+   */
+  setRigProfile(profile: Pick<Live2DRigProfile, 'bodyFromHeadPhysics'>) {
+    this.bodyFromHeadPhysics = { ...profile.bodyFromHeadPhysics }
+  }
+
   /** Advances every process by one grid step and returns the new grid state. */
   private integrate(): Snapshot {
+    const stepStart = this.stepIndex * step
     this.stepIndex++
     const c = this.cursor
+    this.gaze.setCursor(c, stepStart)
+    this.attention.update(this.posture, this.gaze, stepStart, step)
     // Cursor attention keeps the v1 head bias, smoothed so cursor changes never jump.
     this.follow({
       cursorX: 0.25 * (c?.x ?? 0),
       cursorY: 0.20 * (c?.y ?? 0),
     })
     const head = this.posture.step(step, [this.x.cursorX, this.x.cursorY, 0])
-    const shift = this.posture.shiftTarget
     if (this.posture.shiftCount !== this.shiftCount) {
       this.shiftCount = this.posture.shiftCount
-      // v1 fixation rule: 35% of posture shifts move fixation with the head (v1 used 0.4 x posture with head 0.36 x posture).
-      if (this.fixationRandom() < 0.35)
-        this.fixationTarget = { x: 0.4 / 0.36 * shift[0], y: 0.4 / 0.24 * shift[1] }
+      this.body.beginShift()
     }
-    // v1 body targets as a fraction of the posture destination (v1 body/head gain ratios).
-    this.follow({
-      bodyX: 0.30 / 0.36 * shift[0] + 0.08 * (c?.x ?? 0),
-      bodyY: 0.18 / 0.24 * shift[1],
-      bodyZ: 0.24 / 0.30 * shift[2],
-      fixationX: c ? 0.65 * c.x : this.fixationTarget.x,
-      fixationY: c ? 0.65 * c.y : this.fixationTarget.y,
-    })
     return {
       head,
-      body: [clamp(this.x.bodyX, 1), clamp(this.x.bodyY, 1), clamp(this.x.bodyZ, 1)],
-      fixation: { x: this.x.fixationX, y: this.x.fixationY },
+      body: this.body.step(step, head),
+      gaze: this.gaze.step(step),
     }
   }
 
   /** Exact two-stage critically damped follower update over one grid step. */
-  private follow(targets: Partial<Record<Axis, number>>) {
+  private follow(targets: Record<Axis, number>) {
     for (const [axis, target] of Object.entries(targets) as [Axis, number][]) {
       const h = step / followers[axis]
       const e = Math.exp(-h)

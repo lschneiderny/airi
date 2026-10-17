@@ -78,6 +78,16 @@ export class NaturalPostureLayers {
     return this.shiftTo
   }
 
+  /** Active seconds until the next posture shift begins. */
+  get secondsUntilShift() {
+    return this.nextShiftAt - this.time
+  }
+
+  /** Delays the next shift start, so a coordinated gaze shift can lead it. Later holds keep their drawn durations. */
+  postponeShift(seconds: number) {
+    this.nextShiftAt += seconds
+  }
+
   /** Advances all processes by `dt` seconds and returns the limited head pose. */
   step(dt: number, bias: Vec3 = [0, 0, 0]): Vec3 {
     this.time += dt

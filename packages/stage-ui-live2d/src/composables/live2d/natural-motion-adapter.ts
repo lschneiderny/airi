@@ -161,6 +161,9 @@ export class Live2DNaturalMotionAdapter {
         command = clamp(fixation.x - head.x, 0.95)
       if (range.axis === 'eyeY')
         command = clamp(fixation.y - head.y, 0.95)
+      // Physics derives this body axis from the head; todo 9 owns the full ownership rewrite.
+      if (command === null)
+        continue
       const natural = range.neutral + command * (command >= 0 ? range.max - range.neutral : range.neutral - range.min)
       const blended = this.weight === 1 ? natural : normal + (natural - normal) * this.weight
       const delta = blended - range.neutral
