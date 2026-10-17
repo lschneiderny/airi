@@ -5,7 +5,7 @@ import en from '@proj-airi/i18n/locales/en'
 import { createPinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
@@ -161,6 +161,68 @@ describe('live2D model settings', () => {
     expect(settings.live2dEyeTracking).toBe(true)
   })
 
+  it('shows the Energy slider only for Natural, persists it, and resets it to 0.5', async () => {
+    Object.assign(window, { Live2DCubismCore: {} })
+    const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
+      import('@proj-airi/stage-ui-live2d'),
+      import('./live2d.vue'),
+    ])
+    await import('virtual:uno.css')
+    const pinia = createPinia()
+    const settings = useSettingsLive2d(pinia)
+    settings.resetState()
+    const screen = await render(Live2DSettings, {
+      props: {
+        palette: [],
+        runtimeSnapshot: {
+          ownerInstanceId: 'stage-owner',
+          modelId: 'test-model',
+          renderer: 'live2d',
+          phase: 'mounted',
+          controlsLocked: false,
+          previewAvailable: true,
+          canCapturePreview: false,
+          updatedAt: 1,
+        },
+      },
+      global: { plugins: [pinia, createTestI18n()] },
+    })
+    await screen.getByText(t('settings.live2d.animation.title'), { exact: true }).click()
+    // A missing locale entry renders the key, which the role query would still match.
+    expect(t('settings.live2d.animation.natural-energy.title')).not.toBe('settings.live2d.animation.natural-energy.title')
+    const energy = screen.getByRole('slider', { name: t('settings.live2d.animation.natural-energy.title') })
+    await expect.element(energy).not.toBeInTheDocument()
+    await screen.getByRole('radio', { name: 'MAGIC', exact: true }).click()
+    await expect.element(energy).not.toBeInTheDocument()
+    await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
+    await expect.element(energy).toBeVisible()
+    await expect.element(screen.getByText('50%', { exact: true })).toBeVisible()
+
+    await energy.click()
+    await userEvent.keyboard('{ArrowRight}')
+    await expect.element(screen.getByText('55%', { exact: true })).toBeVisible()
+    expect(settings.live2dNaturalEnergy).toBe(0.55)
+    const key = 'settings/live2d/natural-energy'
+    expect(localStorage.getItem(key)).toBe('0.55')
+
+    localStorage.setItem(key, '7')
+    window.dispatchEvent(new StorageEvent('storage', { key, oldValue: '0.55', newValue: '7', storageArea: localStorage }))
+    await expect.element(screen.getByText('100%', { exact: true })).toBeVisible()
+    expect(settings.live2dNaturalEnergy).toBe(1)
+
+    // Reset also restores the Universal driver, which hides the slider.
+    settings.resetState()
+    await nextTick()
+    await expect.element(energy).not.toBeInTheDocument()
+    expect(settings.live2dNaturalEnergy).toBe(0.5)
+    expect(localStorage.getItem(key)).toBe('0.5')
+    await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
+    await expect.element(screen.getByText('50%', { exact: true })).toBeVisible()
+
+    await screen.getByRole('radio', { name: 'Universal', exact: true }).click()
+    await expect.element(energy).not.toBeInTheDocument()
+  })
+
   it.each([
     'universal',
     'magic',
@@ -184,6 +246,26 @@ describe('live2D model settings', () => {
     expect(settings.live2dMotionDriver).toBe(driver)
     expect(settings.live2dNaturalCursorAttention).toBe(false)
     expect(settings.live2dEyeTracking).toBe(true)
+  })
+
+  it.each([
+    { stored: 'abc', expected: 0.5 },
+    { stored: '7', expected: 1 },
+    { stored: '-2', expected: 0 },
+    { stored: '0.35', expected: 0.35 },
+  ])('reads a stored Natural energy of $stored as $expected', async ({ stored, expected }) => {
+    Object.assign(window, { Live2DCubismCore: {} })
+    const { useSettingsLive2d } = await import('@proj-airi/stage-ui-live2d')
+    const settings = useSettingsLive2d(createPinia())
+    settings.resetState()
+    settings.live2dNaturalEnergy = 0.8
+    await nextTick()
+    const key = 'settings/live2d/natural-energy'
+    const oldValue = localStorage.getItem(key)
+    localStorage.setItem(key, stored)
+    window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue: stored, storageArea: localStorage }))
+    await nextTick()
+    expect(settings.live2dNaturalEnergy).toBe(expected)
   })
 
   it.each([
@@ -224,7 +306,9 @@ describe('live2D model settings', () => {
     await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
     const cursor = screen.getByRole('switch', { name: t('settings.live2d.animation.natural-cursor-attention.title') })
     await expect.element(cursor).toBeChecked()
-    for (const control of [cursor, screen.getByRole('radio', { name: 'Natural', exact: true })]) {
+    const energy = screen.getByRole('slider', { name: t('settings.live2d.animation.natural-energy.title') })
+    await expect.element(energy).toBeVisible()
+    for (const control of [cursor, energy, screen.getByRole('radio', { name: 'Natural', exact: true })]) {
       const bounds = control.element().getBoundingClientRect()
       expect(bounds.left).toBeGreaterThanOrEqual(0)
       expect(bounds.right).toBeLessThanOrEqual(width)
@@ -236,7 +320,7 @@ describe('live2D model settings', () => {
       .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
       .map(animation => animation.finished))
     await page.screenshot({
-      path: `../../../../../../../.omo/evidence/live2d-presence-v1/task-3-settings-${size}-${theme}.png`,
+      path: `../../../../../../../.omo/evidence/live2d-presence-v2/task-11-${size}${theme === 'dark' ? '-dark' : ''}.png`,
     })
   })
 })

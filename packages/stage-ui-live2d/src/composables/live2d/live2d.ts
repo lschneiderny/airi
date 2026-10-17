@@ -1,4 +1,5 @@
 import { useLocalStorageManualReset, useVersionedLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
+import { clamp } from 'es-toolkit'
 import { defineStore } from 'pinia'
 
 export type Live2DMotionDriver = 'magic' | 'natural' | 'universal'
@@ -6,6 +7,22 @@ export type Live2DMotionDriver = 'magic' | 'natural' | 'universal'
 const live2dMotionDriver = useLocalStorageManualReset<Live2DMotionDriver>('settings/live2d/motion-driver', 'universal')
 const live2dEyeTracking = useLocalStorageManualReset<boolean>('settings/live2d/eye-tracking', true)
 const live2dNaturalCursorAttention = useLocalStorageManualReset<boolean>('settings/live2d/natural-cursor-attention', true)
+const naturalEnergyDefault = 0.5
+/**
+ * How lively Natural motion is, from 0 (calm) to 1 (energetic). The motion
+ * driver reads it as a plain number, and localStorage is outside the app's
+ * control, so an unparsable stored value falls back to the default and an
+ * out-of-range one is clamped on read.
+ */
+const live2dNaturalEnergy = useLocalStorageManualReset<number>('settings/live2d/natural-energy', naturalEnergyDefault, {
+  serializer: {
+    read: (raw) => {
+      const value = Number.parseFloat(raw)
+      return Number.isFinite(value) ? clamp(value, 0, 1) : naturalEnergyDefault
+    },
+    write: value => String(value),
+  },
+})
 /** Offset from model center to the eyes of the model, in percentages of full model width/height */
 const live2dModelEyeOffset = useLocalStorageManualReset('settings/live2d/model-eye-offset', { x: 0, y: 0 })
 const live2dIdleAnimationEnabled = useLocalStorageManualReset<boolean>('settings/live2d/idle-animation-enabled', true)
@@ -40,6 +57,7 @@ function resetState() {
   live2dMotionDriver.reset()
   live2dEyeTracking.reset()
   live2dNaturalCursorAttention.reset()
+  live2dNaturalEnergy.reset()
   live2dModelEyeOffset.reset()
   live2dIdleAnimationEnabled.reset()
   live2dForceIdleEyeAnimation.reset()
@@ -56,6 +74,7 @@ export const useSettingsLive2d = defineStore('settings-live2d', () => {
     live2dMotionDriver,
     live2dEyeTracking,
     live2dNaturalCursorAttention,
+    live2dNaturalEnergy,
     live2dModelEyeOffset,
     live2dIdleAnimationEnabled,
     live2dForceIdleEyeAnimation,

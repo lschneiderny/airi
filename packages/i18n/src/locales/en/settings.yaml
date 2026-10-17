@@ -226,6 +226,9 @@ live2d:
         force-view-target:
           title: Force forward view target
           description: Keep the eyes aimed forward while MAGIC moves the head.
+    natural-energy:
+      title: Energy
+      description: How lively Natural movement is, from calm to energetic.
     natural-cursor-attention:
       title: Cursor attention
       description: Let Natural follow the moving cursor. Turn this off for autonomous movement only.

@@ -40,6 +40,7 @@ const {
   live2dMotionDriver,
   live2dEyeTracking,
   live2dNaturalCursorAttention,
+  live2dNaturalEnergy,
   live2dModelEyeOffset,
   live2dIdleAnimationEnabled,
   live2dAutoBlinkEnabled,
@@ -134,6 +135,10 @@ const live2dBlinkMode = computed<'auto' | 'force'>({
     live2dForceAutoBlinkEnabled.value = mode === 'force'
   },
 })
+
+function formatNaturalEnergy(value: number) {
+  return `${Math.round(value * 100)}%`
+}
 
 watch(() => live2d.availableMotions, (motions) => {
   runtimeMotions.value = motions.map(m => ({
@@ -381,6 +386,16 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       />
     </label>
     <MagicMotionSettings v-if="live2dMotionDriver === 'magic'" />
+    <FieldRange
+      v-if="live2dMotionDriver === 'natural'"
+      v-model="live2dNaturalEnergy"
+      :min="0"
+      :max="1"
+      :step="0.05"
+      :label="t('settings.live2d.animation.natural-energy.title')"
+      :description="t('settings.live2d.animation.natural-energy.description')"
+      :format-value="formatNaturalEnergy"
+    />
     <FieldCheckbox
       v-if="live2dMotionDriver === 'natural'"
       v-model="live2dNaturalCursorAttention"

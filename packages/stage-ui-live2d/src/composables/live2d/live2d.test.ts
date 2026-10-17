@@ -55,6 +55,17 @@ describe('useSettingsLive2d', () => {
     expect(settings.live2dIdleAnimationEnabled).toBe(true)
   })
 
+  it('defaults Natural energy to 0.5 and restores it on reset', async () => {
+    const { useSettingsLive2d } = await import('./live2d')
+
+    const settings = useSettingsLive2d()
+
+    expect(settings.live2dNaturalEnergy).toBe(0.5)
+    settings.live2dNaturalEnergy = 1
+    settings.resetState()
+    expect(settings.live2dNaturalEnergy).toBe(0.5)
+  })
+
   /**
    * @example
    * expect(settings.live2dEyeTracking).toBe(true)
