@@ -52,6 +52,7 @@ import { useHearingStore } from './modules/hearing'
 import { useStickersStore } from './modules/stickers'
 import { useVisionStore } from './modules/vision'
 import { useWebSearchStore } from './modules/web-search'
+import { useProviderConfigStore } from './providers/config'
 import { executeToolCallRerun } from './tool-call-rerun'
 import { useWakeWordsStore } from './wake-words'
 
@@ -231,6 +232,7 @@ export const useChatStore = defineStore('chat', () => {
   // without its paired prompt-injection defense.
   useWebSearchStore()
   const consciousnessStore = useConsciousnessStore()
+  const providerConfigStore = useProviderConfigStore()
   const chatVision = useChatVision()
   const artistryAutonomousStore = useAutonomousArtistryStore()
   const { activeProvider, activeModel } = storeToRefs(consciousnessStore)
@@ -333,9 +335,12 @@ export const useChatStore = defineStore('chat', () => {
       ? openTurnSpan({ sessionId: correlation.conversationId, turnId: correlation.turnId })
       : undefined
 
-    // Analytics correlation goes only to the official provider. A resolved step can change the provider, so each request rebuilds it.
+    // Build headers for the provider selected for each request.
+    // Only the official provider receives analytics correlation.
     function requestHeaders(providerId: string | undefined) {
       const headers = { ...options?.headers }
+      if (providerConfigStore.getProvider(providerId ?? activeProvider.value)?.definitionId === 'opencode-go' && options?.requestCorrelation?.conversationId)
+        headers['x-opencode-session'] = options.requestCorrelation.conversationId
       if (getProviderMode(providerId ?? activeProvider.value) === 'official' && options?.requestCorrelation) {
         headers[AIRI_CHAT_SESSION_ID_HEADER] = options.requestCorrelation.conversationId
         headers[AIRI_CHAT_ROUND_ID_HEADER] = options.requestCorrelation.turnId

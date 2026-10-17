@@ -2021,6 +2021,15 @@ pages:
       openai-compatible:
         description: OpenAI Compatible
         title: OpenAI Compatible
+      opencode-go:
+        description: Chat models from OpenCode Go
+        title: OpenCode Go
+        desktop:
+          description: The desktop app stores your key securely and sends requests from its main process.
+          stored: An API key is stored securely on this device.
+          clear: Clear stored key
+          key-required: Save an OpenCode Go API key in desktop settings.
+          save-failed: The API key could not be saved.
       nvidia:
         description: build.nvidia.com
         title: NVIDIA NIM

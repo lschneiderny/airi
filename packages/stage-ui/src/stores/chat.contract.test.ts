@@ -21,6 +21,7 @@ import {
 import { useChatStore } from './chat'
 import { useContextObservabilityStore } from './devtools/context-observability'
 import { useConsciousnessSettingsStore } from './modules/consciousness-settings'
+import { useProviderConfigStore } from './providers/config'
 
 vi.hoisted(() => {
   ;(globalThis as any).window = {
@@ -1291,6 +1292,24 @@ describe('chat store contract', () => {
       [AIRI_CHAT_SESSION_ID_HEADER]: 'session-1',
       [AIRI_CHAT_ROUND_ID_HEADER]: expect.any(String),
     })
+  })
+
+  it('keeps the OpenCode Go session header stable across turns', async () => {
+    useProviderConfigStore().ensureProvider('saved-go-provider', 'opencode-go')
+    activeProviderRef.value = 'saved-go-provider'
+    llmStreamMock.mockImplementation(async (_model: string, _chatProvider: GenerationProvider, _messages: Conversation, options: LlmStreamOptions) => {
+      if (!options.onStreamEvent)
+        throw new Error('Chat stream event handler is required')
+      await options.onStreamEvent({ type: 'text-delta', text: 'ok' })
+      await options.onStreamEvent({ type: 'finish' })
+    })
+
+    const store = useChatStore()
+    await store.ingest('first turn', { model: 'glm-5.3', chatProvider: provider })
+    await store.ingest('second turn', { model: 'glm-5.3', chatProvider: provider })
+
+    expect(llmStreamMock.mock.calls[0]?.[3]?.headers).toEqual({ 'x-opencode-session': 'session-1' })
+    expect(llmStreamMock.mock.calls[1]?.[3]?.headers).toEqual({ 'x-opencode-session': 'session-1' })
   })
 
   it('uses turn_index on message_sent instead of a second-turn alias', async () => {

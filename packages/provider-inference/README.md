@@ -17,6 +17,15 @@ const providers = listProviders()
 
 Browser-only definitions, such as Web Speech API, load in Node.js. Their availability hook returns `false` when the required Browser capability is absent.
 
+OpenCode Go leaves `User-Agent` to the browser transport. Node.js requests identify AIRI with `User-Agent: Project-AIRI`.
+This applies to generation, model discovery, and validation. The Go endpoint does not allow a custom `User-Agent` in CORS preflights.
+
+The Electron desktop app replaces the portable Go definition with a main-owned IPC transport.
+Go completion requests currently lack browser CORS support. Browser clients require a separate backend transport.
+OpenAI-compatible validators accept `fetchForConfig` for host-owned connectivity probes.
+Completion probes preserve the generation provider's transport. Connectivity probes cancel unread response bodies.
+Go model discovery preserves its pinned catalog when the host supplies a model-provider transport.
+
 The root entry exports Sherpaw model presets and a definition factory. Vite plugins can use `@proj-airi/provider-inference/sherpaw-transcription/models` to load only model metadata. The presets include stable IDs, languages, recognizer types, pinned revisions, and artifact URLs. Neither entry downloads or loads model files.
 
 `createSherpawTranscriptionDefinition` owns recognition, Worker cleanup, and the first model choice.

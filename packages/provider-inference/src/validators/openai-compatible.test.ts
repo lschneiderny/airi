@@ -86,6 +86,37 @@ describe('createOpenAICompatibleValidators', () => {
     expect(generateTextMock).not.toHaveBeenCalled()
   })
 
+  it('routes connectivity through the configured host transport', async () => {
+    const transport = vi.fn<typeof fetch>(async () => new Response('{}'))
+    const selectTransport = vi.fn(() => transport)
+    const [validator] = await getProviderValidators({
+      checks: [ProviderValidationCheck.Connectivity],
+      fetchForConfig: selectTransport,
+    })
+
+    const result = await validator.validator(config, provider, providerExtra, { t: mockT })
+
+    expect(result.valid).toBe(true)
+    expect(selectTransport).toHaveBeenCalledWith(config)
+    expect(transport).toHaveBeenCalledWith('https://example.com/v1/models', expect.objectContaining({ method: 'GET' }))
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('routes completion probes through the configured host transport', async () => {
+    const transport = vi.fn<typeof fetch>()
+    generateTextMock.mockResolvedValue({ text: 'pong' })
+    const [validator] = await getProviderValidators({
+      checks: [ProviderValidationCheck.ChatCompletions],
+      fetchForConfig: () => transport,
+    })
+
+    const result = await validator.validator({ ...config, model: 'glm-5.3' }, provider, providerExtra, { t: mockT })
+
+    expect(result.valid).toBe(true)
+    expect(generateTextMock).toHaveBeenCalledWith(expect.objectContaining({ fetch: transport, model: 'glm-5.3' }))
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('does not probe chat completions with a synthetic fallback model', async () => {
     listModelsMock.mockResolvedValue([])
 

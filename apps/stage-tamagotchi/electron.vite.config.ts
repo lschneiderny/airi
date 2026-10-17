@@ -244,6 +244,8 @@ export default defineConfig({
               '**/settings/system/general.vue',
               '**/settings/modules/home-assistant.vue',
               '**/settings/modules/mcp.vue',
+              '**/settings/providers/chat/\\[providerId\\].vue',
+              '**/settings/providers/vision/\\[providerId\\].vue',
               '**/devtools/index.vue',
               '**/settings/index.vue',
             ],

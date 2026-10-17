@@ -2,6 +2,13 @@
 
 Shared core for stage
 
+## OpenCode Go desktop transport
+
+`createOpenCodeGoDesktopProvider` in `libs/providers/providers/opencode-go/index` creates the desktop definition.
+The host supplies credential availability and a restricted fetch transport. The definition contains no Electron imports.
+The Electron app installs this definition before provider stores start. Main owns encrypted keys, request routing, and cancellation.
+Web clients keep the portable definition. Desktop setup and verification are described in `docs/assets/ai/adr/2026-10-15-opencode-go-desktop-network.md`.
+
 ## Experimental features
 
 Register flags in `libs/feature-flags.ts`. Read their state through `useFeatureFlagsStore().isEnabled(key)`.

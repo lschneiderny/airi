@@ -14,6 +14,8 @@ import { getGenerationProvider, isModelProvider, ProviderValidationCheck } from 
 interface OpenAICompatibleValidationOptions<TConfig extends { apiKey?: string, baseUrl?: string, model?: string }> {
   checks?: ProviderValidationCheck[]
   additionalHeaders?: Record<string, string>
+  /** Hosts can route probes through the same credential-owning transport as generation. */
+  fetchForConfig?: (config: TConfig) => typeof globalThis.fetch
   allowValidationWithoutModel?: boolean
   normalizeModelId?: (modelId: string) => string
   schedule?: {
@@ -143,6 +145,7 @@ export function createOpenAICompatibleValidators<TConfig extends { apiKey?: stri
       if (generation?.protocol === 'responses') {
         const result = responses({
           ...generation.config,
+          fetch: generation.config.fetch ?? options?.fetchForConfig?.(config),
           input: 'ping',
           maxOutputTokens: 16,
           store: false,
@@ -153,7 +156,8 @@ export function createOpenAICompatibleValidators<TConfig extends { apiKey?: stri
       }
       await generateText({
         apiKey: config.apiKey,
-        baseURL: config.baseUrl!,
+        baseURL: generation?.config.baseURL ?? String(config.baseUrl ?? ''),
+        fetch: generation?.config.fetch ?? options?.fetchForConfig?.(config),
         headers: additionalHeaders,
         model: normalizedModel,
         messages: message.messages(message.user('ping')),
@@ -272,7 +276,7 @@ export function createOpenAICompatibleValidators<TConfig extends { apiKey?: stri
         const timeout = setTimeout(() => controller.abort(), 10_000)
 
         try {
-          const response = await fetch(modelsUrl, {
+          const response = await (options?.fetchForConfig?.(config) ?? fetch)(modelsUrl, {
             method: 'GET',
             headers: {
               ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
@@ -288,6 +292,7 @@ export function createOpenAICompatibleValidators<TConfig extends { apiKey?: stri
               : `Connectivity check failed: ${errorMessage}`
             errors.push({ error: new Error(reason) })
           }
+          await response.body?.cancel()
         }
         catch (e) {
           const errorMessage = errorMessageFrom(e) || 'Unknown error.'

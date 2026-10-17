@@ -19,6 +19,8 @@ import { handleHotUpdate, routes } from 'vue-router/auto-routes'
 
 import App from './App.vue'
 
+import { installGoNetwork } from './bridges/opencode-go'
+import { migrateGoCredentials } from './bridges/opencode-go-migration'
 import { i18n } from './modules/i18n'
 import { resolveRendererWindowContext } from './window-context'
 
@@ -46,8 +48,10 @@ configureAnalyticsAdapter(async (options) => {
   const { createOpenpanelAdapter } = await import('@proj-airi/stage-ui/libs/product-signals/openpanel')
   return createOpenpanelAdapter(options)
 })
+
 registerAuthorizationHandler(browserAuthorizationHandler)
 
+const goNetwork = installGoNetwork()
 const pinia = createPinia()
 const synced = setupSynced({
   leadership: resolveRendererWindowContext().leadership,
@@ -70,17 +74,35 @@ if (import.meta.hot) {
   })
 }
 
-createApp(App)
-  .use(synced.vue)
-  .use(MotionPlugin)
-  // TODO: Fix autoAnimatePlugin type error
-  .use(autoAnimatePlugin as unknown as Plugin)
-  .use(router)
-  .use(pinia)
-  .use(PiniaColada)
-  .use(i18n)
-  .use(Tres)
-  .use(trackButtonPlugin)
-  // The stage window registers a global hold shortcut. Every window shares this app, so the settings window offers the mode too.
-  .provide(pushToTalkTriggerKey, true)
-  .mount('#app')
+function mount() {
+  createApp(App)
+    .use(synced.vue)
+    .use(MotionPlugin)
+    // TODO: Fix autoAnimatePlugin type error
+    .use(autoAnimatePlugin as unknown as Plugin)
+    .use(router)
+    .use(pinia)
+    .use(PiniaColada)
+    .use(i18n)
+    .use(Tres)
+    .use(trackButtonPlugin)
+    // The stage window registers a global hold shortcut. Every window shares this app, so the settings window offers the mode too.
+    .provide(pushToTalkTriggerKey, true)
+    .mount('#app')
+}
+
+async function start() {
+  if (resolveRendererWindowContext().leadership === 'leader-only') {
+    try {
+      await migrateGoCredentials(localStorage, goNetwork)
+    }
+    catch {
+      // A failed transfer must retain the original keys. Main still refuses
+      // inference without a saved credential, while other providers can start.
+      console.warn('OpenCode Go credential transfer failed. Existing local copies were retained. Open Go settings to save the key again.')
+    }
+  }
+  mount()
+}
+
+void start()
