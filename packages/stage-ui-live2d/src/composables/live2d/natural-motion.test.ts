@@ -1,6 +1,12 @@
+import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
+
 import { describe, expect, it } from 'vitest'
 
+import { Emotion } from '../../constants/emotions'
 import { Live2DNaturalMotion } from './natural-motion'
+
+const idle: PerformanceState = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }
+const headAxes = ['headX', 'headY', 'headZ'] as const
 
 type Frame = ReturnType<Live2DNaturalMotion['advance']>
 
@@ -127,7 +133,7 @@ describe('natural motion', () => {
   it('applies voice activity to mouth, breath, and head pitch only', () => {
     const voiced = new Live2DNaturalMotion({ seed: 29 })
     const quiet = new Live2DNaturalMotion({ seed: 29 })
-    voiced.setVoice({ speaking: true, speechActiveOrRecent: true })
+    voiced.setVoice({ speaking: true, speechActiveOrRecent: true, level: 0 })
     const pairs = Array.from({ length: 5 * 60 * 60 + 1 }, (_, frame) => [voiced.advance(frame / 60), quiet.advance(frame / 60)])
     expect(Math.max(...pairs.map(([v]) => v.face.silentMouthOpen))).toBe(0)
     expect(Math.max(...pairs.map(([, q]) => q.face.silentMouthOpen))).toBeGreaterThan(0)
@@ -138,6 +144,118 @@ describe('natural motion', () => {
     const pitch = pairs.map(([v, q]) => Math.abs(v.pose.headY - q.pose.headY))
     expect(Math.max(...pitch)).toBeGreaterThan(0)
     expect(Math.max(...pitch)).toBeLessThanOrEqual(0.001)
+  })
+
+  it('cross-fades a state switch without a frame jump', () => {
+    const switched = new Live2DNaturalMotion({ seed: 31 })
+    const control = new Live2DNaturalMotion({ seed: 31 })
+    for (let frame = 0; frame <= 20 * 60; frame++) {
+      switched.advance(frame / 60)
+      control.advance(frame / 60)
+    }
+    switched.setPerformance({ ...idle, mode: 'talking' }, 1, 20)
+    let largestStep = 0
+    let largestGap = 0
+    let previousGap = [0, 0, 0]
+    for (let frame = 20 * 60 + 1; frame <= 40 * 60; frame++) {
+      const [a, b] = [switched.advance(frame / 60), control.advance(frame / 60)]
+      const gap = headAxes.map(axis => a.pose[axis] - b.pose[axis])
+      // Around the switch the paths share shift timing; later, rescaled holds desynchronize
+      // shifts, so gap steps there measure different shifts rather than a jump.
+      if (frame <= 20 * 60 + 30)
+        largestStep = Math.max(largestStep, ...gap.map((value, axis) => Math.abs(value - previousGap[axis])))
+      largestGap = Math.max(largestGap, ...gap.map(Math.abs))
+      previousGap = gap
+    }
+    // The switch never jumps a frame, yet the state visibly changes the motion.
+    expect(largestStep).toBeLessThan(0.02)
+    expect(largestGap).toBeGreaterThan(0.05)
+  })
+
+  it('scales head variability with user energy', () => {
+    const deviation = (energy: number) => {
+      const motion = new Live2DNaturalMotion({ seed: 37 })
+      motion.setPerformance(idle, energy, 0)
+      const axes: number[][] = [[], [], []]
+      for (let frame = 0; frame <= 30 * 60 * 30; frame++) {
+        const { pose } = motion.advance(frame / 30)
+        headAxes.forEach((axis, index) => axes[index].push(pose[axis]))
+      }
+      return Math.hypot(...axes.map(standardDeviation))
+    }
+    const ratio = deviation(0) / deviation(1)
+    expect(ratio).toBeGreaterThanOrEqual(0.45)
+    expect(ratio).toBeLessThanOrEqual(0.65)
+  })
+
+  it('adds emotion impulses on top of the pose without resetting it', () => {
+    const excited = new Live2DNaturalMotion({ seed: 41 })
+    const control = new Live2DNaturalMotion({ seed: 41 })
+    for (let frame = 0; frame <= 10 * 60; frame++) {
+      excited.advance(frame / 60)
+      control.advance(frame / 60)
+    }
+    excited.impulse(Emotion.Happy, 1, 10)
+    const start = excited.advance(10 + 1 / 60)
+    // The frame the impulse starts in stays continuous with the control path.
+    for (const axis of headAxes)
+      expect(Math.abs(start.pose[axis] - control.advance(10 + 1 / 60).pose[axis])).toBeLessThan(0.02)
+    let peakSmile = 0
+    let peakLift = 0
+    for (let frame = 10 * 60 + 2; frame <= 13 * 60; frame++) {
+      const [a, b] = [excited.advance(frame / 60), control.advance(frame / 60)]
+      peakSmile = Math.max(peakSmile, a.face.eyeSmile - b.face.eyeSmile)
+      peakLift = Math.max(peakLift, Math.abs(a.pose.headY - b.pose.headY))
+      if (frame === 13 * 60) {
+        // Three seconds later the impulse has decayed onto the unreset control posture.
+        for (const axis of headAxes)
+          expect(Math.abs(a.pose[axis] - b.pose[axis])).toBeLessThanOrEqual(0.03)
+      }
+    }
+    expect(peakSmile).toBeGreaterThan(0.3)
+    expect(peakLift).toBeGreaterThan(0.03)
+  })
+
+  it('treats a neutral impulse as a no-op', () => {
+    const neutral = new Live2DNaturalMotion({ seed: 43 })
+    const control = new Live2DNaturalMotion({ seed: 43 })
+    neutral.advance(0)
+    control.advance(0)
+    neutral.impulse(Emotion.Neutral, 1, 5)
+    for (const time of [5, 5.5, 8, 12])
+      expect(neutral.advance(time)).toEqual(control.advance(time))
+  })
+
+  it('nods on speech onsets from the voice level', () => {
+    const voiced = new Live2DNaturalMotion({ seed: 47 })
+    const control = new Live2DNaturalMotion({ seed: 47 })
+    let largest = 0
+    for (let frame = 0; frame <= 60 * 60; frame++) {
+      const time = frame / 60
+      // Syllable bursts every 0.3 s; `speaking` stays false so only the level differs.
+      voiced.setVoice({ speaking: false, speechActiveOrRecent: false, level: time % 0.3 < 0.12 ? 0.8 : 0 })
+      const [a, b] = [voiced.advance(time), control.advance(time)]
+      largest = Math.max(largest, ...headAxes.map(axis => Math.abs(a.pose[axis] - b.pose[axis])))
+    }
+    expect(largest).toBeGreaterThan(0.015)
+    expect(largest).toBeLessThan(0.1)
+  })
+
+  it('reacts once per reactSeq change after the first state', () => {
+    const woken = new Live2DNaturalMotion({ seed: 53 })
+    const control = new Live2DNaturalMotion({ seed: 53 })
+    // A reaction that predates the controller is stale, so the first state only records the sequence.
+    woken.setPerformance({ ...idle, reactSeq: 4, reactKind: 'wake' }, 0.5, 0)
+    control.setPerformance({ ...idle, reactSeq: 4, reactKind: 'wake' }, 0.5, 0)
+    expect(woken.advance(3)).toEqual(control.advance(3))
+    woken.setPerformance({ ...idle, reactSeq: 5, reactKind: 'wake' }, 0.5, 3)
+    woken.setPerformance({ ...idle, reactSeq: 5, reactKind: 'wake' }, 0.5, 3.1)
+    let lift = 0
+    for (let frame = 3 * 60 + 1; frame <= 4 * 60; frame++)
+      lift = Math.max(lift, woken.advance(frame / 60).pose.headY - control.advance(frame / 60).pose.headY)
+    expect(lift).toBeGreaterThan(0.03)
+    // The camera glance moves the gaze toward (0, 0).
+    expect(Math.hypot(woken.advance(4).fixation.x, woken.advance(4).fixation.y)).toBeLessThan(0.05)
   })
 
   it('keeps head variability independent of frame partition', () => {

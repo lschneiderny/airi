@@ -1,3 +1,5 @@
+import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
+
 import type { LivelinessTrace } from './liveliness'
 
 import process from 'node:process'
@@ -7,8 +9,10 @@ import { writeFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import { Live2DNaturalMotion } from '../natural-motion'
-import { scoreLiveliness } from './liveliness'
+import { scoreLiveliness, scoreTalkingRelative } from './liveliness'
+import { createRandomStream } from './random'
 import { referenceStats } from './reference-stats'
+import { NaturalSpeechEmphasis } from './speech-emphasis'
 
 // Metrics owned by the motion layers. Later layers append their metrics here.
 // Generated scoring judges blink on `generatedBlinkBands` (liveliness.ts), not the recording bands.
@@ -76,7 +80,80 @@ function simulate(seed: number): LivelinessTrace {
   return { t, channels }
 }
 
+const talkingSeconds = 10 * 60
+const talkingWarmUpSeconds = 60
+const idleState: PerformanceState = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }
+
+/**
+ * Syllable envelope fixture at 120 Hz: phrases of 10-16 syllables at 4 Hz, separated by
+ * pauses that make up 30% of the time. Each syllable is a raised-sine burst that closes the
+ * mouth, with a random peak of 0.5-0.9. Returns the level per frame and the phrase onsets.
+ */
+function syllableFixture(seconds: number, seed: number) {
+  const random = createRandomStream(seed)
+  const level = new Float64Array(seconds * simulationRate + 1)
+  const onsets: number[] = []
+  let time = 0.5
+  while (time < seconds) {
+    const syllables = 10 + Math.floor(7 * random())
+    onsets.push(time)
+    for (let syllable = 0; syllable < syllables; syllable++) {
+      const peak = 0.5 + 0.4 * random()
+      const start = time + syllable * 0.25
+      for (let frame = Math.ceil(start * simulationRate); frame < (start + 0.25) * simulationRate && frame < level.length; frame++)
+        level[frame] = peak * Math.sin(Math.PI * (frame / simulationRate - start) / 0.25) ** 2
+    }
+    const phrase = syllables * 0.25
+    time += phrase + phrase * 0.3 / 0.7
+  }
+  return { level, onsets }
+}
+
+/** Head-only desk trace in reference units; `talking` drives the talking state and the syllable fixture after warm-up. */
+function simulateVoice(seed: number, talking: boolean) {
+  const motion = new Live2DNaturalMotion({ seed, home: 'desk' })
+  const fixture = syllableFixture(talkingSeconds, seed + 100)
+  motion.advance(0)
+  if (talking)
+    motion.setPerformance({ ...idleState, mode: 'talking' }, 0.5, 0)
+  const t: number[] = []
+  const channels: Record<string, number[]> = { ParamAngleX: [], ParamAngleY: [], ParamAngleZ: [] }
+  const warmUp = talkingWarmUpSeconds * simulationRate
+  for (let frame = 1; frame <= warmUp + talkingSeconds * simulationRate; frame++) {
+    const scored = frame - warmUp
+    if (talking && scored >= 0)
+      motion.setVoice({ speaking: true, speechActiveOrRecent: true, level: fixture.level[scored] })
+    const { pose } = motion.advance(frame / simulationRate)
+    if (scored < 0 || frame % (simulationRate / traceRate) !== 0)
+      continue
+    t.push(scored / simulationRate)
+    channels.ParamAngleX.push(pose.headX * 30)
+    channels.ParamAngleY.push(pose.headY * 30)
+    channels.ParamAngleZ.push(pose.headZ * 30)
+  }
+  return { trace: { t, channels }, onsets: fixture.onsets }
+}
+
 describe('natural motion liveliness gate', () => {
+  it.each([1, 2, 3])('moves more while talking, locked to speech onsets, for seed %i', (seed) => {
+    const talking = simulateVoice(seed, true)
+    const silence = simulateVoice(seed, false)
+    const report = scoreTalkingRelative(talking.trace, silence.trace, talking.onsets)
+    console.info(`talking seed ${seed}: speedRatio=${report.speedRatio.value} onsetEnrichment=${report.onsetEnrichment.value}`)
+    expect(report.speedRatio.pass).toBe(true)
+    expect(report.onsetEnrichment.pass).toBe(true)
+  }, 20_000)
+
+  it('emphasizes constant loud audio at most once in 10 s', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const emphasis = new NaturalSpeechEmphasis(createRandomStream(seed))
+      // Silence, then 10 s of constant loud audio; every detected onset is accepted.
+      for (let frame = 1; frame <= 10.5 * simulationRate; frame++)
+        emphasis.step(1 / simulationRate, frame < 0.5 * simulationRate ? 0 : 0.9, 1)
+      expect(emphasis.emphasisCount).toBeLessThanOrEqual(1)
+    }
+  })
+
   it.each([1, 2, 3])('passes every gated metric for seed %i', (seed) => {
     const trace = simulate(seed)
     const traceOut = process.env.NATURAL_TRACE_OUT

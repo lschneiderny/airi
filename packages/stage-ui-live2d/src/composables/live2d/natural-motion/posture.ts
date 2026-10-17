@@ -60,6 +60,8 @@ export class NaturalPostureLayers {
   private shiftStart = 0
   private shiftDuration = 0
   private nextShiftAt: number
+  /** Seconds taken from the pending hold by `advanceShift`, returned to the hold after the advanced shift. */
+  private holdCarry = 0
 
   constructor(private readonly home: Vec3, streams: PostureStreams) {
     this.drift = [0.08, 0.12, 0.025].map(sd => new FilteredOu(streams.drift, sd, 90, 5))
@@ -86,6 +88,17 @@ export class NaturalPostureLayers {
   /** Delays the next shift start, so a coordinated gaze shift can lead it. Later holds keep their drawn durations. */
   postponeShift(seconds: number) {
     this.nextShiftAt += seconds
+  }
+
+  /**
+   * Starts the next shift up to `seconds` earlier, never before now, so a speech onset can lead it.
+   * The advanced time is added to the hold after that shift, so the long-run shift rate is unchanged:
+   * shifts move earlier, they are never added.
+   */
+  advanceShift(seconds: number) {
+    const advanced = Math.max(0, Math.min(seconds, this.nextShiftAt - this.time))
+    this.nextShiftAt -= advanced
+    this.holdCarry += advanced
   }
 
   /** Advances all processes by `dt` seconds and returns the limited head pose. */
@@ -120,7 +133,8 @@ export class NaturalPostureLayers {
     this.shiftTo = to
     this.shiftStart = at
     this.shiftDuration = 0.22 + 0.4 * Math.sqrt(distance / 0.35)
-    this.nextShiftAt = at + this.shiftDuration + this.drawHold()
+    this.nextShiftAt = at + this.shiftDuration + this.drawHold() + this.holdCarry
+    this.holdCarry = 0
     this.shiftCount++
   }
 

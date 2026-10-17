@@ -1,3 +1,4 @@
+import type { GazeTargetWeights } from './energy'
 import type { NaturalPostureLayers } from './posture'
 import type { RandomStream } from './random'
 
@@ -22,6 +23,8 @@ const targets = {
   camera: { x: 0, y: 0 },
   desk: { x: 0, y: -0.18 },
   peripheral: { x: 0.12, y: 0 },
+  // Thinking glances aside and up; selected only when its weight is above 0.
+  peripheralUp: { x: 0.15, y: 0.12 },
 }
 const targetJitter = 0.02
 // Share of fixation choices that land on an active cursor.
@@ -50,6 +53,8 @@ const attentionLead = { min: 0.03, max: 0.08 }
 export class NaturalGazeLayer {
   /** Probability that an autonomous fixation targets the camera; state presets drive it in a later layer. @default 0.5 */
   cameraFixationProbability = 0.5
+  /** Relative weights of the non-camera targets; state presets drive them. @default desk 1, peripheral 1, peripheralUp 0 */
+  targetWeights: Readonly<GazeTargetWeights> = { desk: 1, peripheral: 1, peripheralUp: 0 }
   /** Increments when a saccade begins, so blink and face layers can react to gaze shifts. */
   saccadeCount = 0
   /** Normalized eye-space distance of the latest saccade. */
@@ -89,6 +94,14 @@ export class NaturalGazeLayer {
     this.saccadeTo(this.drawTarget(), at)
   }
 
+  /**
+   * Saccades to `point` at `at` and holds it for `hold` seconds before autonomous
+   * fixations resume. Used by emotion impulses and desktop reactions.
+   */
+  glance(point: GazePoint, hold: number, at: number) {
+    this.saccadeTo(point, at, hold)
+  }
+
   /** Advances by `dt` seconds and returns the gaze point before head compensation. */
   step(dt: number): GazePoint {
     this.time += dt
@@ -117,7 +130,7 @@ export class NaturalGazeLayer {
     return { x: this.from.x + (to.x - this.from.x) * progress, y: this.from.y + (to.y - this.from.y) * progress }
   }
 
-  private saccadeTo(target: Target, at: number) {
+  private saccadeTo(target: Target, at: number, hold?: number) {
     const from = this.gazeAt(at)
     const to = this.resolve(target)
     // Amplitude in approximate degrees: 20 per normalized eye unit.
@@ -126,7 +139,7 @@ export class NaturalGazeLayer {
     this.target = target
     this.saccadeStart = at
     this.saccadeDuration = Math.min(0.090, Math.max(0.035, 0.030 + 0.0025 * amplitude))
-    this.nextFixationAt = at + this.saccadeDuration + this.drawHold()
+    this.nextFixationAt = at + this.saccadeDuration + (hold ?? this.drawHold())
     this.saccadeSize = amplitude / 20
     this.saccadeCount++
   }
@@ -137,11 +150,18 @@ export class NaturalGazeLayer {
     const choice = this.random()
     if (choice < this.cameraFixationProbability)
       return this.jittered(targets.camera)
-    // The remainder splits evenly between desk and a randomly sided peripheral target.
-    if (choice < this.cameraFixationProbability + (1 - this.cameraFixationProbability) / 2)
+    // The remainder splits by weight between desk and randomly sided peripheral targets.
+    // With the default weights (1, 1, 0) the thresholds equal the even desk/peripheral split.
+    const { desk, peripheral, peripheralUp } = this.targetWeights
+    const rest = 1 - this.cameraFixationProbability
+    const total = desk + peripheral + peripheralUp
+    if (choice < this.cameraFixationProbability + rest * desk / total)
       return this.jittered(targets.desk)
     const side = this.random() < 0.5 ? -1 : 1
-    return this.jittered({ x: side * targets.peripheral.x, y: targets.peripheral.y })
+    const sideTarget = peripheralUp > 0 && choice >= this.cameraFixationProbability + rest * (desk + peripheral) / total
+      ? targets.peripheralUp
+      : targets.peripheral
+    return this.jittered({ x: side * sideTarget.x, y: sideTarget.y })
   }
 
   private jittered(point: GazePoint): GazePoint {

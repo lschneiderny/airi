@@ -10,6 +10,11 @@ import { FilteredOu } from './processes'
 export interface NaturalFaceOutput {
   /** Multiplies eye openness; 1 leaves the lids untouched. */
   eyeOpenMultiplier: number
+  /**
+   * Additive eye openness from emotion impulses; the idle face keeps it at 0.
+   * The adapter adds it after the multiplier and skips it on expression-closed eyes.
+   */
+  eyeOpenHint: number
   /** Shared brow offsets; the per-side values add tiny independent asymmetry. */
   browY: number
   browAngle: number
@@ -94,7 +99,7 @@ export class NaturalFaceLayer {
 
   /** Neutral output: no offsets, eyes fully open. */
   static rest(): NaturalFaceOutput {
-    return { eyeOpenMultiplier: 1, browY: 0, browAngle: 0, browLY: 0, browRY: 0, browLAngle: 0, browRAngle: 0, eyeSmile: 0, mouthForm: 0, silentMouthOpen: 0, cheek: 0 }
+    return { eyeOpenMultiplier: 1, eyeOpenHint: 0, browY: 0, browAngle: 0, browLY: 0, browRY: 0, browLAngle: 0, browRAngle: 0, eyeSmile: 0, mouthForm: 0, silentMouthOpen: 0, cheek: 0 }
   }
 
   get output(): NaturalFaceOutput {
@@ -127,6 +132,7 @@ export class NaturalFaceLayer {
     const [leftY, rightY, leftAngle, rightAngle] = this.browSide.map(side => side.step(dt))
     this.current = {
       eyeOpenMultiplier: (1 - 0.04 * Math.abs(this.lid.step(dt))) * (1 - pulseAt(this.narrowing, this.time)),
+      eyeOpenHint: 0,
       browY,
       browAngle,
       browLY: browY + leftY,
