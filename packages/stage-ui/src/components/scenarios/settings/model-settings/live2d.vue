@@ -39,6 +39,7 @@ const settings = useSettingsLive2d()
 const {
   live2dMotionDriver,
   live2dEyeTracking,
+  live2dNaturalCursorAttention,
   live2dModelEyeOffset,
   live2dIdleAnimationEnabled,
   live2dAutoBlinkEnabled,
@@ -55,6 +56,11 @@ const motionDriverOptions = computed<SelectTabOption<Live2DMotionDriver>[]>(() =
     value: 'universal',
     label: t('settings.live2d.animation.motion-driver.options.universal.title'),
     description: t('settings.live2d.animation.motion-driver.options.universal.description'),
+  },
+  {
+    value: 'natural',
+    label: t('settings.live2d.animation.motion-driver.options.natural.title'),
+    description: t('settings.live2d.animation.motion-driver.options.natural.description'),
   },
   {
     value: 'magic',
@@ -359,7 +365,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
     :expand="false"
   >
     <label :class="['flex flex-wrap gap-4']">
-      <div :class="['min-w-0 flex-1']">
+      <div :class="['min-w-0 flex-1 basis-full sm:basis-auto']">
         <div :class="['flex items-center gap-1 text-sm font-medium']">
           {{ t('settings.live2d.animation.motion-driver.title') }}
         </div>
@@ -376,13 +382,21 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
     </label>
     <MagicMotionSettings v-if="live2dMotionDriver === 'magic'" />
     <FieldCheckbox
+      v-if="live2dMotionDriver === 'natural'"
+      v-model="live2dNaturalCursorAttention"
+      :label="t('settings.live2d.animation.natural-cursor-attention.title')"
+      :description="t('settings.live2d.animation.natural-cursor-attention.description')"
+      placement="right"
+    />
+    <FieldCheckbox
+      v-else
       v-model="live2dEyeTracking"
       :label="t('settings.live2d.animation.focus.title')"
       :description="t('settings.live2d.animation.focus.description')"
       :disabled="live2dMotionDriver === 'magic'"
       placement="right"
     />
-    <div v-if="live2dMotionDriver === 'universal' && live2dEyeTracking" :class="['grid grid-cols-4']">
+    <div v-if="(live2dMotionDriver === 'universal' && live2dEyeTracking) || (live2dMotionDriver === 'natural' && live2dNaturalCursorAttention)" :class="['grid grid-cols-4']">
       <PropertyPoint
         v-model:x="live2dModelEyeOffset.x"
         v-model:y="live2dModelEyeOffset.y"
@@ -401,7 +415,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       v-model="live2dForceIdleEyeAnimation"
       :label="t('settings.live2d.animation.force-idle-eye-animation.title')"
       :description="t('settings.live2d.animation.force-idle-eye-animation.description')"
-      :disabled="live2dMotionDriver === 'magic'"
+      :disabled="live2dMotionDriver !== 'universal'"
       placement="right"
     />
     <FieldCheckbox
@@ -428,7 +442,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       :placeholder="t('settings.live2d.animation.idle-motion.placeholder')"
       :select-class="['w-full']"
       :content-min-width="256"
-      :disabled="live2dMotionDriver === 'magic'"
+      :disabled="live2dMotionDriver !== 'universal'"
       @update:model-value="handleMotionSelect"
     >
       <template #empty>

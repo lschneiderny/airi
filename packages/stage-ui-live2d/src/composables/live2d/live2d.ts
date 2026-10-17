@@ -1,10 +1,11 @@
 import { useLocalStorageManualReset, useVersionedLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { defineStore } from 'pinia'
 
-export type Live2DMotionDriver = 'magic' | 'universal'
+export type Live2DMotionDriver = 'magic' | 'natural' | 'universal'
 
 const live2dMotionDriver = useLocalStorageManualReset<Live2DMotionDriver>('settings/live2d/motion-driver', 'universal')
 const live2dEyeTracking = useLocalStorageManualReset<boolean>('settings/live2d/eye-tracking', true)
+const live2dNaturalCursorAttention = useLocalStorageManualReset<boolean>('settings/live2d/natural-cursor-attention', true)
 /** Offset from model center to the eyes of the model, in percentages of full model width/height */
 const live2dModelEyeOffset = useLocalStorageManualReset('settings/live2d/model-eye-offset', { x: 0, y: 0 })
 const live2dIdleAnimationEnabled = useLocalStorageManualReset<boolean>('settings/live2d/idle-animation-enabled', true)
@@ -38,6 +39,7 @@ const live2dRenderScale = useLocalStorageManualReset<number>('settings/live2d/re
 function resetState() {
   live2dMotionDriver.reset()
   live2dEyeTracking.reset()
+  live2dNaturalCursorAttention.reset()
   live2dModelEyeOffset.reset()
   live2dIdleAnimationEnabled.reset()
   live2dForceIdleEyeAnimation.reset()
@@ -53,6 +55,7 @@ export const useSettingsLive2d = defineStore('settings-live2d', () => {
   return {
     live2dMotionDriver,
     live2dEyeTracking,
+    live2dNaturalCursorAttention,
     live2dModelEyeOffset,
     live2dIdleAnimationEnabled,
     live2dForceIdleEyeAnimation,

@@ -10,6 +10,7 @@ import type {
 
 import type { PixiLive2DInternalModel } from '../../../composables/live2d'
 
+import { Point } from '@pixi/math'
 import { listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
 import { ambientLightDefaults, ambientLightNeutralEnvironment, ambientLightPerceptualLevel, wholeWindowRectangle } from '@proj-airi/stage-shared/screen-ambient-light'
 import { useTheme } from '@proj-airi/ui'
@@ -20,7 +21,7 @@ import { Mutex } from 'es-toolkit'
 import { storeToRefs } from 'pinia'
 import { DropShadowFilter } from 'pixi-filters'
 import { Live2DFactory, Live2DModel, MotionPriority } from 'pixi-live2d-display/cubism4'
-import { computed, onMounted, onUnmounted, ref, shallowRef, toRef, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, toRef, watch } from 'vue'
 
 import {
   createBeatSyncController,
@@ -39,8 +40,10 @@ import {
   useMotionUpdatePluginLightSquint,
   useMotionUpdatePluginLipSync,
   useMotionUpdatePluginManualControl,
+  useSettingsLive2d,
 } from '../../../composables/live2d'
 import { useFitModel } from '../../../composables/live2d/fit-model'
+import { Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-motion-adapter'
 import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { ScreenAmbientLightFilter } from '../../../filters/screen-ambient-light'
 import { getLive2DMotionControlModelOffset, useL2dViewControl, useLive2DMotionControl, useLive2dParams } from '../../../stores'
@@ -109,7 +112,11 @@ const { position, scale } = useL2dViewControl()
 const {
   breathControl: manualBreathControl,
   control: manualMotionControl,
+  exclusiveOwnerId,
 } = storeToRefs(useLive2DMotionControl())
+const { live2dMotionDriver, live2dNaturalCursorAttention } = storeToRefs(useSettingsLive2d())
+let naturalMotion: Live2DNaturalMotionAdapter | undefined
+const localFocus = new Point()
 
 const modelSrcRef = toRef(() => props.modelSrc)
 
@@ -277,6 +284,8 @@ const disposeShouldUpdateView = live2dStore.onShouldUpdateView(() => {
 // Each cached texture holds a listener into the renderer that uploaded it, so a
 // texture left there keeps that renderer's WebGL context and GPU memory alive.
 function destroyModel(target: Live2DModel) {
+  naturalMotion?.dispose()
+  naturalMotion = undefined
   target.destroy({ texture: true, baseTexture: true })
 }
 
@@ -415,6 +424,8 @@ async function performModelLoad() {
 
     if (selectedMotionGroup !== null && selectedMotionIndex && live2dIdleAnimationEnabled.value) {
       setTimeout(() => {
+        if (!live2dIdleAnimationEnabled.value)
+          return
         console.info('Playing selected runtime motion:', selectedMotionGroup, selectedMotionIndex)
         currentMotion.value = {
           group: selectedMotionGroup,
@@ -474,6 +485,38 @@ async function performModelLoad() {
     motionManagerUpdate.register(useMotionUpdatePluginManualControl(manualMotionControl, manualMotionSpring), 'final')
     motionManagerUpdate.register(useMotionUpdatePluginLipSync(mouthOpenSize, nowSpeaking), 'final')
     motionManagerUpdate.register(useMotionUpdatePluginBreathControl(manualBreathControl), 'final')
+    const naturalAdapter = new Live2DNaturalMotionAdapter(
+      internalModel,
+      coreModel.getModel().parameters,
+      () => {
+        let cursor = null
+        if (live2dNaturalCursorAttention.value && props.eyeFocusSourceActive) {
+          localFocus.set(props.focusAt.x, props.focusAt.y)
+          live2DModel.toModelPosition(localFocus, localFocus)
+          cursor = {
+            x: Math.max(-1, Math.min(1, localFocus.x / internalModel.originalWidth * 2 - 1)),
+            y: Math.max(-1, Math.min(1, 1 - localFocus.y / internalModel.originalHeight * 2)),
+          }
+        }
+        return {
+          driver: live2dMotionDriver.value,
+          exclusive: !!exclusiveOwnerId.value,
+          manualActive: manualMotionControl.value.active,
+          springActive: manualMotionSpring.output.value.active,
+          motion: {
+            group: motionManager.state.currentGroup,
+            idleGroup: motionManager.groups.idle,
+            selectedIdleGroup: localStorage.getItem('selected-runtime-motion-group'),
+            priority: motionManager.state.currentPriority,
+          },
+          cursor,
+        }
+      },
+      document,
+    )
+    naturalMotion = naturalAdapter
+    naturalAdapter.setPaused(paused.value)
+    motionManagerUpdate.register(ctx => naturalAdapter.frame(ctx.now), 'final')
 
     const hookedUpdate = motionManager.update as (model: PixiLive2DInternalModel['coreModel'], now: number) => boolean
     motionManager.update = function (model: PixiLive2DInternalModel['coreModel'], now: number) {
@@ -864,11 +907,42 @@ watch(() => modelParameters.value.rightEyebrowForm, (value) => {
 watch(live2dIdleAnimationEnabled, (enabled) => {
   if (!enabled && model.value) {
     const internalModel = model.value.internalModel
+    const group = internalModel.motionManager.state.currentGroup
+    if (live2dMotionDriver.value === 'natural'
+      && group && group !== internalModel.motionManager.groups.idle
+      && group !== localStorage.getItem('selected-runtime-motion-group')) {
+      return
+    }
     if (internalModel?.motionManager) {
       internalModel.motionManager.stopAllMotions()
     }
   }
 })
+
+watch(live2dMotionDriver, async (driver, previous) => {
+  const manager = model.value?.internalModel.motionManager
+  if (!manager)
+    return
+  const group = manager.state.currentGroup
+  const selected = localStorage.getItem('selected-runtime-motion-group')
+  if (driver === 'natural' && group && (group === manager.groups.idle || group === selected))
+    manager.stopAllMotions()
+  if (previous === 'natural' && driver === 'universal' && selected) {
+    await nextTick()
+    if (live2dMotionDriver.value !== 'universal' || !live2dIdleAnimationEnabled.value
+      || model.value?.internalModel.motionManager !== manager) {
+      return
+    }
+    const currentGroup = manager.state.currentGroup
+    if (currentGroup && currentGroup !== manager.groups.idle && currentGroup !== selected)
+      return
+    const index = localStorage.getItem('selected-runtime-motion-index')
+    if (index !== null)
+      model.value?.motion(selected, Number.parseInt(index), MotionPriority.FORCE)
+  }
+})
+
+watch(paused, value => naturalMotion?.setPaused(value))
 
 // Watch for expression system toggle — nullify/restore SDK managers at runtime
 watch(live2dExpressionEnabled, (enabled) => {

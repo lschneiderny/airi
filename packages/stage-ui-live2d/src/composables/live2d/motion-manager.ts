@@ -18,6 +18,7 @@ export type PixiLive2DInternalModel = InternalModel & {
   breath?: unknown
   eyeBlink?: CubismEyeBlink
   coreModel: CubismModel
+  updateFocus: Cubism4InternalModel['updateFocus']
 }
 
 export interface MotionManagerUpdateContext {
