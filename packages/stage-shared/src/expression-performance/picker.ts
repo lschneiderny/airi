@@ -8,6 +8,9 @@ import { acceptReaction, createReactionState, drawRandom } from './reaction-stre
 import { bandRank } from './types'
 
 type AutoSlot = 'face' | 'effect'
+
+/** A clear without a slot releases every slot an LLM can fill. */
+const clearedSlots = ['face', 'effect', 'prop'] as const satisfies readonly SlotCommand['slot'][]
 interface Tickets { gate: number, pick: number }
 interface Candidate { id: string, weight: number }
 
@@ -86,6 +89,16 @@ export function createPickerDecider(): Decider<PickerState> {
         decision.slots.push({ slot: entry.kind, expressionId: entry.id, holdSeconds: signal.holdSeconds ?? ctx.settings.naturalBands.clear.faceHold, until: signal.holdSeconds ? 'hold' : 'speech', turnId: signal.turnId })
         const occupants = entry.kind === 'prop' ? state.occupants : { ...state.occupants, [entry.kind]: entry.id }
         return { decision, state: { ...state, occupants, recency: { ...state.recency, [entry.id]: signal.at } } }
+      }
+      if (signal.kind === 'clear') {
+        // Reaction history and episode tickets stay, so a later escalation may refill a cleared slot.
+        const slots = signal.slot ? [signal.slot] : clearedSlots
+        decision.slots = slots.map(slot => ({ slot, expressionId: null, holdSeconds: 0, until: 'hold', turnId: signal.turnId }))
+        const occupants = {
+          face: slots.includes('face') ? null : state.occupants.face,
+          effect: slots.includes('effect') ? null : state.occupants.effect,
+        }
+        return { decision, state: { ...state, occupants } }
       }
       if (signal.kind !== 'emotion')
         return { decision, state }

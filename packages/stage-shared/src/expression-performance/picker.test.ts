@@ -158,3 +158,28 @@ describe('picker', () => {
     expect(decider.nextDeadline(state)).toBeNull()
   })
 })
+
+describe('picker clear signal', () => {
+  it('releases only the named slot and keeps the other occupant and the reaction history', () => {
+    const state = decider.decide(emotion(), ctx, decider.initial(1)).state
+
+    const result = decider.decide({ kind: 'clear', source: 'tool', slot: 'face', turnId: 'turn', at: 1 }, ctx, state)
+
+    expect(result.decision).toEqual({ episodes: [], slots: [{ slot: 'face', expressionId: null, holdSeconds: 0, until: 'hold', turnId: 'turn' }] })
+    expect(state.occupants.face).not.toBeNull()
+    expect(result.state.occupants.face).toBeNull()
+    expect(result.state.occupants.effect).toBe(state.occupants.effect)
+    expect(result.state.reaction).toEqual(state.reaction)
+  })
+
+  it('releases face, effect, and prop when no slot is named, unlike neutral', () => {
+    const state = decider.decide(emotion(), ctx, decider.initial(1)).state
+
+    const cleared = decider.decide({ kind: 'clear', source: 'act', at: 1 }, ctx, state)
+    const neutral = decider.decide({ kind: 'emotion', emotion: 'neutral', source: 'act', nominal: 0.6, at: 3, turnId: 'turn' }, ctx, state)
+
+    expect(cleared.decision.slots).toEqual((['face', 'effect', 'prop'] as const).map(slot => ({ slot, expressionId: null, holdSeconds: 0, until: 'hold', turnId: undefined })))
+    expect(cleared.state.occupants).toEqual({ face: null, effect: null })
+    expect(neutral.decision.slots.map(command => command.slot)).toEqual(['face', 'effect'])
+  })
+})

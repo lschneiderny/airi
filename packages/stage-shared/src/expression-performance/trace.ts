@@ -12,6 +12,7 @@ const contextSchema = strictObject({ catalog: array(CatalogEntrySchema), setting
 const signalSchema = variant('kind', [
   strictObject({ kind: literal('emotion'), source: picklist(['act', 'tool', 'devtools']), emotion, nominal: pipe(number(), finite(), minValue(0), maxValue(1)), turnId, at: seconds }),
   strictObject({ kind: literal('expression'), source: picklist(['act', 'tool']), expressionId: string(), holdSeconds: optional(seconds), turnId, at: seconds }),
+  strictObject({ kind: literal('clear'), source: picklist(['act', 'tool', 'devtools']), slot: optional(picklist(['face', 'effect', 'prop'])), turnId, at: seconds }),
   strictObject({ kind: literal('speech'), event: picklist(['clip-start', 'clip-end', 'clip-stopped', 'turn-end']), turnId: string(), clipId: optional(string()), at: seconds }),
   strictObject({ kind: literal('muted'), muted: boolean(), at: seconds }),
   strictObject({ kind: literal('timing'), event: strictObject({ id: string(), kind: picklist(['sentence_start', 'pause', 'utterance_end', 'emphasis']), turnId: string(), at: seconds }), at: seconds }),

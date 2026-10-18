@@ -65,6 +65,22 @@ describe('affect trace', () => {
     expect(wrapped.nextDeadline(wrapped.initial(1))).toBeNull()
   })
 
+  it('validates a clear signal and replays it exactly to the live slot commands', () => {
+    const signals: AffectSignal[] = [emotion(0), { kind: 'clear', source: 'tool', slot: 'face', at: 1 }, emotion(4), { kind: 'clear', source: 'devtools', turnId: 'turn', at: 5 }]
+    const trace = parse(AffectTraceSchema, { ...fixture(), entries: signals.map(signal => ({ type: 'signal', signal })) })
+    let state = picker.initial(1)
+    const live = signals.map((signal) => {
+      const result = picker.decide(signal, context, state)
+      state = result.state
+      return { at: signal.at, decision: result.decision }
+    })
+
+    expect(replayAffectTrace(trace, picker, { mode: 'exact' })).toEqual(live)
+    expect(live[1].decision.slots).toEqual([{ slot: 'face', expressionId: null, holdSeconds: 0, until: 'hold' }])
+    expect(live[3].decision.slots.map(command => [command.slot, command.expressionId, command.turnId])).toEqual([['face', null, 'turn'], ['effect', null, 'turn'], ['prop', null, 'turn']])
+    expect(safeParse(AffectTraceSchema, { ...fixture(), entries: [{ type: 'signal', signal: { kind: 'clear', source: 'tool', slot: 'outfit', at: 1 } }] }).success).toBe(false)
+  })
+
   it('refuses truncated traces and mismatched exact policies', () => {
     expect(() => replayAffectTrace({ ...fixture(), truncated: true }, picker, { mode: 'exact' })).toThrow('truncated')
     expect(() => replayAffectTrace({ ...fixture(), truncated: true }, picker, { mode: 'compare', seed: 1 })).toThrow('truncated')

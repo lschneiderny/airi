@@ -64,6 +64,13 @@ prompt:
     The available emotions:
   emoji: |
     Do not use emojis or text that a speaker cannot pronounce.
+  expressions: |
+    The character can show these expressions, listed by kind. Use a label as the
+    ACT "expression" field, or call the set_expression tool with it. Use no other
+    expression names.
+    {list}
+  expression-state: |
+    Current stage state: active expressions: {active}. Mood: {mood}.
   suffix: |
     The available actions:
 

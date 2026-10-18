@@ -1222,6 +1222,8 @@ defineExpose({
   applySlots: (commands: SlotCommand[], now: number) => expressionStore.applySlots(commands, now),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => expressionStore.onSpeech(event, turnId, now),
   setMuted: (muted: boolean) => expressionStore.setMuted(muted),
+  /** The Natural mood afterglow, or `null` while the Natural controller is not running. */
+  getMood: () => naturalMotion?.mood ?? null,
 })
 
 import.meta.hot?.dispose(() => {

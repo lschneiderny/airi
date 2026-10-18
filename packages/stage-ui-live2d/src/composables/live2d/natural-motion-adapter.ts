@@ -210,6 +210,11 @@ export class Live2DNaturalMotionAdapter {
     this.physicsOutputSkips = 0
   }
 
+  /** The Natural controller's mood afterglow, read by the stage for LLM state feedback. */
+  get mood() {
+    return this.controller.moodState
+  }
+
   /** Forwards the expression-performance switches and tunables to the Natural controller. */
   setPerformanceSettings(settings: ExpressionPerformanceSettings) {
     this.controller.setPerformanceSettings(settings)

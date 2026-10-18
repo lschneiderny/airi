@@ -158,6 +158,7 @@ defineExpose({
   applySlots: (commands: SlotCommand[], now: number) => live2dModelRef.value?.applySlots(commands, now),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => live2dModelRef.value?.onSpeech(event, turnId, now),
   setMuted: (muted: boolean) => live2dModelRef.value?.setMuted(muted),
+  getMood: () => live2dModelRef.value?.getMood() ?? null,
 })
 </script>
 

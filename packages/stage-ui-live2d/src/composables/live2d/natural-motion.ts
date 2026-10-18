@@ -254,6 +254,11 @@ export class Live2DNaturalMotion {
     this.pending.push({ kind: 'emotion', episode })
   }
 
+  /** The current mood afterglow; all zero at rest. */
+  get moodState(): { valence: number, arousal: number, tension: number } {
+    return { valence: this.mood.valence, arousal: this.mood.arousal, tension: this.mood.tension }
+  }
+
   /** Switches apply on the next grid step. Disabled mood keeps decaying but receives no new doses. */
   setPerformanceSettings(settings: ExpressionPerformanceSettings) {
     this.performanceSettings = structuredClone(settings)

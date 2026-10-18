@@ -273,35 +273,50 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   scene: () => live2dSceneRef.value,
   driver: () => live2dMotionDriver.value,
   playMotion: (group) => { currentMotion.value = { group } },
+  mood: () => live2dSceneRef.value?.getMood() ?? null,
 })
 
-/** An emotion with its origin; the turn id keeps speech-bound expressions inside their turn. */
-type StageEmotion = EmotionPayload & { source: 'act' | 'devtools', turnId?: string }
+/** A performance cue with its origin; the turn id keeps speech-bound expressions inside their turn. */
+interface StageCue {
+  emotion?: EmotionPayload
+  /** An LLM-named Live2D expression from an ACT marker. */
+  expression?: string
+  source: 'act' | 'devtools'
+  turnId?: string
+}
 
-const emotionsQueue = createQueue<StageEmotion>({
+const emotionsQueue = createQueue<StageCue>({
   handlers: [
     async (ctx) => {
+      const { emotion, expression } = ctx.data
+      if (stageModelRenderer.value === 'live2d') {
+        // The conductor sends Natural episodes to the scene and plays the motion group for
+        // Universal and MAGIC; the store defers a motion group while the model loads.
+        if (emotion)
+          performanceConductor.emotion(emotion.name, emotion.intensity, ctx.data.source, ctx.data.turnId)
+        // After the emotion, so an explicit expression replaces the auto pick for its slot.
+        if (expression)
+          performanceConductor.expression(expression, undefined, 'act', ctx.data.turnId)
+        return
+      }
+      if (!emotion)
+        return
       if (stageModelRenderer.value === 'vrm') {
         // console.debug('VRM emotion anime: ', ctx.data)
-        const value = EMOTION_VRMExpressionName_value[ctx.data.name]
+        const value = EMOTION_VRMExpressionName_value[emotion.name]
         if (!value)
           return
 
-        await vrmViewerRef.value!.setExpression(value, ctx.data.intensity)
-      }
-      else if (stageModelRenderer.value === 'live2d') {
-        // The conductor sends Natural episodes to the scene and plays the motion group for
-        // Universal and MAGIC; the store defers a motion group while the model loads.
-        performanceConductor.emotion(ctx.data.name, ctx.data.intensity, ctx.data.source, ctx.data.turnId)
+        await vrmViewerRef.value!.setExpression(value, emotion.intensity)
       }
       else if (stageModelRenderer.value === 'spine') {
-        spineSceneRef.value?.setEmotion(ctx.data.name, ctx.data.intensity)
+        spineSceneRef.value?.setEmotion(emotion.name, emotion.intensity)
       }
       else if (stageModelRenderer.value === 'tachie') {
-        tachieSceneRef.value?.setEmotion(ctx.data.name, ctx.data.intensity)
+        tachieSceneRef.value?.setEmotion(emotion.name, emotion.intensity)
       }
       else if (stageModelRenderer.value === 'mmd') {
-        mmdSceneRef.value?.setEmotion(ctx.data.name, ctx.data.intensity)
+        mmdSceneRef.value?.setEmotion(emotion.name, emotion.intensity)
       }
     },
   ],
@@ -341,14 +356,11 @@ chatHookCleanups.push(streamingControl.onSignal(async (signal, context) => {
       currentMotion.value = { group: act.motion }
       return
     }
-    if (act.emotion) {
-      const emotion = toStageEmotionPayload(act.emotion)
-      if (!emotion)
-        return
-
+    const emotion = act.emotion ? toStageEmotionPayload(act.emotion) : undefined
+    if (emotion || act.expression) {
       // eslint-disable-next-line no-console
-      console.debug('emotion detected', emotion)
-      emotionsQueue.enqueue({ ...emotion, source: 'act', turnId: context.turnId })
+      console.debug('performance cue detected', emotion, act.expression)
+      emotionsQueue.enqueue({ emotion, expression: act.expression, source: 'act', turnId: context.turnId })
     }
     return
   }
@@ -437,7 +449,7 @@ watch(() => emotionPulse.value?.seq, () => {
     return
   const emotion = toStageEmotionPayload({ name: pulse.name, intensity: pulse.nominal })
   if (emotion)
-    emotionsQueue.enqueue({ ...emotion, source: 'devtools' })
+    emotionsQueue.enqueue({ emotion, source: 'devtools' })
 })
 const speechDestination = audioContext.createGain()
 speechDestination.connect(audioContext.destination)
