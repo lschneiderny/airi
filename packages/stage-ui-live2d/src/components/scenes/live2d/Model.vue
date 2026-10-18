@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Application } from '@pixi/app'
 import type { Filter } from '@pixi/core'
-import type { ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
+import type { ReactionEpisode, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type {
   AmbientLightEnvironment,
@@ -12,6 +12,7 @@ import type {
 
 import type { PixiLive2DInternalModel } from '../../../composables/live2d'
 import type { ArchiveExpressionFile, Model3ExpressionRef } from '../../../composables/live2d/expression-controller'
+import type { SpeechEvent } from '../../../composables/live2d/expression/slots'
 import type { NaturalCaptureRequest } from '../../../stores'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -55,6 +56,7 @@ import { NaturalTraceRecorder } from '../../../composables/live2d/natural-motion
 import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { ScreenAmbientLightFilter } from '../../../filters/screen-ambient-light'
 import { getLive2DMotionControlModelOffset, useL2dViewControl, useLive2DMotionControl, useLive2dParams, useNaturalMotionDiagnostics } from '../../../stores'
+import { useExpressionStore } from '../../../stores/expression-store'
 import { naturalVoiceLevel } from './natural-voice-level'
 
 const props = withDefaults(defineProps<{
@@ -288,6 +290,7 @@ const screenAmbientLightSquint = toRef(() => props.screenAmbientLightSquint)
 // whenever the model is replaced.
 const headTracker = createLive2DHeadTracker()
 const internalModelRef = shallowRef<PixiLive2DInternalModel>()
+const expressionStore = useExpressionStore()
 const expressionController = useExpressionController({
   internalModel: internalModelRef,
 })
@@ -1205,6 +1208,10 @@ defineExpose({
   headAnchor,
   /** The stage calls this only under Natural; Universal and MAGIC retain motion-group routing. */
   setEmotion: (episode: ReactionEpisode) => { pendingNaturalEmotions.push(episode) },
+  /** Executes decider slot commands; lifetimes are owned by the expression store. */
+  applySlots: (commands: SlotCommand[], now: number) => expressionStore.applySlots(commands, now),
+  onSpeech: (event: SpeechEvent, turnId: string, now: number) => expressionStore.onSpeech(event, turnId, now),
+  setMuted: (muted: boolean) => expressionStore.setMuted(muted),
 })
 
 import.meta.hot?.dispose(() => {

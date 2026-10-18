@@ -86,8 +86,10 @@ export function useExpressionController(options: ExpressionControllerOptions) {
   }
 
   function applyExpressions(coreModel: PixiLive2DInternalModel['coreModel']) {
+    const now = performance.now() / 1000
+    store.tickLeases(now)
     store.composer.compose(
-      performance.now() / 1000,
+      now,
       id => coreModel.getParameterValueById(id),
       (id, value) => coreModel.setParameterValueById(id, value),
       (id) => {

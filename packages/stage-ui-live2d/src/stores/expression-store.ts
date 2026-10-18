@@ -1,13 +1,15 @@
-import type { CatalogEntry, CuratedCatalogDocument, CuratedOverride, ExpressionKind } from '@proj-airi/stage-shared/expression-performance'
+import type { CatalogEntry, CuratedCatalogDocument, CuratedOverride, ExpressionKind, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 
 import type { ExpressionDefinition } from '../composables/live2d/expression/compose'
+import type { SlotLease, SlotLeaseSettings, SlotName, SpeechEvent } from '../composables/live2d/expression/slots'
 
 import { errorMessageFrom } from '@moeru/std'
-import { isAutoEligible, isLlmEligible, mergeCatalog, parseCuratedCatalogDocument, parseRestSet } from '@proj-airi/stage-shared/expression-performance'
+import { defaultExpressionPerformanceSettings, isAutoEligible, isLlmEligible, mergeCatalog, parseCuratedCatalogDocument, parseRestSet } from '@proj-airi/stage-shared/expression-performance'
 import { defineStore } from 'pinia'
 import { computed, markRaw, ref } from 'vue'
 
 import { ExpressionComposer } from '../composables/live2d/expression/compose'
+import { applySpeechEvent, createLease, isLeaseExpired, slotNames } from '../composables/live2d/expression/slots'
 import { deriveCatalog } from '../utils/expression-catalog/derive'
 
 export interface NamedExpressionDefinition extends ExpressionDefinition {
@@ -27,6 +29,14 @@ export type Live2DExpressionSettingsCommand
     | { type: 'reset-entry', id: string }
     | { type: 'confirm-all-suggested' }
 
+type SlotLeases = Record<SlotName, SlotLease | null>
+
+function emptyLeases(): SlotLeases {
+  return { face: null, effect: null, prop: null }
+}
+
+const speechEvents: readonly SpeechEvent[] = ['clip-start', 'clip-end', 'clip-stopped', 'turn-end']
+
 /** Local to the renderer that owns the model. Other windows use snapshots and commands. */
 export const useExpressionStore = defineStore('live2d-expressions', () => {
   const definitions = ref<NamedExpressionDefinition[]>([])
@@ -41,6 +51,25 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   const llmEligibleEntries = computed(() => catalog.value.filter(isLlmEligible))
   const autoEligibleEntries = computed(() => catalog.value.filter(isAutoEligible))
   const slotActive = ref<string[]>([])
+  // Rest-set members the user toggled off this session; cleared by resetAll and saveDefaults.
+  const restSuppressed = ref<string[]>([])
+  const leases = ref<SlotLeases>(emptyLeases())
+  const muted = ref(false)
+  const slotSettings = ref<SlotLeaseSettings>({ ...defaultExpressionPerformanceSettings.slots })
+
+  /** The single ownership computation behind the composer target, the snapshot and group protection. */
+  function ownersOf(id: string) {
+    return {
+      rest: restSet.value.includes(id) && !restSuppressed.value.includes(id),
+      manual: manualActive.value.includes(id),
+      slot: slotActive.value.includes(id),
+    }
+  }
+
+  function isActive(id: string) {
+    const owners = ownersOf(id)
+    return owners.rest || owners.manual || owners.slot
+  }
 
   const settingsSnapshot = computed<Live2DExpressionSettingsSnapshot>(() => ({
     groups: catalog.value.map(entry => ({
@@ -48,7 +77,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
       parameterIds: [...entry.parameterIds],
       mappings: entry.mappings.map(mapping => ({ ...mapping })),
       name: entry.label,
-      active: manualActive.value.includes(entry.id) || slotActive.value.includes(entry.id),
+      active: isActive(entry.id),
     })),
   }))
 
@@ -58,6 +87,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     derived.value = deriveCatalog(defs, model3Refs, vtube)
     curated.value = { version: 1, overrides: [] }
     slotActive.value = []
+    leases.value = emptyLeases()
     try {
       const raw = localStorage.getItem(`expression-catalog:${id}`)
       if (raw !== null) {
@@ -98,14 +128,21 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
           deactivate(other.id)
       }
     }
+    restSuppressed.value = restSuppressed.value.filter(suppressedId => suppressedId !== id)
     manualActive.value = [...manualActive.value, id]
     composer.activate(id, performance.now() / 1000)
   }
 
-  function deactivate(id: string) {
+  function deactivate(id: string, now = performance.now() / 1000) {
+    if (restSet.value.includes(id) && !restSuppressed.value.includes(id))
+      restSuppressed.value = [...restSuppressed.value, id]
     manualActive.value = manualActive.value.filter(activeId => activeId !== id)
     slotActive.value = slotActive.value.filter(activeId => activeId !== id)
-    composer.deactivate(id, performance.now() / 1000)
+    for (const slot of slotNames) {
+      if (leases.value[slot]?.expressionId === id)
+        leases.value = { ...leases.value, [slot]: null }
+    }
+    composer.deactivate(id, now)
   }
 
   function toggle(id: string) {
@@ -119,6 +156,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     if (!modelId.value)
       return
     restSet.value = [...manualActive.value]
+    restSuppressed.value = []
     try {
       localStorage.setItem(`expression-rest:${modelId.value}`, JSON.stringify({ version: 1, active: restSet.value }))
     }
@@ -128,30 +166,111 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   }
 
   function resetAll() {
+    restSuppressed.value = []
     manualActive.value = []
     slotActive.value = []
+    leases.value = emptyLeases()
     composer.setActiveSet([], performance.now() / 1000)
     for (const id of restSet.value)
       activate(id)
   }
 
   /** Checks every conflicting owner before changing any target; leases are owned by the performer. */
-  function activateFromSlot(id: string, kind: ExpressionKind): boolean {
+  function activateFromSlot(id: string, kind: ExpressionKind, now = performance.now() / 1000): boolean {
     const entry = catalog.value.find(entry => entry.id === id)
     if (!entry || entry.kind !== kind || !['face', 'effect', 'prop'].includes(kind))
       return false
     const conflicts = catalog.value.filter(other => other.id !== id && entry.group !== null && other.group === entry.group
-      && (manualActive.value.includes(other.id) || slotActive.value.includes(other.id)))
-    if (conflicts.some(other => other.kind !== kind || restSet.value.includes(other.id) || manualActive.value.includes(other.id))) {
+      && isActive(other.id))
+    if (conflicts.some((other) => {
+      const owners = ownersOf(other.id)
+      return other.kind !== kind || owners.rest || owners.manual
+    })) {
       console.warn('[expression-store] Slot activation skipped for protected group:', id)
       return false
     }
     for (const other of conflicts)
-      deactivate(other.id)
+      deactivate(other.id, now)
     if (!slotActive.value.includes(id))
       slotActive.value = [...slotActive.value, id]
-    composer.activate(id, performance.now() / 1000)
+    composer.activate(id, now)
     return true
+  }
+
+  /** Ends a lease; the expression stays active while an unsuppressed rest entry or a manual toggle also owns it. */
+  function releaseSlot(slot: SlotName, now: number) {
+    const lease = leases.value[slot]
+    if (!lease)
+      return
+    leases.value = { ...leases.value, [slot]: null }
+    slotActive.value = slotActive.value.filter(id => id !== lease.expressionId)
+    if (!isActive(lease.expressionId))
+      composer.deactivate(lease.expressionId, now)
+  }
+
+  /** Executes decider output; invalid commands are dropped, never partially applied. */
+  function applySlots(commands: SlotCommand[], now: number) {
+    if (!Number.isFinite(now))
+      return
+    for (const command of commands) {
+      const slot = command.slot
+      if (!slotNames.includes(slot)) {
+        console.warn('[expression-store] Unknown slot dropped:', slot)
+        continue
+      }
+      if (command.expressionId === null) {
+        releaseSlot(slot, now)
+        continue
+      }
+      if (!Number.isFinite(command.holdSeconds) || command.holdSeconds < 0 || (command.until !== 'speech' && command.until !== 'hold')) {
+        console.warn('[expression-store] Slot command with invalid lifetime dropped:', command.expressionId)
+        continue
+      }
+      const previous = leases.value[slot]
+      if (previous?.expressionId !== command.expressionId && !activateFromSlot(command.expressionId, slot, now))
+        continue
+      if (previous?.expressionId === command.expressionId)
+        slotActive.value = slotActive.value.includes(command.expressionId) ? slotActive.value : [...slotActive.value, command.expressionId]
+      else
+        releaseSlot(slot, now)
+      leases.value = { ...leases.value, [slot]: createLease(command.expressionId, command, now) }
+    }
+  }
+
+  /** Releases every lease whose lifetime ended; called from the final plugin before compose. */
+  function tickLeases(now: number) {
+    if (!Number.isFinite(now))
+      return
+    for (const slot of slotNames) {
+      const lease = leases.value[slot]
+      if (lease && isLeaseExpired(lease, now, muted.value, slotSettings.value))
+        releaseSlot(slot, now)
+    }
+  }
+
+  /** Only leases of the same turn react; leases without a turn follow their hold rule. */
+  function onSpeech(event: SpeechEvent, turnId: string, now: number) {
+    if (!Number.isFinite(now) || !speechEvents.includes(event))
+      return
+    for (const slot of slotNames) {
+      const lease = leases.value[slot]
+      if (!lease || lease.turnId === null || lease.turnId !== turnId)
+        continue
+      const next = applySpeechEvent(lease, event, now, muted.value, slotSettings.value)
+      if (next === null)
+        releaseSlot(slot, now)
+      else
+        leases.value = { ...leases.value, [slot]: next }
+    }
+    tickLeases(now)
+  }
+
+  function setMuted(value: boolean) {
+    muted.value = value
+  }
+
+  function setSlotSettings(settings: SlotLeaseSettings) {
+    slotSettings.value = { speechGrace: settings.speechGrace, unstartedExpiry: settings.unstartedExpiry, holdCap: settings.holdCap }
   }
 
   function persistCurated(document: unknown) {
@@ -193,6 +312,8 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     restSet.value = []
     manualActive.value = []
     slotActive.value = []
+    restSuppressed.value = []
+    leases.value = emptyLeases()
     derived.value = []
     curated.value = { version: 1, overrides: [] }
     composer.define([])
@@ -215,5 +336,5 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     }
   }
 
-  return { definitions, modelId, restSet, manualActive, slotActive, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, registerDefinitions, activate, activateFromSlot, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, confirmAllSuggested, dispose, applySettingsCommand }
+  return { definitions, modelId, restSet, restSuppressed, manualActive, slotActive, leases, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, registerDefinitions, activate, activateFromSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, confirmAllSuggested, dispose, applySettingsCommand }
 })

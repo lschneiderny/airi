@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
-import type { ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
+import type { ReactionEpisode, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { Live2DEyeFocusSource } from '../../composables/live2d'
+import type { SpeechEvent } from '../../composables/live2d/expression/slots'
 
 import { presenceBubbleIdle } from '@proj-airi/stage-shared'
 import { useScreenAmbientLightEnvironment, useSettingsScreenAmbientLight } from '@proj-airi/stage-shared/stores/screen-ambient-light'
@@ -150,6 +151,9 @@ defineExpose({
   },
   /** Queues a Natural emotion impulse. Callers use it only while the Natural driver is selected. */
   setEmotion: (episode: ReactionEpisode) => live2dModelRef.value?.setEmotion(episode),
+  applySlots: (commands: SlotCommand[], now: number) => live2dModelRef.value?.applySlots(commands, now),
+  onSpeech: (event: SpeechEvent, turnId: string, now: number) => live2dModelRef.value?.onSpeech(event, turnId, now),
+  setMuted: (muted: boolean) => live2dModelRef.value?.setMuted(muted),
 })
 </script>
 
