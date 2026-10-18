@@ -120,6 +120,32 @@ The committed reference uses two sessions, and its provenance comment names them
 If you extract from a different set of recordings, update that comment to match.
 Recordings and exported traces are private. Write them under `.omo/evidence/`, which git ignores, and never commit them. Only the derived statistics in `reference-stats.ts` are committed.
 
+### Natural QA
+
+Every statistical rendered gate scored from Natural traces (liveliness metrics and the band-recruitment analysis) uses 3 captures of the same duration on the same build, preregistered before data, aggregated per the gate's stated rule. Single captures are diagnostic only.
+Functional event checks (a parameter rises after a marker, lipsync mouth > threshold, a tool result) are pass/fail runs, not statistical gates.
+
+Before capturing, write a preregistration JSON listing `createdAt` (an ISO timestamp), `gate`, `rig`, `captureCount`, and `durations` (seconds per capture). For example:
+
+```json
+{
+  "createdAt": "2026-10-18T10:00:00.000Z",
+  "gate": "idle-liveliness",
+  "rig": "ForBOOTH",
+  "captureCount": 3,
+  "durations": [600, 600, 600]
+}
+```
+
+Score the captures together:
+
+```bash
+pnpm -F @proj-airi/stage-ui-live2d exec tsx scripts/score-natural-captures.ts --prereg <prereg.json> <trace1.json> <trace2.json> <trace3.json>
+```
+
+The CLI requires at least 3 traces and refuses with exit 2 if the preregistration is missing, incomplete, or its `createdAt` is not earlier than every trace file's modification time. Keep the original capture files and their modification times.
+For liveliness, each metric is the median of its non-null measurements, band acceptance is recomputed on that median, and the score is the median of capture scores. Any hard failure in any capture fails the aggregate. Every banded median must pass; an entirely missing banded metric fails. The command prints aggregate JSON and exits 0 on pass or 1 on fail.
+
 ### Natural motion lab
 
 The Natural motion lab is a devtools page for tuning Natural on the rendered model.

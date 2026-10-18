@@ -1,11 +1,59 @@
-import type { LivelinessTrace } from './liveliness'
+import type { LivelinessReport, LivelinessTrace } from './liveliness'
 
 import { describe, expect, it } from 'vitest'
 
-import { scoreLiveliness } from './liveliness'
+import { aggregateLivelinessReports, scoreLiveliness } from './liveliness'
 import { referenceStats } from './reference-stats'
 
 const ranges = Object.fromEntries(['ParamAngleX', 'ParamAngleY', 'ParamAngleZ'].map(id => [id, { min: -30, max: 30, default: 0 }]))
+
+describe('liveliness aggregation', () => {
+  const report = (value: number | null, score = 80): LivelinessReport => ({
+    metrics: {
+      banded: { value, band: [2, 4], provisional: true, pass: false },
+      diagnostic: { value, band: null, provisional: false, pass: null },
+      missing: { value: null, band: null, provisional: false, pass: null },
+    },
+    score,
+    hardFailures: [],
+    warnings: [],
+    pass: false,
+  })
+
+  it('recomputes bands on medians rather than voting on capture passes', () => {
+    const reports = [report(1, 20), report(3, 90), report(8, 70)]
+    const aggregate = aggregateLivelinessReports(reports)
+    expect(aggregate.metrics.banded.value).toBe(3)
+    expect(aggregate.metrics.banded.pass).toBe(true)
+    expect(aggregate.metrics.banded.provisional).toBe(true)
+    expect(aggregate.metrics.diagnostic.pass).toBeNull()
+    expect(aggregate.metrics.missing.value).toBeNull()
+    expect(aggregate.score).toBe(70)
+    expect(aggregate.pass).toBe(true)
+    expect(reports[0].metrics.banded.pass).toBe(false)
+  })
+
+  it('ignores nulls and averages the two middle non-null values', () => {
+    const aggregate = aggregateLivelinessReports([report(2), report(null), report(4)])
+    expect(aggregate.metrics.banded.value).toBe(3)
+    expect(aggregate.pass).toBe(true)
+    expect(aggregateLivelinessReports([report(1), report(1), report(3)]).pass).toBe(false)
+    expect(aggregateLivelinessReports([report(null), report(null), report(null)]).pass).toBe(false)
+  })
+
+  it('preserves any frozen capture and deduplicates failures', () => {
+    const frozen = { ...report(3), hardFailures: ['frozen'] }
+    const aggregate = aggregateLivelinessReports([report(3), frozen, frozen])
+    expect(aggregate.metrics.banded.pass).toBe(true)
+    expect(aggregate.hardFailures).toEqual(['frozen'])
+    expect(aggregate.pass).toBe(false)
+  })
+
+  it('requires at least three captures', () => {
+    expect(() => aggregateLivelinessReports([])).toThrow('at least three')
+    expect(() => aggregateLivelinessReports([report(3), report(3)])).toThrow('at least three')
+  })
+})
 
 function signal(hz: number, seconds: number, sample: (t: number) => number, jitter = false): LivelinessTrace {
   const t = Array.from({ length: hz * seconds + 1 }, (_, i) => i / hz + (jitter && i > 0 ? Math.sin(i * 1.7) * 0.003 : 0))

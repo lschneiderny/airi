@@ -24,6 +24,44 @@ export interface LivelinessReport {
   pass: boolean
 }
 
+/** Median metrics and scores across captures, retaining every capture's hard failures. */
+export type LivelinessAggregate = LivelinessReport
+
+/**
+ * Requires at least three reports from the same gate, with the same metric bands.
+ * Missing measurements do not vote; a band with no measured median cannot pass.
+ */
+export function aggregateLivelinessReports(reports: LivelinessReport[]): LivelinessAggregate {
+  if (reports.length < 3)
+    throw new Error('Liveliness aggregation requires at least three captures.')
+
+  const median = (values: number[]) => {
+    const sorted = [...values].sort((a, b) => a - b)
+    const middle = Math.floor(sorted.length / 2)
+    return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
+  }
+  const metrics: Record<string, LivelinessMetric> = {}
+  for (const [id, reference] of Object.entries(reports[0].metrics)) {
+    const values = reports.map(report => report.metrics[id].value).filter(value => value !== null)
+    const value = values.length ? median(values) : null
+    const band = reference.band
+    metrics[id] = {
+      value,
+      band,
+      provisional: reference.provisional,
+      pass: band ? value !== null && value >= band[0] && value <= band[1] : null,
+    }
+  }
+  const hardFailures = [...new Set(reports.flatMap(report => report.hardFailures))]
+  return {
+    metrics,
+    hardFailures,
+    warnings: [...new Set(reports.flatMap(report => report.warnings))],
+    score: median(reports.map(report => report.score)),
+    pass: hardFailures.length === 0 && Object.values(metrics).every(metric => !metric.band || metric.pass === true),
+  }
+}
+
 const headIds = ['ParamAngleX', 'ParamAngleY', 'ParamAngleZ']
 const sdIds = [...headIds, 'ParamEyeBallX', 'ParamEyeBallY', 'ParamBrowLY', 'ParamMouthOpenY', 'ParamMouthForm', 'ParamEyeLOpen', 'ParamEyeROpen', 'ParamBodyAngleX', 'ParamBodyAngleY', 'ParamBodyAngleZ']
 // Channel SD is one score row, so each channel contributes within it.
