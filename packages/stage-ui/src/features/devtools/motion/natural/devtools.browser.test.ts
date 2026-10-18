@@ -1,8 +1,10 @@
 import type { AffectTraceSink, NaturalCaptureResult } from '@proj-airi/stage-ui-live2d/stores'
 
+import en from '@proj-airi/i18n/locales/en'
+
 import { defaultExpressionPerformanceSettings, parseAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { setAffectTraceSink, setNaturalTraceSink, useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
-import { createPinia, setActivePinia } from 'pinia'
+import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
 import { watch } from 'vue'
@@ -17,21 +19,23 @@ import '@proj-airi/ui/main.css'
 
 type CapturedTrace = Parameters<ReturnType<typeof useNaturalMotionDiagnostics>['completeCapture']>[1]
 
-function createTestI18n() {
+type LabMessages = Parameters<typeof createI18n>[0]['messages']
+
+function createTestI18n(messages: LabMessages = { en: {} }) {
   return createI18n({
     legacy: false,
     locale: 'en',
     missingWarn: false,
     fallbackWarn: false,
-    messages: { en: {} },
+    messages,
   })
 }
 
-async function renderLab() {
+async function renderLab(messages?: LabMessages) {
   const pinia = createPinia()
   setActivePinia(pinia)
   const screen = await render(NaturalMotionDevtools, {
-    global: { plugins: [pinia, createTestI18n()] },
+    global: { plugins: [pinia, createTestI18n(messages)] },
   })
   return {
     screen,
@@ -179,10 +183,57 @@ describe('natural motion lab', () => {
     await screen.getByTestId('affect-trace-export').click()
 
     await expect.element(screen.getByTestId('affect-trace-failure')).toBeVisible()
-    expect(diagnostics.affectTraceFailure).toBe('No affect recording is open. Start recording first.')
+    expect(diagnostics.affectTraceFailure).toBe('no-recording')
     expect(diagnostics.affectTraceRequest).toBeNull()
     expect(sink).not.toHaveBeenCalled()
     stage.stop()
+  })
+
+  it('renders each failure code through the English catalog', async () => {
+    const { screen, diagnostics } = await renderLab({ en })
+    const { t } = createTestI18n({ en }).global
+    const failureKey = 'tamagotchi.settings.devtools.pages.live2d-natural-motion.affect-trace.failures'
+    const failures = { 'no-recording': t(`${failureKey}.no-recording`), 'save-failed': t(`${failureKey}.save-failed`) }
+    expect(failures['no-recording']).not.toContain(failureKey)
+    expect(failures['save-failed']).not.toContain(failureKey)
+    setAffectTraceSink(() => {
+      throw new Error('disk full')
+    })
+    const stage = createStage(diagnostics)
+
+    await screen.getByTestId('affect-trace-export').click()
+    await expect.element(screen.getByTestId('affect-trace-failure')).toHaveTextContent(failures['no-recording'])
+
+    await screen.getByTestId('affect-trace-start').click()
+    await expect.element(screen.getByTestId('affect-trace-status')).toBeVisible()
+    await screen.getByTestId('affect-trace-export').click()
+    await expect.element(screen.getByTestId('affect-trace-failure')).toHaveTextContent(failures['save-failed'])
+    expect(diagnostics.affectTraceFailure).toBe('save-failed')
+    stage.stop()
+  })
+
+  it('carries an export across windows and saves it only in the requesting window', async () => {
+    const stagePinia = createPinia()
+    setActivePinia(stagePinia)
+    const stageDiagnostics = useNaturalMotionDiagnostics()
+    const stage = createStage(stageDiagnostics)
+    const { screen, diagnostics } = await renderLab()
+    expect(diagnostics).not.toBe(stageDiagnostics)
+    const sink = vi.fn<AffectTraceSink>(() => 'C:/evidence/affect-trace.json')
+    setAffectTraceSink(sink)
+
+    await screen.getByTestId('affect-trace-start').click()
+    await expect.element(screen.getByTestId('affect-trace-status')).toHaveTextContent('affect-trace.recording')
+    stage.conductor.emotion('happy', 0.6, 'devtools')
+    await screen.getByTestId('affect-trace-export').click()
+
+    await expect.element(screen.getByTestId('affect-trace-saved-path')).toHaveTextContent('C:/evidence/affect-trace.json')
+    expect(sink).toHaveBeenCalledTimes(1)
+    expect(sink.mock.calls[0][0]).toEqual(stageDiagnostics.affectTrace)
+    expect(diagnostics.affectTraceResult).toMatchObject({ action: 'export', entries: 1, savedPath: 'C:/evidence/affect-trace.json' })
+    expect(stageDiagnostics.affectTraceResult).toMatchObject({ action: 'export', entries: 1, savedPath: null })
+    stage.stop()
+    disposePinia(stagePinia)
   })
 
   it('requests a capture and renders its result, then saves through the sink', async () => {

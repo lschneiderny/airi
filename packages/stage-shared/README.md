@@ -68,6 +68,7 @@ The `expression-performance` entrypoint owns the pure decision layer for charact
 - reaction strength with bands, habituation, and escalation (`acceptReaction`);
 - the picker and planner deciders, selected by `createDecider`, and the timing-slot scheduler;
 - affect traces and their replay (`withAffectTrace`, `parseAffectTrace`, `replayAffectTrace`);
+- the Eventa contracts that carry lab affect-trace requests, results, and failure codes between windows (`affectTraceRequestedEvent`, `affectTraceCompletedEvent`, `affectTraceFailedEvent`, `createAffectTraceDiagnosticsContext`);
 - character performance profiles (`resolveEffectiveSettings`, `applyMappingWeights`).
 
 A decider never reads a clock, global randomness, or a store. Pass every time in the signal as monotonic seconds, and keep the returned state for the next call. The state is plain JSON, so it can be checkpointed and replayed.

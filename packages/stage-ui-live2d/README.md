@@ -215,6 +215,7 @@ The override and emotion pulses live in the `natural-performance-override` store
 
 Captures and affect traces go through the `useNaturalMotionDiagnostics` store, which carries requests and results between windows on a BroadcastChannel.
 The stage's performance conductor answers affect-trace requests. The lab window that requested an export saves the trace through the sink that `setAffectTraceSink` sets, which downloads a JSON Blob by default.
+Affect-trace messages are Eventa events from `@proj-airi/stage-shared/expression-performance` on the same channel; capture messages are still raw objects. A failed request carries a code (`no-recording` or `save-failed`), which the lab translates.
 The stage's model listens for frames only while a capture request is pending.
 It samples in the SDK `beforeModelUpdate` event. That event fires after Natural composition, physics, and pose, and before the SDK restores the saved parameters, so the trace records the values that are actually rendered.
 `NaturalTraceRecorder` keeps one frame per 1/30 s slot. It records head, body, eye, eyelid, eye smile, brow, mouth, cheek, and breath parameters that the rig has, together with their ranges.

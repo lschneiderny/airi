@@ -277,7 +277,9 @@ devtools:
         recording: Recording. Export the affect trace when you are done.
         exported: 'Exported {entries} entries.'
         truncated: The recording reached 20,000 entries and stopped. A truncated trace cannot be replayed.
-        failed: 'The request failed: {reason}'
+        failures:
+          no-recording: No affect recording is open. Start recording first.
+          save-failed: The affect trace could not be saved.
       capture:
         title: Trace capture
         description: Record the model's parameter values after physics at 30 Hz, then score them against the reference recordings.

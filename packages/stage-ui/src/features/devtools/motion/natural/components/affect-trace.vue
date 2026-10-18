@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { AffectTraceFailureCode } from '@proj-airi/stage-shared/expression-performance'
+
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { Button } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
@@ -9,6 +11,11 @@ import { Section } from '../../../../../components/layouts'
 const { t } = useI18n()
 const diagnostics = useNaturalMotionDiagnostics()
 const { affectTraceRequest, affectTraceResult, affectTraceFailure } = storeToRefs(diagnostics)
+
+const failureMessageKeys = {
+  'no-recording': 'tamagotchi.settings.devtools.pages.live2d-natural-motion.affect-trace.failures.no-recording',
+  'save-failed': 'tamagotchi.settings.devtools.pages.live2d-natural-motion.affect-trace.failures.save-failed',
+} satisfies Record<AffectTraceFailureCode, string>
 </script>
 
 <template>
@@ -50,7 +57,7 @@ const { affectTraceRequest, affectTraceResult, affectTraceFailure } = storeToRef
       data-testid="affect-trace-failure"
       :class="['text-sm text-red-600 dark:text-red-400']"
     >
-      {{ t('tamagotchi.settings.devtools.pages.live2d-natural-motion.affect-trace.failed', { reason: affectTraceFailure }) }}
+      {{ t(failureMessageKeys[affectTraceFailure]) }}
     </div>
     <div
       v-else-if="affectTraceResult"

@@ -1,10 +1,10 @@
-import type { AffectTrace } from '@proj-airi/stage-shared/expression-performance'
+import type { AffectTrace, AffectTraceFailureCode, AffectTraceRequest, AffectTraceResult } from '@proj-airi/stage-shared/expression-performance'
 
 import type { LivelinessReport } from '../composables/live2d/natural-motion/liveliness'
 import type { NaturalTrace } from '../composables/live2d/natural-motion/trace'
 
 import { errorMessageFrom } from '@moeru/std'
-import { useEventListener } from '@vueuse/core'
+import { affectTraceCompletedEvent, affectTraceFailedEvent, affectTraceRequestedEvent, createAffectTraceDiagnosticsContext } from '@proj-airi/stage-shared/expression-performance'
 import { defineStore } from 'pinia'
 import { onScopeDispose, shallowRef } from 'vue'
 
@@ -31,33 +31,20 @@ export interface NaturalCaptureResult {
  */
 export type NaturalTraceSink = (trace: NaturalTrace, fileName: string) => string | null | Promise<string | null>
 
-/** A lab request to start an affect recording in the stage, or to export the open one. */
-export interface AffectTraceRequest {
-  id: string
-  action: 'start' | 'export'
-}
-
-/** The stage's answer to an affect-trace request. */
-export interface AffectTraceResult {
-  id: string
-  action: AffectTraceRequest['action']
-  /** Entries in the exported trace; 0 for a started recording. */
-  entries: number
-  truncated: boolean
-  /** Where the sink saved the exported trace, or `null` for a start or before saving. */
-  savedPath: string | null
-}
-
 /** Saves an exported affect trace and returns where it went, like {@link NaturalTraceSink}. */
 export type AffectTraceSink = (trace: AffectTrace, fileName: string) => string | null | Promise<string | null>
 
+/** Raw Natural capture messages. The affect-trace messages are Eventa events on the same channel. */
 type NaturalDiagnosticsEvent
   = | { type: 'natural-capture-request', request: NaturalCaptureRequest }
     | { type: 'natural-capture-result', result: NaturalCaptureResult, trace: NaturalTrace }
     | { type: 'natural-capture-failed', id: string, reason: string }
-    | { type: 'affect-trace-request', request: AffectTraceRequest }
-    | { type: 'affect-trace-result', result: AffectTraceResult, trace: AffectTrace | null }
-    | { type: 'affect-trace-failed', id: string, reason: string }
+
+const naturalDiagnosticsEventTypes = new Set<unknown>(['natural-capture-request', 'natural-capture-result', 'natural-capture-failed'] satisfies NaturalDiagnosticsEvent['type'][])
+
+function isNaturalDiagnosticsEvent(data: unknown): data is NaturalDiagnosticsEvent {
+  return typeof data === 'object' && data !== null && 'type' in data && naturalDiagnosticsEventTypes.has(data.type)
+}
 
 /** The lab offers 60, 300, and 600 s; the model refuses anything outside 1-600 s. */
 const maxCaptureSeconds = 600
@@ -106,10 +93,12 @@ export function affectTraceFileName(exportedAt: Date) {
  * Results and failures for an id other than the pending one are stale and only replace the
  * shown result when no newer request is waiting.
  *
- * Affect traces use the same channel with their own request state: `affectTraceRequest` is set
- * by a lab request and cleared by the matching result or failure. The stage's performance
+ * Affect traces use the same channel with their own request state, carried as the Eventa
+ * events defined in `@proj-airi/stage-shared/expression-performance`: `affectTraceRequest` is
+ * set by a lab request and cleared by the matching result or failure. The stage's performance
  * conductor starts or exports its recording and answers. The window that requested an export
- * saves the exported trace through the affect-trace sink when the result arrives.
+ * saves the exported trace through the affect-trace sink when the result arrives. Failures are
+ * {@link AffectTraceFailureCode} values, which the lab translates.
  */
 export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-diagnostics', () => {
   // Opened with the store, not through `useBroadcastChannel`, which waits for the mounted hook
@@ -118,8 +107,24 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
   const channel = typeof BroadcastChannel === 'undefined'
     ? undefined
     : new BroadcastChannel('airi-stores-stage-ui-live2d-natural-motion-diagnostics')
-  useEventListener(channel, 'message', (event: MessageEvent<NaturalDiagnosticsEvent>) => applyEvent(event.data))
-  onScopeDispose(() => channel?.close())
+  // NOTICE:
+  // Raw capture messages share this channel, so this earlier listener stops them before Eventa.
+  // The Eventa adapter logs a parse error for every non-Eventa message.
+  // Source: `restoreInner` in node_modules/@moeru/eventa/dist/internal-*.mjs.
+  // Remove when the capture messages use Eventa contracts.
+  function onRawMessage(event: MessageEvent<unknown>) {
+    if (!isNaturalDiagnosticsEvent(event.data))
+      return
+    event.stopImmediatePropagation()
+    applyEvent(event.data)
+  }
+  channel?.addEventListener('message', onRawMessage)
+  const { context, dispose } = createAffectTraceDiagnosticsContext(channel)
+  onScopeDispose(() => {
+    dispose()
+    channel?.removeEventListener('message', onRawMessage)
+    channel?.close()
+  })
   const pendingRequest = shallowRef<NaturalCaptureRequest | null>(null)
   const result = shallowRef<NaturalCaptureResult | null>(null)
   const trace = shallowRef<NaturalTrace | null>(null)
@@ -127,7 +132,7 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
   const affectTraceRequest = shallowRef<AffectTraceRequest | null>(null)
   const affectTraceResult = shallowRef<AffectTraceResult | null>(null)
   const affectTrace = shallowRef<AffectTrace | null>(null)
-  const affectTraceFailure = shallowRef<string | null>(null)
+  const affectTraceFailure = shallowRef<AffectTraceFailureCode | null>(null)
   /** Export requests this window sent; only this window saves their traces. */
   const ownExports = new Set<string>()
 
@@ -146,38 +151,44 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
         affectTraceResult.value = { ...result, savedPath }
     }
     catch (error) {
-      affectTraceFailure.value = errorMessageFrom(error) ?? 'The affect trace could not be saved.'
+      console.error('[natural-motion-diagnostics] The affect trace could not be saved:', errorMessageFrom(error) ?? 'unknown error')
+      affectTraceFailure.value = 'save-failed'
     }
   }
 
-  function applyAffectTraceEvent(event: Extract<NaturalDiagnosticsEvent, { type: `affect-trace-${string}` }>) {
-    if (event.type === 'affect-trace-request') {
-      affectTraceRequest.value = event.request
-      affectTraceFailure.value = null
+  context.on(affectTraceRequestedEvent, ({ body }) => {
+    if (!body)
       return
-    }
-    const id = event.type === 'affect-trace-result' ? event.result.id : event.id
-    const own = ownExports.delete(id)
-    if (!settlesAffectTrace(id))
+    affectTraceRequest.value = body
+    affectTraceFailure.value = null
+  })
+
+  context.on(affectTraceCompletedEvent, ({ body }) => {
+    if (!body)
+      return
+    const own = ownExports.delete(body.result.id)
+    if (!settlesAffectTrace(body.result.id))
       return
     affectTraceRequest.value = null
-    if (event.type === 'affect-trace-failed') {
-      affectTraceFailure.value = event.reason
+    affectTraceResult.value = body.result
+    if (!body.trace)
       return
-    }
-    affectTraceResult.value = event.result
-    if (!event.trace)
-      return
-    affectTrace.value = event.trace
+    affectTrace.value = body.trace
     if (own)
-      void saveAffectTrace(event.result, event.trace)
-  }
+      void saveAffectTrace(body.result, body.trace)
+  })
+
+  context.on(affectTraceFailedEvent, ({ body }) => {
+    if (!body)
+      return
+    ownExports.delete(body.id)
+    if (!settlesAffectTrace(body.id))
+      return
+    affectTraceRequest.value = null
+    affectTraceFailure.value = body.code
+  })
 
   function applyEvent(event: NaturalDiagnosticsEvent) {
-    if (event.type === 'affect-trace-request' || event.type === 'affect-trace-result' || event.type === 'affect-trace-failed') {
-      applyAffectTraceEvent(event)
-      return
-    }
     if (event.type === 'natural-capture-request') {
       pendingRequest.value = event.request
       failure.value = null
@@ -229,26 +240,28 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
       failCapture(pendingRequest.value.id, 'cancelled')
   }
 
-  /** Asks the stage to start an affect recording or to export the open one. Returns the request id. */
+  /**
+   * Asks the stage to start an affect recording or to export the open one. Returns the request id.
+   * Listeners in this window run before the request leaves it, so the request is pending on return.
+   */
   function requestAffectTrace(action: AffectTraceRequest['action']) {
     const request = { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, action }
     if (action === 'export')
       ownExports.add(request.id)
-    emit({ type: 'affect-trace-request', request })
+    void context.emit(affectTraceRequestedEvent, request)
     return request.id
   }
 
   /** Answers a request from the stage; an export passes its trace, a start passes `null`. */
   function completeAffectTrace(id: string, trace: AffectTrace | null) {
-    emit({
-      type: 'affect-trace-result',
+    void context.emit(affectTraceCompletedEvent, {
       result: { id, action: trace ? 'export' : 'start', entries: trace?.entries.length ?? 0, truncated: trace?.truncated ?? false, savedPath: null },
       trace,
     })
   }
 
-  function failAffectTrace(id: string, reason: string) {
-    emit({ type: 'affect-trace-failed', id, reason })
+  function failAffectTrace(id: string, code: AffectTraceFailureCode) {
+    void context.emit(affectTraceFailedEvent, { id, code })
   }
 
   /** Saves the shown trace through the registered sink and records the returned path locally. */

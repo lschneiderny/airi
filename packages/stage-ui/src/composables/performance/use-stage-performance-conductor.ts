@@ -1,7 +1,6 @@
-import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, PerformanceDecision, PerformanceProfile, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
+import type { AffectSignal, AffectTrace, AffectTraceRequest, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, PerformanceDecision, PerformanceProfile, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 import type { Live2DMotionDriver } from '@proj-airi/stage-ui-live2d'
 import type { NaturalEpisode } from '@proj-airi/stage-ui-live2d/composables/live2d'
-import type { AffectTraceRequest } from '@proj-airi/stage-ui-live2d/stores'
 
 import type { ActiveExpression, ExposedExpression, PerformanceMoodSnapshot } from '../../features/performance/runtime-state'
 import type { ExecutableTool } from '../../stores/ai/chat-llm/tools'
@@ -597,7 +596,7 @@ export function answerAffectTraceRequest(conductor: StagePerformanceConductor, a
   if (trace)
     answers.completeAffectTrace(request.id, trace)
   else
-    answers.failAffectTrace(request.id, 'No affect recording is open. Start recording first.')
+    answers.failAffectTrace(request.id, 'no-recording')
 }
 
 /** Mood drifts slowly, so state feedback samples it at this period instead of every frame. */

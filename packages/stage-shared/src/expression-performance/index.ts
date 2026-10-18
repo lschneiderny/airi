@@ -1,3 +1,4 @@
+export * from './affect-trace-diagnostics'
 export * from './catalog'
 export * from './deciders'
 export * from './exp3'
