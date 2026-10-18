@@ -2,6 +2,7 @@ import type { JSONObject, ModelSettings } from 'pixi-live2d-display/cubism4'
 
 import JSZip from 'jszip'
 
+import { errorMessageFrom } from '@moeru/std'
 import { Cubism4ModelSettings, FileLoader, Live2DFactory, ZipLoader } from 'pixi-live2d-display/cubism4'
 
 import { decodeZipFileName } from './decode-zip-filename'
@@ -82,7 +83,7 @@ ZipLoader.createSettings = async (reader: JSZip) => {
       Object.assign(settings, { _vtubeData: data })
     }
     catch (error) {
-      console.warn('[ZipLoader] Failed to extract VTube metadata:', error)
+      console.warn('[ZipLoader] Failed to extract VTube metadata:', errorMessageFrom(error))
     }
   }
 
@@ -258,7 +259,7 @@ FileLoader.createSettings = async (files: File[]) => {
       })
     }
     catch (error) {
-      console.warn(`[FileLoader] Failed to parse expression "${fileName}":`, error)
+      console.warn(`[FileLoader] Failed to parse expression "${fileName}":`, errorMessageFrom(error))
     }
   }
   const vtube = archiveFiles.find(file => /\.vtube\.json$/i.test(file.name))
@@ -267,7 +268,7 @@ FileLoader.createSettings = async (files: File[]) => {
       metadataSettings._vtubeData = JSON.parse(await FileLoader.readText(vtube))
     }
     catch (error) {
-      console.warn('[FileLoader] Failed to parse VTube Studio metadata:', error)
+      console.warn('[FileLoader] Failed to parse VTube Studio metadata:', errorMessageFrom(error))
     }
   }
 

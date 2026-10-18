@@ -107,7 +107,7 @@ describe('live2d zip loader settings sanitization', () => {
       const settings = await ZipLoader.createSettings(zip)
       expect(settings).not.toHaveProperty('_vtubeData')
       expect(settings).toHaveProperty('_expFiles.0.name', 'happy')
-      expect(warning).toHaveBeenCalledWith('[ZipLoader] Failed to extract VTube metadata:', expect.any(SyntaxError))
+      expect(warning).toHaveBeenCalledWith('[ZipLoader] Failed to extract VTube metadata:', expect.stringContaining('JSON'))
     }
     finally {
       warning.mockRestore()

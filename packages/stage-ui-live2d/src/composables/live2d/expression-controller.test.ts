@@ -156,6 +156,20 @@ describe('useExpressionController', () => {
     expect(warning).toHaveBeenCalled()
   })
 
+  it('rejects an exp3 file whose parameter value is not a number and never writes NaN', async () => {
+    const { controller, store, core, frame } = rig()
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const bad = { name: 'bad', fileName: 'model/bad.exp3.json', data: { FadeInTime: 0, Parameters: [{ Id: 'ParamX', Value: 'bad', Blend: 'Add' }] } }
+    await controller.initialise('model', [], async () => '', [bad, archive[0]])
+    expect(store.definitions.map(definition => definition.id)).toEqual([archive[0].fileName])
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining(bad.fileName), expect.any(String))
+    store.activate(bad.fileName)
+    store.activate(archive[0].fileName)
+    frame()
+    expect(Number.isNaN(core.getParameterValueById('ParamX'))).toBe(false)
+    expect(core.getParameterValueById('Param2')).toBe(1)
+  })
+
   it('uses a one-second fade when FadeInTime is missing', async () => {
     const { controller, store, core, frame } = rig()
     await controller.initialise('model', [], async () => '', [{

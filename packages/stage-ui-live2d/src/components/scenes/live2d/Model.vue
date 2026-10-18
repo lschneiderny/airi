@@ -9,6 +9,7 @@ import type {
   NormalizedRectangle,
   ScreenAmbientLightMode,
 } from '@proj-airi/stage-shared/screen-ambient-light'
+import type { Cubism4MotionManager } from 'pixi-live2d-display/cubism4'
 
 import type { PixiLive2DInternalModel } from '../../../composables/live2d'
 import type { ArchiveExpressionFile, Model3ExpressionRef } from '../../../composables/live2d/expression-controller'
@@ -60,6 +61,8 @@ import { ScreenAmbientLightFilter } from '../../../filters/screen-ambient-light'
 import { getLive2DMotionControlModelOffset, useL2dViewControl, useLive2DMotionControl, useLive2dParams, useNaturalMotionDiagnostics } from '../../../stores'
 import { useExpressionStore } from '../../../stores/expression-store'
 import { naturalVoiceLevel } from './natural-voice-level'
+
+type CubismMotionCurve = NonNullable<NonNullable<Cubism4MotionManager['motionGroups'][string]>[number]>['_motionData']['curves'][number]
 
 const props = withDefaults(defineProps<{
   modelSrc?: string
@@ -444,7 +447,7 @@ async function performModelLoad() {
 
     availableMotions.value = Object
       .entries(motionManager.definitions)
-      .flatMap(([motionName, definition]) => (definition?.map((motion: any, index: number) => ({
+      .flatMap(([motionName, definition]) => (definition?.map((motion, index) => ({
         motionName,
         motionIndex: index,
         fileName: motion.File,
@@ -457,7 +460,7 @@ async function performModelLoad() {
 
     // Configure the selected motion to loop
     if (selectedMotionGroup !== null && selectedMotionIndex) {
-      const groupIndex = (motionManager.groups as Record<string, any>)[selectedMotionGroup]
+      const groupIndex = (motionManager.groups as Record<string, string | undefined>)[selectedMotionGroup]
       if (groupIndex !== undefined && motionManager.motionGroups[groupIndex]) {
         const motionIndex = Number.parseInt(selectedMotionIndex)
         const motion = motionManager.motionGroups[groupIndex][motionIndex]
@@ -486,7 +489,7 @@ async function performModelLoad() {
     // FIXME: it cannot blink if loading a model only have idle motion
     if (motionManager.groups.idle) {
       motionManager.motionGroups[motionManager.groups.idle]?.forEach((motion) => {
-        motion._motionData.curves.forEach((curve: any) => {
+        motion._motionData.curves.forEach((curve: CubismMotionCurve) => {
         // TODO: After emotion mapper, stage editor, eye related parameters should be take cared to be dynamical instead of hardcoding
           if (curve.id === 'ParamEyeBallX' || curve.id === 'ParamEyeBallY') {
             curve.id = `_${curve.id}`
@@ -653,14 +656,14 @@ async function performModelLoad() {
       // replaces it. The SDK's manager runs after motionManager.update() and
       // would overwrite our final-plugin values every frame.
       if (motionManager.expressionManager) {
-        ;(motionManager as any).expressionManager = null
+        motionManager.expressionManager = undefined
       }
       // Disable SDK eyeBlink — it runs on frames where motionUpdated=false and
       // would conflict with expression eye parameter overrides. Our auto-blink
       // plugin (Force Auto Blink setting) provides the replacement for models
       // without idle-motion blink curves.
       if (internalModel.eyeBlink) {
-        ;(internalModel as any).eyeBlink = null
+        internalModel.eyeBlink = undefined
       }
 
       internalModelRef.value = internalModel

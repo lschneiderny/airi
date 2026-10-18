@@ -1,5 +1,6 @@
 export * from './catalog'
 export * from './deciders'
+export * from './exp3'
 export * from './picker'
 export * from './planner'
 export * from './profile'

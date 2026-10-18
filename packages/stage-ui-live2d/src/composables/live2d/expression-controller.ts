@@ -4,6 +4,7 @@ import type { NamedExpressionDefinition } from '../../stores/expression-store'
 import type { PixiLive2DInternalModel } from './motion-manager'
 
 import { errorMessageFrom } from '@moeru/std'
+import { parseExp3Expression } from '@proj-airi/stage-shared/expression-performance'
 
 import { useExpressionStore } from '../../stores/expression-store'
 
@@ -16,12 +17,6 @@ export interface ArchiveExpressionFile {
   name: string
   fileName: string
   data: unknown
-}
-
-interface Exp3Json {
-  Parameters: { Id: string, Value: number, Blend?: string }[]
-  FadeInTime?: number
-  FadeOutTime?: number
 }
 
 export interface ExpressionControllerOptions {
@@ -59,7 +54,7 @@ export function useExpressionController(options: ExpressionControllerOptions) {
     const definitions: NamedExpressionDefinition[] = []
     for (const file of files.values()) {
       try {
-        const data = file.data as Exp3Json
+        const data = parseExp3Expression(file.data)
         definitions.push({
           id: file.fileName,
           name: names.get(file.fileName) ?? file.name,

@@ -3,6 +3,7 @@ import type { Band, ReactionEpisode } from '@proj-airi/stage-shared/expression-p
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it } from 'vitest'
 
+import { EMOTION_VALUES } from '../../../constants/emotions'
 import { headPulseOffset, impulseEnvelope, NaturalImpulses } from './impulses'
 import { createRandomStream } from './random'
 
@@ -42,6 +43,21 @@ describe('band-driven Natural episodes', () => {
     expect(clear.result?.energy).toBe(false)
     expect(strong.result?.energy).toBe(true)
     expect(Math.max(slight.jump, clear.jump, strong.jump)).toBeLessThan(0.02)
+  })
+
+  it('keeps every head peak within 0.12 I^0.7 x 1.2', () => {
+    for (const emotion of EMOTION_VALUES) {
+      for (const intensity of [0.2, 0.6, 1]) {
+        for (let seed = 1; seed <= 20; seed++) {
+          const impulses = new NaturalImpulses(createRandomStream(seed))
+          impulses.trigger({ id: 'sweep', emotion, nominal: intensity, intensity, band: 'clear', escalation: false }, 0)
+          let peak = 0
+          for (let i = 0; i <= 4 / step; i++)
+            peak = Math.max(peak, Math.hypot(...impulses.headOffset(i * step)))
+          expect(peak).toBeLessThanOrEqual(0.12 * intensity ** 0.7 * 1.2)
+        }
+      }
+    }
   })
 
   it('starts at zero slope and overshoots in the opposite direction', () => {
