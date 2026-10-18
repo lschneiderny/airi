@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Application } from '@pixi/app'
 import type { Filter } from '@pixi/core'
-import type { ExpressionPerformanceSettings, ReactionEpisode, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type {
   AmbientLightEnvironment,
@@ -13,6 +13,7 @@ import type {
 import type { PixiLive2DInternalModel } from '../../../composables/live2d'
 import type { ArchiveExpressionFile, Model3ExpressionRef } from '../../../composables/live2d/expression-controller'
 import type { SpeechEvent } from '../../../composables/live2d/expression/slots'
+import type { NaturalEpisode } from '../../../composables/live2d/natural-motion/mood'
 import type { NaturalCaptureRequest } from '../../../stores'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -149,7 +150,7 @@ let naturalMotion: Live2DNaturalMotionAdapter | undefined
 let stopNaturalCapture: (() => void) | undefined
 const localFocus = new Point()
 /** Emotions for the Natural driver; the adapter drains the queue on its next composition. */
-const pendingNaturalEmotions: ReactionEpisode[] = []
+const pendingNaturalEmotions: NaturalEpisode[] = []
 /** Parameter ids the playing explicit clip animates; Natural masks them. Empty while no clip plays. */
 let clipOwnedIds: ReadonlySet<string> = new Set<string>()
 /** Latest SDK timestamp (seconds) seen by the Natural frame hook; NaN before the first frame of a model. */
@@ -1217,7 +1218,7 @@ defineExpose({
   initialModelWidth,
   headAnchor,
   /** The stage calls this only under Natural; Universal and MAGIC retain motion-group routing. */
-  setEmotion: (episode: ReactionEpisode) => { pendingNaturalEmotions.push(episode) },
+  setEmotion: (episode: NaturalEpisode) => { pendingNaturalEmotions.push(episode) },
   /** Executes decider slot commands; lifetimes are owned by the expression store. */
   applySlots: (commands: SlotCommand[], now: number) => expressionStore.applySlots(commands, now),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => expressionStore.onSpeech(event, turnId, now),

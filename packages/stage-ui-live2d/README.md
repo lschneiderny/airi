@@ -165,11 +165,13 @@ The lab provides these controls:
 - Performance state: when the override is on, the selected mode (`idle`, `watching`, `listening`, `thinking`, or `talking`) replaces the resolved mode at once. When it is off, the stage resolves the mode from its real signals.
 - Energy: the energy override and its 0 to 1 slider are disabled while "Override the performance state" is off, because only the state override carries the energy to the stage. While they are off or disabled, Natural uses the user's Energy setting.
 - Emotions: each button sends that emotion, at the selected intensity, through the same stage emotion queue that chat replies use.
+- Affect trace: "Start recording" starts an affect recording in the stage's performance conductor, and "Export affect trace" downloads the recording as `AffectTrace` JSON for `scripts/replay-affect-trace.ts`.
 - Trace capture: buttons start a 60, 300, or 600 s capture, and a cancel button stops it.
 
 The override and emotion pulses live in the `natural-performance-override` store in `@proj-airi/stage-ui`. That store is replicated across windows and not persisted.
 
-Captures go through the `useNaturalMotionDiagnostics` store, which carries requests and results between windows on a BroadcastChannel.
+Captures and affect traces go through the `useNaturalMotionDiagnostics` store, which carries requests and results between windows on a BroadcastChannel.
+The stage's performance conductor answers affect-trace requests. The lab window that requested an export saves the trace through the sink that `setAffectTraceSink` sets, which downloads a JSON Blob by default.
 The stage's model listens for frames only while a capture request is pending.
 It samples in the SDK `beforeModelUpdate` event. That event fires after Natural composition, physics, and pose, and before the SDK restores the saved parameters, so the trace records the values that are actually rendered.
 `NaturalTraceRecorder` keeps one frame per 1/30 s slot. It records head, body, eye, eyelid, eye smile, brow, mouth, cheek, and breath parameters that the rig has, together with their ranges.

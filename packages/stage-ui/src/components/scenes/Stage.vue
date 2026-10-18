@@ -268,13 +268,32 @@ const backgroundStore = useBackgroundStore()
 const { activeBackgroundUrl } = storeToRefs(backgroundStore)
 
 const { currentMotion } = storeToRefs(useLive2dParams())
+const voice = useVoiceStore()
+const cards = useAiriCardStore()
 
 const { conductor: performanceConductor, settings: performanceSettings } = useStagePerformanceConductor({
   scene: () => live2dSceneRef.value,
   driver: () => live2dMotionDriver.value,
   playMotion: (group) => { currentMotion.value = { group } },
   mood: () => live2dSceneRef.value?.getMood() ?? null,
+  profile: performanceProfileOf,
 })
+
+/**
+ * The card performance profile of a performance signal: the character of the signal's turn
+ * session, or the active card for lab pulses, tool calls, and turns that already ended.
+ */
+function performanceProfileOf(turnId: string | undefined) {
+  const sessionId = turnId === undefined ? undefined : voice.activeTurns.find(turn => turn.turnId === turnId)?.sessionId
+  const characterId = (sessionId === undefined ? undefined : chatSession.sessionMetas[sessionId]?.characterId) ?? cards.activeCardId
+  try {
+    return cards.getModules(characterId).performance
+  }
+  catch (error) {
+    console.warn('[Stage] The performance profile is unavailable, so none applies:', errorMessageFrom(error))
+    return undefined
+  }
+}
 
 /** A performance cue with its origin; the turn id keeps speech-bound expressions inside their turn. */
 interface StageCue {
@@ -389,8 +408,6 @@ async function playSpecialToken(
 }
 const lipSyncNode = ref<AudioNode>()
 
-const voice = useVoiceStore()
-
 // --- Performance state for the Natural motion driver
 // This stage is the only writer. It resolves every 250 ms, so dwell and release timers advance
 // without input changes, and at once when an input changes, so the listening release is anchored
@@ -472,7 +489,6 @@ watch(() => voice.activeTurns, (turns) => {
   performanceConductor.syncActiveTurns(turns.map(turn => turn.turnId))
 })
 
-const cards = useAiriCardStore()
 const disconnectVoiceOutput = voice.connectOutput((turn) => {
   const output = {
     playback,

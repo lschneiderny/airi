@@ -1,9 +1,10 @@
-import type { ExpressionPerformanceSettings, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { NaturalBreathOutput } from './natural-motion/breath'
 import type { NaturalFaceOutput } from './natural-motion/face'
 import type { GazePoint } from './natural-motion/gaze'
+import type { NaturalEpisode } from './natural-motion/mood'
 import type { PostureHome, Vec3 } from './natural-motion/posture'
 import type { RandomStream } from './natural-motion/random'
 import type { Live2DRigProfile } from './natural-motion/rig-profile'
@@ -92,7 +93,7 @@ const glanceTargets = { camera: { x: 0, y: 0 }, desk: { x: 0, y: -0.18 } }
 
 /** Work requested between grid steps; it starts at the next step so grid states stay consistent. */
 type PendingAction
-  = | { kind: 'emotion', episode: ReactionEpisode }
+  = | { kind: 'emotion', episode: NaturalEpisode }
     | { kind: 'react', reaction: 'wake' | 'screen-change' }
 
 interface Snapshot {
@@ -249,7 +250,7 @@ export class Live2DNaturalMotion {
   /**
    * Starts an episode on the next grid step after advancing to this timestamp.
    */
-  impulse(episode: ReactionEpisode, nowSeconds: number) {
+  impulse(episode: NaturalEpisode, nowSeconds: number) {
     this.advance(nowSeconds)
     this.pending.push({ kind: 'emotion', episode })
   }

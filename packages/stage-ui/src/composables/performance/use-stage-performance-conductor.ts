@@ -1,13 +1,16 @@
-import type { AffectSignal, CatalogEntry, ExpressionPerformanceSettings, PerformanceDecision, ReactionEpisode, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
+import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, PerformanceDecision, PerformanceProfile, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 import type { Live2DMotionDriver } from '@proj-airi/stage-ui-live2d'
+import type { NaturalEpisode } from '@proj-airi/stage-ui-live2d/composables/live2d'
+import type { AffectTraceRequest } from '@proj-airi/stage-ui-live2d/stores'
 
 import type { ActiveExpression, ExposedExpression, PerformanceMoodSnapshot } from '../../features/performance/runtime-state'
 import type { ExecutableTool } from '../../stores/ai/chat-llm/tools'
 import type { ExpressionToolPort } from '../../tools/expression'
 
 import { errorMessageFrom } from '@moeru/std'
-import { createDecider, isLlmEligible } from '@proj-airi/stage-shared/expression-performance'
+import { applyMappingWeights, createDecider, isLlmEligible, resolveEffectiveSettings, withAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { SpeechOnsetDetector } from '@proj-airi/stage-ui-live2d/composables/live2d'
+import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { useIntervalFn } from '@vueuse/core'
 import { computed, onScopeDispose, shallowRef, watch } from 'vue'
@@ -25,6 +28,19 @@ type SlotName = SlotCommand['slot']
 type TimerHandle = ReturnType<typeof setTimeout>
 
 const slotNames: readonly SlotName[] = ['face', 'effect', 'prop']
+
+/** A decider decision whose episodes carry the mood dose gain of the context they were decided in. */
+type StageDecision = Omit<PerformanceDecision, 'episodes'> & { episodes: NaturalEpisode[] }
+
+/** An affect recording keeps at most this many entries; the next one marks it truncated. */
+export const maxAffectTraceEntries = 20_000
+
+/** The turn a signal belongs to; deadline and muted signals belong to none. */
+function turnOf(signal: AffectSignal): string | undefined {
+  if (signal.kind === 'timing')
+    return signal.event.turnId
+  return signal.kind === 'deadline' || signal.kind === 'muted' ? undefined : signal.turnId
+}
 
 /** The performer slot each LLM-reachable kind occupies; outfit and system kinds have none. */
 const slotOfKind: Partial<Record<CatalogEntry['kind'], SlotName>> = { face: 'face', effect: 'effect', prop: 'prop' }
@@ -51,7 +67,7 @@ export function toExposedExpressions(catalog: readonly CatalogEntry[]): ExposedE
 
 /** The Live2D scene surface the conductor dispatches to; `Live2DScene` exposes it. */
 export interface StagePerformanceScene {
-  setEmotion: (episode: ReactionEpisode) => void
+  setEmotion: (episode: NaturalEpisode) => void
   applySlots: (commands: SlotCommand[], now: number) => void
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => void
   setMuted: (muted: boolean) => void
@@ -67,6 +83,19 @@ export interface StagePerformanceConductorOptions {
   catalog: () => readonly CatalogEntry[]
   /** Decider seed, fixed for the lifetime of the conductor so traces can replay it. */
   seed: number
+  /**
+   * The card performance profile a signal plays under: the character of the signal's turn, or
+   * the active card for a signal without a turn. `undefined` applies no profile.
+   *
+   * @default () => undefined
+   */
+  profile?: (turnId: string | undefined) => PerformanceProfile | undefined
+  /**
+   * The id of the mounted model, which keys the profile's mapping weights.
+   *
+   * @default () => ''
+   */
+  modelId?: () => string
   /**
    * Monotonic seconds shared with the Live2D performer, which composes on the same clock.
    * Tests inject a fake clock.
@@ -117,6 +146,15 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  * then reach the decider first. The deadline is sent only if no decision since then cancelled or
  * replaced it. Its signal time is the deadline itself, or the latest signal time if that is later.
  * Timers start only from these inputs; `dispose` cancels every pending timer.
+ *
+ * Character profiles: every signal is decided under the effective context of its character
+ * (see `profile`): `resolveEffectiveSettings` scales the mood dynamics, `applyMappingWeights`
+ * scales or disables catalog mappings, and `expressiveness` scales an emotion's nominal
+ * intensity, clamped to [0, 1], before the decider bands it. Each decided episode carries
+ * `moodGain`, the mood dose gain of its band under that context, so Natural doses it under the
+ * character that produced it even when a later decision uses another profile.
+ *
+ * Affect recording: an explicit session (see {@link StagePerformanceConductor.startRecording}).
  */
 export class StagePerformanceConductor {
   readonly seed: number
@@ -141,11 +179,13 @@ export class StagePerformanceConductor {
   private lastLevelAt: number | undefined
   private lastEmphasisAt = Number.NEGATIVE_INFINITY
   private timingSeq = 0
+  /** The open affect recording and the JSON of the last context it recorded. */
+  private recording: { trace: Omit<AffectTrace, 'endAt'>, context: string } | undefined
 
   constructor(private readonly options: StagePerformanceConductorOptions) {
     this.seed = options.seed
     this.deciderKind = options.settings().decider
-    this.decider = createDecider(this.deciderKind)
+    this.decider = this.createTracedDecider(this.deciderKind)
     this.state = this.decider.initial(this.seed)
     this.clock = options.clock ?? (() => performance.now() / 1000)
     this.timers = options.timers ?? browserTimers
@@ -158,7 +198,9 @@ export class StagePerformanceConductor {
       return
     }
     const at = this.clock()
-    const decision = this.decide({ kind: 'emotion', source, emotion, nominal: Math.min(1, Math.max(0, nominal)), turnId, at })
+    const { context, expressiveness } = this.effectiveContext(turnId)
+    const scaled = Math.min(1, Math.max(0, nominal * expressiveness))
+    const decision = this.decide({ kind: 'emotion', source, emotion, nominal: scaled, turnId, at }, context)
     const scene = this.options.scene()
     if (this.options.driver() === 'natural') {
       for (const episode of decision.episodes)
@@ -251,6 +293,39 @@ export class StagePerformanceConductor {
     this.timing('emphasis', this.playing.turnId)
   }
 
+  /**
+   * Starts an affect recording and replaces any open one. The trace starts from a copy of the
+   * decider state and the effective context of the active card. Every later signal is appended
+   * in order. A context entry precedes the first signal whose effective context differs from the
+   * last recorded one, so replay applies settings, catalog, and profile changes exactly where the
+   * live decider saw them. A recording keeps at most {@link maxAffectTraceEntries} entries; the
+   * next entry marks it truncated and stops it. A decider switch also marks it truncated, because
+   * the switch resets the decider state.
+   */
+  startRecording() {
+    const context = JSON.stringify(this.effectiveContext(undefined).context)
+    this.recording = {
+      context,
+      trace: {
+        version: 1,
+        decider: this.deciderKind,
+        checkpoint: structuredClone(this.state),
+        initialContext: JSON.parse(context) as DeciderContext,
+        entries: [],
+        truncated: false,
+      },
+    }
+  }
+
+  /**
+   * Returns the open recording as an affect trace that ends now, or `undefined` when no recording
+   * is open. Recording continues, so a later export contains this one.
+   */
+  exportTrace(): AffectTrace | undefined {
+    const trace = this.recording?.trace
+    return trace && { ...trace, entries: [...trace.entries], endAt: this.clock() }
+  }
+
   /** Cancels the pending deadline and pause timers; the conductor sends no further timed signals. */
   dispose() {
     if (this.deadline)
@@ -288,13 +363,6 @@ export class StagePerformanceConductor {
   private timing(kind: TimingEvent['kind'], turnId: string) {
     const at = this.clock()
     const event: TimingEvent = { id: `timing-${++this.timingSeq}`, kind, turnId, at }
-    // NOTICE:
-    // Live QA reads timing signals from this log through CDP `Runtime.consoleAPICalled`.
-    // The lab affect trace (plan todo 22) does not exist yet, so the log is the only observable channel.
-    // Source: .omo/plans/emotion-expression-performance.md, todo 21 QA scenarios.
-    // Remove once todo 22 records timing signals in the affect trace.
-    // eslint-disable-next-line no-console
-    console.debug('[performance-conductor] timing', kind, turnId, at)
     this.dispatch(this.decide({ kind: 'timing', event, at }), at)
   }
 
@@ -358,7 +426,7 @@ export class StagePerformanceConductor {
   }
 
   /** Sends a timing or deadline decision: episodes reach the Natural scene, and slots reach every driver. */
-  private dispatch(decision: PerformanceDecision, at: number) {
+  private dispatch(decision: StageDecision, at: number) {
     if (this.options.driver() === 'natural') {
       for (const episode of decision.episodes)
         this.options.scene()?.setEmotion(episode)
@@ -366,22 +434,62 @@ export class StagePerformanceConductor {
     this.dispatchSlots(decision, at)
   }
 
-  private decide(signal: AffectSignal): PerformanceDecision {
-    const settings = this.options.settings()
-    // A decider switch keeps the seed, so both deciders replay from the same randomness.
-    if (settings.decider !== this.deciderKind) {
-      this.deciderKind = settings.decider
-      this.decider = createDecider(this.deciderKind)
-      this.state = this.decider.initial(this.seed)
+  /** Applies the card profile of a turn's character, or of the active card, to the settings and the catalog. */
+  private effectiveContext(turnId: string | undefined): { context: DeciderContext, expressiveness: number } {
+    const profile = this.options.profile?.(turnId)
+    const { settings, expressiveness } = resolveEffectiveSettings(this.options.settings(), profile)
+    const catalog = applyMappingWeights(this.options.catalog(), this.options.modelId?.() ?? '', profile)
+    return { context: { catalog, settings }, expressiveness }
+  }
+
+  /** The trace wrapper records each signal before the decider sees it. */
+  private createTracedDecider(kind: ExpressionPerformanceSettings['decider']): Decider {
+    return withAffectTrace(createDecider(kind), signal => this.record({ type: 'signal', signal }))
+  }
+
+  private record(entry: AffectTrace['entries'][number]) {
+    const trace = this.recording?.trace
+    if (!trace || trace.truncated)
+      return
+    if (trace.entries.length >= maxAffectTraceEntries) {
+      trace.truncated = true
+      return
     }
-    const result = this.decider.decide(signal, { catalog: this.options.catalog(), settings }, this.state)
+    trace.entries.push(entry)
+  }
+
+  /** Records the context as plain JSON when it differs from the last recorded one. */
+  private recordContext(context: DeciderContext) {
+    const recording = this.recording
+    if (!recording || recording.trace.truncated)
+      return
+    const json = JSON.stringify(context)
+    if (json === recording.context)
+      return
+    recording.context = json
+    this.record({ type: 'context', context: JSON.parse(json) as DeciderContext })
+  }
+
+  private decide(signal: AffectSignal, context = this.effectiveContext(turnOf(signal)).context): StageDecision {
+    // A decider switch keeps the seed, so both deciders replay from the same randomness.
+    if (context.settings.decider !== this.deciderKind) {
+      this.deciderKind = context.settings.decider
+      this.decider = this.createTracedDecider(this.deciderKind)
+      this.state = this.decider.initial(this.seed)
+      if (this.recording)
+        this.recording.trace.truncated = true
+    }
+    this.recordContext(context)
+    const result = this.decider.decide(signal, context, this.state)
     this.state = result.state
     this.lastSignalAt = Math.max(this.lastSignalAt, signal.at)
     this.armDeadline()
-    return result.decision
+    // After the decider, so decisions and traces stay exactly what the decider produced.
+    const mood = context.settings.moodDynamics
+    return { ...result.decision, episodes: result.decision.episodes.map(episode => ({ ...episode, moodGain: mood[`${episode.band}Gain`] })) }
   }
 
-  private dispatchSlots(decision: PerformanceDecision, at: number) {
+  private dispatchSlots(decision: StageDecision, at: number) {
     if (decision.slots.length === 0)
       return
     const scene = this.options.scene()
@@ -475,6 +583,23 @@ function roundMood(value: number) {
   return Math.round(value * 10) / 10
 }
 
+/** The diagnostics store actions the stage answers lab affect-trace requests with. */
+type AffectTraceAnswers = Pick<ReturnType<typeof useNaturalMotionDiagnostics>, 'completeAffectTrace' | 'failAffectTrace'>
+
+/** Starts or exports the stage conductor's affect recording for a lab request. */
+export function answerAffectTraceRequest(conductor: StagePerformanceConductor, answers: AffectTraceAnswers, request: AffectTraceRequest) {
+  if (request.action === 'start') {
+    conductor.startRecording()
+    answers.completeAffectTrace(request.id, null)
+    return
+  }
+  const trace = conductor.exportTrace()
+  if (trace)
+    answers.completeAffectTrace(request.id, trace)
+  else
+    answers.failAffectTrace(request.id, 'No affect recording is open. Start recording first.')
+}
+
 /** Mood drifts slowly, so state feedback samples it at this period instead of every frame. */
 const MOOD_SAMPLE_MS = 2000
 
@@ -483,22 +608,34 @@ const MOOD_SAMPLE_MS = 2000
  * the stage window, the synchronization leader in Electron, the owner of its leader-routed
  * actions, so switches changed in the settings window take effect.
  *
- * The stage renderer is the only writer of the performance runtime state and the only owner of
- * the expression tool executors.
+ * The stage renderer is the only writer of the performance runtime state, the only owner of
+ * the expression tool executors, and the only window that answers lab affect-trace requests.
  */
-export function useStagePerformanceConductor(options: Pick<StagePerformanceConductorOptions, 'scene' | 'driver' | 'playMotion'> & {
+export function useStagePerformanceConductor(options: Pick<StagePerformanceConductorOptions, 'scene' | 'driver' | 'playMotion' | 'profile'> & {
   /** Reads the Natural mood of the mounted model, or `null` when none runs. */
   mood: () => PerformanceMoodSnapshot | null
 }) {
   const performanceSettings = useExpressionPerformanceSettings()
   const expressions = useExpressionStore()
   const runtimeState = usePerformanceRuntimeState()
-  // Character profiles are applied here in a later step; until then the document is effective as is.
-  const settings = computed(() => performanceSettings.document)
+  // The shared document; the conductor applies each signal's character profile on top of it.
+  const settingsDocument = computed(() => performanceSettings.document)
+  /**
+   * The settings the Natural scene performs with: the document under the active card's profile.
+   * Mood doses do not depend on it, because each episode carries its own character's gain. The
+   * continuous parameters, mood decay and the band shapes, follow the active card: one model
+   * shows one character over time. An equal result keeps its identity, so the scene does not
+   * re-apply unchanged settings.
+   */
+  const settings = computed<ExpressionPerformanceSettings>((previous) => {
+    const next = resolveEffectiveSettings(settingsDocument.value, options.profile?.(undefined)).settings
+    return previous && JSON.stringify(previous) === JSON.stringify(next) ? previous : next
+  })
   const conductor = new StagePerformanceConductor({
     ...options,
-    settings: () => settings.value,
+    settings: () => settingsDocument.value,
     catalog: () => expressions.catalog,
+    modelId: () => expressions.modelId,
     seed: crypto.getRandomValues(new Uint32Array(1))[0],
   })
 
@@ -522,6 +659,12 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
   watch(() => JSON.stringify(exposed.value), () => {
     registration.sync(exposed.value).catch(error => console.error('[performance-conductor] Expression tools failed to register:', errorMessageFrom(error)))
   }, { immediate: true })
+  const diagnostics = useNaturalMotionDiagnostics()
+  watch(() => diagnostics.affectTraceRequest, (request) => {
+    if (request)
+      answerAffectTraceRequest(conductor, diagnostics, request)
+  })
+
   onScopeDispose(() => {
     registration.dispose()
     conductor.dispose()

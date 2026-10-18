@@ -1,4 +1,4 @@
-import type { AffectSignal, CatalogEntry, ExpressionPerformanceSettings, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
+import type { AffectSignal, AffectTrace, CatalogEntry, ExpressionPerformanceSettings, PerformanceProfile, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 import type { Live2DMotionDriver } from '@proj-airi/stage-ui-live2d'
 
 import type { StagePerformanceScene } from './use-stage-performance-conductor'
@@ -9,19 +9,20 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
-import { createExpressionToolRegistration, expressionToolIds, StagePerformanceConductor, toExposedExpressions } from './use-stage-performance-conductor'
+import { createExpressionToolRegistration, expressionToolIds, maxAffectTraceEntries, StagePerformanceConductor, toExposedExpressions } from './use-stage-performance-conductor'
 
-const recorded = vi.hoisted(() => ({ signals: [] as AffectSignal[] }))
-
-// One mock of the decision seam. By default the real decider runs inside the real trace wrapper,
-// so tests can replay what the conductor sent. Timing tests swap in a decider that reports deadlines.
+// `createDecider` stays the real factory, wrapped in a spy so the timing tests can replace the
+// next decider with one that reports deadlines, which the picker never does (`mockReturnValueOnce`).
 vi.mock('@proj-airi/stage-shared/expression-performance', async (importOriginal) => {
   const original = await importOriginal<typeof import('@proj-airi/stage-shared/expression-performance')>()
-  return {
-    ...original,
-    createDecider: vi.fn((kind: Parameters<typeof original.createDecider>[0]) => original.withAffectTrace(original.createDecider(kind), signal => recorded.signals.push(signal))),
-  }
+  return { ...original, createDecider: vi.fn(original.createDecider) }
 })
+
+/** Exact replay of an exported trace after a JSON round trip, as the replay CLI reads it. */
+function replaySlots(trace: AffectTrace) {
+  const parsed = parseAffectTrace(JSON.parse(JSON.stringify(trace)))
+  return replayAffectTrace(parsed, { ...createPickerDecider(), kind: 'picker' }, { mode: 'exact' }).flatMap(({ decision }) => decision.slots)
+}
 
 function entry(id: string, kind: CatalogEntry['kind'], mappings: CatalogEntry['mappings'], overrides: Partial<CatalogEntry> = {}): CatalogEntry {
   return { id, label: id, kind, group: null, confirmed: true, exposedToLlm: false, mappings, fileName: `${id}.exp3.json`, parameterIds: [id], ...overrides }
@@ -43,7 +44,7 @@ function fakeScene() {
   }
 }
 
-function createConductor(driver: Live2DMotionDriver, scene: StagePerformanceScene = fakeScene(), settings: ExpressionPerformanceSettings = defaultExpressionPerformanceSettings) {
+function createConductor(driver: Live2DMotionDriver, scene: StagePerformanceScene = fakeScene(), settings: ExpressionPerformanceSettings = defaultExpressionPerformanceSettings, profile?: PerformanceProfile) {
   let now = 10
   const playMotion = vi.fn<(group: string) => void>()
   const conductor = new StagePerformanceConductor({
@@ -54,6 +55,8 @@ function createConductor(driver: Live2DMotionDriver, scene: StagePerformanceScen
     catalog: () => catalog,
     seed: 7,
     clock: () => now,
+    profile: () => profile,
+    modelId: () => 'rig',
   })
   function advance(seconds: number) {
     now += seconds
@@ -248,10 +251,10 @@ describe('stage performance conductor', () => {
   })
 
   it('routes clears through the decider so an exact replay reproduces every dispatched slot command', () => {
-    recorded.signals.length = 0
     const scene = fakeScene()
     const { conductor, advance } = createConductor('natural', scene)
 
+    conductor.startRecording()
     conductor.emotion('angry', 0.6, 'act', 'turn-a')
     conductor.expression('game', 4, 'tool', 'turn-a')
     advance(1)
@@ -260,21 +263,11 @@ describe('stage performance conductor', () => {
     conductor.expression('game', undefined, 'tool')
     conductor.clearExpression(undefined, 'tool')
 
-    // The trace goes through JSON, as an exported recording does.
-    const trace = parseAffectTrace(JSON.parse(JSON.stringify({
-      version: 1,
-      decider: 'picker',
-      checkpoint: createPickerDecider().initial(7),
-      initialContext: { catalog, settings: defaultExpressionPerformanceSettings },
-      entries: recorded.signals.map(signal => ({ type: 'signal', signal })),
-      truncated: false,
-      endAt: 12,
-    })))
-    const replayed = replayAffectTrace(trace, { ...createPickerDecider(), kind: 'picker' }, { mode: 'exact' }).flatMap(({ decision }) => decision.slots)
+    const trace = conductor.exportTrace()!
     const dispatched = scene.applySlots.mock.calls.flatMap(([commands]) => commands)
 
-    expect(replayed).toEqual(dispatched)
-    expect(recorded.signals.filter(signal => signal.kind === 'clear')).toEqual([
+    expect(replaySlots(trace)).toEqual(dispatched)
+    expect(trace.entries.flatMap(entry => entry.type === 'signal' && entry.signal.kind === 'clear' ? [entry.signal] : [])).toEqual([
       { kind: 'clear', source: 'tool', slot: 'prop', at: 11 },
       { kind: 'clear', source: 'tool', at: 12 },
     ])
@@ -287,6 +280,149 @@ describe('stage performance conductor', () => {
       ['effect', null],
       ['prop', null],
     ])
+  })
+
+  describe('affect recording and character profiles', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('replays a recording started after 2,500 signals, across a mapping weight change, to exactly the dispatched slot commands', () => {
+      // Fake timers fire the pause timers, so recorded timing signals take part as well.
+      vi.useFakeTimers({ now: 10_000, toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+      const scene = fakeScene()
+      let profile: PerformanceProfile | undefined
+      const conductor = new StagePerformanceConductor({
+        scene: () => scene,
+        driver: () => 'natural',
+        playMotion: () => {},
+        settings: () => defaultExpressionPerformanceSettings,
+        catalog: () => catalog,
+        seed: 7,
+        clock: () => Date.now() / 1000,
+        profile: () => profile,
+        modelId: () => 'rig',
+      })
+      const emotions = ['angry', 'happy', 'sad', 'surprised', 'angry', 'neutral'] as const
+      const nominals = [0.6, 0.9, 0.25, 0.6]
+      let step = 0
+      /** One cue of a speaking turn: playback, emotions, an LLM expression, and clears. */
+      function cue() {
+        const turnId = `turn-${Math.floor(step / 10)}`
+        const phase = step % 10
+        if (phase === 0)
+          conductor.clipStart(turnId, `${turnId}-clip`, true)
+        else if (phase === 7)
+          conductor.expression('game', 3, 'tool', turnId)
+        else if (phase === 8)
+          conductor.clearExpression(step % 20 === 8 ? 'prop' : undefined, 'tool', turnId)
+        else if (phase === 9)
+          conductor.clipEnd(turnId, `${turnId}-clip`, 'ended')
+        else
+          conductor.emotion(emotions[step % emotions.length], nominals[step % nominals.length], 'act', turnId)
+        step++
+        vi.advanceTimersByTime(1700)
+      }
+      const anger = (commands: SlotCommand[]) => commands.filter(command => command.expressionId === 'anger').length
+
+      // A throwaway recording counts the earlier signals.
+      conductor.startRecording()
+      while (conductor.exportTrace()!.entries.length < 2500) {
+        for (let i = 0; i < 50; i++)
+          cue()
+      }
+      conductor.startRecording()
+      scene.applySlots.mockClear()
+      for (let i = 0; i < 200; i++)
+        cue()
+      const before = scene.applySlots.mock.calls.flatMap(([commands]) => commands)
+      profile = { mappingWeights: { rig: { anger: 0 } } }
+      for (let i = 0; i < 200; i++)
+        cue()
+      const trace = conductor.exportTrace()!
+      const dispatched = scene.applySlots.mock.calls.flatMap(([commands]) => commands)
+
+      expect(replaySlots(trace)).toEqual(dispatched)
+      expect(anger(before)).toBeGreaterThan(0)
+      expect(anger(dispatched.slice(before.length))).toBe(0)
+      expect(dispatched.some(command => command.expressionId === null)).toBe(true)
+      expect(trace.entries.filter(entry => entry.type === 'context')).toEqual([
+        { type: 'context', context: expect.objectContaining({ catalog: expect.arrayContaining([expect.objectContaining({ id: 'anger', mappings: [] })]) }) },
+      ])
+      expect(new Set(trace.entries.flatMap(entry => entry.type === 'signal' ? [entry.signal.kind] : []))).toEqual(new Set(['emotion', 'expression', 'clear', 'speech', 'timing']))
+      // Without the context entry, replay keeps picking the disabled face.
+      expect(replaySlots({ ...trace, entries: trace.entries.filter(entry => entry.type === 'signal') })).not.toEqual(dispatched)
+    })
+
+    it('marks the recording truncated once it would exceed the entry limit and refuses to replay it', () => {
+      const { conductor } = createConductor('natural')
+
+      conductor.startRecording()
+      for (let i = 0; i < maxAffectTraceEntries; i++)
+        conductor.setMuted(i % 2 === 0)
+      expect(conductor.exportTrace()).toMatchObject({ truncated: false, entries: { length: maxAffectTraceEntries } })
+
+      conductor.setMuted(true)
+      const trace = conductor.exportTrace()!
+
+      expect(trace).toMatchObject({ truncated: true, entries: { length: maxAffectTraceEntries } })
+      expect(() => replaySlots(trace)).toThrow('Cannot replay a truncated affect trace')
+    })
+
+    it('scales a clear marker to strong with card expressiveness 1.5', () => {
+      const scene = fakeScene()
+      const { conductor } = createConductor('natural', scene, defaultExpressionPerformanceSettings, { expressiveness: 1.5 })
+
+      conductor.startRecording()
+      conductor.emotion('sad', 0.6, 'act', 'turn-a')
+
+      const [episode] = scene.setEmotion.mock.calls[0]
+      expect(episode.band).toBe('strong')
+      expect(episode.nominal).toBeCloseTo(0.9)
+      expect(conductor.exportTrace()!.entries).toEqual([
+        { type: 'signal', signal: expect.objectContaining({ kind: 'emotion', nominal: expect.closeTo(0.9) }) },
+      ])
+    })
+
+    it('gives each Natural episode the mood gain of the profile its signal was decided under', () => {
+      const scene = fakeScene()
+      let now = 10
+      const conductor = new StagePerformanceConductor({
+        scene: () => scene,
+        driver: () => 'natural',
+        playMotion: () => {},
+        settings: () => defaultExpressionPerformanceSettings,
+        catalog: () => catalog,
+        seed: 7,
+        clock: () => now,
+        profile: turnId => turnId === 'turn-a' ? { moodGainScale: 0 } : turnId === 'turn-b' ? { moodGainScale: 2 } : undefined,
+      })
+      const gains = defaultExpressionPerformanceSettings.moodDynamics
+
+      conductor.emotion('angry', 0.6, 'act', 'turn-a')
+      now += 3
+      conductor.emotion('sad', 0.9, 'act', 'turn-b')
+      now += 3
+      conductor.emotion('happy', 0.6, 'devtools')
+
+      expect(scene.setEmotion.mock.calls.map(([episode]) => [episode.emotion, episode.band, episode.moodGain])).toEqual([
+        ['angry', 'clear', 0],
+        ['sad', 'strong', 2 * gains.strongGain],
+        ['happy', 'clear', gains.clearGain],
+      ])
+    })
+
+    it('removes an expression from auto picks when the card maps it with weight 0 for the mounted model', () => {
+      function picks(profile?: PerformanceProfile) {
+        const scene = fakeScene()
+        createConductor('natural', scene, defaultExpressionPerformanceSettings, profile).conductor.emotion('angry', 0.6, 'act', 'turn-a')
+        return scene.applySlots.mock.calls.flatMap(([commands]) => commands).map(command => command.expressionId)
+      }
+
+      expect(picks()).toEqual(['anger'])
+      expect(picks({ mappingWeights: { rig: { anger: 0 } } })).toEqual([])
+      expect(picks({ mappingWeights: { 'other-model': { anger: 0 } } })).toEqual(['anger'])
+    })
   })
 
   describe('timing events', () => {
@@ -305,7 +441,6 @@ describe('stage performance conductor', () => {
      */
     function createTimingConductor(options: { deadline?: number, settings?: ExpressionPerformanceSettings, onSignal?: (signal: AffectSignal) => number | null | undefined } = {}) {
       vi.useFakeTimers({ now: 10_000, toFake: ['setTimeout', 'clearTimeout', 'Date'] })
-      vi.spyOn(console, 'debug').mockImplementation(() => {})
       const picker = createPickerDecider()
       const signals: AffectSignal[] = []
       let pending = options.deadline ?? null

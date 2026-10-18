@@ -1,15 +1,19 @@
-import type { ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
+import type { NaturalEpisode } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import type { Component, ComponentInternalInstance, VNode } from 'vue'
 
+import { createPickerDecider, defaultExpressionPerformanceSettings, replayAffectTrace } from '@proj-airi/stage-shared/expression-performance'
+import { Live2DNaturalMotion } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
 import { defineComponent, getCurrentInstance, h, isVNode, nextTick, shallowRef, watch } from 'vue'
 import { createI18n } from 'vue-i18n'
 
-import { StagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
+import { StagePerformanceConductor, useStagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
 import { Emotion, EMOTION_EmotionMotionName_value } from '../../constants/emotions'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
+import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
 
@@ -125,6 +129,7 @@ describe('stage emotion routing on Live2D', () => {
       intensity: expect.closeTo(0.7, 1),
       band: 'clear',
       escalation: false,
+      moodGain: defaultExpressionPerformanceSettings.moodDynamics.clearGain,
     }])
     expect(params.currentMotion).toEqual({ group: 'Idle', index: 0 })
   })
@@ -156,5 +161,91 @@ describe('stage emotion routing on Live2D', () => {
     await useExpressionPerformanceSettings().update({ bands: false })
 
     expect(await received).toBe(false)
+  })
+
+  it('applies the active card\'s mood multipliers to the Natural scene without changing the shared document', async () => {
+    const { scene, episodes, override } = await renderStage('natural')
+    const cards = useAiriCardStore()
+    await cards.initialize()
+    const defaults = defaultExpressionPerformanceSettings.moodDynamics
+    const sceneMood = () => (scene.props.performanceSettings as ExpressionPerformanceSettings).moodDynamics
+
+    const applied = until(() => sceneMood().valenceTau, tau => tau === 2 * defaults.valenceTau)
+    const card = cards.getCard(cards.activeCardId)!
+    await cards.updateCard(cards.activeCardId, {
+      ...card,
+      extensions: { ...card.extensions, airi: { ...card.extensions.airi, modules: { ...card.extensions.airi.modules, performance: { moodGainScale: 0, moodDecayScale: 2 } } } },
+    })
+    await applied
+
+    expect(sceneMood()).toEqual({
+      ...defaults,
+      slightGain: 0,
+      clearGain: 0,
+      strongGain: 0,
+      valenceTau: 2 * defaults.valenceTau,
+      arousalTau: 2 * defaults.arousalTau,
+      tensionTau: 2 * defaults.tensionTau,
+    })
+    expect(useExpressionPerformanceSettings().document.moodDynamics).toEqual(defaults)
+
+    // A lab pulse is decided under the same profile, and the scene keeps the scaled mood.
+    const delivered = until(() => episodes.value.length, count => count === 1)
+    override.pulseEmotion('happy', 0.6)
+    await delivered
+    expect(sceneMood()).toMatchObject({ clearGain: 0, valenceTau: 2 * defaults.valenceTau })
+  })
+})
+
+describe('per-signal character profiles at the Natural consumer', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+    vi.restoreAllMocks()
+  })
+
+  it('consumes a zero-gain turn episode at zero mood when a turnless signal is decided before the Natural frame', async () => {
+    const motion = new Live2DNaturalMotion({ seed: 41 })
+    motion.advance(0)
+    // Model.vue queues episodes until its next frame; this queue stands in for it.
+    const pending: NaturalEpisode[] = []
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    let api: ReturnType<typeof useStagePerformanceConductor> | undefined
+    render(defineComponent({
+      setup() {
+        api = useStagePerformanceConductor({
+          scene: () => ({ setEmotion: episode => pending.push(episode), applySlots: () => {}, onSpeech: () => {}, setMuted: () => {} }),
+          driver: () => 'natural',
+          playMotion: () => {},
+          mood: () => motion.moodState,
+          profile: turnId => turnId === 'turn-a' ? { moodGainScale: 0, moodDecayScale: 2 } : undefined,
+        })
+        // The scene settings reach Natural through a deferred watch, as through Model.vue.
+        watch(api.settings, settings => motion.setPerformanceSettings(settings), { immediate: true })
+        return () => h('div')
+      },
+    }), {
+      global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
+    })
+    const { conductor } = api!
+
+    conductor.startRecording()
+    conductor.emotion('happy', 0.6, 'act', 'turn-a')
+    conductor.setMuted(true)
+    await nextTick()
+
+    // The decider is unchanged: exact replay reproduces the dispatched episodes.
+    const replayed = replayAffectTrace(conductor.exportTrace()!, { ...createPickerDecider(), kind: 'picker' }, { mode: 'exact' })
+      .flatMap(({ decision }) => decision.episodes)
+    expect(pending.map(({ moodGain: _moodGain, ...episode }) => episode)).toEqual(replayed)
+    expect(pending).toHaveLength(1)
+
+    for (const episode of pending)
+      motion.impulse(episode, 0)
+    // Two 120 Hz grid steps, so Natural consumes the queued impulse.
+    motion.advance(2 / 120)
+
+    expect(motion.moodState.valence).toBe(0)
   })
 })

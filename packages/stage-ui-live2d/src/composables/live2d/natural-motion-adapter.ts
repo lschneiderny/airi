@@ -1,10 +1,11 @@
-import type { ExpressionPerformanceSettings, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { Live2DMotionDriver } from './live2d'
 import type { PixiLive2DInternalModel } from './motion-manager'
 import type { Live2DNaturalMotionFrame, Live2DNaturalMotionPose } from './natural-motion'
 import type { NaturalFaceOutput } from './natural-motion/face'
+import type { NaturalEpisode } from './natural-motion/mood'
 import type { PostureHome } from './natural-motion/posture'
 import type { Live2DRigProfile, NaturalChannel } from './natural-motion/rig-profile'
 
@@ -38,7 +39,7 @@ export interface Live2DNaturalMotionAttention {
   /** Parameter ids animated by the playing explicit clip. */
   clipOwnedIds: ReadonlySet<string>
   /** Host emotion queue; the adapter empties it on every composition. */
-  pendingEmotions: ReactionEpisode[]
+  pendingEmotions: NaturalEpisode[]
   cursor: { x: number, y: number } | null
 }
 

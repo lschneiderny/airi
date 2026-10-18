@@ -69,6 +69,19 @@ describe('natural mood', () => {
     expect(dimensions(mood)).toEqual(after)
   })
 
+  it('doses an episode with its own mood gain over the settings gain for its band', () => {
+    const own = new NaturalMood()
+    own.add({ ...episode({ band: 'clear', intensity: 0.6 }), moodGain: 0 })
+    expect(dimensions(own)).toEqual([0, 0, 0])
+
+    const scaled = new NaturalMood()
+    scaled.add({ ...episode({ band: 'clear', intensity: 0.6 }), moodGain: 0.5 })
+    const settings = new NaturalMood()
+    settings.add(episode({ band: 'clear', intensity: 0.6 }))
+    expect(scaled.valence).toBeCloseTo(0.5 * 0.6 * 0.7, 14)
+    expect(settings.valence).toBeCloseTo(defaults.moodDynamics.clearGain * 0.6 * 0.7, 14)
+  })
+
   it('ignores NaN intensity and invalid dt and releases zero taus', () => {
     const mood = new NaturalMood()
     mood.add(episode({ intensity: Number.NaN }))

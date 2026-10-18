@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 
+import AffectTrace from './components/affect-trace.vue'
 import EmotionPulses from './components/emotion-pulses.vue'
 import PerformanceControls from './components/performance-controls.vue'
 import TraceCapture from './components/trace-capture.vue'
@@ -15,6 +16,7 @@ const { t } = useI18n()
     </div>
     <PerformanceControls />
     <EmotionPulses />
+    <AffectTrace />
     <TraceCapture />
   </div>
 </template>

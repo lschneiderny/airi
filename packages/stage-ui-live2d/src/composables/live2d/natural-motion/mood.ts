@@ -18,6 +18,16 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
 }
 
+/**
+ * An episode as the Natural performer consumes it. `moodGain` is the mood dose gain for the
+ * episode's band under the character profile that produced it; the stage resolves it when it
+ * decides the episode, so a later decision under another profile cannot change this dose.
+ * Without it, the performer's own band gain applies.
+ */
+export interface NaturalEpisode extends ReactionEpisode {
+  moodGain?: number
+}
+
 /** Active-time afterglow. Episode doses survive decay so escalations add only the missing dose. */
 export class NaturalMood {
   valence = 0
@@ -35,7 +45,7 @@ export class NaturalMood {
   }
 
   /** Ignores malformed doses and stale escalations without changing accumulated state. */
-  add(episode: ReactionEpisode) {
+  add(episode: NaturalEpisode) {
     if (!Number.isFinite(episode.intensity) || episode.intensity <= 0)
       return
     const previous = this.episodes.get(episode.id)
@@ -47,7 +57,7 @@ export class NaturalMood {
     // not accumulated mood, when a new episode replaces it.
     if (!episode.escalation)
       this.episodes.clear()
-    const gain = this.settings[`${episode.band}Gain`]
+    const gain = episode.moodGain ?? this.settings[`${episode.band}Gain`]
     const dose = gain * clamp(episode.intensity, 0, 1)
     const delta = Math.max(0, dose - (episode.escalation ? previous!.dose : 0))
     const [valence, arousal, tension] = coefficients[episode.emotion]
