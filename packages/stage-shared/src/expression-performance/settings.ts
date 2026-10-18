@@ -1,6 +1,6 @@
 import type { InferOutput, ObjectEntries } from 'valibot'
 
-import { boolean, check, finite, literal, maxValue, minValue, nullable, number, optional, parse, pipe, safeParse, strictObject, unknown } from 'valibot'
+import { boolean, check, finite, integer, maxValue, minValue, nullable, number, optional, parse, picklist, pipe, safeParse, strictObject, unknown } from 'valibot'
 
 function settingsObject<T extends ObjectEntries>(entries: T) {
   // Valibot objects accept arrays; settings documents and sections must be records.
@@ -121,6 +121,21 @@ const timingSchema = settingsObject({
   emphasisRefractory: optional(seconds(), 1.2),
 })
 
+const plannerSchema = settingsObject({
+  /**
+   * Seconds between automatic performance moments; 0 allows back-to-back changes. The face and effect
+   * changes emitted by one decision share one moment and change together, while `windowMax` still
+   * counts each slot change (plan amendment to todo 23, Luke, 2026-10-18). @default 0.8
+   */
+  minGap: optional(seconds(), 0.8),
+  /** Budget window seconds; 0 disables the per-window cap. @default 5 */
+  window: optional(seconds(), 5),
+  /** Automatic slot changes allowed within any window, counted per slot; the cap is off when window is 0. @default 3 */
+  windowMax: optional(pipe(number(), integer(), minValue(1)), 3),
+  /** Seconds a scheduled pick waits for its timing slot before its deadline emits it; 0 emits it at the next deadline. @default 6 */
+  scheduleExpiry: optional(seconds(), 6),
+})
+
 export const ExpressionPerformanceSettingsSchema = settingsObject({
   /** False bypasses band recruitment. @default true */
   bands: optional(boolean(), true),
@@ -130,8 +145,8 @@ export const ExpressionPerformanceSettingsSchema = settingsObject({
   autoExpressions: optional(boolean(), true),
   /** False omits active-expression feedback. @default false */
   stateFeedback: optional(boolean(), false),
-  /** Picker is the baseline decision policy. @default 'picker' */
-  decider: optional(literal('picker'), 'picker'),
+  /** Picker emits picks at once; planner schedules them into speech timing slots under a change budget. @default 'picker' */
+  decider: optional(picklist(['picker', 'planner']), 'picker'),
   /** Zero dose/jitter and unit habituation preserve neutral intensity. */
   intensity: optional(intensitySchema, () => parse(intensitySchema, {})),
   /** Zero modulation gains preserve idle motion. */
@@ -144,6 +159,8 @@ export const ExpressionPerformanceSettingsSchema = settingsObject({
   slots: optional(slotsSchema, () => parse(slotsSchema, {})),
   /** Zero durations remove timing delays. */
   timing: optional(timingSchema, () => parse(timingSchema, {})),
+  /** Zero gap and window disable the planner budget; zero expiry stops picks from waiting for timing slots. */
+  planner: optional(plannerSchema, () => parse(plannerSchema, {})),
 })
 export type ExpressionPerformanceSettings = InferOutput<typeof ExpressionPerformanceSettingsSchema>
 export const defaultExpressionPerformanceSettings = parse(ExpressionPerformanceSettingsSchema, {})

@@ -12,8 +12,8 @@ try {
     options: { decider: { type: 'string' }, mode: { type: 'string' }, seed: { type: 'string' } },
     allowPositionals: true,
   })
-  if (values.decider !== 'picker' || (values.mode !== 'exact' && values.mode !== 'compare') || positionals.length !== 1)
-    throw new Error('Usage: replay-affect-trace.ts --decider picker --mode exact|compare [--seed N] <trace.json>')
+  if ((values.decider !== 'picker' && values.decider !== 'planner') || (values.mode !== 'exact' && values.mode !== 'compare') || positionals.length !== 1)
+    throw new Error('Usage: replay-affect-trace.ts --decider picker|planner --mode exact|compare [--seed N] <trace.json>')
   const seed = Number(values.seed ?? 1)
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xFFFFFFFF)
     throw new Error('Seed must be a uint32')

@@ -25,6 +25,7 @@ describe('performance settings', () => {
       picker: { recencyDepth: 0.8, recencyTau: 8, effectGateFrom: 0.5, effectGateTo: 0.8 },
       slots: { defaultFadeSeconds: 1, speechGrace: 0.25, unstartedExpiry: 10, holdCap: 15 },
       timing: { pauseSeconds: 0.18, emphasisRefractory: 1.2 },
+      planner: { minGap: 0.8, window: 5, windowMax: 3, scheduleExpiry: 6 },
     }
     expect(parseExpressionPerformanceSettings({})).toEqual({ success: true, value: expected })
     expect(defaultExpressionPerformanceSettings).toEqual(expected)
@@ -37,6 +38,13 @@ describe('performance settings', () => {
     expect(result.value.intensity.clear).toBe(0.6)
     expect(result.value.naturalBands.clear.headTau).toBeNull()
     expect(result.value.bands).toBe(false)
+  })
+
+  it('accepts the planner decider with partial planner tunables', () => {
+    const result = parseExpressionPerformanceSettings({ decider: 'planner', planner: { minGap: 0, scheduleExpiry: 0 } })
+    expect(result.success).toBe(true)
+    expect(result.value.decider).toBe('planner')
+    expect(result.value.planner).toEqual({ minGap: 0, window: 5, windowMax: 3, scheduleExpiry: 0 })
   })
 
   it.each([
@@ -52,7 +60,10 @@ describe('performance settings', () => {
     { timing: { pauseSeconds: -1 } },
     { extra: true },
     { intensity: { extra: 1 } },
-    { decider: 'planner' },
+    { decider: 'other' },
+    { planner: { windowMax: 0 } },
+    { planner: { windowMax: 1.5 } },
+    { planner: { extra: 1 } },
   ].map(input => [input]))('returns defaults and issues for malformed input %j', (input) => {
     const result = parseExpressionPerformanceSettings(input)
     expect(result.success).toBe(false)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import type {
   Live2DExpressionSettingsCommand,
   Live2DMotionDriver,
@@ -94,6 +95,22 @@ function applyExpressionSettingsCommand(command: Live2DExpressionSettingsCommand
 
 const expressionGroupNames = computed(() => [...new Set(expressionSettingsSnapshot.value.groups.flatMap(entry => entry.group ? [entry.group] : []))])
 const performanceSettings = useExpressionPerformanceSettings()
+const deciderOptions = computed<SelectTabOption<ExpressionPerformanceSettings['decider']>[]>(() => [
+  {
+    value: 'picker',
+    label: t('settings.live2d.performance.decider.options.picker.title'),
+    description: t('settings.live2d.performance.decider.options.picker.description'),
+  },
+  {
+    value: 'planner',
+    label: t('settings.live2d.performance.decider.options.planner.title'),
+    description: t('settings.live2d.performance.decider.options.planner.description'),
+  },
+])
+const decider = computed<ExpressionPerformanceSettings['decider']>({
+  get: () => performanceSettings.document.decider,
+  set: value => void performanceSettings.update({ decider: value }),
+})
 
 const selectedRuntimeMotion = ref<string>('')
 const runtimeMotions = ref<Array<{ name: string, displayPath: string, group: string, index: number }>>([])
@@ -859,5 +876,21 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       placement="right"
       @update:model-value="performanceSettings.update({ stateFeedback: $event })"
     />
+    <label :class="['flex flex-wrap gap-4']">
+      <div :class="['min-w-0 flex-1 basis-full sm:basis-auto']">
+        <div :class="['flex items-center gap-1 text-sm font-medium']">
+          {{ t('settings.live2d.performance.decider.title') }}
+        </div>
+        <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+          {{ t('settings.live2d.performance.decider.description') }}
+        </div>
+      </div>
+      <SelectTab
+        v-model="decider"
+        :options="deciderOptions"
+        size="sm"
+        :class="['shrink-0']"
+      />
+    </label>
   </Section>
 </template>

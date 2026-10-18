@@ -336,6 +336,16 @@ live2d:
     state-feedback:
       title: State feedback
       description: Tell the AI which expressions are currently active. Each request includes the active expressions and mood.
+    decider:
+      title: Expression timing
+      description: Choose how automatic expressions are timed.
+      options:
+        picker:
+          title: Immediate
+          description: Show each automatic expression as soon as the emotion arrives.
+        planner:
+          title: Planned
+          description: Time automatic expressions to speech and limit how often they change.
 microphone: Microphone
 models: Model
 pages:

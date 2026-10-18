@@ -245,6 +245,43 @@ describe('live2D model settings', () => {
     expect(performance.document.mood).toBe(true)
   })
 
+  it('switches the expression decider between picker and planner', async () => {
+    Object.assign(window, { Live2DCubismCore: {} })
+    const [{ useExpressionPerformanceSettings }, { default: Live2DSettings }] = await Promise.all([
+      import('../../../../features/performance/settings'),
+      import('./live2d.vue'),
+    ])
+    await import('virtual:uno.css')
+    const pinia = createPinia()
+    const performance = useExpressionPerformanceSettings(pinia)
+    const screen = await render(Live2DSettings, {
+      props: { palette: [], runtimeSnapshot: remoteSnapshot([]) },
+      global: { plugins: [pinia, createTestI18n()] },
+    })
+    await screen.getByText(t('settings.live2d.performance.title'), { exact: true }).click()
+    const picker = screen.getByRole('radio', { name: t('settings.live2d.performance.decider.options.picker.title'), exact: true })
+    const planner = screen.getByRole('radio', { name: t('settings.live2d.performance.decider.options.planner.title'), exact: true })
+    await expect.element(picker).toBeChecked()
+    expect(performance.document.decider).toBe('picker')
+    const deciderChanged = new Promise<string>((resolve, reject) => {
+      const stop = watch(() => performance.document.decider, (value) => {
+        stop()
+        resolve(value)
+      }, { flush: 'sync' })
+      AbortSignal.timeout(5000).addEventListener('abort', () => {
+        stop()
+        reject(new Error('performance.document.decider did not change after the option click'))
+      })
+    })
+    await planner.click()
+    expect(await deciderChanged).toBe('planner')
+    await expect.element(planner).toBeChecked()
+    expect(JSON.parse(localStorage.getItem('settings/expression-performance') ?? '{}').decider).toBe('planner')
+    await picker.click()
+    await expect.element(picker).toBeChecked()
+    expect(performance.document.decider).toBe('picker')
+  })
+
   it('selects Natural and preserves mode settings', async () => {
     Object.assign(window, { Live2DCubismCore: {} })
     const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
