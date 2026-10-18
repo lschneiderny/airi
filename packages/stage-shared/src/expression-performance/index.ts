@@ -1,3 +1,4 @@
 export * from './catalog'
+export * from './reaction-strength'
 export * from './settings'
 export * from './types'
