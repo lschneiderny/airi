@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
+import type { ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { Live2DEyeFocusSource } from '../../composables/live2d'
-import type { Emotion } from '../../constants/emotions'
 
 import { presenceBubbleIdle } from '@proj-airi/stage-shared'
 import { useScreenAmbientLightEnvironment, useSettingsScreenAmbientLight } from '@proj-airi/stage-shared/stores/screen-ambient-light'
@@ -149,7 +149,7 @@ defineExpose({
     return live2dCanvasRef.value?.captureFrame()
   },
   /** Queues a Natural emotion impulse. Callers use it only while the Natural driver is selected. */
-  setEmotion: (name: Emotion, intensity: number) => live2dModelRef.value?.setEmotion(name, intensity),
+  setEmotion: (episode: ReactionEpisode) => live2dModelRef.value?.setEmotion(episode),
 })
 </script>
 

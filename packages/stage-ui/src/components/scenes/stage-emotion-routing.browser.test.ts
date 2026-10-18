@@ -80,7 +80,14 @@ describe('stage emotion routing on Live2D', () => {
     override.pulseEmotion('happy', 0.7)
 
     await expect.poll(() => setEmotion.mock.calls.length).toBe(1)
-    expect(setEmotion).toHaveBeenCalledWith(Emotion.Happy, 0.7)
+    expect(setEmotion).toHaveBeenCalledWith({
+      id: expect.any(String),
+      emotion: Emotion.Happy,
+      nominal: 0.7,
+      intensity: 0.7,
+      band: 'clear',
+      escalation: false,
+    })
     expect(params.currentMotion).toEqual({ group: 'Idle', index: 0 })
   })
 

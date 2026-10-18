@@ -1,12 +1,74 @@
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { Emotion } from '../../constants/emotions'
 import { Live2DNaturalMotion } from './natural-motion'
+import { NaturalPerformanceEnergy } from './natural-motion/energy'
 
 const idle: PerformanceState = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }
 const headAxes = ['headX', 'headY', 'headZ'] as const
+
+it.each([
+  { band: 'slight', intensity: 0.25 },
+  { band: 'clear', intensity: 0.6 },
+  { band: 'strong', intensity: 0.9 },
+] as const)('isolates $band recruitment at the facade', ({ band, intensity }) => {
+  const motion = new Live2DNaturalMotion({ seed: 41 })
+  const control = new Live2DNaturalMotion({ seed: 41 })
+  motion.impulse({ id: band, emotion: Emotion.Happy, nominal: intensity, intensity, band, escalation: false }, 0)
+  control.advance(0)
+  let headPeak = 0
+  let bodyPeak = 0
+  let facePeak = 0
+  for (let i = 0; i <= 8 * 120; i++) {
+    const actual = motion.advance(i / 120)
+    const baseline = control.advance(i / 120)
+    headPeak = Math.max(headPeak, Math.hypot(...headAxes.map(axis => actual.pose[axis] - baseline.pose[axis])))
+    bodyPeak = Math.max(bodyPeak, Math.hypot(...(['bodyX', 'bodyY', 'bodyZ'] as const).map(axis => actual.pose[axis]! - baseline.pose[axis]!)))
+    facePeak = Math.max(facePeak, actual.face.eyeSmile - baseline.face.eyeSmile)
+  }
+  expect(facePeak).toBeGreaterThan(0)
+  if (band === 'slight')
+    expect(headPeak).toBe(0)
+  if (band === 'clear')
+    expect(headPeak).toBeGreaterThanOrEqual(0.05)
+  if (band === 'strong')
+    expect(bodyPeak).toBeGreaterThan(0)
+  else
+    expect(bodyPeak).toBe(0)
+})
+
+it.each(['wake', 'screen-change'] as const)('keeps desktop %s on the fixed full-strength overlay', (reactKind) => {
+  const react = vi.spyOn(NaturalPerformanceEnergy.prototype, 'react')
+  try {
+    const motion = new Live2DNaturalMotion({ seed: 41 })
+    motion.setPerformance(idle, 0.5, 0)
+    motion.setPerformance({ ...idle, reactKind, reactSeq: 1 }, 0.5, 0)
+    motion.advance(2 / 120)
+    expect(react).toHaveBeenCalledWith(expect.any(Number), 1, true)
+  }
+  finally {
+    react.mockRestore()
+  }
+})
+
+it('recruits body lean without writing physics-owned body axes', () => {
+  const motion = new Live2DNaturalMotion({ seed: 41 })
+  const control = new Live2DNaturalMotion({ seed: 41 })
+  motion.setRigProfile({ bodyFromHeadPhysics: { x: true, y: false, z: true } })
+  motion.impulse({ id: 'strong', emotion: Emotion.Happy, nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false }, 0)
+  control.advance(0)
+  let peak = 0
+  for (let i = 0; i <= 120; i++) {
+    const frame = motion.advance(i / 120)
+    const baseline = control.advance(i / 120)
+    expect(frame.pose.bodyX).toBeNull()
+    expect(frame.pose.bodyZ).toBeNull()
+    peak = Math.max(peak, Math.abs(frame.pose.bodyY! - baseline.pose.bodyY!))
+  }
+  expect(peak).toBeGreaterThan(0)
+})
 
 type Frame = ReturnType<Live2DNaturalMotion['advance']>
 
@@ -195,7 +257,7 @@ describe('natural motion', () => {
       excited.advance(frame / 60)
       control.advance(frame / 60)
     }
-    excited.impulse(Emotion.Happy, 1, 10)
+    excited.impulse({ id: 'happy', emotion: Emotion.Happy, nominal: 1, intensity: 1, band: 'clear', escalation: false }, 10)
     const start = excited.advance(10 + 1 / 60)
     // The frame the impulse starts in stays continuous with the control path.
     for (const axis of headAxes)
@@ -221,7 +283,7 @@ describe('natural motion', () => {
     const control = new Live2DNaturalMotion({ seed: 43 })
     neutral.advance(0)
     control.advance(0)
-    neutral.impulse(Emotion.Neutral, 1, 5)
+    neutral.impulse({ id: 'neutral', emotion: Emotion.Neutral, nominal: 1, intensity: 1, band: 'clear', escalation: false }, 5)
     for (const time of [5, 5.5, 8, 12])
       expect(neutral.advance(time)).toEqual(control.advance(time))
   })

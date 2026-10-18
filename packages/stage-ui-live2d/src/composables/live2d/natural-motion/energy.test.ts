@@ -14,6 +14,32 @@ function state(mode: 'idle' | 'watching' | 'listening' | 'thinking' | 'talking',
 }
 
 describe('natural performance energy', () => {
+  it('takes the maximum unexpired intensity rather than stacking contributions', () => {
+    const stacked = new NaturalPerformanceEnergy()
+    const single = new NaturalPerformanceEnergy()
+    stacked.react(0, 0.9)
+    stacked.react(0, 0.4)
+    single.react(0, 0.9)
+    settle(stacked, 1)
+    settle(single, 1)
+    expect(stacked.amplitudeScale).toBe(single.amplitudeScale)
+    expect(stacked.shiftRateScale).toBe(single.shiftRateScale)
+  })
+
+  it('preserves desktop x1.3/x1.5 targets for two seconds', () => {
+    const energy = new NaturalPerformanceEnergy()
+    energy.react(0, 1, true)
+    energy.step(1)
+    expect(energy.amplitudeScale).toBeCloseTo(1.3 - 0.3 * Math.exp(-1), 12)
+    expect(energy.shiftRateScale).toBeCloseTo(1.5 - 0.5 * Math.exp(-1), 12)
+    energy.step(0.99)
+    const amplitude = energy.amplitudeScale
+    const rate = energy.shiftRateScale
+    energy.step(0.02)
+    expect(energy.amplitudeScale).toBeCloseTo(1 + (amplitude - 1) * Math.exp(-0.02), 12)
+    expect(energy.shiftRateScale).toBeCloseTo(1 + (rate - 1) * Math.exp(-0.02), 12)
+  })
+
   it('keeps idle at the default energy exactly neutral', () => {
     const energy = new NaturalPerformanceEnergy()
     energy.setState(state('idle'), 0.5)
@@ -75,7 +101,7 @@ describe('natural performance energy', () => {
     expect(away.shiftRateScale).toBeCloseTo(0.6, 6)
 
     const reacting = new NaturalPerformanceEnergy()
-    reacting.react(0)
+    reacting.react(0, 1)
     settle(reacting, 1.9)
     expect(reacting.amplitudeScale).toBeGreaterThan(1.2)
     expect(reacting.shiftRateScale).toBeGreaterThan(1.3)

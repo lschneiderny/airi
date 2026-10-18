@@ -1,96 +1,99 @@
+import type { Band, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
+
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it } from 'vitest'
 
-import { Emotion, EMOTION_VALUES } from '../../../constants/emotions'
-import { impulseEnvelope, NaturalImpulses } from './impulses'
+import { headPulseOffset, impulseEnvelope, NaturalImpulses } from './impulses'
 import { createRandomStream } from './random'
 
 const step = 1 / 120
-
-function peakHead(impulses: NaturalImpulses, seconds = 4) {
-  let peak = 0
-  for (let i = 0; i <= seconds / step; i++)
-    peak = Math.max(peak, Math.hypot(...impulses.headOffset(i * step)))
-  return peak
+function episode(band: Band, intensity: number, id = 'happy', escalation = false): ReactionEpisode {
+  return { id, emotion: 'happy', nominal: intensity, intensity, band, escalation }
+}
+function sample(band: Band, intensity: number) {
+  const impulses = new NaturalImpulses(createRandomStream(41))
+  const result = impulses.trigger(episode(band, intensity), 0)
+  let head = 0
+  let body = 0
+  let face = 0
+  let jump = 0
+  let previous = [0, 0, 0]
+  for (let i = 0; i <= 8 / step; i++) {
+    const time = i * step
+    const offset = impulses.headOffset(time)
+    head = Math.max(head, Math.hypot(...offset))
+    body = Math.max(body, Math.hypot(...impulses.bodyOffset(time)))
+    face = Math.max(face, impulses.hints(time).eyeSmile)
+    jump = Math.max(jump, ...offset.map((value, axis) => Math.abs(value - previous[axis])))
+    previous = offset
+  }
+  return { head, body, face, jump, result }
 }
 
-describe('natural emotion impulses', () => {
-  it('starts with zero slope and peaks at tau', () => {
+describe('band-driven Natural episodes', () => {
+  it('isolates recruitment and keeps onset continuous', () => {
+    const slight = sample('slight', 0.25)
+    const clear = sample('clear', 0.6)
+    const strong = sample('strong', 0.9)
+    expect(slight.face).toBeGreaterThan(0)
+    expect(slight.result?.glance).toBeNull()
+    expect(slight.result?.energy).toBe(false)
+    expect(clear.result?.glance?.hold).toBe(1.2)
+    expect(clear.result?.energy).toBe(false)
+    expect(strong.result?.energy).toBe(true)
+    expect(Math.max(slight.jump, clear.jump, strong.jump)).toBeLessThan(0.02)
+  })
+
+  it('starts at zero slope and overshoots in the opposite direction', () => {
     expect(impulseEnvelope(0, 0.3)).toBe(0)
     expect(impulseEnvelope(0.3, 0.3)).toBeCloseTo(1, 12)
-    expect(impulseEnvelope(step, 0.25)).toBeLessThan(0.01)
+    expect(impulseEnvelope(step, 0.3)).toBeLessThan(0.01)
+    const pulses = [{ start: 0, tau: 0.3, peak: [0, 1, 0] as [number, number, number], overshoot: 0.16 }]
+    expect(headPulseOffset(pulses, 1.2)[1]).toBeLessThan(0)
+    headPulseOffset(pulses, 4.6)
+    expect(pulses).toHaveLength(0)
   })
 
-  it('keeps every head peak within 0.12 I^0.7 x 1.2', () => {
-    for (const name of EMOTION_VALUES) {
-      for (const intensity of [0.2, 0.6, 1]) {
-        for (let seed = 1; seed <= 20; seed++) {
-          const impulses = new NaturalImpulses(createRandomStream(seed))
-          impulses.trigger(name, intensity, 0)
-          expect(peakHead(impulses)).toBeLessThanOrEqual(0.12 * intensity ** 0.7 * 1.2)
-        }
-      }
+  it('adds only missing escalation amplitude without a face discontinuity', () => {
+    const escalated = new NaturalImpulses(createRandomStream(17))
+    const fresh = new NaturalImpulses(createRandomStream(17))
+    escalated.trigger(episode('clear', 0.6), 0)
+    fresh.trigger(episode('strong', 0.9), 0)
+    const before = escalated.hints(0.1)
+    const headBefore = escalated.headOffset(0.1)
+    escalated.trigger(episode('strong', 0.9, 'happy', true), 0.1)
+    expect(escalated.hints(0.1)).toEqual(before)
+    expect(escalated.headOffset(0.1)).toEqual(headBefore)
+    let escalatedPeak = 0
+    let freshPeak = 0
+    for (let i = 0; i <= 6 / step; i++) {
+      escalatedPeak = Math.max(escalatedPeak, Math.hypot(...escalated.headOffset(i * step)))
+      freshPeak = Math.max(freshPeak, Math.hypot(...fresh.headOffset(i * step)))
     }
+    expect(escalatedPeak).toBeLessThanOrEqual(freshPeak + 1e-6)
   })
 
-  it('treats neutral as a no-op', () => {
+  it('does not deduplicate new ids and ignores unknown or expired escalations and NaN', () => {
     const impulses = new NaturalImpulses(createRandomStream(1))
-    expect(impulses.trigger(Emotion.Neutral, 1, 0)).toBeNull()
-    expect(peakHead(impulses)).toBe(0)
-    expect(Object.values(impulses.hints(0.5)).every(value => value === 0)).toBe(true)
+    expect(impulses.trigger(episode('clear', 0.6), 0)).not.toBeNull()
+    expect(impulses.trigger(episode('clear', 0.6, 'next'), 0)).not.toBeNull()
+    expect(impulses.trigger(episode('strong', 0.9, 'missing', true), 0)).toBeNull()
+    expect(impulses.trigger(episode('strong', 0.9, 'happy', true), 16)).toBeNull()
+    expect(impulses.trigger(episode('strong', Number.NaN), 17)).toBeNull()
   })
 
-  it('ignores the same emotion within 2 s but not other emotions', () => {
-    const impulses = new NaturalImpulses(createRandomStream(2))
-    expect(impulses.trigger(Emotion.Happy, 1, 0)).not.toBeNull()
-    expect(impulses.trigger(Emotion.Happy, 1, 1.9)).toBeNull()
-    expect(impulses.trigger(Emotion.Sad, 1, 1.9)).not.toBeNull()
-    expect(impulses.trigger(Emotion.Happy, 1, 2)).not.toBeNull()
-  })
-
-  it('adds decaying face hints in the emotion direction', () => {
-    const impulses = new NaturalImpulses(createRandomStream(3))
-    impulses.trigger(Emotion.Happy, 1, 0)
-    const early = impulses.hints(0.4)
-    expect(early.eyeSmile).toBeGreaterThan(0.35)
-    expect(early.mouthForm).toBeGreaterThan(0.35)
-    expect(early.browY).toBeGreaterThan(0.2)
-    // tau 1.5 s: about 13% of the 0.65 happy eye smile remains after 3 s.
-    expect(impulses.hints(3).eyeSmile).toBeLessThan(0.14 * 0.65)
-
-    const surprised = new NaturalImpulses(createRandomStream(4))
-    surprised.trigger(Emotion.Surprise, 1, 0)
-    expect(surprised.hints(0.3).eyeOpen).toBeGreaterThan(0.1)
-    expect(surprised.headOffset(0.4)[1]).toBeGreaterThan(0)
-  })
-
-  it('makes a full happy impulse clearly visible on Bear on every seed', () => {
-    // Bear-range units: the adapter maps head commands onto ParamAngleY [-30, 30] (1 = 30 units)
-    // and adds `eyeSmile` times the ParamEyeLSmile [0, 1] half-range (1 = 0.5). The todo 10
-    // live capture matches: a 0.5 hint peaked at ParamEyeLSmile 0.202.
-    const angleYUnits = 30
-    const eyeSmileUnits = 0.5
-    for (let seed = 1; seed <= 10; seed++) {
-      const impulses = new NaturalImpulses(createRandomStream(seed))
-      impulses.trigger(Emotion.Happy, 1, 0)
-      let rise = 0
-      let smile = 0
-      for (let i = 0; i <= 0.6 / step; i++) {
-        rise = Math.max(rise, impulses.headOffset(i * step)[1] * angleYUnits)
-        smile = Math.max(smile, impulses.hints(i * step).eyeSmile * eyeSmileUnits)
-      }
-      expect(rise, `seed ${seed} head rise`).toBeGreaterThanOrEqual(1.8)
-      expect(smile, `seed ${seed} smile`).toBeGreaterThanOrEqual(0.24)
-    }
-  })
-
-  it('requests side glances for think and awkward', () => {
-    const think = new NaturalImpulses(createRandomStream(5)).trigger(Emotion.Think, 1, 0)
-    expect(Math.abs(think!.glance!.point.x)).toBeCloseTo(0.3, 12)
-    expect(think!.glance!.point.y).toBeCloseTo(0.25, 12)
-    expect(think!.glance!.hold).toBeGreaterThanOrEqual(1.2)
-    expect(think!.glance!.hold).toBeLessThanOrEqual(2.5)
-    const awkward = new NaturalImpulses(createRandomStream(6)).trigger(Emotion.Awkward, 1, 0)
-    expect(awkward!.glance!.point.y).toBeCloseTo(-0.2, 12)
-    expect(new NaturalImpulses(createRandomStream(7)).trigger(Emotion.Happy, 1, 0)!.glance).toBeNull()
+  it('snapshots settings in flight and treats all bands as clear when disabled', () => {
+    const impulses = new NaturalImpulses(createRandomStream(5))
+    const reference = new NaturalImpulses(createRandomStream(5))
+    impulses.trigger(episode('clear', 0.6), 0)
+    reference.trigger(episode('clear', 0.6), 0)
+    impulses.setPerformanceSettings({ ...defaultExpressionPerformanceSettings.naturalBands, headGain: 0 }, false)
+    expect(impulses.headOffset(0.38)).toEqual(reference.headOffset(0.38))
+    expect(impulses.hints(0.5)).toEqual(reference.hints(0.5))
+    const disabled = new NaturalImpulses(createRandomStream(5))
+    disabled.setPerformanceSettings(defaultExpressionPerformanceSettings.naturalBands, false)
+    disabled.trigger(episode('slight', 0.6), 0)
+    expect(disabled.headOffset(0.38)).toEqual(reference.headOffset(0.38))
+    expect(disabled.bodyOffset(0.38)).toEqual([0, 0, 0])
   })
 })

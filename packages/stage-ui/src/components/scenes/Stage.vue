@@ -14,6 +14,7 @@ import { createLive2DLipSync } from '@proj-airi/model-driver-lipsync'
 import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import { normalizeActPayload, Playback } from '@proj-airi/pipelines-audio'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
@@ -281,10 +282,21 @@ const emotionsQueue = createQueue<EmotionPayload>({
       else if (stageModelRenderer.value === 'live2d') {
         // Natural turns an emotion into an impulse on its own layers. Universal and MAGIC play the
         // emotion's motion group through the store, which also defers it while the model loads.
-        if (live2dMotionDriver.value === 'natural')
-          live2dSceneRef.value?.setEmotion(ctx.data.name, ctx.data.intensity)
-        else
+        if (live2dMotionDriver.value === 'natural') {
+          const nominal = ctx.data.intensity
+          const thresholds = defaultExpressionPerformanceSettings.intensity
+          live2dSceneRef.value?.setEmotion({
+            id: crypto.randomUUID(),
+            emotion: ctx.data.name,
+            nominal,
+            intensity: nominal,
+            band: nominal >= thresholds.strongFrom ? 'strong' : nominal >= thresholds.clearFrom ? 'clear' : 'slight',
+            escalation: false,
+          })
+        }
+        else {
           currentMotion.value = { group: EMOTION_EmotionMotionName_value[ctx.data.name] }
+        }
       }
       else if (stageModelRenderer.value === 'spine') {
         spineSceneRef.value?.setEmotion(ctx.data.name, ctx.data.intensity)
@@ -427,7 +439,7 @@ watch(() => emotionPulse.value?.seq, () => {
   const pulse = emotionPulse.value
   if (!pulse)
     return
-  const emotion = toStageEmotionPayload(pulse)
+  const emotion = toStageEmotionPayload({ name: pulse.name, intensity: pulse.nominal })
   if (emotion)
     emotionsQueue.enqueue(emotion)
 })

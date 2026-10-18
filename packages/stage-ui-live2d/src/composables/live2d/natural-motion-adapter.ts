@@ -1,6 +1,6 @@
+import type { ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
-import type { Emotion } from '../../constants/emotions'
 import type { Live2DMotionDriver } from './live2d'
 import type { PixiLive2DInternalModel } from './motion-manager'
 import type { Live2DNaturalMotionFrame, Live2DNaturalMotionPose } from './natural-motion'
@@ -38,7 +38,7 @@ export interface Live2DNaturalMotionAttention {
   /** Parameter ids animated by the playing explicit clip. */
   clipOwnedIds: ReadonlySet<string>
   /** Host emotion queue; the adapter empties it on every composition. */
-  pendingEmotions: { name: Emotion, intensity: number }[]
+  pendingEmotions: ReactionEpisode[]
   cursor: { x: number, y: number } | null
 }
 
@@ -273,7 +273,7 @@ export class Live2DNaturalMotionAdapter {
     // Emotions queued while Natural is inactive are stale by the time it resumes.
     for (const emotion of attention.pendingEmotions.splice(0)) {
       if (active)
-        this.controller.impulse(emotion.name, emotion.intensity, this.time)
+        this.controller.impulse(emotion, this.time)
     }
     this.controller.setCursor(attention.cursor, this.time)
     const frame = this.controller.advance(this.time)

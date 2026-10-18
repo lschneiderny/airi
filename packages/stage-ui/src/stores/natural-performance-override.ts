@@ -6,7 +6,7 @@ import { computed, ref } from 'vue'
 /** One emotion fired from the devtools Natural lab. */
 export interface EmotionPulse {
   name: string
-  intensity: number
+  nominal: number
   /** Increments per pulse. The stage enqueues a pulse when `seq` changes, so equal pulses still fire. */
   seq: number
 }
@@ -43,8 +43,8 @@ export const useNaturalPerformanceOverride = defineStore('natural-performance-ov
     }
   })
 
-  function pulseEmotion(name: string, intensity: number) {
-    emotionPulse.value = { name, intensity, seq: (emotionPulse.value?.seq ?? 0) + 1 }
+  function pulseEmotion(name: string, nominal: number) {
+    emotionPulse.value = { name, nominal, seq: (emotionPulse.value?.seq ?? 0) + 1 }
   }
 
   function resetState() {

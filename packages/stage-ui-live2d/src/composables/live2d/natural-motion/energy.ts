@@ -1,4 +1,7 @@
+import type { ExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceMode, PerformanceState } from '@proj-airi/stage-shared/performance-state'
+
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 
 /** Preset values that the posture and gaze layers read each grid step. */
 interface Preset {
@@ -71,7 +74,12 @@ export class NaturalPerformanceEnergy {
   private away = false
   private energy = 0.5
   private time = 0
-  private reactingUntil = Number.NEGATIVE_INFINITY
+  private settings = defaultExpressionPerformanceSettings.naturalBands
+  private readonly reactions: { until: number, intensity: number, amplitude: number, rate: number }[] = []
+
+  setPerformanceSettings(settings: ExpressionPerformanceSettings['naturalBands']) {
+    this.settings = { ...settings }
+  }
 
   /** Sets the target state; the filter moves toward it from the next step. */
   setState(state: Pick<PerformanceState, 'mode' | 'attention' | 'away'>, energy: number) {
@@ -97,22 +105,39 @@ export class NaturalPerformanceEnergy {
   }
 
   /** Starts the reacting overlay at `at` (active seconds) for 2 s. */
-  react(at: number) {
-    this.reactingUntil = at + reacting.seconds
+  react(at: number, intensity: number, desktop = false) {
+    if (!Number.isFinite(intensity))
+      return
+    this.reactions.push({
+      until: at + (desktop ? reacting.seconds : this.settings.energySeconds),
+      intensity: clamp01(intensity),
+      amplitude: desktop ? reacting.amplitude - 1 : this.settings.energyAmplitude,
+      rate: desktop ? reacting.shiftRate - 1 : this.settings.energyRate,
+    })
   }
 
   /** Advances the cross-fade by `dt` seconds. */
   step(dt: number) {
     this.time += dt
     const preset = presets[this.mode]
-    const isReacting = this.time < this.reactingUntil
+    let reactionAmplitude = 0
+    let reactionRate = 0
+    for (let i = this.reactions.length - 1; i >= 0; i--) {
+      const reaction = this.reactions[i]
+      if (this.time >= reaction.until) {
+        this.reactions.splice(i, 1)
+        continue
+      }
+      reactionAmplitude = Math.max(reactionAmplitude, reaction.amplitude * reaction.intensity)
+      reactionRate = Math.max(reactionRate, reaction.rate * reaction.intensity)
+    }
     const amplitude = preset.amplitude
-      * (isReacting ? reacting.amplitude : 1)
+      * (1 + reactionAmplitude)
       * (this.away ? away.amplitude : 1)
       // 0.7 + 0.6E, written around E = 0.5 so the default energy is exactly 1 in floating point.
       * (1 + 0.6 * (this.energy - 0.5))
     const shiftRate = preset.shiftRate
-      * (isReacting ? reacting.shiftRate : 1)
+      * (1 + reactionRate)
       * (this.away ? away.shiftRate : 1)
       // 0.6 + 0.8E, likewise exact at E = 0.5.
       * (1 + 0.8 * (this.energy - 0.5))

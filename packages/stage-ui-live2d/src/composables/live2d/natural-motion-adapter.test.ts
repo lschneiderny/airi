@@ -548,9 +548,10 @@ describe('natural motion adapter', () => {
     f.state.eligible = true
     f.motion.ParamEyeLOpen = 0
     f.motion.ParamEyeROpen = 0
-    f.state.pendingEmotions.push({ name: Emotion.Surprise, intensity: 1 })
+    const episode = { id: 'surprise', emotion: Emotion.Surprise, nominal: 1, intensity: 1, band: 'clear' as const, escalation: false }
+    f.state.pendingEmotions.push(episode)
     const reference = stream()
-    reference.impulse(Emotion.Surprise, 1, 0)
+    reference.impulse(episode, 0)
     let peakHint = 0
     for (let index = 0; index <= 3 * 120; index++) {
       const time = index / 120
@@ -568,17 +569,18 @@ describe('natural motion adapter', () => {
     const impulse = vi.spyOn(Live2DNaturalMotion.prototype, 'impulse')
     try {
       const f = fixture()
-      f.state.pendingEmotions.push({ name: Emotion.Happy, intensity: 0.5 })
+      const episode = { id: 'happy', emotion: Emotion.Happy, nominal: 0.5, intensity: 0.5, band: 'clear' as const, escalation: false }
+      f.state.pendingEmotions.push(episode)
       // Emotions queued while Natural is inactive are dropped, not replayed on resume.
       f.frame(0)
       expect(f.state.pendingEmotions).toHaveLength(0)
       expect(impulse).not.toHaveBeenCalled()
       f.state.eligible = true
-      f.state.pendingEmotions.push({ name: Emotion.Happy, intensity: 0.5 })
+      f.state.pendingEmotions.push(episode)
       f.frame(0.1)
       expect(f.state.pendingEmotions).toHaveLength(0)
       expect(impulse).toHaveBeenCalledTimes(1)
-      expect(impulse).toHaveBeenCalledWith(Emotion.Happy, 0.5, 0.1)
+      expect(impulse).toHaveBeenCalledWith(episode, 0.1)
       f.frame(0.2)
       f.frame(0.3)
       expect(impulse).toHaveBeenCalledTimes(1)

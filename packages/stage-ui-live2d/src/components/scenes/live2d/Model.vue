@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Application } from '@pixi/app'
 import type { Filter } from '@pixi/core'
+import type { ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type {
   AmbientLightEnvironment,
@@ -141,7 +142,7 @@ let naturalMotion: Live2DNaturalMotionAdapter | undefined
 let stopNaturalCapture: (() => void) | undefined
 const localFocus = new Point()
 /** Emotions for the Natural driver; the adapter drains the queue on its next composition. */
-const pendingNaturalEmotions: { name: Emotion, intensity: number }[] = []
+const pendingNaturalEmotions: ReactionEpisode[] = []
 /** Parameter ids the playing explicit clip animates; Natural masks them. Empty while no clip plays. */
 let clipOwnedIds: ReadonlySet<string> = new Set<string>()
 /** Latest SDK timestamp (seconds) seen by the Natural frame hook; NaN before the first frame of a model. */
@@ -1076,14 +1077,6 @@ watch(naturalCaptureRequest, (request, previous) => {
     stopNaturalCapture?.()
 })
 
-/**
- * Queues an emotion impulse for the Natural driver. The stage calls it only while Natural drives
- * the model; Universal and MAGIC play the emotion's motion group instead.
- */
-function setEmotion(name: Emotion, intensity: number) {
-  pendingNaturalEmotions.push({ name, intensity })
-}
-
 // Watch for expression system toggle — nullify/restore SDK managers at runtime
 watch(live2dExpressionEnabled, (enabled) => {
   if (!model.value)
@@ -1200,7 +1193,8 @@ defineExpose({
   initialModelHeight,
   initialModelWidth,
   headAnchor,
-  setEmotion,
+  /** The stage calls this only under Natural; Universal and MAGIC retain motion-group routing. */
+  setEmotion: (episode: ReactionEpisode) => { pendingNaturalEmotions.push(episode) },
 })
 
 import.meta.hot?.dispose(() => {

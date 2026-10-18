@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import type { Band } from '@proj-airi/stage-shared/expression-performance'
+
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { EMOTION_VALUES } from '@proj-airi/stage-ui-live2d/constants/emotions'
-import { Button, FieldRange } from '@proj-airi/ui'
+import { Button } from '@proj-airi/ui'
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -9,7 +12,8 @@ import { useNaturalPerformanceOverride } from '../../../../../stores/natural-per
 
 const { t } = useI18n()
 const override = useNaturalPerformanceOverride()
-const intensity = ref(1)
+const band = ref<Band>('clear')
+const bands: Band[] = ['slight', 'clear', 'strong']
 </script>
 
 <template>
@@ -21,15 +25,17 @@ const intensity = ref(1)
     <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
       {{ t('tamagotchi.settings.devtools.pages.live2d-natural-motion.emotions.description') }}
     </div>
-    <FieldRange
-      v-model="intensity"
-      as="div"
-      :min="0"
-      :max="1"
-      :step="0.05"
-      :format-value="value => value.toFixed(2)"
-      :label="t('tamagotchi.settings.devtools.pages.live2d-natural-motion.emotions.intensity')"
-    />
+    <div :class="['flex flex-wrap gap-2']">
+      <Button
+        v-for="choice in bands"
+        :key="choice"
+        :label="t(`tamagotchi.settings.devtools.pages.live2d-natural-motion.emotions.bands.${choice}`)"
+        :aria-pressed="band === choice"
+        :variant="band === choice ? 'primary' : 'secondary'"
+        size="sm"
+        @click="band = choice"
+      />
+    </div>
     <div :class="['flex flex-wrap gap-2']">
       <Button
         v-for="emotion in EMOTION_VALUES"
@@ -38,7 +44,7 @@ const intensity = ref(1)
         size="sm"
         variant="secondary"
         :label="t(`tamagotchi.settings.devtools.pages.live2d-natural-motion.emotions.names.${emotion}`)"
-        @click="override.pulseEmotion(emotion, intensity)"
+        @click="override.pulseEmotion(emotion, defaultExpressionPerformanceSettings.intensity[band])"
       />
     </div>
   </Section>

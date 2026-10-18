@@ -1,6 +1,6 @@
+import type { ExpressionPerformanceSettings, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
-import type { Emotion } from '../../constants/emotions'
 import type { NaturalBreathOutput } from './natural-motion/breath'
 import type { NaturalFaceOutput } from './natural-motion/face'
 import type { GazePoint } from './natural-motion/gaze'
@@ -89,7 +89,7 @@ const glanceTargets = { camera: { x: 0, y: 0 }, desk: { x: 0, y: -0.18 } }
 
 /** Work requested between grid steps; it starts at the next step so grid states stay consistent. */
 type PendingAction
-  = | { kind: 'emotion', name: Emotion, intensity: number }
+  = | { kind: 'emotion', episode: ReactionEpisode }
     | { kind: 'react', reaction: 'wake' | 'screen-change' }
 
 interface Snapshot {
@@ -242,12 +242,17 @@ export class Live2DNaturalMotion {
   }
 
   /**
-   * Starts emotion impulse `name` with intensity 0..1 after advancing to this timestamp; it begins
-   * at the next grid step. Neutral and duplicates of the same emotion within 2 s do nothing.
+   * Starts an episode on the next grid step after advancing to this timestamp.
    */
-  impulse(name: Emotion, intensity: number, nowSeconds: number) {
+  impulse(episode: ReactionEpisode, nowSeconds: number) {
     this.advance(nowSeconds)
-    this.pending.push({ kind: 'emotion', name, intensity })
+    this.pending.push({ kind: 'emotion', episode })
+  }
+
+  /** False treats every new episode as clear for A/B comparison. In-flight pulses retain their settings. */
+  setPerformanceSettings(settings: ExpressionPerformanceSettings['naturalBands'], bands = true) {
+    this.impulses.setPerformanceSettings(settings, bands)
+    this.energy.setPerformanceSettings(settings)
   }
 
   /** Suspension freezes every layer; resume keeps all state, so output continues without a jump. */
@@ -286,9 +291,13 @@ export class Live2DNaturalMotion {
       cursorY: 0.20 * (c?.y ?? 0),
     })
     const posture = this.posture.step(step, [this.x.cursorX, this.x.cursorY, 0])
-    // Impulses and speech emphasis add on top of posture; body and eye compensation see the result.
+    // Eye compensation sees the complete head pose.
     const impulse = this.impulses.headOffset(stepStart + step)
     const head = posture.map((value, axis) => clamp(value + emphasis[axis] + impulse[axis], 1)) as Vec3
+    // Emotion recruitment owns its body lean; following its head pulse would leak clear into body.
+    // Physics-owned body axes still follow the full head through rig physics, outside Natural's control.
+    const nudge = this.impulses.headOffset(stepStart + step, false)
+    const followerHead = posture.map((value, axis) => clamp(value + emphasis[axis] + nudge[axis], 1)) as Vec3
     if (this.posture.shiftCount !== this.shiftCount) {
       this.shiftCount = this.posture.shiftCount
       this.body.beginShift()
@@ -299,9 +308,10 @@ export class Live2DNaturalMotion {
       this.blink.onGazeShift(this.gaze.saccadeSize)
       this.face.onGazeShift(this.gaze.saccadeSize)
     }
+    const lean = this.impulses.bodyOffset(stepStart + step)
     return {
       head,
-      body: this.body.step(step, head),
+      body: this.body.step(step, followerHead).map((value, axis) => clamp(value + lean[axis], 1)) as Vec3,
       gaze,
       face: this.withHints(this.face.step(step), stepStart + step),
       blinkFactor: this.blink.step(step),
@@ -313,12 +323,13 @@ export class Live2DNaturalMotion {
   private startPending(at: number) {
     for (const action of this.pending.splice(0)) {
       if (action.kind === 'emotion') {
-        const started = this.impulses.trigger(action.name, action.intensity, at)
+        const started = this.impulses.trigger(action.episode, at)
         if (!started)
           continue
         if (started.glance)
           this.gaze.glance(started.glance.point, started.glance.hold, at)
-        this.energy.react(at)
+        if (started.energy)
+          this.energy.react(at, action.episode.intensity)
         continue
       }
       if (action.reaction === 'wake') {
@@ -328,7 +339,7 @@ export class Live2DNaturalMotion {
       else {
         this.gaze.glance(glanceTargets.desk, screenChangeGlanceHold, at)
       }
-      this.energy.react(at)
+      this.energy.react(at, 1, true)
     }
   }
 
