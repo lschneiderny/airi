@@ -39,10 +39,19 @@ prompt:
     for me? <{'|'}ACT {'{"emotion":"curious"}'}{'|'}><{'|'}DELAY 1{'|'}> Can I open it?
 
     ACT JSON format (all fields optional):
-    ACT {'{"emotion": <{ "name": emotion, "intensity": 0-1 } or emotion string>, "motion": <a short action cue>}'}
+    ACT {'{"emotion": <{ "name": emotion, "intensity": "slight" | "clear" | "strong" } or emotion string>, "motion": <a short action cue>, "expression": "<label>"}'}
 
-    ACT example:
-    <{'|'}ACT {'{"emotion":{"name":"surprised","intensity":1},"motion":"shrug"}'}{'|'}>
+    Intensity bands are slight (0.25), clear (0.6), and strong (0.9). Numbers
+    from 0 to 1 are also accepted. Missing intensity means clear, including
+    when emotion is a bare string.
+
+    ACT examples:
+    <{'|'}ACT {'{"emotion":{"name":"curious","intensity":"slight"}}'}{'|'}>
+    <{'|'}ACT {'{"emotion":{"name":"happy","intensity":"clear"}}'}{'|'}>
+    <{'|'}ACT {'{"emotion":{"name":"surprised","intensity":"strong"},"motion":"shrug"}'}{'|'}>
+
+    The optional expression field selects a label from the expression list the
+    app provides. Use only those labels; omit expression if no list is provided.
 
     DELAY format:
     <{'|'}DELAY 1{'|'}> delays stage playback for 1 second.
@@ -57,6 +66,9 @@ prompt:
     Do not use emojis or text that a speaker cannot pronounce.
   suffix: |
     The available actions:
+
+    - ACT can include an optional expression label from the app-provided expression list.
+      Use slight, clear, or strong intensity for emotion.
 
     - <{'|'}DELAY 1{'|'}> (Delay for 1 second)
     - <{'|'}DELAY 3{'|'}> (Delay for 3 seconds)

@@ -1,8 +1,34 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createStreamingControlParser } from '.'
+import { createStreamingControlParser, normalizeActPayload } from '.'
 
 describe('createStreamingControlParser', () => {
+  it.each([
+    [{ emotion: { name: 'happy', intensity: ' SLiGHT ' } }, { emotion: { name: 'happy', intensity: 0.25 } }],
+    [{ emotion: { name: 'happy', intensity: ' Clear ' } }, { emotion: { name: 'happy', intensity: 0.6 } }],
+    [{ emotion: { name: 'happy', intensity: 'Strong' } }, { emotion: { name: 'happy', intensity: 0.9 } }],
+    [{ emotion: { name: 'happy' } }, { emotion: { name: 'happy', intensity: 0.6 } }],
+    [{ emotion: 'sad' }, { emotion: { name: 'sad', intensity: 0.6 } }],
+    [{ emotion: { name: 'angry', intensity: -1 } }, { emotion: { name: 'angry', intensity: 0 } }],
+    [{ emotion: { name: 'angry', intensity: 2 } }, { emotion: { name: 'angry', intensity: 1 } }],
+    [{ emotion: { name: 'happy', intensity: '0.3' } }, { emotion: { name: 'happy', intensity: 0.3 } }],
+    [{ expression: ' Blush ' }, { expression: 'Blush' }],
+    [{ expression: '' }, {}],
+    [{ expression: '   ' }, {}],
+    [{ expression: 4 }, {}],
+  ])('normalizes ACT signals through the real parser: %j', async (payload, expected) => {
+    const control = createStreamingControlParser()
+    const handler = vi.fn()
+    const dispose = control.onSignal((signal) => {
+      if (signal.type === 'act')
+        handler(normalizeActPayload(signal.payload))
+    })
+
+    await expect(control.dispatchWith(`<|ACT ${JSON.stringify(payload)}|>`)).resolves.toBe(true)
+    expect(handler).toHaveBeenCalledExactlyOnceWith(expected)
+    dispose()
+  })
+
   /**
    * @example
    * const control = createStreamingControlParser()

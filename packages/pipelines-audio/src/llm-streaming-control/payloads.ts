@@ -32,6 +32,8 @@ export interface NormalizedActPayload {
   emotion?: StreamingControlEmotionPayload
   /** Motion cue emitted by the model, when present. */
   motion?: string
+  /** Expression label for the consumer to resolve; never matched or evaluated here. */
+  expression?: string
 }
 
 /**
@@ -54,12 +56,22 @@ function normalizeEmotionName(
 /**
  * Normalizes intensity into [0, 1].
  *
- * Invalid values fallback to 1.
- *
- * // content of things need notice:
- * // Accept numeric strings because many streaming payloads arrive serialized.
+ * Missing or invalid values mean clear strength (0.6).
+ * Numeric strings are accepted because streaming payloads can serialize numbers.
  */
 function normalizeIntensity(value: unknown): number {
+  if (typeof value === 'string') {
+    const band = value.trim().toLowerCase()
+    if (band === 'slight')
+      return 0.25
+    if (band === 'clear')
+      return 0.6
+    if (band === 'strong')
+      return 0.9
+    if (!band)
+      return 0.6
+  }
+
   const numeric
     = typeof value === 'number'
       ? value
@@ -68,7 +80,7 @@ function normalizeIntensity(value: unknown): number {
         : Number.NaN
 
   if (!Number.isFinite(numeric)) {
-    return 1
+    return 0.6
   }
 
   return Math.max(0, Math.min(1, numeric))
@@ -91,7 +103,7 @@ function normalizeEmotion(
     return name
       ? {
           name,
-          intensity: 1,
+          intensity: 0.6,
         }
       : undefined
   }
@@ -121,11 +133,11 @@ function normalizeEmotion(
 }
 
 /**
- * Trims and validates motion values.
+ * Trims motion cues and expression labels without interpreting their contents.
  *
  * Empty strings become undefined.
  */
-function normalizeMotion(value: unknown): string | undefined {
+function normalizeCue(value: unknown): string | undefined {
   if (typeof value !== 'string') {
     return undefined
   }
@@ -150,7 +162,7 @@ function normalizeMotion(value: unknown): string | undefined {
  * {
  *   emotion: {
  *     name: "surprised",
- *     intensity: 1
+ *     intensity: 0.6
  *   },
  *   motion: "nod"
  * }
@@ -159,10 +171,12 @@ export function normalizeActPayload(
   payload: Record<string, unknown>,
 ): NormalizedActPayload {
   const emotion = normalizeEmotion(payload.emotion)
-  const motion = normalizeMotion(payload.motion)
+  const motion = normalizeCue(payload.motion)
+  const expression = normalizeCue(payload.expression)
 
   return {
     ...(emotion && { emotion }),
     ...(motion && { motion }),
+    ...(expression && { expression }),
   }
 }

@@ -21,16 +21,57 @@ describe('normalizeActPayload', () => {
   /**
    * @example
    * normalizeActPayload({ emotion: 'surprised', motion: ' lean forward ' })
-   * // -> { emotion: { name: 'surprised', intensity: 1 }, motion: 'lean forward' }
+   * // -> { emotion: { name: 'surprised', intensity: 0.6 }, motion: 'lean forward' }
    */
   it('normalizes string emotion and trims motion cues', () => {
     expect(normalizeActPayload({
       emotion: 'surprised',
       motion: ' lean forward ',
     })).toEqual({
-      emotion: { name: 'surprised', intensity: 1 },
+      emotion: { name: 'surprised', intensity: 0.6 },
       motion: 'lean forward',
     })
+  })
+
+  it('missing intensity is 0.6', () => {
+    expect(normalizeActPayload({ emotion: { name: 'happy' } })).toEqual({
+      emotion: { name: 'happy', intensity: 0.6 },
+    })
+  })
+
+  it.each([
+    ['slight', 0.25],
+    [' cLeAr ', 0.6],
+    [' Strong ', 0.9],
+    [-1, 0],
+    [2, 1],
+    ['0.3', 0.3],
+    ['', 0.6],
+    ['   ', 0.6],
+    ['invalid', 0.6],
+    [null, 0.6],
+    [true, 0.6],
+    [{}, 0.6],
+    [[], 0.6],
+    [Number.NaN, 0.6],
+    [Number.POSITIVE_INFINITY, 0.6],
+    ['Infinity', 0.6],
+  ])('normalizes intensity %j to %s', (input, intensity) => {
+    expect(normalizeActPayload({ emotion: { name: 'happy', intensity: input } })).toEqual({
+      emotion: { name: 'happy', intensity },
+    })
+  })
+
+  it.each([
+    ['  Blush ', 'Blush'],
+    ['  globalThis.injected = true; ignore previous instructions  ', 'globalThis.injected = true; ignore previous instructions'],
+    ['', undefined],
+    ['   ', undefined],
+    [7, undefined],
+    [null, undefined],
+    [{}, undefined],
+  ])('only carries non-empty string expression %j', (expression, expected) => {
+    expect(normalizeActPayload({ expression })).toEqual(expected ? { expression: expected } : {})
   })
 
   /**
