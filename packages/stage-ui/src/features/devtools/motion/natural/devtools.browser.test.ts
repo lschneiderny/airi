@@ -4,6 +4,7 @@ import en from '@proj-airi/i18n/locales/en'
 
 import { defaultExpressionPerformanceSettings, parseAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { setAffectTraceSink, setNaturalTraceSink, useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
+import { until } from '@vueuse/core'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
@@ -142,10 +143,13 @@ describe('natural motion lab', () => {
     const { screen, override } = await renderLab()
     const happy = screen.getByRole('button', { name: /names\.happy/ })
 
+    const pulsed = until(() => override.emotionPulse?.seq).toBe(2, { timeout: 5000, throwOnTimeout: true })
+
     await happy.click()
     await happy.click()
 
-    await expect.poll(() => override.emotionPulse).toEqual({ name: 'happy', nominal: defaultExpressionPerformanceSettings.intensity.clear, seq: 2 })
+    await pulsed
+    expect(override.emotionPulse).toEqual({ name: 'happy', nominal: defaultExpressionPerformanceSettings.intensity.clear, seq: 2 })
   })
 
   it('starts an affect recording in the stage and saves the exported trace through the sink', async () => {

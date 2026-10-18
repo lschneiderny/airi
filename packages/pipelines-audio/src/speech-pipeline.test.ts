@@ -5,10 +5,6 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { createSpeechPipeline } from './speech-pipeline'
 
-function delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void
   let reject!: (reason?: unknown) => void
@@ -130,19 +126,34 @@ describe('createSpeechPipeline', () => {
 
   it('preserves playback order when TTS completes out of order', async () => {
     const { scheduled, playback } = createPlaybackSpy()
+    const pendingRequests = [
+      deferred<string>(),
+      deferred<string>(),
+      deferred<string>(),
+    ]
+    const completed: number[] = []
 
     const pipeline = createSpeechPipeline<string>({
       ttsMaxConcurrent: 2,
       segmenter: createSegmenter(['first', 'second', 'third']),
       playback,
       async tts(request) {
-        if (request.sequence === 0)
-          await delay(30)
-        else if (request.sequence === 1)
-          await delay(5)
-
-        return request.text
+        const text = await pendingRequests[request.sequence]!.promise
+        completed.push(request.sequence)
+        return text
       },
+    })
+
+    // Synthesis completes in the order 1, 2, 0: the second request finishes while the first is
+    // still pending, which frees a slot for the third, which also finishes before the first.
+    pipeline.on('onTtsRequest', (request) => {
+      if (request.sequence === 1) {
+        pendingRequests[1]!.resolve('second')
+      }
+      else if (request.sequence === 2) {
+        pendingRequests[2]!.resolve('third')
+        void pendingRequests[2]!.promise.then(() => pendingRequests[0]!.resolve('first'))
+      }
     })
 
     const intentFinished = new Promise<void>((resolve) => {
@@ -154,6 +165,7 @@ describe('createSpeechPipeline', () => {
 
     await intentFinished
 
+    expect(completed).toEqual([1, 2, 0])
     expect(scheduled.map(item => item.sequence)).toEqual([0, 1, 2])
     expect(scheduled.map(item => item.text)).toEqual(['first', 'second', 'third'])
   })
@@ -166,6 +178,11 @@ describe('createSpeechPipeline', () => {
       deferred<string>(),
       deferred<string>(),
     ]
+    const requestStarted = [
+      deferred<void>(),
+      deferred<void>(),
+      deferred<void>(),
+    ]
     let inFlight = 0
     let maxInFlight = 0
 
@@ -177,6 +194,7 @@ describe('createSpeechPipeline', () => {
         startedRequests.push(request.sequence)
         inFlight += 1
         maxInFlight = Math.max(maxInFlight, inFlight)
+        requestStarted[request.sequence]!.resolve()
 
         try {
           return await pendingRequests[request.sequence]!.promise
@@ -194,14 +212,14 @@ describe('createSpeechPipeline', () => {
     const intent = pipeline.openIntent()
     intent.end()
 
-    await delay(0)
+    await requestStarted[1]!.promise
 
     expect(startedRequests).toEqual([0, 1])
     expect(maxInFlight).toBe(2)
 
     pendingRequests[0]!.resolve('alpha')
     pendingRequests[1]!.resolve('beta')
-    await delay(0)
+    await requestStarted[2]!.promise
 
     expect(startedRequests).toEqual([0, 1, 2])
 
@@ -214,6 +232,8 @@ describe('createSpeechPipeline', () => {
   it('cancels in-flight TTS work without scheduling stale playback', async () => {
     const { scheduled, playback } = createPlaybackSpy()
     const abortedRequests: number[] = []
+    const bothRequestsStarted = deferred<void>()
+    let startedRequests = 0
 
     const pipeline = createSpeechPipeline<string>({
       ttsMaxConcurrent: 2,
@@ -225,6 +245,9 @@ describe('createSpeechPipeline', () => {
             abortedRequests.push(request.sequence)
             resolve(null)
           }, { once: true })
+          startedRequests += 1
+          if (startedRequests === 2)
+            bothRequestsStarted.resolve()
         })
       },
     })
@@ -236,7 +259,7 @@ describe('createSpeechPipeline', () => {
     const intent = pipeline.openIntent()
     intent.end()
 
-    await delay(0)
+    await bothRequestsStarted.promise
     intent.cancel('test-cancel')
     await intentCanceled
 
@@ -292,19 +315,23 @@ describe('createSpeechPipeline', () => {
       events.push(`special:${segment.special}`)
       events.push(`turn:${segment.turnId}`)
     })
+    pipeline.on('onPlaybackEnd', event => events.push(`end:${event.item.text}`))
+    const playbackStarted = new Promise<void>(resolve => pipeline.on('onPlaybackStart', () => resolve()))
+    const intentFinished = new Promise<void>(resolve => pipeline.on('onIntentEnd', () => resolve()))
 
     const intent = pipeline.openIntent({ turnId: 'turn-1' })
     intent.end()
 
-    await delay(0)
+    await playbackStarted
     expect(scheduled.map(item => item.text)).toEqual(['before'])
     expect(events).toEqual(['tts:before'])
 
     end(scheduled[0]!)
-    await delay(0)
+    await intentFinished
 
     expect(events).toEqual([
       'tts:before',
+      'end:before',
       'special:<|CALL ["plugin.action"]|>',
       'turn:turn-1',
     ])
@@ -352,15 +379,18 @@ describe('createSpeechPipeline', () => {
       },
     })
 
+    const playbackStarted = new Promise<void>(resolve => pipeline.on('onPlaybackStart', () => resolve()))
+    const intentCanceled = new Promise<void>(resolve => pipeline.on('onIntentCancel', () => resolve()))
+
     const intent = pipeline.openIntent({ intentId: 'intent-1', turnId: 'turn-1' })
     intent.end()
 
-    await delay(0)
+    await playbackStarted
     expect(scheduled.map(item => item.text)).toEqual(['first'])
 
     intent.cancel('newer-intent')
     end(scheduled[0]!)
-    await delay(0)
+    await intentCanceled
 
     expect(scheduled.map(item => item.text)).toEqual(['first'])
   })
@@ -370,16 +400,27 @@ const angry = '<|ACT {"emotion":{"name":"angry","intensity":"clear"}}|>'
 const neutral = '<|ACT {"emotion":{"name":"neutral"}}|>'
 const happy = '<|ACT {"emotion":{"name":"happy"}}|>'
 
-// Synthesis latency is the behavior under test: a marker must wait for the slower text ahead of it.
-const ttsLatencyMs = 300
-
 type Part = { literal: string } | { special: string }
 
 const quietLogger: LoggerLike = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 
-async function synthesizeAfterLatency(request: TtsRequest) {
-  await delay(ttsLatencyMs)
-  return request.text
+/**
+ * Holds every synthesis until `count` requests are pending, then releases them in request order.
+ * A marker therefore arrives while the text ahead of it is still synthesizing, as with a slow TTS.
+ */
+function createHeldSynthesis(count: number, outcome: (request: TtsRequest) => Promise<string | null> = async request => request.text) {
+  const held: Array<() => void> = []
+
+  async function tts(request: TtsRequest) {
+    const gate = deferred<void>()
+    held.push(gate.resolve)
+    if (held.length === count)
+      held.forEach(release => release())
+    await gate.promise
+    return outcome(request)
+  }
+
+  return tts
 }
 
 /** Runs one turn through the real chunker and records clip boundaries and markers in one ordered log. */
@@ -407,7 +448,7 @@ function createOrderedPipeline(tts: SpeechPipelineOptions<string>['tts'], option
 
 describe('special marker playback order', () => {
   it('fires a marker after the preceding clip ends and before the next clip starts', async () => {
-    const { log, speak, turnEnded } = createOrderedPipeline(synthesizeAfterLatency)
+    const { log, speak, turnEnded } = createOrderedPipeline(createHeldSynthesis(2))
 
     speak([{ literal: 'I am annoyed now. ' }, { special: neutral }, { literal: ' Okay, better.' }])
     await turnEnded
@@ -422,7 +463,7 @@ describe('special marker playback order', () => {
   })
 
   it('fires a leading marker before the first clip starts', async () => {
-    const { log, speak, turnEnded } = createOrderedPipeline(synthesizeAfterLatency)
+    const { log, speak, turnEnded } = createOrderedPipeline(createHeldSynthesis(2))
 
     speak([{ special: angry }, { literal: ' I am annoyed now. ' }, { special: neutral }, { literal: ' Okay, better.' }])
     await turnEnded
@@ -441,13 +482,12 @@ describe('special marker playback order', () => {
     ['fails', async () => { throw new Error('synthesis failed') }],
     ['returns no audio', async () => null],
   ])('fires a marker after a sentence whose synthesis %s before the next clip starts', async (_label, silentSynthesis) => {
-    const { log, speak, turnEnded } = createOrderedPipeline(async (request) => {
+    const { log, speak, turnEnded } = createOrderedPipeline(createHeldSynthesis(3, async (request) => {
       if (request.text !== 'I am annoyed now.')
-        return synthesizeAfterLatency(request)
+        return request.text
 
-      await delay(ttsLatencyMs)
       return silentSynthesis()
-    })
+    }))
 
     speak([{ literal: 'Hello there. ' }, { literal: 'I am annoyed now. ' }, { special: neutral }, { literal: ' Okay, better.' }])
     await turnEnded
@@ -462,10 +502,9 @@ describe('special marker playback order', () => {
   })
 
   it('fires a marker attached to a chunk without audio before the next clip starts', async () => {
-    const { log, speak, turnEnded } = createOrderedPipeline(async (request) => {
-      await delay(ttsLatencyMs)
+    const { log, speak, turnEnded } = createOrderedPipeline(createHeldSynthesis(2, async (request) => {
       return request.text === 'I am annoyed now' ? null : request.text
-    })
+    }))
 
     // Without a period, the chunker attaches the marker to the text before it.
     speak([{ literal: 'I am annoyed now' }, { special: neutral }, { literal: ' Okay, better.' }])
@@ -499,7 +538,7 @@ describe('special marker playback order', () => {
     ['cancel', (intent: IntentHandle) => intent.cancel('test-cancel')],
     ['interrupt', (_intent: IntentHandle, pipeline: ReturnType<typeof createSpeechPipeline<string>>) => pipeline.interrupt('test-interrupt')],
   ])('drops pending markers of a turn on %s', async (_label, stop) => {
-    const { end, log, pipeline, scheduled, speak } = createOrderedPipeline(synthesizeAfterLatency, { autoEnd: false })
+    const { end, log, pipeline, scheduled, speak } = createOrderedPipeline(createHeldSynthesis(2), { autoEnd: false })
     const arrivedSpecials: string[] = []
     pipeline.on('onSegment', segment => segment.special && arrivedSpecials.push(segment.special))
     const firstClipStarted = new Promise<void>(resolve => pipeline.on('onPlaybackStart', () => resolve()))

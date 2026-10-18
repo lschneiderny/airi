@@ -1,5 +1,6 @@
 import type { LeadershipMode, SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
+import { until } from '@vueuse/core'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -66,10 +67,13 @@ describe('natural performance override', () => {
     setActivePinia(labWindow.pinia)
     const lab = useNaturalPerformanceOverride()
 
+    const pulsed = until(() => stage.emotionPulse?.seq).toBe(2, { timeout: 5000, throwOnTimeout: true })
+
     lab.pulseEmotion('happy', 1)
     lab.pulseEmotion('happy', 1)
 
-    await vi.waitFor(() => expect(stage.emotionPulse).toEqual({ name: 'happy', intensity: 1, seq: 2 }))
+    await pulsed
+    expect(stage.emotionPulse).toEqual({ name: 'happy', nominal: 1, seq: 2 })
   })
 
   it('restores the defaults on resetState', () => {
