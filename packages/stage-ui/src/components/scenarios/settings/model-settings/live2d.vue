@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type {
-  Live2DExpressionLlmMode,
   Live2DExpressionSettingsCommand,
   Live2DMotionDriver,
 } from '@proj-airi/stage-ui-live2d'
@@ -150,12 +149,6 @@ watch(() => live2d.availableMotions, (motions) => {
 
   console.info('Available motions:', runtimeMotions.value)
 }, { immediate: true })
-
-const llmModeOptions = computed(() => [
-  { value: 'none', label: t('settings.live2d.expressions.expose-to-llm-options.none') },
-  { value: 'all', label: t('settings.live2d.expressions.expose-to-llm-options.all') },
-  { value: 'custom', label: t('settings.live2d.expressions.expose-to-llm-options.custom') },
-])
 
 // Get available runtime motions from the model
 onMounted(() => {
@@ -802,41 +795,13 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       <div flex flex-col gap-2>
         <div
           v-for="group in expressionSettingsSnapshot.groups"
-          :key="group.name"
+          :key="group.id"
           flex items-center justify-between
         >
           <span text-sm text-neutral-700 dark:text-neutral-300>{{ group.name }}</span>
           <Checkbox
             :model-value="group.active"
-            @update:model-value="applyExpressionSettingsCommand({ type: 'toggle', name: group.name })"
-          />
-        </div>
-      </div>
-
-      <div mt-4 flex flex-wrap items-center gap-3>
-        <span whitespace-nowrap text-sm text-neutral-600 dark:text-neutral-400>{{ t('settings.live2d.expressions.expose-to-llm-toggle') }}</span>
-        <SelectTab
-          :model-value="expressionSettingsSnapshot.llmMode"
-          :options="llmModeOptions"
-          size="sm"
-          @update:model-value="(mode: string) => applyExpressionSettingsCommand({ type: 'set-llm-mode', mode: mode as Live2DExpressionLlmMode })"
-        />
-      </div>
-      <span v-if="expressionSettingsSnapshot.llmMode !== 'none'" text-xs text-neutral-500 dark:text-neutral-400>
-        {{ t('settings.live2d.expressions.llm-integration-wip') }}
-      </span>
-
-      <!-- Custom per-expression LLM toggles (only when mode = 'custom') -->
-      <div v-if="expressionSettingsSnapshot.llmMode === 'custom'" mt-2 flex flex-col gap-2 border-l-2 border-neutral-200 pl-3 dark:border-neutral-700>
-        <div
-          v-for="group in expressionSettingsSnapshot.groups"
-          :key="`llm-${group.name}`"
-          flex items-center justify-between
-        >
-          <span text-xs text-neutral-600 dark:text-neutral-400>{{ group.name }}</span>
-          <Checkbox
-            :model-value="group.exposedToLlm"
-            @update:model-value="(exposed: boolean) => applyExpressionSettingsCommand({ type: 'set-llm-exposed', name: group.name, exposed })"
+            @update:model-value="applyExpressionSettingsCommand({ type: 'toggle', id: group.id })"
           />
         </div>
       </div>

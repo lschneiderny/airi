@@ -11,6 +11,13 @@ Universal remains the default and uses model motions, idle eyes, and mouse track
 MAGIC retains its dataset-based motion controls.
 Natural generates continuous autonomous motion from layered random processes and reacts to what the character and the user are doing.
 
+### Expressions
+
+ZIP imports and OPFS-restored archives discover every `.exp3.json`, including files absent from the model settings references. URL-loaded models discover only expressions referenced by their model settings; remote folders are not enumerated.
+Each expression keeps its own activation and composes in activation order with its file's blend modes and fade times. Missing or invalid fade times use one second.
+Save expression defaults stores the active expression ids as the model's rest set. Reset all expressions returns to that set.
+Rest sets use `expression-rest:${modelId}` with `{ version: 1, active: string[] }`. Previous parameter defaults are not loaded; save the desired defaults once again.
+
 ### Natural layers
 
 Natural is composed of independent layers. Each layer draws from its own seeded random stream, so retuning one layer does not reshuffle another.

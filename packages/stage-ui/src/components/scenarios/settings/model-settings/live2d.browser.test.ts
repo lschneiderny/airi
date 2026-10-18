@@ -62,10 +62,9 @@ describe('live2D model settings', () => {
       updatedAt: 1,
       live2dExpressions: {
         groups: [
-          { name: 'happy', active: false, exposedToLlm: false },
-          { name: 'surprised', active: true, exposedToLlm: false },
+          { id: 'happy.exp3.json', name: 'happy', active: false },
+          { id: 'surprised.exp3.json', name: 'surprised', active: true },
         ],
-        llmMode: 'none',
       },
     } satisfies ModelSettingsRuntimeSnapshot
 
@@ -89,8 +88,8 @@ describe('live2D model settings', () => {
     const expressionSwitches = screen.getByRole('switch').all()
     await expressionSwitches[1].click()
 
-    expect(onLive2dExpressionCommand).toHaveBeenCalledWith({ type: 'toggle', name: 'happy' })
-    expect(useExpressionStore(pinia).expressionGroups.size).toBe(0)
+    expect(onLive2dExpressionCommand).toHaveBeenCalledWith({ type: 'toggle', id: 'happy.exp3.json' })
+    expect(useExpressionStore(pinia).definitions).toEqual([])
   })
 
   it('selects Natural and preserves mode settings', async () => {

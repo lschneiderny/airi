@@ -530,8 +530,8 @@ export async function validateLive2DZip(file: File | Blob): Promise<Live2DValida
         report,
         'unreferenced-expressions',
         'warning',
-        `${unreferencedExpressionCount} ${noun} not referenced by ${settingsFileName}.`,
-        `Add the files to FileReferences.Expressions in ${settingsFileName}, or remove the unused files.`,
+        `${unreferencedExpressionCount} ${noun} not referenced by ${settingsFileName}, and will be loaded from the archive.`,
+        'These expression files are available in the expression settings without editing the model.',
       )
     }
     if (unreferencedMotionCount > 0) {

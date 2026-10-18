@@ -133,6 +133,8 @@ describe('opfs cache full directory persistence', () => {
       'model.moc3': new Uint8Array([77, 79, 67, 51]),
       'textures/texture_00.png': new Uint8Array([1, 2, 3]),
       'extra/readme.txt': 'kept from original archive',
+      'expressions/prop.exp3.json': JSON.stringify({ Parameters: [{ Id: 'ParamProp', Value: 1, Blend: 'Add' }] }),
+      'model.vtube.json': JSON.stringify({ Hotkeys: [] }),
     })
 
     await OPFSCache.save('live2d-model', zipBlob, 'blob:first')
@@ -141,11 +143,17 @@ describe('opfs cache full directory persistence', () => {
 
     expect(files).not.toBeNull()
     expect(filePaths(files ?? [])).toEqual([
+      'expressions/prop.exp3.json',
       'extra/readme.txt',
       'model.moc3',
       'model.model3.json',
+      'model.vtube.json',
       'textures/texture_00.png',
     ])
+    expect(JSON.parse(await files!.find(file => file.name === 'prop.exp3.json')!.text())).toEqual({
+      Parameters: [{ Id: 'ParamProp', Value: 1, Blend: 'Add' }],
+    })
+    expect(JSON.parse(await files!.find(file => file.name === 'model.vtube.json')!.text())).toEqual({ Hotkeys: [] })
   })
 
   it('does not restore ignored archive metadata that already exists in OPFS', async () => {

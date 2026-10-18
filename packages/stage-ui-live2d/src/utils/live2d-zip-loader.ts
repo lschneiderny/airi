@@ -241,6 +241,36 @@ FileLoader.createSettings = async (files: File[]) => {
   const settings = createModelSettings(settingsText, settingsUrl)
   Object.assign(settings, { _objectURL: URL.createObjectURL(settingsFile) })
 
+  // OPFS replays a directory through FileLoader, bypassing ZipLoader.createSettings.
+  const metadataSettings = settings as ModelSettings & {
+    _expFiles?: Array<{ name: string, fileName: string, data: unknown }>
+    _vtubeData?: unknown
+  }
+  metadataSettings._expFiles = []
+  const archiveFiles = files.filter(file => !shouldIgnoreLive2DArchiveEntry(file.webkitRelativePath || file.name))
+  for (const file of archiveFiles.filter(file => /\.exp3\.json$/i.test(file.name))) {
+    const fileName = file.webkitRelativePath || file.name
+    try {
+      metadataSettings._expFiles.push({
+        name: basename(fileName).replace(/\.exp3\.json$/i, ''),
+        fileName,
+        data: JSON.parse(await FileLoader.readText(file)),
+      })
+    }
+    catch (error) {
+      console.warn(`[FileLoader] Failed to parse expression "${fileName}":`, error)
+    }
+  }
+  const vtube = archiveFiles.find(file => /\.vtube\.json$/i.test(file.name))
+  if (vtube) {
+    try {
+      metadataSettings._vtubeData = JSON.parse(await FileLoader.readText(vtube))
+    }
+    catch (error) {
+      console.warn('[FileLoader] Failed to parse VTube Studio metadata:', error)
+    }
+  }
+
   return settings
 }
 

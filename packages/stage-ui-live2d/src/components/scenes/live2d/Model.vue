@@ -11,6 +11,7 @@ import type {
 } from '@proj-airi/stage-shared/screen-ambient-light'
 
 import type { PixiLive2DInternalModel } from '../../../composables/live2d'
+import type { ArchiveExpressionFile, Model3ExpressionRef } from '../../../composables/live2d/expression-controller'
 import type { NaturalCaptureRequest } from '../../../stores'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -500,6 +501,7 @@ async function performModelLoad() {
       lastUpdateTime,
     })
 
+    motionManagerUpdate.register(ctx => expressionController.restoreExpressionBases(ctx.model), 'pre')
     motionManagerUpdate.register(useMotionUpdatePluginBeatSync(beatSync), 'pre')
     motionManagerUpdate.register(useMotionUpdatePluginIdleDisable(), 'pre')
     motionManagerUpdate.register(useMotionUpdatePluginIdleFocus(), 'post')
@@ -681,15 +683,15 @@ async function initExpressionController(internalModel?: PixiLive2DInternalModel,
   // Dispose any previous state (handles model reloads)
   expressionController.dispose()
 
-  const settings = internalModel?.settings as any
+  const settings = internalModel?.settings as (PixiLive2DInternalModel['settings'] & {
+    expressions?: Model3ExpressionRef[]
+    _expFiles?: ArchiveExpressionFile[]
+  }) | undefined
   if (!settings)
     return
 
   // model3.json stores expressions as { Name, File }[] under settings.expressions
   const expressionRefs: { Name: string, File: string }[] = settings.expressions ?? []
-  if (expressionRefs.length === 0)
-    return
-
   // Build a function that can read exp3 files relative to the model root.
   // For URL-loaded models, resolveURL gives us the full URL. For ZIP-loaded
   // models the resolved URL points to an in-memory blob/object URL.
@@ -701,7 +703,14 @@ async function initExpressionController(internalModel?: PixiLive2DInternalModel,
     return response.text()
   }
 
-  await expressionController.initialise(modelId, expressionRefs, readExpFile)
+  // Archive ids stay relative to the archive, not to a temporary blob URL.
+  const resolvePath = (path: string) => {
+    if (!settings._expFiles)
+      return settings.resolveURL(path)
+    const base = new URL(settings.url, 'https://archive.invalid/')
+    return decodeURI(new URL(path, base).pathname.slice(1))
+  }
+  await expressionController.initialise(modelId, expressionRefs, readExpFile, settings._expFiles, resolvePath)
 }
 
 async function setMotion(motionName: string, index?: number) {

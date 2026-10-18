@@ -306,6 +306,33 @@ describe('live2d zip loader settings sanitization', () => {
     expect(() => settings.validateFiles(files.map(file => file.webkitRelativePath))).not.toThrow()
   })
 
+  it('restores unreferenced expressions and the first VTube metadata while skipping corrupt and macOS files', async () => {
+    await import('./live2d-zip-loader')
+    const { FileLoader } = await import('pixi-live2d-display/cubism4')
+    const exp = { Parameters: [{ Id: 'ParamProp', Value: 1, Blend: 'Add' }] }
+    const vtube = { Hotkeys: [{ Name: 'Prop', Action: 'ToggleExpression', File: 'prop.exp3.json' }] }
+    const files = [
+      fileWithRelativePath(createShisihangshiSettingsText(), 'avatar.model3.json', 'model/avatar.model3.json'),
+      fileWithRelativePath(JSON.stringify(exp), 'prop.exp3.json', 'model/prop.exp3.json'),
+      fileWithRelativePath('{corrupt', 'broken.exp3.json', 'model/broken.exp3.json'),
+      fileWithRelativePath(appleDoubleHeader, '._prop.exp3.json', '__MACOSX/model/._prop.exp3.json'),
+      fileWithRelativePath(appleDoubleHeader, '._avatar.vtube.json', '__MACOSX/model/._avatar.vtube.json'),
+      fileWithRelativePath(JSON.stringify(vtube), 'avatar.vtube.json', 'model/avatar.vtube.json'),
+      fileWithRelativePath('{}', 'second.vtube.json', 'model/second.vtube.json'),
+    ]
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const settings = await FileLoader.createSettings(files)
+    try {
+      expect(settings).toHaveProperty('_expFiles', [{ name: 'prop', fileName: 'model/prop.exp3.json', data: exp }])
+      expect(settings).toHaveProperty('_vtubeData', vtube)
+      expect(warning).toHaveBeenCalled()
+    }
+    finally {
+      URL.revokeObjectURL((settings as typeof settings & { _objectURL: string })._objectURL)
+      warning.mockRestore()
+    }
+  })
+
   it('loads an OPFS-restored file directory whose settings and resources use CJK paths', async () => {
     await import('./live2d-zip-loader')
     const { FileLoader, Live2DModel } = await import('pixi-live2d-display/cubism4')

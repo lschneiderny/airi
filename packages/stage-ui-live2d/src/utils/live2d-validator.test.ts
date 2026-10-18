@@ -137,7 +137,7 @@ describe('validateLive2DZip', () => {
       expect.objectContaining({
         code: 'unreferenced-expressions',
         severity: 'warning',
-        message: '2 expression files are not referenced by avatar.model3.json.',
+        message: '2 expression files are not referenced by avatar.model3.json, and will be loaded from the archive.',
       }),
       expect.objectContaining({
         code: 'unreferenced-motions',

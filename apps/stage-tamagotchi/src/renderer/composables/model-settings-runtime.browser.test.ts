@@ -1,4 +1,4 @@
-import type { ExpressionEntry, ExpressionGroupDefinition } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import type { NamedExpressionDefinition } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import type { ModelSettingsRuntimeSnapshot } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 
 import { defineInvoke } from '@moeru/eventa'
@@ -8,25 +8,16 @@ import { createEmptyModelSettingsRuntimeSnapshot } from '@proj-airi/stage-ui/com
 import { createPinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
-import { computed, defineComponent, shallowRef } from 'vue'
+import { computed, defineComponent, nextTick, shallowRef } from 'vue'
 
-import { applyLive2DExpressionSettingsCommand, modelSettingsRuntimeChannelName } from '../../shared/model-settings-runtime'
+import { applyLive2DExpressionSettingsCommand, modelSettingsRuntimeChannelName, modelSettingsRuntimeSnapshotChanged } from '../../shared/model-settings-runtime'
 import { useModelSettingsRuntimeOwner } from './model-settings-runtime-owner'
 import { useModelSettingsRuntimeSnapshot } from './model-settings-runtime-snapshot'
 
-const expressionGroups: ExpressionGroupDefinition[] = [{
+const expressionDefinitions: NamedExpressionDefinition[] = [{
+  id: 'happy.exp3.json',
   name: 'happy',
-  parameters: [{ parameterId: 'ParamHappy', blend: 'Add', value: 1 }],
-}]
-
-const expressionEntries: ExpressionEntry[] = [{
-  name: 'ParamHappy',
-  parameterId: 'ParamHappy',
-  blend: 'Add',
-  currentValue: 0,
-  defaultValue: 0,
-  modelDefault: 0,
-  targetValue: 1,
+  parameters: [{ id: 'ParamHappy', blend: 'Add', value: 1 }],
 }]
 
 describe('model settings runtime channel', () => {
@@ -52,7 +43,7 @@ describe('model settings runtime channel', () => {
     const ownerPinia = createPinia()
     const settingsPinia = createPinia()
     const ownerExpressionStore = useExpressionStore(ownerPinia)
-    ownerExpressionStore.registerExpressions('model-a', expressionGroups, expressionEntries)
+    ownerExpressionStore.registerDefinitions('model-a', expressionDefinitions)
 
     const ownerChannelContext = createBroadcastChannelContext(new BroadcastChannel(modelSettingsRuntimeChannelName), { closeOnDispose: true })
     const settingsChannelContext = createBroadcastChannelContext(new BroadcastChannel(modelSettingsRuntimeChannelName), { closeOnDispose: true })
@@ -72,6 +63,21 @@ describe('model settings runtime channel', () => {
     }))
 
     let settingsRuntime: ReturnType<typeof useModelSettingsRuntimeSnapshot> | undefined
+    const firstSnapshot = new Promise<void>((resolve, reject) => {
+      const signal = AbortSignal.timeout(5000)
+      const stop = settingsChannelContext.context.on(modelSettingsRuntimeSnapshotChanged, (event) => {
+        if (event.body?.modelId !== 'model-a')
+          return
+        stop()
+        signal.removeEventListener('abort', abort)
+        resolve()
+      })
+      function abort() {
+        stop()
+        reject(new Error('Initial model snapshot did not arrive.'))
+      }
+      signal.addEventListener('abort', abort, { once: true })
+    })
     const TestHost = defineComponent({
       setup() {
         useModelSettingsRuntimeOwner({
@@ -99,17 +105,18 @@ describe('model settings runtime channel', () => {
       throw new Error('The settings runtime did not mount.')
     const mountedSettingsRuntime = settingsRuntime
 
-    await vi.waitFor(() => expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.groups).toEqual([{
+    await firstSnapshot
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.groups).toEqual([{
+      id: 'happy.exp3.json',
       name: 'happy',
       active: false,
-      exposedToLlm: false,
-    }]))
+    }])
 
     const invokeExpressionCommand = defineInvoke(settingsChannelContext.context, applyLive2DExpressionSettingsCommand)
     const staleOwnerResponse = await invokeExpressionCommand({
       ownerInstanceId: 'stale-owner',
       modelId: 'model-a',
-      command: { type: 'toggle', name: 'happy' },
+      command: { type: 'toggle', id: 'happy.exp3.json' },
     }, {
       signal: AbortSignal.timeout(1000),
     })
@@ -118,19 +125,20 @@ describe('model settings runtime channel', () => {
     expect(staleOwnerResponse.rejectionReason).toBe('owner-changed')
     expect(ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(false)
 
-    const applied = await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'toggle', name: 'happy' })
+    const applied = await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'toggle', id: 'happy.exp3.json' })
 
-    await vi.waitFor(() => expect(ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(true))
-    await vi.waitFor(() => expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.groups[0].active).toBe(true))
+    expect(ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(true)
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.groups[0].active).toBe(true)
     expect(applied).toBe(true)
-    expect(useExpressionStore(settingsPinia).expressionGroups.size).toBe(0)
+    expect(useExpressionStore(settingsPinia).definitions).toEqual([])
 
-    ownerExpressionStore.registerExpressions('model-b', expressionGroups, expressionEntries)
-    const rejected = await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'toggle', name: 'happy' })
+    ownerExpressionStore.registerDefinitions('model-b', expressionDefinitions)
+    const rejected = await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'toggle', id: 'happy.exp3.json' })
 
     expect(rejected).toBe(false)
     expect(ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(false)
-    await vi.waitFor(() => expect(mountedSettingsRuntime.runtimeSnapshot.value.modelId).toBe('model-b'))
+    await nextTick()
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.modelId).toBe('model-b')
   })
 
   // https://github.com/moeru-ai/airi/issues/2450
@@ -162,7 +170,7 @@ describe('model settings runtime channel', () => {
       controlsLocked: false,
     })
 
-    const applied = await settingsRuntime.sendLive2DExpressionCommand({ type: 'toggle', name: 'happy' })
+    const applied = await settingsRuntime.sendLive2DExpressionCommand({ type: 'toggle', id: 'happy.exp3.json' })
 
     expect(applied).toBe(false)
     expect(settingsRuntime.runtimeSnapshot.value.ownerInstanceId).toBe('')
