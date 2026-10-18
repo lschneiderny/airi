@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
-import type { ReactionEpisode, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, ReactionEpisode, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { Live2DEyeFocusSource } from '../../composables/live2d'
 import type { SpeechEvent } from '../../composables/live2d/expression/slots'
 
 import { presenceBubbleIdle } from '@proj-airi/stage-shared'
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { useScreenAmbientLightEnvironment, useSettingsScreenAmbientLight } from '@proj-airi/stage-shared/stores/screen-ambient-light'
 import { Screen } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
@@ -42,10 +43,13 @@ const props = withDefaults(defineProps<{
    * When omitted, the user's Natural energy setting applies.
    */
   naturalEnergy?: number
+  /** Effective expression-performance settings from the stage; Natural and the expression slots read them. */
+  performanceSettings?: ExpressionPerformanceSettings
 }>(), {
   presence: () => presenceBubbleIdle,
   performance: () => ({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }),
   naturalEnergy: undefined,
+  performanceSettings: () => defaultExpressionPerformanceSettings,
   paused: false,
   mouthOpenSize: 0,
   nowSpeaking: false,
@@ -193,6 +197,7 @@ defineExpose({
         :natural-auto-blink="live2dAutoBlinkEnabled"
         :performance="props.performance"
         :natural-energy="props.naturalEnergy ?? live2dNaturalEnergy"
+        :performance-settings="props.performanceSettings"
         :live2d-expression-enabled="live2dExpressionEnabled"
         :live2d-shadow-enabled="live2dShadowEnabled"
         :screen-ambient-light-active="screenAmbientLightEnabled && screenAmbientLightActive"

@@ -1,4 +1,4 @@
-import type { ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { Live2DMotionDriver } from './live2d'
@@ -208,6 +208,11 @@ export class Live2DNaturalMotionAdapter {
     this.weightSum = 0
     this.bodyWrites = 0
     this.physicsOutputSkips = 0
+  }
+
+  /** Forwards the expression-performance switches and tunables to the Natural controller. */
+  setPerformanceSettings(settings: ExpressionPerformanceSettings) {
+    this.controller.setPerformanceSettings(settings)
   }
 
   setPaused(paused: boolean) {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { SpeechClip, SpeechClipEnd } from '@proj-airi/core-agent'
 import type { Live2DLipSync, Live2DLipSyncOptions } from '@proj-airi/model-driver-lipsync'
 import type { Profile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import type { CaptionChannelEvent, PresenceBubbleState } from '@proj-airi/stage-shared'
@@ -14,7 +15,6 @@ import { createLive2DLipSync } from '@proj-airi/model-driver-lipsync'
 import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import { normalizeActPayload, Playback } from '@proj-airi/pipelines-audio'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
-import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
@@ -34,8 +34,9 @@ import { computed, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue'
 
 import StageRenderError from './stage-render-error.vue'
 
+import { useStagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
 // import { useDuckDb } from '../../composables/use-duck-db'
-import { Emotion, EMOTION_EmotionMotionName_value, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
+import { Emotion, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { live2dMotionMagicProfiles, useLive2DMotionMagic, useLive2DMotionMagicSettings } from '../../features/motions/live2d'
 import { getSpeechBusContext, speechInputUserSpeakingChangedEvent, speechOutputGetPlaybackState, speechOutputPlaybackStateChangedEvent } from '../../services/speech/bus'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
@@ -268,7 +269,16 @@ const { activeBackgroundUrl } = storeToRefs(backgroundStore)
 
 const { currentMotion } = storeToRefs(useLive2dParams())
 
-const emotionsQueue = createQueue<EmotionPayload>({
+const { conductor: performanceConductor, settings: performanceSettings } = useStagePerformanceConductor({
+  scene: () => live2dSceneRef.value,
+  driver: () => live2dMotionDriver.value,
+  playMotion: (group) => { currentMotion.value = { group } },
+})
+
+/** An emotion with its origin; the turn id keeps speech-bound expressions inside their turn. */
+type StageEmotion = EmotionPayload & { source: 'act' | 'devtools', turnId?: string }
+
+const emotionsQueue = createQueue<StageEmotion>({
   handlers: [
     async (ctx) => {
       if (stageModelRenderer.value === 'vrm') {
@@ -280,23 +290,9 @@ const emotionsQueue = createQueue<EmotionPayload>({
         await vrmViewerRef.value!.setExpression(value, ctx.data.intensity)
       }
       else if (stageModelRenderer.value === 'live2d') {
-        // Natural turns an emotion into an impulse on its own layers. Universal and MAGIC play the
-        // emotion's motion group through the store, which also defers it while the model loads.
-        if (live2dMotionDriver.value === 'natural') {
-          const nominal = ctx.data.intensity
-          const thresholds = defaultExpressionPerformanceSettings.intensity
-          live2dSceneRef.value?.setEmotion({
-            id: crypto.randomUUID(),
-            emotion: ctx.data.name,
-            nominal,
-            intensity: nominal,
-            band: nominal >= thresholds.strongFrom ? 'strong' : nominal >= thresholds.clearFrom ? 'clear' : 'slight',
-            escalation: false,
-          })
-        }
-        else {
-          currentMotion.value = { group: EMOTION_EmotionMotionName_value[ctx.data.name] }
-        }
+        // The conductor sends Natural episodes to the scene and plays the motion group for
+        // Universal and MAGIC; the store defers a motion group while the model loads.
+        performanceConductor.emotion(ctx.data.name, ctx.data.intensity, ctx.data.source, ctx.data.turnId)
       }
       else if (stageModelRenderer.value === 'spine') {
         spineSceneRef.value?.setEmotion(ctx.data.name, ctx.data.intensity)
@@ -338,7 +334,7 @@ function toStageEmotionPayload(payload: { name: string, intensity: number }): Em
   }
 }
 
-chatHookCleanups.push(streamingControl.onSignal(async (signal) => {
+chatHookCleanups.push(streamingControl.onSignal(async (signal, context) => {
   if (signal.type === 'act') {
     const act = normalizeActPayload(signal.payload)
     if (act.motion && stageModelRenderer.value === 'live2d') {
@@ -352,7 +348,7 @@ chatHookCleanups.push(streamingControl.onSignal(async (signal) => {
 
       // eslint-disable-next-line no-console
       console.debug('emotion detected', emotion)
-      emotionsQueue.enqueue(emotion)
+      emotionsQueue.enqueue({ ...emotion, source: 'act', turnId: context.turnId })
     }
     return
   }
@@ -441,7 +437,7 @@ watch(() => emotionPulse.value?.seq, () => {
     return
   const emotion = toStageEmotionPayload({ name: pulse.name, intensity: pulse.nominal })
   if (emotion)
-    emotionsQueue.enqueue(emotion)
+    emotionsQueue.enqueue({ ...emotion, source: 'devtools' })
 })
 const speechDestination = audioContext.createGain()
 speechDestination.connect(audioContext.destination)
@@ -457,10 +453,11 @@ function resetSpeakingState() {
 }
 
 // A response leaves the active turns after its playback drains, or at once
-// when it is canceled or interrupted.
+// when it is canceled or interrupted. Each turn that leaves ends its own speech leases.
 watch(() => voice.activeTurns, (turns) => {
   if (turns.length === 0)
     speechVoicing.value = false
+  performanceConductor.syncActiveTurns(turns.map(turn => turn.turnId))
 })
 
 const cards = useAiriCardStore()
@@ -468,7 +465,8 @@ const disconnectVoiceOutput = voice.connectOutput((turn) => {
   const output = {
     playback,
     onSpecial: (special: string) => void playSpecialToken(special, { turnId: turn.turnId }),
-    onPlaybackStart: ({ text }: { text: string }) => {
+    onPlaybackStart: ({ id, text }: SpeechClip) => {
+      performanceConductor.clipStart(turn.turnId, id)
       playingCount += 1
       nowSpeaking.value = true
       speechVoicing.value = true
@@ -481,7 +479,8 @@ const disconnectVoiceOutput = voice.connectOutput((turn) => {
         console.error('Speech presentation channel failed', error)
       }
     },
-    onPlaybackEnd: () => {
+    onPlaybackEnd: ({ id }: SpeechClip, end: SpeechClipEnd) => {
+      performanceConductor.clipEnd(turn.turnId, id, end.status)
       playingCount -= 1
       if (playingCount === 0)
         resetSpeakingState()
@@ -582,6 +581,8 @@ function setupAnalyser() {
     speechDestination.connect(audioAnalyser.value)
   }
 }
+
+watch(speechMuted, muted => performanceConductor.setMuted(muted), { immediate: true })
 
 watch(speechMuted, (muted) => {
   if (muted) {
@@ -732,6 +733,7 @@ defineExpose({
         :presence="presenceBubble"
         :performance="performance"
         :natural-energy="performanceOverride?.energy ?? undefined"
+        :performance-settings="performanceSettings"
         min-w="50% <lg:full"
         h-full w-full flex-1
         :model-src="stageModelSelectedUrl"

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Application } from '@pixi/app'
 import type { Filter } from '@pixi/core'
-import type { ReactionEpisode, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, ReactionEpisode, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type {
   AmbientLightEnvironment,
@@ -18,6 +18,7 @@ import type { NaturalCaptureRequest } from '../../../stores'
 import { errorMessageFrom } from '@moeru/std'
 import { Point } from '@pixi/math'
 import { listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { ambientLightDefaults, ambientLightNeutralEnvironment, ambientLightPerceptualLevel, wholeWindowRectangle } from '@proj-airi/stage-shared/screen-ambient-light'
 import { useTheme } from '@proj-airi/ui'
 import { until } from '@vueuse/core'
@@ -96,6 +97,8 @@ const props = withDefaults(defineProps<{
    * Natural's own blink scheduler blinks only while it is true.
    */
   naturalAutoBlink?: boolean
+  /** Expression-performance switches and tunables; Natural and the expression slots apply them on change. */
+  performanceSettings?: ExpressionPerformanceSettings
 }>(), {
   mouthOpenSize: 0,
   nowSpeaking: false,
@@ -123,6 +126,7 @@ const props = withDefaults(defineProps<{
   performance: () => ({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }),
   naturalEnergy: 0.5,
   naturalAutoBlink: true,
+  performanceSettings: () => defaultExpressionPerformanceSettings,
 })
 
 const emits = defineEmits<{
@@ -570,6 +574,7 @@ async function performModelLoad() {
     )
     naturalMotion = naturalAdapter
     naturalAdapter.setPaused(paused.value)
+    naturalAdapter.setPerformanceSettings(props.performanceSettings)
     // Physics normally loads inside setupLive2DModel; a late load must still hand its outputs back to physics.
     live2DModel.on('physicsLoaded', () => naturalAdapter.setRigProfile(readRigProfile()))
     motionManagerUpdate.register((ctx) => {
@@ -1018,6 +1023,11 @@ watch(live2dMotionDriver, async (driver, previous) => {
 })
 
 watch(paused, value => naturalMotion?.setPaused(value))
+// A model loaded later receives the current settings when its Natural adapter is created.
+watch(() => props.performanceSettings, (settings) => {
+  naturalMotion?.setPerformanceSettings(settings)
+  expressionStore.setSlotSettings(settings.slots)
+}, { immediate: true })
 watch(nowSpeaking, (speaking, wasSpeaking) => {
   // A speech end before the first SDK frame has no clock value to anchor the handoff to.
   if (!speaking && wasSpeaking)
