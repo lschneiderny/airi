@@ -74,6 +74,18 @@ ZipLoader.createSettings = async (reader: JSZip) => {
     console.warn('[ZipLoader] Failed to extract CDI/EXP metadata:', e)
   }
 
+  // VTube metadata is optional and must not prevent expression or model loading.
+  const vtubePath = filePaths.find(path => !reader.files[path].dir && path.toLowerCase().endsWith('.vtube.json'))
+  if (vtubePath) {
+    try {
+      const data: unknown = JSON.parse(await ZipLoader.readText(reader, vtubePath))
+      Object.assign(settings, { _vtubeData: data })
+    }
+    catch (error) {
+      console.warn('[ZipLoader] Failed to extract VTube metadata:', error)
+    }
+  }
+
   return settings
 }
 

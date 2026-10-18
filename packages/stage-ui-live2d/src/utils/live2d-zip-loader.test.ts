@@ -82,6 +82,38 @@ describe('live2d zip loader settings sanitization', () => {
     vi.unstubAllGlobals()
   })
 
+  it('extracts the first real VTube document while excluding AppleDouble metadata', async () => {
+    await import('./live2d-zip-loader')
+    const { ZipLoader } = await import('pixi-live2d-display/cubism4')
+    const zip = new JSZip()
+    zip.file('model.model3.json', createSpacePathSettingsText())
+    zip.file('__MACOSX/ignored.vtube.json', 'invalid')
+    zip.file('._ignored.vtube.json', 'invalid')
+    zip.file('first.vtube.json', '{"Hotkeys":[]}')
+    zip.file('second.vtube.json', '{"ignored":true}')
+    expect(await ZipLoader.createSettings(zip)).toHaveProperty('_vtubeData', { Hotkeys: [] })
+  })
+
+  it('warns and ignores malformed first VTube JSON without losing expressions', async () => {
+    await import('./live2d-zip-loader')
+    const { ZipLoader } = await import('pixi-live2d-display/cubism4')
+    const zip = new JSZip()
+    zip.file('model.model3.json', createSpacePathSettingsText())
+    zip.file('broken.vtube.json', '{')
+    zip.file('second.vtube.json', '{}')
+    zip.file('happy.exp3.json', '{"Parameters":[]}')
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const settings = await ZipLoader.createSettings(zip)
+      expect(settings).not.toHaveProperty('_vtubeData')
+      expect(settings).toHaveProperty('_expFiles.0.name', 'happy')
+      expect(warning).toHaveBeenCalledWith('[ZipLoader] Failed to extract VTube metadata:', expect.any(SyntaxError))
+    }
+    finally {
+      warning.mockRestore()
+    }
+  })
+
   it('loads a zip model when model3.json contains Physics: null', async () => {
     await import('./live2d-zip-loader')
     const { ZipLoader } = await import('pixi-live2d-display/cubism4')
