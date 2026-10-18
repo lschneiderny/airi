@@ -17,6 +17,29 @@ ZIP imports and OPFS-restored archives discover every `.exp3.json`, including fi
 Each expression keeps its own activation and composes in activation order with its file's blend modes and fade times. Missing or invalid fade times use one second.
 Save expression defaults stores the active expression ids as the model's rest set. Reset all expressions returns to that set.
 Rest sets use `expression-rest:${modelId}` with `{ version: 1, active: string[] }`. Previous parameter defaults are not loaded; save the desired defaults once again.
+The Expression system setting, stored as `settings/live2d/expression-enabled`, turns this runtime on. A fresh profile starts with it off. While it is off, the model keeps the SDK expression manager and eye blink, the catalog stays empty, and no expression fires automatically or reaches the LLM.
+
+The [expression performance ADR](../../docs/ai/adr/2026-10-18-expression-performance.md) records the contracts below.
+
+### Expression catalog
+
+Each discovered expression has a catalog entry with a label, a kind (`face`, `effect`, `outfit`, `prop`, or `system`), an optional pick-one group, a confirmed flag, an LLM-exposed flag, and emotion mappings.
+The label comes from the model settings `Name`, else from the archive's first `.vtube.json` hotkey for that file, else from the file name.
+Kinds and groups are suggestions. Expressions of the same suggested kind that share a parameter form a pick-one group when at least one of them sets a non-zero value on it. Expressions that share only zero values form no group. Parameters of `system` expressions, such as a watermark hide, never form groups.
+Users confirm entries, edit labels, kinds, and groups, and map emotions in Settings > Models > Live2D. Each mapping has an emotion, a weight from 0.1 to 5, and a minimum band.
+Edits are stored per model in `expression-catalog:${modelId}` as `{ version: 1, overrides: CuratedOverride[] }`.
+
+- Only confirmed `face` and `effect` entries fire automatically.
+- Only confirmed, LLM-exposed `face`, `effect`, and `prop` entries reach the LLM. Outfits and system expressions never do.
+- Activating a member of a pick-one group fades out the other members. An automatic or LLM activation never displaces a saved default, a manual toggle, or a member of a different kind; the activation is skipped instead.
+
+The stage window owns `useExpressionStore`. Other windows render its `settingsSnapshot` and send `Live2DExpressionSettingsCommand` values: `toggle`, `save-defaults`, `reset-all`, `update-entry`, `reset-entry`, and `confirm-all-suggested`.
+
+### Expression slots
+
+The expression store executes the decider's slot commands in three slots: `face`, `effect`, and `prop`. The scene exposes `applySlots`, `onSpeech`, and `setMuted` for the stage performance conductor.
+Each slot holds at most one transient lease on top of the rest set and manual toggles. Releasing a lease never turns off an expression that the rest set or a manual toggle also owns.
+A speech-bound lease lasts while its own speech turn plays. It releases after the turn ends, plus a short grace, or at once when the turn's playback is stopped. A muted lease, or a lease with an explicit hold, releases after its hold. Every lease releases within `slots.holdCap` seconds.
 
 ### Natural layers
 
@@ -31,6 +54,7 @@ The `Live2DNaturalMotion` controller advances every layer on a fixed 120 Hz grid
 - Breath drives the breath channel and couples a very small pitch movement to the head.
 - Speech emphasis turns onsets in the lipsync mouth level into occasional small head beats while the character speaks: 80% are pitch-down nods and 20% are roll tilts to a random side.
 - Impulses add short head gestures and decaying face hints for emotions and desktop reactions.
+- Mood keeps a decaying afterglow of recent emotions that tints posture, gaze, speech emphasis, and mouth form.
 - Energy scales posture amplitude, posture shift rate, and gaze target choice from the performance state and the user's Energy setting.
 
 ### What Natural owns and what it never writes
@@ -76,14 +100,33 @@ Energy `E` scales posture amplitude by `0.7 + 0.6E` and posture shift rate by `0
 At the default of 0.5, Energy leaves every layer at its unscaled behavior.
 Resetting Live2D settings restores the default Energy.
 
-### Emotions as impulses
+### Emotions by intensity band
 
-When Natural drives the model, the stage sends each chat emotion to the scene's `setEmotion(name, intensity)` instead of playing the emotion's motion group.
-Natural turns the emotion into an impulse: a short head gesture that peaks after 0.25 to 0.5 seconds and returns to zero, plus face hints that decay over about 1.5 seconds.
-Some emotions also glance aside.
+When Natural drives the model, the stage performance conductor sends each chat emotion to the scene's `setEmotion(episode)` as a `NaturalEpisode` instead of playing the emotion's motion group. A `NaturalEpisode` is a `ReactionEpisode` with an optional `moodGain`.
+The episode's band decides which body parts react:
+
+- `slight`: face hints only;
+- `clear`: face hints, a head pulse, and a glance;
+- `strong`: face hints, a head pulse, a glance, a body lean, and a short energy overlay that raises posture amplitude and shift rate.
+
+ACT markers name the band with `slight`, `clear`, or `strong`. A marker without an intensity means clear.
+Repeats of the same emotion habituate. A stronger repeat within 2 seconds escalates the running reaction and adds only the missing amplitude. Neutral starts no reaction.
 An impulse adds to every other layer, so it never resets the pose.
-Neutral does nothing, and the same emotion within 2 seconds is ignored.
-Universal and MAGIC still play the emotion's motion group.
+The body lean skips a body axis that rig physics derives from the head.
+With the `bands` switch off, Natural treats every episode as clear.
+Band timings and gains come from `naturalBands` in the `settings/expression-performance` document.
+Universal and MAGIC still play the emotion's motion group for every emotion, repeats and neutral included.
+
+### Mood
+
+Natural keeps a mood with valence, arousal, and tension. Each episode adds a dose by band, intensity, and emotion, and the mood decays exponentially in active time.
+A non-zero mood scales posture amplitude and shift rate, biases camera fixation, modulates speech emphasis acceptance, and shifts mouth form. Emphasis acceptance follows arousal: positive arousal raises it, and negative arousal, such as a sad mood, lowers it.
+At exactly zero mood, Natural skips modulation and draws no randomness, so idle motion is unchanged.
+The `mood` switch turns accumulation and modulation off. The constants come from `moodDynamics` in the same settings document.
+Character card profiles scale mood strength and mood length:
+
+- Each episode's `moodGain` is its band's mood gain under the profile its signal was decided in, and `NaturalMood.add` doses the episode with it. An episode without `moodGain` uses the performer's own band gain.
+- Mood decay and the band shapes follow the active card's profile, because the scene receives the settings document under that profile.
 
 ### Cursor attention
 
@@ -164,7 +207,7 @@ The lab provides these controls:
 
 - Performance state: when the override is on, the selected mode (`idle`, `watching`, `listening`, `thinking`, or `talking`) replaces the resolved mode at once. When it is off, the stage resolves the mode from its real signals.
 - Energy: the energy override and its 0 to 1 slider are disabled while "Override the performance state" is off, because only the state override carries the energy to the stage. While they are off or disabled, Natural uses the user's Energy setting.
-- Emotions: each button sends that emotion, at the selected intensity, through the same stage emotion queue that chat replies use.
+- Emotions: choose `slight`, `clear`, or `strong`, and each emotion button sends that emotion at the band's default intensity through the same stage emotion queue that chat replies use. Lab pulses belong to no speech turn, so their expressions follow the hold rule.
 - Affect trace: "Start recording" starts an affect recording in the stage's performance conductor, and "Export affect trace" downloads the recording as `AffectTrace` JSON for `scripts/replay-affect-trace.ts`.
 - Trace capture: buttons start a 60, 300, or 600 s capture, and a cancel button stops it.
 
@@ -199,6 +242,7 @@ Keep these caveats in mind:
 
 Use this package to render Live2D models in AIRI hosts.
 Use Natural for continuous autonomous movement that responds to speech, listening, thinking, desktop activity, and emotions, with optional cursor attention.
+Use the expression catalog and slots to let emotions and the LLM show a model's own faces, effects, and props without disturbing outfits or saved defaults.
 Natural controls head, body, eye, face, blink, and breath channels before the model's physics pass.
 Model physics remains authoritative, so torso movement depends on the rig.
 
@@ -206,4 +250,5 @@ Model physics remains authoritative, so torso movement depends on the rig.
 
 Do not use Natural to play recorded or authored motion; use model motions or MAGIC for that.
 Do not use Natural to control physics outputs directly, or to drive the mouth during speech; lipsync owns the mouth.
+Do not use the expression store to decide which expression to show; the decider in `@proj-airi/stage-shared/expression-performance` owns that choice.
 Use a different renderer package for VRM, MMD, or other model formats.

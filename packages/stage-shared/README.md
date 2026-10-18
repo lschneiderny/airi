@@ -58,6 +58,42 @@ const { snapshot } = storeToRefs(useDesktopActivityStore())
 Use this store to pass desktop samples from a host producer to the stage.
 Do not persist or replicate it: it is runtime state, and each renderer reads only its own host's samples. Do not sample desktop signals in this package; the host producer owns sampling.
 
+### Expression performance
+
+The `expression-performance` entrypoint owns the pure decision layer for character expression performance:
+
+- the `AffectSignal`, `ReactionEpisode`, `SlotCommand`, and `Decider` contracts;
+- the catalog schemas, `mergeCatalog`, `isAutoEligible`, and `isLlmEligible`;
+- the settings document schema `ExpressionPerformanceSettingsSchema`, its defaults, and `parseExpressionPerformanceSettings`;
+- reaction strength with bands, habituation, and escalation (`acceptReaction`);
+- the picker and planner deciders, selected by `createDecider`, and the timing-slot scheduler;
+- affect traces and their replay (`withAffectTrace`, `parseAffectTrace`, `replayAffectTrace`);
+- character performance profiles (`resolveEffectiveSettings`, `applyMappingWeights`).
+
+A decider never reads a clock, global randomness, or a store. Pass every time in the signal as monotonic seconds, and keep the returned state for the next call. The state is plain JSON, so it can be checkpointed and replayed.
+
+```ts
+import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
+
+import { createDecider, defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
+
+const catalog: CatalogEntry[] = []
+const decider = createDecider('picker')
+let state = decider.initial(42)
+
+const result = decider.decide(
+  { kind: 'emotion', source: 'act', emotion: 'happy', nominal: 0.6, turnId: 'turn-1', at: 12.5 },
+  { catalog, settings: defaultExpressionPerformanceSettings },
+  state,
+)
+state = result.state
+// result.decision.episodes go to Natural; result.decision.slots go to the expression performer.
+```
+
+Use this entrypoint to decide how a character reacts to emotions and expression requests, and to compare deciders by replaying a recorded affect trace.
+Do not use it to render, compose parameters, or hold timers. The stage conductor in `@proj-airi/stage-ui` owns clocks and timers, and `@proj-airi/stage-ui-live2d` executes the decisions.
+The [expression performance ADR](../../docs/ai/adr/2026-10-18-expression-performance.md) records the contracts.
+
 ## Do not use this package
 
 Keep Electron IPC definitions in the Electron application. Keep UI state and actions in `@proj-airi/stage-ui`. Keep Extension runtime and manifest behavior in `@proj-airi/plugin-sdk`.
