@@ -65,7 +65,8 @@ function calculateVolume(analyser: AnalyserNode, mode: 'linear' | 'minmax' = 'li
 }
 
 export const useAudioContext = defineStore('audio-context', () => {
-  const audioContext = shallowRef<AudioContext>(new AudioContext())
+  // wlipsync@1.3.1's WASM set_input(sampleRate) fails at 192 kHz.
+  const audioContext = shallowRef<AudioContext>(new AudioContext({ sampleRate: 48000 }))
 
   return {
     audioContext,
