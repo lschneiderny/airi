@@ -165,7 +165,7 @@ At exactly zero mood Natural skips modulation and draws no randomness, so idle m
 ## Per-expression composition
 
 `ExpressionComposer` keeps one instance per active expression.
-A fade uses `S(u) = (1 - cos(pi * u)) / 2` over the file's `FadeInTime` when activating and `FadeOutTime` when deactivating. A missing, negative, or non-finite fade time uses 1 s, and 0 switches at once. Reactivation during a fade starts from the current weight.
+A fade uses `S(u) = (1 - cos(pi * u)) / 2` over the file's `FadeInTime` when activating and `FadeOutTime` when deactivating. A missing, negative, or non-finite fade time uses `slots.defaultFadeSeconds` (default 1 s), and 0 switches at once. Reactivation during a fade starts from the current weight.
 
 Each owned parameter starts from the frame base `b` and visits instances in activation order, then in parameter order:
 
@@ -341,6 +341,7 @@ Prompt-key rule: these keys are appended under `te(...)` guards and are not in `
 
 An `AffectTrace` records an explicit recording session: `version`, `decider`, `checkpoint` (a JSON copy of the decider state at the start), `initialContext`, ordered `entries` of signals and context changes, `truncated`, and `endAt`.
 The conductor writes a context entry before the first signal whose effective context differs from the last recorded one.
+Recorded contexts hold effective settings and catalogs, so `parseAffectTrace` validates them with `EffectiveExpressionPerformanceSettingsSchema` and `EffectiveCatalogEntrySchema`. The persisted bounds are unchanged. Profile scaling keeps effective values finite: `resolveEffectiveSettings` and `applyMappingWeights` clamp a product above `Number.MAX_VALUE` to `Number.MAX_VALUE`, so JSON never exports Infinity as null. Only values near the float limit, such as taus above 1e300, reach the clamp, and those already mean "never decays". A product that underflows becomes 0. The trace records the clamped value, so exact replay is unchanged. The effective bounds are the persisted bounds multiplied by the profile ranges and clamped the same way: mood gains [0, 1] x [0, 2] = [0, 2], mood taus [0, `Number.MAX_VALUE`], and mapping weights [0, `Number.MAX_VALUE`]. Every other bound matches the persisted schemas. Selection skips a weight that underflows to 0, just as it skips a mapping that a 0 multiplier disabled.
 A recording stops as truncated after 20,000 entries. A decider switch also marks it truncated, because the switch resets the decider state.
 The Natural lab starts and exports recordings over the existing diagnostics BroadcastChannel. The stage window answers.
 
@@ -396,7 +397,7 @@ Sections:
 - `naturalBands`: the `slight`, `clear`, and `strong` band tables above, plus `headGain` 0.12, `bodyGain` 0.06, `energyAmplitude` 0.3, `energyRate` 0.5, `energySeconds` 2.
 - `moodDynamics`: `valenceTau` 45, `arousalTau` 20, `tensionTau` 30, `slightGain` 0.15, `clearGain` 0.25, `strongGain` 0.4, `amplitude` 0.2, `shiftRate` 0.3, `cameraValence` 0.1, `cameraTension` 0.15, `emphasis` 0.1, `mouthForm` 0.08.
 - `picker`: `recencyDepth` 0.8, `recencyTau` 8, `effectGateFrom` 0.5, `effectGateTo` 0.8.
-- `slots`: `defaultFadeSeconds` 1, `speechGrace` 0.25, `unstartedExpiry` 10, `holdCap` 15. No code reads `defaultFadeSeconds` yet; fades come from the exp3 file or the 1 s fallback.
+- `slots`: `defaultFadeSeconds` 1, `speechGrace` 0.25, `unstartedExpiry` 10, `holdCap` 15. Fades come from the exp3 file; `defaultFadeSeconds` replaces a missing or invalid file fade.
 - `timing`: `pauseSeconds` 0.18, `emphasisRefractory` 1.2.
 - `planner`: `minGap` 0.8, `window` 5, `windowMax` 3, `scheduleExpiry` 6.
 

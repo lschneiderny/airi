@@ -169,6 +169,18 @@ describe('expression composer', () => {
     expect(composer.activeIds()).toEqual([])
   })
 
+  it('uses the configured default fade only for missing or invalid file fades', () => {
+    const composer = new ExpressionComposer()
+    composer.setDefaultFadeSeconds(2)
+    composer.define([{ id: 'unset', parameters: [], fadeOut: -1 }, definition('explicit', [], 0.5, 0)])
+    composer.setActiveSet(['unset', 'explicit'], 0)
+    expect(composer.weightOf('unset', 1)).toBeCloseTo(0.5)
+    expect(composer.weightOf('explicit', 0.25)).toBeCloseTo(0.5)
+    composer.setActiveSet([], 2)
+    expect(composer.weightOf('unset', 3)).toBeCloseTo(0.5)
+    expect(composer.activeIds()).toEqual(['unset'])
+  })
+
   it('ignores unknown ids and supports empty definitions and immediate transitions', () => {
     const composer = new ExpressionComposer()
     composer.define([])

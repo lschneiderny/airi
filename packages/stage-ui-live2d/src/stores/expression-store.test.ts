@@ -3,6 +3,7 @@ import type { SlotCommand } from '@proj-airi/stage-shared/expression-performance
 import type { SpeechEvent } from '../composables/live2d/expression/slots'
 import type { NamedExpressionDefinition } from './expression-store'
 
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -30,6 +31,16 @@ describe('curated expression catalog', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+
+  it('fades expressions without a valid file fade over the slot default fade', () => {
+    const store = useExpressionStore()
+    store.setSlotSettings({ ...defaultExpressionPerformanceSettings.slots, defaultFadeSeconds: 2 })
+    store.registerDefinitions('a', [{ id: 'plain', name: 'plain', fadeOut: Number.NaN, parameters: [{ id: 'switch', value: 1, blend: 'Add' }] }])
+    store.activate('plain')
+    expect(store.composer.weightOf('plain', 1)).toBeCloseTo(0.5)
+    store.deactivate('plain', 2)
+    expect(store.composer.weightOf('plain', 3)).toBeCloseTo(0.5)
   })
 
   it('persists and reloads per model without leaking into a second model', () => {

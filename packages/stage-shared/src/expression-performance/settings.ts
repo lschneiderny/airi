@@ -9,6 +9,30 @@ function settingsObject<T extends ObjectEntries>(entries: T) {
 
 const unit = () => pipe(number(), finite(), minValue(0), maxValue(1))
 const seconds = () => pipe(number(), finite(), minValue(0))
+const within = ([min, max]: NumberRange) => pipe(number(), finite(), minValue(min), maxValue(max))
+
+/** Inclusive `[min, max]` bounds. */
+export type NumberRange = readonly [min: number, max: number]
+
+/**
+ * Multiplies a non-negative persisted value by a non-negative profile scale and keeps the product finite.
+ * A product above Number.MAX_VALUE is clamped to it, so effective settings and recorded traces never hold
+ * Infinity (JSON would export it as null). Only values near the float limit, such as taus above 1e300, reach the
+ * clamp, and they already mean "never" either way. A product that underflows becomes 0.
+ */
+export function scaleFinite(value: number, scale: number): number {
+  return Math.min(value * scale, Number.MAX_VALUE)
+}
+
+/** Bounds of `scaleFinite` over two non-negative ranges, such as a persisted value and a profile scale. */
+export function scaleRange([min, max]: NumberRange, [scaleMin, scaleMax]: NumberRange): NumberRange {
+  return [scaleFinite(min, scaleMin), scaleFinite(max, scaleMax)]
+}
+
+/** Persisted mood dose bounds. */
+export const moodGainRange: NumberRange = [0, 1]
+/** Persisted mood decay bounds in seconds: any finite non-negative value. */
+export const moodTauRange: NumberRange = [0, Number.MAX_VALUE]
 
 const intensitySchema = settingsObject({
   /** Nominal dose; 0 is neutral. @default 0.25 */
@@ -68,32 +92,36 @@ const naturalBandsSchema = settingsObject({
   /** Energy duration seconds; 0 disables the overlay. @default 2 */
   energySeconds: optional(seconds(), 2),
 })
-const moodDynamicsSchema = settingsObject({
-  /** Valence decay seconds; 0 releases immediately. @default 45 */
-  valenceTau: optional(seconds(), 45),
-  /** Arousal decay seconds; 0 releases immediately. @default 20 */
-  arousalTau: optional(seconds(), 20),
-  /** Tension decay seconds; 0 releases immediately. @default 30 */
-  tensionTau: optional(seconds(), 30),
-  /** Slight mood dose; 0 is neutral. @default 0.15 */
-  slightGain: optional(unit(), 0.15),
-  /** Clear mood dose; 0 is neutral. @default 0.25 */
-  clearGain: optional(unit(), 0.25),
-  /** Strong mood dose; 0 is neutral. @default 0.4 */
-  strongGain: optional(unit(), 0.4),
-  /** Amplitude modulation; 0 preserves idle. @default 0.2 */
-  amplitude: optional(unit(), 0.2),
-  /** Shift-rate modulation; 0 preserves idle. @default 0.3 */
-  shiftRate: optional(unit(), 0.3),
-  /** Valence camera bias; 0 preserves gaze. @default 0.1 */
-  cameraValence: optional(unit(), 0.1),
-  /** Tension camera bias; 0 preserves gaze. @default 0.15 */
-  cameraTension: optional(unit(), 0.15),
-  /** Speech emphasis addition; 0 preserves emphasis. @default 0.1 */
-  emphasis: optional(unit(), 0.1),
-  /** Mouth form addition; 0 preserves mouth form. @default 0.08 */
-  mouthForm: optional(unit(), 0.08),
-})
+function moodDynamicsSchema(bounds: MoodBounds) {
+  const gain = () => within(bounds.gain)
+  const tau = () => within(bounds.tau)
+  return settingsObject({
+    /** Valence decay seconds; 0 releases immediately. @default 45 */
+    valenceTau: optional(tau(), 45),
+    /** Arousal decay seconds; 0 releases immediately. @default 20 */
+    arousalTau: optional(tau(), 20),
+    /** Tension decay seconds; 0 releases immediately. @default 30 */
+    tensionTau: optional(tau(), 30),
+    /** Slight mood dose; 0 is neutral. @default 0.15 */
+    slightGain: optional(gain(), 0.15),
+    /** Clear mood dose; 0 is neutral. @default 0.25 */
+    clearGain: optional(gain(), 0.25),
+    /** Strong mood dose; 0 is neutral. @default 0.4 */
+    strongGain: optional(gain(), 0.4),
+    /** Amplitude modulation; 0 preserves idle. @default 0.2 */
+    amplitude: optional(unit(), 0.2),
+    /** Shift-rate modulation; 0 preserves idle. @default 0.3 */
+    shiftRate: optional(unit(), 0.3),
+    /** Valence camera bias; 0 preserves gaze. @default 0.1 */
+    cameraValence: optional(unit(), 0.1),
+    /** Tension camera bias; 0 preserves gaze. @default 0.15 */
+    cameraTension: optional(unit(), 0.15),
+    /** Speech emphasis addition; 0 preserves emphasis. @default 0.1 */
+    emphasis: optional(unit(), 0.1),
+    /** Mouth form addition; 0 preserves mouth form. @default 0.08 */
+    mouthForm: optional(unit(), 0.08),
+  })
+}
 const pickerSchema = settingsObject({
   /** Recency penalty; 0 preserves mapping weights. @default 0.8 */
   recencyDepth: optional(unit(), 0.8),
@@ -136,32 +164,47 @@ const plannerSchema = settingsObject({
   scheduleExpiry: optional(seconds(), 6),
 })
 
-export const ExpressionPerformanceSettingsSchema = settingsObject({
-  /** False bypasses band recruitment. @default true */
-  bands: optional(boolean(), true),
-  /** False preserves idle without mood modulation. @default true */
-  mood: optional(boolean(), true),
-  /** False disables automatic expression selection. @default true */
-  autoExpressions: optional(boolean(), true),
-  /** False omits active-expression feedback. @default false */
-  stateFeedback: optional(boolean(), false),
-  /** Picker emits picks at once; planner schedules them into speech timing slots under a change budget. @default 'picker' */
-  decider: optional(picklist(['picker', 'planner']), 'picker'),
-  /** Zero dose/jitter and unit habituation preserve neutral intensity. */
-  intensity: optional(intensitySchema, () => parse(intensitySchema, {})),
-  /** Zero modulation gains preserve idle motion. */
-  naturalBands: optional(naturalBandsSchema, () => parse(naturalBandsSchema, {})),
-  /** Zero mood gains preserve idle motion. */
-  moodDynamics: optional(moodDynamicsSchema, () => parse(moodDynamicsSchema, {})),
-  /** Zero recency depth preserves mapping weights. */
-  picker: optional(pickerSchema, () => parse(pickerSchema, {})),
-  /** Zero durations remove additional lifetime and fades. */
-  slots: optional(slotsSchema, () => parse(slotsSchema, {})),
-  /** Zero durations remove timing delays. */
-  timing: optional(timingSchema, () => parse(timingSchema, {})),
-  /** Zero gap and window disable the planner budget; zero expiry stops picks from waiting for timing slots. */
-  planner: optional(plannerSchema, () => parse(plannerSchema, {})),
-})
+/** Bounds of the profile-scaled mood fields; every other field has fixed bounds. */
+export interface MoodBounds {
+  gain: NumberRange
+  tau: NumberRange
+}
+
+/**
+ * Builds the settings document schema. Persisted documents use `moodGainRange` and `moodTauRange`; effective documents
+ * use those ranges scaled by the profile ranges (see `EffectiveExpressionPerformanceSettingsSchema`).
+ */
+export function createExpressionPerformanceSettingsSchema(mood: MoodBounds) {
+  const moodDynamics = moodDynamicsSchema(mood)
+  return settingsObject({
+    /** False bypasses band recruitment. @default true */
+    bands: optional(boolean(), true),
+    /** False preserves idle without mood modulation. @default true */
+    mood: optional(boolean(), true),
+    /** False disables automatic expression selection. @default true */
+    autoExpressions: optional(boolean(), true),
+    /** False omits active-expression feedback. @default false */
+    stateFeedback: optional(boolean(), false),
+    /** Picker emits picks at once; planner schedules them into speech timing slots under a change budget. @default 'picker' */
+    decider: optional(picklist(['picker', 'planner']), 'picker'),
+    /** Zero dose/jitter and unit habituation preserve neutral intensity. */
+    intensity: optional(intensitySchema, () => parse(intensitySchema, {})),
+    /** Zero modulation gains preserve idle motion. */
+    naturalBands: optional(naturalBandsSchema, () => parse(naturalBandsSchema, {})),
+    /** Zero mood gains preserve idle motion. */
+    moodDynamics: optional(moodDynamics, () => parse(moodDynamics, {})),
+    /** Zero recency depth preserves mapping weights. */
+    picker: optional(pickerSchema, () => parse(pickerSchema, {})),
+    /** Zero durations remove additional lifetime and fades. */
+    slots: optional(slotsSchema, () => parse(slotsSchema, {})),
+    /** Zero durations remove timing delays. */
+    timing: optional(timingSchema, () => parse(timingSchema, {})),
+    /** Zero gap and window disable the planner budget; zero expiry stops picks from waiting for timing slots. */
+    planner: optional(plannerSchema, () => parse(plannerSchema, {})),
+  })
+}
+
+export const ExpressionPerformanceSettingsSchema = createExpressionPerformanceSettingsSchema({ gain: moodGainRange, tau: moodTauRange })
 export type ExpressionPerformanceSettings = InferOutput<typeof ExpressionPerformanceSettingsSchema>
 export const defaultExpressionPerformanceSettings = parse(ExpressionPerformanceSettingsSchema, {})
 

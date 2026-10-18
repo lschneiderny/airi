@@ -2,13 +2,13 @@ import type { AffectSignal, Decider, DeciderContext, PerformanceDecision } from 
 
 import { array, boolean, check, finite, literal, maxValue, minValue, number, optional, parse, picklist, pipe, strictObject, string, unknown, variant } from 'valibot'
 
-import { CatalogEntrySchema } from './catalog'
-import { ExpressionPerformanceSettingsSchema } from './settings'
+import { EffectiveCatalogEntrySchema, EffectiveExpressionPerformanceSettingsSchema } from './profile'
 
 const seconds = pipe(number(), finite(), minValue(0))
 const turnId = optional(string())
 const emotion = picklist(['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral'])
-const contextSchema = strictObject({ catalog: array(CatalogEntrySchema), settings: ExpressionPerformanceSettingsSchema })
+// Recorded contexts hold profile-resolved settings and catalogs, bounded by the profile-scaled persisted bounds.
+const contextSchema = strictObject({ catalog: array(EffectiveCatalogEntrySchema), settings: EffectiveExpressionPerformanceSettingsSchema })
 const signalSchema = variant('kind', [
   strictObject({ kind: literal('emotion'), source: picklist(['act', 'tool', 'devtools']), emotion, nominal: pipe(number(), finite(), minValue(0), maxValue(1)), turnId, at: seconds }),
   strictObject({ kind: literal('expression'), source: picklist(['act', 'tool']), expressionId: string(), holdSeconds: optional(seconds), turnId, at: seconds }),

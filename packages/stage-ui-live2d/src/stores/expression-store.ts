@@ -269,8 +269,9 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     muted.value = value
   }
 
-  function setSlotSettings(settings: SlotLeaseSettings) {
+  function setSlotSettings(settings: SlotLeaseSettings & { defaultFadeSeconds: number }) {
     slotSettings.value = { speechGrace: settings.speechGrace, unstartedExpiry: settings.unstartedExpiry, holdCap: settings.holdCap }
+    composer.setDefaultFadeSeconds(settings.defaultFadeSeconds)
   }
 
   function persistCurated(document: unknown) {

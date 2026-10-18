@@ -1,35 +1,49 @@
 import type { InferOutput } from 'valibot'
 
-import { array, boolean, finite, literal, minValue, nullable, number, optional, parse, picklist, pipe, safeParse, strictObject, string, transform } from 'valibot'
+import type { NumberRange } from './settings'
+
+import { array, boolean, finite, literal, maxValue, minValue, nullable, number, optional, parse, picklist, pipe, safeParse, strictObject, string, transform } from 'valibot'
 
 export const ExpressionKindSchema = picklist(['face', 'effect', 'outfit', 'prop', 'system'])
 export type ExpressionKind = InferOutput<typeof ExpressionKindSchema>
 export const llmAllowedKinds = ['face', 'effect', 'prop'] as const
 
-const bandSchema = picklist(['slight', 'clear', 'strong'])
-const mappingFields = {
-  emotion: picklist(['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious']),
-  weight: optional(pipe(number(), finite(), minValue(Number.MIN_VALUE)), 1),
-}
-export const EmotionMappingSchema = strictObject({ ...mappingFields, minBand: optional(bandSchema, 'clear') })
-export type EmotionMapping = InferOutput<typeof EmotionMappingSchema>
-const pendingMappingSchema = strictObject({ ...mappingFields, minBand: optional(bandSchema) })
+/** Persisted mapping weights: any positive finite value. */
+export const mappingWeightRange: NumberRange = [Number.MIN_VALUE, Number.MAX_VALUE]
 
-function resolveMappings(mappings: InferOutput<typeof pendingMappingSchema>[], kind: ExpressionKind): EmotionMapping[] {
+const bandSchema = picklist(['slight', 'clear', 'strong'])
+function mappingFields([min, max]: NumberRange) {
+  return {
+    emotion: picklist(['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious']),
+    weight: optional(pipe(number(), finite(), minValue(min), maxValue(max)), 1),
+  }
+}
+export const EmotionMappingSchema = strictObject({ ...mappingFields(mappingWeightRange), minBand: optional(bandSchema, 'clear') })
+export type EmotionMapping = InferOutput<typeof EmotionMappingSchema>
+function pendingMappingSchema(weights: NumberRange) {
+  return strictObject({ ...mappingFields(weights), minBand: optional(bandSchema) })
+}
+const persistedPendingMappingSchema = pendingMappingSchema(mappingWeightRange)
+
+function resolveMappings(mappings: InferOutput<typeof persistedPendingMappingSchema>[], kind: ExpressionKind): EmotionMapping[] {
   return mappings.map(mapping => ({ ...mapping, minBand: mapping.minBand ?? (kind === 'effect' ? 'strong' : 'clear') }))
 }
 
-export const CatalogEntrySchema = pipe(strictObject({
-  id: string(),
-  label: string(),
-  kind: ExpressionKindSchema,
-  group: nullable(string()),
-  confirmed: boolean(),
-  exposedToLlm: boolean(),
-  mappings: array(pendingMappingSchema),
-  fileName: string(),
-  parameterIds: array(string()),
-}), transform(entry => ({ ...entry, mappings: resolveMappings(entry.mappings, entry.kind) })))
+/** Builds the catalog entry schema; effective catalogs use the persisted weights scaled by the profile multipliers. */
+export function createCatalogEntrySchema(weights: NumberRange) {
+  return pipe(strictObject({
+    id: string(),
+    label: string(),
+    kind: ExpressionKindSchema,
+    group: nullable(string()),
+    confirmed: boolean(),
+    exposedToLlm: boolean(),
+    mappings: array(pendingMappingSchema(weights)),
+    fileName: string(),
+    parameterIds: array(string()),
+  }), transform(entry => ({ ...entry, mappings: resolveMappings(entry.mappings, entry.kind) })))
+}
+export const CatalogEntrySchema = createCatalogEntrySchema(mappingWeightRange)
 export type CatalogEntry = InferOutput<typeof CatalogEntrySchema>
 
 export const CuratedOverrideSchema = strictObject({
@@ -39,7 +53,7 @@ export const CuratedOverrideSchema = strictObject({
   group: optional(nullable(string())),
   confirmed: optional(boolean()),
   exposedToLlm: optional(boolean()),
-  mappings: optional(array(pendingMappingSchema)),
+  mappings: optional(array(persistedPendingMappingSchema)),
 })
 export type CuratedOverride = InferOutput<typeof CuratedOverrideSchema>
 export const CuratedCatalogDocumentSchema = strictObject({

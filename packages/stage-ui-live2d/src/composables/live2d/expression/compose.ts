@@ -1,4 +1,4 @@
-/** Parsed expression values; fade times are seconds and default to one when invalid. */
+/** Parsed expression values; fade times are seconds and fall back to the composer's default fade when invalid. */
 export interface ExpressionDefinition {
   id: string
   parameters: { id: string, value: number, blend: 'Add' | 'Multiply' | 'Overwrite' }[]
@@ -16,10 +16,6 @@ export interface ExpressionInstance {
   duration: number
 }
 
-function fadeDuration(value: number | undefined): number {
-  return value !== undefined && Number.isFinite(value) && value >= 0 ? value : 1
-}
-
 /**
  * Owns expression transitions and clean frame bases without owning a model or clock.
  * Each frame must call restoreBases before animation writers, then compose after them.
@@ -30,6 +26,16 @@ export class ExpressionComposer {
   private instances = new Map<string, ExpressionInstance>()
   private capturedBase = new Map<string, number>()
   private sequence = 0
+  private defaultFadeSeconds = 1
+
+  /** Sets the fade for definitions without a valid file fade (`slots.defaultFadeSeconds`); running fades keep their duration. */
+  setDefaultFadeSeconds(seconds: number): void {
+    this.defaultFadeSeconds = seconds
+  }
+
+  private fadeDuration(value: number | undefined): number {
+    return value !== undefined && Number.isFinite(value) && value >= 0 ? value : this.defaultFadeSeconds
+  }
 
   /** Replaces definitions and activations; pending bases remain for the next restore. */
   define(defs: ExpressionDefinition[]): void {
@@ -54,7 +60,7 @@ export class ExpressionComposer {
       fromWeight,
       targetWeight: 1,
       transitionAt: now,
-      duration: fadeDuration(definition.fadeIn),
+      duration: this.fadeDuration(definition.fadeIn),
     })
   }
 
@@ -67,7 +73,7 @@ export class ExpressionComposer {
     instance.fromWeight = fromWeight
     instance.targetWeight = 0
     instance.transitionAt = now
-    instance.duration = fadeDuration(this.definitions.get(id)!.fadeOut)
+    instance.duration = this.fadeDuration(this.definitions.get(id)!.fadeOut)
     this.weightOf(id, now)
   }
 

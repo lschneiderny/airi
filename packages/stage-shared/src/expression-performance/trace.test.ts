@@ -3,7 +3,7 @@ import type { AffectSignal, DeciderContext } from './types'
 import { parse, safeParse } from 'valibot'
 import { describe, expect, it } from 'vitest'
 
-import { AffectTraceSchema, createDecider, defaultExpressionPerformanceSettings, replayAffectTrace, withAffectTrace } from '.'
+import { AffectTraceSchema, applyMappingWeights, CatalogEntrySchema, createDecider, defaultExpressionPerformanceSettings, parseAffectTrace, parseCuratedCatalogDocument, parseExpressionPerformanceSettings, PerformanceProfileSchema, replayAffectTrace, resolveEffectiveSettings, withAffectTrace } from '.'
 
 const picker = { ...createDecider('picker'), kind: 'picker' as const }
 const context: DeciderContext = {
@@ -79,6 +79,108 @@ describe('affect trace', () => {
     expect(live[1].decision.slots).toEqual([{ slot: 'face', expressionId: null, holdSeconds: 0, until: 'hold' }])
     expect(live[3].decision.slots.map(command => [command.slot, command.expressionId, command.turnId])).toEqual([['face', null, 'turn'], ['effect', null, 'turn'], ['prop', null, 'turn']])
     expect(safeParse(AffectTraceSchema, { ...fixture(), entries: [{ type: 'signal', signal: { kind: 'clear', source: 'tool', slot: 'outfit', at: 1 } }] }).success).toBe(false)
+  })
+
+  it('parses and exactly replays contexts expanded by a 2x mood gain profile', () => {
+    const base = parseExpressionPerformanceSettings({ moodDynamics: { strongGain: 0.8 } })
+    expect(base.success).toBe(true)
+    const doubled = { ...context, settings: resolveEffectiveSettings(base.value, { moodGainScale: 2 }).settings }
+    const changed = { ...context, settings: resolveEffectiveSettings(base.value, { moodGainScale: 1.5 }).settings }
+    expect(doubled.settings.moodDynamics.strongGain).toBe(1.6)
+    const signals = [emotion(0), emotion(3)]
+    const exported = JSON.stringify({ ...fixture(), initialContext: doubled, entries: [{ type: 'signal', signal: signals[0] }, { type: 'context', context: changed }, { type: 'signal', signal: signals[1] }] })
+    const trace = parseAffectTrace(JSON.parse(exported))
+    let state = picker.initial(1)
+    const live = signals.map((signal, index) => {
+      const result = picker.decide(signal, index === 0 ? doubled : changed, state)
+      state = result.state
+      return { at: signal.at, decision: result.decision }
+    })
+
+    expect(trace.initialContext.settings.moodDynamics.strongGain).toBe(1.6)
+    expect(replayAffectTrace(trace, picker, { mode: 'exact' })).toEqual(live)
+  })
+
+  it('keeps persisted bounds and rejects contexts outside the profile-scaled bounds', () => {
+    expect(parseExpressionPerformanceSettings({ moodDynamics: { strongGain: 1.6 } }).success).toBe(false)
+    const beyond = { ...context.settings, moodDynamics: { ...context.settings.moodDynamics, strongGain: 2.01 } }
+    expect(safeParse(AffectTraceSchema, { ...fixture(), initialContext: { ...context, settings: beyond } }).success).toBe(false)
+    const reversed = { ...context.settings, moodDynamics: { ...context.settings.moodDynamics, valenceTau: -1 } }
+    expect(safeParse(AffectTraceSchema, { ...fixture(), initialContext: { ...context, settings: reversed } }).success).toBe(false)
+    const negative = context.catalog.map(entry => ({ ...entry, mappings: entry.mappings.map(mapping => ({ ...mapping, weight: -1 })) }))
+    expect(safeParse(AffectTraceSchema, { ...fixture(), initialContext: { ...context, catalog: negative } }).success).toBe(false)
+  })
+
+  it('still accepts persisted documents with long taus and heavy mapping weights unchanged', () => {
+    const settings = parseExpressionPerformanceSettings({ autoExpressions: false, moodDynamics: { valenceTau: 7200 } })
+    expect(settings.success).toBe(true)
+    expect(settings.value.autoExpressions).toBe(false)
+    expect(settings.value.moodDynamics.valenceTau).toBe(7200)
+    const curated = parseCuratedCatalogDocument({ version: 1, overrides: [{ id: 'a', mappings: [{ emotion: 'happy', weight: 6 }] }] })
+    expect(curated.success && curated.value.overrides[0].mappings?.[0].weight).toBe(6)
+  })
+
+  describe('every persisted value under every profile scale', () => {
+    function expectExactRoundTrip(live: DeciderContext) {
+      const signals = [emotion(0), emotion(3)]
+      const trace = parseAffectTrace(JSON.parse(JSON.stringify({ ...fixture(), initialContext: live, entries: signals.map(signal => ({ type: 'signal', signal })) })))
+      let state = picker.initial(1)
+      const decisions = signals.map((signal) => {
+        const result = picker.decide(signal, live, state)
+        state = result.state
+        return { at: signal.at, decision: result.decision }
+      })
+      expect(replayAffectTrace(trace, picker, { mode: 'exact' })).toEqual(decisions)
+    }
+
+    it.each(['slightGain', 'clearGain', 'strongGain'] as const)('records %s at its persisted bounds under every gain scale', (field) => {
+      const accepted: number[] = []
+      for (const value of [0, 0.4, 1, 1.0001]) {
+        const base = parseExpressionPerformanceSettings({ moodDynamics: { [field]: value } })
+        if (!base.success)
+          continue
+        accepted.push(value)
+        for (const moodGainScale of [0, 1, 2])
+          expectExactRoundTrip({ ...context, settings: resolveEffectiveSettings(base.value, { moodGainScale }).settings })
+      }
+      expect(accepted).toEqual([0, 0.4, 1])
+    })
+
+    it.each(['valenceTau', 'arousalTau', 'tensionTau'] as const)('records %s at its persisted bounds under every decay scale', (field) => {
+      const accepted: number[] = []
+      const values = [0, 45, 3600, 7200, 1e308, Number.MAX_VALUE]
+      for (const value of values) {
+        const base = parseExpressionPerformanceSettings({ moodDynamics: { [field]: value } })
+        if (!base.success)
+          continue
+        accepted.push(value)
+        for (const moodDecayScale of [0.5, 1, 2]) {
+          const settings = resolveEffectiveSettings(base.value, { moodDecayScale }).settings
+          expect(settings.moodDynamics[field]).toBe(Math.min(value * moodDecayScale, Number.MAX_VALUE))
+          expectExactRoundTrip({ ...context, settings })
+        }
+      }
+      expect(accepted).toEqual(values)
+    })
+
+    it('records every persisted mapping weight under every profile multiplier', () => {
+      const accepted: number[] = []
+      const weights = [Number.MIN_VALUE, 0.1, 1, 5, 6, 1e308, Number.MAX_VALUE]
+      for (const weight of weights) {
+        const entry = safeParse(CatalogEntrySchema, { ...context.catalog[0], mappings: [{ emotion: 'happy', minBand: 'slight', weight }] })
+        if (!entry.success)
+          continue
+        accepted.push(weight)
+        for (const multiplier of [0, Number.MIN_VALUE, 0.5, 1, 5]) {
+          const profile = { mappingWeights: { rig: { a: multiplier } } }
+          expect(safeParse(PerformanceProfileSchema, profile).success).toBe(true)
+          const catalog = applyMappingWeights([entry.output], 'rig', profile)
+          expect(catalog[0].mappings.map(mapping => mapping.weight)).toEqual(multiplier === 0 ? [] : [Math.min(weight * multiplier, Number.MAX_VALUE)])
+          expectExactRoundTrip({ ...context, catalog })
+        }
+      }
+      expect(accepted).toEqual(weights)
+    })
   })
 
   it('refuses truncated traces and mismatched exact policies', () => {
