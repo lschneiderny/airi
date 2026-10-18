@@ -277,6 +277,65 @@ live2d:
     no-expression: No expressions available for this model.
     save-default: Save expression defaults
     reset: Reset all expressions
+    confirm-all: Confirm all suggested
+    confirmed: Confirmed
+    suggested: Suggested
+    preview: Preview
+    llm-exposed: Let the AI use it
+    edit: Edit
+    close-editor: Close
+    apply: Apply
+    reset-entry: Reset to detected
+    reload: Load latest values
+    stale: This expression changed elsewhere while you were editing.
+    group-none: No group
+    add-mapping: Add emotion mapping
+    remove-mapping: Remove mapping
+    fields:
+      label: Label
+      kind: Kind
+      group: Group
+      confirmed: Confirmed
+      mappings: Emotion mappings
+      emotion: Emotion
+      weight: Weight
+      min-band: Minimum strength
+    kinds:
+      face: Face
+      effect: Effect
+      outfit: Outfit
+      prop: Prop
+      system: System
+    bands:
+      slight: Slight
+      clear: Clear
+      strong: Strong
+    emotions:
+      happy: Happy
+      sad: Sad
+      angry: Angry
+      think: Think
+      surprised: Surprised
+      awkward: Awkward
+      question: Question
+      curious: Curious
+    validation:
+      label-required: Enter a label.
+      weight-range: 'Weight must be a number from {min} to {max}.'
+  performance:
+    title: Emotion performance
+    bands:
+      title: Reaction strength
+      description: React with slight, clear, or strong intensity instead of one fixed level.
+    mood:
+      title: Mood
+      description: Let recent emotions shape the character's lasting mood.
+    auto-expressions:
+      title: Automatic expressions
+      description: Pick confirmed expressions from emotions without an explicit AI request.
+    state-feedback:
+      title: State feedback
+      description: Tell the AI which expressions are currently active. Each request includes the active expressions and mood.
 microphone: Microphone
 models: Model
 pages:

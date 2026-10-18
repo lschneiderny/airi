@@ -1,3 +1,5 @@
+import type { Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
 import en from '@proj-airi/i18n/locales/en'
@@ -6,7 +8,7 @@ import { createPinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
 import { page, userEvent } from 'vitest/browser'
-import { nextTick } from 'vue'
+import { nextTick, watch } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import '@unocss/reset/tailwind.css'
@@ -23,6 +25,57 @@ function createTestI18n() {
 }
 
 const { t } = createTestI18n().global
+
+type ExpressionEntry = Live2DExpressionSettingsSnapshot['groups'][number]
+
+function expressionEntry(overrides: Partial<ExpressionEntry>): ExpressionEntry {
+  return {
+    id: 'entry.exp3.json',
+    name: 'entry',
+    label: 'entry',
+    kind: 'face',
+    group: null,
+    confirmed: false,
+    exposedToLlm: false,
+    mappings: [],
+    fileName: 'entry.exp3.json',
+    parameterIds: [],
+    active: false,
+    ...overrides,
+  }
+}
+
+function remoteSnapshot(groups: ExpressionEntry[]): ModelSettingsRuntimeSnapshot {
+  return {
+    ownerInstanceId: 'stage-owner',
+    modelId: 'test-model',
+    renderer: 'live2d',
+    phase: 'mounted',
+    controlsLocked: false,
+    previewAvailable: true,
+    canCapturePreview: false,
+    updatedAt: 1,
+    live2dExpressions: { groups },
+  }
+}
+
+async function renderRemoteExpressions(groups: ExpressionEntry[]) {
+  Object.assign(window, { Live2DCubismCore: {} })
+  const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
+    import('@proj-airi/stage-ui-live2d'),
+    import('./live2d.vue'),
+  ])
+  await import('virtual:uno.css')
+  const pinia = createPinia()
+  useSettingsLive2d(pinia).live2dExpressionEnabled = true
+  const onLive2dExpressionCommand = vi.fn()
+  const screen = await render(Live2DSettings, {
+    props: { palette: [], runtimeSnapshot: remoteSnapshot(groups), onLive2dExpressionCommand },
+    global: { plugins: [pinia, createTestI18n()] },
+  })
+  await screen.getByText(t('settings.live2d.expressions.title'), { exact: true }).click()
+  return { screen, pinia, onLive2dExpressionCommand }
+}
 
 describe('live2D model settings', () => {
   afterEach(() => {
@@ -85,11 +138,111 @@ describe('live2D model settings', () => {
     await expect.element(screen.getByText('happy', { exact: true })).toBeVisible()
     await expect.element(screen.getByText('surprised', { exact: true })).toBeVisible()
 
-    const expressionSwitches = screen.getByRole('switch').all()
-    await expressionSwitches[1].click()
+    await screen.getByRole('switch', { name: `${t('settings.live2d.expressions.preview')}: happy` }).click()
 
     expect(onLive2dExpressionCommand).toHaveBeenCalledWith({ type: 'toggle', id: 'happy.exp3.json' })
     expect(useExpressionStore(pinia).definitions).toEqual([])
+  })
+
+  it('renders catalog labels and kinds, and offers the AI toggle only for face, effect, and prop', async () => {
+    const { screen } = await renderRemoteExpressions([
+      expressionEntry({ id: 'a', label: 'Blush', kind: 'face', group: 'Cheeks', confirmed: true }),
+      expressionEntry({ id: 'b', label: 'Hat', kind: 'outfit' }),
+    ])
+    await expect.element(screen.getByText('Blush', { exact: true })).toBeVisible()
+    await expect.element(screen.getByText('Hat', { exact: true })).toBeVisible()
+    await expect.element(screen.getByText(t('settings.live2d.expressions.kinds.face'), { exact: true })).toBeVisible()
+    await expect.element(screen.getByText(t('settings.live2d.expressions.kinds.outfit'), { exact: true })).toBeVisible()
+    await expect.element(screen.getByText('Cheeks', { exact: true })).toBeVisible()
+    await expect.element(screen.getByText(t('settings.live2d.expressions.confirmed'), { exact: true })).toBeVisible()
+    await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.llm-exposed')}: Blush` })).toBeVisible()
+    await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.llm-exposed')}: Hat` })).not.toBeInTheDocument()
+  })
+
+  it('emits update-entry when a label is edited and applied', async () => {
+    const { screen, onLive2dExpressionCommand } = await renderRemoteExpressions([expressionEntry({ id: 'red.exp3.json', label: 'red' })])
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    await screen.getByRole('textbox', { name: t('settings.live2d.expressions.fields.label'), exact: true }).fill('Blush')
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true }).click()
+    expect(onLive2dExpressionCommand).toHaveBeenCalledTimes(1)
+    expect(onLive2dExpressionCommand).toHaveBeenCalledWith({
+      type: 'update-entry',
+      id: 'red.exp3.json',
+      patch: { label: 'Blush', kind: 'face', group: null, confirmed: false, mappings: [] },
+    })
+  })
+
+  it('rejects an empty label and a mapping weight of 0 without emitting a command', async () => {
+    const { screen, onLive2dExpressionCommand } = await renderRemoteExpressions([expressionEntry({ id: 'red.exp3.json', label: 'red' })])
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    const apply = screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true })
+
+    await screen.getByRole('textbox', { name: t('settings.live2d.expressions.fields.label'), exact: true }).fill('')
+    await expect.element(screen.getByText(t('settings.live2d.expressions.validation.label-required'), { exact: true })).toBeVisible()
+    await apply.click()
+    expect(onLive2dExpressionCommand).not.toHaveBeenCalled()
+    await screen.getByRole('textbox', { name: t('settings.live2d.expressions.fields.label'), exact: true }).fill('Blush')
+
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.add-mapping'), exact: true }).click()
+    const weight = screen.getByRole('spinbutton', { name: `${t('settings.live2d.expressions.fields.weight')} 1` })
+    for (const invalid of ['0', '5.5', '-1']) {
+      await weight.fill(invalid)
+      await expect.element(screen.getByText(t('settings.live2d.expressions.validation.weight-range', { min: 0.1, max: 5 }), { exact: true })).toBeVisible()
+      await apply.click()
+    }
+    expect(onLive2dExpressionCommand).not.toHaveBeenCalled()
+
+    await weight.fill('1.5')
+    await apply.click()
+    expect(onLive2dExpressionCommand).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps an open draft when the snapshot changes and offers to reload it', async () => {
+    const { screen } = await renderRemoteExpressions([expressionEntry({ id: 'red.exp3.json', label: 'red' })])
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    const label = screen.getByRole('textbox', { name: t('settings.live2d.expressions.fields.label'), exact: true })
+    await label.fill('Draft')
+    await screen.rerender({ runtimeSnapshot: remoteSnapshot([expressionEntry({ id: 'red.exp3.json', label: 'Remote' })]) })
+    await expect.element(screen.getByText(t('settings.live2d.expressions.stale'), { exact: true })).toBeVisible()
+    await expect.element(label).toHaveValue('Draft')
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.reload'), exact: true }).click()
+    await expect.element(label).toHaveValue('Remote')
+    await expect.element(screen.getByText(t('settings.live2d.expressions.stale'), { exact: true })).not.toBeInTheDocument()
+  })
+
+  it('updates the performance settings store from the Emotion performance switches', async () => {
+    Object.assign(window, { Live2DCubismCore: {} })
+    const [{ useExpressionPerformanceSettings }, { default: Live2DSettings }] = await Promise.all([
+      import('../../../../features/performance/settings'),
+      import('./live2d.vue'),
+    ])
+    await import('virtual:uno.css')
+    const pinia = createPinia()
+    const performance = useExpressionPerformanceSettings(pinia)
+    const screen = await render(Live2DSettings, {
+      props: { palette: [], runtimeSnapshot: remoteSnapshot([]) },
+      global: { plugins: [pinia, createTestI18n()] },
+    })
+    await screen.getByText(t('settings.live2d.performance.title'), { exact: true }).click()
+    const bands = screen.getByRole('switch', { name: t('settings.live2d.performance.bands.title') })
+    await expect.element(bands).toBeChecked()
+    expect(performance.document.bands).toBe(true)
+    const bandsChanged = new Promise<boolean>((resolve, reject) => {
+      const stop = watch(() => performance.document.bands, (value) => {
+        stop()
+        resolve(value)
+      }, { flush: 'sync' })
+      AbortSignal.timeout(5000).addEventListener('abort', () => {
+        stop()
+        reject(new Error('performance.document.bands did not change after the switch click'))
+      })
+    })
+    await bands.click()
+    expect(await bandsChanged).toBe(false)
+    expect(performance.document.bands).toBe(false)
+    await expect.element(bands).not.toBeChecked()
+    expect(JSON.parse(localStorage.getItem('settings/expression-performance') ?? '{}').bands).toBe(false)
+    expect(performance.document.mood).toBe(true)
   })
 
   it('selects Natural and preserves mode settings', async () => {

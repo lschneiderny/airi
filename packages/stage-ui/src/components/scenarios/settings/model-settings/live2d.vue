@@ -15,7 +15,9 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import MagicMotionSettings from '../../../../features/motions/live2d/components/magic-settings.vue'
+import Live2dExpressionEntry from './live2d-expression-entry.vue'
 
+import { useExpressionPerformanceSettings } from '../../../../features/performance/settings'
 import { PropertyPoint } from '../../../data-pane'
 import { Section } from '../../../layouts'
 import { ColorPalette } from '../../../widgets'
@@ -89,6 +91,9 @@ function applyExpressionSettingsCommand(command: Live2DExpressionSettingsCommand
 
   expressionStore.applySettingsCommand(command)
 }
+
+const expressionGroupNames = computed(() => [...new Set(expressionSettingsSnapshot.value.groups.flatMap(entry => entry.group ? [entry.group] : []))])
+const performanceSettings = useExpressionPerformanceSettings()
 
 const selectedRuntimeMotion = ref<string>('')
 const runtimeMotions = ref<Array<{ name: string, displayPath: string, group: string, index: number }>>([])
@@ -791,23 +796,21 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       </div>
     </template>
     <template v-else>
-      <!-- Expression preview toggles -->
       <div flex flex-col gap-2>
-        <div
-          v-for="group in expressionSettingsSnapshot.groups"
-          :key="group.id"
-          flex items-center justify-between
-        >
-          <span text-sm text-neutral-700 dark:text-neutral-300>{{ group.name }}</span>
-          <Checkbox
-            :model-value="group.active"
-            @update:model-value="applyExpressionSettingsCommand({ type: 'toggle', id: group.id })"
-          />
-        </div>
+        <Live2dExpressionEntry
+          v-for="entry in expressionSettingsSnapshot.groups"
+          :key="entry.id"
+          :entry="entry"
+          :group-names="expressionGroupNames"
+          @command="applyExpressionSettingsCommand"
+        />
       </div>
 
       <!-- Action buttons -->
-      <div mt-4 flex gap-2>
+      <div mt-4 flex flex-wrap gap-2>
+        <Button @click="applyExpressionSettingsCommand({ type: 'confirm-all-suggested' })">
+          {{ t('settings.live2d.expressions.confirm-all') }}
+        </Button>
         <Button @click="applyExpressionSettingsCommand({ type: 'save-defaults' })">
           {{ t('settings.live2d.expressions.save-default') }}
         </Button>
@@ -816,5 +819,45 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
         </Button>
       </div>
     </template>
+  </Section>
+  <Section
+    :title="t('settings.live2d.performance.title')"
+    icon="i-solar:magic-stick-3-bold-duotone"
+    :class="[
+      'rounded-xl',
+      'bg-white/80  dark:bg-black/75',
+      'backdrop-blur-lg',
+    ]"
+    size="sm"
+    :expand="false"
+  >
+    <FieldCheckbox
+      :model-value="performanceSettings.document.bands"
+      :label="t('settings.live2d.performance.bands.title')"
+      :description="t('settings.live2d.performance.bands.description')"
+      placement="right"
+      @update:model-value="performanceSettings.update({ bands: $event })"
+    />
+    <FieldCheckbox
+      :model-value="performanceSettings.document.mood"
+      :label="t('settings.live2d.performance.mood.title')"
+      :description="t('settings.live2d.performance.mood.description')"
+      placement="right"
+      @update:model-value="performanceSettings.update({ mood: $event })"
+    />
+    <FieldCheckbox
+      :model-value="performanceSettings.document.autoExpressions"
+      :label="t('settings.live2d.performance.auto-expressions.title')"
+      :description="t('settings.live2d.performance.auto-expressions.description')"
+      placement="right"
+      @update:model-value="performanceSettings.update({ autoExpressions: $event })"
+    />
+    <FieldCheckbox
+      :model-value="performanceSettings.document.stateFeedback"
+      :label="t('settings.live2d.performance.state-feedback.title')"
+      :description="t('settings.live2d.performance.state-feedback.description')"
+      placement="right"
+      @update:model-value="performanceSettings.update({ stateFeedback: $event })"
+    />
   </Section>
 </template>
