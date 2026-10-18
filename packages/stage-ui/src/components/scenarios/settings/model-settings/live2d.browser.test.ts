@@ -4,7 +4,9 @@ import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
 import en from '@proj-airi/i18n/locales/en'
 
+import { errorMessageFrom } from '@moeru/std'
 import { createPinia } from 'pinia'
+import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
 import { page, userEvent } from 'vitest/browser'
@@ -280,6 +282,53 @@ describe('live2D model settings', () => {
     await picker.click()
     await expect.element(picker).toBeChecked()
     expect(performance.document.decider).toBe('picker')
+  })
+
+  it('awaits the leader-routed decider update so its rejection reaches Vue error handling', async () => {
+    Object.assign(window, { Live2DCubismCore: {} })
+    const { default: Live2DSettings } = await import('./live2d.vue')
+    await import('virtual:uno.css')
+    // A follower-only renderer without a leader keeps the leader-routed RPC pending.
+    // Disposing the runtime then rejects it, which only the awaiting caller propagates.
+    const runtime = createSyncedPiniaPlugin({
+      namespace: `live2d-settings:${crypto.randomUUID()}`,
+      leadership: 'follower-only',
+      callTimeout: 60_000,
+    })
+    const pinia = createPinia()
+    pinia.use(runtime.plugin)
+    const handledErrors: unknown[] = []
+    let onHandledError: (() => void) | undefined
+    const screen = await render(Live2DSettings, {
+      props: { palette: [], runtimeSnapshot: remoteSnapshot([]) },
+      global: {
+        plugins: [pinia, createTestI18n()],
+        config: {
+          errorHandler: (error) => {
+            handledErrors.push(error)
+            onHandledError?.()
+          },
+        },
+      },
+    })
+    try {
+      await screen.getByText(t('settings.live2d.performance.title'), { exact: true }).click()
+      await screen.getByRole('radio', { name: t('settings.live2d.performance.decider.options.planner.title'), exact: true }).click()
+      expect(handledErrors).toEqual([])
+
+      const handled = new Promise<void>((resolve, reject) => {
+        onHandledError = resolve
+        AbortSignal.timeout(5000).addEventListener('abort', () => {
+          reject(new Error('the rejected decider update never reached the Vue error handler'))
+        })
+      })
+      runtime.dispose()
+      await handled
+      expect(handledErrors.map(error => errorMessageFrom(error))).toEqual(['Pinia sync runtime was disposed before the RPC completed.'])
+    }
+    finally {
+      runtime.dispose()
+    }
   })
 
   it('selects Natural and preserves mode settings', async () => {

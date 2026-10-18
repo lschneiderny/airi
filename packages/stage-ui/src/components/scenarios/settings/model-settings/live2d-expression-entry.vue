@@ -112,21 +112,52 @@ function resetEntry() {
 </script>
 
 <template>
-  <div class="min-w-0 flex flex-col gap-2 border border-neutral-200 rounded-lg border-solid p-2 dark:border-neutral-800">
-    <div class="flex flex-wrap items-center gap-2">
-      <div class="min-w-0 flex flex-1 flex-col gap-1">
-        <span class="break-words text-sm text-neutral-700 font-medium dark:text-neutral-300">{{ entry.label }}</span>
-        <div class="flex flex-wrap items-center gap-1 text-xs">
-          <span class="rounded-full bg-primary-100 px-2 py-0.5 text-primary-700 dark:bg-primary-900/40 dark:text-primary-200">{{ t(`settings.live2d.expressions.kinds.${entry.kind}`) }}</span>
-          <span v-if="entry.group" class="max-w-full break-all rounded-lg bg-neutral-100 px-2 py-0.5 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">{{ groupLabel(entry.group) }}</span>
+  <div
+    :class="[
+      'min-w-0 p-2',
+      'flex flex-col gap-2',
+      'rounded-lg border border-solid border-neutral-200 dark:border-neutral-800',
+    ]"
+  >
+    <div :class="['flex flex-wrap items-center gap-2']">
+      <div :class="['min-w-0 flex flex-1 flex-col gap-1']">
+        <span
+          :class="[
+            'break-words',
+            'text-sm font-medium text-neutral-700 dark:text-neutral-300',
+          ]"
+        >{{ entry.label }}</span>
+        <div :class="['flex flex-wrap items-center gap-1', 'text-xs']">
           <span
-            class="rounded-full px-2 py-0.5"
-            :class="entry.confirmed ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'"
+            :class="[
+              'rounded-full px-2 py-0.5',
+              'bg-primary-100 dark:bg-primary-900/40',
+              'text-primary-700 dark:text-primary-200',
+            ]"
+          >{{ t(`settings.live2d.expressions.kinds.${entry.kind}`) }}</span>
+          <span
+            v-if="entry.group"
+            :class="[
+              'max-w-full break-all rounded-lg px-2 py-0.5',
+              'bg-neutral-100 dark:bg-neutral-800',
+              'text-neutral-600 dark:text-neutral-300',
+            ]"
+          >{{ groupLabel(entry.group) }}</span>
+          <span
+            :class="[
+              'rounded-full px-2 py-0.5',
+              entry.confirmed
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200'
+                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200',
+            ]"
           >{{ entry.confirmed ? t('settings.live2d.expressions.confirmed') : t('settings.live2d.expressions.suggested') }}</span>
         </div>
       </div>
-      <div class="flex flex-wrap items-center gap-3">
-        <label v-if="llmKinds.includes(entry.kind)" class="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
+      <div :class="['flex flex-wrap items-center gap-3']">
+        <label
+          v-if="llmKinds.includes(entry.kind)"
+          :class="['flex items-center gap-2', 'text-xs text-neutral-500 dark:text-neutral-400']"
+        >
           {{ t('settings.live2d.expressions.llm-exposed') }}
           <Checkbox
             :model-value="entry.exposedToLlm"
@@ -134,7 +165,7 @@ function resetEntry() {
             @update:model-value="emit('command', { type: 'update-entry', id: entry.id, patch: { exposedToLlm: $event } })"
           />
         </label>
-        <label class="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
+        <label :class="['flex items-center gap-2', 'text-xs text-neutral-500 dark:text-neutral-400']">
           {{ t('settings.live2d.expressions.preview') }}
           <Checkbox
             :model-value="entry.active"
@@ -148,58 +179,72 @@ function resetEntry() {
       </div>
     </div>
 
-    <div v-if="open" class="flex flex-col gap-3 border-t border-neutral-200 pt-2 dark:border-neutral-800">
-      <div v-if="isStale" class="flex flex-wrap items-center gap-2 rounded-lg bg-amber-100 p-2 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" role="status">
-        <span class="flex-1">{{ t('settings.live2d.expressions.stale') }}</span>
+    <div
+      v-if="open"
+      :class="[
+        'flex flex-col gap-3 pt-2',
+        'border-t border-neutral-200 dark:border-neutral-800',
+      ]"
+    >
+      <div
+        v-if="isStale"
+        :class="[
+          'flex flex-wrap items-center gap-2 rounded-lg p-2',
+          'bg-amber-100 dark:bg-amber-900/40',
+          'text-xs text-amber-800 dark:text-amber-200',
+        ]"
+        role="status"
+      >
+        <span :class="['flex-1']">{{ t('settings.live2d.expressions.stale') }}</span>
         <Button size="sm" @click="loadDraft">
           {{ t('settings.live2d.expressions.reload') }}
         </Button>
       </div>
 
-      <label class="flex flex-col gap-1 text-xs text-neutral-500 dark:text-neutral-400">
+      <label :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
         {{ t('settings.live2d.expressions.fields.label') }}
         <Input v-model="draftLabel" type="text" :aria-label="t('settings.live2d.expressions.fields.label')" />
-        <span v-if="labelError" class="text-red-500" role="alert">{{ labelError }}</span>
+        <span v-if="labelError" :class="['text-red-500']" role="alert">{{ labelError }}</span>
       </label>
 
-      <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <div class="flex flex-col gap-1 text-xs text-neutral-500 dark:text-neutral-400">
+      <div :class="['grid grid-cols-1 gap-2 sm:grid-cols-2']">
+        <div :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
           {{ t('settings.live2d.expressions.fields.kind') }}
           <Select v-model="draftKind" :options="kindOptions" />
         </div>
-        <div class="flex flex-col gap-1 text-xs text-neutral-500 dark:text-neutral-400">
+        <div :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
           {{ t('settings.live2d.expressions.fields.group') }}
           <Select v-model="draftGroup" :options="groupOptions" />
         </div>
       </div>
 
-      <label class="flex items-center justify-between gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+      <label :class="['flex items-center justify-between gap-2', 'text-sm text-neutral-700 dark:text-neutral-300']">
         {{ t('settings.live2d.expressions.fields.confirmed') }}
         <Checkbox v-model="draftConfirmed" :aria-label="t('settings.live2d.expressions.fields.confirmed')" />
       </label>
 
-      <div class="flex flex-col gap-2">
-        <span class="text-xs text-neutral-500 dark:text-neutral-400">{{ t('settings.live2d.expressions.fields.mappings') }}</span>
+      <div :class="['flex flex-col gap-2']">
+        <span :class="['text-xs text-neutral-500 dark:text-neutral-400']">{{ t('settings.live2d.expressions.fields.mappings') }}</span>
         <div
           v-for="(mapping, index) in draftMappings"
           :key="index"
-          class="flex flex-col gap-2 rounded-lg bg-neutral-50 p-2 dark:bg-neutral-900"
+          :class="['flex flex-col gap-2 rounded-lg p-2', 'bg-neutral-50 dark:bg-neutral-900']"
         >
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <div class="flex flex-col gap-1 text-xs text-neutral-500 dark:text-neutral-400">
+          <div :class="['grid grid-cols-1 gap-2 sm:grid-cols-3']">
+            <div :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
               {{ t('settings.live2d.expressions.fields.emotion') }}
               <Select v-model="mapping.emotion" :options="emotionOptions" />
             </div>
-            <label class="flex flex-col gap-1 text-xs text-neutral-500 dark:text-neutral-400">
+            <label :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
               {{ t('settings.live2d.expressions.fields.weight') }}
               <Input v-model="mapping.weight" type="number" :aria-label="`${t('settings.live2d.expressions.fields.weight')} ${index + 1}`" />
             </label>
-            <div class="flex flex-col gap-1 text-xs text-neutral-500 dark:text-neutral-400">
+            <div :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
               {{ t('settings.live2d.expressions.fields.min-band') }}
               <Select v-model="mapping.minBand" :options="bandOptions" />
             </div>
           </div>
-          <span v-if="weightError(mapping.weight)" class="text-xs text-red-500" role="alert">{{ weightError(mapping.weight) }}</span>
+          <span v-if="weightError(mapping.weight)" :class="['text-xs text-red-500']" role="alert">{{ weightError(mapping.weight) }}</span>
           <div>
             <Button size="sm" @click="removeMapping(index)">
               {{ t('settings.live2d.expressions.remove-mapping') }}
@@ -213,7 +258,7 @@ function resetEntry() {
         </div>
       </div>
 
-      <div class="flex flex-wrap gap-2">
+      <div :class="['flex flex-wrap gap-2']">
         <Button @click="apply">
           {{ t('settings.live2d.expressions.apply') }}
         </Button>

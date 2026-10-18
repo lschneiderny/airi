@@ -65,7 +65,11 @@ function calculateVolume(analyser: AnalyserNode, mode: 'linear' | 'minmax' = 'li
 }
 
 export const useAudioContext = defineStore('audio-context', () => {
-  // wlipsync@1.3.1's WASM set_input(sampleRate) fails at 192 kHz.
+  // NOTICE:
+  // Pin 48 kHz so lip sync works on 192 kHz output devices.
+  // wlipsync@1.3.1 passes the context rate to WASM `set_input`, which fails at 192 kHz.
+  // Source: node_modules/.pnpm/wlipsync@1.3.1/node_modules/wlipsync/dist/audio-processor.js
+  // Remove when a wlipsync release accepts 192 kHz in `set_input`.
   const audioContext = shallowRef<AudioContext>(new AudioContext({ sampleRate: 48000 }))
 
   return {

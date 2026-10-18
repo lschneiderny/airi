@@ -107,10 +107,10 @@ const deciderOptions = computed<SelectTabOption<ExpressionPerformanceSettings['d
     description: t('settings.live2d.performance.decider.options.planner.description'),
   },
 ])
-const decider = computed<ExpressionPerformanceSettings['decider']>({
-  get: () => performanceSettings.document.decider,
-  set: value => void performanceSettings.update({ decider: value }),
-})
+// `update` is a leader-routed synced action, so callers await it instead of dropping the promise.
+async function updatePerformanceSettings(patch: Parameters<typeof performanceSettings.update>[0]) {
+  await performanceSettings.update(patch)
+}
 
 const selectedRuntimeMotion = ref<string>('')
 const runtimeMotions = ref<Array<{ name: string, displayPath: string, group: string, index: number }>>([])
@@ -813,7 +813,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       </div>
     </template>
     <template v-else>
-      <div flex flex-col gap-2>
+      <div :class="['flex flex-col gap-2']">
         <Live2dExpressionEntry
           v-for="entry in expressionSettingsSnapshot.groups"
           :key="entry.id"
@@ -824,7 +824,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       </div>
 
       <!-- Action buttons -->
-      <div mt-4 flex flex-wrap gap-2>
+      <div :class="['mt-4', 'flex flex-wrap gap-2']">
         <Button @click="applyExpressionSettingsCommand({ type: 'confirm-all-suggested' })">
           {{ t('settings.live2d.expressions.confirm-all') }}
         </Button>
@@ -853,28 +853,28 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       :label="t('settings.live2d.performance.bands.title')"
       :description="t('settings.live2d.performance.bands.description')"
       placement="right"
-      @update:model-value="performanceSettings.update({ bands: $event })"
+      @update:model-value="updatePerformanceSettings({ bands: $event })"
     />
     <FieldCheckbox
       :model-value="performanceSettings.document.mood"
       :label="t('settings.live2d.performance.mood.title')"
       :description="t('settings.live2d.performance.mood.description')"
       placement="right"
-      @update:model-value="performanceSettings.update({ mood: $event })"
+      @update:model-value="updatePerformanceSettings({ mood: $event })"
     />
     <FieldCheckbox
       :model-value="performanceSettings.document.autoExpressions"
       :label="t('settings.live2d.performance.auto-expressions.title')"
       :description="t('settings.live2d.performance.auto-expressions.description')"
       placement="right"
-      @update:model-value="performanceSettings.update({ autoExpressions: $event })"
+      @update:model-value="updatePerformanceSettings({ autoExpressions: $event })"
     />
     <FieldCheckbox
       :model-value="performanceSettings.document.stateFeedback"
       :label="t('settings.live2d.performance.state-feedback.title')"
       :description="t('settings.live2d.performance.state-feedback.description')"
       placement="right"
-      @update:model-value="performanceSettings.update({ stateFeedback: $event })"
+      @update:model-value="updatePerformanceSettings({ stateFeedback: $event })"
     />
     <label :class="['flex flex-wrap gap-4']">
       <div :class="['min-w-0 flex-1 basis-full sm:basis-auto']">
@@ -886,10 +886,11 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
         </div>
       </div>
       <SelectTab
-        v-model="decider"
+        :model-value="performanceSettings.document.decider"
         :options="deciderOptions"
         size="sm"
         :class="['shrink-0']"
+        @update:model-value="updatePerformanceSettings({ decider: $event })"
       />
     </label>
   </Section>
