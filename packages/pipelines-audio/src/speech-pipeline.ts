@@ -131,10 +131,14 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
 
     const tokenStream = intent.stream
     const segmentStream = segmenter(tokenStream, { streamId: intent.streamId, intentId: intent.intentId, turnId: intent.turnId })
-    const completedRequests = new Map<number, TtsResult<TAudio> | null>()
+    // Every segment takes one output slot in arrival order. A slot completes when its synthesis
+    // settles, or at once for a special-only segment. Completed slots enter the timeline strictly in
+    // slot order, so a special plays after the clip before it and before the clip after it.
+    const completedOutputs = new Map<number, { result: TtsResult<TAudio> | null, special: TextSegment | null }>()
     const inFlightTasks = new Set<Promise<void>>()
     let nextRequestSequence = 0
-    let nextSequenceToSchedule = 0
+    let nextOutputSlot = 0
+    let nextSlotToSchedule = 0
 
     function enqueueSpecial(segment: TextSegment) {
       timeline.enqueue({
@@ -180,10 +184,12 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
       })
     }
 
-    function scheduleCompletedRequests() {
-      while (completedRequests.has(nextSequenceToSchedule)) {
-        const completedRequest = completedRequests.get(nextSequenceToSchedule) ?? null
-        completedRequests.delete(nextSequenceToSchedule)
+    function completeOutput(slot: number, output: { result: TtsResult<TAudio> | null, special: TextSegment | null }) {
+      completedOutputs.set(slot, output)
+
+      while (completedOutputs.has(nextSlotToSchedule)) {
+        const { result: completedRequest, special } = completedOutputs.get(nextSlotToSchedule)!
+        completedOutputs.delete(nextSlotToSchedule)
 
         if (completedRequest) {
           enqueuePlayback({
@@ -203,12 +209,16 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
             createdAt: Date.now(),
           })
         }
+        // A segment without audio (failed, empty, or muted) still delivers its special at its place in order.
+        else if (special) {
+          enqueueSpecial(special)
+        }
 
-        nextSequenceToSchedule += 1
+        nextSlotToSchedule += 1
       }
     }
 
-    function createTtsTask(request: TtsRequest) {
+    function createTtsTask(request: TtsRequest, slot: number, special: TextSegment | null) {
       const task = (async () => {
         let audio: TAudio | null = null
         try {
@@ -221,14 +231,12 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
         }
 
         if (intent.controller.signal.aborted) {
-          completedRequests.set(request.sequence, null)
-          scheduleCompletedRequests()
+          completeOutput(slot, { result: null, special: null })
           return
         }
 
         if (!audio) {
-          completedRequests.set(request.sequence, null)
-          scheduleCompletedRequests()
+          completeOutput(slot, { result: null, special })
           return
         }
 
@@ -247,8 +255,8 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
         }
 
         context.emit(speechPipelineEventMap.onTtsResult, ttsResult)
-        completedRequests.set(request.sequence, ttsResult)
-        scheduleCompletedRequests()
+        // The playback item carries the special and emits it after the clip ends.
+        completeOutput(slot, { result: ttsResult, special: null })
       })()
         .finally(() => {
           inFlightTasks.delete(task)
@@ -279,7 +287,7 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
         context.emit(speechPipelineEventMap.onSegment, value)
 
         if (value.text === '' && value.special) {
-          enqueueSpecial(value)
+          completeOutput(nextOutputSlot++, { result: null, special: value })
           continue
         }
 
@@ -299,11 +307,10 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
         }
 
         context.emit(speechPipelineEventMap.onTtsRequest, request)
-        createTtsTask(request)
+        createTtsTask(request, nextOutputSlot++, value.special ? value : null)
       }
 
       await Promise.allSettled(inFlightTasks)
-      scheduleCompletedRequests()
       await timeline.flush('speech')
       reader.releaseLock()
     }

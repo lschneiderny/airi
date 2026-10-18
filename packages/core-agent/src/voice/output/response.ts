@@ -213,7 +213,11 @@ export class SpeechStream {
     return signal.aborted ? { status, reason: errorMessageFromValue(signal.reason) } : { status }
   }
 
-  /** Special tokens remain ordered through the chunker. Streaming providers handle these tokens outside their text transport. */
+  /**
+   * Pipeline synthesis delivers special tokens in playback order through the chunker.
+   * Streaming providers handle these tokens outside their text transport, so they run on arrival,
+   * possibly before earlier text plays: streamed audio parts carry no text alignment to place them by.
+   */
   special(value: string) {
     if (this.sealed || this.response.signal.aborted)
       return

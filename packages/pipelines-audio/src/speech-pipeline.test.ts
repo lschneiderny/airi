@@ -1,4 +1,5 @@
-import type { PlaybackItem, TextSegment, TextToken, TtsRequest } from './types'
+import type { SpeechPipelineOptions } from './speech-pipeline'
+import type { IntentHandle, LoggerLike, PlaybackItem, TextSegment, TextToken, TtsRequest } from './types'
 
 import { describe, expect, it, vi } from 'vitest'
 
@@ -53,27 +54,36 @@ function createSegmenter(texts: string[]) {
   }
 }
 
-function createPlaybackSpy(options?: { autoEnd?: boolean }) {
+/** Records clip boundaries in `log` when given. A scheduled clip starts at once and, with `autoEnd`, ends on the next microtask. */
+function createPlaybackSpy(options?: { autoEnd?: boolean, log?: string[] }) {
   const scheduled: Array<PlaybackItem<string>> = []
+  const startListeners: Array<(event: { item: PlaybackItem<string>, startedAt: number }) => void> = []
   const endListeners: Array<(event: { item: PlaybackItem<string>, endedAt: number }) => void> = []
   const autoEnd = options?.autoEnd ?? true
 
+  function end(item: PlaybackItem<string>) {
+    options?.log?.push(`end:${item.text}`)
+    for (const listener of endListeners)
+      listener({ item, endedAt: Date.now() })
+  }
+
   return {
     scheduled,
-    end(item: PlaybackItem<string>) {
-      for (const listener of endListeners)
-        listener({ item, endedAt: Date.now() })
-    },
+    end,
     playback: {
       schedule(item: PlaybackItem<string>) {
         scheduled.push(item)
+        options?.log?.push(`start:${item.text}`)
+        startListeners.forEach(listener => listener({ item, startedAt: Date.now() }))
         if (autoEnd)
-          queueMicrotask(() => endListeners.forEach(listener => listener({ item, endedAt: Date.now() })))
+          queueMicrotask(() => end(item))
       },
       stopAll: vi.fn(),
       stopByIntent: vi.fn(),
       stopByOwner: vi.fn(),
-      onStart: vi.fn(),
+      onStart(listener: (event: { item: PlaybackItem<string>, startedAt: number }) => void) {
+        startListeners.push(listener)
+      },
       onEnd(listener: (event: { item: PlaybackItem<string>, endedAt: number }) => void) {
         endListeners.push(listener)
       },
@@ -353,5 +363,158 @@ describe('createSpeechPipeline', () => {
     await delay(0)
 
     expect(scheduled.map(item => item.text)).toEqual(['first'])
+  })
+})
+
+const angry = '<|ACT {"emotion":{"name":"angry","intensity":"clear"}}|>'
+const neutral = '<|ACT {"emotion":{"name":"neutral"}}|>'
+const happy = '<|ACT {"emotion":{"name":"happy"}}|>'
+
+// Synthesis latency is the behavior under test: a marker must wait for the slower text ahead of it.
+const ttsLatencyMs = 300
+
+type Part = { literal: string } | { special: string }
+
+const quietLogger: LoggerLike = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+
+async function synthesizeAfterLatency(request: TtsRequest) {
+  await delay(ttsLatencyMs)
+  return request.text
+}
+
+/** Runs one turn through the real chunker and records clip boundaries and markers in one ordered log. */
+function createOrderedPipeline(tts: SpeechPipelineOptions<string>['tts'], options?: { autoEnd?: boolean }) {
+  const log: string[] = []
+  const spy = createPlaybackSpy({ autoEnd: options?.autoEnd, log })
+  const pipeline = createSpeechPipeline<string>({ playback: spy.playback, tts, logger: quietLogger })
+  pipeline.on('onSpecial', segment => log.push(`special:${segment.special}`))
+  const turnEnded = new Promise<void>(resolve => pipeline.on('onTurnEnd', () => resolve()))
+
+  function speak(parts: Part[]) {
+    const intent = pipeline.openIntent({ turnId: 'turn-1' })
+    for (const part of parts) {
+      if ('literal' in part)
+        intent.writeLiteral(part.literal)
+      else
+        intent.writeSpecial(part.special)
+    }
+    intent.end()
+    return intent
+  }
+
+  return { ...spy, log, pipeline, speak, turnEnded }
+}
+
+describe('special marker playback order', () => {
+  it('fires a marker after the preceding clip ends and before the next clip starts', async () => {
+    const { log, speak, turnEnded } = createOrderedPipeline(synthesizeAfterLatency)
+
+    speak([{ literal: 'I am annoyed now. ' }, { special: neutral }, { literal: ' Okay, better.' }])
+    await turnEnded
+
+    expect(log).toEqual([
+      'start:I am annoyed now.',
+      'end:I am annoyed now.',
+      `special:${neutral}`,
+      'start:Okay, better.',
+      'end:Okay, better.',
+    ])
+  })
+
+  it('fires a leading marker before the first clip starts', async () => {
+    const { log, speak, turnEnded } = createOrderedPipeline(synthesizeAfterLatency)
+
+    speak([{ special: angry }, { literal: ' I am annoyed now. ' }, { special: neutral }, { literal: ' Okay, better.' }])
+    await turnEnded
+
+    expect(log).toEqual([
+      `special:${angry}`,
+      'start:I am annoyed now.',
+      'end:I am annoyed now.',
+      `special:${neutral}`,
+      'start:Okay, better.',
+      'end:Okay, better.',
+    ])
+  })
+
+  it.each([
+    ['fails', async () => { throw new Error('synthesis failed') }],
+    ['returns no audio', async () => null],
+  ])('fires a marker after a sentence whose synthesis %s before the next clip starts', async (_label, silentSynthesis) => {
+    const { log, speak, turnEnded } = createOrderedPipeline(async (request) => {
+      if (request.text !== 'I am annoyed now.')
+        return synthesizeAfterLatency(request)
+
+      await delay(ttsLatencyMs)
+      return silentSynthesis()
+    })
+
+    speak([{ literal: 'Hello there. ' }, { literal: 'I am annoyed now. ' }, { special: neutral }, { literal: ' Okay, better.' }])
+    await turnEnded
+
+    expect(log).toEqual([
+      'start:Hello there.',
+      'end:Hello there.',
+      `special:${neutral}`,
+      'start:Okay, better.',
+      'end:Okay, better.',
+    ])
+  })
+
+  it('fires a marker attached to a chunk without audio before the next clip starts', async () => {
+    const { log, speak, turnEnded } = createOrderedPipeline(async (request) => {
+      await delay(ttsLatencyMs)
+      return request.text === 'I am annoyed now' ? null : request.text
+    })
+
+    // Without a period, the chunker attaches the marker to the text before it.
+    speak([{ literal: 'I am annoyed now' }, { special: neutral }, { literal: ' Okay, better.' }])
+    await turnEnded
+
+    expect(log).toEqual([
+      `special:${neutral}`,
+      'start:Okay, better.',
+      'end:Okay, better.',
+    ])
+  })
+
+  it('fires every marker in arrival order when speech is muted', async () => {
+    const { log, scheduled, speak, turnEnded } = createOrderedPipeline(async () => null)
+
+    speak([
+      { special: angry },
+      { literal: ' I am annoyed now. ' },
+      { special: neutral },
+      { literal: ' Okay' },
+      { special: happy },
+      { literal: ' better.' },
+    ])
+    await turnEnded
+
+    expect(log).toEqual([`special:${angry}`, `special:${neutral}`, `special:${happy}`])
+    expect(scheduled).toEqual([])
+  })
+
+  it.each([
+    ['cancel', (intent: IntentHandle) => intent.cancel('test-cancel')],
+    ['interrupt', (_intent: IntentHandle, pipeline: ReturnType<typeof createSpeechPipeline<string>>) => pipeline.interrupt('test-interrupt')],
+  ])('drops pending markers of a turn on %s', async (_label, stop) => {
+    const { end, log, pipeline, scheduled, speak } = createOrderedPipeline(synthesizeAfterLatency, { autoEnd: false })
+    const arrivedSpecials: string[] = []
+    pipeline.on('onSegment', segment => segment.special && arrivedSpecials.push(segment.special))
+    const firstClipStarted = new Promise<void>(resolve => pipeline.on('onPlaybackStart', () => resolve()))
+    const turnCanceled = new Promise<void>(resolve => pipeline.on('onTurnCancel', () => resolve()))
+
+    const intent = speak([{ literal: 'I am annoyed now. ' }, { special: neutral }, { literal: ' Okay, better.' }])
+    await firstClipStarted
+
+    expect(arrivedSpecials).toEqual([neutral])
+    expect(log).toEqual(['start:I am annoyed now.'])
+
+    stop(intent, pipeline)
+    end(scheduled[0]!)
+    await turnCanceled
+
+    expect(log).toEqual(['start:I am annoyed now.', 'end:I am annoyed now.'])
   })
 })

@@ -63,6 +63,14 @@ A group does not mix clips or schedule lanes against each other.
 Playback knows no chat session, turn, or agent notification contract.
 `Response` in core-agent supplies those conversation boundaries and producer ordering.
 
+## Speech pipeline markers
+
+`createSpeechPipeline` emits special markers (`onSpecial`) in playback order, not in synthesis order.
+A marker that follows text fires after that text's clip ends.
+When that text produces no audio (synthesis failed, returned nothing, or speech is muted), the marker fires as soon as its synthesis settles.
+Every marker fires before the next clip starts. Markers before any text fire before the first clip, and consecutive markers keep their order.
+With no audio at all, markers fire in arrival order. A cancelled or interrupted intent drops its pending markers.
+
 ## Checks
 
 Run `pnpm -F @proj-airi/pipelines-audio typecheck` and `pnpm -F @proj-airi/pipelines-audio test:run`.
