@@ -220,6 +220,7 @@ export function streamResponses(input: {
           reasoning: nextRequest.config.reasoning,
           temperature: next.temperature,
           topP: next.topP,
+          maxOutputTokens: next.maxTokens ?? input.options?.maxTokens,
           headers: mergeRequestHeaders(nextRequest.config.headers, next.headers),
           tools: toolsSupported
             ? nextRequest.webSearch && hostedSearchAllowed ? [...(next.tools ?? []), { type: 'web_search' as const }] : next.tools
@@ -244,6 +245,7 @@ export function streamResponses(input: {
     abortSignal: input.options?.abortSignal,
     temperature: input.options?.temperature,
     topP: input.options?.topP,
+    maxOutputTokens: input.options?.maxTokens,
     headers: mergeRequestHeaders(input.config.headers, input.options?.headers),
     tools: input.webSearch && hostedSearchAllowed ? [...(input.tools ?? []), { type: 'web_search' }] : input.tools,
     toolChoice: input.options?.resolveStep ? undefined : toolChoice(input.options?.toolChoice),
