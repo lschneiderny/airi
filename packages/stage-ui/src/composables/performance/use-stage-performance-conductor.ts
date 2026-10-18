@@ -1,4 +1,4 @@
-import type { AffectSignal, CatalogEntry, ExpressionPerformanceSettings, PerformanceDecision, ReactionEpisode, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { AffectSignal, CatalogEntry, ExpressionPerformanceSettings, PerformanceDecision, ReactionEpisode, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 import type { Live2DMotionDriver } from '@proj-airi/stage-ui-live2d'
 
 import type { ActiveExpression, ExposedExpression, PerformanceMoodSnapshot } from '../../features/performance/runtime-state'
@@ -7,6 +7,7 @@ import type { ExpressionToolPort } from '../../tools/expression'
 
 import { errorMessageFrom } from '@moeru/std'
 import { createDecider, isLlmEligible } from '@proj-airi/stage-shared/expression-performance'
+import { SpeechOnsetDetector } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { useIntervalFn } from '@vueuse/core'
 import { computed, onScopeDispose, shallowRef, watch } from 'vue'
@@ -21,6 +22,7 @@ type SpeechEvent = Extract<AffectSignal, { kind: 'speech' }>['event']
 type Decider = ReturnType<typeof createDecider>
 type DeciderState = ReturnType<Decider['initial']>
 type SlotName = SlotCommand['slot']
+type TimerHandle = ReturnType<typeof setTimeout>
 
 const slotNames: readonly SlotName[] = ['face', 'effect', 'prop']
 
@@ -73,14 +75,19 @@ export interface StagePerformanceConductorOptions {
    */
   clock?: () => number
   /**
-   * Timer functions for decider deadlines. Tests inject fakes; the timing scheduler consumes them.
+   * Timer functions for decider deadlines and pause detection. Tests inject fakes.
    *
    * @default { setTimeout, clearTimeout }
    */
   timers?: {
-    setTimeout: (callback: () => void, ms: number) => ReturnType<typeof setTimeout>
-    clearTimeout: (handle: ReturnType<typeof setTimeout>) => void
+    setTimeout: (callback: () => void, ms: number) => TimerHandle
+    clearTimeout: (handle: TimerHandle) => void
   }
+}
+
+const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
+  setTimeout: (callback, ms) => setTimeout(callback, ms),
+  clearTimeout: handle => clearTimeout(handle),
 }
 
 /**
@@ -95,6 +102,21 @@ export interface StagePerformanceConductorOptions {
  * - Universal and MAGIC: every recognized emotion plays its motion group, repeats and
  *   `neutral` (`Idle`) included, independently of episode filtering.
  * - Slot commands go to `scene.applySlots` for every driver.
+ *
+ * Timing events: the conductor derives `TimingEvent`s from playback and sends them to the
+ * decider as `timing` signals, each carrying its turn id:
+ * - `sentence_start` on a clip start whose clip begins a sentence;
+ * - `pause` once per gap, when no clip of the turn starts within `timing.pauseSeconds` after a
+ *   clip end and the turn has not ended;
+ * - `utterance_end` once per turn, on its first turn end;
+ * - `emphasis` on a voice onset while a clip plays, at most once per `timing.emphasisRefractory`.
+ *
+ * Deadlines: after every decision the conductor arms one timer for `decider.nextDeadline`; a newer
+ * decision re-arms or cancels it. When the timer reaches the deadline, the conductor yields once
+ * through a zero-delay timer, so playback callbacks queued for the same instant and pauses due by
+ * then reach the decider first. The deadline is sent only if no decision since then cancelled or
+ * replaced it. Its signal time is the deadline itself, or the latest signal time if that is later.
+ * Timers start only from these inputs; `dispose` cancels every pending timer.
  */
 export class StagePerformanceConductor {
   readonly seed: number
@@ -104,6 +126,21 @@ export class StagePerformanceConductor {
   private activeTurnIds: readonly string[] = []
   private muted = false
   private readonly clock: () => number
+  private readonly timers: Required<StagePerformanceConductorOptions>['timers']
+  /** The armed deadline timer, or its same-instant yield, and the decider deadline it serves. */
+  private deadline: { at: number, handle: TimerHandle } | undefined
+  /** The latest signal time the decider received; deadline signals never go back before it. */
+  private lastSignalAt = Number.NEGATIVE_INFINITY
+  /** Pending pause timers by turn id, with the signal time each pause is due at. */
+  private readonly pauses = new Map<string, { at: number, handle: TimerHandle }>()
+  /** Turns whose utterance already ended; a repeated turn end sends no second `utterance_end`. */
+  private readonly endedTurns = new Set<string>()
+  /** The clip that plays now; voice onsets become emphasis events of its turn. */
+  private playing: { turnId: string, clipId: string } | undefined
+  private readonly onsets = new SpeechOnsetDetector()
+  private lastLevelAt: number | undefined
+  private lastEmphasisAt = Number.NEGATIVE_INFINITY
+  private timingSeq = 0
 
   constructor(private readonly options: StagePerformanceConductorOptions) {
     this.seed = options.seed
@@ -111,6 +148,7 @@ export class StagePerformanceConductor {
     this.decider = createDecider(this.deciderKind)
     this.state = this.decider.initial(this.seed)
     this.clock = options.clock ?? (() => performance.now() / 1000)
+    this.timers = options.timers ?? browserTimers
   }
 
   emotion(name: string, nominal: number, source: 'act' | 'tool' | 'devtools', turnId?: string) {
@@ -164,17 +202,62 @@ export class StagePerformanceConductor {
     this.dispatchSlots(this.decide({ kind: 'clear', source, slot, turnId, at }), at)
   }
 
-  clipStart(turnId: string, clipId: string) {
+  /**
+   * `sentenceStart` comes from the speech clip. Streaming-provider clips have no sentence
+   * alignment and leave it undefined, so they produce no `sentence_start`.
+   */
+  clipStart(turnId: string, clipId: string, sentenceStart?: boolean) {
+    this.cancelPause(turnId)
+    this.playing = { turnId, clipId }
     this.speech('clip-start', turnId, clipId)
+    if (sentenceStart)
+      this.timing('sentence_start', turnId)
   }
 
   /** A stopped or failed clip ends its turn's speech leases at once; an ended clip extends them. */
   clipEnd(turnId: string, clipId: string, status: 'ended' | 'stopped' | 'failed') {
+    if (this.playing?.clipId === clipId)
+      this.playing = undefined
     this.speech(status === 'ended' ? 'clip-end' : 'clip-stopped', turnId, clipId)
+    if (!this.endedTurns.has(turnId))
+      this.armPause(turnId)
   }
 
   turnEnd(turnId: string) {
+    this.cancelPause(turnId)
+    if (this.playing?.turnId === turnId)
+      this.playing = undefined
     this.speech('turn-end', turnId)
+    if (this.endedTurns.has(turnId))
+      return
+    this.endedTurns.add(turnId)
+    this.timing('utterance_end', turnId)
+  }
+
+  /**
+   * Feeds the lipsync mouth level, unscaled in [0, 1], from the stage's animation-frame loop.
+   * Onsets use the Natural emphasis detector. They become `emphasis` events only while a clip
+   * plays, and the refractory period applies to emitted events only.
+   */
+  sampleVoiceLevel(level: number) {
+    const at = this.clock()
+    const dt = this.lastLevelAt === undefined ? 0 : Math.max(0, at - this.lastLevelAt)
+    this.lastLevelAt = at
+    if (!this.onsets.step(dt, level) || !this.playing)
+      return
+    if (at - this.lastEmphasisAt < this.options.settings().timing.emphasisRefractory)
+      return
+    this.lastEmphasisAt = at
+    this.timing('emphasis', this.playing.turnId)
+  }
+
+  /** Cancels the pending deadline and pause timers; the conductor sends no further timed signals. */
+  dispose() {
+    if (this.deadline)
+      this.timers.clearTimeout(this.deadline.handle)
+    this.deadline = undefined
+    for (const turnId of [...this.pauses.keys()])
+      this.cancelPause(turnId)
   }
 
   /**
@@ -202,6 +285,87 @@ export class StagePerformanceConductor {
     this.dispatchSlots(decision, at)
   }
 
+  private timing(kind: TimingEvent['kind'], turnId: string) {
+    const at = this.clock()
+    const event: TimingEvent = { id: `timing-${++this.timingSeq}`, kind, turnId, at }
+    // NOTICE:
+    // Live QA reads timing signals from this log through CDP `Runtime.consoleAPICalled`.
+    // The lab affect trace (plan todo 22) does not exist yet, so the log is the only observable channel.
+    // Source: .omo/plans/emotion-expression-performance.md, todo 21 QA scenarios.
+    // Remove once todo 22 records timing signals in the affect trace.
+    // eslint-disable-next-line no-console
+    console.debug('[performance-conductor] timing', kind, turnId, at)
+    this.dispatch(this.decide({ kind: 'timing', event, at }), at)
+  }
+
+  private armPause(turnId: string) {
+    this.cancelPause(turnId)
+    const seconds = this.options.settings().timing.pauseSeconds
+    const handle = this.timers.setTimeout(() => {
+      this.pauses.delete(turnId)
+      this.timing('pause', turnId)
+    }, seconds * 1000)
+    this.pauses.set(turnId, { at: this.clock() + seconds, handle })
+  }
+
+  private cancelPause(turnId: string) {
+    const pause = this.pauses.get(turnId)
+    if (!pause)
+      return
+    this.timers.clearTimeout(pause.handle)
+    this.pauses.delete(turnId)
+  }
+
+  /** Re-arms the deadline timer for the decider's current state; an unchanged deadline keeps its timer. */
+  private armDeadline() {
+    const at = this.decider.nextDeadline(this.state)
+    if (at === this.deadline?.at)
+      return
+    if (this.deadline)
+      this.timers.clearTimeout(this.deadline.handle)
+    this.deadline = undefined
+    if (at === null)
+      return
+    const handle = this.timers.setTimeout(() => this.fireDeadline(at), Math.max(0, (at - this.clock()) * 1000))
+    this.deadline = { at, handle }
+  }
+
+  /**
+   * The timer reached `due`. Playback callbacks queued for the same instant run before a timer
+   * created now, so the deadline yields once; the yield replaces the record, which keeps
+   * `armDeadline` able to cancel or replace the deadline meanwhile.
+   */
+  private fireDeadline(due: number) {
+    const handle = this.timers.setTimeout(() => this.deliverDeadline(due), 0)
+    this.deadline = { at: due, handle }
+  }
+
+  private deliverDeadline(due: number) {
+    const pending = this.deadline
+    // Pauses due by the deadline are playback-derived events, so the decider sees them first.
+    for (const [turnId, pause] of [...this.pauses].sort(([, a], [, b]) => a.at - b.at)) {
+      if (pause.at > due)
+        break
+      this.cancelPause(turnId)
+      this.timing('pause', turnId)
+    }
+    // A decision since the timer fired cancelled or replaced this deadline; it is obsolete.
+    if (this.deadline !== pending)
+      return
+    this.deadline = undefined
+    const at = Math.max(due, this.lastSignalAt)
+    this.dispatch(this.decide({ kind: 'deadline', at }), at)
+  }
+
+  /** Sends a timing or deadline decision: episodes reach the Natural scene, and slots reach every driver. */
+  private dispatch(decision: PerformanceDecision, at: number) {
+    if (this.options.driver() === 'natural') {
+      for (const episode of decision.episodes)
+        this.options.scene()?.setEmotion(episode)
+    }
+    this.dispatchSlots(decision, at)
+  }
+
   private decide(signal: AffectSignal): PerformanceDecision {
     const settings = this.options.settings()
     // A decider switch keeps the seed, so both deciders replay from the same randomness.
@@ -212,6 +376,8 @@ export class StagePerformanceConductor {
     }
     const result = this.decider.decide(signal, { catalog: this.options.catalog(), settings }, this.state)
     this.state = result.state
+    this.lastSignalAt = Math.max(this.lastSignalAt, signal.at)
+    this.armDeadline()
     return result.decision
   }
 
@@ -356,7 +522,10 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
   watch(() => JSON.stringify(exposed.value), () => {
     registration.sync(exposed.value).catch(error => console.error('[performance-conductor] Expression tools failed to register:', errorMessageFrom(error)))
   }, { immediate: true })
-  onScopeDispose(() => registration.dispose())
+  onScopeDispose(() => {
+    registration.dispose()
+    conductor.dispose()
+  })
 
   return { conductor, settings }
 }

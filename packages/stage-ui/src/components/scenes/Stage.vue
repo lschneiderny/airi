@@ -477,8 +477,8 @@ const disconnectVoiceOutput = voice.connectOutput((turn) => {
   const output = {
     playback,
     onSpecial: (special: string) => void playSpecialToken(special, { turnId: turn.turnId }),
-    onPlaybackStart: ({ id, text }: SpeechClip) => {
-      performanceConductor.clipStart(turn.turnId, id)
+    onPlaybackStart: ({ id, text, sentenceStart }: SpeechClip) => {
+      performanceConductor.clipStart(turn.turnId, id, sentenceStart)
       playingCount += 1
       nowSpeaking.value = true
       speechVoicing.value = true
@@ -524,6 +524,7 @@ function startLipSyncLoop() {
     else {
       mouthOpenSize.value = live2dLipSync.value.getMouthOpen()
     }
+    performanceConductor.sampleVoiceLevel(mouthOpenSize.value)
     lipSyncLoopId.value = requestAnimationFrame(tick)
   }
 

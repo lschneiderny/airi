@@ -22,12 +22,39 @@ const tauRange = { min: 0.25, max: 0.5 }
 const onsetShiftWindow = 1
 
 /**
- * Speech emphasis: small head beats on speech onsets.
+ * Speech onset detector: the voice rising above its recent level.
  *
  * The input is the lipsync mouth level `a` in [0, 1], the scene's `mouthOpenSize` unscaled. Two first-order
  * envelopes (40 ms and 250 ms) give the onset `o = max(0, fast - slow)`, which is large when
- * the voice rises above its recent level. An up-cross of 0.10 is a candidate; the detector
- * rearms once `o` falls below 0.04. A candidate becomes an emphasis with probability
+ * the voice rises above its recent level. An up-cross of 0.10 is an onset; the detector
+ * rearms once `o` falls below 0.04. Natural speech emphasis and the stage's `emphasis` timing
+ * event share this detector, so both see the same onsets; each applies its own refractory period.
+ */
+export class SpeechOnsetDetector {
+  private fast = 0
+  private slow = 0
+  private armed = true
+
+  /** Advances by `dt` seconds with mouth level `level`; true when an onset up-crosses the trigger. */
+  step(dt: number, level: number): boolean {
+    const input = Math.max(0, Math.min(1, Number.isFinite(level) ? level : 0))
+    this.fast = input + (this.fast - input) * Math.exp(-dt / envelope.fast)
+    this.slow = input + (this.slow - input) * Math.exp(-dt / envelope.slow)
+    const o = Math.max(0, this.fast - this.slow)
+    if (!this.armed && o < onset.rearm)
+      this.armed = true
+    if (this.armed && o >= onset.trigger) {
+      this.armed = false
+      return true
+    }
+    return false
+  }
+}
+
+/**
+ * Speech emphasis: small head beats on speech onsets.
+ *
+ * Each onset of {@link SpeechOnsetDetector} is a candidate. A candidate becomes an emphasis with probability
  * `acceptance` (set from user energy) unless one happened in the last 1.2 s. Each emphasis
  * is a 0.02-0.05 head pulse: 80% pitch-down nod, 20% roll tilt.
  *
@@ -40,9 +67,7 @@ export class NaturalSpeechEmphasis {
   onsetCount = 0
 
   private readonly pulses: HeadPulse[] = []
-  private fast = 0
-  private slow = 0
-  private armed = true
+  private readonly onsets = new SpeechOnsetDetector()
   private time = 0
   private lastEmphasisAt = Number.NEGATIVE_INFINITY
 
@@ -54,14 +79,7 @@ export class NaturalSpeechEmphasis {
    */
   step(dt: number, level: number, acceptance: number): Vec3 {
     this.time += dt
-    const input = Math.max(0, Math.min(1, Number.isFinite(level) ? level : 0))
-    this.fast = input + (this.fast - input) * Math.exp(-dt / envelope.fast)
-    this.slow = input + (this.slow - input) * Math.exp(-dt / envelope.slow)
-    const o = Math.max(0, this.fast - this.slow)
-    if (!this.armed && o < onset.rearm)
-      this.armed = true
-    if (this.armed && o >= onset.trigger) {
-      this.armed = false
+    if (this.onsets.step(dt, level)) {
       this.onsetCount++
       // The acceptance draw happens only outside the refractory window, so a long
       // refractory stretch does not consume the random stream differently.

@@ -1,9 +1,9 @@
-import type { AffectSignal, CatalogEntry, ExpressionPerformanceSettings, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { AffectSignal, CatalogEntry, ExpressionPerformanceSettings, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 import type { Live2DMotionDriver } from '@proj-airi/stage-ui-live2d'
 
 import type { StagePerformanceScene } from './use-stage-performance-conductor'
 
-import { createPickerDecider, defaultExpressionPerformanceSettings, parseAffectTrace, replayAffectTrace } from '@proj-airi/stage-shared/expression-performance'
+import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -13,13 +13,13 @@ import { createExpressionToolRegistration, expressionToolIds, StagePerformanceCo
 
 const recorded = vi.hoisted(() => ({ signals: [] as AffectSignal[] }))
 
-// Records every signal the conductor hands its decider, as the affect-trace recorder does, by
-// wrapping the real decider with the real trace wrapper; decisions are unchanged.
+// One mock of the decision seam. By default the real decider runs inside the real trace wrapper,
+// so tests can replay what the conductor sent. Timing tests swap in a decider that reports deadlines.
 vi.mock('@proj-airi/stage-shared/expression-performance', async (importOriginal) => {
   const original = await importOriginal<typeof import('@proj-airi/stage-shared/expression-performance')>()
   return {
     ...original,
-    createDecider: (kind: Parameters<typeof original.createDecider>[0]) => original.withAffectTrace(original.createDecider(kind), signal => recorded.signals.push(signal)),
+    createDecider: vi.fn((kind: Parameters<typeof original.createDecider>[0]) => original.withAffectTrace(original.createDecider(kind), signal => recorded.signals.push(signal))),
   }
 })
 
@@ -287,6 +287,277 @@ describe('stage performance conductor', () => {
       ['effect', null],
       ['prop', null],
     ])
+  })
+
+  describe('timing events', () => {
+    /** Frames of the stage's lipsync loop, in milliseconds. */
+    const frameMs = 16
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    /**
+     * A picker that records every signal and reports `deadline` until a deadline signal reaches it.
+     * `onSignal` may return a new deadline (or null) after a signal, as a planner does when
+     * playback takes or cancels a plan. The conductor runs on fake timers, with the fake epoch
+     * clock as its monotonic clock.
+     */
+    function createTimingConductor(options: { deadline?: number, settings?: ExpressionPerformanceSettings, onSignal?: (signal: AffectSignal) => number | null | undefined } = {}) {
+      vi.useFakeTimers({ now: 10_000, toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+      vi.spyOn(console, 'debug').mockImplementation(() => {})
+      const picker = createPickerDecider()
+      const signals: AffectSignal[] = []
+      let pending = options.deadline ?? null
+      vi.mocked(createDecider).mockReturnValueOnce({
+        ...picker,
+        nextDeadline: () => pending,
+        decide: (signal, ctx, state) => {
+          signals.push(signal)
+          if (signal.kind === 'deadline' && pending !== null && signal.at >= pending)
+            pending = null
+          const next = options.onSignal?.(signal)
+          if (next !== undefined)
+            pending = next
+          return picker.decide(signal, ctx, state)
+        },
+      })
+      const settings = options.settings ?? defaultExpressionPerformanceSettings
+      const conductor = new StagePerformanceConductor({
+        scene: () => fakeScene(),
+        driver: () => 'natural',
+        playMotion: () => {},
+        settings: () => settings,
+        catalog: () => catalog,
+        seed: 7,
+        clock: () => Date.now() / 1000,
+      })
+      function timing(kind?: TimingEvent['kind']) {
+        return signals.flatMap(signal => signal.kind === 'timing' && (!kind || signal.event.kind === kind) ? [signal.event] : [])
+      }
+      function advance(seconds: number) {
+        vi.advanceTimersByTime(seconds * 1000)
+      }
+      /** Feeds one lipsync level per frame, as the stage's animation-frame loop does. */
+      function voice(level: number, frames: number) {
+        for (let frame = 0; frame < frames; frame++) {
+          vi.advanceTimersByTime(frameMs)
+          conductor.sampleVoiceLevel(level)
+        }
+      }
+      /** Signal kinds the decider received from `at` on, in order, with timing events by their event kind. */
+      function kindsFrom(at: number) {
+        return signals.filter(signal => signal.at >= at).map(signal => signal.kind === 'timing' ? signal.event.kind : signal.kind)
+      }
+      return { conductor, signals, timing, advance, voice, kindsFrom }
+    }
+
+    it('sends exactly one deadline signal at the decider\'s next deadline when no other input arrives', () => {
+      const { conductor, signals, advance } = createTimingConductor({ deadline: 12.5 })
+
+      conductor.emotion('happy', 0.6, 'act', 'turn-a')
+      advance(10)
+
+      expect(signals.filter(signal => signal.kind === 'deadline')).toEqual([{ kind: 'deadline', at: 12.5 }])
+    })
+
+    it('cancels the pending deadline on dispose', () => {
+      const { conductor, signals, advance } = createTimingConductor({ deadline: 12.5 })
+
+      conductor.emotion('happy', 0.6, 'act', 'turn-a')
+      conductor.dispose()
+      advance(10)
+
+      expect(signals.filter(signal => signal.kind === 'deadline')).toEqual([])
+    })
+
+    it('sends one sentence_start per sentence across chunked sentences', () => {
+      const { conductor, timing, advance } = createTimingConductor()
+
+      // Two sentences of two chunks each, then a streaming-provider clip without sentence data.
+      const clips: [string, boolean | undefined][] = [['c1', true], ['c2', false], ['c3', true], ['c4', false], ['c5', undefined]]
+      for (const [clipId, sentenceStart] of clips) {
+        conductor.clipStart('turn-a', clipId, sentenceStart)
+        advance(1)
+        conductor.clipEnd('turn-a', clipId, 'ended')
+        advance(0.05)
+      }
+
+      expect(timing('sentence_start').map(event => [event.turnId, event.at])).toEqual([['turn-a', 10], ['turn-a', 12.1]])
+    })
+
+    it('sends no pause for a 0.1 s gap and one pause for a 0.3 s gap', () => {
+      const { conductor, timing, advance } = createTimingConductor()
+
+      conductor.clipStart('turn-a', 'c1', true)
+      advance(1)
+      conductor.clipEnd('turn-a', 'c1', 'ended')
+      advance(0.1)
+      conductor.clipStart('turn-a', 'c2', false)
+      advance(1)
+      conductor.clipEnd('turn-a', 'c2', 'ended')
+      advance(0.3)
+      conductor.clipStart('turn-a', 'c3', true)
+      advance(1)
+
+      expect(timing('pause').map(event => [event.turnId, event.at])).toEqual([['turn-a', 12.28]])
+    })
+
+    it('sends no pause after the turn ends', () => {
+      const { conductor, timing, advance } = createTimingConductor()
+
+      conductor.clipStart('turn-a', 'c1', true)
+      advance(1)
+      conductor.clipEnd('turn-a', 'c1', 'ended')
+      advance(0.05)
+      conductor.turnEnd('turn-a')
+      advance(5)
+
+      expect(timing('pause')).toEqual([])
+    })
+
+    it('sends a pause due with a deadline before the deadline', () => {
+      const settings = parseExpressionPerformanceSettings({ timing: { pauseSeconds: 0.25 } }).value
+      const { conductor, signals, advance } = createTimingConductor({ deadline: 11.25, settings })
+
+      conductor.clipStart('turn-a', 'c1', true)
+      advance(1)
+      conductor.clipEnd('turn-a', 'c1', 'ended')
+      advance(1)
+
+      expect(signals.slice(-2)).toEqual([
+        { kind: 'timing', event: expect.objectContaining({ kind: 'pause', turnId: 'turn-a', at: 11.25 }), at: 11.25 },
+        { kind: 'deadline', at: 11.25 },
+      ])
+    })
+
+    // Gate review probe B1. Fake timers delay a zero-delay timer created mid-tick by 1 ms, so the
+    // test advances past the deadline's same-instant yield; the signal still carries 12.5.
+    it('processes same-time clip playback before a deadline', () => {
+      const { conductor, signals, kindsFrom, advance } = createTimingConductor({ deadline: 12.5 })
+
+      conductor.emotion('happy', 0.6, 'act', 'turn-a')
+      setTimeout(() => conductor.clipStart('turn-a', 'clip-a', true), 2500)
+      advance(3)
+
+      expect(kindsFrom(12.5)).toEqual(['speech', 'sentence_start', 'deadline'])
+      expect(signals.filter(signal => signal.kind === 'deadline')).toEqual([{ kind: 'deadline', at: 12.5 }])
+    })
+
+    // Probe from the todo 21 gate review (B2): the same-time pause makes the decider drop its
+    // deadline, so the obsolete deadline must not be sent.
+    it('sends no deadline that a same-time pause cancelled', () => {
+      const settings = parseExpressionPerformanceSettings({ timing: { pauseSeconds: 0.25 } }).value
+      const { conductor, signals, advance } = createTimingConductor({
+        deadline: 11.25,
+        settings,
+        onSignal: signal => signal.kind === 'timing' && signal.event.kind === 'pause' ? null : undefined,
+      })
+
+      conductor.clipStart('turn-a', 'c1', true)
+      advance(1)
+      conductor.clipEnd('turn-a', 'c1', 'ended')
+      advance(1)
+
+      expect(signals.filter(signal => signal.kind === 'deadline')).toEqual([])
+    })
+
+    it('sends a deadline that same-time playback replaced at its new time only', () => {
+      const { conductor, signals, advance } = createTimingConductor({
+        deadline: 12.5,
+        onSignal: signal => signal.kind === 'timing' && signal.event.kind === 'sentence_start' ? 14 : undefined,
+      })
+
+      conductor.emotion('happy', 0.6, 'act', 'turn-a')
+      setTimeout(() => conductor.clipStart('turn-a', 'clip-a', true), 2500)
+      advance(5)
+
+      expect(signals.filter(signal => signal.kind === 'deadline')).toEqual([{ kind: 'deadline', at: 14 }])
+    })
+
+    // A zero-length pause armed by a same-time clip end is due with the deadline but queued after
+    // it; it is sent first, and the deadline it cancels is not sent.
+    it('sends no deadline that a same-time zero-length pause cancelled', () => {
+      const settings = parseExpressionPerformanceSettings({ timing: { pauseSeconds: 0 } }).value
+      const { conductor, kindsFrom, advance } = createTimingConductor({
+        deadline: 12.5,
+        settings,
+        onSignal: signal => signal.kind === 'timing' && signal.event.kind === 'pause' ? null : undefined,
+      })
+
+      conductor.clipStart('turn-a', 'c1', true)
+      setTimeout(() => conductor.clipEnd('turn-a', 'c1', 'ended'), 2500)
+      advance(5)
+
+      expect(kindsFrom(12.5)).toEqual(['speech', 'pause'])
+    })
+
+    // Probe from the todo 21 gate review: one turn's clip never cancels another turn's pause, and
+    // dispose cancels a pending pause.
+    it('isolates pauses by turn and cancels them on dispose', () => {
+      const { conductor, timing, advance } = createTimingConductor()
+
+      conductor.clipStart('turn-a', 'a', true)
+      conductor.clipEnd('turn-a', 'a', 'ended')
+      conductor.clipStart('turn-b', 'b', true)
+      advance(0.3)
+
+      expect(timing('pause').map(event => event.turnId)).toEqual(['turn-a'])
+
+      conductor.clipEnd('turn-b', 'b', 'ended')
+      conductor.dispose()
+      advance(1)
+
+      expect(timing('pause').map(event => event.turnId)).toEqual(['turn-a'])
+    })
+
+    it('sends utterance_end once when the turn end repeats', () => {
+      const { conductor, timing } = createTimingConductor()
+
+      conductor.syncActiveTurns(['turn-a'])
+      conductor.turnEnd('turn-a')
+      conductor.turnEnd('turn-a')
+      conductor.syncActiveTurns([])
+
+      expect(timing('utterance_end').map(event => event.turnId)).toEqual(['turn-a'])
+    })
+
+    it('sends one emphasis per onset: a dip that does not fall below the rearm level is not a new onset', () => {
+      const settings = parseExpressionPerformanceSettings({ timing: { emphasisRefractory: 0 } }).value
+      const { conductor, timing, voice } = createTimingConductor({ settings })
+
+      conductor.clipStart('turn-a', 'c1', true)
+      voice(0, 30)
+      voice(0.8, 6)
+      // This dip ends with the onset at 0.09: below the trigger level (0.10) but above the rearm
+      // level (0.04), so the detector stays disarmed and the second rise is the same onset.
+      voice(0.25, 4)
+      voice(0.8, 6)
+      // Silence lets the detector rearm; the next rise is a new onset.
+      voice(0, 30)
+      voice(0.8, 6)
+
+      expect(timing('emphasis').map(event => event.turnId)).toEqual(['turn-a', 'turn-a'])
+    })
+
+    it('sends no emphasis inside the refractory period or while no clip plays', () => {
+      const { conductor, timing, voice } = createTimingConductor()
+
+      // Onsets 0.5 s apart; the default refractory period is 1.2 s.
+      conductor.clipStart('turn-a', 'c1', true)
+      const burst = () => {
+        voice(0.8, 6)
+        voice(0, 25)
+      }
+      burst()
+      burst()
+      burst()
+      burst()
+      conductor.clipEnd('turn-a', 'c1', 'ended')
+      burst()
+
+      expect(timing('emphasis').map(event => Math.round((event.at - 10) * 1000))).toEqual([32, 1504])
+    })
   })
 
   it('registers the expression tools by id, replaces them when the exposed set changes, and removes them when empty', async () => {
