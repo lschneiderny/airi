@@ -48,7 +48,7 @@ export interface Live2DNaturalMotionVoice {
   speaking: boolean
   /** Speech is active or ended moments ago; lipsync owns the mouth, so silent mouth openings stop. */
   speechActiveOrRecent: boolean
-  /** Lipsync mouth level `mouthOpenSize / 100` in [0, 1], sent every frame; its onsets drive speech emphasis nods. */
+  /** Lipsync mouth level in [0, 1] (the scene's `mouthOpenSize`, unscaled), sent every frame; its onsets drive speech emphasis nods. */
   level: number
 }
 

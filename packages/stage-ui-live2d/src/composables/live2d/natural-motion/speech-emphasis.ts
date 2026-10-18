@@ -24,7 +24,7 @@ const onsetShiftWindow = 1
 /**
  * Speech emphasis: small head beats on speech onsets.
  *
- * The input is the lipsync mouth level `a = mouthOpenSize / 100` in [0, 1]. Two first-order
+ * The input is the lipsync mouth level `a` in [0, 1], the scene's `mouthOpenSize` unscaled. Two first-order
  * envelopes (40 ms and 250 ms) give the onset `o = max(0, fast - slow)`, which is large when
  * the voice rises above its recent level. An up-cross of 0.10 is a candidate; the detector
  * rearms once `o` falls below 0.04. A candidate becomes an emphasis with probability

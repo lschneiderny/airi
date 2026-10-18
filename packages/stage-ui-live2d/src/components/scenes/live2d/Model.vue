@@ -53,6 +53,7 @@ import { NaturalTraceRecorder } from '../../../composables/live2d/natural-motion
 import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { ScreenAmbientLightFilter } from '../../../filters/screen-ambient-light'
 import { getLive2DMotionControlModelOffset, useL2dViewControl, useLive2DMotionControl, useLive2dParams, useNaturalMotionDiagnostics } from '../../../stores'
+import { naturalVoiceLevel } from './natural-voice-level'
 
 const props = withDefaults(defineProps<{
   modelSrc?: string
@@ -551,7 +552,7 @@ async function performModelLoad() {
           springActive: manualMotionSpring.output.value.active,
           performance: props.performance,
           energy: props.naturalEnergy,
-          voice: { speaking: nowSpeaking.value, level: mouthOpenSize.value / 100, speechEndedAtSeconds },
+          voice: { speaking: nowSpeaking.value, level: naturalVoiceLevel(mouthOpenSize.value), speechEndedAtSeconds },
           autoBlink: props.naturalAutoBlink,
           manualBreathActive: manualBreathControl.value.active,
           clipOwnedIds,
