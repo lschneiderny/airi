@@ -15,6 +15,14 @@ export function createReactionState(seed: number): ReactionState {
   return { random: seed >>> 0, counter: 0, lastAt: null, starts: [], current: null }
 }
 
+/** Advances Mulberry32 once, returning the complete uint32 checkpoint and a unit ticket. */
+export function drawRandom(state: number): { random: number, value: number } {
+  const random = (state + 0x6D2B79F5) >>> 0
+  let bits = Math.imul(random ^ (random >>> 15), random | 1)
+  bits ^= bits + Math.imul(bits ^ (bits >>> 7), bits | 61)
+  return { random, value: ((bits ^ (bits >>> 14)) >>> 0) / 4294967296 }
+}
+
 /** Zero and non-finite doses have no band. Thresholds come from validated settings. */
 export function bandOf(intensity: number, settings: ExpressionPerformanceSettings): Band | null {
   if (!Number.isFinite(intensity) || intensity <= 0)
@@ -63,10 +71,7 @@ export function acceptReaction(state: ReactionState, emotion: PerformanceEmotion
     : []
   const h = Math.max(settings.intensity.habituationFloor, settings.intensity.habituationBase ** starts.length)
   // Mulberry32 keeps its complete stream position in one uint32 for JSON checkpoints.
-  const random = (state.random + 0x6D2B79F5) >>> 0
-  let bits = Math.imul(random ^ (random >>> 15), random | 1)
-  bits ^= bits + Math.imul(bits ^ (bits >>> 7), bits | 61)
-  const u = ((bits ^ (bits >>> 14)) >>> 0) / 4294967296
+  const { random, value: u } = drawRandom(state.random)
   const episode = { id: `${emotion}-${state.counter + 1}`, emotion, nominal, ...jittered(nominal * h, u, settings), escalation: false }
   return { episode, state: { ...next, random, counter: state.counter + 1, starts: [...starts, at], current: { episode, startedAt: at, h, u } } }
 }
