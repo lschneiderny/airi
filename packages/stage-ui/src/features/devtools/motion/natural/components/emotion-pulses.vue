@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { Band } from '@proj-airi/stage-shared/expression-performance'
 
-import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { EMOTION_VALUES } from '@proj-airi/stage-ui-live2d/constants/emotions'
 import { Button } from '@proj-airi/ui'
 import { ref } from 'vue'
@@ -9,9 +8,11 @@ import { useI18n } from 'vue-i18n'
 
 import { Section } from '../../../../../components/layouts'
 import { useNaturalPerformanceOverride } from '../../../../../stores/natural-performance-override'
+import { useExpressionPerformanceSettings } from '../../../../performance/settings'
 
 const { t } = useI18n()
 const override = useNaturalPerformanceOverride()
+const performanceSettings = useExpressionPerformanceSettings()
 const band = ref<Band>('clear')
 const bands: Band[] = ['slight', 'clear', 'strong']
 </script>
@@ -44,7 +45,7 @@ const bands: Band[] = ['slight', 'clear', 'strong']
         size="sm"
         variant="secondary"
         :label="t(`tamagotchi.settings.devtools.pages.live2d-natural-motion.emotions.names.${emotion}`)"
-        @click="override.pulseEmotion(emotion, defaultExpressionPerformanceSettings.intensity[band])"
+        @click="override.pulseEmotion(emotion, performanceSettings.document.intensity[band])"
       />
     </div>
   </Section>

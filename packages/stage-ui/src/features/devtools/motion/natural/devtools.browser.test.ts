@@ -14,6 +14,7 @@ import { createI18n } from 'vue-i18n'
 import NaturalMotionDevtools from './devtools.vue'
 
 import { answerAffectTraceRequest, StagePerformanceConductor } from '../../../../composables/performance/use-stage-performance-conductor'
+import { useExpressionPerformanceSettings } from '../../../../features/performance/settings'
 import { useNaturalPerformanceOverride } from '../../../../stores/natural-performance-override'
 
 import '@proj-airi/ui/main.css'
@@ -104,6 +105,7 @@ describe('natural motion lab', () => {
     setNaturalTraceSink(null)
     setAffectTraceSink(null)
     cleanup()
+    localStorage.removeItem('settings/expression-performance')
   })
 
   it('writes the performance override from its controls', async () => {
@@ -150,6 +152,19 @@ describe('natural motion lab', () => {
 
     await pulsed
     expect(override.emotionPulse).toEqual({ name: 'happy', nominal: defaultExpressionPerformanceSettings.intensity.clear, seq: 2 })
+  })
+
+  it('emits the configured clear nominal from the real pulse button', async () => {
+    const { screen, override } = await renderLab()
+    const settings = useExpressionPerformanceSettings()
+    expect(await settings.update({ intensity: { clear: 0.7 } })).toEqual({ success: true })
+
+    const pulsed = until(() => override.emotionPulse?.seq).toBe(1, { timeout: 5000, throwOnTimeout: true })
+
+    await screen.getByRole('button', { name: /names\.happy/ }).click()
+
+    await pulsed
+    expect(override.emotionPulse).toEqual({ name: 'happy', nominal: 0.7, seq: 1 })
   })
 
   it('starts an affect recording in the stage and saves the exported trace through the sink', async () => {
