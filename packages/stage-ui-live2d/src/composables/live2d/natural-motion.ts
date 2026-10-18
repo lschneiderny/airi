@@ -8,6 +8,8 @@ import type { PostureHome, Vec3 } from './natural-motion/posture'
 import type { RandomStream } from './natural-motion/random'
 import type { Live2DRigProfile } from './natural-motion/rig-profile'
 
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
+
 import { NaturalBlinkScheduler } from './natural-motion/blink'
 import { NaturalBodyLayer } from './natural-motion/body'
 import { NaturalBreathLayer } from './natural-motion/breath'
@@ -15,6 +17,7 @@ import { NaturalPerformanceEnergy } from './natural-motion/energy'
 import { NaturalFaceLayer } from './natural-motion/face'
 import { NaturalAttentionShifts, NaturalGazeLayer } from './natural-motion/gaze'
 import { NaturalImpulses } from './natural-motion/impulses'
+import { NaturalMood } from './natural-motion/mood'
 import { NaturalPostureLayers, postureHomes } from './natural-motion/posture'
 import { createRandomStream, deriveSeed } from './natural-motion/random'
 import { NaturalSpeechEmphasis, SpeechOnsetShifts } from './natural-motion/speech-emphasis'
@@ -128,6 +131,8 @@ export class Live2DNaturalMotion {
   private readonly blink: NaturalBlinkScheduler
   private readonly breath: NaturalBreathLayer
   private readonly energy = new NaturalPerformanceEnergy()
+  private readonly mood = new NaturalMood()
+  private performanceSettings = defaultExpressionPerformanceSettings
   private readonly emphasis: NaturalSpeechEmphasis
   private readonly impulses: NaturalImpulses
   private readonly onsetShifts = new SpeechOnsetShifts()
@@ -249,10 +254,12 @@ export class Live2DNaturalMotion {
     this.pending.push({ kind: 'emotion', episode })
   }
 
-  /** False treats every new episode as clear for A/B comparison. In-flight pulses retain their settings. */
-  setPerformanceSettings(settings: ExpressionPerformanceSettings['naturalBands'], bands = true) {
-    this.impulses.setPerformanceSettings(settings, bands)
-    this.energy.setPerformanceSettings(settings)
+  /** Switches apply on the next grid step. Disabled mood keeps decaying but receives no new doses. */
+  setPerformanceSettings(settings: ExpressionPerformanceSettings) {
+    this.performanceSettings = structuredClone(settings)
+    this.impulses.setPerformanceSettings(settings.naturalBands, settings.bands)
+    this.energy.setPerformanceSettings(settings.naturalBands)
+    this.mood.setPerformanceSettings(settings.moodDynamics)
   }
 
   /** Suspension freezes every layer; resume keeps all state, so output continues without a jump. */
@@ -277,12 +284,21 @@ export class Live2DNaturalMotion {
     this.gaze.setCursor(c, stepStart)
     this.startPending(stepStart)
     this.energy.step(step)
+    this.mood.step(step)
     this.posture.amplitudeScale = this.energy.amplitudeScale
     this.posture.shiftRateScale = this.energy.shiftRateScale
     this.gaze.cameraFixationProbability = this.energy.cameraFixationProbability
     this.gaze.targetWeights = this.energy.targetWeights
+    let emphasisAcceptance = this.energy.emphasisAcceptance
+    if (this.performanceSettings.mood && this.mood.active) {
+      const settings = this.performanceSettings.moodDynamics
+      this.posture.amplitudeScale *= Math.max(0.8, Math.min(1.2, 1 + settings.amplitude * this.mood.arousal))
+      this.posture.shiftRateScale *= Math.max(0.7, Math.min(1.3, 1 + settings.shiftRate * this.mood.arousal))
+      this.gaze.cameraFixationProbability = Math.max(0, Math.min(1, this.gaze.cameraFixationProbability + settings.cameraValence * this.mood.valence - settings.cameraTension * this.mood.tension))
+      emphasisAcceptance = Math.max(0, Math.min(1, emphasisAcceptance + settings.emphasis * this.mood.arousal))
+    }
     // Speech onsets can lead a due posture shift, so detection runs before attention and posture see the shift time.
-    const emphasis = this.emphasis.step(step, this.voice.level, this.energy.emphasisAcceptance)
+    const emphasis = this.emphasis.step(step, this.voice.level, emphasisAcceptance)
     this.onsetShifts.update(this.posture, this.emphasis, this.voice.speaking)
     this.attention.update(this.posture, this.gaze, stepStart, step)
     // Cursor attention keeps the v1 head bias, smoothed so cursor changes never jump.
@@ -326,6 +342,8 @@ export class Live2DNaturalMotion {
         const started = this.impulses.trigger(action.episode, at)
         if (!started)
           continue
+        if (this.performanceSettings.mood)
+          this.mood.add(action.episode)
         if (started.glance)
           this.gaze.glance(started.glance.point, started.glance.hold, at)
         if (started.energy)
@@ -356,7 +374,7 @@ export class Live2DNaturalMotion {
       browLAngle: face.browLAngle + hints.browAngle,
       browRAngle: face.browRAngle + hints.browAngle,
       eyeSmile: face.eyeSmile + hints.eyeSmile,
-      mouthForm: face.mouthForm + hints.mouthForm,
+      mouthForm: face.mouthForm + hints.mouthForm + (this.performanceSettings.mood && this.mood.active ? this.performanceSettings.moodDynamics.mouthForm * this.mood.valence : 0),
     }
   }
 

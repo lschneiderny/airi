@@ -1,5 +1,6 @@
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it, vi } from 'vitest'
 
 import { Emotion } from '../../constants/emotions'
@@ -16,6 +17,7 @@ it.each([
 ] as const)('isolates $band recruitment at the facade', ({ band, intensity }) => {
   const motion = new Live2DNaturalMotion({ seed: 41 })
   const control = new Live2DNaturalMotion({ seed: 41 })
+  motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, mood: false })
   motion.impulse({ id: band, emotion: Emotion.Happy, nominal: intensity, intensity, band, escalation: false }, 0)
   control.advance(0)
   let headPeak = 0
@@ -37,6 +39,52 @@ it.each([
     expect(bodyPeak).toBeGreaterThan(0)
   else
     expect(bodyPeak).toBe(0)
+})
+
+it.each([
+  { band: 'slight', intensity: 0.25 },
+  { band: 'clear', intensity: 0.6 },
+  { band: 'strong', intensity: 0.9 },
+] as const)('isolates $band recruitment from mood posture modulation', ({ band, intensity }) => {
+  const episode = { id: band, emotion: Emotion.Happy, nominal: intensity, intensity, band, escalation: false } as const
+  const motion = new Live2DNaturalMotion({ seed: 41 })
+  const matched = new Live2DNaturalMotion({ seed: 41 })
+  const rest = new Live2DNaturalMotion({ seed: 41 })
+  // The matched control receives the same episode but its band gains are zero, so only mood and shared overlays remain.
+  const withoutRecruitment = structuredClone(defaultExpressionPerformanceSettings)
+  withoutRecruitment.naturalBands.headGain = 0
+  withoutRecruitment.naturalBands.bodyGain = 0
+  motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings })
+  matched.setPerformanceSettings(withoutRecruitment)
+  rest.setPerformanceSettings({ ...withoutRecruitment, mood: false })
+  for (const instance of [motion, matched, rest]) {
+    instance.advance(0)
+    instance.impulse(episode, 0)
+  }
+  let moodHeadPeak = 0
+  let headPulsePeak = 0
+  let moodBodyPeak = 0
+  let bodyLeanPeak = 0
+  for (let i = 0; i <= 8 * 120; i++) {
+    const actual = motion.advance(i / 120)
+    const control = matched.advance(i / 120)
+    const baseline = rest.advance(i / 120)
+    moodHeadPeak = Math.max(moodHeadPeak, Math.hypot(...headAxes.map(axis => control.pose[axis] - baseline.pose[axis])))
+    headPulsePeak = Math.max(headPulsePeak, Math.hypot(...headAxes.map(axis => actual.pose[axis] - control.pose[axis])))
+    moodBodyPeak = Math.max(moodBodyPeak, Math.hypot(...(['bodyX', 'bodyY', 'bodyZ'] as const).map(axis => control.pose[axis]! - baseline.pose[axis]!)))
+    bodyLeanPeak = Math.max(bodyLeanPeak, Math.hypot(...(['bodyX', 'bodyY', 'bodyZ'] as const).map(axis => actual.pose[axis]! - control.pose[axis]!)))
+  }
+  // Mood alone legitimately shifts posture, so recruitment is measured against the matched-mood control.
+  expect(moodHeadPeak).toBeGreaterThan(0)
+  if (band === 'slight')
+    expect(headPulsePeak).toBe(0)
+  if (band === 'clear')
+    expect(headPulsePeak).toBeGreaterThanOrEqual(0.05)
+  if (band === 'strong')
+    expect(bodyLeanPeak).toBeGreaterThan(0)
+  else
+    expect(bodyLeanPeak).toBe(0)
+  expect(moodBodyPeak).toBeGreaterThan(0)
 })
 
 it.each(['wake', 'screen-change'] as const)('keeps desktop %s on the fixed full-strength overlay', (reactKind) => {
