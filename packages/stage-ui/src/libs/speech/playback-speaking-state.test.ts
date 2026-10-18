@@ -13,6 +13,8 @@ import { bindSpeakingStateToPlaybackManager } from './playback-speaking-state'
 function createPlaybackItem(): PlaybackItem<AudioBuffer> {
   return {
     id: 'playback-1',
+    sentenceIndex: 0,
+    sentenceStart: true,
     streamId: 'stream-1',
     intentId: 'intent-1',
     segmentId: 'segment-1',

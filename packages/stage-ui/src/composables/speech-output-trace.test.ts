@@ -18,7 +18,7 @@ afterEach(() => {
 })
 
 function request(text: string): TtsRequest {
-  return { turnId: 'reply', streamId: 'stream', intentId: 'intent', segmentId: 'segment-1', sequence: 0, text, special: null, reason: 'hard', priority: 0, createdAt: 0 }
+  return { turnId: 'reply', streamId: 'stream', intentId: 'intent', segmentId: 'segment-1', sequence: 0, text, special: null, reason: 'hard', priority: 0, createdAt: 0, sentenceIndex: 0, sentenceStart: true }
 }
 
 function turnSpan() {

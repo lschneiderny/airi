@@ -41,6 +41,8 @@ function createSegmenter(texts: string[]) {
           intentId: meta.intentId,
           segmentId: `${meta.streamId}:${index}`,
           text,
+          sentenceIndex: index,
+          sentenceStart: true,
           special: null,
           reason: 'flush',
           createdAt: Date.now(),
@@ -82,6 +84,40 @@ function createPlaybackSpy(options?: { autoEnd?: boolean }) {
 }
 
 describe('createSpeechPipeline', () => {
+  it('carries sentence identity through requests, results, playback, and ordered specials per intent', async () => {
+    const { scheduled, playback } = createPlaybackSpy()
+    const requests: TtsRequest[] = []
+    const results: Array<{ sentenceIndex: number, sentenceStart: boolean }> = []
+    const order: string[] = []
+    const pipeline = createSpeechPipeline<string>({
+      playback,
+      async tts(request) {
+        requests.push(request)
+        return request.text
+      },
+    })
+    pipeline.on('onTtsResult', result => results.push(result))
+    pipeline.on('onSpecial', segment => order.push(segment.special!))
+    pipeline.on('onPlaybackEnd', event => order.push(event.item.text))
+    for (const turnId of ['first', 'second']) {
+      const finished = new Promise<void>((resolve) => {
+        pipeline.on('onIntentEnd', () => resolve())
+      })
+      const intent = pipeline.openIntent({ turnId })
+      intent.writeLiteral('Hello there.')
+      intent.writeSpecial('<|ACT {"emotion":"happy"}|>')
+      intent.writeLiteral('This is a test, with a pause! And a third sentence?')
+      intent.end()
+      await finished
+    }
+    const identity = (item: { sentenceIndex: number, sentenceStart: boolean }) => [item.sentenceIndex, item.sentenceStart]
+    const expected = [[0, true], [1, true], [2, true]]
+    expect(requests.map(identity)).toEqual([...expected, ...expected])
+    expect(results.map(identity)).toEqual([...expected, ...expected])
+    expect(scheduled.map(identity)).toEqual([...expected, ...expected])
+    expect(order.slice(0, 4)).toEqual(['Hello there.', '<|ACT {"emotion":"happy"}|>', 'This is a test, with a pause!', 'And a third sentence?'])
+  })
+
   it('preserves playback order when TTS completes out of order', async () => {
     const { scheduled, playback } = createPlaybackSpy()
 
@@ -213,6 +249,8 @@ describe('createSpeechPipeline', () => {
               intentId: meta.intentId,
               segmentId: 'segment:0',
               text: 'before',
+              sentenceIndex: 0,
+              sentenceStart: true,
               special: null,
               reason: 'flush',
               createdAt: Date.now(),
@@ -223,6 +261,8 @@ describe('createSpeechPipeline', () => {
               intentId: meta.intentId,
               segmentId: 'segment:1',
               text: '',
+              sentenceIndex: 1,
+              sentenceStart: false,
               special: '<|CALL ["plugin.action"]|>',
               reason: 'special',
               createdAt: Date.now(),
@@ -274,6 +314,8 @@ describe('createSpeechPipeline', () => {
               intentId: meta.intentId,
               segmentId: 'segment:0',
               text: 'first',
+              sentenceIndex: 0,
+              sentenceStart: true,
               special: null,
               reason: 'flush',
               createdAt: Date.now(),
@@ -284,6 +326,8 @@ describe('createSpeechPipeline', () => {
               intentId: meta.intentId,
               segmentId: 'segment:1',
               text: 'second',
+              sentenceIndex: 1,
+              sentenceStart: true,
               special: null,
               reason: 'flush',
               createdAt: Date.now(),

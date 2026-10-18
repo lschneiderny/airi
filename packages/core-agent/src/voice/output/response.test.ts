@@ -9,6 +9,64 @@ import { VoiceController } from '../../index'
 import { keepOpen, pcmSource } from '../../testing/audio'
 
 describe('voiceController output', () => {
+  it('exposes pipeline sentence starts and resets alignment for each response', async () => {
+    const started = vi.fn()
+    const ended = vi.fn()
+    const playback = new Playback({ nowMs: () => 0, play: (clip) => {
+      clip.onStart?.()
+      return { done: Promise.resolve({ throughMs: 1 }), stop: async () => ({ throughMs: 0 }) }
+    } })
+    const controller = new VoiceController({ speech: () => ({
+      playback,
+      synthesize: async () => new Blob(['speech']),
+      onPlaybackStart: started,
+      onPlaybackEnd: ended,
+    }) })
+    for (const turnId of ['first', 'second']) {
+      const response = controller.openResponse({ sessionId: 'alice', turnId })
+      const speech = response.openSpeech({ purpose: 'answer' })
+      speech.write('One two three four, five six. Next sentence.')
+      speech.end()
+      expect(await response.finish()).toBe('finished')
+    }
+    const clips = started.mock.calls.map(([clip]) => [clip.text, clip.sentenceIndex, clip.sentenceStart])
+    const expected = [['One two three four,', 0, true], ['five six.', 0, false], ['Next sentence.', 1, true]]
+    expect(clips).toEqual([...expected, ...expected])
+    expect(ended.mock.calls.map(([clip]) => clip)).toEqual(started.mock.calls.map(([clip]) => clip))
+    await controller.close()
+  })
+
+  it('leaves streaming-provider sentence alignment undefined', async () => {
+    const started = vi.fn()
+    const playback = new Playback({ nowMs: () => 0, play: (clip) => {
+      clip.onStart?.()
+      return { done: Promise.resolve({ throughMs: 1 }), stop: async () => ({ throughMs: 0 }) }
+    } })
+    const controller = new VoiceController({ speech: () => ({
+      playback,
+      onPlaybackStart: started,
+      stream: async (text) => {
+        let input = ''
+        for await (const part of text)
+          input += part
+        expect(input).toBe('Hello.')
+        return new ReadableStream<SpeechAudio>({ start(controller) {
+          controller.enqueue({ text: 'Hello.', audio: new Blob(['speech']) })
+          controller.close()
+        } })
+      },
+    }) })
+    const response = controller.openResponse({ sessionId: 'alice', turnId: 'streaming' })
+    const speech = response.openSpeech({ purpose: 'answer' })
+    speech.write('Hello.')
+    speech.end()
+    expect(await response.finish()).toBe('finished')
+    expect(started).toHaveBeenCalledTimes(1)
+    expect(started.mock.calls[0][0].sentenceIndex).toBeUndefined()
+    expect(started.mock.calls[0][0].sentenceStart).toBeUndefined()
+    await controller.close()
+  })
+
   it('ends the speaking indicator only after cancelled audio becomes silent', async () => {
     const silence = Promise.withResolvers<{ throughMs: number }>()
     const started = vi.fn()

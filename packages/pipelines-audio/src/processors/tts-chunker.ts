@@ -16,6 +16,8 @@ const hardPunctuations = new Set('.。?？!！…⋯～~\n\t\r')
 const softPunctuations = new Set(',，、–—:：;；《》「」')
 
 export interface TtsInputChunk {
+  sentenceIndex: number
+  sentenceStart: boolean
   text: string
   words: number
   reason: 'boost' | 'limit' | 'hard' | 'flush' | 'special'
@@ -45,6 +47,8 @@ export interface TtsInputChunkOptions {
 }
 
 export interface TtsChunkItem {
+  sentenceIndex: number
+  sentenceStart: boolean
   chunk: string
   special: string | null
   reason: 'boost' | 'limit' | 'hard' | 'flush' | 'special'
@@ -54,6 +58,25 @@ export async function* chunkTtsInput(
   input: string | ReaderLike,
   options?: TtsInputChunkOptions,
 ): AsyncGenerator<TtsInputChunk, void, unknown> {
+  // Sentence identity belongs to this input stream, independent of soft/length boundaries and markers.
+  let sentenceIndex = 0
+  let sentenceStart = true
+  for await (const chunk of chunkInput(input, options)) {
+    const text = chunk.text.replaceAll(TTS_SPECIAL_TOKEN, '').replaceAll(TTS_FLUSH_INSTRUCTION, '').trim()
+    yield { ...chunk, sentenceIndex, sentenceStart: text.length > 0 && sentenceStart }
+    if (text.length > 0)
+      sentenceStart = false
+    if (chunk.reason === 'flush' || /[.!?…。！？]$/.test(text)) {
+      sentenceIndex++
+      sentenceStart = true
+    }
+  }
+}
+
+async function* chunkInput(
+  input: string | ReaderLike,
+  options?: TtsInputChunkOptions,
+): AsyncGenerator<Omit<TtsInputChunk, 'sentenceIndex' | 'sentenceStart'>, void, unknown> {
   const {
     boost = 2,
     minimumWords = 4,
@@ -239,10 +262,10 @@ export async function chunkEmitter(
 
       if (chunk.reason === 'special') {
         const specialToken = pendingSpecials.shift()
-        await handler({ chunk: cleanedText, special: specialToken ?? null, reason: chunk.reason })
+        await handler({ chunk: cleanedText, special: specialToken ?? null, reason: chunk.reason, sentenceIndex: chunk.sentenceIndex, sentenceStart: chunk.sentenceStart })
       }
       else {
-        await handler({ chunk: cleanedText, special: null, reason: chunk.reason })
+        await handler({ chunk: cleanedText, special: null, reason: chunk.reason, sentenceIndex: chunk.sentenceIndex, sentenceStart: chunk.sentenceStart })
       }
     }
   }
@@ -506,6 +529,8 @@ export function createTtsSegmentStream(
           intentId: meta.intentId,
           segmentId: `${meta.streamId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
           text: chunk.chunk,
+          sentenceIndex: chunk.sentenceIndex,
+          sentenceStart: chunk.sentenceStart,
           special: chunk.special,
           reason: chunk.reason,
           createdAt: Date.now(),

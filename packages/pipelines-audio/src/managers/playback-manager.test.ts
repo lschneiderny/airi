@@ -7,6 +7,8 @@ import { createPlaybackManager } from './playback-manager'
 function createPlaybackItem(id: string, priority: number, intentId: string, ownerId?: string): PlaybackItem<unknown> {
   return {
     id,
+    sentenceIndex: 0,
+    sentenceStart: true,
     streamId: 'stream-1',
     intentId,
     segmentId: `${id}-segment`,

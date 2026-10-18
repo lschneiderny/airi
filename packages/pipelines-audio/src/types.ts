@@ -15,6 +15,10 @@ export interface TextToken {
 }
 
 export interface TextSegment {
+  /** Zero-based sentence within this input stream; markers do not advance it. */
+  sentenceIndex: number
+  /** Only the first nonempty chunk of a sentence starts its playback timing slot. */
+  sentenceStart: boolean
   turnId?: string
   streamId: string
   intentId: string
@@ -26,6 +30,8 @@ export interface TextSegment {
 }
 
 export interface TtsRequest {
+  sentenceIndex: number
+  sentenceStart: boolean
   turnId?: string
   streamId: string
   intentId: string
@@ -40,6 +46,8 @@ export interface TtsRequest {
 }
 
 export interface TtsResult<TAudio> {
+  sentenceIndex: number
+  sentenceStart: boolean
   turnId?: string
   streamId: string
   intentId: string
@@ -52,6 +60,8 @@ export interface TtsResult<TAudio> {
 }
 
 export interface PlaybackItem<TAudio> {
+  sentenceIndex: number
+  sentenceStart: boolean
   id: string
   turnId?: string
   streamId: string

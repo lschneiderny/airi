@@ -20,6 +20,9 @@ export interface SpeechAudio {
 export interface SpeechClip {
   readonly id: string
   readonly text: string
+  /** Pipeline sentence alignment. Streaming providers have no sentence alignment. */
+  readonly sentenceIndex?: number
+  readonly sentenceStart?: boolean
 }
 
 /** A stopped or failed clip carries the producer or response abort reason when one exists. */
@@ -105,7 +108,7 @@ export class SpeechStream {
       playback: {
         schedule: (item) => {
           pending.add(item)
-          const clip = { id: item.segmentId, text: item.text }
+          const clip = { id: item.segmentId, text: item.text, sentenceIndex: item.sentenceIndex, sentenceStart: item.sentenceStart }
           let started = false
           void Promise.race([previous, this.done]).then(async () => {
             if (this.signal.aborted || response.signal.aborted)

@@ -4,7 +4,7 @@ import type { TtsInputChunk } from './tts-chunker'
 
 import { describe, expect, it } from 'vitest'
 
-import { chunkTtsInput, isProbablyAngleTag, processNarrative } from './tts-chunker'
+import { chunkTtsInput, isProbablyAngleTag, processNarrative, TTS_FLUSH_INSTRUCTION, TTS_SPECIAL_TOKEN } from './tts-chunker'
 
 async function collectChunkText(input: string) {
   const chunks: string[] = []
@@ -23,6 +23,33 @@ async function collectChunks(text: string): Promise<TtsInputChunk[]> {
 }
 
 describe('chunkTtsInput boost', () => {
+  it('preserves pre-change chunk bytes and sentence identity across mid-sentence markers', async () => {
+    const chunks = await collectChunks(`One two three four${TTS_SPECIAL_TOKEN} five six. Seven eight nine ten${TTS_SPECIAL_TOKEN} eleven twelve.`)
+    // Captured from the unchanged chunker before sentence metadata was added.
+    expect(chunks.map(chunk => chunk.text)).toEqual([
+      'One two three four',
+      'five six.',
+      'Seven eight nine ten',
+      'eleven twelve.',
+    ])
+    expect(chunks.map(chunk => chunk.sentenceIndex)).toEqual([0, 0, 1, 1])
+    expect(chunks.map(chunk => chunk.sentenceStart)).toEqual([true, false, true, false])
+  })
+
+  it('does not consume sentence starts for empty input or marker-only chunks', async () => {
+    expect(await collectChunks('')).toEqual([])
+    const chunks = await collectChunks(`${TTS_SPECIAL_TOKEN}${TTS_SPECIAL_TOKEN}Hello.`)
+    expect(chunks.map(chunk => chunk.sentenceIndex)).toEqual([0, 0, 0])
+    expect(chunks.map(chunk => chunk.sentenceStart)).toEqual([false, false, true])
+  })
+
+  it('advances after flush, ellipsis, and CJK sentence endings and resets per input', async () => {
+    const chunks = await collectChunks(`Tail${TTS_FLUSH_INSTRUCTION}Next…你好。好！对？End`)
+    expect(chunks.map(chunk => chunk.sentenceIndex)).toEqual([0, 1, 2, 3, 4, 5])
+    expect(chunks.every(chunk => chunk.sentenceStart)).toBe(true)
+    expect((await collectChunks('Fresh'))[0]).toMatchObject({ sentenceIndex: 0, sentenceStart: true })
+  })
+
   // ROOT CAUSE:
   //
   // Boost chunks ended at any soft punctuation regardless of length, so "嗯，那就好，" became
