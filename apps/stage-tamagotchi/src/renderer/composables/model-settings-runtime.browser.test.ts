@@ -106,7 +106,7 @@ describe('model settings runtime channel', () => {
     const mountedSettingsRuntime = settingsRuntime
 
     await firstSnapshot
-    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.groups).toEqual([{
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.groups).toMatchObject([{
       id: 'happy.exp3.json',
       name: 'happy',
       active: false,
@@ -132,11 +132,21 @@ describe('model settings runtime channel', () => {
     expect(applied).toBe(true)
     expect(useExpressionStore(settingsPinia).definitions).toEqual([])
 
+    const updated = await mountedSettingsRuntime.sendLive2DExpressionCommand({
+      type: 'update-entry',
+      id: 'happy.exp3.json',
+      patch: { label: 'Joyful' },
+    })
+    expect(updated).toBe(true)
+    expect(ownerExpressionStore.catalog[0].label).toBe('Joyful')
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.groups[0].label).toBe('Joyful')
+
     ownerExpressionStore.registerDefinitions('model-b', expressionDefinitions)
-    const rejected = await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'toggle', id: 'happy.exp3.json' })
+    const rejected = await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'update-entry', id: 'happy.exp3.json', patch: { label: 'Stale' } })
 
     expect(rejected).toBe(false)
     expect(ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(false)
+    expect(ownerExpressionStore.catalog[0].label).toBe('happy')
     await nextTick()
     expect(mountedSettingsRuntime.runtimeSnapshot.value.modelId).toBe('model-b')
   })

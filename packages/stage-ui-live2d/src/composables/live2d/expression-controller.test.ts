@@ -58,16 +58,20 @@ describe('useExpressionController', () => {
     const { controller, store } = rig()
     const read = vi.fn(async () => '')
     await controller.initialise('model', [{ Name: 'Game prop', File: 'game.exp3.json' }], read, archive, path => `model/${path}`)
-    expect(store.settingsSnapshot.groups).toEqual([
+    expect(store.settingsSnapshot.groups).toMatchObject([
       { id: 'model/game.exp3.json', name: 'Game prop', active: false },
       { id: 'model/eat.exp3.json', name: 'eat', active: false },
     ])
     expect(read).not.toHaveBeenCalled()
+    // The model3.json is in model/: its refs must match archive-relative ids.
+    expect(store.catalog[0].label).toBe('Game prop')
+    expect(store.catalog[0].kind).toBe('prop')
   })
 
   it('keeps A when B activates with Add zero on the shared parameter', async () => {
     const { controller, store, core, frame } = rig()
     await controller.initialise('model', [], async () => '', archive)
+    store.updateEntry(archive[1].fileName, { group: null })
     store.toggle(archive[0].fileName)
     frame()
     expect(core.getParameterValueById('Param2')).toBe(1)
@@ -77,9 +81,25 @@ describe('useExpressionController', () => {
     expect(core.getParameterValueById('Param4')).toBe(1)
   })
 
+  it('normalizes model3 refs from a subfolder before deriving catalog labels', async () => {
+    const { controller, store } = rig()
+    const model3 = {
+      url: 'models/avatar/model3.json',
+      FileReferences: { Expressions: [{ Name: 'Model-defined face', File: '../expressions/smile.exp3.json' }] },
+    }
+    const file = { ...archive[0], fileName: 'models/expressions/smile.exp3.json' }
+    await controller.initialise('nested', model3.FileReferences.Expressions, async () => '', [file], (path) => {
+      const base = new URL(model3.url, 'https://archive.invalid/')
+      return new URL(path, base).pathname.slice(1)
+    })
+    expect(store.catalog[0].id).toBe('models/expressions/smile.exp3.json')
+    expect(store.catalog[0].label).toBe('Model-defined face')
+  })
+
   it('does not reset A when B releases the shared parameter', async () => {
     const { controller, store, core, frame } = rig()
     await controller.initialise('model', [], async () => '', archive)
+    store.updateEntry(archive[1].fileName, { group: null })
     store.activate(archive[0].fileName)
     store.activate(archive[1].fileName)
     frame()

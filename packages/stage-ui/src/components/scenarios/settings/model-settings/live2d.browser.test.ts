@@ -62,8 +62,8 @@ describe('live2D model settings', () => {
       updatedAt: 1,
       live2dExpressions: {
         groups: [
-          { id: 'happy.exp3.json', name: 'happy', active: false },
-          { id: 'surprised.exp3.json', name: 'surprised', active: true },
+          { id: 'happy.exp3.json', name: 'happy', label: 'happy', kind: 'face', group: null, confirmed: false, exposedToLlm: false, mappings: [], fileName: 'happy.exp3.json', parameterIds: [], active: false },
+          { id: 'surprised.exp3.json', name: 'surprised', label: 'surprised', kind: 'face', group: null, confirmed: false, exposedToLlm: false, mappings: [], fileName: 'surprised.exp3.json', parameterIds: [], active: true },
         ],
       },
     } satisfies ModelSettingsRuntimeSnapshot

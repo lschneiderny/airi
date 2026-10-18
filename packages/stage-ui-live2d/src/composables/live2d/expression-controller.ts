@@ -39,6 +39,7 @@ export function useExpressionController(options: ExpressionControllerOptions) {
     readExpFile: (path: string) => Promise<string>,
     archiveFiles: ArchiveExpressionFile[] = [],
     resolvePath: (path: string) => string = path => path,
+    vtube?: unknown,
   ) {
     const loadGeneration = ++generation
     const loadedModel = options.internalModel.value
@@ -77,7 +78,7 @@ export function useExpressionController(options: ExpressionControllerOptions) {
     }
     // A completed load owns registration; a detached model must not publish stale state.
     if (loadedModel && options.internalModel.value === loadedModel && loadGeneration === generation)
-      store.registerDefinitions(modelId ?? 'unknown', definitions)
+      store.registerDefinitions(modelId ?? 'unknown', definitions, expressionRefs.map(ref => ({ ...ref, File: resolvePath(ref.File) })), vtube)
   }
 
   function restoreExpressionBases(coreModel: PixiLive2DInternalModel['coreModel']) {

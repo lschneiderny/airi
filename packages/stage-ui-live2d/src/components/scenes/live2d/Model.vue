@@ -686,6 +686,7 @@ async function initExpressionController(internalModel?: PixiLive2DInternalModel,
   const settings = internalModel?.settings as (PixiLive2DInternalModel['settings'] & {
     expressions?: Model3ExpressionRef[]
     _expFiles?: ArchiveExpressionFile[]
+    _vtubeData?: unknown
   }) | undefined
   if (!settings)
     return
@@ -710,7 +711,7 @@ async function initExpressionController(internalModel?: PixiLive2DInternalModel,
     const base = new URL(settings.url, 'https://archive.invalid/')
     return decodeURI(new URL(path, base).pathname.slice(1))
   }
-  await expressionController.initialise(modelId, expressionRefs, readExpFile, settings._expFiles, resolvePath)
+  await expressionController.initialise(modelId, expressionRefs, readExpFile, settings._expFiles, resolvePath, settings._vtubeData)
 }
 
 async function setMotion(motionName: string, index?: number) {
