@@ -545,6 +545,12 @@ pages:
       none: None
       none_disabled: None (Disabled)
     modules: Modules
+    performance:
+      title: Performance
+      expressiveness: Expressiveness
+      moodGainScale: Mood strength
+      moodDecayScale: Mood length
+      mapping_help: Mapping weights cannot be edited here yet. They can be imported with the character card. Unset controls use 1.
     name_asc: Name (A-Z)
     name_desc: Name (Z-A)
     no_cards: No cards yet. Click the button above to upload one!

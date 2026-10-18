@@ -2,11 +2,13 @@ import type { Card } from '@proj-airi/ccc'
 
 import type { AiriExtension } from '../types/airiCard'
 
+import { PerformanceProfileSchema } from '@proj-airi/stage-shared/expression-performance'
 import {
   check,
   nonEmpty,
   object,
   objectWithRest,
+  parse,
   parseJson,
   pipe,
   regex,
@@ -20,6 +22,7 @@ export type AiriCardDraftValidationError = 'name' | 'version' | 'invalid_artistr
 
 /** Module settings owned by the AIRI Card editor form. */
 interface AiriCardEditorModules {
+  performance?: AiriExtension['modules']['performance']
   consciousness: AiriExtension['modules']['consciousness']
   vision: AiriExtension['modules']['vision']
   speech: Pick<AiriExtension['modules']['speech'], 'provider' | 'model' | 'voice_id'>
@@ -44,10 +47,11 @@ interface AiriCardEditorModules {
  */
 export function getAiriCardEditorModuleSettings(
   card: Card | undefined,
-): Pick<AiriCardEditorModules, 'consciousness' | 'vision' | 'speech' | 'displayModelId'> {
+): Pick<AiriCardEditorModules, 'consciousness' | 'vision' | 'speech' | 'displayModelId' | 'performance'> {
   const modules = getAiriCardModules(card?.extensions?.airi)
 
   return {
+    ...(modules?.performance === undefined ? {} : { performance: parse(PerformanceProfileSchema, modules.performance) }),
     consciousness: {
       provider: getModuleString(modules?.consciousness, 'provider'),
       model: getModuleString(modules?.consciousness, 'model'),
@@ -166,6 +170,11 @@ export function applyAiriCardEditorModules(
         modules: {
           ...existing?.modules,
           ...edited,
+          ...(edited.performance === undefined
+            ? {}
+            : {
+                performance: parse(PerformanceProfileSchema, { ...existing?.modules.performance, ...edited.performance }),
+              }),
           speech: {
             ...existing?.modules.speech,
             ...edited.speech,

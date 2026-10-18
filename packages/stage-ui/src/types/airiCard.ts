@@ -1,4 +1,5 @@
 import type { Card } from '@proj-airi/ccc'
+import type { PerformanceProfile } from '@proj-airi/stage-shared/expression-performance'
 
 import type { WakeWord } from '../libs/voice/wake-words'
 
@@ -12,6 +13,7 @@ import type { WakeWord } from '../libs/voice/wake-words'
 export interface AiriExtension {
   wakeWords?: WakeWord[]
   modules: {
+    performance?: PerformanceProfile
     consciousness: {
       provider: string
       model: string

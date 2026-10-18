@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 角色卡编辑页的核心表单，路由壳只负责把卡片 ID 和当前分区传进来。
 import type { Card } from '@proj-airi/ccc'
+import type { PerformanceProfile } from '@proj-airi/stage-shared/expression-performance'
 import type { AiriExtension } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import type { VoiceInfo } from '@proj-airi/stage-ui/stores/providers/provider'
 import type { Ref } from 'vue'
@@ -16,7 +17,7 @@ import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useVisionStore } from '@proj-airi/stage-ui/stores/modules/vision'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
-import { Button, FieldInput, FieldValues, GhostButton, IconButton } from '@proj-airi/ui'
+import { Button, FieldInput, FieldRange, FieldValues, GhostButton, IconButton } from '@proj-airi/ui'
 import { ComboboxSelect } from '@proj-airi/ui/components/form'
 import { isEqual } from 'es-toolkit'
 import { storeToRefs } from 'pinia'
@@ -89,6 +90,16 @@ const selectedSpeechModel = ref<string>('')
 const selectedSpeechVoiceId = ref<string>('')
 const previewVoices = ref<VoiceInfo[]>([])
 const selectedDisplayModelId = ref<string>('')
+const selectedPerformance = ref<PerformanceProfile>()
+const performanceFields = [
+  { key: 'expressiveness', min: 0.5, max: 1.5 },
+  { key: 'moodGainScale', min: 0, max: 2 },
+  { key: 'moodDecayScale', min: 0.5, max: 2 },
+] as const
+
+function setPerformanceField(key: typeof performanceFields[number]['key'], value: number) {
+  selectedPerformance.value = { ...selectedPerformance.value, [key]: value }
+}
 
 // NOTICE:
 // The editor needs a non-empty option value for inherited settings.
@@ -453,6 +464,7 @@ function initializeCard(): Card {
   selectedSpeechModel.value = moduleSettings.speech.model
   selectedSpeechVoiceId.value = moduleSettings.speech.voice_id
   selectedDisplayModelId.value = moduleSettings.displayModelId ?? ''
+  selectedPerformance.value = moduleSettings.performance ? structuredClone(toRaw(moduleSettings.performance)) : undefined
 
   // NOTICE: keep legacy `extensions.airi.artistry` fallback so existing cards continue to load.
   const artistrySettings = airiExt?.modules?.artistry || airiExt?.artistry
@@ -483,6 +495,7 @@ const card = ref<Card>(createCardDraft())
 const initialSnapshot = shallowRef<EditorSnapshot>()
 
 interface EditorSnapshot {
+  performance?: PerformanceProfile
   card: Card
   consciousness: {
     provider: string
@@ -512,6 +525,7 @@ interface EditorSnapshot {
 
 function createEditorSnapshot(): EditorSnapshot {
   return structuredClone({
+    performance: selectedPerformance.value ? JSON.parse(JSON.stringify(selectedPerformance.value)) as PerformanceProfile : undefined,
     // JSON 序列化会读取每个响应式字段，确保字段变更能触发未保存状态。
     card: JSON.parse(JSON.stringify(card.value)) as Card,
     consciousness: {
@@ -653,6 +667,7 @@ async function handleSave(activate: boolean) {
     showError.value = false
     const { card: rawCard, artistryOptions } = draftResult.output
     const cardWithModules = applyAiriCardEditorModules(rawCard, {
+      ...(selectedPerformance.value === undefined ? {} : { performance: toRaw(selectedPerformance.value) }),
       consciousness: {
         provider: selectedConsciousnessProvider.value,
         model: selectedConsciousnessModel.value,
@@ -909,6 +924,28 @@ function handleBack() {
               <p :class="['text-sm text-neutral-500 dark:text-neutral-400']">
                 {{ t('settings.pages.card.creation.modules_info') }}
               </p>
+
+              <!-- Performance -->
+              <section :class="moduleSectionClasses">
+                <h3 :class="moduleSectionHeaderClasses">
+                  {{ t('settings.pages.card.performance.title') }}
+                </h3>
+                <div :class="['flex flex-col gap-5']">
+                  <FieldRange
+                    v-for="field in performanceFields"
+                    :key="field.key"
+                    :model-value="selectedPerformance?.[field.key] ?? 1"
+                    :min="field.min"
+                    :max="field.max"
+                    :step="0.1"
+                    :label="t(`settings.pages.card.performance.${field.key}`)"
+                    @update:model-value="setPerformanceField(field.key, $event)"
+                  />
+                  <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+                    {{ t('settings.pages.card.performance.mapping_help') }}
+                  </p>
+                </div>
+              </section>
 
               <!-- Chat -->
               <section :class="moduleSectionClasses">

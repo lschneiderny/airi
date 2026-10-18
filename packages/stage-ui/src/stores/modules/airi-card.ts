@@ -8,6 +8,7 @@ import localeMessages from '@proj-airi/i18n/locales'
 
 import { errorMessageFrom } from '@moeru/std'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
+import { PerformanceProfileSchema } from '@proj-airi/stage-shared/expression-performance'
 import { StorageSerializers, useDocumentVisibility, watchDebounced } from '@vueuse/core'
 import { isEqual } from 'es-toolkit'
 import { nanoid } from 'nanoid'
@@ -436,6 +437,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       ...(existingExtension.wakeWords === undefined ? {} : { wakeWords: parse(array(wakeWordSchema), existingExtension.wakeWords) }),
       modules: {
         ...existingExtension.modules,
+        ...(existingExtension.modules?.performance === undefined ? {} : { performance: parse(PerformanceProfileSchema, existingExtension.modules.performance) }),
         consciousness: {
           ...existingExtension.modules?.consciousness,
           provider: existingExtension.modules?.consciousness?.provider ?? defaultModules.consciousness.provider,
@@ -914,14 +916,17 @@ export const useAiriCardStore = defineStore('airi-card', () => {
   }
 
   /** Resolve the named character without changing the character selected by any window. */
-  function getModules(characterId: string): CardModuleDefaults {
+  function getModules(characterId: string): CardModuleDefaults & Pick<AiriExtension['modules'], 'performance'> {
     const card = cards.value.get(characterId)
     if (!card)
       throw new Error('The session character is unavailable')
     const defaults = moduleDefaults.value
     if (!defaults)
       throw new Error('Character defaults are not initialized')
-    return resolveModules(card.extensions.airi.modules, defaults)
+    return {
+      ...resolveModules(card.extensions.airi.modules, defaults),
+      performance: card.extensions.airi.modules.performance,
+    }
   }
 
   function resolveModules(modules: AiriExtension['modules'], defaults: CardModuleDefaults): CardModuleDefaults {

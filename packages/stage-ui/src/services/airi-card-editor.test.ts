@@ -123,15 +123,12 @@ describe('airi card editor validation', () => {
   it('preserves AIRI extension fields that are not editable in the form', () => {
     // ROOT CAUSE:
     //
-    // Saving the editor rebuilt `extensions.airi.modules` from visible form
-    // controls and reset `agents` to an empty object. Hidden settings such as
-    // body models, backgrounds, advanced speech/artistry fields, and agent
-    // prompts were therefore lost after an otherwise unrelated edit.
-    //
-    // We fix this by applying the editor-owned fields as a structured patch
-    // over the existing extension.
+    // Rebuilding modules from visible controls discarded hidden settings and
+    // agent prompts. Apply editor-owned fields as a patch over the existing
+    // extension so unrelated edits preserve them.
     const existing: AiriExtension = {
       modules: {
+        performance: { expressiveness: 1.3, mappingWeights: { rig: { face: 0 } }, future: 'kept' },
         consciousness: { provider: 'old-chat', model: 'old-chat-model' },
         vision: { provider: 'old-vision', model: 'old-vision-model' },
         speech: {
@@ -170,6 +167,7 @@ describe('airi card editor validation', () => {
         },
       },
     }, {
+      performance: { moodGainScale: 0.5 },
       consciousness: { provider: 'new-chat', model: 'new-chat-model' },
       vision: { provider: 'new-vision', model: 'new-vision-model' },
       speech: { provider: 'new-speech', model: 'new-speech-model', voice_id: 'new-voice' },
@@ -202,6 +200,8 @@ describe('airi card editor validation', () => {
       language: 'ja',
     })
     expect(extension.modules.vrm).toEqual(existing.modules.vrm)
+    expect(extension.modules.performance).toEqual({ ...existing.modules.performance, moodGainScale: 0.5 })
+    expect(getAiriCardEditorModuleSettings(result).performance).toEqual(extension.modules.performance)
     expect(extension.modules.live2d).toEqual(existing.modules.live2d)
     expect(extension.modules.displayModelId).toBe('new-display-model')
     expect(extension.modules.activeBackgroundId).toBe('background-1')

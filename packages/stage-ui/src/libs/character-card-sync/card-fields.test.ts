@@ -26,6 +26,18 @@ const card: AiriCard = {
 }
 
 describe('splitCard', () => {
+  it('syncs a performance profile as one field omitting unset members', () => {
+    const profiled: AiriCard = {
+      ...card,
+      extensions: { ...card.extensions, airi: { ...card.extensions.airi, modules: {
+        ...card.extensions.airi.modules,
+        performance: { expressiveness: 1.3, moodGainScale: undefined },
+      } } },
+    }
+    const fields = splitCard(profiled)
+    expect(fields['/extensions/airi/modules/performance']).toEqual({ expressiveness: 1.3 })
+    expect(joinCard(fields)).toEqual(JSON.parse(JSON.stringify(profiled)))
+  })
   it('gives one part for each first-level key and each module', () => {
     expect(splitCard(card)).toEqual({
       '/name': 'Luna',

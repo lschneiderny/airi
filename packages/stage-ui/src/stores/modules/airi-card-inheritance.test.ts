@@ -48,6 +48,19 @@ function card(provider = '', model = ''): AiriCard {
 }
 
 describe('card inheritance with real module stores', () => {
+  it('resolves profiles by character and rejects invalid updates without changing stored state', async () => {
+    const cards = useAiriCardStore()
+    await cards.initialize()
+    expect(cards.getModules('default').performance).toBeUndefined()
+    const uploaded = card()
+    uploaded.extensions.airi.modules.performance = { expressiveness: 1.3, future: 'kept' }
+    const id = await cards.addCard(uploaded, 'import')
+    expect(cards.getModules(id).performance).toEqual({ expressiveness: 1.3, future: 'kept' })
+    const original = JSON.parse(JSON.stringify(cards.getCard(id)))
+    uploaded.extensions.airi.modules.performance = { expressiveness: 3 }
+    await expect(cards.updateCard(id, uploaded)).rejects.toThrow()
+    expect(JSON.parse(JSON.stringify(cards.getCard(id)))).toEqual(original)
+  })
   beforeEach(() => {
     const pinia = createPinia()
     createApp({}).use(pinia).use(PiniaColada)
@@ -273,14 +286,9 @@ describe('card inheritance with real module stores', () => {
   // https://github.com/moeru-ai/airi/pull/2490#discussion_r3959813216
   // ROOT CAUSE:
   //
-  // The speech store observed authentication directly. This leaked official
-  // provider policy into a generic module and ran in every renderer.
-  //
-  // Before: an auth snapshot started voice loading before the leader-owned
-  // card setup completed.
-  //
-  // We fixed this by loading auth-owned voices after card setup applies the
-  // effective provider, model, and voice in the synchronization leader.
+  // Observing authentication in the speech store loaded voices in every
+  // renderer before card setup completed. Load auth-owned voices only after
+  // the synchronization leader applies the effective card settings.
   it('loads official voices through authenticated card setup', async () => {
     const speechStore = useSpeechStore()
     speechStore.activeSpeechProvider = OFFICIAL_SPEECH_PROVIDER_ID

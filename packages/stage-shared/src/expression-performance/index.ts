@@ -1,6 +1,7 @@
 export * from './catalog'
 export * from './deciders'
 export * from './picker'
+export * from './profile'
 export * from './reaction-strength'
 export * from './settings'
 export * from './trace'
