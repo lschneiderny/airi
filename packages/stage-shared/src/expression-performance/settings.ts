@@ -1,0 +1,157 @@
+import type { InferOutput, ObjectEntries } from 'valibot'
+
+import { boolean, check, finite, literal, maxValue, minValue, nullable, number, optional, parse, pipe, safeParse, strictObject, unknown } from 'valibot'
+
+function settingsObject<T extends ObjectEntries>(entries: T) {
+  // Valibot objects accept arrays; settings documents and sections must be records.
+  return pipe(unknown(), check(value => !Array.isArray(value), 'Expected a settings object'), strictObject(entries))
+}
+
+const unit = () => pipe(number(), finite(), minValue(0), maxValue(1))
+const seconds = () => pipe(number(), finite(), minValue(0))
+
+const intensitySchema = settingsObject({
+  /** Nominal dose; 0 is neutral. @default 0.25 */
+  slight: optional(unit(), 0.25),
+  /** Nominal dose; 0 is neutral. @default 0.6 */
+  clear: optional(unit(), 0.6),
+  /** Nominal dose; 0 is neutral. @default 0.9 */
+  strong: optional(unit(), 0.9),
+  /** Lower clear threshold; 0 admits every positive dose. @default 0.5 */
+  clearFrom: optional(unit(), 0.5),
+  /** Lower strong threshold; 0 admits every positive dose. @default 0.8 */
+  strongFrom: optional(unit(), 0.8),
+  /** Dose variation; 0 disables jitter. @default 0.04 */
+  jitter: optional(unit(), 0.04),
+  /** History seconds; 0 disables history. @default 15 */
+  habituationWindow: optional(seconds(), 15),
+  /** Repeat multiplier; 1 preserves dose. @default 0.8 */
+  habituationBase: optional(unit(), 0.8),
+  /** Minimum repeat multiplier; 1 preserves dose. @default 0.35 */
+  habituationFloor: optional(unit(), 0.35),
+  /** Escalation window seconds; 0 disables merging repeats. @default 2 */
+  escalationWindow: optional(seconds(), 2),
+})
+
+function naturalBandSchema(onset: number, head: number | null, overshoot: number, hold: number, release: number) {
+  return settingsObject({
+    /** Face onset seconds; 0 is immediate. */
+    faceOnsetTau: optional(seconds(), onset),
+    /** Head response seconds; null disables head recruitment, 0 is immediate. */
+    headTau: optional(nullable(seconds()), head),
+    /** Head overshoot; 0 disables overshoot. */
+    overshoot: optional(unit(), overshoot),
+    /** Face hold seconds; 0 has no hold. */
+    faceHold: optional(seconds(), hold),
+    /** Face release seconds; 0 is immediate. */
+    faceReleaseTau: optional(seconds(), release),
+  })
+}
+const slightSchema = naturalBandSchema(0.14, null, 0, 0.6, 0.35)
+const clearSchema = naturalBandSchema(0.1, 0.38, 0.08, 1.2, 0.5)
+const strongSchema = naturalBandSchema(0.07, 0.24, 0.16, 1.8, 0.7)
+const naturalBandsSchema = settingsObject({
+  /** Face-only recruitment; zero gains/holds and null head are neutral. */
+  slight: optional(slightSchema, () => parse(slightSchema, {})),
+  /** Face and head recruitment; zero gains/holds and null head are neutral. */
+  clear: optional(clearSchema, () => parse(clearSchema, {})),
+  /** Full recruitment; zero gains/holds and null head are neutral. */
+  strong: optional(strongSchema, () => parse(strongSchema, {})),
+  /** Head amplitude; 0 disables it. @default 0.12 */
+  headGain: optional(unit(), 0.12),
+  /** Body amplitude; 0 disables it. @default 0.06 */
+  bodyGain: optional(unit(), 0.06),
+  /** Energy amplitude addition; 0 preserves idle amplitude. @default 0.3 */
+  energyAmplitude: optional(unit(), 0.3),
+  /** Energy rate addition; 0 preserves idle rate. @default 0.5 */
+  energyRate: optional(unit(), 0.5),
+  /** Energy duration seconds; 0 disables the overlay. @default 2 */
+  energySeconds: optional(seconds(), 2),
+})
+const moodDynamicsSchema = settingsObject({
+  /** Valence decay seconds; 0 releases immediately. @default 45 */
+  valenceTau: optional(seconds(), 45),
+  /** Arousal decay seconds; 0 releases immediately. @default 20 */
+  arousalTau: optional(seconds(), 20),
+  /** Tension decay seconds; 0 releases immediately. @default 30 */
+  tensionTau: optional(seconds(), 30),
+  /** Slight mood dose; 0 is neutral. @default 0.15 */
+  slightGain: optional(unit(), 0.15),
+  /** Clear mood dose; 0 is neutral. @default 0.25 */
+  clearGain: optional(unit(), 0.25),
+  /** Strong mood dose; 0 is neutral. @default 0.4 */
+  strongGain: optional(unit(), 0.4),
+  /** Amplitude modulation; 0 preserves idle. @default 0.2 */
+  amplitude: optional(unit(), 0.2),
+  /** Shift-rate modulation; 0 preserves idle. @default 0.3 */
+  shiftRate: optional(unit(), 0.3),
+  /** Valence camera bias; 0 preserves gaze. @default 0.1 */
+  cameraValence: optional(unit(), 0.1),
+  /** Tension camera bias; 0 preserves gaze. @default 0.15 */
+  cameraTension: optional(unit(), 0.15),
+  /** Speech emphasis addition; 0 preserves emphasis. @default 0.1 */
+  emphasis: optional(unit(), 0.1),
+  /** Mouth form addition; 0 preserves mouth form. @default 0.08 */
+  mouthForm: optional(unit(), 0.08),
+})
+const pickerSchema = settingsObject({
+  /** Recency penalty; 0 preserves mapping weights. @default 0.8 */
+  recencyDepth: optional(unit(), 0.8),
+  /** Recency decay seconds; 0 forgets immediately. @default 8 */
+  recencyTau: optional(seconds(), 8),
+  /** Effect gate lower threshold; 0 starts gating at neutral. @default 0.5 */
+  effectGateFrom: optional(unit(), 0.5),
+  /** Effect gate upper threshold; 0 admits all positive doses. @default 0.8 */
+  effectGateTo: optional(unit(), 0.8),
+})
+const slotsSchema = settingsObject({
+  /** Fade seconds; 0 switches immediately. @default 1 */
+  defaultFadeSeconds: optional(seconds(), 1),
+  /** Speech release grace seconds; 0 adds no grace. @default 0.25 */
+  speechGrace: optional(seconds(), 0.25),
+  /** Unstarted lease lifetime seconds; 0 expires immediately. @default 10 */
+  unstartedExpiry: optional(seconds(), 10),
+  /** Maximum hold seconds; 0 prevents holding. @default 15 */
+  holdCap: optional(seconds(), 15),
+})
+const timingSchema = settingsObject({
+  /** Silence needed for a pause event; 0 is immediate. @default 0.18 */
+  pauseSeconds: optional(seconds(), 0.18),
+  /** Emphasis refractory seconds; 0 allows every onset. @default 1.2 */
+  emphasisRefractory: optional(seconds(), 1.2),
+})
+
+export const ExpressionPerformanceSettingsSchema = settingsObject({
+  /** False bypasses band recruitment. @default true */
+  bands: optional(boolean(), true),
+  /** False preserves idle without mood modulation. @default true */
+  mood: optional(boolean(), true),
+  /** False disables automatic expression selection. @default true */
+  autoExpressions: optional(boolean(), true),
+  /** False omits active-expression feedback. @default false */
+  stateFeedback: optional(boolean(), false),
+  /** Picker is the baseline decision policy. @default 'picker' */
+  decider: optional(literal('picker'), 'picker'),
+  /** Zero dose/jitter and unit habituation preserve neutral intensity. */
+  intensity: optional(intensitySchema, () => parse(intensitySchema, {})),
+  /** Zero modulation gains preserve idle motion. */
+  naturalBands: optional(naturalBandsSchema, () => parse(naturalBandsSchema, {})),
+  /** Zero mood gains preserve idle motion. */
+  moodDynamics: optional(moodDynamicsSchema, () => parse(moodDynamicsSchema, {})),
+  /** Zero recency depth preserves mapping weights. */
+  picker: optional(pickerSchema, () => parse(pickerSchema, {})),
+  /** Zero durations remove additional lifetime and fades. */
+  slots: optional(slotsSchema, () => parse(slotsSchema, {})),
+  /** Zero durations remove timing delays. */
+  timing: optional(timingSchema, () => parse(timingSchema, {})),
+})
+export type ExpressionPerformanceSettings = InferOutput<typeof ExpressionPerformanceSettingsSchema>
+export const defaultExpressionPerformanceSettings = parse(ExpressionPerformanceSettingsSchema, {})
+
+/** Invalid documents return a fresh default document and issues for the caller to log. */
+export function parseExpressionPerformanceSettings(input: unknown) {
+  const result = safeParse(ExpressionPerformanceSettingsSchema, input)
+  return result.success
+    ? { success: true as const, value: result.output }
+    : { success: false as const, value: parse(ExpressionPerformanceSettingsSchema, {}), issues: result.issues }
+}
