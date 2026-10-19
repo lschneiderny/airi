@@ -6,7 +6,7 @@ import type { RandomStream } from './random'
 
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 
-import { Emotion } from '../../../constants/emotions'
+import { naturalEmotions } from './emotions'
 
 /** Additive face offsets of emotion impulses, in the units of `NaturalFaceOutput`. */
 export interface FaceHints {
@@ -35,37 +35,6 @@ export interface HeadPulse {
 export interface Glance {
   point: GazePoint
   hold: number
-}
-
-interface EmotionSpec {
-  /** Head direction `(X yaw, Y pitch, Z roll)`; `sided` axes take a random sign shared with the glance and brow side. */
-  head: Vec3
-  sided: (0 | 1 | 2)[]
-  hints: Partial<Omit<FaceHints, 'browLY' | 'browRY'>>
-  /** Raise of one brow, on the random side. */
-  oneSidedBrow?: number
-  /** Glance target; X takes the random side. */
-  glance?: GazePoint
-}
-
-/**
- * Per-emotion directions and hints. Neutral has no entry: it does nothing.
- *
- * Directions retain the existing emotion vocabulary. Their lengths bound the head
- * displacement; body lean uses the corresponding unit direction.
- */
-const emotions: Partial<Record<ReactionEpisode['emotion'], EmotionSpec>> = {
-  [Emotion.Happy]: { head: [0, 0.9, 0.3], sided: [2], hints: { browY: 0.3, eyeSmile: 0.65, mouthForm: 0.5 } },
-  [Emotion.Sad]: { head: [0, -0.8, 0.2], sided: [2], hints: { browAngle: 0.3, mouthForm: -0.4, eyeOpen: -0.15 } },
-  [Emotion.Angry]: { head: [0, -0.4, 0], sided: [], hints: { browY: -0.4, browAngle: -0.4, mouthForm: -0.3 } },
-  [Emotion.Surprise]: { head: [0, 0.8, 0], sided: [], hints: { browY: 0.6, eyeOpen: 0.15 } },
-  [Emotion.Think]: { head: [0, 0, 0.4], sided: [2], hints: {}, oneSidedBrow: 0.2, glance: { x: 0.3, y: 0.25 } },
-  [Emotion.Awkward]: { head: [0, 0, 0.5], sided: [2], hints: { browY: 0.15, mouthForm: -0.1 }, glance: { x: 0.3, y: -0.2 } },
-  [Emotion.Question]: { head: [0, 0, 0.8], sided: [2], hints: {}, oneSidedBrow: 0.25 },
-  [Emotion.Curious]: { head: [0, 0, 0.8], sided: [2], hints: {}, oneSidedBrow: 0.25 },
-  [Emotion.Love]: { head: [0, 0.3, 0.6], sided: [2], hints: { eyeSmile: 0.5, mouthForm: 0.4 } },
-  [Emotion.Flustered]: { head: [0.4, -0.3, 0.3], sided: [0, 2], hints: { eyeSmile: 0.3, browAngle: 0.2 }, glance: { x: 0.35, y: -0.15 } },
-  [Emotion.Sleepy]: { head: [0, -0.5, 0.2], sided: [2], hints: { eyeOpen: -0.15 } },
 }
 
 /** Peak head displacement at intensity 1 (normalized units). */
@@ -155,7 +124,7 @@ export class NaturalImpulses {
 
   /** Unknown or expired escalation ids are ignored; they cannot resurrect a stale reaction. */
   trigger(episode: ReactionEpisode, at: number): { glance: Glance | null, energy: boolean } | null {
-    const spec = emotions[episode.emotion]
+    const spec = naturalEmotions[episode.emotion].impulse
     const strength = Math.max(0, Math.min(1, Number.isFinite(episode.intensity) ? episode.intensity : 0))
     if (!spec || strength === 0)
       return null
