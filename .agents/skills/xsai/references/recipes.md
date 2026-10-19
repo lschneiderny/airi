@@ -7,7 +7,7 @@ Use this reference when the user wants code, when you are editing xsAI code, or 
 - Prefer granular `@xsai/*` imports in new examples.
 - Switch to the umbrella `xsai` package only when the repo already uses it or the user explicitly wants one dependency.
 - Keep `baseURL` and `model` explicit.
-- Include `apiKey` for hosted providers. In Node.js examples, prefer `process.env`. In browser examples, prefer `localStorage`. For local or proxy endpoints, only include it if the target actually requires one. Do not hardcode secrets.
+- Obtain credentials through the existing provider configuration or main-process transport. Include `apiKey` only when the endpoint requires one. Do not hardcode secrets or introduce a new storage mechanism.
 - Preserve the repo's existing schema library instead of swapping between Zod, Valibot, ArkType, or Effect without a reason.
 
 ## Minimal text generation
@@ -36,7 +36,7 @@ const { text } = await generateText({
 
 Use this as the default starting point for simple scripts, tests, and one-shot helpers.
 
-These examples use `node:process` because they target Node.js. For browser examples, prefer reading the API key from `localStorage` instead of hardcoding it.
+These standalone examples use `node:process` because they target Node.js. In AIRI, adapt them to the owning provider configuration and runtime boundary.
 
 ## Streaming text with tools
 

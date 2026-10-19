@@ -13,12 +13,6 @@
       "skillPath": "skills/eventa/SKILL.md",
       "computedHash": "cb121943dd8310db1e49f8bed53a6891735f8f481aa2c91024a859db85b3df0d"
     },
-    "pnpm": {
-      "source": "antfu/skills",
-      "sourceType": "github",
-      "skillPath": "skills/pnpm/SKILL.md",
-      "computedHash": "2ec08c851c6f901d4ed72c21b826416ed074a487db65662b36249418afd728bf"
-    },
     "xsai": {
       "source": "moeru-ai/xsai",
       "sourceType": "github",

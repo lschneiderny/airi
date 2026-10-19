@@ -1,7 +1,7 @@
 interface:
   display_name: xsAI
-  short_description: Use xsAI for minimal OpenAI-compatible code
-  default_prompt: Use $xsai to choose the smallest xsAI package and build a runnable OpenAI-compatible example.
+  short_description: Maintain AIRI xsAI provider integrations
+  default_prompt: Use $xsai to update an existing AIRI integration while preserving provider configuration and runtime boundaries.
 
 policy:
   allow_implicit_invocation: true

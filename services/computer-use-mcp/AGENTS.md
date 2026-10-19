@@ -1,66 +1,59 @@
-# computer-use-mcp Agent Notes
+# Computer-use MCP
 
-Scope: `services/computer-use-mcp/**`
+## OVERVIEW
+AIRI's deterministic execution substrate. Score: 15. Follow the [root guide](../../AGENTS.md) and [runtime guide](src/AGENTS.md).
 
-## Mission
+## WHERE TO LOOK
+| Task | Location |
+| --- | --- |
+| Public API and stdio startup | `src/index.ts`, `src/server.ts`, `src/bin/run.ts` |
+| Execution, policy, approvals | `src/server/`, `src/policy.ts`, `src/session.ts` |
+| Workflow state and recovery | `src/workflows/`, `src/state.ts`, `src/strategy.ts` |
+| Remote Linux execution | `src/runner/`, `src/remote/`, `src/bin/bootstrap-remote.ts` |
+| Terminal handoff | `terminal-lane-status.md` |
+| Planning and memory boundaries | `planning-orchestration-contract.md`, `coding-plast-mem-bridge-contract.md` |
+| CLI and experiment boundaries | `airi-cli-architecture.md`, `mimic-baseline-training-boundary.md` |
+| Observation extension | `chrome-extension/README.md` |
 
-`computer-use-mcp` is AIRI's deterministic execution substrate.
-
+## CONVENTIONS
 - AIRI owns planning, chat UX, approval UX, provider integration, and MCP attachment.
-- `computer-use-mcp` owns execution primitives, workflow orchestration, terminal/browser/desktop surfaces, trace, audit, and safety checks.
-- Treat terminal, browser, editor, and desktop operations as one task system. Do not split them into disconnected demos.
+- This service owns execution primitives, workflow orchestration, terminal/browser/desktop surfaces, trace, audit, and safety checks.
+- Keep provider-specific behavior in AIRI or `packages/stage-ui`.
+- Treat terminal, browser, editor, and desktop operations as one task system.
+- Read `terminal-lane-status.md` before terminal work. Update it with terminal behavior changes.
+- Use `pnpm -F @proj-airi/computer-use-mcp test`, `typecheck`, or `build` for package checks.
+- Release gates live in `src/support-matrix.ts`. Only `product-supported` entries establish external support claims.
 
-## Agent Collaboration Policy
+## LOCAL COLLABORATION
+- This policy applies only here. Do not promote it into the root guide.
+- Default to GPT-5.5 Controller with Spark / mini read-only workers for non-trivial work.
+- GPT-5.5 owns boundaries, conflicting evidence, patch decisions, verification commands, and final judgment.
+- Use Spark broadly for parallel code-path exploration, test-gap discovery, diff review, CI triage, and PR-split planning.
+- If Spark is unavailable or exhausted, use GPT-5.4-mini for those read-only roles.
+- Workers must provide file paths and evidence. Unsupported claims remain guesses.
+- Workers stay read-only unless the user explicitly requests a writer.
+- This includes runtime, verification gates, coding runners, MCP permissions, action executors, and critical state machines.
+- The main thread must verify findings against code and tests before edits. Runtime and test logs outrank model conclusions.
+- Copilot is an external worker pool for review, candidate PRs, test-gap issues, and documentation cleanup.
+- GPT-5.5 review is required before trusting or merging Copilot output.
+- Prefer Copilot `gpt-5.4-mini` at high effort. Escalate hard reviews to `gpt-5.3-codex` at high effort.
+- Use Copilot GPT-5 mini and GPT-4.1 broadly for low-risk triage, searches, test-gap brainstorming, documentation checks, and review opinions.
+- Keep those models in plan/review mode. GPT-5.5 must verify their proposals before local edits.
+- Gemini CLI is a local external research/review worker for impact scans, diffs, failure logs, third-party review, and instruction checks.
+- Let Gemini choose its model unless the task requires a pin. If quota is exhausted, route the work to Copilot.
+- Never let Gemini edit this worktree concurrently with Codex.
+- Gemini candidate writes require a separate worktree and GPT-5.5 review before adoption.
+- Separate Copilot governance, `.codex/` configuration, GitHub labels, and business/runtime changes into separate commits or PRs.
+- Contributor-workflow PRs can contain related `.codex/` decisions.
 
-This policy is scoped to `services/computer-use-mcp/**`. Do not copy it into the
-monorepo-level `AGENTS.md` as a global AIRI rule: other packages may not have
-the same runtime risk profile, Spark agent setup, or review workflow.
-
-Use `GPT-5.5 Controller + Spark / mini Read-only Worker Pool` as the default
-shape for non-trivial work in this package.
-
-- GPT-5.5 owns problem boundaries, conflicting evidence resolution, patch decisions, verification commands, and final judgment.
-- Spark agents should be used more aggressively for read-only parallel work: code-path exploration, test-gap discovery, current-diff review, CI failure triage, and PR-split planning.
-- If Spark is unavailable or quota-exhausted, use the GPT-5.4-mini read-only fallback workers for the same exploration, test-gap, and diff-review roles.
-- Spark output must include concrete file paths and evidence. Treat unsupported Spark claims as guesses, not facts.
-- Spark and mini workers are read-only by default. Do not let them write runtime, verification gate, coding runner, MCP permission-boundary, action-executor, or critical state-machine code unless the user explicitly asks for a writer agent.
-- The main thread must re-check Spark findings against code/tests before editing. Test and runtime logs outrank every model conclusion.
-- Keep `.codex/` agent configuration decisions separate from business-code PRs unless the PR is explicitly about contributor workflow.
-- Treat GitHub Copilot as an external worker pool only: external review, candidate PRs, test-gap issues, and documentation cleanup. Do not trust or merge Copilot output without GPT-5.5 review.
-- Prefer Copilot `gpt-5.4-mini` with high effort for routine external-worker tasks. Escalate hard Copilot-side reviews to `gpt-5.3-codex` with high effort.
-- Use Copilot GPT-5 mini and GPT-4.1 aggressively for low-risk, high-frequency external work: broad file triage, repeated search, test-gap brainstorming, docs consistency checks, low-risk cleanup proposals, and extra diff-review opinions.
-- Keep Copilot GPT-5 mini / GPT-4.1 in plan/review mode by default. They can propose patches or commands, but GPT-5.5 must verify against repository facts before any local edit is made.
-- Treat Gemini CLI as a local external research/review worker only: large-context impact scanning, diff review, test-failure log analysis, Copilot PR third-party review, and documentation/instruction consistency checks.
-- Let Gemini CLI choose its model unless there is a task-specific reason to pin one. Use Gemini while its daily quota is available; if it is exhausted, route the external-worker task to Copilot instead.
-- Do not let Gemini CLI edit the same worktree concurrently with Codex. If Gemini needs to write candidate code, use a separate worktree and require GPT-5.5 review before adopting any patch.
-- Keep Copilot governance files, `.codex/` configuration, GitHub labels, and business/runtime changes in separate commits or PRs.
-
-## Terminal Lane Handoff
-
-- Read [`terminal-lane-status.md`](terminal-lane-status.md) before you continue terminal lane work.
-- If you change terminal lane behavior, update that file in the same change.
-
-## Boundary Reminder
-
-- Keep provider-specific behavior in AIRI / `packages/stage-ui/**`.
-- Keep OS-executor and workflow orchestration logic here.
-- Do not expand this workstream into browser, native click/type/press, or VS Code productization until terminal lane is actually closed.
-
-## Agent Operating Guardrails
-
-- Keep changes narrow and evidence-backed.
-- Keep agent configuration changes separate from runtime logic changes. Update the documentation that describes the changed code, such as `terminal-lane-status.md`, in the same change.
-- Do not touch desktop overlay, Electron bridge, Chrome extension, MCP handler registration, workspace memory, verification gate, or shell guard unless the task explicitly requires it.
-- Keep planning, archive eligibility, compaction text, provider message emission, and runner semantics separate unless evidence requires a cross-layer change.
-- Prefer pure helpers for shared contracts.
-- Add regression tests for boundary behavior.
-- Do not broaden refactors without evidence.
-- Do not treat parser-level coverage as proof that projected provider messages are valid; add projector-level tests when the final message shape is the contract.
-
-## Agent Report Checklist
-
-- Exact files changed.
-- Exact test command.
-- Exit code.
-- Relevant pass/fail output.
-- Remaining risks and why they are out of scope.
+## ANTI-PATTERNS
+- Do not split terminal/browser/editor/desktop work into disconnected demos.
+- Do not productize browser, native click/type/press, or VS Code before the terminal lane closes.
+- Do not touch desktop overlay, Electron bridge, Chrome extension, or MCP registration without explicit task scope.
+- Workspace memory, verification gates, and shell guards also require explicit task scope.
+- Keep planning, archive eligibility, compaction, provider emission, and runner semantics separate unless evidence requires crossing layers.
+- Keep changes narrow and evidence-backed. Do not broaden refactors without evidence.
+- Keep agent configuration separate from runtime changes. Update code documentation with the behavior it describes.
+- Prefer pure helpers for shared contracts. Add regression tests for boundary behavior.
+- Parser coverage does not prove valid provider messages. Test projectors when final message shape is the contract.
+- Report exact changed files, test commands, exit codes, relevant pass/fail output, and out-of-scope risks.

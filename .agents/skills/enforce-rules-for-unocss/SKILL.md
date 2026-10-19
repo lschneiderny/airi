@@ -34,8 +34,8 @@ Apply these rules to every affected UI file in AIRI.
 ## Build on Shared UI Primitives
 
 - Build primitives on `@proj-airi/ui`, which is based on reka-ui, instead of raw DOM controls.
-- Read `docs/ai/context/ui-components.md` for the component API and `packages/ui/src/components/Form` for implementation patterns.
-- When adding or updating a component in `packages/ui`, update `docs/ai/context/ui-components.md` with its description, props, slots, and emits.
+- Read `docs/assets/ai/context/ui-components.md` for the component API and `packages/ui/src/components/Form` for implementation patterns.
+- When adding or updating a component in `packages/ui`, update `docs/assets/ai/context/ui-components.md` with its description, props, slots, and emits.
 - Use Iconify icon sets instead of bespoke SVGs.
 
 ## Preserve Theme Behavior

@@ -1,6 +1,20 @@
 # i18n Guide
 
-Scope: `packages/i18n/**`, and every string that a user sees. The root `AGENTS.md` gives the rules for which locale files to edit.
+Scope: `packages/i18n/**`, and every string that a user sees. The [root guide](../../AGENTS.md) gives locale-edit rules and task skills.
+
+## OVERVIEW
+
+Locale catalogs and the Crowdin glossary. Score: 6. Existing domain guidance remains maintained.
+
+## WHERE TO LOOK
+
+| Task | Location | Notes |
+| --- | --- | --- |
+| Approved product terms | `glossary/terms.yaml` | Read before changing interface copy |
+| Glossary validation | `glossary/schema.ts` | Fields map to TBX elements |
+| Crowdin export | `glossary/build-tbx.ts` | `pnpm -F @proj-airi/i18n glossary:build` |
+| Runtime locale selection | `src/index.ts` | Remapping and startup fallback serialization |
+| Locale namespaces | `src/locales/` | YAML catalogs assembled by TypeScript indexes |
 
 ## Glossary
 
@@ -16,6 +30,8 @@ Scope: `packages/i18n/**`, and every string that a user sees. The root `AGENTS.m
 
 - A translator who reads only the source string chooses the wrong word.
 - Two translators choose different words, and both words are correct.
+
+## ANTI-PATTERNS
 
 **Do not add a term when:**
 

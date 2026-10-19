@@ -2,6 +2,7 @@
 
 Skills provide task-specific instructions. They do not install tools or enable application features.
 Load only the skill for the current task and the references needed for that task.
+This personal fork keeps local development workflows, not upstream publishing or translation maintenance.
 
 ## Project rules and diagnostics
 
@@ -24,19 +25,13 @@ Load only the skill for the current task and the references needed for that task
 | `use-vishot` | Screenshot evidence. Load the Web, Electron, Capacitor, input-file, or AIRI reference as needed. |
 | `eventa` | Project event and RPC contracts. Check the installed dependency when API details differ. |
 | `xsai` | Existing xsAI integration work. |
-| `pnpm` | Workspace configuration and dependency maintenance, not routine script execution. |
-
-## Maintainer workflows
-
-| Skill | Use |
-| --- | --- |
-| `create-pr` | Requested PR preparation and publication. Includes the attachment procedure and upload script. |
-| `release-note-writer` | Requested release notes. Not required for ordinary development. |
-| `enforce-rules-for-i18n` | Crowdin maintenance only. Configure the fork's project ID before using upstream defaults. |
 
 Generic Vue, Pinia, VueUse, UnoCSS, and bundler tutorials are not vendored as skills.
 Use installed dependency types, existing repository code, and official documentation for API details.
 Keep project-specific conventions in the retained rule skills.
+For workspace maintenance, inspect `package.json`, `pnpm-workspace.yaml`, and existing patches before changing dependency configuration.
+For translation changes, follow `packages/i18n/AGENTS.md`.
+PR publishing, GitHub attachment uploads, release notes, and Crowdin batch maintenance are not repository skills.
 
 `skills-lock.json` records imported skill sources. Local workflows are maintained in this repository.
 No tool, application dependency, or runtime feature was removed with the tutorial skills.
