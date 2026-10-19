@@ -29,6 +29,9 @@ export class NaturalBlinkScheduler {
    */
   enabled = true
 
+  /** Scales newly drawn open intervals, not lid timing or double-blink gaps. @default 1 */
+  intervalScale = 1
+
   private time = 0
   private phase: Phase = 'open'
   private phaseStart = 0
@@ -99,6 +102,6 @@ export class NaturalBlinkScheduler {
   }
 
   private drawInterval() {
-    return 0.6 + 4 * Math.exp(0.5 * gaussian(this.random))
+    return (0.6 + 4 * Math.exp(0.5 * gaussian(this.random))) * this.intervalScale
   }
 }

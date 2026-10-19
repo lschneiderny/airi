@@ -37,6 +37,9 @@ export class NaturalBreathLayer {
   /** Set by the facade from voice activity. @default false */
   speaking = false
 
+  /** Scales the wandering period without changing its random process. @default 1 */
+  periodScale = 1
+
   private logPeriod = 0
   private phase = 0
   private scale = 1
@@ -63,7 +66,7 @@ export class NaturalBreathLayer {
     if (next < logPeriodLimits.min)
       next = 2 * logPeriodLimits.min - next
     this.logPeriod = next
-    this.phase = (this.phase + 2 * Math.PI * dt / this.period) % (2 * Math.PI)
+    this.phase = (this.phase + 2 * Math.PI * dt / (this.period * this.periodScale)) % (2 * Math.PI)
     const target = this.speaking ? speakingScale : 1
     this.scale = target + (this.scale - target) * Math.exp(-dt / amplitudeTau)
     const wave = this.scale * Math.sin(this.phase)

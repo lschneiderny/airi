@@ -61,6 +61,9 @@ export class SpeechOnsetDetector {
  * Time is seconds of active motion; the facade steps it on the fixed grid.
  */
 export class NaturalSpeechEmphasis {
+  /** Scales accepted pulse magnitudes after sampling; timing and draws are unchanged. @default 1 */
+  sizeScale = 1
+
   /** Increments per accepted emphasis, so callers and diagnostics can count them. */
   emphasisCount = 0
   /** Increments per detected onset (up-cross of 0.10), before the refractory period and acceptance sampling. */
@@ -92,7 +95,7 @@ export class NaturalSpeechEmphasis {
   private emphasize() {
     this.lastEmphasisAt = this.time
     this.emphasisCount++
-    const magnitude = size.min + (size.max - size.min) * this.random()
+    const magnitude = (size.min + (size.max - size.min) * this.random()) * this.sizeScale
     const tau = tauRange.min + (tauRange.max - tauRange.min) * this.random()
     let peak: Vec3
     if (this.random() < nodShare)
