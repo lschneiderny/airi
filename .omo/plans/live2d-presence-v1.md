@@ -21,7 +21,7 @@ Your next move: review the completed plan and its review receipt, then start exe
 
 ---
 
-> TL;DR (machine): Medium effort, medium risk, five implementation tasks, four final checks, opt-in Natural motion with cursor coexistence.
+> TL;DR (machine): Medium effort, medium risk, eight implementation tasks, four final checks, opt-in Natural motion with cursor coexistence.
 
 ## Scope
 ### Affected user and ideal state
@@ -401,14 +401,17 @@ If this mechanism cannot satisfy the rubric, report the concrete limitation inst
 
 ## Execution strategy
 ### Parallel execution waves
-One implementation wave contains five tasks with explicit dependencies, followed by final verification.
+One implementation wave contains eight tasks with explicit dependencies, followed by final verification.
 The scope is intentionally small. Do not split it into new packages to increase parallelism.
 
 - Task 1: deep-low, pure temporal mechanism and its deterministic tests.
 - Task 2: deep-low, renderer integration after Task 1.
-- Task 3: visual-engineering, settings and English copy after Task 2.
+- Task 6: quick, remove newly observed controller-test assertion overhead after the Task 2 producer commit.
+- Task 7: quick, correct local evidence lint before the final Task 2 gate.
+- Task 3: visual-engineering, settings and English copy after Tasks 2 and 6.
 - Task 4: deep-low, ownership and lifecycle regression coverage after Tasks 2 and 3.
-- Task 5: lead, actual desktop motion QA and bounded tuning after Task 4.
+- Task 8: deep-low, align the isolated QA source with the current workspace before native acceptance.
+- Task 5: lead, actual desktop motion QA and bounded tuning after Tasks 4 and 8.
 - Do not parallelize tasks that edit Model.vue, Live2D.vue, or the same settings store.
 - Independent review-only final checks can run in parallel after all implementation tasks.
 - The execution lead owns manual QA, artifact inspection, and the final completion judgment.
@@ -420,16 +423,19 @@ Do not load unrelated skills or spawn an implementer during this planning sessio
 | Todo | Depends on | Blocks | Can parallelize with |
 | --- | --- | --- | --- |
 | 1 | None | 2 | None |
-| 2 | 1 | 3,4 | None |
-| 3 | 2 | 4 | None |
+| 2 | 1,6,7 for final gate | 3,4 | None |
+| 6 | 1; Task 2 producer available | 2,3,4 | None |
+| 7 | 1; Task 2 evidence available | 2,4 | None |
+| 3 | 2,6 | 4 | None |
 | 4 | 2,3 | 5 | None |
-| 5 | 4 | F1-F4 | None |
-| F1-F4 | 1-5 | Final delivery | Each other, read-only except lead QA |
+| 8 | 4 | 5 | None |
+| 5 | 4,8 | F1-F4 | None |
+| F1-F4 | 1-8 | Final delivery | Each other, read-only except lead QA |
 
 ## Todos
 > Implementation + Test = ONE todo. Never separate.
 <!-- APPEND TASK BATCHES BELOW THIS LINE WITH edit/apply_patch - never rewrite the headers above. -->
-- [ ] 1. Implement the local Natural motion controller and deterministic tests
+- [x] 1. Implement the local Natural motion controller and deterministic tests
   - Recommended task executor category: deep-low - the temporal contract is specified above and can be checked numerically.
   - What to do: add `natural-motion.ts` and `natural-motion.test.ts` under stage-ui-live2d composables.
   - Implement the posture scheduler, exact followers, cursor target changes, suspension, and normalized eye output.
@@ -447,7 +453,39 @@ Do not load unrelated skills or spawn an implementer during this planning sessio
   - Evidence: `.omo/evidence/live2d-presence-v1/task-1-controller.txt`.
   - Commit: Y, `feat(stage-ui-live2d): add natural posture and gaze controller`.
 
-- [ ] 2. Compose Natural before SDK physics with explicit lifecycle ownership
+- [x] 6. Remove controller test timing sensitivity without weakening coverage
+  - Recommended task executor category: quick - a bounded test-only change removes repeated matcher overhead.
+  - Discovered during Task 2: the new controller partition test exceeded its 5000 ms limit under concurrent check load.
+  - What to do: change only `natural-motion.test.ts` to aggregate finite/bounds observations across every existing sampled frame.
+  - Keep all frame schedules, timestamps, pose axes, bounds, trajectory comparisons, suspension cases, and tolerance unchanged.
+  - Assert the aggregate after sampling instead of constructing two Vitest matchers for every value of every frame.
+  - Must NOT do: raise timeouts, reduce frames, remove assertions' meaning, skip tests, or alter production code.
+  - Closes: a flaky-tests regression introduced by Task 1.
+  - Parallelization: implementation wave, blocked by 1 and the Task 2 producer commit, blocks final Task 2 verification and Tasks 3 and 4.
+  - References: `natural-motion.test.ts`, `task-2-adapter.md` timing-failure evidence, and the original Task 1 probe.
+  - QA happy: run the unchanged targeted controller test command and the direct-source probe.
+  - QA edge: run the complete default stage-ui-live2d suite while its package typecheck runs, matching the observed contention scenario.
+  - Binary PASS: all tests and probe assertions pass in one run, with the original timeout and coverage intact.
+  - Capture before/after test duration as supporting evidence, not a new timing assertion.
+  - Evidence: `.omo/evidence/live2d-presence-v1/task-6-test-runtime.md`.
+  - Commit: Y, `test(stage-ui-live2d): remove natural motion matcher overhead`.
+
+- [x] 7. Correct local QA evidence lint without suppressions
+  - Recommended task executor category: quick - format three local evidence artifacts without changing production behavior.
+  - Discovered during Task 2: root lint reports 16 errors in task-1-probe.ts, task-2-probe.ts, and task-1-verified.md.
+  - What to do: use stdout writes for probe JSON, add the required class-member spacing, and pretty-format the recorded JSON block.
+  - Keep all probe assertions, output data, command receipts, and historical failures intact.
+  - Must NOT do: suppress lint rules, ignore the evidence directory, delete a failing artifact, or modify product code.
+  - Closes: local evidence lint failures introduced by this execution.
+  - Parallelization: implementation wave, blocked by 1 and existing Task 2 producer evidence, blocks final Task 2 verification and Task 4.
+  - References: task-2-adapter.md recovered root lint locations.
+  - QA happy: run both actual Bun probes and scoped ESLint on the three evidence files.
+  - QA edge: run the original root pnpm lint command with no new ignore or suppression.
+  - Binary PASS: both probes preserve their asserted results and root lint exits zero, with unrelated existing warnings reported.
+  - Evidence: .omo/evidence/live2d-presence-v1/task-7-evidence-lint.md.
+  - Commit: N, local evidence remains uncommitted.
+
+- [x] 2. Compose Natural before SDK physics with explicit lifecycle ownership
   - Recommended task executor category: deep-low - integration follows the verified SDK order and existing lifecycle.
   - What to do: add `natural-motion-adapter.ts` and `natural-motion-adapter.test.ts`.
   - Update Model.vue, Live2D.vue, and live2d.ts only where the approved driver contract requires it.
@@ -474,7 +512,7 @@ Do not load unrelated skills or spawn an implementer during this planning sessio
   - Evidence: `.omo/evidence/live2d-presence-v1/task-2-adapter.txt`.
   - Commit: Y, `feat(stage-ui-live2d): integrate natural motion ownership`.
 
-- [ ] 3. Expose opt-in Natural and its cursor toggle in shared settings
+- [x] 3. Expose opt-in Natural and its cursor toggle in shared settings
   - Recommended task executor category: visual-engineering - this changes a shared settings interaction and layout.
   - What to do: update shared model-settings/live2d.vue, its browser test, and English settings.yaml.
   - Add Natural to the existing selector and show the Natural-only cursor toggle.
@@ -484,7 +522,7 @@ Do not load unrelated skills or spawn an implementer during this planning sessio
   - Document Natural's scope, the retained old modes, and its model-physics limitation there.
   - Must NOT do: add tuning sliders, change other locales, redesign settings, or restore unrelated deleted documentation.
   - Closes: GAP-2.
-  - Parallelization: implementation wave, blocked by 2, blocks 4.
+  - Parallelization: implementation wave, blocked by 2 and 6, blocks 4.
   - References: shared live2d.vue:51-62,354-450; live2d.ts:4-65; live2d.test.ts:27-72; existing live2d.browser.test.ts.
   - QA happy: `pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenarios/settings/model-settings/live2d.browser.test.ts -t "selects Natural and preserves mode settings"`.
   - QA edge: the same command with `-t "keeps natural controls usable at narrow width"`.
@@ -494,7 +532,7 @@ Do not load unrelated skills or spawn an implementer during this planning sessio
   - Evidence: `.omo/evidence/live2d-presence-v1/task-3-settings.txt` and `task-3-settings-{desktop,mobile}-{light,dark}.png`.
   - Commit: Y, `feat(stage-ui): expose natural Live2D motion settings`.
 
-- [ ] 4. Verify adjacent motion behavior and complete package checks
+- [x] 4. Verify adjacent motion behavior and complete package checks
   - Recommended task executor category: deep-low - this checks observable integration regressions against existing contracts.
   - What to do: extend existing motion tests only where the new ownership path leaves a regression uncovered.
   - Cover rapid Natural/Universal/MAGIC changes, manual spring release, non-idle clips, hidden/resume, and model disposal.
@@ -509,6 +547,20 @@ Do not load unrelated skills or spawn an implementer during this planning sessio
   - Binary PASS: all new and related regressions pass, diagnostics are clean, and all failures outside scope are identified with their existing cause.
   - Evidence: `.omo/evidence/live2d-presence-v1/task-4-checks.txt`.
   - Commit: Y if test changes are needed, `test(stage-ui-live2d): cover natural motion handoffs`; otherwise record no code change.
+
+- [x] 8. Align isolated QA with current workspace version
+  - Executor: deep-low. The user identified the launched baseline as the wrong version.
+  - Read the current main workspace without editing, staging, committing, or stashing its changes.
+  - Overlay its current apps/packages source changes into the existing isolated QA checkout.
+  - Preserve all thirteen Natural feature paths and merge the separate English locale hunks.
+  - Include required untracked source files. Exclude private assets, caches, and unrelated tooling/document deletions.
+  - Record every copied path, source hash, overlap resolution, and excluded path in local evidence.
+  - Keep the overlay uncommitted and distinguish it from feature-owned changes during final landing.
+  - Verify source hashes, unchanged feature hunks, relevant tests, and combined workspace typechecks.
+  - Independent verification must confirm the snapshot before native QA resumes.
+  - Evidence: .omo/evidence/live2d-presence-v1/task-8-workspace-alignment.md.
+  - Blocks task 5. Prior module receipts remain historical evidence, not combined-version acceptance.
+  - Commit: N. Never commit the user's existing changes.
 
 - [ ] 5. Run both-rig desktop motion QA and tune only demonstrated defects
   - Recommended task executor category: visual-engineering - the execution lead performs this real-surface task and judges the rendered result.
