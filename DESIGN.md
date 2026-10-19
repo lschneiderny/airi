@@ -18,7 +18,7 @@ This document follows the section structure of the [Google DESIGN.md specificati
 
 The optional YAML token block is omitted. AIRI's dynamic palette and existing component values remain authoritative in their source files.
 
-API details belong in the [component reference](./docs/ai/context/ui-components.md). Source limitations and delivery procedures belong in the [implementation notes](./docs/ai/context/design-implementation.md).
+API details belong in the [component reference](./docs/assets/ai/context/ui-components.md). Source limitations and delivery procedures belong in the [implementation notes](./docs/assets/ai/context/design-implementation.md).
 
 ## Colors
 

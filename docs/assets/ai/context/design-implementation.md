@@ -1,6 +1,6 @@
 # Design Implementation Notes
 
-The [AIRI Design Guide](../../../DESIGN.md) defines visual identity and reuse rules. This document records source findings and delivery procedures.
+The [AIRI Design Guide](../../../../DESIGN.md) defines visual identity and reuse rules. This document records source findings and delivery procedures.
 
 ## Format Alignment
 
@@ -28,7 +28,7 @@ These findings come from source inspection. This guide does not change runtime c
 
 Address keyboard focus and field sizing first. Then consolidate repeated visual parameters and check business pages. Each runtime change needs behavior and visual evidence.
 
-For theme switching, reuse [useTheme](../../../packages/ui/src/composables/use-theme.ts). The UnoCSS rules explicitly permit this composable despite its `disableTransition: true` setting.
+For theme switching, reuse [useTheme](../../../../packages/ui/src/composables/use-theme.ts). The UnoCSS rules explicitly permit this composable despite its `disableTransition: true` setting.
 
 For direct `useDark` calls, set `disableTransition: false` as required by the repository rules.
 
@@ -38,12 +38,11 @@ The repository already includes implementation, review, and screenshot skills. T
 
 | Task | Entry point | Purpose |
 | --- | --- | --- |
-| Choose visual patterns and components | The design guide and the [component reference](../../../docs/ai/context/ui-components.md) | Understand AIRI design conventions and APIs |
-| Write component styles | [enforce-rules-for-unocss](../../../.agents/skills/enforce-rules-for-unocss/SKILL.md) | Reuse controls, organize utilities, and preserve theme behavior |
-| Write Vue components | [vue-best-practices](../../../.agents/skills/vue-best-practices/SKILL.md) and [TypeScript rules](../../../.agents/skills/enforce-rules-for-typescript/SKILL.md) | Define component boundaries, state, and implementation practices |
-| Review interaction and accessibility | [web-design-guidelines](../../../.agents/skills/web-design-guidelines/SKILL.md) | Supply review checks alongside AIRI visual conventions |
-| Capture visual evidence | [use-vishot](../../../.agents/skills/use-vishot/SKILL.md) | Capture screenshots through the appropriate runtime scenarios |
-| Publish a UI PR | [create-pr](../../../.agents/skills/create-pr/SKILL.md) | Review affected behavior and provide comparable screenshots |
+| Choose visual patterns and components | The design guide and the [component reference](ui-components.md) | Understand AIRI design conventions and APIs |
+| Write component styles | [enforce-rules-for-unocss](../../../../.agents/skills/enforce-rules-for-unocss/SKILL.md) | Reuse controls, organize utilities, and preserve theme behavior |
+| Write Vue components | [TypeScript rules](../../../../.agents/skills/enforce-rules-for-typescript/SKILL.md) | Define component boundaries, state, and implementation practices |
+| Review interaction and accessibility | The design guide and checks below | Check focus, touch targets, themes, and input states |
+| Capture visual evidence | [use-vishot](../../../../.agents/skills/use-vishot/SKILL.md) | Capture screenshots through the appropriate runtime scenarios |
 
 The root `AGENTS.md` routes UI design work to the design guide. Skills provide implementation and review procedures without duplicating the design reference.
 
@@ -54,10 +53,10 @@ The root `AGENTS.md` routes UI design work to the design guide. Skills provide i
 3. When a shared component changes, update its reference and stories.
 4. Check light mode, dark mode, custom hues, long text, loading, and disabled states.
 5. Check keyboard focus, touch targets, the software keyboard, and safe areas.
-6. Record results and unverified items through the PR workflow.
+6. Record local check results, screenshots, and unverified items in the task handoff.
 
 Run `pnpm dev:ui` for component previews. Histoire lives in `packages/stage-ui`.
 
-Start with the [button stories](../../../packages/stage-ui/src/components/misc/button.story.vue), [input stories](../../../packages/stage-ui/src/components/form/input/input.story.vue), [select stories](../../../packages/stage-ui/src/components/form/select/select.story.vue), and [swipe action stories](../../../packages/stage-ui/src/components/misc/swipe-actions.story.vue).
+Start with the [button stories](../../../../packages/stage-ui/src/components/misc/button.story.vue), [input stories](../../../../packages/stage-ui/src/components/form/input/input.story.vue), [select stories](../../../../packages/stage-ui/src/components/form/select/select.story.vue), and [swipe action stories](../../../../packages/stage-ui/src/components/misc/swipe-actions.story.vue).
 
 Documentation changes require link and format checks. Runtime UI changes also require type checks, relevant tests, and visual acceptance. Source inspection does not replace runtime checks.
