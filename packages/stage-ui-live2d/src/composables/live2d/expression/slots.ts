@@ -45,7 +45,7 @@ export function leaseReleaseAt(lease: SlotLease, muted: boolean, settings: SlotL
   if (lease.until === 'hold' || lease.turnId === null || muted)
     at = holdAt
   else if (!lease.sawClipStart)
-    // Plan todo 14 clarification (2026-10-18): an unmuted speech lease with no clip start
+    // An unmuted speech lease with no clip start
     // waits for speech until activatedAt + max(holdSeconds, unstartedExpiry); a muted lease uses holdSeconds.
     at = lease.turnEndedAt !== null ? holdAt : Math.max(holdAt, lease.activatedAt + settings.unstartedExpiry)
   else if (lease.turnEndedAt === null)

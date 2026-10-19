@@ -166,7 +166,7 @@ const plannerSchema = settingsObject({
   /**
    * Seconds between automatic performance moments; 0 allows back-to-back changes. The face and effect
    * changes emitted by one decision share one moment and change together, while `windowMax` still
-   * counts each slot change (plan amendment to todo 23, Luke, 2026-10-18). @default 0.8
+   * counts each slot change. @default 0.8
    */
   minGap: optional(seconds(), 0.8),
   /** Budget window seconds; 0 disables the per-window cap. @default 5 */

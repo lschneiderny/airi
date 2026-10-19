@@ -716,7 +716,7 @@ describe('stage performance conductor', () => {
       expect(signals.filter(signal => signal.kind === 'deadline')).toEqual([{ kind: 'deadline', at: 12.5 }])
     })
 
-    // Probe from the todo 21 gate review (B2): the same-time pause makes the decider drop its
+    // The same-time pause makes the decider drop its
     // deadline, so the obsolete deadline must not be sent.
     it('sends no deadline that a same-time pause cancelled', () => {
       const settings = parseExpressionPerformanceSettings({ timing: { pauseSeconds: 0.25 } }).value
@@ -764,7 +764,7 @@ describe('stage performance conductor', () => {
       expect(kindsFrom(12.5)).toEqual(['speech', 'pause'])
     })
 
-    // Probe from the todo 21 gate review: one turn's clip never cancels another turn's pause, and
+    // One turn's clip never cancels another turn's pause, and
     // dispose cancels a pending pause.
     it('isolates pauses by turn and cancels them on dispose', () => {
       const { conductor, timing, advance } = createTimingConductor()

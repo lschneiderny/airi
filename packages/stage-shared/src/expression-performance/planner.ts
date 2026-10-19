@@ -30,8 +30,8 @@ export interface PlannerState extends PickerState {
  * Admits one automatic slot change at `at`, or returns null when it is over budget. A change
  * needs fewer than `windowMax` admitted slot changes in the last `window` seconds, counted per
  * slot, and at least `minGap` seconds since the previous performance moment. The changes of one
- * decision share one moment, so a face and an effect change together (plan amendment to todo 23,
- * Luke, 2026-10-18: `minGap` is measured between performance moments, not slot changes).
+ * decision share one moment, so a face and an effect change together: `minGap` is measured
+ * between performance moments, not slot changes.
  */
 function admit(budget: PlannerState['budget'], at: number, settings: DeciderContext['settings']['planner'], sameMoment: boolean): PlannerState['budget'] | null {
   const changes = budget.changes.filter(change => at - change < settings.window)
