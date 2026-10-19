@@ -210,7 +210,7 @@ export class NaturalImpulses {
     const total = emptyHints()
     for (const [id, pulse] of this.episodes) {
       const age = time - pulse.start
-      const lifetime = Math.max(15 * 1.5 * (pulse.settings.headTau ?? 0), pulse.settings.faceHold + 15 * pulse.settings.faceReleaseTau)
+      const lifetime = Math.max(pulseLifetime * 1.5 * (pulse.settings.headTau ?? 0), pulse.settings.faceHold + pulseLifetime * pulse.settings.faceReleaseTau)
       if (age > lifetime) {
         this.episodes.delete(id)
         continue
