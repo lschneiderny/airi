@@ -75,6 +75,7 @@ export const naturalEmotions: Record<PerformanceEmotion, NaturalEmotionSpec> = {
       sided: [2],
       modulation: { blinkInterval: 1, breathPeriod: 0.9, amplitude: 1.15, cameraFixation: 0.15, deskWeight: 0, nodSize: 1.3, nodAcceptance: 0.15 },
     },
+    gesture: 'laugh',
   },
   sad: {
     impulse: { head: [0, -0.8, 0.2], sided: [2], hints: { browAngle: 0.3, mouthForm: -0.4, eyeOpen: -0.15 } },
@@ -95,6 +96,7 @@ export const naturalEmotions: Record<PerformanceEmotion, NaturalEmotionSpec> = {
       sided: [],
       modulation: { blinkInterval: 1.2, breathPeriod: 0.8, amplitude: 0.85, cameraFixation: 0.1, deskWeight: 0, nodSize: 1.4, nodAcceptance: 0.1 },
     },
+    gesture: 'shake-or-drop',
   },
   think: {
     impulse: { head: [0, 0, 0.4], sided: [2], hints: {}, oneSidedBrow: 0.2, glance: { x: 0.3, y: 0.25 } },
@@ -115,6 +117,7 @@ export const naturalEmotions: Record<PerformanceEmotion, NaturalEmotionSpec> = {
       sided: [],
       modulation: { blinkInterval: 2, breathPeriod: 0.8, amplitude: 1, cameraFixation: 0.2, deskWeight: 0, nodSize: 1, nodAcceptance: 0 },
     },
+    gesture: 'recoil',
   },
   awkward: {
     impulse: { head: [0, 0, 0.5], sided: [2], hints: { browY: 0.15, mouthForm: -0.1 }, glance: { x: 0.3, y: -0.2 } },
@@ -125,6 +128,7 @@ export const naturalEmotions: Record<PerformanceEmotion, NaturalEmotionSpec> = {
       sided: [0, 2],
       modulation: { blinkInterval: 0.8, breathPeriod: 0.9, amplitude: 1.05, cameraFixation: -0.3, deskWeight: 0.15, nodSize: 0.9, nodAcceptance: 0 },
     },
+    gesture: 'sway',
   },
   question: {
     impulse: { head: [0, 0, 0.8], sided: [2], hints: {}, oneSidedBrow: 0.25 },
@@ -156,6 +160,7 @@ export const naturalEmotions: Record<PerformanceEmotion, NaturalEmotionSpec> = {
       sided: [2],
       modulation: { blinkInterval: 1.1, breathPeriod: 1, amplitude: 0.95, cameraFixation: 0.25, deskWeight: 0, nodSize: 1.1, nodAcceptance: 0.05 },
     },
+    gesture: 'tilt-in',
   },
   flustered: {
     impulse: { head: [0.4, -0.3, 0.3], sided: [0, 2], hints: { eyeSmile: 0.3, browAngle: 0.2 }, glance: { x: 0.35, y: -0.15 } },
@@ -166,6 +171,7 @@ export const naturalEmotions: Record<PerformanceEmotion, NaturalEmotionSpec> = {
       sided: [0, 2],
       modulation: { blinkInterval: 0.7, breathPeriod: 0.75, amplitude: 1.1, cameraFixation: -0.35, deskWeight: 0.25, nodSize: 0.9, nodAcceptance: 0 },
     },
+    gesture: 'look-away',
   },
   sleepy: {
     impulse: { head: [0, -0.5, 0.2], sided: [2], hints: { eyeOpen: -0.15 } },
@@ -176,5 +182,6 @@ export const naturalEmotions: Record<PerformanceEmotion, NaturalEmotionSpec> = {
       sided: [2],
       modulation: { blinkInterval: 1.6, breathPeriod: 1.35, amplitude: 0.6, cameraFixation: -0.2, deskWeight: 0.2, nodSize: 0.6, nodAcceptance: -0.25 },
     },
+    gesture: 'nod-off',
   },
 } satisfies Record<PerformanceEmotion, NaturalEmotionSpec>
