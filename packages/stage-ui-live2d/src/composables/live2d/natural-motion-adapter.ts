@@ -1,6 +1,7 @@
-import type { ExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
+import type { EmotionHold } from './expression/hold'
 import type { Live2DMotionDriver } from './live2d'
 import type { PixiLive2DInternalModel } from './motion-manager'
 import type { Live2DNaturalMotionFrame, Live2DNaturalMotionPose } from './natural-motion'
@@ -41,6 +42,10 @@ export interface Live2DNaturalMotionAttention {
   clipOwnedIds: ReadonlySet<string>
   /** Host emotion queue; the adapter empties it on every composition. */
   pendingEmotions: NaturalEpisode[]
+  /** The emotion held on the face now; ignored (never kept) while Natural is inactive. */
+  heldEmotion: EmotionHold | null
+  /** The model's per-emotion strength multipliers; missing emotions use 1. */
+  emotionStrengths: Partial<Record<PerformanceEmotion, number>>
   cursor: { x: number, y: number } | null
   /** Host poke queue, `x` relative to the touched region's center (-1..1); emptied like `pendingEmotions`. */
   pendingPokes: { region: Live2DTouchRegion, x: number }[]
@@ -262,6 +267,9 @@ export class Live2DNaturalMotionAdapter {
 
   private compose() {
     const attention = this.attention()
+    // Strengths first: every controller setter below advances time and can start an episode that
+    // an earlier frame queued, and that episode must see this frame's per-model strengths.
+    this.controller.setEmotionStrengths(attention.emotionStrengths)
     const { driver, manualActive, springActive, exclusive, voice } = attention
     // Explicit clips never suspend Natural; the clip mask below limits what it writes.
     const active = driver === 'natural' && !exclusive
@@ -297,6 +305,7 @@ export class Live2DNaturalMotionAdapter {
         this.controller.poke(poke.region, poke.x, this.time)
     }
     this.controller.setPet(active ? attention.pet : null, this.time)
+    this.controller.setHeldEmotion(active ? attention.heldEmotion : null, this.time)
     this.controller.setCursor(attention.cursor, this.time)
     const frame = this.controller.advance(this.time)
     this.diagnosticFrames++

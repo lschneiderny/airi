@@ -39,12 +39,13 @@ function fakeScene() {
   return {
     setEmotion: vi.fn<StagePerformanceScene['setEmotion']>(),
     applySlots: vi.fn<StagePerformanceScene['applySlots']>(),
+    applyHolds: vi.fn<StagePerformanceScene['applyHolds']>(),
     onSpeech: vi.fn<StagePerformanceScene['onSpeech']>(),
     setMuted: vi.fn<StagePerformanceScene['setMuted']>(),
   }
 }
 
-function createConductor(driver: Live2DMotionDriver, scene: StagePerformanceScene = fakeScene(), settings: ExpressionPerformanceSettings = defaultExpressionPerformanceSettings, profile?: PerformanceProfile) {
+function createConductor(driver: Live2DMotionDriver, scene: StagePerformanceScene = fakeScene(), settings: ExpressionPerformanceSettings = defaultExpressionPerformanceSettings, profile?: PerformanceProfile, entries: readonly CatalogEntry[] = catalog) {
   let now = 10
   const playMotion = vi.fn<(group: string) => void>()
   const conductor = new StagePerformanceConductor({
@@ -52,7 +53,7 @@ function createConductor(driver: Live2DMotionDriver, scene: StagePerformanceScen
     driver: () => driver,
     playMotion,
     settings: () => settings,
-    catalog: () => catalog,
+    catalog: () => entries,
     seed: 7,
     clock: () => now,
     profile: () => profile,
@@ -207,6 +208,7 @@ describe('stage performance conductor', () => {
     const scene = {
       setEmotion: vi.fn<StagePerformanceScene['setEmotion']>(),
       applySlots: vi.fn((commands: SlotCommand[], now: number) => store.applySlots(commands, now)),
+      applyHolds: vi.fn<StagePerformanceScene['applyHolds']>(),
       onSpeech: vi.fn<StagePerformanceScene['onSpeech']>((event, turnId, now) => store.onSpeech(event, turnId, now)),
       setMuted: vi.fn((muted: boolean) => store.setMuted(muted)),
     }
@@ -290,6 +292,107 @@ describe('stage performance conductor', () => {
       ['effect', null],
       ['prop', null],
     ])
+  })
+
+  describe('held emotions', () => {
+    const rage = entry('rage', 'face', [{ emotion: 'angry', weight: 1, minBand: 'clear' }], { exposedToLlm: true, label: 'Rage' })
+    const heldCatalog = [...catalog, rage]
+
+    it('dispatches one episode and one hold for a mapped LLM expression under Natural', () => {
+      const scene = fakeScene()
+      const { conductor } = createConductor('natural', scene, defaultExpressionPerformanceSettings, undefined, heldCatalog)
+
+      conductor.expression('Rage', undefined, 'act', 'turn-a')
+
+      expect(scene.setEmotion.mock.calls.map(([episode]) => [episode.emotion, episode.band])).toEqual([['angry', 'clear']])
+      // The hold performs the accepted episode at the episode's own strength.
+      expect(scene.applyHolds.mock.calls).toEqual([[
+        [expect.objectContaining({ emotion: 'angry', strength: scene.setEmotion.mock.calls[0][0].intensity, turnId: 'turn-a' })],
+        10,
+      ]])
+    })
+
+    it('dispatches the hold of a Natural emotion', () => {
+      const scene = fakeScene()
+      const { conductor } = createConductor('natural', scene)
+
+      conductor.emotion('happy', 0.6, 'act', 'turn-a')
+
+      expect(scene.applyHolds.mock.calls).toEqual([[[expect.objectContaining({ emotion: 'happy', turnId: 'turn-a' })], 10]])
+    })
+
+    it.each(['universal', 'magic'] as const)('dispatches no holds or episodes under %s', (driver) => {
+      const scene = fakeScene()
+      const { conductor } = createConductor(driver, scene, defaultExpressionPerformanceSettings, undefined, heldCatalog)
+
+      conductor.expression('Rage', undefined, 'act', 'turn-a')
+      conductor.emotion('angry', 0.6, 'act', 'turn-a')
+
+      expect(scene.applyHolds).not.toHaveBeenCalled()
+      expect(scene.setEmotion).not.toHaveBeenCalled()
+    })
+
+    it.each(['universal', 'magic'] as const)('keeps the held-emotion-free slot history under %s after a mapped expression', (driver) => {
+      const run = (settings: ExpressionPerformanceSettings) => {
+        const scene = fakeScene()
+        const { conductor, advance } = createConductor(driver, scene, settings, undefined, heldCatalog)
+        conductor.expression('Rage', 5, 'act', 'turn-a')
+        advance(1)
+        conductor.emotion('angry', 0.6, 'act', 'turn-a')
+        advance(3)
+        conductor.emotion('angry', 0.9, 'act', 'turn-a')
+        return scene.applySlots.mock.calls.map(([commands]) => commands)
+      }
+
+      const base = run({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
+      expect(run(defaultExpressionPerformanceSettings)).toEqual(base)
+      // The sequence does drive slots, so equality is not vacuous.
+      expect(base.length).toBeGreaterThan(1)
+      expect(defaultExpressionPerformanceSettings.heldEmotions).toBe(true)
+    })
+
+    it('releases the hold on a slotless clear and keeps it on a named slot clear', () => {
+      const scene = fakeScene()
+      const { conductor } = createConductor('natural', scene, defaultExpressionPerformanceSettings, undefined, heldCatalog)
+      conductor.expression('Rage', undefined, 'act', 'turn-a')
+      scene.applyHolds.mockClear()
+
+      conductor.clearExpression('face', 'act', 'turn-a')
+      expect(scene.applyHolds).not.toHaveBeenCalled()
+
+      conductor.clearExpression(undefined, 'act', 'turn-a')
+      expect(scene.applyHolds.mock.calls).toEqual([[[expect.objectContaining({ emotion: null })], 10]])
+    })
+
+    it('dispatches nothing for an unexposed expression', () => {
+      const scene = fakeScene()
+      const { conductor } = createConductor('natural', scene, defaultExpressionPerformanceSettings, undefined, heldCatalog)
+
+      expect(conductor.expression('missing', undefined, 'act', 'turn-a')).toBeUndefined()
+
+      expect(scene.setEmotion).not.toHaveBeenCalled()
+      expect(scene.applyHolds).not.toHaveBeenCalled()
+      expect(scene.applySlots).not.toHaveBeenCalled()
+    })
+
+    it('dispatches the holds of a deferred timing decision', () => {
+      const picker = createPickerDecider()
+      const hold = { emotion: 'happy' as const, strength: 0.6, holdSeconds: 1, until: 'speech' as const, turnId: 'turn-a' }
+      vi.mocked(createDecider).mockReturnValueOnce({
+        ...picker,
+        decide: (signal, ctx, state) => {
+          const result = picker.decide(signal, ctx, state)
+          return signal.kind === 'timing' ? { ...result, decision: { ...result.decision, holds: [hold] } } : result
+        },
+      })
+      const scene = fakeScene()
+      const { conductor } = createConductor('natural', scene)
+
+      conductor.clipStart('turn-a', 'clip-1', true)
+
+      expect(scene.applyHolds.mock.calls).toEqual([[[hold], 10]])
+      conductor.dispose()
+    })
   })
 
   describe('affect recording and character profiles', () => {

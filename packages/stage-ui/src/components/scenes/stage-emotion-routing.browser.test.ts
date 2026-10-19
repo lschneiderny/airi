@@ -215,7 +215,7 @@ describe('per-signal character profiles at the Natural consumer', () => {
     render(defineComponent({
       setup() {
         api = useStagePerformanceConductor({
-          scene: () => ({ setEmotion: episode => pending.push(episode), applySlots: () => {}, onSpeech: () => {}, setMuted: () => {} }),
+          scene: () => ({ setEmotion: episode => pending.push(episode), applySlots: () => {}, applyHolds: () => {}, onSpeech: () => {}, setMuted: () => {} }),
           driver: () => 'natural',
           playMotion: () => {},
           mood: () => motion.moodState,

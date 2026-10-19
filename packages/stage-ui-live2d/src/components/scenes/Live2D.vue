@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
-import type { ExpressionPerformanceSettings, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, HoldCommand, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { Live2DEyeFocusSource } from '../../composables/live2d'
@@ -86,6 +86,7 @@ const {
   live2dRenderScale,
   live2dShadowEnabled,
   live2dNaturalEnergy,
+  live2dNaturalEmotionStrength,
 } = storeToRefs(useSettingsLive2d())
 const universalMotionEnabled = computed(() => live2dMotionDriver.value === 'universal')
 const {
@@ -160,6 +161,7 @@ defineExpose({
   /** Queues a Natural emotion impulse. Callers use it only while the Natural driver is selected. */
   setEmotion: (episode: NaturalEpisode) => live2dModelRef.value?.setEmotion(episode),
   applySlots: (commands: SlotCommand[], now: number) => live2dModelRef.value?.applySlots(commands, now),
+  applyHolds: (commands: HoldCommand[], now: number) => live2dModelRef.value?.applyHolds(commands, now),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => live2dModelRef.value?.onSpeech(event, turnId, now),
   setMuted: (muted: boolean) => live2dModelRef.value?.setMuted(muted),
   getMood: () => live2dModelRef.value?.getMood() ?? null,
@@ -202,6 +204,7 @@ defineExpose({
         :natural-auto-blink="live2dAutoBlinkEnabled"
         :performance="props.performance"
         :natural-energy="props.naturalEnergy ?? live2dNaturalEnergy"
+        :natural-emotion-strength="live2dNaturalEmotionStrength[props.modelId ?? '']"
         :performance-settings="props.performanceSettings"
         :live2d-expression-enabled="live2dExpressionEnabled"
         :live2d-shadow-enabled="live2dShadowEnabled"

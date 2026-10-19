@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Application } from '@pixi/app'
 import type { Filter } from '@pixi/core'
-import type { ExpressionPerformanceSettings, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, HoldCommand, PerformanceEmotion, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type {
   AmbientLightEnvironment,
@@ -54,6 +54,7 @@ import {
   useMotionUpdatePluginManualControl,
   useSettingsLive2d,
 } from '../../../composables/live2d'
+import { EmotionHoldPerformer, selectManualHold } from '../../../composables/live2d/expression/hold'
 import { useFitModel } from '../../../composables/live2d/fit-model'
 import { Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-motion-adapter'
 import { scoreLiveliness } from '../../../composables/live2d/natural-motion/liveliness'
@@ -108,6 +109,8 @@ const props = withDefaults(defineProps<{
   naturalAutoBlink?: boolean
   /** Expression-performance switches and tunables; Natural and the expression slots apply them on change. */
   performanceSettings?: ExpressionPerformanceSettings
+  /** This model's per-emotion strength multipliers from the user's settings; absent means 1 for every emotion. */
+  naturalEmotionStrength?: Partial<Record<PerformanceEmotion, number>>
 }>(), {
   mouthOpenSize: 0,
   nowSpeaking: false,
@@ -315,6 +318,25 @@ const screenAmbientLightSquint = toRef(() => props.screenAmbientLightSquint)
 const headTracker = createLive2DHeadTracker()
 const internalModelRef = shallowRef<PixiLive2DInternalModel>()
 const expressionStore = useExpressionStore()
+// Hold lifetimes share the conductor's monotonic clock (`performance.now() / 1000`), which stamps
+// hold commands; the adapter's accumulated motion time is a different clock.
+const holdClock = () => performance.now() / 1000
+const holdPerformer = new EmotionHoldPerformer()
+/** Stable identity for the strengths of a model without customization. */
+const defaultEmotionStrengths: Partial<Record<PerformanceEmotion, number>> = {}
+// The preview of the latest manual toggle outranks the decider's lease while it lasts. Saved
+// defaults (the rest set) are not toggles, so they never preview.
+watch(() => selectManualHold({
+  manualActive: expressionStore.manualActive,
+  restSet: expressionStore.restSet,
+  catalog: expressionStore.catalog,
+  intensity: props.performanceSettings.intensity,
+}), hold => holdPerformer.setManual(hold), { immediate: true })
+
+/** Releases the lease of the model that goes away so another model never inherits its held face. */
+function releaseHeldEmotion() {
+  holdPerformer.applyHolds([{ emotion: null, strength: 0, holdSeconds: 0, until: 'hold' }], holdClock())
+}
 const expressionController = useExpressionController({
   internalModel: internalModelRef,
 })
@@ -352,6 +374,7 @@ function destroyModel(target: Live2DModel) {
   }
   naturalMotion?.dispose()
   naturalMotion = undefined
+  releaseHeldEmotion()
   target.destroy({ texture: true, baseTexture: true })
 }
 
@@ -564,6 +587,7 @@ async function performModelLoad() {
     clipOwnedIds = new Set<string>()
     pendingNaturalEmotions.length = 0
     pendingNaturalPokes.length = 0
+    releaseHeldEmotion()
     const naturalAdapter = new Live2DNaturalMotionAdapter(
       internalModel,
       readRigProfile(),
@@ -589,6 +613,8 @@ async function performModelLoad() {
           manualBreathActive: manualBreathControl.value.active,
           clipOwnedIds,
           pendingEmotions: pendingNaturalEmotions,
+          heldEmotion: holdPerformer.current(holdClock()),
+          emotionStrengths: props.naturalEmotionStrength ?? defaultEmotionStrengths,
           cursor,
           pendingPokes: pendingNaturalPokes,
           pet: naturalPetHand,
@@ -1054,6 +1080,7 @@ watch(paused, value => naturalMotion?.setPaused(value))
 watch(() => props.performanceSettings, (settings) => {
   naturalMotion?.setPerformanceSettings(settings)
   expressionStore.setSlotSettings(settings.slots)
+  holdPerformer.setSlotSettings(settings.slots)
 }, { immediate: true })
 watch(nowSpeaking, (speaking, wasSpeaking) => {
   // A speech end before the first SDK frame has no clock value to anchor the handoff to.
@@ -1366,8 +1393,16 @@ defineExpose({
   setEmotion: (episode: NaturalEpisode) => { pendingNaturalEmotions.push(episode) },
   /** Executes decider slot commands; lifetimes are owned by the expression store. */
   applySlots: (commands: SlotCommand[], now: number) => expressionStore.applySlots(commands, now),
-  onSpeech: (event: SpeechEvent, turnId: string, now: number) => expressionStore.onSpeech(event, turnId, now),
-  setMuted: (muted: boolean) => expressionStore.setMuted(muted),
+  /** Natural only: the performer owns the lease and manual-preview fallback of the held emotion. */
+  applyHolds: (commands: HoldCommand[], now: number) => holdPerformer.applyHolds(commands, now),
+  onSpeech: (event: SpeechEvent, turnId: string, now: number) => {
+    expressionStore.onSpeech(event, turnId, now)
+    holdPerformer.onSpeech(event, turnId, now)
+  },
+  setMuted: (muted: boolean) => {
+    expressionStore.setMuted(muted)
+    holdPerformer.setMuted(muted)
+  },
   /** The Natural mood afterglow, or `null` while the Natural controller is not running. */
   getMood: () => naturalMotion?.mood ?? null,
 })

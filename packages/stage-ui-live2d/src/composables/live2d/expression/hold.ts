@@ -1,4 +1,4 @@
-import type { HoldCommand, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
+import type { CatalogEntry, ExpressionPerformanceSettings, HoldCommand, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 
 import type { SlotLease, SlotLeaseSettings, SpeechEvent } from './slots'
 
@@ -109,4 +109,30 @@ export class EmotionHoldPerformer {
     const speech = this.activeSpeech.get(lease.turnId)
     return speech ? { ...lease, sawClipStart: true, lastClipEndAt: speech.lastClipEndAt } : lease
   }
+}
+
+/**
+ * The preview hold for the most recent manual toggle that shows an emotion: ids in the rest set
+ * are saved defaults, not toggles, so they never preview. The primary mapping is the heaviest,
+ * earliest on ties, as in the decider's explicit-expression reaction. Its strength is the band
+ * intensity of the mapping's minimum band, or `null` when the settings carry none.
+ */
+export function selectManualHold(input: {
+  manualActive: readonly string[]
+  restSet: readonly string[]
+  catalog: readonly CatalogEntry[]
+  intensity: ExpressionPerformanceSettings['intensity']
+}): EmotionHold | null {
+  for (let index = input.manualActive.length - 1; index >= 0; index--) {
+    const id = input.manualActive[index]
+    if (input.restSet.includes(id))
+      continue
+    const mappings = input.catalog.find(entry => entry.id === id)?.mappings ?? []
+    const primary = mappings.reduce<CatalogEntry['mappings'][number] | null>((best, mapping) => best && best.weight >= mapping.weight ? best : mapping, null)
+    if (!primary)
+      continue
+    const strength = input.intensity[primary.minBand]
+    return Number.isFinite(strength) ? { emotion: primary.emotion, strength } : null
+  }
+  return null
 }

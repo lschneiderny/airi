@@ -1,10 +1,11 @@
-import type { HoldCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { CatalogEntry, HoldCommand } from '@proj-airi/stage-shared/expression-performance'
 
 import type { SlotLeaseSettings } from './slots'
 
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { EmotionHoldPerformer } from './hold'
+import { EmotionHoldPerformer, selectManualHold } from './hold'
 
 const settings: SlotLeaseSettings = { speechGrace: 0.25, unstartedExpiry: 10, holdCap: 15 }
 
@@ -168,5 +169,41 @@ describe('emotion hold performer', () => {
     const subject = performer()
     subject.applyHolds([hold(), hold({ emotion: 'sad', holdSeconds: Number.NaN })], 0)
     expect(subject.current(0)?.emotion).toBe('happy')
+  })
+})
+
+describe('manual preview hold selection', () => {
+  const { intensity } = defaultExpressionPerformanceSettings
+  const entry = (id: string, mappings: CatalogEntry['mappings']): CatalogEntry => ({
+    id,
+    label: id,
+    kind: 'face',
+    group: null,
+    confirmed: true,
+    exposedToLlm: true,
+    mappings,
+    fileName: `${id}.exp3.json`,
+    parameterIds: [id],
+  })
+  const catalog = [
+    entry('smile', [{ emotion: 'happy', weight: 1, minBand: 'clear' }]),
+    entry('frown', [{ emotion: 'sad', weight: 0.5, minBand: 'strong' }, { emotion: 'angry', weight: 1, minBand: 'slight' }]),
+    entry('glasses', []),
+  ]
+
+  it('previews the latest manual toggle and skips rest-set defaults', () => {
+    const restSet = ['frown']
+
+    expect(selectManualHold({ manualActive: ['smile', 'frown'], restSet, catalog, intensity })).toEqual({ emotion: 'happy', strength: intensity.clear })
+    expect(selectManualHold({ manualActive: ['frown'], restSet, catalog, intensity })).toBeNull()
+  })
+
+  it('skips toggles without emotion mappings and picks the heaviest mapping of the rest', () => {
+    expect(selectManualHold({ manualActive: ['smile', 'glasses'], restSet: [], catalog, intensity })).toEqual({ emotion: 'happy', strength: intensity.clear })
+    expect(selectManualHold({ manualActive: ['frown'], restSet: [], catalog, intensity })).toEqual({ emotion: 'angry', strength: intensity.slight })
+  })
+
+  it('has no preview when the band intensity is not a number', () => {
+    expect(selectManualHold({ manualActive: ['smile'], restSet: [], catalog, intensity: { ...intensity, clear: Number.NaN } })).toBeNull()
   })
 })

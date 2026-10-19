@@ -1,4 +1,4 @@
-import type { AffectSignal, AffectTrace, AffectTraceRequest, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, PerformanceDecision, PerformanceProfile, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
+import type { AffectSignal, AffectTrace, AffectTraceRequest, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, PerformanceDecision, PerformanceProfile, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 import type { Live2DMotionDriver } from '@proj-airi/stage-ui-live2d'
 import type { NaturalEpisode } from '@proj-airi/stage-ui-live2d/composables/live2d'
 
@@ -68,6 +68,8 @@ export function toExposedExpressions(catalog: readonly CatalogEntry[]): ExposedE
 export interface StagePerformanceScene {
   setEmotion: (episode: NaturalEpisode) => void
   applySlots: (commands: SlotCommand[], now: number) => void
+  /** Natural only: sets or releases the held emotion; `now` shares the conductor clock. */
+  applyHolds: (commands: HoldCommand[], now: number) => void
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => void
   setMuted: (muted: boolean) => void
 }
@@ -126,9 +128,11 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  * decision belongs to the decider.
  *
  * Routing per driver:
- * - Natural: decided episodes go to `scene.setEmotion`.
+ * - Natural: decided episodes go to `scene.setEmotion` and decided holds to `scene.applyHolds`.
  * - Universal and MAGIC: every recognized emotion plays its motion group, repeats and
  *   `neutral` (`Idle`) included, independently of episode filtering.
+ *   The decider context reports `heldEmotions` off there, so explicit expressions derive no
+ *   reaction state and later slot decisions match the held-emotion-free behavior.
  * - Slot commands go to `scene.applySlots` for every driver.
  *
  * Timing events: the conductor derives `TimingEvent`s from playback and sends them to the
@@ -200,14 +204,10 @@ export class StagePerformanceConductor {
     const { context, expressiveness } = this.effectiveContext(turnId)
     const scaled = Math.min(1, Math.max(0, nominal * expressiveness))
     const decision = this.decide({ kind: 'emotion', source, emotion, nominal: scaled, turnId, at }, context)
-    const scene = this.options.scene()
-    if (this.options.driver() === 'natural') {
-      for (const episode of decision.episodes)
-        scene?.setEmotion(episode)
-    }
-    else {
+    if (this.options.driver() === 'natural')
+      this.dispatchNatural(decision, at)
+    else
       this.options.playMotion(EMOTION_EmotionMotionName_value[emotion])
-    }
     this.dispatchSlots(decision, at)
   }
 
@@ -229,7 +229,9 @@ export class StagePerformanceConductor {
       return undefined
     }
     const at = this.clock()
-    this.dispatchSlots(this.decide({ kind: 'expression', source, expressionId: entry.id, holdSeconds, turnId, at }), at)
+    const decision = this.decide({ kind: 'expression', source, expressionId: entry.id, holdSeconds, turnId, at })
+    this.dispatchNatural(decision, at)
+    this.dispatchSlots(decision, at)
     return entry
   }
 
@@ -240,7 +242,9 @@ export class StagePerformanceConductor {
    */
   clearExpression(slot: SlotName | undefined, source: 'act' | 'tool' | 'devtools', turnId?: string) {
     const at = this.clock()
-    this.dispatchSlots(this.decide({ kind: 'clear', source, slot, turnId, at }), at)
+    const decision = this.decide({ kind: 'clear', source, slot, turnId, at })
+    this.dispatchNatural(decision, at)
+    this.dispatchSlots(decision, at)
   }
 
   /**
@@ -424,13 +428,21 @@ export class StagePerformanceConductor {
     this.dispatch(this.decide({ kind: 'deadline', at }), at)
   }
 
-  /** Sends a timing or deadline decision: episodes reach the Natural scene, and slots reach every driver. */
+  /** Sends a timing or deadline decision: episodes and holds reach the Natural scene, and slots reach every driver. */
   private dispatch(decision: StageDecision, at: number) {
-    if (this.options.driver() === 'natural') {
-      for (const episode of decision.episodes)
-        this.options.scene()?.setEmotion(episode)
-    }
+    this.dispatchNatural(decision, at)
     this.dispatchSlots(decision, at)
+  }
+
+  /** Natural only: episodes first, so a hold never precedes the episode it accompanies. */
+  private dispatchNatural(decision: StageDecision, at: number) {
+    if (this.options.driver() !== 'natural')
+      return
+    const scene = this.options.scene()
+    for (const episode of decision.episodes)
+      scene?.setEmotion(episode)
+    if (decision.holds.length > 0)
+      scene?.applyHolds(decision.holds, at)
   }
 
   /** Applies the card profile of a turn's character, or of the active card, to the settings and the catalog. */
@@ -438,7 +450,10 @@ export class StagePerformanceConductor {
     const profile = this.options.profile?.(turnId)
     const { settings, expressiveness } = resolveEffectiveSettings(this.options.settings(), profile)
     const catalog = applyMappingWeights(this.options.catalog(), this.options.modelId?.() ?? '', profile)
-    return { context: { catalog, settings }, expressiveness }
+    // Held emotions exist only in Natural. Elsewhere the flag is off in the effective copy only,
+    // so the shared document stays untouched and no reaction state leaks into Universal and MAGIC.
+    const effective = this.options.driver() === 'natural' ? settings : { ...settings, heldEmotions: false }
+    return { context: { catalog, settings: effective }, expressiveness }
   }
 
   /** The trace wrapper records each signal before the decider sees it. */

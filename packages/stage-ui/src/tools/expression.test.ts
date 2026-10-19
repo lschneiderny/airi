@@ -35,6 +35,7 @@ async function mount() {
     scene: () => ({
       setEmotion: () => {},
       applySlots: (commands, now) => store.applySlots(commands, now),
+      applyHolds: () => {},
       onSpeech: (event, turnId, now) => store.onSpeech(event, turnId, now),
       setMuted: muted => store.setMuted(muted),
     }),

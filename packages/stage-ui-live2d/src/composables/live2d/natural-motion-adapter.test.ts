@@ -86,6 +86,8 @@ function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore
     manualBreathActive: false,
     clipOwnedIds: new Set<string>() as ReadonlySet<string>,
     pendingEmotions: [] as Live2DNaturalMotionAttention['pendingEmotions'],
+    heldEmotion: null as Live2DNaturalMotionAttention['heldEmotion'],
+    emotionStrengths: {} as Live2DNaturalMotionAttention['emotionStrengths'],
     cursor: null as { x: number, y: number } | null,
     pendingPokes: [] as Live2DNaturalMotionAttention['pendingPokes'],
     pet: null as number | null,
@@ -591,6 +593,72 @@ describe('natural motion adapter', () => {
     finally {
       impulse.mockRestore()
     }
+  })
+
+  it('(h2) leaves no held face from a hold set while Natural was inactive', () => {
+    const held = { emotion: Emotion.Sad, strength: 1 }
+    const times = Array.from({ length: 30 }, (_, index) => 1 + index * 0.1)
+    const run = (holdWhileInactive: boolean, holdWhileActive: boolean) => {
+      const f = fixture()
+      f.state.heldEmotion = holdWhileInactive ? held : null
+      for (const time of [0, 0.5])
+        f.frame(time)
+      f.state.eligible = true
+      f.state.heldEmotion = holdWhileActive ? held : null
+      const frames = times.map(time => f.frame(time).commanded)
+      f.adapter.dispose()
+      return frames
+    }
+
+    const control = run(false, false)
+    expect(run(true, false)).toEqual(control)
+    // The same hold, once Natural is active, shows on the face.
+    expect(run(false, true)).not.toEqual(control)
+  })
+
+  it('(h3) keeps the onset of a repeated hold, whatever the identity of the repeated value', () => {
+    const held = { emotion: Emotion.Sad, strength: 1 }
+    const times = Array.from({ length: 40 }, (_, index) => index * 0.1)
+    const run = (copy: boolean) => {
+      const f = fixture()
+      f.state.eligible = true
+      const frames = times.map((time) => {
+        f.state.heldEmotion = copy ? { emotion: Emotion.Sad, strength: 1 } : held
+        return f.frame(time).commanded
+      })
+      f.adapter.dispose()
+      return frames
+    }
+    expect(run(true)).toEqual(run(false))
+  })
+
+  it('(h4) drops an emotion queued on one frame when its model strength turns to zero before the next', () => {
+    const episode = { id: 'happy', emotion: Emotion.Happy, nominal: 1, intensity: 1, band: 'strong' as const, escalation: false }
+    const times = Array.from({ length: 60 }, (_, index) => index * 0.1)
+    /** Frame 1 queues the emotion; `strengthAtNext` applies from frame 2, the first frame that can start it. */
+    const run = (queued: boolean, strengthAtNext?: number) => {
+      const f = fixture()
+      f.state.eligible = true
+      const frames = times.map((time, index) => {
+        if (queued && index === 1)
+          f.state.pendingEmotions.push(episode)
+        if (queued && index === 2 && strengthAtNext !== undefined)
+          f.state.emotionStrengths = { happy: strengthAtNext }
+        return f.frame(time).commanded
+      })
+      const mood = f.adapter.mood
+      f.adapter.dispose()
+      return { frames, mood }
+    }
+
+    const control = run(false)
+    const zeroed = run(true, 0)
+    expect(zeroed.frames).toEqual(control.frames)
+    expect(zeroed.mood).toEqual(control.mood)
+    // The same emotion at full strength does act, so the comparison above can fail.
+    const performed = run(true, 1)
+    expect(performed.frames).not.toEqual(control.frames)
+    expect(performed.mood).not.toEqual(control.mood)
   })
 
   it('(i) drains pokes exactly once and forwards a pet only while Natural is active', () => {
