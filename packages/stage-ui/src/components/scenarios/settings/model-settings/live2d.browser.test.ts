@@ -1,4 +1,6 @@
 import type { Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import type { Pinia } from 'pinia'
+import type { Locator } from 'vitest/browser'
 
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
@@ -77,6 +79,34 @@ async function renderRemoteExpressions(groups: ExpressionEntry[]) {
   })
   await screen.getByText(t('settings.live2d.expressions.title'), { exact: true }).click()
   return { screen, pinia, onLive2dExpressionCommand }
+}
+
+/** Renders the settings, selects Natural through its radio, and expands the Emotion strength group. */
+async function renderNaturalEmotionStrength(pinia: Pinia, errorHandler?: (error: unknown) => void) {
+  Object.assign(window, { Live2DCubismCore: {} })
+  const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
+    import('@proj-airi/stage-ui-live2d'),
+    import('./live2d.vue'),
+  ])
+  await import('virtual:uno.css')
+  const settings = useSettingsLive2d(pinia)
+  settings.resetState()
+  const screen = await render(Live2DSettings, {
+    props: { palette: [], runtimeSnapshot: remoteSnapshot([]) },
+    global: { plugins: [pinia, createTestI18n()], config: { errorHandler } },
+  })
+  await screen.getByText(t('settings.live2d.animation.title'), { exact: true }).click()
+  await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
+  await screen.getByRole('button', { name: t('settings.live2d.animation.natural-emotion-strength.title') }).click()
+  return { screen, settings }
+}
+
+/** The labelled field around a slider, so its formatted value can be read without matching every field. */
+function fieldOf(slider: Locator) {
+  const field = slider.element().closest('label')
+  if (!field)
+    throw new Error('the slider is not inside a labelled field')
+  return page.elementLocator(field)
 }
 
 describe('live2D model settings', () => {
@@ -506,6 +536,104 @@ describe('live2D model settings', () => {
     expect(settings.live2dNaturalEnergy).toBe(expected)
   })
 
+  it('writes the Love strength for the selected model only and resets that model', async () => {
+    const pinia = createPinia()
+    const { useSettingsStageModel } = await import('../../../../stores/settings/stage-model')
+    const stageModel = useSettingsStageModel(pinia)
+    const { screen, settings } = await renderNaturalEmotionStrength(pinia)
+    const key = 'settings/live2d/natural-emotion-strength'
+    const love = screen.getByRole('slider', { name: t('settings.live2d.expressions.emotions.love') })
+    const reset = screen.getByRole('button', { name: t('settings.live2d.animation.natural-emotion-strength.reset'), exact: true })
+    await expect.element(love).toBeVisible()
+    await expect.element(fieldOf(love).getByText('1.00×', { exact: true })).toBeVisible()
+    await expect.element(reset).toBeDisabled()
+    expect(stageModel.stageModelSelected).toBe('preset-live2d-1')
+
+    love.element().focus()
+    for (let step = 0; step < 10; step++)
+      await userEvent.keyboard('{ArrowRight}')
+    await expect.element(fieldOf(love).getByText('1.50×', { exact: true })).toBeVisible()
+    expect(settings.live2dNaturalEmotionStrength).toEqual({ 'preset-live2d-1': { love: 1.5 } })
+    expect(JSON.parse(localStorage.getItem(key) ?? 'null')).toEqual({ 'preset-live2d-1': { love: 1.5 } })
+    await expect.element(reset).toBeEnabled()
+
+    stageModel.stageModelSelected = 'preset-live2d-2'
+    await nextTick()
+    await expect.element(fieldOf(love).getByText('1.00×', { exact: true })).toBeVisible()
+    await expect.element(reset).toBeDisabled()
+    expect(settings.live2dNaturalEmotionStrength).toEqual({ 'preset-live2d-1': { love: 1.5 } })
+
+    stageModel.stageModelSelected = 'preset-live2d-1'
+    await nextTick()
+    await expect.element(fieldOf(love).getByText('1.50×', { exact: true })).toBeVisible()
+    await reset.click()
+    await expect.element(fieldOf(love).getByText('1.00×', { exact: true })).toBeVisible()
+    await expect.element(reset).toBeDisabled()
+    expect(settings.live2dNaturalEmotionStrength).toEqual({})
+    expect(JSON.parse(localStorage.getItem(key) ?? 'null')).toEqual({})
+  })
+
+  it('reads a stored Love strength of "x" as 1 without an error', async () => {
+    const handledErrors: unknown[] = []
+    const { screen, settings } = await renderNaturalEmotionStrength(createPinia(), error => handledErrors.push(error))
+    const love = screen.getByRole('slider', { name: t('settings.live2d.expressions.emotions.love') })
+    const sad = screen.getByRole('slider', { name: t('settings.live2d.expressions.emotions.sad') })
+    const key = 'settings/live2d/natural-emotion-strength'
+    const oldValue = localStorage.getItem(key)
+    const newValue = '{"preset-live2d-1":{"love":"x","sad":1.5}}'
+    const consoleError = vi.spyOn(console, 'error')
+    try {
+      localStorage.setItem(key, newValue)
+      window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue, storageArea: localStorage }))
+      await nextTick()
+      await expect.element(fieldOf(love).getByText('1.00×', { exact: true })).toBeVisible()
+      await expect.element(fieldOf(sad).getByText('1.50×', { exact: true })).toBeVisible()
+      expect(settings.live2dNaturalEmotionStrength).toEqual({ 'preset-live2d-1': { sad: 1.5 } })
+      expect(handledErrors).toEqual([])
+      expect(consoleError).not.toHaveBeenCalled()
+    }
+    finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('toggles held emotions in the synced performance document', async () => {
+    Object.assign(window, { Live2DCubismCore: {} })
+    const [{ useExpressionPerformanceSettings }, { default: Live2DSettings }] = await Promise.all([
+      import('../../../../features/performance/settings'),
+      import('./live2d.vue'),
+    ])
+    await import('virtual:uno.css')
+    const pinia = createPinia()
+    const performance = useExpressionPerformanceSettings(pinia)
+    const screen = await render(Live2DSettings, {
+      props: { palette: [], runtimeSnapshot: remoteSnapshot([]) },
+      global: { plugins: [pinia, createTestI18n()] },
+    })
+    await screen.getByText(t('settings.live2d.performance.title'), { exact: true }).click()
+    const held = screen.getByRole('switch', { name: t('settings.live2d.performance.held-emotions.title') })
+    await expect.element(held).toBeChecked()
+    expect(performance.document.heldEmotions).toBe(true)
+    const heldChanged = new Promise<boolean>((resolve, reject) => {
+      const stop = watch(() => performance.document.heldEmotions, (value) => {
+        stop()
+        resolve(value)
+      }, { flush: 'sync' })
+      AbortSignal.timeout(5000).addEventListener('abort', () => {
+        stop()
+        reject(new Error('performance.document.heldEmotions did not change after the switch click'))
+      })
+    })
+    await held.click()
+    expect(await heldChanged).toBe(false)
+    await expect.element(held).not.toBeChecked()
+    expect(JSON.parse(localStorage.getItem('settings/expression-performance') ?? '{}').heldEmotions).toBe(false)
+    expect(performance.document.mood).toBe(true)
+    await held.click()
+    await expect.element(held).toBeChecked()
+    expect(performance.document.heldEmotions).toBe(true)
+  })
+
   it.each([
     { width: 1280, theme: 'light', size: 'desktop' },
     { width: 1280, theme: 'dark', size: 'desktop' },
@@ -559,6 +687,41 @@ describe('live2D model settings', () => {
       .map(animation => animation.finished))
     await page.screenshot({
       path: `../../../../../../../.omo/evidence/live2d-presence-v2/task-11-${size}${theme === 'dark' ? '-dark' : ''}.png`,
+    })
+  })
+
+  it.each([
+    { width: 1280, theme: 'light', size: 'desktop' },
+    { width: 1280, theme: 'dark', size: 'desktop' },
+    { width: 390, theme: 'light', size: 'mobile' },
+    { width: 390, theme: 'dark', size: 'mobile' },
+  ])('keeps the expanded Emotion strength group usable at narrow width ($size $theme)', async ({ width, theme, size }) => {
+    // The expanded group is taller than a 1000px viewport; the element capture frames only visible pixels.
+    await page.viewport(width, 2400)
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    document.body.className = 'bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 p-4'
+    const { screen } = await renderNaturalEmotionStrength(createPinia())
+    const emotions = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'love', 'flustered', 'sleepy']
+    const sliders = emotions.map(emotion => screen.getByRole('slider', { name: t(`settings.live2d.expressions.emotions.${emotion}`) }))
+    const reset = screen.getByRole('button', { name: t('settings.live2d.animation.natural-emotion-strength.reset'), exact: true })
+    for (const control of [...sliders, reset]) {
+      await expect.element(control).toBeVisible()
+      const bounds = control.element().getBoundingClientRect()
+      expect(bounds.left).toBeGreaterThanOrEqual(0)
+      expect(bounds.right).toBeLessThanOrEqual(width)
+      expect(bounds.height).toBeGreaterThanOrEqual(24)
+      expect(bounds.width).toBeGreaterThanOrEqual(24)
+    }
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width)
+    await Promise.all(document.getAnimations()
+      .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
+      .map(animation => animation.finished))
+    const animation = screen.getByRole('button', { name: t('settings.live2d.animation.title'), exact: true }).element().parentElement
+    if (!animation)
+      throw new Error('the Animation section has no container')
+    await page.screenshot({
+      element: animation,
+      path: `../../../../../../../.omo/evidence/natural-emotion-revamp/task-8-settings${size === 'mobile' ? '-mobile' : ''}${theme === 'dark' ? '-dark' : ''}.png`,
     })
   })
 })

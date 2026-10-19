@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type {
   Live2DExpressionSettingsCommand,
   Live2DMotionDriver,
@@ -10,7 +10,8 @@ import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
 import { defaultModelParameters, useExpressionStore, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { OPFSCache } from '@proj-airi/stage-ui-live2d/utils/opfs-loader'
-import { Button, Checkbox, FieldCheckbox, FieldCombobox, FieldRange, SelectTab } from '@proj-airi/ui'
+import { Button, Checkbox, Collapsible, FieldCheckbox, FieldCombobox, FieldRange, SelectTab } from '@proj-airi/ui'
+import { omit } from 'es-toolkit'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -46,6 +47,7 @@ const {
   live2dNaturalTouch,
   live2dNaturalTouchPetRequiresHold,
   live2dNaturalTouchHeadScale,
+  live2dNaturalEmotionStrength,
   live2dNaturalEnergy,
   live2dModelEyeOffset,
   live2dIdleAnimationEnabled,
@@ -172,6 +174,29 @@ const naturalTouchHeadScale = computed({
 
 function formatScale(value: number) {
   return `${value.toFixed(2)}×`
+}
+
+/** Neutral is never performed as an emotion, so it has no strength. */
+const naturalEmotionStrengthEmotions: Exclude<PerformanceEmotion, 'neutral'>[] = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'love', 'flustered', 'sleepy']
+const naturalEmotionStrengthDefault = 1
+
+function naturalEmotionStrength(emotion: PerformanceEmotion) {
+  return live2dNaturalEmotionStrength.value[stageModelSelected.value]?.[emotion] ?? naturalEmotionStrengthDefault
+}
+
+/** Writes replace the record, like the head scale, so the stage sees a new identity per change. */
+function setNaturalEmotionStrength(emotion: PerformanceEmotion, value: number) {
+  const modelId = stageModelSelected.value
+  live2dNaturalEmotionStrength.value = {
+    ...live2dNaturalEmotionStrength.value,
+    [modelId]: { ...live2dNaturalEmotionStrength.value[modelId], [emotion]: value },
+  }
+}
+
+const naturalEmotionStrengthCustomized = computed(() => stageModelSelected.value in live2dNaturalEmotionStrength.value)
+
+function resetNaturalEmotionStrength() {
+  live2dNaturalEmotionStrength.value = omit(live2dNaturalEmotionStrength.value, [stageModelSelected.value])
 }
 
 function formatNaturalEnergy(value: number) {
@@ -467,6 +492,53 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       :disabled="live2dMotionDriver === 'magic'"
       placement="right"
     />
+    <Collapsible v-if="live2dMotionDriver === 'natural'">
+      <template #trigger="slotProps">
+        <button
+          type="button"
+          :class="['w-full flex items-center gap-2 text-left']"
+          :aria-expanded="slotProps.visible"
+          @click="slotProps.setVisible(!slotProps.visible)"
+        >
+          <div :class="['flex-1']">
+            <div :class="['flex items-center gap-1 text-sm font-medium']">
+              {{ t('settings.live2d.animation.natural-emotion-strength.title') }}
+            </div>
+            <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+              {{ t('settings.live2d.animation.natural-emotion-strength.description') }}
+            </div>
+          </div>
+          <div
+            :class="[
+              'i-solar:alt-arrow-down-linear',
+              'shrink-0 text-neutral-500 dark:text-neutral-400',
+              'transition-transform duration-250',
+              slotProps.visible ? 'rotate-180' : '',
+            ]"
+          />
+        </button>
+      </template>
+      <div :class="['mt-4 flex flex-col gap-4']">
+        <FieldRange
+          v-for="emotion in naturalEmotionStrengthEmotions"
+          :key="emotion"
+          :model-value="naturalEmotionStrength(emotion)"
+          :min="0"
+          :max="2"
+          :step="0.05"
+          :label="t(`settings.live2d.expressions.emotions.${emotion}`)"
+          :format-value="formatScale"
+          @update:model-value="setNaturalEmotionStrength(emotion, $event)"
+        />
+        <Button
+          :class="['w-full']"
+          :disabled="!naturalEmotionStrengthCustomized"
+          @click="resetNaturalEmotionStrength"
+        >
+          {{ t('settings.live2d.animation.natural-emotion-strength.reset') }}
+        </Button>
+      </div>
+    </Collapsible>
     <div v-if="(live2dMotionDriver === 'universal' && live2dEyeTracking) || (live2dMotionDriver === 'natural' && live2dNaturalCursorAttention)" :class="['grid grid-cols-4']">
       <PropertyPoint
         v-model:x="live2dModelEyeOffset.x"
@@ -902,6 +974,13 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       :description="t('settings.live2d.performance.mood.description')"
       placement="right"
       @update:model-value="updatePerformanceSettings({ mood: $event })"
+    />
+    <FieldCheckbox
+      :model-value="performanceSettings.document.heldEmotions"
+      :label="t('settings.live2d.performance.held-emotions.title')"
+      :description="t('settings.live2d.performance.held-emotions.description')"
+      placement="right"
+      @update:model-value="updatePerformanceSettings({ heldEmotions: $event })"
     />
     <FieldCheckbox
       :model-value="performanceSettings.document.autoExpressions"

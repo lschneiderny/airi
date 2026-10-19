@@ -241,6 +241,10 @@ live2d:
     natural-touch-head-scale:
       title: Head area for petting
       description: Grow or shrink the area that counts as this model's head. 1× uses the head the model's rig measures.
+    natural-emotion-strength:
+      title: Emotion strength
+      description: How strongly Natural performs each emotion for this model. 0 turns that emotion off, and 1× is the standard strength.
+      reset: Reset to default
     focus:
       title: Enable mouse tracking
       description: Look at the cursor while it is moving. Idle eye movement resumes after the cursor stops.
@@ -342,6 +346,9 @@ live2d:
     mood:
       title: Mood
       description: Let recent emotions shape the character's lasting mood.
+    held-emotions:
+      title: Held emotions
+      description: Keep each emotion's face and posture for as long as the speech or expression that caused it. Turn this off to compare with the earlier brief reactions. Natural only.
     auto-expressions:
       title: Automatic expressions
       description: Pick confirmed expressions from emotions without an explicit AI request.
