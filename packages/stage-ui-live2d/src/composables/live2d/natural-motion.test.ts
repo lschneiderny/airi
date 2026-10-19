@@ -5,7 +5,12 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { Emotion } from '../../constants/emotions'
 import { Live2DNaturalMotion } from './natural-motion'
+import { NaturalBreathLayer } from './natural-motion/breath'
 import { NaturalPerformanceEnergy } from './natural-motion/energy'
+import { NaturalHoldLayer } from './natural-motion/hold'
+import { NaturalSpeechEmphasis } from './natural-motion/speech-emphasis'
+
+import * as random from './natural-motion/random'
 
 const idle: PerformanceState = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }
 const headAxes = ['headX', 'headY', 'headZ'] as const
@@ -17,7 +22,7 @@ it.each([
 ] as const)('isolates $band recruitment at the facade', ({ band, intensity }) => {
   const motion = new Live2DNaturalMotion({ seed: 41 })
   const control = new Live2DNaturalMotion({ seed: 41 })
-  motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, mood: false })
+  motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false, mood: false })
   motion.impulse({ id: band, emotion: Emotion.Happy, nominal: intensity, intensity, band, escalation: false }, 0)
   control.advance(0)
   let headPeak = 0
@@ -52,9 +57,10 @@ it.each([
   const rest = new Live2DNaturalMotion({ seed: 41 })
   // The matched control receives the same episode but its band gains are zero, so only mood and shared overlays remain.
   const withoutRecruitment = structuredClone(defaultExpressionPerformanceSettings)
+  withoutRecruitment.heldEmotions = false
   withoutRecruitment.naturalBands.headGain = 0
   withoutRecruitment.naturalBands.bodyGain = 0
-  motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings })
+  motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
   matched.setPerformanceSettings(withoutRecruitment)
   rest.setPerformanceSettings({ ...withoutRecruitment, mood: false })
   for (const instance of [motion, matched, rest]) {
@@ -103,6 +109,7 @@ it.each(['wake', 'screen-change'] as const)('keeps desktop %s on the fixed full-
 
 it('recruits body lean without writing physics-owned body axes', () => {
   const motion = new Live2DNaturalMotion({ seed: 41 })
+  motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
   const control = new Live2DNaturalMotion({ seed: 41 })
   motion.setRigProfile({ bodyFromHeadPhysics: { x: true, y: false, z: true } })
   motion.impulse({ id: 'strong', emotion: Emotion.Happy, nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false }, 0)
@@ -300,6 +307,7 @@ describe('natural motion', () => {
 
   it('adds emotion impulses on top of the pose without resetting it', () => {
     const excited = new Live2DNaturalMotion({ seed: 41 })
+    excited.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
     const control = new Live2DNaturalMotion({ seed: 41 })
     for (let frame = 0; frame <= 10 * 60; frame++) {
       excited.advance(frame / 60)
@@ -467,6 +475,337 @@ describe('natural motion', () => {
     for (const axis of [0, 1, 2]) {
       const values = deviations.map(deviation => deviation[axis])
       expect(Math.max(...values) / Math.min(...values)).toBeLessThan(1.05)
+    }
+  })
+})
+
+describe('held Natural composition', () => {
+  it('feeds held posture into the body follower without an impulse, mood dose, or gesture', () => {
+    const motion = new Live2DNaturalMotion({ seed: 41 })
+    const control = new Live2DNaturalMotion({ seed: 41 })
+    const hold = new NaturalHoldLayer()
+    control.advance(0)
+    hold.set({ emotion: 'question', strength: 0.6 })
+
+    motion.setHeldEmotion({ emotion: 'question', strength: 0.6 }, 0)
+    for (let frame = 1; frame < 480; frame++)
+      hold.step(1 / 120)
+    const actual = motion.advance(4)
+    const baseline = control.advance(4)
+
+    const roll = actual.pose.headZ - baseline.pose.headZ
+    const body = (actual.pose.bodyZ ?? 0) - (baseline.pose.bodyZ ?? 0)
+    expect(roll).toBeCloseTo(hold.posture()[2], 10)
+    expect(Math.abs(body)).toBeGreaterThan(0.005)
+    expect(Math.sign(body)).toBe(Math.sign(roll))
+    expect(motion.moodState).toEqual({ valence: 0, arousal: 0, tension: 0 })
+  })
+
+  it.each(['clear', 'strong'] as const)('replaces impulse head and body with the %s gesture instead of doubling them', (band) => {
+    const motion = new Live2DNaturalMotion({ seed: 41 })
+    const control = new Live2DNaturalMotion({ seed: 41 })
+    const settings = structuredClone(defaultExpressionPerformanceSettings)
+    settings.naturalBands.headGain = 0
+    settings.naturalBands.bodyGain = 0
+    control.setPerformanceSettings(settings)
+    const episode = { id: 'gesture', emotion: 'happy', band, nominal: 0.9, intensity: 0.9, escalation: false } as const
+
+    motion.impulse(episode, 0)
+    control.impulse(episode, 0)
+
+    for (let frame = 0; frame <= 1200; frame++)
+      expect(motion.advance(frame / 120)).toEqual(control.advance(frame / 120))
+  })
+
+  it('applies the held breathing period to the actual controller waveform', () => {
+    const motion = new Live2DNaturalMotion({ seed: 41 })
+    const hold = new NaturalHoldLayer()
+    const breath = new NaturalBreathLayer(random.createRandomStream(random.deriveSeed(41, 9)))
+    breath.step(1 / 120)
+    motion.setHeldEmotion({ emotion: 'sleepy', strength: 1 }, 0)
+    hold.set({ emotion: 'sleepy', strength: 1 })
+
+    for (let frame = 1; frame <= 1200; frame++) {
+      if (frame > 1) {
+        hold.step(1 / 120)
+        breath.periodScale = hold.modulation().breathPeriod
+        breath.step(1 / 120)
+      }
+      const actual = motion.advance(frame / 120)
+
+      expect(actual.breath.value).toBeCloseTo(breath.output.value, 10)
+    }
+  })
+
+  it('applies held acceptance and size to speech nods observed in the composed head', () => {
+    const voiced = new Live2DNaturalMotion({ seed: 41 })
+    const quiet = new Live2DNaturalMotion({ seed: 41 })
+    const hold = new NaturalHoldLayer()
+    const emphasis = new NaturalSpeechEmphasis(random.createRandomStream(random.deriveSeed(41, 10)))
+    emphasis.step(1 / 120, 0, 0.25)
+    for (const motion of [voiced, quiet])
+      motion.setHeldEmotion({ emotion: 'happy', strength: 1 }, 0)
+    hold.set({ emotion: 'happy', strength: 1 })
+    let peak = 0
+
+    for (let frame = 1; frame <= 3600; frame++) {
+      const level = frame % 180 < 18 ? 0.8 : 0
+      voiced.setVoice({ speaking: false, speechActiveOrRecent: false, level })
+      let expected = [0, 0, 0]
+      if (frame > 1) {
+        hold.step(1 / 120)
+        const mod = hold.modulation()
+        emphasis.sizeScale = mod.nodSize
+        expected = emphasis.step(1 / 120, level, 0.25 + mod.nodAcceptance)
+      }
+      const actual = voiced.advance(frame / 120)
+      const baseline = quiet.advance(frame / 120)
+
+      for (const [index, axis] of headAxes.entries()) {
+        const delta = actual.pose[axis] - baseline.pose[axis]
+        expect(delta).toBeCloseTo(expected[index], 10)
+        peak = Math.max(peak, Math.abs(delta))
+      }
+    }
+    expect(peak).toBeGreaterThan(0.02)
+  })
+
+  it('changes blink timing and gaze destinations while sleepy', () => {
+    const motion = new Live2DNaturalMotion({ seed: 19092026 })
+    const control = new Live2DNaturalMotion({ seed: 19092026 })
+    motion.setHeldEmotion({ emotion: 'sleepy', strength: 1 }, 0)
+    let actualBlinks = 0
+    let controlBlinks = 0
+    let actualCamera = 0
+    let controlCamera = 0
+    let actualDesk = 0
+    let controlDesk = 0
+    let previousActual = 1
+    let previousControl = 1
+
+    for (let frame = 0; frame <= 14400; frame++) {
+      const actual = motion.advance(frame / 120)
+      const baseline = control.advance(frame / 120)
+      if (actual.blink.blinkFactor < 0.5 && previousActual >= 0.5)
+        actualBlinks++
+      if (baseline.blink.blinkFactor < 0.5 && previousControl >= 0.5)
+        controlBlinks++
+      actualCamera += Number(Math.hypot(actual.fixation.x, actual.fixation.y) < 0.06)
+      controlCamera += Number(Math.hypot(baseline.fixation.x, baseline.fixation.y) < 0.06)
+      actualDesk += Number(actual.fixation.y < -0.1)
+      controlDesk += Number(baseline.fixation.y < -0.1)
+      previousActual = actual.blink.blinkFactor
+      previousControl = baseline.blink.blinkFactor
+    }
+
+    expect(actualBlinks).toBeLessThan(controlBlinks)
+    expect(actualCamera).toBeLessThan(controlCamera)
+    expect(actualDesk).toBeGreaterThan(controlDesk)
+  })
+
+  it('keeps sixty seconds of untouched output identical with no gesture draws', () => {
+    const create = random.createRandomStream
+    const draws = new Map<number, number>()
+    const instrument = vi.spyOn(random, 'createRandomStream').mockImplementation((seed) => {
+      const next = create(seed)
+      return () => {
+        draws.set(seed, (draws.get(seed) ?? 0) + 1)
+        return next()
+      }
+    })
+    try {
+      const motion = new Live2DNaturalMotion({ seed: 19092026 })
+      const legacy = new Live2DNaturalMotion({ seed: 19092026 })
+      legacy.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
+
+      for (let frame = 0; frame <= 3600; frame++) {
+        motion.setHeldEmotion(null, frame / 60)
+        expect(motion.advance(frame / 60)).toEqual(legacy.advance(frame / 60))
+      }
+
+      expect(draws.get(random.deriveSeed(19092026, 12)) ?? 0).toBe(0)
+    }
+    finally {
+      instrument.mockRestore()
+    }
+  })
+
+  it('holds a readable clear happy face and recruits less body than strong', () => {
+    const peaks: number[] = []
+    for (const intensity of [0.6, 0.9]) {
+      const motion = new Live2DNaturalMotion({ seed: 41 })
+      const control = new Live2DNaturalMotion({ seed: 41 })
+      motion.setHeldEmotion({ emotion: 'happy', strength: intensity }, 0)
+      motion.impulse({ id: 'happy', emotion: 'happy', intensity, nominal: intensity, band: intensity === 0.6 ? 'clear' : 'strong', escalation: false }, 0)
+      let bodyPeak = 0
+      const means = { browY: 0, eyeSmile: 0, mouthForm: 0 }
+      let count = 0
+
+      for (let frame = 0; frame <= 420; frame++) {
+        const actual = motion.advance(frame / 120)
+        const baseline = control.advance(frame / 120)
+        bodyPeak = Math.max(bodyPeak, Math.hypot(...(['bodyX', 'bodyY', 'bodyZ'] as const).map(axis => (actual.pose[axis] ?? 0) - (baseline.pose[axis] ?? 0))))
+        if (frame >= 60) {
+          for (const key of ['browY', 'eyeSmile', 'mouthForm'] as const)
+            means[key] += actual.face[key] - baseline.face[key]
+          count++
+        }
+      }
+
+      expect(means.browY / count).toBeGreaterThan(0.5 * 0.5 * intensity)
+      expect(means.eyeSmile / count).toBeGreaterThan(0.5 * 1.6 * intensity)
+      expect(means.mouthForm / count).toBeGreaterThan(0.5 * intensity)
+      peaks.push(bodyPeak)
+    }
+    expect(peaks[0]).toBeGreaterThan(0)
+    expect(peaks[0]).toBeLessThan(peaks[1])
+  })
+
+  it('releases with the exact 0.6 second decay without snapping the visible tail', () => {
+    const motion = new Live2DNaturalMotion({ seed: 41 })
+    motion.setHeldEmotion({ emotion: 'happy', strength: 0.6 }, 0)
+    const peak = motion.advance(4).face.eyeSmile
+
+    motion.setHeldEmotion(null, 4)
+
+    const fourTaus = motion.advance(6.4).face.eyeSmile / peak
+    const fiveTaus = motion.advance(7).face.eyeSmile / peak
+    expect(fourTaus).toBeCloseTo(Math.exp(-4), 3)
+    expect(fiveTaus).toBeCloseTo(Math.exp(-5), 3)
+    expect(fiveTaus).toBeGreaterThan(0)
+    expect(fiveTaus).toBeLessThan(0.01)
+  })
+
+  it('glides from happy to sad within the face step bound', () => {
+    const motion = new Live2DNaturalMotion({ seed: 41 })
+    const control = new Live2DNaturalMotion({ seed: 41 })
+    motion.setHeldEmotion({ emotion: 'happy', strength: 1 }, 0)
+    control.setHeldEmotion({ emotion: 'happy', strength: 1 }, 0)
+    const before = motion.advance(4)
+
+    motion.setHeldEmotion({ emotion: 'sad', strength: 1 }, 4)
+
+    expect(motion.advance(4)).toEqual(before)
+    const next = motion.advance(4 + 2 / 120)
+    const unchanged = control.advance(4 + 2 / 120)
+    // Subtract the unchanged held path so independent face micro-motion does not masquerade as a switch jump.
+    for (const key of ['browY', 'browAngle', 'browLY', 'browRY', 'browLAngle', 'browRAngle', 'eyeSmile', 'mouthForm', 'cheek'] as const)
+      expect(Math.abs(next.face[key] - unchanged.face[key])).toBeLessThan(2 / 120 / 0.25 * 1.8)
+    expect(motion.advance(7).face.mouthForm).toBeLessThan(-0.7)
+  })
+
+  it.each(['happy', 'question', 'surprised'] as const)('gives pet priority over actual overlapping %s channels', (emotion) => {
+    const held = new Live2DNaturalMotion({ seed: 41 })
+    const petted = new Live2DNaturalMotion({ seed: 41 })
+    const petOnly = new Live2DNaturalMotion({ seed: 41 })
+    held.setHeldEmotion({ emotion, strength: 1 }, 0)
+    petted.setHeldEmotion({ emotion, strength: 1 }, 0)
+    petted.setPet(0, 0)
+    petOnly.setPet(0, 0)
+
+    const a = held.advance(4).face
+    const b = petted.advance(4).face
+    const target = petOnly.advance(4).face
+
+    // Eye openness is a multiplier plus a hint, not two unrelated priority channels.
+    expect(Math.abs(b.eyeOpenMultiplier + b.eyeOpenHint - target.eyeOpenMultiplier)).toBeLessThan(0.02)
+    expect(Math.abs(b.eyeSmile - target.eyeSmile)).toBeLessThan(0.001)
+    expect(Math.abs(b.browLY - target.browLY)).toBeLessThan(0.02)
+    expect(Math.abs(b.browRY - target.browRY)).toBeLessThan(0.02)
+    if (emotion === 'happy')
+      expect(Math.abs(b.eyeSmile - target.eyeSmile)).toBeLessThan(Math.abs(a.eyeSmile - target.eyeSmile))
+  })
+
+  it('attenuates same-emotion accents in the composed held smile without saturating it', () => {
+    const accented = new Live2DNaturalMotion({ seed: 41 })
+    const held = new Live2DNaturalMotion({ seed: 41 })
+    const accentOnly = new Live2DNaturalMotion({ seed: 41 })
+    for (const motion of [accented, held, accentOnly]) {
+      motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, mood: false })
+      motion.advance(0)
+    }
+    accented.setHeldEmotion({ emotion: 'happy', strength: 1 }, 0)
+    held.setHeldEmotion({ emotion: 'happy', strength: 1 }, 0)
+    const episode = { id: 'accent', emotion: 'happy', intensity: 0.9, nominal: 0.9, band: 'clear', escalation: false } as const
+
+    accented.impulse(episode, 4)
+    accentOnly.impulse(episode, 4)
+
+    const actual = accented.advance(4.5).face.eyeSmile
+    const base = held.advance(4.5).face.eyeSmile
+    const fullAccent = accentOnly.advance(4.5).face.eyeSmile
+    expect(fullAccent).toBeGreaterThan(0.3)
+    expect(actual - base).toBeCloseTo(fullAccent * 0.5, 6)
+    expect(actual).toBeLessThan(2)
+  })
+
+  it('leaves a different-emotion accent unattenuated', () => {
+    const accented = new Live2DNaturalMotion({ seed: 41 })
+    const held = new Live2DNaturalMotion({ seed: 41 })
+    const accentOnly = new Live2DNaturalMotion({ seed: 41 })
+    accentOnly.advance(0)
+    accented.setHeldEmotion({ emotion: 'sad', strength: 1 }, 0)
+    held.setHeldEmotion({ emotion: 'sad', strength: 1 }, 0)
+    const episode = { id: 'accent', emotion: 'happy', intensity: 0.9, nominal: 0.9, band: 'clear', escalation: false } as const
+
+    accented.impulse(episode, 4)
+    accentOnly.impulse(episode, 4)
+
+    expect(accented.advance(4.5).face.eyeSmile - held.advance(4.5).face.eyeSmile).toBe(accentOnly.advance(4.5).face.eyeSmile)
+  })
+
+  it('makes a strength-zero hold and episode identical to no emotion', () => {
+    const motion = new Live2DNaturalMotion({ seed: 41 })
+    const control = new Live2DNaturalMotion({ seed: 41 })
+    motion.setEmotionStrengths({ happy: 0 })
+    motion.setHeldEmotion({ emotion: 'happy', strength: 0.9 }, 0)
+
+    motion.impulse({ id: 'zero', emotion: 'happy', intensity: 0.9, nominal: 0.9, band: 'strong', escalation: false }, 0)
+
+    for (let frame = 0; frame <= 1200; frame++)
+      expect(motion.advance(frame / 120)).toEqual(control.advance(frame / 120))
+    expect(motion.moodState).toEqual({ valence: 0, arousal: 0, tension: 0 })
+  })
+
+  it('ignores held targets and zero-strength policy when held emotions are disabled', () => {
+    const motion = new Live2DNaturalMotion({ seed: 41 })
+    const control = new Live2DNaturalMotion({ seed: 41 })
+    for (const instance of [motion, control])
+      instance.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
+    motion.setEmotionStrengths({ happy: 0 })
+    motion.setHeldEmotion({ emotion: 'happy', strength: 1 }, 0)
+    const episode = { id: 'old', emotion: 'happy', intensity: 0.9, nominal: 0.9, band: 'strong', escalation: false } as const
+
+    motion.impulse(episode, 0)
+    control.impulse(episode, 0)
+
+    for (let frame = 0; frame <= 1200; frame++)
+      expect(motion.advance(frame / 120)).toEqual(control.advance(frame / 120))
+  })
+
+  it('keeps repeated held setters and repeated suspension continuous in active time', () => {
+    const repeated = new Live2DNaturalMotion({ seed: 41 })
+    const control = new Live2DNaturalMotion({ seed: 41 })
+    control.setHeldEmotion({ emotion: 'think', strength: 0.7 }, 0)
+    let pause = 0
+
+    for (let frame = 0; frame <= 600; frame++) {
+      const time = frame / 120
+      repeated.setHeldEmotion({ emotion: 'think', strength: 0.7 }, time + pause)
+      repeated.setEmotionStrengths({ think: 1 })
+      repeated.setPerformanceSettings(defaultExpressionPerformanceSettings)
+      if (frame > 0 && frame % 120 === 0) {
+        const frozen = repeated.advance(time + pause)
+        repeated.setSuspended(true, time + pause)
+        pause += 10
+        expect(repeated.advance(time + pause)).toEqual(frozen)
+        repeated.setSuspended(false, time + pause)
+      }
+      const actual = repeated.advance(time + pause)
+      const expected = control.advance(time)
+      for (const [index, value] of Object.values(actual.face).entries())
+        expect(value).toBeCloseTo(Object.values(expected.face)[index], 10)
+      expect(maximumDelta(actual, expected)).toBeLessThan(1e-10)
     }
   })
 })

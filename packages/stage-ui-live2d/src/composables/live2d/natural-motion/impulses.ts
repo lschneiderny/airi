@@ -1,4 +1,4 @@
-import type { ExpressionPerformanceSettings, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, PerformanceEmotion, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
 
 import type { GazePoint } from './gaze'
 import type { Vec3 } from './posture'
@@ -85,6 +85,7 @@ function emptyHints(): FaceHints {
 }
 
 interface HintPulse {
+  emotion: PerformanceEmotion
   start: number
   hints: FaceHints
   settings: ExpressionPerformanceSettings['naturalBands']['clear']
@@ -122,8 +123,11 @@ export class NaturalImpulses {
     this.bands = bands
   }
 
-  /** Unknown or expired escalation ids are ignored; they cannot resurrect a stale reaction. */
-  trigger(episode: ReactionEpisode, at: number): { glance: Glance | null, energy: boolean } | null {
+  /**
+   * Unknown or expired escalation ids are ignored; they cannot resurrect a stale reaction.
+   * `head: false` leaves face hints, recruitment signals, and random draws intact while a gesture owns head/body offsets.
+   */
+  trigger(episode: ReactionEpisode, at: number, options: { readonly head: boolean } = { head: true }): { glance: Glance | null, energy: boolean } | null {
     const spec = naturalEmotions[episode.emotion].impulse
     const strength = Math.max(0, Math.min(1, Number.isFinite(episode.intensity) ? episode.intensity : 0))
     if (!spec || strength === 0)
@@ -139,8 +143,9 @@ export class NaturalImpulses {
     const side = previous?.side ?? (this.random() < 0.5 ? -1 : 1)
     const head = spec.head.map((value, axis) => spec.sided.includes(axis as 0 | 1 | 2) ? side * value : value) as Vec3
     const direction = previous?.direction ?? perturbDirection(this.random, head)
-    const headAmplitude = band !== 'slight' && settings.headTau !== null ? this.settings.headGain * strength ** 0.7 : 0
-    const bodyAmplitude = band === 'strong' ? this.settings.bodyGain * strength : 0
+    // Gesture clips replace both pulse channels, after side/direction draws so the impulse stream stays aligned.
+    const headAmplitude = options.head && band !== 'slight' && settings.headTau !== null ? this.settings.headGain * strength ** 0.7 : 0
+    const bodyAmplitude = options.head && band === 'strong' ? this.settings.bodyGain * strength : 0
     const tau = settings.headTau ?? 0
     if (headAmplitude > (previous?.head ?? 0))
       this.pulses.push({ start: at, tau, overshoot: settings.overshoot, peak: direction.map(value => value * (headAmplitude - (previous?.head ?? 0))) as Vec3 })
@@ -155,6 +160,7 @@ export class NaturalImpulses {
       hints[side < 0 ? 'browLY' : 'browRY'] = strength * spec.oneSidedBrow
     const from = previous ? this.hintValue(previous, at) : emptyHints()
     this.episodes.set(episode.id, {
+      emotion: episode.emotion,
       start: at,
       hints,
       settings,
@@ -199,8 +205,8 @@ export class NaturalImpulses {
     return result
   }
 
-  /** Face hint offsets at `time`; expired hints are dropped. */
-  hints(time: number): FaceHints {
+  /** Face hint offsets at `time`; expired hints are dropped. Accent scaling affects only pulses of the matching emotion. */
+  hints(time: number, accent?: { readonly emotion: PerformanceEmotion, readonly scale: number }): FaceHints {
     const total = emptyHints()
     for (const [id, pulse] of this.episodes) {
       const age = time - pulse.start
@@ -213,7 +219,7 @@ export class NaturalImpulses {
         continue
       const hints = this.hintValue(pulse, time)
       for (const key of Object.keys(total) as (keyof FaceHints)[])
-        total[key] += hints[key]
+        total[key] += accent?.emotion === pulse.emotion ? hints[key] * accent.scale : hints[key]
     }
     return total
   }

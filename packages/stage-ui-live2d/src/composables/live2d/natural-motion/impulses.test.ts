@@ -32,6 +32,23 @@ function sample(band: Band, intensity: number) {
 }
 
 describe('band-driven Natural episodes', () => {
+  it('preserves random draws and face hints when gestures replace head and body pulses', () => {
+    const normalRandom = createRandomStream(41)
+    const gestureRandom = createRandomStream(41)
+    const normal = new NaturalImpulses(normalRandom)
+    const gesture = new NaturalImpulses(gestureRandom)
+
+    normal.trigger(episode('strong', 0.9), 0)
+    gesture.trigger(episode('strong', 0.9), 0, { head: false })
+
+    expect(gestureRandom()).toBe(normalRandom())
+    expect(gesture.hints(0.5)).toEqual(normal.hints(0.5))
+    expect(gesture.headOffset(0.5)).toEqual([0, 0, 0])
+    expect(gesture.bodyOffset(0.5)).toEqual([0, 0, 0])
+    expect(Math.hypot(...normal.headOffset(0.5))).toBeGreaterThan(0)
+    expect(Math.hypot(...normal.bodyOffset(0.5))).toBeGreaterThan(0)
+  })
+
   it('isolates recruitment and keeps onset continuous', () => {
     const slight = sample('slight', 0.25)
     const clear = sample('clear', 0.6)
