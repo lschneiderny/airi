@@ -144,7 +144,6 @@ interface ExpressionReactionState {
   reaction: ReactionState
   streams: Record<AutoSlot, number>
   tickets: Record<AutoSlot, Tickets> | null
-  occupants: Record<AutoSlot, string | null>
 }
 
 /**
@@ -155,9 +154,9 @@ interface ExpressionReactionState {
  * A repeat inside the same episode yields no new episode but still refreshes the hold, at the
  * running episode's strength, so the held face keeps matching the refreshed slot lease.
  *
- * A new episode draws its tickets and clears both occupants like the direct emotion path, so a later
- * stronger signal of the same emotion escalates without a null ticket. The caller then records the
- * command's own occupant. With `heldEmotions` off, or no mapping, the state is returned untouched,
+ * A new episode draws its tickets so a later stronger signal of the same emotion escalates without
+ * a null ticket. Occupants are unchanged here: the caller records only the command's own occupant.
+ * With `heldEmotions` off, or no mapping, the state is returned untouched,
  * which keeps the old slot-only behavior.
  */
 export function explicitExpressionReaction<S extends ExpressionReactionState>(command: SlotCommand & { expressionId: string }, signal: ExpressionSignal, ctx: DeciderContext, state: S): { episodes: ReactionEpisode[], holds: HoldCommand[], state: S } {
@@ -171,13 +170,12 @@ export function explicitExpressionReaction<S extends ExpressionReactionState>(co
   const episode = reaction.episode
   const running = reaction.state.current?.episode
   const held = episode ?? (running?.emotion === primary.emotion ? running : null)
-  if (!held)
-    return { episodes: [], holds: [], state: next }
   if (episode && !episode.escalation)
-    next = { ...next, ...drawEpisodeTickets(state.streams), occupants: { face: null, effect: null } }
+    next = { ...next, ...drawEpisodeTickets(state.streams) }
   return {
     episodes: episode ? [episode] : [],
-    holds: [{ emotion: held.emotion, strength: held.intensity, holdSeconds: command.holdSeconds, until: command.until, turnId: signal.turnId }],
+    // A configured zero dose has no running episode, but still refreshes the explicit slot's lease.
+    holds: [{ emotion: primary.emotion, strength: held?.intensity ?? (ctx.settings.bands ? ctx.settings.intensity[primary.minBand] : 0.6), holdSeconds: command.holdSeconds, until: command.until, turnId: signal.turnId }],
     state: next,
   }
 }

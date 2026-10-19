@@ -81,6 +81,21 @@ function holdsSuite<S>(name: 'picker' | 'planner', decider: Decider<S>) {
       expect(decision.episodes.map(episode => episode.emotion)).toEqual(['sad'])
     })
 
+    it('refreshes the mapped hold even when its configured dose is zero', () => {
+      const zero = { ...ctx, settings: { ...settings, intensity: { ...settings.intensity, strong: 0 } } }
+      const result = decider.decide(expression('glare', 0, 'A', 5), zero, decider.initial(17))
+      expect(result.decision.episodes).toEqual([])
+      expect(result.decision.holds).toEqual([{ emotion: 'angry', strength: 0, holdSeconds: 5, until: 'hold', turnId: 'A' }])
+    })
+
+    it('preserves the other slot occupant when a mapped expression starts a new episode', () => {
+      const occupied = decider.decide(emotion('angry', 0.9, 0, 'A'), ctx, decider.initial(17))
+      const effect = entry('effect', 'effect', [{ emotion: 'happy', minBand: 'slight', weight: 1 }])
+      const result = decider.decide(expression('effect', 0.5, 'A'), { ...ctx, catalog: [...catalog, effect] }, occupied.state)
+      expect(result.state).toMatchObject({ occupants: { face: occupied.decision.slots[0].expressionId, effect: 'effect' } })
+      expect(result.decision.slots.map(slot => slot.expressionId)).toEqual(['effect'])
+    })
+
     it('adds no episode or hold for unmapped or unknown entries', () => {
       for (const id of ['plain', 'missing']) {
         const { decision } = decider.decide(expression(id, 0, 'A'), ctx, decider.initial(17))
@@ -144,3 +159,16 @@ function holdsSuite<S>(name: 'picker' | 'planner', decider: Decider<S>) {
 
 holdsSuite('picker', createPickerDecider())
 holdsSuite('planner', createPlannerDecider())
+
+it('drops superseded planner picks when an explicit mapped prop starts a new reaction', () => {
+  const planner = createPlannerDecider()
+  const pendingCtx = { ...ctx, catalog: [entry('smile', 'face', [{ emotion: 'happy', minBand: 'slight', weight: 1 }]), entry('hat', 'prop', [{ emotion: 'sad', minBand: 'clear', weight: 1 }])] }
+  const pending = planner.decide(emotion('happy', 0.6, 0, 'A'), pendingCtx, planner.initial(17))
+  expect(planner.nextDeadline(pending.state)).not.toBeNull()
+  const explicit = planner.decide(expression('hat', 0.5, 'A'), pendingCtx, pending.state)
+  const restored = JSON.parse(JSON.stringify(explicit.state))
+  const released = planner.decide({ kind: 'timing', event: { id: 'sentence', kind: 'sentence_start', turnId: 'A', at: 1 }, at: 1 }, pendingCtx, restored)
+  expect(explicit.decision.slots.map(slot => slot.expressionId)).toEqual(['hat'])
+  expect(released.decision.slots).toEqual([])
+  expect(planner.nextDeadline(released.state)).toBeNull()
+})

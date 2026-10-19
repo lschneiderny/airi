@@ -109,13 +109,18 @@ export function createPlannerDecider(): Decider<PlannerState> {
           decision.episodes.push(...derived.episodes)
           decision.holds.push(...derived.holds)
           const recency = { ...state.recency, [command.expressionId]: signal.at }
+          // A newly derived episode supersedes the previous reaction's queued picks. No automatic
+          // picks are made for this explicit command, including when its slot is a prop.
+          const scheduler = derived.episodes.some(episode => !episode.escalation)
+            ? { ...state.scheduler, plans: [] }
+            : state.scheduler
           if (command.slot === 'prop')
-            return { decision, state: { ...derived.state, recency } }
+            return { decision, state: { ...derived.state, recency, scheduler } }
           return { decision, state: {
             ...derived.state,
             occupants: { ...derived.state.occupants, [command.slot]: command.expressionId },
             recency,
-            scheduler: withoutSlots(state.scheduler, [command.slot]),
+            scheduler: withoutSlots(scheduler, [command.slot]),
           } }
         }
         case 'clear': {
