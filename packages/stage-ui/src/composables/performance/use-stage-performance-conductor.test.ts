@@ -321,6 +321,30 @@ describe('stage performance conductor', () => {
       expect(scene.applyHolds.mock.calls).toEqual([[[expect.objectContaining({ emotion: 'happy', turnId: 'turn-a' })], 10]])
     })
 
+    it('resends the mute before the holds of a hold-only decision to a scene that mounted after the mute', () => {
+      const scene = fakeScene()
+      let mounted = false
+      const conductor = new StagePerformanceConductor({
+        scene: () => mounted ? scene : undefined,
+        driver: () => 'natural',
+        playMotion: () => {},
+        settings: () => defaultExpressionPerformanceSettings,
+        catalog: () => catalog,
+        seed: 7,
+        clock: () => 10,
+      })
+      conductor.setMuted(true)
+      mounted = true
+
+      // Surprised maps to no catalog entry, so the decision carries a hold and no slot command.
+      conductor.emotion('surprised', 0.6, 'act', 'turn-a')
+
+      expect(scene.applySlots).not.toHaveBeenCalled()
+      expect(scene.applyHolds).toHaveBeenCalledTimes(1)
+      expect(scene.setMuted).toHaveBeenCalledWith(true)
+      expect(scene.setMuted.mock.invocationCallOrder[0]).toBeLessThan(scene.applyHolds.mock.invocationCallOrder[0])
+    })
+
     it.each(['universal', 'magic'] as const)('dispatches no holds or episodes under %s', (driver) => {
       const scene = fakeScene()
       const { conductor } = createConductor(driver, scene, defaultExpressionPerformanceSettings, undefined, heldCatalog)

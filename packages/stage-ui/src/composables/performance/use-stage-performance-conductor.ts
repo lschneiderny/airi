@@ -441,8 +441,12 @@ export class StagePerformanceConductor {
     const scene = this.options.scene()
     for (const episode of decision.episodes)
       scene?.setEmotion(episode)
-    if (decision.holds.length > 0)
+    if (decision.holds.length > 0) {
+      // Like dispatchSlots: a scene that mounted after the last mute change has not heard it, and its
+      // performer would keep an unstarted speech hold for the full unstarted expiry.
+      scene?.setMuted(this.muted)
       scene?.applyHolds(decision.holds, at)
+    }
   }
 
   /** Applies the card profile of a turn's character, or of the active card, to the settings and the catalog. */

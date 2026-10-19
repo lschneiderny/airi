@@ -596,6 +596,8 @@ describe('natural motion adapter', () => {
   })
 
   it('(h2) leaves no held face from a hold set while Natural was inactive', () => {
+    // The inactive gating itself is unobservable here: a suspended controller does not step, so a
+    // forwarded hold would also leave the frames unchanged. This pins the observable outcome only.
     const held = { emotion: Emotion.Sad, strength: 1 }
     const times = Array.from({ length: 30 }, (_, index) => 1 + index * 0.1)
     const run = (holdWhileInactive: boolean, holdWhileActive: boolean) => {
@@ -616,20 +618,24 @@ describe('natural motion adapter', () => {
     expect(run(false, true)).not.toEqual(control)
   })
 
-  it('(h3) keeps the onset of a repeated hold, whatever the identity of the repeated value', () => {
-    const held = { emotion: Emotion.Sad, strength: 1 }
-    const times = Array.from({ length: 40 }, (_, index) => index * 0.1)
-    const run = (copy: boolean) => {
-      const f = fixture()
-      f.state.eligible = true
-      const frames = times.map((time) => {
-        f.state.heldEmotion = copy ? { emotion: Emotion.Sad, strength: 1 } : held
-        return f.frame(time).commanded
-      })
-      f.adapter.dispose()
-      return frames
-    }
-    expect(run(true)).toEqual(run(false))
+  it('(h3) keeps one brow side and a monotonic onset while the same hold is forwarded every frame', () => {
+    const f = fixture()
+    f.state.eligible = true
+    // Think raises one brow on a side the hold layer picks once; a restart would reroll it.
+    const asymmetry = Array.from({ length: 90 }, (_, index) => {
+      f.state.heldEmotion = { emotion: Emotion.Think, strength: 1 }
+      const { commanded } = f.frame(index / 60)
+      return commanded[f.at('ParamBrowLY')] - commanded[f.at('ParamBrowRY')]
+    })
+    f.adapter.dispose()
+
+    const start = asymmetry.findIndex(value => value !== 0)
+    expect(start).toBeGreaterThanOrEqual(0)
+    const shown = asymmetry.slice(start)
+    expect(shown.every(value => Math.sign(value) === Math.sign(shown[0]))).toBe(true)
+    expect(shown.every((value, index) => index === 0 || Math.abs(value) >= Math.abs(shown[index - 1]) - 1e-9)).toBe(true)
+    // The onset has a visible size by the end, so the checks above are not about zeros.
+    expect(Math.abs(shown.at(-1) ?? 0)).toBeGreaterThan(0.05)
   })
 
   it('(h4) drops an emotion queued on one frame when its model strength turns to zero before the next', () => {
