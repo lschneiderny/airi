@@ -4,6 +4,7 @@ import type { Live2DLipSync, Live2DLipSyncOptions } from '@proj-airi/model-drive
 import type { Profile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import type { CaptionChannelEvent, PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { PerformanceState, ResolverMemory } from '@proj-airi/stage-shared/performance-state'
+import type { TachieEmotion } from '@proj-airi/stage-ui-tachie'
 import type { VrmInteractionTarget } from '@proj-airi/stage-ui-three'
 
 import type { EmotionPayload } from '../../constants/emotions'
@@ -332,7 +333,7 @@ const emotionsQueue = createQueue<StageCue>({
         spineSceneRef.value?.setEmotion(emotion.name, emotion.intensity)
       }
       else if (stageModelRenderer.value === 'tachie') {
-        tachieSceneRef.value?.setEmotion(emotion.name, emotion.intensity)
+        tachieSceneRef.value?.setEmotion(toTachieEmotion(emotion.name), emotion.intensity)
       }
       else if (stageModelRenderer.value === 'mmd') {
         mmdSceneRef.value?.setEmotion(emotion.name, emotion.intensity)
@@ -342,6 +343,23 @@ const emotionsQueue = createQueue<StageCue>({
 })
 
 const streamingControl = useLlmStreamingControlStore()
+
+/**
+ * Tachie archives only hold the nine original emotion images, so the newer stage emotions
+ * show the nearest one: love as happy, flustered as awkward, and sleepy as neutral.
+ */
+function toTachieEmotion(name: Emotion): TachieEmotion {
+  switch (name) {
+    case Emotion.Love:
+      return 'happy'
+    case Emotion.Flustered:
+      return 'awkward'
+    case Emotion.Sleepy:
+      return 'neutral'
+    default:
+      return name
+  }
+}
 
 function toStageEmotionPayload(payload: { name: string, intensity: number }): EmotionPayload | undefined {
   switch (payload.name) {

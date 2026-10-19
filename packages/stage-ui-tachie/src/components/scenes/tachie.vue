@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TachieEmotion } from '../../constants/emotions'
+
 import { Screen } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, useTemplateRef, watch } from 'vue'
@@ -44,7 +46,7 @@ watch([componentStateModel, componentStateCanvas], () => {
 defineExpose({
   canvasElement: () => canvasRef.value?.canvasElement(),
   captureFrame: () => canvasRef.value?.captureFrame(),
-  setEmotion: (emotion: string, intensity?: number) => modelRef.value?.setEmotion(emotion, intensity),
+  setEmotion: (emotion: TachieEmotion, intensity?: number) => modelRef.value?.setEmotion(emotion, intensity),
 })
 </script>
 

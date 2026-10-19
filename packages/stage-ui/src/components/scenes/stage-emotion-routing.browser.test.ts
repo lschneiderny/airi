@@ -249,3 +249,46 @@ describe('per-signal character profiles at the Natural consumer', () => {
     expect(motion.moodState.valence).toBe(0)
   })
 })
+
+describe('stage emotion routing on Tachie', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+    vi.restoreAllMocks()
+  })
+
+  it('hands the Tachie scene an archive emotion for love, flustered, and sleepy and leaves the original emotions as they are', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useSettingsStageModel().setStageModelRenderer('tachie')
+    const tachie = await import('@proj-airi/stage-ui-tachie')
+
+    let host = null as ComponentInternalInstance | null
+    render(defineComponent({
+      setup() {
+        host = getCurrentInstance()
+        return () => h('div', { style: 'width:640px;height:480px' }, [h(Stage)])
+      },
+    }), {
+      global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
+    })
+    await nextTick()
+
+    // The recorder replaces the exposed call the stage makes; no archive is loaded, so nothing is forwarded.
+    const exposed = findInstance(host?.subTree, tachie.TachieScene)!.exposed as { setEmotion: (emotion: string, intensity?: number) => void }
+    const calls = shallowRef<Array<[string, number | undefined]>>([])
+    exposed.setEmotion = (emotion, intensity) => {
+      calls.value = [...calls.value, [emotion, intensity]]
+    }
+
+    // The stage watches the pulse sequence, so each pulse waits for the previous one to land.
+    const override = useNaturalPerformanceOverride()
+    for (const [index, name] of ['love', 'flustered', 'sleepy', 'sad'].entries()) {
+      const delivered = until(() => calls.value.length, count => count === index + 1)
+      override.pulseEmotion(name, 0.7)
+      await delivered
+    }
+
+    expect(calls.value).toEqual([['happy', 0.7], ['awkward', 0.7], ['neutral', 0.7], ['sad', 0.7]])
+  })
+})
