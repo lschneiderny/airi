@@ -8,6 +8,7 @@ import type { NaturalEpisode } from './natural-motion/mood'
 import type { PostureHome, Vec3 } from './natural-motion/posture'
 import type { RandomStream } from './natural-motion/random'
 import type { Live2DRigProfile } from './natural-motion/rig-profile'
+import type { Live2DTouchRegion } from './touch-gestures'
 
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 
@@ -22,6 +23,7 @@ import { NaturalMood } from './natural-motion/mood'
 import { NaturalPostureLayers, postureHomes } from './natural-motion/posture'
 import { createRandomStream, deriveSeed } from './natural-motion/random'
 import { NaturalSpeechEmphasis, SpeechOnsetShifts } from './natural-motion/speech-emphasis'
+import { NaturalPetLayer, pokeDirection, pokeGlanceHold, pokeStrength, pokeSurpriseDedupeSeconds } from './natural-motion/touch'
 
 export interface Live2DNaturalMotionOptions {
   /** Seeds every layer stream; equal seeds replay equal motion. Takes precedence over `random`. */
@@ -95,6 +97,7 @@ const glanceTargets = { camera: { x: 0, y: 0 }, desk: { x: 0, y: -0.18 } }
 type PendingAction
   = | { kind: 'emotion', episode: NaturalEpisode }
     | { kind: 'react', reaction: 'wake' | 'screen-change' }
+    | { kind: 'poke', region: Live2DTouchRegion, x: number }
 
 interface Snapshot {
   head: Vec3
@@ -137,6 +140,11 @@ export class Live2DNaturalMotion {
   private readonly emphasis: NaturalSpeechEmphasis
   private readonly impulses: NaturalImpulses
   private readonly onsetShifts = new SpeechOnsetShifts()
+  private readonly pet = new NaturalPetLayer()
+  /** Gives each poke's surprise its own episode id; reaction ids reject reuse without escalation. */
+  private pokes = 0
+  /** Active seconds of the last poke surprise; a repeat within `pokeSurpriseDedupeSeconds` only flinches. */
+  private lastPokeSurprise = Number.NEGATIVE_INFINITY
   private readonly pending: PendingAction[] = []
   /** Last `reactSeq` seen; `undefined` until the first state, which only sets the baseline. */
   private reactSeq: number | undefined
@@ -268,6 +276,26 @@ export class Live2DNaturalMotion {
     this.mood.setPerformanceSettings(settings.moodDynamics)
   }
 
+  /**
+   * Starts a poke reaction after advancing to this timestamp; it begins at the next grid step.
+   * `x` is the poke's horizontal position relative to the touched region's center, -1 left to
+   * 1 right. The head flinches away, the face shows a brief surprise, and the gaze meets the camera.
+   */
+  poke(region: Live2DTouchRegion, x: number, nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.pending.push({ kind: 'poke', region, x })
+  }
+
+  /**
+   * Starts or continues a pet with the hand at `hand` (-1 left of the head center, 1 right), or
+   * ends it with `null`, after advancing to this timestamp. While a pet is in progress cursor
+   * attention is ignored, so the character settles into the hand instead of watching it.
+   */
+  setPet(hand: number | null, nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.pet.set(hand)
+  }
+
   /** Suspension freezes every layer; resume keeps all state, so output continues without a jump. */
   setSuspended(suspended: boolean, nowSeconds: number) {
     this.advance(nowSeconds)
@@ -286,12 +314,13 @@ export class Live2DNaturalMotion {
   private integrate(): Snapshot {
     const stepStart = this.stepIndex * step
     this.stepIndex++
-    const c = this.cursor
+    const c = this.pet.active ? null : this.cursor
     this.gaze.setCursor(c, stepStart)
     this.startPending(stepStart)
     this.energy.step(step)
     this.mood.step(step)
-    this.posture.amplitudeScale = this.energy.amplitudeScale
+    this.pet.step(step)
+    this.posture.amplitudeScale = this.energy.amplitudeScale * this.pet.postureAmplitudeScale
     this.posture.shiftRateScale = this.energy.shiftRateScale
     this.gaze.cameraFixationProbability = this.energy.cameraFixationProbability
     this.gaze.targetWeights = this.energy.targetWeights
@@ -315,11 +344,13 @@ export class Live2DNaturalMotion {
     const posture = this.posture.step(step, [this.x.cursorX, this.x.cursorY, 0])
     // Eye compensation sees the complete head pose.
     const impulse = this.impulses.headOffset(stepStart + step)
-    const head = posture.map((value, axis) => clamp(value + emphasis[axis] + impulse[axis], 1)) as Vec3
+    const petHead = this.pet.headOffset()
+    const head = posture.map((value, axis) => clamp(value + emphasis[axis] + impulse[axis] + petHead[axis], 1)) as Vec3
     // Emotion recruitment owns its body lean; following its head pulse would leak clear into body.
     // Physics-owned body axes still follow the full head through rig physics, outside Natural's control.
+    // The pet tilt is a whole-head gesture like a desktop nudge, so the body follows it.
     const nudge = this.impulses.headOffset(stepStart + step, false)
-    const followerHead = posture.map((value, axis) => clamp(value + emphasis[axis] + nudge[axis], 1)) as Vec3
+    const followerHead = posture.map((value, axis) => clamp(value + emphasis[axis] + nudge[axis] + petHead[axis], 1)) as Vec3
     if (this.posture.shiftCount !== this.shiftCount) {
       this.shiftCount = this.posture.shiftCount
       this.body.beginShift()
@@ -344,6 +375,20 @@ export class Live2DNaturalMotion {
   /** Starts emotion impulses and desktop reactions requested since the previous step. */
   private startPending(at: number) {
     for (const action of this.pending.splice(0)) {
+      if (action.kind === 'poke') {
+        const strength = pokeStrength[action.region]
+        this.impulses.nudge(pokeDirection(action.region, action.x), strength.nudge, at)
+        // Surprise carries no glance of its own; a repeat within its 2 s dedupe only flinches.
+        // A poke uses the `clear` band, which is how reactions run with band recruitment disabled.
+        if (at - this.lastPokeSurprise >= pokeSurpriseDedupeSeconds) {
+          this.lastPokeSurprise = at
+          this.impulses.trigger({ id: `poke-${++this.pokes}`, emotion: 'surprised', nominal: strength.surprise, intensity: strength.surprise, band: 'clear', escalation: false }, at)
+        }
+        this.gaze.glance(glanceTargets.camera, pokeGlanceHold, at)
+        // The fixed reacting overlay, like a desktop reaction, not the emotion energy settings.
+        this.energy.react(at, 1, true)
+        continue
+      }
       if (action.kind === 'emotion') {
         const started = this.impulses.trigger(action.episode, at)
         if (!started)
@@ -367,20 +412,23 @@ export class Live2DNaturalMotion {
     }
   }
 
-  /** Adds emotion face hints to the face layer output; with no active hint every value is unchanged. */
+  /** Adds emotion face hints and the pet face to the face layer output; with neither active every value is unchanged. */
   private withHints(face: NaturalFaceOutput, time: number): NaturalFaceOutput {
     const hints = this.impulses.hints(time)
+    const pet = this.pet.face()
     return {
       ...face,
+      eyeOpenMultiplier: face.eyeOpenMultiplier * pet.eyeOpenMultiplier,
       eyeOpenHint: face.eyeOpenHint + hints.eyeOpen,
-      browY: face.browY + hints.browY,
+      browY: face.browY + hints.browY + pet.browY,
       browAngle: face.browAngle + hints.browAngle,
-      browLY: face.browLY + hints.browY + hints.browLY,
-      browRY: face.browRY + hints.browY + hints.browRY,
+      browLY: face.browLY + hints.browY + hints.browLY + pet.browY,
+      browRY: face.browRY + hints.browY + hints.browRY + pet.browY,
       browLAngle: face.browLAngle + hints.browAngle,
       browRAngle: face.browRAngle + hints.browAngle,
-      eyeSmile: face.eyeSmile + hints.eyeSmile,
-      mouthForm: face.mouthForm + hints.mouthForm + (this.performanceSettings.mood && this.mood.active ? this.performanceSettings.moodDynamics.mouthForm * this.mood.valence : 0),
+      eyeSmile: face.eyeSmile + hints.eyeSmile + pet.eyeSmile,
+      mouthForm: face.mouthForm + hints.mouthForm + pet.mouthForm + (this.performanceSettings.mood && this.mood.active ? this.performanceSettings.moodDynamics.mouthForm * this.mood.valence : 0),
+      cheek: face.cheek + pet.cheek,
     }
   }
 

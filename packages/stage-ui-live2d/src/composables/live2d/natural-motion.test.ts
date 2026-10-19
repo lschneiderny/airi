@@ -368,6 +368,90 @@ describe('natural motion', () => {
     expect(Math.hypot(woken.advance(4).fixation.x, woken.advance(4).fixation.y)).toBeLessThan(0.05)
   })
 
+  it('flinches away from a poke, shows surprise, and meets the camera', () => {
+    const poked = new Live2DNaturalMotion({ seed: 61 })
+    const control = new Live2DNaturalMotion({ seed: 61 })
+    poked.advance(0)
+    control.advance(0)
+    poked.poke('head', 1, 2)
+    let flinch = 0
+    let brow = 0
+    let glanceDistance = Number.NaN
+    for (let frame = 2 * 60 + 1; frame <= 3 * 60; frame++) {
+      const [a, b] = [poked.advance(frame / 60), control.advance(frame / 60)]
+      // Half a second in, the 0.9 s camera glance still holds.
+      if (frame === 2.5 * 60)
+        glanceDistance = Math.hypot(a.fixation.x, a.fixation.y)
+      // A poke right of center turns the head left (negative yaw).
+      flinch = Math.min(flinch, a.pose.headX - b.pose.headX)
+      brow = Math.max(brow, a.face.browLY - b.face.browLY)
+    }
+    expect(flinch).toBeLessThan(-0.03)
+    expect(brow).toBeGreaterThan(0.1)
+    expect(glanceDistance).toBeLessThan(0.05)
+  })
+
+  it('only flinches at a repeat poke within 2 s, then surprises again after', () => {
+    const single = new Live2DNaturalMotion({ seed: 61 })
+    const repeated = new Live2DNaturalMotion({ seed: 61 })
+    single.advance(0)
+    repeated.advance(0)
+    single.poke('head', 1, 2)
+    repeated.poke('head', 1, 2)
+    // Time only moves forward: each window starts one frame after the previous one ends.
+    const browPeak = (motion: Live2DNaturalMotion, from: number, to: number) => {
+      let brow = 0
+      for (let frame = from * 60 + 1; frame <= to * 60; frame++)
+        brow = Math.max(brow, motion.advance(frame / 60).face.browLY)
+      return brow
+    }
+    browPeak(single, 2, 3)
+    browPeak(repeated, 2, 3)
+    repeated.poke('head', 1, 3)
+    // The repeat adds no surprise of its own, so the brows match the single poke.
+    expect(browPeak(repeated, 3, 4)).toBeCloseTo(browPeak(single, 3, 4), 6)
+    browPeak(single, 4, 5)
+    browPeak(repeated, 4, 5)
+    repeated.poke('head', 1, 5)
+    expect(browPeak(repeated, 5, 6)).toBeGreaterThan(browPeak(single, 5, 6) + 0.05)
+  })
+
+  it('settles into a pet with happy closed eyes, ignores the cursor, and lets go after', () => {
+    const petted = new Live2DNaturalMotion({ seed: 67 })
+    petted.advance(0)
+    petted.setCursor({ x: 1, y: 1 }, 0)
+    petted.setPet(0, 1)
+    let nearestCursorGaze = Number.POSITIVE_INFINITY
+    // The release saccade away from the cursor lasts at most 90 ms, so sampling starts after it.
+    for (let frame = 90; frame <= 4 * 60; frame++) {
+      const { fixation } = petted.advance(frame / 60)
+      // Cursor attention would hold the gaze near 0.65 x the cursor.
+      nearestCursorGaze = Math.min(nearestCursorGaze, Math.hypot(fixation.x - 0.65, fixation.y - 0.65))
+    }
+    expect(nearestCursorGaze).toBeGreaterThan(0.3)
+    const held = petted.advance(4)
+    expect(held.face.eyeOpenMultiplier).toBeLessThan(0.3)
+    expect(held.face.eyeSmile).toBeGreaterThan(0.6)
+    expect(held.face.cheek).toBeGreaterThan(0.5)
+
+    petted.setPet(null, 4)
+    // The release fades with a 0.7 s time constant and snaps to rest once negligible.
+    const released = petted.advance(12)
+    expect(released.face.eyeSmile).toBe(0)
+    expect(released.face.cheek).toBe(0)
+  })
+
+  it('moves exactly as before while nobody pets it', () => {
+    const untouched = new Live2DNaturalMotion({ seed: 71 })
+    const control = new Live2DNaturalMotion({ seed: 71 })
+    for (let frame = 0; frame <= 10 * 60; frame++) {
+      const time = frame / 60
+      // The adapter reports the absent pet on every composition.
+      untouched.setPet(null, time)
+      expect(untouched.advance(time)).toEqual(control.advance(time))
+    }
+  })
+
   it('keeps head variability independent of frame partition', () => {
     const deviations = [1 / 30, 1 / 60, 1 / 144].map((frameStep) => {
       const motion = new Live2DNaturalMotion({ seed: 21 })

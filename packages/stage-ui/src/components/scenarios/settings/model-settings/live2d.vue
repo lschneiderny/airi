@@ -19,6 +19,7 @@ import MagicMotionSettings from '../../../../features/motions/live2d/components/
 import Live2dExpressionEntry from './live2d-expression-entry.vue'
 
 import { useExpressionPerformanceSettings } from '../../../../features/performance/settings'
+import { useSettingsStageModel } from '../../../../stores/settings/stage-model'
 import { PropertyPoint } from '../../../data-pane'
 import { Section } from '../../../layouts'
 import { ColorPalette } from '../../../widgets'
@@ -42,6 +43,9 @@ const {
   live2dMotionDriver,
   live2dEyeTracking,
   live2dNaturalCursorAttention,
+  live2dNaturalTouch,
+  live2dNaturalTouchPetRequiresHold,
+  live2dNaturalTouchHeadScale,
   live2dNaturalEnergy,
   live2dModelEyeOffset,
   live2dIdleAnimationEnabled,
@@ -156,6 +160,19 @@ const live2dBlinkMode = computed<'auto' | 'force'>({
     live2dForceAutoBlinkEnabled.value = mode === 'force'
   },
 })
+
+const { stageModelSelected } = storeToRefs(useSettingsStageModel())
+/** The head area adjustment of the selected stage model; the stage keys it by the same id. */
+const naturalTouchHeadScale = computed({
+  get: () => live2dNaturalTouchHeadScale.value[stageModelSelected.value] ?? 1,
+  set: (value: number) => {
+    live2dNaturalTouchHeadScale.value = { ...live2dNaturalTouchHeadScale.value, [stageModelSelected.value]: value }
+  },
+})
+
+function formatScale(value: number) {
+  return `${value.toFixed(2)}×`
+}
 
 function formatNaturalEnergy(value: number) {
   return `${Math.round(value * 100)}%`
@@ -417,6 +434,30 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       :label="t('settings.live2d.animation.natural-cursor-attention.title')"
       :description="t('settings.live2d.animation.natural-cursor-attention.description')"
       placement="right"
+    />
+    <FieldCheckbox
+      v-if="live2dMotionDriver === 'natural'"
+      v-model="live2dNaturalTouch"
+      :label="t('settings.live2d.animation.natural-touch.title')"
+      :description="t('settings.live2d.animation.natural-touch.description')"
+      placement="right"
+    />
+    <FieldCheckbox
+      v-if="live2dMotionDriver === 'natural' && live2dNaturalTouch"
+      v-model="live2dNaturalTouchPetRequiresHold"
+      :label="t('settings.live2d.animation.natural-touch-pet-requires-hold.title')"
+      :description="t('settings.live2d.animation.natural-touch-pet-requires-hold.description')"
+      placement="right"
+    />
+    <FieldRange
+      v-if="live2dMotionDriver === 'natural' && live2dNaturalTouch"
+      v-model="naturalTouchHeadScale"
+      :min="0.5"
+      :max="2"
+      :step="0.05"
+      :label="t('settings.live2d.animation.natural-touch-head-scale.title')"
+      :description="t('settings.live2d.animation.natural-touch-head-scale.description')"
+      :format-value="formatScale"
     />
     <FieldCheckbox
       v-else

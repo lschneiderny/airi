@@ -6,6 +6,7 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 import type { Live2DEyeFocusSource } from '../../composables/live2d'
 import type { SpeechEvent } from '../../composables/live2d/expression/slots'
 import type { NaturalEpisode } from '../../composables/live2d/natural-motion/mood'
+import type { Live2DTouchEvent } from '../../composables/live2d/touch-gestures'
 
 import { presenceBubbleIdle } from '@proj-airi/stage-shared'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
@@ -60,6 +61,8 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   error: [error: Error]
+  /** A poke or pet the Natural driver reacted to, for consumers such as a future chat reaction. */
+  touch: [event: Live2DTouchEvent]
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -210,6 +213,7 @@ defineExpose({
         :screen-ambient-light-strength="screenAmbientLightStrength"
         :screen-ambient-light-squint="screenAmbientLightSquint"
         @error="emit('error', $event)"
+        @touch="emit('touch', $event)"
       />
       <Live2DPresenceBubble
         v-if="app"

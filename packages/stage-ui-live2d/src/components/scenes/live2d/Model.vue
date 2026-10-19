@@ -14,7 +14,10 @@ import type { Cubism4MotionManager } from 'pixi-live2d-display/cubism4'
 import type { PixiLive2DInternalModel } from '../../../composables/live2d'
 import type { ArchiveExpressionFile, Model3ExpressionRef } from '../../../composables/live2d/expression-controller'
 import type { SpeechEvent } from '../../../composables/live2d/expression/slots'
+import type { Live2DModelCanvasRect } from '../../../composables/live2d/head-anchor'
+import type { Live2DNaturalMotionAttention } from '../../../composables/live2d/natural-motion-adapter'
 import type { NaturalEpisode } from '../../../composables/live2d/natural-motion/mood'
+import type { Live2DTouchEvent, Live2DTouchSample } from '../../../composables/live2d/touch-gestures'
 import type { NaturalCaptureRequest } from '../../../stores'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -56,6 +59,8 @@ import { Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-
 import { scoreLiveliness } from '../../../composables/live2d/natural-motion/liveliness'
 import { readLive2DRigProfile } from '../../../composables/live2d/natural-motion/rig-profile'
 import { NaturalTraceRecorder } from '../../../composables/live2d/natural-motion/trace'
+import { Live2DTouchGestures } from '../../../composables/live2d/touch-gestures'
+import { live2DTouchRegionAt, live2DVisibleBounds, scaleLive2DRect } from '../../../composables/live2d/touch-regions'
 import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { ScreenAmbientLightFilter } from '../../../filters/screen-ambient-light'
 import { getLive2DMotionControlModelOffset, useL2dViewControl, useLive2DMotionControl, useLive2dParams, useNaturalMotionDiagnostics } from '../../../stores'
@@ -136,6 +141,8 @@ const props = withDefaults(defineProps<{
 const emits = defineEmits<{
   (e: 'modelLoaded'): void
   (e: 'error', error: Error): void
+  /** A poke or pet the Natural driver reacted to; nothing else consumes it yet. */
+  (e: 'touch', event: Live2DTouchEvent): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -145,7 +152,7 @@ const {
   control: manualMotionControl,
   exclusiveOwnerId,
 } = storeToRefs(useLive2DMotionControl())
-const { live2dMotionDriver, live2dNaturalCursorAttention } = storeToRefs(useSettingsLive2d())
+const { live2dMotionDriver, live2dNaturalCursorAttention, live2dNaturalTouch, live2dNaturalTouchPetRequiresHold, live2dNaturalTouchHeadScale } = storeToRefs(useSettingsLive2d())
 const naturalDiagnostics = useNaturalMotionDiagnostics()
 const { pendingRequest: naturalCaptureRequest } = storeToRefs(naturalDiagnostics)
 let naturalMotion: Live2DNaturalMotionAdapter | undefined
@@ -154,6 +161,15 @@ let stopNaturalCapture: (() => void) | undefined
 const localFocus = new Point()
 /** Emotions for the Natural driver; the adapter drains the queue on its next composition. */
 const pendingNaturalEmotions: NaturalEpisode[] = []
+/** Pokes for the Natural driver; the adapter drains the queue like the emotion queue. */
+const pendingNaturalPokes: Live2DNaturalMotionAttention['pendingPokes'] = []
+/** Hand position relative to the head center while the user pets it, read on every composition. */
+let naturalPetHand: number | null = null
+const touchGestures = new Live2DTouchGestures({ requireHold: live2dNaturalTouchPetRequiresHold.value })
+const touchPoint = new Point()
+/** Head and body boxes in model canvas space, re-measured at most every 100 ms while the pointer moves. */
+let touchRegions: { head: Live2DModelCanvasRect | undefined, body: Live2DModelCanvasRect | undefined, measuredAtMs: number } | undefined
+const touchRegionsMaxAgeMs = 100
 /** Parameter ids the playing explicit clip animates; Natural masks them. Empty while no clip plays. */
 let clipOwnedIds: ReadonlySet<string> = new Set<string>()
 /** Latest SDK timestamp (seconds) seen by the Natural frame hook; NaN before the first frame of a model. */
@@ -384,6 +400,7 @@ async function performModelLoad() {
     }
     model.value = undefined
     headTracker.reset()
+    resetTouch(performance.now())
   }
   const pendingModel = {
     id: props.modelId,
@@ -546,6 +563,7 @@ async function performModelLoad() {
     speechEndedAtSeconds = null
     clipOwnedIds = new Set<string>()
     pendingNaturalEmotions.length = 0
+    pendingNaturalPokes.length = 0
     const naturalAdapter = new Live2DNaturalMotionAdapter(
       internalModel,
       readRigProfile(),
@@ -572,6 +590,8 @@ async function performModelLoad() {
           clipOwnedIds,
           pendingEmotions: pendingNaturalEmotions,
           cursor,
+          pendingPokes: pendingNaturalPokes,
+          pet: naturalPetHand,
         }
       },
       document,
@@ -583,6 +603,9 @@ async function performModelLoad() {
     live2DModel.on('physicsLoaded', () => naturalAdapter.setRigProfile(readRigProfile()))
     motionManagerUpdate.register((ctx) => {
       sdkNowSeconds = ctx.now
+      // A pet ends when the pointer rests, which produces no pointer event.
+      if (touchGestures.petting)
+        handleTouchEvents(touchGestures.update(performance.now()))
       naturalAdapter.frame(ctx.now)
     }, 'final')
 
@@ -1130,6 +1153,125 @@ watch(live2dExpressionEnabled, (enabled) => {
     internalModelRef.value = undefined
   }
 })
+
+// --- Touch
+// Pokes and pets are a Natural reaction, so touch runs only while Natural drives the model.
+const touchActive = computed(() => live2dNaturalTouch.value && live2dMotionDriver.value === 'natural' && !paused.value)
+
+watch(live2dNaturalTouchPetRequiresHold, (requireHold) => {
+  touchGestures.requireHold = requireHold
+  resetTouch(performance.now())
+})
+watch(touchActive, (active) => {
+  if (!active)
+    resetTouch(performance.now())
+})
+// A new head area applies from the next pointer sample instead of after the cache expires.
+watch(live2dNaturalTouchHeadScale, () => {
+  touchRegions = undefined
+})
+
+/** Ends any gesture in progress and drops queued pokes, for a model swap or disabled touch. */
+function resetTouch(timeMs: number) {
+  handleTouchEvents(touchGestures.cancelled(timeMs))
+  pendingNaturalPokes.length = 0
+  naturalPetHand = null
+  touchRegions = undefined
+}
+
+function readTouchRegions(timeMs: number) {
+  const current = model.value
+  if (!current)
+    return undefined
+  if (touchRegions && timeMs - touchRegions.measuredAtMs < touchRegionsMaxAgeMs)
+    return touchRegions
+  const internalModel = current.internalModel
+  const head = headTracker.bounds(internalModel)
+  const headScale = live2dNaturalTouchHeadScale.value[props.modelId ?? ''] ?? 1
+  touchRegions = { head: head && scaleLive2DRect(head, headScale), body: live2DVisibleBounds(internalModel), measuredAtMs: timeMs }
+  return touchRegions
+}
+
+/** Position of `value` inside `rect` along X, from -1 at its left edge to 1 at its right. */
+function acrossRect(value: number, rect: Live2DModelCanvasRect | undefined) {
+  return rect && rect.width > 0 ? Math.max(-1, Math.min(1, (value - rect.x) / rect.width * 2 - 1)) : 0
+}
+
+/**
+ * Maps a pointer event into model canvas space, where the head tracker measures.
+ *
+ * The canvas backing store is the renderer's pixel space, so scaling the client offset by
+ * backing size over displayed size gives the global point `toModelPosition` expects. This
+ * is the same mapping the eye focus uses, without depending on the render scale setting.
+ */
+function touchSampleFrom(event: PointerEvent, canvas: HTMLCanvasElement): Live2DTouchSample | undefined {
+  const current = model.value
+  const rect = canvas.getBoundingClientRect()
+  if (!current || rect.width <= 0 || rect.height <= 0)
+    return undefined
+  const regions = readTouchRegions(event.timeStamp)
+  if (!regions)
+    return undefined
+  touchPoint.set(
+    (event.clientX - rect.left) * canvas.width / rect.width,
+    (event.clientY - rect.top) * canvas.height / rect.height,
+  )
+  current.toModelPosition(touchPoint, touchPoint)
+  return {
+    timeMs: event.timeStamp,
+    x: touchPoint.x,
+    y: touchPoint.y,
+    region: live2DTouchRegionAt(touchPoint, regions),
+    scale: regions.head?.width ?? regions.body?.width ?? current.internalModel.originalWidth,
+  }
+}
+
+function handleTouchEvents(events: Live2DTouchEvent[]) {
+  for (const event of events) {
+    if (event.kind === 'poke')
+      pendingNaturalPokes.push({ region: event.region, x: acrossRect(event.x, event.region === 'head' ? touchRegions?.head : touchRegions?.body) })
+    if (event.kind === 'pet-end')
+      naturalPetHand = null
+    emits('touch', event)
+  }
+}
+
+function onTouchPointer(event: PointerEvent) {
+  if (!touchActive.value || !event.isPrimary || !(event.currentTarget instanceof HTMLCanvasElement))
+    return
+  if (event.type === 'pointerleave' || event.type === 'pointercancel') {
+    handleTouchEvents(touchGestures.cancelled(event.timeStamp))
+    return
+  }
+  const sample = touchSampleFrom(event, event.currentTarget)
+  if (!sample)
+    return
+  if (event.type === 'pointerdown') {
+    if (event.button === 0)
+      handleTouchEvents(touchGestures.pressed(sample))
+    return
+  }
+  if (event.type === 'pointerup') {
+    if (event.button === 0)
+      handleTouchEvents(touchGestures.released(sample))
+    return
+  }
+  handleTouchEvents(touchGestures.moved(sample))
+  naturalPetHand = touchGestures.petting ? acrossRect(sample.x, touchRegions?.head) : null
+}
+
+const touchPointerEvents = ['pointerdown', 'pointermove', 'pointerup', 'pointerleave', 'pointercancel'] as const
+watch(pixiApp, (app, _, onCleanup) => {
+  const canvas = app?.view
+  if (!(canvas instanceof HTMLCanvasElement))
+    return
+  for (const type of touchPointerEvents)
+    canvas.addEventListener(type, onTouchPointer)
+  onCleanup(() => {
+    for (const type of touchPointerEvents)
+      canvas.removeEventListener(type, onTouchPointer)
+  })
+}, { immediate: true })
 
 watch(focusAt, (value) => {
   if (!model.value)

@@ -87,6 +87,8 @@ function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore
     clipOwnedIds: new Set<string>() as ReadonlySet<string>,
     pendingEmotions: [] as Live2DNaturalMotionAttention['pendingEmotions'],
     cursor: null as { x: number, y: number } | null,
+    pendingPokes: [] as Live2DNaturalMotionAttention['pendingPokes'],
+    pet: null as number | null,
   }
   /** Values the motion update writes every frame, by parameter id. */
   const motion: Record<string, number> = {}
@@ -588,6 +590,35 @@ describe('natural motion adapter', () => {
     }
     finally {
       impulse.mockRestore()
+    }
+  })
+
+  it('(i) drains pokes exactly once and forwards a pet only while Natural is active', () => {
+    const poke = vi.spyOn(Live2DNaturalMotion.prototype, 'poke')
+    const setPet = vi.spyOn(Live2DNaturalMotion.prototype, 'setPet')
+    try {
+      const f = fixture()
+      f.state.pendingPokes.push({ region: 'head', x: 0.5 })
+      f.state.pet = 0.2
+      // Touch from while Natural is inactive is dropped, not replayed on resume.
+      f.frame(0)
+      expect(f.state.pendingPokes).toHaveLength(0)
+      expect(poke).not.toHaveBeenCalled()
+      expect(setPet).toHaveBeenLastCalledWith(null, 0)
+      f.state.eligible = true
+      f.state.pendingPokes.push({ region: 'body', x: -1 })
+      f.frame(0.1)
+      expect(f.state.pendingPokes).toHaveLength(0)
+      expect(poke).toHaveBeenCalledTimes(1)
+      expect(poke).toHaveBeenCalledWith('body', -1, 0.1)
+      expect(setPet).toHaveBeenLastCalledWith(0.2, 0.1)
+      f.frame(0.2)
+      expect(poke).toHaveBeenCalledTimes(1)
+      f.adapter.dispose()
+    }
+    finally {
+      poke.mockRestore()
+      setPet.mockRestore()
     }
   })
 })

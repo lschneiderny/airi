@@ -8,6 +8,7 @@ import type { NaturalFaceOutput } from './natural-motion/face'
 import type { NaturalEpisode } from './natural-motion/mood'
 import type { PostureHome } from './natural-motion/posture'
 import type { Live2DRigProfile, NaturalChannel } from './natural-motion/rig-profile'
+import type { Live2DTouchRegion } from './touch-gestures'
 
 import { Live2DNaturalMotion } from './natural-motion'
 
@@ -41,6 +42,10 @@ export interface Live2DNaturalMotionAttention {
   /** Host emotion queue; the adapter empties it on every composition. */
   pendingEmotions: NaturalEpisode[]
   cursor: { x: number, y: number } | null
+  /** Host poke queue, `x` relative to the touched region's center (-1..1); emptied like `pendingEmotions`. */
+  pendingPokes: { region: Live2DTouchRegion, x: number }[]
+  /** Hand position relative to the head center (-1..1) while the user pets the head, otherwise `null`. */
+  pet: number | null
 }
 
 /**
@@ -286,6 +291,12 @@ export class Live2DNaturalMotionAdapter {
       if (active)
         this.controller.impulse(emotion, this.time)
     }
+    // Touch follows the same rule: a poke or pet from while Natural was inactive is stale.
+    for (const poke of attention.pendingPokes.splice(0)) {
+      if (active)
+        this.controller.poke(poke.region, poke.x, this.time)
+    }
+    this.controller.setPet(active ? attention.pet : null, this.time)
     this.controller.setCursor(attention.cursor, this.time)
     const frame = this.controller.advance(this.time)
     this.diagnosticFrames++

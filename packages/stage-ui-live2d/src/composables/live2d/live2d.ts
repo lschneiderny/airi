@@ -7,6 +7,16 @@ export type Live2DMotionDriver = 'magic' | 'natural' | 'universal'
 const live2dMotionDriver = useLocalStorageManualReset<Live2DMotionDriver>('settings/live2d/motion-driver', 'universal')
 const live2dEyeTracking = useLocalStorageManualReset<boolean>('settings/live2d/eye-tracking', true)
 const live2dNaturalCursorAttention = useLocalStorageManualReset<boolean>('settings/live2d/natural-cursor-attention', true)
+/** Let the user poke the model and pet its head with the cursor while Natural drives it. */
+const live2dNaturalTouch = useLocalStorageManualReset<boolean>('settings/live2d/natural-touch', true)
+/** Count only strokes made with the primary button held as pets, so passing the cursor over the head never pets it. */
+const live2dNaturalTouchPetRequiresHold = useLocalStorageManualReset<boolean>('settings/live2d/natural-touch-pet-requires-hold', false)
+/**
+ * Size of the petting area relative to the measured head, by stage model id. A model
+ * without an entry uses 1, the measured head. Replace the record on write; consumers
+ * watch it by identity.
+ */
+const live2dNaturalTouchHeadScale = useLocalStorageManualReset<Record<string, number>>('settings/live2d/natural-touch-head-scale', {})
 const naturalEnergyDefault = 0.5
 /**
  * How lively Natural motion is, from 0 (calm) to 1 (energetic). The motion
@@ -57,6 +67,9 @@ function resetState() {
   live2dMotionDriver.reset()
   live2dEyeTracking.reset()
   live2dNaturalCursorAttention.reset()
+  live2dNaturalTouch.reset()
+  live2dNaturalTouchPetRequiresHold.reset()
+  live2dNaturalTouchHeadScale.reset()
   live2dNaturalEnergy.reset()
   live2dModelEyeOffset.reset()
   live2dIdleAnimationEnabled.reset()
@@ -74,6 +87,9 @@ export const useSettingsLive2d = defineStore('settings-live2d', () => {
     live2dMotionDriver,
     live2dEyeTracking,
     live2dNaturalCursorAttention,
+    live2dNaturalTouch,
+    live2dNaturalTouchPetRequiresHold,
+    live2dNaturalTouchHeadScale,
     live2dNaturalEnergy,
     live2dModelEyeOffset,
     live2dIdleAnimationEnabled,

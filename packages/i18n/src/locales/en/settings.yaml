@@ -232,6 +232,15 @@ live2d:
     natural-cursor-attention:
       title: Cursor attention
       description: Let Natural follow the moving cursor. Turn this off for autonomous movement only.
+    natural-touch:
+      title: Poke and pet
+      description: React when you click the model or stroke its head with the cursor.
+    natural-touch-pet-requires-hold:
+      title: Pet only while holding the button
+      description: Count strokes as petting only while the left mouse button is held, so moving the cursor across the head does nothing.
+    natural-touch-head-scale:
+      title: Head area for petting
+      description: Grow or shrink the area that counts as this model's head. 1× uses the head the model's rig measures.
     focus:
       title: Enable mouse tracking
       description: Look at the cursor while it is moving. Idle eye movement resumes after the cursor stops.

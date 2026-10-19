@@ -55,6 +55,7 @@ The `Live2DNaturalMotion` controller advances every layer on a fixed 120 Hz grid
 - Speech emphasis turns onsets in the lipsync mouth level into occasional small head beats while the character speaks: 80% are pitch-down nods and 20% are roll tilts to a random side.
 - Impulses add short head gestures and decaying face hints for emotions and desktop reactions.
 - Mood keeps a decaying afterglow of recent emotions that tints posture, gaze, speech emphasis, and mouth form.
+- Touch reacts when the user pokes the model or pets its head with the cursor; see Touch below.
 - Energy scales posture amplitude, posture shift rate, and gaze target choice from the performance state and the user's Energy setting.
 
 ### What Natural owns and what it never writes
@@ -68,7 +69,7 @@ Natural owns these channels when the model has them:
 - body XYZ (`ParamBodyAngleX`, `ParamBodyAngleY`, `ParamBodyAngleZ`), except an axis that rig physics derives from the head;
 - eye XY (`ParamEyeBallX`, `ParamEyeBallY`);
 - face micro-offsets on brows, eye smile, and mouth form, and the eyelid composition (eye smile comes only from emotion hints);
-- cheek (`ParamCheek`), a reserved channel that Natural currently leaves at its base value with a 0 offset;
+- cheek (`ParamCheek`), which only a pet raises; otherwise Natural leaves it at its base value with a 0 offset;
 - Natural blink, while the user's auto-blink setting is on;
 - breath (`ParamBreath`), unless manual breath control is active.
 
@@ -134,6 +135,30 @@ Natural has its own Cursor attention setting, enabled by default.
 It does not change Universal's mouse tracking preference or saved idle animation.
 When cursor attention is enabled and the cursor is active, the gaze and a small head bias follow the cursor.
 Resetting Live2D settings restores Universal and enables both cursor preferences.
+
+### Touch: poke and pet
+
+Natural has a Poke and pet setting, stored as `settings/live2d/natural-touch` and enabled by default.
+A second setting, `settings/live2d/natural-touch-pet-requires-hold`, counts strokes as petting only while the left mouse button is held. It is off by default.
+A third setting, Head area for petting, scales the measured head box around its center for the selected model, from 0.5× to 2×. It is stored per stage model id in `settings/live2d/natural-touch-head-scale`.
+The settings page shows these settings only while Natural is selected. Touch does nothing under Universal or MAGIC, and nothing while the stage is paused.
+
+`Live2DTouchGestures` classifies pointer input on the Live2D canvas, mapped into model canvas space:
+
+- A poke is a press released within 400 ms that moved less than 5% of the head width, anywhere on the model.
+- A pet is movement over the head: half a head width of travel within one second. Without a held button the travel must also reverse direction at least once, so a cursor passing over the head is not a pet.
+- A pet ends after 600 ms without movement over the head, 250 ms after the pointer leaves the head, when the held button is released, or when the pointer leaves the canvas.
+
+The head is the box `createLive2DHeadTracker` measures: the model's `head` or `face` hit area, or otherwise the drawables that move when the head turns. A model without either has no head, so it can be poked but not petted.
+The body is the box around the drawables the renderer currently draws, not the padded model canvas.
+
+A poke turns and rolls the head away from the poke point and lifts it, starts a short surprise impulse, and glances at the camera for 0.9 seconds. A head poke moves more than a body poke.
+A pet fades in over about a second and out over about two. While it lasts, the eyes close to a quarter of their openness and smile, the mouth smiles, the cheek and brows rise, the head bows slightly and rolls with the hand, and posture drift calms.
+Cursor attention is ignored during a pet, so the character settles into the hand instead of looking at it.
+
+In the Electron stage window, clicks reach the canvas only over opaque pixels, because the window is click-through elsewhere. Hover pets still work there, because the window forwards pointer movement while it is click-through.
+
+`Live2DScene` emits a `touch` event for every poke, pet start, and pet end. No consumer reads it yet; it exists for a later chat reaction.
 
 ### Liveliness score and reference stats
 
@@ -242,7 +267,7 @@ Keep these caveats in mind:
 ## When to use
 
 Use this package to render Live2D models in AIRI hosts.
-Use Natural for continuous autonomous movement that responds to speech, listening, thinking, desktop activity, and emotions, with optional cursor attention.
+Use Natural for continuous autonomous movement that responds to speech, listening, thinking, desktop activity, emotions, and pokes and pets, with optional cursor attention.
 Use the expression catalog and slots to let emotions and the LLM show a model's own faces, effects, and props without disturbing outfits or saved defaults.
 Natural controls head, body, eye, face, blink, and breath channels before the model's physics pass.
 Model physics remains authoritative, so torso movement depends on the rig.
