@@ -3,7 +3,7 @@ import type { AutoSlot, Tickets } from './selection'
 import type { Decider, DeciderContext, PerformanceDecision } from './types'
 
 import { acceptReaction, createReactionState } from './reaction-strength'
-import { autoPicks, clearCommands, drawEpisodeTickets, explicitExpressionCommand, neutralCommands } from './selection'
+import { autoPicks, clearCommands, drawEpisodeTickets, emotionHold, explicitExpressionCommand, explicitExpressionReaction, neutralCommands, releaseHold } from './selection'
 
 /** Episode tickets and occupants survive checkpoints so escalations cannot reroll a pick. */
 export interface PickerState {
@@ -34,12 +34,17 @@ export function createPickerDecider(): Decider<PickerState> {
         if (!command)
           return { decision, state }
         decision.slots.push(command)
-        const occupants = command.slot === 'prop' ? state.occupants : { ...state.occupants, [command.slot]: command.expressionId }
-        return { decision, state: { ...state, occupants, recency: { ...state.recency, [command.expressionId]: signal.at } } }
+        const derived = explicitExpressionReaction(command, signal, ctx, state)
+        decision.episodes.push(...derived.episodes)
+        decision.holds.push(...derived.holds)
+        const occupants = command.slot === 'prop' ? derived.state.occupants : { ...derived.state.occupants, [command.slot]: command.expressionId }
+        return { decision, state: { ...derived.state, occupants, recency: { ...state.recency, [command.expressionId]: signal.at } } }
       }
       if (signal.kind === 'clear') {
         // Reaction history and episode tickets stay, so a later escalation may refill a cleared slot.
         decision.slots = clearCommands(signal)
+        if (!signal.slot)
+          decision.holds.push(releaseHold(signal.turnId))
         const cleared = decision.slots.map(command => command.slot)
         const occupants = {
           face: cleared.includes('face') ? null : state.occupants.face,
@@ -53,12 +58,14 @@ export function createPickerDecider(): Decider<PickerState> {
       let next = { ...state, reaction: reaction.state }
       if (signal.emotion === 'neutral' && reaction.state !== state.reaction) {
         decision.slots = neutralCommands(signal.turnId)
+        decision.holds.push(releaseHold(signal.turnId))
         return { decision, state: { ...next, occupants: { face: null, effect: null }, tickets: null } }
       }
       const episode = reaction.episode
       if (!episode)
         return { decision, state: next }
       decision.episodes.push(episode)
+      decision.holds.push(emotionHold(episode, signal.turnId, ctx.settings))
       if (!episode.escalation)
         next = { ...next, ...drawEpisodeTickets(state.streams), occupants: { face: null, effect: null } }
       if (!ctx.settings.autoExpressions)

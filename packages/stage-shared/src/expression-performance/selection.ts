@@ -1,9 +1,10 @@
 import type { CatalogEntry } from './catalog'
+import type { ReactionState } from './reaction-strength'
 import type { ExpressionPerformanceSettings } from './settings'
-import type { AffectSignal, DeciderContext, ReactionEpisode, SlotCommand } from './types'
+import type { AffectSignal, DeciderContext, HoldCommand, ReactionEpisode, SlotCommand } from './types'
 
 import { isAutoEligible } from './catalog'
-import { drawRandom } from './reaction-strength'
+import { acceptReaction, drawRandom } from './reaction-strength'
 import { bandRank } from './types'
 
 /**
@@ -116,4 +117,67 @@ export function clearCommands(signal: ClearSignal): SlotCommand[] {
 /** Neutral releases only the automatic slots; outfits, props, and the rest set stay. */
 export function neutralCommands(turnId: string | undefined): SlotCommand[] {
   return (['face', 'effect'] as const).map(slot => ({ slot, expressionId: null, holdSeconds: 0, until: 'speech', turnId }))
+}
+
+/**
+ * The hold for an accepted episode. A turn's hold ends with its speech, so it uses the band's face
+ * hold; a turnless one has no speech to wait for and lasts `held.turnlessSeconds`.
+ */
+export function emotionHold(episode: ReactionEpisode, turnId: string | undefined, settings: ExpressionPerformanceSettings): HoldCommand {
+  const turnless = turnId === undefined
+  return {
+    emotion: episode.emotion,
+    strength: episode.intensity,
+    holdSeconds: turnless ? settings.held.turnlessSeconds : settings.naturalBands[episode.band].faceHold,
+    until: turnless ? 'hold' : 'speech',
+    turnId,
+  }
+}
+
+/** Releases the held emotion; used when neutral resets reaction state or a clear names no slot. */
+export function releaseHold(turnId: string | undefined): HoldCommand {
+  return { emotion: null, strength: 0, holdSeconds: 0, until: 'hold', turnId }
+}
+
+/** The decider state an explicit expression's derived reaction reads and updates. */
+interface ExpressionReactionState {
+  reaction: ReactionState
+  streams: Record<AutoSlot, number>
+  tickets: Record<AutoSlot, Tickets> | null
+  occupants: Record<AutoSlot, string | null>
+}
+
+/**
+ * Derives a reaction from an explicit expression that has emotion mappings, so the held face
+ * follows what the LLM chose. The primary mapping is the heaviest one, earliest on ties, and it
+ * is accepted exactly like a direct emotion signal at the mapping's minimum band. The hold mirrors
+ * the slot command's own lifetime. No automatic picks run: the expression is the pick.
+ * A repeat inside the same episode yields no new episode but still refreshes the hold, at the
+ * running episode's strength, so the held face keeps matching the refreshed slot lease.
+ *
+ * A new episode draws its tickets and clears both occupants like the direct emotion path, so a later
+ * stronger signal of the same emotion escalates without a null ticket. The caller then records the
+ * command's own occupant. With `heldEmotions` off, or no mapping, the state is returned untouched,
+ * which keeps the old slot-only behavior.
+ */
+export function explicitExpressionReaction<S extends ExpressionReactionState>(command: SlotCommand & { expressionId: string }, signal: ExpressionSignal, ctx: DeciderContext, state: S): { episodes: ReactionEpisode[], holds: HoldCommand[], state: S } {
+  const primary = ctx.settings.heldEmotions
+    ? ctx.catalog.find(entry => entry.id === command.expressionId)?.mappings.reduce<CatalogEntry['mappings'][number] | null>((best, mapping) => best && best.weight >= mapping.weight ? best : mapping, null)
+    : null
+  if (!primary)
+    return { episodes: [], holds: [], state }
+  const reaction = acceptReaction(state.reaction, primary.emotion, ctx.settings.bands ? ctx.settings.intensity[primary.minBand] : 0.6, signal.at, ctx.settings)
+  let next = { ...state, reaction: reaction.state }
+  const episode = reaction.episode
+  const running = reaction.state.current?.episode
+  const held = episode ?? (running?.emotion === primary.emotion ? running : null)
+  if (!held)
+    return { episodes: [], holds: [], state: next }
+  if (episode && !episode.escalation)
+    next = { ...next, ...drawEpisodeTickets(state.streams), occupants: { face: null, effect: null } }
+  return {
+    episodes: episode ? [episode] : [],
+    holds: [{ emotion: held.emotion, strength: held.intensity, holdSeconds: command.holdSeconds, until: command.until, turnId: signal.turnId }],
+    state: next,
+  }
 }

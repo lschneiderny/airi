@@ -6,7 +6,7 @@ import type { Decider, DeciderContext, PerformanceDecision, SlotCommand } from '
 import { createPickerDecider } from './picker'
 import { acceptReaction } from './reaction-strength'
 import { cancelTurn, createSchedulerState, earliestExpiry, expire, schedule, take } from './scheduler'
-import { autoPicks, clearCommands, drawEpisodeTickets, explicitExpressionCommand, neutralCommands } from './selection'
+import { autoPicks, clearCommands, drawEpisodeTickets, emotionHold, explicitExpressionCommand, explicitExpressionReaction, neutralCommands, releaseHold } from './selection'
 import { bandRank } from './types'
 
 /** An automatic pick waiting for its timing slot. */
@@ -105,18 +105,24 @@ export function createPlannerDecider(): Decider<PlannerState> {
           if (!command)
             return { decision, state }
           decision.slots.push(command)
+          const derived = explicitExpressionReaction(command, signal, ctx, state)
+          decision.episodes.push(...derived.episodes)
+          decision.holds.push(...derived.holds)
+          const recency = { ...state.recency, [command.expressionId]: signal.at }
           if (command.slot === 'prop')
-            return { decision, state: { ...state, recency: { ...state.recency, [command.expressionId]: signal.at } } }
+            return { decision, state: { ...derived.state, recency } }
           return { decision, state: {
-            ...state,
-            occupants: { ...state.occupants, [command.slot]: command.expressionId },
-            recency: { ...state.recency, [command.expressionId]: signal.at },
+            ...derived.state,
+            occupants: { ...derived.state.occupants, [command.slot]: command.expressionId },
+            recency,
             scheduler: withoutSlots(state.scheduler, [command.slot]),
           } }
         }
         case 'clear': {
           // Like the picker: reaction history and episode tickets stay, so a later escalation may refill the slot.
           decision.slots = clearCommands(signal)
+          if (!signal.slot)
+            decision.holds.push(releaseHold(signal.turnId))
           const cleared = decision.slots.map(command => command.slot)
           const occupants = {
             face: cleared.includes('face') ? null : state.occupants.face,
@@ -147,12 +153,14 @@ export function createPlannerDecider(): Decider<PlannerState> {
       next = { ...next, reaction: reaction.state }
       if (signal.emotion === 'neutral' && reaction.state !== state.reaction) {
         decision.slots = neutralCommands(signal.turnId)
+        decision.holds.push(releaseHold(signal.turnId))
         return { decision, state: { ...next, occupants: { face: null, effect: null }, tickets: null, scheduler: { ...next.scheduler, plans: [] } } }
       }
       const episode = reaction.episode
       if (!episode)
         return { decision, state: next }
       decision.episodes.push(episode)
+      decision.holds.push(emotionHold(episode, signal.turnId, ctx.settings))
       if (!episode.escalation)
         next = { ...next, ...drawEpisodeTickets(state.streams), occupants: { face: null, effect: null } }
       if (!ctx.settings.autoExpressions)
