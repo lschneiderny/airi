@@ -22,6 +22,9 @@ lerna-debug.log*
 .claude/worktrees/
 .superpowers/
 .omo/evidence/
+.omo/boulder.json
+.omo/ulw-execute/
+.omo/slop/
 
 # Anything .local, especially for .env.local
 *.local
