@@ -9,6 +9,7 @@ describe('performance settings', () => {
       mood: true,
       autoExpressions: true,
       stateFeedback: false,
+      heldEmotions: true,
       decider: 'picker',
       intensity: { slight: 0.25, clear: 0.6, strong: 0.9, clearFrom: 0.5, strongFrom: 0.8, jitter: 0.04, habituationWindow: 15, habituationBase: 0.8, habituationFloor: 0.35, escalationWindow: 2 },
       naturalBands: {
@@ -25,6 +26,7 @@ describe('performance settings', () => {
       picker: { recencyDepth: 0.8, recencyTau: 8, effectGateFrom: 0.5, effectGateTo: 0.8 },
       slots: { defaultFadeSeconds: 1, speechGrace: 0.25, unstartedExpiry: 10, holdCap: 15 },
       timing: { pauseSeconds: 0.18, emphasisRefractory: 1.2 },
+      held: { turnlessSeconds: 4, onsetTau: 0.25, releaseTau: 0.6, accentScale: 0.5, postureTau: 0.6 },
       planner: { minGap: 0.8, window: 5, windowMax: 3, scheduleExpiry: 6 },
     }
     expect(parseExpressionPerformanceSettings({})).toEqual({ success: true, value: expected })
@@ -38,6 +40,28 @@ describe('performance settings', () => {
     expect(result.value.intensity.clear).toBe(0.6)
     expect(result.value.naturalBands.clear.headTau).toBeNull()
     expect(result.value.bands).toBe(false)
+  })
+
+  it('parses a stored document without held fields and keeps held defaults', () => {
+    const result = parseExpressionPerformanceSettings({ bands: false, decider: 'planner', planner: { minGap: 1 }, timing: { pauseSeconds: 0.3 } })
+    expect(result.success).toBe(true)
+    expect(result.value.heldEmotions).toBe(true)
+    expect(result.value.held).toEqual({ turnlessSeconds: 4, onsetTau: 0.25, releaseTau: 0.6, accentScale: 0.5, postureTau: 0.6 })
+    expect(result.value.bands).toBe(false)
+  })
+
+  it('accepts partial held tunables and heldEmotions false', () => {
+    const result = parseExpressionPerformanceSettings({ heldEmotions: false, held: { turnlessSeconds: 0, accentScale: 1 } })
+    expect(result.success).toBe(true)
+    expect(result.value.heldEmotions).toBe(false)
+    expect(result.value.held).toEqual({ turnlessSeconds: 0, onsetTau: 0.25, releaseTau: 0.6, accentScale: 1, postureTau: 0.6 })
+  })
+
+  it('rejects a negative turnlessSeconds with success false and the default document', () => {
+    const result = parseExpressionPerformanceSettings({ held: { turnlessSeconds: -1 } })
+    expect(result.success).toBe(false)
+    expect(result.value).toEqual(defaultExpressionPerformanceSettings)
+    expect(result.value.held.turnlessSeconds).toBe(4)
   })
 
   it('accepts the planner decider with partial planner tunables', () => {

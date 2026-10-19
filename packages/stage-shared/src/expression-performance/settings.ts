@@ -149,6 +149,19 @@ const timingSchema = settingsObject({
   emphasisRefractory: optional(seconds(), 1.2),
 })
 
+const heldSchema = settingsObject({
+  /** Seconds a turnless emotion is held; 0 releases at once. @default 4 */
+  turnlessSeconds: optional(seconds(), 4),
+  /** Held-emotion onset seconds; 0 is immediate. @default 0.25 */
+  onsetTau: optional(seconds(), 0.25),
+  /** Held-emotion release seconds; 0 is immediate. @default 0.6 */
+  releaseTau: optional(seconds(), 0.6),
+  /** Accent scale on top of a hold; 0 disables accents. @default 0.5 */
+  accentScale: optional(unit(), 0.5),
+  /** Posture response seconds; 0 is immediate. @default 0.6 */
+  postureTau: optional(seconds(), 0.6),
+})
+
 const plannerSchema = settingsObject({
   /**
    * Seconds between automatic performance moments; 0 allows back-to-back changes. The face and effect
@@ -185,6 +198,8 @@ export function createExpressionPerformanceSettingsSchema(mood: MoodBounds) {
     autoExpressions: optional(boolean(), true),
     /** False omits active-expression feedback. @default false */
     stateFeedback: optional(boolean(), false),
+    /** False keeps today's momentary emotion behavior. @default true */
+    heldEmotions: optional(boolean(), true),
     /** Picker emits picks at once; planner schedules them into speech timing slots under a change budget. @default 'picker' */
     decider: optional(picklist(['picker', 'planner']), 'picker'),
     /** Zero dose/jitter and unit habituation preserve neutral intensity. */
@@ -199,6 +214,8 @@ export function createExpressionPerformanceSettingsSchema(mood: MoodBounds) {
     slots: optional(slotsSchema, () => parse(slotsSchema, {})),
     /** Zero durations remove timing delays. */
     timing: optional(timingSchema, () => parse(timingSchema, {})),
+    /** Held-emotion dynamics; ignored when `heldEmotions` is false. */
+    held: optional(heldSchema, () => parse(heldSchema, {})),
     /** Zero gap and window disable the planner budget; zero expiry stops picks from waiting for timing slots. */
     planner: optional(plannerSchema, () => parse(plannerSchema, {})),
   })

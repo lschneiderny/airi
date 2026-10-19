@@ -28,7 +28,7 @@ export function createPickerDecider(): Decider<PickerState> {
     },
     nextDeadline: () => null,
     decide(signal, ctx: DeciderContext, state) {
-      const decision: PerformanceDecision = { episodes: [], slots: [] }
+      const decision: PerformanceDecision = { episodes: [], slots: [], holds: [] }
       if (signal.kind === 'expression') {
         const command = explicitExpressionCommand(signal, ctx)
         if (!command)

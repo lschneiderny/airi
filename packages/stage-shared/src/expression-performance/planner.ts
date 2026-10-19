@@ -70,7 +70,7 @@ export function createPlannerDecider(): Decider<PlannerState> {
     },
     nextDeadline: state => earliestExpiry(state.scheduler),
     decide(signal, ctx, state) {
-      const decision: PerformanceDecision = { episodes: [], slots: [] }
+      const decision: PerformanceDecision = { episodes: [], slots: [], holds: [] }
       // Every pending plan is an automatic pick, so any decision made while the switch is off drops
       // them all: none can activate later, even after the switch is turned back on. Explicit
       // expressions, clears, active slots, and performer leases are not plans and stay untouched.

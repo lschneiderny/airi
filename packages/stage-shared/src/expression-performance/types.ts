@@ -47,9 +47,20 @@ export interface SlotCommand {
   turnId?: string
 }
 
+export interface HoldCommand {
+  /** `null` releases the hold. */
+  emotion: PerformanceEmotion | null
+  strength: number
+  holdSeconds: number
+  until: 'speech' | 'hold'
+  /** Copied from the triggering signal so speech holds remain isolated by turn. */
+  turnId?: string
+}
+
 export interface PerformanceDecision {
   episodes: ReactionEpisode[]
   slots: SlotCommand[]
+  holds: HoldCommand[]
 }
 
 export interface DeciderContext {
