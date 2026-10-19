@@ -200,6 +200,17 @@ describe('affect trace', () => {
     expect(safeParse(AffectTraceSchema, { ...fixture(), ...fields }).success).toBe(false)
   })
 
+  it.each([
+    ['love', true],
+    ['flustered', true],
+    ['sleepy', true],
+    ['sleepy ', false],
+    ['lovey', false],
+  ])('accepts or rejects the recorded emotion name %j: %s', (name, success) => {
+    const signal = { kind: 'emotion', source: 'act', emotion: name, nominal: 0.6, at: 1 }
+    expect(safeParse(AffectTraceSchema, { ...fixture(), entries: [{ type: 'signal', signal }] }).success).toBe(success)
+  })
+
   it('drops recorded deadlines and synthesizes the comparison policy deadlines through endAt', () => {
     const received: AffectSignal[] = []
     const decider = {

@@ -328,6 +328,9 @@ live2d:
       awkward: Awkward
       question: Question
       curious: Curious
+      love: Love
+      flustered: Flustered
+      sleepy: Sleepy
     validation:
       label-required: Enter a label.
       weight-range: 'Weight must be a number from {min} to {max}.'

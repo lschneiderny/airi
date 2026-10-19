@@ -6,7 +6,7 @@ import { EffectiveCatalogEntrySchema, EffectiveExpressionPerformanceSettingsSche
 
 const seconds = pipe(number(), finite(), minValue(0))
 const turnId = optional(string())
-const emotion = picklist(['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral'])
+const emotion = picklist(['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral', 'love', 'flustered', 'sleepy'])
 // Recorded contexts hold profile-resolved settings and catalogs, bounded by the profile-scaled persisted bounds.
 const contextSchema = strictObject({ catalog: array(EffectiveCatalogEntrySchema), settings: EffectiveExpressionPerformanceSettingsSchema })
 const signalSchema = variant('kind', [

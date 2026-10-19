@@ -363,6 +363,12 @@ function toStageEmotionPayload(payload: { name: string, intensity: number }): Em
       return { name: Emotion.Curious, intensity: payload.intensity }
     case 'neutral':
       return { name: Emotion.Neutral, intensity: payload.intensity }
+    case 'love':
+      return { name: Emotion.Love, intensity: payload.intensity }
+    case 'flustered':
+      return { name: Emotion.Flustered, intensity: payload.intensity }
+    case 'sleepy':
+      return { name: Emotion.Sleepy, intensity: payload.intensity }
     default:
       return undefined
   }

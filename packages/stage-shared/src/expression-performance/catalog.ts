@@ -14,7 +14,7 @@ export const mappingWeightRange: NumberRange = [Number.MIN_VALUE, Number.MAX_VAL
 const bandSchema = picklist(['slight', 'clear', 'strong'])
 function mappingFields([min, max]: NumberRange) {
   return {
-    emotion: picklist(['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious']),
+    emotion: picklist(['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'love', 'flustered', 'sleepy']),
     weight: optional(pipe(number(), finite(), minValue(min), maxValue(max)), 1),
   }
 }

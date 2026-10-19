@@ -8,6 +8,9 @@ export enum Emotion {
   Question = 'question',
   Curious = 'curious',
   Neutral = 'neutral',
+  Love = 'love',
+  Flustered = 'flustered',
+  Sleepy = 'sleepy',
 }
 
 export const EMOTION_VALUES = Object.values(Emotion)
@@ -63,4 +66,7 @@ export const EMOTION_SpineAnimationName_value: Record<Emotion, string> = {
   [Emotion.Question]: SpineAnimationName.Question,
   [Emotion.Neutral]: SpineAnimationName.Neutral,
   [Emotion.Curious]: SpineAnimationName.Curious,
+  [Emotion.Love]: SpineAnimationName.Happy,
+  [Emotion.Flustered]: SpineAnimationName.Awkward,
+  [Emotion.Sleepy]: SpineAnimationName.Neutral,
 }

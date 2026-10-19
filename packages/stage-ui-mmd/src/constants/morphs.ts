@@ -119,6 +119,18 @@ export const EMOTION_MORPHS: Record<Emotion, EmotionMorphState> = {
     influences: [],
     blendDuration: 0.6,
   },
+  [Emotion.Love]: {
+    influences: [{ slot: 'smile', value: 0.8 }, { slot: 'vowelA', value: 0.2 }],
+    blendDuration: 0.4,
+  },
+  [Emotion.Flustered]: {
+    influences: [{ slot: 'troubled', value: 0.6 }, { slot: 'smile', value: 0.2 }],
+    blendDuration: 0.4,
+  },
+  [Emotion.Sleepy]: {
+    influences: [],
+    blendDuration: 0.6,
+  },
 }
 
 /**

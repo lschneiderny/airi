@@ -27,7 +27,7 @@ const { t } = useI18n()
 
 const kinds: ExpressionKind[] = ['face', 'effect', 'outfit', 'prop', 'system']
 const llmKinds: ExpressionKind[] = ['face', 'effect', 'prop']
-const emotions: EmotionMapping['emotion'][] = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious']
+const emotions: EmotionMapping['emotion'][] = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'love', 'flustered', 'sleepy']
 const bands: EmotionMapping['minBand'][] = ['slight', 'clear', 'strong']
 const noGroup = '__none__'
 

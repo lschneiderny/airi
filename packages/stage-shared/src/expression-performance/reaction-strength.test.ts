@@ -102,6 +102,15 @@ describe('reaction strength', () => {
     }
   })
 
+  it('accepts love, flustered, and sleepy and ignores malformed spellings of them', () => {
+    for (const emotion of ['love', 'flustered', 'sleepy'] as const)
+      expect(acceptReaction(createReactionState(1), emotion, 0.9, 0, settings).episode?.emotion).toBe(emotion)
+    for (const emotion of ['lovey', 'Love', 'sleepy ']) {
+      const state = createReactionState(1)
+      expect(acceptReaction(state, emotion as PerformanceEmotion, 0.9, 0, settings)).toEqual({ episode: null, state })
+    }
+  })
+
   it('does not mutate the input checkpoint', () => {
     const state = createReactionState(1)
     const before = JSON.stringify(state)

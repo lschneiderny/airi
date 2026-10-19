@@ -47,7 +47,7 @@ function jittered(dose: number, u: number, settings: ExpressionPerformanceSettin
  * as zero, clearing history. Neutral also clears history, but preserves ids and PRNG.
  */
 export function acceptReaction(state: ReactionState, emotion: PerformanceEmotion, nominal: number, at: number, settings: ExpressionPerformanceSettings): { episode: ReactionEpisode | null, state: ReactionState } {
-  if (!['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral'].includes(emotion)
+  if (!['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral', 'love', 'flustered', 'sleepy'].includes(emotion)
     || !Number.isFinite(at) || (state.lastAt !== null && at < state.lastAt)) {
     return { episode: null, state }
   }

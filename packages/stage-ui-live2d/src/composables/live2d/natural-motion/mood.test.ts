@@ -55,6 +55,28 @@ describe('natural mood', () => {
     expect(dimensions(mood)).toEqual([-1, 1, 1])
   })
 
+  it('doses love, flustered, and sleepy along their coefficients', () => {
+    // One strong dose is the same size for every emotion and stays far below the [-1, 1] clamp,
+    // so each dimension is that dose times the emotion's coefficient (`NaturalMood.add`).
+    const happy = new NaturalMood()
+    const love = new NaturalMood()
+    const flustered = new NaturalMood()
+    const sleepy = new NaturalMood()
+    happy.add(episode())
+    love.add(episode({ emotion: 'love' }))
+    flustered.add(episode({ emotion: 'flustered' }))
+    sleepy.add(episode({ emotion: 'sleepy' }))
+    expect(love.valence / happy.valence).toBeCloseTo(0.6 / 0.7, 12)
+    expect(love.arousal / happy.arousal).toBeCloseTo(0.2 / 0.5, 12)
+    expect(love.tension).toBe(0)
+    expect(flustered.valence / happy.valence).toBeCloseTo(0.2 / 0.7, 12)
+    expect(flustered.arousal / happy.arousal).toBeCloseTo(1, 12)
+    expect(flustered.tension).toBeGreaterThan(0)
+    expect(sleepy.valence).toBe(0)
+    expect(sleepy.arousal).toBeLessThan(0)
+    expect(sleepy.tension).toBe(0)
+  })
+
   it('adds only the escalation dose delta after decay and ignores duplicates and stale ids', () => {
     const mood = new NaturalMood()
     mood.add(episode({ band: 'clear', intensity: 0.6 }))

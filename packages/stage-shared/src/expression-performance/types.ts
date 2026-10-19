@@ -1,7 +1,7 @@
 import type { CatalogEntry } from './catalog'
 import type { ExpressionPerformanceSettings } from './settings'
 
-export type PerformanceEmotion = 'happy' | 'sad' | 'angry' | 'think' | 'surprised' | 'awkward' | 'question' | 'curious' | 'neutral'
+export type PerformanceEmotion = 'happy' | 'sad' | 'angry' | 'think' | 'surprised' | 'awkward' | 'question' | 'curious' | 'neutral' | 'love' | 'flustered' | 'sleepy'
 export type Band = 'slight' | 'clear' | 'strong'
 export const bandRank = { slight: 1, clear: 2, strong: 3 } as const
 

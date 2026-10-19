@@ -86,4 +86,22 @@ describe('normalizeActPayload', () => {
       emotion: { name: 'happy', intensity: 1 },
     })
   })
+
+  /**
+   * @example
+   * normalizeActPayload({ emotion: 'Sleepy ' })
+   * // -> { emotion: { name: 'sleepy', intensity: 0.6 } }
+   */
+  it.each([
+    ['Love', 'love'],
+    ['  Flustered ', 'flustered'],
+    ['Sleepy ', 'sleepy'],
+  ])('accepts the newer emotion %j as %s', (emotion, name) => {
+    expect(normalizeActPayload({ emotion })).toEqual({ emotion: { name, intensity: 0.6 } })
+    expect(normalizeActPayload({ emotion: { name: emotion, intensity: 'strong' } })).toEqual({ emotion: { name, intensity: 0.9 } })
+  })
+
+  it.each(['lovey', 'sleep', 'love sleepy', 'flustered!', '', 7, null])('drops the unsupported emotion %j', (emotion) => {
+    expect(normalizeActPayload({ emotion })).toEqual({})
+  })
 })

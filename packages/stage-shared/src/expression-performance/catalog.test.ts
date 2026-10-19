@@ -31,6 +31,14 @@ describe('catalog', () => {
     expect(parse(CatalogEntrySchema, { ...entry('effect'), mappings: [{ emotion: 'happy', minBand: 'slight' }] }).mappings[0].minBand).toBe('slight')
   })
 
+  it.each(['love', 'flustered', 'sleepy'])('accepts a mapping for the newer emotion %s', (emotion) => {
+    expect(parse(CatalogEntrySchema, { ...entry(), mappings: [{ emotion }] }).mappings).toEqual([{ emotion, weight: 1, minBand: 'clear' }])
+  })
+
+  it.each(['lovey', 'Love', 'sleepy ', ''])('rejects a mapping for the malformed emotion name %j', (emotion) => {
+    expect(safeParse(CatalogEntrySchema, { ...entry(), mappings: [{ emotion }] }).success).toBe(false)
+  })
+
   it.each(['face', 'effect', 'prop', 'outfit', 'system'] as const)('enforces LLM kind policy for %s', (kind) => {
     expect(isLlmEligible(entry(kind))).toBe(['face', 'effect', 'prop'].includes(kind))
     expect(isLlmEligible({ ...entry(kind), confirmed: false })).toBe(false)

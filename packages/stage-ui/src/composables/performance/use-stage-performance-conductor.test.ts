@@ -110,6 +110,16 @@ describe('stage performance conductor', () => {
     ])
   })
 
+  it('plays the fallback motion group for love, flustered, and sleepy under Universal', () => {
+    // Non-Natural drivers play the group unconditionally, so no clock advance is needed.
+    const { conductor, playMotion } = createConductor('universal')
+
+    for (const emotion of ['love', 'flustered', 'sleepy'])
+      conductor.emotion(emotion, 0.6, 'act', 'turn-a')
+
+    expect(playMotion.mock.calls).toEqual([['Happy'], ['Awkward'], ['Idle']])
+  })
+
   it('carries the turn id of emotion, expression, and speech signals', () => {
     const scene = fakeScene()
     const { conductor } = createConductor('natural', scene)

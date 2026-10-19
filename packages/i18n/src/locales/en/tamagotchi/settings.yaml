@@ -268,6 +268,9 @@ devtools:
           question: Question
           curious: Curious
           neutral: Neutral
+          love: Love
+          flustered: Flustered
+          sleepy: Sleepy
       affect-trace:
         title: Affect trace
         description: Record every signal that the performance decider receives in the main window, then export the trace to replay it. Start recording before you send emotions.

@@ -66,6 +66,25 @@ describe('useAiriRuntimePrompt', () => {
     expect(prompt).not.toContain('base.prompt.expression-state')
   })
 
+  it('keeps the nine original emotion lines byte-for-byte and appends the newer emotions', () => {
+    i18nMock.hasTranslation.mockReturnValue(true)
+
+    expect(useAiriRuntimePrompt().value).toContain([
+      '- happy (Emotion for feeling Happy)',
+      '- sad (Emotion for feeling Sad)',
+      '- angry (Emotion for feeling Angry)',
+      '- think (Emotion for feeling Think)',
+      '- surprised (Emotion for feeling Surprise)',
+      '- awkward (Emotion for feeling Awkward)',
+      '- question (Emotion for feeling Question)',
+      '- curious (Emotion for feeling Curious)',
+      '- neutral (Emotion for feeling Idle)',
+      '- love (Emotion for feeling Love)',
+      '- flustered (Emotion for feeling Flustered)',
+      '- sleepy (Emotion for feeling Sleepy)',
+    ].join('\n'))
+  })
+
   it('lists exactly the exposed expressions by kind and no outfit, system, or unexposed entry', () => {
     i18nMock.hasTranslation.mockReturnValue(true)
     usePerformanceRuntimeState().publish({ exposed: toExposedExpressions(catalog), active: [], mood: null })

@@ -63,6 +63,9 @@ const emotions: Partial<Record<ReactionEpisode['emotion'], EmotionSpec>> = {
   [Emotion.Awkward]: { head: [0, 0, 0.5], sided: [2], hints: { browY: 0.15, mouthForm: -0.1 }, glance: { x: 0.3, y: -0.2 } },
   [Emotion.Question]: { head: [0, 0, 0.8], sided: [2], hints: {}, oneSidedBrow: 0.25 },
   [Emotion.Curious]: { head: [0, 0, 0.8], sided: [2], hints: {}, oneSidedBrow: 0.25 },
+  [Emotion.Love]: { head: [0, 0.3, 0.6], sided: [2], hints: { eyeSmile: 0.5, mouthForm: 0.4 } },
+  [Emotion.Flustered]: { head: [0.4, -0.3, 0.3], sided: [0, 2], hints: { eyeSmile: 0.3, browAngle: 0.2 }, glance: { x: 0.35, y: -0.15 } },
+  [Emotion.Sleepy]: { head: [0, -0.5, 0.2], sided: [2], hints: { eyeOpen: -0.15 } },
 }
 
 /** Peak head displacement at intensity 1 (normalized units). */

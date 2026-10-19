@@ -112,4 +112,16 @@ describe('band-driven Natural episodes', () => {
     expect(disabled.headOffset(0.38)).toEqual(reference.headOffset(0.38))
     expect(disabled.bodyOffset(0.38)).toEqual([0, 0, 0])
   })
+
+  it('shapes the face for love, flustered, and sleepy', () => {
+    const cases = [['love', 'eyeSmile', 1], ['flustered', 'eyeSmile', 1], ['sleepy', 'eyeOpen', -1]] as const
+    for (const [emotion, hint, sign] of cases) {
+      const impulses = new NaturalImpulses(createRandomStream(41))
+      impulses.trigger({ ...episode('clear', 0.6), emotion }, 0)
+      let extreme = 0
+      for (let i = 0; i <= 8 / step; i++)
+        extreme = Math.max(extreme, sign * impulses.hints(i * step)[hint])
+      expect(extreme).toBeGreaterThan(0)
+    }
+  })
 })

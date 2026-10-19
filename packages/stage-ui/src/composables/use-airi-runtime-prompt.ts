@@ -3,7 +3,7 @@ import type { PerformanceRuntimeSnapshot } from '../features/performance/runtime
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { EMOTION_EmotionMotionName_value, EMOTION_VALUES } from '../constants/emotions'
+import { EMOTION_PromptName_value, EMOTION_VALUES } from '../constants/emotions'
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 
@@ -50,7 +50,7 @@ export function useAiriRuntimePrompt() {
     const parts = [
       t('base.prompt.emotion'),
       EMOTION_VALUES
-        .map(emotion => `- ${emotion} (Emotion for feeling ${EMOTION_EmotionMotionName_value[emotion]})`)
+        .map(emotion => `- ${emotion} (Emotion for feeling ${EMOTION_PromptName_value[emotion]})`)
         .join('\n'),
       t('base.prompt.suffix'),
       t('base.prompt.emoji'),

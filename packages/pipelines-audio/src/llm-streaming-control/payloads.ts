@@ -13,6 +13,9 @@ const emotionValues = [
   'question',
   'curious',
   'neutral',
+  'love',
+  'flustered',
+  'sleepy',
 ] as const
 
 /** Constant-time membership lookup. */

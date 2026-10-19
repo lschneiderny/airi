@@ -8,6 +8,9 @@ export enum Emotion {
   Question = 'question',
   Curious = 'curious',
   Neutral = 'neutral',
+  Love = 'love',
+  Flustered = 'flustered',
+  Sleepy = 'sleepy',
 }
 
 export const EMOTION_VALUES = Object.values(Emotion)
@@ -32,6 +35,9 @@ export const EMOTION_EmotionMotionName_value = {
   [Emotion.Question]: EmotionQuestionMotionName,
   [Emotion.Neutral]: EmotionNeutralMotionName,
   [Emotion.Curious]: EmotionCuriousMotionName,
+  [Emotion.Love]: EmotionHappyMotionName,
+  [Emotion.Flustered]: EmotionAwkwardMotionName,
+  [Emotion.Sleepy]: EmotionNeutralMotionName,
 }
 
 export const EMOTION_VRMExpressionName_value = {
@@ -44,4 +50,7 @@ export const EMOTION_VRMExpressionName_value = {
   [Emotion.Question]: undefined,
   [Emotion.Neutral]: undefined,
   [Emotion.Curious]: 'surprised',
+  [Emotion.Love]: 'happy',
+  [Emotion.Flustered]: undefined,
+  [Emotion.Sleepy]: undefined,
 } satisfies Record<Emotion, string | undefined>

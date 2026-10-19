@@ -12,6 +12,9 @@ const coefficients: Record<ReactionEpisode['emotion'], readonly [number, number,
   question: [0, 0.1, 0.1],
   curious: [0.2, 0.3, 0],
   neutral: [0, 0, 0],
+  love: [0.6, 0.2, -0.1],
+  flustered: [0.2, 0.5, 0.4],
+  sleepy: [0, -0.6, -0.2],
 }
 
 function clamp(value: number, min: number, max: number) {
