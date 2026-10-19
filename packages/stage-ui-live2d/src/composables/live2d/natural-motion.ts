@@ -3,10 +3,11 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 
 import type { NaturalBreathOutput } from './natural-motion/breath'
 import type { NaturalFaceOutput } from './natural-motion/face'
+import type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionVoice } from './natural-motion/frame-types'
 import type { GazePoint } from './natural-motion/gaze'
 import type { NaturalEpisode } from './natural-motion/mood'
-import type { PostureHome, Vec3 } from './natural-motion/posture'
-import type { RandomStream } from './natural-motion/random'
+import type { PendingAction } from './natural-motion/pending-actions'
+import type { Vec3 } from './natural-motion/posture'
 import type { Live2DRigProfile } from './natural-motion/rig-profile'
 import type { Live2DTouchRegion } from './touch-gestures'
 
@@ -16,61 +17,23 @@ import { EMOTION_VALUES } from '../../constants/emotions'
 import { NaturalBlinkScheduler } from './natural-motion/blink'
 import { NaturalBodyLayer } from './natural-motion/body'
 import { NaturalBreathLayer } from './natural-motion/breath'
-import { naturalEmotions } from './natural-motion/emotions'
 import { NaturalPerformanceEnergy } from './natural-motion/energy'
 import { NaturalFaceLayer } from './natural-motion/face'
+import { withHints } from './natural-motion/face-hints'
 import { NaturalAttentionShifts, NaturalGazeLayer } from './natural-motion/gaze'
 import { NaturalGestures } from './natural-motion/gestures'
 import { NaturalHoldLayer } from './natural-motion/hold'
 import { NaturalImpulses } from './natural-motion/impulses'
+import { clamp, lerp, lerpRecord } from './natural-motion/interpolation'
 import { NaturalMood } from './natural-motion/mood'
+import { modulateByMood, moodMouthForm } from './natural-motion/mood-modulation'
+import { startPending } from './natural-motion/pending-actions'
 import { NaturalPostureLayers, postureHomes } from './natural-motion/posture'
 import { createRandomStream, deriveSeed } from './natural-motion/random'
 import { NaturalSpeechEmphasis, SpeechOnsetShifts } from './natural-motion/speech-emphasis'
-import { NaturalPetLayer, pokeDirection, pokeGlanceHold, pokeStrength, pokeSurpriseDedupeSeconds } from './natural-motion/touch'
+import { NaturalPetLayer } from './natural-motion/touch'
 
-export interface Live2DNaturalMotionOptions {
-  /** Seeds every layer stream; equal seeds replay equal motion. Takes precedence over `random`. */
-  seed?: number
-  /** Draws the seed when `seed` is absent. @default Math.random */
-  random?: RandomStream
-  /** Rest posture; `desk` is the calibration fixture of the liveliness gate. @default 'product' */
-  home?: PostureHome
-}
-
-/** Normalized pose commands in [-1, 1]. */
-export interface Live2DNaturalMotionPose {
-  headX: number
-  headY: number
-  headZ: number
-  /** `null` when rig physics derives this body axis from the head, so the consumer skips the write. */
-  bodyX: number | null
-  bodyY: number | null
-  bodyZ: number | null
-  /** Shared by both eyes, so pupils stay conjugate. */
-  eyeX: number
-  eyeY: number
-}
-
-/** Voice activity inputs. The host derives both from speech output and voice detection. */
-export interface Live2DNaturalMotionVoice {
-  /** Speech output is playing; breath becomes shallower. */
-  speaking: boolean
-  /** Speech is active or ended moments ago; lipsync owns the mouth, so silent mouth openings stop. */
-  speechActiveOrRecent: boolean
-  /** Lipsync mouth level in [0, 1] (the scene's `mouthOpenSize`, unscaled), sent every frame; its onsets drive speech emphasis nods. */
-  level: number
-}
-
-export interface Live2DNaturalMotionFrame {
-  pose: Live2DNaturalMotionPose
-  /** Unclamped gaze point before head compensation. */
-  fixation: GazePoint
-  face: NaturalFaceOutput
-  /** `blinkFactor` multiplies eye openness: 1 open, 0 closed. */
-  blink: { blinkFactor: number }
-  breath: NaturalBreathOutput
-}
+export type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionPose, Live2DNaturalMotionVoice } from './natural-motion/frame-types'
 
 // Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
 // Index 4 belonged to the v1 fixation rule and now seeds the gaze layer that replaces it.
@@ -89,20 +52,6 @@ const followers = {
 
 type Axis = keyof typeof followers
 
-// Desktop reactions. Wake lifts the head slightly and glances at the camera; a screen
-// change glances at the desk for 0.4 s. The wake nudge stays small: intensity 0.4 gives a
-// 0.063 normalized peak, below the smallest emotion impulse at full intensity.
-const wakeNudge = { direction: [0, 1, 0] as Vec3, intensity: 0.4 }
-const wakeGlanceHold = 1
-const screenChangeGlanceHold = 0.4
-const glanceTargets = { camera: { x: 0, y: 0 }, desk: { x: 0, y: -0.18 } }
-
-/** Work requested between grid steps; it starts at the next step so grid states stay consistent. */
-type PendingAction
-  = | { kind: 'emotion', episode: NaturalEpisode }
-    | { kind: 'react', reaction: 'wake' | 'screen-change' }
-    | { kind: 'poke', region: Live2DTouchRegion, x: number }
-
 interface Snapshot {
   head: Vec3
   body: Vec3
@@ -110,18 +59,6 @@ interface Snapshot {
   face: NaturalFaceOutput
   blinkFactor: number
   breath: NaturalBreathOutput
-}
-
-function clamp(value: number, limit: number) {
-  return Math.max(-limit, Math.min(limit, value))
-}
-
-function lerp(a: number, b: number, weight: number) {
-  return a + (b - a) * weight
-}
-
-function lerpRecord<T extends Record<keyof T, number>>(a: T, b: T, weight: number): T {
-  return Object.fromEntries(Object.keys(a).map(key => [key, lerp(a[key as keyof T], b[key as keyof T], weight)])) as T
 }
 
 /**
@@ -346,24 +283,25 @@ export class Live2DNaturalMotion {
     this.stepIndex++
     const c = this.pet.active ? null : this.cursor
     this.gaze.setCursor(c, stepStart)
-    this.startPending(stepStart)
+    const pokeState = startPending(this.pending.splice(0), stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })
+    this.pokes = pokeState.pokes
+    this.lastPokeSurprise = pokeState.lastPokeSurprise
     this.energy.step(step)
     this.mood.step(step)
     if (this.performanceSettings.heldEmotions)
       this.hold.step(step)
     this.pet.step(step)
-    this.posture.amplitudeScale = this.energy.amplitudeScale * this.pet.postureAmplitudeScale
-    this.posture.shiftRateScale = this.energy.shiftRateScale
-    this.gaze.cameraFixationProbability = this.energy.cameraFixationProbability
+    const moodScales = modulateByMood({
+      amplitudeScale: this.energy.amplitudeScale * this.pet.postureAmplitudeScale,
+      shiftRateScale: this.energy.shiftRateScale,
+      cameraFixationProbability: this.energy.cameraFixationProbability,
+      emphasisAcceptance: this.energy.emphasisAcceptance,
+    }, this.mood, this.performanceSettings)
+    this.posture.amplitudeScale = moodScales.amplitudeScale
+    this.posture.shiftRateScale = moodScales.shiftRateScale
+    this.gaze.cameraFixationProbability = moodScales.cameraFixationProbability
     this.gaze.targetWeights = this.energy.targetWeights
-    let emphasisAcceptance = this.energy.emphasisAcceptance
-    if (this.performanceSettings.mood && this.mood.active) {
-      const settings = this.performanceSettings.moodDynamics
-      this.posture.amplitudeScale *= Math.max(0.8, Math.min(1.2, 1 + settings.amplitude * this.mood.arousal))
-      this.posture.shiftRateScale *= Math.max(0.7, Math.min(1.3, 1 + settings.shiftRate * this.mood.arousal))
-      this.gaze.cameraFixationProbability = Math.max(0, Math.min(1, this.gaze.cameraFixationProbability + settings.cameraValence * this.mood.valence - settings.cameraTension * this.mood.tension))
-      emphasisAcceptance = Math.max(0, Math.min(1, emphasisAcceptance + settings.emphasis * this.mood.arousal))
-    }
+    let emphasisAcceptance = moodScales.emphasisAcceptance
     if (this.performanceSettings.heldEmotions) {
       const mod = this.hold.modulation()
       this.posture.amplitudeScale *= mod.amplitude
@@ -436,97 +374,10 @@ export class Live2DNaturalMotion {
       head,
       body: this.body.step(step, followerHead).map((value, axis) => clamp(value + lean[axis], 1)) as Vec3,
       gaze,
-      face: this.withHints(this.face.step(step), stepStart + step),
+      face: withHints(this.face.step(step), stepStart + step, this.impulses, this.pet, moodMouthForm(this.mood, this.performanceSettings), this.performanceSettings.heldEmotions && this.hold.level > 0 ? { hold: this.hold, accentScale: this.performanceSettings.held.accentScale } : undefined),
       blinkFactor: this.blink.step(step),
       breath: this.breath.step(step),
     }
-  }
-
-  /** Starts emotion impulses and desktop reactions requested since the previous step. */
-  private startPending(at: number) {
-    for (const action of this.pending.splice(0)) {
-      if (action.kind === 'poke') {
-        const strength = pokeStrength[action.region]
-        this.impulses.nudge(pokeDirection(action.region, action.x), strength.nudge, at)
-        // Surprise carries no glance of its own; a repeat within its 2 s dedupe only flinches.
-        // A poke uses the `clear` band, which is how reactions run with band recruitment disabled.
-        if (at - this.lastPokeSurprise >= pokeSurpriseDedupeSeconds) {
-          this.lastPokeSurprise = at
-          this.impulses.trigger({ id: `poke-${++this.pokes}`, emotion: 'surprised', nominal: strength.surprise, intensity: strength.surprise, band: 'clear', escalation: false }, at)
-        }
-        this.gaze.glance(glanceTargets.camera, pokeGlanceHold, at)
-        // The fixed reacting overlay, like a desktop reaction, not the emotion energy settings.
-        this.energy.react(at, 1, true)
-        continue
-      }
-      if (action.kind === 'emotion') {
-        const enabled = this.performanceSettings.heldEmotions
-        if (enabled && this.emotionStrengths[action.episode.emotion] === 0)
-          continue
-        const gesture = enabled ? naturalEmotions[action.episode.emotion].gesture : undefined
-        const started = this.impulses.trigger(action.episode, at, { head: gesture === undefined })
-        if (!started)
-          continue
-        if (gesture)
-          this.gestures.trigger(gesture, action.episode.intensity, this.performanceSettings.bands ? action.episode.band : 'clear', at)
-        if (this.performanceSettings.mood)
-          this.mood.add(action.episode)
-        if (started.glance)
-          this.gaze.glance(started.glance.point, started.glance.hold, at)
-        if (started.energy)
-          this.energy.react(at, action.episode.intensity)
-        continue
-      }
-      if (action.reaction === 'wake') {
-        this.impulses.nudge(wakeNudge.direction, wakeNudge.intensity, at)
-        this.gaze.glance(glanceTargets.camera, wakeGlanceHold, at)
-      }
-      else {
-        this.gaze.glance(glanceTargets.desk, screenChangeGlanceHold, at)
-      }
-      this.energy.react(at, 1, true)
-    }
-  }
-
-  /** Adds emotion face hints and the pet face to the face layer output; with neither active every value is unchanged. */
-  private withHints(face: NaturalFaceOutput, time: number): NaturalFaceOutput {
-    const held = this.performanceSettings.heldEmotions && this.hold.level > 0
-    const hints = this.impulses.hints(time, held && this.hold.emotion
-      ? { emotion: this.hold.emotion, scale: 1 - this.performanceSettings.held.accentScale * this.hold.level }
-      : undefined)
-    const pet = this.pet.face()
-    const result = {
-      ...face,
-      eyeOpenMultiplier: face.eyeOpenMultiplier * pet.eyeOpenMultiplier,
-      eyeOpenHint: face.eyeOpenHint + hints.eyeOpen,
-      browY: face.browY + hints.browY + pet.browY,
-      browAngle: face.browAngle + hints.browAngle,
-      browLY: face.browLY + hints.browY + hints.browLY + pet.browY,
-      browRY: face.browRY + hints.browY + hints.browRY + pet.browY,
-      browLAngle: face.browLAngle + hints.browAngle,
-      browRAngle: face.browRAngle + hints.browAngle,
-      eyeSmile: face.eyeSmile + hints.eyeSmile + pet.eyeSmile,
-      mouthForm: face.mouthForm + hints.mouthForm + pet.mouthForm + (this.performanceSettings.mood && this.mood.active ? this.performanceSettings.moodDynamics.mouthForm * this.mood.valence : 0),
-      cheek: face.cheek + pet.cheek,
-    }
-    if (held) {
-      const hold = this.hold.face()
-      const share = 1 - this.pet.level
-      result.eyeOpenMultiplier *= 1 + (hold.eyeOpenMultiplier - 1) * share
-      // Additive lid hints and one-sided brow raises overlap pet channels too.
-      result.eyeOpenHint += hold.eyeOpenHint * share
-      result.browY += hold.browY * share
-      result.browLY += (hold.browY + Math.max(0, hold.oneSidedBrow)) * share
-      result.browRY += (hold.browY + Math.max(0, -hold.oneSidedBrow)) * share
-      result.browAngle += hold.browAngle
-      result.browLAngle += hold.browAngle
-      result.browRAngle += hold.browAngle
-      result.eyeSmile += hold.eyeSmile * share
-      result.mouthForm += hold.mouthForm * share
-      result.cheek += hold.cheek * share
-      result.silentMouthOpen += hold.mouthOpen
-    }
-    return result
   }
 
   /** Exact two-stage critically damped follower update over one grid step. */
