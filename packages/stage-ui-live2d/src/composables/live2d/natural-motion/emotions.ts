@@ -47,8 +47,8 @@ export interface HeldSpec {
   }
 }
 
-/** Short head clips that an emotion can trigger; the clip shapes live with the gesture layer. */
-export type GestureKind = 'laugh' | 'recoil' | 'shake' | 'drop' | 'sway' | 'tilt-in' | 'look-away' | 'nod-off'
+/** Short head clips that an emotion can trigger; the clip shapes live with the gesture layer. `shake-or-drop` plays one of the two at random. */
+export type GestureKind = 'laugh' | 'recoil' | 'shake' | 'drop' | 'shake-or-drop' | 'sway' | 'tilt-in' | 'look-away' | 'nod-off'
 
 export interface NaturalEmotionSpec {
   /** Absent for emotions that do nothing, such as neutral. */
