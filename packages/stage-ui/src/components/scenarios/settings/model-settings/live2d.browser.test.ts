@@ -429,6 +429,47 @@ describe('live2D model settings', () => {
     expect(settings.live2dEyeTracking).toBe(true)
   })
 
+  it('hides eye tracking under Natural whether touch is on or off', async () => {
+    Object.assign(window, { Live2DCubismCore: {} })
+    const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
+      import('@proj-airi/stage-ui-live2d'),
+      import('./live2d.vue'),
+    ])
+    await import('virtual:uno.css')
+    const pinia = createPinia()
+    const settings = useSettingsLive2d(pinia)
+    settings.resetState()
+    settings.live2dNaturalTouch = true
+    const screen = await render(Live2DSettings, {
+      props: {
+        palette: [],
+        runtimeSnapshot: {
+          ownerInstanceId: 'stage-owner',
+          modelId: 'test-model',
+          renderer: 'live2d',
+          phase: 'mounted',
+          controlsLocked: false,
+          previewAvailable: true,
+          canCapturePreview: false,
+          updatedAt: 1,
+        },
+      },
+      global: { plugins: [pinia, createTestI18n()] },
+    })
+    await screen.getByText(t('settings.live2d.animation.title'), { exact: true }).click()
+    const eyeTracking = screen.getByRole('switch', { name: t('settings.live2d.animation.focus.title') })
+    await expect.element(eyeTracking).toBeInTheDocument()
+    await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
+    await expect.element(eyeTracking).not.toBeInTheDocument()
+    // Natural replaces eye tracking with cursor attention, so turning touch off must not bring it back.
+    await screen.getByRole('switch', { name: t('settings.live2d.animation.natural-touch.title') }).click()
+    await nextTick()
+    expect(settings.live2dNaturalTouch).toBe(false)
+    await expect.element(eyeTracking).not.toBeInTheDocument()
+    await screen.getByRole('radio', { name: 'MAGIC', exact: true }).click()
+    await expect.element(eyeTracking).toBeInTheDocument()
+  })
+
   it('shows the Energy slider only for Natural, persists it, and resets it to 0.5', async () => {
     Object.assign(window, { Live2DCubismCore: {} })
     const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([

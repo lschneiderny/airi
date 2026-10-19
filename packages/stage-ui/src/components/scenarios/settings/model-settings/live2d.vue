@@ -485,7 +485,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       :format-value="formatScale"
     />
     <FieldCheckbox
-      v-else
+      v-if="live2dMotionDriver !== 'natural'"
       v-model="live2dEyeTracking"
       :label="t('settings.live2d.animation.focus.title')"
       :description="t('settings.live2d.animation.focus.description')"
