@@ -62,7 +62,7 @@ Do not persist or replicate it: it is runtime state, and each renderer reads onl
 
 The `expression-performance` entrypoint owns the pure decision layer for character expression performance:
 
-- the `AffectSignal`, `ReactionEpisode`, `SlotCommand`, and `Decider` contracts;
+- the `AffectSignal`, `ReactionEpisode`, `SlotCommand`, `HoldCommand`, and `Decider` contracts;
 - the catalog schemas, `mergeCatalog`, `isAutoEligible`, and `isLlmEligible`;
 - the settings document schema `ExpressionPerformanceSettingsSchema`, its defaults, and `parseExpressionPerformanceSettings`;
 - reaction strength with bands, habituation, and escalation (`acceptReaction`);
@@ -72,6 +72,14 @@ The `expression-performance` entrypoint owns the pure decision layer for charact
 - character performance profiles (`resolveEffectiveSettings`, `applyMappingWeights`).
 
 A decider never reads a clock, global randomness, or a store. Pass every time in the signal as monotonic seconds, and keep the returned state for the next call. The state is plain JSON, so it can be checkpointed and replayed.
+
+A `HoldCommand` tells the Natural driver which emotion to hold and for how long. It has an `emotion`, or `null` to release the hold, a `strength`, and the same `holdSeconds`, `until`, and `turnId` lifetime fields as a slot command.
+Every decision carries `holds`:
+
+- An accepted emotion episode holds its emotion at the episode intensity. A speech turn's hold uses the band's `faceHold` with `until: 'speech'`; a hold without a turn lasts `held.turnlessSeconds` with `until: 'hold'`.
+- A neutral that resets the reaction state, and a clear that names no slot, release the hold.
+- An explicit expression whose catalog entry has emotion mappings accepts its heaviest mapping like an emotion signal, which can start or escalate an episode, and always holds that emotion for the expression's own slot lifetime.
+- With `heldEmotions` off, explicit expressions keep their slot-only behavior.
 
 ```ts
 import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
@@ -88,12 +96,13 @@ const result = decider.decide(
   state,
 )
 state = result.state
-// result.decision.episodes go to Natural; result.decision.slots go to the expression performer.
+// result.decision.episodes and result.decision.holds go to Natural; result.decision.slots go to the expression performer.
 ```
 
 Use this entrypoint to decide how a character reacts to emotions and expression requests, and to compare deciders by replaying a recorded affect trace.
 Do not use it to render, compose parameters, or hold timers. The stage conductor in `@proj-airi/stage-ui` owns clocks and timers, and `@proj-airi/stage-ui-live2d` executes the decisions.
 The [expression performance ADR](../../docs/ai/adr/2026-10-18-expression-performance.md) records the contracts.
+The [Natural emotion revamp ADR](../../docs/ai/adr/2026-10-19-natural-emotion-revamp.md) records the hold contract.
 
 ## Do not use this package
 

@@ -20,6 +20,7 @@ Rest sets use `expression-rest:${modelId}` with `{ version: 1, active: string[] 
 The Expression system setting, stored as `settings/live2d/expression-enabled`, turns this runtime on. A fresh profile starts with it off. While it is off, the model keeps the SDK expression manager and eye blink, the catalog stays empty, and no expression fires automatically or reaches the LLM.
 
 The [expression performance ADR](../../docs/ai/adr/2026-10-18-expression-performance.md) records the contracts below.
+The [Natural emotion revamp ADR](../../docs/ai/adr/2026-10-19-natural-emotion-revamp.md) records held emotions, gestures, and the per-model emotion strength.
 
 ### Expression catalog
 
@@ -38,6 +39,7 @@ The stage window owns `useExpressionStore`. Other windows render its `settingsSn
 ### Expression slots
 
 The expression store executes the decider's slot commands in three slots: `face`, `effect`, and `prop`. The scene exposes `applySlots`, `onSpeech`, and `setMuted` for the stage performance conductor.
+The scene also exposes `applyHolds`, which sets or releases the held emotion; see Held emotions below.
 Each slot holds at most one transient lease on top of the rest set and manual toggles. Releasing a lease never turns off an expression that the rest set or a manual toggle also owns.
 A speech-bound lease lasts while its own speech turn plays. It releases after the turn ends, plus a short grace, or at once when the turn's playback is stopped. A muted lease, or a lease with an explicit hold, releases after its hold. Every lease releases within `slots.holdCap` seconds.
 
@@ -54,6 +56,8 @@ The `Live2DNaturalMotion` controller advances every layer on a fixed 120 Hz grid
 - Breath drives the breath channel and couples a very small pitch movement to the head.
 - Speech emphasis turns onsets in the lipsync mouth level into occasional small head beats while the character speaks: 80% are pitch-down nods and 20% are roll tilts to a random side.
 - Impulses add short head gestures and decaying face hints for emotions and desktop reactions.
+- The hold layer keeps the face, posture, and pacing of the current held emotion; see Held emotions below.
+- Gestures play short emotion-specific head clips, such as a laugh bounce or a sleepy nod-off.
 - Mood keeps a decaying afterglow of recent emotions that tints posture, gaze, speech emphasis, and mouth form.
 - Touch reacts when the user pokes the model or pets its head with the cursor; see Touch below.
 - Energy scales posture amplitude, posture shift rate, and gaze target choice from the performance state and the user's Energy setting.
@@ -69,7 +73,7 @@ Natural owns these channels when the model has them:
 - body XYZ (`ParamBodyAngleX`, `ParamBodyAngleY`, `ParamBodyAngleZ`), except an axis that rig physics derives from the head;
 - eye XY (`ParamEyeBallX`, `ParamEyeBallY`);
 - face micro-offsets on brows, eye smile, and mouth form, and the eyelid composition (eye smile comes only from emotion hints);
-- cheek (`ParamCheek`), which only a pet raises; otherwise Natural leaves it at its base value with a 0 offset;
+- cheek (`ParamCheek`), which a pet and a held emotion with a cheek value raise; otherwise Natural leaves it at its base value with a 0 offset;
 - Natural blink, while the user's auto-blink setting is on;
 - breath (`ParamBreath`), unless manual breath control is active.
 
@@ -110,6 +114,7 @@ The episode's band decides which body parts react:
 - `clear`: face hints, a head pulse, and a glance;
 - `strong`: face hints, a head pulse, a glance, a body lean, and a short energy overlay that raises posture amplitude and shift rate.
 
+With held emotions on, the held posture also moves the body at clear, and emotions with a gesture play the gesture instead of the head pulse and body lean. While that gesture is cooling down, such an episode adds no gesture, head pulse, or body lean.
 ACT markers name the band with `slight`, `clear`, or `strong`. A marker without an intensity means clear.
 Repeats of the same emotion habituate. A stronger repeat within 2 seconds escalates the running reaction and adds only the missing amplitude. Neutral starts no reaction.
 An impulse adds to every other layer, so it never resets the pose.
@@ -117,11 +122,42 @@ The body lean skips a body axis that rig physics derives from the head.
 With the `bands` switch off, Natural treats every episode as clear.
 Band timings and gains come from `naturalBands` in the `settings/expression-performance` document.
 Universal and MAGIC still play the emotion's motion group for every emotion, repeats and neutral included.
+The `love`, `flustered`, and `sleepy` emotions play the Happy, Awkward, and Idle motion groups there.
+
+### Held emotions
+
+While the `heldEmotions` switch is on, which is the default, Natural holds each emotion for as long as it lasts instead of showing a short reaction.
+The decider sends a hold with each episode, and the conductor passes it to the scene's `applyHolds` only while Natural drives the model:
+
+- An emotion of a speech turn is held while that turn speaks, plus a short grace. An emotion without a turn, such as a lab pulse, is held for `held.turnlessSeconds` seconds, 4 by default.
+- An explicit expression whose catalog entry maps to an emotion holds that emotion for as long as the expression's own slot lease lasts. Its primary mapping is the one with the highest weight.
+- Neutral, and a clear that names no slot, release the hold.
+- A manual expression toggle in Settings previews the emotion of its primary mapping while it stays on. Saved defaults never hold an emotion.
+
+The held emotion eases in over `held.onsetTau` and out over `held.releaseTau`, and a switch to another emotion glides without a jump.
+While it lasts, Natural adds the emotion's face to brows, eyes, eye smile, mouth form, and cheek, and keeps a head and body posture bias at every band. It also changes blink intervals, breath period, posture amplitude, camera and desk gaze, and the size and frequency of speech nods.
+A pet overrides the held face on the channels that the pet shapes. A repeated pulse of the held emotion adds a smaller accent, so the face does not saturate.
+The `naturalEmotions` table in `natural-motion/emotions.ts` holds every per-emotion value: the impulse, the mood coefficients, the held recipe, and the gesture.
+
+Gestures are short head clips: a laugh for happy, a recoil for surprised, a head shake or drop for angry, a sway for awkward, a tilt-in for love, a look-away for flustered, and a nod-off for sleepy. Sad, think, question, and curious have none.
+A gesture plays only at the clear and strong bands, and each kind has a cooldown. The body follows a gesture only at strong.
+Gestures draw from their own random stream, so idle motion and the other layers keep their sequences.
+
+Turn the switch off to compare with the earlier behavior: Natural then shows only the short band reaction.
+
+### Emotion strength
+
+Each model has its own emotion strength per emotion, stored as `settings/live2d/natural-emotion-strength` by stage model id. Values range from 0 to 2, and a missing value means 1.
+The strength scales the held emotion. While held emotions are on, a strength of 0 means Natural does not perform that emotion at all: no reaction, no gesture, no mood dose, and no held face.
+While Natural is selected, the settings page shows an Emotion strength group with one slider per emotion and a reset button for the selected model.
+Resetting Live2D settings clears every model's strengths.
 
 ### Mood
 
 Natural keeps a mood with valence, arousal, and tension. Each episode adds a dose by band, intensity, and emotion, and the mood decays exponentially in active time.
+The mood coefficients of every emotion, including `love`, `flustered`, and `sleepy`, live in the `naturalEmotions` table.
 A non-zero mood scales posture amplitude and shift rate, biases camera fixation, modulates speech emphasis acceptance, and shifts mouth form. Emphasis acceptance follows arousal: positive arousal raises it, and negative arousal, such as a sad mood, lowers it.
+A held emotion's pacing changes apply after the mood's, and the mood's mouth-form tint stays additive.
 At exactly zero mood, Natural skips modulation and draws no randomness, so idle motion is unchanged.
 The `mood` switch turns accumulation and modulation off. The constants come from `moodDynamics` in the same settings document.
 Character card profiles scale mood strength and mood length:

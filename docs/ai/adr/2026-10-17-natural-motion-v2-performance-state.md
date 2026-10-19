@@ -175,5 +175,6 @@ Documentation refers to recordings only by placeholder paths.
 ## Non-goals
 
 - No per-layer tuning controls in Settings. Only the Energy slider and the cursor attention toggle are user-facing.
+  Superseded in part by 2026-10-19-natural-emotion-revamp: Settings also show per-model emotion strength sliders and the held-emotions switch.
 - No new main-process polling. The renderer polls idle time only while the stage is visible.
 - No change to Universal or MAGIC motion behavior.

@@ -114,6 +114,8 @@ Natural receives each episode through `setEmotion(episode)` as a `NaturalEpisode
 | clear | yes | yes | yes | no | no |
 | strong | yes | yes | yes | yes | yes |
 
+With `heldEmotions` on, this table describes only the episode impulse. The held posture from [2026-10-19-natural-emotion-revamp](2026-10-19-natural-emotion-revamp.md) also biases the head and the body follower at every band, so the body moves at clear too. For an emotion with a gesture, a gesture clip replaces the head pulse and the body lean, and the clip moves the body only at strong. While that gesture is cooling down, the episode gets no clip and no head pulse or body lean.
+
 The band timings come from `naturalBands.slight`, `naturalBands.clear`, and `naturalBands.strong`:
 
 | Field | slight | clear | strong |
@@ -125,7 +127,7 @@ The band timings come from `naturalBands.slight`, `naturalBands.clear`, and `nat
 | `faceReleaseTau` | 0.35 | 0.5 | 0.7 |
 
 The head pulse is `P(s, tau) - overshoot * P(s - 3 tau, tau)` with `P(s, tau) = (s/tau)^2 exp(2 (1 - s/tau))`, scaled by `naturalBands.headGain * I^0.7`.
-The body lean is `naturalBands.bodyGain * I` along the normalized emotion direction, with a time constant of `1.5 * headTau`. The body follower does not follow emotion head pulses, so a clear episode never leans the body. A body axis that rig physics derives from the head still follows the head through physics.
+The body lean is `naturalBands.bodyGain * I` along the normalized emotion direction, with a time constant of `1.5 * headTau`. The body follower does not follow emotion head pulses, so a clear episode's impulse never leans the body. With `heldEmotions` on, the held posture still moves the body at clear. A body axis that rig physics derives from the head still follows the head through physics.
 The face envelope is `(1 - exp(-s/faceOnsetTau)) * exp(-max(0, s - faceHold)/faceReleaseTau)`.
 An escalation adds only the missing head and body amplitude and moves the face hints from their current values to the new targets over 0.08 s.
 
@@ -414,6 +416,7 @@ Known risk: Firefox rejects `createMediaStreamSource` across sample rates. On Fi
 
 - No per-LLM, per-provider, or per-model-name profiles. Profiles are keyed by character card.
 - No gesture library and no second settings document.
+  Superseded in part by 2026-10-19-natural-emotion-revamp: Natural now has gesture clips; the held-emotion tunables stay in this settings document.
 - No change to Universal or MAGIC motion-group selection, and no change to VRM, MMD, Spine, or Tachie emotion handling beyond the default intensity.
 - No writes into model folders, archives, or OPFS caches.
 - No fuzzy matching of LLM expression names.
