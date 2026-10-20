@@ -32,6 +32,13 @@ export default defineConfig({
       'packages/stage-ui-three',
       'packages/vitest-plugin-fakemic',
       'packages/vite-plugin-sherpaw',
+      // Root developer tools (`pnpm verify`, `pnpm wt`, `pnpm dev:top`). They belong to no package.
+      {
+        test: {
+          name: 'dev-tools',
+          include: ['scripts/dev-tools/**/*.test.ts'],
+        },
+      },
       // Scripts that GitHub Actions run. They belong to no package.
       {
         test: {

@@ -1261,6 +1261,9 @@ importers:
       '@moeru/eslint-config':
         specifier: 'catalog:'
         version: 0.1.0-beta.19(@antfu/eslint-config@8.2.0(@typescript-eslint/typescript-estree@8.67.0(supports-color@10.2.2)(typescript@6.0.3))(@typescript-eslint/utils@8.67.0(eslint@10.9.0(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@6.0.3))(@unocss/eslint-plugin@66.7.5(@typescript-eslint/types@8.67.0)(eslint@10.9.0(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@6.0.3))(@vue/compiler-sfc@3.5.41)(eslint-plugin-format@2.0.1(eslint@10.9.0(jiti@2.7.0)(supports-color@10.2.2)))(eslint@10.9.0(jiti@2.7.0)(supports-color@10.2.2))(oxlint@1.79.0)(supports-color@10.2.2)(typescript@6.0.3)(vitest@4.1.11))(eslint-plugin-oxlint@1.79.0(oxlint@1.79.0))(eslint@10.9.0(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(typescript@6.0.3)
+      '@moeru/std':
+        specifier: 'catalog:'
+        version: 0.1.0-beta.17
       '@proj-airi/unocss-preset-chromatic':
         specifier: 'catalog:'
         version: 1.1.4

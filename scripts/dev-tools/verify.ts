@@ -1,0 +1,142 @@
+import type { VerifyStep } from './verify-plan'
+
+import process from 'node:process'
+
+import { delimiter, join, relative } from 'node:path'
+
+import { errorMessageFrom } from '@moeru/std'
+
+import { capture, chunk, run } from './lib/exec'
+import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
+import { readPass, verifyCacheKey, writePass } from './verify-cache'
+import { extraTestConfigs, parseVerifyArgs, planVerify, verifyUsage } from './verify-plan'
+
+// Windows rejects command lines over 32767 characters; 150 repo paths stay well under it.
+const filesPerCommand = 150
+
+interface Command {
+  label: string
+  args: string[]
+}
+
+interface StepResult {
+  step: VerifyStep
+  status: 'passed' | 'cached' | 'failed' | 'skipped'
+  detail: string
+  durationMs: number
+}
+
+function packagePaths(root: string): string[] {
+  const listing = JSON.parse(capture(process.execPath, [join(root, 'node_modules/turbo/bin/turbo'), 'ls', '--output=json'], { cwd: root })) as { packages: { items: { path: string }[] } }
+  return listing.packages.items.map(item => item.path.replaceAll('\\', '/'))
+}
+
+function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnType<typeof planVerify>): Command[] | string {
+  const node = (entry: string, args: string[]) => [join(root, entry), ...args]
+  if (step === 'typecheck') {
+    if (plan.typecheck.kind === 'none')
+      return 'no workspace package changed'
+    const filters = plan.typecheck.kind === 'all'
+      ? ['-F=./packages/*', '-F=./apps/*', '-F=./server/**', '-F=./services/*']
+      : [`--filter=...[${base}]`]
+    const label = plan.typecheck.kind === 'all' ? `every package (${plan.typecheck.reason})` : 'changed packages and their dependents'
+    return [{ label, args: node('node_modules/turbo/bin/turbo', ['run', 'typecheck', ...filters, '--output-logs=errors-only']) }]
+  }
+  if (step === 'lint') {
+    if (!plan.lintFiles.length)
+      return 'no lintable file changed'
+    return chunk(plan.lintFiles, filesPerCommand).map((files, index, all) => ({
+      label: `${files.length} changed file(s)${all.length > 1 ? ` [batch ${index + 1}/${all.length}]` : ''}`,
+      args: node('node_modules/@moeru/eslint-config/src/moeru-lint.js', files),
+    }))
+  }
+  if (!plan.testFiles.length)
+    return 'no code file changed'
+  const configs = [{ config: 'vitest.config.ts', project: undefined as string | undefined }, ...(plan.extraTestConfigs ? extraTestConfigs : [])]
+  // `vitest related` resolves relative paths against the config's root, and the extra configs are rooted in their packages.
+  const absoluteFiles = plan.testFiles.map(file => join(root, file))
+  return configs.flatMap(({ config, project }) => chunk(absoluteFiles, filesPerCommand).map(files => ({
+    label: `tests related to changes (${config}${project ? `, project ${project}` : ''})`,
+    args: node('node_modules/vitest/vitest.mjs', ['related', '--run', '--passWithNoTests', '--config', config, ...(project ? ['--project', project] : []), ...files]),
+  })))
+}
+
+async function main(): Promise<number> {
+  const parsed = parseVerifyArgs(process.argv.slice(2))
+  if (!parsed.ok) {
+    console.error(`${parsed.message}\n${verifyUsage}`)
+    return 2
+  }
+  const { args } = parsed
+  const root = repoRoot(process.cwd())
+  let base: string
+  try {
+    base = git(root, ['merge-base', 'HEAD', args.base])
+  }
+  catch (error) {
+    console.error(`Cannot find the merge base with ${args.base}: ${errorMessageFrom(error) ?? 'unknown error'}`)
+    return 2
+  }
+  const changed = changedFiles(root, base)
+  const plan = planVerify(changed, packagePaths(root))
+  const tree = workingTreeHash(root)
+  const cacheDir = join(gitCommonDir(root), 'airi-verify')
+  // Windows spells the variable `Path`; a second `PATH` key would hide the system directories.
+  const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH'
+  const env = { ...process.env, [pathKey]: `${join(root, 'node_modules/.bin')}${delimiter}${process.env[pathKey] ?? ''}` }
+
+  console.info(`verify: ${changed.length} changed file(s) since ${args.base} (${base.slice(0, 9)}), tree ${tree.slice(0, 9)}`)
+  const results: StepResult[] = []
+  for (const step of args.steps) {
+    const commands = commandsFor(step, root, base, plan)
+    if (typeof commands === 'string') {
+      results.push({ step, status: 'skipped', detail: commands, durationMs: 0 })
+      continue
+    }
+    const command = commands.flatMap(item => item.args)
+    const key = verifyCacheKey({ tree, step, command, node: process.version, platform: process.platform })
+    const cached = args.force ? null : readPass(cacheDir, key)
+    if (cached) {
+      results.push({ step, status: 'cached', detail: `passed ${cached.passedAt} on this tree`, durationMs: 0 })
+      continue
+    }
+    if (args.dryRun) {
+      for (const item of commands)
+        console.info(`[${step}] ${item.label}\n  node ${[relative(root, item.args[0]), ...item.args.slice(1)].join(' ')}`)
+      results.push({ step, status: 'skipped', detail: 'dry run', durationMs: 0 })
+      continue
+    }
+    const started = Date.now()
+    let failed: string | null = null
+    for (const item of commands) {
+      console.info(`\n[${step}] ${item.label}`)
+      const exitCode = await run(process.execPath, item.args, { cwd: root, env })
+      if (exitCode !== 0) {
+        failed = `${item.label} exited ${exitCode}`
+        break
+      }
+    }
+    const durationMs = Date.now() - started
+    if (failed) {
+      results.push({ step, status: 'failed', detail: failed, durationMs })
+      continue
+    }
+    const labels = commands.map(item => item.label).join('; ')
+    if (workingTreeHash(root) !== tree) {
+      results.push({ step, status: 'passed', detail: `${labels} (not cached: files changed during the step)`, durationMs })
+      continue
+    }
+    writePass(cacheDir, { key, step, tree, command, passedAt: new Date().toISOString(), durationMs })
+    results.push({ step, status: 'passed', detail: labels, durationMs })
+  }
+
+  console.info('\nverify summary')
+  for (const result of results)
+    console.info(`  ${result.step.padEnd(9)} ${result.status.padEnd(7)} ${result.durationMs ? `${(result.durationMs / 1000).toFixed(1)}s ` : ''}${result.detail}`)
+  return results.some(result => result.status === 'failed') ? 1 : 0
+}
+
+main().then(code => process.exit(code), (error) => {
+  console.error(`verify broke: ${errorMessageFrom(error) ?? 'unknown error'}`)
+  process.exit(1)
+})
