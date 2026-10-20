@@ -69,13 +69,21 @@ function createCueMatcher(names: string[]) {
   return { matchAt, find }
 }
 
+type CueMatcher = ReturnType<typeof createCueMatcher>
+
 /**
- * Finds the end of the JSON object that starts with the `{` at `start`.
- * Braces inside JSON strings do not count. Only characters before `limit` are scanned.
- * Returns the index just past the balancing `}`, or -1 when it has not arrived.
+ * Scans the JSON object that starts with the `{` at `start`. Only characters before `limit` are scanned.
+ * Braces, brackets, and closers inside JSON strings do not count.
+ *
+ * Returns:
+ * - `end`: the index just past the balancing `}`, or -1 when it has not arrived.
+ * - `stray`: the index of the first cue closer outside a string before the object balanced, or -1.
+ *   The closer is `>` for `<` cues and an unnested `]` for `[` cues. Valid JSON never has one there,
+ *   so a stray closer proves the body is malformed.
  */
-function findJsonEnd(text: string, start: number, limit: number) {
+function scanJsonBody(text: string, start: number, limit: number, open: '<' | '[') {
   let depth = 0
+  let brackets = 0
   let inString = false
   let escaped = false
   for (let i = start; i < Math.min(text.length, limit); i++) {
@@ -97,10 +105,30 @@ function findJsonEnd(text: string, start: number, limit: number) {
     else if (char === '}') {
       depth--
       if (depth === 0)
-        return i + 1
+        return { end: i + 1, stray: -1 }
+    }
+    else if (open === '<' && char === '>') {
+      return { end: -1, stray: i }
+    }
+    else if (open === '[' && char === '[') {
+      brackets++
+    }
+    else if (open === '[' && char === ']') {
+      if (brackets === 0)
+        return { end: -1, stray: i }
+      brackets--
     }
   }
-  return -1
+  return { end: -1, stray: -1 }
+}
+
+/**
+ * Describes a cue that closes with the bracket at `closeIndex`.
+ * A `|` right before the bracket belongs to the closer when it is part of the body text after `bodyStart`.
+ */
+function closeAt(buffer: string, closeIndex: number, bodyStart: number) {
+  const piped = buffer[closeIndex - 1] === '|' && closeIndex - 1 >= bodyStart
+  return { bodyEnd: piped ? closeIndex - 1 : closeIndex, end: closeIndex + 1, piped }
 }
 
 /**
@@ -130,47 +158,92 @@ function findCueClose(buffer: string, opener: FullCueOpener, from: number) {
   }
   if (closeIndex < 0)
     return null
+  return closeAt(buffer, closeIndex, from)
+}
 
-  const piped = buffer[closeIndex - 1] === '|' && closeIndex - 1 >= from
-  return { bodyEnd: piped ? closeIndex - 1 : closeIndex, end: closeIndex + 1, piped }
+/**
+ * Finds the latest point where the body of a cue can end: the next `<|` or full cue opener after `from`.
+ * Text from there on belongs to a later marker, so a body never reaches into it.
+ * Returns -1 when no such opener has arrived.
+ */
+function findBodyStop(buffer: string, from: number, cues: CueMatcher) {
+  const tag = buffer.indexOf(TAG_OPEN, from)
+  const cue = cues.find(buffer.slice(from))
+  const cueIndex = cue?.opener.kind === 'full' ? from + cue.index : -1
+  if (tag < 0 || cueIndex < 0)
+    return Math.max(tag, cueIndex)
+  return Math.min(tag, cueIndex)
+}
+
+/**
+ * Picks the closer of a JSON body that cannot balance. Only a closer that ends within 64 characters of the opener counts.
+ *
+ * - The first canonical `|>` or stray closer wins, whichever comes first, because both sit where a closer belongs.
+ * - Without either, the first closer inside a string is used. An unterminated quote is the likeliest way a closer ends up
+ *   inside one, as in `<|ACT {"emotion":"happy}|>`.
+ */
+function closeMalformedJson(body: string, opener: FullCueOpener, stray: number) {
+  const window = body.slice(0, MAX_RECOVERY_LENGTH)
+  const pipe = opener.open === '<' ? window.indexOf(TAG_CLOSE, opener.end) : -1
+  const candidates = [pipe < 0 ? -1 : pipe + 1, stray < window.length ? stray : -1].filter(index => index >= 0)
+  if (candidates.length > 0)
+    return closeAt(window, Math.min(...candidates), opener.end)
+  return findCueClose(window, opener, opener.end)
 }
 
 /**
  * Decides what happens to a buffer that starts with a full cue opener.
  *
- * - A JSON body closes only at its balanced `}`, and the closer must follow within 64 characters of it.
- *   A JSON body that does not balance within 1024 characters is given up.
+ * - A body ends before the next `<|` or cue opener at the latest, so it never swallows a later marker.
+ * - A JSON body that balances closes only at its balanced `}`, and the closer must follow within 64 characters of that
+ *   brace. A well-formed body therefore stays intact even when its strings contain `>` or `]`.
+ * - A JSON body that does not balance is malformed and closes like any other body, at a closer within 64 characters of
+ *   the opener (see `closeMalformedJson`). This matches the parser without recovery for `<|ACT {"emotion":"happy"|>`:
+ *   the cue fires and the prose after it is spoken. The body counts as malformed once a stray closer appears, once it
+ *   can grow no further, or once 64 characters follow its first closer without the JSON balancing. Until then the
+ *   parser waits, up to 1024 characters, because a long well-formed body may still balance.
  * - Any other body must close within 64 characters of the opener.
  * - `flush` speaks the opener as literal so the rest is rescanned and never swallowed.
- * - With `final` set no more text arrives. An unterminated canonical `<|NAME` tail is then dropped,
- *   as unfinished `<|...` markers always were. A near-miss, or a JSON body whose closer is missing, is flushed.
+ * - With `final` set no more text arrives. An unterminated canonical `<|NAME` tail with no closer is then dropped,
+ *   as unfinished `<|...` markers always were. A near-miss, or a balanced JSON body whose closer is missing, is flushed.
+ *   A body cut short by a later marker is flushed, never dropped, because prose may sit between the two.
  */
-function resolveCue(buffer: string, opener: FullCueOpener, final: boolean): CueResolution {
+function resolveCue(buffer: string, opener: FullCueOpener, final: boolean, cues: CueMatcher): CueResolution {
+  const stop = findBodyStop(buffer, opener.end, cues)
+  const body = stop < 0 ? buffer : buffer.slice(0, stop)
+  // No more text can join the body.
+  const settled = final || stop >= 0
   let from = opener.end
   let limit = MAX_RECOVERY_LENGTH
-  const jsonStart = /^\s*\{/.test(buffer.slice(opener.end)) ? buffer.indexOf('{', opener.end) : -1
+  const jsonStart = /^\s*\{/.test(body.slice(opener.end)) ? body.indexOf('{', opener.end) : -1
 
   if (jsonStart >= 0) {
-    const jsonEnd = findJsonEnd(buffer, jsonStart, MAX_JSON_BODY_LENGTH)
+    const { end: jsonEnd, stray } = scanJsonBody(body, jsonStart, MAX_JSON_BODY_LENGTH, opener.open)
     if (jsonEnd < 0) {
-      if (buffer.length >= MAX_JSON_BODY_LENGTH)
-        return { kind: 'flush' }
-      if (!final)
+      const firstClose = findCueClose(body.slice(0, MAX_RECOVERY_LENGTH), opener, opener.end)
+      const malformed = stray >= 0
+        || settled
+        || body.length >= MAX_JSON_BODY_LENGTH
+        || (firstClose !== null && body.length >= firstClose.end + MAX_RECOVERY_LENGTH)
+      if (!malformed)
         return { kind: 'wait' }
-      return { kind: opener.piped ? 'drop' : 'flush' }
+      const close = closeMalformedJson(body, opener, stray)
+      if (close)
+        return { kind: 'close', ...close }
+      return { kind: final && stop < 0 && opener.piped && !findCueClose(body, opener, opener.end) ? 'drop' : 'flush' }
     }
     from = jsonEnd
     limit = jsonEnd + MAX_RECOVERY_LENGTH
   }
 
-  const close = findCueClose(buffer, opener, from)
+  const close = findCueClose(body, opener, from)
   if (close && close.end <= limit)
     return { kind: 'close', ...close }
-  if (close || buffer.length > limit)
+  if (close || body.length > limit)
     return { kind: 'flush' }
-  if (!final)
+  if (!settled)
     return { kind: 'wait' }
-  return { kind: opener.piped && jsonStart < 0 ? 'drop' : 'flush' }
+  return { kind: stop < 0 && opener.piped && jsonStart < 0 ? 'drop' : 'flush' }
 }
 
 interface StreamController<T> {
@@ -276,11 +349,11 @@ function createLlmMarkerParser(options?: MarkerParserOptions) {
       }
       else {
         const opener = cues?.matchAt(buffer)
-        if (opener) {
+        if (opener && cues) {
           if (opener.kind === 'partial')
             break
 
-          const resolution = resolveCue(buffer, opener, final)
+          const resolution = resolveCue(buffer, opener, final, cues)
           if (resolution.kind === 'wait')
             break
 
@@ -423,8 +496,9 @@ export function useLlmmarkerParser(options: {
   /**
    * Cue names (case-insensitive) whose near-miss spellings are rewritten into a canonical `<|NAME body|>`
    * special instead of being spoken: `<ACT x>`, `[ACT x]`, `<|ACT x>`, `<ACT x|>`.
-   * A body must close within 64 characters of its opener. A JSON body closes at its balanced `}`, which must arrive
-   * within 1024 characters, and the closer must follow within 64 characters of that brace.
+   * A body must close within 64 characters of its opener and before the next marker opener. A JSON body that balances
+   * closes at its balanced `}`, which must arrive within 1024 characters, and the closer must follow within 64 characters
+   * of that brace. A JSON body that does not balance closes at its closer within 64 characters, like any other body.
    * Otherwise the opener is emitted as literal and the rest is parsed again.
    * An unterminated canonical `<|...` tail is still dropped at the end of the stream.
    * Unset keeps the original parsing byte for byte.

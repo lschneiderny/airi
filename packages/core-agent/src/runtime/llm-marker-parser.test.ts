@@ -301,5 +301,140 @@ describe('useLlmmarkerParser', () => {
       const plain = await run(['Hello <|ACT|> world <|unfinished'], {})
       expect(plain).toMatchObject({ literal: 'Hello  world ', specials: ['<|ACT|>'], fullText: 'Hello <|ACT|> world <|unfinished' })
     })
+
+    it.each([
+      ['<|ACT {"emotion":"happy"|> Hi', '<|ACT {"emotion":"happy"|>', 0],
+      ['<|ACT {"emotion":"happy}|> Hi', '<|ACT {"emotion":"happy}|>', 0],
+      ['<|ACT {"emotion":{"name":"happy"|> Hi', '<|ACT {"emotion":{"name":"happy"|>', 0],
+      ['[ACT {"emotion":"happy"] Hi', '<|ACT {"emotion":"happy"|>', 1],
+      ['<ACT {"emotion":"happy"> Hi', '<|ACT {"emotion":"happy"|>', 1],
+      ['<ACT {"note":"a > b"> Hi', '<|ACT {"note":"a > b"|>', 1],
+    ])('closes the malformed JSON body of %j at its closer', async (input, special, recovered) => {
+      for (const [a, b] of splitsOf(input)) {
+        const result = await run([a, b])
+        expect(result.specials, `split at ${a.length}`).toEqual([special])
+        expect(result.literal, `split at ${a.length}`).toBe(' Hi')
+        expect(result.recovered).toBe(recovered)
+      }
+    })
+
+    it('keeps speaking and parsing after a malformed but closed JSON marker', async () => {
+      const result = await run(['<|ACT {"emotion":"happy"|> Hello there ', '<|DELAY 1|> bye'])
+      expect(result.specials).toEqual(['<|ACT {"emotion":"happy"|>', '<|DELAY 1|>'])
+      expect(result.literal).toBe(' Hello there  bye')
+    })
+
+    it('closes a JSON body with an unterminated string once 64 characters follow its closer', async () => {
+      const prose = ' Hello there, it is so good to see you again today, really it is, my friend.'
+      const result = await run(['<|ACT {"emotion":"happy}|>', prose])
+      expect(result.specials).toEqual(['<|ACT {"emotion":"happy}|>'])
+      expect(result.literal).toBe(prose)
+    })
+
+    it.each([
+      ['<|ACT happy and more <|DELAY 1|> bye', '<|ACT happy and more  bye', ['<|DELAY 1|>'], 0],
+      ['<|ACT {"emotion":"happy"} and more <|DELAY 1|> bye', '<|ACT {"emotion":"happy"} and more  bye', ['<|DELAY 1|>'], 0],
+      ['<ACT happy and more <ACT sad> bye', '<ACT happy and more  bye', ['<|ACT sad|>'], 1],
+      ['[ACT {"emotion":"happy" and more [DELAY 1] bye', '[ACT {"emotion":"happy" and more  bye', ['<|DELAY 1|>'], 1],
+    ])('does not let the closer of a later marker close the unclosed body of %j', async (input, literal, specials, recovered) => {
+      for (const [a, b] of splitsOf(input)) {
+        const result = await run([a, b])
+        expect(result.specials, `split at ${a.length}`).toEqual(specials)
+        expect(result.literal, `split at ${a.length}`).toBe(literal)
+        expect(result.recovered).toBe(recovered)
+      }
+    })
+
+    describe('malformed marker property', () => {
+      // mulberry32: a seeded PRNG, so the corpus is identical on every run.
+      function createRandom(seed: number) {
+        let state = seed
+        return () => {
+          state = (state + 0x6D2B79F5) | 0
+          let t = Math.imul(state ^ (state >>> 15), state | 1)
+          t = (t + Math.imul(t ^ (t >>> 7), t | 61)) ^ t
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+        }
+      }
+
+      const forms = [
+        { open: '<|', closers: ['|>', '>', ''] },
+        { open: '<', closers: ['>', '|>', ''] },
+        { open: '[', closers: [']', ''] },
+      ]
+      const names = ['ACT', 'act', 'Act', 'DELAY']
+      const jsonBodies = ['{"emotion":"happy"}', '{"emotion":"开心","intensity":0.8}', '{"emotion":{"name":"sad"},"motion":"wave"}', '{"note":"a b"}']
+      const bareBodies = ['happy', '开心', '2', 'sad and calm', '']
+      const inserts = ['>', ']', '|>', '开心', '}', '{', '"']
+
+      function createCorpus(seed: number, perForm: number) {
+        const random = createRandom(seed)
+        const pick = <T>(items: T[]) => items[Math.floor(random() * items.length)]!
+        const insertAt = (text: string, index: number, value: string) => `${text.slice(0, index)}${value}${text.slice(index)}`
+        const corpus: { open: string, closer: string, marker: string, wellFormed: boolean }[] = []
+
+        for (const form of forms) {
+          for (let i = 0; i < perForm; i++) {
+            const json = random() < 0.6
+            let body = json ? pick(jsonBodies) : pick(bareBodies)
+            if (json) {
+              if (random() < 0.4)
+                body = body.slice(0, body.lastIndexOf('}')) + body.slice(body.lastIndexOf('}') + 1)
+              if (random() < 0.3) {
+                const quotes = [...body.matchAll(/"/g)].map(match => match.index)
+                const quote = pick(quotes)
+                body = body.slice(0, quote) + body.slice(quote + 1)
+              }
+              if (random() < 0.2)
+                body = `{${body}`
+              if (random() < 0.2)
+                body = `${body}}`
+              if (random() < 0.5) {
+                // Right after a quote, which is usually inside a JSON string.
+                const quotes = [...body.matchAll(/"/g)].map(match => match.index)
+                if (quotes.length)
+                  body = insertAt(body, pick(quotes) + 1, pick(inserts))
+              }
+            }
+            else if (body && random() < 0.4) {
+              body = insertAt(body, Math.floor(random() * (body.length + 1)), pick(inserts))
+            }
+            // A bare body needs a space after the name, otherwise the name is not a cue name (`ACThappy`).
+            const separator = json && random() < 0.3 ? '' : ' '
+            const closer = pick(form.closers)
+            const wellFormed = form.open === '<|' && closer === '|>' && (json ? jsonBodies.includes(body) : bareBodies.includes(body))
+            corpus.push({ open: form.open, closer, wellFormed, marker: `${pick(['', 'Hi ', '你好', 'ok. '])}${form.open}${pick(names)}${separator}${body}${closer}` })
+          }
+        }
+        return corpus
+      }
+
+      it('never swallows the prose or the marker after a malformed cue, at every chunk split', { timeout: 600_000 }, async () => {
+        const corpus = createCorpus(20261020, 600)
+        const random = createRandom(5)
+        const malformed = corpus.filter(({ wellFormed }) => !wellFormed)
+        for (const form of forms)
+          expect(malformed.filter(({ open }) => open === form.open).length).toBeGreaterThanOrEqual(500)
+
+        const failures: string[] = []
+        for (const { open, closer, marker } of malformed) {
+          const gap = ['', ' ', '世界'][Math.floor(random() * 3)]!
+          for (const withDelay of [true, false]) {
+            const input = `${marker}${gap}SENTINEL${withDelay ? ' <|DELAY 1|> bye' : ''}`
+            // An unterminated canonical `<|NAME ...` tail at the end of the stream is dropped by design.
+            const droppedTail = open === '<|' && closer === '' && !withDelay
+            for (const [a, b] of splitsOf(input)) {
+              const result = await run([a, b])
+              const swallowed = result.specials.some(special => special.includes('SENTINEL'))
+              const spoken = result.literal.split('SENTINEL').length === 2
+              const delayed = !withDelay || (result.specials.at(-1) === '<|DELAY 1|>' && result.literal.endsWith(' bye'))
+              if (swallowed || (!droppedTail && (!spoken || !delayed)))
+                failures.push(`${JSON.stringify([a, b])} -> ${JSON.stringify({ literal: result.literal, specials: result.specials })}`)
+            }
+          }
+        }
+        expect(failures.length, failures.slice(0, 20).join('\n')).toBe(0)
+      })
+    })
   })
 })
