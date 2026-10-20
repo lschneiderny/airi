@@ -12,9 +12,9 @@ it('persists VRM frame limits without changing the model view', async () => {
   try {
     const model = useModelStore()
     const offset = { ...model.modelOffset }
-    expect(model.maxFps).toBe(0)
+    expect(model.maxFps).toBe(60)
 
-    for (const limit of [30, 60, 0]) {
+    for (const limit of [30, 0, 60]) {
       model.maxFps = limit
       await nextTick()
       expect(localStorage.getItem(key)).toBe(String(limit))
