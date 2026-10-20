@@ -87,6 +87,8 @@ export interface StreamOptions {
    */
   topP?: number
   toolsCompatibility?: Map<string, boolean>
+  /** Who started the turn. A host that adds built-in tools to a request sends none on an `unprompted` turn. */
+  origin?: 'user' | 'unprompted'
   supportsTools?: boolean
   waitForTools?: boolean
   /** Provider tool-selection directive for one request. */

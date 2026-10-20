@@ -29,7 +29,10 @@ export const useLLM = defineStore('llm', () => {
     let key = modelKey(model, chatProvider.generation(model))
     let toolExecutionStarted = false
     const { tools: customTools, describeToolImage, ...streamOptions } = options ?? {}
-    const builtinToolsResolver = () => resolveLlmTools({ customTools, describeImage: describeToolImage })
+    // An unprompted turn may only speak or decline, so it carries no tools, built-in or custom.
+    const resolveTools = () => streamOptions.origin === 'unprompted'
+      ? Promise.resolve([])
+      : resolveLlmTools({ customTools, describeImage: describeToolImage })
     const resolveStep = streamOptions.resolveStep
 
     const runStream = () => coreStreamFrom({
@@ -40,7 +43,7 @@ export const useLLM = defineStore('llm', () => {
         ...streamOptions,
         // Core uses only the tools of a resolved step, so each step carries the complete tool list.
         resolveStep: resolveStep
-          ? async () => ({ ...await resolveStep(), tools: await resolveLlmTools({ customTools, describeImage: describeToolImage }) })
+          ? async () => ({ ...await resolveStep(), tools: await resolveTools() })
           : undefined,
         prepareConversation: async (conversation, target) => {
           key = modelKey(target.model, target.request)
@@ -54,7 +57,7 @@ export const useLLM = defineStore('llm', () => {
         toolsCompatibility: toolsCompatibility.value,
         contentArrayCompatibility: contentArrayCompatibility.value,
       },
-      builtinToolsResolver,
+      builtinToolsResolver: resolveTools,
     })
 
     try {

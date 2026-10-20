@@ -1133,6 +1133,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         },
         // An unprompted turn may only speak or decline. Tool effects would run before the turn is decided.
         tools: unprompted ? undefined : options.tools,
+        origin: unprompted ? 'unprompted' : 'user',
         temperature: options.temperature,
         topP: options.topP,
         waitForTools: true,
