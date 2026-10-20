@@ -30,6 +30,22 @@ const cooldowns = { 'laugh': 4, 'recoil': 3, 'angry': 5, 'sway': 4, 'tilt-in': 5
 // Retire exponential tails once they have become negligible.
 const tailTaus = 15
 
+/**
+ * The longest lifetime `createClip` can draw per clip, in seconds after the start. Laugh ends by its fourth
+ * cycle at 4 Hz or faster (1 s); shake plays at most 3 cycles at 3 Hz (1 s). QA reads these bounds to keep
+ * scored windows clear of clip residue.
+ */
+export const gestureLifetimes: Readonly<Record<PlayedGesture, number>> = {
+  'laugh': 1,
+  'recoil': 0.72,
+  'shake': 1,
+  'drop': tailTaus * 0.15,
+  'sway': 2,
+  'tilt-in': tailTaus * 0.5,
+  'look-away': 1.65,
+  'nod-off': 1.2 + tailTaus * 0.3,
+}
+
 function cooldownKey(kind: GestureKind): keyof typeof cooldowns {
   return kind === 'shake' || kind === 'drop' || kind === 'shake-or-drop' ? 'angry' : kind
 }

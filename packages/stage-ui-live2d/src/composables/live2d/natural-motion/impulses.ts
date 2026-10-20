@@ -72,6 +72,21 @@ export function headPulseOffset(pulses: HeadPulse[], time: number): Vec3 {
   return offset
 }
 
+type BandSettings = ExpressionPerformanceSettings['naturalBands']['clear']
+
+/** Seconds after an episode starts until its face hints retire: the face hold, then 15 release time constants. */
+export function impulseFaceLifetime(settings: BandSettings) {
+  return settings.faceHold + pulseLifetime * settings.faceReleaseTau
+}
+
+/**
+ * Seconds after an episode starts until every offset it started has retired. The body lean pulse
+ * (1.5 head taus) outlives the head pulse, so it bounds both head channels.
+ */
+export function impulseLifetime(settings: BandSettings) {
+  return Math.max(pulseLifetime * 1.5 * (settings.headTau ?? 0), impulseFaceLifetime(settings))
+}
+
 /** Perturbs `direction` by up to 20% per component while keeping its length. */
 function perturbDirection(random: RandomStream, direction: Vec3): Vec3 {
   const length = Math.hypot(...direction)
@@ -211,7 +226,7 @@ export class NaturalImpulses {
     const total = emptyHints()
     for (const [id, pulse] of this.episodes) {
       const age = time - pulse.start
-      const lifetime = Math.max(pulseLifetime * 1.5 * (pulse.settings.headTau ?? 0), pulse.settings.faceHold + pulseLifetime * pulse.settings.faceReleaseTau)
+      const lifetime = impulseLifetime(pulse.settings)
       if (age > lifetime) {
         this.episodes.delete(id)
         continue
