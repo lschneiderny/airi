@@ -379,8 +379,9 @@ export function unpairedPValue(sample: readonly number[], signs: readonly number
   const observed = statistic(sample.reduce((sum, value, index) => sum + signs[index] * value, 0), sample.reduce((sum, value) => sum + value, 0))
   const tolerance = 1e-12 * pooled.reduce((sum, value) => sum + Math.abs(value), 0)
 
+  // C(n + m, k) with k = min(n, m): the running product only grows, so an early stop never hides a small count.
   let subsets = 1
-  for (let index = 0; index < n && subsets <= permutations; index++)
+  for (let index = 0; index < Math.min(n, m) && subsets <= permutations; index++)
     subsets = subsets * (n + m - index) / (index + 1)
   if (signs.every(sign => sign === signs[0]) && subsets <= permutations) {
     let hits = 0
@@ -1297,17 +1298,21 @@ function evaluateCheck(check: ChannelCheck, context: EvaluationContext): Evaluat
     evaluation.tested = values
     evaluation.unpaired = { values: raw, signs, reference: placebo }
     result.E = mean(values) - meanSign * mean(placebo)
-    // The CI resamples the placebo pool too, so it carries the null's own sampling error.
+    // The CI resamples (sign, value) pairs and the placebo pool, and recomputes the declared statistic per draw.
     const random = context.stream('effect-ci')
     const draws: number[] = []
     for (let draw = 0; draw < gate.family.bootstrap; draw++) {
       let trialSum = 0
-      for (let index = 0; index < values.length; index++)
-        trialSum += values[Math.floor(random() * values.length)]
+      let signSum = 0
+      for (let index = 0; index < values.length; index++) {
+        const pick = Math.floor(random() * values.length)
+        trialSum += values[pick]
+        signSum += signs[pick]
+      }
       let nullSum = 0
       for (let index = 0; index < placebo.length; index++)
         nullSum += placebo[Math.floor(random() * placebo.length)]
-      draws.push(trialSum / values.length - meanSign * nullSum / placebo.length)
+      draws.push(trialSum / values.length - signSum / values.length * nullSum / placebo.length)
     }
     result.ci = [quantile(draws, 0.025), quantile(draws, 0.975)]
     result.d = check.cls !== 'modulation' && sigma0 ? result.E / sigma0 : null

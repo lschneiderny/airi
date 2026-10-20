@@ -8,7 +8,7 @@ import { defaultExpressionPerformanceSettings, parseExpressionPerformanceSetting
 import { buildEmotionTrial } from '@proj-airi/stage-shared/motion-scenario'
 import { describe, expect, it } from 'vitest'
 
-import { fitExponential, holmAdjust, measureEmotionTrial, measurePlacebos, naturalEmotionLifetime, naturalFaceResidue, scoreEmotionGate, signFlipPValue } from './emotion-score'
+import { fitExponential, holmAdjust, measureEmotionTrial, measurePlacebos, naturalEmotionLifetime, naturalFaceResidue, scoreEmotionGate, signFlipPValue, unpairedPValue } from './emotion-score'
 import { naturalEmotions } from './emotions'
 import { buildEmotionChecks, emotionGate } from './gates'
 import { gestureLifetimes, NaturalGestures } from './gestures'
@@ -361,6 +361,36 @@ describe('emotion scorer', () => {
       }
       const alpha = emotionGate.family.alpha
       expect(passes / draws).toBeLessThanOrEqual(alpha + 3 * Math.sqrt(alpha * (1 - alpha) / draws))
+    })
+
+    it('recomputes the signed effect per bootstrap draw, so a common shift moves neither E nor the CI', () => {
+      const sided = buildEmotionChecks().filter(check => check.key === 'question:clear:browAsym')
+      const random = createRandomStream(9)
+      const sides = Array.from({ length: 12 }, (_, index) => (index % 3 === 0 ? -1 : 1) as -1 | 1)
+      const trialValues = sides.map(side => 0.02 * side + 0.01 * gaussian(random))
+      const nullValues = Array.from({ length: 60 }, () => 0.01 * gaussian(random))
+      const scoreShifted = (shift: number) => scoreEmotionGate({
+        gate: emotionGate,
+        checks: sided,
+        trials: trialValues.map((value, index) => ({ ...unpairedTrial(index, 0), emotion: 'question' as const, band: 'clear' as const, trialId: `question-clear-full-${index}`, side: sides[index], channels: { browAsym: { value: value + shift, paired: null } } })),
+        placebos: nullValues.map((value, index) => ({ id: `p-${index}`, channels: { browAsym: value + shift } })),
+        ranges: {},
+        criteria: ['significance', 'sign'],
+      }).results[0]
+      const base = scoreShifted(0)
+      const shifted = scoreShifted(0.2)
+      expect(shifted.E).toBeCloseTo(base.E!, 12)
+      expect(shifted.p).toBe(base.p)
+      expect(shifted.ci![0]).toBeCloseTo(base.ci![0], 9)
+      expect(shifted.ci![1]).toBeCloseTo(base.ci![1], 9)
+      expect(base.ci![0]).toBeLessThanOrEqual(base.E!)
+      expect(base.ci![1]).toBeGreaterThanOrEqual(base.E!)
+    })
+
+    it('enumerates exactly when the trial sample is larger than the placebo pool', () => {
+      // C(15, 12) = 455 relabelings; the single 1 lands among the trials in C(14, 11) = 364 of them.
+      const sample = [1, ...Array.from<number>({ length: 11 }).fill(0)]
+      expect(unpairedPValue(sample, Array.from<number>({ length: 12 }).fill(1), [0, 0, 0], 1000, createRandomStream(1))).toBeCloseTo(364 / 455, 12)
     })
 
     it('still passes a clear shift below the placebo pool', () => {
