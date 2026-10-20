@@ -366,6 +366,7 @@ catalog:
   jsdom: ^30.0.1
   jszip: ^3.10.1
   knip: ^6.32.2
+  koffi: ^3.3.3
   kokoro-js: ^1.2.1
   kysely: 0.29.5
   less: ^4.9.0
@@ -524,6 +525,7 @@ allowBuilds:
   esbuild: true
   ffmpeg-static: true
   isolated-vm: true
+  koffi: true
   less: true
   msw: true
   node-pty: true
