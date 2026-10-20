@@ -4,7 +4,7 @@ import type { ChatStreamEvent, ChatStreamEventContext, ContextMessage } from '..
 
 import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { ref } from 'vue'
 
 import { chatAssetsRepo } from '../../../database/repos/chat-assets.repo'
@@ -190,6 +190,7 @@ const chatOrchestratorMock = {
   activeSendSessionId: undefined as string | undefined,
   sending: false,
   send: vi.fn(),
+  submitUnprompted: vi.fn(),
   cancelPendingSends: vi.fn(),
   cancelTurn: vi.fn(),
 
@@ -231,7 +232,10 @@ vi.mock('vue-i18n', () => ({
 
 vi.mock('../../character', () => ({
   useCharacterOrchestratorStore: () => ({
-    handleSparkNotifyWithReaction: vi.fn(async (_event: unknown, options: { fallbackText: string }) => options.fallbackText),
+    handleSparkNotify: vi.fn(async () => undefined),
+  }),
+  useCharacterStore: () => ({
+    recordSparkNotifyReaction: vi.fn(),
   }),
 }))
 
@@ -313,6 +317,7 @@ describe('context bridge contract', () => {
     getProviderInstanceMock.mockReset()
     recordLifecycleMock.mockReset()
     chatOrchestratorMock.send.mockReset().mockResolvedValue(undefined)
+    chatOrchestratorMock.submitUnprompted.mockReset()
     chatOrchestratorMock.cancelPendingSends.mockReset().mockResolvedValue(undefined)
     chatOrchestratorMock.cancelTurn.mockReset().mockResolvedValue(undefined)
 
@@ -1205,5 +1210,47 @@ describe('context bridge contract', () => {
     expect(store.isReceivingRemoteStream).toBe(false)
 
     await store.dispose()
+  })
+
+  /** A widget window: its own Pinia, whose bridge asks the main window for reactions over the broadcast channel. */
+  async function createWidgetBridge() {
+    const widgetPinia = createPinia()
+    const widget = useContextBridgeStore(widgetPinia)
+    widget.setSparkNotifyHostRole('client')
+    // Responses arrive through the listener that `initialize` starts, as in the widgets window.
+    await widget.initialize()
+    onTestFinished(async () => {
+      await widget.dispose()
+      disposePinia(widgetPinia)
+      setActivePinia(pinia)
+    })
+    return widget
+  }
+
+  it('answers a widget window\'s reaction request with the reply of the main window\'s chat turn', async () => {
+    const main = useContextBridgeStore()
+    main.setSparkNotifyHostRole('main')
+    await main.initialize()
+    chatOrchestratorMock.submitUnprompted.mockResolvedValue({ status: 'spoken', text: 'Oh, a QA widget!' })
+    const widget = await createWidgetBridge()
+
+    const reaction = await widget.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
+
+    expect(reaction).toBe('Oh, a QA widget!')
+    expect(chatOrchestratorMock.submitUnprompted).toHaveBeenCalledOnce()
+    expect(chatOrchestratorMock.submitUnprompted).toHaveBeenCalledWith(expect.objectContaining({ force: true, topicText: 'QA widget', messageId: expect.stringMatching(/^spark:/) }))
+  })
+
+  it('answers a declined widget reaction with its fallback text', async () => {
+    const main = useContextBridgeStore()
+    main.setSparkNotifyHostRole('main')
+    await main.initialize()
+    chatOrchestratorMock.submitUnprompted.mockResolvedValue({ status: 'declined' })
+    const widget = await createWidgetBridge()
+
+    const reaction = await widget.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
+
+    expect(reaction).toBe('fallback')
+    expect(chatOrchestratorMock.submitUnprompted).toHaveBeenCalledOnce()
   })
 })

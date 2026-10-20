@@ -439,6 +439,27 @@ describe('store character-orchestrator', () => {
     expect(onEnd).not.toHaveBeenCalled()
   })
 
+  it('runs the forced command agent for a character-only notify when its caller forces a spark command', async () => {
+    const mockStream = vi.fn(async (_model: string, _provider: unknown, _messages: unknown, options: any) => {
+      await options?.onStreamEvent?.({ type: 'finish' } satisfies StreamEvent)
+    })
+    mockedStore(useLLM, pinia).stream = mockStream
+    const situation = useSituationStore(pinia)
+    situation.initialize(leaderRuntime())
+    const store = useCharacterOrchestratorStore(pinia)
+    const event: WebSocketEventOf<'spark:notify'> = {
+      type: 'spark:notify',
+      source: 'plugin-module-host',
+      data: { id: nanoid(), eventId: nanoid(), kind: 'ping', urgency: 'immediate', headline: 'Widget command', destinations: ['character'] },
+    }
+
+    await store.handleSparkNotify(event, { forceSparkCommandResponse: true })
+
+    expect(mockStream).toHaveBeenCalledOnce()
+    expect(mockStream.mock.calls[0][3]).toMatchObject({ toolChoice: { type: 'function', function: { name: 'builtIn_sparkCommand' } } })
+    expect(notifyEvents(situation).map(item => item.topicKey)).toEqual([notifyTopicKey('plugin-module-host', event.data.eventId)])
+  })
+
   // https://github.com/moeru-ai/airi/pull/2464#discussion_r3933609456
   it('preserves runtime rules when a Spark caller replaces the user payload', async () => {
     const mockStream = vi.fn()

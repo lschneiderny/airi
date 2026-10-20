@@ -162,14 +162,15 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
   }
 
   /**
-   * Handles one `spark:notify`: it always becomes a situation observation, and the gate decides whether the character
-   * speaks about it. Only a notify with destinations beyond `'character'` also runs the commands-only agent, at once
-   * when it is immediate and the agent is idle, otherwise through the queue. Returns the agent result of an immediate
-   * run, or `undefined`.
+   * Handles one `spark:notify`: it always becomes a situation observation, synchronously before the first await, and
+   * the gate (or a widget reaction's forced turn) decides whether the character speaks about it. Only a notify with
+   * destinations beyond `'character'`, or one whose caller forces a spark command, also runs the commands-only agent,
+   * at once when it is immediate and the agent is idle, otherwise through the queue. Returns the agent result of an
+   * immediate run, or `undefined`.
    */
   async function handleIncomingSparkNotify(event: WebSocketEventOf<'spark:notify'>, control?: SparkNotifyResponseControl) {
     ingestSparkNotify(event)
-    if (!hasModuleDestinations(event))
+    if (!hasModuleDestinations(event) && !control?.forceSparkCommandResponse)
       return undefined
 
     if (event.data.urgency === 'immediate' && !processing.value) {
@@ -178,21 +179,6 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
 
     enqueueSparkNotify(event, { reason: 'spark:notify', control })
     return undefined
-  }
-
-  async function handleSparkNotifyWithReaction(
-    event: WebSocketEventOf<'spark:notify'>,
-    options?: SparkNotifyResponseControl & { fallbackText?: string },
-  ) {
-    await handleIncomingSparkNotify(event, options)
-
-    const reaction = [...characterStore.reactions]
-      .reverse()
-      .find(item => item.sourceEventId === event.data.id)
-      ?.message
-      ?.trim()
-
-    return reaction || options?.fallbackText || ''
   }
 
   function enqueueDueTasks(now: number) {
@@ -334,7 +320,6 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
     dispose,
 
     handleSparkNotify: handleIncomingSparkNotify,
-    handleSparkNotifyWithReaction,
     handleSparkEmit,
   }
 })

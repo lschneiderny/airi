@@ -76,8 +76,11 @@ export interface SituationChatControls {
   submitUnprompted: (payload: ChatUnpromptedPayload) => Promise<ChatUnpromptedResult>
 }
 
-/** The chat hooks the store listens to: the conversation sensor's, plus literals that show a fire was spoken. */
-export type SituationChatHooks = ConversationHookSource & Pick<ChatHookRegistry, 'onTokenLiteral'>
+/**
+ * The chat hooks the store listens to: the conversation sensor's, literals that show an unprompted turn was spoken,
+ * and stream ends that show one was declined.
+ */
+export type SituationChatHooks = ConversationHookSource & Pick<ChatHookRegistry, 'onTokenLiteral' | 'onStreamEnd'>
 
 interface RunningSensors {
   check: (nowMs: number) => void
@@ -138,6 +141,10 @@ export const useSituationStore = defineStore('situation', () => {
   const composers = new Map<string, { hasDraft: boolean, lastInputAtMs: number, receivedAtMs: number }>()
   /** Notify topic keys that entered the situation during this leadership, oldest first. */
   const seenNotifyTopics = new Set<string>()
+  /** Topics that another caller's forced turn is about to raise. The gate never picks them; see {@link holdTopic}. */
+  const heldTopics = new Set<string>()
+  /** The unprompted turn whose first literal was seen last, so its topic is addressed once. */
+  let lastSpokenUnpromptedTurnId: string | undefined
 
   // Feeds the devtools Situation inspector of this window. Sync flush keeps it equal to the state after every call.
   watch([leading, current], ([isLeading, state]) => observability.publishLiveState(isLeading, state), { flush: 'sync', immediate: true })
@@ -180,16 +187,36 @@ export const useSituationStore = defineStore('situation', () => {
         setGateMemory(recordUserTurn(gateMemory, observation.atMs))
     })
     const stopSpokenListener = chatHooks.onTokenLiteral(async (_literal, context) => {
-      // The runtime holds an unprompted reply until it decides to speak, so its first literal means spoken. Recording
-      // it now, not when the reply ends, lets a user reply that arrives mid-reply count as engagement.
-      if (!firing || firing.spoken || context.origin !== 'unprompted' || context.turnId !== firing.turnId)
+      // The runtime holds an unprompted reply until it decides to speak, so its first literal means spoken.
+      if (context.origin !== 'unprompted' || context.turnId === lastSpokenUnpromptedTurnId)
         return
-      firing.spoken = true
-      setGateMemory(recordFireOutcome(gateMemory, 'spoken', Date.now()))
+      lastSpokenUnpromptedTurnId = context.turnId
+      // Every spoken unprompted turn addresses its own topic here, whoever started it. A widget reaction's notify is
+      // addressed only once it speaks, and its topic becomes the remark recorded when the reply ends, not the topic
+      // of an earlier declined turn.
+      const trigger = context.message.role === 'user' ? context.message.trigger : undefined
+      if (trigger)
+        markAddressed(trigger.topicKey)
+      // Recording a gate fire as spoken now, not when the reply ends, lets a user reply mid-reply count as engagement.
+      if (firing && !firing.spoken && context.turnId === firing.turnId) {
+        firing.spoken = true
+        setGateMemory(recordFireOutcome(gateMemory, 'spoken', Date.now()))
+      }
+    })
+    const stopDeclinedListener = chatHooks.onStreamEnd(async (context) => {
+      // She chose to stay silent about the topic, so the gate must not raise it again. A busy, cancelled, or failed
+      // turn was not her decision and leaves its topic alone. Her last remark is unchanged: only a spoken turn sets
+      // it, after its own first literal addressed its topic.
+      if (context.origin !== 'unprompted' || !context.cueStats?.declined)
+        return
+      const trigger = context.message.role === 'user' ? context.message.trigger : undefined
+      if (trigger)
+        markAddressed(trigger.topicKey)
     })
     stopConversation = () => {
       stopSensor()
       stopSpokenListener()
+      stopDeclinedListener()
     }
   }
 
@@ -281,7 +308,9 @@ export const useSituationStore = defineStore('situation', () => {
     const before = gateMemory
     const { decision, memory } = evaluateGate({
       nowMs,
-      situation: current.value,
+      situation: heldTopics.size > 0
+        ? { ...current.value, events: current.value.events.filter(event => !heldTopics.has(event.topicKey)) }
+        : current.value,
       signals,
       settings: {
         enabled: document.unpromptedEnabled,
@@ -388,6 +417,8 @@ export const useSituationStore = defineStore('situation', () => {
     syncGateLoop()
     current.value = initialSituationState
     seenNotifyTopics.clear()
+    heldTopics.clear()
+    lastSpokenUnpromptedTurnId = undefined
     foregroundCategory.value = null
   }
 
@@ -433,6 +464,24 @@ export const useSituationStore = defineStore('situation', () => {
     if (!leading.value)
       return
     current.value = markSituationAddressed(current.value, topicKey, Date.now())
+  }
+
+  /**
+   * Keeps one topic away from the gate until the returned function releases it. Followers hold nothing.
+   *
+   * Use when:
+   * - Another caller is about to raise the topic in a forced unprompted turn, for example a widget reaction. The
+   *   turn reaches the chat a few ticks later (a synced call, then `prepareSend`), and the gate must not raise the
+   *   same topic meanwhile.
+   *
+   * Unlike {@link markAddressed}, holding leaves the topic unaddressed: a spoken turn addresses it at its first
+   * literal, and after a declined, cancelled, or failed turn the gate may still raise it.
+   */
+  function holdTopic(topicKey: string): () => void {
+    if (!leading.value)
+      return () => {}
+    heldTopics.add(topicKey)
+    return () => heldTopics.delete(topicKey)
   }
 
   /**
@@ -493,6 +542,7 @@ export const useSituationStore = defineStore('situation', () => {
     advance,
     renderForRequest,
     markAddressed,
+    holdTopic,
     observeChat,
     setStageVisible,
     setHostCapabilities,
