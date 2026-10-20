@@ -86,6 +86,17 @@ pnpm -F @proj-airi/qa-tools exec tsx bin/check-prod-bundle.ts [directory]
 - Exit codes: 0 no marker found, 1 any marker found, 2 when the directory is missing or holds no `.js` files, so a missing build never reads as clean.
 - `fixtures/prod-bundle-leak/` holds one leaking chunk; running the checker on it must exit 1.
 
+## Motion gates
+
+`pnpm qa:motion gate <emotion | liveliness> --level t1 [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N]` runs a committed gate (`stage-ui-live2d` `natural-motion/gates.ts`) through the T1 runner and judges it.
+
+- It creates a run directory (`gate` records `{ id, version, fileSha }`, with the version as a string), spawns Vitest on `gates/*.gate.ts` (project `gate`, one file per emotion plus `null.gate.ts` for the placebo null, or `liveliness.gate.ts`), aggregates `partials/*.json`, and writes `report.json`, `summary.txt`, `timing.json` and `vitest.log`.
+- `report.json`: `{ gateId, version, fileSha, inputHash, level, limitation, pass, nullStats, results, determinismHash }` (schema: `src/motion/gate/report.ts`). `determinismHash` covers everything except timings, and is the same for any `--workers` count.
+- `--seeds N` runs at most N seeds per variant; the report records `selection.seedsLimit`. The committed counts live in the gate, never in the CLI.
+- Exit codes: 0 every check passed, 1 a check failed or the run broke (a missing partial, a Vitest failure, the timeout), 2 a usage error (unknown emotion, band, flag or level). `pnpm qa:motion` passes the code through.
+- Timing targets (full gate 5 min, smoke 60 s on 16 cores) are recorded in `timing.json` and `run.json` with the CPU load before the run; they are not asserted.
+- Every report states that scores prove direction, size relative to the recipe, release and detectability above the rig's idle noise, not naturalness.
+
 ## When to use
 
 - A QA script must spawn pnpm or Vitest reliably, for example while `PNPM_HOME` shims may be regenerated (exit 127).

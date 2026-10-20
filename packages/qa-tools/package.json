@@ -13,6 +13,7 @@
   "scripts": {
     "doctor": "tsx bin/doctor.ts",
     "evidence": "tsx bin/evidence.ts",
+    "motion": "tsx bin/motion.ts",
     "t2:probe": "tsx bin/t2-probe.ts",
     "test:qa": "tsx bin/test.ts",
     "typecheck": "tsc --noEmit"
