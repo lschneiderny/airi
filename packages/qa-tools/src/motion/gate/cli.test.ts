@@ -13,7 +13,7 @@ describe('parseGateArgs', () => {
   it('defaults to every emotion and band and the given worker count', () => {
     const result = parse('emotion', '--level', 't1')
 
-    expect(result).toEqual({ ok: true, command: { target: 'emotion', level: 't1', selection: { emotions: [...gateEmotions], bands: [...gateBands], seedsLimit: null }, workers: 4, timeoutMinutes: 90, t1Report: null } })
+    expect(result).toEqual({ ok: true, command: { target: 'emotion', level: 't1', selection: { emotions: [...gateEmotions], bands: [...gateBands], seedsLimit: null }, workers: 4, timeoutMinutes: 90, t1Report: null, rescore: null } })
   })
 
   it('accepts filters and dedupes repeated values', () => {
@@ -39,6 +39,8 @@ describe('parseGateArgs', () => {
     [['liveliness', '--level', 't3', '--rig', 'forbooth', '--workers', '2'], 'committed cells'],
     [['liveliness', '--level', 't3', '--rig', 'forbooth', '--t1-report', 'x'], '--t1-report'],
     [['emotion', '--level', 't1', '--t1-report', 'x'], '--t1-report'],
+    [['liveliness', '--level', 't3', '--rig', 'forbooth', '--rescore', 'x'], '--rescore'],
+    [['emotion', '--level', 't3', '--rig', 'forbooth', '--rescore', 'x', '--t1-report', 'y'], '--rescore'],
     [['loud', '--level', 't1'], 'Valid gates: emotion, liveliness'],
     [['liveliness', '--level', 't1', '--emotions', 'angry'], 'emotion gate only'],
     [['emotion', '--level', 't1', '--nope'], 'nope'],
@@ -52,7 +54,8 @@ describe('parseGateArgs', () => {
 
   it('accepts the T3 gates on ForBOOTH with an optional T1 reference', () => {
     expect(parse('emotion', '--level', 't3', '--rig', 'forbooth', '--t1-report', 'run-dir')).toMatchObject({ ok: true, command: { target: 'emotion', level: 't3', t1Report: 'run-dir' } })
-    expect(parse('liveliness', '--level', 't3', '--rig', 'forbooth')).toMatchObject({ ok: true, command: { target: 'liveliness', level: 't3', t1Report: null } })
+    expect(parse('liveliness', '--level', 't3', '--rig', 'forbooth')).toMatchObject({ ok: true, command: { target: 'liveliness', level: 't3', t1Report: null, rescore: null } })
+    expect(parse('emotion', '--level', 't3', '--rig', 'forbooth', '--rescore', 'old-run')).toMatchObject({ ok: true, command: { rescore: 'old-run' } })
   })
 
   it('runs T2 on ForBOOTH with its specified simulation budget and unchanged score rules', () => {

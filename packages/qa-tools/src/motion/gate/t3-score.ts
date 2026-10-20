@@ -9,9 +9,10 @@ import { buildEmotionChecks } from '@proj-airi/stage-ui-live2d/composables/live2
 
 /**
  * T3 scoring. Measurement and statistics come from the shared scorer (`emotion-score.ts`): the same
- * `measureEmotionTrial`, `measurePlacebos` and `scoreEmotionGate` the T1 and T2 gates call, here with no stripped run, so
- * every trial is scored unpaired against the session's placebo windows. This module only applies the T3 rules of
- * `naturalEmotionT3Gate` to the scorer's numbers.
+ * `measureEmotionTrial`, `measurePlacebos` and `scoreEmotionGate` the T1 and T2 gates call, here with no stripped run.
+ * Every record carries its capture session as `stratum`, so the scorer judges each trial against its own session's
+ * placebo windows (session-stratified). This module only applies the T3 rules of `naturalEmotionT3Gate` to the
+ * scorer's numbers.
  */
 
 /** Unpaired release trajectories of one T3 pulse, per face and eyelid channel (`releaseTrajectory`, on `releaseGrid`). */
@@ -31,9 +32,12 @@ export interface T3SessionMeasures {
 
 const releaseChannels = (Object.keys(scoredChannels) as ScoredChannel[]).filter(channel => scoredChannels[channel] === 'face' || scoredChannels[channel] === 'eyelid')
 
-/** Measures every pulse and placebo of one rendered session trace. `trialIds` are the scenario's emotion trial ids. */
-export function measureT3Session(trace: NaturalTrace, trialIds: readonly string[], gate: EmotionGate, settings: ExpressionPerformanceSettings): T3SessionMeasures {
-  const records = trialIds.map(trialId => measureEmotionTrial(trace, null, { trialId, variant: 'full', gate, settings }))
+/**
+ * Measures every pulse and placebo of one rendered session trace. `trialIds` are the scenario's emotion trial ids;
+ * `stratum` (the session's scenario id) tags every trial and placebo record for session-stratified scoring.
+ */
+export function measureT3Session(trace: NaturalTrace, trialIds: readonly string[], gate: EmotionGate, settings: ExpressionPerformanceSettings, stratum: string): T3SessionMeasures {
+  const records = trialIds.map(trialId => ({ ...measureEmotionTrial(trace, null, { trialId, variant: 'full', gate, settings }), stratum }))
   const release = records.map((record): T3ReleaseRecord => {
     const pulse = trace.events.find(entry => entry.source === 'scenario' && entry.event.kind === 'emotion' && entry.event.trialId === record.trialId)!.t
     const channels: T3ReleaseRecord['channels'] = {}
@@ -44,7 +48,7 @@ export function measureT3Session(trace: NaturalTrace, trialIds: readonly string[
     }
     return { trialId: record.trialId, emotion: record.emotion, band: record.band, side: record.side, channels }
   })
-  return { records, placebos: measurePlacebos(trace, gate), release }
+  return { records, placebos: measurePlacebos(trace, gate).map(placebo => ({ ...placebo, stratum })), release }
 }
 
 /** `E_T3 / E_T1`, or `null` when either effect is missing or the T1 effect is zero. */
@@ -79,7 +83,10 @@ export interface T3PosturePool {
 
 export interface T3EmotionScore {
   results: T3CheckResult[]
+  /** Pooled over sessions, for display; the checks use `strataNullStats`. */
   nullStats: Record<string, { sigma0: number, q: number, n: number }>
+  /** Per session (stratum): the placebo nulls each session's trials were judged against. */
+  strataNullStats: Record<string, Record<string, { sigma0: number, q: number, n: number }>>
   posture: T3PosturePool[]
   pass: boolean
 }
@@ -173,6 +180,7 @@ export function scoreT3Emotion(input: T3ScoreInput): T3EmotionScore {
   return {
     results,
     nullStats: score.nullStats as T3EmotionScore['nullStats'],
+    strataNullStats: (score.strataNullStats ?? {}) as T3EmotionScore['strataNullStats'],
     posture: [...posture.entries()].map(([channel, entries]) => {
       const ds = entries.flatMap(entry => typeof entry.d === 'number' ? [entry.d] : [])
       return { channel, checks: entries.length, signAgrees: entries.filter(entry => typeof entry.E === 'number' && entry.E > 0).length, meanD: ds.length ? mean(ds) : null }

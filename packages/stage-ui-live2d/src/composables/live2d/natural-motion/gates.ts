@@ -144,8 +144,13 @@ export interface EmotionT3Gate {
   /** Pulses are at least this far apart, and at least `naturalEmotionLifetime + lifetimeMarginSeconds`. */
   minSpacingSeconds: number
   lifetimeMarginSeconds: number
-  /** Placebo windows of the session null, counted over every session. */
+  /** Placebo windows of the session nulls, counted over every session. */
   minPlacebos: number
+  /**
+   * How trials meet the placebo null: `session-stratified` scores each trial against its own capture session's placebo
+   * windows (visibility quantile, effect, stratified permutation test and bootstrap; `stratifiedUnpairedPValue`).
+   */
+  placeboNull: 'session-stratified'
   /** Longest scenario of one capture: the capture store stops at 600 s and the harness captures one second more. */
   maxSessionSeconds: number
   /** Fewest captures; every capture of a run has the same duration (the rendered-gate rule in the README). */
@@ -159,20 +164,23 @@ export interface EmotionT3Gate {
 }
 
 /**
- * The rendered (T3) emotion transfer gate on one rig. Pulses are scored unpaired against placebo windows of the
- * same session, with the windows and statistics of `emotionGate`; the T3 rules replace the T1 thresholds: a
+ * The rendered (T3) emotion transfer gate on one rig. Pulses are scored unpaired against the placebo windows of their
+ * own capture session (session-stratified), with the windows and statistics of `emotionGate`; the T3 rules replace the
+ * T1 thresholds: a
  * visibility hit count, the ratio of the T3 effect to the T1 effect at the same commit, and a gross release check.
  * Posture is reported, not gated.
  */
 export const naturalEmotionT3Gate = {
   id: 'natural-emotion-t3',
-  version: 1,
+  // v2: the placebo null is session-stratified instead of pooled over sessions.
+  version: 2,
   limitation: emotionGate.limitation,
   cells: [{ emotion: 'angry', band: 'strong' }, { emotion: 'sad', band: 'clear' }, { emotion: 'love', band: 'clear' }, { emotion: 'sleepy', band: 'strong' }],
   trialsPerCell: 10,
   minSpacingSeconds: 12,
   lifetimeMarginSeconds: 4,
   minPlacebos: 50,
+  placeboNull: 'session-stratified',
   maxSessionSeconds: 599,
   minSessions: 3,
   visibilityMinHits: 6,

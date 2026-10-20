@@ -157,6 +157,43 @@ export function buildT3EmotionPlan(t3: EmotionT3Gate, gate: EmotionGate, setting
   throw new Error(`[qa-tools] ${t3.id}: one block of ${t3.cells.length} pulses does not fit in ${t3.maxSessionSeconds} s`)
 }
 
+/**
+ * The plan of scenarios that already ran (`--rescore`): pulses, spacing and placebo counts read back from the archived
+ * scenario files, so a re-score judges exactly what was performed even when the committed plan has changed since.
+ * Throws when the archive breaks the gate's layout: a cell without `trialsPerCell` pulses, too few placebo windows, a
+ * pulse closer to the next than its spacing rule, or a session longer than `maxSessionSeconds`.
+ */
+export function t3PlanFromScenarios(t3: EmotionT3Gate, gate: EmotionGate, settings: ExpressionPerformanceSettings, scenarios: readonly MotionScenario[]): T3EmotionPlan {
+  const spacing: T3EmotionPlan['spacing'] = {}
+  for (const cell of t3.cells)
+    spacing[cell.band] = t3PulseSpacing(t3, gate, settings, cell.band)
+  const sessions = scenarios.map((input): T3EmotionSession => {
+    const scenario = parse(MotionScenarioSchema, input)
+    if (scenario.durationSeconds > t3.maxSessionSeconds)
+      throw new Error(`[qa-tools] ${scenario.id} lasts ${scenario.durationSeconds} s, above ${t3.maxSessionSeconds} s`)
+    const emotions = scenario.events.filter(event => event.kind === 'emotion')
+    const pulses = emotions.map((event, index): T3PulseSlot => {
+      const next = emotions[index + 1]?.at ?? scenario.durationSeconds
+      const rule = Math.max(t3.minSpacingSeconds, naturalEmotionLifetime(settings, event.band) + t3.lifetimeMarginSeconds)
+      if (next - event.at < rule - 1e-9)
+        throw new Error(`[qa-tools] ${scenario.id}: the pulse at ${event.at} s is ${next - event.at} s before the next, below ${rule} s`)
+      const placebo = scenario.events.find(entry => entry.kind === 'placebo' && entry.at > event.at && entry.at < next)
+      return { emotion: event.emotion, band: event.band, trialId: event.trialId ?? `${scenario.id}-${event.at}`, at: event.at, spacing: next - event.at, placeboAt: placebo?.at ?? Number.NaN }
+    })
+    return { scenario, pulses, placebos: scenario.events.filter(event => event.kind === 'placebo').length }
+  })
+  const all = sessions.flatMap(session => session.pulses)
+  for (const cell of t3.cells) {
+    const count = all.filter(pulse => pulse.emotion === cell.emotion && pulse.band === cell.band).length
+    if (count !== t3.trialsPerCell)
+      throw new Error(`[qa-tools] the archive has ${count} ${cell.emotion} ${cell.band} pulses, not ${t3.trialsPerCell}`)
+  }
+  const placebos = sessions.reduce((sum, session) => sum + session.placebos, 0)
+  if (placebos < t3.minPlacebos)
+    throw new Error(`[qa-tools] the archive has ${placebos} placebo windows, below ${t3.minPlacebos}`)
+  return { sessions, spacing, placebos }
+}
+
 /** One idle capture of the T3 liveliness gate: no inputs, a marker each minute so the trace carries scenario events. */
 export function buildT3IdleScenario(index: number, durationSeconds: number): MotionScenario {
   const markers = Array.from({ length: Math.floor(durationSeconds / 60) }, (_, minute) => ({ kind: 'marker' as const, at: (minute + 1) * 60, label: `idle-minute-${minute + 1}` }))

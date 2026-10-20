@@ -19,6 +19,8 @@ import { parseExpressionPerformanceSettings } from '@proj-airi/stage-shared/expr
 import { scoredChannels } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
 import { buildEmotionChecks, emotionGate, naturalEmotionT3Gate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 
+import * as v from 'valibot'
+
 import { strayElectronProcesses } from '../../env/doctor'
 import { listLiveProcesses } from '../../env/processes'
 import { createRun, readGitStateFromRepo } from '../../evidence/run'
@@ -29,7 +31,7 @@ import { aggregateLiveliness, formatSummary, hashPartials, seal } from './aggreg
 import { cellPartialName, livelinessGateFor, livelinessPartialName, nullPartialName } from './options'
 import { writePartial } from './partials'
 import { currentReportSchema, parseGateReport } from './report'
-import { buildT3EmotionPlan, buildT3IdleScenario, t3ScenarioSettings } from './t3-scenario'
+import { buildT3EmotionPlan, buildT3IdleScenario, t3PlanFromScenarios, t3ScenarioSettings } from './t3-scenario'
 import { measureT3Session, scoreT3Emotion } from './t3-score'
 import { trimWarmUp } from './trials'
 
@@ -37,6 +39,8 @@ export interface T3GateCommand {
   target: 'emotion' | 'liveliness'
   /** Run dir of the T1 emotion report the transfer ratios divide by; `null` finds the newest one at this commit. */
   t1Report: string | null
+  /** An archived T3 emotion gate run dir to score again from its session traces, with no launch; `null` runs live. */
+  rescore: string | null
 }
 
 const fixturesDir = resolve(import.meta.dirname, '..', '..', '..', 'fixtures')
@@ -135,13 +139,115 @@ function sessionSummaries(outcomes: readonly SessionOutcome[]) {
   return outcomes.map(outcome => ({ scenarioId: outcome.scenario.id, runId: outcome.runId, runDir: outcome.runDir, exitCode: outcome.exitCode, summary: outcome.summary }))
 }
 
+function t3Settings() {
+  const parsed = parseExpressionPerformanceSettings({ ...t3ScenarioSettings(emotionGate).performance, heldEmotions: true })
+  if (!parsed.success)
+    throw new Error('[qa-tools] The T3 scenario settings are invalid')
+  return parsed.value
+}
+
+/** The committed emotion plan of a live run. */
+function t3EmotionPlan() {
+  return buildT3EmotionPlan(naturalEmotionT3Gate, emotionGate, t3Settings())
+}
+
+/** Writes `report.json`, `summary.txt`, `timing.json`, `run.json` and `report.html` (with the session run dirs) and returns the exit code. */
+function writeGateOutputs(run: RunHandle, report: GateReport, outcomes: readonly SessionOutcome[], started: number, prefix: string): number {
+  writeJson(run, 'report.json', report)
+  run.addArtifact('report.json', 'report')
+  const text = t3Summary(report)
+  writeFileSync(run.path('summary.txt'), text)
+  run.addArtifact('summary.txt', 'summary')
+  console.info(text)
+  const exitCode = report.pass ? 0 : 1
+  const wallSeconds = Math.round((Date.now() - started) / 100) / 10
+  writeJson(run, 'timing.json', { wallSeconds, sessions: outcomes.length })
+  run.addArtifact('timing.json', 'timing')
+  const summary = `${prefix}${report.pass ? 'all gated checks passed' : `${report.results.filter(result => result.verdict !== 'pass' && result.gated !== false).length} gated check(s) failed or incomplete`} [wall ${wallSeconds}s, ${outcomes.length} session(s): ${outcomes.map(outcome => outcome.runId ?? 'no run dir').join(', ')}]`
+  run.finish({ exitCode, summary })
+  const rendered = writeReport({ runDirs: [run.dir, ...outcomes.flatMap(outcome => outcome.runDir ? [outcome.runDir] : [])] })
+  run.addArtifact('report.html', 'report-html')
+  run.finish({ exitCode, summary })
+  for (const issue of rendered.issues)
+    console.error(`report input problem: ${issue.run}/${issue.file}: ${issue.problem}`)
+  console.info(`run ${run.runId}: exit ${exitCode}; report ${rendered.outFile}`)
+  return exitCode
+}
+
+const ArchivedSessionSchema = v.object({ scenarioId: v.string(), runId: v.nullable(v.string()), runDir: v.nullable(v.string()), exitCode: v.number(), summary: v.string() })
+const ArchivedEmotionSchema = v.looseObject({
+  sessions: v.array(ArchivedSessionSchema),
+  t1Reference: v.looseObject({ runId: v.string(), determinismHash: v.string() }),
+})
+
+/**
+ * `gate emotion --level t3 --rescore <gate run dir>`: scores an archived T3 emotion run again from its session traces with
+ * the current scorer and rules, without launching anything. It uses the T1 reference the archived run named (its
+ * determinism hash must match) and the scenarios the run performed (`t3PlanFromScenarios` checks them against the
+ * gate's layout rules), so it judges exactly what was captured even when the committed plan has changed since.
+ * Exit codes: 0 every gated check passed, 1 a check failed, 2 the archive cannot be re-scored.
+ */
+function rescoreT3Emotion(source: string, repoRoot: string, gateFileSha: () => string): number {
+  const sourceDir = resolve(source)
+  let plan: ReturnType<typeof t3PlanFromScenarios>
+  let archived: v.InferOutput<typeof ArchivedEmotionSchema>
+  let t1: { dir: string, report: GateReport }
+  let sourceRunId: string
+  try {
+    const report = parseGateReport(JSON.parse(readFileSync(join(sourceDir, 'report.json'), 'utf8')))
+    if (report.gateId !== naturalEmotionT3Gate.id)
+      throw new Error(`gate ${report.gateId} is not ${naturalEmotionT3Gate.id}`)
+    archived = v.parse(ArchivedEmotionSchema, report)
+    sourceRunId = (JSON.parse(readFileSync(join(sourceDir, 'run.json'), 'utf8')) as { runId: string }).runId
+    const scenarioFiles = readdirSync(join(sourceDir, 'scenarios')).filter(name => name.endsWith('.json')).sort()
+    plan = t3PlanFromScenarios(naturalEmotionT3Gate, emotionGate, t3Settings(), scenarioFiles.map(name => JSON.parse(readFileSync(join(sourceDir, 'scenarios', name), 'utf8')) as MotionScenario))
+    const t1Dir = join(repoRoot, '.temp', 'qa', archived.t1Reference.runId)
+    const t1Report = parseGateReport(JSON.parse(readFileSync(join(t1Dir, 'report.json'), 'utf8')))
+    if (t1Report.determinismHash !== archived.t1Reference.determinismHash)
+      throw new Error(`T1 reference ${t1Dir} has determinismHash ${t1Report.determinismHash}, not the archived ${archived.t1Reference.determinismHash}`)
+    t1 = { dir: t1Dir, report: t1Report }
+  }
+  catch (error) {
+    console.error(`Cannot re-score ${sourceDir}: ${errorMessageFrom(error) ?? 'unreadable archive'}`)
+    return 2
+  }
+  const outcomes: SessionOutcome[] = plan.sessions.flatMap((session) => {
+    const entry = archived.sessions.find(item => item.scenarioId === session.scenario.id)
+    if (!entry)
+      return []
+    const tracePath = entry.runDir ? join(entry.runDir, 'trace.json') : null
+    const trace = tracePath && existsSync(tracePath) ? JSON.parse(readFileSync(tracePath, 'utf8')) as NaturalTrace : null
+    return [{ scenario: session.scenario, runDir: entry.runDir, runId: entry.runId, exitCode: entry.exitCode, summary: entry.summary, trace }]
+  })
+  const fileSha = gateFileSha()
+  const run = createRun({ tool: 'motion', label: 'gate-emotion-t3-rescore', repoRoot, gate: { id: naturalEmotionT3Gate.id, version: String(naturalEmotionT3Gate.version), fileSha } })
+  console.info(`qa-tools gate t3: re-scoring ${sourceRunId} into ${run.dir}; T1 reference ${t1.dir}`)
+  const started = Date.now()
+  try {
+    const report = scoreEmotionSessions(run, outcomes, plan, t1, fileSha)
+    return writeGateOutputs(run, seal({ ...stripHash(report), rescoreOf: sourceRunId }), outcomes, started, `re-score of ${sourceRunId}: `)
+  }
+  catch (error) {
+    const summary = `re-score broke: ${errorMessageFrom(error) ?? 'unknown error'}`
+    console.error(summary)
+    run.finish({ exitCode: 1, summary })
+    return 1
+  }
+}
+
+function stripHash(report: GateReport): Omit<GateReport, 'determinismHash'> {
+  const { determinismHash: _hash, ...body } = report
+  return body
+}
+
 function scoreEmotionSessions(run: RunHandle, outcomes: readonly SessionOutcome[], plan: ReturnType<typeof buildT3EmotionPlan>, t1: { dir: string, report: GateReport }, fileSha: string): GateReport {
   const parsed = parseExpressionPerformanceSettings({ ...t3ScenarioSettings(emotionGate).performance, heldEmotions: true })
   if (!parsed.success)
     throw new Error('[qa-tools] The T3 scenario settings are invalid')
   const settings = parsed.value
   const scored = outcomes.filter((outcome): outcome is SessionOutcome & { trace: NaturalTrace } => outcome.trace !== null)
-  const measures = scored.map(outcome => measureT3Session(outcome.trace, plan.sessions.find(session => session.scenario.id === outcome.scenario.id)!.pulses.map(pulse => pulse.trialId), emotionGate, settings))
+  // Each session is its own stratum: its trials meet only its own placebo windows (naturalEmotionT3Gate.placeboNull).
+  const measures = scored.map(outcome => measureT3Session(outcome.trace, plan.sessions.find(session => session.scenario.id === outcome.scenario.id)!.pulses.map(pulse => pulse.trialId), emotionGate, settings, outcome.scenario.id))
   const records = measures.flatMap(measure => measure.records)
   const placebos = measures.flatMap(measure => measure.placebos)
   const release: T3ReleaseRecord[] = measures.flatMap(measure => measure.release)
@@ -176,6 +282,18 @@ function scoreEmotionSessions(run: RunHandle, outcomes: readonly SessionOutcome[
     nullStats: score.nullStats,
     results: [...rows, ...score.results.map(result => ({ ...result, trajectory: null, levels: null }))],
     rules: naturalEmotionT3Gate,
+    nullModel: {
+      kind: naturalEmotionT3Gate.placeboNull,
+      statement: 'Each trial is scored against the placebo windows of its own capture session: visibility against that session\'s q90, the effect as the mean trial-minus-own-session-null difference with a bootstrap that resamples within sessions, and significance by a permutation test that relabels trials and placebos only within each session. nullStats is pooled over sessions for display only.',
+      placebosTotal: placebos.length,
+      minPlacebos: naturalEmotionT3Gate.minPlacebos,
+      sessions: scored.map(outcome => ({
+        stratum: outcome.scenario.id,
+        trials: records.filter(record => record.stratum === outcome.scenario.id).length,
+        placebos: placebos.filter(placebo => placebo.stratum === outcome.scenario.id).length,
+        nullStats: score.strataNullStats[outcome.scenario.id] ?? {},
+      })),
+    },
     windows: { gate: emotionGate.id, version: emotionGate.version },
     t1Reference: { runId: t1Manifest.runId, gitSha: t1Manifest.gitSha, determinismHash: t1.report.determinismHash },
     plan: { spacing: plan.spacing, placebos: plan.placebos, placeboWindowsScored: placebos.length, sessions: plan.sessions.map(session => ({ id: session.scenario.id, durationSeconds: session.scenario.durationSeconds, pulses: session.pulses.length, placebos: session.placebos })) },
@@ -222,6 +340,9 @@ function scoreLivelinessSessions(run: RunHandle, outcomes: readonly SessionOutco
 
 function t3Summary(report: GateReport): string {
   const lines = [formatSummary(report).trimEnd()]
+  const nullModel = (report as GateReport & { nullModel?: { kind: string, placebosTotal: number, sessions: { stratum: string, trials: number, placebos: number }[] } }).nullModel
+  if (nullModel)
+    lines.push(`Placebo null: ${nullModel.kind}; ${nullModel.sessions.map(session => `${session.stratum} ${session.placebos} placebos / ${session.trials} trials`).join(', ')}; ${nullModel.placebosTotal} placebo windows in total`)
   if (report.gateId === naturalEmotionT3Gate.id) {
     lines.push('Transfer ratios E_T3 / E_T1 (face channels):')
     for (const result of report.results) {
@@ -240,6 +361,8 @@ function t3Summary(report: GateReport): string {
  * Exit codes: 0 every gated check passed, 1 a check failed or a session broke, 2 refused before launching, 130 interrupted.
  */
 export async function runT3Gate(command: T3GateCommand, repoRoot: string, env: NodeJS.ProcessEnv, gateFileSha: () => string): Promise<number> {
+  if (command.rescore !== null)
+    return rescoreT3Emotion(command.rescore, repoRoot, gateFileSha)
   let rig: ResolvedRig
   try {
     rig = resolveRig('forbooth', env)
@@ -267,14 +390,7 @@ export async function runT3Gate(command: T3GateCommand, repoRoot: string, env: N
     t1 = found
   }
 
-  const plan = command.target === 'emotion'
-    ? buildT3EmotionPlan(naturalEmotionT3Gate, emotionGate, (() => {
-        const parsed = parseExpressionPerformanceSettings({ ...t3ScenarioSettings(emotionGate).performance, heldEmotions: true })
-        if (!parsed.success)
-          throw new Error('[qa-tools] The T3 scenario settings are invalid')
-        return parsed.value
-      })())
-    : null
+  const plan = command.target === 'emotion' ? t3EmotionPlan() : null
   const scenarios = plan ? plan.sessions.map(session => session.scenario) : livelinessGateFor('t3').seeds.map(seed => buildT3IdleScenario(seed, maxT3ScenarioSeconds))
   const gate = command.target === 'emotion' ? naturalEmotionT3Gate : livelinessGateFor('t3')
   const fileSha = gateFileSha()
@@ -296,6 +412,7 @@ export async function runT3Gate(command: T3GateCommand, repoRoot: string, env: N
   let exitCode = 1
   let summary = 'not scored'
   let outcomes: SessionOutcome[] = []
+  let report: GateReport | null = null
   try {
     outcomes = await runSessions(scenarios, { repoRoot, rig, run, signal: controller.signal })
     if (controller.signal.aborted) {
@@ -303,15 +420,7 @@ export async function runT3Gate(command: T3GateCommand, repoRoot: string, env: N
       summary = 'interrupted'
     }
     else {
-      const report = plan && t1 ? scoreEmotionSessions(run, outcomes, plan, t1, fileSha) : scoreLivelinessSessions(run, outcomes, scenarios.length, fileSha)
-      writeJson(run, 'report.json', report)
-      run.addArtifact('report.json', 'report')
-      const text = t3Summary(report)
-      writeFileSync(run.path('summary.txt'), text)
-      run.addArtifact('summary.txt', 'summary')
-      console.info(text)
-      exitCode = report.pass ? 0 : 1
-      summary = report.pass ? 'all gated checks passed' : `${report.results.filter(result => result.verdict !== 'pass' && result.gated !== false).length} gated check(s) failed or incomplete`
+      report = plan && t1 ? scoreEmotionSessions(run, outcomes, plan, t1, fileSha) : scoreLivelinessSessions(run, outcomes, scenarios.length, fileSha)
     }
   }
   catch (error) {
@@ -324,7 +433,10 @@ export async function runT3Gate(command: T3GateCommand, repoRoot: string, env: N
     for (const [signal, listener] of listeners)
       process.off(signal, listener)
   }
+  if (report)
+    return writeGateOutputs(run, report, outcomes, started, '')
 
+  // Interrupted or broken: no report.json, but the run and its sessions still get run.json and a page.
   const wallSeconds = Math.round((Date.now() - started) / 100) / 10
   writeJson(run, 'timing.json', { wallSeconds, sessions: outcomes.length })
   run.addArtifact('timing.json', 'timing')

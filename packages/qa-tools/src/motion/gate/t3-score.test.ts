@@ -16,7 +16,7 @@ const settings = defaultExpressionPerformanceSettings
 const checks = buildEmotionChecks().filter(check => naturalEmotionT3Gate.cells.some(cell => cell.emotion === check.emotion && cell.band === check.band))
 const channels = Object.keys(scoredChannels).filter(channel => scoredChannels[channel as ScoredChannel] !== 'modulation') as ScoredChannel[]
 
-/** Ten unpaired trials per cell with a clear effect in each check's direction, fifty placebo windows of small noise. */
+/** Ten unpaired trials per cell over two sessions with a clear effect in each check's direction, fifty placebo windows of small noise. */
 function fixture(releaseTau: number) {
   const random = createRandomStream(11)
   const noise = () => (random() - 0.5) * 0.02
@@ -34,11 +34,18 @@ function fixture(releaseTau: number) {
         if (check)
           trajectories[channel] = grid.map(time => check.sign * 0.3 * Math.exp(-(time - 4) / releaseTau))
       }
-      records.push({ trialId, emotion: cell.emotion, band: cell.band, variant: 'full', side: 1, rejected: null, releaseStart: 4, faceResidue: 0, channels: measured, missing: {} })
+      records.push({ trialId, emotion: cell.emotion, band: cell.band, variant: 'full', side: 1, rejected: null, releaseStart: 4, faceResidue: 0, channels: measured, missing: {}, stratum: trial % 2 === 0 ? 'session-1' : 'session-2' })
       release.push({ trialId, emotion: cell.emotion, band: cell.band, side: 1, channels: trajectories })
     }
   }
-  const placebos: PlaceboRecord[] = Array.from({ length: 50 }, (_, index) => ({ id: `placebo-${index}`, channels: Object.fromEntries(channels.map(channel => [channel, noise()])) }))
+  // Session 2 idles 0.05 higher on every channel; stratified scoring must not mistake that for an effect.
+  const placebos: PlaceboRecord[] = Array.from({ length: 50 }, (_, index) => ({ id: `placebo-${index}`, stratum: index % 2 === 0 ? 'session-1' : 'session-2', channels: Object.fromEntries(channels.map(channel => [channel, noise() + (index % 2 === 0 ? 0 : 0.05)])) }))
+  for (const record of records) {
+    if (record.stratum === 'session-2') {
+      for (const measure of Object.values(record.channels))
+        measure!.value += 0.05
+    }
+  }
   return { records, placebos, release }
 }
 
@@ -64,11 +71,15 @@ describe('scoreT3Emotion', () => {
     const { records, placebos, result } = score(settings.held.releaseTau, 1)
     expect(result.pass).toBe(true)
     const browMean = result.results.find(entry => entry.key === 'angry:strong:browMean')!
-    // Unpaired E: the trial mean minus the placebo mean (every trial has paired = null).
-    const values = records.filter(record => record.emotion === 'angry').map(record => record.channels.browMean!.value)
-    const reference = placebos.map(placebo => placebo.channels.browMean!)
+    // Stratified E: the mean of each trial minus its own session's placebo mean (every trial has paired = null).
     const sign = checks.find(check => check.key === 'angry:strong:browMean')!.sign
-    expect(browMean.E).toBeCloseTo(sign * values.reduce((a, b) => a + b, 0) / values.length - sign * reference.reduce((a, b) => a + b, 0) / reference.length, 12)
+    const nullMean = (stratum: string) => {
+      const values = placebos.filter(placebo => placebo.stratum === stratum).map(placebo => placebo.channels.browMean!)
+      return values.reduce((a, b) => a + b, 0) / values.length
+    }
+    const differences = records.filter(record => record.emotion === 'angry').map(record => sign * (record.channels.browMean!.value - nullMean(record.stratum!)))
+    expect(browMean.E).toBeCloseTo(differences.reduce((a, b) => a + b, 0) / differences.length, 12)
+    expect(Object.keys(result.strataNullStats)).toEqual(['session-1', 'session-2'])
     expect(browMean).toMatchObject({ gated: true, verdict: 'pass', hits: 10, transferRatio: 1, failed: [] })
     expect(browMean.tau).toBeCloseTo(settings.held.releaseTau, 2)
   })

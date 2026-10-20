@@ -3,7 +3,7 @@ import { naturalEmotionLifetime } from '@proj-airi/stage-ui-live2d/composables/l
 import { emotionGate, naturalEmotionT3Gate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 import { describe, expect, it } from 'vitest'
 
-import { buildT3EmotionPlan, buildT3IdleScenario, t3PulseOrder } from './t3-scenario'
+import { buildT3EmotionPlan, buildT3IdleScenario, t3PlanFromScenarios, t3PulseOrder } from './t3-scenario'
 
 const settings = defaultExpressionPerformanceSettings
 
@@ -50,6 +50,23 @@ describe('buildT3EmotionPlan', () => {
     expect(buildT3EmotionPlan(naturalEmotionT3Gate, emotionGate, settings)).toEqual(plan)
     expect(t3PulseOrder(naturalEmotionT3Gate, 7)).toEqual(t3PulseOrder(naturalEmotionT3Gate, 7))
     expect(t3PulseOrder(naturalEmotionT3Gate, 7)).not.toEqual(t3PulseOrder(naturalEmotionT3Gate, 8))
+  })
+})
+
+describe('t3PlanFromScenarios', () => {
+  it('reads back the pulses and placebo counts of archived scenarios, and refuses an archive that breaks the layout', () => {
+    const plan = buildT3EmotionPlan(naturalEmotionT3Gate, emotionGate, settings, 41)
+    const read = t3PlanFromScenarios(naturalEmotionT3Gate, emotionGate, settings, plan.sessions.map(session => session.scenario))
+    // Spacing is read up to the next pulse, so only a padded session's last pulse reads longer than planned.
+    expect(read.sessions.map(session => session.pulses.map(pulse => [pulse.trialId, pulse.at, pulse.placeboAt]))).toEqual(plan.sessions.map(session => session.pulses.map(pulse => [pulse.trialId, pulse.at, pulse.placeboAt])))
+    expect(read.placebos).toBe(plan.placebos)
+
+    const [first, ...rest] = plan.sessions.map(session => session.scenario)
+    // Pull the second pulse 8 s toward the first: closer than the spacing rule allows.
+    const secondPulse = first.events.filter(event => event.kind === 'emotion')[1]
+    const moved = { ...first, events: first.events.map(event => event === secondPulse ? { ...event, at: event.at - 8 } : event).sort((a, b) => a.at - b.at) }
+    expect(() => t3PlanFromScenarios(naturalEmotionT3Gate, emotionGate, settings, [moved, ...rest])).toThrow('below')
+    expect(() => t3PlanFromScenarios(naturalEmotionT3Gate, emotionGate, settings, rest)).toThrow('pulses')
   })
 })
 
