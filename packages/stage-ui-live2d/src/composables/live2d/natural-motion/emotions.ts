@@ -5,7 +5,7 @@ import type { FaceHints } from './impulses'
 import type { Vec3 } from './posture'
 
 /** Head, face, and glance hints that one emotion impulse adds on top of every other layer. */
-export interface EmotionSpec {
+interface EmotionSpec {
   /** Head direction `(X yaw, Y pitch, Z roll)`; `sided` axes take a random sign shared with the glance and brow side. */
   head: Vec3
   sided: (0 | 1 | 2)[]
