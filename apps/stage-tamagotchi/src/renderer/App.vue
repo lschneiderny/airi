@@ -206,6 +206,12 @@ function createFullStageRuntime() {
   usePerfTracerBridgeStore()
   initializeStageThreeRuntimeTraceBridge()
   void stageWindowLifecycleStore.initializeWindowLifecycleBridge()
+  // Same rule as the desktop activity producer: a minimized stage is hidden even when the platform reports it visible.
+  watch(
+    () => stageWindowLifecycleStore.windowLifecycle.visible && !stageWindowLifecycleStore.windowLifecycle.minimized,
+    visible => situationStore.setStageVisible(visible),
+    { immediate: true },
+  )
 
   contextBridgeStore.setSparkNotifyHostRole(isWidgetsWindow ? 'client' : 'main')
 

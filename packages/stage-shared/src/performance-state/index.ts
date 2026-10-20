@@ -158,7 +158,7 @@ const WATCHING_SCREEN_CHANGE = 0.15
 /** System audio above this level counts as something to watch. Tuning: raise if background music keeps the character watching. */
 const WATCHING_SYSTEM_AUDIO_LEVEL = 0.1
 /** Desktop input older than this means the user has left. Tuning: shorter makes the character settle sooner when nobody is there. */
-const AWAY_INPUT_IDLE_SECONDS = 300
+export const AWAY_INPUT_IDLE_SECONDS = 300
 /** A screen change crossing above this fraction starts a reaction. Tuning: raise if ordinary window switches cause reactions. */
 const REACT_SCREEN_CHANGE = 0.35
 /** Shortest gap between two screen-change reactions. Tuning: raise if busy screens make the character react repeatedly. */
