@@ -146,6 +146,11 @@ export interface EmotionTrialRecord {
   channels: Partial<Record<ScoredChannel, ChannelMeasure>>
   /** Channels the trace cannot measure, with the reason. */
   missing: Partial<Record<ScoredChannel, string>>
+  /**
+   * Capture session of an unpaired trial (rendered T3 runs). When trials and placebos carry it, unpaired checks are
+   * scored session-stratified: each trial against its own session's placebo windows (`stratifiedUnpairedPValue`).
+   */
+  stratum?: string
   /** Long-hold only: blinks and breath intervals in `release.modulationWindow` after the hold ends. */
   modulationRelease?: {
     blinks: { run: number, paired: number | null }
@@ -157,6 +162,8 @@ export interface EmotionTrialRecord {
 export interface PlaceboRecord {
   id: string
   channels: Partial<Record<ScoredChannel, number>>
+  /** Capture session of the window; see `EmotionTrialRecord.stratum`. */
+  stratum?: string
 }
 
 export interface ScorerInput {
@@ -211,8 +218,10 @@ export interface CheckResult {
 export interface EmotionGateScore {
   gate: { id: string, version: number }
   limitation: string
-  /** Placebo noise per channel: SD, the visibility quantile, and the pool size. */
+  /** Placebo noise per channel: SD, the visibility quantile, and the pool size (pooled over strata when stratified). */
   nullStats: Partial<Record<ScoredChannel, { sigma0: number, q: number, n: number }>>
+  /** Stratified runs only: the same statistics per stratum, which are the nulls the checks are scored against. */
+  strataNullStats?: Record<string, Partial<Record<ScoredChannel, { sigma0: number, q: number, n: number }>>>
   results: CheckResult[]
   pass: boolean
 }
@@ -413,6 +422,111 @@ export function unpairedPValue(sample: readonly number[], signs: readonly number
       plain += value
     }
     if (statistic(weighted, plain) >= observed - tolerance)
+      hits++
+  }
+  return (hits + 1) / (permutations + 1)
+}
+
+/** One stratum (capture session) of a stratified unpaired test: its trials with their signs, and its placebo values. */
+export interface UnpairedStratum {
+  sample: readonly number[]
+  signs: readonly number[]
+  reference: readonly number[]
+}
+
+/**
+ * Stratified unpaired effect: the mean over all trials of `s_i * (x_i - mean(reference of the trial's stratum))`. With
+ * one stratum it equals the unpaired statistic `mean(s * x) - mean(s) * mean(reference)`.
+ */
+export function stratifiedUnpairedEffect(strata: readonly UnpairedStratum[]): number {
+  let total = 0
+  let trials = 0
+  for (const { sample, signs, reference } of strata) {
+    const nullMean = reference.reduce((sum, value) => sum + value, 0) / reference.length
+    sample.forEach((value, index) => {
+      total += signs[index] * (value - nullMean)
+    })
+    trials += sample.length
+  }
+  return total / trials
+}
+
+/**
+ * One-sided stratified permutation p-value for `stratifiedUnpairedEffect > 0`: trial and placebo labels are permuted
+ * only within each stratum, so a session whose placebo level differs from another's never lends its null to it.
+ * One stratum is exactly `unpairedPValue`. With equal signs and at most `permutations` joint relabelings the test
+ * enumerates them; otherwise it draws `permutations` relabelings and returns `(hits + 1) / (permutations + 1)`.
+ * Every stratum needs at least one trial and one placebo value; callers drop the others.
+ */
+export function stratifiedUnpairedPValue(strata: readonly UnpairedStratum[], permutations: number, random: RandomStream): number {
+  if (!strata.length || strata.some(stratum => !stratum.sample.length || !stratum.reference.length))
+    return 1
+  if (strata.length === 1)
+    return unpairedPValue(strata[0].sample, strata[0].signs, strata[0].reference, permutations, random)
+  const prepared = strata.map(({ sample, signs, reference }) => {
+    const pooled = [...sample, ...reference]
+    return { pooled, n: sample.length, m: reference.length, signs, signSum: signs.reduce((sum, sign) => sum + sign, 0), total: pooled.reduce((sum, value) => sum + value, 0) }
+  })
+  const trials = prepared.reduce((sum, stratum) => sum + stratum.n, 0)
+  // Per stratum: sum over trial slots of s * x, minus the slots' sign sum times the mean of the remaining (placebo) values.
+  const contribution = (stratum: typeof prepared[number], weighted: number, plain: number) => weighted - stratum.signSum * (stratum.total - plain) / stratum.m
+  const observed = prepared.reduce((sum, stratum) => {
+    const weighted = stratum.pooled.slice(0, stratum.n).reduce((acc, value, index) => acc + stratum.signs[index] * value, 0)
+    const plain = stratum.pooled.slice(0, stratum.n).reduce((acc, value) => acc + value, 0)
+    return sum + contribution(stratum, weighted, plain)
+  }, 0) / trials
+  const tolerance = 1e-12 * prepared.reduce((sum, stratum) => sum + stratum.pooled.reduce((acc, value) => acc + Math.abs(value), 0), 0)
+
+  // Joint relabelings: the product over strata of C(n + m, n); the running product stops once it exceeds the budget.
+  let joint = 1
+  for (const { n, m } of prepared) {
+    for (let index = 0; index < Math.min(n, m) && joint <= permutations; index++)
+      joint = joint * (n + m - index) / (index + 1)
+  }
+  const equalSigns = prepared.every(stratum => stratum.signs.every(sign => sign === prepared[0].signs[0]))
+  if (equalSigns && joint <= permutations) {
+    const sign = prepared[0].signs[0]
+    let hits = 0
+    let count = 0
+    const visitStratum = (stratumIndex: number, accumulated: number) => {
+      if (stratumIndex === prepared.length) {
+        count++
+        if (accumulated / trials >= observed - tolerance)
+          hits++
+        return
+      }
+      const stratum = prepared[stratumIndex]
+      const visit = (start: number, left: number, plain: number) => {
+        if (left === 0) {
+          visitStratum(stratumIndex + 1, accumulated + contribution(stratum, sign * plain, plain))
+          return
+        }
+        for (let index = start; index <= stratum.pooled.length - left; index++)
+          visit(index + 1, left - 1, plain + stratum.pooled[index])
+      }
+      visit(0, stratum.n, 0)
+    }
+    visitStratum(0, 0)
+    return hits / count
+  }
+  let hits = 0
+  for (let draw = 0; draw < permutations; draw++) {
+    let accumulated = 0
+    for (const stratum of prepared) {
+      // Partial Fisher-Yates within the stratum: its first `n` slots become its relabeled trials, with their signs.
+      let weighted = 0
+      let plain = 0
+      for (let index = 0; index < stratum.n; index++) {
+        const pick = index + Math.floor(random() * (stratum.pooled.length - index))
+        const value = stratum.pooled[pick]
+        stratum.pooled[pick] = stratum.pooled[index]
+        stratum.pooled[index] = value
+        weighted += stratum.signs[index] * value
+        plain += value
+      }
+      accumulated += contribution(stratum, weighted, plain)
+    }
+    if (accumulated / trials >= observed - tolerance)
       hits++
   }
   return (hits + 1) / (permutations + 1)
@@ -1138,6 +1252,8 @@ interface Evaluation {
   folded: number[] | null
   /** Signed unpaired checks: raw trial values, their orientation signs, and the placebo pool they are tested against. */
   unpaired: { values: number[], signs: number[], reference: readonly number[] } | null
+  /** Stratified unpaired checks: one stratum per capture session (folded values and signs of 1 when unsigned). */
+  stratified: UnpairedStratum[] | null
   /** `true` pass, `false` fail, `null` not evaluable (the reason is in `result.reasons`). */
   outcomes: Partial<Record<Criterion, boolean | null>>
 }
@@ -1155,24 +1271,40 @@ export function scoreEmotionGate(input: ScorerInput): EmotionGateScore {
   const checks = [...input.checks].sort(byKey(check => check.key))
   const stream = (check: ChannelCheck, purpose: string) => createRandomStream(hashSeed(`${gate.id}@${gate.version}:${check.key}:${purpose}`))
 
-  const nullValues = (channel: ScoredChannel) => placebos.flatMap(placebo => placebo.channels[channel] ?? [])
-  const nullStats: EmotionGateScore['nullStats'] = {}
-  for (const channel of faceAndPosture) {
-    const values = nullValues(channel)
-    if (values.length)
-      nullStats[channel] = { sigma0: sampleSd(values), q: quantile(values, gate.visibility.quantile), n: values.length }
+  const nullValues = (channel: ScoredChannel, source: readonly PlaceboRecord[] = placebos) => source.flatMap(placebo => placebo.channels[channel] ?? [])
+  const channelStats = (source: readonly PlaceboRecord[]) => {
+    const stats: EmotionGateScore['nullStats'] = {}
+    for (const channel of faceAndPosture) {
+      const values = nullValues(channel, source)
+      if (values.length)
+        stats[channel] = { sigma0: sampleSd(values), q: quantile(values, gate.visibility.quantile), n: values.length }
+    }
+    return stats
   }
+  const nullStats = channelStats(placebos)
 
-  const evaluations = checks.map(check => evaluateCheck(check, { gate, settings, ranges, trials, placebo: nullValues(check.channel), criteria: input.criteria, stream: purpose => stream(check, purpose) }))
+  // Stratified scoring is all or nothing: a record without a stratum in a stratified run has no null to be scored against.
+  const stratified = trials.some(trial => trial.stratum !== undefined) || placebos.some(placebo => placebo.stratum !== undefined)
+  if (stratified && (trials.some(trial => trial.stratum === undefined) || placebos.some(placebo => placebo.stratum === undefined)))
+    throw new Error('Stratified scoring needs a stratum on every trial and placebo record.')
+  const strataKeys = stratified ? [...new Set(placebos.map(placebo => placebo.stratum!))].sort() : []
+  const strataNullStats = stratified ? Object.fromEntries(strataKeys.map(key => [key, channelStats(placebos.filter(placebo => placebo.stratum === key))])) : undefined
+  const placeboStrata = (channel: ScoredChannel) => stratified
+    ? new Map(strataKeys.map(key => [key, nullValues(channel, placebos.filter(placebo => placebo.stratum === key))]))
+    : null
+
+  const evaluations = checks.map(check => evaluateCheck(check, { gate, settings, ranges, trials, placebo: nullValues(check.channel), placeboStrata: placeboStrata(check.channel), criteria: input.criteria, stream: purpose => stream(check, purpose) }))
 
   const tested = evaluations.filter(entry => entry.criteria.includes('significance') && entry.tested)
   for (const entry of tested) {
     const random = stream(entry.check, 'significance')
-    entry.result.p = entry.unpaired
-      ? unpairedPValue(entry.unpaired.values, entry.unpaired.signs, entry.unpaired.reference, gate.family.permutations, random)
-      : entry.folded
-        ? twoSamplePValue(entry.tested!, entry.folded, gate.family.permutations, random)
-        : signFlipPValue(entry.tested!, gate.family.permutations, random)
+    entry.result.p = entry.stratified
+      ? stratifiedUnpairedPValue(entry.stratified, gate.family.permutations, random)
+      : entry.unpaired
+        ? unpairedPValue(entry.unpaired.values, entry.unpaired.signs, entry.unpaired.reference, gate.family.permutations, random)
+        : entry.folded
+          ? twoSamplePValue(entry.tested!, entry.folded, gate.family.permutations, random)
+          : signFlipPValue(entry.tested!, gate.family.permutations, random)
   }
   const adjusted = holmAdjust(tested.map(entry => entry.result.p!))
   tested.forEach((entry, index) => {
@@ -1194,6 +1326,7 @@ export function scoreEmotionGate(input: ScorerInput): EmotionGateScore {
     gate: { id: gate.id, version: gate.version },
     limitation: gate.limitation,
     nullStats,
+    ...(strataNullStats ? { strataNullStats } : {}),
     results,
     pass: results.length > 0 && results.every(result => result.verdict === 'pass'),
   }
@@ -1206,6 +1339,8 @@ interface EvaluationContext {
   trials: readonly EmotionTrialRecord[]
   /** Placebo deltas of this check's channel. */
   placebo: readonly number[]
+  /** Stratified runs: the same deltas per stratum; `null` otherwise. */
+  placeboStrata: ReadonlyMap<string, readonly number[]> | null
   criteria: readonly Criterion[] | undefined
   stream: (purpose: string) => RandomStream
 }
@@ -1235,7 +1370,7 @@ function evaluateCheck(check: ChannelCheck, context: EvaluationContext): Evaluat
     failed: [],
     reasons: [],
   }
-  const evaluation: Evaluation = { check, result, criteria, tested: null, folded: null, unpaired: null, outcomes: {} }
+  const evaluation: Evaluation = { check, result, criteria, tested: null, folded: null, unpaired: null, stratified: null, outcomes: {} }
   const { outcomes } = evaluation
   const notEvaluable = (criterion: Criterion, reason: string) => {
     if (criteria.includes(criterion)) {
@@ -1274,7 +1409,14 @@ function evaluateCheck(check: ChannelCheck, context: EvaluationContext): Evaluat
   }
   const sigma0 = placebo.length >= 2 ? sampleSd(placebo) : null
   const primaryVariant: TrialVariant = check.cls === 'modulation' ? 'long-hold' : 'full'
-  const primary = usable(primaryVariant)
+  const strata = context.placeboStrata
+  // Stratified runs score a trial only against its own session's placebo windows, so a session without any is skipped.
+  const primary = usable(primaryVariant).filter((trial) => {
+    if (!strata || (strata.get(trial.stratum!)?.length ?? 0) > 0)
+      return true
+    result.reasons.push(`${trial.trialId} has no ${check.channel} placebo window in its session ${trial.stratum}`)
+    return false
+  })
   const unsigned = check.sided && primary.some(trial => trial.side === null)
   result.unsigned = unsigned
   result.n = primary.length
@@ -1287,6 +1429,36 @@ function evaluateCheck(check: ChannelCheck, context: EvaluationContext): Evaluat
   else if (check.cls === 'modulation' && primary.some(trial => measure(trial).paired === null)) {
     notEvaluable('significance', 'modulation needs the paired stripped run')
     notEvaluable('sign', 'modulation needs the paired stripped run')
+  }
+  else if (strata && primary.every(trial => measure(trial).paired === null)) {
+    // Session-stratified unpaired: every trial against its own session's placebo windows (folded when unsigned), the
+    // effect is the mean trial-minus-own-null difference, and the bootstrap resamples trials and placebos within sessions.
+    const groups: UnpairedStratum[] = [...strata.keys()].flatMap((key) => {
+      const own = primary.filter(trial => trial.stratum === key)
+      const reference = strata.get(key)!
+      return own.length
+        ? [{ sample: own.map(trial => unsigned ? Math.abs(measure(trial).value) : measure(trial).value), signs: own.map(trial => unsigned ? 1 : signOf(trial)), reference: unsigned ? reference.map(Math.abs) : [...reference] }]
+        : []
+    })
+    evaluation.stratified = groups
+    evaluation.tested = groups.flatMap(group => group.sample.map((value, index) => group.signs[index] * value))
+    result.E = stratifiedUnpairedEffect(groups)
+    const random = context.stream('effect-ci')
+    const draws: number[] = []
+    for (let draw = 0; draw < gate.family.bootstrap; draw++) {
+      draws.push(stratifiedUnpairedEffect(groups.map(({ sample, signs, reference }) => {
+        const picks = sample.map(() => Math.floor(random() * sample.length))
+        return { sample: picks.map(pick => sample[pick]), signs: picks.map(pick => signs[pick]), reference: reference.map(() => reference[Math.floor(random() * reference.length)]) }
+      })))
+    }
+    result.ci = [quantile(draws, 0.025), quantile(draws, 0.975)]
+    // Within-session spread: deviations from each session's own null mean, pooled over sessions.
+    const deviations = groups.flatMap(({ reference }) => reference.map(value => value - mean(reference)))
+    const degrees = deviations.length - groups.length
+    const spread = degrees > 0 ? Math.sqrt(deviations.reduce((sum, value) => sum + value ** 2, 0) / degrees) : 0
+    result.d = check.cls !== 'modulation' && spread ? result.E / spread : null
+    if (criteria.includes('sign'))
+      outcomes.sign = result.E > 0
   }
   else if (unsigned && !placebo.length) {
     notEvaluable('significance', 'an unsigned check needs placebo windows for the folded null')
@@ -1348,6 +1520,27 @@ function evaluateCheck(check: ChannelCheck, context: EvaluationContext): Evaluat
     }
     else if (result.E === null) {
       notEvaluable('visibility', 'no measurable effect')
+    }
+    else if (evaluation.stratified && primary.some(trial => strata!.get(trial.stratum!)!.length < 2)) {
+      notEvaluable('visibility', 'a session has fewer than two placebo windows')
+    }
+    else if (evaluation.stratified) {
+      // Each trial against the visibility quantile of its own session's (signed or folded) null.
+      const q = gate.visibility.quantile
+      result.hits = primary.filter((trial) => {
+        const own = strata!.get(trial.stratum!)!
+        const value = measure(trial).value
+        if (unsigned)
+          return Math.abs(value) > quantile(own.map(Math.abs), q)
+        const s = signOf(trial)
+        return s * value > quantile(s >= 0 ? own : own.map(entry => -entry), q)
+      }).length
+      result.hitRate = result.hits / primary.length
+      const rule = gate.visibility.bands[check.band]
+      if (result.d === null)
+        result.reasons.push('visibility: placebo null has zero spread at this level')
+      const sizePass = result.d === null ? result.E > 0 : result.d >= rule.d
+      outcomes.visibility = result.hitRate >= rule.hitRate && sizePass
     }
     else {
       const q = gate.visibility.quantile

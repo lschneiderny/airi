@@ -8,7 +8,7 @@ import { defaultExpressionPerformanceSettings, parseExpressionPerformanceSetting
 import { buildEmotionTrial } from '@proj-airi/stage-shared/motion-scenario'
 import { describe, expect, it } from 'vitest'
 
-import { fitExponential, holmAdjust, measureEmotionTrial, measurePlacebos, naturalEmotionLifetime, naturalFaceResidue, scoreEmotionGate, signFlipPValue, unpairedPValue } from './emotion-score'
+import { fitExponential, holmAdjust, measureEmotionTrial, measurePlacebos, naturalEmotionLifetime, naturalFaceResidue, scoreEmotionGate, signFlipPValue, stratifiedUnpairedPValue, unpairedPValue } from './emotion-score'
 import { naturalEmotions } from './emotions'
 import { buildEmotionChecks, emotionGate } from './gates'
 import { gestureLifetimes, NaturalGestures } from './gestures'
@@ -513,5 +513,125 @@ describe('emotion lifetimes', () => {
     // Held-only still plays gesture clips: the full lifetime outlives the hold, so posture is never release-scored.
     expect(naturalEmotionLifetime(heldOnly, 'strong')).toBe(Math.max(...Object.values(gestureLifetimes)))
     expect(naturalEmotionLifetime(heldOnly, 'strong')).toBeGreaterThan(emotionGate.scenario.hold)
+  })
+})
+
+describe('session-stratified unpaired scoring', () => {
+  const sign = mouthFormCheck[0].sign
+  const trial = (index: number, value: number, stratum: string): EmotionTrialRecord => ({
+    trialId: `angry-strong-full-${String(index).padStart(2, '0')}`,
+    emotion: 'angry',
+    band: 'strong',
+    variant: 'full',
+    side: null,
+    rejected: null,
+    releaseStart: 4,
+    faceResidue: 0,
+    channels: { mouthForm: { value, paired: null } },
+    missing: {},
+    stratum,
+  })
+  const placebo = (id: string, value: number, stratum: string): PlaceboRecord => ({ id, channels: { mouthForm: value }, stratum })
+  const withoutStrata = <T extends { stratum?: string }>(records: T[]) => records.map(({ stratum: _, ...rest }) => rest as T)
+  /** Sessions: trial and placebo values drawn as `level + sd * gaussian`, trials shifted by `effect` in the recipe direction. */
+  function sessions(spec: { key: string, level: number, sd: number, trials: number, placebos: number, effect: number }[], seed: number) {
+    const random = createRandomStream(seed)
+    const trials: EmotionTrialRecord[] = []
+    const placebos: PlaceboRecord[] = []
+    for (const session of spec) {
+      for (let index = 0; index < session.trials; index++)
+        trials.push(trial(trials.length, session.level + sign * session.effect + session.sd * gaussian(random), session.key))
+      for (let index = 0; index < session.placebos; index++)
+        placebos.push(placebo(`${session.key}-p${index}`, session.level + session.sd * gaussian(random), session.key))
+    }
+    return { trials, placebos }
+  }
+  const score = (trials: EmotionTrialRecord[], placebos: PlaceboRecord[]) =>
+    scoreEmotionGate({ gate: emotionGate, checks: mouthFormCheck, trials, placebos, ranges, criteria: ['significance', 'sign', 'visibility'] })
+
+  it('uses each session\'s own null where the pooled null misleads, in both directions', () => {
+    // No effect, but the trials sit in a session whose idle level is shifted in the recipe direction: the pooled null
+    // reads that shift as an effect, the session's own null does not.
+    const shifted = sessions([
+      { key: 'a', level: 0, sd: 0.01, trials: 0, placebos: 24, effect: 0 },
+      { key: 'b', level: sign * 0.2, sd: 0.01, trials: 10, placebos: 4, effect: 0 },
+      { key: 'c', level: 0, sd: 0.01, trials: 0, placebos: 24, effect: 0 },
+    ], 3)
+    const pooledShift = score(withoutStrata(shifted.trials), withoutStrata(shifted.placebos)).results[0]
+    const stratifiedShift = score(shifted.trials, shifted.placebos).results[0]
+    expect(pooledShift.hits!).toBeGreaterThanOrEqual(9)
+    expect(stratifiedShift.hits!).toBeLessThan(pooledShift.hits!)
+    expect(stratifiedShift.E!).toBeLessThan(pooledShift.E! - 0.1)
+    expect(Math.abs(stratifiedShift.E!)).toBeLessThan(0.02)
+
+    // A real effect in a quiet session hides under the wide pooled q90 of two noisy sessions; its own null shows it.
+    const quiet = sessions([
+      { key: 'a', level: 0, sd: 0.005, trials: 10, placebos: 17, effect: 0.03 },
+      { key: 'b', level: 0, sd: 0.15, trials: 0, placebos: 17, effect: 0 },
+      { key: 'c', level: 0, sd: 0.15, trials: 0, placebos: 18, effect: 0 },
+    ], 4)
+    const pooledQuiet = score(withoutStrata(quiet.trials), withoutStrata(quiet.placebos))
+    const stratifiedQuiet = score(quiet.trials, quiet.placebos)
+    expect(stratifiedQuiet.results[0].hits).toBe(10)
+    expect(pooledQuiet.results[0].hits!).toBeLessThan(stratifiedQuiet.results[0].hits!)
+    expect(Object.keys(stratifiedQuiet.strataNullStats ?? {})).toEqual(['a', 'b', 'c'])
+    expect(pooledQuiet.strataNullStats).toBeUndefined()
+  })
+
+  it('keeps the false-pass rate within alpha + 3 sigma when each session holds one distribution', () => {
+    const random = createRandomStream(20261021)
+    const alpha = emotionGate.family.alpha
+    const draws = 2000
+    let passes = 0
+    for (let draw = 0; draw < draws; draw++) {
+      const strata = [0, 0.3, -0.2].map(level => ({
+        sample: Array.from({ length: 4 }, () => level + 0.05 * gaussian(random)),
+        signs: [1, 1, 1, 1],
+        reference: Array.from({ length: 17 }, () => level + 0.05 * gaussian(random)),
+      }))
+      if (stratifiedUnpairedPValue(strata, 999, random) <= alpha)
+        passes++
+    }
+    expect(passes / draws).toBeLessThanOrEqual(alpha + 3 * Math.sqrt(alpha * (1 - alpha) / draws))
+  })
+
+  it('passes a clear shift in every session', () => {
+    const { trials, placebos } = sessions([
+      { key: 'a', level: 0, sd: 0.02, trials: 4, placebos: 17, effect: 0.2 },
+      { key: 'b', level: 0.1, sd: 0.02, trials: 3, placebos: 17, effect: 0.2 },
+      { key: 'c', level: -0.1, sd: 0.02, trials: 3, placebos: 18, effect: 0.2 },
+    ], 5)
+    const result = score(trials, placebos).results[0]
+    expect(result.pHolm).toBeLessThan(emotionGate.family.alpha)
+    expect(result.hits).toBe(10)
+    expect(result.E).toBeCloseTo(0.2, 1)
+    expect(result.verdict).not.toBe('fail')
+  })
+
+  it('reduces to the unpaired test for one session and enumerates small joint relabelings exactly', () => {
+    const sample = [0.3, 0.1, 0.2]
+    const reference = [0, 0.05, -0.02, 0.01]
+    expect(stratifiedUnpairedPValue([{ sample, signs: [1, 1, 1], reference }], 1000, createRandomStream(2)))
+      .toBe(unpairedPValue(sample, [1, 1, 1], reference, 1000, createRandomStream(2)))
+
+    // Two sessions of C(3, 1) relabelings each: 9 joint relabelings, counted by hand below.
+    const strata = [{ sample: [1], signs: [1], reference: [0, 0.5] }, { sample: [0.2], signs: [1], reference: [0.1, 0] }]
+    const effect = (x: number[], r: number[][]) => x.reduce((sum, value, index) => sum + value - r[index].reduce((a, b) => a + b, 0) / r[index].length, 0) / x.length
+    const pools = strata.map(stratum => [...stratum.sample, ...stratum.reference])
+    const observed = effect([1, 0.2], [[0, 0.5], [0.1, 0]])
+    let hits = 0
+    for (const first of [0, 1, 2]) {
+      for (const second of [0, 1, 2]) {
+        const value = effect([pools[0][first], pools[1][second]], [pools[0].filter((_, index) => index !== first), pools[1].filter((_, index) => index !== second)])
+        if (value >= observed - 1e-12)
+          hits++
+      }
+    }
+    expect(stratifiedUnpairedPValue(strata, 1000, createRandomStream(3))).toBeCloseTo(hits / 9, 12)
+  })
+
+  it('refuses a run that mixes stratified and unstratified records', () => {
+    const { trials, placebos } = sessions([{ key: 'a', level: 0, sd: 0.02, trials: 3, placebos: 5, effect: 0 }], 6)
+    expect(() => score(withoutStrata(trials), placebos)).toThrow('stratum')
   })
 })
