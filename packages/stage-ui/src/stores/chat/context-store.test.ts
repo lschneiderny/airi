@@ -5,7 +5,6 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { isReadonly, reactive } from 'vue'
 
-import { createRuntimePromptContext } from './context-providers/runtime-prompt'
 import { useChatContextStore } from './context-store'
 
 type TestContextMessage = ContextMessage & { source?: string }
@@ -45,23 +44,25 @@ describe('useChatContextStore', () => {
   })
 
   // https://github.com/moeru-ai/airi/pull/2464#discussion_r3933126137
-  it('keeps the runtime prompt when another replace-self context is active', () => {
+  it('keeps a sourced replace-self context when another replace-self context is active', () => {
     const store = useChatContextStore()
-    const runtimePrompt = createRuntimePromptContext('Start every reply with an ACT token.\n\nDo not use emojis.')
-    const minecraftContext = createContextMessage({
-      contextId: 'system:minecraft-integration',
-      strategy: ContextUpdateStrategy.ReplaceSelf,
-      text: 'Minecraft is online.',
+    const situationContext = createContextMessage({
+      id: 'situation',
+      contextId: 'system:situation',
+      metadata: { source: { id: 'system:situation' } },
+      text: '[Situation 12:00]',
+    })
+    const unsourcedContext = createContextMessage({
+      id: 'unsourced',
+      contextId: 'system:other',
+      text: 'Unsourced context.',
     })
 
-    if (!runtimePrompt)
-      throw new Error('Expected a runtime prompt context')
+    store.ingestContextMessage(situationContext)
+    store.ingestContextMessage(unsourcedContext)
 
-    store.ingestContextMessage(runtimePrompt)
-    store.ingestContextMessage(minecraftContext)
-
-    expect(store.getContextsSnapshot()['system:airi-runtime-prompt']).toEqual([runtimePrompt])
-    expect(store.getContextsSnapshot().unknown).toEqual([minecraftContext])
+    expect(store.getContextsSnapshot()['system:situation']).toEqual([situationContext])
+    expect(store.getContextsSnapshot().unknown).toEqual([unsourcedContext])
   })
 
   /**

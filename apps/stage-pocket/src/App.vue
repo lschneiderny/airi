@@ -17,6 +17,7 @@ import { useVisionStore } from '@proj-airi/stage-ui/stores/modules/vision'
 import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { useSettingsStageModel } from '@proj-airi/stage-ui/stores/settings/stage-model'
+import { useSituationStore } from '@proj-airi/stage-ui/stores/situation'
 import { useStartupResourcesStore } from '@proj-airi/stage-ui/stores/startup-resources'
 import { useTheme } from '@proj-airi/ui'
 import { StageTransitionGroup } from '@proj-airi/ui-transitions'
@@ -41,6 +42,7 @@ const onboardingStore = useOnboardingStore()
 const syncedPinia = usePiniaSynced()
 const serverChannelStore = useModsServerChannelStore()
 const characterOrchestratorStore = useCharacterOrchestratorStore()
+const situationStore = useSituationStore()
 const settingsAudioDeviceStore = useSettingsAudioDevice()
 const { showingSetup } = storeToRefs(onboardingStore)
 const { isDark } = useTheme()
@@ -115,6 +117,7 @@ async function loadStartup() {
       void serverChannelStore.initialize({ possibleEvents: ['ui:configure'], connector: getHostWebSocketConnector }).catch(error => console.error('Mods server initialization failed:', error))
       contextBridgeStore.initialize()
       characterOrchestratorStore.initialize()
+      situationStore.initialize(syncedPinia)
     })
     await startup.run('modelData', () => displayModelsStore.loadDisplayModelsFromIndexedDB())
     await startup.run('modelSelection', () => settingsStore.initializeStageModel())
@@ -141,6 +144,7 @@ watch(() => [startup.resources.find(resource => resource.id === 'modelSelection'
 
 onUnmounted(() => {
   contextBridgeStore.dispose()
+  situationStore.dispose()
 })
 
 function continueWithoutModel() {

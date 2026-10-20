@@ -10,7 +10,7 @@ import { SpanStatusCode } from '@opentelemetry/api'
 import { IOAttributes, IOSpanNames } from '@proj-airi/stage-shared'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { computed, createApp, nextTick, reactive, ref } from 'vue'
 
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
@@ -24,6 +24,7 @@ import { useChatStore } from './chat'
 import { useContextObservabilityStore } from './devtools/context-observability'
 import { useConsciousnessSettingsStore } from './modules/consciousness-settings'
 import { useProviderConfigStore } from './providers/config'
+import { useSituationStore } from './situation'
 
 vi.hoisted(() => {
   ;(globalThis as any).window = {
@@ -81,8 +82,6 @@ const redundantChatAnalyticsMocks = vi.hoisted(() => ({
 }))
 const ingestContextMessageMock = vi.fn()
 const getContextsSnapshotMock = vi.fn()
-const createRuntimePromptContextMock = vi.fn()
-const createMinecraftContextMock = vi.fn()
 const createUserAccountContextMock = vi.fn()
 const persistSessionMessagesMock = vi.fn()
 const forkSessionMock = vi.fn()
@@ -155,8 +154,6 @@ vi.mock('../composables/use-io-tracer', () => ({
 }))
 
 vi.mock('./chat/context-providers', () => ({
-  createMinecraftContext: () => createMinecraftContextMock(),
-  createRuntimePromptContext: (prompt: string) => createRuntimePromptContextMock(prompt),
   createUserAccountContext: () => createUserAccountContextMock(),
 }))
 
@@ -345,6 +342,31 @@ function storedToolImageMessage() {
   }
 }
 
+/** Makes this window the situation leader for one test, so requests carry the situation block. */
+function leadSituation() {
+  const store = useSituationStore()
+  store.initialize(createLeaderRuntime())
+  // The leader owns a 1 s ticker; stop it even when an assertion fails.
+  onTestFinished(() => store.dispose())
+}
+
+/** A synced runtime in which this window leads. */
+function createLeaderRuntime(): SyncedPiniaRuntime {
+  return {
+    dispose: vi.fn(),
+    getLeaderId: vi.fn(),
+    getParticipantCount: vi.fn(() => 1),
+    isLeader: vi.fn(() => true),
+    onCoordinationChange: vi.fn(() => vi.fn()),
+    onLeadershipChange: vi.fn((listener: (isLeader: boolean) => void) => {
+      listener(true)
+      return vi.fn()
+    }),
+    participantId: 'chat-situation-test',
+    plugin: vi.fn(),
+  }
+}
+
 describe('chat store contract', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -360,10 +382,6 @@ describe('chat store contract', () => {
     getContextsSnapshotMock.mockReset()
     getContextsSnapshotMock.mockReturnValue({})
     createUserAccountContextMock.mockReset().mockReturnValue(null)
-    createRuntimePromptContextMock.mockReset()
-    createRuntimePromptContextMock.mockReturnValue(undefined)
-    createMinecraftContextMock.mockReset()
-    createMinecraftContextMock.mockReturnValue(undefined)
     persistSessionMessagesMock.mockReset()
     forkSessionMock.mockReset()
     ensureSessionMock.mockReset()
@@ -1755,8 +1773,9 @@ describe('chat store contract', () => {
     expect(ioTracerMocks.turnSpans.size).toBe(0)
   })
 
-  it('sends the stage contract in the system prompt and only the live state as runtime context', async () => {
+  it('sends the stage contract in the system prompt and the live state only in the situation runtime context', async () => {
     usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    leadSituation()
     const systemPrompts: string[] = []
     llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {
       // The provider adapter replaces the system message with the resolved step prompt for each request.
@@ -1767,7 +1786,11 @@ describe('chat store contract', () => {
     const store = useChatStore()
     await store.send({ sessionId: 'session-1', text: 'hello' })
 
-    expect(createRuntimePromptContextMock).toHaveBeenCalledWith('base.prompt.expressions')
+    expect(ingestContextMessageMock).toHaveBeenCalledOnce()
+    expect(ingestContextMessageMock).toHaveBeenCalledWith(expect.objectContaining({
+      contextId: 'system:situation',
+      text: expect.stringMatching(/^\[Situation \d\d:\d\d\]\n\nbase\.prompt\.expressions$/),
+    }))
     const composed = useContextObservabilityStore().lastPromptProjection?.composedMessage ?? []
     const system = systemPrompts[0]
     const lastUser = JSON.stringify(composed.findLast(message => message.role === 'user'))
@@ -1789,46 +1812,52 @@ describe('chat store contract', () => {
     })
     const store = useChatStore()
     const runtimeState = usePerformanceRuntimeState()
+    // A leading situation store renders a timestamped block into every request.
+    leadSituation()
 
     runtimeState.publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
     await store.send({ sessionId: 'session-1', text: 'first turn' })
-    const firstContext = createRuntimePromptContextMock.mock.lastCall?.[0]
+    const firstContext = ingestContextMessageMock.mock.lastCall?.[0]?.text
 
     // The live state changes between the turns. It reaches the runtime context, not the system message.
     runtimeState.publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [{ slot: 'face', label: 'smile' }], mood: null })
     await useExpressionPerformanceSettings().update({ stateFeedback: true })
     await store.send({ sessionId: 'session-1', text: 'second turn' })
 
-    expect(createRuntimePromptContextMock.mock.lastCall?.[0]).not.toBe(firstContext)
+    expect(firstContext).toMatch(/^\[Situation \d\d:\d\d\]/)
+    expect(ingestContextMessageMock.mock.lastCall?.[0]?.text).not.toBe(firstContext)
     expect(systemMessages).toHaveLength(2)
     expect(systemMessages[0]).toContain('base.prompt.emotion')
+    expect(systemMessages[0]).not.toContain('[Situation')
     expect(systemMessages[1]).toBe(systemMessages[0])
   })
 
-  it('ingests the live state prompt before composing prompt snapshots', async () => {
+  it('sends no runtime context, not even the live state, when the situation store was never initialized', async () => {
+    usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [{ slot: 'face', label: 'smile' }], mood: null })
+    await useExpressionPerformanceSettings().update({ stateFeedback: true })
+    let composedMessages: Turn[] = []
+    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, context: Conversation, options: StreamOptions) => {
+      composedMessages = context.turns
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await useChatStore().send({ sessionId: 'session-1', text: 'hello' })
+
+    expect(ingestContextMessageMock).not.toHaveBeenCalled()
+    const lastUser = composedMessages.at(-1)
+    expect(lastUser?.type).toBe('user')
+    expect(lastUser?.type === 'user' && lastUser.content.some(segment => segment.type === 'runtime-context')).toBe(false)
+  })
+
+  it('ingests one situation entry before composing prompt snapshots', async () => {
     usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
-    const runtimePromptContext = {
-      id: 'airi-runtime-prompt-context',
-      contextId: 'system:airi-runtime-prompt',
-      strategy: 'replace-self',
-      text: 'Exposed expressions: smile.',
-      createdAt: 123,
-    }
-    const minecraftContext = {
-      id: 'minecraft-context',
-      contextId: 'system:minecraft',
-      strategy: 'replace-self',
-      source: 'minecraft',
-      text: 'player is near spawn',
-      createdAt: 123,
-    }
+    leadSituation()
     let composedMessages: Turn[] = []
 
-    createRuntimePromptContextMock.mockReturnValue(runtimePromptContext)
-    createMinecraftContextMock.mockReturnValue(minecraftContext)
-    getContextsSnapshotMock.mockReturnValue({
-      'system:airi-runtime-prompt': [runtimePromptContext],
-      'system:minecraft': [minecraftContext],
+    // The registry mock returns what the runtime ingested, like the ReplaceSelf registry.
+    getContextsSnapshotMock.mockImplementation(() => {
+      const ingested = ingestContextMessageMock.mock.lastCall?.[0]
+      return ingested ? { [ingested.contextId]: [ingested] } : {}
     })
     llmStreamMock.mockImplementation(async (_model: string, _chatProvider: GenerationProvider, context: Conversation, options: any) => {
       composedMessages = context.turns
@@ -1843,10 +1872,8 @@ describe('chat store contract', () => {
       chatProvider: provider,
     })
 
-    expect(createRuntimePromptContextMock).toHaveBeenCalledWith('base.prompt.expressions')
-    expect(ingestContextMessageMock).toHaveBeenCalledTimes(2)
-    expect(ingestContextMessageMock).toHaveBeenNthCalledWith(1, runtimePromptContext)
-    expect(ingestContextMessageMock).toHaveBeenNthCalledWith(2, minecraftContext)
+    expect(ingestContextMessageMock).toHaveBeenCalledOnce()
+    expect(ingestContextMessageMock).toHaveBeenCalledWith(expect.objectContaining({ contextId: 'system:situation', strategy: 'replace-self' }))
     expect(ingestContextMessageMock.mock.invocationCallOrder[0]).toBeLessThan(
       getContextsSnapshotMock.mock.invocationCallOrder[0],
     )
@@ -1854,10 +1881,7 @@ describe('chat store contract', () => {
       throw new Error('Expected user turn')
     expect(composedMessages[1].content[1]).toEqual({
       type: 'runtime-context',
-      entries: [
-        { source: 'system:airi-runtime-prompt', text: runtimePromptContext.text },
-        { source: 'system:minecraft', text: 'player is near spawn' },
-      ],
+      entries: [{ source: 'system:situation', text: expect.stringMatching(/^\[Situation \d\d:\d\d\]\n\nbase\.prompt\.expressions$/) }],
     })
   })
 

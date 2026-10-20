@@ -35,12 +35,6 @@ vi.mock('../../chat/stream-store', () => ({
   useChatStreamStore: () => ({}),
 }))
 
-vi.mock('../../chat/context-store', () => ({
-  useChatContextStore: () => ({
-    ingestContextMessage: vi.fn(),
-  }),
-}))
-
 vi.mock('../../devtools/context-observability', () => ({
   useContextObservabilityStore: () => ({
     recordLifecycle: vi.fn(),

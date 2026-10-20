@@ -1,3 +1,5 @@
+import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
+
 import type { ChatStreamEvent, ChatStreamEventContext, ContextMessage } from '../../../types/chat'
 
 import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
@@ -10,6 +12,8 @@ import { storeChatAsset } from '../../../libs/chat-assets'
 import { CHAT_STREAM_CHANNEL_NAME, CONTEXT_CHANNEL_NAME } from '../../chat/constants'
 import { useConsciousnessStore } from '../../modules/consciousness'
 import { useConsciousnessSettingsStore } from '../../modules/consciousness-settings'
+import { useMinecraftStore } from '../../modules/gaming-minecraft'
+import { useSituationStore } from '../../situation'
 import { useContextBridgeStore } from './context-bridge'
 import { createContextChannel } from './context-channel'
 
@@ -18,7 +22,8 @@ type HookCallback = (...args: unknown[]) => Promise<void> | void
 const contextUpdateHooks: HookCallback[] = []
 const serverEventHooks = new Map<string, HookCallback[]>()
 
-const chatContextIngestMock = vi.fn()
+// Delegates to the real situation sensor. A test forces a failure with `mockImplementationOnce`.
+const { situationIngestMock } = vi.hoisted(() => ({ situationIngestMock: vi.fn() }))
 const beginStreamMock = vi.fn()
 const appendStreamLiteralMock = vi.fn()
 const finalizeStreamMock = vi.fn()
@@ -120,6 +125,26 @@ async function emitServerEvent(eventName: string, event: unknown) {
   await emitHooks(serverEventHooks.get(eventName) ?? [], event)
 }
 
+/** Makes this window the situation leader, so context reaches the situation, or a follower that ingests nothing. */
+function initializeSituation(isLeader: boolean) {
+  const runtime: SyncedPiniaRuntime = {
+    dispose: vi.fn(),
+    getLeaderId: vi.fn(),
+    getParticipantCount: vi.fn(() => 1),
+    isLeader: () => isLeader,
+    onCoordinationChange: vi.fn(() => vi.fn()),
+    onLeadershipChange: vi.fn((listener: (isLeader: boolean) => void) => {
+      listener(isLeader)
+      return () => {}
+    }),
+    participantId: 'context-bridge-test',
+    plugin: vi.fn(),
+  }
+  const situation = useSituationStore(pinia)
+  situation.initialize(runtime)
+  return situation
+}
+
 function createMetadata(extensionId: string, moduleId: string) {
   return {
     source: {
@@ -214,11 +239,11 @@ vi.mock('../../chat', () => ({
   useChatStore: () => chatOrchestratorMock,
 }))
 
-vi.mock('../../chat/context-store', () => ({
-  useChatContextStore: () => ({
-    ingestContextMessage: chatContextIngestMock,
-  }),
-}))
+vi.mock('../../situation/sensors/context', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../situation/sensors/context')>()
+  situationIngestMock.mockImplementation(actual.ingestContextMessage)
+  return { ...actual, ingestContextMessage: situationIngestMock }
+})
 
 vi.mock('../../chat/session-store', () => ({
   useChatSessionStore: () => ({
@@ -273,7 +298,7 @@ describe('context bridge contract', () => {
     setActivePinia(pinia)
     consciousness = useConsciousnessStore(pinia)
 
-    chatContextIngestMock.mockReset()
+    situationIngestMock.mockClear()
     beginStreamMock.mockReset()
     appendStreamLiteralMock.mockReset()
     finalizeStreamMock.mockReset()
@@ -316,6 +341,8 @@ describe('context bridge contract', () => {
     // A failed assertion skips the test's explicit disposal. Close the bridge
     // before its peers and Pinia scope so later tests cannot receive old hooks.
     await useContextBridgeStore(pinia).dispose()
+    useSituationStore(pinia).dispose()
+    useMinecraftStore(pinia).dispose()
     closeTestChannels()
     disposePinia(pinia)
     vi.restoreAllMocks()
@@ -405,12 +432,8 @@ describe('context bridge contract', () => {
     await chatAssetsRepo.clear()
   })
 
-  it('records core ingest result for broadcast context updates', async () => {
-    chatContextIngestMock.mockReturnValueOnce({
-      sourceKey: 'weather:station-1',
-      mutation: 'append',
-      entryCount: 2,
-    })
+  it('records the situation ingest result for broadcast context updates', async () => {
+    const situation = initializeSituation(true)
     const store = useContextBridgeStore()
     await store.initialize()
     const contextSender = createTestChannel(CONTEXT_CHANNEL_NAME)
@@ -422,27 +445,24 @@ describe('context bridge contract', () => {
     }))
 
     await vi.waitFor(() => {
-      expect(chatContextIngestMock).toHaveBeenCalledTimes(1)
+      expect(situationIngestMock).toHaveBeenCalledTimes(1)
     })
     expect(recordLifecycleMock).toHaveBeenCalledWith(expect.objectContaining({
       phase: 'store-ingested',
       channel: 'broadcast',
       sourceKey: 'weather:station-1',
-      mutation: 'append',
+      mutation: 'replace',
       details: expect.objectContaining({
-        entryCount: 2,
+        entryCount: 1,
       }),
     }))
+    expect(situation.state.contexts['weather:station-1']?.text).toBe('broadcast weather')
 
     await store.dispose()
   })
 
-  it('records core ingest result for server context updates before broadcasting', async () => {
-    chatContextIngestMock.mockReturnValueOnce({
-      sourceKey: 'weather:station-1',
-      mutation: 'replace',
-      entryCount: 1,
-    })
+  it('turns a server context update into a situation context line before broadcasting', async () => {
+    const situation = initializeSituation(true)
     const store = useContextBridgeStore()
     await store.initialize()
 
@@ -452,7 +472,8 @@ describe('context bridge contract', () => {
       text: 'server weather',
     }))
 
-    expect(chatContextIngestMock).toHaveBeenCalledTimes(1)
+    expect(situationIngestMock).toHaveBeenCalledTimes(1)
+    expect(situation.renderForRequest(Date.now())?.split('\n')).toContain('- server weather')
     expect(recordLifecycleMock).toHaveBeenCalledWith(expect.objectContaining({
       phase: 'store-ingested',
       channel: 'server',
@@ -475,12 +496,8 @@ describe('context bridge contract', () => {
   // ROOT CAUSE:
   // The old consciousness mock omitted temperature and top-p. Input handling
   // failed before ingest. Use the real store and verify both request settings.
-  it('records core ingest result for input context updates and forwards accepted updates', async () => {
-    chatContextIngestMock.mockReturnValueOnce({
-      sourceKey: 'weather:station-1',
-      mutation: 'append',
-      entryCount: 1,
-    })
+  it('records the situation ingest result for input context updates and forwards accepted updates', async () => {
+    const situation = initializeSituation(true)
     consciousness.activeProvider = 'mock-provider'
     consciousness.activeModel = 'mock-model'
     consciousness.temperature = 0.3
@@ -506,12 +523,13 @@ describe('context bridge contract', () => {
       },
     })
 
-    expect(chatContextIngestMock).toHaveBeenCalledTimes(1)
+    expect(situationIngestMock).toHaveBeenCalledTimes(1)
+    expect(situation.state.contexts['weather:station-1']?.text).toBe('input weather')
     expect(recordLifecycleMock).toHaveBeenCalledWith(expect.objectContaining({
       phase: 'store-ingested',
       channel: 'input',
       sourceKey: 'weather:station-1',
-      mutation: 'append',
+      mutation: 'replace',
       details: expect.objectContaining({
         entryCount: 1,
         inputType: 'input:text',
@@ -535,8 +553,67 @@ describe('context bridge contract', () => {
     await store.dispose()
   })
 
+  it('records and broadcasts a server context update in a follower without ingesting it', async () => {
+    const situation = initializeSituation(false)
+    const postedContexts = collectChannelMessages<ContextMessage>(CONTEXT_CHANNEL_NAME)
+    const store = useContextBridgeStore()
+    await store.initialize()
+
+    await emitContextUpdate(createContextUpdateEvent({ id: 'follower-context', text: 'follower weather' }))
+    await vi.waitFor(() => expect(postedContexts).toHaveLength(1))
+
+    expect(situation.state.contexts).toEqual({})
+    expect(recordLifecycleMock).not.toHaveBeenCalledWith(expect.objectContaining({ phase: 'store-ingested' }))
+    expect(recordLifecycleMock).toHaveBeenCalledWith(expect.objectContaining({ phase: 'server-received', contextId: 'follower-context' }))
+    expect(recordLifecycleMock).toHaveBeenCalledWith(expect.objectContaining({ phase: 'broadcast-posted', contextId: 'follower-context' }))
+
+    await store.dispose()
+  })
+
+  it('keeps the vision metadata of a server context update so the situation times it by its capture', async () => {
+    const situation = initializeSituation(true)
+    const store = useContextBridgeStore()
+    await store.initialize()
+    const capturedAt = Date.now() - 4_000
+
+    await emitContextUpdate(createContextUpdateEvent({
+      id: 'vision-context',
+      strategy: ContextUpdateStrategy.ReplaceSelf,
+      text: 'A code editor with a failing test.',
+      metadata: { module: 'vision', capturedAt },
+    }))
+
+    expect(situation.state.contexts['weather:station-1']).toEqual({ text: 'A code editor with a failing test.', atMs: capturedAt })
+    expect(situationIngestMock.mock.calls[0]?.[0]?.metadata).toMatchObject({
+      module: 'vision',
+      capturedAt,
+      source: createMetadata('weather', 'station-1').source,
+    })
+
+    await store.dispose()
+  })
+
+  it('feeds Minecraft bot context into the situation through the Minecraft sensor', async () => {
+    const situation = initializeSituation(true)
+    const store = useContextBridgeStore()
+    await store.initialize()
+
+    await emitContextUpdate({
+      type: 'context:update',
+      source: 'minecraft-bot',
+      metadata: { source: { id: 'minecraft-bot' } },
+      data: { id: 'mc-1', contextId: 'mc-1', strategy: ContextUpdateStrategy.ReplaceSelf, text: 'Mining iron at y=12.' },
+    })
+
+    await vi.waitFor(() => {
+      expect(situation.state.contexts['system:minecraft-integration']?.text).toBe('Minecraft bot (offline): Mining iron at y=12.')
+    })
+
+    await store.dispose()
+  })
+
   it('records rejected lifecycle for broadcast ingest failures without interrupting the watcher', async () => {
-    chatContextIngestMock.mockImplementationOnce(() => {
+    situationIngestMock.mockImplementationOnce(() => {
       throw new Error('Cannot clone broadcast context')
     })
     const store = useContextBridgeStore()
@@ -564,7 +641,7 @@ describe('context bridge contract', () => {
   })
 
   it('records rejected lifecycle and skips broadcast when server context ingest fails', async () => {
-    chatContextIngestMock.mockImplementationOnce(() => {
+    situationIngestMock.mockImplementationOnce(() => {
       throw new Error('Cannot clone server context')
     })
     const postedContexts = collectChannelMessages(CONTEXT_CHANNEL_NAME)
@@ -595,7 +672,7 @@ describe('context bridge contract', () => {
   })
 
   it('records rejected lifecycle and continues text ingestion when input context ingest fails', async () => {
-    chatContextIngestMock.mockImplementationOnce(() => {
+    situationIngestMock.mockImplementationOnce(() => {
       throw new Error('Cannot clone input context')
     })
     consciousness.activeProvider = 'mock-provider'

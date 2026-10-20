@@ -40,13 +40,12 @@ describe('formatContextPromptText', () => {
     expect(text).not.toContain('airi:minecraft')
   })
 
-  it('emits a flat [Context] bullet list (no XML wrapper)', () => {
+  it('renders the context text verbatim (no XML wrapper, header, or source prefix)', () => {
     const text = formatContextPromptText(makeContext())
 
+    expect(text).toBe('Bot is online in forest biome')
     expect(text).not.toContain('<context>')
-    expect(text).not.toContain('<module')
-    expect(text.startsWith('[Context]')).toBe(true)
-    expect(text).toContain('- system:minecraft-integration: Bot is online in forest biome')
+    expect(text).not.toContain('[Context]')
   })
 
   it('produces identical output regardless of volatile fields', () => {
@@ -56,7 +55,7 @@ describe('formatContextPromptText', () => {
     expect(a).toBe(b)
   })
 
-  it('formats multiple modules as bullets under one [Context] header', () => {
+  it('separates multiple modules with a blank line', () => {
     const snapshot: ContextSnapshot = {
       'system:minecraft-integration': [
         {
@@ -78,12 +77,7 @@ describe('formatContextPromptText', () => {
       ],
     }
 
-    const text = formatContextPromptText(snapshot)
-
-    const lines = text.split('\n')
-    expect(lines[0]).toBe('[Context]')
-    expect(lines).toContain('- system:minecraft-integration: Bot is online')
-    expect(lines).toContain('- system:weather: Sunny, 22C')
+    expect(formatContextPromptText(snapshot)).toBe('Bot is online\n\nSunny, 22C')
   })
 })
 

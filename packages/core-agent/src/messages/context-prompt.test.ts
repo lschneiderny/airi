@@ -54,22 +54,22 @@ describe('formatContextPromptText', () => {
 
   /**
    * @example
-   * Context prompt text uses a flat bullet list instead of XML wrappers.
+   * Each context source owns its heading, so the text renders without a shared header or source prefix.
    */
-  it('emits a flat [Context] bullet list without XML wrappers', () => {
+  it('renders the context text verbatim without XML wrappers, header, or source prefix', () => {
     const text = formatContextPromptText(makeContext())
 
+    expect(text).toBe('Bot is online in forest biome')
     expect(text).not.toContain('<context>')
-    expect(text).not.toContain('<module')
-    expect(text.startsWith('[Context]')).toBe(true)
-    expect(text).toContain('- system:minecraft-integration: Bot is online in forest biome')
+    expect(text).not.toContain('[Context]')
+    expect(text).not.toContain('system:minecraft-integration')
   })
 
   /**
    * @example
-   * Multiple buckets render as one context block with multiple bullets.
+   * Multiple buckets render as one block, separated by a blank line.
    */
-  it('formats multiple modules as bullets under one [Context] header', () => {
+  it('separates multiple modules with a blank line', () => {
     const snapshot: ContextSnapshot = {
       'system:minecraft-integration': [
         {
@@ -91,11 +91,15 @@ describe('formatContextPromptText', () => {
       ],
     }
 
-    const lines = formatContextPromptText(snapshot).split('\n')
+    expect(formatContextPromptText(snapshot)).toBe('Bot is online\n\nSunny, 22C')
+  })
 
-    expect(lines[0]).toBe('[Context]')
-    expect(lines).toContain('- system:minecraft-integration: Bot is online')
-    expect(lines).toContain('- system:weather: Sunny, 22C')
+  /**
+   * @example
+   * A source with only whitespace text adds no blank paragraph.
+   */
+  it('skips whitespace-only context texts', () => {
+    expect(formatContextPromptText(makeContext({ text: '  \n ' }))).toBe('')
   })
 })
 

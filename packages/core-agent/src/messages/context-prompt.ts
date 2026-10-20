@@ -11,42 +11,40 @@ import type { ContextMessage } from '../types/chat'
 export type ContextSnapshot = Record<string, ContextMessage[]>
 
 /**
- * Render runtime context modules into a compact, readable text block.
+ * Joins runtime context texts verbatim, with a blank line between them. Empty and whitespace-only texts are skipped.
  *
- * Use when:
- * - Composing chat prompts that need to attach side-channel runtime context
- *   (e.g. game state, system status) to the latest user message.
+ * Each context source owns its own heading (the situation block starts with `[Situation HH:MM]`), so no shared
+ * header or source prefix is added.
  *
- * Expects:
- * - A snapshot keyed by `contextId`. Only the per-message `text` field is
- *   included; volatile metadata (random IDs, ms timestamps) is excluded so
- *   the output stays deterministic and KV-cache-friendly.
- *
- * Returns:
- * - Empty string when the snapshot is empty.
- * - Otherwise a `[Context]` block with one bullet per module, e.g.
- *   `[Context]\n- system:minecraft-integration: Bot is online ...`
- *
- * Why this shape (not XML):
+ * Why plain text (not XML):
  * - Weak local models (8B/14B) tend to mirror conspicuous structured
  *   wrappers (`<context>...</context>`) back into their replies, treating
- *   them as data to be quoted. A flat bullet list looks like ordinary
+ *   them as data to be quoted. Plain text and flat bullets look like ordinary
  *   narrative, which suppresses that mirroring tendency.
  * - See: https://github.com/moeru-ai/airi/issues/1539
  */
+export function joinContextTexts(texts: readonly string[]) {
+  return texts.filter(text => text.trim() !== '').join('\n\n')
+}
+
+/**
+ * Render runtime context modules into one plain-text block.
+ *
+ * Use when:
+ * - Composing chat prompts that need to attach side-channel runtime context
+ *   (e.g. the situation block) to the latest user message.
+ *
+ * Expects:
+ * - A snapshot keyed by `contextId`. Only the per-message `text` field is
+ *   included; the `contextId` and volatile metadata (random IDs, ms timestamps)
+ *   are excluded so the output stays deterministic and KV-cache-friendly.
+ *
+ * Returns:
+ * - Empty string when no message carries text.
+ * - Otherwise every message text verbatim, joined by {@link joinContextTexts}.
+ */
 export function formatContextPromptText(contextsSnapshot: ContextSnapshot) {
-  const entries = Object.entries(contextsSnapshot)
-  if (entries.length === 0)
-    return ''
-
-  const lines = entries.flatMap(([contextId, messages]) =>
-    messages.map(m => `- ${contextId}: ${m.text}`),
-  )
-
-  if (lines.length === 0)
-    return ''
-
-  return ['[Context]', ...lines].join('\n')
+  return joinContextTexts(Object.values(contextsSnapshot).flatMap(messages => messages.map(message => message.text)))
 }
 
 /**
