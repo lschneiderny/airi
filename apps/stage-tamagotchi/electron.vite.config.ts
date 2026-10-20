@@ -42,6 +42,7 @@ export default defineConfig({
           '@auv-js/sdk',
           '@xsai-apple-speech/transcription-native',
           '@xsai-apple-vision/vision-native',
+          'koffi',
         ],
       },
     },
