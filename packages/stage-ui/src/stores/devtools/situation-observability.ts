@@ -1,9 +1,13 @@
 import type { RenderedSituation, SituationState } from '@proj-airi/stage-shared/situation'
 
+import { defineInvoke, defineInvokeEventa, defineInvokeHandler } from '@moeru/eventa'
 import { advanceSituation, initialSituationState, renderSituation } from '@proj-airi/stage-shared/situation'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { computed, shallowRef } from 'vue'
+
+import { DEVTOOLS_INSPECT_TIMEOUT_MS, getDevtoolsBusContext } from '../../services/devtools/bus'
+import { actComplianceInspectInvoke, useActComplianceStore } from './act-compliance'
 
 /** Length cap of the render history: older renders are dropped first. */
 export const SITUATION_RENDER_HISTORY_MAX = 100
@@ -37,16 +41,37 @@ export interface SituationPreview extends RenderedSituation {
   nowMs: number
 }
 
+/** The leader window answers it with {@link SituationInspection} of its situation. */
+export const situationInspectInvoke = defineInvokeEventa<SituationInspection>('eventa:devtools:situation:inspect')
+/** The leader window answers it with the block its next request would carry at `nowMs`, without marking anything shown. */
+export const situationPreviewInvoke = defineInvokeEventa<SituationPreview, { nowMs: number }>('eventa:devtools:situation:preview')
+
 /**
  * Collects what the devtools Situation inspector shows: the live situation and the blocks sent with chat requests.
  *
  * The situation store of each window publishes into its local copy of this store. Only the leader folds
  * observations, so a follower window (the Electron settings window, for example) reads the leader's copy through
- * the leader-routed {@link inspect} and {@link preview} actions. No state is synchronized between windows.
+ * {@link inspectLeader} and {@link previewLeader}. While this window leads, it answers them over the devtools
+ * inspector bus, an Eventa BroadcastChannel context, together with the ACT compliance history of the same page.
+ * The store is not synced: synced actions would keep every polled result in the shared domain state until their
+ * call timeout, and the inspector polls every second.
  */
 export const useSituationObservabilityStore = defineStore('devtools:situation-observability', () => {
   const live = shallowRef<SituationLiveState>({ leading: false, state: initialSituationState })
   const renders = shallowRef<readonly SituationRenderRecord[]>([])
+  const actCompliance = useActComplianceStore()
+  let stopServing: (() => void) | undefined
+
+  /** Answers the inspector bus from this window. Only the leader serves, so a follower's empty copy never answers. */
+  function serve() {
+    const context = getDevtoolsBusContext()
+    const stops = [
+      defineInvokeHandler(context, situationInspectInvoke, () => inspect()),
+      defineInvokeHandler(context, situationPreviewInvoke, ({ nowMs }) => preview(nowMs)),
+      defineInvokeHandler(context, actComplianceInspectInvoke, () => actCompliance.inspect()),
+    ]
+    return () => stops.forEach(stop => stop())
+  }
 
   /** Records a block that `renderForRequest` sent, before its events are marked shown. */
   function recordRender(nowMs: number, rendered: RenderedSituation) {
@@ -62,9 +87,16 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
   /** Called by the situation store of this window whenever its state or leadership changes. */
   function publishLiveState(leading: boolean, state: SituationState) {
     live.value = { leading, state }
+    if (leading) {
+      stopServing ??= serve()
+    }
+    else {
+      stopServing?.()
+      stopServing = undefined
+    }
   }
 
-  /** Returns the live situation and the render history of the leader window. */
+  /** Returns the live situation and the render history of this window. */
   async function inspect(): Promise<SituationInspection> {
     return {
       leading: live.value.leading,
@@ -84,6 +116,16 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
     return { leading, nowMs, text: rendered.text, shownEventIds: [...rendered.shownEventIds] }
   }
 
+  /** Returns {@link inspect} of the leader window. Rejects when no window answers in time. */
+  async function inspectLeader(): Promise<SituationInspection> {
+    return defineInvoke(getDevtoolsBusContext(), situationInspectInvoke)(undefined, { signal: AbortSignal.timeout(DEVTOOLS_INSPECT_TIMEOUT_MS) })
+  }
+
+  /** Returns {@link preview} of the leader window. Rejects when no window answers in time. */
+  async function previewLeader(nowMs: number): Promise<SituationPreview> {
+    return defineInvoke(getDevtoolsBusContext(), situationPreviewInvoke)({ nowMs }, { signal: AbortSignal.timeout(DEVTOOLS_INSPECT_TIMEOUT_MS) })
+  }
+
   return {
     liveState: computed(() => live.value),
     renders: computed(() => renders.value),
@@ -91,12 +133,9 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
     publishLiveState,
     inspect,
     preview,
+    inspectLeader,
+    previewLeader,
   }
-}, {
-  synced: {
-    actions: ['inspect', 'preview'],
-    state: false,
-  },
 })
 
 /** Lines and characters a block uses, counted the way `renderSituation` checks its budget. */

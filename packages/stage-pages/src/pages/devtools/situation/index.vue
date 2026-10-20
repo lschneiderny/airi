@@ -17,7 +17,7 @@ import SituationSummary from './components/situation-summary.vue'
 /** Matches the leader's advance ticker, so ages and settled events stay current. */
 const REFRESH_INTERVAL_MS = 1_000
 
-// Read-only: the page reads the leader through the store's leader-routed actions and never changes the situation.
+// Read-only: the page reads the leader over the devtools inspector bus and never changes the situation.
 const observability = useSituationObservabilityStore()
 const actCompliance = useActComplianceStore()
 
@@ -36,7 +36,7 @@ async function refresh() {
     return
   refreshing = true
   try {
-    inspection.value = await observability.inspect()
+    inspection.value = await observability.inspectLeader()
     inspectedAtMs.value = Date.now()
     inspectError.value = undefined
   }
@@ -44,7 +44,7 @@ async function refresh() {
     inspectError.value = errorMessageFrom(error) ?? 'The leader window did not answer.'
   }
   try {
-    complianceRecords.value = (await actCompliance.inspect()).records
+    complianceRecords.value = (await actCompliance.inspectLeader()).records
     complianceError.value = undefined
   }
   catch (error) {
@@ -58,7 +58,7 @@ async function refresh() {
 async function renderPreview() {
   previewing.value = true
   try {
-    preview.value = await observability.preview(Date.now())
+    preview.value = await observability.previewLeader(Date.now())
     previewError.value = undefined
   }
   catch (error) {
