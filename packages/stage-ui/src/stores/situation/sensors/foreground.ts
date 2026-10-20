@@ -1,4 +1,4 @@
-import type { BusyState, Observation } from '@proj-airi/stage-shared/situation'
+import type { AppCategory, BusyState, Observation } from '@proj-airi/stage-shared/situation'
 import type { ForegroundWindowSample } from '@proj-airi/stage-shared/stores/foreground-window'
 
 import {
@@ -67,10 +67,16 @@ function nonEmptyString(value: unknown): string | null {
 export interface ForegroundSensorOptions {
   /** Whether the stage window is on screen (visible and not minimized); it picks the staleness limit. */
   stageVisible: () => boolean
+  /**
+   * Receives the category of the user's foreground app while the latest sample is fresh, and `null` once that
+   * sample goes stale (or before any sample), so a producer that stops cannot keep a category alive. Called only
+   * when the value changes.
+   */
+  onCategory?: (category: AppCategory | null) => void
 }
 
 export interface ForegroundSensor {
-  /** Re-evaluates busy at `nowMs` without a new sample, so a sample that stops arriving turns busy `unknown`. */
+  /** Re-evaluates busy and the category at `nowMs` without a new sample, so a sample that stops arriving turns busy `unknown` and clears the category. */
   check: (nowMs: number) => void
   /** App ids of AIRI's own executable, for the reducer's `selfAppIds`. */
   selfAppIds: () => readonly string[]
@@ -98,6 +104,18 @@ export function startForegroundSensor(ingest: (observation: Observation) => void
   let lastAppId: string | null = null
   let lastTitle: string | null = null
   let selfAppIds: readonly string[] = []
+  let lastCategory: AppCategory | null = null
+  let reportedCategory: AppCategory | null = null
+
+  /** Reports the last user category while the latest sample (own windows included) is fresh, else `null`. */
+  function reportCategory(nowMs: number) {
+    const sample = foreground.sample
+    const next = sample && isFresh(sample, nowMs, options.stageVisible()) ? lastCategory : null
+    if (next === reportedCategory)
+      return
+    reportedCategory = next
+    options.onCategory?.(next)
+  }
 
   function reportBusy(nowMs: number) {
     const next = busyOf(foreground.sample, nowMs, options.stageVisible())
@@ -127,11 +145,13 @@ export function startForegroundSensor(ingest: (observation: Observation) => void
       return
     lastAppId = appId
     lastTitle = title
+    const category = categorizeApp(nonEmptyString(sample.exePath) ?? '', exeName)
+    lastCategory = category
     ingest({
       kind: 'activity',
       appId,
       label,
-      category: categorizeApp(nonEmptyString(sample.exePath) ?? '', exeName),
+      category,
       title,
       atMs: sample.sampledAtMs,
     })
@@ -144,11 +164,15 @@ export function startForegroundSensor(ingest: (observation: Observation) => void
       reportBusy(nowMs)
       if (sample && isFresh(sample, nowMs, options.stageVisible()))
         reportActivity(sample)
+      reportCategory(nowMs)
     }, { immediate: true, flush: 'sync' })
   })
 
   return {
-    check: reportBusy,
+    check(nowMs) {
+      reportBusy(nowMs)
+      reportCategory(nowMs)
+    },
     selfAppIds: () => selfAppIds,
     stop: () => scope.stop(),
   }

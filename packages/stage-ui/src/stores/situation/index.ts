@@ -1,4 +1,4 @@
-import type { Observation, SituationState } from '@proj-airi/stage-shared/situation'
+import type { AppCategory, Observation, SituationState } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { ConversationHookSource } from './sensors/conversation'
@@ -49,6 +49,9 @@ export const useSituationStore = defineStore('situation', () => {
   const current = shallowRef<SituationState>(initialSituationState)
   const leading = shallowRef(false)
   const stageVisible = shallowRef(false)
+  // The category of the user's foreground app while its sample is fresh, or null once the producer goes quiet. The
+  // reducer's activity keeps the last app for the session, so this separate value is what drives watching attention.
+  const foregroundCategory = shallowRef<AppCategory | null>(null)
   let ticker: ReturnType<typeof setInterval> | undefined
   let sensors: RunningSensors | undefined
   let chatHooks: ConversationHookSource | undefined
@@ -67,7 +70,10 @@ export const useSituationStore = defineStore('situation', () => {
 
   function startSensors(): RunningSensors {
     const desktop = startDesktopSensor(ingest)
-    const foreground = startForegroundSensor(ingest, { stageVisible: () => stageVisible.value })
+    const foreground = startForegroundSensor(ingest, {
+      stageVisible: () => stageVisible.value,
+      onCategory: (category) => { foregroundCategory.value = category },
+    })
     const stopStage = startStageSensor(ingest)
     return {
       check(nowMs) {
@@ -115,6 +121,7 @@ export const useSituationStore = defineStore('situation', () => {
     ticker = undefined
     leading.value = false
     current.value = initialSituationState
+    foregroundCategory.value = null
   }
 
   /** Folds one observation into the situation. Followers and uninitialized windows ignore it. */
@@ -185,6 +192,7 @@ export const useSituationStore = defineStore('situation', () => {
     // Read-only projections. Pinia state stays empty, so no plugin can sync or persist the situation.
     state: computed(() => current.value),
     leading: computed(() => leading.value),
+    foregroundCategory: computed(() => foregroundCategory.value),
     stageVisible: computed(() => stageVisible.value),
     ingest,
     advance,
