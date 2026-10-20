@@ -125,6 +125,21 @@ AIRI_QA_RIG_FORBOOTH="<rig dir>" node --import tsx packages/qa-tools/bin/motion.
 - Exit codes: 0 verified, 1 run, verification or teardown failure, 2 usage or environment error before launch (for example `AIRI_QA_RIG_FORBOOTH` unset, a scenario without level `t3` or longer than 599 s), 130 interrupted. `pnpm qa:motion` and the `node --import tsx` form preserve these codes; `pnpm -F @proj-airi/qa-tools exec tsx bin/motion.ts` reports every failure as 1.
 - A hard kill of the CLI itself (for example `taskkill /F` on its PID) skips teardown. Check for leftovers with `pnpm qa:doctor` (`stray-electron`) and stop them by hand after confirming their command lines contain your worktree path.
 - `builtin:t3-smoke` (`fixtures/scenarios/t3-smoke.json`, levels `t1` and `t3`, 140 s): clear pulses of happy, sad, angry, surprised, think, love, flustered and sleepy 14 s apart (longer than `naturalEmotionLifetime` for clear, 8.7 s, and strong, 12.3 s), one `<|ACT {"emotion":"angry"}|>` marker, `expression1` on and off, and screenshots 1 s and 3 s after each pulse. The same file runs unchanged through `runT1`, and both traces stamp the same scenario events.
+## Review report
+
+`pnpm qa:report <runDir> [<runDir>...] [--out <file>]` writes one self-contained HTML page, `<firstRunDir>/report.html`, from any mix of run directories: gate runs (`report.json`), T3 runs (`scenario.json`, `screenshots.json`, `screenshots/`) and `qa:test` runs (`summary.json`). Rerunning overwrites the file.
+
+- Header: run ids, levels, rig, git SHA with the dirty flag, and gate id, version and `fileSha`, from `run.json` and `report.json`.
+- The limitations statement from `src/report/limitations.ts` (`reportLimitations`), verbatim, near the top and in the footer.
+- Verdicts: one row per emotion x band with its failed checks named; per-channel numbers (`E`, CI, expected, size ratio, `d`, hit rate, Holm p, tau, transfer ratio when a result carries `transferRatio`) in a `<details>` block. Liveliness reports show their metrics against the reference bands.
+- Per-cell trajectories: an inline SVG per cell with the gate's windows (`emotionGate.windows`, `release`), the null q90 band, the paired mean trajectory of `report.json` (schema 2: `trajectory`, direction-folded like `E`) with its bootstrap band, the paired mean effect with its CI over the scored window, the late-window mean with its CI and the folded expected effect. Every panel's y axis is in the units of its `E` (named in the gutter), and a mark is drawn only in those units (`src/report/panel-units.ts` holds the audit table): eyelid panels therefore show no late-window mean, late CI or held-only release grid, which the scorer computes from lid ratios minus one. When the run dir still holds `partials/`, the release grids are drawn on face and posture panels, folded the same way. A schema-1 report draws the window statistics only, and the page says so.
+- T3 runs: a contact sheet of the screenshots grouped by the scenario event that precedes them, with the offset after the pulse. ForBOOTH runs carry a note that the default watermark expression covers most of the face.
+- "For your visual check": every failing cell, every result row the page could not read, and passing cells with a size ratio above 1.3 or a face or eyelid parameter whose mean scored-window peak (`levels`, raw units) lies within 5% of the rig's `min` or `max`. The list points at cells; it never claims the motion looks natural.
+- Known failures: the suite counts, new, known, fixed and flaky-passed lists of a `qa:test` run.
+- Inputs: every directory with what it was used as and every missing or unreadable file, including result rows of `report.json` that do not have the emotion-check shape (they are named above the verdict table, never dropped). A directory without `report.json` still renders, with the missing inputs named instead of an empty table.
+- No `src="http`, `href="http` or `url(http`: images are base64 PNG, plots are inline SVG, fonts are the system stack.
+- Exit codes: 0 written, 1 written but an input was missing or unreadable (a file or a result row; the page names it), 2 usage error.
+- Tests: `pnpm -F @proj-airi/qa-tools exec vitest run --project node src/report`.
 
 ## Scorer validation
 

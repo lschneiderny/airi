@@ -34,6 +34,7 @@
     "build:engines": "turbo run build -F=\"./engines/*\"",
     "qa:doctor": "pnpm -F @proj-airi/qa-tools run doctor",
     "qa:motion": "pnpm -F @proj-airi/qa-tools run motion",
+    "qa:report": "pnpm -F @proj-airi/qa-tools run report",
     "qa:test": "pnpm -F @proj-airi/qa-tools run test:qa",
     "test": "vitest --coverage",
     "test:run": "vitest run && pnpm run test-stage-tamagotchi:run && pnpm run test-stage-web:run && pnpm run test-stage-pages:run && pnpm run test-ui:run && pnpm run test-stage-ui-live2d:run",
