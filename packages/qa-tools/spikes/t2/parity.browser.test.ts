@@ -13,29 +13,33 @@ declare module 'vitest/browser' {
   }
 }
 
-/** The core's asm.js module finishes initializing after its script task, as in Node. */
-const maxReadyYields = 100
+/** Upper bound for the core script's load event. */
+const coreLoadTimeoutMs = 30_000
 
 async function loadCore() {
   const src = await commands.t2CoreUrl()
-  await new Promise<void>((resolve, reject) => {
-    const script = document.createElement('script')
-    script.src = src
-    script.addEventListener('load', () => resolve(), { once: true })
-    script.addEventListener('error', () => reject(new Error(`Failed to load the Cubism core from ${src}`)), { once: true })
-    document.head.appendChild(script)
-  })
-  const core = (globalThis as typeof globalThis & { Live2DCubismCore: { Version: { csmGetVersion: () => number } } }).Live2DCubismCore
-  for (let yields = 0; ; yields++) {
-    try {
-      return core.Version.csmGetVersion()
-    }
-    catch (error) {
-      if (yields >= maxReadyYields)
-        throw new Error('Cubism core did not initialize', { cause: error })
-      await new Promise(resolve => setTimeout(resolve, 0))
-    }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    // The core's Emscripten module initializes before the script's `load` event fires, so the
+    // event is the readiness signal. The listener is attached before the script is inserted.
+    await Promise.race([
+      new Promise<void>((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = src
+        script.addEventListener('load', () => resolve(), { once: true })
+        script.addEventListener('error', () => reject(new Error(`Failed to load the Cubism core from ${src}`)), { once: true })
+        document.head.appendChild(script)
+      }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Cubism core script did not fire load within ${coreLoadTimeoutMs} ms: ${src}`)), coreLoadTimeoutMs)
+      }),
+    ])
   }
+  finally {
+    clearTimeout(timer)
+  }
+  const core = (globalThis as typeof globalThis & { Live2DCubismCore: { Version: { csmGetVersion: () => number } } }).Live2DCubismCore
+  return core.Version.csmGetVersion()
 }
 
 it('runs the T2 loop on the real core in headless Chromium', async () => {

@@ -5,9 +5,9 @@ import { resolve } from 'node:path'
 import { errorMessageFrom } from '@moeru/std'
 
 import { gateUsage, runGateCli } from '../src/motion/gate/cli'
+import { runValidateCli, validateUsage } from '../src/motion/validation/cli'
 import { t3Usage } from '../src/t3/args'
 import { runT3Cli } from '../src/t3/cli'
-import { runValidateCli, validateUsage } from '../src/motion/validation/cli'
 
 const usage = `Usage: motion <command>
 
