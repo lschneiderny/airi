@@ -4,7 +4,7 @@ import type {} from 'pinia-plugin-synced'
 import type { ChatSendOutboxEntry } from '../../database/repos/chat-sessions.repo'
 import type { ChatWsClient, CloudChatMapper } from '../../libs/chat-sync'
 import type { ChatHistoryItem } from '../../types/chat'
-import type { ChatSessionMeta, ChatSessionRecord, ChatSessionsExport, ChatSessionsIndex, StoredVoiceInterruption } from '../../types/chat-session'
+import type { ChatSessionMeta, ChatSessionRecord, ChatSessionsExport, ChatSessionsIndex, StoredUnpromptedDecline, StoredVoiceInterruption } from '../../types/chat-session'
 
 import { errorMessageFrom } from '@moeru/std'
 import { cloneDeep } from 'es-toolkit'
@@ -55,6 +55,8 @@ export interface DeleteChatMessagePayload {
  * and so a future schema migration / manual replay can recover them.
  */
 const OUTBOX_MAX_ATTEMPTS = 5
+/** A session keeps this many of its newest control events. */
+const MAX_CONTROL_EVENTS = 50
 
 const useChatSessionSelectionStore = defineStore('chat-session-selection', () => {
   const activeSessionId = ref('')
@@ -401,19 +403,32 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     return { status: existing ? 'existing' as const : 'inserted' as const, messageId: message.id }
   }
 
-  /** Persists a control event under its turn's session. Retries retain the original event identity. */
-  async function recordInterruption(event: StoredVoiceInterruption) {
+  /**
+   * Persists a control event under its turn's session. Retries retain the original event identity, so an event that is
+   * already stored is not added again. The session keeps the newest {@link MAX_CONTROL_EVENTS} events.
+   */
+  async function recordControlEvent(event: StoredVoiceInterruption | StoredUnpromptedDecline) {
     const sessionId = event.turn.sessionId
     if (!await loadSession(sessionId))
-      throw new Error('Cannot record interruption for an unknown session')
+      throw new Error('Cannot record a control event for an unknown session')
     const generation = getSessionGeneration(sessionId)
     const meta = sessionMetas.value[sessionId]
     if (!meta.controlEvents?.some(record => record.eventId === event.eventId))
-      meta.controlEvents = [...(meta.controlEvents ?? []), event]
+      meta.controlEvents = [...(meta.controlEvents ?? []), event].slice(-MAX_CONTROL_EVENTS)
     await persistSession(sessionId)
     if (generation !== getSessionGeneration(sessionId) || !sessionMetas.value[sessionId])
-      throw new Error('Session changed before interruption persistence completed')
+      throw new Error('Session changed before control event persistence completed')
     return { status: 'queued' as const }
+  }
+
+  /** Persists a voice interruption. Later voice requests of the session read it. */
+  async function recordInterruption(event: StoredVoiceInterruption) {
+    return recordControlEvent(event)
+  }
+
+  /** Persists that an unprompted turn was declined. The runtime committed nothing, so no message is removed. */
+  async function recordUnpromptedDecline(event: Omit<StoredUnpromptedDecline, 'kind'>) {
+    return recordControlEvent({ kind: 'unprompted-declined', ...event })
   }
 
   /** Removes one message by stable id or by its current history index. */
@@ -960,8 +975,12 @@ export const useChatSessionStore = defineStore('chat-session', () => {
         // overwrites by messageId so re-running reconcile doesn't
         // multiply rows.
         const localMessages = sessionMessages.value[result.sessionId] ?? []
+        // A reply stays local with its source turn, as on the live push path in `chat.ts`.
+        let sourceSyncable = true
         for (const message of localMessages) {
-          if (!message.id || !isCloudSyncableMessage(message))
+          if (message.role === 'user')
+            sourceSyncable = isCloudSyncableMessage(message)
+          if (!message.id || !isCloudSyncableMessage(message) || (message.role === 'assistant' && !sourceSyncable))
             continue
           const text = extractMessageText(message)
           if (!text)
@@ -1760,6 +1779,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     appendSessionMessage,
     commitUserMessage,
     recordInterruption,
+    recordUnpromptedDecline,
     persistSessionMessages,
     getSessionMessages,
     getSessionSystemPrompt,
@@ -1794,6 +1814,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       'activateCurrentUser',
       'commitUserMessage',
       'recordInterruption',
+      'recordUnpromptedDecline',
       'createSession',
       'deleteMessage',
       'deleteSession',

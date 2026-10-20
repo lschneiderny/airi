@@ -15,11 +15,13 @@ import { computed, createApp, nextTick, reactive, ref } from 'vue'
 
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
+import { isCloudSyncableMessage } from '../libs/chat-sync'
 import {
   AIRI_CHAT_APP_SURFACE_HEADER,
   AIRI_CHAT_ROUND_ID_HEADER,
   AIRI_CHAT_SESSION_ID_HEADER,
 } from '../libs/product-signals/headers'
+import { getSpeechBusContext, voiceGenerationEnded } from '../services/speech/bus'
 import { useChatStore } from './chat'
 import { useContextObservabilityStore } from './devtools/context-observability'
 import { useConsciousnessSettingsStore } from './modules/consciousness-settings'
@@ -92,6 +94,9 @@ const initializeSessionMock = vi.fn()
 const disposeSessionMock = vi.fn()
 const ensureCurrentSessionMock = vi.fn()
 const getChatProviderInstanceMock = vi.fn()
+const pushMessageToCloudMock = vi.fn()
+/** Control records that the chat store asked the session store to persist. */
+const controlRecords: unknown[] = []
 const getToolsByNamesMock = vi.fn<(names: string[]) => Tool[]>()
 const visionMocks = vi.hoisted(() => ({ configured: false, model: 'system', runInference: vi.fn(), useForToolImages: true }))
 /** A catalog model can omit its abilities, as most provider catalogs do. */
@@ -246,7 +251,15 @@ vi.mock('./chat/session-store', () => ({
     },
     // Cloud sync surface used by `chat.ts performSend`. Mocked as a no-op so
     // the orchestrator contract tests do not need a real WS / cloud mapper.
-    pushMessageToCloud: vi.fn().mockResolvedValue(undefined),
+    pushMessageToCloud: pushMessageToCloudMock,
+    recordInterruption: async (event: unknown) => {
+      controlRecords.push(event)
+      return { status: 'queued' }
+    },
+    recordUnpromptedDecline: async (event: unknown) => {
+      controlRecords.push(event)
+      return { status: 'queued' }
+    },
   }),
 }))
 
@@ -391,6 +404,8 @@ describe('chat store contract', () => {
     disposeSessionMock.mockReset()
     ensureCurrentSessionMock.mockReset().mockResolvedValue('session-1')
     getChatProviderInstanceMock.mockReset().mockResolvedValue(provider)
+    pushMessageToCloudMock.mockReset().mockResolvedValue(undefined)
+    controlRecords.length = 0
     getToolsByNamesMock.mockReset().mockImplementation(names => names.map(name => ({
       type: 'function',
       function: {
@@ -2129,5 +2144,230 @@ describe('chat store contract', () => {
       hidden: true,
     })
     expect(ensureSessionMock).toHaveBeenCalledWith('session-forked')
+  })
+
+  describe('unprompted turns', () => {
+    /** Streams `chunks` as text deltas, then finishes, and records each provider request as JSON. */
+    function replyWith(chunks: string[], prompts: string[] = []) {
+      return async (_model: string, _provider: GenerationProvider, messages: Conversation, options: StreamOptions) => {
+        prompts.push(JSON.stringify(messages))
+        for (const text of chunks)
+          await options.onStreamEvent?.({ type: 'text-delta', text })
+        await options.onStreamEvent?.({ type: 'finish' })
+      }
+    }
+
+    /** Holds the provider request until it is aborted, and reports its signal. */
+    function holdUntilAborted(signals: AbortSignal[]) {
+      return async (_model: string, _provider: GenerationProvider, _messages: Conversation, options: StreamOptions) => {
+        signals.push(options.abortSignal!)
+        await new Promise<void>((resolve) => {
+          if (options.abortSignal?.aborted)
+            return resolve()
+          options.abortSignal?.addEventListener('abort', () => resolve(), { once: true })
+        })
+      }
+    }
+
+    it('speaks a reply and returns its text with the trigger and reply in history', async () => {
+      const prompts: string[] = []
+      llmStreamMock.mockImplementation(replyWith(['<|ACT happy|>', ' Oh, a QA topic!'], prompts))
+      const store = useChatStore()
+
+      const result = await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-1' })
+
+      expect(result).toEqual({ status: 'spoken', text: expect.stringContaining('Oh, a QA topic!') })
+      expect(result.status === 'spoken' && result.text).not.toContain('ACT')
+      expect(prompts).toHaveLength(1)
+      expect(prompts[0]).toContain('(No one spoke to you. You may speak up about: QA topic)')
+      expect(prompts[0]).toContain('base.prompt.unprompted')
+      expect(prompts[0]).not.toContain('base.prompt.unprompted-forced')
+      expect(sessionMessages['session-1'].slice(1)).toMatchObject([
+        { role: 'user', id: 'unprompted-1', origin: 'unprompted', trigger: { topicKey: 'qa', text: 'QA topic' } },
+        { role: 'assistant', content: expect.stringContaining('Oh, a QA topic!') },
+      ])
+      // Neither the trigger nor its reply is mirrored to the cloud.
+      expect(pushMessageToCloudMock).not.toHaveBeenCalled()
+      expect(controlRecords).toEqual([])
+    })
+
+    it('asks for a reply without the silence allowance when forced, and appends the supplement after it', async () => {
+      const prompts: string[] = []
+      llmStreamMock.mockImplementation(replyWith(['Hi.'], prompts))
+      const store = useChatStore()
+
+      await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', force: true, supplement: 'CALL manifest text' })
+
+      const forced = prompts[0].indexOf('base.prompt.unprompted-forced')
+      expect(forced).toBeGreaterThan(-1)
+      expect(prompts[0].indexOf('CALL manifest text')).toBeGreaterThan(forced)
+    })
+
+    it('declines on SILENT without changing history, syncing, or opening a voice turn that never ends', async () => {
+      llmStreamMock.mockImplementation(replyWith(['<|SILENT|>']))
+      const ended: unknown[] = []
+      const off = getSpeechBusContext().on(voiceGenerationEnded, ({ body }) => ended.push(body))
+      onTestFinished(() => off())
+      const store = useChatStore()
+      const messageCount = sessionMessages['session-1'].length
+
+      const result = await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-2' })
+
+      expect(result).toEqual({ status: 'declined' })
+      expect(sessionMessages['session-1']).toHaveLength(messageCount)
+      expect(pushMessageToCloudMock).not.toHaveBeenCalled()
+      expect(controlRecords).toEqual([{
+        eventId: expect.any(String),
+        turn: { sessionId: 'session-1', turnId: 'unprompted-2' },
+        topicKey: 'qa',
+        atMs: expect.any(Number),
+      }])
+      // Speech consumers know no declined turn. They close the response as cancelled.
+      expect(ended).toEqual([{ sessionId: 'session-1', turnId: 'unprompted-2', status: 'cancelled' }])
+      expect(store.sending).toBe(false)
+    })
+
+    it('cancels a generating unprompted turn when the user sends, and the user turn proceeds', async () => {
+      const signals: AbortSignal[] = []
+      llmStreamMock
+        .mockImplementationOnce(holdUntilAborted(signals))
+        .mockImplementationOnce(replyWith(['Sure.']))
+      const store = useChatStore()
+
+      const unprompted = store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-3' })
+      await vi.waitFor(() => expect(signals).toHaveLength(1))
+      // The undecided turn holds the raw flag but no user-facing stream, so presence stays idle and no placeholder shows.
+      expect(store.sending).toBe(true)
+      expect(store.userSending).toBe(false)
+      expect(store.activeTurns).toEqual([])
+
+      await store.send({ sessionId: 'session-1', text: 'hi there' })
+
+      expect(await unprompted).toEqual({ status: 'cancelled' })
+      expect(signals[0].aborted).toBe(true)
+      expect(sessionMessages['session-1'].some(message => message.id === 'unprompted-3')).toBe(false)
+      expect(sessionMessages['session-1'].slice(1)).toMatchObject([
+        { role: 'user', content: 'hi there' },
+        { role: 'assistant', content: 'Sure.' },
+      ])
+      expect(controlRecords).toEqual([])
+    })
+
+    it('removes a queued unprompted turn when the user sends, before it reaches the provider', async () => {
+      const release = Promise.withResolvers<void>()
+      llmStreamMock
+        .mockImplementationOnce(async (_model: string, _provider: GenerationProvider, _messages: Conversation, options: StreamOptions) => {
+          await release.promise
+          await options.onStreamEvent?.({ type: 'finish' })
+        })
+        .mockImplementation(replyWith(['Sure.']))
+      const store = useChatStore()
+      const holder = store.ingest('hold queue', { model: 'gpt-test', chatProvider: provider })
+      await vi.waitFor(() => expect(llmStreamMock).toHaveBeenCalledTimes(1))
+
+      const unprompted = store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-queued' })
+      await vi.waitFor(() => expect(store.pendingQueuedSendCount).toBe(1))
+      const userSend = store.send({ sessionId: 'session-1', text: 'hi there' })
+
+      expect(await unprompted).toEqual({ status: 'cancelled' })
+      release.resolve()
+      await holder
+      await userSend
+
+      // The holder and the user turn reached the provider. The unprompted turn never did.
+      expect(llmStreamMock).toHaveBeenCalledTimes(2)
+      expect(sessionMessages['session-1'].some(message => message.id === 'unprompted-queued')).toBe(false)
+      expect(sessionMessages['session-1'].slice(-2)).toMatchObject([
+        { role: 'user', content: 'hi there' },
+        { role: 'assistant', content: 'Sure.' },
+      ])
+    })
+
+    it('starts no second unprompted turn while one is pending, and joins a repeated call for the same turn', async () => {
+      const signals: AbortSignal[] = []
+      llmStreamMock.mockImplementationOnce(holdUntilAborted(signals))
+      const store = useChatStore()
+
+      const first = store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-4' })
+      const repeated = store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-4' })
+      const second = store.submitUnprompted({ topicKey: 'other', topicText: 'Other topic' })
+
+      expect(await second).toEqual({ status: 'failed', error: 'Another unprompted turn is still pending' })
+      await vi.waitFor(() => expect(signals).toHaveLength(1))
+      await store.cancelTurn({ sessionId: 'session-1', turnId: 'unprompted-4' })
+
+      // The repeated call joined the pending turn: one provider request, one shared outcome.
+      expect(await first).toEqual({ status: 'cancelled' })
+      expect(await repeated).toEqual({ status: 'cancelled' })
+      expect(llmStreamMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('cancels an undecided unprompted turn on voice input without storing an interruption', async () => {
+      const signals: AbortSignal[] = []
+      llmStreamMock.mockImplementationOnce(holdUntilAborted(signals))
+      const store = useChatStore()
+
+      const unprompted = store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-5' })
+      await vi.waitFor(() => expect(signals).toHaveLength(1))
+      const receipt = await store.receiveInterruption({
+        eventId: 'interruption-1',
+        turn: { sessionId: 'session-1', turnId: 'unprompted-5' },
+        cause: 'user-speech',
+        playback: { groupId: 'group-1', played: [], status: 'silent' },
+      })
+
+      expect(receipt).toEqual({ status: 'acknowledged' })
+      expect(await unprompted).toEqual({ status: 'cancelled' })
+      expect(signals[0].aborted).toBe(true)
+      expect(controlRecords).toEqual([])
+    })
+
+    it('returns a failure without adding an error message to the chat', async () => {
+      llmStreamMock.mockImplementationOnce(async () => {
+        throw new Error('provider down')
+      })
+      const store = useChatStore()
+      const messageCount = sessionMessages['session-1'].length
+
+      expect(await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic' })).toEqual({ status: 'failed', error: 'provider down' })
+      expect(sessionMessages['session-1']).toHaveLength(messageCount)
+    })
+
+    it('marks unprompted trigger messages as not cloud-syncable', () => {
+      expect(isCloudSyncableMessage({ role: 'user', content: '(No one spoke to you.)', origin: 'unprompted', trigger: { topicKey: 'qa', text: 'QA topic' } })).toBe(false)
+      expect(isCloudSyncableMessage({ role: 'user', content: 'hello' })).toBe(true)
+    })
+
+    it('runs an unprompted turn that a follower window submits in the leader', async () => {
+      const namespace = `chat-unprompted:${crypto.randomUUID()}`
+      const leaderPinia = createPinia()
+      const leaderRuntime = createSyncedPiniaPlugin({ callTimeout: 1000, leadership: 'leader-only', namespace })
+      leaderPinia.use(leaderRuntime.plugin)
+      createApp({}).use(leaderPinia)
+      const followerPinia = createPinia()
+      const followerRuntime = createSyncedPiniaPlugin({ callTimeout: 1000, leadership: 'follower-only', namespace })
+      followerPinia.use(followerRuntime.plugin)
+      createApp({}).use(followerPinia)
+      onTestFinished(() => {
+        followerRuntime.dispose()
+        leaderRuntime.dispose()
+        disposePinia(followerPinia)
+        disposePinia(leaderPinia)
+      })
+
+      await vi.waitFor(() => expect(leaderRuntime.isLeader()).toBe(true))
+      setActivePinia(leaderPinia)
+      useChatStore()
+      setActivePinia(followerPinia)
+      const followerStore = useChatStore()
+      await vi.waitFor(() => expect(followerRuntime.getLeaderId()).toBe(leaderRuntime.participantId))
+      llmStreamMock.mockImplementation(replyWith(['Hello from the leader.']))
+
+      const result = await followerStore.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-follower' })
+
+      expect(result).toEqual({ status: 'spoken', text: 'Hello from the leader.' })
+      expect(llmStreamMock).toHaveBeenCalledTimes(1)
+      expect(sessionMessages['session-1'].filter(message => message.id === 'unprompted-follower')).toHaveLength(1)
+    })
   })
 })

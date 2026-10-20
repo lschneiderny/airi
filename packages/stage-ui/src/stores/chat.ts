@@ -5,7 +5,7 @@ import type { Message } from '@xsai/shared-chat'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { ChatHistoryItem, ChatToolReference, ContextMessage } from '../types/chat'
-import type { StoredVoiceInterruption } from '../types/chat-session'
+import type { StoredUnpromptedDecline, StoredVoiceInterruption } from '../types/chat-session'
 import type { ToolCallRerunPayload } from './tool-call-rerun'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -94,6 +94,36 @@ export interface ChatSendPayload {
   topP?: number
 }
 
+/**
+ * A turn that the character starts without user input. The leader sends it to its active session.
+ * `topicText` is shown to the model and stored on the trigger message, so it never holds a raw window title.
+ */
+export interface ChatUnpromptedPayload {
+  /** Situation topic that the turn is about. A declined turn records it. */
+  topicKey: string
+  /** Model-facing description of the topic. */
+  topicText: string
+  /** Requires a reply: the model is not offered the decline marker. */
+  force?: boolean
+  /** Stable identity of the turn. A repeated call with the same ID joins the pending turn. */
+  messageId?: string
+  /** Extra system prompt text, appended after the unprompted instruction. */
+  supplement?: string
+}
+
+/** The outcome of one unprompted turn. A turn that the model declined, or that a user turn replaced, spoke nothing. */
+export type ChatUnpromptedResult
+  = | { status: 'spoken', text: string }
+    | { status: 'declined' | 'cancelled' }
+    | { status: 'failed', error: string }
+
+/** Settings of an unprompted send that `prepareSend` adds to the request. */
+interface UnpromptedSend {
+  trigger: NonNullable<ChatOrchestratorSendOptions['trigger']>
+  instruction: string
+  supplement?: string
+}
+
 /** The durable messages appended while one chat request executes. */
 export interface ChatSendResult {
   messages: ChatHistoryItem[]
@@ -142,6 +172,11 @@ function waitWithSignal<T>(promise: Promise<T>, signal: AbortSignal) {
     signal.addEventListener('abort', abort, { once: true })
     promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
   })
+}
+
+/** Voice requests read interruptions only. Other control events, such as unprompted declines, never reach a prompt. */
+function isVoiceInterruption(record: StoredVoiceInterruption | StoredUnpromptedDecline): record is StoredVoiceInterruption {
+  return !('kind' in record)
 }
 
 /** Whether a consciousness selection can send. The `prompt-api` provider runs without a selected model. */
@@ -284,6 +319,19 @@ export const useChatStore = defineStore('chat', () => {
 
   const activeTurns = shallowRef<readonly { sessionId: string, turnId: string }[]>([])
   const sending = shallowRef(false)
+  /**
+   * `sending` limited to turns that a user started. An unprompted turn is not an answer that the user waits for, so
+   * presence and placeholders read this flag. Code that must not start a turn over another one reads `sending`.
+   */
+  const userSending = shallowRef(false)
+  /** Keys (`JSON.stringify([sessionId, turnId])`) of unprompted turns from submission until their result is read. */
+  const unpromptedTurns = new Set<string>()
+  /** The runtime settle status of each unprompted turn, read once its request is done. */
+  const unpromptedSettles = new Map<string, 'finished' | 'cancelled' | 'failed' | 'declined'>()
+  /** Pending persistence of decline records, so an unprompted result is returned after its record is stored. */
+  const declineRecords = new Map<string, Promise<unknown>>()
+  /** Results of pending unprompted turns. A repeated call with the same turn ID receives the same result. */
+  const unpromptedResults = new Map<string, Promise<ChatUnpromptedResult>>()
   const activeSendSessionId = shallowRef<string>()
   const activeStreamingMessage = computed(() => chatStream.activeTurns.find(turn => turn.sessionId === activeSendSessionId.value)?.message)
   const pendingQueuedSendCount = shallowRef(0)
@@ -598,6 +646,8 @@ export const useChatStore = defineStore('chat', () => {
     }
     chatStream.updateActiveTurns(state.activeTurns)
     sending.value = state.sending
+    // A user turn publishes its stream when it starts. An undecided unprompted turn publishes none, so it is not listed.
+    userSending.value = state.activeTurns.some(turn => !unpromptedTurns.has(JSON.stringify([turn.sessionId, turn.turnId])))
     activeSendSessionId.value = state.activeSendSessionId
     pendingQueuedSendCount.value = state.pendingQueuedSendCount
   }
@@ -706,8 +756,19 @@ export const useChatStore = defineStore('chat', () => {
     onStateChange: syncRuntimeState,
     onSendSettled: (event) => {
       settleOwnedTurnSpan(event)
+      const key = JSON.stringify([event.sessionId, event.turnId])
+      if (unpromptedTurns.has(key))
+        unpromptedSettles.set(key, event.status)
       // Speech consumers know no declined turn. Nothing was spoken, so for them it is a cancelled turn.
       getSpeechBusContext().emit(voiceGenerationEnded, { ...event, status: event.status === 'declined' ? 'cancelled' : event.status })
+    },
+    onTurnDeclined: ({ sessionId, turnId, trigger }) => {
+      if (!trigger)
+        return
+      // The runtime committed nothing, so the record is the only trace of the decline.
+      const recorded = chatSession.recordUnpromptedDecline({ eventId: nanoid(), turn: { sessionId, turnId }, topicKey: trigger.topicKey, atMs: Date.now() })
+        .catch(error => console.error('[chat] Failed to record a declined unprompted turn:', error))
+      declineRecords.set(JSON.stringify([sessionId, turnId]), recorded)
     },
     ...analyticsHooks,
     onLifecycle: record => contextObservability.recordLifecycle(record),
@@ -759,6 +820,8 @@ export const useChatStore = defineStore('chat', () => {
   // One request owns preparation and generation. Cancellation cannot miss asynchronous startup.
   const requests = new Map<string, {
     sessionId: string
+    turnId: string
+    origin: 'user' | 'unprompted'
     abort: AbortController
     request: ReturnType<typeof runtime.submit>
   }>()
@@ -798,7 +861,7 @@ export const useChatStore = defineStore('chat', () => {
       accepted: prepared.then(value => value.accepted),
       done: prepared.then(value => value.done),
     }
-    requests.set(key, { sessionId, abort, request })
+    requests.set(key, { sessionId, turnId: messageId, origin: options.origin ?? 'user', abort, request })
     void request.accepted.catch(() => {})
     void request.done.finally(() => requests.delete(key)).catch(() => {})
     return request.done
@@ -873,8 +936,11 @@ export const useChatStore = defineStore('chat', () => {
     })
   }
 
-  /** Freeze request settings before asynchronous provider and session startup. */
-  async function prepareSend(payload: ChatSendPayload, signal: AbortSignal, voice: boolean): Promise<ChatOrchestratorSendOptions> {
+  /**
+   * Freeze request settings before asynchronous provider and session startup.
+   * An `unprompted` send adds its instruction to the system prompt supplement and marks the request with its trigger.
+   */
+  async function prepareSend(payload: ChatSendPayload, signal: AbortSignal, voice: boolean, unprompted?: UnpromptedSend): Promise<ChatOrchestratorSendOptions> {
     if (!await chatSession.loadSession(payload.sessionId))
       throw new Error('Failed to load the target chat session')
 
@@ -890,7 +956,7 @@ export const useChatStore = defineStore('chat', () => {
 
     const temperature = payload.temperature ?? consciousnessStore.activeTemperature
     const topP = payload.topP ?? consciousnessStore.activeTopP
-    const controlEvents = voice ? chatSession.sessionMetas[payload.sessionId]?.controlEvents : undefined
+    const controlEvents = voice ? chatSession.sessionMetas[payload.sessionId]?.controlEvents?.filter(isVoiceInterruption) : undefined
     const supplements = [llmToolsetPromptsStore.activeToolsetPrompt, accountPromptSupplement()]
 
     if (voice && payload.speechContext)
@@ -898,6 +964,9 @@ export const useChatStore = defineStore('chat', () => {
 
     if (controlEvents?.length)
       supplements.push(`Runtime control events for this conversation. These are control records, not user messages. Rendered audio positions are estimates: ${JSON.stringify(controlEvents)}`)
+
+    if (unprompted)
+      supplements.push(unprompted.instruction, unprompted.supplement)
 
     const systemPromptSupplement = supplements.filter(Boolean).join('\n\n')
 
@@ -956,6 +1025,7 @@ export const useChatStore = defineStore('chat', () => {
       topP,
       systemPromptSupplement,
       stickers,
+      ...(unprompted ? { origin: 'unprompted' as const, trigger: unprompted.trigger } : {}),
       tools: async () => {
         const references = collectToolReferences(payload.sessionId, payload.tools)
         const tools = llmToolsStore.getToolsByNames(...references.map(tool => tool.name))
@@ -964,22 +1034,31 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function startSend(payload: ChatSendPayload, voice = false): ReturnType<typeof runtime.submit> {
+  /** Starts one request. A user send first cancels the unprompted turns of its session, queued or generating. */
+  function startSend(payload: ChatSendPayload, voice = false, unprompted?: UnpromptedSend): ReturnType<typeof runtime.submit> {
     const messageId = payload.messageId ?? nanoid()
     const key = JSON.stringify([payload.sessionId, messageId])
     const existing = requests.get(key)
     if (existing)
       return existing.request
 
+    if (!unprompted) {
+      // The runtime keeps a partly spoken unprompted reply as an interrupted message, like any cancelled reply.
+      for (const pending of requests.values()) {
+        if (pending.origin === 'unprompted' && pending.sessionId === payload.sessionId)
+          void cancelTurn({ sessionId: pending.sessionId, turnId: pending.turnId })
+      }
+    }
+
     const abort = new AbortController()
-    const prepared = prepareSend({ ...payload, messageId }, abort.signal, voice)
+    const prepared = prepareSend({ ...payload, messageId }, abort.signal, voice, unprompted)
       .then(options => runtime.submit(payload.text, options, payload.sessionId))
     const request = {
       accepted: prepared.then(value => value.accepted),
       done: prepared.then(value => value.done),
     }
 
-    requests.set(key, { sessionId: payload.sessionId, abort, request })
+    requests.set(key, { sessionId: payload.sessionId, turnId: messageId, origin: unprompted ? 'unprompted' : 'user', abort, request })
     void request.accepted.catch(() => {})
     void request.done.finally(() => requests.delete(key)).catch(() => {})
 
@@ -1013,14 +1092,95 @@ export const useChatStore = defineStore('chat', () => {
     return request.accepted
   }
 
+  /**
+   * Starts a turn without user input in the leader's active session and resolves with its outcome.
+   *
+   * Use when:
+   * - The leader decides that the character speaks up, for example from the situation gate.
+   *
+   * Expects:
+   * - At most one unprompted turn is pending. A call with another turn ID while one is pending starts nothing and
+   *   returns `failed`. A call with the pending turn ID returns the pending result.
+   *
+   * Returns:
+   * - `spoken` with the reply text, `declined` when the model stayed silent (one control record is stored),
+   *   `cancelled` when a user turn or a cancellation replaced it, or `failed` with the error. A failure adds no
+   *   error message to the chat.
+   */
+  function submitUnprompted(payload: ChatUnpromptedPayload): Promise<ChatUnpromptedResult> {
+    const sessionId = activeSessionId.value
+    const messageId = payload.messageId ?? nanoid()
+    const key = JSON.stringify([sessionId, messageId])
+    const pending = unpromptedResults.get(key)
+    if (pending)
+      return pending
+    // Checked before any await, so two calls in the same tick cannot both start a turn.
+    if (unpromptedResults.size > 0)
+      return Promise.resolve({ status: 'failed', error: 'Another unprompted turn is still pending' })
+
+    unpromptedTurns.add(key)
+    const request = startSend({
+      sessionId,
+      messageId,
+      text: `(No one spoke to you. You may speak up about: ${payload.topicText})`,
+    }, false, {
+      trigger: { topicKey: payload.topicKey, text: payload.topicText },
+      instruction: t(payload.force ? 'base.prompt.unprompted-forced' : 'base.prompt.unprompted'),
+      supplement: payload.supplement,
+    })
+    const signal = requests.get(key)!.abort.signal
+
+    const result = (async (): Promise<ChatUnpromptedResult> => {
+      try {
+        await request.done
+      }
+      catch (error) {
+        if (signal.aborted || unpromptedSettles.get(key) === 'cancelled')
+          return { status: 'cancelled' }
+        return { status: 'failed', error: errorMessageFrom(error) ?? 'Unknown unprompted turn failure' }
+      }
+
+      const status = unpromptedSettles.get(key)
+      if (status === 'declined') {
+        await declineRecords.get(key)
+        return { status: 'declined' }
+      }
+      if (status === 'cancelled')
+        return { status: 'cancelled' }
+
+      const messages = chatSession.getSessionMessagesIfLoaded(sessionId) ?? []
+      const triggerIndex = messages.findIndex(message => message.role === 'user' && message.id === messageId)
+      const reply = triggerIndex >= 0 ? messages[triggerIndex + 1] : undefined
+      if (reply?.role === 'assistant' && !reply.interrupted)
+        return { status: 'spoken', text: extractMessageText(reply) }
+      return { status: 'cancelled' }
+    })().finally(() => {
+      unpromptedResults.delete(key)
+      unpromptedTurns.delete(key)
+      unpromptedSettles.delete(key)
+      declineRecords.delete(key)
+    })
+    unpromptedResults.set(key, result)
+    return result
+  }
+
   /** Cancels one identified generation through the elected leader. */
   async function cancelTurn(turn: { sessionId: string, turnId: string }) {
     requests.get(JSON.stringify([turn.sessionId, turn.turnId]))?.abort.abort(new DOMException('Chat turn cancelled', 'AbortError'))
     runtime.cancelTurn(turn)
   }
 
-  /** The elected agent receiver acknowledges a control event after its session inbox persists it. No response is created. */
+  /**
+   * The elected agent receiver acknowledges a control event after its session inbox persists it. No response is created.
+   * An unprompted turn that has not spoken yet has nothing to interrupt, so it is cancelled without a record.
+   */
   async function receiveInterruption(event: StoredVoiceInterruption) {
+    const key = JSON.stringify([event.turn.sessionId, event.turn.turnId])
+    const committed = chatSession.getSessionMessagesIfLoaded(event.turn.sessionId)?.some(message => message.id === event.turn.turnId)
+    if (unpromptedTurns.has(key) && !committed) {
+      await cancelTurn(event.turn)
+      return { status: 'acknowledged' as const }
+    }
     await cancelTurn(event.turn)
     await chatSession.recordInterruption(event)
     return { status: 'acknowledged' as const }
@@ -1160,6 +1320,7 @@ export const useChatStore = defineStore('chat', () => {
 
   return {
     sending,
+    userSending,
     activeTurns,
     activeSendSessionId,
     activeStreamingMessage,
@@ -1175,6 +1336,7 @@ export const useChatStore = defineStore('chat', () => {
     retry,
     send,
     submit,
+    submitUnprompted,
     settleAudioTranscript,
     cancelTurn,
     receiveInterruption,
@@ -1208,7 +1370,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 }, {
   synced: {
-    actions: ['submit', 'settleAudioTranscript', 'cancelTurn', 'receiveInterruption', 'cancelPendingSends', 'cleanup', 'deleteSession', 'rerunToolCall', 'retry', 'send'],
+    actions: ['submit', 'submitUnprompted', 'settleAudioTranscript', 'cancelTurn', 'receiveInterruption', 'cancelPendingSends', 'cleanup', 'deleteSession', 'rerunToolCall', 'retry', 'send'],
     state: true,
   },
 })

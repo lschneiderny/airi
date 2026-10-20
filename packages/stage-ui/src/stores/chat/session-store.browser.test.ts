@@ -238,6 +238,38 @@ describe('chat session synchronization', () => {
     await vi.waitFor(() => expect(followerStore.sessionMetas[sessionId]?.controlEvents).toEqual([event]))
   })
 
+  it('records a follower unprompted decline once and keeps the newest 50 control events', async () => {
+    const namespace = `chat-session:${crypto.randomUUID()}`
+    const leader = createSyncedContext(namespace, 'leader-only')
+    await vi.waitFor(() => expect(leader.runtime.isLeader()).toBe(true))
+    setActivePinia(leader.pinia)
+    const leaderStore = useChatSessionStore()
+    await leaderStore.initialize()
+    const follower = createSyncedContext(namespace, 'follower-only')
+    setActivePinia(follower.pinia)
+    const followerStore = useChatSessionStore()
+    await vi.waitFor(() => expect(follower.runtime.getLeaderId()).toBe(leader.runtime.participantId))
+    await followerStore.initialize()
+    const sessionId = followerStore.activeSessionId
+    const before = leaderStore.getSessionMessages(sessionId).length
+    const decline = (index: number) => ({ eventId: `decline-${index}`, turn: { sessionId, turnId: `unprompted-${index}` }, topicKey: `topic-${index}`, atMs: 1000 + index })
+
+    await followerStore.recordUnpromptedDecline(decline(0))
+    await followerStore.recordUnpromptedDecline({ ...decline(0), topicKey: 'retry' })
+    expect(leaderStore.sessionMetas[sessionId]?.controlEvents).toEqual([{ kind: 'unprompted-declined', ...decline(0) }])
+
+    for (let index = 1; index <= 54; index++)
+      await leaderStore.recordUnpromptedDecline(decline(index))
+
+    const events = leaderStore.sessionMetas[sessionId]?.controlEvents ?? []
+    expect(events).toHaveLength(50)
+    expect(events[0]).toEqual({ kind: 'unprompted-declined', ...decline(5) })
+    expect(events.at(-1)).toEqual({ kind: 'unprompted-declined', ...decline(54) })
+    // A decline adds no message. The runtime committed nothing for it.
+    expect(leaderStore.getSessionMessages(sessionId)).toHaveLength(before)
+    await vi.waitFor(() => expect(followerStore.sessionMetas[sessionId]?.controlEvents).toHaveLength(50))
+  })
+
   it('acknowledges a follower submission after storage and deduplicates its retry', async () => {
     const namespace = `chat-session:${crypto.randomUUID()}`
     const leader = createSyncedContext(namespace, 'leader-only')
