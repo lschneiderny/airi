@@ -24,6 +24,7 @@ import {
 import { getSpeechBusContext, voiceGenerationEnded } from '../services/speech/bus'
 import { useChatStore } from './chat'
 import { useContextObservabilityStore } from './devtools/context-observability'
+import { useSituationObservabilityStore } from './devtools/situation-observability'
 import { useConsciousnessSettingsStore } from './modules/consciousness-settings'
 import { useProviderConfigStore } from './providers/config'
 import { useSituationStore } from './situation'
@@ -838,6 +839,7 @@ describe('chat store contract', () => {
         content: expect.stringContaining('A red square.'),
       }),
     ]))
+    expect(useContextObservabilityStore().lastPromptProjection).toMatchObject({ sessionId: 'session-1', turnId: expect.any(String), origin: 'user' })
   })
 
   it('reuses a persisted image description on later turns', async () => {
@@ -2189,6 +2191,21 @@ describe('chat store contract', () => {
       // Neither the trigger nor its reply is mirrored to the cloud.
       expect(pushMessageToCloudMock).not.toHaveBeenCalled()
       expect(controlRecords).toEqual([])
+    })
+
+    it('tags the captured provider request with its turn and origin, and counts spoken and declined turns', async () => {
+      llmStreamMock.mockImplementation(replyWith(['Hi.']))
+      const store = useChatStore()
+      await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-tag-1' })
+      expect(useContextObservabilityStore().lastPromptProjection).toMatchObject({ sessionId: 'session-1', turnId: 'unprompted-tag-1', origin: 'unprompted' })
+
+      llmStreamMock.mockImplementation(replyWith(['<|SILENT|>']))
+      await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-tag-2' })
+
+      const { spend } = await useSituationObservabilityStore().inspect()
+      expect(spend.sessions).toEqual([{ sessionId: 'session-1', spoken: 1, declined: 1 }])
+      expect(spend.lastUnpromptedRequest).toMatchObject({ sessionId: 'session-1', turnId: 'unprompted-tag-2', chars: expect.any(Number) })
+      expect(spend.lastUnpromptedRequest?.chars).toBeGreaterThan('(No one spoke to you. You may speak up about: QA topic)'.length)
     })
 
     it('asks for a reply without the silence allowance when forced, and appends the supplement after it', async () => {

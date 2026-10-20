@@ -3,6 +3,7 @@ import type { AppCategory, GateDecision, GateMemory, GateSignals, Observation, S
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
+import type { SituationGateEvaluation } from '../devtools/situation-observability'
 import type { ConversationHookSource } from './sensors/conversation'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -123,6 +124,7 @@ export const useSituationStore = defineStore('situation', () => {
   const hostSupportsUnprompted = shallowRef(false)
   let gateTicker: ReturnType<typeof setInterval> | undefined
   let gateMemory: GateMemory = initialGateMemory
+  let stopGateEvaluation: (() => void) | undefined
   /** Whether the stage was on screen with a fresh desktop sample at the previous gate tick. */
   let wasStageShown = false
   /** The unprompted turn the gate started, from the fire until its result is recorded. */
@@ -175,7 +177,7 @@ export const useSituationStore = defineStore('situation', () => {
       ingest(observation)
       // The sensor reports user turns only for user-origin sends, so the character's own turns earn no engagement.
       if (observation.kind === 'conversation' && observation.who === 'user' && observation.origin === 'user')
-        gateMemory = recordUserTurn(gateMemory, observation.atMs)
+        setGateMemory(recordUserTurn(gateMemory, observation.atMs))
     })
     const stopSpokenListener = chatHooks.onTokenLiteral(async (_literal, context) => {
       // The runtime holds an unprompted reply until it decides to speak, so its first literal means spoken. Recording
@@ -183,7 +185,7 @@ export const useSituationStore = defineStore('situation', () => {
       if (!firing || firing.spoken || context.origin !== 'unprompted' || context.turnId !== firing.turnId)
         return
       firing.spoken = true
-      gateMemory = recordFireOutcome(gateMemory, 'spoken', Date.now())
+      setGateMemory(recordFireOutcome(gateMemory, 'spoken', Date.now()))
     })
     stopConversation = () => {
       stopSensor()
@@ -232,6 +234,12 @@ export const useSituationStore = defineStore('situation', () => {
     return typing
   }
 
+  /** Changes the gate memory and shows the change in the devtools Situation inspector at once. */
+  function setGateMemory(memory: GateMemory) {
+    gateMemory = memory
+    observability.publishGateMemory(memory)
+  }
+
   function isRecent(sampledAtMs: number | null | undefined, nowMs: number, limitMs: number): boolean {
     return typeof sampledAtMs === 'number' && Number.isFinite(sampledAtMs) && Math.abs(nowMs - sampledAtMs) <= limitMs
   }
@@ -252,18 +260,21 @@ export const useSituationStore = defineStore('situation', () => {
   /**
    * One gate evaluation. Nothing is evaluated while an unprompted turn is pending: from the fire until `sending`
    * turns true the chat reports nothing, so the gate's own `generating` guard cannot see it yet.
+   * `forceTiming` (devtools "Evaluate now") skips the timing guards only; a forced fire starts its turn like any other.
    */
-  function gateTick() {
+  function gateTick(forceTiming = false): SituationGateEvaluation {
     const controls = chat
-    if (!controls || firing || controls.unpromptedPending())
-      return
+    if (!controls)
+      return { status: 'skipped', reason: 'gate-not-running' }
+    if (firing || controls.unpromptedPending())
+      return { status: 'skipped', reason: 'unprompted-pending' }
 
     const nowMs = Date.now()
     const signals = gateSignals(controls, nowMs)
     // A stage that comes back on screen waits a full gap, like a new leader, instead of speaking at once.
     const stageShown = signals.stageVisible && signals.desktopFresh
     if (stageShown && !wasStageShown)
-      gateMemory = visibilityRegainGateMemory(gateMemory, nowMs)
+      setGateMemory(visibilityRegainGateMemory(gateMemory, nowMs))
     wasStageShown = stageShown
 
     const document = settings.document
@@ -280,11 +291,14 @@ export const useSituationStore = defineStore('situation', () => {
         quietApps: document.quietApps.map(pattern => pattern.trim().replace(/\.exe$/i, '')),
         speakDuringGames: document.speakDuringGames,
       },
+      forceTiming,
     }, gateMemory)
+    // Recording the decision publishes this memory to the inspector too.
     gateMemory = memory
     observability.recordGateDecision(decision, memory)
     if (decision.fire)
       void fire(controls, decision, before)
+    return { status: 'evaluated', decision, memory }
   }
 
   /** Starts the unprompted turn of a fire and records its outcome. The topic is addressed before the turn starts. */
@@ -307,28 +321,31 @@ export const useSituationStore = defineStore('situation', () => {
       return
     if (result.status === 'failed' && result.error === UNPROMPTED_BUSY_ERROR) {
       // Another caller's unprompted turn won the race. This fire never happened, so it takes no gap or cap slot.
-      gateMemory = { ...gateMemory, lastFireAtMs: before.lastFireAtMs, fires: gateMemory.fires.filter(atMs => atMs !== decision.trace.nowMs), pending: before.pending }
+      setGateMemory({ ...gateMemory, lastFireAtMs: before.lastFireAtMs, fires: gateMemory.fires.filter(atMs => atMs !== decision.trace.nowMs), pending: before.pending })
       return
     }
     if (!turn.spoken)
-      gateMemory = recordFireOutcome(gateMemory, result.status, Date.now())
+      setGateMemory(recordFireOutcome(gateMemory, result.status, Date.now()))
   }
 
   /** Runs the gate loop only while this window leads in a host that supports unprompted turns. */
   function syncGateLoop() {
     const shouldRun = leading.value && hostSupportsUnprompted.value
     if (shouldRun && gateTicker === undefined) {
-      gateMemory = promotionGateMemory(Date.now())
+      setGateMemory(promotionGateMemory(Date.now()))
       wasStageShown = false
       stopSignalListeners = startSignalListeners()
       gateTicker = setInterval(gateTick, GATE_INTERVAL_MS)
+      stopGateEvaluation = observability.serveGateEvaluation(() => gateTick(true))
     }
     else if (!shouldRun && gateTicker !== undefined) {
       clearInterval(gateTicker)
       gateTicker = undefined
+      stopGateEvaluation?.()
+      stopGateEvaluation = undefined
       stopSignalListeners?.()
       stopSignalListeners = undefined
-      gateMemory = initialGateMemory
+      setGateMemory(initialGateMemory)
     }
   }
 

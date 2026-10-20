@@ -45,6 +45,16 @@ export interface PromptProjectionSnapshot {
   promptText: string
   promptMessage?: Message
   composedMessage?: Message[]
+  /** Turn of the provider request in `composedMessage`, set by {@link captureProviderPromptProjection}. */
+  turnId?: string
+  /** Whether a user or the character herself started that turn. */
+  origin?: 'user' | 'unprompted'
+}
+
+/** Identifies the turn whose provider request a projection shows. */
+export interface ProviderPromptTag {
+  turnId: string
+  origin: 'user' | 'unprompted'
 }
 
 const DEFAULT_MAX_HISTORY = 200
@@ -111,7 +121,8 @@ export const useContextObservabilityStore = defineStore('devtools:context-observ
     }
   }
 
-  function captureProviderPromptProjection(sessionId: string, composedMessage: Message[]) {
+  /** Records the messages a provider request carries, tagged with the turn that sent them. */
+  function captureProviderPromptProjection(sessionId: string, composedMessage: Message[], tag: ProviderPromptTag) {
     if (lastPromptProjection.value?.sessionId !== sessionId)
       return
 
@@ -119,6 +130,8 @@ export const useContextObservabilityStore = defineStore('devtools:context-observ
       ...lastPromptProjection.value,
       capturedAt: Date.now(),
       composedMessage: cloneValue(composedMessage),
+      turnId: tag.turnId,
+      origin: tag.origin,
     }
   }
 
