@@ -111,9 +111,14 @@ pnpm -F <package-name> build
 pnpm typecheck
 pnpm lint                          # ESLint also formats
 pnpm lint:fix
+pnpm verify                        # Changed-file typecheck, lint, and related tests
+pnpm wt ls                         # Worktrees: idle time, uncommitted files, live processes
+pnpm dev:top                       # Dev process memory and CPU per worktree
 ```
-After each task, run changed-workspace typechecks and related tests. For shared packages or exported types, also run root `pnpm typecheck`.
-Run `pnpm lint` before finishing. Report only executed checks, their commands/results, changes, and follow-up work.
+After each task, run `pnpm verify` before finishing. It typechecks the changed packages and their dependents through Turbo, lints the changed files, and runs the tests related to them. It typechecks every package when a root config file changes. It skips a step that already passed on the same working tree.
+Use `pnpm lint` or root `pnpm typecheck` only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
+When `pnpm run` or `pnpm exec` fails because dependencies are out of date, run `pnpm install` once explicitly. The workspace sets `verifyDepsBeforeRun: error` so installs never start silently.
+Create and remove worktrees with `pnpm wt new <name>` and `pnpm wt rm <name>`. Stop a worktree's processes with `pnpm dev:top kill <name> --yes`, never by PID alone.
 If Vitest finds no tests, inspect `vitest.config.ts` includes. Source-only packages can lack build scripts. Use their nested guidance.
 Electron build runs `electron-vite build`, not typecheck. Its typecheck runs `vue-tsc --noEmit`. Stage UI uses `test:run` and has no compilation build.
 
