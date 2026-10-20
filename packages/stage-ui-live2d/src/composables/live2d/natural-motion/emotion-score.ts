@@ -575,6 +575,18 @@ function nonFiniteReason(channel: ScoredChannel, ...windows: readonly (readonly 
     : null
 }
 
+/**
+ * The reason a derived per-trial measurement is missing when its value, its paired value, or their difference is
+ * not finite, else `null`. Records read from JSON carry `null` where a non-finite number was written.
+ */
+function derivedNonFiniteReason(channel: ScoredChannel, value: number, paired: number | null): string | null {
+  if (!Number.isFinite(value))
+    return `non-finite ${channel} measurement (value ${value})`
+  if (paired !== null && (!Number.isFinite(paired) || !Number.isFinite(value - paired)))
+    return `non-finite ${channel} paired difference (value ${value}, paired ${paired})`
+  return null
+}
+
 /** Linear interpolation at `time`; `NaN` outside the sampled span. */
 function interpolate(times: readonly number[], values: readonly number[], time: number) {
   if (!times.length || time < times[0] - 1e-9 || time > times[times.length - 1] + 1e-9)
@@ -695,7 +707,11 @@ function modulationStatistic(trace: NaturalTrace, channel: ScoredChannel, start:
       const invalidAxes = nonFiniteReason(channel, ...axes)
       if (invalidAxes)
         return invalidAxes
-      return Math.log(detrendedRms(windowValues(times, times, start, end), axes))
+      const rms = detrendedRms(windowValues(times, times, start, end), axes)
+      // A stationary window has zero RMS, and its log is -Infinity; a paired difference of two such logs is NaN.
+      if (!(rms > 0))
+        return 'non-finite headRms log ratio (zero RMS)'
+      return Math.log(rms)
     }
     case 'cameraFixation': {
       const columns: number[][] = []
@@ -854,6 +870,13 @@ export function measureEmotionTrial(run: NaturalTrace, paired: NaturalTrace | nu
     }
     if (typeof pairedValue === 'string') {
       missing[channel] = `stripped run: ${pairedValue}`
+      return
+    }
+    // Derived values follow the raw-sample rule: a non-finite value or paired difference would enter the
+    // permutation test as NaN, which no comparison rejects (p = 0), so the trial is missing for this channel.
+    const invalid = derivedNonFiniteReason(channel, value, pairedValue)
+    if (invalid) {
+      missing[channel] = invalid
       return
     }
     const measure: ChannelMeasure = { value, paired: pairedValue }
@@ -1156,6 +1179,11 @@ function evaluateCheck(check: ChannelCheck, context: EvaluationContext): Evaluat
     }
   }
 
+  // Records built elsewhere (or read back from JSON) get the same derived-value rule as `measureEmotionTrial`.
+  const invalidMeasure = (trial: EmotionTrialRecord) => {
+    const entry = trial.channels[check.channel]
+    return entry ? derivedNonFiniteReason(check.channel, entry.value, entry.paired) : null
+  }
   const usable = (variant: TrialVariant) => {
     const matching = context.trials.filter(trial => trial.emotion === check.emotion && trial.band === check.band && trial.variant === variant)
     for (const trial of matching) {
@@ -1166,8 +1194,11 @@ function evaluateCheck(check: ChannelCheck, context: EvaluationContext): Evaluat
       else if (trial.missing[check.channel]) {
         result.reasons.push(`${trial.trialId} cannot measure ${check.channel}: ${trial.missing[check.channel]}`)
       }
+      else if (invalidMeasure(trial)) {
+        result.reasons.push(`${trial.trialId} cannot measure ${check.channel}: ${invalidMeasure(trial)}`)
+      }
     }
-    return matching.filter(trial => trial.rejected === null && trial.channels[check.channel] !== undefined)
+    return matching.filter(trial => trial.rejected === null && trial.channels[check.channel] !== undefined && invalidMeasure(trial) === null)
   }
   const measure = (trial: EmotionTrialRecord) => trial.channels[check.channel]!
   const signOf = (trial: EmotionTrialRecord) => check.sign * (check.sided ? trial.side ?? 0 : 1)

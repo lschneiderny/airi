@@ -77,6 +77,35 @@ function trials(variant: 'full' | 'held-only', count: number, amplitude: number,
   })
 }
 
+/**
+ * A 110 s long-hold trace with every modulation column: head axes with seeded noise of `headNoise` (half-range
+ * units; 0 makes the head stationary), open lids, a 4 s breath, and centered eyes. `marker` picks the scenario event.
+ */
+function longHoldTrace(trialId: string, seed: number, marker: 'emotion' | 'noop' = 'emotion', headNoise = 0.1): NaturalTrace {
+  const random = createRandomStream(seed)
+  const t = Array.from({ length: 110 * 30 + 1 }, (_, index) => index / 30)
+  const head = () => t.map(() => 30 * headNoise * gaussian(random))
+  const unit = { min: -1, max: 1, default: 0 }
+  const angle = { min: -30, max: 30, default: 0 }
+  return {
+    version: 2,
+    t,
+    channels: {
+      ParamAngleX: head(),
+      ParamAngleY: head(),
+      ParamAngleZ: head(),
+      ParamEyeLOpen: t.map(() => 1),
+      ParamEyeROpen: t.map(() => 1),
+      ParamBreath: t.map(time => 0.5 + 0.5 * Math.sin(2 * Math.PI * time / 4)),
+      ParamEyeBallX: t.map(() => 0),
+      ParamEyeBallY: t.map(() => 0),
+    },
+    ranges: { ParamAngleX: angle, ParamAngleY: angle, ParamAngleZ: angle, ParamEyeBallX: unit, ParamEyeBallY: unit, ParamEyeLOpen: { min: 0, max: 1, default: 1 } },
+    events: marker === 'emotion' ? trialEvents(trialId) : [scenario({ kind: 'noop', at: pulseAt, replaced: 'emotion', trialId })],
+    meta: { ...meta, durationSeconds: 110 },
+  }
+}
+
 function placebos(): PlaceboRecord[] {
   return [101, 102, 103, 104, 105].flatMap((seed) => {
     const events = Array.from({ length: 10 }, (_, index) => scenario({ kind: 'placebo', at: pulseAt + index * 6, trialId: `placebo-${seed}-${index}` }))
@@ -289,6 +318,82 @@ describe('emotion scorer', () => {
     // The remaining channel is adjusted alone, so Holm leaves its p-value unchanged.
     const angleY = results.find(result => result.channel === 'angleY')!
     expect(angleY.pHolm).toBe(angleY.p)
+  })
+
+  it('drops one non-finite trial of many from the permutation test and keeps the rest', () => {
+    const records = trials('full', 12, recipeAmplitude)
+    const trialId = 'angry-strong-full-nan'
+    const run = syntheticTrace(99, trialEvents(trialId), relative => heldEffect(relative, recipeAmplitude, 0.6))
+    run.channels.ParamMouthForm[Math.round((pulseAt + 1) * 30)] = Number.NaN
+    const stripped = syntheticTrace(99, [scenario({ kind: 'noop', at: pulseAt, replaced: 'emotion', trialId })], () => 0)
+    const dropped = measureEmotionTrial(run, stripped, { trialId, variant: 'full', gate: emotionGate })
+    // A record written elsewhere with a non-finite derived value takes the scorer-side path of the same rule.
+    const derived: EmotionTrialRecord = { ...records[0], trialId: 'angry-strong-full-derived', channels: { mouthForm: { value: Number.NaN, paired: 0 } } }
+    const scoreOf = (list: EmotionTrialRecord[]) => score({ trials: list, criteria: ['significance'] }).results[0]
+
+    const clean = scoreOf(records)
+    const mixed = scoreOf([...records, dropped, derived])
+    expect(dropped.missing.mouthForm).toContain('non-finite')
+    expect(mixed.n).toBe(12)
+    expect(mixed.p).toBe(clean.p)
+    expect(mixed.pHolm).toBe(clean.pHolm)
+    expect(Number.isFinite(mixed.E)).toBe(true)
+    expect(mixed.verdict).toBe('pass')
+    expect(mixed.reasons).toContain(`angry-strong-full-derived cannot measure mouthForm: non-finite mouthForm measurement (value NaN)`)
+  })
+
+  it.each([
+    ['blinkRate', 'ParamEyeLOpen'],
+    ['breathPeriod', 'ParamBreath'],
+    ['headRms', 'ParamAngleX'],
+    ['cameraFixation', 'ParamEyeBallX'],
+  ] as const)('treats a non-finite sample in the %s modulation window as missing', (channel, column) => {
+    const trialId = 'angry-strong-long-hold-nan'
+    const trace = longHoldTrace(trialId, 1)
+    trace.channels[column][Math.round((pulseAt + emotionGate.windows.modulation[0] + 1) * 30)] = Number.NaN
+    const record = measureEmotionTrial(trace, longHoldTrace(trialId, 1, 'noop'), { trialId, variant: 'long-hold', gate: emotionGate })
+    expect(record.channels[channel]).toBeUndefined()
+    expect(record.missing[channel]).toContain('non-finite')
+  })
+
+  it.each([1, emotionGate.seeds.longHold.count])('keeps identical stationary head traces out of significance at n = %i', (count) => {
+    const trialId = 'angry-strong-long-hold-still'
+    const still = longHoldTrace(trialId, 1, 'emotion', 0)
+    const record = measureEmotionTrial(still, longHoldTrace(trialId, 1, 'noop', 0), { trialId, variant: 'long-hold', gate: emotionGate })
+    expect(record.channels.headRms).toBeUndefined()
+    expect(record.missing.headRms).toBe('non-finite headRms log ratio (zero RMS)')
+
+    const headRms = buildEmotionChecks().filter(check => check.key === 'angry:strong:headRms')
+    const copies = (base: EmotionTrialRecord) => Array.from({ length: count }, (_, index) => ({ ...base, trialId: `${trialId}-${index}` }))
+    // The pre-fix record shape (both logs -Infinity) must also stay out, through the scorer-side rule.
+    const legacy: EmotionTrialRecord = { ...record, channels: { headRms: { value: Number.NEGATIVE_INFINITY, paired: Number.NEGATIVE_INFINITY } }, missing: {} }
+    for (const list of [copies(record), copies(legacy)]) {
+      const report = scoreEmotionGate({ gate: emotionGate, checks: headRms, trials: list, placebos: [], ranges: still.ranges, criteria: ['significance'] })
+      const result = report.results[0]
+      expect(result.verdict).toBe('n/a')
+      expect(result.n).toBe(0)
+      expect(result.p).toBeNull()
+      expect(result.pHolm).toBeNull()
+      expect(result.E).toBeNull()
+      expect(report.results.filter(entry => entry.pHolm !== null)).toHaveLength(0)
+      expect(result.reasons).toContain('significance: no usable long-hold trials')
+    }
+  })
+
+  it('drops one stationary long-hold trial from the headRms test and keeps the rest', () => {
+    const headRms = buildEmotionChecks().filter(check => check.key === 'angry:strong:headRms')
+    const measure = (seed: number, amplitude: number) => {
+      const trialId = `angry-strong-long-hold-${seed}`
+      return measureEmotionTrial(longHoldTrace(trialId, seed, 'emotion', amplitude), longHoldTrace(trialId, seed + 1000, 'noop', amplitude), { trialId, variant: 'long-hold', gate: emotionGate })
+    }
+    const moving = Array.from({ length: 8 }, (_, index) => measure(index + 1, 0.1))
+    const scoreOf = (list: EmotionTrialRecord[]) => scoreEmotionGate({ gate: emotionGate, checks: headRms, trials: list, placebos: [], ranges: longHoldTrace('x', 1).ranges, criteria: ['significance'] })
+    const clean = scoreOf(moving)
+    const mixed = scoreOf([...moving, measure(50, 0)])
+    expect(mixed.results[0].n).toBe(8)
+    expect(mixed.results[0].p).toBe(clean.results[0].p)
+    expect(Number.isFinite(mixed.results[0].p)).toBe(true)
+    expect(mixed.results.filter(entry => entry.pHolm !== null)).toHaveLength(1)
   })
 
   it('rejects a trial whose window overlaps another emotion within its lifetime', () => {
