@@ -12,6 +12,7 @@
   "license": "MIT",
   "scripts": {
     "doctor": "tsx bin/doctor.ts",
+    "evidence": "tsx bin/evidence.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
