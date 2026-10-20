@@ -272,10 +272,7 @@ function applyActivity(draft: Draft, o: ActivityObservation, at: number, selfApp
       sinceMs: current.sinceMs,
       endedAtMs: at,
     }
-    if (previous && previous.appId === current.appId)
-      draft.recentActivities[0] = { ...ended, sinceMs: Math.min(previous.sinceMs, current.sinceMs) }
-    else
-      draft.recentActivities.unshift(ended)
+    draft.recentActivities.unshift(ended)
     draft.recentActivities = draft.recentActivities.slice(0, RECENT_ACTIVITIES_MAX)
     draft.activity = { appId, label, category: o.category, title, sinceMs: at }
   }
@@ -354,7 +351,8 @@ function applyObservation(draft: Draft, observation: Observation, now: number, o
       applyPresence(draft, observation, at)
       break
     case 'wake':
-      if (observation.cause === 'unlock' || observation.cause === 'resume') {
+      // The newest wake in the ring wins; an older wake must not replace it.
+      if ((observation.cause === 'unlock' || observation.cause === 'resume') && !draft.events.some(event => event.topicKey === WAKE_TOPIC_KEY && event.atMs > at)) {
         pushEvent(draft, makeEvent(
           'wake',
           'wake',
@@ -378,8 +376,10 @@ function applyObservation(draft: Draft, observation: Observation, now: number, o
       break
     case 'stage': {
       const stage = draft.stage
+      if (typeof observation.exposed !== 'string' || typeof observation.active !== 'string' || typeof observation.mood !== 'string')
+        break
       if (!stage || at >= stage.atMs)
-        draft.stage = { exposed: String(observation.exposed), active: String(observation.active), mood: String(observation.mood), atMs: at }
+        draft.stage = { exposed: observation.exposed, active: observation.active, mood: observation.mood, atMs: at }
       break
     }
     case 'busy':

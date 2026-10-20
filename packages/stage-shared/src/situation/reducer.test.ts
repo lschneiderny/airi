@@ -160,7 +160,7 @@ describe('reduceSituation activity', () => {
     expect(state.recentActivities.map(a => a.appId)).toEqual(['z'])
   })
 
-  it('keeps at most 5 recent activities and merges same-app consecutive spans', () => {
+  it('keeps at most 5 recent activities, newest first', () => {
     const apps = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
     const state = run(apps.map((appId, index) => activity(appId, T0 + index * 10 * MIN)))
 
@@ -196,6 +196,25 @@ describe('reduceSituation presence', () => {
     const state = run([{ kind: 'wake', cause: 'unlock', atMs: T0 }])
 
     expect(eventsOf(state, 'wake').map(e => [e.topicKey, e.salience])).toEqual([['wake', 0.5]])
+  })
+})
+
+describe('reduceSituation wake ordering', () => {
+  const wake = (cause: 'unlock' | 'resume', atMs: number): Observation => ({ kind: 'wake', cause, atMs })
+
+  it('ignores a wake older than the newest recorded wake', () => {
+    const base = run([wake('unlock', T0 + 10 * SEC)])
+    const state = reduceSituation(base, wake('resume', T0 + 2 * SEC), T0 + 11 * SEC)
+
+    expect(eventsOf(state, 'wake').map(e => [e.id, e.text, e.atMs])).toEqual([[`wake@${T0 + 10 * SEC}`, 'unlocked the computer', T0 + 10 * SEC]])
+  })
+
+  it('lets a newer wake replace the older one and treats an equal timestamp as a repeat', () => {
+    const newer = run([wake('unlock', T0), wake('resume', T0 + 5 * SEC)])
+    expect(eventsOf(newer, 'wake').map(e => [e.text, e.atMs])).toEqual([['woke the computer from sleep', T0 + 5 * SEC]])
+
+    const equal = reduceSituation(newer, wake('unlock', T0 + 5 * SEC), T0 + 6 * SEC)
+    expect(eventsOf(equal, 'wake').map(e => [e.text, e.atMs])).toEqual([['woke the computer from sleep', T0 + 5 * SEC]])
   })
 })
 
@@ -260,6 +279,21 @@ describe('reduceSituation conversation, context, notify, stage, busy', () => {
     const addressed = markAddressed(state, topicKey, T0 + SEC)
     expect(eventsOf(addressed, 'notify')[0].addressedAtMs).toBe(T0 + SEC)
     expect(notifyTopicKey('plugin:widget', 'widget-1')).not.toBe(topicKey)
+  })
+
+  it('ignores a stage observation whose fields are not strings', () => {
+    const base = run([{ kind: 'stage', exposed: 'a', active: 'b', mood: 'calm', atMs: T0 }])
+    const bad: unknown[] = [
+      { kind: 'stage', exposed: null, active: 'b', mood: 'calm', atMs: T0 + SEC },
+      { kind: 'stage', exposed: 'a', active: undefined, mood: 'calm', atMs: T0 + SEC },
+      { kind: 'stage', exposed: 'a', active: 'b', mood: { x: 1 }, atMs: T0 + SEC },
+    ]
+
+    for (const observation of bad) {
+      const state = reduceSituation(base, observation as Observation, T0 + SEC)
+      expect(state.stage).toEqual({ exposed: 'a', active: 'b', mood: 'calm', atMs: T0 })
+    }
+    expect(reduceSituation(initialSituationState, bad[0] as Observation, T0).stage).toBeNull()
   })
 
   it('replaces stage and busy without events', () => {
