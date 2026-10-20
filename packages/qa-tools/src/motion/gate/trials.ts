@@ -6,6 +6,8 @@ import type { LivelinessGate } from '@proj-airi/stage-ui-live2d/composables/live
 import type { LivelinessTrace, ParameterRanges } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/liveliness'
 import type { NaturalTrace } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
 
+import type { TrialSamples } from './samples'
+
 import { performance } from 'node:perf_hooks'
 
 import { parseExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
@@ -15,6 +17,7 @@ import { measureEmotionTrial, measurePlacebos } from '@proj-airi/stage-ui-live2d
 import catalogJson from '../../../fixtures/forbooth-catalog.json'
 
 import { runT1 } from '../t1/runner'
+import { measureTrialSamples } from './samples'
 
 const catalog = catalogJson as CatalogEntry[]
 
@@ -83,8 +86,14 @@ export function runEmotionTrialTraces({ emotion, band, variant, seed, gate, boun
   }))
 }
 
+export interface EmotionTrialOutcome {
+  record: EmotionTrialRecord
+  /** Review samples of a `full` trial; `null` for the other variants and when the traces cannot be aligned. */
+  samples: TrialSamples | null
+}
+
 /** One paired trial: the scenario with its emotion, and the same seed with the emotion stripped. */
-export function runEmotionTrial({ emotion, band, variant, seed, gate, boundMs }: EmotionTrialRun, runScenario: ScenarioRunner = runDefault): EmotionTrialRecord {
+export function runEmotionTrial({ emotion, band, variant, seed, gate, boundMs }: EmotionTrialRun, runScenario: ScenarioRunner = runDefault): EmotionTrialOutcome {
   const { warmup, hold, post, longHoldSeconds, longHoldPost } = gate.scenario
   const scenario = variant === 'long-hold'
     ? buildLongHold({ emotion, band, seed, seconds: longHoldSeconds, warmup, post: longHoldPost })
@@ -93,7 +102,8 @@ export function runEmotionTrial({ emotion, band, variant, seed, gate, boundMs }:
   return bounded(`trial ${trialId}`, boundMs, () => {
     const run = runScenario(scenario)
     const paired = runScenario(stripEmotions(scenario))
-    return measureEmotionTrial(run, paired, { trialId, variant, gate, settings: scenarioSettings(scenario) })
+    const record = measureEmotionTrial(run, paired, { trialId, variant, gate, settings: scenarioSettings(scenario) })
+    return { record, samples: variant === 'full' ? measureTrialSamples(run, paired, { trialId, gate }) : null }
   })
 }
 

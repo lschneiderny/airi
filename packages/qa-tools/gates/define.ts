@@ -36,8 +36,10 @@ export function defineEmotionGate(emotion: PerformanceEmotion): void {
       for (const variant of variantsFor(band)) {
         it(`${band} ${variant}`, () => {
           const seeds = variantSeeds(emotionGate, variant, selection.seedsLimit)
-          const records = Array.from({ length: seeds.count }, (_, index) => runEmotionTrial({ emotion, band, variant, seed: seeds.start + index, gate: emotionGate, boundMs }, runScenario))
-          writePartial(runDir, cellPartialName(emotion, band, variant), { kind: 'emotion-cell', emotion, band, variant, seeds, records })
+          const outcomes = Array.from({ length: seeds.count }, (_, index) => runEmotionTrial({ emotion, band, variant, seed: seeds.start + index, gate: emotionGate, boundMs }, runScenario))
+          const records = outcomes.map(outcome => outcome.record)
+          const samples = outcomes.flatMap(outcome => outcome.samples ? [outcome.samples] : [])
+          writePartial(runDir, cellPartialName(emotion, band, variant), { kind: 'emotion-cell', emotion, band, variant, seeds, records, ...(samples.length ? { samples } : {}) })
         })
       }
     }

@@ -2,8 +2,9 @@ import type { EmotionTrialRecord, PlaceboRecord, ScoredChannel } from '@proj-air
 
 import type { GateSelection } from './gate/options'
 import type { EmotionCellPartial, NullPartial } from './gate/partials'
+import type { TrialSamples } from './gate/samples'
 
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -14,7 +15,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { aggregateEmotion, aggregateLiveliness, formatSummary } from './gate/aggregate'
 import { cellPartialName, expectedEmotionPartials, nullPartialName, seedRange, variantsFor } from './gate/options'
 import { writePartial } from './gate/partials'
-import { parseGateReport } from './gate/report'
+import { currentReportSchema, parseGateReport } from './gate/report'
+import { trajectoryGrid } from './gate/samples'
 import { runT1 } from './t1/runner'
 
 const selection: GateSelection = { emotions: ['angry'], bands: ['strong'], seedsLimit: null }
@@ -37,6 +39,18 @@ function trial(variant: EmotionTrialRecord['variant'], seed: number): EmotionTri
   }
 }
 
+/** Review samples of a full trial: a flat paired trajectory and brow levels clear of the range limits. */
+function samples(seed: number): TrialSamples {
+  const trajectory = Array.from({ length: trajectoryGrid.points }, (_, index) => (index < 10 ? 0 : 0.2) + seed / 1000)
+  return {
+    trialId: `angry-strong-full-${seed}`,
+    channels: Object.fromEntries(channels.map(channel => [channel, {
+      trajectory,
+      levels: [{ id: `Param${channel}`, baseline: 0.1, peak: 0.5 + seed / 1000, min: -1, max: 1 }],
+    }])),
+  }
+}
+
 function placebo(index: number): PlaceboRecord {
   return { id: `placebo-${index}`, channels: Object.fromEntries(channels.map(channel => [channel, ((index * 17) % 13 - 6) / 300])) }
 }
@@ -52,7 +66,15 @@ afterEach(() => {
 function writeFixture(target: string, seeds = 12): void {
   const ranges = runT1(buildIdleWithPlacebos({ seed: 1, warmup: 1, placebos: 1, spacing: 1 })).ranges
   for (const variant of variantsFor('strong')) {
-    const cell: EmotionCellPartial = { kind: 'emotion-cell', emotion: 'angry', band: 'strong', variant, seeds: { start: 1, count: seeds }, records: Array.from({ length: seeds }, (_, index) => trial(variant, index + 1)) }
+    const cell: EmotionCellPartial = {
+      kind: 'emotion-cell',
+      emotion: 'angry',
+      band: 'strong',
+      variant,
+      seeds: { start: 1, count: seeds },
+      records: Array.from({ length: seeds }, (_, index) => trial(variant, index + 1)),
+      ...(variant === 'full' ? { samples: Array.from({ length: seeds }, (_, index) => samples(index + 1)) } : {}),
+    }
     writePartial(target, cellPartialName('angry', 'strong', variant), cell)
   }
   const nullPartial: NullPartial = { kind: 'null', seeds: { start: 1, count: seeds }, ranges, records: Array.from({ length: 60 }, (_, index) => placebo(index)) }
@@ -73,6 +95,43 @@ describe('aggregateEmotion', () => {
     expect(report.version).toBe(emotionGate.version)
     expect(report.limitation).toBe(emotionGate.limitation)
     expect(Object.keys(report.nullStats)).toContain('browMean')
+  })
+
+  it('emits schema-2 review fields from the full trials\' samples without touching the verdict fields', () => {
+    writeFixture(dir)
+    const report = aggregateEmotion(context(dir), emotionGate, selection)
+
+    expect(report.reportSchema).toBe(currentReportSchema)
+    const browMean = report.results.find(result => result.key === 'angry:strong:browMean')
+    expect(browMean?.trajectory).toMatchObject({ start: trajectoryGrid.start, step: trajectoryGrid.step, n: 12 })
+    expect(browMean?.trajectory?.mean).toHaveLength(trajectoryGrid.points)
+    // Direction-folded like E: the fixture's raw +0.2 reads through the recipe sign of the check.
+    const sign = buildEmotionChecks().find(entry => entry.key === 'angry:strong:browMean')?.sign ?? Number.NaN
+    expect(browMean?.trajectory?.mean[0]).toBeCloseTo(sign * 0.0065, 3)
+    expect(browMean?.trajectory?.mean[20]).toBeCloseTo(sign * 0.2065, 3)
+    expect(browMean?.trajectory?.low[20]).toBeLessThanOrEqual(browMean?.trajectory?.mean[20] ?? Number.NaN)
+    expect(browMean?.trajectory?.high[20]).toBeGreaterThanOrEqual(browMean?.trajectory?.mean[20] ?? Number.NaN)
+    expect(browMean?.levels).toEqual([{ id: 'ParambrowMean', baseline: 0.1, peak: 0.5065, extreme: 0.512, min: -1, max: 1 }])
+    // Modulation checks have no sample trajectory; the long-hold fixture carries no samples.
+    const blinkRate = report.results.find(result => result.key === 'angry:strong:blinkRate')
+    expect(blinkRate?.trajectory ?? null).toBeNull()
+    // The same partials without samples score identically: review fields are additive.
+    const bare = mkdtempSync(join(tmpdir(), 'qa-aggregate-bare-'))
+    try {
+      cpSync(join(dir, 'partials'), join(bare, 'partials'), { recursive: true })
+      for (const variant of variantsFor('strong')) {
+        const name = cellPartialName('angry', 'strong', variant)
+        const partial = JSON.parse(readFileSync(join(bare, 'partials', name), 'utf8')) as EmotionCellPartial
+        delete partial.samples
+        writePartial(bare, name, partial)
+      }
+      const without = aggregateEmotion(context(bare), emotionGate, selection)
+      expect(without.results.map(result => [result.key, result.verdict])).toEqual(report.results.map(result => [result.key, result.verdict]))
+      expect(without.results.every(result => (result.trajectory ?? null) === null && (result.levels ?? null) === null)).toBe(true)
+    }
+    finally {
+      rmSync(bare, { recursive: true, force: true })
+    }
   })
 
   it('reports a pass only when every check passed, and names the failed checks in the summary', () => {

@@ -2,6 +2,8 @@ import type { Band, PerformanceEmotion } from '@proj-airi/stage-shared/expressio
 import type { EmotionGateScore, EmotionTrialRecord, PlaceboRecord, SeedRange, TrialVariant } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
 import type { LivelinessTrace, ParameterRanges } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/liveliness'
 
+import type { TrialSamples } from './samples'
+
 import process from 'node:process'
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -14,6 +16,8 @@ export interface EmotionCellPartial {
   variant: TrialVariant
   seeds: SeedRange
   records: EmotionTrialRecord[]
+  /** Review samples of the `full` trials (`samples.ts`), keyed by trial id through `trialId`; absent in runs before report schema 2. */
+  samples?: TrialSamples[]
 }
 
 export interface NullPartial {

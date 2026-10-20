@@ -16,7 +16,8 @@ import { aggregateLivelinessReports, scoreLiveliness } from '@proj-airi/stage-ui
 
 import { expectedEmotionPartials, livelinessPartialName, nullPartialName } from './options'
 import { readPartial } from './partials'
-import { parseGateReport } from './report'
+import { currentReportSchema, parseGateReport } from './report'
+import { reviewFieldsFor } from './review-fields'
 
 export interface AggregateContext {
   runDir: string
@@ -54,7 +55,14 @@ export function aggregateEmotion(context: AggregateContext, gate: EmotionGate, s
   const nullPartial = readPartial<NullPartial>(context.runDir, nullPartialName, 'null')
   const checks = buildEmotionChecks().filter(check => selection.emotions.includes(check.emotion) && selection.bands.includes(check.band))
   const score = scoreEmotionGate({ gate, checks, trials: cells.flatMap(cell => cell.records), placebos: nullPartial.records, ranges: nullPartial.ranges })
+  // Review fields (schema 2) ride along each verdict; they read the cells' samples and never touch the score.
+  const checksByKey = new Map(checks.map(check => [check.key, check]))
+  const results = score.results.map((result) => {
+    const check = checksByKey.get(result.key)
+    return check ? { ...result, ...reviewFieldsFor(check, cells, gate) } : result
+  })
   return seal({
+    reportSchema: currentReportSchema,
     gateId: gate.id,
     version: gate.version,
     fileSha: context.fileSha,
@@ -63,7 +71,7 @@ export function aggregateEmotion(context: AggregateContext, gate: EmotionGate, s
     limitation: score.limitation,
     pass: score.pass,
     nullStats: score.nullStats as GateReport['nullStats'],
-    results: score.results,
+    results,
     selection: { emotions: [...selection.emotions], bands: [...selection.bands], seedsLimit: selection.seedsLimit },
     seeds: gate.seeds,
   } as Omit<GateReport, 'determinismHash'>)
@@ -88,6 +96,7 @@ export function aggregateLiveliness(context: AggregateContext, gate: LivelinessG
     })),
   ]
   return seal({
+    reportSchema: currentReportSchema,
     gateId: gate.id,
     version: gate.version,
     fileSha: context.fileSha,
