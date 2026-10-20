@@ -2,7 +2,7 @@ import type { EmotionGate } from '@proj-airi/stage-ui-live2d/composables/live2d/
 import type { LivelinessGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 import type { LivelinessReport } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/liveliness'
 
-import type { GateSelection } from './options'
+import type { GateLevel, GateSelection } from './options'
 import type { EmotionCellPartial, LivelinessPartial, NullPartial } from './partials'
 import type { GateReport } from './report'
 
@@ -23,7 +23,7 @@ export interface AggregateContext {
   runDir: string
   /** Git blob SHA of `gates.ts`, the file that holds the gate's rules. */
   fileSha: string
-  level: 't1' | 't2'
+  level: GateLevel
 }
 
 const sha256 = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex')
@@ -35,7 +35,7 @@ function assertPartials(runDir: string, names: readonly string[]): void {
 }
 
 /** Hash of every partial's bytes in name order; equal inputs give an equal hash whatever the worker count. */
-function hashPartials(runDir: string, names: readonly string[]): string {
+export function hashPartials(runDir: string, names: readonly string[]): string {
   const hash = createHash('sha256')
   for (const name of [...names].sort())
     hash.update(`${name}\0${sha256(readFileSync(join(runDir, 'partials', name)))}\n`)
@@ -43,7 +43,7 @@ function hashPartials(runDir: string, names: readonly string[]): string {
 }
 
 /** Everything in the report except timings and the hash itself; the hash covers exactly this. */
-function seal(body: Omit<GateReport, 'determinismHash'>): GateReport {
+export function seal(body: Omit<GateReport, 'determinismHash'>): GateReport {
   return parseGateReport({ ...body, determinismHash: sha256(JSON.stringify(body)) })
 }
 

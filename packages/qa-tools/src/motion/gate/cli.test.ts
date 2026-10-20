@@ -13,7 +13,7 @@ describe('parseGateArgs', () => {
   it('defaults to every emotion and band and the given worker count', () => {
     const result = parse('emotion', '--level', 't1')
 
-    expect(result).toEqual({ ok: true, command: { target: 'emotion', level: 't1', selection: { emotions: [...gateEmotions], bands: [...gateBands], seedsLimit: null }, workers: 4, timeoutMinutes: 90 } })
+    expect(result).toEqual({ ok: true, command: { target: 'emotion', level: 't1', selection: { emotions: [...gateEmotions], bands: [...gateBands], seedsLimit: null }, workers: 4, timeoutMinutes: 90, t1Report: null } })
   })
 
   it('accepts filters and dedupes repeated values', () => {
@@ -32,8 +32,13 @@ describe('parseGateArgs', () => {
     [['emotion'], '--level is required'],
     [['emotion', '--level', 't2'], '--rig forbooth'],
     [['emotion', '--level', 't2', '--rig', 'bear'], '--rig forbooth'],
-    [['emotion', '--level', 't1', '--rig', 'forbooth'], '--level t2 only'],
-    [['emotion', '--level', 't4'], 'Valid levels: t1, t2'],
+    [['emotion', '--level', 't1', '--rig', 'forbooth'], '--level t2 or t3 only'],
+    [['emotion', '--level', 't4'], 'Valid levels: t1, t2, t3'],
+    [['emotion', '--level', 't3'], '--rig forbooth'],
+    [['emotion', '--level', 't3', '--rig', 'forbooth', '--emotions', 'angry'], 'committed cells'],
+    [['liveliness', '--level', 't3', '--rig', 'forbooth', '--workers', '2'], 'committed cells'],
+    [['liveliness', '--level', 't3', '--rig', 'forbooth', '--t1-report', 'x'], '--t1-report'],
+    [['emotion', '--level', 't1', '--t1-report', 'x'], '--t1-report'],
     [['loud', '--level', 't1'], 'Valid gates: emotion, liveliness'],
     [['liveliness', '--level', 't1', '--emotions', 'angry'], 'emotion gate only'],
     [['emotion', '--level', 't1', '--nope'], 'nope'],
@@ -43,6 +48,11 @@ describe('parseGateArgs', () => {
 
     expect(result.ok).toBe(false)
     expect(result.ok === false && result.message).toContain(message)
+  })
+
+  it('accepts the T3 gates on ForBOOTH with an optional T1 reference', () => {
+    expect(parse('emotion', '--level', 't3', '--rig', 'forbooth', '--t1-report', 'run-dir')).toMatchObject({ ok: true, command: { target: 'emotion', level: 't3', t1Report: 'run-dir' } })
+    expect(parse('liveliness', '--level', 't3', '--rig', 'forbooth')).toMatchObject({ ok: true, command: { target: 'liveliness', level: 't3', t1Report: null } })
   })
 
   it('runs T2 on ForBOOTH with its specified simulation budget and unchanged score rules', () => {
@@ -66,6 +76,20 @@ describe('runGateCli', () => {
         writeFileSync(join(root, 'bad.model3.json'), json)
       expect(await runGateCli(['emotion', '--level', 't2', '--rig', 'forbooth'], root, { AIRI_QA_RIG_FORBOOTH: root })).toBe(2)
       expect(readdirSync(root)).toEqual(json === undefined ? [] : ['bad.model3.json'])
+    }
+    finally {
+      error.mockRestore()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('exits 2 for T3 without a rig before creating a run', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'qa-cli-t3-'))
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await runGateCli(['liveliness', '--level', 't3', '--rig', 'forbooth'], root, {})).toBe(2)
+      expect(error.mock.calls.flat().join('\n')).toContain('AIRI_QA_RIG_FORBOOTH')
+      expect(readdirSync(root)).toEqual([])
     }
     finally {
       error.mockRestore()

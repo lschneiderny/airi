@@ -261,6 +261,7 @@ QA gates are committed code in `natural-motion/gates.ts`. Each gate has an `id` 
 | `naturalIdleLivelinessGate` | `natural-idle-liveliness` | Idle liveliness metrics in generated mode, seeds 1-3, 180 s warm-up, 1800 s scored. |
 | `naturalTalkingGate` | `natural-talking` | Talking head speed relative to silence and onset enrichment. |
 | `emotionGate` | `natural-emotion` | Emotion direction, size relative to the recipe, release, and detectability above idle noise. |
+| `naturalEmotionT3Gate` | `natural-emotion-t3` | Rendered transfer on one rig: angry strong, sad clear, love clear and sleepy strong, 10 pulses each, scored unpaired with the `emotionGate` windows against same-session placebo windows. Visibility hits, `E_T3 / E_T1` per face channel, and gross release only; posture is reported. |
 
 Every report states the same limitation. Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which stays a visual review. The desk VTS recordings are valid for idle liveliness only.
 

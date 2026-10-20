@@ -134,6 +134,52 @@ export const emotionGate = {
   levels: ['t1', 't2'],
 } as const satisfies EmotionGate
 
+export interface EmotionT3Gate {
+  id: string
+  version: number
+  limitation: string
+  /** Emotion x band cells pulsed in the rendered app; each cell's checks come from `buildEmotionChecks`. */
+  cells: readonly { emotion: PerformanceEmotion, band: Band }[]
+  trialsPerCell: number
+  /** Pulses are at least this far apart, and at least `naturalEmotionLifetime + lifetimeMarginSeconds`. */
+  minSpacingSeconds: number
+  lifetimeMarginSeconds: number
+  /** Placebo windows of the session null, counted over every session. */
+  minPlacebos: number
+  /** Longest scenario of one capture: the capture store stops at 600 s and the harness captures one second more. */
+  maxSessionSeconds: number
+  /** Fewest captures; every capture of a run has the same duration (the rendered-gate rule in the README). */
+  minSessions: number
+  /** Face and eyelid checks pass visibility with at least this many trials above the placebo q90. */
+  visibilityMinHits: number
+  /** Inclusive band of `E_T3 / E_T1` per face channel. */
+  transferRatio: readonly [min: number, max: number]
+  /** Release fails only for a gross regression: fitted tau above this multiple of the nominal `held.releaseTau`. */
+  releaseGrossTauMultiple: number
+}
+
+/**
+ * The rendered (T3) emotion transfer gate on one rig. Pulses are scored unpaired against placebo windows of the
+ * same session, with the windows and statistics of `emotionGate`; the T3 rules replace the T1 thresholds: a
+ * visibility hit count, the ratio of the T3 effect to the T1 effect at the same commit, and a gross release check.
+ * Posture is reported, not gated.
+ */
+export const naturalEmotionT3Gate = {
+  id: 'natural-emotion-t3',
+  version: 1,
+  limitation: emotionGate.limitation,
+  cells: [{ emotion: 'angry', band: 'strong' }, { emotion: 'sad', band: 'clear' }, { emotion: 'love', band: 'clear' }, { emotion: 'sleepy', band: 'strong' }],
+  trialsPerCell: 10,
+  minSpacingSeconds: 12,
+  lifetimeMarginSeconds: 4,
+  minPlacebos: 50,
+  maxSessionSeconds: 599,
+  minSessions: 3,
+  visibilityMinHits: 6,
+  transferRatio: [0.7, 1.3],
+  releaseGrossTauMultiple: 3,
+} as const satisfies EmotionT3Gate
+
 /**
  * Held recipe entries no scored channel measures. The scorer cannot see them in an idle trace, so they are
  * listed here instead of being silently skipped.

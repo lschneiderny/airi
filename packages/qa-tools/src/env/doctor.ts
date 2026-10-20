@@ -207,17 +207,22 @@ function createDoctorChecks(probes: DoctorProbes): DoctorCheck[] {
     {
       id: 'stray-electron',
       run: async () => {
-        const strays = (await probes.listProcesses()).filter(({ commandLine }) => {
-          const lower = commandLine.toLowerCase()
-          // Other worktrees run their own dev sessions; only this checkout's processes conflict with a run here.
-          return lower.includes('stage-tamagotchi') && lower.includes('electron') && commandLineContainsPath(commandLine, probes.repoRoot)
-        })
+        const strays = strayElectronProcesses(await probes.listProcesses(), probes.repoRoot)
         return strays.length === 0
           ? ok('no stage-tamagotchi electron processes from this worktree')
           : { status: 'warn', detail: `stage-tamagotchi electron processes from this worktree running: PIDs ${strays.map(({ pid }) => pid).join(', ')}`, fix: 'Stop the dev session that owns them before a rendered run; doctor never kills processes.' }
       },
     },
   ]
+}
+
+/** The `stray-electron` probe: stage-tamagotchi Electron processes whose command line contains this worktree's path. */
+export function strayElectronProcesses<T extends { commandLine: string }>(listing: readonly T[], repoRoot: string): T[] {
+  return listing.filter(({ commandLine }) => {
+    const lower = commandLine.toLowerCase()
+    // Other worktrees run their own dev sessions; only this checkout's processes conflict with a run here.
+    return lower.includes('stage-tamagotchi') && lower.includes('electron') && commandLineContainsPath(commandLine, repoRoot)
+  })
 }
 
 async function runBounded(check: DoctorCheck, timeoutMs: number): Promise<DoctorRow> {

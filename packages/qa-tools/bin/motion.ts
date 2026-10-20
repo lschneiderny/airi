@@ -12,7 +12,7 @@ import { runT3Cli } from '../src/t3/cli'
 const usage = `Usage: motion <command>
 
 Commands:
-  gate <emotion | liveliness> --level <t1 | t2> ...   run a committed QA gate
+  gate <emotion | liveliness> --level <t1 | t2 | t3> ...   run a committed QA gate
   t3 --rig forbooth --scenario <spec>          run a scenario in the rendered Electron app through the motion QA bridge
   validate-scorer --level t1 ...               validate the emotion scorer itself
 

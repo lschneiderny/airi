@@ -17,16 +17,18 @@ import { T2SetupError } from '../../t2/errors'
 import { loadT2Runtime } from '../../t2/runner'
 import { aggregateEmotion, aggregateLiveliness, formatSummary } from './aggregate'
 import { emotionGateFor, gateBands, gateEmotions, livelinessGateFor } from './options'
+import { runT3Gate } from './t3-gate'
 
-export const gateUsage = `Usage: motion gate <emotion | liveliness> --level <t1 | t2> [--rig forbooth] [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N]
+export const gateUsage = `Usage: motion gate <emotion | liveliness> --level <t1 | t2 | t3> [--rig forbooth] [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N] [--t1-report <run dir>]
 
-  --level    t1 (controller simulation) or t2 (headless real rig)
-  --rig      forbooth (required for t2; local rig and core environment variables)
+  --level    t1 (controller simulation), t2 (headless real rig) or t3 (rendered Electron app, committed cells only)
+  --rig      forbooth (required for t2 and t3; local rig and core environment variables)
+  --t1-report  T3 emotion only: the T1 emotion run dir the transfer ratios divide by (default: the newest at this commit)
   --emotions comma list of: ${gateEmotions.join(', ')} (emotion gate only; default all)
   --bands    comma list of: ${gateBands.join(', ')} (emotion gate only; default all)
   --seeds    run at most N seeds per variant, a reduced run that the report records (emotion gate only)
   --workers  Vitest workers (default: cores - 1); the report is the same for any count
-Exit codes: 0 every check passed, 1 a check failed or the run broke, 2 usage or T2 setup error.`
+Exit codes: 0 every check passed, 1 a check failed or the run broke, 2 usage, T2/T3 setup error or a T3 refusal before launch, 130 T3 interrupted.`
 
 export interface GateCommand {
   target: 'emotion' | 'liveliness'
@@ -34,6 +36,8 @@ export interface GateCommand {
   selection: GateSelection
   workers: number
   timeoutMinutes: number
+  /** `--level t3` emotion gate: the T1 reference run dir, or `null` to find it. */
+  t1Report: string | null
 }
 
 export type ParsedGateArgs = { ok: true, command: GateCommand } | { ok: false, message: string }
@@ -59,12 +63,12 @@ function parsePositiveInteger(raw: string | undefined, name: string): number | n
 
 /** Validates `gate` arguments (everything after the `gate` word is the caller's `rest`). */
 export function parseGateArgs(rest: string[], defaultWorkers = Math.max(1, cpus().length - 1)): ParsedGateArgs {
-  let values: { 'level'?: string, 'rig'?: string, 'emotions'?: string, 'bands'?: string, 'seeds'?: string, 'workers'?: string, 'timeout-minutes'?: string }
+  let values: { 'level'?: string, 'rig'?: string, 'emotions'?: string, 'bands'?: string, 'seeds'?: string, 'workers'?: string, 'timeout-minutes'?: string, 't1-report'?: string }
   let positionals: string[]
   try {
     ({ values, positionals } = parseArgs({
       args: rest,
-      options: { 'level': { type: 'string' }, 'rig': { type: 'string' }, 'emotions': { type: 'string' }, 'bands': { type: 'string' }, 'seeds': { type: 'string' }, 'workers': { type: 'string' }, 'timeout-minutes': { type: 'string' } },
+      options: { 'level': { type: 'string' }, 'rig': { type: 'string' }, 'emotions': { type: 'string' }, 'bands': { type: 'string' }, 'seeds': { type: 'string' }, 'workers': { type: 'string' }, 'timeout-minutes': { type: 'string' }, 't1-report': { type: 'string' } },
       strict: true,
       allowPositionals: true,
     }))
@@ -77,12 +81,16 @@ export function parseGateArgs(rest: string[], defaultWorkers = Math.max(1, cpus(
     return { ok: false, message: `Unknown gate ${JSON.stringify(target ?? '')}. Valid gates: emotion, liveliness` }
   if (extra.length)
     return { ok: false, message: `Unexpected argument ${JSON.stringify(extra[0])}` }
-  if (values.level !== 't1' && values.level !== 't2')
-    return { ok: false, message: values.level === undefined ? '--level is required. Valid levels: t1, t2' : `Level ${JSON.stringify(values.level)} is not available. Valid levels: t1, t2` }
-  if (values.level === 't2' && values.rig !== 'forbooth')
-    return { ok: false, message: '--level t2 requires --rig forbooth' }
+  if (values.level !== 't1' && values.level !== 't2' && values.level !== 't3')
+    return { ok: false, message: values.level === undefined ? '--level is required. Valid levels: t1, t2, t3' : `Level ${JSON.stringify(values.level)} is not available. Valid levels: t1, t2, t3` }
+  if (values.level !== 't1' && values.rig !== 'forbooth')
+    return { ok: false, message: `--level ${values.level} requires --rig forbooth` }
   if (values.level === 't1' && values.rig !== undefined)
-    return { ok: false, message: '--rig applies to --level t2 only' }
+    return { ok: false, message: '--rig applies to --level t2 or t3 only' }
+  if (values.level === 't3' && (values.emotions !== undefined || values.bands !== undefined || values.seeds !== undefined || values.workers !== undefined || values['timeout-minutes'] !== undefined))
+    return { ok: false, message: '--emotions, --bands, --seeds, --workers and --timeout-minutes do not apply to --level t3, which runs the committed cells of naturalEmotionT3Gate' }
+  if (values['t1-report'] !== undefined && (values.level !== 't3' || target !== 'emotion'))
+    return { ok: false, message: '--t1-report applies to the emotion gate at --level t3 only' }
   if (target === 'liveliness' && (values.emotions !== undefined || values.bands !== undefined || values.seeds !== undefined))
     return { ok: false, message: '--emotions, --bands and --seeds apply to the emotion gate only' }
 
@@ -103,7 +111,7 @@ export function parseGateArgs(rest: string[], defaultWorkers = Math.max(1, cpus(
     return { ok: false, message: timeoutMinutes }
   return {
     ok: true,
-    command: { target, level: values.level, selection: { emotions, bands, seedsLimit: seeds }, workers: workers ?? defaultWorkers, timeoutMinutes: timeoutMinutes ?? (target === 'emotion' ? 90 : 30) },
+    command: { target, level: values.level, selection: { emotions, bands, seedsLimit: seeds }, workers: workers ?? defaultWorkers, timeoutMinutes: timeoutMinutes ?? (target === 'emotion' ? 90 : 30), t1Report: values['t1-report'] ?? null },
   }
 }
 
@@ -169,6 +177,8 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
     return 2
   }
   const { target, level, selection, workers, timeoutMinutes } = parsed.command
+  if (level === 't3')
+    return runT3Gate({ target, t1Report: parsed.command.t1Report }, repoRoot, env, () => gateFileSha(repoRoot))
   if (level === 't2') {
     try {
       await loadT2Runtime({ rigRoot: env.AIRI_QA_RIG_FORBOOTH, corePath: env.AIRI_QA_CUBISM_CORE })

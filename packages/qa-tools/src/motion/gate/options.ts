@@ -4,14 +4,14 @@ import type { LivelinessGate } from '@proj-airi/stage-ui-live2d/composables/live
 
 import { emotionGate, naturalIdleLivelinessGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 
-export type GateLevel = 't1' | 't2'
+export type GateLevel = 't1' | 't2' | 't3'
 
-/** T2 uses the task-14 trial budget, without changing the scoring rules. */
+/** T2 uses the task-14 trial budget, without changing the scoring rules. T3 uses the windows only (`naturalEmotionT3Gate` sets its trials). */
 export function emotionGateFor(level: GateLevel): EmotionGate {
-  return level === 't1' ? emotionGate : { ...emotionGate, seeds: { ...emotionGate.seeds, full: { start: 1, count: 30 }, heldOnly: { start: 1, count: 30 } } }
+  return level === 't2' ? { ...emotionGate, seeds: { ...emotionGate.seeds, full: { start: 1, count: 30 }, heldOnly: { start: 1, count: 30 } } } : emotionGate
 }
 
-/** T2's three runs are 600 simulated seconds each, including the unchanged warm-up. */
+/** T2's three runs are 600 simulated seconds each, including the unchanged warm-up; T3's three captures are 600 s each, scored the same way. */
 export function livelinessGateFor(level: GateLevel): LivelinessGate {
   return level === 't1' ? naturalIdleLivelinessGate : { ...naturalIdleLivelinessGate, scoredSeconds: 600 - naturalIdleLivelinessGate.warmUpSeconds }
 }

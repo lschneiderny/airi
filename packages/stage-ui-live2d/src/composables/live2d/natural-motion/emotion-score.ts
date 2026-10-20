@@ -815,8 +815,11 @@ function eventDelta(trace: NaturalTrace, channel: ScoredChannel, pulse: number, 
   return mean(scored) - mean(baseline)
 }
 
-/** Release trajectory on the 30 Hz grid over `release.window`: baseline-relative values, ratios minus 1 for the eyelid. */
-function releaseTrajectory(trace: NaturalTrace, channel: ScoredChannel, pulse: number, gate: EmotionGate): number[] | string {
+/**
+ * Release trajectory on the 30 Hz grid over `release.window`: baseline-relative values, ratios minus 1 for the eyelid.
+ * Held-only records store the emotion run minus the stripped run; single rendered traces (T3) use it unpaired.
+ */
+export function releaseTrajectory(trace: NaturalTrace, channel: ScoredChannel, pulse: number, gate: EmotionGate): number[] | string {
   const series = channelSeries(trace, channel)
   if ('reason' in series)
     return series.reason
@@ -835,7 +838,8 @@ function releaseTrajectory(trace: NaturalTrace, channel: ScoredChannel, pulse: n
   return values.every(Number.isFinite) ? values : 'release window is outside the trace'
 }
 
-function releaseGrid(gate: EmotionGate) {
+/** Times (seconds after the pulse) of `releaseTrajectory` values. */
+export function releaseGrid(gate: EmotionGate) {
   const [start, end] = gate.release.window
   return Array.from({ length: Math.round((end - start) * 30) + 1 }, (_, index) => start + index / 30)
 }
