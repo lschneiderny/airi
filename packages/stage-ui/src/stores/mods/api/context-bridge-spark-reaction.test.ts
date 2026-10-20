@@ -14,8 +14,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
-import { getSpeechBusContext, voiceRequestTurns, voiceTurnsChanged } from '../../../services/speech/bus'
-import { GATE_INTERVAL_MS, useSituationStore } from '../../situation'
+import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceRequestTurns, voiceTurnsChanged } from '../../../services/speech/bus'
+import { COMPOSER_INPUT_RECENT_MS, GATE_INTERVAL_MS, useSituationStore } from '../../situation'
 import { ingestSparkNotify } from '../../situation/sensors/notify'
 import { useContextBridgeStore } from './context-bridge'
 
@@ -77,15 +77,15 @@ vi.mock('./channel-server', () => ({
 const T0 = Date.UTC(2026, 9, 20, 9, 0, 0)
 const BUSY = 'Another unprompted turn is still pending'
 
-function leaderRuntime(): SyncedPiniaRuntime {
+function syncedRuntime(isLeader: boolean): SyncedPiniaRuntime {
   return {
     dispose: vi.fn(),
     getLeaderId: vi.fn(),
     getParticipantCount: vi.fn(() => 1),
-    isLeader: () => true,
+    isLeader: () => isLeader,
     onCoordinationChange: vi.fn(() => vi.fn()),
     onLeadershipChange: vi.fn((listener: (isLeader: boolean) => void) => {
-      listener(true)
+      listener(isLeader)
       return () => {}
     }),
     participantId: 'spark-reaction-test',
@@ -188,7 +188,7 @@ describe('widget spark reactions', () => {
       unpromptedPending: () => unpromptedPending,
       submitUnprompted: payload => submitUnprompted(payload),
     })
-    situation.initialize(leaderRuntime())
+    situation.initialize(syncedRuntime(true))
     const bridge = useContextBridgeStore()
     bridge.setSparkNotifyHostRole('main')
     return { situation, bridge }
@@ -376,6 +376,118 @@ describe('widget spark reactions', () => {
     await expect(reaction).resolves.toBe('fallback')
     expect(submitUnprompted).not.toHaveBeenCalled()
     expect(notifyEvents(situation)[0].addressedAtMs).toBeNull()
+  })
+
+  it('submits at once when the user is neither speaking nor writing', async () => {
+    const { bridge } = startLeader()
+    let submittedAtMs: number | undefined
+    submitUnprompted.mockImplementation(async (payload) => {
+      submittedAtMs = Date.now()
+      await speakUnprompted(hooks, payload, 'Right away.')
+      return { status: 'spoken', text: 'Right away.' }
+    })
+
+    // No fake timer is advanced, so the reaction can only resolve if nothing waits on time.
+    await expect(bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })).resolves.toBe('Right away.')
+    expect(submittedAtMs).toBe(T0)
+  })
+
+  it('holds the forced turn while the user speaks into the microphone, and starts it once they stop', async () => {
+    const { bridge } = startLeader()
+    chatSpeaks('There you are.')
+    const bus = getSpeechBusContext()
+    bus.emit(speechInputUserSpeakingChangedEvent, { speaking: true })
+
+    const reaction = bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(submitUnprompted).not.toHaveBeenCalled()
+
+    bus.emit(speechInputUserSpeakingChangedEvent, { speaking: false })
+
+    await expect(reaction).resolves.toBe('There you are.')
+    expect(submitUnprompted).toHaveBeenCalledOnce()
+  })
+
+  it('gives up with the fallback, and leaves the notify for the gate, when an unsent draft outlasts the wait', async () => {
+    const { situation, bridge } = startLeader()
+    chatSpeaks('unused')
+    // A composer with a draft reports it again every 5 s, as the real composer does.
+    const reportDraft = () => getSpeechBusContext().emit(chatComposerActivityChangedEvent, { sourceId: 'chat-window', hasDraft: true, lastInputAtMs: T0 })
+    reportDraft()
+    const resend = setInterval(reportDraft, 5_000)
+
+    const reaction = bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
+    await vi.advanceTimersByTimeAsync(20_000)
+    clearInterval(resend)
+
+    await expect(reaction).resolves.toBe('fallback')
+    expect(submitUnprompted).not.toHaveBeenCalled()
+    expect(notifyEvents(situation)[0].addressedAtMs).toBeNull()
+  })
+
+  it('starts the forced turn once the draft is cleared and the last input is no longer recent', async () => {
+    const { bridge } = startLeader()
+    chatSpeaks('Done typing?')
+    const bus = getSpeechBusContext()
+    bus.emit(chatComposerActivityChangedEvent, { sourceId: 'chat-window', hasDraft: true, lastInputAtMs: Date.now() })
+
+    const reaction = bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(submitUnprompted).not.toHaveBeenCalled()
+
+    // The user deletes the draft: the composer reports no draft, with the deletion as its last input.
+    bus.emit(chatComposerActivityChangedEvent, { sourceId: 'chat-window', hasDraft: false, lastInputAtMs: Date.now() })
+    await vi.advanceTimersByTimeAsync(COMPOSER_INPUT_RECENT_MS - 1)
+    expect(submitUnprompted).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+
+    await expect(reaction).resolves.toBe('Done typing?')
+    expect(submitUnprompted).toHaveBeenCalledOnce()
+  })
+
+  it('lets a user send during the wait go first, and starts the forced turn only after her reply to it', async () => {
+    const { bridge } = startLeader()
+    chatSpeaks('Back to the widget.')
+    const bus = getSpeechBusContext()
+    bus.emit(chatComposerActivityChangedEvent, { sourceId: 'chat-window', hasDraft: true, lastInputAtMs: Date.now() })
+
+    const reaction = bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
+    await vi.advanceTimersByTimeAsync(2_000)
+    // The user sends: the composer clears its draft, and her reply to the user opens a voice turn.
+    bus.emit(chatComposerActivityChangedEvent, { sourceId: 'chat-window', hasDraft: false, lastInputAtMs: Date.now() })
+    speakingTurns = [{ sessionId: 'session-1', turnId: 'reply-to-user' }]
+    bus.emit(voiceTurnsChanged, speakingTurns)
+
+    // The user's input is no longer recent, but she is still answering them.
+    await vi.advanceTimersByTimeAsync(COMPOSER_INPUT_RECENT_MS + 2_000)
+    expect(submitUnprompted).not.toHaveBeenCalled()
+
+    speakingTurns = []
+    bus.emit(voiceTurnsChanged, [])
+
+    await expect(reaction).resolves.toBe('Back to the widget.')
+    expect(submitUnprompted).toHaveBeenCalledOnce()
+  })
+
+  it('holds a reaction that a follower window serves while a composer in another window has a draft', async () => {
+    // Any main window may take a widget request, so a follower reads the user's input from the bus too.
+    const situation = useSituationStore()
+    situation.initialize(syncedRuntime(false))
+    const bridge = useContextBridgeStore()
+    bridge.setSparkNotifyHostRole('main')
+    submitUnprompted.mockResolvedValue({ status: 'spoken', text: 'Hi from here.' })
+    const bus = getSpeechBusContext()
+    bus.emit(chatComposerActivityChangedEvent, { sourceId: 'chat-window', hasDraft: true, lastInputAtMs: Date.now() })
+
+    const reaction = bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
+    await vi.advanceTimersByTimeAsync(4_000)
+    expect(submitUnprompted).not.toHaveBeenCalled()
+
+    bus.emit(chatComposerActivityChangedEvent, { sourceId: 'chat-window', hasDraft: false, lastInputAtMs: Date.now() })
+    await vi.advanceTimersByTimeAsync(COMPOSER_INPUT_RECENT_MS)
+
+    await expect(reaction).resolves.toBe('Hi from here.')
+    expect(submitUnprompted).toHaveBeenCalledOnce()
   })
 
   it('starts a fresh turn for every request, so a repeated widget request never meets an earlier send key', async () => {
