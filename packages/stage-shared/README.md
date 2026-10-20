@@ -112,7 +112,8 @@ The `motion-scenario` entrypoint owns the input script that motion QA replays at
 - `createScenarioPlayer(scenario).eventsBetween(t0, t1)`, which returns the events with `t0 < at <= t1` in scenario order and reads no clock;
 - `stripEmotions`, which swaps every `emotion` and `act` event for a `noop` with the same `at` and `trialId`, so a paired null run has the same timeline;
 - `buildEmotionTrial`, `buildIdleWithPlacebos`, and `buildLongHold`, which build valid scenarios deterministically from their inputs;
-- the schemas and Eventa invoke contracts (`eventa:invoke:motion-qa:*`) of the dev-only QA bridge, `createMotionQaContext`, and `isMotionQaBridgeEnabled`.
+- the schemas and Eventa invoke contracts (`eventa:invoke:motion-qa:*`) of the dev-only QA bridge, `createMotionQaContext`, `claimMotionQaHandlers` (one handler set per window), and `createMotionQaDispatcher`, which turns one JSON command string into one JSON reply and never rejects;
+- `isMotionQaBridgeEnabled`, also exported alone from `@proj-airi/stage-shared/motion-scenario/flag`, so a caller that guards it with `import.meta.env.DEV` keeps the bridge contracts out of production bundles.
 
 ```ts
 import { buildEmotionTrial, createScenarioPlayer, MotionScenarioSchema } from '@proj-airi/stage-shared/motion-scenario'

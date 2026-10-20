@@ -74,6 +74,18 @@ pnpm qa:test --package @proj-airi/stage-shared --registry <file> --timeout 600
 - Exit 1 for any new failure or any suite error: a suite that timed out (default 1800 s per suite, after which its process tree is killed), crashed, wrote no report, reported unhandled errors, or exited non-zero without a failing test. Suite errors never match the registry. Exit 2 for bad arguments or an invalid registry.
 - Never skip, delete or edit a test to clear a failure. Fix the test, or add an entry with its reason.
 
+## Production bundle check
+
+The Electron app has a dev-only motion QA bridge (`globalThis.__airiMotionQa`, reached over remote debug). After `pnpm -F @proj-airi/stage-tamagotchi build`, prove that no production chunk contains it:
+
+```bash
+pnpm -F @proj-airi/qa-tools exec tsx bin/check-prod-bundle.ts [directory]
+```
+
+- It scans every `.js` file under `apps/stage-tamagotchi/out/renderer` (or `[directory]`) for `__airiMotionQa`, `motion-qa:` and `installMotionQaDispatcher`, and prints each match with its file and offset.
+- Exit codes: 0 no marker found, 1 any marker found, 2 when the directory is missing or holds no `.js` files, so a missing build never reads as clean.
+- `fixtures/prod-bundle-leak/` holds one leaking chunk; running the checker on it must exit 1.
+
 ## When to use
 
 - A QA script must spawn pnpm or Vitest reliably, for example while `PNPM_HOME` shims may be regenerated (exit 127).

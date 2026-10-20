@@ -1,6 +1,7 @@
 import type { AffectTrace, AffectTraceFailureCode, AffectTraceRequest, AffectTraceResult } from '@proj-airi/stage-shared/expression-performance'
 import type { ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 
+import type { EmotionHold } from '../composables/live2d/expression/hold'
 import type { LivelinessReport } from '../composables/live2d/natural-motion/liveliness'
 import type { NaturalTrace } from '../composables/live2d/natural-motion/trace'
 
@@ -21,6 +22,14 @@ export interface NaturalCaptureRequest {
 
 /** Stamps a scenario event into the capture running in this window. */
 export type NaturalCaptureMarker = (event: ScenarioEvent) => void
+
+/** What the stage's model performs right now. Read on demand by the dev-only motion QA bridge in the same window. */
+export interface NaturalStageSnapshot {
+  /** Whether the Natural driver composes the model: a model is loaded, the driver is Natural, and the stage is not paused. */
+  naturalActive: boolean
+  /** The emotion the Natural layer holds, or `null` when none is held. */
+  hold: EmotionHold | null
+}
 
 /** Compact capture outcome the lab renders. */
 export interface NaturalCaptureResult {
@@ -143,6 +152,10 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
   const ownExports = new Set<string>()
   /** Set by the stage's model while its capture runs; never shared with other windows. */
   let captureMarker: NaturalCaptureMarker | null = null
+  /** Registered by the stage's model while it is mounted; never shared with other windows. */
+  let stageReader: (() => NaturalStageSnapshot) | null = null
+  /** Id of the model whose load committed in this window's stage, or `null` while none is loaded. Never shared. */
+  const loadedModelId = shallowRef<string | null>(null)
 
   function settles(id: string) {
     return !pendingRequest.value || pendingRequest.value.id === id
@@ -248,6 +261,25 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
     return true
   }
 
+  /** The stage's model reports each committed load, and `null` when its model goes away. */
+  function setLoadedModelId(id: string | null) {
+    loadedModelId.value = id
+  }
+
+  /** The stage's model registers how to read what it performs. The returned release clears only its own reader. */
+  function registerStageReader(reader: () => NaturalStageSnapshot) {
+    stageReader = reader
+    return () => {
+      if (stageReader === reader)
+        stageReader = null
+    }
+  }
+
+  /** What the stage's model in this window performs now, or `null` when no model is mounted here. */
+  function stageSnapshot() {
+    return stageReader?.() ?? null
+  }
+
   function completeCapture(id: string, capturedTrace: NaturalTrace, report: LivelinessReport) {
     emit({
       type: 'natural-capture-result',
@@ -310,6 +342,10 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
     requestCapture,
     setCaptureMarker,
     markCaptureEvent,
+    loadedModelId,
+    setLoadedModelId,
+    registerStageReader,
+    stageSnapshot,
     completeCapture,
     failCapture,
     cancelCapture,

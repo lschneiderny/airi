@@ -24,6 +24,7 @@
     "./godot-stage": "./src/godot-stage/index.ts",
     "./model-assets": "./src/model-assets/index.ts",
     "./motion-scenario": "./src/motion-scenario/index.ts",
+    "./motion-scenario/flag": "./src/motion-scenario/flag.ts",
     "./perf/io-trace": "./src/perf/io-trace.ts",
     "./performance-state": "./src/performance-state/index.ts",
     "./plugin-host": "./src/plugin-host.ts",

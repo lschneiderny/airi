@@ -8,6 +8,8 @@ import { array, boolean, finite, literal, looseObject, maxValue, minLength, minV
 
 import { MotionScenarioSchema } from './schema'
 
+export { isMotionQaBridgeEnabled } from './flag'
+
 /** Dev-only control surface of the rendered app. Dispatch goes through these contracts; handlers live in stage-ui. */
 
 const nonEmpty = pipe(string(), minLength(1))
@@ -95,7 +97,26 @@ export function createMotionQaContext() {
   return motionQaContext.context
 }
 
-/** True only when the renderer set the dev-only flag before mounting the stage. */
-export function isMotionQaBridgeEnabled(): boolean {
-  return (globalThis as { __airiMotionQaEnabled?: unknown }).__airiMotionQaEnabled === true
+let motionQaHandlersClaimed = false
+
+/**
+ * Claims the one handler set of the window's bridge context. Returns the release, or `null` when another
+ * owner already holds the claim; an invoke contract must have exactly one handler per context.
+ */
+export function claimMotionQaHandlers(): (() => void) | null {
+  if (motionQaHandlersClaimed)
+    return null
+  motionQaHandlersClaimed = true
+  let released = false
+  return () => {
+    if (released)
+      return
+    released = true
+    motionQaHandlersClaimed = false
+  }
+}
+
+/** Whether a stage in this window holds the handler claim, so an invoke has someone to answer it. */
+export function hasMotionQaHandlers(): boolean {
+  return motionQaHandlersClaimed
 }

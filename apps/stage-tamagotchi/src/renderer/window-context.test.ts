@@ -36,6 +36,12 @@ describe('resolveRendererWindowContext', () => {
     expect(resolveRendererWindowContext('?synced-leader=false&stage-runtime=minimal').stageRuntime).toBe('minimal')
   })
 
+  it('enables the motion QA bridge only for the explicit query', () => {
+    expect(resolveRendererWindowContext('?synced-leader=true').motionQaBridge).toBe(false)
+    expect(resolveRendererWindowContext('?synced-leader=true&motion-qa-bridge=true').motionQaBridge).toBe(true)
+    expect(() => resolveRendererWindowContext('?synced-leader=true&motion-qa-bridge=1')).toThrow('Invalid motion-qa-bridge query: 1')
+  })
+
   it('rejects a renderer URL without an explicit leadership query', () => {
     expect(() => resolveRendererWindowContext('')).toThrow('Missing synced-leader query')
     expect(() => resolveRendererWindowContext('?synced-leader=unknown')).toThrow('Invalid synced-leader query: unknown')

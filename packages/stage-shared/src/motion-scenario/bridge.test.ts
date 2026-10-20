@@ -2,7 +2,7 @@ import { defineInvoke, defineInvokeHandler } from '@moeru/eventa'
 import { safeParse } from 'valibot'
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 
-import { buildEmotionTrial, createMotionQaContext, isMotionQaBridgeEnabled, MotionQaAwaitCaptureResultSchema, MotionQaCommandSchema, MotionQaConfigureInputSchema, MotionQaRunScenarioInputSchema, MotionQaRunScenarioResultSchema, MotionQaStartCaptureInputSchema, motionQaStateInvokeEventa, MotionQaStateSchema } from '.'
+import { buildEmotionTrial, claimMotionQaHandlers, createMotionQaContext, hasMotionQaHandlers, isMotionQaBridgeEnabled, MotionQaAwaitCaptureResultSchema, MotionQaCommandSchema, MotionQaConfigureInputSchema, MotionQaRunScenarioInputSchema, MotionQaRunScenarioResultSchema, MotionQaStartCaptureInputSchema, motionQaStateInvokeEventa, MotionQaStateSchema } from '.'
 
 const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false } as const
 
@@ -49,6 +49,21 @@ describe('motion QA bridge context', () => {
     expect(createMotionQaContext()).toBe(createMotionQaContext())
     onTestFinished(defineInvokeHandler(createMotionQaContext(), motionQaStateInvokeEventa, () => state))
     expect(await defineInvoke(createMotionQaContext(), motionQaStateInvokeEventa)()).toEqual(state)
+  })
+
+  it('grants the handler claim to one owner at a time', () => {
+    const release = claimMotionQaHandlers()
+    onTestFinished(() => release?.())
+    expect(release).toBeTypeOf('function')
+    expect(hasMotionQaHandlers()).toBe(true)
+    expect(claimMotionQaHandlers()).toBeNull()
+    release?.()
+    expect(hasMotionQaHandlers()).toBe(false)
+    const next = claimMotionQaHandlers()
+    onTestFinished(() => next?.())
+    // A stale release must not free the claim of the next owner.
+    release?.()
+    expect(hasMotionQaHandlers()).toBe(true)
   })
 
   it('reports the bridge enabled only for the exact flag value', () => {

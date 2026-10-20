@@ -413,6 +413,7 @@ async function performModelLoad() {
     expressionController.dispose()
     internalModelRef.value = undefined
     loadedModelId = undefined
+    naturalDiagnostics.setLoadedModelId(null)
 
     try {
       pixiApp.value.stage.removeChild(model.value)
@@ -698,6 +699,7 @@ async function performModelLoad() {
     savedEyeBlink.value = internalModel.eyeBlink
     savedExpressionManager.value = motionManager.expressionManager
     loadedModelId = pendingModel.id
+    naturalDiagnostics.setLoadedModelId(pendingModel.id ?? null)
 
     // --- Expression controller initialisation (conditional)
     if (live2dExpressionEnabled.value) {
@@ -1154,6 +1156,12 @@ function startNaturalCapture(request: NaturalCaptureRequest) {
   stopNaturalCapture = stop
 }
 
+// Read on demand by the dev-only motion QA bridge in this window; nothing reads it otherwise.
+const releaseStageReader = naturalDiagnostics.registerStageReader(() => ({
+  naturalActive: naturalMotion !== undefined && live2dMotionDriver.value === 'natural' && !paused.value,
+  hold: holdPerformer.current(holdClock()),
+}))
+
 watch(naturalCaptureRequest, (request, previous) => {
   if (request && request.id !== previous?.id)
     startNaturalCapture(request)
@@ -1331,6 +1339,8 @@ onUnmounted(() => {
   disposeShouldUpdateView?.()
   expressionController.dispose()
   loadedModelId = undefined
+  naturalDiagnostics.setLoadedModelId(null)
+  releaseStageReader()
 
   // Destroying a display object does not destroy its filters, and each mount
   // creates its own pair, so the light-map textures and the blur pass would
