@@ -112,4 +112,25 @@ describe('useLlmStreamingControlStore', () => {
     )
     expect(spanMock.end).toHaveBeenCalledTimes(1)
   })
+
+  it('reports rejected markers of local turns to rejection listeners until they are disposed', async () => {
+    const { useLlmStreamingControlStore } = await import('./streaming-control')
+    const store = useLlmStreamingControlStore()
+    const rejections: unknown[] = []
+    const dispose = store.onRejected(rejection => rejections.push(rejection))
+
+    await store.dispatchWith('<|ACT banana|>', { turnId: 'turn-1' })
+    await store.dispatchWith('<|ACT happy|>', { turnId: 'turn-1' })
+    await store.dispatchWith('<|NOPE|>', { turnId: 'turn-1' })
+    // Without a turn there is nothing to attribute; a remote CALL is reported by the window that owns the turn.
+    await store.dispatchWith('<|ACT banana|>')
+    await store.dispatchWith('<|ACT banana|>', { turnId: 'turn-2', remote: true })
+    dispose()
+    await store.dispatchWith('<|ACT banana|>', { turnId: 'turn-3' })
+
+    expect(rejections).toEqual([
+      { turnId: 'turn-1', special: '<|ACT banana|>', reason: 'parse-failed' },
+      { turnId: 'turn-1', special: '<|NOPE|>', reason: 'no-matching-parser' },
+    ])
+  })
 })

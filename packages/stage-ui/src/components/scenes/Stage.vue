@@ -46,6 +46,7 @@ import { useAudioContext, useSpeakingStore } from '../../stores/audio'
 import { useBackgroundStore } from '../../stores/background'
 import { useChatStore } from '../../stores/chat'
 import { useChatSessionStore } from '../../stores/chat/session-store'
+import { useActComplianceStore } from '../../stores/devtools/act-compliance'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useSpeechStore } from '../../stores/modules/speech'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
@@ -719,6 +720,15 @@ chatHookCleanups.push(getSpeechBusContext().on(voiceGenerationEnded, ({ body }) 
 chatHookCleanups.push(onStreamEnd(async (context) => {
   deferredSurfaceResets.delete(context.turnId)
   void voice.finishResponse(context).catch(error => console.error('Speech response completion failed', error))
+}))
+
+// ACT compliance for the devtools Situation inspector. Rejections arrive while the speech of the turn plays.
+const actCompliance = useActComplianceStore()
+chatHookCleanups.push(onStreamEnd(async (context) => {
+  actCompliance.recordStreamEnd(context, Date.now())
+}))
+chatHookCleanups.push(streamingControl.onRejected(({ turnId, special }) => {
+  actCompliance.recordRejected(turnId, special)
 }))
 
 chatHookCleanups.push(onAssistantResponseEnd(async (_message, context) => {

@@ -126,6 +126,19 @@ export interface ChatStreamEventContext {
   input?: WebSocketEventInputs
   /** Set for a turn the host started without user input. User turns omit it. */
   origin?: 'unprompted'
+  /** Cue counts of the reply. The runtime sets it before the stream-end hooks run, and only then. */
+  cueStats?: ChatTurnCueStats
+}
+
+/** How a reply used the ACT cue channel, counted by the runtime for one turn. */
+export interface ChatTurnCueStats {
+  /** ACT markers the reply emitted, including recovered near-misses. */
+  act: number
+  /** Near-miss cues (`[ACT ...]`, `<ACT ...>` and similar) the parser rewrote into markers. */
+  recovered: number
+  origin: 'user' | 'unprompted'
+  /** The unprompted turn ended without speech. Its cues were never performed. */
+  declined: boolean
 }
 
 export type ChatStreamEvent

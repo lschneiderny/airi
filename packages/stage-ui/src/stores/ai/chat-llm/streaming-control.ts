@@ -10,6 +10,13 @@ import { watch } from 'vue'
 
 import { startSpan, turnSpanOf } from '../../../composables/use-io-tracer'
 
+/** A marker of a turn that the controller rejected in this window. */
+export interface StreamingControlRejection {
+  turnId: string
+  special: string
+  reason: string
+}
+
 interface RemoteCallMessage {
   type: 'turn-call'
   fromInstanceId: string
@@ -21,6 +28,7 @@ interface RemoteCallMessage {
 export const useLlmStreamingControlStore = defineStore('llm-streaming-control', () => {
   const controller = createStreamingControlParser()
   const instanceId = `streaming-control-${nanoid()}`
+  const rejectionListeners = new Set<(rejection: StreamingControlRejection) => void>()
 
   const { post: postRemoteCall, data: incomingRemoteCall } = useBroadcastChannel<RemoteCallMessage, RemoteCallMessage>({ name: 'airi-streaming-control-turn-calls' })
 
@@ -73,6 +81,11 @@ export const useLlmStreamingControlStore = defineStore('llm-streaming-control', 
             [IOAttributes.StreamingControlReason]: event.reason,
             [IOAttributes.StreamingControlRawToken]: special,
           })
+          // A remote CALL was already reported by the window that owns its turn.
+          if (context?.turnId && !context.remote) {
+            for (const listener of [...rejectionListeners])
+              listener({ turnId: context.turnId, special, reason: event.reason })
+          }
           break
         case 'parsed':
           span.setAttribute(IOAttributes.StreamingControlMatched, true)
@@ -138,8 +151,17 @@ export const useLlmStreamingControlStore = defineStore('llm-streaming-control', 
     }
   }
 
+  /** Calls `listener` for every marker of a local turn that the controller rejects. Returns a disposer. */
+  function onRejected(listener: (rejection: StreamingControlRejection) => void) {
+    rejectionListeners.add(listener)
+    return () => {
+      rejectionListeners.delete(listener)
+    }
+  }
+
   return {
     dispatchWith,
+    onRejected,
     beginTurn: controller.beginTurn,
     completeTurn: controller.completeTurn,
     cancelTurn: controller.cancelTurn,
