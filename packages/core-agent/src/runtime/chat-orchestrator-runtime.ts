@@ -15,6 +15,7 @@ import { formatTimePrefix } from '../messages/datetime-prefix'
 import { renderConversationPreview } from '../messages/preview'
 import { createChatHooks } from './agent-hooks'
 import { useLlmmarkerParser } from './llm-marker-parser'
+import { acceptsRecoveredCue } from './recovered-cue'
 import { categorizeResponse, createStreamingCategorizer } from './response-categoriser'
 
 const REASONING_UI_FLUSH_CHUNK_SIZE = 24
@@ -972,6 +973,9 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           // A recovered near-miss cue inside reasoning stays reasoning text. Rejecting it makes the parser pass
           // the original text to onLiteral. Native markers in reasoning keep their existing handling below.
           if (recovery && !categorizer.filterToSpeech(recovery.raw, streamPosition))
+            return false
+          // A bracketed near-miss whose body is no valid ACT or DELAY payload is prose, such as "[Act 2]". It stays spoken.
+          if (recovery && !acceptsRecoveredCue(special, recovery.raw))
             return false
 
           if (unprompted && normalizeMarker(special) === declineMarker) {

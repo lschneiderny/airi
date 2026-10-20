@@ -2272,8 +2272,33 @@ describe('unprompted turns', () => {
     expect(saved?.role === 'assistant' && saved.categorization?.speech).toBe(' Hello there [aside] not a cue')
   })
 
+  it('speaks a near-miss marker whose body is not a valid cue verbatim and still recovers a valid one', async () => {
+    const harness = createHarness()
+    const literals: string[] = []
+    const specials: string[] = []
+    harness.runtime.hooks.onTokenLiteral(async (text) => {
+      literals.push(text)
+    })
+    harness.runtime.hooks.onTokenSpecial(async (text) => {
+      specials.push(text)
+    })
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      // The split keeps every literal non-blank: the runtime does not forward a whitespace-only literal to the hooks.
+      for (const text of ['We start [Ac', 't 2] now', ' <act sad slight> ok'])
+        await options?.onStreamEvent?.({ type: 'text-delta', text })
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest('Hi', { model: 'test', chatProvider: provider })
+
+    const saved = harness.sessionMessages['session-1'].at(-1)
+    expect(specials).toEqual(['<|ACT sad slight|>'])
+    expect(literals.join('')).toBe('We start [Act 2] now  ok')
+    expect(saved?.role === 'assistant' && saved.categorization?.speech).toBe('We start [Act 2] now  ok')
+  })
+
   it('keeps a near-miss cue inside reasoning as reasoning text at every chunk split', async () => {
-    const reply = '<think>Maybe I should use [ACT happy] or <|ACT sad|> here.</think>Hello there [ACT calm] bye'
+    const reply = '<think>Maybe I should use [ACT happy] or <|ACT sad|> here.</think>Hello there [ACT curious] bye'
     const closeTag = reply.indexOf('</think>')
     for (let split = 0; split <= reply.length; split++) {
       // Splitting inside `</think>` leaks `/think>` into speech even without any cue. That is a streaming categorizer
@@ -2299,7 +2324,7 @@ describe('unprompted turns', () => {
 
       const saved = harness.sessionMessages['session-1'].at(-1)
       // Native markers in reasoning were already specials before recovery existed. Only the near-miss stays text.
-      expect(specials, `split at ${split}`).toEqual(['<|ACT sad|>', '<|ACT calm|>'])
+      expect(specials, `split at ${split}`).toEqual(['<|ACT sad|>', '<|ACT curious|>'])
       expect(literals.join('').replace(/\s+/g, ' '), `split at ${split}`).toBe('Hello there bye')
       expect(saved?.role === 'assistant' && saved.categorization?.reasoning, `split at ${split}`).toBe('Maybe I should use [ACT happy] or <|ACT sad|> here.')
     }
