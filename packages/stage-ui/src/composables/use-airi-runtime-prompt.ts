@@ -9,12 +9,17 @@ import { useExpressionPerformanceSettings } from '../features/performance/settin
 
 const EXPRESSION_KINDS = ['face', 'effect', 'prop'] as const
 
-/** One line per kind that has exposed labels, in face, effect, prop order. */
-function formatExposedList(exposed: PerformanceRuntimeSnapshot['exposed']) {
+/** Labels per kind that has exposed labels, in face, effect, prop order. */
+function exposedByKind(exposed: PerformanceRuntimeSnapshot['exposed']) {
   return EXPRESSION_KINDS.flatMap((kind) => {
     const labels = exposed.filter(entry => entry.kind === kind).map(entry => entry.label)
-    return labels.length ? [`- ${kind}: ${labels.join(', ')}`] : []
-  }).join('\n')
+    return labels.length ? [{ kind, labels }] : []
+  })
+}
+
+/** One line per kind that has exposed labels, in face, effect, prop order. */
+function formatExposedList(exposed: PerformanceRuntimeSnapshot['exposed']) {
+  return exposedByKind(exposed).map(({ kind, labels }) => `- ${kind}: ${labels.join(', ')}`).join('\n')
 }
 
 function formatActive(active: PerformanceRuntimeSnapshot['active']) {
@@ -62,5 +67,34 @@ export function useStageLiveStatePrompt() {
       parts.push(t('base.prompt.expression-state', { active: formatActive(runtimeState.active), mood: formatMood(runtimeState.mood) }))
 
     return parts.join('\n\n')
+  })
+}
+
+/** The live performance state as single-line fields. An empty field has nothing to report. */
+export interface StageLiveState {
+  /** Exposed expression labels by kind, for example `face: smile, wink / effect: tear`. */
+  readonly exposed: string
+  /** Active expressions (`face smile`, or `none`), only while state feedback is on. */
+  readonly active: string
+  /** The Natural mood (`valence 0.1, arousal 0.2, tension 0`, or `unknown`), only while state feedback is on. */
+  readonly mood: string
+}
+
+/**
+ * Returns the same live state as {@link useStageLiveStatePrompt} as plain fields, for the situation stage line.
+ *
+ * It needs no i18n, so a store can call it outside a component setup; the situation block is English.
+ */
+export function useStageLiveState() {
+  const runtimeState = usePerformanceRuntimeState()
+  const performanceSettings = useExpressionPerformanceSettings()
+
+  return computed<StageLiveState>(() => {
+    const feedback = performanceSettings.document.stateFeedback
+    return {
+      exposed: exposedByKind(runtimeState.exposed).map(({ kind, labels }) => `${kind}: ${labels.join(', ')}`).join(' / '),
+      active: feedback ? formatActive(runtimeState.active) : '',
+      mood: feedback ? formatMood(runtimeState.mood) : '',
+    }
   })
 }
