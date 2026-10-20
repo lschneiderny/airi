@@ -31,18 +31,18 @@ describe('motionScenarioSchema', () => {
     expect(issuePaths(scenario({ events }))).toContain('events.1.at')
   })
 
+  it('rejects an event after the scenario ends and accepts one at the end', () => {
+    expect(issuePaths(scenario({ durationSeconds: 5, events: [{ kind: 'marker', at: 5, label: 'a' }, { kind: 'marker', at: 5.5, label: 'b' }] }))).toEqual(['events.1.at'])
+    expect(safeParse(MotionScenarioSchema, scenario({ durationSeconds: 5, events: [{ kind: 'marker', at: 5, label: 'a' }] })).success).toBe(true)
+  })
+
   it('rejects unknown event kinds', () => {
     expect(issuePaths(scenario({ events: [{ kind: 'dance', at: 1 }] }))[0]).toBe('events.0.kind')
   })
 
   it('rejects speech and cursor events in a t3 scenario', () => {
     const events = [{ kind: 'speech', at: 1, turnId: 't', seconds: 2, envelopeSeed: 1 }, { kind: 'cursor', at: 2, clear: true }]
-    const result = safeParse(MotionScenarioSchema, scenario({ levels: ['t1', 't3'], events }))
-    expect(result.success).toBe(false)
-    expect((result.issues ?? []).map(issue => issue.message)).toEqual([
-      'Scenarios with level "t3" cannot contain "speech" events',
-      'Scenarios with level "t3" cannot contain "cursor" events',
-    ])
+    expect(issuePaths(scenario({ levels: ['t1', 't3'], events }))).toEqual(['events.0.kind', 'events.1.kind'])
     expect(safeParse(MotionScenarioSchema, scenario({ events }), {}).success).toBe(true)
   })
 
@@ -58,6 +58,11 @@ describe('motionScenarioSchema', () => {
     expect(issuePaths(scenario({ extra: 1 }))).toContain('extra')
     expect(issuePaths(scenario({ events: [{ kind: 'marker', at: 1, label: 'a', extra: 1 }] }))).toContain('events.0.extra')
     expect(issuePaths(scenario({ settings: { extra: true } }))).toContain('settings.extra')
+  })
+
+  it('rejects settings that are not a record', () => {
+    expect(issuePaths(scenario({ settings: [] }))).toEqual(['settings'])
+    expect(issuePaths(scenario({ settings: [{ heldEmotions: true }] }))).toEqual(['settings'])
   })
 
   it('rejects a cursor event that is neither a position nor a clear', () => {

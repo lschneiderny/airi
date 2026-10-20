@@ -1,6 +1,6 @@
 import { defineInvoke, defineInvokeHandler } from '@moeru/eventa'
 import { safeParse } from 'valibot'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 
 import { buildEmotionTrial, createMotionQaContext, isMotionQaBridgeEnabled, MotionQaAwaitCaptureResultSchema, MotionQaCommandSchema, MotionQaConfigureInputSchema, MotionQaRunScenarioInputSchema, MotionQaRunScenarioResultSchema, MotionQaStartCaptureInputSchema, motionQaStateInvokeEventa, MotionQaStateSchema } from '.'
 
@@ -47,7 +47,7 @@ describe('motion QA bridge context', () => {
 
   it('reuses one window-local context that delivers invocations', async () => {
     expect(createMotionQaContext()).toBe(createMotionQaContext())
-    defineInvokeHandler(createMotionQaContext(), motionQaStateInvokeEventa, () => state)
+    onTestFinished(defineInvokeHandler(createMotionQaContext(), motionQaStateInvokeEventa, () => state))
     expect(await defineInvoke(createMotionQaContext(), motionQaStateInvokeEventa)()).toEqual(state)
   })
 

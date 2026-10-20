@@ -3,7 +3,7 @@ import type { InferOutput } from 'valibot'
 import type { Band, PerformanceEmotion } from '../expression-performance/types'
 import type { PerformanceMode } from '../performance-state'
 
-import { array, boolean, finite, integer, literal, maxValue, minLength, minValue, number, optional, picklist, pipe, rawCheck, strictObject, string, unknown, variant } from 'valibot'
+import { array, boolean, check, finite, integer, literal, maxValue, minLength, minValue, number, optional, picklist, pipe, rawCheck, strictObject, string, unknown, variant } from 'valibot'
 
 /** The QA levels a scenario can run at: T1 simulated pipeline, T2 headless rig, T3 rendered app. */
 export const motionScenarioLevels = ['t1', 't2', 't3'] as const
@@ -48,13 +48,14 @@ const scenarioObject = strictObject({
   /** Posture home Natural starts from. */
   home: optional(picklist(postureHomes)),
   levels: pipe(array(picklist(motionScenarioLevels)), minLength(1)),
-  settings: optional(strictObject({
+  // Valibot objects accept arrays; the settings section must be a record, as in expression-performance/settings.ts.
+  settings: optional(pipe(unknown(), check(value => !Array.isArray(value), 'Expected a settings object'), strictObject({
     heldEmotions: optional(boolean()),
     cursorAttention: optional(boolean()),
     expressionEnabled: optional(boolean()),
     /** Validated later with `parseExpressionPerformanceSettings`. */
     performance: optional(unknown()),
-  })),
+  }))),
   screenshotsAt: optional(array(seconds)),
   events: array(ScenarioEventSchema),
 })
@@ -62,7 +63,7 @@ const scenarioObject = strictObject({
 /**
  * A deterministic, replayable input script for motion QA.
  *
- * Events must be sorted by `at`. A scenario that includes level `t3` cannot contain `speech` or `cursor`
+ * Events must be sorted by `at` and must not come after `durationSeconds`. A scenario that includes level `t3` cannot contain `speech` or `cursor`
  * events, because the rendered app cannot produce real audio or pointer input through the QA bridge.
  */
 export const MotionScenarioSchema = pipe(scenarioObject, rawCheck(({ dataset, addIssue }) => {
@@ -79,6 +80,9 @@ export const MotionScenarioSchema = pipe(scenarioObject, rawCheck(({ dataset, ad
   scenario.events.forEach((event, index) => {
     if (index > 0 && event.at < scenario.events[index - 1].at)
       addIssue({ message: `Events must be sorted by "at": ${event.at} comes after ${scenario.events[index - 1].at}`, path: [...at(index, 'at')] })
+    // A runner plays the scenario for `durationSeconds`, so a later event would silently never play.
+    if (event.at > scenario.durationSeconds)
+      addIssue({ message: `Event at ${event.at} s is after the scenario ends at ${scenario.durationSeconds} s`, path: [...at(index, 'at')] })
     if (hasT3 && (event.kind === 'speech' || event.kind === 'cursor'))
       addIssue({ message: `Scenarios with level "t3" cannot contain "${event.kind}" events`, path: [...at(index, 'kind')] })
     if (event.kind === 'cursor' && !(event.clear === true ? event.x === undefined && event.y === undefined : event.x !== undefined && event.y !== undefined))

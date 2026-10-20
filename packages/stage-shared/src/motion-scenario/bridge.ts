@@ -1,5 +1,7 @@
 import type { InferOutput } from 'valibot'
 
+import type { PerformanceEmotion } from '../expression-performance/types'
+
 import { defineInvokeEventa } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/event-target'
 import { array, boolean, finite, literal, looseObject, maxValue, minLength, minValue, nullable, number, optional, picklist, pipe, strictObject, string, variant } from 'valibot'
@@ -9,7 +11,12 @@ import { MotionScenarioSchema } from './schema'
 /** Dev-only control surface of the rendered app. Dispatch goes through these contracts; handlers live in stage-ui. */
 
 const nonEmpty = pipe(string(), minLength(1))
-const emotion = picklist(['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral', 'love', 'flustered', 'sleepy'])
+// NOTICE:
+// This picklist duplicates the `PerformanceEmotion` union that expression-performance/types.ts owns, as schema.ts does.
+// The `satisfies` clause makes the compiler reject a value the union does not contain.
+// Source: expression-performance/types.ts.
+// Removal condition: the union becomes an exported value array in its owning module.
+const emotion = picklist(['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral', 'love', 'flustered', 'sleepy'] as const satisfies readonly PerformanceEmotion[])
 
 export const MotionQaStateSchema = strictObject({
   modelId: nullable(string()),
