@@ -31,6 +31,13 @@ const away = { amplitude: 0.7, shiftRate: 0.6 }
 const fade = { default: 1, intoTalking: 0.7, outOfTalking: 1.5 }
 
 /**
+ * Longest pause (seconds) through which an ACT cue's attention outlives the reply mode.
+ * Between speech clips of one reply the mode can leave talking for a few hundred ms;
+ * shorter pauses keep the cue's gaze target, and longer ones release it.
+ */
+const cueGapSeconds = 0.6
+
+/**
  * Relative selection weights of the non-camera fixation targets. The gaze layer splits
  * `1 - cameraFixationProbability` across them in proportion to these weights.
  */
@@ -71,6 +78,11 @@ export class NaturalPerformanceEnergy {
   /** Whether attention is `aside`; the gaze layer then holds an off-camera fixation instead of drawing targets. */
   aside = false
 
+  /** Attention an ACT cue set while talking or thinking, or `null`; `camera` cannot be told apart from the default. */
+  private cueAttention: 'aside' | 'screen' | null = null
+  /** The state waiting while a cue holds through a pause, and the active time at which the hold ends. */
+  private cueGap: { until: number, state: Pick<PerformanceState, 'mode' | 'attention'> } | null = null
+
   private mode: PerformanceMode = 'idle'
   private tau = fade.default
   private away = false
@@ -98,14 +110,15 @@ export class NaturalPerformanceEnergy {
     this.away = state.away
     this.energy = clamp01(Number.isFinite(energy) ? energy : 0.5)
     this.emphasisAcceptance = 0.15 + 0.2 * this.energy
-    this.aside = state.attention === 'aside'
-    // Screen attention outside watching comes from an ACT cue and weights the desk the same way.
-    if (state.attention === 'screen')
-      this.targetWeights = { ...defaultWeights, desk: 2 }
-    else if (state.mode === 'thinking')
-      this.targetWeights = { ...defaultWeights, peripheralUp: 1 }
-    else
-      this.targetWeights = defaultWeights
+    // A pause between speech clips keeps the cue's attention for up to cueGapSeconds, so the eyes
+    // do not flick to the camera and back. Listening belongs to the user and ends the cue at once.
+    const performing = state.mode === 'talking' || state.mode === 'thinking'
+    if (!performing && state.mode !== 'listening' && this.cueAttention !== null) {
+      this.cueGap = { until: this.cueGap?.until ?? this.time + cueGapSeconds, state: { mode: state.mode, attention: state.attention } }
+      return
+    }
+    this.cueGap = null
+    this.applyAttention(state)
   }
 
   /** Starts the reacting overlay at `at` (active seconds) for 2 s. */
@@ -123,6 +136,11 @@ export class NaturalPerformanceEnergy {
   /** Advances the cross-fade by `dt` seconds. */
   step(dt: number) {
     this.time += dt
+    if (this.cueGap !== null && this.time >= this.cueGap.until) {
+      const { state } = this.cueGap
+      this.cueGap = null
+      this.applyAttention(state)
+    }
     const preset = presets[this.mode]
     let reactionAmplitude = 0
     let reactionRate = 0
@@ -150,5 +168,18 @@ export class NaturalPerformanceEnergy {
     this.amplitudeScale = amplitude + (this.amplitudeScale - amplitude) * decay
     this.shiftRateScale = shiftRate + (this.shiftRateScale - shiftRate) * decay
     this.cameraFixationProbability = preset.cameraFixation + (this.cameraFixationProbability - preset.cameraFixation) * decay
+  }
+
+  private applyAttention(state: Pick<PerformanceState, 'mode' | 'attention'>) {
+    const performing = state.mode === 'talking' || state.mode === 'thinking'
+    this.cueAttention = performing && (state.attention === 'aside' || state.attention === 'screen') ? state.attention : null
+    this.aside = state.attention === 'aside'
+    // Screen attention outside watching comes from an ACT cue and weights the desk the same way.
+    if (state.attention === 'screen')
+      this.targetWeights = { ...defaultWeights, desk: 2 }
+    else if (state.mode === 'thinking')
+      this.targetWeights = { ...defaultWeights, peripheralUp: 1 }
+    else
+      this.targetWeights = defaultWeights
   }
 }

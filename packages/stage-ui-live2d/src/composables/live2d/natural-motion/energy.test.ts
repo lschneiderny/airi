@@ -130,4 +130,27 @@ describe('natural performance energy', () => {
     energy.setState(state('talking'), 0.5)
     expect(energy.aside).toBe(false)
   })
+
+  it('holds an ACT screen cue through a short pause and releases it after 0.6 s', () => {
+    const energy = new NaturalPerformanceEnergy()
+    energy.setState(state('talking', { attention: 'screen' }), 0.5)
+    energy.setState(state('watching', { attention: 'cursor' }), 0.5)
+    settle(energy, 0.5)
+    // Repeated reports during the pause do not extend the hold.
+    energy.setState(state('watching', { attention: 'cursor' }), 0.5)
+    expect(energy.targetWeights).toEqual({ desk: 2, peripheral: 1, peripheralUp: 0 })
+    settle(energy, 0.15)
+    expect(energy.targetWeights).toEqual({ desk: 1, peripheral: 1, peripheralUp: 0 })
+  })
+
+  it('never holds attention through a pause without an ACT cue', () => {
+    const energy = new NaturalPerformanceEnergy()
+    energy.setState(state('watching', { attention: 'screen' }), 0.5)
+    energy.setState(state('idle'), 0.5)
+    expect(energy.targetWeights).toEqual({ desk: 1, peripheral: 1, peripheralUp: 0 })
+    energy.setState(state('talking'), 0.5)
+    energy.setState(state('watching', { attention: 'cursor' }), 0.5)
+    expect(energy.aside).toBe(false)
+    expect(energy.targetWeights).toEqual({ desk: 1, peripheral: 1, peripheralUp: 0 })
+  })
 })

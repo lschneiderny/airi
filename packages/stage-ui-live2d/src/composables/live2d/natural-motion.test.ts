@@ -399,6 +399,87 @@ describe('natural motion', () => {
     expect(Math.hypot(released.x, released.y)).toBeLessThan(0.1)
   })
 
+  describe('the ACT look cue across a pause between speech clips', () => {
+    const talkingAside: PerformanceState = { ...idle, mode: 'talking', attention: 'aside' }
+    // During the pause the mode leaves talking, and Model.vue reports the cursor again because attention is no longer aside.
+    const pause: PerformanceState = { ...idle, mode: 'watching', attention: 'cursor' }
+    const cursor = { x: 0.5, y: 0.5 }
+
+    /** Fixations from `from` to `to` seconds at 120 Hz. */
+    function sample(motion: Live2DNaturalMotion, from: number, to: number) {
+      const points = []
+      for (let frame = Math.round(from * 120); frame < Math.round(to * 120); frame++)
+        points.push(motion.advance(frame / 120).fixation)
+      return points
+    }
+
+    function isAside(point: { x: number, y: number }, side: number) {
+      return Math.abs(point.x - side * 0.55) < 0.1 && Math.abs(point.y + 0.15) < 0.1
+    }
+
+    /** Talks with the aside cue until 2 s and pauses from 2 s; returns the controller and the side it drew. */
+    function pausedAside() {
+      const motion = new Live2DNaturalMotion({ seed: 71 })
+      motion.setPerformance(talkingAside, 0.5, 0)
+      const side = Math.sign(sample(motion, 0, 2).at(-1)!.x)
+      motion.setPerformance(pause, 0.5, 2)
+      motion.setCursor(cursor, 2)
+      return { motion, side }
+    }
+
+    it.each([0.3, 0.55])('keeps the aside target through a %s s pause between two talking spans', (gap) => {
+      const { motion, side } = pausedAside()
+      const paused = sample(motion, 2, 2 + gap)
+      motion.setCursor(null, 2 + gap)
+      motion.setPerformance(talkingAside, 0.5, 2 + gap)
+      const resumed = sample(motion, 2 + gap, 3.5)
+
+      expect(paused.every(point => isAside(point, side))).toBe(true)
+      expect(resumed.every(point => isAside(point, side))).toBe(true)
+    })
+
+    it('releases the cue when the pause outlasts 0.6 s, as at the end of the turn, and keeps the side if speech resumes', () => {
+      const { motion, side } = pausedAside()
+      const held = sample(motion, 2, 2.58)
+      // The release saccade lasts at most 90 ms after the step that ends the hold.
+      const released = sample(motion, 2.58, 2.75).at(-1)!
+      motion.setCursor(null, 2.8)
+      motion.setPerformance(talkingAside, 0.5, 2.8)
+      // The first aside saccade lasts at most 90 ms; the 2 s side memory keeps the side.
+      const resumed = sample(motion, 2.9, 3.5)
+
+      expect(held.every(point => isAside(point, side))).toBe(true)
+      expect(isAside(released, side)).toBe(false)
+      expect(Math.abs(released.x - side * 0.55)).toBeGreaterThan(0.3)
+      expect(resumed.every(point => isAside(point, side))).toBe(true)
+    })
+
+    it.each([
+      { name: 'a new ACT without the cue', next: { ...idle, mode: 'talking', attention: 'camera' } },
+      { name: 'the user speaking', next: { ...idle, mode: 'listening', attention: 'camera' } },
+    ] satisfies { name: string, next: PerformanceState }[])('ends the cue at once for $name during the pause', ({ next }) => {
+      const { motion } = pausedAside()
+      sample(motion, 2, 2.1)
+      motion.setPerformance(next, 0.5, 2.1)
+      const point = sample(motion, 2.1, 2.25).at(-1)!
+
+      expect(Math.hypot(point.x, point.y)).toBeLessThan(0.1)
+    })
+
+    it('leaves a pause without a look cue unchanged: the gaze follows the cursor at once', () => {
+      const motion = new Live2DNaturalMotion({ seed: 71 })
+      motion.setPerformance({ ...idle, mode: 'talking' }, 0.5, 0)
+      sample(motion, 0, 2)
+      motion.setPerformance(pause, 0.5, 2)
+      motion.setCursor(cursor, 2)
+      const point = sample(motion, 2, 2.15).at(-1)!
+
+      // Cursor attention looks 65% of the way toward the cursor.
+      expect(point.x).toBeCloseTo(0.65 * cursor.x, 6)
+      expect(point.y).toBeCloseTo(0.65 * cursor.y, 6)
+    })
+  })
+
   it('flinches away from a poke, shows surprise, and meets the camera', () => {
     const poked = new Live2DNaturalMotion({ seed: 61 })
     const control = new Live2DNaturalMotion({ seed: 61 })
