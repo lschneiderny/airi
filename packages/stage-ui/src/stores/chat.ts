@@ -4,7 +4,7 @@ import type { WebSocketEventInputs } from '@proj-airi/server-sdk'
 import type { Message } from '@xsai/shared-chat'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
-import type { ChatHistoryItem, ChatToolReference } from '../types/chat'
+import type { ChatHistoryItem, ChatToolReference, ContextMessage } from '../types/chat'
 import type { StoredVoiceInterruption } from '../types/chat-session'
 import type { ToolCallRerunPayload } from './tool-call-rerun'
 
@@ -13,6 +13,7 @@ import { decodeBase64 } from '@moeru/std/base64'
 import { SpanStatusCode } from '@opentelemetry/api'
 import { fileSource } from '@proj-airi/audio/encoding'
 import { createChatOrchestratorRuntime, renderConversationPreview } from '@proj-airi/core-agent'
+import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import { IOAttributes, IOEvents, IOSpanNames, IOSubsystems } from '@proj-airi/stage-shared'
 import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
@@ -39,7 +40,7 @@ import { resolveLlmTools } from './ai/chat-llm/tool-resolver'
 import { useLlmToolsStore } from './ai/chat-llm/tools'
 import { useLlmToolsetPromptsStore } from './ai/chat-llm/toolset-prompts'
 import { useAuthStore } from './auth'
-import { createMinecraftContext, createRuntimePromptContext, createUserAccountContext } from './chat/context-providers'
+import { createUserAccountContext } from './chat/context-providers'
 import { useChatContextStore } from './chat/context-store'
 import { describeChatImages, replaceToolResultImages } from './chat/image-projection'
 import { useChatSessionStore } from './chat/session-store'
@@ -53,6 +54,7 @@ import { useStickersStore } from './modules/stickers'
 import { useVisionStore } from './modules/vision'
 import { useWebSearchStore } from './modules/web-search'
 import { useProviderConfigStore } from './providers/config'
+import { useSituationStore } from './situation'
 import { executeToolCallRerun } from './tool-call-rerun'
 import { useWakeWordsStore } from './wake-words'
 
@@ -222,6 +224,7 @@ export const useChatStore = defineStore('chat', () => {
   const { t } = useI18n()
   const stageContractPrompt = useStageContractPrompt()
   const liveStatePrompt = useStageLiveStatePrompt()
+  const situationStore = useSituationStore()
   const authStore = useAuthStore()
   const llmStore = useLLM()
   const llmToolsStore = useLlmToolsStore()
@@ -257,6 +260,31 @@ export const useChatStore = defineStore('chat', () => {
    */
   function accountPromptSupplement() {
     return createUserAccountContext(authStore)?.text
+  }
+
+  /**
+   * Builds the only runtime context entry of a request: the leader's situation block.
+   * It stays in the per-request runtime context, never in the system prompt, because it changes every turn.
+   * It is undefined when there is nothing to send, for example in a host that never initialized the situation store.
+   */
+  function situationContextMessage(): ContextMessage | undefined {
+    const now = Date.now()
+    // NOTICE:
+    // The live stage state rides in the situation entry instead of its own context bucket.
+    // No stage sensor turns it into a situation `stage` observation yet.
+    // Source: `useStageLiveStatePrompt` in composables/use-airi-runtime-prompt.ts.
+    // Remove `liveStatePrompt` here once a stage sensor feeds the situation store.
+    const text = [situationStore.renderForRequest(now), liveStatePrompt.value].filter(Boolean).join('\n\n')
+    if (!text)
+      return undefined
+
+    return {
+      id: nanoid(),
+      contextId: 'system:situation',
+      strategy: ContextUpdateStrategy.ReplaceSelf,
+      text,
+      createdAt: now,
+    }
   }
 
   const activeTurns = shallowRef<readonly { sessionId: string, turnId: string }[]>([])
@@ -677,10 +705,7 @@ export const useChatStore = defineStore('chat', () => {
     getActiveSessionId: () => activeSessionId.value,
     getActiveProvider: () => activeProvider.value,
     getSystemPromptSupplement: () => llmToolsetPromptsStore.activeToolsetPrompt,
-    runtimeContextProviders: [
-      () => createRuntimePromptContext(liveStatePrompt.value),
-      createMinecraftContext,
-    ],
+    runtimeContextProviders: [situationContextMessage],
     createId: nanoid,
     unwrapMessage: message => toRaw(message),
     onStateChange: syncRuntimeState,

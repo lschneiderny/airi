@@ -27,6 +27,7 @@ import { usePerfTracerBridgeStore } from '@proj-airi/stage-ui/stores/perf-tracer
 import { listProvidersForPluginHost, shouldPublishPluginHostCapabilities } from '@proj-airi/stage-ui/stores/plugin-host-capabilities'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { useSettingsStageModel } from '@proj-airi/stage-ui/stores/settings/stage-model'
+import { useSituationStore } from '@proj-airi/stage-ui/stores/situation'
 import { useTheme } from '@proj-airi/ui'
 import { isEqual } from 'es-toolkit'
 import { storeToRefs } from 'pinia'
@@ -107,6 +108,7 @@ const setLocale = useElectronEventaInvoke(i18nSetLocale)
 const windowContext = resolveRendererWindowContext()
 const initialRoutePath = resolveInitialRendererRoutePath(route.path)
 const chatStore = useChatStore()
+const situationStore = useSituationStore()
 const builtinToolsStore = useTamagotchiBuiltinToolsStore()
 const homeAssistantStore = useTamagotchiHomeAssistantStore()
 const mcpToolsStore = useTamagotchiMcpToolsStore()
@@ -371,6 +373,7 @@ onMounted(async () => {
   await restoreLocale()
 
   await chatStore.initialize(syncedPinia)
+  situationStore.initialize(syncedPinia)
 
   await fullStageRuntime?.initialize()
   await chatStreamView?.initializeStreamView()
@@ -389,6 +392,7 @@ onUnmounted(() => {
   stopModelAssetStatus()
   stopLeadershipListener?.()
   chatStore.dispose()
+  situationStore.dispose()
   fullStageRuntime?.dispose()
   void chatStreamView?.dispose()
 })

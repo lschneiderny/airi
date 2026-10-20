@@ -766,7 +766,7 @@ describe('createChatOrchestratorRuntime', () => {
     expect(composedMessages).toHaveLength(2)
     expect(composedMessages[0]).toMatchObject({ role: 'system', content: 'system prompt' })
     expect(composedMessages[1]).toMatchObject({ role: 'user' })
-    expect(composedMessages[1]?.content).toBe('[2026-04-25 18:47] hello from user\n[Context]\n- system:weather: sunny')
+    expect(composedMessages[1]?.content).toBe('[2026-04-25 18:47] hello from user\n\nsunny')
     expect(harness.lifecycleRecords).toEqual(expect.arrayContaining([
       expect.objectContaining({ phase: 'before-compose' }),
       expect.objectContaining({ phase: 'prompt-context-built' }),
@@ -2130,7 +2130,7 @@ describe('unprompted turns', () => {
     })
     expect(conversationToChatMessages(conversation).at(-1)).toEqual({
       role: 'user',
-      content: `[2026-04-25 18:47] ${triggerText}\n[Context]\n- system:weather: sunny`,
+      content: `[2026-04-25 18:47] ${triggerText}\n\nsunny`,
     })
     expect(streamOptions?.tools).toBeUndefined()
     expect(tools).not.toHaveBeenCalled()

@@ -1,5 +1,7 @@
 import type { HistoryItem, MessageSegment } from './types'
 
+import { joinContextTexts } from './context-prompt'
+
 function renderHistoryAction(item: HistoryItem) {
   if (item.type === 'summary') {
     return [
@@ -35,8 +37,11 @@ function renderHistoryAction(item: HistoryItem) {
 
 /** Renders domain context as text without assigning a provider role or wire format. */
 export function renderSegmentText(segment: MessageSegment): string {
-  if (segment.type === 'runtime-context')
-    return segment.entries.length ? `\n[Context]\n${segment.entries.map(entry => `- ${entry.source}: ${entry.text}`).join('\n')}` : ''
+  // Runtime context follows the user's text after a blank line. Each entry renders verbatim and owns its heading.
+  if (segment.type === 'runtime-context') {
+    const text = joinContextTexts(segment.entries.map(entry => entry.text))
+    return text ? `\n\n${text}` : ''
+  }
 
   if (segment.type === 'text')
     return segment.text
