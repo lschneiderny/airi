@@ -1,11 +1,13 @@
 import type { ChatHookRegistry, ChatStreamEventContext } from '@proj-airi/core-agent'
 import type { DesktopActivitySnapshot } from '@proj-airi/stage-shared/performance-state'
 import type { ActivityObservation, WakeObservation } from '@proj-airi/stage-shared/situation'
+import type { ForegroundWindowSample } from '@proj-airi/stage-shared/stores/foreground-window'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import { createChatHooks } from '@proj-airi/core-agent'
 import { initialSituationState, SETTLE_MS } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
+import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -13,6 +15,7 @@ import { useSituationStore } from '.'
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { DESKTOP_SAMPLE_STALE_MS } from './sensors/desktop'
+import { FOREGROUND_SAMPLE_STALE_HIDDEN_MS, FOREGROUND_SAMPLE_STALE_VISIBLE_MS } from './sensors/foreground'
 
 const T0 = Date.UTC(2026, 9, 20, 9, 0, 0)
 
@@ -60,6 +63,11 @@ function activity(appId: string, atMs: number): ActivityObservation {
 /** A fresh desktop sample at the current fake time. */
 function desktopSample(overrides: Partial<DesktopActivitySnapshot> = {}): DesktopActivitySnapshot {
   return { idleSeconds: 0, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, systemAudioLevel: null, screenChange: null, sampledAtMs: Date.now(), ...overrides }
+}
+
+/** A fresh foreground sample at the current fake time. */
+function foregroundSample(overrides: Partial<ForegroundWindowSample> = {}): ForegroundWindowSample {
+  return { exePath: 'C:\\Windows\\notepad.exe', exeName: 'notepad.exe', title: 'notes.txt - Notepad', pid: 7, ownProcess: false, notificationState: 'accepts', sampledAtMs: Date.now(), ...overrides }
 }
 
 /** Emits the hooks of one finished user turn, as the chat runtime does. */
@@ -344,6 +352,41 @@ describe('situation store', () => {
     await userTurn(first, 'turn-1')
 
     expect(store.state.conversation.lastUserAtMs).toBe(T0)
+  })
+
+  it('turns foreground samples into activity and keeps AIRI\'s own app out of it', () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    const foreground = useForegroundWindowStore()
+
+    foreground.setSample(foregroundSample({ exePath: 'C:\\AIRI\\AIRI.exe', exeName: 'AIRI.exe', title: 'AIRI', ownProcess: true }))
+    foreground.setSample(foregroundSample())
+    // Another AIRI process (not one of this app's pids) is still AIRI: the reducer drops it through selfAppIds.
+    store.ingest(activity('airi', T0))
+
+    expect(store.state.activity).toMatchObject({ appId: 'notepad', label: 'Notepad', category: 'other', title: 'notes.txt' })
+    expect(store.state.busy.state).toBe('accepts')
+  })
+
+  it('judges foreground staleness by stage visibility from its own ticker', () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    useForegroundWindowStore().setSample(foregroundSample())
+
+    vi.advanceTimersByTime(FOREGROUND_SAMPLE_STALE_HIDDEN_MS)
+    expect(store.state.busy.state).toBe('accepts')
+    vi.advanceTimersByTime(1_000)
+    expect(store.state.busy.state).toBe('unknown')
+
+    useForegroundWindowStore().setSample(foregroundSample())
+    store.setStageVisible(true)
+    vi.advanceTimersByTime(FOREGROUND_SAMPLE_STALE_VISIBLE_MS)
+    expect(store.state.busy.state).toBe('accepts')
+    vi.advanceTimersByTime(1_000)
+    expect(store.state.busy.state).toBe('unknown')
+    expect(vi.getTimerCount()).toBe(1)
   })
 
   it('stores stage visibility, which starts hidden', () => {

@@ -17,16 +17,19 @@ import { computed, shallowRef, watch } from 'vue'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { startConversationSensor } from './sensors/conversation'
 import { startDesktopSensor } from './sensors/desktop'
+import { startForegroundSensor } from './sensors/foreground'
 import { startStageSensor } from './sensors/stage'
 
 /**
  * How often the leader derives the time-based events (settled app switches, long-session tiers, expiry) and
- * re-checks desktop sample freshness.
+ * re-checks desktop and foreground sample freshness.
  */
 const ADVANCE_INTERVAL_MS = 1_000
 
 interface RunningSensors {
   check: (nowMs: number) => void
+  /** App ids of AIRI's own executable, passed to the reducer so its windows never become activity. */
+  selfAppIds: () => readonly string[]
   stop: () => void
 }
 
@@ -36,7 +39,8 @@ interface RunningSensors {
  * The store is intentionally neither synced nor persisted: the leader is the only window that sends chat
  * requests, so it alone folds observations and renders the block. Followers keep the initial state and ignore
  * every call. Leadership comes from {@link initialize}: a promoted window starts from `initialSituationState`
- * with a fresh 1 s advance ticker and its sensors (desktop presence and wake, conversation turns, stage state),
+ * with a fresh 1 s advance ticker and its sensors (desktop presence and wake, foreground activity and busy,
+ * conversation turns, stage state),
  * and a demoted or disposed window stops the sensors and the ticker and drops its state. Follower windows never
  * register sensors, so their chat hooks and desktop samples produce no observations. The conversation sensor runs
  * on the hooks that the chat store hands over through {@link observeChat}.
@@ -63,11 +67,17 @@ export const useSituationStore = defineStore('situation', () => {
 
   function startSensors(): RunningSensors {
     const desktop = startDesktopSensor(ingest)
+    const foreground = startForegroundSensor(ingest, { stageVisible: () => stageVisible.value })
     const stopStage = startStageSensor(ingest)
     return {
-      check: desktop.check,
+      check(nowMs) {
+        desktop.check(nowMs)
+        foreground.check(nowMs)
+      },
+      selfAppIds: foreground.selfAppIds,
       stop() {
         desktop.stop()
+        foreground.stop()
         stopStage()
       },
     }
@@ -111,7 +121,7 @@ export const useSituationStore = defineStore('situation', () => {
   function ingest(observation: Observation) {
     if (!leading.value)
       return
-    current.value = reduceSituation(current.value, observation, Date.now())
+    current.value = reduceSituation(current.value, observation, Date.now(), { selfAppIds: sensors?.selfAppIds() ?? [] })
   }
 
   /**
@@ -149,7 +159,8 @@ export const useSituationStore = defineStore('situation', () => {
   /**
    * Reports whether this window's stage is on screen (visible and not minimized). The gate reads it: the desktop
    * producer keeps publishing fresh lock and unlock samples while the stage is hidden, so sample freshness alone
-   * cannot tell. A host that never reports counts as hidden.
+   * cannot tell. The foreground sensor also uses it to pick its staleness limit. A host that never reports counts
+   * as hidden.
    */
   function setStageVisible(visible: boolean) {
     stageVisible.value = visible
