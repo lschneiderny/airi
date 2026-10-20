@@ -53,7 +53,16 @@ export function readRig(root: string | undefined): T2RigData {
     throw new T2SetupError(`No .moc3 found: no .model3.json within ${maxSearchDepth} folder levels of ${root}, so the .moc3 cannot be located.`)
 
   const dir = dirname(modelJsonPath)
-  const modelJson = JSON.parse(readFileSync(modelJsonPath, 'utf8')) as Model3Json & Record<string, unknown>
+  let modelJson: Model3Json & Record<string, unknown>
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(modelJsonPath, 'utf8'))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+      throw new Error('Expected a model3.json object')
+    modelJson = parsed as Model3Json & Record<string, unknown>
+  }
+  catch (error) {
+    throw new T2SetupError(`Invalid .model3.json: ${modelJsonPath}`, { cause: error })
+  }
   const refs = modelJson.FileReferences ?? {}
   if (!refs.Moc || !existsSync(join(dir, refs.Moc)))
     throw new T2SetupError(`The .moc3 named by ${modelJsonPath} is missing: ${refs.Moc ?? '(no FileReferences.Moc)'}`)

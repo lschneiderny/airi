@@ -9,7 +9,7 @@ import { gateUsage, runGateCli } from '../src/motion/gate/cli'
 const usage = `Usage: motion <command>
 
 Commands:
-  gate <emotion | liveliness> --level t1 ...   run a committed QA gate
+  gate <emotion | liveliness> --level <t1 | t2> ...   run a committed QA gate
 
 ${gateUsage}`
 

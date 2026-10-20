@@ -36,10 +36,15 @@ const trace = runT2(scenario, runtime, { catalog })
 ```
 
 - Inputs: `AIRI_QA_RIG_FORBOOTH` is the rig folder (the `.model3.json` may sit up to two folders below it); `AIRI_QA_CUBISM_CORE` is a local `live2dcubismcore.min.js` (the core is gitignored). A missing or empty rig or a missing core throws `T2SetupError` (`exitCode` 2), naming the missing `.moc3` or core.
+- Without `AIRI_QA_CUBISM_CORE`, the default is the current checkout's `apps/stage-tamagotchi/public/assets/js/CubismSdkForWeb-5-r.3/Core/live2dcubismcore.min.js`, not the main checkout. Fresh worktrees need the environment variable.
+- The runner uses `ExpressionComposer` and slot leases directly: the Pinia expression store reads `performance.now()`, which would make fades depend on wall time rather than the simulated clock.
+- Expression bases restore before the SDK motion-manager update; composition and `adapter.frame` run on `afterMotionUpdate`, before Natural's late composition, physics and pose. Models and moc allocations are released after every scenario.
+- The Cubism core prints its version line when each model is constructed. Gate logs retain those lines; they are not verdicts.
 - Mesh deformation (`model.update()`) is skipped by default: it reads parameters and never writes them, and it costs about 90% of a frame. `deform: true` runs it for the parameter-identity check.
 - The trace records the rig's own parameter ranges plus the parameters that the catalog's expression files drive (the six ForBOOTH switches). A trace with no moving parameter throws.
 - Not reproduced from the stage: the beat-sync, idle-focus and light-squint plugins, manual motion control, expression group conflicts, and rest-set entries. Auto blink, lip sync and breath come from the Natural adapter's attention, as for an unattended stage.
 - `pnpm -F @proj-airi/qa-tools t2:probe [--identity]` runs one 10 s trial and prints the trace sha256, the speed multiple, and with `--identity` the parameter difference with and without deformation. It exits 2 for a missing or empty rig or core.
+- The probe remains a narrow determinism/deformation diagnostic; gate execution uses the shared CLI and scorer below.
 - Rig tests skip, with a logged reason, when `AIRI_QA_RIG_FORBOOTH` or the core is absent.
 
 ## Evidence
@@ -88,12 +93,15 @@ pnpm -F @proj-airi/qa-tools exec tsx bin/check-prod-bundle.ts [directory]
 
 ## Motion gates
 
-`pnpm qa:motion gate <emotion | liveliness> --level t1 [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N]` runs a committed gate (`stage-ui-live2d` `natural-motion/gates.ts`) through the T1 runner and judges it.
+`pnpm qa:motion gate <emotion | liveliness> --level <t1 | t2> [--rig forbooth] [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N]` runs a committed gate (`stage-ui-live2d` `natural-motion/gates.ts`) and judges it.
+
+- T2 requires `--rig forbooth` and the local rig/core inputs above. Full and held-only emotion variants each use seeds 1..30; long holds retain their committed count. Liveliness runs three 600 s simulations, including the unchanged 180 s warm-up. Reports record the effective seed and duration budgets.
+- T2 reports post-physics parameter measurements, not rendered parity beyond the specific todo-7 spike measurement. Gate failures are findings, not authorization to retune motion or scoring constants.
 
 - It creates a run directory (`gate` records `{ id, version, fileSha }`, with the version as a string), spawns Vitest on `gates/*.gate.ts` (project `gate`, one file per emotion plus `null.gate.ts` for the placebo null, or `liveliness.gate.ts`), aggregates `partials/*.json`, and writes `report.json`, `summary.txt`, `timing.json` and `vitest.log`.
 - `report.json`: `{ gateId, version, fileSha, inputHash, level, limitation, pass, nullStats, results, determinismHash }` (schema: `src/motion/gate/report.ts`). `determinismHash` covers everything except timings, and is the same for any `--workers` count.
 - `--seeds N` runs at most N seeds per variant; the report records `selection.seedsLimit`. The committed counts live in the gate, never in the CLI.
-- Exit codes: 0 every check passed, 1 a check failed or the run broke (a missing partial, a Vitest failure, the timeout), 2 a usage error (unknown emotion, band, flag or level). `pnpm qa:motion` passes the code through.
+- Exit codes: 0 every check passed, 1 a check failed or the run broke (a missing partial, a Vitest failure, the timeout), 2 a usage or T2 setup error (including invalid model3 JSON or a missing rig/core). `pnpm qa:motion` passes the code through.
 - Timing targets (full gate 5 min, smoke 60 s on 16 cores) are recorded in `timing.json` and `run.json` with the CPU load before the run; they are not asserted.
 - Every report states that scores prove direction, size relative to the recipe, release and detectability above the rig's idle noise, not naturalness.
 

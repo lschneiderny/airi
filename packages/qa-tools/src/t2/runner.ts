@@ -56,7 +56,8 @@ interface InternalModel {
   pose?: unknown
   updateFocus: () => void
   update: (dtMs: number, nowMs: number) => void
-  on: (event: 'beforeModelUpdate', listener: () => void) => void
+  destroy: () => void
+  on: (event: 'beforeModelUpdate' | 'afterMotionUpdate', listener: () => void) => void
 }
 
 /**
@@ -66,7 +67,7 @@ interface InternalModel {
 export interface Cubism4Module {
   CubismFramework: { isStarted: () => boolean, startUp: (option: { logFunction: (message: string) => void, loggingLevel: number }) => boolean, initialize: () => void }
   Cubism4ModelSettings: new (json: Record<string, unknown>) => unknown
-  CubismMoc: { create: (moc: ArrayBuffer) => { createModel: () => CubismCoreModel } }
+  CubismMoc: { create: (moc: ArrayBuffer) => { createModel: () => CubismCoreModel, release: () => void } }
   Cubism4InternalModel: new (coreModel: CubismCoreModel, settings: unknown, options: Record<string, unknown>) => InternalModel
   CubismPhysics: { create: (json: unknown) => NonNullable<InternalModel['physics']> }
   CubismPose: { create: (json: unknown) => unknown }
@@ -82,7 +83,7 @@ export interface T2Runtime {
 export interface LoadT2RuntimeOptions {
   /** @default process.env.AIRI_QA_RIG_FORBOOTH */
   rigRoot?: string
-  /** @default process.env.AIRI_QA_CUBISM_CORE, else the main checkout's gitignored copy */
+  /** @default process.env.AIRI_QA_CUBISM_CORE, else the current checkout's gitignored copy */
   corePath?: string
 }
 
@@ -111,8 +112,6 @@ export interface RunT2Options {
   deform?: boolean
   /** Called with the live parameter values every frame at the sample point, before deformation. For identity checks. */
   observe?: (values: ArrayLike<number>, simTime: number) => void
-  /** Rig parameters recorded in addition to the standard ones and the catalog's switch parameters. */
-  extraParameterIds?: readonly string[]
   /** Wall-clock bound in seconds; the run throws when it is exceeded. @default 900 */
   maxWallSeconds?: number
 }
@@ -151,8 +150,8 @@ function countMovingChannels(trace: NaturalTrace) {
  * `Cubism4InternalModel` with the rig's moc, physics and pose, built fresh for every call, so equal scenarios
  * serialize to equal bytes. The trace records the rig's own parameter ranges plus the catalog's switch parameters.
  *
- * Per frame, in the order of Model.vue: expression bases restored, expression composed, Natural's `frame`, then the
- * SDK update (motion manager, Natural's late composition in place of `updateFocus`, physics, pose), the trace
+ * Per frame, in the order of Model.vue: expression bases restored, SDK motion manager, expression composed,
+ * Natural's `frame`, Natural's late composition in place of `updateFocus`, physics, pose, the trace
  * sample before deformation, and `loadParameters`.
  *
  * Not reproduced from the stage: the SDK breath, eye blink and expression manager are removed as Model.vue removes
@@ -174,7 +173,8 @@ export function runT2(input: MotionScenario, runtime: T2Runtime, options: RunT2O
         cubism4.CubismFramework.initialize()
       }
       const modelSettings = new cubism4.Cubism4ModelSettings({ ...rig.modelJson, url: rig.modelUrl })
-      const coreModel = cubism4.CubismMoc.create(rig.moc).createModel()
+      const moc = cubism4.CubismMoc.create(rig.moc)
+      const coreModel = moc.createModel()
       const internalModel = new cubism4.Cubism4InternalModel(coreModel, modelSettings, {})
       if (rig.physicsJson)
         internalModel.physics = cubism4.CubismPhysics.create(rig.physicsJson)
@@ -219,7 +219,7 @@ export function runT2(input: MotionScenario, runtime: T2Runtime, options: RunT2O
       })
       slots.setSlotSettings(settings.slots)
 
-      const switchParameterIds = [...new Set([...definitions.flatMap(definition => definition.parameters.map(parameter => parameter.id)), ...options.extraParameterIds ?? []])]
+      const switchParameterIds = [...new Set(definitions.flatMap(definition => definition.parameters.map(parameter => parameter.id)))]
       const recorder = new NaturalTraceRecorder(parameters, { extraParameterIds: switchParameterIds })
 
       // Model.vue samples on `beforeModelUpdate`: after focus (Natural), physics, and pose, before
@@ -236,6 +236,11 @@ export function runT2(input: MotionScenario, runtime: T2Runtime, options: RunT2O
         return [core.getParameterMinimumValue(index), core.getParameterMaximumValue(index)]
       }
       const deadline = performance.now() + maxWallSeconds * 1000
+      let currentAdapter: Parameters<ScenarioHost['frame']>[0]
+      internalModel.on('afterMotionUpdate', () => {
+        composer.compose(nowSeconds, id => core.getParameterValueById(id), (id, value) => core.setParameterValueById(id, value), clampOf)
+        currentAdapter.frame(nowSeconds)
+      })
 
       return {
         model: internalModel as unknown as ScenarioHost['model'],
@@ -249,16 +254,16 @@ export function runT2(input: MotionScenario, runtime: T2Runtime, options: RunT2O
           if (performance.now() > deadline)
             throw new Error(`[qa-tools] T2 run exceeded its ${maxWallSeconds} s wall-clock bound at simulated ${simTime.toFixed(1)} s`)
           nowSeconds = simTime
+          currentAdapter = adapter
           slots.tickLeases(simTime)
           composer.restoreBases((id, value) => core.setParameterValueById(id, value))
-          composer.compose(simTime, id => core.getParameterValueById(id), (id, value) => core.setParameterValueById(id, value), clampOf)
-          // Model.vue calls `frame` from a final motion-manager plugin, which runs before `updateFocus`.
-          adapter.frame(simTime)
           internalModel.update(t2Step * 1000, simTime * 1000)
         },
         dispose: () => {
           composer.define([])
           leases.value = emptyLeases()
+          internalModel.destroy()
+          moc.release()
         },
       }
     },

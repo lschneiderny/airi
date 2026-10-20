@@ -22,7 +22,7 @@ export interface AggregateContext {
   runDir: string
   /** Git blob SHA of `gates.ts`, the file that holds the gate's rules. */
   fileSha: string
-  level: 't1'
+  level: 't1' | 't2'
 }
 
 const sha256 = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex')
@@ -65,6 +65,7 @@ export function aggregateEmotion(context: AggregateContext, gate: EmotionGate, s
     nullStats: score.nullStats as GateReport['nullStats'],
     results: score.results,
     selection: { emotions: [...selection.emotions], bands: [...selection.bands], seedsLimit: selection.seedsLimit },
+    seeds: gate.seeds,
   } as Omit<GateReport, 'determinismHash'>)
 }
 
@@ -96,6 +97,7 @@ export function aggregateLiveliness(context: AggregateContext, gate: LivelinessG
     pass: results.every(result => result.verdict === 'pass'),
     nullStats: {},
     results,
+    simulation: { seeds: gate.seeds, warmUpSeconds: gate.warmUpSeconds, scoredSeconds: gate.scoredSeconds },
   })
 }
 

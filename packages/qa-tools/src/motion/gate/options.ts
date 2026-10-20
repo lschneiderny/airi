@@ -1,5 +1,20 @@
 import type { Band, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type { EmotionGate, SeedRange, TrialVariant } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
+import type { LivelinessGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
+
+import { emotionGate, naturalIdleLivelinessGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
+
+export type GateLevel = 't1' | 't2'
+
+/** T2 uses the task-14 trial budget, without changing the scoring rules. */
+export function emotionGateFor(level: GateLevel): EmotionGate {
+  return level === 't1' ? emotionGate : { ...emotionGate, seeds: { ...emotionGate.seeds, full: { start: 1, count: 30 }, heldOnly: { start: 1, count: 30 } } }
+}
+
+/** T2's three runs are 600 simulated seconds each, including the unchanged warm-up. */
+export function livelinessGateFor(level: GateLevel): LivelinessGate {
+  return level === 't1' ? naturalIdleLivelinessGate : { ...naturalIdleLivelinessGate, scoredSeconds: 600 - naturalIdleLivelinessGate.warmUpSeconds }
+}
 
 /** Non-neutral emotions, in the order the gate files and reports list them. Each has a held recipe the scorer checks. */
 export const gateEmotions = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'love', 'flustered', 'sleepy'] as const satisfies readonly PerformanceEmotion[]

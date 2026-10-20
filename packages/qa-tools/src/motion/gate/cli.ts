@@ -1,6 +1,6 @@
 import type { Band, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 
-import type { GateSelection } from './options'
+import type { GateLevel, GateSelection } from './options'
 
 import process from 'node:process'
 
@@ -10,24 +10,27 @@ import { cpus, freemem, totalmem } from 'node:os'
 import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
-import { emotionGate, naturalIdleLivelinessGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 
 import { resolveVitestEntry } from '../../env/pnpm'
 import { createRun } from '../../evidence/run'
+import { T2SetupError } from '../../t2/errors'
+import { loadT2Runtime } from '../../t2/runner'
 import { aggregateEmotion, aggregateLiveliness, formatSummary } from './aggregate'
-import { gateBands, gateEmotions } from './options'
+import { emotionGateFor, gateBands, gateEmotions, livelinessGateFor } from './options'
 
-export const gateUsage = `Usage: motion gate <emotion | liveliness> --level t1 [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N]
+export const gateUsage = `Usage: motion gate <emotion | liveliness> --level <t1 | t2> [--rig forbooth] [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N]
 
-  --level    t1 (the only level available)
+  --level    t1 (controller simulation) or t2 (headless real rig)
+  --rig      forbooth (required for t2; local rig and core environment variables)
   --emotions comma list of: ${gateEmotions.join(', ')} (emotion gate only; default all)
   --bands    comma list of: ${gateBands.join(', ')} (emotion gate only; default all)
   --seeds    run at most N seeds per variant, a reduced run that the report records (emotion gate only)
   --workers  Vitest workers (default: cores - 1); the report is the same for any count
-Exit codes: 0 every check passed, 1 a check failed or the run broke, 2 usage error.`
+Exit codes: 0 every check passed, 1 a check failed or the run broke, 2 usage or T2 setup error.`
 
 export interface GateCommand {
   target: 'emotion' | 'liveliness'
+  level: GateLevel
   selection: GateSelection
   workers: number
   timeoutMinutes: number
@@ -56,12 +59,12 @@ function parsePositiveInteger(raw: string | undefined, name: string): number | n
 
 /** Validates `gate` arguments (everything after the `gate` word is the caller's `rest`). */
 export function parseGateArgs(rest: string[], defaultWorkers = Math.max(1, cpus().length - 1)): ParsedGateArgs {
-  let values: { 'level'?: string, 'emotions'?: string, 'bands'?: string, 'seeds'?: string, 'workers'?: string, 'timeout-minutes'?: string }
+  let values: { 'level'?: string, 'rig'?: string, 'emotions'?: string, 'bands'?: string, 'seeds'?: string, 'workers'?: string, 'timeout-minutes'?: string }
   let positionals: string[]
   try {
     ({ values, positionals } = parseArgs({
       args: rest,
-      options: { 'level': { type: 'string' }, 'emotions': { type: 'string' }, 'bands': { type: 'string' }, 'seeds': { type: 'string' }, 'workers': { type: 'string' }, 'timeout-minutes': { type: 'string' } },
+      options: { 'level': { type: 'string' }, 'rig': { type: 'string' }, 'emotions': { type: 'string' }, 'bands': { type: 'string' }, 'seeds': { type: 'string' }, 'workers': { type: 'string' }, 'timeout-minutes': { type: 'string' } },
       strict: true,
       allowPositionals: true,
     }))
@@ -74,8 +77,12 @@ export function parseGateArgs(rest: string[], defaultWorkers = Math.max(1, cpus(
     return { ok: false, message: `Unknown gate ${JSON.stringify(target ?? '')}. Valid gates: emotion, liveliness` }
   if (extra.length)
     return { ok: false, message: `Unexpected argument ${JSON.stringify(extra[0])}` }
-  if (values.level !== 't1')
-    return { ok: false, message: values.level === undefined ? '--level is required. Valid levels: t1' : `Level ${JSON.stringify(values.level)} is not available. Valid levels: t1` }
+  if (values.level !== 't1' && values.level !== 't2')
+    return { ok: false, message: values.level === undefined ? '--level is required. Valid levels: t1, t2' : `Level ${JSON.stringify(values.level)} is not available. Valid levels: t1, t2` }
+  if (values.level === 't2' && values.rig !== 'forbooth')
+    return { ok: false, message: '--level t2 requires --rig forbooth' }
+  if (values.level === 't1' && values.rig !== undefined)
+    return { ok: false, message: '--rig applies to --level t2 only' }
   if (target === 'liveliness' && (values.emotions !== undefined || values.bands !== undefined || values.seeds !== undefined))
     return { ok: false, message: '--emotions, --bands and --seeds apply to the emotion gate only' }
 
@@ -96,7 +103,7 @@ export function parseGateArgs(rest: string[], defaultWorkers = Math.max(1, cpus(
     return { ok: false, message: timeoutMinutes }
   return {
     ok: true,
-    command: { target, selection: { emotions, bands, seedsLimit: seeds }, workers: workers ?? defaultWorkers, timeoutMinutes: timeoutMinutes ?? (target === 'emotion' ? 90 : 30) },
+    command: { target, level: values.level, selection: { emotions, bands, seedsLimit: seeds }, workers: workers ?? defaultWorkers, timeoutMinutes: timeoutMinutes ?? (target === 'emotion' ? 90 : 30) },
   }
 }
 
@@ -154,20 +161,31 @@ function runVitest(repoRoot: string, files: string[], env: NodeJS.ProcessEnv, wo
 /** Targets recorded with every run; they are not asserted. */
 const timingTargets = { fullGateSeconds: 300, smokeSeconds: 60, cores: 16 }
 
-/** Runs one T1 gate end to end. Returns the process exit code: 0 pass, 1 fail or broken run, 2 usage error. */
+/** Runs one gate end to end. Returns 0 pass, 1 fail or broken run, 2 usage or rig setup error. */
 export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.ProcessEnv = process.env): Promise<number> {
   const parsed = parseGateArgs(rest)
   if (!parsed.ok) {
     console.error(`${parsed.message}\n${gateUsage}`)
     return 2
   }
-  const { target, selection, workers, timeoutMinutes } = parsed.command
+  const { target, level, selection, workers, timeoutMinutes } = parsed.command
+  if (level === 't2') {
+    try {
+      await loadT2Runtime({ rigRoot: env.AIRI_QA_RIG_FORBOOTH, corePath: env.AIRI_QA_CUBISM_CORE })
+    }
+    catch (error) {
+      console.error(`T2 setup failed: ${errorMessageFrom(error) ?? 'unknown error'}`)
+      return error instanceof T2SetupError ? 2 : 1
+    }
+  }
+  const emotionGate = emotionGateFor(level)
+  const naturalIdleLivelinessGate = livelinessGateFor(level)
   const gate = target === 'emotion' ? emotionGate : naturalIdleLivelinessGate
   const fileSha = gateFileSha(repoRoot)
 
   let run
   try {
-    run = createRun({ tool: 'motion', label: `gate-${target}-t1`, repoRoot, gate: { id: gate.id, version: String(gate.version), fileSha } })
+    run = createRun({ tool: 'motion', label: `gate-${target}-${level}`, repoRoot, gate: { id: gate.id, version: String(gate.version), fileSha } })
   }
   catch (error) {
     console.error(`Cannot start the run: ${errorMessageFrom(error) ?? 'unknown error'}`)
@@ -205,6 +223,7 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
       ...env,
       QA_RUN_DIR: run.dir,
       QA_GATE: gate.id,
+      QA_LEVEL: level,
       QA_EMOTIONS: selection.emotions.join(','),
       QA_BANDS: selection.bands.join(','),
       ...(selection.seedsLimit === null ? {} : { QA_SEEDS: String(selection.seedsLimit) }),
@@ -216,7 +235,7 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
       return finish(1, `gate run broke: ${reason}`)
     }
 
-    const context = { runDir: run.dir, fileSha, level: 't1' as const }
+    const context = { runDir: run.dir, fileSha, level }
     const report = target === 'emotion' ? aggregateEmotion(context, emotionGate, selection) : aggregateLiveliness(context, naturalIdleLivelinessGate)
     writeFileSync(run.path('report.json'), `${JSON.stringify(report, null, 2)}\n`)
     run.addArtifact('report.json', 'report')

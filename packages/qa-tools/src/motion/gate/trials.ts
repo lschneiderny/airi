@@ -17,6 +17,9 @@ import { runT1 } from '../t1/runner'
 
 const catalog = catalogJson as CatalogEntry[]
 
+export type ScenarioRunner = (scenario: MotionScenario) => NaturalTrace
+const runDefault: ScenarioRunner = scenario => runT1(scenario, { catalog })
+
 /** Wall-clock bound of one simulated trial. The simulation is synchronous, so it is checked when the trial ends. */
 const defaultTrialBoundMs = 300_000
 
@@ -52,24 +55,24 @@ export interface EmotionTrialRun {
 }
 
 /** One paired trial: the scenario with its emotion, and the same seed with the emotion stripped. */
-export function runEmotionTrial({ emotion, band, variant, seed, gate, boundMs }: EmotionTrialRun): EmotionTrialRecord {
+export function runEmotionTrial({ emotion, band, variant, seed, gate, boundMs }: EmotionTrialRun, runScenario: ScenarioRunner = runDefault): EmotionTrialRecord {
   const { warmup, hold, post, longHoldSeconds, longHoldPost } = gate.scenario
   const scenario = variant === 'long-hold'
     ? buildLongHold({ emotion, band, seed, seconds: longHoldSeconds, warmup, post: longHoldPost })
     : buildEmotionTrial({ emotion, band, variant, seed, warmup, hold, post })
   const trialId = `${emotion}-${band}-${variant}-${seed}`
   return bounded(`trial ${trialId}`, boundMs, () => {
-    const run = runT1(scenario, { catalog })
-    const paired = runT1(stripEmotions(scenario), { catalog })
+    const run = runScenario(scenario)
+    const paired = runScenario(stripEmotions(scenario))
     return measureEmotionTrial(run, paired, { trialId, variant, gate, settings: scenarioSettings(scenario) })
   })
 }
 
 /** One emotion-free run with the gate's placebo marks, measured unpaired. */
-export function runPlaceboSeed(seed: number, gate: EmotionGate, boundMs: number): { records: PlaceboRecord[], ranges: ParameterRanges } {
+export function runPlaceboSeed(seed: number, gate: EmotionGate, boundMs: number, runScenario: ScenarioRunner = runDefault): { records: PlaceboRecord[], ranges: ParameterRanges } {
   const scenario = buildIdleWithPlacebos({ seed, warmup: gate.scenario.warmup, placebos: gate.placeboPerNullRun, spacing: gate.scenario.placeboSpacing })
   return bounded(`placebo run ${seed}`, boundMs, () => {
-    const trace = runT1(scenario, { catalog })
+    const trace = runScenario(scenario)
     return { records: measurePlacebos(trace, gate), ranges: trace.ranges }
   })
 }
@@ -87,8 +90,8 @@ export function trimWarmUp(trace: NaturalTrace, warmUpSeconds: number): Liveline
   }
 }
 
-/** One idle desk run through the T1 pipeline, warm-up dropped; the liveliness gate scores three of these. */
-export function runIdleTrace(seed: number, gate: LivelinessGate, boundMs: number): LivelinessTrace & { ranges: ParameterRanges } {
+/** One idle desk run through the selected pipeline, warm-up dropped; the liveliness gate scores three of these. */
+export function runIdleTrace(seed: number, gate: LivelinessGate, boundMs: number, runScenario: ScenarioRunner = runDefault): LivelinessTrace & { ranges: ParameterRanges } {
   const scenario: MotionScenario = {
     version: 1,
     id: `idle-liveliness-${seed}`,
@@ -98,5 +101,5 @@ export function runIdleTrace(seed: number, gate: LivelinessGate, boundMs: number
     levels: ['t1', 't2', 't3'],
     events: [],
   }
-  return bounded(`idle run ${seed}`, boundMs, () => trimWarmUp(runT1(scenario, { catalog }), gate.warmUpSeconds))
+  return bounded(`idle run ${seed}`, boundMs, () => trimWarmUp(runScenario(scenario), gate.warmUpSeconds))
 }

@@ -4,7 +4,7 @@ import type { T2Runtime } from './runner'
 
 import process from 'node:process'
 
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -52,6 +52,18 @@ describe('t2 setup errors', () => {
 
     expect(error).toBeInstanceOf(T2SetupError)
     expect((error as T2SetupError).exitCode).toBe(2)
+  })
+
+  it.each(['{', 'null', '[]'])('exits 2 for an invalid model3.json: %s', async (json) => {
+    const dir = mkdtempSync(join(tmpdir(), 'qa-t2-invalid-'))
+    dirs.push(dir)
+    writeFileSync(join(dir, 'invalid.model3.json'), json)
+
+    const error = await loadT2Runtime({ rigRoot: dir }).catch((reason: unknown) => reason)
+
+    expect(error).toBeInstanceOf(T2SetupError)
+    expect((error as T2SetupError).exitCode).toBe(2)
+    expect((error as T2SetupError).message).toContain('invalid.model3.json')
   })
 
   it('exits 2 for a missing Cubism core', async () => {
