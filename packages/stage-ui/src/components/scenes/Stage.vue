@@ -2,8 +2,9 @@
 import type { SpeechClip, SpeechClipEnd } from '@proj-airi/core-agent'
 import type { Live2DLipSync, Live2DLipSyncOptions } from '@proj-airi/model-driver-lipsync'
 import type { Profile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
+import type { StreamingControlLook } from '@proj-airi/pipelines-audio'
 import type { CaptionChannelEvent, PresenceBubbleState } from '@proj-airi/stage-shared'
-import type { PerformanceState, ResolverMemory } from '@proj-airi/stage-shared/performance-state'
+import type { PerformanceCueAttention, PerformanceState, ResolverMemory } from '@proj-airi/stage-shared/performance-state'
 import type { TachieEmotion } from '@proj-airi/stage-ui-tachie'
 import type { VrmInteractionTarget } from '@proj-airi/stage-ui-three'
 
@@ -394,9 +395,30 @@ function toStageEmotionPayload(payload: { name: string, intensity: number }): Em
   }
 }
 
+const cueAttentionByLook: Record<StreamingControlLook, PerformanceCueAttention> = {
+  you: 'camera',
+  screen: 'screen',
+  away: 'aside',
+}
+
+/**
+ * Attention that an ACT cue's `look` asked for, with the turn that asked. A later ACT of the
+ * same turn without `look` keeps it; it ends when that turn leaves the active voice turns.
+ */
+const cueLook = shallowRef<{ turnId: string | undefined, attention: PerformanceCueAttention } | null>(null)
+
 chatHookCleanups.push(streamingControl.onSignal(async (signal, context) => {
   if (signal.type === 'act') {
     const act = normalizeActPayload(signal.payload)
+    if (act.look) {
+      cueLook.value = { turnId: context.turnId, attention: cueAttentionByLook[act.look] }
+      // eslint-disable-next-line no-console
+      console.debug('performance cue look', act.look, cueLook.value.attention)
+    }
+    else if (cueLook.value && cueLook.value.turnId !== context.turnId) {
+      // A cue from another turn never carries its gaze over.
+      cueLook.value = null
+    }
     const motion = stageModelRenderer.value === 'live2d' && act.motion ? act.motion : undefined
     if (motion)
       currentMotion.value = { group: motion }
@@ -466,6 +488,7 @@ function resolvePerformance(): PerformanceState {
     desktop: desktopActivity.value,
     visible: visibility.value === 'visible',
     override: performanceOverride.value,
+    cueAttention: cueLook.value?.attention ?? null,
   }, performanceMemory)
   performanceMemory = resolution.memory
   return resolution.state
@@ -482,7 +505,7 @@ function updatePerformance() {
 }
 
 useIntervalFn(updatePerformance, 250)
-watch([nowSpeaking, userSpeaking, chatSending, cursorMovedAtMs, desktopActivity, visibility, performanceOverride], updatePerformance)
+watch([nowSpeaking, userSpeaking, chatSending, cursorMovedAtMs, desktopActivity, visibility, performanceOverride, cueLook], updatePerformance)
 
 // The devtools Natural lab fires emotions through the same queue the chat uses.
 watch(() => emotionPulse.value?.seq, () => {
@@ -511,6 +534,9 @@ function resetSpeakingState() {
 watch(() => voice.activeTurns, (turns) => {
   if (turns.length === 0)
     speechVoicing.value = false
+  const cueTurnId = cueLook.value?.turnId
+  if (cueLook.value && !turns.some(turn => turn.turnId === cueTurnId))
+    cueLook.value = null
   performanceConductor.syncActiveTurns(turns.map(turn => turn.turnId))
 })
 

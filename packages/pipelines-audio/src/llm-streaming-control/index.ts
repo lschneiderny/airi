@@ -4,6 +4,7 @@ export type {
   NormalizedActPayload,
   StreamingControlEmotion,
   StreamingControlEmotionPayload,
+  StreamingControlLook,
 } from './payloads'
 export type {
   LlmStreamingControl,

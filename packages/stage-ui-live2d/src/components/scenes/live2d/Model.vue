@@ -593,7 +593,8 @@ async function performModelLoad() {
       readRigProfile(),
       () => {
         let cursor = null
-        if (live2dNaturalCursorAttention.value && props.eyeFocusSourceActive) {
+        // Aside attention from an ACT cue looks away from everything, the cursor included.
+        if (live2dNaturalCursorAttention.value && props.eyeFocusSourceActive && props.performance.attention !== 'aside') {
           localFocus.set(props.focusAt.x, props.focusAt.y)
           live2DModel.toModelPosition(localFocus, localFocus)
           cursor = {

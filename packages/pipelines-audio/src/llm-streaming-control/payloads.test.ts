@@ -125,4 +125,27 @@ describe('normalizeActPayload', () => {
   it.each(['lovey', 'sleep', 'love sleepy', 'flustered!', '', 7, null])('drops the unsupported emotion %j', (emotion) => {
     expect(normalizeActPayload({ emotion })).toEqual({})
   })
+
+  it.each([
+    ['you', 'you'],
+    [' Camera ', 'you'],
+    ['screen', 'screen'],
+    ['AWAY', 'away'],
+    ['aside', 'away'],
+  ])('normalizes look %j to %s', (look, expected) => {
+    expect(normalizeActPayload({ emotion: 'curious', look })).toEqual({ emotion: { name: 'curious', intensity: 0.6 }, look: expected })
+  })
+
+  it.each(['ceiling', '', '   ', 'you screen', 'constructor', 7, null, {}, ['away']])('drops the unsupported look %j', (look) => {
+    expect(normalizeActPayload({ emotion: 'curious', look })).toEqual({ emotion: { name: 'curious', intensity: 0.6 } })
+  })
+
+  it('carries look next to the other fields of the taught JSON form', () => {
+    expect(normalizeActPayload({ emotion: 'happy', intensity: 'strong', expression: 'Blush', motion: 'nod', look: 'screen' })).toEqual({
+      emotion: { name: 'happy', intensity: 0.9 },
+      expression: 'Blush',
+      motion: 'nod',
+      look: 'screen',
+    })
+  })
 })
