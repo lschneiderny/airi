@@ -28,6 +28,7 @@
     "./plugin-host": "./src/plugin-host.ts",
     "./screen-ambient-light": "./src/screen-ambient-light/index.ts",
     "./server-channel-qr": "./src/server-channel-qr.ts",
+    "./situation": "./src/situation/index.ts",
     "./stores/desktop-activity": "./src/stores/desktop-activity.ts",
     "./stores/screen-ambient-light": "./src/stores/screen-ambient-light.ts",
     "./types/io-trace": "./src/types/io-trace.ts",
