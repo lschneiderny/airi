@@ -269,14 +269,18 @@ export const useChatStore = defineStore('chat', () => {
    */
   function situationContextMessage(): ContextMessage | undefined {
     const now = Date.now()
+    // Without a rendered block (a follower, or a host that never initialized the store) nothing is sent, not even
+    // the live state below.
+    const block = situationStore.renderForRequest(now)
+    if (!block)
+      return undefined
+
     // NOTICE:
     // The live stage state rides in the situation entry instead of its own context bucket.
     // No stage sensor turns it into a situation `stage` observation yet.
     // Source: `useStageLiveStatePrompt` in composables/use-airi-runtime-prompt.ts.
     // Remove `liveStatePrompt` here once a stage sensor feeds the situation store.
-    const text = [situationStore.renderForRequest(now), liveStatePrompt.value].filter(Boolean).join('\n\n')
-    if (!text)
-      return undefined
+    const text = [block, liveStatePrompt.value].filter(Boolean).join('\n\n')
 
     return {
       id: nanoid(),

@@ -1775,6 +1775,7 @@ describe('chat store contract', () => {
 
   it('sends the stage contract in the system prompt and the live state only in the situation runtime context', async () => {
     usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    leadSituation()
     const systemPrompts: string[] = []
     llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {
       // The provider adapter replaces the system message with the resolved step prompt for each request.
@@ -1786,7 +1787,10 @@ describe('chat store contract', () => {
     await store.send({ sessionId: 'session-1', text: 'hello' })
 
     expect(ingestContextMessageMock).toHaveBeenCalledOnce()
-    expect(ingestContextMessageMock).toHaveBeenCalledWith(expect.objectContaining({ contextId: 'system:situation', text: 'base.prompt.expressions' }))
+    expect(ingestContextMessageMock).toHaveBeenCalledWith(expect.objectContaining({
+      contextId: 'system:situation',
+      text: expect.stringMatching(/^\[Situation \d\d:\d\d\]\n\nbase\.prompt\.expressions$/),
+    }))
     const composed = useContextObservabilityStore().lastPromptProjection?.composedMessage ?? []
     const system = systemPrompts[0]
     const lastUser = JSON.stringify(composed.findLast(message => message.role === 'user'))
@@ -1828,8 +1832,9 @@ describe('chat store contract', () => {
     expect(systemMessages[1]).toBe(systemMessages[0])
   })
 
-  it('sends no runtime context when the situation store was never initialized and no live state exists', async () => {
-    await useExpressionPerformanceSettings().update({ stateFeedback: false })
+  it('sends no runtime context, not even the live state, when the situation store was never initialized', async () => {
+    usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [{ slot: 'face', label: 'smile' }], mood: null })
+    await useExpressionPerformanceSettings().update({ stateFeedback: true })
     let composedMessages: Turn[] = []
     llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, context: Conversation, options: StreamOptions) => {
       composedMessages = context.turns
