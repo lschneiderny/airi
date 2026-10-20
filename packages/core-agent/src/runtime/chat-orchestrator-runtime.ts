@@ -771,6 +771,11 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     let streamFailure: { error: unknown } | undefined
     const outputClosed = () => abandoned || !!streamFailure || turnState === 'declined'
     const heldSpecials: string[] = []
+    // A decided unprompted turn needs no more provider output, so the runtime stops its request. The stop is the
+    // decided outcome. It is kept apart from `abortSignal`, which means cancellation.
+    const providerStop = new AbortController()
+    const providerSignal = unprompted ? AbortSignal.any([abortSignal, providerStop.signal]) : abortSignal
+    const stopProvider = () => providerStop.abort(new Error('Unprompted turn was decided without speech'))
     const publishStream = () => {
       if (turnState === 'spoken')
         updateStream(sessionId, buildingMessage)
@@ -897,6 +902,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         accepted.resolve({ sessionId, messageId: receipt.messageId })
         if (receipt.status === 'existing') {
           abandoned = true
+          stopProvider()
           return false
         }
         userTurnCommitted = true
@@ -971,8 +977,10 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           if (unprompted && normalizeMarker(special) === declineMarker) {
             // Only a marker in visible speech before the first spoken text declines. Reasoning can mention it.
             // The marker is control data: it is never forwarded to hooks or stored.
-            if (turnState === 'holding' && categorizer.filterToSpeech(special, streamPosition))
+            if (turnState === 'holding' && categorizer.filterToSpeech(special, streamPosition)) {
               declineTurn()
+              stopProvider()
+            }
             return
           }
 
@@ -1117,7 +1125,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           : undefined,
         supportsAudioInput: options.supportsAudioInput,
         supportsVisionInput: options.supportsVisionInput,
-        abortSignal,
+        abortSignal: providerSignal,
         onGeneratedTurn: (turn) => { generatedTurn = structuredClone(turn) },
         requestCorrelation: {
           conversationId: correlation.conversationId,
@@ -1129,7 +1137,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         topP: options.topP,
         waitForTools: true,
         onUsage: (usage) => {
-          if (shouldAbort())
+          if (shouldAbort() || providerSignal.aborted)
             return
 
           generationUsage = usage
@@ -1146,7 +1154,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         onStreamEvent: async (event: StreamEvent) => {
           if (streamFailure)
             throw streamFailure.error
-          if (shouldAbort())
+          if (shouldAbort() || providerSignal.aborted)
             return
 
           switch (event.type) {
@@ -1217,7 +1225,11 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
               throw event.error ?? new Error('Stream error')
           }
         },
-      }), abortSignal)
+      }), providerSignal).catch((error: unknown) => {
+        // The runtime stopped this request because the turn was decided. Only a cancellation or a failure is an error.
+        if (!providerStop.signal.aborted || abortSignal.aborted)
+          throw error
+      })
 
       // Session generation is the lifecycle correlation key. Re-check it
       // after every awaited completion boundary so deleting a session while a

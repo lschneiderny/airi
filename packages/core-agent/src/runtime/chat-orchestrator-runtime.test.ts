@@ -2517,6 +2517,124 @@ describe('unprompted turns', () => {
     expect(harness.telemetry.chatActivationStarted).toHaveLength(1)
     expect(harness.telemetry.chatActivationSucceeded).toEqual([expect.objectContaining({ roundId: 'trigger-1' })])
   })
+
+  // A declined turn needs no more provider output. Its request stops, and the stop is the decided outcome.
+  it('aborts the provider request when the turn declines and settles as declined', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    const rest = Promise.withResolvers<void>()
+    let signal: AbortSignal | undefined
+    let late: StreamOptions['onStreamEvent']
+    let streamEnded = false
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      signal = options?.abortSignal
+      late = options?.onStreamEvent
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '<|SILENT|>' })
+      // The rest of the reply arrives only after the test releases it. A real request rejects when it is aborted.
+      await new Promise<void>((resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(signal?.reason), { once: true })
+        void rest.promise.then(resolve)
+      })
+      for (let index = 0; index < 20; index++)
+        await options?.onStreamEvent?.({ type: 'text-delta', text: ` chunk ${index}` })
+      await options?.onStreamEvent?.({ type: 'finish' })
+      streamEnded = true
+    })
+
+    const request = harness.runtime.submit(triggerText, unpromptedOptions, 'session-1')
+    try {
+      await request.done
+
+      expect(signal?.aborted).toBe(true)
+      expect(streamEnded).toBe(false)
+      expect(harness.runtime.getSending()).toBe(false)
+      expectDeclined(harness)
+      expect(harness.telemetry.messageRoundFailed).toEqual([])
+      expect(harness.telemetry.chatActivationFailed).toEqual([])
+
+      // Output that a provider delivers after the stop is ignored and does not fail the settled turn.
+      const settledOrder = [...harness.order]
+      await expect(late?.({ type: 'text-delta', text: 'Late speech.' })).resolves.toBeUndefined()
+      await expect(late?.({ type: 'error', error: new Error('late provider error') })).resolves.toBeUndefined()
+      expect(harness.order).toEqual(settledOrder)
+    }
+    finally {
+      rest.resolve()
+    }
+  })
+
+  it('aborts the provider request when the trigger was already committed', async () => {
+    const harness = createHarness()
+    replyWith(harness, ['Hello!'])
+    await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+    harness.recordHooks()
+    let signal: AbortSignal | undefined
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      signal = options?.abortSignal
+      await options?.onStreamEvent?.({ type: 'text-delta', text: 'Hello again!' })
+      await new Promise<void>((_resolve, reject) => signal?.addEventListener('abort', () => reject(signal?.reason), { once: true }))
+    })
+
+    const retry = harness.runtime.submit(triggerText, unpromptedOptions, 'session-1')
+    await retry.done
+
+    expect(signal?.aborted).toBe(true)
+    expect(harness.runtime.getSending()).toBe(false)
+    expect(speechHookCalls(harness)).toEqual([])
+    expect(harness.sessionMessages['session-1'].filter(message => message.role === 'assistant')).toHaveLength(1)
+    expect(harness.settled.at(-1)).toEqual({ sessionId: 'session-1', turnId: 'trigger-1', status: 'finished' })
+  })
+
+  it.each([
+    ['a spoken unprompted turn', unpromptedOptions],
+    ['a user turn that writes the marker', { model: 'gpt-test', chatProvider: provider }],
+  ])('never aborts the provider request of %s', async (_name, options) => {
+    const harness = createHarness()
+    let signal: AbortSignal | undefined
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, streamOptions) => {
+      signal = streamOptions?.abortSignal
+      for (const text of ['Hi', ' <|SILENT|>', ...Array.from({ length: 20 }, (_, index) => ` chunk ${index}`)])
+        await streamOptions?.onStreamEvent?.({ type: 'text-delta', text })
+      await streamOptions?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest(triggerText, options, 'session-1')
+
+    expect(signal?.aborted).toBe(false)
+    expect(harness.sessionMessages['session-1'].at(-1)).toMatchObject({ role: 'assistant', content: expect.stringContaining('chunk 19') })
+    expect(harness.settled).toEqual([expect.objectContaining({ status: 'finished' })])
+  })
+
+  it('stays cancelled when a decline arrives after the turn was cancelled during HOLD', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    const parked = Promise.withResolvers<void>()
+    let late: StreamOptions['onStreamEvent']
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      late = options?.onStreamEvent
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '<|ACT happy|>' })
+      // This provider ignores the abort and keeps its connection open.
+      await parked.promise
+    })
+
+    const generating = harness.untilOrder(entries => entries.includes('llmFirstToken'))
+    const request = harness.runtime.submit(triggerText, unpromptedOptions, 'session-1')
+    try {
+      await generating
+      harness.runtime.cancelTurn({ sessionId: 'session-1', turnId: 'trigger-1' })
+      await request.done
+      await late?.({ type: 'text-delta', text: '<|SILENT|>' })
+      await late?.({ type: 'finish' })
+
+      expect(harness.settled).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', status: 'cancelled' }])
+      expect(harness.declined).toEqual([])
+      expect(harness.order).not.toContain('hook:stream-end')
+      expect(harness.runtime.getSending()).toBe(false)
+    }
+    finally {
+      parked.resolve()
+    }
+  })
 })
 
 // https://github.com/moeru-ai/airi/pull/2714#issuecomment-5976485328
