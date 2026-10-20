@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useSituationStore } from '.'
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
+import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { DESKTOP_SAMPLE_STALE_MS } from './sensors/desktop'
 
 const T0 = Date.UTC(2026, 9, 20, 9, 0, 0)
@@ -172,6 +173,27 @@ describe('situation store', () => {
     expect(first).toMatch(/^\[Situation \d\d:\d\d\]\n- New: unlocked the computer \(just now\)$/)
     expect(store.state.events.map(event => event.shownAtMs)).toEqual([T0 + 1_000])
     expect(second).toMatch(/^\[Situation \d\d:\d\d\]$/)
+  })
+
+  it('feeds the devtools inspector with every render and with the live state', () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    const observability = useSituationObservabilityStore()
+    store.initialize(leadership.runtime)
+    store.ingest(wake(T0))
+    expect(observability.liveState).toEqual({ leading: true, state: store.state })
+
+    const text = store.renderForRequest(T0 + 1_000)
+
+    const shownIds = store.state.events.filter(event => event.shownAtMs === T0 + 1_000).map(event => event.id)
+    expect(shownIds).not.toEqual([])
+    expect(observability.renders.map(render => ({ nowMs: render.nowMs, text: render.text, shownEventIds: render.shownEventIds })))
+      .toEqual([{ nowMs: T0 + 1_000, text, shownEventIds: shownIds }])
+    // The live state already carries the shown marks of that render.
+    expect(observability.liveState.state).toBe(store.state)
+
+    leadership.set(false)
+    expect(observability.liveState).toEqual({ leading: false, state: initialSituationState })
   })
 
   it('marks a topic as addressed only in the leader', () => {

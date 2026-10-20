@@ -69,6 +69,12 @@ const menu = computed(() => [
     to: '/devtools/context-flow',
   },
   {
+    title: t('tamagotchi.settings.devtools.pages.situation.title'),
+    description: t('tamagotchi.settings.devtools.pages.situation.description'),
+    icon: 'i-solar:radar-2-bold-duotone',
+    to: '/devtools/situation',
+  },
+  {
     title: 'Relative Mouse',
     description: 'Get mouse position relative to the window',
     icon: 'i-solar:sledgehammer-bold-duotone',
