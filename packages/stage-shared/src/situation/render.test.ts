@@ -237,4 +237,76 @@ describe('renderSituation', () => {
     const state = stateWith({ presence: { state: 'here', reason: null, sinceMs: T0 + 10 * MIN } })
     expect(renderSituation(state, T0).text).toContain('active for less than a minute')
   })
+
+  describe('context changes', () => {
+    const contextEvent = event({ id: 'ctx', kind: 'context', topicKey: 'context:vision', text: 'A cat on the screen', atMs: T0 + 14 * MIN, salience: 0.9 })
+    const notifications = [
+      event({ id: 'n1', kind: 'notify', topicKey: 'notify:mail:1', text: 'Mail: build finished', atMs: T0 + 13 * MIN, salience: 0.6 }),
+      event({ id: 'n2', kind: 'notify', topicKey: 'notify:mail:2', text: 'Mail: review requested', atMs: T0 + 13 * MIN, salience: 0.5 }),
+    ]
+    const base = {
+      presence: fullState.presence,
+      activity: fullState.activity,
+      contexts: { vision: { text: 'A cat on the screen', atMs: T0 + 14 * MIN } },
+      events: [contextEvent, ...notifications],
+    }
+    const nowMs = T0 + 15 * MIN
+
+    it('shows one context change once and keeps both notifications within 6 lines', () => {
+      const state = stateWith(base)
+      const { text, shownEventIds } = renderSituation(state, nowMs)
+      const lines = text.split('\n')
+      expect(lines).toHaveLength(6)
+      expect(text.length).toBeLessThanOrEqual(500)
+      expect(text.split('A cat on the screen')).toHaveLength(2)
+      expect(lines).toContain('- A cat on the screen')
+      expect(text).toContain('New: Mail: build finished')
+      expect(text).toContain('New: Mail: review requested')
+      expect([...shownEventIds].sort()).toEqual(['ctx', 'n1', 'n2'])
+      expect(renderSituation(markShown(state, shownEventIds, nowMs), nowMs + MIN).text).not.toContain('New:')
+    })
+
+    it('holds at exactly 6 lines and exactly the character count of the block', () => {
+      const state = stateWith(base)
+      const { text } = renderSituation(state, nowMs)
+      expect(renderSituation(state, nowMs, { maxLines: 6, maxChars: text.length }).text).toBe(text)
+      const tighter = renderSituation(state, nowMs, { maxLines: 6, maxChars: text.length - 1 })
+      expect(tighter.text.split('\n')).toHaveLength(5)
+      expect(tighter.text.split('A cat on the screen')).toHaveLength(2)
+      expect(tighter.text.length).toBeLessThanOrEqual(text.length - 1)
+      expect(tighter.shownEventIds).toEqual(['ctx', 'n1'])
+    })
+
+    it('still shows a New: line when the budget drops the context line', () => {
+      const state = stateWith({ ...base, conversation: fullState.conversation, events: [contextEvent] })
+      const roomy = renderSituation(state, nowMs, { maxLines: 5 })
+      expect(roomy.text).not.toContain('New:')
+      expect(roomy.shownEventIds).toEqual(['ctx'])
+      const tight = renderSituation(state, nowMs, { maxLines: 4 })
+      expect(tight.text.split('\n')).toHaveLength(4)
+      expect(tight.text).toContain('- New: A cat on the screen (1 min ago)')
+      expect(tight.text.split('A cat on the screen')).toHaveLength(2)
+      expect(tight.shownEventIds).toEqual(['ctx'])
+    })
+
+    it('does not report a context change as shown when nothing of it is rendered', () => {
+      const state = stateWith({ ...base, events: [contextEvent] })
+      const { text, shownEventIds } = renderSituation(state, nowMs, { maxLines: 3 })
+      expect(text).not.toContain('A cat')
+      expect(shownEventIds).toEqual([])
+    })
+
+    it('still renders a New: line for a context event whose source has no context line', () => {
+      const state = stateWith({ events: [contextEvent] })
+      const { text, shownEventIds } = renderSituation(state, nowMs)
+      expect(text).toContain('- New: A cat on the screen (1 min ago)')
+      expect(shownEventIds).toEqual(['ctx'])
+    })
+
+    it('renders non-context New events unchanged', () => {
+      const { text, shownEventIds } = renderSituation(stateWith({ events: notifications }), nowMs)
+      expect(text.split('\n').slice(1)).toEqual(['- New: Mail: build finished (2 min ago)', '- New: Mail: review requested (2 min ago)'])
+      expect(shownEventIds).toEqual(['n1', 'n2'])
+    })
+  })
 })

@@ -1,6 +1,7 @@
 import type { SituationEvent, SituationState } from './types'
 
 import { effectiveSalience } from './reducer'
+import { contextTopicKey } from './types'
 
 const MINUTE_MS = 60_000
 const HOUR_MS = 60 * MINUTE_MS
@@ -134,12 +135,12 @@ function activityBullets(state: SituationState, nowMs: number): string[] {
   return bullets
 }
 
-function newEvents(state: SituationState, nowMs: number): SituationEvent[] {
+/** Unshown events worth a `New:` line, most salient first. */
+function unshownEvents(state: SituationState, nowMs: number): SituationEvent[] {
   return state.events
     .filter(event => event.shownAtMs === null && oneLine(event.text) !== '' && effectiveSalience(event, nowMs) >= NEW_EVENT_MIN_SALIENCE)
     .map(event => ({ event, salience: effectiveSalience(event, nowMs) }))
     .sort((a, b) => b.salience - a.salience || b.event.atMs - a.event.atMs || (a.event.id < b.event.id ? -1 : a.event.id > b.event.id ? 1 : 0))
-    .slice(0, NEW_EVENTS_MAX)
     .map(({ event }) => event)
 }
 
@@ -156,12 +157,12 @@ function conversationBullet(state: SituationState, nowMs: number): string | null
   return parts.length > 0 ? parts.join(' ') : null
 }
 
-function contextBullets(state: SituationState): string[] {
+function contextBullets(state: SituationState): { topicKey: string, text: string }[] {
   return Object.entries(state.contexts)
     .map(([key, context]) => ({ key, atMs: context.atMs, text: oneLine(context.text) }))
     .filter(entry => entry.text !== '')
     .sort((a, b) => b.atMs - a.atMs || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
-    .map(entry => truncate(entry.text, CONTEXT_LINE_MAX_CHARS))
+    .map(entry => ({ topicKey: contextTopicKey(entry.key), text: truncate(entry.text, CONTEXT_LINE_MAX_CHARS) }))
 }
 
 function stageBullet(state: SituationState): string | null {
@@ -203,35 +204,78 @@ export function renderSituation(
   if (!Number.isFinite(nowMs))
     return { text: header, shownEventIds: [] }
 
-  const entries: { text: string, eventId?: string }[] = []
   const presence = presenceBullet(state, nowMs, userName)
-  if (presence)
-    entries.push({ text: presence })
-  for (const text of activityBullets(state, nowMs))
-    entries.push({ text })
-  for (const event of newEvents(state, nowMs))
-    entries.push({ text: `New: ${clean(event.text, CONTEXT_LINE_MAX_CHARS)} (${agoText(nowMs - event.atMs)})`, eventId: event.id })
+  const activity = activityBullets(state, nowMs)
   const conversation = conversationBullet(state, nowMs)
-  if (conversation)
-    entries.push({ text: conversation })
-  for (const text of contextBullets(state))
-    entries.push({ text })
+  const contexts = contextBullets(state)
   const stage = options.includeStage === false ? null : stageBullet(state)
-  if (stage)
-    entries.push({ text: stage })
+  const unshown = unshownEvents(state, nowMs)
 
-  const fits = (count: number): boolean => {
-    const lines = [header, ...entries.slice(0, count).map(entry => `- ${entry.text}`)]
-    return lines.length <= maxLines && lines.join('\n').length <= maxChars
+  // A context event whose source has a context line is the same fact as that
+  // line, so the line carries it and the event gets no `New:` line of its own.
+  const contextTopics = new Set(contexts.map(context => context.topicKey))
+  const absorbedIds = new Map<string, string[]>()
+  for (const event of unshown) {
+    if (event.kind === 'context' && contextTopics.has(event.topicKey))
+      absorbedIds.set(event.topicKey, [...(absorbedIds.get(event.topicKey) ?? []), event.id])
   }
 
-  let count = entries.length
-  while (count > 0 && !fits(count))
-    count--
+  /** `promoted` lists context topics that get a `New:` line because their context line was dropped. */
+  const build = (promoted: ReadonlySet<string>): { text: string, eventIds: string[], contextTopic?: string }[] => {
+    const entries: { text: string, eventIds: string[], contextTopic?: string }[] = []
+    const promotedShown = new Set<string>()
+    if (presence)
+      entries.push({ text: presence, eventIds: [] })
+    for (const text of activity)
+      entries.push({ text, eventIds: [] })
+    let newCount = 0
+    for (const event of unshown) {
+      if (newCount === NEW_EVENTS_MAX)
+        break
+      const absorbed = absorbedIds.get(event.topicKey)
+      if (event.kind === 'context' && absorbed) {
+        if (!promoted.has(event.topicKey) || promotedShown.has(event.topicKey))
+          continue
+        promotedShown.add(event.topicKey)
+      }
+      entries.push({ text: `New: ${clean(event.text, CONTEXT_LINE_MAX_CHARS)} (${agoText(nowMs - event.atMs)})`, eventIds: event.kind === 'context' && absorbed ? absorbed : [event.id] })
+      newCount++
+    }
+    if (conversation)
+      entries.push({ text: conversation, eventIds: [] })
+    for (const context of contexts) {
+      if (!promotedShown.has(context.topicKey))
+        entries.push({ text: context.text, eventIds: absorbedIds.get(context.topicKey) ?? [], contextTopic: context.topicKey })
+    }
+    if (stage)
+      entries.push({ text: stage, eventIds: [] })
+    return entries
+  }
+
+  const fitCount = (entries: readonly { text: string }[]): number => {
+    const fits = (count: number): boolean => {
+      const lines = [header, ...entries.slice(0, count).map(entry => `- ${entry.text}`)]
+      return lines.length <= maxLines && lines.join('\n').length <= maxChars
+    }
+    let count = entries.length
+    while (count > 0 && !fits(count))
+      count--
+    return count
+  }
+
+  let entries = build(new Set())
+  let count = fitCount(entries)
+  // When the budget drops a context line, its event may still say it as `New:`.
+  const keptTopics = new Set(entries.slice(0, count).map(entry => entry.contextTopic))
+  const dropped = new Set(contexts.map(context => context.topicKey).filter(topic => absorbedIds.has(topic) && !keptTopics.has(topic)))
+  if (dropped.size > 0) {
+    entries = build(dropped)
+    count = fitCount(entries)
+  }
 
   const kept = entries.slice(0, count)
   return {
     text: [header, ...kept.map(entry => `- ${entry.text}`)].join('\n'),
-    shownEventIds: kept.flatMap(entry => entry.eventId === undefined ? [] : [entry.eventId]),
+    shownEventIds: kept.flatMap(entry => entry.eventIds),
   }
 }
