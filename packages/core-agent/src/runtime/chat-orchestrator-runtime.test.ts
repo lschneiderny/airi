@@ -4,7 +4,7 @@ import type { Message } from '@xsai/shared-chat'
 import type { Conversation } from '../messages/types'
 import type { ChatHistoryItem, ContextMessage, StreamingAssistantMessage } from '../types/chat'
 import type { StreamEvent, StreamOptions } from '../types/llm'
-import type { ChatOrchestratorSessionPort } from './chat-orchestrator-runtime'
+import type { ChatOrchestratorRuntimeState, ChatOrchestratorSessionPort } from './chat-orchestrator-runtime'
 
 import { ContextUpdateStrategy } from '@proj-airi/server-shared/types'
 import { describe, expect, it, vi } from 'vitest'
@@ -39,6 +39,27 @@ function createHarness(getActiveProvider = () => 'mock-provider') {
   const assistantTurns: unknown[] = []
   const stateChanges: unknown[] = []
   const settled: unknown[] = []
+  const declined: unknown[] = []
+  // One ordered log of every runtime callback, so hook-ordering invariants can be asserted across ports.
+  const order: string[] = []
+  const orderWaiters = new Set<{ matches: (entries: readonly string[]) => boolean, resolve: () => void }>()
+  function log(entry: string) {
+    order.push(entry)
+    for (const waiter of orderWaiters) {
+      if (!waiter.matches(order))
+        continue
+      orderWaiters.delete(waiter)
+      waiter.resolve()
+    }
+  }
+  /** Resolves once the callback log satisfies `matches`. Call it before triggering the awaited work. */
+  function untilOrder(matches: (entries: readonly string[]) => boolean) {
+    if (matches(order))
+      return Promise.resolve()
+    const waiter = Promise.withResolvers<void>()
+    orderWaiters.add({ matches, resolve: waiter.resolve })
+    return waiter.promise
+  }
   const telemetry = {
     chatActivationStarted: [] as unknown[],
     chatActivationSucceeded: [] as unknown[],
@@ -63,6 +84,7 @@ function createHarness(getActiveProvider = () => 'mock-provider') {
   let generation = 1
   let assistantResponseRenderedError: Error | undefined
   const commitUserMessage = vi.fn<ChatOrchestratorSessionPort['commitUserMessage']>(async (sessionId, message) => {
+    log('commitUserMessage')
     sessionMessages[sessionId] ??= []
     const existing = sessionMessages[sessionId].some(item => item.id === message.id)
     if (!existing)
@@ -78,6 +100,7 @@ function createHarness(getActiveProvider = () => 'mock-provider') {
       },
       getSessionMessages: sessionId => sessionMessages[sessionId] ?? [],
       appendSessionMessage: (sessionId, message) => {
+        log(`appendSessionMessage:${message.role}${message.role === 'assistant' && message.interrupted ? ':interrupted' : ''}`)
         sessionMessages[sessionId] ??= []
         sessionMessages[sessionId].push(message)
       },
@@ -88,8 +111,14 @@ function createHarness(getActiveProvider = () => 'mock-provider') {
       snapshot: () => structuredClone(contextSnapshot),
     },
     foregroundStream: {
-      patch: message => foregroundPatches.push(message),
-      reset: () => foregroundResets.push({ role: 'assistant', content: '', slices: [], tool_results: [] }),
+      patch: (message) => {
+        log('foreground:patch')
+        foregroundPatches.push(message)
+      },
+      reset: () => {
+        log('foreground:reset')
+        foregroundResets.push({ role: 'assistant', content: '', slices: [], tool_results: [] })
+      },
     },
     llm: {
       stream,
@@ -100,31 +129,125 @@ function createHarness(getActiveProvider = () => 'mock-provider') {
     now: () => nowValue,
     monotonicNow: () => monotonicNowValues.shift() ?? 1000,
     createId: () => ids.shift() ?? `generated-${nextId++}`,
-    onLifecycle: record => lifecycleRecords.push(record),
-    onPromptProjection: payload => promptProjections.push(payload),
-    onUserMessageAppended: event => userAppended.push(event),
-    onAssistantMessageAppended: event => assistantAppended.push(event),
-    onUserTurnReady: event => userTurns.push(event),
-    onAssistantTurnReady: event => assistantTurns.push(event),
+    onLifecycle: (record) => {
+      log(`lifecycle:${record.phase}`)
+      lifecycleRecords.push(record)
+    },
+    onPromptProjection: (payload) => {
+      log('promptProjection')
+      promptProjections.push(payload)
+    },
+    onUserMessageAppended: (event) => {
+      log('userMessageAppended')
+      userAppended.push(event)
+    },
+    onAssistantMessageAppended: (event) => {
+      log('assistantMessageAppended')
+      assistantAppended.push(event)
+    },
+    onUserTurnReady: (event) => {
+      log('userTurnReady')
+      userTurns.push(event)
+    },
+    onAssistantTurnReady: (event) => {
+      log('assistantTurnReady')
+      assistantTurns.push(event)
+    },
     onStateChange: state => stateChanges.push(state),
-    onSendSettled: event => settled.push(event),
-    onChatActivationStarted: event => telemetry.chatActivationStarted.push(event),
-    onChatActivationSucceeded: event => telemetry.chatActivationSucceeded.push(event),
-    onChatActivationFailed: event => telemetry.chatActivationFailed.push(event),
-    onMessageSendStarted: event => telemetry.messageSendStarted.push(event),
-    onLlmRequestStarted: event => telemetry.llmRequestStarted.push(event),
-    onLlmFirstToken: event => telemetry.llmFirstToken.push(event),
+    onSendSettled: (event) => {
+      log(`settled:${event.status}`)
+      settled.push(event)
+    },
+    onTurnDeclined: (event) => {
+      log('turnDeclined')
+      declined.push(event)
+    },
+    onTrackFirstMessage: () => {
+      log('trackFirstMessage')
+    },
+    onChatActivationStarted: (event) => {
+      log('chatActivationStarted')
+      telemetry.chatActivationStarted.push(event)
+    },
+    onChatActivationSucceeded: (event) => {
+      log('chatActivationSucceeded')
+      telemetry.chatActivationSucceeded.push(event)
+    },
+    onChatActivationFailed: (event) => {
+      log('chatActivationFailed')
+      telemetry.chatActivationFailed.push(event)
+    },
+    onMessageSendStarted: (event) => {
+      log('messageSendStarted')
+      telemetry.messageSendStarted.push(event)
+    },
+    onLlmRequestStarted: (event) => {
+      log('llmRequestStarted')
+      telemetry.llmRequestStarted.push(event)
+    },
+    onLlmFirstToken: (event) => {
+      log('llmFirstToken')
+      telemetry.llmFirstToken.push(event)
+    },
     onAssistantResponseRendered: (event) => {
+      log('assistantResponseRendered')
       if (assistantResponseRenderedError)
         throw assistantResponseRenderedError
       telemetry.assistantResponseRendered.push(event)
     },
-    onLlmGeneration: event => telemetry.llmGeneration.push(event),
-    onMessageRound: event => telemetry.messageRound.push(event),
-    onMessageRoundFailed: event => telemetry.messageRoundFailed.push(event),
+    onLlmGeneration: (event) => {
+      log('llmGeneration')
+      telemetry.llmGeneration.push(event)
+    },
+    onMessageRound: (event) => {
+      log('messageRound')
+      telemetry.messageRound.push(event)
+    },
+    onMessageRoundFailed: (event) => {
+      log('messageRoundFailed')
+      telemetry.messageRoundFailed.push(event)
+    },
   })
 
+  /** Records every chat hook in `order`, including literal and special payloads. */
+  function recordHooks() {
+    runtime.hooks.onBeforeMessageComposed(async () => {
+      log('hook:before-compose')
+    })
+    runtime.hooks.onAfterMessageComposed(async () => {
+      log('hook:after-compose')
+    })
+    runtime.hooks.onBeforeSend(async () => {
+      log('hook:before-send')
+    })
+    runtime.hooks.onTokenLiteral(async (literal) => {
+      log(`hook:token-literal:${literal}`)
+    })
+    runtime.hooks.onTokenSpecial(async (special) => {
+      log(`hook:token-special:${special}`)
+    })
+    runtime.hooks.onStreamEnd(async () => {
+      log('hook:stream-end')
+    })
+    runtime.hooks.onAssistantResponseEnd(async (message) => {
+      log(`hook:assistant-end:${message}`)
+    })
+    runtime.hooks.onAfterSend(async () => {
+      log('hook:after-send')
+    })
+    runtime.hooks.onAssistantMessage(async (_message, messageText) => {
+      log(`hook:assistant-message:${messageText}`)
+    })
+    runtime.hooks.onChatTurnComplete(async () => {
+      log('hook:turn-complete')
+    })
+  }
+
   return {
+    declined,
+    order,
+    recordHooks,
+    untilOrder,
     settled,
     commitUserMessage,
     assistantAppended,
@@ -1666,6 +1789,649 @@ it('keeps escaped sticker markers out of the saved speech categorization', async
   expect(harness.sessionMessages['session-1'].at(-1)).toMatchObject({
     categorization: { speech: 'Hello!' },
     slices: [{ type: 'text', text: 'Hello!' }, { type: 'sticker', stickerId: 'heart' }],
+  })
+})
+
+// The unprompted-turn contract must not change user-origin turns. These snapshots were recorded on the
+// runtime before unprompted turns existed and pin every callback, hook payload, and stored message.
+describe('user-origin hook sequence', () => {
+  it('keeps the spoken user turn sequence unchanged', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      await options?.onStreamEvent?.({ type: 'reasoning-delta', text: 'thinking' })
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '<|ACT {"emotion":"happy"}|>' })
+      await options?.onStreamEvent?.({ type: 'text-delta', text: ' Hello' })
+      await options?.onStreamEvent?.({ type: 'text-delta', text: ' there' })
+      await options?.onUsage?.({ inputTokens: 3, outputTokens: 2, totalTokens: 5, source: 'reported' })
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest('hello', { model: 'gpt-test', chatProvider: provider })
+
+    expect({
+      order: harness.order,
+      messages: harness.sessionMessages['session-1'],
+      stateChangeCount: harness.stateChanges.length,
+    }).toMatchInlineSnapshot(`
+      {
+        "messages": [
+          {
+            "content": "system prompt",
+            "createdAt": 1777154400000,
+            "id": "system",
+            "role": "system",
+          },
+          {
+            "content": "hello",
+            "createdAt": 1777157220000,
+            "id": "user-id",
+            "role": "user",
+          },
+          {
+            "categorization": {
+              "reasoning": "thinking",
+              "speech": "<|ACT {"emotion":"happy"}|> Hello there",
+            },
+            "completedAt": 1777157220000,
+            "content": "Hello there",
+            "createdAt": 1777157220000,
+            "generationTranscript": undefined,
+            "id": "assistant-id",
+            "role": "assistant",
+            "slices": [
+              {
+                "text": "Hello there",
+                "type": "text",
+              },
+            ],
+            "tool_results": [],
+          },
+        ],
+        "order": [
+          "lifecycle:before-compose",
+          "foreground:patch",
+          "trackFirstMessage",
+          "chatActivationStarted",
+          "messageSendStarted",
+          "hook:before-compose",
+          "commitUserMessage",
+          "userMessageAppended",
+          "userTurnReady",
+          "promptProjection",
+          "lifecycle:after-compose",
+          "hook:after-compose",
+          "hook:before-send",
+          "llmRequestStarted",
+          "foreground:patch",
+          "llmFirstToken",
+          "hook:token-special:<|ACT {"emotion":"happy"}|>",
+          "llmGeneration",
+          "hook:token-literal:Hello ",
+          "foreground:patch",
+          "hook:token-literal:there",
+          "foreground:patch",
+          "foreground:patch",
+          "assistantResponseRendered",
+          "appendSessionMessage:assistant",
+          "assistantMessageAppended",
+          "hook:stream-end",
+          "hook:assistant-end:<|ACT {"emotion":"happy"}|> Hello there",
+          "hook:after-send",
+          "hook:assistant-message:<|ACT {"emotion":"happy"}|> Hello there",
+          "hook:turn-complete",
+          "assistantTurnReady",
+          "foreground:reset",
+          "messageRound",
+          "chatActivationSucceeded",
+          "settled:finished",
+        ],
+        "stateChangeCount": 8,
+      }
+    `)
+  })
+
+  it('forwards a decline marker as an ordinary special in a user turn', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '<|SILENT|>' })
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest('hello', { model: 'gpt-test', chatProvider: provider })
+
+    expect({
+      order: harness.order,
+      messages: harness.sessionMessages['session-1'],
+      stateChangeCount: harness.stateChanges.length,
+    }).toMatchInlineSnapshot(`
+      {
+        "messages": [
+          {
+            "content": "system prompt",
+            "createdAt": 1777154400000,
+            "id": "system",
+            "role": "system",
+          },
+          {
+            "content": "hello",
+            "createdAt": 1777157220000,
+            "id": "user-id",
+            "role": "user",
+          },
+        ],
+        "order": [
+          "lifecycle:before-compose",
+          "foreground:patch",
+          "trackFirstMessage",
+          "chatActivationStarted",
+          "messageSendStarted",
+          "hook:before-compose",
+          "commitUserMessage",
+          "userMessageAppended",
+          "userTurnReady",
+          "promptProjection",
+          "lifecycle:after-compose",
+          "hook:after-compose",
+          "hook:before-send",
+          "llmRequestStarted",
+          "llmFirstToken",
+          "hook:token-special:<|SILENT|>",
+          "foreground:patch",
+          "assistantResponseRendered",
+          "hook:stream-end",
+          "hook:assistant-end:<|SILENT|>",
+          "hook:after-send",
+          "hook:assistant-message:<|SILENT|>",
+          "hook:turn-complete",
+          "assistantTurnReady",
+          "foreground:reset",
+          "messageRound",
+          "chatActivationSucceeded",
+          "settled:finished",
+        ],
+        "stateChangeCount": 5,
+      }
+    `)
+  })
+
+  it('keeps the cancelled user turn sequence unchanged', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      const signal = options?.abortSignal
+      await options?.onStreamEvent?.({ type: 'text-delta', text: 'partial reply' })
+      await new Promise<void>((_resolve, reject) => signal?.addEventListener('abort', () => reject(signal.reason), { once: true }))
+    })
+
+    const literalShown = harness.untilOrder(entries => entries.at(-2) === 'hook:token-literal:partial ' && entries.at(-1) === 'foreground:patch')
+    const send = harness.runtime.submit('hello', { model: 'gpt-test', chatProvider: provider, messageId: 'user-turn' }, 'session-1')
+    await literalShown
+    harness.runtime.cancelTurn({ sessionId: 'session-1', turnId: 'user-turn' })
+    await send.done
+
+    expect({
+      order: harness.order,
+      messages: harness.sessionMessages['session-1'],
+      stateChangeCount: harness.stateChanges.length,
+    }).toMatchInlineSnapshot(`
+      {
+        "messages": [
+          {
+            "content": "system prompt",
+            "createdAt": 1777154400000,
+            "id": "system",
+            "role": "system",
+          },
+          {
+            "content": "hello",
+            "createdAt": 1777157220000,
+            "id": "user-turn",
+            "role": "user",
+          },
+          {
+            "completedAt": 1777157220000,
+            "content": "partial ",
+            "createdAt": 1777157220000,
+            "id": "assistant-id",
+            "interrupted": true,
+            "role": "assistant",
+            "slices": [
+              {
+                "text": "partial ",
+                "type": "text",
+              },
+            ],
+            "tool_results": [],
+          },
+        ],
+        "order": [
+          "lifecycle:before-compose",
+          "foreground:patch",
+          "trackFirstMessage",
+          "chatActivationStarted",
+          "messageSendStarted",
+          "hook:before-compose",
+          "commitUserMessage",
+          "userMessageAppended",
+          "userTurnReady",
+          "promptProjection",
+          "lifecycle:after-compose",
+          "hook:after-compose",
+          "hook:before-send",
+          "llmRequestStarted",
+          "llmFirstToken",
+          "hook:token-literal:partial ",
+          "foreground:patch",
+          "appendSessionMessage:assistant:interrupted",
+          "foreground:reset",
+          "settled:cancelled",
+        ],
+        "stateChangeCount": 6,
+      }
+    `)
+  })
+})
+
+describe('unprompted turns', () => {
+  const trigger = { topicKey: 'qa', text: 'QA topic' }
+  const triggerText = '(No one spoke to you. You may speak up about: QA topic)'
+  const unpromptedOptions = {
+    model: 'gpt-test',
+    chatProvider: provider,
+    origin: 'unprompted' as const,
+    trigger,
+    messageId: 'trigger-1',
+  }
+
+  function replyWith(harness: ReturnType<typeof createHarness>, chunks: string[]) {
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      for (const text of chunks)
+        await options?.onStreamEvent?.({ type: 'text-delta', text })
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+  }
+
+  function speechHookCalls(harness: ReturnType<typeof createHarness>) {
+    return harness.order.filter(entry => entry.startsWith('hook:token-'))
+  }
+
+  /** Asserts the decline contract: nothing committed, no reply hooks, one stream end, one decline. */
+  function expectDeclined(harness: ReturnType<typeof createHarness>) {
+    expect(harness.commitUserMessage).not.toHaveBeenCalled()
+    expect(harness.sessionMessages['session-1']).toEqual([expect.objectContaining({ role: 'system' })])
+    expect(harness.userAppended).toEqual([])
+    expect(harness.userTurns).toEqual([])
+    expect(harness.assistantAppended).toEqual([])
+    expect(harness.assistantTurns).toEqual([])
+    expect(speechHookCalls(harness)).toEqual([])
+    expect(harness.order.filter(entry => entry === 'hook:stream-end')).toHaveLength(1)
+    expect(harness.order.filter(entry => /^hook:(?:assistant-end|after-send|assistant-message|turn-complete)/.test(entry))).toEqual([])
+    expect(harness.foregroundPatches).toEqual([])
+    expect(harness.declined).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', trigger }])
+    expect(harness.settled).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', status: 'declined' }])
+    expect(harness.telemetry.messageSendStarted).toEqual([])
+    expect(harness.telemetry.chatActivationStarted).toEqual([])
+    expect(harness.telemetry.assistantResponseRendered).toEqual([])
+    expect(harness.telemetry.messageRound).toEqual([])
+    expect(harness.telemetry.chatActivationSucceeded).toEqual([])
+    expect(harness.order).not.toContain('trackFirstMessage')
+  }
+
+  // (1)
+  it('declines on the silent marker without committing or emitting speech', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    replyWith(harness, ['<|SILENT|>'])
+
+    const request = harness.runtime.submit(triggerText, unpromptedOptions, 'session-1')
+    await request.done
+
+    expectDeclined(harness)
+    // Hosts must not read this acknowledgment as persistence for unprompted turns.
+    await expect(request.accepted).resolves.toEqual({ sessionId: 'session-1', messageId: 'trigger-1' })
+    expect(harness.order).toEqual([
+      'lifecycle:before-compose',
+      'hook:before-compose',
+      'promptProjection',
+      'lifecycle:after-compose',
+      'hook:after-compose',
+      'hook:before-send',
+      'llmRequestStarted',
+      'llmFirstToken',
+      'hook:stream-end',
+      'turnDeclined',
+      'foreground:reset',
+      'settled:declined',
+    ])
+    expect(harness.runtime.getSending()).toBe(false)
+  })
+
+  // (1b)
+  it('sends the uncommitted trigger as the trailing user turn with runtime contexts and no tools', async () => {
+    const harness = createHarness()
+    harness.contextSnapshot['system:weather'] = [{
+      id: 'weather',
+      contextId: 'system:weather',
+      strategy: ContextUpdateStrategy.ReplaceSelf,
+      text: 'sunny',
+      createdAt: 1,
+    }]
+    const tools = vi.fn(async () => undefined)
+    replyWith(harness, ['<|SILENT|>'])
+
+    await harness.runtime.ingest(triggerText, { ...unpromptedOptions, tools, toolReferences: [{ name: 'stage_widgets' }] }, 'session-1')
+
+    const [, , conversation, streamOptions] = harness.stream.mock.calls[0]!
+    expect(conversation.turns.at(-1)).toMatchObject({
+      type: 'user',
+      content: expect.arrayContaining([{ type: 'runtime-context', entries: [{ source: 'system:weather', text: 'sunny' }] }]),
+    })
+    expect(conversationToChatMessages(conversation).at(-1)).toEqual({
+      role: 'user',
+      content: `[2026-04-25 18:47] ${triggerText}\n[Context]\n- system:weather: sunny`,
+    })
+    expect(streamOptions?.tools).toBeUndefined()
+    expect(tools).not.toHaveBeenCalled()
+    expect(harness.commitUserMessage).not.toHaveBeenCalled()
+  })
+
+  // (2)
+  it.each([
+    ['whitespace only', [' ', '\n\t', '  ']],
+    ['reasoning only', ['<think>The user is busy.</think>', '  ']],
+    ['an unterminated marker', ['<|SILENT']],
+  ])('declines a reply with %s', async (_name, chunks) => {
+    const harness = createHarness()
+    harness.recordHooks()
+    replyWith(harness, chunks)
+
+    await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+
+    expectDeclined(harness)
+  })
+
+  // (3)
+  it('holds specials until the first spoken text, then commits the trigger and replies', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    replyWith(harness, ['<|ACT happy|>', ' Oh, a QA topic!'])
+
+    const request = harness.runtime.submit(triggerText, unpromptedOptions, 'session-1')
+    await request.done
+
+    await expect(request.accepted).resolves.toEqual({ sessionId: 'session-1', messageId: 'trigger-1' })
+    expect(harness.sessionMessages['session-1']).toEqual([
+      expect.objectContaining({ role: 'system' }),
+      { role: 'user', content: triggerText, createdAt: expect.any(Number), id: 'trigger-1', origin: 'unprompted', trigger },
+      expect.objectContaining({ role: 'assistant', content: ' Oh, a QA topic!', slices: [{ type: 'text', text: ' Oh, a QA topic!' }] }),
+    ])
+    expect(harness.userAppended).toEqual([expect.objectContaining({ message: expect.objectContaining({ origin: 'unprompted', trigger }), turnIndex: 1 })])
+    expect(harness.order).toEqual([
+      'lifecycle:before-compose',
+      'hook:before-compose',
+      'promptProjection',
+      'lifecycle:after-compose',
+      'hook:after-compose',
+      'hook:before-send',
+      'llmRequestStarted',
+      'llmFirstToken',
+      // The decision point: the trigger is committed and the round starts at the first spoken text.
+      'commitUserMessage',
+      'foreground:patch',
+      'trackFirstMessage',
+      'chatActivationStarted',
+      'messageSendStarted',
+      'userMessageAppended',
+      'userTurnReady',
+      'hook:token-special:<|ACT happy|>',
+      'hook:token-literal: Oh, a QA t',
+      'foreground:patch',
+      'hook:token-literal:opic!',
+      'foreground:patch',
+      'foreground:patch',
+      'assistantResponseRendered',
+      'appendSessionMessage:assistant',
+      'assistantMessageAppended',
+      'hook:stream-end',
+      'hook:assistant-end:<|ACT happy|> Oh, a QA topic!',
+      'hook:after-send',
+      'hook:assistant-message:<|ACT happy|> Oh, a QA topic!',
+      'hook:turn-complete',
+      'assistantTurnReady',
+      'foreground:reset',
+      'messageRound',
+      'chatActivationSucceeded',
+      'settled:finished',
+    ])
+    expect(harness.foregroundPatches[0]).toMatchObject({ content: '', slices: [] })
+    expect(harness.declined).toEqual([])
+  })
+
+  // (4)
+  it('declines when the silent marker follows a held special, without emitting that special', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    replyWith(harness, ['<|ACT happy|>', '<|SILENT|>', ' I changed my mind.'])
+
+    await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+
+    expectDeclined(harness)
+    expect(harness.order.some(entry => entry.includes('ACT'))).toBe(false)
+  })
+
+  // (5)
+  it('consumes a silent marker that arrives after speech started', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    replyWith(harness, ['Hi ', '<|SILENT|>', ' there'])
+
+    await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+
+    // The runtime drops whitespace-only literal chunks, as in user turns. The marker removal adds no text.
+    const reply = harness.sessionMessages['session-1'].at(-1)
+    expect(reply).toMatchObject({ role: 'assistant', content: 'Hi there', categorization: { speech: 'Hi  there' } })
+    expect(JSON.stringify(harness.sessionMessages['session-1'])).not.toContain('SILENT')
+    expect(JSON.stringify(harness.assistantAppended)).not.toContain('SILENT')
+    expect(harness.order.filter(entry => entry.includes('SILENT'))).toEqual([])
+    expect(speechHookCalls(harness)).toEqual(['hook:token-literal:Hi ', 'hook:token-literal:there'])
+    expect(harness.order).toContain('hook:assistant-end:Hi  there')
+    expect(harness.settled).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', status: 'finished' }])
+    expect(harness.declined).toEqual([])
+  })
+
+  it.each([
+    ['lower case', '<|silent|>'],
+    ['inner whitespace', '<| SILENT |>'],
+    ['the escaped form', '<{\'|\'}SILENT{\'|\'}>'],
+  ])('declines on a silent marker written in %s', async (_name, marker) => {
+    const harness = createHarness()
+    harness.recordHooks()
+    replyWith(harness, [marker])
+
+    await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+
+    expectDeclined(harness)
+  })
+
+  it('declines on a custom decline marker', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    replyWith(harness, ['<|PASS|>', 'Unused text'])
+
+    await harness.runtime.ingest(triggerText, { ...unpromptedOptions, declineMarker: '<|PASS|>' }, 'session-1')
+
+    expectDeclined(harness)
+  })
+
+  it('does not decline on a silent marker inside reasoning', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    replyWith(harness, ['<think>I could stay ', '<|SILENT|>', ' but no.</think>', 'Sure, hi!'])
+
+    await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+
+    expect(harness.declined).toEqual([])
+    expect(harness.settled).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', status: 'finished' }])
+    expect(harness.sessionMessages['session-1'].at(-1)).toMatchObject({ role: 'assistant', content: 'Sure, hi!' })
+    expect(harness.order.filter(entry => entry.includes('SILENT'))).toEqual([])
+  })
+
+  it('speaks plain text that only names the marker', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    replyWith(harness, ['SILENT night'])
+
+    await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+
+    expect(harness.declined).toEqual([])
+    expect(harness.sessionMessages['session-1'].at(-1)).toMatchObject({ role: 'assistant', content: 'SILENT night' })
+  })
+
+  it('does not publish held output or reasoning before the decision', async () => {
+    const harness = createHarness()
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      await options?.onStreamEvent?.({ type: 'reasoning-delta', text: 'Should I speak?' })
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '<|ACT happy|>' })
+      await options?.onStreamEvent?.({ type: 'citations', citations: [] })
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '<|SILENT|>' })
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+
+    const states = harness.stateChanges as ChatOrchestratorRuntimeState[]
+    expect(harness.foregroundPatches).toEqual([])
+    expect(states.filter(state => state.activeStreamingMessage || state.activeTurns.length)).toEqual([])
+    expect(states).toContainEqual(expect.objectContaining({ sending: true, activeSendSessionId: 'session-1' }))
+    expect(harness.settled).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', status: 'declined' }])
+  })
+
+  // Hosts close the voice response of a cancelled turn when `onSendSettled` reports it, because stage-ui maps that
+  // event to `voiceGenerationEnded`. A held turn therefore needs exactly one cancelled settlement and nothing else.
+  it('closes a turn cancelled during HOLD through one cancelled settlement', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      const signal = options?.abortSignal
+      await options?.onStreamEvent?.({ type: 'reasoning-delta', text: 'Maybe later.' })
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '<|ACT happy|>' })
+      await new Promise<void>((_resolve, reject) => signal?.addEventListener('abort', () => reject(signal.reason), { once: true }))
+    })
+
+    const generating = harness.untilOrder(entries => entries.includes('llmFirstToken'))
+    const request = harness.runtime.submit(triggerText, unpromptedOptions, 'session-1')
+    await generating
+    harness.runtime.cancelTurn({ sessionId: 'session-1', turnId: 'trigger-1' })
+    await request.done
+
+    await expect(request.accepted).rejects.toThrow('Chat request ended before persistence')
+    expect(harness.settled).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', status: 'cancelled' }])
+    expect(harness.commitUserMessage).not.toHaveBeenCalled()
+    // The reasoning is not kept as an interrupted reply, because no trigger was committed.
+    expect(harness.sessionMessages['session-1']).toEqual([expect.objectContaining({ role: 'system' })])
+    expect(speechHookCalls(harness)).toEqual([])
+    expect(harness.order).not.toContain('hook:stream-end')
+    expect(harness.declined).toEqual([])
+    expect(harness.foregroundPatches).toEqual([])
+    expect(harness.telemetry.messageRoundFailed).toEqual([])
+    expect(harness.runtime.getSending()).toBe(false)
+  })
+
+  it('settles a held turn once when it is cancelled twice', async () => {
+    const harness = createHarness()
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      const signal = options?.abortSignal
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '<|ACT happy|>' })
+      await new Promise<void>((_resolve, reject) => signal?.addEventListener('abort', () => reject(signal.reason), { once: true }))
+    })
+
+    const generating = harness.untilOrder(entries => entries.includes('llmFirstToken'))
+    const request = harness.runtime.submit(triggerText, unpromptedOptions, 'session-1')
+    await generating
+    harness.runtime.cancelTurn({ sessionId: 'session-1', turnId: 'trigger-1' })
+    harness.runtime.cancelTurn({ sessionId: 'session-1', turnId: 'trigger-1' })
+    await request.done
+    harness.runtime.cancelTurn({ sessionId: 'session-1', turnId: 'trigger-1' })
+
+    expect(harness.settled).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', status: 'cancelled' }])
+    expect(harness.commitUserMessage).not.toHaveBeenCalled()
+  })
+
+  it('keeps the committed trigger and partial speech when cancelled after the decision', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      const signal = options?.abortSignal
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '<|ACT happy|>Oh, a QA topic' })
+      await new Promise<void>((_resolve, reject) => signal?.addEventListener('abort', () => reject(signal.reason), { once: true }))
+    })
+
+    const spoken = harness.untilOrder(entries => entries.at(-2)?.startsWith('hook:token-literal:') === true && entries.at(-1) === 'foreground:patch')
+    const request = harness.runtime.submit(triggerText, unpromptedOptions, 'session-1')
+    await spoken
+    harness.runtime.cancelTurn({ sessionId: 'session-1', turnId: 'trigger-1' })
+    await request.done
+
+    expect(harness.sessionMessages['session-1']).toEqual([
+      expect.objectContaining({ role: 'system' }),
+      expect.objectContaining({ role: 'user', id: 'trigger-1', origin: 'unprompted', trigger }),
+      expect.objectContaining({ role: 'assistant', interrupted: true, content: 'Oh, a QA ' }),
+    ])
+    expect(harness.order).toContain('hook:token-special:<|ACT happy|>')
+    expect(harness.settled).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', status: 'cancelled' }])
+    expect(harness.declined).toEqual([])
+  })
+
+  it('surfaces a trigger persistence failure as a stream error without speech', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    harness.commitUserMessage.mockRejectedValueOnce(new Error('storage full'))
+    replyWith(harness, ['<|ACT happy|>Hello there, friend.', ' More text here.'])
+
+    const request = harness.runtime.submit(triggerText, unpromptedOptions, 'session-1')
+
+    await expect(request.done).rejects.toThrow('storage full')
+    await expect(request.accepted).rejects.toThrow('storage full')
+    expect(harness.settled).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', status: 'failed' }])
+    expect(harness.sessionMessages['session-1']).toEqual([expect.objectContaining({ role: 'system' })])
+    expect(speechHookCalls(harness)).toEqual([])
+    expect(harness.telemetry.messageRoundFailed).toEqual([])
+    expect(harness.telemetry.chatActivationFailed).toEqual([])
+  })
+
+  it('produces no second reply when the trigger was already committed', async () => {
+    const harness = createHarness()
+    replyWith(harness, ['Hello!'])
+    await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+    harness.recordHooks()
+    replyWith(harness, ['Hello again!'])
+
+    const retry = harness.runtime.submit(triggerText, unpromptedOptions, 'session-1')
+    await retry.done
+
+    await expect(retry.accepted).resolves.toEqual({ sessionId: 'session-1', messageId: 'trigger-1' })
+    expect(harness.sessionMessages['session-1'].filter(message => message.role === 'assistant')).toHaveLength(1)
+    expect(harness.sessionMessages['session-1'].filter(message => message.id === 'trigger-1')).toHaveLength(1)
+    expect(speechHookCalls(harness)).toEqual([])
+    expect(harness.assistantAppended).toHaveLength(1)
+    expect(harness.settled.at(-1)).toEqual({ sessionId: 'session-1', turnId: 'trigger-1', status: 'finished' })
+  })
+
+  it('counts the turn and activation from history committed at the decision', async () => {
+    const harness = createHarness()
+    replyWith(harness, ['Hi!'])
+    await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+    replyWith(harness, ['Second answer'])
+    await harness.runtime.ingest('user follow-up', { model: 'gpt-test', chatProvider: provider }, 'session-1')
+
+    expect(harness.telemetry.messageSendStarted).toEqual([
+      expect.objectContaining({ roundId: 'trigger-1', turnIndex: 1 }),
+      expect.objectContaining({ turnIndex: 2 }),
+    ])
+    expect(harness.telemetry.chatActivationStarted).toHaveLength(1)
+    expect(harness.telemetry.chatActivationSucceeded).toEqual([expect.objectContaining({ roundId: 'trigger-1' })])
   })
 })
 

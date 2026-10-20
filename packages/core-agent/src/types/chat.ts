@@ -56,7 +56,23 @@ export interface ChatAssistantMessage extends AssistantMessage {
   }
 }
 
-export type ChatMessage = ChatAssistantMessage | SystemMessage | ToolMessage | UserMessage
+/** Topic that started a turn the user did not write. */
+export interface ChatTurnTrigger {
+  /** Stable topic identity that hosts use to deduplicate topics and record declines. */
+  topicKey: string
+  /** Topic text that hosts show in place of the trigger message. */
+  text: string
+}
+
+/** User-role message. Only user messages can carry an unprompted origin. */
+export interface ChatUserMessage extends UserMessage {
+  /** Set when the host started the turn without user input. User-written messages omit it. */
+  origin?: 'unprompted'
+  /** Topic of an unprompted turn. */
+  trigger?: ChatTurnTrigger
+}
+
+export type ChatMessage = ChatAssistantMessage | SystemMessage | ToolMessage | ChatUserMessage
 
 /** Identifies one model-facing tool without storing its runtime executor. */
 export interface ChatToolReference {
@@ -108,6 +124,8 @@ export interface ChatStreamEventContext {
   contexts: Record<string, ContextMessage[]>
   composedMessage: Array<Message>
   input?: WebSocketEventInputs
+  /** Set for a turn the host started without user input. User turns omit it. */
+  origin?: 'unprompted'
 }
 
 export type ChatStreamEvent
