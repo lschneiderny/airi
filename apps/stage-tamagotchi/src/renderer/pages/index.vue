@@ -39,6 +39,7 @@ import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
 import { stageOpaqueAttribute } from '../composables/use-stage-painted-mask'
 import { useControlsIslandStore } from '../stores/controls-island'
 import { useDesktopActivityProducerStore } from '../stores/desktop-activity'
+import { useForegroundWindowProducerStore } from '../stores/foreground-window'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
 import { useToolSelectionStore } from '../stores/tools'
 import { resolveFadeOnHoverInteraction } from '../utils/fade-on-hover'
@@ -105,6 +106,10 @@ const { stagePaused } = storeToRefs(useStageWindowLifecycleStore())
 const desktopActivityProducer = useDesktopActivityProducerStore()
 desktopActivityProducer.start()
 onScopeDispose(() => desktopActivityProducer.stop())
+// Only the stage window samples the foreground app, so follower windows never poll the main process.
+const foregroundWindowProducer = useForegroundWindowProducerStore()
+foregroundWindowProducer.start()
+onScopeDispose(() => foregroundWindowProducer.stop())
 const { fadeOnHoverEnabled } = storeToRefs(useControlsIslandStore())
 const modelSettingsRuntimeOwnerInstanceId = `tamagotchi-main-stage:${Math.random().toString(36).slice(2, 10)}`
 const shouldUseThreeTransparencyHitTest = computed(() => shouldSampleStageTransparency({
