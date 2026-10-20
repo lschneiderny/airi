@@ -23,6 +23,7 @@
     "./global-shortcut": "./src/global-shortcut/index.ts",
     "./godot-stage": "./src/godot-stage/index.ts",
     "./model-assets": "./src/model-assets/index.ts",
+    "./motion-scenario": "./src/motion-scenario/index.ts",
     "./perf/io-trace": "./src/perf/io-trace.ts",
     "./performance-state": "./src/performance-state/index.ts",
     "./plugin-host": "./src/plugin-host.ts",

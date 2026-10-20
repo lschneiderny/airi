@@ -104,6 +104,27 @@ Do not use it to render, compose parameters, or hold timers. The stage conductor
 The [expression performance ADR](../../docs/ai/adr/2026-10-18-expression-performance.md) records the contracts.
 The [Natural emotion revamp ADR](../../docs/ai/adr/2026-10-19-natural-emotion-revamp.md) records the hold contract.
 
+### Motion scenario
+
+The `motion-scenario` entrypoint owns the input script that motion QA replays at every level (T1 simulated pipeline, T2 headless rig, T3 rendered app):
+
+- `MotionScenarioSchema`, a strict Valibot schema for a versioned scenario with sorted `emotion`, `act`, `mode`, `speech`, `cursor`, `expression`, `placebo`, `noop`, and `marker` events. A scenario whose `levels` include `t3` cannot contain `speech` or `cursor` events;
+- `createScenarioPlayer(scenario).eventsBetween(t0, t1)`, which returns the events with `t0 < at <= t1` in scenario order and reads no clock;
+- `stripEmotions`, which swaps every `emotion` and `act` event for a `noop` with the same `at` and `trialId`, so a paired null run has the same timeline;
+- `buildEmotionTrial`, `buildIdleWithPlacebos`, and `buildLongHold`, which build valid scenarios deterministically from their inputs;
+- the schemas and Eventa invoke contracts (`eventa:invoke:motion-qa:*`) of the dev-only QA bridge, `createMotionQaContext`, and `isMotionQaBridgeEnabled`.
+
+```ts
+import { buildEmotionTrial, createScenarioPlayer, MotionScenarioSchema } from '@proj-airi/stage-shared/motion-scenario'
+import { parse } from 'valibot'
+
+const scenario = parse(MotionScenarioSchema, buildEmotionTrial({ emotion: 'angry', band: 'strong', variant: 'full', seed: 1 }))
+const pulse = createScenarioPlayer(scenario).eventsBetween(19.9, 20.1)
+```
+
+Use this entrypoint to describe, build, and replay QA inputs, and to type the bridge between a QA tool and the app.
+Do not use it to run a scenario or to read clocks or randomness: the runners in `@proj-airi/qa-tools` and the app own execution. The bridge contracts do nothing unless the app enables the bridge.
+
 ## Do not use this package
 
 Keep Electron IPC definitions in the Electron application. Keep UI state and actions in `@proj-airi/stage-ui`. Keep Extension runtime and manifest behavior in `@proj-airi/plugin-sdk`.
