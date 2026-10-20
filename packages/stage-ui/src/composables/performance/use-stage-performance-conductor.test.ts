@@ -121,6 +121,29 @@ describe('stage performance conductor', () => {
     expect(playMotion.mock.calls).toEqual([['Happy'], ['Awkward'], ['Idle']])
   })
 
+  it.each(['universal', 'magic'] as const)('skips the emotion motion group under %s when an ACT already played its motion, and still applies slots', (driver) => {
+    const scene = fakeScene()
+    const { conductor, playMotion } = createConductor(driver, scene)
+
+    conductor.emotion('happy', 0.6, 'act', 'turn-a', { suppressMotionGroup: true })
+
+    expect(playMotion).not.toHaveBeenCalled()
+    expect(scene.applySlots.mock.calls.flatMap(([commands]) => commands)).toEqual([
+      expect.objectContaining({ expressionId: 'joy', turnId: 'turn-a' }),
+    ])
+  })
+
+  it('keeps the Natural episode and hold when an ACT already played its motion', () => {
+    const scene = fakeScene()
+    const { conductor, playMotion } = createConductor('natural', scene)
+
+    conductor.emotion('happy', 0.6, 'act', 'turn-a', { suppressMotionGroup: true })
+
+    expect(playMotion).not.toHaveBeenCalled()
+    expect(scene.setEmotion).toHaveBeenCalledTimes(1)
+    expect(scene.applyHolds.mock.calls).toEqual([[[expect.objectContaining({ emotion: 'happy', turnId: 'turn-a' })], 10]])
+  })
+
   it('carries the turn id of emotion, expression, and speech signals', () => {
     const scene = fakeScene()
     const { conductor } = createConductor('natural', scene)
