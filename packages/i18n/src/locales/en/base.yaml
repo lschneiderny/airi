@@ -60,6 +60,13 @@ prompt:
     {list}
   expression-state: |
     Current stage state: active expressions: {active}. Mood: {mood}.
+  unprompted: |
+    Nobody spoke to you. You may speak up on your own about the topic in the
+    last message. If it is worth saying, say it briefly in character, in one or
+    two sentences. If it is not worth saying, reply only with <{'|'}SILENT{'|'}>.
+  unprompted-forced: |
+    Nobody spoke to you. Speak up on your own about the topic in the last
+    message. Say it briefly in character, in one or two sentences.
 toaster:
   pwaUpdateReady:
     message: New version ready, reload now?

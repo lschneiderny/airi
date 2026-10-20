@@ -4,6 +4,7 @@ import type { Component, ComponentInternalInstance, VNode } from 'vue'
 
 import type { StagePerformanceScene } from '../../composables/performance/use-stage-performance-conductor'
 
+import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
 import { createPickerDecider, defaultExpressionPerformanceSettings, replayAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { Live2DNaturalMotion } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { createPinia, setActivePinia } from 'pinia'
@@ -13,9 +14,10 @@ import { defineComponent, getCurrentInstance, h, isVNode, nextTick, shallowRef, 
 import { createI18n } from 'vue-i18n'
 
 import { StagePerformanceConductor, useStagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
-import { Emotion, EMOTION_EmotionMotionName_value } from '../../constants/emotions'
+import { Emotion, EMOTION_EmotionMotionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
+import { useChatStore } from '../../stores/chat'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
@@ -191,6 +193,33 @@ describe('stage emotion routing on Live2D', () => {
       EMOTION_EmotionMotionName_value[Emotion.Neutral],
     ])
     expect(episodes.value).toEqual([])
+  })
+
+  it('keeps presence idle and plays no Think motion while an unprompted turn is undecided', async () => {
+    const { scene, motionGroups } = await renderStage('universal')
+    const chat = useChatStore()
+    const unprompted = {
+      sessionId: 'session-unprompted',
+      turnId: 'unprompted-1',
+      message: { role: 'user' as const, content: '(No one spoke to you.)', origin: 'unprompted' as const },
+      contexts: {},
+      composedMessage: [],
+      origin: 'unprompted' as const,
+    }
+
+    // The runtime raises raw `sending` for the undecided turn. Only a user turn raises `userSending`.
+    chat.sending = true
+    await chat.emitBeforeSendHooks('(No one spoke to you.)', unprompted)
+    await nextTick()
+
+    expect(scene.props.presence).toEqual(presenceBubbleIdle)
+    expect(motionGroups.value).not.toContain(EmotionThinkMotionName)
+
+    const thinking = until(() => scene.props.presence, presence => presence === presenceBubbleThinking)
+    chat.userSending = true
+    await chat.emitBeforeSendHooks('hello', { ...unprompted, turnId: 'user-1', message: { role: 'user', content: 'hello' }, origin: undefined })
+    await thinking
+    expect(motionGroups.value).toContain(EmotionThinkMotionName)
   })
 
   it('passes the performance settings document to the Live2D scene', async () => {

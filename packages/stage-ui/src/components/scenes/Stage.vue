@@ -254,11 +254,12 @@ function resetAssistantSpeechSurface(source: string) {
   }
 }
 
-const { sending: chatSending } = storeToRefs(useChatStore())
+const { userSending: chatSending } = storeToRefs(useChatStore())
 const { presenceOverride } = storeToRefs(useSettingsPresenceBubble())
 
-// `sending` is raised before the request leaves and cleared once the send
-// settles, which is the span the character has nothing to say yet.
+// `userSending` spans a user's request until it settles, while the character
+// has nothing to say yet. Nobody waits on an unprompted turn, so presence
+// stays idle for it.
 //
 // Unread stays at zero: nothing reports whether the chat window is showing, so
 // there is no read cursor to count against.
@@ -671,19 +672,33 @@ watch(speechMuted, (muted) => {
   }
 })
 
+/**
+ * Unprompted turns of the active session whose speech surface is reset at their first literal.
+ * A declined turn emits no literal, so the previous caption stays.
+ */
+const deferredSurfaceResets = new Set<string>()
+
 chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
   voice.startResponse(context)
-  if (context.sessionId === chatSession.activeSessionId)
-    resetAssistantSpeechSurface('new-message')
+  if (context.sessionId === chatSession.activeSessionId) {
+    if (context.origin === 'unprompted')
+      deferredSurfaceResets.add(context.turnId)
+    else
+      resetAssistantSpeechSurface('new-message')
+  }
   setupAnalyser()
   await setupLipSync()
 }))
 
-chatHookCleanups.push(onBeforeSend(async () => {
-  currentMotion.value = { group: EmotionThinkMotionName }
+chatHookCleanups.push(onBeforeSend(async (_message, context) => {
+  // The model may still decline an unprompted turn, so the character does not look like she is answering.
+  if (context.origin !== 'unprompted')
+    currentMotion.value = { group: EmotionThinkMotionName }
 }))
 
 chatHookCleanups.push(onTokenLiteral(async (literal, context) => {
+  if (deferredSurfaceResets.delete(context.turnId))
+    resetAssistantSpeechSurface('unprompted-speech')
   if (!speechMuted.value)
     await voice.getSpeech(context)?.write(literal)
 }))
@@ -696,6 +711,7 @@ chatHookCleanups.push(onTokenSpecial(async (special, context) => {
 }))
 
 chatHookCleanups.push(onStreamEnd(async (context) => {
+  deferredSurfaceResets.delete(context.turnId)
   void voice.finishResponse(context).catch(error => console.error('Speech response completion failed', error))
 }))
 
