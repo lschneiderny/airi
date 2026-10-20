@@ -115,6 +115,8 @@ chat:
     cancel: Cancel reply
     message: Message
     replying-to: Replying to {name}
+  unprompted:
+    cue: Spoke up about {topic}
   reasoning: Reasoning
   swipe-demo:
     show-label: Show labels

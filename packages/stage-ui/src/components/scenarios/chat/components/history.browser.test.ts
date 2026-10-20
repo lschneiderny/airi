@@ -10,6 +10,7 @@ import { createI18n } from 'vue-i18n'
 
 import ChatHistory from './history.vue'
 
+import { useSituationSettings } from '../../../../features/situation/settings'
 import { getChatHistoryItemKey } from '../utils'
 
 const triggerHaptic = vi.fn()
@@ -694,6 +695,137 @@ describe('chat history', () => {
     })
 
     expect(screen.container.textContent).not.toContain('Retry')
+  })
+
+  describe('unprompted cue', () => {
+    const triggerPrompt = '(No one spoke to you. You may speak up about: QA topic)'
+    const cue: ChatHistoryItem = {
+      id: 'cue-1',
+      role: 'user',
+      content: triggerPrompt,
+      origin: 'unprompted',
+      trigger: { topicKey: 'qa', text: 'QA topic' },
+    }
+    const reply: ChatHistoryItem = {
+      id: 'reply-1',
+      role: 'assistant',
+      content: 'Oh, a QA topic!',
+      slices: [{ type: 'text', text: 'Oh, a QA topic!' }],
+      tool_results: [],
+    }
+
+    afterEach(() => localStorage.removeItem('settings/situation'))
+
+    it('still offers retry for an error after a written message, so the retry selector can match', async () => {
+      const screen = await renderHistory([
+        { role: 'user', content: 'hello' },
+        { role: 'error', content: 'Remote sent 400 response' },
+      ])
+
+      await vi.waitFor(() => expect(screen.container.querySelector('button[aria-label="Retry"]')).not.toBeNull())
+    })
+
+    function renderHistory(messages: ChatHistoryItem[]) {
+      return render(ChatHistory, {
+        props: {
+          messages,
+          style: 'height: 480px; width: 480px; overflow-y: auto;',
+        },
+        global: {
+          plugins: [createEnglishI18n()],
+        },
+      })
+    }
+
+    it('shows the topic as one muted line without message actions, and keeps a written message a bubble', async () => {
+      const screen = await renderHistory([
+        { id: 'user-1', role: 'user', content: 'A written question' },
+        cue,
+        reply,
+      ])
+
+      const cueLine = await vi.waitFor(() => {
+        const element = screen.container.querySelector<HTMLElement>('[data-chat-unprompted-cue]')
+        expect(element).not.toBeNull()
+        return element!
+      })
+      expect(cueLine.textContent?.trim()).toBe('Spoke up about QA topic')
+      expect(cueLine.querySelector('button')).toBeNull()
+      expect(screen.container.textContent).not.toContain('No one spoke to you')
+      expect(screen.container.textContent).toContain('Oh, a QA topic!')
+
+      const bubbles = Array.from(screen.container.querySelectorAll<HTMLElement>('.chat-message-item-container'))
+      expect(bubbles.map(bubble => bubble.textContent?.trim())).toEqual(['A written question', expect.stringContaining('Oh, a QA topic!')])
+      expect(screen.container.querySelectorAll('[data-chat-unprompted-cue]')).toHaveLength(1)
+    })
+
+    it('does not offer a reply to the cue', async () => {
+      const screen = await renderHistory([cue, reply])
+
+      const cueFrame = await vi.waitFor(() => {
+        const element = screen.container.querySelector<HTMLElement>('[data-chat-unprompted-cue]')?.closest<HTMLElement>('[data-chat-message-role]')
+        expect(element).toBeTruthy()
+        return element!
+      })
+      // The frame draws the reply icon only for a message that can be replied to.
+      expect(cueFrame.querySelector('.i-solar\\:reply-bold-duotone')).toBeNull()
+      expect(screen.container.querySelector('[data-chat-message-role="assistant"] .i-solar\\:reply-bold-duotone')).not.toBeNull()
+    })
+
+    it('renders nothing for the cue when the setting hides it, and follows the setting while the history is open', async () => {
+      const settings = useSituationSettings()
+      await settings.update({ showUnpromptedCue: false })
+      // Browser tests load no UnoCSS styles, so a hidden cue row measures 0 px here; as the first row, virtua would
+      // leave it out of its range. In the app the frame padding keeps the row measurable, which Electron QA covers.
+      const screen = await renderHistory([{ id: 'user-0', role: 'user', content: 'A written question' }, cue, reply])
+
+      await vi.waitFor(() => expect(screen.container.textContent).toContain('Oh, a QA topic!'))
+      expect(screen.container.querySelector('[data-chat-unprompted-cue]')).toBeNull()
+      expect(screen.container.textContent).not.toContain('Spoke up about')
+      expect(screen.container.textContent).not.toContain('No one spoke to you')
+
+      await settings.update({ showUnpromptedCue: true })
+      await vi.waitFor(() => expect(screen.container.querySelector('[data-chat-unprompted-cue]')?.textContent?.trim()).toBe('Spoke up about QA topic'))
+
+      await settings.update({ showUnpromptedCue: false })
+      await vi.waitFor(() => expect(screen.container.querySelector('[data-chat-unprompted-cue]')).toBeNull())
+      expect(screen.container.textContent).toContain('Oh, a QA topic!')
+    })
+
+    it('offers no retry that would resend the trigger text for an error after a cue', async () => {
+      const screen = await renderHistory([
+        cue,
+        { role: 'error', content: 'Remote sent 400 response' },
+      ])
+
+      await vi.waitFor(() => expect(screen.container.textContent).toContain('Remote sent 400 response'))
+      expect(screen.container.querySelector('button[aria-label="Retry"]')).toBeNull()
+    })
+
+    it('offers no retry for an error after a partial reply to a cue', async () => {
+      const screen = await renderHistory([
+        cue,
+        { ...reply, interrupted: true },
+        { role: 'error', content: 'Stream interrupted' },
+      ])
+
+      await vi.waitFor(() => expect(screen.container.textContent).toContain('Stream interrupted'))
+      expect(screen.container.querySelector('button[aria-label="Retry"]')).toBeNull()
+    })
+
+    it('shows neither a cue nor the trigger prompt for an unprompted message without a trigger', async () => {
+      const { trigger: _trigger, ...malformed } = cue as Extract<ChatHistoryItem, { role: 'user' }>
+      const screen = await renderHistory([
+        malformed,
+        reply,
+        { role: 'error', content: 'Remote sent 400 response' },
+      ])
+
+      await vi.waitFor(() => expect(screen.container.textContent).toContain('Oh, a QA topic!'))
+      expect(screen.container.querySelector('[data-chat-unprompted-cue]')).toBeNull()
+      expect(screen.container.textContent).not.toContain('No one spoke to you')
+      expect(screen.container.querySelector('button[aria-label="Retry"]')).toBeNull()
+    })
   })
 
   it('selects every desktop message for reply with a two-finger horizontal pan', async () => {
