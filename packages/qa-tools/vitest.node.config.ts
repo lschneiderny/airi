@@ -11,5 +11,8 @@ export default defineProject({
     exclude: ['**/node_modules/**', '**/.git/**'],
     pool: 'forks',
     maxWorkers: 4,
+    // Vitest refuses to run projects with different maxWorkers in one group, so a root run that
+    // selects this project with any other one needs it in its own group.
+    sequence: { groupOrder: 1 },
   },
 })
