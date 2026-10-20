@@ -14,10 +14,15 @@ const NEW_EVENT_MIN_SALIENCE = 0.2
 const NEW_EVENTS_MAX = 2
 const ELLIPSIS = '...'
 
+/** Default line budget of the block, header line included. */
+export const SITUATION_MAX_LINES = 6
+/** Default character budget of the block, header and newlines included. */
+export const SITUATION_MAX_CHARS = 500
+
 export interface RenderSituationOptions {
-  /** Line budget including the header line. Default 6. */
+  /** Line budget including the header line. Default {@link SITUATION_MAX_LINES}. */
   readonly maxLines?: number
-  /** Character budget including the header and newlines. Default 500. */
+  /** Character budget including the header and newlines. Default {@link SITUATION_MAX_CHARS}. */
   readonly maxChars?: number
   /** Name used for the presence bullet. Default `The user`. */
   readonly userName?: string
@@ -196,8 +201,8 @@ export function renderSituation(
   nowMs: number,
   options: RenderSituationOptions = {},
 ): RenderedSituation {
-  const maxLines = positiveOr(options.maxLines, 6)
-  const maxChars = positiveOr(options.maxChars, 500)
+  const maxLines = positiveOr(options.maxLines, SITUATION_MAX_LINES)
+  const maxChars = positiveOr(options.maxChars, SITUATION_MAX_CHARS)
   const userName = oneLine(options.userName ?? '') || 'The user'
   const header = `[Situation ${clockText(nowMs)}]`
 

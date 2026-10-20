@@ -12,8 +12,9 @@ import {
   renderSituation,
 } from '@proj-airi/stage-shared/situation'
 import { defineStore } from 'pinia'
-import { computed, shallowRef } from 'vue'
+import { computed, shallowRef, watch } from 'vue'
 
+import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { startConversationSensor } from './sensors/conversation'
 import { startDesktopSensor } from './sensors/desktop'
 import { startStageSensor } from './sensors/stage'
@@ -49,6 +50,10 @@ export const useSituationStore = defineStore('situation', () => {
   let chatHooks: ConversationHookSource | undefined
   let stopConversation: (() => void) | undefined
   let stopLeadershipListener: (() => void) | undefined
+  const observability = useSituationObservabilityStore()
+
+  // Feeds the devtools Situation inspector of this window. Sync flush keeps it equal to the state after every call.
+  watch([leading, current], ([isLeading, state]) => observability.publishLiveState(isLeading, state), { flush: 'sync', immediate: true })
 
   function advance(nowMs: number) {
     if (!leading.value)
@@ -119,6 +124,7 @@ export const useSituationStore = defineStore('situation', () => {
       return undefined
     current.value = advanceSituation(current.value, nowMs)
     const rendered = renderSituation(current.value, nowMs)
+    observability.recordRender(nowMs, rendered)
     if (rendered.shownEventIds.length > 0)
       current.value = markShown(current.value, rendered.shownEventIds, nowMs)
     return rendered.text
