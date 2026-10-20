@@ -194,7 +194,11 @@ export class StagePerformanceConductor {
     this.timers = options.timers ?? browserTimers
   }
 
-  emotion(name: string, nominal: number, source: 'act' | 'tool' | 'devtools', turnId?: string) {
+  /**
+   * Plays an emotion. `suppressMotionGroup` skips only the Universal and MAGIC motion group, for an
+   * ACT that already set its own motion; Natural still gets its episodes and holds, and slots apply.
+   */
+  emotion(name: string, nominal: number, source: 'act' | 'tool' | 'devtools', turnId?: string, options: { suppressMotionGroup?: boolean } = {}) {
     const emotion = EMOTION_VALUES.find(value => value === name)
     if (!emotion || !Number.isFinite(nominal)) {
       console.warn('[performance-conductor] Unrecognized emotion dropped:', name, nominal)
@@ -206,7 +210,7 @@ export class StagePerformanceConductor {
     const decision = this.decide({ kind: 'emotion', source, emotion, nominal: scaled, turnId, at }, context)
     if (this.options.driver() === 'natural')
       this.dispatchNatural(decision, at)
-    else
+    else if (!options.suppressMotionGroup)
       this.options.playMotion(EMOTION_EmotionMotionName_value[emotion])
     this.dispatchSlots(decision, at)
   }

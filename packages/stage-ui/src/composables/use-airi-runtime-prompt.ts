@@ -7,12 +7,6 @@ import { EMOTION_PromptName_value, EMOTION_VALUES } from '../constants/emotions'
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 
-const RUNTIME_PROMPT_KEYS = [
-  'base.prompt.emotion',
-  'base.prompt.emoji',
-  'base.prompt.suffix',
-]
-
 const EXPRESSION_KINDS = ['face', 'effect', 'prop'] as const
 
 /** One line per kind that has exposed labels, in face, effect, prop order. */
@@ -32,32 +26,39 @@ function formatMood(mood: PerformanceRuntimeSnapshot['mood']) {
 }
 
 /**
- * Returns the localized emotion and emoji prompt for each model request.
+ * Returns the stable stage contract: the cue rules, the emotion list, and the emoji rule.
  *
- * The expression list and the state feedback line are appended from code under their own
- * `te(...)` guards rather than through `RUNTIME_PROMPT_KEYS`, so a locale that lacks them
- * keeps the rest of the runtime prompt.
+ * It changes only with the locale, so callers place it in the system prompt, where it stays a cache-stable prefix.
+ * A locale that lacks a key renders the English text through the i18n `fallbackLocale`.
  */
-export function useAiriRuntimePrompt() {
-  const { locale, t, te } = useI18n()
+export function useStageContractPrompt() {
+  const { t } = useI18n()
+
+  return computed(() => [
+    t('base.prompt.emotion'),
+    EMOTION_VALUES
+      .map(emotion => `- ${emotion} (Emotion for feeling ${EMOTION_PromptName_value[emotion]})`)
+      .join('\n'),
+    t('base.prompt.emoji'),
+  ].join('\n\n'))
+}
+
+/**
+ * Returns the live performance state: the exposed expressions and, while state feedback is on, the active
+ * expressions and mood. It is empty when neither applies.
+ *
+ * It changes during a conversation, so callers send it with the request rather than in the system prompt.
+ */
+export function useStageLiveStatePrompt() {
+  const { t } = useI18n()
   const runtimeState = usePerformanceRuntimeState()
   const performanceSettings = useExpressionPerformanceSettings()
 
   return computed(() => {
-    if (!RUNTIME_PROMPT_KEYS.every(key => te(key, locale.value)))
-      return ''
-
-    const parts = [
-      t('base.prompt.emotion'),
-      EMOTION_VALUES
-        .map(emotion => `- ${emotion} (Emotion for feeling ${EMOTION_PromptName_value[emotion]})`)
-        .join('\n'),
-      t('base.prompt.suffix'),
-      t('base.prompt.emoji'),
-    ]
-    if (runtimeState.exposed.length && te('base.prompt.expressions', locale.value))
+    const parts: string[] = []
+    if (runtimeState.exposed.length)
       parts.push(t('base.prompt.expressions', { list: formatExposedList(runtimeState.exposed) }))
-    if (performanceSettings.document.stateFeedback && te('base.prompt.expression-state', locale.value))
+    if (performanceSettings.document.stateFeedback)
       parts.push(t('base.prompt.expression-state', { active: formatActive(runtimeState.active), mood: formatMood(runtimeState.mood) }))
 
     return parts.join('\n\n')

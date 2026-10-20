@@ -31,6 +31,7 @@ describe('store character', () => {
     setActivePinia(pinia)
 
     setCharacterLlmMarkerParserFactoryForTest(options => ({
+      stats: { recovered: 0 },
       async consume(textPart: string) {
         parserConsumeSpy(textPart)
         if (textPart)
