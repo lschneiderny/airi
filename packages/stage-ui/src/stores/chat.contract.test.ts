@@ -1773,7 +1773,7 @@ describe('chat store contract', () => {
     expect(ioTracerMocks.turnSpans.size).toBe(0)
   })
 
-  it('sends the stage contract in the system prompt and the live state only in the situation runtime context', async () => {
+  it('sends the stage contract in the system prompt and the live state only as the situation stage line', async () => {
     usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
     leadSituation()
     const systemPrompts: string[] = []
@@ -1789,7 +1789,7 @@ describe('chat store contract', () => {
     expect(ingestContextMessageMock).toHaveBeenCalledOnce()
     expect(ingestContextMessageMock).toHaveBeenCalledWith(expect.objectContaining({
       contextId: 'system:situation',
-      text: expect.stringMatching(/^\[Situation \d\d:\d\d\]\n\nbase\.prompt\.expressions$/),
+      text: expect.stringMatching(/^\[Situation \d\d:\d\d\]\n- Stage - on stage: face: smile$/),
     }))
     const composed = useContextObservabilityStore().lastPromptProjection?.composedMessage ?? []
     const system = systemPrompts[0]
@@ -1798,6 +1798,8 @@ describe('chat store contract', () => {
     expect(system).toContain('base.prompt.emoji')
     expect(system).toContain('- happy (Emotion for feeling Happy)')
     expect(system).not.toContain('base.prompt.suffix')
+    expect(system).not.toContain('base.prompt.expressions')
+    expect(system).not.toContain('face: smile')
     expect(lastUser).toContain('hello')
     expect(lastUser).not.toContain('base.prompt.emotion')
     expect(lastUser).not.toContain('base.prompt.emoji')
@@ -1825,7 +1827,8 @@ describe('chat store contract', () => {
     await store.send({ sessionId: 'session-1', text: 'second turn' })
 
     expect(firstContext).toMatch(/^\[Situation \d\d:\d\d\]/)
-    expect(ingestContextMessageMock.mock.lastCall?.[0]?.text).not.toBe(firstContext)
+    expect(firstContext).toContain('- Stage - on stage: face: smile')
+    expect(ingestContextMessageMock.mock.lastCall?.[0]?.text).toContain('- Stage - on stage: face: smile; active: face smile; mood: unknown')
     expect(systemMessages).toHaveLength(2)
     expect(systemMessages[0]).toContain('base.prompt.emotion')
     expect(systemMessages[0]).not.toContain('[Situation')
@@ -1881,7 +1884,7 @@ describe('chat store contract', () => {
       throw new Error('Expected user turn')
     expect(composedMessages[1].content[1]).toEqual({
       type: 'runtime-context',
-      entries: [{ source: 'system:situation', text: expect.stringMatching(/^\[Situation \d\d:\d\d\]\n\nbase\.prompt\.expressions$/) }],
+      entries: [{ source: 'system:situation', text: expect.stringMatching(/^\[Situation \d\d:\d\d\]\n- Stage - on stage: face: smile$/) }],
     })
   })
 

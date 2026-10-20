@@ -21,7 +21,7 @@ import { computed, shallowRef, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { getConversationAnalyticsSurface } from '../composables'
-import { useStageContractPrompt, useStageLiveStatePrompt } from '../composables/use-airi-runtime-prompt'
+import { useStageContractPrompt } from '../composables/use-airi-runtime-prompt'
 import { registerTurnSpan, startSpan, takeComposerVoiceParent, takeVoiceTurnParent } from '../composables/use-io-tracer'
 import { useChatVision } from '../composables/vision/use-chat-vision'
 import { useVisionInference } from '../composables/vision/use-vision-inference'
@@ -223,7 +223,6 @@ const UNREADABLE_EARLIER_IMAGE = 'The user attached an image here earlier. The v
 export const useChatStore = defineStore('chat', () => {
   const { t } = useI18n()
   const stageContractPrompt = useStageContractPrompt()
-  const liveStatePrompt = useStageLiveStatePrompt()
   const situationStore = useSituationStore()
   const authStore = useAuthStore()
   const llmStore = useLLM()
@@ -269,18 +268,10 @@ export const useChatStore = defineStore('chat', () => {
    */
   function situationContextMessage(): ContextMessage | undefined {
     const now = Date.now()
-    // Without a rendered block (a follower, or a host that never initialized the store) nothing is sent, not even
-    // the live state below.
-    const block = situationStore.renderForRequest(now)
-    if (!block)
+    // The live stage state arrives through the situation stage sensor and renders as the block's stage line.
+    const text = situationStore.renderForRequest(now)
+    if (!text)
       return undefined
-
-    // NOTICE:
-    // The live stage state rides in the situation entry instead of its own context bucket.
-    // No stage sensor turns it into a situation `stage` observation yet.
-    // Source: `useStageLiveStatePrompt` in composables/use-airi-runtime-prompt.ts.
-    // Remove `liveStatePrompt` here once a stage sensor feeds the situation store.
-    const text = [block, liveStatePrompt.value].filter(Boolean).join('\n\n')
 
     return {
       id: nanoid(),
@@ -762,6 +753,8 @@ export const useChatStore = defineStore('chat', () => {
         void artistryAutonomousStore.runArtistTask(messageText, toProviderHistory(sessionMessages))
     },
   })
+  // The situation store records conversation turns from these hooks while this window leads.
+  situationStore.observeChat(runtime.hooks)
 
   // One request owns preparation and generation. Cancellation cannot miss asynchronous startup.
   const requests = new Map<string, {

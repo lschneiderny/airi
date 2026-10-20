@@ -1,6 +1,8 @@
 import type { Observation, SituationState } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
+import type { ConversationHookSource } from './sensors/conversation'
+
 import {
   advanceSituation,
   initialSituationState,
@@ -12,8 +14,20 @@ import {
 import { defineStore } from 'pinia'
 import { computed, shallowRef } from 'vue'
 
-/** How often the leader derives the time-based events: settled app switches, long-session tiers, and expiry. */
+import { startConversationSensor } from './sensors/conversation'
+import { startDesktopSensor } from './sensors/desktop'
+import { startStageSensor } from './sensors/stage'
+
+/**
+ * How often the leader derives the time-based events (settled app switches, long-session tiers, expiry) and
+ * re-checks desktop sample freshness.
+ */
 const ADVANCE_INTERVAL_MS = 1_000
+
+interface RunningSensors {
+  check: (nowMs: number) => void
+  stop: () => void
+}
 
 /**
  * Owns the character's view of the user's situation in the leader window.
@@ -21,12 +35,19 @@ const ADVANCE_INTERVAL_MS = 1_000
  * The store is intentionally neither synced nor persisted: the leader is the only window that sends chat
  * requests, so it alone folds observations and renders the block. Followers keep the initial state and ignore
  * every call. Leadership comes from {@link initialize}: a promoted window starts from `initialSituationState`
- * with a fresh 1 s advance ticker, and a demoted or disposed window stops the ticker and drops its state.
+ * with a fresh 1 s advance ticker and its sensors (desktop presence and wake, conversation turns, stage state),
+ * and a demoted or disposed window stops the sensors and the ticker and drops its state. Follower windows never
+ * register sensors, so their chat hooks and desktop samples produce no observations. The conversation sensor runs
+ * on the hooks that the chat store hands over through {@link observeChat}.
  */
 export const useSituationStore = defineStore('situation', () => {
   const current = shallowRef<SituationState>(initialSituationState)
   const leading = shallowRef(false)
+  const stageVisible = shallowRef(false)
   let ticker: ReturnType<typeof setInterval> | undefined
+  let sensors: RunningSensors | undefined
+  let chatHooks: ConversationHookSource | undefined
+  let stopConversation: (() => void) | undefined
   let stopLeadershipListener: (() => void) | undefined
 
   function advance(nowMs: number) {
@@ -35,15 +56,45 @@ export const useSituationStore = defineStore('situation', () => {
     current.value = advanceSituation(current.value, nowMs)
   }
 
+  function startSensors(): RunningSensors {
+    const desktop = startDesktopSensor(ingest)
+    const stopStage = startStageSensor(ingest)
+    return {
+      check: desktop.check,
+      stop() {
+        desktop.stop()
+        stopStage()
+      },
+    }
+  }
+
+  /** Starts the conversation sensor once this window leads and the chat hooks are known, whichever comes last. */
+  function startConversation() {
+    if (leading.value && chatHooks && !stopConversation)
+      stopConversation = startConversationSensor(chatHooks, ingest)
+  }
+
   function startLeading() {
     if (leading.value)
       return
     current.value = initialSituationState
     leading.value = true
-    ticker = setInterval(() => advance(Date.now()), ADVANCE_INTERVAL_MS)
+    // Sensors report their current readings at once, so they start after `leading` lets `ingest` through.
+    sensors = startSensors()
+    startConversation()
+    ticker = setInterval(() => {
+      const nowMs = Date.now()
+      sensors?.check(nowMs)
+      advance(nowMs)
+    }, ADVANCE_INTERVAL_MS)
   }
 
   function stopLeading() {
+    // Sensors stop first, so nothing is folded into the state that is dropped below.
+    sensors?.stop()
+    sensors = undefined
+    stopConversation?.()
+    stopConversation = undefined
     if (ticker !== undefined)
       clearInterval(ticker)
     ticker = undefined
@@ -81,6 +132,24 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   /**
+   * Receives the chat runtime hooks of this window. The chat store calls it once from its setup; the first source
+   * wins. While this window leads, the conversation sensor records user and character turns from these hooks.
+   */
+  function observeChat(hooks: ConversationHookSource) {
+    chatHooks ??= hooks
+    startConversation()
+  }
+
+  /**
+   * Reports whether this window's stage is on screen (visible and not minimized). The gate reads it: the desktop
+   * producer keeps publishing fresh lock and unlock samples while the stage is hidden, so sample freshness alone
+   * cannot tell. A host that never reports counts as hidden.
+   */
+  function setStageVisible(visible: boolean) {
+    stageVisible.value = visible
+  }
+
+  /**
    * Binds the store to synchronized leadership. Repeated calls keep the first subscription. The listener runs
    * immediately with the current role, so an initial leader starts at once.
    */
@@ -88,7 +157,7 @@ export const useSituationStore = defineStore('situation', () => {
     stopLeadershipListener ??= syncedPinia.onLeadershipChange(isLeader => isLeader ? startLeading() : stopLeading())
   }
 
-  /** Stops the leadership subscription and the ticker of this window. */
+  /** Stops the leadership subscription, the sensors, and the ticker of this window. */
   function dispose() {
     stopLeadershipListener?.()
     stopLeadershipListener = undefined
@@ -99,10 +168,13 @@ export const useSituationStore = defineStore('situation', () => {
     // Read-only projections. Pinia state stays empty, so no plugin can sync or persist the situation.
     state: computed(() => current.value),
     leading: computed(() => leading.value),
+    stageVisible: computed(() => stageVisible.value),
     ingest,
     advance,
     renderForRequest,
     markAddressed,
+    observeChat,
+    setStageVisible,
     initialize,
     dispose,
   }

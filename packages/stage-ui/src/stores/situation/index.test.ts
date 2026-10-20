@@ -1,11 +1,17 @@
+import type { ChatHookRegistry, ChatStreamEventContext } from '@proj-airi/core-agent'
+import type { DesktopActivitySnapshot } from '@proj-airi/stage-shared/performance-state'
 import type { ActivityObservation, WakeObservation } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
+import { createChatHooks } from '@proj-airi/core-agent'
 import { initialSituationState, SETTLE_MS } from '@proj-airi/stage-shared/situation'
+import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useSituationStore } from '.'
+import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
+import { DESKTOP_SAMPLE_STALE_MS } from './sensors/desktop'
 
 const T0 = Date.UTC(2026, 9, 20, 9, 0, 0)
 
@@ -48,6 +54,20 @@ function wake(atMs: number): WakeObservation {
 
 function activity(appId: string, atMs: number): ActivityObservation {
   return { kind: 'activity', appId, label: appId, category: 'other', title: null, atMs }
+}
+
+/** A fresh desktop sample at the current fake time. */
+function desktopSample(overrides: Partial<DesktopActivitySnapshot> = {}): DesktopActivitySnapshot {
+  return { idleSeconds: 0, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, systemAudioLevel: null, screenChange: null, sampledAtMs: Date.now(), ...overrides }
+}
+
+/** Emits the hooks of one finished user turn, as the chat runtime does. */
+async function userTurn(hooks: ChatHookRegistry, turnId: string) {
+  const context: ChatStreamEventContext = { sessionId: 'session-1', turnId, message: { role: 'user', content: 'hi', createdAt: Date.now(), id: turnId }, contexts: {}, composedMessage: [] }
+  const output = { role: 'assistant' as const, content: 'Hi!', slices: [], tool_results: [] }
+  await hooks.emitBeforeSendHooks('hi', context)
+  await hooks.emitAssistantMessageHooks(output, 'Hi!', context)
+  await hooks.emitChatTurnCompleteHooks({ output, outputText: 'Hi!', toolCalls: [] }, context)
 }
 
 describe('situation store', () => {
@@ -206,5 +226,111 @@ describe('situation store', () => {
     expect(vi.getTimerCount()).toBe(0)
     expect(store.leading).toBe(false)
     expect(store.state).toBe(initialSituationState)
+  })
+
+  it('feeds desktop, conversation, and stage sensors into the leader situation', async () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    const hooks = createChatHooks()
+    store.observeChat(hooks)
+    usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    store.initialize(leadership.runtime)
+
+    useDesktopActivityStore().setSnapshot(desktopSample())
+    await userTurn(hooks, 'turn-1')
+
+    expect(store.state.presence).toEqual({ state: 'here', reason: null, sinceMs: T0 })
+    expect(store.state.conversation).toMatchObject({ lastUserAtMs: T0, lastCharacterAtMs: T0, lastUnpromptedAtMs: null })
+    expect(store.renderForRequest(T0)).toMatch(/^\[Situation \d\d:\d\d\]\n- The user is at the desk, active for less than a minute\n- You two last talked just now\.\n- Stage - on stage: face: smile$/)
+  })
+
+  it('reports a wake from an unlocked sample after a locked one', () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    const desktop = useDesktopActivityStore()
+
+    desktop.setSnapshot(desktopSample({ locked: true }))
+    expect(store.state.presence).toMatchObject({ state: 'away', reason: 'locked' })
+    vi.advanceTimersByTime(10_000)
+    desktop.setSnapshot(desktopSample({ unlockedAtMs: Date.now() }))
+
+    expect(store.renderForRequest(Date.now())).toContain('- New: unlocked the computer (just now)')
+  })
+
+  it('turns presence unknown from its own ticker when desktop samples stop arriving', () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    useDesktopActivityStore().setSnapshot(desktopSample())
+
+    vi.advanceTimersByTime(DESKTOP_SAMPLE_STALE_MS)
+    expect(store.state.presence.state).toBe('here')
+    vi.advanceTimersByTime(1_000)
+
+    expect(store.state.presence).toMatchObject({ state: 'unknown', reason: 'stale' })
+    // The freshness check rides on the store ticker; the sensors add no timer of their own.
+    expect(vi.getTimerCount()).toBe(1)
+  })
+
+  it('registers no sensors in a follower window', async () => {
+    const leadership = createLeadership(false)
+    const store = useSituationStore()
+    const hooks = createChatHooks()
+    store.observeChat(hooks)
+    store.initialize(leadership.runtime)
+
+    useDesktopActivityStore().setSnapshot(desktopSample({ locked: true }))
+    usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    await userTurn(hooks, 'turn-1')
+
+    expect(store.state).toBe(initialSituationState)
+  })
+
+  it('stops its sensors on demotion and reads current values again on promotion', async () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    const hooks = createChatHooks()
+    store.observeChat(hooks)
+    store.initialize(leadership.runtime)
+    const desktop = useDesktopActivityStore()
+    desktop.setSnapshot(desktopSample())
+
+    leadership.set(false)
+    await userTurn(hooks, 'turn-1')
+    desktop.setSnapshot(desktopSample({ locked: true }))
+    expect(store.state).toBe(initialSituationState)
+
+    leadership.set(true)
+
+    // The new leader reads the current sample; the turn from while it followed is not replayed.
+    expect(store.state.presence).toMatchObject({ state: 'away', reason: 'locked' })
+    expect(store.state.conversation.lastUserAtMs).toBeNull()
+  })
+
+  it('starts the conversation sensor when the chat hooks arrive after promotion, and keeps the first hooks', async () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    const first = createChatHooks()
+    const second = createChatHooks()
+
+    store.observeChat(first)
+    store.observeChat(second)
+    await userTurn(second, 'turn-ignored')
+    expect(store.state.conversation.lastUserAtMs).toBeNull()
+    await userTurn(first, 'turn-1')
+
+    expect(store.state.conversation.lastUserAtMs).toBe(T0)
+  })
+
+  it('stores stage visibility, which starts hidden', () => {
+    const store = useSituationStore()
+    expect(store.stageVisible).toBe(false)
+
+    store.setStageVisible(true)
+
+    expect(store.stageVisible).toBe(true)
+    expect(store.$state).toEqual({})
   })
 })
