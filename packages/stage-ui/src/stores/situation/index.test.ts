@@ -794,4 +794,56 @@ describe('situation gate loop', () => {
     expect(observability.gate?.decision).toMatchObject({ fire: true })
     expect(observability.gate?.memory.fires).toHaveLength(1)
   })
+  it('evaluates now through the leader, skipping only the timing guards', async () => {
+    const { chat, observability } = startQuietLeader()
+    offerTopic()
+    await nextGateTick()
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'gap' })
+
+    const evaluation = await observability.evaluateGate()
+
+    expect(evaluation).toMatchObject({ status: 'evaluated', decision: { fire: true, reason: 'forced', topicKey: 'wake', trace: { forceTiming: true } } })
+    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+    expect(observability.gateHistory[0]).toMatchObject({ fire: true, reason: 'forced', forced: true, count: 1 })
+  })
+
+  it('keeps every hard suppressor when evaluating now', async () => {
+    const { chat, observability } = startQuietLeader()
+    offerTopic()
+    await useSituationSettings().update({ dontDisturb: true })
+
+    expect(await observability.evaluateGate()).toMatchObject({ status: 'evaluated', decision: { fire: false, reason: 'dont-disturb', trace: { forceTiming: true } } })
+    chat.state.sending = true
+    await useSituationSettings().update({ dontDisturb: false })
+    expect(await observability.evaluateGate()).toMatchObject({ status: 'evaluated', decision: { fire: false, reason: 'generating' } })
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+  })
+
+  it('reports an evaluation as skipped while an unprompted turn is pending, and publishes memory changes between ticks', async () => {
+    const { hooks, chat, observability } = startQuietLeader()
+    let finish!: (result: ChatUnpromptedResult) => void
+    chat.submitUnprompted.mockImplementation(async (payload) => {
+      await unpromptedTurnSpeaks(hooks, payload.messageId!)
+      return new Promise<ChatUnpromptedResult>((resolve) => {
+        finish = resolve
+      })
+    })
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    await nextGateTick()
+    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+
+    expect(await observability.evaluateGate()).toEqual({ status: 'skipped', reason: 'unprompted-pending' })
+    // The fire was spoken after the decision was recorded; the current memory says so, the decision's does not.
+    expect(observability.gate?.memory.pending?.spokenAtMs).toBeNull()
+    expect(observability.gateMemory.pending?.spokenAtMs).toEqual(expect.any(Number))
+    finish({ status: 'spoken', text: 'Still at it?' })
+  })
+
+  it('answers evaluation as skipped once the gate stops on demotion', async () => {
+    const { leadership, observability } = startQuietLeader()
+    leadership.set(false)
+
+    expect(await observability.evaluateGate()).toEqual({ status: 'skipped', reason: 'gate-not-running' })
+  })
 })

@@ -46,6 +46,7 @@ import { describeChatImages, replaceToolResultImages } from './chat/image-projec
 import { useChatSessionStore } from './chat/session-store'
 import { useChatStreamStore } from './chat/stream-store'
 import { useContextObservabilityStore } from './devtools/context-observability'
+import { useSituationObservabilityStore } from './devtools/situation-observability'
 import { useAiriCardStore } from './modules/airi-card'
 import { useAutonomousArtistryStore } from './modules/artistry-autonomous'
 import { useConsciousnessStore } from './modules/consciousness'
@@ -281,6 +282,7 @@ export const useChatStore = defineStore('chat', () => {
   const wakeWords = useWakeWordsStore()
   const stickersStore = useStickersStore()
   const contextObservability = useContextObservabilityStore()
+  const situationObservability = useSituationObservabilityStore()
   const { activeSessionId } = storeToRefs(chatSession)
   const { streamingMessage } = storeToRefs(chatStream)
 
@@ -574,8 +576,9 @@ export const useChatStore = defineStore('chat', () => {
     const isInitialTarget = (target: { model: string, providerId?: string }) => target.model === model && target.providerId === options?.providerId
 
     const providerMessages = renderConversationPreview(initialProjection)
-    if (options?.requestCorrelation?.conversationId)
-      contextObservability.captureProviderPromptProjection(options.requestCorrelation.conversationId, providerMessages)
+    const promptTag = correlation ? { turnId: correlation.turnId, origin: options?.origin ?? 'user' } : undefined
+    if (correlation?.conversationId && promptTag)
+      contextObservability.captureProviderPromptProjection(correlation.conversationId, providerMessages, promptTag)
 
     const resolveStep = options?.resolveStep
 
@@ -609,8 +612,8 @@ export const useChatStore = defineStore('chat', () => {
             return conversation
 
           const projected = await prepareTextOnlyAudioContext(conversation)
-          if (projected !== conversation && options?.requestCorrelation?.conversationId)
-            contextObservability.captureProviderPromptProjection(options.requestCorrelation.conversationId, renderConversationPreview(projected))
+          if (projected !== conversation && correlation?.conversationId && promptTag)
+            contextObservability.captureProviderPromptProjection(correlation.conversationId, renderConversationPreview(projected), promptTag)
           return projected
         },
         describeToolImage,
@@ -1160,7 +1163,11 @@ export const useChatStore = defineStore('chat', () => {
       if (reply?.role === 'assistant' && !reply.interrupted)
         return { status: 'spoken', text: extractMessageText(reply) }
       return { status: 'cancelled' }
-    })().finally(() => {
+    })().then((outcome) => {
+      // The devtools Situation inspector counts what unprompted turns cost per session.
+      situationObservability.recordUnpromptedOutcome(sessionId, outcome.status)
+      return outcome
+    }).finally(() => {
       unpromptedResults.delete(key)
       unpromptedTurns.delete(key)
       unpromptedSettles.delete(key)

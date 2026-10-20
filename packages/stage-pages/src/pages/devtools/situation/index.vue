@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ActComplianceRecord } from '@proj-airi/stage-ui/stores/devtools/act-compliance'
-import type { SituationInspection, SituationPreview } from '@proj-airi/stage-ui/stores/devtools/situation-observability'
+import type { SituationGateEvaluation, SituationInspection, SituationPreview } from '@proj-airi/stage-ui/stores/devtools/situation-observability'
 
 import { errorMessageFrom } from '@moeru/std'
 import { useActComplianceStore } from '@proj-airi/stage-ui/stores/devtools/act-compliance'
@@ -11,13 +11,16 @@ import { onMounted, ref, shallowRef } from 'vue'
 import SituationActCompliance from './components/situation-act-compliance.vue'
 import SituationBlock from './components/situation-block.vue'
 import SituationEvents from './components/situation-events.vue'
+import SituationGate from './components/situation-gate.vue'
 import SituationSource from './components/situation-source.vue'
+import SituationSpend from './components/situation-spend.vue'
 import SituationSummary from './components/situation-summary.vue'
 
 /** Matches the leader's advance ticker, so ages and settled events stay current. */
 const REFRESH_INTERVAL_MS = 1_000
 
-// Read-only: the page reads the leader over the devtools inspector bus and never changes the situation.
+// The page reads the leader over the devtools inspector bus and never changes the situation. Its only action,
+// "Evaluate now", asks the leader's gate for one decision that skips timing; the gate keeps every hard suppressor.
 const observability = useSituationObservabilityStore()
 const actCompliance = useActComplianceStore()
 
@@ -29,6 +32,9 @@ const previewError = ref<string>()
 const previewing = ref(false)
 const complianceRecords = shallowRef<ActComplianceRecord[]>([])
 const complianceError = ref<string>()
+const evaluation = shallowRef<{ atMs: number, result: SituationGateEvaluation }>()
+const evaluating = ref(false)
+const evaluateError = ref<string>()
 let refreshing = false
 
 async function refresh() {
@@ -70,6 +76,22 @@ async function renderPreview() {
   await refresh()
 }
 
+async function evaluateNow() {
+  evaluating.value = true
+  try {
+    evaluation.value = { atMs: Date.now(), result: await observability.evaluateGateLeader() }
+    evaluateError.value = undefined
+  }
+  catch (error) {
+    evaluation.value = undefined
+    evaluateError.value = errorMessageFrom(error) ?? 'The leader window did not answer.'
+  }
+  finally {
+    evaluating.value = false
+  }
+  await refresh()
+}
+
 useIntervalFn(refresh, REFRESH_INTERVAL_MS)
 onMounted(refresh)
 </script>
@@ -95,9 +117,21 @@ onMounted(refresh)
       />
     </template>
 
-    <SituationActCompliance :records="complianceRecords" :error="complianceError" />
+    <template v-if="inspection">
+      <SituationGate
+        :gate="inspection.gate"
+        :memory="inspection.gateMemory"
+        :history="inspection.gateHistory"
+        :now-ms="inspection.nowMs"
+        :evaluation="evaluation"
+        :evaluating="evaluating"
+        :evaluate-error="evaluateError"
+        @evaluate="evaluateNow"
+      />
+      <SituationSpend :spend="inspection.spend" :now-ms="inspection.nowMs" />
+    </template>
 
-    <!-- The gate decisions panel goes here, below the block it explains. -->
+    <SituationActCompliance :records="complianceRecords" :error="complianceError" />
   </div>
 </template>
 
