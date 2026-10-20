@@ -2221,6 +2221,57 @@ describe('unprompted turns', () => {
     expect(harness.order.some(entry => entry.includes('ACT'))).toBe(false)
   })
 
+  it('holds a recovered near-miss cue like any special and commits at the first spoken text', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    replyWith(harness, ['[ACT ha', 'ppy]', ' Oh, a QA topic!'])
+
+    await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+
+    const order = harness.order
+    expect(order).toContain('hook:token-special:<|ACT happy|>')
+    expect(order.some(entry => entry.startsWith('hook:token-') && entry.includes('[ACT'))).toBe(false)
+    expect(order.indexOf('commitUserMessage')).toBeLessThan(order.indexOf('hook:token-special:<|ACT happy|>'))
+    expect(order.indexOf('hook:token-special:<|ACT happy|>')).toBeLessThan(order.findIndex(entry => entry.startsWith('hook:token-literal:')))
+    expect(harness.sessionMessages['session-1'].at(-1)).toMatchObject({ role: 'assistant', content: ' Oh, a QA topic!' })
+    expect(harness.declined).toEqual([])
+  })
+
+  it('does not commit an unprompted turn whose only content is a recovered cue', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    replyWith(harness, ['<ACT happy>'])
+
+    await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+
+    expectDeclined(harness)
+    expect(harness.order.some(entry => entry.includes('ACT'))).toBe(false)
+  })
+
+  it('speaks only the text after a recovered cue and keeps the cue out of the stored speech', async () => {
+    const harness = createHarness()
+    const literals: string[] = []
+    const specials: string[] = []
+    harness.runtime.hooks.onTokenLiteral(async (text) => {
+      literals.push(text)
+    })
+    harness.runtime.hooks.onTokenSpecial(async (text) => {
+      specials.push(text)
+    })
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      for (const text of ['[ACT ha', 'ppy] Hello there', ' [aside] not a cue'])
+        await options?.onStreamEvent?.({ type: 'text-delta', text })
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest('Hi', { model: 'test', chatProvider: provider })
+
+    const saved = harness.sessionMessages['session-1'].at(-1)
+    expect(specials).toEqual(['<|ACT happy|>'])
+    expect(literals.join('')).toBe(' Hello there [aside] not a cue')
+    expect(saved?.role === 'assistant' && saved.categorization?.speech).toBe(' Hello there [aside] not a cue')
+  })
+
   // (5)
   it('consumes a silent marker that arrives after speech started', async () => {
     const harness = createHarness()

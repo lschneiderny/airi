@@ -1011,6 +1011,8 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         // The parser keeps its own marker-safety tail. Emit each safe literal
         // chunk so slow providers update the chat before they reach 24 characters.
         minLiteralEmitLength: 1,
+        // Models sometimes write [ACT ...] or <ACT ...>. Rewrite those into real cues instead of speaking them.
+        recoverCueNames: ['ACT', 'DELAY'],
       })
 
       const toolCallQueue = createQueue<ChatSlices>({
