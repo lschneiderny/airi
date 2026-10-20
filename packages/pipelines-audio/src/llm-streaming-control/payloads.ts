@@ -96,9 +96,13 @@ function normalizeIntensity(value: unknown): number {
  * - "happy"
  * - { name: "happy" }
  * - { name: "happy", intensity: 0.8 }
+ *
+ * A bare string emotion takes `flatIntensity` (the payload's top-level
+ * `intensity`); a nested `intensity` always wins over it.
  */
 function normalizeEmotion(
   value: unknown,
+  flatIntensity?: unknown,
 ): StreamingControlEmotionPayload | undefined {
   if (typeof value === 'string') {
     const name = normalizeEmotionName(value)
@@ -106,7 +110,7 @@ function normalizeEmotion(
     return name
       ? {
           name,
-          intensity: 0.6,
+          intensity: normalizeIntensity(flatIntensity),
         }
       : undefined
   }
@@ -173,7 +177,7 @@ function normalizeCue(value: unknown): string | undefined {
 export function normalizeActPayload(
   payload: Record<string, unknown>,
 ): NormalizedActPayload {
-  const emotion = normalizeEmotion(payload.emotion)
+  const emotion = normalizeEmotion(payload.emotion, payload.intensity)
   const motion = normalizeCue(payload.motion)
   const expression = normalizeCue(payload.expression)
 

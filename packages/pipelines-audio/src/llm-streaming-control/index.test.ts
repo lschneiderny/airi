@@ -12,6 +12,8 @@ describe('createStreamingControlParser', () => {
     [{ emotion: 'Love' }, { emotion: { name: 'love', intensity: 0.6 } }],
     [{ emotion: 'Sleepy ' }, { emotion: { name: 'sleepy', intensity: 0.6 } }],
     [{ emotion: 'lovey' }, {}],
+    [{ emotion: 'happy', intensity: 'strong', expression: 'Blush', motion: 'nod' }, { emotion: { name: 'happy', intensity: 0.9 }, expression: 'Blush', motion: 'nod' }],
+    [{ emotion: 'happy', intensity: 0.3 }, { emotion: { name: 'happy', intensity: 0.3 } }],
     [{ emotion: { name: 'angry', intensity: -1 } }, { emotion: { name: 'angry', intensity: 0 } }],
     [{ emotion: { name: 'angry', intensity: 2 } }, { emotion: { name: 'angry', intensity: 1 } }],
     [{ emotion: { name: 'happy', intensity: '0.3' } }, { emotion: { name: 'happy', intensity: 0.3 } }],

@@ -101,6 +101,27 @@ describe('normalizeActPayload', () => {
     expect(normalizeActPayload({ emotion: { name: emotion, intensity: 'strong' } })).toEqual({ emotion: { name, intensity: 0.9 } })
   })
 
+  it.each([
+    [{ emotion: 'happy', intensity: 'strong' }, 0.9],
+    [{ emotion: 'happy', intensity: ' Slight ' }, 0.25],
+    [{ emotion: 'happy', intensity: 0.3 }, 0.3],
+    [{ emotion: 'happy', intensity: '0.3' }, 0.3],
+    [{ emotion: 'happy', intensity: 2 }, 1],
+    [{ emotion: 'happy', intensity: 'banana' }, 0.6],
+    [{ emotion: 'happy', intensity: Number.NaN }, 0.6],
+    [{ emotion: 'happy', intensity: null }, 0.6],
+    [{ emotion: 'happy', intensity: {} }, 0.6],
+    [{ emotion: { name: 'happy', intensity: 'slight' }, intensity: 'strong' }, 0.25],
+    [{ emotion: { name: 'happy' }, intensity: 'strong' }, 0.6],
+  ])('reads the intensity of %j as %s when emotion is a bare string or nested wins', (payload, intensity) => {
+    expect(normalizeActPayload(payload)).toEqual({ emotion: { name: 'happy', intensity } })
+  })
+
+  it('does not invent an emotion from a lone top-level intensity', () => {
+    expect(normalizeActPayload({ intensity: 'strong', motion: 'nod' })).toEqual({ motion: 'nod' })
+    expect(normalizeActPayload({ emotion: 'lovey', intensity: 'strong' })).toEqual({})
+  })
+
   it.each(['lovey', 'sleep', 'love sleepy', 'flustered!', '', 7, null])('drops the unsupported emotion %j', (emotion) => {
     expect(normalizeActPayload({ emotion })).toEqual({})
   })
