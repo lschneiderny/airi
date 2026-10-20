@@ -14,6 +14,7 @@ import type {
   SituationEventKind,
   SituationRecentActivity,
   SituationState,
+  SituationTracking,
 } from './types'
 
 import {
@@ -72,39 +73,6 @@ export interface ReduceSituationOptions {
   readonly selfAppIds?: readonly string[]
 }
 
-/**
- * Bookkeeping the reducer needs between calls (settle, tier and burst progress,
- * stale-observation guards). Plain JSON that rides along on the state object.
- */
-export interface SituationTracking {
-  readonly presenceAtMs: number | null
-  readonly awaySinceMs: number | null
-  readonly activityAtMs: number | null
-  /** `sinceMs` of the foreground span whose settle check is done. */
-  readonly settledSinceMs: number | null
-  readonly tierSinceMs: number | null
-  readonly tierDone: number
-  readonly switchTimes: readonly number[]
-  readonly burstActive: boolean
-}
-
-// NOTICE:
-// `SituationState` has no field for the bookkeeping above, so it rides on the returned state as `tracking`.
-// Source: plan todo 8 settle/flap/burst/tier rules need per-span memory.
-// Removal condition: move `tracking` into `SituationState` in types.ts and drop `TrackedSituationState`.
-export type TrackedSituationState = SituationState & { readonly tracking?: SituationTracking }
-
-const initialTracking: SituationTracking = Object.freeze({
-  presenceAtMs: null,
-  awaySinceMs: null,
-  activityAtMs: null,
-  settledSinceMs: null,
-  tierSinceMs: null,
-  tierDone: 0,
-  switchTimes: Object.freeze([]),
-  burstActive: false,
-})
-
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
 interface Draft extends Mutable<SituationState> {
@@ -140,13 +108,12 @@ export function effectiveSalience(
 }
 
 function cloneDraft(state: SituationState): Draft {
-  const previous: TrackedSituationState = state
   return {
     ...state,
     recentActivities: [...state.recentActivities],
     events: state.events.map(event => ({ ...event })),
     contexts: { ...state.contexts },
-    tracking: { ...initialTracking, ...previous.tracking, switchTimes: [...(previous.tracking?.switchTimes ?? [])] },
+    tracking: { ...state.tracking, switchTimes: [...state.tracking.switchTimes] },
   }
 }
 
@@ -468,12 +435,19 @@ export function markShown(state: SituationState, eventIds: readonly string[], no
   return draft
 }
 
-/** Marks every event with `topicKey` as addressed by the character. The first time wins. */
+/**
+ * Marks every event with `topicKey` as addressed by the character. The first
+ * time wins. Also records the event's text as `conversation.lastUnpromptedTopic`;
+ * nothing changes there when no event matches.
+ */
 export function markAddressed(state: SituationState, topicKey: string, nowMs: number): SituationState {
   if (!isTime(nowMs))
     return state
   const draft = cloneDraft(state)
   draft.nowMs = Math.max(draft.nowMs ?? 0, nowMs)
+  const matched = draft.events.find(event => event.topicKey === topicKey)
   draft.events = draft.events.map(event => event.topicKey === topicKey && event.addressedAtMs === null ? { ...event, addressedAtMs: draft.nowMs as number } : event)
+  if (matched)
+    draft.conversation = { ...draft.conversation, lastUnpromptedTopic: matched.text }
   return draft
 }

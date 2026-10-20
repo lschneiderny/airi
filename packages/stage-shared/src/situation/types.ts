@@ -178,6 +178,8 @@ export interface SituationConversation {
   readonly lastUserAtMs: number | null
   readonly lastCharacterAtMs: number | null
   readonly lastUnpromptedAtMs: number | null
+  /** Text of the unprompted event the character last addressed, or `null` if none. */
+  readonly lastUnpromptedTopic: string | null
 }
 
 export interface SituationContext {
@@ -199,6 +201,22 @@ export interface SituationBusy {
 }
 
 /**
+ * Bookkeeping the reducer needs between calls: settle, tier and burst progress,
+ * and stale-observation guards. Plain JSON.
+ */
+export interface SituationTracking {
+  readonly presenceAtMs: number | null
+  readonly awaySinceMs: number | null
+  readonly activityAtMs: number | null
+  /** `sinceMs` of the foreground span whose settle check is done. */
+  readonly settledSinceMs: number | null
+  readonly tierSinceMs: number | null
+  readonly tierDone: number
+  readonly switchTimes: readonly number[]
+  readonly burstActive: boolean
+}
+
+/**
  * Everything the character knows about the user's situation. Plain data: the
  * reducer returns a new value per observation and the store can persist or
  * sync it as JSON.
@@ -217,6 +235,8 @@ export interface SituationState {
   readonly events: readonly SituationEvent[]
   /** The largest `nowMs` seen, or `null` before the first update. Time never runs backwards. */
   readonly nowMs: number | null
+  /** Reducer bookkeeping; not for rendering. */
+  readonly tracking: SituationTracking
 }
 
 /** Length cap of {@link SituationState.recentActivities}. */
@@ -228,12 +248,22 @@ export const initialSituationState: SituationState = Object.freeze({
   presence: Object.freeze({ state: 'unknown', reason: null, sinceMs: null }),
   activity: null,
   recentActivities: Object.freeze([]),
-  conversation: Object.freeze({ lastUserAtMs: null, lastCharacterAtMs: null, lastUnpromptedAtMs: null }),
+  conversation: Object.freeze({ lastUserAtMs: null, lastCharacterAtMs: null, lastUnpromptedAtMs: null, lastUnpromptedTopic: null }),
   contexts: Object.freeze({}),
   stage: null,
   busy: Object.freeze({ state: 'unknown', atMs: null }),
   events: Object.freeze([]),
   nowMs: null,
+  tracking: Object.freeze({
+    presenceAtMs: null,
+    awaySinceMs: null,
+    activityAtMs: null,
+    settledSinceMs: null,
+    tierSinceMs: null,
+    tierDone: 0,
+    switchTimes: Object.freeze([]),
+    burstActive: false,
+  }),
 })
 
 /**
@@ -247,7 +277,7 @@ export type SalienceKey
     | `notify-${NotifyUrgency}`
     | 'notify-critical'
 
-// NOTICE: Every salience and half-life below is a starting value that has not been
+// Every salience and half-life below is a starting value that has not been
 // measured against real sessions. Tune them with the devtools situation panel.
 
 /**

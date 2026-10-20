@@ -205,13 +205,13 @@ describe('reduceSituation conversation, context, notify, stage, busy', () => {
       { kind: 'conversation', who: 'user', origin: 'unprompted', atMs: T0 },
       { kind: 'conversation', who: 'character', origin: 'user', atMs: T0 + SEC },
     ])
-    expect(state.conversation).toEqual({ lastUserAtMs: null, lastCharacterAtMs: T0 + SEC, lastUnpromptedAtMs: null })
+    expect(state.conversation).toEqual({ lastUserAtMs: null, lastCharacterAtMs: T0 + SEC, lastUnpromptedAtMs: null, lastUnpromptedTopic: null })
 
     const next = run([
       { kind: 'conversation', who: 'user', origin: 'user', atMs: T0 + 2 * SEC },
       { kind: 'conversation', who: 'character', origin: 'unprompted', atMs: T0 + 3 * SEC },
     ], state)
-    expect(next.conversation).toEqual({ lastUserAtMs: T0 + 2 * SEC, lastCharacterAtMs: T0 + 3 * SEC, lastUnpromptedAtMs: T0 + 3 * SEC })
+    expect(next.conversation).toEqual({ lastUserAtMs: T0 + 2 * SEC, lastCharacterAtMs: T0 + 3 * SEC, lastUnpromptedAtMs: T0 + 3 * SEC, lastUnpromptedTopic: null })
   })
 
   it('emits a context event only when the text changed, with default and vision salience', () => {
@@ -384,5 +384,59 @@ describe('purity and time', () => {
     expect(JSON.stringify(base)).toBe(snapshot)
     expect(first).not.toBe(base)
     expect(JSON.stringify(initialSituationState)).toBe(JSON.stringify(run([])))
+  })
+
+  it('reduces and advances from the deeply frozen initial state in strict mode without mutating it', () => {
+    const snapshot = structuredClone(initialSituationState)
+
+    // ES modules are strict, so writing to a frozen object here would throw a TypeError.
+    expect(() => {
+      let state = reduceSituation(initialSituationState, activity('a', T0), T0)
+      state = reduceSituation(state, activity('b', T0 + MIN), T0 + MIN)
+      state = reduceSituation(state, presence('away', T0 + 2 * MIN), T0 + 2 * MIN)
+      state = reduceSituation(state, context('game', 'x', T0 + 2 * MIN), T0 + 2 * MIN)
+      state = reduceSituation(state, { kind: 'conversation', who: 'character', origin: 'unprompted', atMs: T0 + 3 * MIN }, T0 + 3 * MIN)
+      state = advanceSituation(state, T0 + 40 * MIN)
+      state = markShown(state, state.events.map(e => e.id), T0 + 41 * MIN)
+      markAddressed(state, 'context:game', T0 + 42 * MIN)
+    }).not.toThrow()
+
+    expect(initialSituationState).toEqual(snapshot)
+  })
+})
+
+describe('markAddressed', () => {
+  it('records the addressed event text as the last unprompted topic and keeps it when nothing matches', () => {
+    const state = run([context('game', 'in a dungeon', T0)])
+
+    const addressed = markAddressed(state, 'context:game', T0 + MIN)
+    expect(addressed.conversation.lastUnpromptedTopic).toBe('in a dungeon')
+
+    const unchanged = markAddressed(addressed, 'context:nope', T0 + 2 * MIN)
+    expect(unchanged.conversation.lastUnpromptedTopic).toBe('in a dungeon')
+    expect(state.conversation.lastUnpromptedTopic).toBeNull()
+  })
+
+  it('keeps addressed events in the ring until their salience drops below 0.05', () => {
+    const state = markAddressed(run([context('game', 'in a dungeon', T0)]), 'context:game', T0 + MIN)
+
+    const early = advanceSituation(state, T0 + 70 * MIN)
+    expect(effectiveSalience(early.events[0], T0 + 70 * MIN)).toBeGreaterThanOrEqual(0.05)
+    expect(early.events.map(e => [e.topicKey, e.addressedAtMs])).toEqual([['context:game', T0 + MIN]])
+
+    expect(advanceSituation(state, T0 + 80 * MIN).events).toEqual([])
+  })
+
+  it('keeps addressed events until 32 newer events evict them', () => {
+    let state = markAddressed(run([context('game', 'in a dungeon', T0)]), 'context:game', T0 + SEC)
+
+    for (let index = 0; index < SITUATION_EVENTS_MAX - 1; index += 1)
+      state = run([context(`s${index}`, `t${index}`, T0 + (index + 1) * SEC)], state)
+    expect(state.events).toHaveLength(SITUATION_EVENTS_MAX)
+    expect(state.events.some(e => e.topicKey === 'context:game' && e.addressedAtMs !== null)).toBe(true)
+
+    state = run([context('last', 'newest', T0 + 40 * SEC)], state)
+    expect(state.events).toHaveLength(SITUATION_EVENTS_MAX)
+    expect(state.events.some(e => e.topicKey === 'context:game')).toBe(false)
   })
 })

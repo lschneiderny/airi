@@ -73,11 +73,15 @@ describe('initialSituationState', () => {
     expect(initialSituationState.presence.state).toBe('unknown')
     expect(initialSituationState.busy.state).toBe('unknown')
     expect(JSON.parse(JSON.stringify(initialSituationState))).toEqual(initialSituationState)
+    expect(initialSituationState.conversation.lastUnpromptedTopic).toBeNull()
+    expect(initialSituationState.tracking.switchTimes).toEqual([])
   })
 
   it('is frozen so the reducer cannot mutate the shared start value', () => {
     expect(Object.isFrozen(initialSituationState)).toBe(true)
     expect(Object.isFrozen(initialSituationState.events)).toBe(true)
     expect(Object.isFrozen(initialSituationState.contexts)).toBe(true)
+    expect(Object.isFrozen(initialSituationState.tracking)).toBe(true)
+    expect(Object.isFrozen(initialSituationState.tracking.switchTimes)).toBe(true)
   })
 })
