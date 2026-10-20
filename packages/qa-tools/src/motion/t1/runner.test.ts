@@ -21,6 +21,7 @@ function withEvents(events: unknown[], overrides: Record<string, unknown> = {}):
 }
 
 describe('runT1', () => {
+  // Idle cost 1.1 s (two 110 s runT1 simulations); 6.6-6.9 s under load, so 30 s.
   it('holds a long trial for 60 seconds and measures its 30-second release window', () => {
     const scenario = buildLongHold({ emotion: 'angry', band: 'strong', seed: 1 })
     const trace = runT1(scenario, { catalog })
@@ -34,7 +35,7 @@ describe('runT1', () => {
     expect(measured.modulationRelease).toBeDefined()
     expect(measured.modulationRelease?.blinks.paired).not.toBeNull()
     expect(measured.modulationRelease?.breath.paired).not.toBeNull()
-  })
+  }, 30_000)
 
   it('serializes two runs of one scenario to the same bytes, whatever ran in between', () => {
     const first = JSON.stringify(runT1(trial()))

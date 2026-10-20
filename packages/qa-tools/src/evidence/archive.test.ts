@@ -114,6 +114,7 @@ describe('resolveMainCheckout', () => {
     expect(() => resolveMainCheckout('x', () => '')).toThrow(/No worktree entry/)
   })
 
+  // Idle cost 0.36 s (real git init, commit and worktree add); 5.7 s under load, so 20 s.
   it('resolves the main checkout from a real linked worktree', () => {
     const temp = realpathSync(mkdtempSync(join(tmpdir(), 'qa-wt-')))
     try {
@@ -130,5 +131,5 @@ describe('resolveMainCheckout', () => {
     finally {
       rmSync(temp, { recursive: true, force: true })
     }
-  })
+  }, 20_000)
 })

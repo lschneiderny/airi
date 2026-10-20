@@ -22,9 +22,10 @@ describe('builtin t3-smoke scenario', () => {
     expect(scenario.screenshotsAt).toEqual(pulses.flatMap(event => [event.at + 1, event.at + 3]))
   })
 
+  // Idle cost 0.53 s (one runT1 simulation); 6.1 s under load, so 20 s.
   it('runs unchanged at T1 and stamps the same scenario events', () => {
     const catalog = JSON.parse(readFileSync(resolve(fixtures, 'forbooth-catalog.json'), 'utf8')) as CatalogEntry[]
     const trace = parseTraceEvents(runT1(scenario, { catalog }))
     expect(compareScenarioEvents(scenario.events, scenarioEventsOf(trace))).toEqual([])
-  })
+  }, 20_000)
 })
