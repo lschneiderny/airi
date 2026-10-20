@@ -13,6 +13,8 @@ import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, createApp, nextTick, reactive, ref } from 'vue'
 
+import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
+import { useExpressionPerformanceSettings } from '../features/performance/settings'
 import {
   AIRI_CHAT_APP_SURFACE_HEADER,
   AIRI_CHAT_ROUND_ID_HEADER,
@@ -101,6 +103,8 @@ const activeSessionIdRef = ref('session-1')
 const activeProviderRef = ref('mock-provider')
 const cardSelections = new Map<string, { provider: string, model: string }>()
 const sessionSystemPrompts = new Map<string, string>()
+/** The stage contract that the chat store passed to the session store, which ends every session system prompt. */
+const stageContract = { value: '' }
 const activeModelRef = ref('gpt-test')
 const chatReadyRef = computed(() => !!activeProviderRef.value && !!activeModelRef.value)
 const streamingMessageRef = ref<any>({ role: 'assistant', content: '', slices: [], tool_results: [] })
@@ -223,7 +227,11 @@ vi.mock('./chat/session-store', () => ({
     },
     sessionMetas: { 'session-1': { characterId: 'alice' }, 'session-2': { characterId: 'bob' }, 'session-b': { characterId: 'bob' }, 'session-forked': { characterId: 'alice' } },
     getSessionMessages: (sessionId: string) => sessionMessages[sessionId] ?? [],
-    getSessionSystemPrompt: (sessionId: string) => sessionSystemPrompts.get(sessionId) ?? 'system prompt',
+    // Mirrors the session store: the character prompt, then the stage contract that the chat store set.
+    getSessionSystemPrompt: (sessionId: string) => [sessionSystemPrompts.get(sessionId) ?? 'system prompt', stageContract.value].filter(Boolean).join('\n\n'),
+    setStageContract: (contract: string) => {
+      stageContract.value = contract
+    },
     getSessionMessagesIfLoaded: (sessionId: string) => sessionMessages[sessionId],
     loadSession: loadSessionMock,
     deleteSession: deleteSessionMock,
@@ -387,6 +395,7 @@ describe('chat store contract', () => {
     activeProviderRef.value = 'mock-provider'
     cardSelections.clear()
     sessionSystemPrompts.clear()
+    stageContract.value = ''
     streamingMessageRef.value = { role: 'assistant', content: '', slices: [], tool_results: [] }
     currentGeneration = 1
 
@@ -521,9 +530,9 @@ describe('chat store contract', () => {
     const store = useChatStore()
     await store.send({ sessionId: 'session-1', text: 'Use a tool' })
 
-    expect(steps[0]).toMatchObject({ model: 'alice-model', providerId: 'alice-provider', systemPrompt: 'Alice prompt\n\nPlugin toolset guidance.' })
+    expect(steps[0]).toMatchObject({ model: 'alice-model', providerId: 'alice-provider', systemPrompt: `Alice prompt\n\n${stageContract.value}\n\nPlugin toolset guidance.` })
     expect(steps[0]?.headers).not.toHaveProperty(AIRI_CHAT_SESSION_ID_HEADER)
-    expect(steps[1]).toMatchObject({ model: 'chat-auto', providerId: 'official-provider', systemPrompt: 'Edited Alice prompt\n\nPlugin toolset guidance.' })
+    expect(steps[1]).toMatchObject({ model: 'chat-auto', providerId: 'official-provider', systemPrompt: `Edited Alice prompt\n\n${stageContract.value}\n\nPlugin toolset guidance.` })
     expect(steps[1]?.headers).toMatchObject({
       [AIRI_CHAT_SESSION_ID_HEADER]: 'session-1',
       [AIRI_CHAT_ROUND_ID_HEADER]: expect.any(String),
@@ -1746,12 +1755,63 @@ describe('chat store contract', () => {
     expect(ioTracerMocks.turnSpans.size).toBe(0)
   })
 
-  it('ingests the runtime prompt before composing prompt snapshots', async () => {
+  it('sends the stage contract in the system prompt and only the live state as runtime context', async () => {
+    usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    const systemPrompts: string[] = []
+    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {
+      // The provider adapter replaces the system message with the resolved step prompt for each request.
+      systemPrompts.push((await options.resolveStep!()).systemPrompt ?? '')
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+
+    const store = useChatStore()
+    await store.send({ sessionId: 'session-1', text: 'hello' })
+
+    expect(createRuntimePromptContextMock).toHaveBeenCalledWith('base.prompt.expressions')
+    const composed = useContextObservabilityStore().lastPromptProjection?.composedMessage ?? []
+    const system = systemPrompts[0]
+    const lastUser = JSON.stringify(composed.findLast(message => message.role === 'user'))
+    expect(system).toContain('base.prompt.emotion')
+    expect(system).toContain('base.prompt.emoji')
+    expect(system).toContain('- happy (Emotion for feeling Happy)')
+    expect(system).not.toContain('base.prompt.suffix')
+    expect(lastUser).toContain('hello')
+    expect(lastUser).not.toContain('base.prompt.emotion')
+    expect(lastUser).not.toContain('base.prompt.emoji')
+  })
+
+  it('keeps the system message identical across two consecutive turns', async () => {
+    const systemMessages: string[] = []
+    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {
+      // The provider adapter replaces the system message with the resolved step prompt for each request.
+      systemMessages.push((await options.resolveStep!()).systemPrompt ?? '')
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+    const store = useChatStore()
+    const runtimeState = usePerformanceRuntimeState()
+
+    runtimeState.publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    await store.send({ sessionId: 'session-1', text: 'first turn' })
+    const firstContext = createRuntimePromptContextMock.mock.lastCall?.[0]
+
+    // The live state changes between the turns. It reaches the runtime context, not the system message.
+    runtimeState.publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [{ slot: 'face', label: 'smile' }], mood: null })
+    await useExpressionPerformanceSettings().update({ stateFeedback: true })
+    await store.send({ sessionId: 'session-1', text: 'second turn' })
+
+    expect(createRuntimePromptContextMock.mock.lastCall?.[0]).not.toBe(firstContext)
+    expect(systemMessages).toHaveLength(2)
+    expect(systemMessages[0]).toContain('base.prompt.emotion')
+    expect(systemMessages[1]).toBe(systemMessages[0])
+  })
+
+  it('ingests the live state prompt before composing prompt snapshots', async () => {
+    usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
     const runtimePromptContext = {
       id: 'airi-runtime-prompt-context',
       contextId: 'system:airi-runtime-prompt',
       strategy: 'replace-self',
-      text: 'Start every reply with an ACT token.\n\nDo not use emojis.',
+      text: 'Exposed expressions: smile.',
       createdAt: 123,
     }
     const minecraftContext = {
@@ -1783,8 +1843,7 @@ describe('chat store contract', () => {
       chatProvider: provider,
     })
 
-    expect(createRuntimePromptContextMock).toHaveBeenCalledWith(expect.stringContaining('base.prompt.emotion'))
-    expect(createRuntimePromptContextMock).toHaveBeenCalledWith(expect.stringContaining('base.prompt.emoji'))
+    expect(createRuntimePromptContextMock).toHaveBeenCalledWith('base.prompt.expressions')
     expect(ingestContextMessageMock).toHaveBeenCalledTimes(2)
     expect(ingestContextMessageMock).toHaveBeenNthCalledWith(1, runtimePromptContext)
     expect(ingestContextMessageMock).toHaveBeenNthCalledWith(2, minecraftContext)
@@ -1822,6 +1881,8 @@ describe('chat store contract', () => {
     await store.ingest('hello', { model: 'gpt-test', chatProvider: provider })
     expect(prompts[0]).toContain('Alice')
     expect(prompts[0]).toContain('/settings/account')
+    // The account rides in the system supplement of this request, not in the runtime context of the user turn.
+    expect(prompts[0]).not.toContain('system:user-account')
     expect(registry).toEqual({})
     expect(ingestContextMessageMock).not.toHaveBeenCalledWith(account)
 

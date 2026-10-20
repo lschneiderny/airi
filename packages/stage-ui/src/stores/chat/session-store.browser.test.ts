@@ -5,7 +5,7 @@ import type { ChatSessionMeta } from '../../types/chat-session'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h } from 'vue'
+import { createApp, defineComponent, h, nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import { chatSessionsRepo } from '../../database/repos/chat-sessions.repo'
@@ -170,6 +170,31 @@ describe('chat session synchronization', () => {
     expect(store.getSessionMessages(sessionId)[0]?.content).toContain('Background character prompt')
     expect(store.getSessionSystemPrompt(sessionId)).toContain('Background character prompt')
     expect(store.getSessionSystemPrompt(store.activeSessionId)).not.toContain('Background character prompt')
+  })
+
+  it('ends every system prompt with the current stage contract and refreshes the active stored system message', async () => {
+    const namespace = `chat-session:${crypto.randomUUID()}`
+    const leader = createSyncedContext(namespace, 'leader-only')
+    await vi.waitFor(() => expect(leader.runtime.isLeader()).toBe(true))
+    setActivePinia(leader.pinia)
+    const store = useChatSessionStore()
+    await store.initialize()
+    const active = store.activeSessionId
+    const background = await store.ensureCharacterSession('background-character')
+
+    store.setStageContract('Stage contract A')
+    await nextTick()
+
+    expect(store.getSessionMessages(active)[0]?.content).toBe(store.getSessionSystemPrompt(active))
+    expect(store.getSessionSystemPrompt(active).endsWith('\n\nStage contract A')).toBe(true)
+
+    store.setStageContract('Stage contract B')
+    await nextTick()
+
+    expect(store.getSessionMessages(active)[0]?.content).toBe(store.getSessionSystemPrompt(active))
+    expect(store.getSessionSystemPrompt(active)).not.toContain('Stage contract A')
+    // A request for an inactive session reads its prompt again, so it also ends with the new contract.
+    expect(store.getSessionSystemPrompt(background).endsWith('\n\nStage contract B')).toBe(true)
   })
 
   it('persists follower interruption retries once and preserves the first control event', async () => {

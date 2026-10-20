@@ -303,6 +303,8 @@ interface StageCue {
   expression?: string
   source: 'act' | 'devtools'
   turnId?: string
+  /** Set when the ACT also named a Live2D motion, which the stage already played. */
+  motionHandled?: boolean
 }
 
 const emotionsQueue = createQueue<StageCue>({
@@ -313,7 +315,7 @@ const emotionsQueue = createQueue<StageCue>({
         // The conductor sends Natural episodes to the scene and plays the motion group for
         // Universal and MAGIC; the store defers a motion group while the model loads.
         if (emotion)
-          performanceConductor.emotion(emotion.name, emotion.intensity, ctx.data.source, ctx.data.turnId)
+          performanceConductor.emotion(emotion.name, emotion.intensity, ctx.data.source, ctx.data.turnId, { suppressMotionGroup: ctx.data.motionHandled })
         // After the emotion, so an explicit expression replaces the auto pick for its slot.
         if (expression)
           performanceConductor.expression(expression, undefined, 'act', ctx.data.turnId)
@@ -395,15 +397,14 @@ function toStageEmotionPayload(payload: { name: string, intensity: number }): Em
 chatHookCleanups.push(streamingControl.onSignal(async (signal, context) => {
   if (signal.type === 'act') {
     const act = normalizeActPayload(signal.payload)
-    if (act.motion && stageModelRenderer.value === 'live2d') {
-      currentMotion.value = { group: act.motion }
-      return
-    }
+    const motion = stageModelRenderer.value === 'live2d' && act.motion ? act.motion : undefined
+    if (motion)
+      currentMotion.value = { group: motion }
     const emotion = act.emotion ? toStageEmotionPayload(act.emotion) : undefined
     if (emotion || act.expression) {
       // eslint-disable-next-line no-console
       console.debug('performance cue detected', emotion, act.expression)
-      emotionsQueue.enqueue({ emotion, expression: act.expression, source: 'act', turnId: context.turnId })
+      emotionsQueue.enqueue({ emotion, expression: act.expression, source: 'act', turnId: context.turnId, motionHandled: motion !== undefined })
     }
     return
   }

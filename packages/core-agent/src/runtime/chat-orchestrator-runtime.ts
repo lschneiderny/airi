@@ -5,7 +5,7 @@ import type { AgentContextPort } from '../contracts/context-port'
 import type { AgentLLMPort } from '../contracts/llm-port'
 import type { AgentForegroundStreamPort } from '../contracts/stream-port'
 import type { AssistantTurn, Conversation, Turn } from '../messages/types'
-import type { ChatHistoryItem, ChatSlices, ChatStreamEventContext, ChatToolReference, ContextMessage, StreamingAssistantMessage } from '../types/chat'
+import type { ChatHistoryItem, ChatSlices, ChatStreamEventContext, ChatToolReference, ChatTurnTrigger, ContextMessage, StreamingAssistantMessage } from '../types/chat'
 import type { LlmUsage, StreamEvent, StreamOptions } from '../types/llm'
 
 import { createQueue } from '@proj-airi/stream-kit'
@@ -24,6 +24,25 @@ const REASONING_UI_FLUSH_CHUNK_SIZE = 24
  * in history, so the prefix only needs enough text to identify it.
  */
 const REPLY_PROMPT_REFERENCE_CHARACTER_LIMIT = 480
+
+const DEFAULT_DECLINE_MARKER = '<|SILENT|>'
+
+/**
+ * Normalizes a special marker for decline comparison.
+ *
+ * @example
+ * normalizeMarker(' <| Silent |> ') // => '<|silent|>'
+ */
+function normalizeMarker(marker: string) {
+  return marker.trim().replace(/^<\|\s*/, '<|').replace(/\s*\|>$/, '|>').toLowerCase()
+}
+
+/** Matches a decline marker in raw model text, including the escaped form that the marker parser accepts. */
+function createDeclineMarkerPattern(marker: string) {
+  const name = normalizeMarker(marker).replace(/^<\|/, '').replace(/\|>$/, '')
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`<(?:\\||\\{'\\|'\\})\\s*${escapedName}\\s*(?:\\||\\{'\\|'\\})>`, 'gi')
+}
 
 function prependTextToContent<T extends { content?: unknown }>(msg: T, text: string): T {
   const content = msg.content
@@ -164,6 +183,21 @@ export interface ChatOrchestratorSendOptions {
   temperature?: number
   /** Top_p for the LLM request. */
   topP?: number
+  /**
+   * Who started the turn. The host starts an `unprompted` turn without user input. Its trigger message reaches the
+   * provider but is committed only when the reply is decided as spoken, the model can decline it with
+   * `declineMarker`, and it carries no tools.
+   * @default 'user'
+   */
+  origin?: 'user' | 'unprompted'
+  /** Topic stored on the trigger message of an unprompted turn and reported when the turn is declined. */
+  trigger?: ChatTurnTrigger
+  /**
+   * Special marker that declines an unprompted turn when it arrives in visible speech before the first spoken text.
+   * Comparison ignores surrounding whitespace and case.
+   * @default '<|SILENT|>'
+   */
+  declineMarker?: string
 }
 
 interface QueuedSend {
@@ -308,8 +342,13 @@ export interface ChatOrchestratorRuntimeDeps {
   unwrapMessage?: <T>(message: T) => T
   /** Called whenever writable runtime state changes. */
   onStateChange?: (state: ChatOrchestratorRuntimeState) => void
-  /** Called after a runtime-owned send completes or fails and `sending` has been cleared. */
-  onSendSettled?: (event: { sessionId: string, turnId: string, status: 'finished' | 'cancelled' | 'failed' }) => void
+  /**
+   * Called after a runtime-owned send completes or fails and `sending` has been cleared.
+   * `declined` means that an unprompted turn ended without speech and committed nothing.
+   */
+  onSendSettled?: (event: { sessionId: string, turnId: string, status: 'finished' | 'cancelled' | 'failed' | 'declined' }) => void
+  /** Called once when an unprompted turn is declined, after the stream-end hooks. Nothing of the turn was committed. */
+  onTurnDeclined?: (event: { sessionId: string, turnId: string, trigger?: ChatTurnTrigger }) => void
   /** Called when a send starts and the first assistant placeholder is created. */
   onTrackFirstMessage?: () => void
   /** Called for attempts made before the conversation has its first assistant response. */
@@ -540,6 +579,14 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       deps.foregroundStream.patch(cloneStreamingMessage(message))
   }
 
+  /** Marks a send active without publishing its assistant message, while an unprompted turn is undecided. */
+  function holdStream(sessionId: string) {
+    sending = true
+    activeSendSessionId = sessionId
+    activeStreamingMessage = undefined
+    emitStateChange()
+  }
+
   function updateStream(sessionId: string, message: StreamingAssistantMessage) {
     const active = activeSends.get(sessionId)
     if (!active)
@@ -603,14 +650,22 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
 
     deps.session.ensureSession(sessionId)
 
+    // An unprompted turn is undecided ('holding') until its first visible speech. Until then it commits nothing,
+    // publishes no assistant message, and buffers special hooks. It then becomes 'spoken' or 'declined'.
+    const unprompted = options.origin === 'unprompted'
+    const declineMarker = normalizeMarker(options.declineMarker ?? DEFAULT_DECLINE_MARKER)
+    const declineMarkerPattern = unprompted ? createDeclineMarkerPattern(declineMarker) : undefined
+    const withoutDeclineMarkers = (text: string) => declineMarkerPattern ? text.replace(declineMarkerPattern, '') : text
+
     const existingSessionMessages = deps.session.getSessionMessages(sessionId)
     let replyToMessageId = resolveReplyTargetId(options.replyToMessageId, existingSessionMessages)
-    const turnIndex = existingSessionMessages.filter(message => message.role === 'user').length + 1
+    // An unprompted turn recounts both values from committed history when it is decided as spoken.
+    let turnIndex = existingSessionMessages.filter(message => message.role === 'user').length + 1
 
     // Activation measures whether a conversation reaches its first assistant
     // response. Later turns still emit message and latency telemetry, but they
     // must not inflate the one-time activation milestones.
-    const isActivationAttempt = !existingSessionMessages.some(message => message.role === 'assistant' && !message.interrupted)
+    let isActivationAttempt = !unprompted && !existingSessionMessages.some(message => message.role === 'assistant' && !message.interrupted)
 
     // Datetime is no longer injected through the side-channel context store.
     // It is applied at message-assembly time (see below) as a system-prompt
@@ -635,10 +690,12 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         createdAt: sendingCreatedAt,
         id: streamContextMessageId,
         ...(replyToMessageId ? { replyToMessageId } : {}),
+        ...(unprompted ? { origin: 'unprompted' as const, ...(options.trigger ? { trigger: options.trigger } : {}) } : {}),
       },
       contexts: deps.context.snapshot(),
       composedMessage: [],
       input: options.input,
+      ...(unprompted ? { origin: 'unprompted' as const } : {}),
     }
     deps.onLifecycle?.({
       phase: 'before-compose',
@@ -664,7 +721,11 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       id: assistantMessageId,
     }
     activeSends.get(sessionId)!.turnId = roundId
-    beginStream(sessionId, buildingMessage)
+    // An undecided unprompted turn still owns `sending`, so hosts do not start another turn while the model decides.
+    if (unprompted)
+      holdStream(sessionId)
+    else
+      beginStream(sessionId, buildingMessage)
     const hasVoice = options.input?.type === 'input:voice'
       || options.input?.type === 'input:text:voice'
     const sendSource = hasVoice ? 'voice' : 'text'
@@ -675,24 +736,50 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       roundId,
       turnIndex,
     }
-    deps.onTrackFirstMessage?.()
-    if (isActivationAttempt) {
-      deps.onChatActivationStarted?.({
+    // Round start telemetry belongs to a turn that will be answered. An unprompted turn reports it when spoken.
+    let roundStarted = false
+    const startRound = () => {
+      roundStarted = true
+      deps.onTrackFirstMessage?.()
+      if (isActivationAttempt) {
+        deps.onChatActivationStarted?.({
+          ...correlation,
+          source: sendSource,
+          model: options.model,
+          provider: activeProvider,
+        })
+      }
+      deps.onMessageSendStarted?.({
         ...correlation,
         source: sendSource,
         model: options.model,
-        provider: activeProvider,
       })
     }
-    deps.onMessageSendStarted?.({
-      ...correlation,
-      source: sendSource,
-      model: options.model,
-    })
+    if (!unprompted)
+      startRound()
     const roundStartedAt = monotonicNow()
     let assistantStored = false
     let generationCompleted = false
     let failed = false
+    // Callbacks change the state between awaits, so the declared union must not narrow to the initial value.
+    let turnState = (unprompted ? 'holding' : 'spoken') as 'holding' | 'spoken' | 'declined'
+    // An unprompted turn keeps partial output only after its trigger is committed. User turns keep it as before.
+    let userTurnCommitted = !unprompted
+    // Set when the trigger of an unprompted turn already exists in history. The turn then produces no reply.
+    let abandoned = false
+    // Persistence failure during the stream. It ends the provider stream as a stream error.
+    let streamFailure: { error: unknown } | undefined
+    const outputClosed = () => abandoned || !!streamFailure || turnState === 'declined'
+    const heldSpecials: string[] = []
+    const publishStream = () => {
+      if (turnState === 'spoken')
+        updateStream(sessionId, buildingMessage)
+    }
+    const declineTurn = () => {
+      turnState = 'declined'
+      heldSpecials.length = 0
+      accepted.resolve({ sessionId, messageId: roundId })
+    }
 
     try {
       await hooks.emitBeforeMessageComposedHooks(sendingMessage, streamingMessageContext)
@@ -745,35 +832,86 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         createdAt: sendingCreatedAt,
         id: roundId,
         ...(replyToMessageId ? { replyToMessageId } : {}),
-        ...(options.toolReferences?.length ? { tools: options.toolReferences } : {}),
+        ...(options.toolReferences?.length && !unprompted ? { tools: options.toolReferences } : {}),
         ...(audioTranscripts?.some(Boolean) ? { audioTranscripts } : {}),
-      }
-      const receipt = await deps.session.commitUserMessage(sessionId, userMessage)
-      accepted.resolve({ sessionId, messageId: receipt.messageId })
-      if (receipt.status === 'existing' || shouldAbort()) {
-        resetForegroundStream(sessionId)
-        return
+        ...(unprompted ? { origin: 'unprompted' as const, ...(options.trigger ? { trigger: options.trigger } : {}) } : {}),
       }
 
-      // Cloud sync v1: only the raw text part round-trips; image attachments
-      // and other non-text parts stay local.
-      deps.onUserMessageAppended?.({
-        sessionId,
-        message: userMessage,
-        messageText: sendingMessage,
-        source: sendSource,
-        model: options.model,
-        provider: activeProvider,
-        roundId,
-        turnIndex,
-      })
+      const announceUserTurn = () => {
+        // Cloud sync v1: only the raw text part round-trips; image attachments
+        // and other non-text parts stay local.
+        deps.onUserMessageAppended?.({
+          sessionId,
+          message: userMessage,
+          messageText: sendingMessage,
+          source: sendSource,
+          model: options.model,
+          provider: activeProvider,
+          roundId,
+          turnIndex,
+        })
 
-      const sessionMessagesForSend = deps.session.getSessionMessages(sessionId)
-      deps.onUserTurnReady?.({
-        sessionId,
-        messageText: sendingMessage,
-        sessionMessages: sessionMessagesForSend,
-      })
+        const sessionMessages = deps.session.getSessionMessages(sessionId)
+        deps.onUserTurnReady?.({
+          sessionId,
+          messageText: sendingMessage,
+          sessionMessages,
+        })
+        return sessionMessages
+      }
+
+      let sessionMessagesForSend: ChatHistoryItem[]
+      if (unprompted) {
+        // The provider receives the uncommitted trigger as the trailing user turn, so runtime contexts attach to it.
+        sessionMessagesForSend = [...deps.session.getSessionMessages(sessionId), userMessage]
+      }
+      else {
+        const receipt = await deps.session.commitUserMessage(sessionId, userMessage)
+        accepted.resolve({ sessionId, messageId: receipt.messageId })
+        if (receipt.status === 'existing' || shouldAbort()) {
+          resetForegroundStream(sessionId)
+          return
+        }
+
+        sessionMessagesForSend = announceUserTurn()
+      }
+
+      /**
+       * Decides an unprompted turn as spoken at its first visible speech. Commits the trigger, then runs the round
+       * start that a user turn runs before generation. Returns false when the turn output must be dropped.
+       */
+      const commitUnpromptedTurn = async () => {
+        // Count from history committed before the trigger, as a user turn counts before its own commit.
+        const committedMessages = deps.session.getSessionMessages(sessionId)
+        const decidedTurnIndex = committedMessages.filter(message => message.role === 'user').length + 1
+        const decidedActivationAttempt = !committedMessages.some(message => message.role === 'assistant' && !message.interrupted)
+
+        let receipt: Awaited<ReturnType<ChatOrchestratorSessionPort['commitUserMessage']>>
+        try {
+          receipt = await deps.session.commitUserMessage(sessionId, userMessage)
+        }
+        catch (error) {
+          streamFailure = { error }
+          return false
+        }
+        accepted.resolve({ sessionId, messageId: receipt.messageId })
+        if (receipt.status === 'existing') {
+          abandoned = true
+          return false
+        }
+        userTurnCommitted = true
+        if (shouldAbort())
+          return false
+
+        turnIndex = decidedTurnIndex
+        correlation.turnIndex = decidedTurnIndex
+        isActivationAttempt = decidedActivationAttempt
+        turnState = 'spoken'
+        beginStream(sessionId, buildingMessage)
+        startRound()
+        sessionMessagesForSend = announceUserTurn()
+        return true
+      }
 
       const categorizer = createStreamingCategorizer(activeProvider)
       let streamPosition = 0
@@ -782,7 +920,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
 
       const parser = useLlmmarkerParser({
         onLiteral: async (literal) => {
-          if (shouldAbort())
+          if (shouldAbort() || outputClosed())
             return
 
           categorizer.consume(literal)
@@ -791,6 +929,17 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           streamPosition += literal.length
 
           if (speechOnly.trim()) {
+            // Visible speech decides an unprompted turn. Held specials are emitted in order before this literal.
+            if (turnState === 'holding') {
+              if (!await commitUnpromptedTurn())
+                return
+              for (const special of heldSpecials.splice(0)) {
+                await hooks.emitTokenSpecialHooks(special, streamingMessageContext)
+                if (shouldAbort())
+                  return
+              }
+            }
+
             buildingMessage.content += speechOnly
 
             await hooks.emitTokenLiteralHooks(speechOnly, streamingMessageContext)
@@ -807,12 +956,25 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
                 text: speechOnly,
               })
             }
-            updateStream(sessionId, buildingMessage)
+            publishStream()
           }
         },
-        onSpecial: async (special) => {
-          if (shouldAbort())
+        onSpecial: async (special, recovery) => {
+          if (shouldAbort() || outputClosed())
             return
+
+          // A recovered near-miss cue inside reasoning stays reasoning text. Rejecting it makes the parser pass
+          // the original text to onLiteral. Native markers in reasoning keep their existing handling below.
+          if (recovery && !categorizer.filterToSpeech(recovery.raw, streamPosition))
+            return false
+
+          if (unprompted && normalizeMarker(special) === declineMarker) {
+            // Only a marker in visible speech before the first spoken text declines. Reasoning can mention it.
+            // The marker is control data: it is never forwarded to hooks or stored.
+            if (turnState === 'holding' && categorizer.filterToSpeech(special, streamPosition))
+              declineTurn()
+            return
+          }
 
           if (/^<\|STICKER\b/.test(special)) {
             // Text-based reasoning can contain markers too. Only visible speech can select an image.
@@ -822,20 +984,26 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
             if (!stickerEmitted && id && stickers?.some(sticker => sticker.id === id)) {
               buildingMessage.slices.push({ type: 'sticker', stickerId: id })
               stickerEmitted = true
-              updateStream(sessionId, buildingMessage)
+              publishStream()
             }
             // Sticker markers are UI data, including invalid IDs. Speech and plugins must not execute them.
+            return
+          }
+
+          if (turnState === 'holding') {
+            heldSpecials.push(special)
             return
           }
 
           await hooks.emitTokenSpecialHooks(special, streamingMessageContext)
         },
         onEnd: async (fullText) => {
-          if (shouldAbort())
+          if (shouldAbort() || outputClosed())
             return
 
           // Strip only sticker markers, including the escaped form accepted by the parser.
-          const speechText = fullText.replace(/<(?:\||\{'\|'\})STICKER\b[\s\S]*?(?:(?:\||\{'\|'\})>|$)/g, '')
+          // Unprompted turns also strip their decline marker.
+          const speechText = withoutDeclineMarkers(fullText.replace(/<(?:\||\{'\|'\})STICKER\b[\s\S]*?(?:(?:\||\{'\|'\})>|$)/g, ''))
           const finalCategorization = categorizeResponse(speechText, activeProvider)
 
           const reasoningContentField = buildingMessage.categorization?.reasoning?.trim()
@@ -843,11 +1011,13 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
             speech: finalCategorization.speech,
             reasoning: reasoningContentField || finalCategorization.reasoning,
           }
-          updateStream(sessionId, buildingMessage)
+          publishStream()
         },
         // The parser keeps its own marker-safety tail. Emit each safe literal
         // chunk so slow providers update the chat before they reach 24 characters.
         minLiteralEmitLength: 1,
+        // Models sometimes write [ACT ...] or <ACT ...>. Rewrite those into real cues instead of speaking them.
+        recoverCueNames: ['ACT', 'DELAY'],
       })
 
       const toolCallQueue = createQueue<ChatSlices>({
@@ -857,13 +1027,13 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
               return
             if (ctx.data.type === 'tool-call') {
               buildingMessage.slices.push(ctx.data)
-              updateStream(sessionId, buildingMessage)
+              publishStream()
               return
             }
 
             if (ctx.data.type === 'tool-call-result') {
               buildingMessage.tool_results.push(ctx.data)
-              updateStream(sessionId, buildingMessage)
+              publishStream()
             }
           },
         ],
@@ -953,7 +1123,8 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           conversationId: correlation.conversationId,
           turnId: correlation.roundId,
         },
-        tools: options.tools,
+        // An unprompted turn may only speak or decline. Tool effects would run before the turn is decided.
+        tools: unprompted ? undefined : options.tools,
         temperature: options.temperature,
         topP: options.topP,
         waitForTools: true,
@@ -973,17 +1144,19 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           })
         },
         onStreamEvent: async (event: StreamEvent) => {
+          if (streamFailure)
+            throw streamFailure.error
           if (shouldAbort())
             return
 
           switch (event.type) {
             case 'search':
               buildingMessage.search = { id: event.id, status: event.status }
-              updateStream(sessionId, buildingMessage)
+              publishStream()
               break
             case 'citations':
               buildingMessage.citations = [...(buildingMessage.citations ?? []), ...event.citations]
-              updateStream(sessionId, buildingMessage)
+              publishStream()
               break
             case 'tool-call':
               toolCallQueue.enqueue({
@@ -1035,7 +1208,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
                 = Math.floor(nextReasoning.length / REASONING_UI_FLUSH_CHUNK_SIZE)
                   > Math.floor(reasoning.length / REASONING_UI_FLUSH_CHUNK_SIZE)
               if (!reasoning || crossesBoundary)
-                updateStream(sessionId, buildingMessage)
+                publishStream()
               break
             }
             case 'finish':
@@ -1055,6 +1228,28 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       await parser.end()
       if (shouldAbort())
         return
+      if (streamFailure)
+        throw streamFailure.error
+      if (abandoned) {
+        // An earlier delivery committed this trigger. Like a retried user turn, it produces no reply.
+        resetForegroundStream(sessionId)
+        return
+      }
+      fullText = withoutDeclineMarkers(fullText)
+
+      // A reply that ends without visible speech declines an unprompted turn.
+      if (turnState === 'holding')
+        declineTurn()
+      if (turnState === 'declined') {
+        generationCompleted = true
+        // Hosts close the empty speech response that they opened before composition.
+        await hooks.emitStreamEndHooks(streamingMessageContext)
+        if (shouldAbort())
+          return
+        deps.onTurnDeclined?.({ sessionId, turnId: roundId, trigger: options.trigger })
+        resetForegroundStream(sessionId)
+        return
+      }
 
       generationCompleted = true
       buildingMessage.generationTranscript = generatedTurn
@@ -1138,7 +1333,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         return
       failed = true
 
-      if (!assistantStored && !generationCompleted && hasAssistantOutput(buildingMessage)) {
+      if (!assistantStored && !generationCompleted && userTurnCommitted && hasAssistantOutput(buildingMessage)) {
         // Keep received output local, but do not run completion hooks or cloud
         // sync for an assistant turn that never reached a terminal event.
         deps.session.appendSessionMessage(sessionId, { ...cloneStreamingMessage(buildingMessage), interrupted: true, completedAt: now() })
@@ -1146,14 +1341,16 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       resetForegroundStream(sessionId)
 
       console.error('Error sending message:', error)
-      deps.onMessageRoundFailed?.({
-        ...correlation,
-        source: sendSource,
-        model: options.model,
-        provider: activeProvider,
-        failureStage: 'llm_response',
-        errorCode: 'llm_response_failed',
-      })
+      if (roundStarted) {
+        deps.onMessageRoundFailed?.({
+          ...correlation,
+          source: sendSource,
+          model: options.model,
+          provider: activeProvider,
+          failureStage: 'llm_response',
+          errorCode: 'llm_response_failed',
+        })
+      }
       if (isActivationAttempt) {
         deps.onChatActivationFailed?.({
           ...correlation,
@@ -1169,6 +1366,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     finally {
       if (!assistantStored
         && !generationCompleted
+        && userTurnCommitted
         && abortSignal.aborted
         && !isStaleGeneration()
         && hasAssistantOutput(buildingMessage)) {
@@ -1182,7 +1380,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         activeStreamingMessage = activeSendSessionId ? activeSends.get(activeSendSessionId)?.message : undefined
       }
       emitStateChange()
-      deps.onSendSettled?.({ sessionId, turnId: roundId, status: shouldAbort() ? 'cancelled' : failed ? 'failed' : 'finished' })
+      deps.onSendSettled?.({ sessionId, turnId: roundId, status: shouldAbort() ? 'cancelled' : failed ? 'failed' : turnState === 'declined' ? 'declined' : 'finished' })
     }
   }
 

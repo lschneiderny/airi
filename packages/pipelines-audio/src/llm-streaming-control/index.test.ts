@@ -12,6 +12,8 @@ describe('createStreamingControlParser', () => {
     [{ emotion: 'Love' }, { emotion: { name: 'love', intensity: 0.6 } }],
     [{ emotion: 'Sleepy ' }, { emotion: { name: 'sleepy', intensity: 0.6 } }],
     [{ emotion: 'lovey' }, {}],
+    [{ emotion: 'happy', intensity: 'strong', expression: 'Blush', motion: 'nod' }, { emotion: { name: 'happy', intensity: 0.9 }, expression: 'Blush', motion: 'nod' }],
+    [{ emotion: 'happy', intensity: 0.3 }, { emotion: { name: 'happy', intensity: 0.3 } }],
     [{ emotion: { name: 'angry', intensity: -1 } }, { emotion: { name: 'angry', intensity: 0 } }],
     [{ emotion: { name: 'angry', intensity: 2 } }, { emotion: { name: 'angry', intensity: 1 } }],
     [{ emotion: { name: 'happy', intensity: '0.3' } }, { emotion: { name: 'happy', intensity: 0.3 } }],
@@ -260,6 +262,35 @@ describe('createStreamingControlParser', () => {
    * await control.dispatchWith('<|DELAY 1.5|>')
    * expect(handler).toHaveBeenCalledWith(expect.objectContaining({ type: 'delay' }))
    */
+  it('dispatches bare ACT emotion tokens and reports unknown words as parse-failed', async () => {
+    const control = createStreamingControlParser()
+    const handler = vi.fn()
+    const observer = vi.fn()
+    const dispose = control.onSignal(handler)
+
+    await expect(control.dispatchWith('<|ACT:sad 0.3|>', { observer })).resolves.toBe(true)
+    expect(handler).toHaveBeenCalledWith(
+      {
+        type: 'act',
+        payload: { emotion: { name: 'sad', intensity: 0.3 } },
+      },
+      expect.objectContaining({
+        createdAt: expect.any(Number),
+      }),
+    )
+
+    handler.mockClear()
+    await expect(control.dispatchWith('<|ACT banana|>', { observer })).resolves.toBe(false)
+    expect(handler).not.toHaveBeenCalled()
+    expect(observer).toHaveBeenLastCalledWith(expect.objectContaining({
+      parserName: 'ACT',
+      reason: 'parse-failed',
+      type: 'rejected',
+    }))
+
+    dispose()
+  })
+
   it('dispatches DELAY numeric literal tokens as structured signals', async () => {
     const control = createStreamingControlParser()
     const handler = vi.fn()

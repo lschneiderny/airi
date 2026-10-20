@@ -107,6 +107,8 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   // reconnect catch up — that way the very first message in a session does
   // not get dropped while reconcile completes.
   const cloudSyncReady = ref(false)
+  // Local to this renderer and not returned, so the synced state does not carry it.
+  const stageContract = ref('')
   /**
    * Number of message sends + tombstone deletes waiting on cloud delivery.
    * Reactive so a UI banner can surface "N messages syncing" / "K failed".
@@ -196,14 +198,25 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     return next
   }
 
-  function systemPromptFrom(characterPrompt: string) {
-    return codeBlockSystemPrompt + mathSyntaxSystemPrompt + characterPrompt
+  /** Composes a system prompt from the fixed formatting rules, the character prompt, and the stage contract. */
+  function systemPromptFrom(characterPrompt: string, contract: string) {
+    const prompt = codeBlockSystemPrompt + mathSyntaxSystemPrompt + characterPrompt
+    return contract ? `${prompt}\n\n${contract}` : prompt
+  }
+
+  /**
+   * Sets the stage contract that every system prompt ends with. The chat store owns the localized contract and
+   * passes it in, because it changes with the locale of this renderer. A change refreshes the stored system
+   * message of the active session.
+   */
+  function setStageContract(contract: string) {
+    stageContract.value = contract
   }
 
   function generateInitialMessageFromPrompt(prompt: string) {
     return {
       role: 'system',
-      content: systemPromptFrom(prompt),
+      content: systemPromptFrom(prompt, stageContract.value),
       id: nanoid(),
       createdAt: Date.now(),
     } satisfies ChatHistoryItem
@@ -220,7 +233,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   function getSessionSystemPrompt(sessionId: string) {
     // A session without metadata has no owner yet. The selected character creates and owns it.
     const characterId = sessionMetas.value[sessionId]?.characterId ?? getCurrentCharacterId()
-    return systemPromptFrom(cards.getSystemPrompt(characterId))
+    return systemPromptFrom(cards.getSystemPrompt(characterId), stageContract.value)
   }
 
   function generateInitialMessageForSession(sessionId: string) {
@@ -1724,7 +1737,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   // Keep the active conversation aligned with edits to the active card. The
   // active session id is included because card switching resolves the target
   // session asynchronously after the card prompt itself has already changed.
-  watch([systemPrompt, activeSessionId], refreshActiveSessionSystemMessage)
+  watch([systemPrompt, stageContract, activeSessionId], refreshActiveSessionSystemMessage)
 
   return {
     isReady,
@@ -1750,6 +1763,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     persistSessionMessages,
     getSessionMessages,
     getSessionSystemPrompt,
+    setStageContract,
     getSessionMessagesIfLoaded,
     sessionMessages,
     sessionMetas,

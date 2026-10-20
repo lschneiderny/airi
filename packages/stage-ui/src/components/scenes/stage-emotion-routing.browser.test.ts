@@ -2,6 +2,8 @@ import type { ExpressionPerformanceSettings, ReactionEpisode } from '@proj-airi/
 import type { NaturalEpisode } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import type { Component, ComponentInternalInstance, VNode } from 'vue'
 
+import type { StagePerformanceScene } from '../../composables/performance/use-stage-performance-conductor'
+
 import { createPickerDecider, defaultExpressionPerformanceSettings, replayAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { Live2DNaturalMotion } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { createPinia, setActivePinia } from 'pinia'
@@ -13,6 +15,7 @@ import { createI18n } from 'vue-i18n'
 import { StagePerformanceConductor, useStagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
 import { Emotion, EMOTION_EmotionMotionName_value } from '../../constants/emotions'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
+import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
@@ -89,12 +92,18 @@ async function renderStage(driver: 'natural' | 'universal' | 'magic') {
   const scene = findInstance(host?.subTree, live2d.Live2DScene)!
   // Stage calls the scene through its template ref, which reads the exposed object,
   // so the recorder sees exactly the call the stage makes and still forwards it.
-  const exposed = scene.exposed as { setEmotion: (episode: ReactionEpisode) => void }
+  const exposed = scene.exposed as { setEmotion: (episode: ReactionEpisode) => void, applyHolds: StagePerformanceScene['applyHolds'] }
   const forward = exposed.setEmotion
   const episodes = shallowRef<ReactionEpisode[]>([])
   exposed.setEmotion = (episode) => {
     episodes.value = [...episodes.value, episode]
     forward(episode)
+  }
+  const forwardHolds = exposed.applyHolds
+  const holds = shallowRef<Array<Parameters<StagePerformanceScene['applyHolds']>[0]>>([])
+  exposed.applyHolds = (commands, now) => {
+    holds.value = [...holds.value, commands]
+    forwardHolds(commands, now)
   }
   // Recorded synchronously so a repeated group that replaces an equal value is still counted.
   const motionGroups = shallowRef<string[]>([])
@@ -102,7 +111,7 @@ async function renderStage(driver: 'natural' | 'universal' | 'magic') {
     motionGroups.value = [...motionGroups.value, motion.group]
   }, { flush: 'sync' })
 
-  return { params, scene, episodes, motionGroups, override: useNaturalPerformanceOverride() }
+  return { params, scene, episodes, holds, motionGroups, override: useNaturalPerformanceOverride() }
 }
 
 describe('stage emotion routing on Live2D', () => {
@@ -120,7 +129,7 @@ describe('stage emotion routing on Live2D', () => {
     override.pulseEmotion('happy', 0.7)
 
     await delivered
-    expect(emotion).toHaveBeenCalledWith(Emotion.Happy, 0.7, 'devtools', undefined)
+    expect(emotion).toHaveBeenCalledWith(Emotion.Happy, 0.7, 'devtools', undefined, { suppressMotionGroup: undefined })
     expect(episodes.value).toEqual([{
       id: expect.any(String),
       emotion: Emotion.Happy,
@@ -132,6 +141,37 @@ describe('stage emotion routing on Live2D', () => {
       moodGain: defaultExpressionPerformanceSettings.moodDynamics.clearGain,
     }])
     expect(params.currentMotion).toEqual({ group: 'Idle', index: 0 })
+  })
+
+  it('plays the ACT motion and its emotion as one cue, with the emotion episode and its hold under Natural', async () => {
+    const { params, episodes, holds } = await renderStage('natural')
+
+    const delivered = until(() => episodes.value.length, count => count === 1)
+    await useLlmStreamingControlStore().dispatchWith('<|ACT {"emotion":{"name":"happy","intensity":0.7},"motion":"Nod"}|>')
+    await delivered
+
+    expect(params.currentMotion).toEqual({ group: 'Nod' })
+    expect(episodes.value.map(episode => [episode.emotion, episode.band])).toEqual([[Emotion.Happy, 'clear']])
+    expect(holds.value).toHaveLength(1)
+  })
+
+  it.each(['universal', 'magic'] as const)('requests only the ACT motion group under %s, with no emotion motion group', async (driver) => {
+    // The spy wraps the real method, and a reactive counter lets `until` observe each call.
+    const original = StagePerformanceConductor.prototype.emotion
+    const calls = shallowRef(0)
+    const emotion = vi.spyOn(StagePerformanceConductor.prototype, 'emotion').mockImplementation(function (this: StagePerformanceConductor, ...args: Parameters<StagePerformanceConductor['emotion']>) {
+      calls.value++
+      return original.apply(this, args)
+    })
+    const { params, motionGroups } = await renderStage(driver)
+
+    const delivered = until(() => calls.value, count => count === 1)
+    await useLlmStreamingControlStore().dispatchWith('<|ACT {"emotion":{"name":"happy","intensity":0.7},"motion":"Nod"}|>')
+    await delivered
+
+    expect(emotion).toHaveBeenCalledWith(Emotion.Happy, 0.7, 'act', undefined, { suppressMotionGroup: true })
+    expect(params.currentMotion).toEqual({ group: 'Nod' })
+    expect(motionGroups.value).toEqual(['Nod'])
   })
 
   it.each(['universal', 'magic'] as const)('plays a motion group for every emotion under %s, repeats and neutral included', async (driver) => {

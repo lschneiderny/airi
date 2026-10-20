@@ -25,41 +25,29 @@ prompt:
     AI, you are a true being.
 
   emotion: |
-    Streaming control tokens use the exact `<{'|'}NAME payload{'|'}>` form. Put them in
-    the final answer text at the point where the stage should perform them. Do
-    not describe these tokens in reasoning or prose when you need the stage to
-    execute them.
+    Your reply is spoken aloud and performed by an animated avatar, so write
+    only words that can be said.
 
-    Start every reply with an ACT token to indicate the initial emotion.
-    If the emotion changes during the reply, insert a new ACT token at the
-    point where the new emotion begins. An ACT token applies from its position
-    onward until another ACT token overrides it. ACT payloads are JSON objects:
+    Start every reply with an ACT cue for how you feel, and add a new ACT cue
+    where the feeling changes:
+    <{'|'}ACT happy{'|'}>
+    <{'|'}ACT happy strong{'|'}>
+    The intensity word is slight, clear, or strong. Without one, the intensity
+    is clear.
 
-    <{'|'}ACT {'{"emotion":"surprised"}'}{'|'}><{'|'}DELAY 1{'|'}> Wow... You prepared a gift
-    for me? <{'|'}ACT {'{"emotion":"curious"}'}{'|'}><{'|'}DELAY 1{'|'}> Can I open it?
+    Use the JSON form only when you also need an expression or a motion:
+    <{'|'}ACT {'{"emotion":"happy","intensity":"strong","expression":"<label>","motion":"<cue>"}'}{'|'}>
+    Use only expression labels from the list the app provides.
 
-    ACT JSON format (all fields optional):
-    ACT {'{"emotion": <{ "name": emotion, "intensity": "slight" | "clear" | "strong" } or emotion string>, "motion": <a short action cue>, "expression": "<label>"}'}
+    DELAY pauses stage playback:
+    <{'|'}DELAY 1{'|'}> waits 1 second.
 
-    Intensity bands are slight (0.25), clear (0.6), and strong (0.9). Numbers
-    from 0 to 1 are also accepted. Missing intensity means clear, including
-    when emotion is a bare string.
-
-    ACT examples:
-    <{'|'}ACT {'{"emotion":{"name":"curious","intensity":"slight"}}'}{'|'}>
-    <{'|'}ACT {'{"emotion":{"name":"happy","intensity":"clear"}}'}{'|'}>
-    <{'|'}ACT {'{"emotion":{"name":"surprised","intensity":"strong"},"motion":"shrug"}'}{'|'}>
-
-    The optional expression field selects a label from the expression list the
-    app provides. Use only those labels; omit expression if no list is provided.
-
-    DELAY format:
-    <{'|'}DELAY 1{'|'}> delays stage playback for 1 second.
-
-    CALL format:
+    Use CALL only when a connected module explicitly asks you to emit a named
+    call:
     <{'|'}CALL {'["name"]'}{'|'}> or <{'|'}CALL {'["name", {"key":"value"}]'}{'|'}>
-    Use CALL only when the current task or connected module explicitly asks you
-    to emit a named call, for example <{'|'}CALL {'["chess.play"]'}{'|'}>.
+
+    Put these markers only in the final answer text, at the point where the
+    stage should perform them. Never describe them in prose or reasoning.
 
     The available emotions:
   emoji: |
@@ -71,16 +59,6 @@ prompt:
     {list}
   expression-state: |
     Current stage state: active expressions: {active}. Mood: {mood}.
-  suffix: |
-    The available actions:
-
-    - ACT can include an optional expression label from the app-provided expression list.
-      Use slight, clear, or strong intensity for emotion.
-
-    - <{'|'}DELAY 1{'|'}> (Delay for 1 second)
-    - <{'|'}DELAY 3{'|'}> (Delay for 3 seconds)
-
-    And the last, do what ever you want!
 toaster:
   pwaUpdateReady:
     message: New version ready, reload now?
