@@ -292,7 +292,7 @@ describe('situation store', () => {
     expect(store.renderForRequest(T0)).toMatch(/^\[Situation \d\d:\d\d\]\n- The user is at the desk, active for less than a minute\n- You two last talked just now\.\n- Stage - on stage: face: smile$/)
   })
 
-  it('reports a wake from an unlocked sample after a locked one', () => {
+  it('reports a wake from an unlocked sample after a 6 min lock, next to the unchanged presence and came-back lines', () => {
     const leadership = createLeadership(true)
     const store = useSituationStore()
     store.initialize(leadership.runtime)
@@ -300,13 +300,19 @@ describe('situation store', () => {
 
     desktop.setSnapshot(desktopSample({ locked: true }))
     expect(store.state.presence).toMatchObject({ state: 'away', reason: 'locked' })
-    vi.advanceTimersByTime(10_000)
+    // The producer keeps sampling while the session is locked.
+    const keepLocked = setInterval(() => desktop.setSnapshot(desktopSample({ locked: true })), 1_000)
+    vi.advanceTimersByTime(6 * 60 * 1_000)
+    clearInterval(keepLocked)
     desktop.setSnapshot(desktopSample({ unlockedAtMs: Date.now() }))
 
-    expect(store.renderForRequest(Date.now())).toContain('- New: unlocked the computer (just now)')
+    const block = store.renderForRequest(Date.now())
+    expect(block).toContain('- The user is at the desk, active for less than a minute')
+    expect(block).toContain('- New: unlocked the computer (just now)')
+    expect(block).toContain('- New: came back after 6 min away (just now)')
   })
 
-  it('adds no stepped-away topic for a 1 s lock, and adds it once a lock lasts 5 min', () => {
+  it('adds no wake or stepped-away topic for a 1 s lock, and adds the stepped-away topic once a lock lasts 5 min', () => {
     const leadership = createLeadership(true)
     const store = useSituationStore()
     store.initialize(leadership.runtime)
@@ -316,9 +322,12 @@ describe('situation store', () => {
     desktop.setSnapshot(desktopSample({ locked: true }))
     vi.advanceTimersByTime(1_000)
     desktop.setSnapshot(desktopSample({ unlockedAtMs: Date.now() }))
+    expect(topics()).not.toContain('wake')
     vi.advanceTimersByTime(10 * 60 * 1_000)
     expect(topics()).not.toContain('presence:away')
+    expect(topics()).not.toContain('wake')
     expect(store.renderForRequest(Date.now())).not.toContain('stepped away')
+    expect(store.renderForRequest(Date.now())).not.toContain('unlocked the computer')
 
     // The producer keeps sampling while the session is locked.
     desktop.setSnapshot(desktopSample({ locked: true }))
@@ -684,6 +693,60 @@ describe('situation gate loop', () => {
     expect(blocks[0]).not.toContain('You last spoke up on your own')
     expect(blocks[1]).toContain('You last spoke up on your own 10 min ago, about unlocked the computer.')
     expect(blocks[1]).not.toContain('about in a dungeon')
+  })
+
+  it('fires nothing about a 1 s lock and unlock', async () => {
+    const { store, chat, observability } = startQuietLeader()
+    const desktop = useDesktopActivityStore()
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+
+    desktop.setSnapshot(desktopSample({ locked: true }))
+    expect(store.state.presence).toMatchObject({ state: 'away', reason: 'locked' })
+    // The producer's own 1 s sample reports the return before the unlock time arrives, as in a live run.
+    await vi.advanceTimersByTimeAsync(1_000)
+    desktop.setSnapshot(desktopSample({ unlockedAtMs: Date.now() }))
+    for (let tick = 0; tick < 3; tick++)
+      await nextGateTick()
+
+    expect(store.state.events.map(event => event.topicKey)).toEqual([])
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'no-topic' })
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+  })
+
+  it('never names a declined topic as her last remark', async () => {
+    const { store, hooks, chat } = startQuietLeader()
+    const blocks: string[] = []
+    chat.submitUnprompted.mockImplementation(async (payload) => {
+      blocks.push(store.renderForRequest(Date.now()) ?? '')
+      if (payload.topicKey === 'context:game') {
+        // A declined turn emits only the before-send and stream-end hooks, as the runtime's decline contract pins.
+        const context: ChatStreamEventContext = { sessionId: 'session-1', turnId: payload.messageId!, origin: 'unprompted', message: { role: 'user', content: '(No one spoke to you.)', createdAt: Date.now(), id: payload.messageId! }, contexts: {}, composedMessage: [] }
+        await hooks.emitBeforeSendHooks('(No one spoke to you.)', context)
+        await hooks.emitStreamEndHooks(context)
+        return { status: 'declined' }
+      }
+      await unpromptedTurnIsSpoken(hooks, payload.messageId!)
+      return { status: 'spoken', text: 'Still at it?' }
+    })
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    await nextGateTick()
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    store.ingest({ kind: 'context', sourceKey: 'game', text: 'in a dungeon', salience: 1, atMs: Date.now() })
+    await nextGateTick()
+    // Offer the third topic each minute until the gate takes it.
+    for (let minute = 0; minute < 60 && chat.submitUnprompted.mock.calls.length < 3; minute++) {
+      await vi.advanceTimersByTimeAsync(60 * 1_000)
+      if (!store.state.events.some(event => event.topicKey === 'context:vision'))
+        store.ingest({ kind: 'context', sourceKey: 'vision', text: 'a cat on screen', salience: 1, atMs: Date.now() })
+    }
+
+    expect(chat.submitUnprompted.mock.calls.map(([payload]) => payload.topicKey)).toEqual(['wake', 'context:game', 'context:vision'])
+    expect(blocks[1]).toContain('about unlocked the computer.')
+    expect(blocks[2]).toContain('You last spoke up on your own')
+    expect(blocks[2]).toContain('about unlocked the computer.')
+    expect(blocks[2]).not.toContain('about in a dungeon')
+    expect(store.state.conversation.lastUnpromptedTopic).toBe('a cat on screen')
   })
 
   it('does not count an unprompted turn as the user engaging', async () => {

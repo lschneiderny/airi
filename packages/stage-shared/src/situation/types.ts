@@ -212,6 +212,8 @@ export interface SituationTracking {
   readonly awaySinceMs: number | null
   /** `awaySinceMs` of the away span whose `went-away` event exists. */
   readonly awayNotedSinceMs: number | null
+  /** Length of the latest away span that has ended, or `null` before any; it judges a wake reported after the return. */
+  readonly lastAwayMs: number | null
   /** Text of the topic last addressed by `markAddressed`; it becomes `lastUnpromptedTopic` when her unprompted turn is spoken. */
   readonly addressedTopic: string | null
   readonly activityAtMs: number | null
@@ -265,6 +267,7 @@ export const initialSituationState: SituationState = Object.freeze({
     presenceAtMs: null,
     awaySinceMs: null,
     awayNotedSinceMs: null,
+    lastAwayMs: null,
     addressedTopic: null,
     activityAtMs: null,
     settledSinceMs: null,
