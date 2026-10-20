@@ -57,7 +57,10 @@ export const SWITCH_BURST_WINDOW_MS = 2 * MINUTE_MS
 /** Foreground durations that emit `long-session` events, tier 1 first. Tuning: add or move tiers to nudge more or less often. */
 export const LONG_SESSION_TIERS_MS: readonly number[] = Object.freeze([30 * MINUTE_MS, 60 * MINUTE_MS, 120 * MINUTE_MS, 180 * MINUTE_MS])
 
-/** Minimum time away before coming back emits `returned`. Tuning: lower to react to short breaks. */
+/**
+ * Minimum time away before the `went-away` event exists and before coming back emits `returned`, so a lock that
+ * ends at once leaves no topic. Tuning: lower to react to short breaks.
+ */
 export const RETURNED_AFTER_AWAY_MS = 5 * MINUTE_MS
 
 /** Events whose effective salience falls below this are dropped. Tuning: raise to forget sooner. */
@@ -190,6 +193,12 @@ function advanceDraft(draft: Draft, nowMs: number): void {
     tracking.tierDone = done
   }
 
+  const awaySince = tracking.awaySinceMs
+  if (awaySince !== null && tracking.awayNotedSinceMs !== awaySince && now - awaySince >= RETURNED_AFTER_AWAY_MS) {
+    tracking.awayNotedSinceMs = awaySince
+    pushEvent(draft, makeEvent('went-away', 'went-away', WENT_AWAY_TOPIC_KEY, 'stepped away', awaySince + RETURNED_AFTER_AWAY_MS))
+  }
+
   draft.events = draft.events.filter(event => effectiveSalience(event, now) >= EVENT_DROP_SALIENCE)
 }
 
@@ -210,10 +219,9 @@ function applyPresence(draft: Draft, o: PresenceObservation, at: number): void {
 
   draft.presence = { state: o.state, reason, sinceMs: at }
   if (o.state === 'away') {
-    if (tracking.awaySinceMs === null) {
+    // The `went-away` event follows from `advanceDraft` once the user has stayed away long enough.
+    if (tracking.awaySinceMs === null)
       tracking.awaySinceMs = at
-      pushEvent(draft, makeEvent('went-away', 'went-away', WENT_AWAY_TOPIC_KEY, 'stepped away', at))
-    }
   }
   else if (o.state === 'here' || o.state === 'idle') {
     const awaySince = tracking.awaySinceMs
@@ -300,12 +308,18 @@ function applyConversation(draft: Draft, o: ConversationObservation, at: number)
   if (o.who === 'user' && o.origin === 'user') {
     draft.conversation = { ...conversation, lastUserAtMs: latest(conversation.lastUserAtMs) }
   }
-  else if (o.who === 'character') {
+  else if (o.who === 'character' && o.origin === 'unprompted') {
+    // Only a spoken unprompted turn reports here, so its addressed topic becomes the last remark now.
     draft.conversation = {
       ...conversation,
       lastCharacterAtMs: latest(conversation.lastCharacterAtMs),
-      lastUnpromptedAtMs: o.origin === 'unprompted' ? latest(conversation.lastUnpromptedAtMs) : conversation.lastUnpromptedAtMs,
+      lastUnpromptedAtMs: latest(conversation.lastUnpromptedAtMs),
+      lastUnpromptedTopic: draft.tracking.addressedTopic,
     }
+    draft.tracking.addressedTopic = null
+  }
+  else if (o.who === 'character') {
+    draft.conversation = { ...conversation, lastCharacterAtMs: latest(conversation.lastCharacterAtMs) }
   }
 }
 
@@ -437,8 +451,10 @@ export function markShown(state: SituationState, eventIds: readonly string[], no
 
 /**
  * Marks every event with `topicKey` as addressed by the character. The first
- * time wins. Also records the event's text as `conversation.lastUnpromptedTopic`;
- * nothing changes there when no event matches.
+ * time wins. The event's text (`null` when no event matches) waits in
+ * `tracking.addressedTopic` and becomes `conversation.lastUnpromptedTopic` when
+ * the next unprompted character turn is spoken, so the prompt of the turn being
+ * started still names the previous remark.
  */
 export function markAddressed(state: SituationState, topicKey: string, nowMs: number): SituationState {
   if (!isTime(nowMs))
@@ -447,7 +463,6 @@ export function markAddressed(state: SituationState, topicKey: string, nowMs: nu
   draft.nowMs = Math.max(draft.nowMs ?? 0, nowMs)
   const matched = draft.events.find(event => event.topicKey === topicKey)
   draft.events = draft.events.map(event => event.topicKey === topicKey && event.addressedAtMs === null ? { ...event, addressedAtMs: draft.nowMs as number } : event)
-  if (matched)
-    draft.conversation = { ...draft.conversation, lastUnpromptedTopic: matched.text }
+  draft.tracking.addressedTopic = matched?.text ?? null
   return draft
 }
