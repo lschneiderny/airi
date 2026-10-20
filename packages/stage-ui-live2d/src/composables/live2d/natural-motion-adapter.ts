@@ -4,7 +4,7 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 import type { EmotionHold } from './expression/hold'
 import type { Live2DMotionDriver } from './live2d'
 import type { PixiLive2DInternalModel } from './motion-manager'
-import type { Live2DNaturalMotionFrame, Live2DNaturalMotionPose } from './natural-motion'
+import type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionPose } from './natural-motion'
 import type { NaturalFaceOutput } from './natural-motion/face'
 import type { NaturalEpisode } from './natural-motion/mood'
 import type { PostureHome } from './natural-motion/posture'
@@ -148,7 +148,7 @@ export class Live2DNaturalMotionAdapter {
   private duration = 0
   private points = [0, 0, 0, 0]
   private disposed = false
-  private readonly home: PostureHome = 'product'
+  private readonly home: PostureHome
   /** Natural channels present on the rig that physics outputs own, so composition skips them. */
   private physicsOwnedChannels = 0
   private diagnosticFrames = 0
@@ -167,8 +167,11 @@ export class Live2DNaturalMotionAdapter {
     private readonly attention: () => Live2DNaturalMotionAttention,
     private readonly visibility?: Pick<Document, 'hidden' | 'addEventListener' | 'removeEventListener'>,
     random = Math.random,
+    /** QA seam: a fixed controller seed and posture home. The stage passes neither. */
+    options: Pick<Live2DNaturalMotionOptions, 'seed' | 'home'> = {},
   ) {
-    this.controller = new Live2DNaturalMotion({ random, home: this.home })
+    this.home = options.home ?? 'product'
+    this.controller = new Live2DNaturalMotion({ random, seed: options.seed, home: this.home })
     this.controller.setSuspended(true, 0)
     this.setRigProfile(rigProfile)
     this.originalFocus = model.updateFocus
