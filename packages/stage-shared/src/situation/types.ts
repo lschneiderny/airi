@@ -178,7 +178,10 @@ export interface SituationConversation {
   readonly lastUserAtMs: number | null
   readonly lastCharacterAtMs: number | null
   readonly lastUnpromptedAtMs: number | null
-  /** Text of the unprompted event the character last addressed, or `null` if none. */
+  /**
+   * Text of the topic of the character's last spoken unprompted turn, or `null` if none or unknown. It changes only
+   * when such a turn is spoken, so the prompt of a new unprompted turn still names the previous remark.
+   */
   readonly lastUnpromptedTopic: string | null
 }
 
@@ -207,6 +210,10 @@ export interface SituationBusy {
 export interface SituationTracking {
   readonly presenceAtMs: number | null
   readonly awaySinceMs: number | null
+  /** `awaySinceMs` of the away span whose `went-away` event exists. */
+  readonly awayNotedSinceMs: number | null
+  /** Text of the topic last addressed by `markAddressed`; it becomes `lastUnpromptedTopic` when her unprompted turn is spoken. */
+  readonly addressedTopic: string | null
   readonly activityAtMs: number | null
   /** `sinceMs` of the foreground span whose settle check is done. */
   readonly settledSinceMs: number | null
@@ -257,6 +264,8 @@ export const initialSituationState: SituationState = Object.freeze({
   tracking: Object.freeze({
     presenceAtMs: null,
     awaySinceMs: null,
+    awayNotedSinceMs: null,
+    addressedTopic: null,
     activityAtMs: null,
     settledSinceMs: null,
     tierSinceMs: null,

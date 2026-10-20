@@ -306,6 +306,30 @@ describe('situation store', () => {
     expect(store.renderForRequest(Date.now())).toContain('- New: unlocked the computer (just now)')
   })
 
+  it('adds no stepped-away topic for a 1 s lock, and adds it once a lock lasts 5 min', () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    const desktop = useDesktopActivityStore()
+    const topics = () => store.state.events.map(event => event.topicKey)
+
+    desktop.setSnapshot(desktopSample({ locked: true }))
+    vi.advanceTimersByTime(1_000)
+    desktop.setSnapshot(desktopSample({ unlockedAtMs: Date.now() }))
+    vi.advanceTimersByTime(10 * 60 * 1_000)
+    expect(topics()).not.toContain('presence:away')
+    expect(store.renderForRequest(Date.now())).not.toContain('stepped away')
+
+    // The producer keeps sampling while the session is locked.
+    desktop.setSnapshot(desktopSample({ locked: true }))
+    const keepLocked = setInterval(() => desktop.setSnapshot(desktopSample({ locked: true })), 1_000)
+    vi.advanceTimersByTime(5 * 60 * 1_000 - 1_000)
+    expect(topics()).not.toContain('presence:away')
+    vi.advanceTimersByTime(1_000)
+    clearInterval(keepLocked)
+    expect(topics()).toContain('presence:away')
+  })
+
   it('turns presence unknown from its own ticker when desktop samples stop arriving', () => {
     const leadership = createLeadership(true)
     const store = useSituationStore()
@@ -522,6 +546,15 @@ describe('situation gate loop', () => {
     await hooks.emitTokenLiteralHooks(' Still at it?', context)
   }
 
+  /** Emits every hook the runtime emits for an unprompted turn that is spoken to the end. */
+  async function unpromptedTurnIsSpoken(hooks: ChatHookRegistry, turnId: string) {
+    const context: ChatStreamEventContext = { sessionId: 'session-1', turnId, origin: 'unprompted', message: { role: 'user', content: '(No one spoke to you.)', createdAt: Date.now(), id: turnId }, contexts: {}, composedMessage: [] }
+    const output = { role: 'assistant' as const, content: 'Still at it?', slices: [], tool_results: [] }
+    await unpromptedTurnSpeaks(hooks, turnId)
+    await hooks.emitAssistantMessageHooks(output, 'Still at it?', context)
+    await hooks.emitChatTurnCompleteHooks({ output, outputText: 'Still at it?', toolCalls: [] }, context)
+  }
+
   it('fires once when the user is quiet, after marking the topic addressed', async () => {
     const { store, chat, observability } = startQuietLeader()
     let addressedBeforeSubmit: number | null | undefined
@@ -629,6 +662,28 @@ describe('situation gate loop', () => {
     expect(observability.gate?.decision).toMatchObject({ fire: true, reason: 'ready' })
     expect(observability.gate?.memory.fires).toHaveLength(1)
     expect(chat.submitUnprompted).toHaveBeenCalledTimes(2)
+  })
+
+  it('names her previous spoken remark in the block, not the topic she is raising now', async () => {
+    const { store, hooks, chat } = startQuietLeader()
+    const blocks: string[] = []
+    chat.submitUnprompted.mockImplementation(async (payload) => {
+      // The chat store renders the situation block while it builds the unprompted request.
+      blocks.push(store.renderForRequest(Date.now()) ?? '')
+      await unpromptedTurnIsSpoken(hooks, payload.messageId!)
+      return { status: 'spoken', text: 'Still at it?' }
+    })
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    await nextGateTick()
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    store.ingest({ kind: 'context', sourceKey: 'game', text: 'in a dungeon', salience: 1, atMs: Date.now() })
+    await nextGateTick()
+
+    expect(chat.submitUnprompted.mock.calls.map(([payload]) => payload.topicKey)).toEqual(['wake', 'context:game'])
+    expect(blocks[0]).not.toContain('You last spoke up on your own')
+    expect(blocks[1]).toContain('You last spoke up on your own 10 min ago, about unlocked the computer.')
+    expect(blocks[1]).not.toContain('about in a dungeon')
   })
 
   it('does not count an unprompted turn as the user engaging', async () => {

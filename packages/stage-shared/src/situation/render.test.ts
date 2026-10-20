@@ -156,8 +156,10 @@ describe('renderSituation', () => {
       { kind: 'context', sourceKey: 'vision', text: 'a cat on screen', atMs: T0 },
     ])
     const addressed = markAddressed(base, 'context:vision', T0 + MIN)
+    // Her unprompted turn about the addressed topic is spoken; that turn makes the topic her last remark.
+    const spoken = reduceSituation(addressed, { kind: 'conversation', who: 'character', origin: 'unprompted', atMs: T0 + MIN }, T0 + MIN)
     const { text } = renderSituation(
-      { ...addressed, conversation: { ...addressed.conversation, lastUnpromptedAtMs: T0 + MIN } },
+      { ...spoken, conversation: { ...spoken.conversation, lastCharacterAtMs: null } },
       T0 + 11 * MIN,
     )
     expect(text).toContain('- You last spoke up on your own 10 min ago, about a cat on screen.')

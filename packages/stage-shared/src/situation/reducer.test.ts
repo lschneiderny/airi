@@ -10,6 +10,7 @@ import {
   markShown,
   notifyTopicKey,
   reduceSituation,
+  RETURNED_AFTER_AWAY_MS,
   SITUATION_EVENTS_MAX,
 } from '.'
 
@@ -180,10 +181,31 @@ describe('reduceSituation presence', () => {
   it('emits returned only when away for at least 5 min', () => {
     const shortAway = run([presence('here', T0 - MIN), presence('away', T0), presence('here', T0 + 5 * MIN - 1)])
     expect(eventsOf(shortAway, 'returned')).toHaveLength(0)
-    expect(eventsOf(shortAway, 'went-away')).toHaveLength(1)
+    expect(eventsOf(shortAway, 'went-away')).toHaveLength(0)
 
     const longAway = run([presence('here', T0 - MIN), presence('away', T0), presence('here', T0 + 5 * MIN)])
     expect(eventsOf(longAway, 'returned').map(e => [e.topicKey, e.text])).toEqual([['presence:return', 'came back after 5 min away']])
+    expect(eventsOf(longAway, 'went-away')).toHaveLength(1)
+  })
+
+  it('creates no stepped-away topic for an instant lock and unlock', () => {
+    const state = run([presence('here', T0 - MIN), presence('away', T0), presence('here', T0 + SEC)])
+
+    expect(eventsOf(advanceSituation(state, T0 + 10 * MIN), 'went-away')).toHaveLength(0)
+    expect(state.presence).toMatchObject({ state: 'here', sinceMs: T0 + SEC })
+  })
+
+  it('creates the stepped-away topic once the user has been away for the returned threshold, and only once', () => {
+    const away = run([presence('here', T0 - MIN), presence('away', T0)])
+
+    expect(eventsOf(advanceSituation(away, T0 + RETURNED_AFTER_AWAY_MS - 1), 'went-away')).toHaveLength(0)
+    const settled = advanceSituation(away, T0 + RETURNED_AFTER_AWAY_MS)
+    expect(eventsOf(settled, 'went-away').map(e => [e.topicKey, e.text, e.atMs])).toEqual([['presence:away', 'stepped away', T0 + RETURNED_AFTER_AWAY_MS]])
+
+    // After the event decays out of the ring, the same away span does not create it again.
+    const decayed = advanceSituation(settled, T0 + 60 * MIN)
+    expect(eventsOf(decayed, 'went-away')).toHaveLength(0)
+    expect(eventsOf(advanceSituation(decayed, T0 + 61 * MIN), 'went-away')).toHaveLength(0)
   })
 
   it('counts the away time through an unknown sample', () => {
@@ -440,15 +462,32 @@ describe('purity and time', () => {
 })
 
 describe('markAddressed', () => {
-  it('records the addressed event text as the last unprompted topic and keeps it when nothing matches', () => {
+  it('names a topic as her last remark only once her unprompted turn about it is spoken', () => {
+    const spoken = (atMs: number): Observation => ({ kind: 'conversation', who: 'character', origin: 'unprompted', atMs })
     const state = run([context('game', 'in a dungeon', T0)])
 
     const addressed = markAddressed(state, 'context:game', T0 + MIN)
-    expect(addressed.conversation.lastUnpromptedTopic).toBe('in a dungeon')
+    expect(addressed.conversation.lastUnpromptedTopic).toBeNull()
+    const first = reduceSituation(addressed, spoken(T0 + MIN + SEC), T0 + MIN + SEC)
+    expect(first.conversation).toMatchObject({ lastUnpromptedAtMs: T0 + MIN + SEC, lastUnpromptedTopic: 'in a dungeon' })
 
-    const unchanged = markAddressed(addressed, 'context:nope', T0 + 2 * MIN)
-    expect(unchanged.conversation.lastUnpromptedTopic).toBe('in a dungeon')
+    // The next fire addresses its topic before its prompt is rendered: the prompt still names the earlier remark.
+    const second = markAddressed(run([context('vision', 'a cat', T0 + 10 * MIN)], first), 'context:vision', T0 + 10 * MIN)
+    expect(second.conversation).toMatchObject({ lastUnpromptedAtMs: T0 + MIN + SEC, lastUnpromptedTopic: 'in a dungeon' })
+    // A reply to the user is not her unprompted remark.
+    const replied = reduceSituation(second, { kind: 'conversation', who: 'character', origin: 'user', atMs: T0 + 10 * MIN + SEC }, T0 + 10 * MIN + SEC)
+    expect(replied.conversation.lastUnpromptedTopic).toBe('in a dungeon')
+    expect(reduceSituation(replied, spoken(T0 + 11 * MIN), T0 + 11 * MIN).conversation.lastUnpromptedTopic).toBe('a cat')
     expect(state.conversation.lastUnpromptedTopic).toBeNull()
+  })
+
+  it('names no topic for a spoken unprompted turn whose topic matched no event', () => {
+    const spoken: Observation = { kind: 'conversation', who: 'character', origin: 'unprompted', atMs: T0 + 2 * MIN }
+    const first = reduceSituation(markAddressed(run([context('game', 'in a dungeon', T0)]), 'context:game', T0 + MIN), { ...spoken, atMs: T0 + MIN }, T0 + MIN)
+    expect(first.conversation.lastUnpromptedTopic).toBe('in a dungeon')
+
+    const unmatched = reduceSituation(markAddressed(first, 'context:nope', T0 + 2 * MIN), spoken, T0 + 2 * MIN)
+    expect(unmatched.conversation).toMatchObject({ lastUnpromptedAtMs: T0 + 2 * MIN, lastUnpromptedTopic: null })
   })
 
   it('keeps addressed events in the ring until their salience drops below 0.05', () => {
