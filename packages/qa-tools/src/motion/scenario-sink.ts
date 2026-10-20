@@ -113,6 +113,7 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
   let simTime = 0
   const timers = createSimTimers(levelName)
   const holdPerformer = new EmotionHoldPerformer()
+  holdPerformer.setSlotSettings(settings.slots)
   const pendingEmotions: NaturalEpisode[] = []
   const host = options.createHost({ scenario, settings, catalog, home })
 

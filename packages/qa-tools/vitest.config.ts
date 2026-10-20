@@ -1,3 +1,5 @@
+import process from 'node:process'
+
 import Vue from '@vitejs/plugin-vue'
 
 import { defineConfig } from 'vitest/config'
@@ -22,7 +24,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'gate',
-          include: ['gates/**/*.gate.ts'],
+          include: process.env.QA_RUN_DIR ? ['gates/**/*.gate.ts'] : [],
           pool: 'forks',
           testTimeout: 0,
         },

@@ -190,7 +190,7 @@ export interface CheckResult {
   E: number | null
   /** Bootstrap 95% CI of `E`. */
   ci: [number, number] | null
-  /** `E / sigma0` of the placebo null. */
+  /** `E / sigma0` of the placebo null; `null` for zero spread (the report's reasons explain it). */
   d: number | null
   hits: number | null
   hitRate: number | null
@@ -887,7 +887,8 @@ export function measureEmotionTrial(run: NaturalTrace, paired: NaturalTrace | nu
     }
     const runBlinks = blinks(run, pulse)
     const runBreath = breath(run, pulse)
-    if (runBlinks !== null && runBreath !== null && run.t[run.t.length - 1] >= pulse + releaseStart + to - 1e-9) {
+    // The 30 Hz recorder may keep its last sample just before the scenario endpoint.
+    if (runBlinks !== null && runBreath !== null && run.t[run.t.length - 1] >= pulse + releaseStart + to - 1 / 30) {
       return {
         trialId,
         emotion,
@@ -1215,8 +1216,11 @@ function evaluateCheck(check: ChannelCheck, context: EvaluationContext): Evaluat
     if (!primary.length) {
       notEvaluable('visibility', 'no usable full trials')
     }
-    else if (placebo.length < 2 || result.d === null) {
+    else if (placebo.length < 2) {
       notEvaluable('visibility', 'fewer than two placebo windows')
+    }
+    else if (result.E === null) {
+      notEvaluable('visibility', 'no measurable effect')
     }
     else {
       const q = gate.visibility.quantile
@@ -1232,7 +1236,12 @@ function evaluateCheck(check: ChannelCheck, context: EvaluationContext): Evaluat
       }).length
       result.hitRate = result.hits / primary.length
       const rule = gate.visibility.bands[check.band]
-      outcomes.visibility = result.hitRate >= rule.hitRate && result.d >= rule.d
+      // A positive effect against a perfectly still null has unbounded standardized size.
+      // Keep JSON finite while evaluating the limit E / sigma0 as sigma0 approaches zero.
+      if (result.d === null)
+        result.reasons.push('visibility: placebo null has zero spread at this level')
+      const sizePass = result.d === null ? result.E > 0 : result.d >= rule.d
+      outcomes.visibility = result.hitRate >= rule.hitRate && sizePass
     }
   }
 

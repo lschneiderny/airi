@@ -91,7 +91,7 @@ export function buildLongHold(options: LongHoldOptions): MotionScenario {
     seed,
     durationSeconds: warmup + seconds + post,
     levels: allLevels,
-    settings: { performance: { held: { turnlessSeconds: seconds } } },
+    settings: { performance: { held: { turnlessSeconds: seconds }, slots: { holdCap: seconds } } },
     events: [{ kind: 'emotion', at: warmup, emotion, band, source: 'devtools', trialId }],
   })
 }

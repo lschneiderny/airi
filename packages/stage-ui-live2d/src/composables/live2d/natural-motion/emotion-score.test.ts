@@ -93,6 +93,39 @@ function score(input: Partial<ScorerInput> & Pick<ScorerInput, 'trials'>) {
 }
 
 describe('emotion scorer', () => {
+  it.each([recipeAmplitude, 0, -recipeAmplitude])('evaluates visibility against a zero-spread null for effect %s', (amplitude) => {
+    const nulls: PlaceboRecord[] = Array.from({ length: 10 }, (_, index) => ({ id: `still-${index}`, channels: { mouthForm: 0 } }))
+    const stillTrials = trials('full', 12, amplitude).map(trial => ({
+      ...trial,
+      channels: { mouthForm: { value: amplitude, paired: 0 } },
+    }))
+    const report = score({ trials: stillTrials, placebos: nulls, criteria: ['visibility'] })
+    const result = report.results[0]
+
+    expect(report.nullStats.mouthForm).toEqual({ sigma0: 0, q: 0, n: 10 })
+    expect(result.verdict).toBe(amplitude < 0 ? 'pass' : 'fail')
+    expect(result.hitRate).toBe(amplitude < 0 ? 1 : 0)
+    expect(result.d).toBeNull()
+    expect(result.reasons).toContain('visibility: placebo null has zero spread at this level')
+    expect(JSON.stringify(report)).not.toContain('Infinity')
+  })
+
+  it('measures modulation release when the final sample is within one sample period of the endpoint', () => {
+    const trialId = 'angry-strong-long-hold-1'
+    const times = Array.from({ length: 110 * 30 + 1 }, (_, index) => Math.max(0, index / 30 - 1 / 120))
+    const trace = syntheticTrace(1, trialEvents(trialId), () => 0, 110, 0, times)
+    trace.channels.ParamEyeLOpen = times.map(() => 1)
+    trace.channels.ParamEyeROpen = times.map(() => 1)
+    trace.channels.ParamBreath = times.map(time => Math.sin(2 * Math.PI * time / 4))
+    const stripped = { ...trace, events: [scenario({ kind: 'noop', at: pulseAt, replaced: 'emotion', trialId })] }
+    const measure = (run: NaturalTrace) => measureEmotionTrial(run, stripped, { trialId, variant: 'long-hold', gate: emotionGate })
+
+    expect(measure(trace).modulationRelease?.breath.paired).not.toBeNull()
+    expect(measure(trace).modulationRelease).toBeDefined()
+    const short = { ...trace, t: times.slice(0, -2), channels: Object.fromEntries(Object.entries(trace.channels).map(([id, values]) => [id, values.slice(0, -2)])) }
+    expect(measure(short).modulationRelease).toBeUndefined()
+  })
+
   it('passes a known effect of the recipe size on every criterion', () => {
     const result = score({ trials: [...trials('full', 12, recipeAmplitude), ...trials('held-only', 8, recipeAmplitude)] }).results[0]
     expect(result.failed).toEqual([])

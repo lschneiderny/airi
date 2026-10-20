@@ -1,7 +1,9 @@
 import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
 
-import { buildEmotionTrial, stripEmotions } from '@proj-airi/stage-shared/motion-scenario'
+import { buildEmotionTrial, buildLongHold, stripEmotions } from '@proj-airi/stage-shared/motion-scenario'
+import { measureEmotionTrial } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
+import { emotionGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 import { describe, expect, it, vi } from 'vitest'
 
 import catalogJson from '../../../fixtures/forbooth-catalog.json'
@@ -19,6 +21,21 @@ function withEvents(events: unknown[], overrides: Record<string, unknown> = {}):
 }
 
 describe('runT1', () => {
+  it('holds a long trial for 60 seconds and measures its 30-second release window', () => {
+    const scenario = buildLongHold({ emotion: 'angry', band: 'strong', seed: 1 })
+    const trace = runT1(scenario, { catalog })
+    const holds = trace.events.flatMap(entry => entry.source === 'natural' && entry.event.kind === 'hold' ? [{ t: entry.t, emotion: entry.event.emotion }] : [])
+
+    expect(holds).toEqual([{ t: 20, emotion: 'angry' }, { t: 80, emotion: null }])
+    // The recorder may keep the last sample just before the scenario endpoint.
+    expect(trace.t.at(-1)).toBeGreaterThanOrEqual(110 - 1 / 30)
+    const paired = runT1(stripEmotions(scenario), { catalog })
+    const measured = measureEmotionTrial(trace, paired, { trialId: 'angry-strong-long-hold-1', variant: 'long-hold', gate: emotionGate })
+    expect(measured.modulationRelease).toBeDefined()
+    expect(measured.modulationRelease?.blinks.paired).not.toBeNull()
+    expect(measured.modulationRelease?.breath.paired).not.toBeNull()
+  })
+
   it('serializes two runs of one scenario to the same bytes, whatever ran in between', () => {
     const first = JSON.stringify(runT1(trial()))
     runT1(trial('full', 2))
