@@ -382,6 +382,8 @@ onMounted(async () => {
   await restoreLocale()
 
   await chatStore.initialize(syncedPinia)
+  // The desktop app is the only host whose leader lets the character speak up on her own.
+  situationStore.setHostCapabilities({ unprompted: true })
   situationStore.initialize(syncedPinia)
 
   await fullStageRuntime?.initialize()

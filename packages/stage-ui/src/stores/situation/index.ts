@@ -1,23 +1,37 @@
-import type { Observation, SituationState } from '@proj-airi/stage-shared/situation'
+import type { ChatHookRegistry, TurnRef } from '@proj-airi/core-agent'
+import type { GateDecision, GateMemory, GateSignals, Observation, SituationState } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
+import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
 import type { ConversationHookSource } from './sensors/conversation'
 
+import { errorMessageFrom } from '@moeru/std'
 import {
   advanceSituation,
+  evaluateGate,
+  initialGateMemory,
   initialSituationState,
   markShown,
   markAddressed as markSituationAddressed,
+  promotionGateMemory,
+  recordFireOutcome,
+  recordUserTurn,
   reduceSituation,
   renderSituation,
+  visibilityRegainGateMemory,
 } from '@proj-airi/stage-shared/situation'
+import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
+import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
+import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { computed, shallowRef, watch } from 'vue'
 
+import { useSituationSettings } from '../../features/situation/settings'
+import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceRequestTurns, voiceTurnsChanged } from '../../services/speech/bus'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { startConversationSensor } from './sensors/conversation'
-import { startDesktopSensor } from './sensors/desktop'
-import { startForegroundSensor } from './sensors/foreground'
+import { DESKTOP_SAMPLE_STALE_MS, startDesktopSensor } from './sensors/desktop'
+import { FOREGROUND_SAMPLE_STALE_VISIBLE_MS, startForegroundSensor } from './sensors/foreground'
 import { startStageSensor } from './sensors/stage'
 
 /**
@@ -25,6 +39,34 @@ import { startStageSensor } from './sensors/stage'
  * re-checks desktop and foreground sample freshness.
  */
 const ADVANCE_INTERVAL_MS = 1_000
+
+/**
+ * How often the leader asks the opportunity gate whether the character should speak up on her own.
+ *
+ * Tuning: the gate's own guards set the pace of remarks; this only bounds how late she notices a good moment.
+ */
+export const GATE_INTERVAL_MS = 2_000
+
+/** A composer that reported writing within this time counts as the user typing. */
+export const COMPOSER_INPUT_RECENT_MS = 10_000
+/** A composer report expires this long after it arrived, so a closed window cannot hold the gate forever. */
+export const COMPOSER_REPORT_EXPIRY_MS = 15_000
+
+/** `submitUnprompted` returns this error when another unprompted turn is still pending: busy, not a failure. */
+const UNPROMPTED_BUSY_ERROR = 'Another unprompted turn is still pending'
+
+/** The parts of the leader's chat store the gate needs. The chat store hands them over through `observeChat`. */
+export interface SituationChatControls {
+  /** Raw `sending`: any turn generates, unprompted turns included. */
+  sending: () => boolean
+  pendingQueuedSendCount: () => number
+  /** Whether an unprompted turn was submitted and its result is not read yet. */
+  unpromptedPending: () => boolean
+  submitUnprompted: (payload: ChatUnpromptedPayload) => Promise<ChatUnpromptedResult>
+}
+
+/** The chat hooks the store listens to: the conversation sensor's, plus literals that show a fire was spoken. */
+export type SituationChatHooks = ConversationHookSource & Pick<ChatHookRegistry, 'onTokenLiteral'>
 
 interface RunningSensors {
   check: (nowMs: number) => void
@@ -44,6 +86,10 @@ interface RunningSensors {
  * and a demoted or disposed window stops the sensors and the ticker and drops its state. Follower windows never
  * register sensors, so their chat hooks and desktop samples produce no observations. The conversation sensor runs
  * on the hooks that the chat store hands over through {@link observeChat}.
+ *
+ * In a host that declared the `unprompted` capability ({@link setHostCapabilities}), the leader also runs the
+ * opportunity gate every {@link GATE_INTERVAL_MS}. A fire addresses its topic, then starts one unprompted turn through
+ * the chat controls, and the gate starts no other turn until that one has a result.
  */
 export const useSituationStore = defineStore('situation', () => {
   const current = shallowRef<SituationState>(initialSituationState)
@@ -51,10 +97,29 @@ export const useSituationStore = defineStore('situation', () => {
   const stageVisible = shallowRef(false)
   let ticker: ReturnType<typeof setInterval> | undefined
   let sensors: RunningSensors | undefined
-  let chatHooks: ConversationHookSource | undefined
+  let chatHooks: SituationChatHooks | undefined
+  let chat: SituationChatControls | undefined
   let stopConversation: (() => void) | undefined
   let stopLeadershipListener: (() => void) | undefined
   const observability = useSituationObservabilityStore()
+  const settings = useSituationSettings()
+  const desktopActivity = useDesktopActivityStore()
+  const foregroundWindow = useForegroundWindowStore()
+
+  const hostSupportsUnprompted = shallowRef(false)
+  let gateTicker: ReturnType<typeof setInterval> | undefined
+  let gateMemory: GateMemory = initialGateMemory
+  /** Whether the stage was on screen with a fresh desktop sample at the previous gate tick. */
+  let wasStageShown = false
+  /** The unprompted turn the gate started, from the fire until its result is recorded. */
+  let firing: { turnId: string, spoken: boolean } | undefined
+  /** Advances on every promotion and demotion, so a result from an earlier leadership is dropped. */
+  let leadership = 0
+  let stopSignalListeners: (() => void) | undefined
+  let remoteUserSpeaking = false
+  let speakingTurns: readonly TurnRef[] = []
+  /** The newest report of each chat composer, with the local time it arrived. */
+  const composers = new Map<string, { hasDraft: boolean, lastInputAtMs: number, receivedAtMs: number }>()
 
   // Feeds the devtools Situation inspector of this window. Sync flush keeps it equal to the state after every call.
   watch([leading, current], ([isLeading, state]) => observability.publishLiveState(isLeading, state), { flush: 'sync', immediate: true })
@@ -85,8 +150,167 @@ export const useSituationStore = defineStore('situation', () => {
 
   /** Starts the conversation sensor once this window leads and the chat hooks are known, whichever comes last. */
   function startConversation() {
-    if (leading.value && chatHooks && !stopConversation)
-      stopConversation = startConversationSensor(chatHooks, ingest)
+    if (!leading.value || !chatHooks || stopConversation)
+      return
+    const stopSensor = startConversationSensor(chatHooks, (observation) => {
+      ingest(observation)
+      // The sensor reports user turns only for user-origin sends, so the character's own turns earn no engagement.
+      if (observation.kind === 'conversation' && observation.who === 'user' && observation.origin === 'user')
+        gateMemory = recordUserTurn(gateMemory, observation.atMs)
+    })
+    const stopSpokenListener = chatHooks.onTokenLiteral(async (_literal, context) => {
+      // The runtime holds an unprompted reply until it decides to speak, so its first literal means spoken. Recording
+      // it now, not when the reply ends, lets a user reply that arrives mid-reply count as engagement.
+      if (!firing || firing.spoken || context.origin !== 'unprompted' || context.turnId !== firing.turnId)
+        return
+      firing.spoken = true
+      gateMemory = recordFireOutcome(gateMemory, 'spoken', Date.now())
+    })
+    stopConversation = () => {
+      stopSensor()
+      stopSpokenListener()
+    }
+  }
+
+  /** Listens on the speech bus for voice input, character speech, and composer activity of every window. */
+  function startSignalListeners() {
+    const context = getSpeechBusContext()
+    const stops = [
+      context.on(speechInputUserSpeakingChangedEvent, ({ body }) => {
+        if (body)
+          remoteUserSpeaking = body.speaking
+      }),
+      context.on(voiceTurnsChanged, ({ body }) => {
+        if (body)
+          speakingTurns = body
+      }),
+      context.on(chatComposerActivityChangedEvent, ({ body }) => {
+        if (body)
+          composers.set(body.sourceId, { hasDraft: body.hasDraft, lastInputAtMs: body.lastInputAtMs, receivedAtMs: Date.now() })
+      }),
+    ]
+    // The audio host answers with its current turns, so a leader that starts mid-reply does not miss them.
+    context.emit(voiceRequestTurns, undefined)
+    return () => {
+      for (const stop of stops)
+        stop()
+      remoteUserSpeaking = false
+      speakingTurns = []
+      composers.clear()
+    }
+  }
+
+  function userTyping(nowMs: number): boolean {
+    let typing = false
+    for (const [sourceId, report] of composers) {
+      if (nowMs - report.receivedAtMs > COMPOSER_REPORT_EXPIRY_MS) {
+        composers.delete(sourceId)
+        continue
+      }
+      if (report.hasDraft || nowMs - report.lastInputAtMs < COMPOSER_INPUT_RECENT_MS)
+        typing = true
+    }
+    return typing
+  }
+
+  function isRecent(sampledAtMs: number | null | undefined, nowMs: number, limitMs: number): boolean {
+    return typeof sampledAtMs === 'number' && Number.isFinite(sampledAtMs) && Math.abs(nowMs - sampledAtMs) <= limitMs
+  }
+
+  function gateSignals(controls: SituationChatControls, nowMs: number): GateSignals {
+    return {
+      userSpeaking: remoteUserSpeaking,
+      userTyping: userTyping(nowMs),
+      characterSpeaking: speakingTurns.length > 0,
+      generating: controls.sending(),
+      queued: controls.pendingQueuedSendCount(),
+      desktopFresh: isRecent(desktopActivity.snapshot?.sampledAtMs, nowMs, DESKTOP_SAMPLE_STALE_MS),
+      foregroundFresh: isRecent(foregroundWindow.sample?.sampledAtMs, nowMs, FOREGROUND_SAMPLE_STALE_VISIBLE_MS),
+      stageVisible: stageVisible.value,
+    }
+  }
+
+  /**
+   * One gate evaluation. Nothing is evaluated while an unprompted turn is pending: from the fire until `sending`
+   * turns true the chat reports nothing, so the gate's own `generating` guard cannot see it yet.
+   */
+  function gateTick() {
+    const controls = chat
+    if (!controls || firing || controls.unpromptedPending())
+      return
+
+    const nowMs = Date.now()
+    const signals = gateSignals(controls, nowMs)
+    // A stage that comes back on screen waits a full gap, like a new leader, instead of speaking at once.
+    const stageShown = signals.stageVisible && signals.desktopFresh
+    if (stageShown && !wasStageShown)
+      gateMemory = visibilityRegainGateMemory(gateMemory, nowMs)
+    wasStageShown = stageShown
+
+    const document = settings.document
+    const before = gateMemory
+    const { decision, memory } = evaluateGate({
+      nowMs,
+      situation: current.value,
+      signals,
+      settings: {
+        enabled: document.unpromptedEnabled,
+        chattiness: document.chattiness,
+        dontDisturb: document.dontDisturb,
+        // Settings list executable names (`zoom.exe`); the gate matches app ids, which drop the `.exe` extension.
+        quietApps: document.quietApps.map(pattern => pattern.trim().replace(/\.exe$/i, '')),
+        speakDuringGames: document.speakDuringGames,
+      },
+    }, gateMemory)
+    gateMemory = memory
+    observability.recordGateDecision(decision, memory)
+    if (decision.fire)
+      void fire(controls, decision, before)
+  }
+
+  /** Starts the unprompted turn of a fire and records its outcome. The topic is addressed before the turn starts. */
+  async function fire(controls: SituationChatControls, decision: Extract<GateDecision, { fire: true }>, before: GateMemory) {
+    const turn = { turnId: nanoid(), spoken: false }
+    const startedIn = leadership
+    firing = turn
+    markAddressed(decision.topicKey)
+    let result: ChatUnpromptedResult
+    try {
+      result = await controls.submitUnprompted({ topicKey: decision.topicKey, topicText: decision.topicText, messageId: turn.turnId })
+    }
+    catch (error) {
+      result = { status: 'failed', error: errorMessageFrom(error) ?? 'Unknown unprompted turn failure' }
+    }
+    finally {
+      firing = undefined
+    }
+    if (startedIn !== leadership)
+      return
+    if (result.status === 'failed' && result.error === UNPROMPTED_BUSY_ERROR) {
+      // Another caller's unprompted turn won the race. This fire never happened, so it takes no gap or cap slot.
+      gateMemory = { ...gateMemory, lastFireAtMs: before.lastFireAtMs, fires: gateMemory.fires.filter(atMs => atMs !== decision.trace.nowMs), pending: before.pending }
+      return
+    }
+    if (!turn.spoken)
+      gateMemory = recordFireOutcome(gateMemory, result.status, Date.now())
+  }
+
+  /** Runs the gate loop only while this window leads in a host that supports unprompted turns. */
+  function syncGateLoop() {
+    const shouldRun = leading.value && hostSupportsUnprompted.value
+    if (shouldRun && gateTicker === undefined) {
+      gateMemory = promotionGateMemory(Date.now())
+      wasStageShown = false
+      stopSignalListeners = startSignalListeners()
+      gateTicker = setInterval(gateTick, GATE_INTERVAL_MS)
+    }
+    else if (!shouldRun && gateTicker !== undefined) {
+      clearInterval(gateTicker)
+      gateTicker = undefined
+      stopSignalListeners?.()
+      stopSignalListeners = undefined
+      gateMemory = initialGateMemory
+    }
   }
 
   function startLeading() {
@@ -94,6 +318,7 @@ export const useSituationStore = defineStore('situation', () => {
       return
     current.value = initialSituationState
     leading.value = true
+    leadership += 1
     // Sensors report their current readings at once, so they start after `leading` lets `ingest` through.
     sensors = startSensors()
     startConversation()
@@ -102,6 +327,7 @@ export const useSituationStore = defineStore('situation', () => {
       sensors?.check(nowMs)
       advance(nowMs)
     }, ADVANCE_INTERVAL_MS)
+    syncGateLoop()
   }
 
   function stopLeading() {
@@ -113,7 +339,10 @@ export const useSituationStore = defineStore('situation', () => {
     if (ticker !== undefined)
       clearInterval(ticker)
     ticker = undefined
+    if (leading.value)
+      leadership += 1
     leading.value = false
+    syncGateLoop()
     current.value = initialSituationState
   }
 
@@ -148,12 +377,25 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   /**
-   * Receives the chat runtime hooks of this window. The chat store calls it once from its setup; the first source
-   * wins. While this window leads, the conversation sensor records user and character turns from these hooks.
+   * Receives the chat runtime hooks and controls of this window. The chat store calls it once from its setup; the
+   * first source wins. While this window leads, the conversation sensor records user and character turns from these
+   * hooks, and the gate reads the controls and starts unprompted turns through them.
    */
-  function observeChat(hooks: ConversationHookSource) {
-    chatHooks ??= hooks
+  function observeChat(hooks: SituationChatHooks, controls: SituationChatControls) {
+    if (!chatHooks) {
+      chatHooks = hooks
+      chat = controls
+    }
     startConversation()
+  }
+
+  /**
+   * Declares what the host can do. Only a host that sets `unprompted` runs the gate loop, so the character speaks up
+   * on her own there and nowhere else (the Electron app sets it; web and Pocket never do).
+   */
+  function setHostCapabilities(capabilities: { unprompted: boolean }) {
+    hostSupportsUnprompted.value = capabilities.unprompted
+    syncGateLoop()
   }
 
   /**
@@ -186,12 +428,14 @@ export const useSituationStore = defineStore('situation', () => {
     state: computed(() => current.value),
     leading: computed(() => leading.value),
     stageVisible: computed(() => stageVisible.value),
+    hostSupportsUnprompted: computed(() => hostSupportsUnprompted.value),
     ingest,
     advance,
     renderForRequest,
     markAddressed,
     observeChat,
     setStageVisible,
+    setHostCapabilities,
     initialize,
     dispose,
   }

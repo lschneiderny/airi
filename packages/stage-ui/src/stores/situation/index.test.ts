@@ -4,6 +4,9 @@ import type { ActivityObservation, WakeObservation } from '@proj-airi/stage-shar
 import type { ForegroundWindowSample } from '@proj-airi/stage-shared/stores/foreground-window'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
+import type { SituationChatControls } from '.'
+import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
+
 import { createChatHooks } from '@proj-airi/core-agent'
 import { initialSituationState, SETTLE_MS } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
@@ -11,8 +14,10 @@ import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foregro
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useSituationStore } from '.'
+import { GATE_INTERVAL_MS, useSituationStore } from '.'
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
+import { useSituationSettings } from '../../features/situation/settings'
+import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceTurnsChanged } from '../../services/speech/bus'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { DESKTOP_SAMPLE_STALE_MS } from './sensors/desktop'
 import { FOREGROUND_SAMPLE_STALE_HIDDEN_MS, FOREGROUND_SAMPLE_STALE_VISIBLE_MS } from './sensors/foreground'
@@ -68,6 +73,19 @@ function desktopSample(overrides: Partial<DesktopActivitySnapshot> = {}): Deskto
 /** A fresh foreground sample at the current fake time. */
 function foregroundSample(overrides: Partial<ForegroundWindowSample> = {}): ForegroundWindowSample {
   return { exePath: 'C:\\Windows\\notepad.exe', exeName: 'notepad.exe', title: 'notes.txt - Notepad', pid: 7, ownProcess: false, notificationState: 'accepts', sampledAtMs: Date.now(), ...overrides }
+}
+
+/** Fake chat controls: a quiet chat whose unprompted turns are spoken, unless a test replaces `submitUnprompted`. */
+function createChatControls() {
+  const state = { sending: false, queued: 0, unpromptedPending: false }
+  const submitUnprompted = vi.fn(async (_payload: ChatUnpromptedPayload): Promise<ChatUnpromptedResult> => ({ status: 'spoken', text: 'Still at it?' }))
+  const controls: SituationChatControls = {
+    sending: () => state.sending,
+    pendingQueuedSendCount: () => state.queued,
+    unpromptedPending: () => state.unpromptedPending,
+    submitUnprompted: payload => submitUnprompted(payload),
+  }
+  return { state, controls, submitUnprompted }
 }
 
 /** Emits the hooks of one finished user turn, as the chat runtime does. */
@@ -262,7 +280,7 @@ describe('situation store', () => {
     const leadership = createLeadership(true)
     const store = useSituationStore()
     const hooks = createChatHooks()
-    store.observeChat(hooks)
+    store.observeChat(hooks, createChatControls().controls)
     usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
     store.initialize(leadership.runtime)
 
@@ -307,7 +325,7 @@ describe('situation store', () => {
     const leadership = createLeadership(false)
     const store = useSituationStore()
     const hooks = createChatHooks()
-    store.observeChat(hooks)
+    store.observeChat(hooks, createChatControls().controls)
     store.initialize(leadership.runtime)
 
     useDesktopActivityStore().setSnapshot(desktopSample({ locked: true }))
@@ -321,7 +339,7 @@ describe('situation store', () => {
     const leadership = createLeadership(true)
     const store = useSituationStore()
     const hooks = createChatHooks()
-    store.observeChat(hooks)
+    store.observeChat(hooks, createChatControls().controls)
     store.initialize(leadership.runtime)
     const desktop = useDesktopActivityStore()
     desktop.setSnapshot(desktopSample())
@@ -345,8 +363,8 @@ describe('situation store', () => {
     const first = createChatHooks()
     const second = createChatHooks()
 
-    store.observeChat(first)
-    store.observeChat(second)
+    store.observeChat(first, createChatControls().controls)
+    store.observeChat(second, createChatControls().controls)
     await userTurn(second, 'turn-ignored')
     expect(store.state.conversation.lastUserAtMs).toBeNull()
     await userTurn(first, 'turn-1')
@@ -414,5 +432,314 @@ describe('situation store', () => {
 
     expect(store.stageVisible).toBe(true)
     expect(store.$state).toEqual({})
+  })
+})
+
+describe('situation gate loop', () => {
+  /** Promotion holds the gate for the minimum gap; at the default Chattiness 0.5 that is 10 minutes. */
+  const GAP_MS = 10 * 60 * 1_000
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(T0)
+    setActivePinia(createPinia())
+  })
+
+  afterEach(() => {
+    useSituationStore().dispose()
+    vi.useRealTimers()
+  })
+
+  /**
+   * A leader in a host that supports unprompted turns, with a visible stage, an attentive user, and desktop and
+   * foreground samples that its producers keep fresh, so only the gate's own rules decide.
+   */
+  function startQuietLeader(options: { capable?: boolean, leader?: boolean } = {}) {
+    const leadership = createLeadership(options.leader ?? true)
+    const store = useSituationStore()
+    const hooks = createChatHooks()
+    const chat = createChatControls()
+    const desktop = useDesktopActivityStore()
+    const foreground = useForegroundWindowStore()
+    const keepFresh = () => {
+      desktop.setSnapshot(desktopSample())
+      foreground.setSample(foregroundSample())
+    }
+    keepFresh()
+    setInterval(keepFresh, 1_000)
+    store.setStageVisible(true)
+    if (options.capable ?? true)
+      store.setHostCapabilities({ unprompted: true })
+    store.observeChat(hooks, chat.controls)
+    store.initialize(leadership.runtime)
+    return { store, hooks, chat, leadership, observability: useSituationObservabilityStore() }
+  }
+
+  /** A new topic the gate can bring up: an unlock right now. */
+  function offerTopic() {
+    useSituationStore().ingest(wake(Date.now()))
+  }
+
+  async function nextGateTick() {
+    await vi.advanceTimersByTimeAsync(GATE_INTERVAL_MS)
+  }
+
+  /** Emits the hooks the runtime emits for an unprompted turn that starts speaking. */
+  async function unpromptedTurnSpeaks(hooks: ChatHookRegistry, turnId: string) {
+    const context: ChatStreamEventContext = { sessionId: 'session-1', turnId, origin: 'unprompted', message: { role: 'user', content: '(No one spoke to you.)', createdAt: Date.now(), id: turnId }, contexts: {}, composedMessage: [] }
+    await hooks.emitBeforeSendHooks('(No one spoke to you.)', context)
+    await hooks.emitTokenLiteralHooks(' Still at it?', context)
+  }
+
+  it('fires once when the user is quiet, after marking the topic addressed', async () => {
+    const { store, chat, observability } = startQuietLeader()
+    let addressedBeforeSubmit: number | null | undefined
+    chat.submitUnprompted.mockImplementation(async () => {
+      addressedBeforeSubmit = store.state.events.find(event => event.topicKey === 'wake')?.addressedAtMs
+      return { status: 'spoken', text: 'Still at it?' }
+    })
+
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    await nextGateTick()
+
+    expect(observability.gate?.decision).toMatchObject({ fire: true, reason: 'ready', topicKey: 'wake', topicText: 'unlocked the computer' })
+    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+    expect(chat.submitUnprompted.mock.calls[0][0]).toMatchObject({ topicKey: 'wake', topicText: 'unlocked the computer', messageId: expect.any(String) })
+    expect(addressedBeforeSubmit).toEqual(expect.any(Number))
+
+    // The gap now holds every later topic.
+    await vi.advanceTimersByTimeAsync(60 * 1_000)
+    offerTopic()
+    await nextGateTick()
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'gap' })
+    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+  })
+
+  it('holds while a chat turn is sending', async () => {
+    const { chat, observability } = startQuietLeader()
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    chat.state.sending = true
+    offerTopic()
+
+    await nextGateTick()
+
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'generating' })
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+  })
+
+  it('never runs in a host without the unprompted capability, nor in a follower', async () => {
+    const { chat, observability } = startQuietLeader({ capable: false })
+    offerTopic()
+    await vi.advanceTimersByTimeAsync(GAP_MS + GATE_INTERVAL_MS)
+    expect(observability.gate).toBeNull()
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+
+    useSituationStore().dispose()
+    setActivePinia(createPinia())
+    const follower = startQuietLeader({ leader: false })
+    await vi.advanceTimersByTimeAsync(GAP_MS + GATE_INTERVAL_MS)
+    expect(follower.observability.gate).toBeNull()
+    expect(follower.chat.submitUnprompted).not.toHaveBeenCalled()
+  })
+
+  it('holds right after promotion, so a new leader does not speak up at once', async () => {
+    const { chat, observability } = startQuietLeader()
+    offerTopic()
+
+    await nextGateTick()
+
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'gap' })
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+  })
+
+  it('starts no second turn while one is pending, even before sending turns true', async () => {
+    const { chat, observability } = startQuietLeader()
+    // The turn is still in preparation: `sending` stays false and no result arrives.
+    chat.submitUnprompted.mockImplementation(() => new Promise<ChatUnpromptedResult>(() => {}))
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    await nextGateTick()
+    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+    const firstDecision = observability.gate
+
+    // Far past the gap, with new topics: nothing is evaluated while the turn is pending.
+    for (let minute = 0; minute < 30; minute++) {
+      offerTopic()
+      await vi.advanceTimersByTimeAsync(60 * 1_000)
+    }
+    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+    expect(observability.gate).toBe(firstDecision)
+  })
+
+  it('evaluates nothing while another caller\'s unprompted turn is pending', async () => {
+    const { chat, observability } = startQuietLeader()
+    chat.state.unpromptedPending = true
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+
+    await nextGateTick()
+
+    expect(observability.gate).toBeNull()
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+  })
+
+  it('treats a busy result as no fire, so the next topic can go at once', async () => {
+    const { chat, observability } = startQuietLeader()
+    chat.submitUnprompted.mockResolvedValueOnce({ status: 'failed', error: 'Another unprompted turn is still pending' })
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    await nextGateTick()
+    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+
+    offerTopic()
+    await nextGateTick()
+
+    expect(observability.gate?.decision).toMatchObject({ fire: true, reason: 'ready' })
+    expect(observability.gate?.memory.fires).toHaveLength(1)
+    expect(chat.submitUnprompted).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not count an unprompted turn as the user engaging', async () => {
+    const { hooks, chat, observability } = startQuietLeader()
+    chat.submitUnprompted.mockImplementation(async (payload) => {
+      await unpromptedTurnSpeaks(hooks, payload.messageId!)
+      return { status: 'spoken', text: 'Still at it?' }
+    })
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    await nextGateTick()
+    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+
+    // The runtime emits onBeforeSend for unprompted turns too; this one must not clear the pending fire.
+    await unpromptedTurnSpeaks(hooks, 'another-unprompted-turn')
+    await nextGateTick()
+    expect(observability.gate?.memory.pending).toMatchObject({ topicKey: 'wake', spokenAtMs: expect.any(Number) })
+    expect(observability.gate?.memory).toMatchObject({ ignoreStreak: 0, backoffLevel: 0 })
+
+    await userTurn(hooks, 'user-reply')
+    await nextGateTick()
+    expect(observability.gate?.memory.pending).toBeNull()
+  })
+
+  it('records a fire as spoken at its first literal, so a reply during her turn earns engagement', async () => {
+    const { hooks, chat, observability } = startQuietLeader()
+    // The first fire is ignored: its ignore window passes without a user turn.
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    await nextGateTick()
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    // The second fire starts speaking, the user answers mid-reply, and that user send cancels the rest of the turn.
+    chat.submitUnprompted.mockImplementation(async (payload) => {
+      await unpromptedTurnSpeaks(hooks, payload.messageId!)
+      await userTurn(hooks, 'user-reply')
+      return { status: 'cancelled' }
+    })
+    await nextGateTick()
+    expect(chat.submitUnprompted).toHaveBeenCalledTimes(2)
+
+    await nextGateTick()
+
+    // Engagement reset the streak that the ignored first fire left; a cancelled outcome alone would have kept it.
+    expect(observability.gate?.memory).toMatchObject({ pending: null, ignoreStreak: 0 })
+  })
+
+  it('keeps the streak of an ignored fire when a turn is only cancelled', async () => {
+    const { chat, observability } = startQuietLeader()
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    await nextGateTick()
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    chat.submitUnprompted.mockResolvedValueOnce({ status: 'cancelled' })
+    await nextGateTick()
+
+    await nextGateTick()
+
+    expect(observability.gate?.memory).toMatchObject({ pending: null, ignoreStreak: 1 })
+  })
+
+  it('holds while the user speaks, the character speaks, or a composer reports writing in any window', async () => {
+    const { chat, observability } = startQuietLeader()
+    const bus = getSpeechBusContext()
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+
+    bus.emit(speechInputUserSpeakingChangedEvent, { speaking: true })
+    await nextGateTick()
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'user-speaking' })
+    bus.emit(speechInputUserSpeakingChangedEvent, { speaking: false })
+
+    bus.emit(voiceTurnsChanged, [{ sessionId: 'session-1', turnId: 'reply-1' }])
+    await nextGateTick()
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'character-speaking' })
+    bus.emit(voiceTurnsChanged, [])
+
+    bus.emit(chatComposerActivityChangedEvent, { sourceId: 'chat-window', hasDraft: true, lastInputAtMs: Date.now() })
+    await nextGateTick()
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'user-typing' })
+
+    // A composer that stops reporting (its window closed) expires after 15 s.
+    await vi.advanceTimersByTimeAsync(16_000)
+    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+  })
+
+  it('holds while the stage is hidden and waits a full gap after it is shown again', async () => {
+    const { store, chat, observability } = startQuietLeader()
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    store.setStageVisible(false)
+    offerTopic()
+    await nextGateTick()
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'stage-hidden' })
+
+    store.setStageVisible(true)
+    await nextGateTick()
+
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'gap' })
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+  })
+
+  it('stays quiet when presence settings say so', async () => {
+    const { chat, observability } = startQuietLeader()
+    const settings = useSituationSettings()
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+
+    settings.update({ unpromptedEnabled: false })
+    await nextGateTick()
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'disabled' })
+
+    settings.update({ unpromptedEnabled: true, dontDisturb: true })
+    await nextGateTick()
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'dont-disturb' })
+
+    settings.update({ dontDisturb: false, quietApps: ['notepad.exe'] })
+    await nextGateTick()
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'quiet-app' })
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+  })
+
+  it('stops the gate on demotion and drops the result of a turn from the earlier leadership', async () => {
+    const { leadership, chat, observability } = startQuietLeader()
+    let finish!: (result: ChatUnpromptedResult) => void
+    chat.submitUnprompted.mockImplementation(() => new Promise<ChatUnpromptedResult>((resolve) => {
+      finish = resolve
+    }))
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    await nextGateTick()
+    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+
+    leadership.set(false)
+    finish({ status: 'spoken', text: 'Still at it?' })
+    leadership.set(true)
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    await nextGateTick()
+
+    // The new leadership starts from promotion memory; the old fire is not in it.
+    expect(observability.gate?.decision).toMatchObject({ fire: true })
+    expect(observability.gate?.memory.fires).toHaveLength(1)
   })
 })

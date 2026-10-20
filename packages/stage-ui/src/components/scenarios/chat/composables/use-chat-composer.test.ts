@@ -1,8 +1,9 @@
 import type { ChatHistoryReplyPayload } from '../reply'
 
-import { describe, expect, it, vi } from 'vitest'
-import { shallowRef } from 'vue'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { effectScope, shallowRef } from 'vue'
 
+import { chatComposerActivityChangedEvent, getSpeechBusContext } from '../../../../services/speech/bus'
 import { useChatComposer } from './use-chat-composer'
 
 describe('useChatComposer', () => {
@@ -120,5 +121,62 @@ describe('useChatComposer', () => {
 
     composer.clearReplyForMessage({ id: 'assistant-2', role: 'assistant', content: 'Updated target', slices: [], tool_results: [] })
     expect(composer.replyTarget.value).toBeUndefined()
+  })
+})
+
+describe('useChatComposer activity reports', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** Collects the composer activity reports this window sends on the speech bus. */
+  function recordReports() {
+    const reports: { hasDraft: boolean, lastInputAtMs: number }[] = []
+    const stop = getSpeechBusContext().on(chatComposerActivityChangedEvent, ({ body }) => {
+      if (body)
+        reports.push({ hasDraft: body.hasDraft, lastInputAtMs: body.lastInputAtMs })
+    })
+    return { reports, stop }
+  }
+
+  it('reports writing at most once per second, repeats it while a draft exists, and clears it on close', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000_000)
+    const { reports, stop } = recordReports()
+    const scope = effectScope()
+    const composer = scope.run(() => useChatComposer({ activeSessionId: shallowRef('session-1'), send: vi.fn() }))!
+
+    composer.draft.value = 'H'
+    await vi.advanceTimersByTimeAsync(300)
+    composer.draft.value = 'Hi'
+    await vi.advanceTimersByTimeAsync(0)
+    expect(reports).toEqual([{ hasDraft: true, lastInputAtMs: 1_000_000 }])
+
+    // The second keystroke is reported once the second has passed.
+    await vi.advanceTimersByTimeAsync(700)
+    expect(reports.at(-1)).toEqual({ hasDraft: true, lastInputAtMs: 1_000_300 })
+
+    // An idle draft is reported again every 5 s, keeping its last input time.
+    const count = reports.length
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(reports.slice(count)).toEqual([
+      { hasDraft: true, lastInputAtMs: 1_000_300 },
+      { hasDraft: true, lastInputAtMs: 1_000_300 },
+    ])
+
+    composer.draft.value = ''
+    await vi.advanceTimersByTimeAsync(0)
+    expect(reports.at(-1)).toEqual({ hasDraft: false, lastInputAtMs: Date.now() })
+    const afterClear = reports.length
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(reports).toHaveLength(afterClear)
+
+    composer.draft.value = 'Again'
+    await vi.advanceTimersByTimeAsync(0)
+    scope.stop()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(reports.at(-1)?.hasDraft).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+    stop()
   })
 })

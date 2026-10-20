@@ -4,9 +4,17 @@ import type { ChatHistoryItem } from '../../../../types/chat'
 import type { ChatHistoryReplyPayload } from '../reply'
 
 import { errorMessageFrom } from '@moeru/std'
+import { tryOnScopeDispose } from '@vueuse/core'
+import { nanoid } from 'nanoid'
 import { shallowReadonly, shallowRef, watch } from 'vue'
 
+import { chatComposerActivityChangedEvent, getSpeechBusContext } from '../../../../services/speech/bus'
 import { isChatReplyTargetMessage } from '../reply'
+
+/** Shortest time between two composer activity reports caused by typing. */
+const COMPOSER_ACTIVITY_THROTTLE_MS = 1_000
+/** While a draft exists, its activity report repeats this often, so the leader's 15 s expiry never drops it. */
+const COMPOSER_ACTIVITY_RESEND_MS = 5_000
 
 /** One immutable snapshot passed from a composer to the chat domain. */
 export interface ChatComposerSubmission<TAttachment> {
@@ -80,6 +88,43 @@ export function useChatComposer<TAttachment = never>(options: UseChatComposerOpt
   const draft = shallowRef('')
   const isComposing = shallowRef(false)
   const replyTarget = shallowRef<ChatHistoryReplyPayload>()
+
+  // The leader's situation gate stays quiet while the user writes here; the composer may live in another window.
+  const activitySourceId = nanoid()
+  let lastInputAtMs = 0
+  let lastReportAtMs: number | undefined
+  let trailingReport: ReturnType<typeof setTimeout> | undefined
+  let resendReport: ReturnType<typeof setInterval> | undefined
+
+  function reportActivity(hasDraft = draft.value.trim() !== '') {
+    clearTimeout(trailingReport)
+    trailingReport = undefined
+    lastReportAtMs = Date.now()
+    getSpeechBusContext().emit(chatComposerActivityChangedEvent, { sourceId: activitySourceId, hasDraft, lastInputAtMs })
+    if (hasDraft && resendReport === undefined) {
+      resendReport = setInterval(reportActivity, COMPOSER_ACTIVITY_RESEND_MS)
+    }
+    else if (!hasDraft) {
+      clearInterval(resendReport)
+      resendReport = undefined
+    }
+  }
+
+  watch(draft, () => {
+    lastInputAtMs = Date.now()
+    const waitMs = lastReportAtMs === undefined ? 0 : lastReportAtMs + COMPOSER_ACTIVITY_THROTTLE_MS - lastInputAtMs
+    if (waitMs <= 0)
+      reportActivity()
+    else
+      trailingReport ??= setTimeout(reportActivity, waitMs)
+  }, { flush: 'sync' })
+
+  tryOnScopeDispose(() => {
+    if (lastReportAtMs !== undefined)
+      reportActivity(false)
+    clearTimeout(trailingReport)
+    trailingReport = undefined
+  })
 
   function addAttachments(...nextAttachments: TAttachment[]) {
     attachments.value = [...attachments.value, ...nextAttachments]

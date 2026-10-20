@@ -33,6 +33,14 @@ export const speechOutputPlaybackStateChangedEvent = defineEventa<SpeechOutputPl
  */
 export const speechInputUserSpeakingChangedEvent = defineEventa<{ speaking: boolean }>('eventa:audio:speech:input:user-speaking-changed')
 
+/**
+ * A chat composer reports that the user is writing. `sourceId` identifies one composer, so the leader can combine
+ * every window. `hasDraft` is true while the draft holds text, and `lastInputAtMs` is the time of the last draft
+ * change. A composer sends it on draft changes (at most once per second), again every 5 s while a draft exists, and
+ * `hasDraft: false` when it closes. The leader's situation gate stays quiet while any composer reports writing.
+ */
+export const chatComposerActivityChangedEvent = defineEventa<{ sourceId: string, hasDraft: boolean, lastInputAtMs: number }>('eventa:chat:composer-activity-changed')
+
 const BUS_CHANNEL_NAME = 'proj-airi:pipelines:outputs:speech'
 
 let context: ReturnType<typeof createBroadcastChannelContext>['context'] | undefined
