@@ -41,6 +41,23 @@ pnpm -F @proj-airi/qa-tools run evidence archive --plan <slug> --from <worktree-
 - `manifest.json` in the destination lists every file with `sha256` and `bytes`, sorted by path; it is regenerated on each run and is identical when nothing changed.
 - Exit codes: 0 archived, 1 refused or failed, 2 usage error. Evidence is never committed (`.omo/evidence/` is gitignored).
 
+## Known failures
+
+`known-failures.json` lists the tests that already fail on the integration base, so a QA run fails only on new failures. `pnpm qa:test` runs the selected Vitest suites with the JSON reporter and compares the results with the registry.
+
+```bash
+pnpm qa:test --all                                   # stage-shared, stage-ui-live2d, stage-ui (node + browser), qa-tools, scenarios-stage-tamagotchi-electron, pipelines-audio
+pnpm qa:test --package @proj-airi/stage-ui --project browser
+pnpm qa:test --package @proj-airi/stage-shared --registry <file> --timeout 600
+```
+
+- Each suite runs as `node <vitest entry> run --config <package>/vitest.config.ts [--project <p>] --reporter=json` from the package directory. Reports and logs go to a `createRun` directory, `.temp/qa/<YYYYMMDD-HHmmss>-test-<label>/` (`vitest-<package>-<project>.json` and `.log`, `summary.json`, and `run.json` listing them with sha256).
+- A registry entry matches on `package` + `project` (`node`, `browser`, or `default` for configs without projects) + `file` (relative to the package) + `name` (describe titles and the test title joined with ` > `). Every entry needs a concrete `reason`, a `since` date and a `removeWhen` condition. The schema lives in `src/known-failures/schema.ts`.
+- The output lists NEW failures, KNOWN failing tests, FIXED known failures (remove them from the registry; an entry whose test no longer runs is listed as "not run"), and flaky entries that passed.
+- `flaky: true` marks one test that fails only sometimes. A failure counts as known and a pass is reported without being called fixed. The marker covers only the listed test, so a new flaky-looking failure still counts as new.
+- Exit 1 for any new failure or any suite error: a suite that timed out (default 1800 s per suite, after which its process tree is killed), crashed, wrote no report, reported unhandled errors, or exited non-zero without a failing test. Suite errors never match the registry. Exit 2 for bad arguments or an invalid registry.
+- Never skip, delete or edit a test to clear a failure. Fix the test, or add an entry with its reason.
+
 ## When to use
 
 - A QA script must spawn pnpm or Vitest reliably, for example while `PNPM_HOME` shims may be regenerated (exit 127).
