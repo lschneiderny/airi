@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
 import { sparkNotifyCommandSchema, useCharacterOrchestratorStore } from '.'
-import { useCharacterNotebookStore, useCharacterStore } from '..'
+import { useCharacterNotebookStore } from '..'
 import { useLLM } from '../../ai/chat-llm/llm'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
 import { useAiriCardStore, useConsciousnessStore } from '../../modules'
@@ -282,6 +282,7 @@ describe('store character-orchestrator', () => {
     const topicKey = notifyTopicKey(TASK_SCHEDULER_SOURCE, task.id)
     const [reminder] = notifyEvents(situation)
     expect(reminder?.topicKey).toBe(topicKey)
+    expect(store.sparkNotifyIdOf(topicKey)).toBe(`task-${task.id}`)
     expect(reminder?.salience).toBe(1)
     expect(reminder?.text).toBe('Task reminder: Stretch')
     situation.markAddressed(topicKey)
@@ -351,9 +352,11 @@ describe('store character-orchestrator', () => {
     expect(sendSparkCommandMock).toHaveBeenCalledTimes(1)
     expect(sendSparkCommandMock).toHaveBeenCalledWith({ type: 'spark:command', data: result?.commands[0] })
 
-    // The text is ignored: the gate decides from the observation whether she speaks.
-    expect(useCharacterStore(pinia).reactions).toEqual([])
-    expect(notifyEvents(situation).map(item => item.topicKey)).toEqual([notifyTopicKey('minecraft', event.data.eventId)])
+    // The agent's text is ignored: the gate decides from the observation whether she speaks, and a reply that she
+    // speaks about the topic is recorded under this notify's id.
+    const topicKey = notifyTopicKey('minecraft', event.data.eventId)
+    expect(notifyEvents(situation).map(item => item.topicKey)).toEqual([topicKey])
+    expect(store.sparkNotifyIdOf(topicKey)).toBe(event.data.id)
   })
 
   it('queues a non-immediate module notify for the commands-only agent', async () => {
@@ -424,7 +427,8 @@ describe('store character-orchestrator', () => {
       type: 'spark:command',
       data: result?.commands[0],
     })
-    expect(useCharacterStore(pinia).reactions).toEqual([])
+    // A window that is not the situation leader still names the notify, so a reaction shared by the leader finds it.
+    expect(store.sparkNotifyIdOf(notifyTopicKey('minecraft', event.data.eventId))).toBe(event.data.id)
   })
 
   it('runs the forced command agent for a character-only notify when its caller forces a spark command', async () => {

@@ -7,7 +7,7 @@ import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../../chat'
 
 import { createChatHooks } from '@proj-airi/core-agent'
-import { evaluateGate, initialGateMemory } from '@proj-airi/stage-shared/situation'
+import { evaluateGate, initialGateMemory, notifyTopicKey } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { createPinia, setActivePinia } from 'pinia'
@@ -16,21 +16,25 @@ import { ref } from 'vue'
 
 import { getSpeechBusContext, voiceRequestTurns, voiceTurnsChanged } from '../../../services/speech/bus'
 import { GATE_INTERVAL_MS, useSituationStore } from '../../situation'
-import { ingestSparkNotify } from '../../situation/sensors/notify'
+import { ingestSparkNotify, notifyObservationFrom } from '../../situation/sensors/notify'
 import { useContextBridgeStore } from './context-bridge'
 
 type SparkNotifyEvent = WebSocketEventOf<'spark:notify'>
 
-// The orchestrator ingests the notify into the situation, as the real store does, and runs no agent here.
+// The orchestrator ingests the notify into the situation and remembers its id by topic, as the real store does, and
+// runs no agent here.
+const sparkNotifyIds = new Map<string, string>()
 const handleSparkNotify = vi.fn(async (event: SparkNotifyEvent, _control?: unknown) => {
   ingestSparkNotify(event)
+  const observation = notifyObservationFrom(event, Date.now())
+  sparkNotifyIds.set(notifyTopicKey(observation.sourceKey, observation.eventId), event.data.id)
   return undefined
 })
 const recordSparkNotifyReaction = vi.fn()
 const submitUnprompted = vi.fn<(payload: ChatUnpromptedPayload) => Promise<ChatUnpromptedResult>>()
 
 vi.mock('../../character', () => ({
-  useCharacterOrchestratorStore: () => ({ handleSparkNotify }),
+  useCharacterOrchestratorStore: () => ({ handleSparkNotify, sparkNotifyIdOf: (topicKey: string) => sparkNotifyIds.get(topicKey) }),
   useCharacterStore: () => ({ recordSparkNotifyReaction }),
 }))
 
@@ -150,6 +154,7 @@ describe('widget spark reactions', () => {
     vi.setSystemTime(T0)
     setActivePinia(createPinia())
     handleSparkNotify.mockClear()
+    sparkNotifyIds.clear()
     recordSparkNotifyReaction.mockClear()
     submitUnprompted.mockReset()
     unpromptedPending = false
@@ -240,7 +245,7 @@ describe('widget spark reactions', () => {
     expect(situation.state.conversation.lastUnpromptedTopic).toBe('QA widget: from the chess board')
     const { decision } = evaluateGate(quietGateInput(situation.state), initialGateMemory)
     expect(decision).toMatchObject({ fire: false, reason: 'no-topic', trace: { candidate: null } })
-    expect(recordSparkNotifyReaction).toHaveBeenCalledWith(event.data.id, 'Oh, a QA widget!')
+    expect(recordSparkNotifyReaction.mock.calls).toEqual([[event.data.id, 'Oh, a QA widget!']])
   })
 
   it('addresses the notify of a declined reaction, so the gate never raises what she chose not to say', async () => {
@@ -421,6 +426,61 @@ describe('widget spark reactions', () => {
 
     expect(submitUnprompted).toHaveBeenCalledOnce()
     expect(notifyEvents(situation)[0].addressedAtMs).toEqual(expect.any(Number))
+  })
+
+  /** A character-only notify whose delivery id and protocol event id differ, as the devtools simulator sends it. */
+  function characterNotify(headline: string): SparkNotifyEvent {
+    return {
+      type: 'spark:notify',
+      source: 'devtools',
+      data: { id: `delivery-${headline}`, eventId: `event-${headline}`, kind: 'ping', urgency: 'immediate', headline, destinations: ['character'] },
+    }
+  }
+
+  it('records one reaction with the spoken reply when a gate-fired turn speaks about a notify', async () => {
+    startLeader({ gate: true })
+    chatSpeaks(' Oh, a QA video! Enjoy. ')
+    const event = characterNotify('QA video')
+
+    await handleSparkNotify(event)
+    await vi.advanceTimersByTimeAsync(3 * GATE_INTERVAL_MS)
+
+    expect(submitUnprompted).toHaveBeenCalledOnce()
+    expect(submitUnprompted.mock.calls[0]![0].topicKey).toBe(notifyTopicKey('devtools', event.data.eventId))
+    expect(recordSparkNotifyReaction.mock.calls).toEqual([[event.data.id, 'Oh, a QA video! Enjoy.']])
+  })
+
+  it('records no reaction when a gate-fired turn about a notify is declined', async () => {
+    startLeader({ gate: true })
+    submitUnprompted.mockImplementation(async (payload) => {
+      unpromptedPending = true
+      try {
+        await declineUnprompted(hooks, payload)
+        return { status: 'declined' }
+      }
+      finally {
+        unpromptedPending = false
+      }
+    })
+
+    await handleSparkNotify(characterNotify('QA video'))
+    await vi.advanceTimersByTimeAsync(3 * GATE_INTERVAL_MS)
+
+    expect(submitUnprompted).toHaveBeenCalledOnce()
+    expect(recordSparkNotifyReaction).not.toHaveBeenCalled()
+  })
+
+  it('records no reaction when a gate-fired turn speaks about a topic that is not a notify', async () => {
+    const { situation } = startLeader({ gate: true })
+    chatSpeaks('Welcome back.')
+    // Promotion holds an ordinary topic for the minimum gap, 10 minutes at the default Chattiness.
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1_000)
+
+    situation.ingest({ kind: 'wake', cause: 'unlock', atMs: Date.now() })
+    await vi.advanceTimersByTimeAsync(3 * GATE_INTERVAL_MS)
+
+    expect(submitUnprompted).toHaveBeenCalledOnce()
+    expect(recordSparkNotifyReaction).not.toHaveBeenCalled()
   })
 
   it('waits 30 s for the main window to answer a widget request', async () => {
