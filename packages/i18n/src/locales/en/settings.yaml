@@ -728,6 +728,30 @@ pages:
       all_deleted: All local data deleted.
       desktop_window_centered: Desktop window moved to screen center.
       desktop_reset: Desktop data reset.
+  presence:
+    title: Presence
+    description: Decide when the character speaks up without being asked
+    unprompted-enabled:
+      title: Speak up unprompted
+      description: Let the character start a conversation when something happens on your desktop.
+    chattiness:
+      title: Chattiness
+      description: How often the character speaks up on its own.
+    dont-disturb:
+      title: Do not disturb
+      description: Keep the character quiet until you turn this off.
+    speak-during-games:
+      title: Speak during games
+      description: When off, the character stays quiet while a game is in the foreground, except for urgent reminders.
+    show-unprompted-cue:
+      title: Show unprompted cue
+      description: Mark messages the character sent on its own in the chat.
+    quiet-apps:
+      title: Quiet apps
+      description: The character stays quiet while one of these apps is in the foreground. Enter one app file name per line, such as zoom.exe. Use * to match any characters.
+    title-denylist:
+      title: Private window titles
+      description: The character never reads window titles from these apps. Enter one app file name per line, such as bitwarden.exe. Use * to match any characters.
   models:
     description: Live2D, VRM, Spine, MMD, etc.
     title: Models
