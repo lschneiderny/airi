@@ -814,8 +814,14 @@ export const useChatStore = defineStore('chat', () => {
         void artistryAutonomousStore.runArtistTask(messageText, toProviderHistory(sessionMessages))
     },
   })
-  // The situation store records conversation turns from these hooks while this window leads.
-  situationStore.observeChat(runtime.hooks)
+  // While this window leads, the situation store records conversation turns from these hooks, and its gate starts
+  // unprompted turns. The controls are functions because `submitUnprompted` is declared below.
+  situationStore.observeChat(runtime.hooks, {
+    sending: () => sending.value,
+    pendingQueuedSendCount: () => pendingQueuedSendCount.value,
+    unpromptedPending: () => unpromptedResults.size > 0,
+    submitUnprompted: payload => submitUnprompted(payload),
+  })
 
   // One request owns preparation and generation. Cancellation cannot miss asynchronous startup.
   const requests = new Map<string, {

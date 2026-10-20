@@ -1,4 +1,4 @@
-import type { RenderedSituation, SituationState } from '@proj-airi/stage-shared/situation'
+import type { GateDecision, GateMemory, RenderedSituation, SituationState } from '@proj-airi/stage-shared/situation'
 
 import { defineInvoke, defineInvokeEventa, defineInvokeHandler } from '@moeru/eventa'
 import { advanceSituation, initialSituationState, renderSituation } from '@proj-airi/stage-shared/situation'
@@ -29,11 +29,19 @@ export interface SituationLiveState {
   state: SituationState
 }
 
+/** The newest decision of the leader's opportunity gate and the memory it left. */
+export interface SituationGateRecord {
+  decision: GateDecision
+  memory: GateMemory
+}
+
 export interface SituationInspection extends SituationLiveState {
   /** Clock of the answering window when it built the inspection. */
   nowMs: number
   /** Newest first, at most {@link SITUATION_RENDER_HISTORY_MAX}. */
   renders: SituationRenderRecord[]
+  /** `null` until the gate of the answering window evaluated once. */
+  gate: SituationGateRecord | null
 }
 
 export interface SituationPreview extends RenderedSituation {
@@ -59,6 +67,7 @@ export const situationPreviewInvoke = defineInvokeEventa<SituationPreview, { now
 export const useSituationObservabilityStore = defineStore('devtools:situation-observability', () => {
   const live = shallowRef<SituationLiveState>({ leading: false, state: initialSituationState })
   const renders = shallowRef<readonly SituationRenderRecord[]>([])
+  const gate = shallowRef<SituationGateRecord | null>(null)
   const actCompliance = useActComplianceStore()
   let stopServing: (() => void) | undefined
 
@@ -84,6 +93,11 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
     renders.value = [record, ...renders.value].slice(0, SITUATION_RENDER_HISTORY_MAX)
   }
 
+  /** Called by the situation store of this window after every gate evaluation. */
+  function recordGateDecision(decision: GateDecision, memory: GateMemory) {
+    gate.value = { decision, memory }
+  }
+
   /** Called by the situation store of this window whenever its state or leadership changes. */
   function publishLiveState(leading: boolean, state: SituationState) {
     live.value = { leading, state }
@@ -103,6 +117,7 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
       state: live.value.state,
       nowMs: Date.now(),
       renders: [...renders.value],
+      gate: gate.value,
     }
   }
 
@@ -129,7 +144,9 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
   return {
     liveState: computed(() => live.value),
     renders: computed(() => renders.value),
+    gate: computed(() => gate.value),
     recordRender,
+    recordGateDecision,
     publishLiveState,
     inspect,
     preview,
