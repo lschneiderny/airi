@@ -125,6 +125,17 @@ AIRI_QA_RIG_FORBOOTH="<rig dir>" node --import tsx packages/qa-tools/bin/motion.
 - A hard kill of the CLI itself (for example `taskkill /F` on its PID) skips teardown. Check for leftovers with `pnpm qa:doctor` (`stray-electron`) and stop them by hand after confirming their command lines contain your worktree path.
 - `builtin:t3-smoke` (`fixtures/scenarios/t3-smoke.json`, levels `t1` and `t3`, 140 s): clear pulses of happy, sad, angry, surprised, think, love, flustered and sleepy 14 s apart (longer than `naturalEmotionLifetime` for clear, 8.7 s, and strong, 12.3 s), one `<|ACT {"emotion":"angry"}|>` marker, `expression1` on and off, and screenshots 1 s and 3 s after each pulse. The same file runs unchanged through `runT1`, and both traces stamp the same scenario events.
 
+## Scorer validation
+
+`pnpm qa:motion validate-scorer --level t1 [--sections aa,zero,mutations,unmutated,determinism] [--seeds N] [--workers N] [--timeout-minutes N]` checks the emotion scorer itself with the committed emotion gate (`src/motion/validation/`, `gates/validation.gate.ts`).
+
+- `aa`: 20 seed sets of emotion-free runs, scored unpaired as every emotion and band against the committed placebo null. At most 1 set may pass any significance or visibility check, the placebo hit rate must be 0.10 +- 0.03, and the p-values must be uniform (Kolmogorov-Smirnov p > 0.01, `src/motion/ks.ts`). The old checkpoint-12 single-trial rules are scored on the same trials for comparison.
+- `zero`: an all-zero emotion table, scored paired, must pass nothing.
+- `mutations`: x0, sign flip, ignore side, x0.5, x2, `releaseTau` x3 and blink interval 1, each applied through the `emotionTable` seam or scenario `settings.performance`, with the kill rate of the targeted criterion.
+- `unmutated`: 5 reseeded full gate runs, which must pass every check.
+- `determinism`: two independent runs give identical scores, and shuffled events or records change nothing.
+- The CLI runs one Vitest process per shard and phase (simulate, then score) and writes `validation.json` (every number, threshold and verdict, with no run id or time) and `summary.txt`. Exit codes: 0 every threshold met, 1 a threshold missed or the run broke, 2 a usage error. A missed threshold is a finding for Luke; never change a gate constant to meet it.
+
 ## When to use
 
 - A QA script must spawn pnpm or Vitest reliably, for example while `PNPM_HOME` shims may be regenerated (exit 127).

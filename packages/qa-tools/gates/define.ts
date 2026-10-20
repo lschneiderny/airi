@@ -11,6 +11,8 @@ import catalogJson from '../fixtures/forbooth-catalog.json'
 import { cellPartialName, emotionGateFor, livelinessGateFor, livelinessPartialName, nullPartialName, readSelection, seedRange, variantSeeds, variantsFor } from '../src/motion/gate/options'
 import { requireRunDir, writePartial } from '../src/motion/gate/partials'
 import { runEmotionTrial, runIdleTrace, runPlaceboSeed, trialBoundMs } from '../src/motion/gate/trials'
+import { assignShards, buildValidationPlan, unitCost, validationSections } from '../src/motion/validation/plan'
+import { runGenerationUnit, runScoringJob } from '../src/motion/validation/units'
 import { loadT2Runtime, runT2 } from '../src/t2/runner'
 
 const level = process.env.QA_LEVEL === 't2' ? 't2' : 't1'
@@ -53,6 +55,35 @@ export function defineNullGate(): void {
       const runs = Array.from({ length: seeds.count }, (_, index) => runPlaceboSeed(seeds.start + index, emotionGate, boundMs, runScenario))
       writePartial(runDir, nullPartialName, { kind: 'null', seeds, ranges: runs[0].ranges, records: runs.flatMap(run => run.records) })
     })
+  })
+}
+
+/**
+ * One shard of the scorer validation (`motion validate-scorer`): the CLI starts one Vitest process per shard and
+ * phase, and each defines a test per generation unit or scoring job it owns.
+ */
+export function defineValidationShard(): void {
+  const runDir = requireRunDir()
+  const boundMs = trialBoundMs(process.env)
+  const phase = process.env.QA_VALIDATION_PHASE
+  const shard = Number(process.env.QA_VALIDATION_SHARD)
+  const shards = Number(process.env.QA_VALIDATION_SHARDS)
+  const sections = (process.env.QA_VALIDATION_SECTIONS ?? '').split(',').filter(Boolean)
+  const seedsLimit = process.env.QA_SEEDS ? Number(process.env.QA_SEEDS) : null
+  if ((phase !== 'generate' && phase !== 'score') || !Number.isInteger(shard) || !Number.isInteger(shards) || shard < 0 || shard >= shards || !sections.length || sections.some(section => !validationSections.includes(section as typeof validationSections[number])))
+    throw new Error('[qa-tools] The validation gate runs through "qa:motion validate-scorer"; its shard variables are not set or invalid.')
+  const plan = buildValidationPlan(emotionGate, { sections: sections as typeof validationSections[number][], seedsLimit })
+  describe(`scorer validation: ${phase} shard ${shard + 1}/${shards}`, () => {
+    if (phase === 'generate') {
+      for (const unit of assignShards(plan.units, shards, entry => unitCost(entry, emotionGate))[shard])
+        it(unit.name, () => runGenerationUnit(unit, plan, emotionGate, runDir, boundMs))
+    }
+    else {
+      // Scoring cost grows with the experiment's trial count, which the number of its units tracks.
+      const cost = (experiment: string) => plan.units.filter(unit => unit.kind !== 'null' && unit.experiment === experiment).reduce((sum, unit) => sum + unitCost(unit, emotionGate), 0)
+      for (const job of assignShards(plan.jobs, shards, entry => cost(entry.experiment))[shard])
+        it(job.name, () => runScoringJob(job, plan, emotionGate, runDir))
+    }
   })
 }
 

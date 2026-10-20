@@ -1,6 +1,7 @@
-import type { Band, CatalogEntry, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
+import type { Band, CatalogEntry, ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
 import type { EmotionGate, EmotionTrialRecord, PlaceboRecord, TrialVariant } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
+import type { naturalEmotions } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotions'
 import type { LivelinessGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 import type { LivelinessTrace, ParameterRanges } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/liveliness'
 import type { NaturalTrace } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
@@ -52,6 +53,34 @@ export interface EmotionTrialRun {
   seed: number
   gate: EmotionGate
   boundMs: number
+  /** Mutation seam: the Natural emotion table both runs use. @default naturalEmotions */
+  emotionTable?: typeof naturalEmotions
+  /** Mutation seam: `held` settings merged into the scenario's `settings.performance.held`. */
+  held?: Record<string, number>
+}
+
+export interface EmotionTrialTraces {
+  trialId: string
+  run: NaturalTrace
+  paired: NaturalTrace
+  settings: ExpressionPerformanceSettings
+}
+
+/** The two traces of one paired trial: the scenario with its emotion, and the same seed with the emotion stripped. */
+export function runEmotionTrialTraces({ emotion, band, variant, seed, gate, boundMs, emotionTable, held }: EmotionTrialRun): EmotionTrialTraces {
+  const { warmup, hold, post, longHoldSeconds, longHoldPost } = gate.scenario
+  const built = variant === 'long-hold'
+    ? buildLongHold({ emotion, band, seed, seconds: longHoldSeconds, warmup, post: longHoldPost })
+    : buildEmotionTrial({ emotion, band, variant, seed, warmup, hold, post })
+  const performance = (built.settings?.performance ?? {}) as { held?: object }
+  const scenario: MotionScenario = held ? { ...built, settings: { ...built.settings, performance: { ...performance, held: { ...performance.held, ...held } } } } : built
+  const trialId = `${emotion}-${band}-${variant}-${seed}`
+  return bounded(`trial ${trialId}`, boundMs, () => ({
+    trialId,
+    run: runT1(scenario, { catalog, emotionTable }),
+    paired: runT1(stripEmotions(scenario), { catalog, emotionTable }),
+    settings: scenarioSettings(scenario),
+  }))
 }
 
 /** One paired trial: the scenario with its emotion, and the same seed with the emotion stripped. */
@@ -66,6 +95,16 @@ export function runEmotionTrial({ emotion, band, variant, seed, gate, boundMs }:
     const paired = runScenario(stripEmotions(scenario))
     return measureEmotionTrial(run, paired, { trialId, variant, gate, settings: scenarioSettings(scenario) })
   })
+}
+
+/**
+ * The emotion-free run of a full trial (the emotion replaced by a `noop` with the same `trialId`), for the scorer's
+ * A/A check. Every emotion and band strips to the same timeline and settings, so one run serves every cell.
+ */
+export function runEmotionFreeTrial(seed: number, gate: EmotionGate, boundMs: number): { trace: NaturalTrace, settings: ExpressionPerformanceSettings, trialId: string } {
+  const { warmup, hold, post } = gate.scenario
+  const scenario = buildEmotionTrial({ emotion: 'happy', band: 'clear', variant: 'full', seed, warmup, hold, post })
+  return bounded(`emotion-free run ${seed}`, boundMs, () => ({ trace: runT1(stripEmotions(scenario), { catalog }), settings: scenarioSettings(scenario), trialId: `happy-clear-full-${seed}` }))
 }
 
 /** One emotion-free run with the gate's placebo marks, measured unpaired. */

@@ -167,11 +167,11 @@ export class Live2DNaturalMotionAdapter {
     private readonly attention: () => Live2DNaturalMotionAttention,
     private readonly visibility?: Pick<Document, 'hidden' | 'addEventListener' | 'removeEventListener'>,
     random = Math.random,
-    /** QA seam: a fixed controller seed and posture home. The stage passes neither. */
-    options: Pick<Live2DNaturalMotionOptions, 'seed' | 'home'> = {},
+    /** QA seam: a fixed controller seed, posture home, and emotion table (scorer mutation runs). The stage passes none. */
+    options: Pick<Live2DNaturalMotionOptions, 'seed' | 'home' | 'emotionTable'> = {},
   ) {
     this.home = options.home ?? 'product'
-    this.controller = new Live2DNaturalMotion({ random, seed: options.seed, home: this.home })
+    this.controller = new Live2DNaturalMotion({ random, seed: options.seed, home: this.home, emotionTable: options.emotionTable })
     this.controller.setSuspended(true, 0)
     this.setRigProfile(rigProfile)
     this.originalFocus = model.updateFocus

@@ -3,6 +3,7 @@ import type { MotionScenario, MotionScenarioLevel } from '@proj-airi/stage-share
 import type { PerformanceMode, PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type { SpeechEvent } from '@proj-airi/stage-ui-live2d/composables/live2d/expression/slots'
 import type { Live2DNaturalMotionAttention } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
+import type { naturalEmotions } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotions'
 import type { NaturalEpisode } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/mood'
 import type { PostureHome } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/posture'
 import type { readLive2DRigProfile } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/rig-profile'
@@ -57,6 +58,8 @@ export interface ScenarioSinkOptions {
   simHz: number
   catalog: CatalogEntry[]
   createHost: (context: ScenarioHostContext) => ScenarioHost
+  /** Emotion table seam of the Natural controller, for scorer mutation runs. @default naturalEmotions */
+  emotionTable?: typeof naturalEmotions
 }
 
 /** Fake timers: callbacks run in due order, ties in arming order, when the sim loop reaches their time. */
@@ -174,7 +177,7 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
       cursor: cursorAttention ? cursor : null,
       pendingPokes,
       pet: null,
-    }), undefined, undefined, { seed: scenario.seed, home })
+    }), undefined, undefined, { seed: scenario.seed, home, emotionTable: options.emotionTable })
     adapter.setPerformanceSettings(settings)
 
     const recorder = host.recorder

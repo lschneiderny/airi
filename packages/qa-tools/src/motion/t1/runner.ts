@@ -1,5 +1,6 @@
 import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
+import type { naturalEmotions } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotions'
 import type { NaturalTrace } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
 
 import { referenceStats } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/reference-stats'
@@ -15,6 +16,8 @@ export interface RunT1Options {
   sampleHz?: number
   /** Expression catalog the conductor and the `expression` events resolve against. @default [] */
   catalog?: CatalogEntry[]
+  /** Emotion table seam of the Natural controller, for scorer mutation runs. @default naturalEmotions */
+  emotionTable?: typeof naturalEmotions
 }
 
 /** Ranges for ids that the reference statistics lack; the stage reads the real rig's table for these. */
@@ -57,7 +60,7 @@ function buildParameterTable() {
  * records what Natural performed.
  */
 export function runT1(input: MotionScenario, options: RunT1Options = {}): NaturalTrace {
-  const { simHz = 120, sampleHz = 30, catalog = [] } = options
+  const { simHz = 120, sampleHz = 30, catalog = [], emotionTable } = options
   if (sampleHz !== 30)
     throw new Error(`[qa-tools] T1 samples at 30 Hz only, got ${sampleHz}`)
   if (!Number.isInteger(simHz) || simHz < sampleHz)
@@ -67,6 +70,7 @@ export function runT1(input: MotionScenario, options: RunT1Options = {}): Natura
     level: 't1',
     simHz,
     catalog,
+    emotionTable,
     createHost: () => {
       const table = buildParameterTable()
       const values = Float32Array.from(table.base)

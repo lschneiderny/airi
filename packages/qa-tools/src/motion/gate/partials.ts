@@ -1,5 +1,5 @@
 import type { Band, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
-import type { EmotionTrialRecord, PlaceboRecord, SeedRange, TrialVariant } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
+import type { EmotionGateScore, EmotionTrialRecord, PlaceboRecord, SeedRange, TrialVariant } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
 import type { LivelinessTrace, ParameterRanges } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/liveliness'
 
 import process from 'node:process'
@@ -29,7 +29,27 @@ export interface LivelinessPartial {
   trace: LivelinessTrace & { ranges: ParameterRanges }
 }
 
-export type GatePartial = EmotionCellPartial | NullPartial | LivelinessPartial
+/** Scorer validation: the records one generation unit measured (`validation/plan.ts`). */
+export interface ValidationRecordsPartial {
+  kind: 'validation-records'
+  unit: string
+  records: EmotionTrialRecord[]
+  placebos: PlaceboRecord[]
+  ranges: ParameterRanges | null
+  /** Determinism units: trials re-measured with shuffled and reversed trace events, and whether every record was equal. */
+  eventOrder: { trials: number, invariant: boolean } | null
+}
+
+/** Scorer validation: one gate scoring of an experiment. */
+export interface ValidationScorePartial {
+  kind: 'validation-score'
+  job: string
+  score: EmotionGateScore
+  /** Determinism job: whether scoring the records in reverse order gave the same bytes. */
+  recordOrderInvariant: boolean | null
+}
+
+export type GatePartial = EmotionCellPartial | NullPartial | LivelinessPartial | ValidationRecordsPartial | ValidationScorePartial
 
 export function requireRunDir(env: NodeJS.ProcessEnv = process.env): string {
   const dir = env.QA_RUN_DIR
