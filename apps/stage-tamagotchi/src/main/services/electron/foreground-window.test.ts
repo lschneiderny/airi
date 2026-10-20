@@ -102,9 +102,9 @@ describe('createForegroundWindowService', () => {
     })
   })
 
-  function createReader() {
+  function createReader(getSidecarPid?: () => number | null) {
     const context = createContext()
-    createForegroundWindowService({ context: context as never, window: { once: vi.fn() } as never })
+    createForegroundWindowService({ context: context as never, window: { once: vi.fn() } as never, getSidecarPid })
     return defineInvoke(context, electron.foregroundWindow.sample)
   }
 
@@ -214,6 +214,38 @@ describe('createForegroundWindowService', () => {
     desktop.pid = pid
 
     await expect(createReader()()).resolves.toMatchObject({ pid, ownProcess: true })
+  })
+
+  it('marks windows of the Godot stage sidecar as its own', async () => {
+    await expect(createReader(() => 4321)()).resolves.toMatchObject({ pid: 4321, ownProcess: true })
+  })
+
+  it('reads the sidecar pid at every sample, so a restarted sidecar is its own and its old pid is not', async () => {
+    let sidecarPid: number | null = 4321
+    const read = createReader(() => sidecarPid)
+
+    await expect(read()).resolves.toMatchObject({ pid: 4321, ownProcess: true })
+
+    sidecarPid = 5555
+    await expect(read()).resolves.toMatchObject({ pid: 4321, ownProcess: false })
+
+    desktop.pid = 5555
+    await expect(read()).resolves.toMatchObject({ pid: 5555, ownProcess: true })
+
+    sidecarPid = null
+    await expect(read()).resolves.toMatchObject({ pid: 5555, ownProcess: false })
+  })
+
+  it.each([
+    ['a stopped sidecar', () => null],
+    ['no sidecar source', undefined],
+  ])('changes nothing for %s', async (_label, getSidecarPid) => {
+    const read = createReader(getSidecarPid)
+
+    await expect(read()).resolves.toMatchObject({ pid: 4321, ownProcess: false })
+
+    desktop.pid = 2222
+    await expect(read()).resolves.toMatchObject({ pid: 2222, ownProcess: true })
   })
 
   it('resolves null off Windows without loading koffi', async () => {

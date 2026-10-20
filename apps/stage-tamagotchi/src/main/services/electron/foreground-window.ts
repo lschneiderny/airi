@@ -71,7 +71,7 @@ function decodeUtf16(buffer: Buffer, units: number): string {
   return buffer.toString('utf16le', 0, units * 2).replace(/[\uD800-\uDBFF]$/u, '')
 }
 
-function createSampler(binding: Win32Binding) {
+function createSampler(binding: Win32Binding, getSidecarPid?: () => number | null) {
   // Buffers are reused across reads. Every FFI call below is synchronous, so two
   // invokes can never interleave inside one read.
   const titleBuffer = Buffer.alloc((TITLE_MAX_UNITS + 1) * 2)
@@ -110,12 +110,9 @@ function createSampler(binding: Win32Binding) {
   }
 
   function isOwnProcess(pid: number): boolean {
-    // NOTICE:
-    // `app.getAppMetrics()` omits the Godot stage sidecar, and the base window invokes cannot
-    // reach its pid, so its windows report `ownProcess: false`. The title denylist must cover its exe.
-    // Source: services/airi/godot-stage/index.ts.
-    // Removal condition: this service receives the sidecar pid.
-    return pid === process.pid || app.getAppMetrics().some(metric => metric.pid === pid)
+    // `app.getAppMetrics()` lists only Electron processes, so the Godot stage sidecar comes from
+    // its own source. It is read per sample because the sidecar starts, stops, and restarts.
+    return pid === process.pid || pid === getSidecarPid?.() || app.getAppMetrics().some(metric => metric.pid === pid)
   }
 
   return function sample(): ForegroundWindowSample | null {
@@ -151,13 +148,19 @@ function createSampler(binding: Win32Binding) {
  *
  * Expects:
  * - The renderer sets the sampling rate; this service never polls on its own
+ * - `getSidecarPid`, when given, returns the running Godot stage sidecar's pid or `null`,
+ *   so its windows count as AIRI's own
  * - koffi loads lazily on the first read, once per window, and never at module load
  *
  * Returns:
  * - Nothing; the handler goes with the window, or with the app if it quits first.
  *   Reads resolve `null` off Windows and after a failed koffi load, instead of rejecting.
  */
-export function createForegroundWindowService(params: { context: ReturnType<typeof createContext>['context'], window: BrowserWindow }) {
+export function createForegroundWindowService(params: {
+  context: ReturnType<typeof createContext>['context']
+  window: BrowserWindow
+  getSidecarPid?: () => number | null
+}) {
   const log = useLogg('foreground-window').useGlobalConfig()
 
   // One load attempt per window. Concurrent first reads share it, and a failed load stays
@@ -166,7 +169,7 @@ export function createForegroundWindowService(params: { context: ReturnType<type
 
   function getSampler() {
     sampler ??= isWindows
-      ? loadWin32Binding().then(createSampler, (error) => {
+      ? loadWin32Binding().then(binding => createSampler(binding, params.getSidecarPid), (error) => {
           log.withError(error).warn(`foreground window sampling is unavailable: ${errorMessageFrom(error) ?? 'koffi failed to load'}`)
           return null
         })
