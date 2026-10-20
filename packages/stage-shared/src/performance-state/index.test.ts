@@ -1,4 +1,5 @@
 import type { DesktopActivitySnapshot, PerformanceInputs, PerformanceResolution, ResolverMemory } from '.'
+import type { AppCategory } from '../situation/types'
 
 import { describe, expect, it } from 'vitest'
 
@@ -32,6 +33,7 @@ function inputsAt(nowMs: number, overrides: Partial<PerformanceInputs> = {}): Pe
     visible: true,
     override: null,
     cueAttention: null,
+    foregroundCategory: null,
     ...overrides,
   }
 }
@@ -303,5 +305,104 @@ describe('resolvePerformanceState', () => {
     expect(results.map(r => r.state.mode)).toEqual(['thinking', 'talking', 'talking', 'talking'])
     expect(results.map(r => r.state.reactSeq)).toEqual([1, 1, 1, 1])
     expect(results[3].memory.nowMs).toBe(T0 + 400)
+  })
+
+  it.each([
+    ['game', 'screen'],
+    ['media', 'screen'],
+    ['editor', 'cursor'],
+    ['browser', 'cursor'],
+    [null, 'cursor'],
+  ] as const)('watches the screen while %s is in front even when the cursor moved (attention %s)', (foregroundCategory, attention) => {
+    const [result] = run([inputsAt(T0, { cursorMovedAtMs: T0, foregroundCategory })])
+
+    expect(result.state.mode).toBe('watching')
+    expect(result.state.attention).toBe(attention)
+  })
+
+  it('leaves attention unchanged without a foreground category', () => {
+    const frames = [
+      inputsAt(T0, { cursorMovedAtMs: T0 }),
+      inputsAt(T0 + 3301, { cursorMovedAtMs: T0, desktop: quietDesktop({ idleSeconds: 0 }) }),
+      inputsAt(T0 + 3600, { speaking: true }),
+    ]
+    const results = run(frames)
+
+    expect(results.map(r => [r.state.mode, r.state.attention])).toEqual([['watching', 'cursor'], ['watching', 'screen'], ['talking', 'camera']])
+  })
+
+  it('lets an active ACT look cue win over the foreground category', () => {
+    const talkingAside = run([inputsAt(T0, { speaking: true, cursorMovedAtMs: T0, cueAttention: 'aside', foregroundCategory: 'game' })])[0]
+    const talkingNoCue = run([inputsAt(T0, { speaking: true, cursorMovedAtMs: T0, foregroundCategory: 'game' })])[0]
+    const thinkingCamera = run([inputsAt(T0, { generating: true, cueAttention: 'camera', foregroundCategory: 'media' })])[0]
+    const listening = run([inputsAt(T0, { userSpeaking: true, foregroundCategory: 'game' })])[0]
+
+    expect([talkingAside, talkingNoCue, thinkingCamera, listening].map(r => [r.state.mode, r.state.attention])).toEqual([
+      ['talking', 'aside'],
+      ['talking', 'camera'],
+      ['thinking', 'camera'],
+      ['listening', 'camera'],
+    ])
+  })
+
+  it('switches attention only after a new foreground category has held for 2 s', () => {
+    const results = run([
+      inputsAt(T0, { cursorMovedAtMs: T0, foregroundCategory: 'editor' }),
+      inputsAt(T0 + 1000, { cursorMovedAtMs: T0 + 1000, foregroundCategory: 'game' }),
+      inputsAt(T0 + 2999, { cursorMovedAtMs: T0 + 2999, foregroundCategory: 'game' }),
+      inputsAt(T0 + 3000, { cursorMovedAtMs: T0 + 3000, foregroundCategory: 'game' }),
+      inputsAt(T0 + 4000, { cursorMovedAtMs: T0 + 4000, foregroundCategory: 'editor' }),
+      inputsAt(T0 + 6000, { cursorMovedAtMs: T0 + 6000, foregroundCategory: 'editor' }),
+    ])
+
+    expect(results.map(r => r.state.attention)).toEqual(['cursor', 'cursor', 'cursor', 'screen', 'screen', 'cursor'])
+  })
+
+  it('keeps attention steady while the foreground category flaps faster than it settles', () => {
+    const frames: PerformanceInputs[] = [inputsAt(T0, { cursorMovedAtMs: T0, foregroundCategory: 'game' })]
+    // Alt-tab between the game and an editor every 750 ms for 9 s, with the cursor moving the whole time.
+    for (let t = 250; t <= 9000; t += 250) {
+      const foregroundCategory: AppCategory = Math.floor(t / 750) % 2 === 0 ? 'game' : 'editor'
+      frames.push(inputsAt(T0 + t, { cursorMovedAtMs: T0 + t, foregroundCategory }))
+    }
+
+    const attentions = run(frames).map(r => r.state.attention)
+
+    expect(new Set(attentions)).toEqual(new Set(['screen']))
+  })
+
+  it('treats an unknown category like a non-screen app without throwing', () => {
+    // A category from a newer or misbehaving producer arrives as plain JSON, outside the AppCategory union.
+    const foregroundCategory: AppCategory = JSON.parse('"banana"')
+    const [result] = run([inputsAt(T0, { cursorMovedAtMs: T0, foregroundCategory })])
+
+    expect(result.state.mode).toBe('watching')
+    expect(result.state.attention).toBe('cursor')
+  })
+
+  it('applies the first category after the stage was hidden at once, so a stale game does not hold attention', () => {
+    const results = run([
+      inputsAt(T0, { cursorMovedAtMs: T0, foregroundCategory: 'game' }),
+      inputsAt(T0 + 1000, { visible: false, foregroundCategory: 'game' }),
+      // Back on screen: the game category is the last sample from before the stage was hidden.
+      inputsAt(T0 + 25_000, { cursorMovedAtMs: T0 + 25_000, foregroundCategory: 'game' }),
+      inputsAt(T0 + 25_300, { cursorMovedAtMs: T0 + 25_300, foregroundCategory: 'editor' }),
+      inputsAt(T0 + 26_000, { cursorMovedAtMs: T0 + 26_000, foregroundCategory: 'game' }),
+    ])
+
+    expect(results.map(r => [r.state.mode, r.state.attention])).toEqual([
+      ['watching', 'screen'],
+      ['idle', 'camera'],
+      ['watching', 'screen'],
+      ['watching', 'cursor'],
+      ['watching', 'cursor'],
+    ])
+  })
+
+  it('does not watch a game while the stage is hidden', () => {
+    const [result] = run([inputsAt(T0, { visible: false, cursorMovedAtMs: T0, desktop: quietDesktop({ idleSeconds: 0 }), foregroundCategory: 'game' })])
+
+    expect(result.state.mode).toBe('idle')
+    expect(result.state.attention).toBe('camera')
   })
 })

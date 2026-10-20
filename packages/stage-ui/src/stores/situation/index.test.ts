@@ -369,6 +369,23 @@ describe('situation store', () => {
     expect(store.state.busy.state).toBe('accepts')
   })
 
+  it('keeps the user\'s foreground category when AIRI\'s own windows come to the front', () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    const foreground = useForegroundWindowStore()
+    const game = 'D:\\SteamLibrary\\steamapps\\common\\Hades\\Hades.exe'
+
+    foreground.setSample(foregroundSample({ exePath: game, exeName: 'Hades.exe', title: 'Hades' }))
+    expect(store.state.activity?.category).toBe('game')
+
+    // The Godot stage sidecar and the chat window are AIRI's own; the stage reads this category for attention.
+    foreground.setSample(foregroundSample({ exePath: 'C:\\AIRI\\godot-stage.exe', exeName: 'godot-stage.exe', title: 'Stage', ownProcess: true }))
+    foreground.setSample(foregroundSample({ exePath: 'C:\\AIRI\\AIRI.exe', exeName: 'AIRI.exe', title: 'Chat', ownProcess: true }))
+
+    expect(store.state.activity).toMatchObject({ appId: 'hades', category: 'game' })
+  })
+
   it('judges foreground staleness by stage visibility from its own ticker', () => {
     const leadership = createLeadership(true)
     const store = useSituationStore()

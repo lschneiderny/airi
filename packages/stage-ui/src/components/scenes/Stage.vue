@@ -52,6 +52,7 @@ import { useSpeechStore } from '../../stores/modules/speech'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsPresenceBubble } from '../../stores/presence-bubble'
 import { useSettings } from '../../stores/settings'
+import { useSituationStore } from '../../stores/situation'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
 import { useVoiceStore } from '../../stores/voice'
 
@@ -477,6 +478,9 @@ watch(() => props.cursorPosition, () => {
 const { snapshot: desktopActivity } = storeToRefs(useDesktopActivityStore())
 const visibility = useDocumentVisibility()
 const { performanceOverride, emotionPulse } = storeToRefs(useNaturalPerformanceOverride())
+// Only the leader window folds foreground samples; AIRI's own windows never become activity, and followers read null.
+const situation = useSituationStore()
+const foregroundCategory = computed(() => situation.state.activity?.category ?? null)
 let performanceMemory: ResolverMemory = initialResolverMemory
 const performance = shallowRef<PerformanceState>(resolvePerformance())
 
@@ -491,6 +495,7 @@ function resolvePerformance(): PerformanceState {
     visible: visibility.value === 'visible',
     override: performanceOverride.value,
     cueAttention: cueLook.value?.attention ?? null,
+    foregroundCategory: foregroundCategory.value,
   }, performanceMemory)
   performanceMemory = resolution.memory
   return resolution.state
@@ -507,7 +512,7 @@ function updatePerformance() {
 }
 
 useIntervalFn(updatePerformance, 250)
-watch([nowSpeaking, userSpeaking, chatSending, cursorMovedAtMs, desktopActivity, visibility, performanceOverride, cueLook], updatePerformance)
+watch([nowSpeaking, userSpeaking, chatSending, cursorMovedAtMs, desktopActivity, visibility, performanceOverride, cueLook, foregroundCategory], updatePerformance)
 
 // The devtools Natural lab fires emotions through the same queue the chat uses.
 watch(() => emotionPulse.value?.seq, () => {

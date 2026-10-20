@@ -1,3 +1,5 @@
+import type { AppCategory } from '../situation/types'
+
 /**
  * What the character is doing as a performer. The stage resolves it from chat,
  * voice, and desktop signals, and the Natural motion driver reads it to choose
@@ -103,6 +105,12 @@ export interface PerformanceInputs {
    * It replaces the resolved attention only while the mode is `talking` or `thinking`.
    */
   cueAttention: PerformanceCueAttention | null
+  /**
+   * Category of the user's foreground app, or `null` when the host does not report one. AIRI's own windows never
+   * set it. While watching, a settled `game` or `media` category keeps attention on the screen even when the
+   * cursor moved recently.
+   */
+  foregroundCategory: AppCategory | null
 }
 
 /**
@@ -129,6 +137,12 @@ export interface ResolverMemory {
   readonly resumedAtMs: number | null
   readonly screenChange: number | null
   readonly screenReactAtMs: number | null
+  /** `foregroundCategory` on the previous call, to detect a change. */
+  readonly foregroundCategory: AppCategory | null
+  /** When the foreground category last changed, or `null` before the first change so the first one applies at once. */
+  readonly foregroundCategorySinceMs: number | null
+  /** Whether the settled foreground category is one the character watches on screen (`game`, `media`). */
+  readonly screenCategory: boolean
   /** The largest `nowMs` seen. Time is clamped to it, so a clock that steps back cannot flap modes. */
   readonly nowMs: number | null
 }
@@ -150,6 +164,9 @@ export const initialResolverMemory: ResolverMemory = Object.freeze({
   resumedAtMs: null,
   screenChange: null,
   screenReactAtMs: null,
+  foregroundCategory: null,
+  foregroundCategorySinceMs: null,
+  screenCategory: false,
   nowMs: null,
 })
 
@@ -174,6 +191,13 @@ export const AWAY_INPUT_IDLE_SECONDS = 300
 const REACT_SCREEN_CHANGE = 0.35
 /** Shortest gap between two screen-change reactions. Tuning: raise if busy screens make the character react repeatedly. */
 const SCREEN_CHANGE_REFRACTORY_MS = 10_000
+/** A new foreground category must hold this long before it changes watching attention, so a quick alt-tab does not flick the eyes. Tuning: raise if attention follows brief app switches. */
+const FOREGROUND_CATEGORY_SETTLE_MS = 2000
+
+/** Foreground categories whose content the character watches on screen instead of following the cursor. */
+function isScreenCategory(category: AppCategory | null): boolean {
+  return category === 'game' || category === 'media'
+}
 
 /** Treats NaN and infinities as an unknown signal instead of a value. */
 function finiteOrNull(value: number | null): number | null {
@@ -203,7 +227,8 @@ function idleSecondsOf(desktop: DesktopActivitySnapshot | null): number | null {
  * `away` is an overlay on the mode, not a mode: the character can still talk
  * while the user is away. While away, desktop activity cannot select `watching`.
  *
- * Attention is `cursor` or `screen` while watching, the ACT cue's attention while
+ * Attention is `cursor` or `screen` while watching (`screen` while a `game` or `media` app has been in front for
+ * {@link FOREGROUND_CATEGORY_SETTLE_MS}, whatever the cursor does), the ACT cue's attention while
  * talking or thinking when the cue named one, and `camera` otherwise.
  */
 export function resolvePerformanceState(inputs: PerformanceInputs, previous: ResolverMemory): PerformanceResolution {
@@ -309,9 +334,27 @@ export function resolvePerformanceState(inputs: PerformanceInputs, previous: Res
     screenReactAtMs = nowMs
   }
 
+  // The first category applies at once; a later change waits until it has held long enough.
+  const foregroundCategory = inputs.foregroundCategory
+  let foregroundCategorySinceMs = previous.foregroundCategorySinceMs
+  let screenCategory = previous.screenCategory
+  if (!inputs.visible) {
+    // A hidden stage shows no gaze to smooth, and its samples can be many seconds old, so the
+    // first category reported after the stage returns applies at once.
+    foregroundCategorySinceMs = null
+    screenCategory = isScreenCategory(foregroundCategory)
+  }
+  else if (foregroundCategory !== previous.foregroundCategory) {
+    if (foregroundCategorySinceMs === null)
+      screenCategory = isScreenCategory(foregroundCategory)
+    foregroundCategorySinceMs = nowMs
+  }
+  if (foregroundCategorySinceMs !== null && nowMs - foregroundCategorySinceMs >= FOREGROUND_CATEGORY_SETTLE_MS)
+    screenCategory = isScreenCategory(foregroundCategory)
+
   let attention: PerformanceAttention = 'camera'
   if (mode === 'watching')
-    attention = cursorActive ? 'cursor' : 'screen'
+    attention = cursorActive && !screenCategory ? 'cursor' : 'screen'
   // The cue directs her gaze only while she performs the reply; listening and watching stay hers.
   else if ((mode === 'talking' || mode === 'thinking') && inputs.cueAttention !== null)
     attention = inputs.cueAttention
@@ -330,6 +373,9 @@ export function resolvePerformanceState(inputs: PerformanceInputs, previous: Res
       resumedAtMs: knownResumedAtMs,
       screenChange,
       screenReactAtMs,
+      foregroundCategory,
+      foregroundCategorySinceMs,
+      screenCategory,
       nowMs,
     },
   }
