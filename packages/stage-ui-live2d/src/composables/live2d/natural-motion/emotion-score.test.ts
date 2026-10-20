@@ -1,7 +1,7 @@
 import type { Band, ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type { ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 
-import type { ChannelCheck, EmotionTrialRecord, PlaceboRecord, ScorerInput } from './emotion-score'
+import type { ChannelCheck, EmotionGate, EmotionTrialRecord, PlaceboRecord, ScorerInput } from './emotion-score'
 import type { NaturalTrace, NaturalTraceEvent } from './trace'
 
 import { defaultExpressionPerformanceSettings, parseExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
@@ -320,23 +320,56 @@ describe('emotion scorer', () => {
     expect(angleY.pHolm).toBe(angleY.p)
   })
 
-  it('centers unpaired significance on the placebo null, not on zero', () => {
-    const random = createRandomStream(21)
-    // An idle statistic centered at -0.05 (the mouthForm check expects a decrease), as the idle eyelid ratio is offset.
-    const idle = () => -0.05 + 0.02 * gaussian(random)
-    const nulls: PlaceboRecord[] = Array.from({ length: 1000 }, (_, index) => ({ id: `p-${index}`, channels: { mouthForm: idle() } }))
-    const unpaired = (index: number, shift: number): EmotionTrialRecord => ({ ...trials('full', 1, 0)[0], trialId: `angry-strong-full-${index}`, channels: { mouthForm: { value: idle() + shift, paired: null } } })
-    const scoreOf = (shift: number) => scoreEmotionGate({ gate: emotionGate, checks: mouthFormCheck, trials: Array.from({ length: 100 }, (_, index) => unpaired(index, shift)), placebos: nulls, ranges, criteria: ['significance', 'sign'] }).results[0]
+  describe('unpaired significance', () => {
+    // A skewed idle distribution: -0.01 with probability 0.9, +0.09 with probability 0.1 (mean 0).
+    const skewed = (random: () => number) => random() < 0.9 ? -0.01 : 0.09
+    const unpairedTrial = (index: number, value: number): EmotionTrialRecord => ({
+      trialId: `angry-strong-full-${index}`,
+      emotion: 'angry',
+      band: 'strong',
+      variant: 'full',
+      side: null,
+      rejected: null,
+      releaseStart: 4,
+      faceResidue: 0,
+      channels: { mouthForm: { value, paired: null } },
+      missing: {},
+    })
+    const nullOf = (values: number[]): PlaceboRecord[] => values.map((value, index) => ({ id: `p-${index}`, channels: { mouthForm: value } }))
+    const scoreOf = (trialValues: number[], nullValues: number[], gate: EmotionGate = emotionGate) =>
+      scoreEmotionGate({ gate, checks: mouthFormCheck, trials: trialValues.map((value, index) => unpairedTrial(index, value)), placebos: nullOf(nullValues), ranges, criteria: ['significance'] }).results[0]
 
-    const idleResult = scoreOf(0)
-    expect(idleResult.pHolm).toBeGreaterThan(emotionGate.family.alpha)
-    expect(Math.abs(idleResult.E!)).toBeLessThan(3 * 0.02 / Math.sqrt(100))
-    expect(idleResult.verdict).not.toBe('pass')
+    it('matches the exact two-sample null on a skewed fixture', () => {
+      // Ten ordinary trials against 45 ordinary and 5 large placebo values: the trials look extreme exactly when a
+      // random 10-subset of the 60 pooled values holds no large value, C(55, 10) / C(60, 10) = 0.3876.
+      const exact = Array.from({ length: 10 }, (_, k) => (55 - k) / (60 - k)).reduce((product, factor) => product * factor, 1)
+      const result = scoreOf(Array.from<number>({ length: 10 }).fill(-0.01), [...Array.from<number>({ length: 45 }).fill(-0.01), ...Array.from<number>({ length: 5 }).fill(0.09)])
+      expect(Math.abs(result.p! - exact)).toBeLessThan(0.005)
+      expect(result.verdict).toBe('fail')
+    })
 
-    const effect = scoreOf(-0.02)
-    expect(effect.pHolm).toBeLessThan(emotionGate.family.alpha)
-    expect(effect.E).toBeCloseTo(0.02, 2)
-    expect(effect.verdict).toBe('pass')
+    it('keeps the false-pass rate of same-distribution skewed samples within alpha + 3 sigma', () => {
+      const random = createRandomStream(20261020)
+      // Fewer permutations than the committed gate keep 2000 scorings fast; the smallest p (1 / 2001) stays below alpha.
+      const gate: EmotionGate = { ...emotionGate, family: { ...emotionGate.family, permutations: 2000, bootstrap: 1 } }
+      const draws = 2000
+      let passes = 0
+      for (let draw = 0; draw < draws; draw++) {
+        const result = scoreOf(Array.from({ length: 10 }, () => skewed(random)), Array.from({ length: 50 }, () => skewed(random)), gate)
+        if (result.pHolm! <= emotionGate.family.alpha)
+          passes++
+      }
+      const alpha = emotionGate.family.alpha
+      expect(passes / draws).toBeLessThanOrEqual(alpha + 3 * Math.sqrt(alpha * (1 - alpha) / draws))
+    })
+
+    it('still passes a clear shift below the placebo pool', () => {
+      const random = createRandomStream(5)
+      const result = scoreOf(Array.from({ length: 40 }, () => skewed(random) - 0.05), Array.from({ length: 500 }, () => skewed(random)))
+      expect(result.pHolm).toBeLessThan(emotionGate.family.alpha)
+      expect(result.E).toBeGreaterThan(0.03)
+      expect(result.verdict).toBe('pass')
+    })
   })
 
   it('drops one non-finite trial of many from the permutation test and keeps the rest', () => {

@@ -361,6 +361,62 @@ export function twoSamplePValue(sample: readonly number[], reference: readonly n
   return (hits + 1) / (permutations + 1)
 }
 
+/**
+ * One-sided two-sample permutation p-value for unpaired trials: `sample[i]` (oriented by `signs[i]`) against the
+ * `reference` pool, statistic `mean(s * x) - mean(s) * mean(reference)`. Pooled values are relabeled; with equal
+ * signs and at most `permutations` subsets the test enumerates them exactly, otherwise it draws `permutations` random
+ * relabelings and returns `(hits + 1) / (permutations + 1)`.
+ */
+export function unpairedPValue(sample: readonly number[], signs: readonly number[], reference: readonly number[], permutations: number, random: RandomStream): number {
+  const n = sample.length
+  const m = reference.length
+  if (!n || !m)
+    return 1
+  const pooled = [...sample, ...reference]
+  const total = pooled.reduce((sum, value) => sum + value, 0)
+  const meanSign = signs.reduce((sum, sign) => sum + sign, 0) / n
+  const statistic = (weighted: number, plain: number) => weighted / n - meanSign * (total - plain) / m
+  const observed = statistic(sample.reduce((sum, value, index) => sum + signs[index] * value, 0), sample.reduce((sum, value) => sum + value, 0))
+  const tolerance = 1e-12 * pooled.reduce((sum, value) => sum + Math.abs(value), 0)
+
+  let subsets = 1
+  for (let index = 0; index < n && subsets <= permutations; index++)
+    subsets = subsets * (n + m - index) / (index + 1)
+  if (signs.every(sign => sign === signs[0]) && subsets <= permutations) {
+    let hits = 0
+    let count = 0
+    const visit = (start: number, left: number, plain: number) => {
+      if (left === 0) {
+        count++
+        if (statistic(signs[0] * plain, plain) >= observed - tolerance)
+          hits++
+        return
+      }
+      for (let index = start; index <= pooled.length - left; index++)
+        visit(index + 1, left - 1, plain + pooled[index])
+    }
+    visit(0, n, 0)
+    return hits / count
+  }
+  let hits = 0
+  for (let draw = 0; draw < permutations; draw++) {
+    // Partial Fisher-Yates: the first `n` slots become the relabeled trials, in trial order with their signs.
+    let weighted = 0
+    let plain = 0
+    for (let index = 0; index < n; index++) {
+      const pick = index + Math.floor(random() * (pooled.length - index))
+      const value = pooled[pick]
+      pooled[pick] = pooled[index]
+      pooled[index] = value
+      weighted += signs[index] * value
+      plain += value
+    }
+    if (statistic(weighted, plain) >= observed - tolerance)
+      hits++
+  }
+  return (hits + 1) / (permutations + 1)
+}
+
 /** Holm step-down adjusted p-values, in input order. Ties keep input order, so callers sort keys first. */
 export function holmAdjust(pValues: readonly number[]): number[] {
   const order = pValues.map((p, index) => ({ p, index })).sort((a, b) => a.p - b.p || a.index - b.index)
@@ -1075,6 +1131,8 @@ interface Evaluation {
   tested: number[] | null
   /** Folded placebo null for unsigned checks. */
   folded: number[] | null
+  /** Signed unpaired checks: raw trial values, their orientation signs, and the placebo pool they are tested against. */
+  unpaired: { values: number[], signs: number[], reference: readonly number[] } | null
   /** `true` pass, `false` fail, `null` not evaluable (the reason is in `result.reasons`). */
   outcomes: Partial<Record<Criterion, boolean | null>>
 }
@@ -1105,9 +1163,11 @@ export function scoreEmotionGate(input: ScorerInput): EmotionGateScore {
   const tested = evaluations.filter(entry => entry.criteria.includes('significance') && entry.tested)
   for (const entry of tested) {
     const random = stream(entry.check, 'significance')
-    entry.result.p = entry.folded
-      ? twoSamplePValue(entry.tested!, entry.folded, gate.family.permutations, random)
-      : signFlipPValue(entry.tested!, gate.family.permutations, random)
+    entry.result.p = entry.unpaired
+      ? unpairedPValue(entry.unpaired.values, entry.unpaired.signs, entry.unpaired.reference, gate.family.permutations, random)
+      : entry.folded
+        ? twoSamplePValue(entry.tested!, entry.folded, gate.family.permutations, random)
+        : signFlipPValue(entry.tested!, gate.family.permutations, random)
   }
   const adjusted = holmAdjust(tested.map(entry => entry.result.p!))
   tested.forEach((entry, index) => {
@@ -1170,7 +1230,7 @@ function evaluateCheck(check: ChannelCheck, context: EvaluationContext): Evaluat
     failed: [],
     reasons: [],
   }
-  const evaluation: Evaluation = { check, result, criteria, tested: null, folded: null, outcomes: {} }
+  const evaluation: Evaluation = { check, result, criteria, tested: null, folded: null, unpaired: null, outcomes: {} }
   const { outcomes } = evaluation
   const notEvaluable = (criterion: Criterion, reason: string) => {
     if (criteria.includes(criterion)) {
@@ -1202,12 +1262,10 @@ function evaluateCheck(check: ChannelCheck, context: EvaluationContext): Evaluat
   }
   const measure = (trial: EmotionTrialRecord) => trial.channels[check.channel]!
   const signOf = (trial: EmotionTrialRecord) => check.sign * (check.sided ? trial.side ?? 0 : 1)
-  // Paired: d = delta - delta0. Unpaired: d = delta - mean(placebo), because idle statistics need not center on
-  // zero (the eyelid ratio is positive at idle). Without placebo windows the null is assumed zero-centered.
-  const nullCenter = placebo.length ? mean(placebo) : 0
+  // Paired when every trial has its stripped run; then d = delta - delta0, otherwise d = delta.
   const differences = (list: EmotionTrialRecord[]) => {
     const paired = list.every(trial => measure(trial).paired !== null)
-    return list.map(trial => signOf(trial) * (measure(trial).value - (paired ? measure(trial).paired! : nullCenter)))
+    return list.map(trial => signOf(trial) * (measure(trial).value - (paired ? measure(trial).paired! : 0)))
   }
   const sigma0 = placebo.length >= 2 ? sampleSd(placebo) : null
   const primaryVariant: TrialVariant = check.cls === 'modulation' ? 'long-hold' : 'full'
@@ -1228,6 +1286,33 @@ function evaluateCheck(check: ChannelCheck, context: EvaluationContext): Evaluat
   else if (unsigned && !placebo.length) {
     notEvaluable('significance', 'an unsigned check needs placebo windows for the folded null')
     notEvaluable('sign', 'an unsigned check needs placebo windows for the folded null')
+  }
+  else if (!unsigned && placebo.length && !primary.every(trial => measure(trial).paired !== null)) {
+    // Unpaired: the trial values are a second independent sample of the idle statistic, which need not be symmetric
+    // or centered on zero, so they are compared with the placebo pool by a two-sample permutation test.
+    const raw = primary.map(trial => measure(trial).value)
+    const signs = primary.map(signOf)
+    const meanSign = mean(signs)
+    const values = raw.map((value, index) => signs[index] * value)
+    evaluation.tested = values
+    evaluation.unpaired = { values: raw, signs, reference: placebo }
+    result.E = mean(values) - meanSign * mean(placebo)
+    // The CI resamples the placebo pool too, so it carries the null's own sampling error.
+    const random = context.stream('effect-ci')
+    const draws: number[] = []
+    for (let draw = 0; draw < gate.family.bootstrap; draw++) {
+      let trialSum = 0
+      for (let index = 0; index < values.length; index++)
+        trialSum += values[Math.floor(random() * values.length)]
+      let nullSum = 0
+      for (let index = 0; index < placebo.length; index++)
+        nullSum += placebo[Math.floor(random() * placebo.length)]
+      draws.push(trialSum / values.length - meanSign * nullSum / placebo.length)
+    }
+    result.ci = [quantile(draws, 0.025), quantile(draws, 0.975)]
+    result.d = check.cls !== 'modulation' && sigma0 ? result.E / sigma0 : null
+    if (criteria.includes('sign'))
+      outcomes.sign = result.E > 0
   }
   else {
     // Without the hold side, |delta| is compared with the folded placebo null.
