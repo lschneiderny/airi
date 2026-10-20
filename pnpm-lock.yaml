@@ -4377,6 +4377,9 @@ importers:
       pinia:
         specifier: 'catalog:'
         version: 4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.41(typescript@6.0.3))
+      pixi-live2d-display:
+        specifier: 'catalog:'
+        version: 0.4.0(patch_hash=7881eb52793f46a10d6c04d62b1799a3d0ef79f83edc0283777baa6db339ed6d)(0736f5bd67d2e4de7e9fff36ad63fa2e)
       valibot:
         specifier: 'catalog:'
         version: 1.4.2(typescript@6.0.3)

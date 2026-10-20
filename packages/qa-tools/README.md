@@ -26,6 +26,22 @@ Run `pnpm qa:doctor` from the repository root before a QA run. It reports, and n
 - The exit code is 1 when any row is `fail`, 2 for unknown flags, and 0 otherwise. Each check is bounded by a 15 s timeout; a check that hangs becomes a `fail` row.
 - `runDoctor(probes)` in `src/env/doctor.ts` takes injectable probes; `createSystemProbes(repoRoot)` supplies the real ones.
 
+### T2 headless rig runner
+
+`src/t2/runner.ts` runs a motion scenario on the real ForBOOTH model (moc, physics, pose) in Node at a fixed 1/60 s step, without Electron or a GPU. It uses the scenario sink that T1 uses (`src/motion/scenario-sink.ts`: conductor, scene, hold performer, Natural adapter), so only the model and the per-frame step differ. See `docs/t2-spike.md` for the feasibility evidence.
+
+```ts
+const runtime = await loadT2Runtime() // reads AIRI_QA_RIG_FORBOOTH and AIRI_QA_CUBISM_CORE
+const trace = runT2(scenario, runtime, { catalog })
+```
+
+- Inputs: `AIRI_QA_RIG_FORBOOTH` is the rig folder (the `.model3.json` may sit up to two folders below it); `AIRI_QA_CUBISM_CORE` is a local `live2dcubismcore.min.js` (the core is gitignored). A missing or empty rig or a missing core throws `T2SetupError` (`exitCode` 2), naming the missing `.moc3` or core.
+- Mesh deformation (`model.update()`) is skipped by default: it reads parameters and never writes them, and it costs about 90% of a frame. `deform: true` runs it for the parameter-identity check.
+- The trace records the rig's own parameter ranges plus the parameters that the catalog's expression files drive (the six ForBOOTH switches). A trace with no moving parameter throws.
+- Not reproduced from the stage: the beat-sync, idle-focus and light-squint plugins, manual motion control, expression group conflicts, and rest-set entries. Auto blink, lip sync and breath come from the Natural adapter's attention, as for an unattended stage.
+- `pnpm -F @proj-airi/qa-tools t2:probe [--identity]` runs one 10 s trial and prints the trace sha256, the speed multiple, and with `--identity` the parameter difference with and without deformation. It exits 2 for a missing or empty rig or core.
+- Rig tests skip, with a logged reason, when `AIRI_QA_RIG_FORBOOTH` or the core is absent.
+
 ## Evidence
 
 Run directories: `createRun({ tool, label, repoRoot })` from `src/evidence/run.ts` creates `.temp/qa/<YYYYMMDD-HHmmss>-<tool>-<label>/` (gitignored) and refuses to reuse an existing directory. The handle offers `path(name)` (rejects paths that leave the run dir), `addArtifact(relPath, kind)` (records sha256) and `finish({ exitCode, summary })`, which writes `run.json`: `runId`, `tool`, `label`, `gitSha`, `dirty`, `startedAt`, `endedAt`, `command`, `env` (only `APP_*` and `AIRI_QA_*` keys), optional `gate`, `artifacts` and `result`. `tool` and `label` accept letters, digits, `.`, `_` and `-` only.

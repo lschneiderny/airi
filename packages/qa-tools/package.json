@@ -13,6 +13,7 @@
   "scripts": {
     "doctor": "tsx bin/doctor.ts",
     "evidence": "tsx bin/evidence.ts",
+    "t2:probe": "tsx bin/t2-probe.ts",
     "test:qa": "tsx bin/test.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -24,6 +25,7 @@
     "@proj-airi/stage-ui-live2d": "workspace:^",
     "jszip": "catalog:",
     "pinia": "catalog:",
+    "pixi-live2d-display": "catalog:",
     "valibot": "catalog:",
     "vue": "catalog:"
   },
