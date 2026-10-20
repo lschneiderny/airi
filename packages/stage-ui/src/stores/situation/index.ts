@@ -76,8 +76,11 @@ export interface SituationChatControls {
   submitUnprompted: (payload: ChatUnpromptedPayload) => Promise<ChatUnpromptedResult>
 }
 
-/** The chat hooks the store listens to: the conversation sensor's, plus literals that show a fire was spoken. */
-export type SituationChatHooks = ConversationHookSource & Pick<ChatHookRegistry, 'onTokenLiteral'>
+/**
+ * The chat hooks the store listens to: the conversation sensor's, literals that show an unprompted turn was spoken,
+ * and stream ends that show one was declined.
+ */
+export type SituationChatHooks = ConversationHookSource & Pick<ChatHookRegistry, 'onTokenLiteral' | 'onStreamEnd'>
 
 interface RunningSensors {
   check: (nowMs: number) => void
@@ -200,9 +203,20 @@ export const useSituationStore = defineStore('situation', () => {
         setGateMemory(recordFireOutcome(gateMemory, 'spoken', Date.now()))
       }
     })
+    const stopDeclinedListener = chatHooks.onStreamEnd(async (context) => {
+      // She chose to stay silent about the topic, so the gate must not raise it again. A busy, cancelled, or failed
+      // turn was not her decision and leaves its topic alone. Her last remark is unchanged: only a spoken turn sets
+      // it, after its own first literal addressed its topic.
+      if (context.origin !== 'unprompted' || !context.cueStats?.declined)
+        return
+      const trigger = context.message.role === 'user' ? context.message.trigger : undefined
+      if (trigger)
+        markAddressed(trigger.topicKey)
+    })
     stopConversation = () => {
       stopSensor()
       stopSpokenListener()
+      stopDeclinedListener()
     }
   }
 

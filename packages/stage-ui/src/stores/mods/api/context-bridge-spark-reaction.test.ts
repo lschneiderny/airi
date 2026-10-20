@@ -108,10 +108,10 @@ function quietGateInput(situation: GateInput['situation']): GateInput {
   }
 }
 
-/** Emits the hooks the chat runtime emits for an unprompted turn that is spoken to the end. */
-async function speakUnprompted(hooks: ChatHookRegistry, payload: ChatUnpromptedPayload, text: string) {
+/** The hook context of the unprompted turn that `payload` starts, as the chat runtime builds it. */
+function unpromptedContext(payload: ChatUnpromptedPayload): ChatStreamEventContext {
   const turnId = payload.messageId!
-  const context: ChatStreamEventContext = {
+  return {
     sessionId: 'session-1',
     turnId,
     origin: 'unprompted',
@@ -119,11 +119,23 @@ async function speakUnprompted(hooks: ChatHookRegistry, payload: ChatUnpromptedP
     contexts: {},
     composedMessage: [],
   }
+}
+
+/** Emits the hooks the chat runtime emits for an unprompted turn that is spoken to the end. */
+async function speakUnprompted(hooks: ChatHookRegistry, payload: ChatUnpromptedPayload, text: string) {
+  const context = unpromptedContext(payload)
   const output = { role: 'assistant' as const, content: text, slices: [], tool_results: [] }
   await hooks.emitBeforeSendHooks(context.message.content as string, context)
   await hooks.emitTokenLiteralHooks(text, context)
   await hooks.emitAssistantMessageHooks(output, text, context)
   await hooks.emitChatTurnCompleteHooks({ output, outputText: text, toolCalls: [] }, context)
+}
+
+/** Emits the hooks the chat runtime emits for an unprompted turn that the model declines: only the stream end. */
+async function declineUnprompted(hooks: ChatHookRegistry, payload: ChatUnpromptedPayload) {
+  const context = unpromptedContext(payload)
+  await hooks.emitBeforeSendHooks(context.message.content as string, context)
+  await hooks.emitStreamEndHooks({ ...context, cueStats: { act: 0, recovered: 0, origin: 'unprompted', declined: true } })
 }
 
 describe('widget spark reactions', () => {
@@ -231,8 +243,46 @@ describe('widget spark reactions', () => {
     expect(recordSparkNotifyReaction).toHaveBeenCalledWith(event.data.id, 'Oh, a QA widget!')
   })
 
+  it('addresses the notify of a declined reaction, so the gate never raises what she chose not to say', async () => {
+    const { situation, bridge } = startLeader({ gate: true })
+    submitUnprompted.mockImplementationOnce(async (payload) => {
+      unpromptedPending = true
+      try {
+        await declineUnprompted(hooks, payload)
+        return { status: 'declined' }
+      }
+      finally {
+        unpromptedPending = false
+      }
+    })
+
+    const reaction = await bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
+    // The notify is urgent, so an unaddressed one would fire at the next gate tick.
+    await vi.advanceTimersByTimeAsync(3 * GATE_INTERVAL_MS)
+
+    expect(reaction).toBe('fallback')
+    expect(notifyEvents(situation)[0].addressedAtMs).toEqual(expect.any(Number))
+    expect(submitUnprompted).toHaveBeenCalledOnce()
+    expect(recordSparkNotifyReaction).not.toHaveBeenCalled()
+  })
+
+  it('keeps her last spoken remark when a later reaction is declined', async () => {
+    const { situation, bridge } = startLeader()
+    chatSpeaks('First thing.')
+    await bridge.dispatchSparkNotifyReaction({ headline: 'QA first', fallbackResponseText: 'fallback' })
+    submitUnprompted.mockImplementationOnce(async (payload) => {
+      await declineUnprompted(hooks, payload)
+      return { status: 'declined' }
+    })
+
+    await bridge.dispatchSparkNotifyReaction({ headline: 'QA declined', fallbackResponseText: 'fallback' })
+    expect(situation.state.conversation.lastUnpromptedTopic).toBe('QA first')
+
+    await bridge.dispatchSparkNotifyReaction({ headline: 'QA third', fallbackResponseText: 'fallback' })
+    expect(situation.state.conversation.lastUnpromptedTopic).toBe('QA third')
+  })
+
   it.each([
-    ['declined', { status: 'declined' }],
     ['cancelled', { status: 'cancelled' }],
     ['failed', { status: 'failed', error: 'provider down' }],
     ['busy', { status: 'failed', error: BUSY }],
