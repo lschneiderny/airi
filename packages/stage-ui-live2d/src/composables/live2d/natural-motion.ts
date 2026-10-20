@@ -281,9 +281,10 @@ export class Live2DNaturalMotion {
   private integrate(): Snapshot {
     const stepStart = this.stepIndex * step
     this.stepIndex++
-    // Aside attention looks away from the cursor too. Model.vue drops the cursor while attention is aside;
-    // this also covers a pause between speech clips, where the held cue outlives that attention.
-    const c = this.pet.active || this.energy.aside ? null : this.cursor
+    // Aside attention looks away from the cursor too, and screen attention watches the screen instead of it.
+    // Model.vue drops the cursor for both; this also covers a pause between speech clips, where the held cue
+    // outlives that attention.
+    const c = this.pet.active || this.energy.aside || this.energy.screen ? null : this.cursor
     this.gaze.setCursor(c, stepStart)
     this.gaze.setAside(this.energy.aside, stepStart)
     const pokeState = startPending(this.pending.splice(0), stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })

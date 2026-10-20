@@ -77,6 +77,8 @@ export class NaturalPerformanceEnergy {
   emphasisAcceptance = 0.25
   /** Whether attention is `aside`; the gaze layer then holds an off-camera fixation instead of drawing targets. */
   aside = false
+  /** Whether attention is `screen`; the facade then drops the cursor, so the desk-weighted fixations watch the screen. */
+  screen = false
 
   /** Attention an ACT cue set while talking or thinking, or `null`; `camera` cannot be told apart from the default. */
   private cueAttention: 'aside' | 'screen' | null = null
@@ -174,6 +176,7 @@ export class NaturalPerformanceEnergy {
     const performing = state.mode === 'talking' || state.mode === 'thinking'
     this.cueAttention = performing && (state.attention === 'aside' || state.attention === 'screen') ? state.attention : null
     this.aside = state.attention === 'aside'
+    this.screen = state.attention === 'screen'
     // Screen attention outside watching comes from an ACT cue and weights the desk the same way.
     if (state.attention === 'screen')
       this.targetWeights = { ...defaultWeights, desk: 2 }
