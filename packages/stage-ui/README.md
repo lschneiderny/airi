@@ -348,3 +348,64 @@ The default pack contains twelve generated chibi reactions of AIRI's official bl
 See [artwork provenance](src/assets/stickers/README.md) for references, exact prompts, and inspection notes.
 These are static assets. No runtime image-generation dependency is included.
 The four development-only Fluent Emoji images are removed. No old-ID migration is included.
+
+## Situational presence
+
+The character knows what the user is doing and can speak up on her own at sensible moments. The pure rules live in `@proj-airi/stage-shared/situation`; this package owns their state, sensors, settings, and delivery.
+The [situational presence ADR](../../docs/ai/adr/2026-10-19-situational-presence.md) records the design.
+
+### Situation store
+
+`useSituationStore` in `stores/situation` holds the situation of the leader window. It is neither synced nor persisted.
+Each host calls `initialize(syncedPinia)` next to the chat store. The leader starts the sensors and a 1-second advance ticker, and a follower ignores every call.
+Every chat request carries the block from `renderForRequest` as its only runtime context. Outside the leader, `renderForRequest` returns `undefined`, so a host that never initializes the store sends no block.
+
+- `setHostCapabilities({ unprompted: true })` runs the opportunity gate every 2 seconds in the leader. Only the Electron app sets it.
+- `setStageVisible(visible)` reports whether the stage is on screen. A host that never calls it counts as hidden, so the gate stays quiet.
+- `ingest(observation)` folds one observation. Sensors call it; other code rarely needs it.
+- `markAddressed(topicKey)` keeps a topic from being raised again, for example when a caller speaks about that topic itself.
+
+Use this store to give the model awareness of the user's situation and to run unprompted remarks.
+Do not read it in follower windows, and do not store its block or window titles in chat history.
+
+### Sensors
+
+`stores/situation/sensors/` turns host signals into observations: desktop presence and wakes, the foreground app and busy state, conversation turns, the stage expression and mood, plugin and vision context, Minecraft context, and `spark:notify` events.
+Only the leader runs them. Context messages from the context bridge reach the situation through `ingestContextMessage`, and notifications through `notifyObservationFrom`.
+A follower window forwards its notify observations to the leader over the speech bus with `situationNotifyObservedEvent`.
+The foreground sensor skips AIRI's own windows, drops titles of apps on the title denylist, and treats a sample older than 5 seconds (20 seconds while the stage is hidden) as stale.
+
+Add a sensor when a new signal should reach the model's view of the situation.
+Do not send ambient context to the model in any other way: the situation block is the only ambient channel.
+
+### Presence settings
+
+`useSituationSettings` in `features/situation/settings` stores one document at `settings/situation`: `unpromptedEnabled`, `chattiness` (0 to 1, default 0.5), `dontDisturb`, `quietApps`, `titleDenylist`, `showUnpromptedCue`, and `speakDuringGames`.
+An invalid field falls back to its default. The leader routes `update` and `reset`.
+**Settings > Presence** edits it in the Electron app. Web and Pocket exclude the page, because they run no unprompted turns.
+
+Use these settings to control how often and when the character speaks up, and which window titles the model may see.
+Do not read them in the Electron main process.
+
+### Unprompted turns
+
+`useChatStore().submitUnprompted({ topicKey, topicText, force?, messageId?, supplement? })` starts one turn without user input in the leader's active session. It resolves to `spoken` with the text, `declined`, `cancelled`, or `failed`.
+Without `force`, the model may decline with `<|SILENT|>`. A decline writes an `unprompted-declined` control record and nothing else.
+At most one unprompted turn is pending at a time. A user send in the same session cancels it.
+`userSending` ignores unprompted turns, so the presence bubble and the streaming placeholder follow user turns only.
+Chat history shows a muted "Spoke up about X" cue above the reply unless **Show unprompted cue** is off. Unprompted turns are excluded from cloud sync.
+
+Widget reaction requests use `submitUnprompted` with `force: true` and the message id `spark:<id>`, and return the spoken text or the fallback text (todo 27).
+The character store no longer speaks spark reactions through its own `Speech` client (todo 28).
+
+Use `submitUnprompted` for remarks that code decided to offer: gate fires and forced reactions.
+Do not pass a raw window title in `topicText`, because the trigger message is stored in history.
+
+### Situation inspector
+
+**Settings > System > Developer > Situation** shows the live situation, the event table, the last rendered block, the gate trace and memory, a spend panel, and ACT compliance.
+`useSituationObservabilityStore` serves the page from the leader through Eventa invokes on a BroadcastChannel context, not through synced actions, so polling leaves nothing in the shared synced state.
+**Evaluate now** runs the gate once without its timing guards; hard suppressors still apply.
+
+Use the inspector to tune the gate and to see why the character spoke or stayed quiet.
+Do not use it as a user-facing settings page.

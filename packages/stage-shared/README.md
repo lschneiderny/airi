@@ -104,6 +104,48 @@ Do not use it to render, compose parameters, or hold timers. The stage conductor
 The [expression performance ADR](../../docs/ai/adr/2026-10-18-expression-performance.md) records the contracts.
 The [Natural emotion revamp ADR](../../docs/ai/adr/2026-10-19-natural-emotion-revamp.md) records the hold contract.
 
+### Situation
+
+The `situation` entrypoint owns the pure core of situational presence: the observation and state types, the reducer, the situation block renderer, the opportunity gate, and the window-title helpers.
+
+- `reduceSituation` folds one `Observation` into a `SituationState`. `advanceSituation` derives the events that need no observation, such as settled app switches, long-session tiers, and expiry.
+- `renderSituation` renders the bounded `[Situation HH:MM]` block and returns the ids of the events that it showed as new. Pass them to `markShown`, so the next block does not repeat them.
+- `evaluateGate` decides whether the character may speak up on her own and returns the next `GateMemory`. `recordFireOutcome` and `recordUserTurn` feed the engagement backoff.
+- `normalizeWindowTitle`, `appIdFromExe`, `labelFromExe`, `categorizeApp`, and `isDenylisted` turn a foreground sample into an app id, label, category, and model-facing title.
+
+No function reads a clock or randomness. Pass epoch milliseconds, and keep the returned state and memory for the next call.
+
+```ts
+import { initialSituationState, markShown, reduceSituation, renderSituation } from '@proj-airi/stage-shared/situation'
+
+const nowMs = Date.now()
+let state = reduceSituation(initialSituationState, { kind: 'wake', cause: 'unlock', atMs: nowMs }, nowMs)
+const rendered = renderSituation(state, nowMs)
+state = markShown(state, rendered.shownEventIds, nowMs)
+// rendered.text is the block for the next chat request.
+```
+
+Use this entrypoint to describe the user's situation to the model, or to decide when an unprompted remark is welcome, in a way that tests can replay.
+Do not use it to collect signals or to hold state for a window. `useSituationStore` in `@proj-airi/stage-ui` owns the leader's state, the sensors, and the gate loop.
+Do not persist or sync a `SituationState`, because it can hold window titles.
+The [situational presence ADR](../../docs/ai/adr/2026-10-19-situational-presence.md) records the rules and their starting constants.
+
+### Foreground window store
+
+The `stores/foreground-window` entrypoint owns `useForegroundWindowStore`, which holds the latest `ForegroundWindowSample`: the foreground app's executable, its window title, whether the window belongs to AIRI, the Windows notification state, and `sampledAtMs`.
+A host writes it with `setSample` and clears it with `reset`. The Electron app writes it once per second from its Windows foreground sensor. Other hosts never write it, so `sample` stays `null`.
+A failed reading keeps the previous sample, so consumers judge freshness from `sampledAtMs`.
+
+```ts
+import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
+import { storeToRefs } from 'pinia'
+
+const { sample } = storeToRefs(useForegroundWindowStore())
+```
+
+Use this store to pass foreground samples from a host producer to the situation sensor in `@proj-airi/stage-ui`.
+Do not persist or replicate it, because a sample carries a raw window title. Do not sample the foreground window in this package; the host producer owns sampling.
+
 ## Do not use this package
 
 Keep Electron IPC definitions in the Electron application. Keep UI state and actions in `@proj-airi/stage-ui`. Keep Extension runtime and manifest behavior in `@proj-airi/plugin-sdk`.

@@ -84,6 +84,42 @@ Unknown IDs are ignored. Sticker markers never reach literal speech or special-t
 Other special markers retain their existing behavior. A reply can contain text, a sticker, or both.
 The host renderer resolves the ID to local artwork. The core has no image assets, URLs, storage, or model dependencies.
 
+## Unprompted turns
+
+A host can start a turn without user input by passing `origin: 'unprompted'` and a `trigger` (`{ topicKey, text }`) in the send options. In AIRI, the stage's situation gate starts these turns.
+The trigger message reaches the provider as the trailing user turn, so runtime context attaches to it. The runtime commits the trigger only when the reply is decided as spoken, at its first non-whitespace literal.
+Until then, it buffers literal and special hooks and publishes no assistant message.
+
+The model declines with the decline marker, `<|SILENT|>` by default (`declineMarker` changes it). A marker before any speech, or a reply without visible speech, declines the turn:
+
+- Nothing is committed, and no user-message, assistant-message, or turn-complete hook runs.
+- `emitStreamEndHooks` runs, so hosts can close an empty speech response.
+- `onTurnDeclined` receives the session, turn, and trigger, and `onSendSettled` reports the status `declined`.
+- The runtime stops the provider request at once. The stop is not reported as a cancellation or an error.
+
+A decline marker that arrives after speech started is removed from the content and the hooks.
+An unprompted turn carries no tools. The Responses adapter adds no hosted `web_search`, and `origin` in `StreamOptions` tells the host to send no built-in tools.
+The stream context reports `origin` and the turn's `cueStats` (`act`, `recovered`, `origin`, and `declined`) before the stream-end hooks.
+For an unprompted turn, `accepted` resolves when the trigger is committed or when the turn is declined, so it does not prove persistence.
+User-origin turns behave exactly as before.
+
+```ts
+const { done } = runtime.submit(
+  '(No one spoke to you. You may speak up about: Notepad (other) for about 30 min)',
+  {
+    ...sendOptions,
+    origin: 'unprompted',
+    trigger: { topicKey: 'activity:notepad:tier:1', text: 'Notepad (other) for about 30 min' },
+  },
+  sessionId,
+)
+await done
+```
+
+Use unprompted turns when the host has decided that a moment exists and wants the model to decide whether to speak.
+Do not use them for messages that the user wrote. Do not add a plugin-protocol input event for them: `origin` is a local runtime field.
+The [situational presence ADR](../../docs/ai/adr/2026-10-19-situational-presence.md) records the design.
+
 ## VoiceController
 
 The implemented coordinator is `VoiceController`. It composes audio primitives with transcription, trusted plugins, submission, and named response interruption.
