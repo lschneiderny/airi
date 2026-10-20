@@ -11,7 +11,7 @@ import { isMacOS, isWindows } from 'std-env'
 
 import { createServerChannelService } from '../../services/airi/channel-server'
 import { createI18nService } from '../../services/airi/i18n'
-import { createAppService, createDesktopActivityService, createPowerMonitorService, createScreenService, createSystemPreferencesService, createWindowService } from '../../services/electron'
+import { createAppService, createDesktopActivityService, createForegroundWindowService, createPowerMonitorService, createScreenService, createSystemPreferencesService, createWindowService } from '../../services/electron'
 
 export function toggleWindowShow(window?: BrowserWindow | null): void {
   if (!window) {
@@ -173,12 +173,15 @@ export async function setupBaseWindowElectronInvokes(params: {
   window: BrowserWindow
   serverChannel: ServerChannel
   i18n: I18n
+  /** The Godot stage sidecar's pid, for windows that own the sidecar; see `createForegroundWindowService`. */
+  getSidecarPid?: () => number | null
 }) {
   createScreenService({ context: params.context, window: params.window })
   createWindowService({ context: params.context, window: params.window })
   createAppService({ context: params.context, window: params.window })
   createPowerMonitorService({ context: params.context, window: params.window })
   createDesktopActivityService({ context: params.context, window: params.window })
+  createForegroundWindowService({ context: params.context, window: params.window, getSidecarPid: params.getSidecarPid })
   createSystemPreferencesService({ context: params.context, window: params.window })
 
   await createI18nService({ context: params.context, window: params.window, i18n: params.i18n })
