@@ -380,23 +380,38 @@ describe('resolvePerformanceState', () => {
     expect(result.state.attention).toBe('cursor')
   })
 
-  it('applies the first category after the stage was hidden at once, so a stale game does not hold attention', () => {
+  it('settles the first category after the stage was hidden like any other change', () => {
     const results = run([
       inputsAt(T0, { cursorMovedAtMs: T0, foregroundCategory: 'game' }),
       inputsAt(T0 + 1000, { visible: false, foregroundCategory: 'game' }),
-      // Back on screen: the game category is the last sample from before the stage was hidden.
+      // Back on screen with the sample from before the hide: it is new again and must hold for 2 s.
       inputsAt(T0 + 25_000, { cursorMovedAtMs: T0 + 25_000, foregroundCategory: 'game' }),
+      // A quick alt-tab to the editor and back does not flick attention.
       inputsAt(T0 + 25_300, { cursorMovedAtMs: T0 + 25_300, foregroundCategory: 'editor' }),
       inputsAt(T0 + 26_000, { cursorMovedAtMs: T0 + 26_000, foregroundCategory: 'game' }),
+      inputsAt(T0 + 27_999, { cursorMovedAtMs: T0 + 27_999, foregroundCategory: 'game' }),
+      inputsAt(T0 + 28_000, { cursorMovedAtMs: T0 + 28_000, foregroundCategory: 'game' }),
     ])
 
     expect(results.map(r => [r.state.mode, r.state.attention])).toEqual([
       ['watching', 'screen'],
       ['idle', 'camera'],
+      ['watching', 'cursor'],
+      ['watching', 'cursor'],
+      ['watching', 'cursor'],
+      ['watching', 'cursor'],
       ['watching', 'screen'],
-      ['watching', 'cursor'],
-      ['watching', 'cursor'],
     ])
+  })
+
+  it('leaves screen attention once the category clears to null', () => {
+    const results = run([
+      inputsAt(T0, { cursorMovedAtMs: T0, foregroundCategory: 'game' }),
+      inputsAt(T0 + 1000, { cursorMovedAtMs: T0 + 1000, foregroundCategory: null }),
+      inputsAt(T0 + 3000, { cursorMovedAtMs: T0 + 3000, foregroundCategory: null }),
+    ])
+
+    expect(results.map(r => r.state.attention)).toEqual(['screen', 'screen', 'cursor'])
   })
 
   it('does not watch a game while the stage is hidden', () => {

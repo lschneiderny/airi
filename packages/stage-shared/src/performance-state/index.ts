@@ -336,13 +336,16 @@ export function resolvePerformanceState(inputs: PerformanceInputs, previous: Res
 
   // The first category applies at once; a later change waits until it has held long enough.
   const foregroundCategory = inputs.foregroundCategory
+  let rememberedCategory = foregroundCategory
   let foregroundCategorySinceMs = previous.foregroundCategorySinceMs
   let screenCategory = previous.screenCategory
   if (!inputs.visible) {
-    // A hidden stage shows no gaze to smooth, and its samples can be many seconds old, so the
-    // first category reported after the stage returns applies at once.
-    foregroundCategorySinceMs = null
-    screenCategory = isScreenCategory(foregroundCategory)
+    // A hidden stage shows no gaze to smooth and its samples can be many seconds old, so nothing is watched and
+    // the category is forgotten. The first category reported after the stage returns is new and settles like any
+    // other change, counted from the moment a fresh sample reports it.
+    rememberedCategory = null
+    foregroundCategorySinceMs = nowMs
+    screenCategory = false
   }
   else if (foregroundCategory !== previous.foregroundCategory) {
     if (foregroundCategorySinceMs === null)
@@ -373,7 +376,7 @@ export function resolvePerformanceState(inputs: PerformanceInputs, previous: Res
       resumedAtMs: knownResumedAtMs,
       screenChange,
       screenReactAtMs,
-      foregroundCategory,
+      foregroundCategory: rememberedCategory,
       foregroundCategorySinceMs,
       screenCategory,
       nowMs,

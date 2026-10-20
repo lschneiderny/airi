@@ -1,4 +1,4 @@
-import type { Observation } from '@proj-airi/stage-shared/situation'
+import type { AppCategory, Observation } from '@proj-airi/stage-shared/situation'
 import type { ForegroundWindowSample } from '@proj-airi/stage-shared/stores/foreground-window'
 
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
@@ -31,10 +31,15 @@ function sample(overrides: Partial<ForegroundWindowSample> = {}): ForegroundWind
 function run(options: { visible?: boolean } = {}) {
   let visible = options.visible ?? true
   const observations: Observation[] = []
-  const sensor = startForegroundSensor(observation => observations.push(observation), { stageVisible: () => visible })
+  const categories: Array<AppCategory | null> = []
+  const sensor = startForegroundSensor(observation => observations.push(observation), {
+    stageVisible: () => visible,
+    onCategory: category => categories.push(category),
+  })
   const foreground = useForegroundWindowStore()
   return {
     observations,
+    categories,
     sensor,
     activities: () => observations.filter(observation => observation.kind === 'activity'),
     setVisible(next: boolean) {
@@ -208,6 +213,38 @@ describe('foreground situation sensor', () => {
       { kind: 'busy', state: 'accepts', atMs: T0 + 30_000 },
       { kind: 'busy', state: 'unknown', atMs: T0 + 30_000 + FOREGROUND_SAMPLE_STALE_VISIBLE_MS + 1 },
     ])
+  })
+
+  it('clears the category once the producer stops, after 5 s visible and 20 s hidden', () => {
+    const visible = run({ visible: true })
+    visible.publish(T0, { exePath: 'C:\\Games\\steamapps\\common\\Title\\title.exe', exeName: 'title.exe' })
+    expect(visible.categories).toEqual(['game'])
+
+    visible.sensor.check(T0 + FOREGROUND_SAMPLE_STALE_VISIBLE_MS)
+    expect(visible.categories).toEqual(['game'])
+    visible.sensor.check(T0 + FOREGROUND_SAMPLE_STALE_VISIBLE_MS + 1)
+    visible.sensor.check(T0 + FOREGROUND_SAMPLE_STALE_VISIBLE_MS + 2)
+    expect(visible.categories).toEqual(['game', null])
+
+    // The same app coming back in front is reported again without a new activity change.
+    visible.publish(T0 + 10_000, { exePath: 'C:\\Games\\steamapps\\common\\Title\\title.exe', exeName: 'title.exe' })
+    expect(visible.categories).toEqual(['game', null, 'game'])
+
+    const hidden = run({ visible: false })
+    hidden.publish(T0 + 20_000, { exePath: 'C:\\Games\\steamapps\\common\\Title\\title.exe', exeName: 'title.exe' })
+    hidden.sensor.check(T0 + 20_000 + FOREGROUND_SAMPLE_STALE_HIDDEN_MS)
+    expect(hidden.categories).toEqual(['game'])
+    hidden.sensor.check(T0 + 20_000 + FOREGROUND_SAMPLE_STALE_HIDDEN_MS + 1)
+    expect(hidden.categories).toEqual(['game', null])
+  })
+
+  it('keeps the category while a fresh sample of AIRI\'s own window is in front', () => {
+    const { categories, publish } = run()
+    publish(T0, { exePath: 'C:\\Games\\steamapps\\common\\Title\\title.exe', exeName: 'title.exe' })
+
+    publish(T0 + 1_000, { exePath: AIRI, exeName: 'AIRI.exe', ownProcess: true })
+
+    expect(categories).toEqual(['game'])
   })
 
   it('reports no activity from a stale, future or untimed sample', () => {

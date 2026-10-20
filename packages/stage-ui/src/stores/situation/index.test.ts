@@ -402,6 +402,34 @@ describe('situation store', () => {
     foreground.setSample(foregroundSample({ exePath: 'C:\\AIRI\\AIRI.exe', exeName: 'AIRI.exe', title: 'Chat', ownProcess: true }))
 
     expect(store.state.activity).toMatchObject({ appId: 'hades', category: 'game' })
+    expect(store.foregroundCategory).toBe('game')
+  })
+
+  it('clears the watching category when the producer stops, after 5 s visible or 20 s hidden', () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    const game = 'D:\\SteamLibrary\\steamapps\\common\\Hades\\Hades.exe'
+
+    // Visible stage: the 5 s limit.
+    store.setStageVisible(true)
+    useForegroundWindowStore().setSample(foregroundSample({ exePath: game, exeName: 'Hades.exe', title: 'Hades' }))
+    expect(store.foregroundCategory).toBe('game')
+    vi.advanceTimersByTime(FOREGROUND_SAMPLE_STALE_VISIBLE_MS)
+    expect(store.foregroundCategory).toBe('game')
+    vi.advanceTimersByTime(1_000)
+    expect(store.foregroundCategory).toBeNull()
+    // The reducer keeps the app for the session; only the attention-driving category expired.
+    expect(store.state.activity?.category).toBe('game')
+
+    // Hidden stage: the 20 s limit.
+    store.setStageVisible(false)
+    useForegroundWindowStore().setSample(foregroundSample({ exePath: game, exeName: 'Hades.exe', title: 'Hades' }))
+    expect(store.foregroundCategory).toBe('game')
+    vi.advanceTimersByTime(FOREGROUND_SAMPLE_STALE_HIDDEN_MS)
+    expect(store.foregroundCategory).toBe('game')
+    vi.advanceTimersByTime(1_000)
+    expect(store.foregroundCategory).toBeNull()
   })
 
   it('judges foreground staleness by stage visibility from its own ticker', () => {

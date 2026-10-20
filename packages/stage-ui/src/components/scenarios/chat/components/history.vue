@@ -16,12 +16,13 @@ import ChatHistoryScrollContainer from './chat-history-scroll-container.vue'
 import ChatErrorItem from './error-item.vue'
 import ChatHistoryMessageFrame from './history-message-frame.vue'
 import ChatHistoryTimeSeparator from './history-time-separator.vue'
+import ChatUnpromptedCue from './unprompted-cue.vue'
 import ChatUserItem from './user-item.vue'
 
 import { useChatHistoryScroll } from '../composables/use-chat-history-scroll'
 import { useChatHistoryTopFade } from '../composables/use-chat-history-top-fade'
 import { useVirtualizerBottomAlignment, useVirtualizerScroll } from '../composables/use-virtualizer-scroll'
-import { getChatHistoryItemCopyText, getChatHistoryItemKey } from '../utils'
+import { getChatHistoryItemCopyText, getChatHistoryItemKey, isUnpromptedCue } from '../utils'
 
 defineOptions({
   inheritAttrs: false,
@@ -112,7 +113,7 @@ function shouldShowPlaceholder(message: ChatHistoryItem) {
   return !!streaming.value.id && message.id === streaming.value.id
 }
 function canReplyToMessage(message: ChatHistoryItem) {
-  if (!message.id)
+  if (!message.id || isUnpromptedCue(message))
     return false
 
   if (message.role !== 'assistant' && message.role !== 'user')
@@ -137,15 +138,16 @@ const renderMessages = computed<ChatHistoryItem[]>(() => {
 
   return [...props.messages, streaming.value]
 })
+/** A retry resends the user message before the error; a cue holds no user words to resend. */
+function isRetrySource(message: ChatHistoryItem | undefined) {
+  return message?.role === 'user' && !isUnpromptedCue(message)
+}
 function canRetryMessageAt(index: number) {
   const precedingMessage = renderMessages.value[index - 1]
-  if (precedingMessage?.role === 'user')
-    return true
-
   if (precedingMessage?.role === 'assistant' && precedingMessage.interrupted)
-    return renderMessages.value[index - 2]?.role === 'user'
+    return isRetrySource(renderMessages.value[index - 2])
 
-  return false
+  return isRetrySource(precedingMessage)
 }
 const messagesById = computed(() => new Map(
   renderMessages.value.flatMap(message => message.id ? [[message.id, message] as const] : []),
@@ -314,6 +316,11 @@ function emitToolCallRerun(
               @delete="emitDeleteMessage(message, index)"
               @reply="emitReplyMessage(message)"
               @tool-call-rerun="emitToolCallRerun(message, index, $event)"
+            />
+            <ChatUnpromptedCue
+              v-else-if="isUnpromptedCue(message)"
+              :message="message"
+              :variant="variant"
             />
             <ChatUserItem
               v-else-if="message.role === 'user'"

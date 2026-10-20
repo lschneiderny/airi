@@ -21,7 +21,16 @@ function getTextFromContentParts(parts: unknown[]): string {
   }, []).join('\n\n')
 }
 
+/** The trigger of a turn the character started without user input. History shows it as a cue, not as a user message. */
+export function isUnpromptedCue(message: ChatHistoryItem | undefined): message is Extract<ChatHistoryItem, { role: 'user' }> & { origin: 'unprompted' } {
+  return message?.role === 'user' && message.origin === 'unprompted'
+}
+
 export function getChatHistoryItemCopyText(message: ChatHistoryItem): string {
+  // The trigger content is the instruction sent to the model; the cue stands for its topic.
+  if (isUnpromptedCue(message))
+    return message.trigger?.text ?? ''
+
   if (message.role === 'error')
     return message.content
 

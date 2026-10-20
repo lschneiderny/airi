@@ -480,7 +480,7 @@ const visibility = useDocumentVisibility()
 const { performanceOverride, emotionPulse } = storeToRefs(useNaturalPerformanceOverride())
 // Only the leader window folds foreground samples; AIRI's own windows never become activity, and followers read null.
 const situation = useSituationStore()
-const foregroundCategory = computed(() => situation.state.activity?.category ?? null)
+const foregroundCategory = computed(() => situation.foregroundCategory)
 let performanceMemory: ResolverMemory = initialResolverMemory
 const performance = shallowRef<PerformanceState>(resolvePerformance())
 

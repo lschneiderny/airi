@@ -1,7 +1,10 @@
 import type { ChatStreamEventContext } from '@proj-airi/core-agent'
 
+import { defineInvoke, defineInvokeEventa } from '@moeru/eventa'
 import { defineStore } from 'pinia'
 import { computed, shallowRef } from 'vue'
+
+import { DEVTOOLS_INSPECT_TIMEOUT_MS, getDevtoolsBusContext } from '../../services/devtools/bus'
 
 /** Length cap of the turn history: older turns are dropped first. */
 export const ACT_COMPLIANCE_HISTORY_MAX = 100
@@ -51,6 +54,12 @@ export interface ActComplianceInspection {
   records: ActComplianceRecord[]
 }
 
+/**
+ * The leader window answers it with {@link ActComplianceInspection} of its history. The situation observability
+ * store serves it while that window leads, next to the situation inspection of the same page.
+ */
+export const actComplianceInspectInvoke = defineInvokeEventa<ActComplianceInspection>('eventa:devtools:act-compliance:inspect')
+
 export function actComplianceOutcome(record: Pick<ActComplianceRecord, 'act' | 'recovered' | 'rejected'>): ActComplianceOutcome {
   if (record.rejected > 0)
     return 'rejected'
@@ -81,8 +90,8 @@ export function actComplianceRates(records: readonly ActComplianceRecord[]): Act
  * The stage of the window that runs chat feeds it: stream-end hooks add a record from the runtime's `cueStats`,
  * and the streaming-control controller reports rejected markers by turn. A rejection can arrive before the stream
  * ends (muted speech dispatches at once) or after it (speech dispatches during playback), so early rejections wait
- * for their record. Nothing is synchronized or sent anywhere; follower windows read the leader through
- * {@link inspect}.
+ * for their record. Nothing is synchronized; follower windows read the leader through {@link inspectLeader},
+ * which the devtools inspector bus answers.
  */
 export const useActComplianceStore = defineStore('devtools:act-compliance', () => {
   const records = shallowRef<readonly ActComplianceRecord[]>([])
@@ -135,9 +144,14 @@ export const useActComplianceStore = defineStore('devtools:act-compliance', () =
       pending = new Map([...pending].slice(-ACT_COMPLIANCE_HISTORY_MAX))
   }
 
-  /** Returns the turn history of the leader window. */
+  /** Returns the turn history of this window. */
   async function inspect(): Promise<ActComplianceInspection> {
     return { records: records.value.map(record => ({ ...record, rejectedTokens: [...record.rejectedTokens] })) }
+  }
+
+  /** Returns {@link inspect} of the leader window. Rejects when no window answers in time. */
+  async function inspectLeader(): Promise<ActComplianceInspection> {
+    return defineInvoke(getDevtoolsBusContext(), actComplianceInspectInvoke)(undefined, { signal: AbortSignal.timeout(DEVTOOLS_INSPECT_TIMEOUT_MS) })
   }
 
   return {
@@ -145,10 +159,6 @@ export const useActComplianceStore = defineStore('devtools:act-compliance', () =
     recordStreamEnd,
     recordRejected,
     inspect,
+    inspectLeader,
   }
-}, {
-  synced: {
-    actions: ['inspect'],
-    state: false,
-  },
 })
