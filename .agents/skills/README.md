@@ -14,6 +14,7 @@ This personal fork keeps local development workflows, not upstream publishing or
 | `enforce-rules-for-pinia-synced` | Cross-window ownership, replication, and persistence. |
 | `stage-tamagotchi-godot-csharp` | Kirie and Godot C# migration guidance. |
 | `analyze-io-traces` | Saved chat, voice, and audio trace analysis. |
+| `motion-qa` | Motion, emotion, and idle QA levels, gates, and evidence workflow. |
 
 ## Tools and integration references
 

@@ -108,6 +108,10 @@ pnpm exec vitest run <path>
 pnpm -F <package-name> exec vitest run
 pnpm test:run
 pnpm -F <package-name> build
+pnpm qa:doctor
+pnpm qa:test
+pnpm qa:motion
+pnpm qa:report
 pnpm typecheck
 pnpm lint                          # ESLint also formats
 pnpm lint:fix
@@ -138,6 +142,7 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Local file upload via browser/Electron chooser or input | [Upload reference](.agents/skills/use-agent-browser-for-airi/references/input-file.md), [agent-browser](.agents/skills/agent-browser/SKILL.md). For Electron, also [agent-browser-electron](.agents/skills/agent-browser-electron/SKILL.md). |
 | Screenshots and visual evidence | [use-vishot](.agents/skills/use-vishot/SKILL.md). Load only the matching runtime and scenario references. |
 | Live2D, VRM, MMD import/rendering in web, desktop, mobile | [use-agent-browser-for-airi](.agents/skills/use-agent-browser-for-airi/SKILL.md) |
+| Motion QA, emotion/idle gates, rendered motion runs | [motion-qa](.agents/skills/motion-qa/SKILL.md) |
 
 ## NOTES
 Nested guides own local exceptions and package-specific checks. Historical ADRs/audits and scanner observations are not current runtime acceptance.
