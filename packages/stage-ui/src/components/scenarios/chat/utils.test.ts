@@ -2,7 +2,30 @@ import type { ChatHistoryItem } from '../../../types/chat'
 
 import { describe, expect, it } from 'vitest'
 
-import { getChatHistoryItemKey } from './utils'
+import { getChatHistoryItemCopyText, getChatHistoryItemKey } from './utils'
+
+describe('getChatHistoryItemCopyText', () => {
+  it('maps an unprompted trigger to its topic text instead of the prompt sent to the model', () => {
+    const cue: ChatHistoryItem = {
+      role: 'user',
+      content: '(No one spoke to you. You may speak up about: QA topic)',
+      origin: 'unprompted',
+      trigger: { topicKey: 'qa', text: 'QA topic' },
+    }
+
+    expect(getChatHistoryItemCopyText(cue)).toBe('QA topic')
+  })
+
+  it('returns no text for an unprompted message without a trigger', () => {
+    const cue: ChatHistoryItem = { role: 'user', content: '(No one spoke to you.)', origin: 'unprompted' }
+
+    expect(getChatHistoryItemCopyText(cue)).toBe('')
+  })
+
+  it('keeps the content of a written user message', () => {
+    expect(getChatHistoryItemCopyText({ role: 'user', content: 'hi' })).toBe('hi')
+  })
+})
 
 describe('getChatHistoryItemKey', () => {
   it('prefers stable message ids when available', () => {
