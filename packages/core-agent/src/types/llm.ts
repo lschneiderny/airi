@@ -87,7 +87,10 @@ export interface StreamOptions {
    */
   topP?: number
   toolsCompatibility?: Map<string, boolean>
-  /** Who started the turn. A host that adds built-in tools to a request sends none on an `unprompted` turn. */
+  /**
+   * Who started the turn. An `unprompted` turn carries no tools: a host that adds built-in tools sends none,
+   * and the Responses protocol sends no hosted web search.
+   */
   origin?: 'user' | 'unprompted'
   supportsTools?: boolean
   waitForTools?: boolean

@@ -341,6 +341,57 @@ it.each(['explicit', 'compatibility'] as const)('disables hosted search under th
   expect(fetch).toHaveBeenCalledTimes(1)
 })
 
+// An unprompted turn may only speak or decline, so a hosted search must not run before the turn is decided.
+it.each([
+  ['unprompted', []],
+  ['user', [{ type: 'web_search' }]],
+] as const)('sends hosted search on a Responses request only when the %s turn allows it', async (origin, expected) => {
+  const requests: Array<{ tools?: unknown[] }> = []
+  const fetch: typeof globalThis.fetch = async (_url, init) => {
+    requests.push(JSON.parse(String(init?.body)))
+    return sse(completed([]))
+  }
+  const chatProvider: GenerationProvider = {
+    generation: model => ({ protocol: 'responses', webSearch: true, config: { model, baseURL: 'https://example.test/v1/', fetch } }),
+  }
+  await streamFrom({ model: 'test', chatProvider, conversation: { turns: [] }, options: { origin } })
+  expect(requests).toHaveLength(1)
+  expect(requests[0].tools ?? []).toEqual(expected)
+})
+
+it.each([
+  ['unprompted', false],
+  ['user', true],
+] as const)('sends hosted search on every resolved Responses step only when the %s turn allows it', async (origin, searches) => {
+  const requests: Array<{ tools?: Array<{ type: string }> }> = []
+  const fetch: typeof globalThis.fetch = async (_url, init) => {
+    requests.push(JSON.parse(String(init?.body)))
+    return sse(completed(requests.length === 1
+      ? [{ type: 'function_call', call_id: 'step-1', name: 'step', arguments: '{}' }]
+      : []))
+  }
+  const chatProvider: GenerationProvider = {
+    generation: model => ({ protocol: 'responses', webSearch: true, config: { model, baseURL: 'https://example.test/v1/', fetch } }),
+  }
+  await streamFrom({
+    model: 'test',
+    chatProvider,
+    conversation: { turns: [] },
+    options: {
+      origin,
+      resolveStep: async () => ({
+        model: 'test',
+        chatProvider,
+        providerId: 'live',
+        systemPrompt: '',
+        tools: [{ type: 'function', function: { name: 'step', parameters: { type: 'object', properties: {} } }, execute: () => 'done' }],
+      }),
+    },
+  })
+  expect(requests).toHaveLength(2)
+  expect(requests.map(request => request.tools?.some(tool => tool.type === 'web_search') ?? false)).toEqual([searches, searches])
+})
+
 describe('responses generation', () => {
   it('executes functions and preserves ordered native Items and aggregate usage', async () => {
     const reasoning: ItemParam = { type: 'reasoning', id: 'rs_1', summary: [], encrypted_content: 'opaque' }
