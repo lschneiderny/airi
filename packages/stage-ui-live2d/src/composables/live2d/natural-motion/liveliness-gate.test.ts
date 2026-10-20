@@ -13,6 +13,7 @@ import { scoreLiveliness, scoreTalkingRelative } from './liveliness'
 import { createRandomStream } from './random'
 import { referenceStats } from './reference-stats'
 import { NaturalSpeechEmphasis } from './speech-emphasis'
+import { syllableFixture } from './speech-fixture'
 
 // Metrics owned by the motion layers. Later layers append their metrics here.
 // Generated scoring judges blink on `generatedBlinkBands` (liveliness.ts), not the recording bands.
@@ -84,31 +85,6 @@ function simulate(seed: number): LivelinessTrace {
 const talkingSeconds = 10 * 60
 const talkingWarmUpSeconds = 60
 const idleState: PerformanceState = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }
-
-/**
- * Syllable envelope fixture at 120 Hz: phrases of 10-16 syllables at 4 Hz, separated by
- * pauses that make up 30% of the time. Each syllable is a raised-sine burst that closes the
- * mouth, with a random peak of 0.5-0.9. Returns the level per frame and the phrase onsets.
- */
-function syllableFixture(seconds: number, seed: number) {
-  const random = createRandomStream(seed)
-  const level = new Float64Array(seconds * simulationRate + 1)
-  const onsets: number[] = []
-  let time = 0.5
-  while (time < seconds) {
-    const syllables = 10 + Math.floor(7 * random())
-    onsets.push(time)
-    for (let syllable = 0; syllable < syllables; syllable++) {
-      const peak = 0.5 + 0.4 * random()
-      const start = time + syllable * 0.25
-      for (let frame = Math.ceil(start * simulationRate); frame < (start + 0.25) * simulationRate && frame < level.length; frame++)
-        level[frame] = peak * Math.sin(Math.PI * (frame / simulationRate - start) / 0.25) ** 2
-    }
-    const phrase = syllables * 0.25
-    time += phrase + phrase * 0.3 / 0.7
-  }
-  return { level, onsets }
-}
 
 /** Head-only desk trace in reference units; `talking` drives the talking state and the syllable fixture after warm-up. */
 function simulateVoice(seed: number, talking: boolean) {

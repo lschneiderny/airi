@@ -89,6 +89,27 @@ On a channel that an explicit clip animates, posture keeps only 10% of its offse
 Eyelids that an expression closes stay closed, and a blink closes open eyelids fully.
 While Natural is selected, the SDK blink plugin is off and Natural's own blink scheduler replaces it.
 
+### Natural observer and QA seams
+
+`Live2DNaturalMotion.setObserver(observer)` reports what the controller performed. Pass `null` to stop reporting. The adapter exposes its controller as `natural`.
+
+- `impulse`: an emotion episode started, with its band, clamped intensity, and side.
+- `hold`: the held emotion or its side changed. A release, or held emotions switched off, reports `emotion: null`.
+- `gesture`: a gesture clip started. For angry, it names the clip it chose, `shake` or `drop`.
+
+Each event carries `at`, the active time of the grid step that first performs it.
+The observer receives values the controller already computed. It adds no random draw, and no event is built while no observer is attached, so motion is bit-identical with or without one.
+An observer that throws is reported with `console.error`, and the step continues.
+
+The `emotionTable` constructor option replaces the `naturalEmotions` recipe table for scorer mutation tests. Production code leaves it at the default.
+
+These subpath exports load in plain Node without pixi, Vue files, or `window`, so QA tools can run the controller outside the renderer:
+
+- `@proj-airi/stage-ui-live2d/composables/live2d/natural-motion`;
+- `@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/*`, for example `natural-motion/trace` or `natural-motion/speech-fixture`;
+- `@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter`;
+- `@proj-airi/stage-ui-live2d/composables/live2d/expression/hold`.
+
 ### Performance state
 
 The stage resolves a `PerformanceState` from `@proj-airi/stage-shared/performance-state` and passes it to the Live2D scene as the `performance` prop.
@@ -257,6 +278,12 @@ pnpm -F @proj-airi/stage-ui-live2d exec tsx scripts/score-natural-captures.ts --
 The CLI requires at least 3 traces and refuses with exit 2 if the preregistration is missing, incomplete, or its `createdAt` is not earlier than every trace file's modification time. Keep the original capture files and their modification times.
 For liveliness, each metric is the median of its non-null measurements, band acceptance is recomputed on that median, and the score is the median of capture scores. Any hard failure in any capture fails the aggregate. Every banded median must pass; an entirely missing banded metric fails. The command prints aggregate JSON and exits 0 on pass or 1 on fail.
 
+To compare Natural's frame cost before and after a runtime change, run the micro-benchmark from this package on the same machine. It prints the median of 5 runs, each of 10,000 idle adapter compositions on a stub rig:
+
+```bash
+node --expose-gc --import tsx scripts/bench-natural.ts
+```
+
 ### Natural motion lab
 
 The Natural motion lab is a devtools page for tuning Natural on the rendered model.
@@ -280,6 +307,10 @@ Affect-trace messages are Eventa events from `@proj-airi/stage-shared/expression
 The stage's model listens for frames only while a capture request is pending.
 It samples in the SDK `beforeModelUpdate` event. That event fires after Natural composition, physics, and pose, and before the SDK restores the saved parameters, so the trace records the values that are actually rendered.
 `NaturalTraceRecorder` keeps one frame per 1/30 s slot. It records head, body, eye, eyelid, eye smile, brow, mouth, cheek, and breath parameters that the rig has, together with their ranges.
+A capture request can name `extraParameterIds`, such as a ForBOOTH expression switch (`Param60`). The recorder adds columns for the ones the rig has.
+A trace has `version: 2` and an `events` list on the sample clock.
+While a capture runs, the stage attaches the Natural observer, so the list holds every impulse, hold change, and gesture that Natural performed.
+It also holds the scenario events that `markCaptureEvent` receives in the stage window. The scorer ignores events.
 The capture also records metadata: the model id, the driver, the energy, the posture home, the capture time and duration, and adapter counters.
 The adapter counters are the mean posture weight, the number of body writes, and the number of channels left to physics. They show what Natural wrote during the capture, and they stay at zero body writes on a rig whose physics derives the body from the head.
 If the model is unloaded during a capture, the capture fails.

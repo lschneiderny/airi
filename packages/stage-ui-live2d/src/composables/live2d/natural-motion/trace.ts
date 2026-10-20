@@ -1,3 +1,6 @@
+import type { ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
+
+import type { NaturalMotionEvent } from './frame-types'
 import type { LivelinessTrace, ParameterRanges } from './liveliness'
 import type { PostureHome } from './posture'
 
@@ -47,13 +50,29 @@ export interface NaturalTraceMeta {
 }
 
 /**
+ * One event stamped into a trace. `t` uses the sample origin. `natural` events are what the
+ * controller performed (its observer); `scenario` events are the inputs a QA run dispatched.
+ */
+export type NaturalTraceEvent
+  = | { t: number, source: 'natural', event: NaturalMotionEvent }
+    | { t: number, source: 'scenario', event: ScenarioEvent }
+
+/**
  * One captured trace. The shape is the input of `scripts/score-natural-trace.ts`
  * (`{ t, channels, ranges }`), so the lab and the CLI score the same file.
+ * Version 2 adds `events`; the liveliness scorer ignores them.
  */
 export interface NaturalTrace extends LivelinessTrace {
+  version: 2
   t: number[]
   ranges: ParameterRanges
+  events: NaturalTraceEvent[]
   meta: NaturalTraceMeta
+}
+
+export interface NaturalTraceRecorderOptions {
+  /** Rig-specific parameters recorded after the standard ones, such as a ForBOOTH expression switch (`Param60`). Absent ids get no column. */
+  extraParameterIds?: readonly string[]
 }
 
 /** Cubism model parameter table, as `coreModel.getModel().parameters` returns it. */
@@ -74,19 +93,20 @@ const earlyToleranceSeconds = 0.25 / sampleRate
  *
  * The caller passes every rendered frame to `sample`. The recorder keeps one frame per 1/30 s
  * slot by timestamp, so the kept rate does not depend on the display refresh rate. Timestamps
- * are seconds since the first kept frame. A frame stall leaves a gap, which the scorer treats
- * as a span break when it exceeds 200 ms.
+ * are seconds since the first kept frame, or since the first mark when an event is marked before
+ * any frame. A frame stall leaves a gap, which the scorer treats as a span break when it exceeds 200 ms.
  */
 export class NaturalTraceRecorder {
   private readonly columns: { id: string, index: number, values: number[] }[] = []
   private readonly ranges: ParameterRanges = {}
   private readonly t: number[] = []
+  private readonly events: NaturalTraceEvent[] = []
   private origin: number | undefined
   private nextSlot = 0
 
-  constructor(parameters: CubismParameterTable) {
+  constructor(parameters: CubismParameterTable, options: NaturalTraceRecorderOptions = {}) {
     const ids = Array.from(parameters.ids)
-    for (const id of naturalTraceParameterIds) {
+    for (const id of new Set([...naturalTraceParameterIds, ...options.extraParameterIds ?? []])) {
       const index = ids.indexOf(id)
       if (index < 0)
         continue
@@ -125,11 +145,22 @@ export class NaturalTraceRecorder {
     return true
   }
 
+  /** Stamps one event at `nowSeconds` on the clock `sample` receives. The event is copied, so later changes to it are not recorded. */
+  mark(nowSeconds: number, source: 'natural', event: NaturalMotionEvent): void
+  mark(nowSeconds: number, source: 'scenario', event: ScenarioEvent): void
+  mark(nowSeconds: number, source: NaturalTraceEvent['source'], event: NaturalMotionEvent | ScenarioEvent) {
+    this.origin ??= nowSeconds
+    // The overloads pair each source with its event type.
+    this.events.push({ t: nowSeconds - this.origin, source, event: { ...event } } as NaturalTraceEvent)
+  }
+
   build(meta: NaturalTraceMeta): NaturalTrace {
     return {
+      version: 2,
       t: [...this.t],
       channels: Object.fromEntries(this.columns.map(column => [column.id, [...column.values]])),
       ranges: { ...this.ranges },
+      events: [...this.events],
       meta,
     }
   }

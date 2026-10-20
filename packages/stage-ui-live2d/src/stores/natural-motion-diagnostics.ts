@@ -1,4 +1,5 @@
 import type { AffectTrace, AffectTraceFailureCode, AffectTraceRequest, AffectTraceResult } from '@proj-airi/stage-shared/expression-performance'
+import type { ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 
 import type { LivelinessReport } from '../composables/live2d/natural-motion/liveliness'
 import type { NaturalTrace } from '../composables/live2d/natural-motion/trace'
@@ -14,7 +15,12 @@ import { naturalTraceFileName } from '../composables/live2d/natural-motion/trace
 export interface NaturalCaptureRequest {
   id: string
   durationSeconds: number
+  /** Rig-specific parameters the trace records beside the standard ones; see `NaturalTraceRecorderOptions`. */
+  extraParameterIds?: string[]
 }
+
+/** Stamps a scenario event into the capture running in this window. */
+export type NaturalCaptureMarker = (event: ScenarioEvent) => void
 
 /** Compact capture outcome the lab renders. */
 export interface NaturalCaptureResult {
@@ -135,6 +141,8 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
   const affectTraceFailure = shallowRef<AffectTraceFailureCode | null>(null)
   /** Export requests this window sent; only this window saves their traces. */
   const ownExports = new Set<string>()
+  /** Set by the stage's model while its capture runs; never shared with other windows. */
+  let captureMarker: NaturalCaptureMarker | null = null
 
   function settles(id: string) {
     return !pendingRequest.value || pendingRequest.value.id === id
@@ -213,13 +221,31 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
     channel?.postMessage(event)
   }
 
-  function requestCapture(durationSeconds: number) {
-    const request = {
+  function requestCapture(durationSeconds: number, options: { extraParameterIds?: readonly string[] } = {}) {
+    const request: NaturalCaptureRequest = {
       id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
       durationSeconds: Math.min(maxCaptureSeconds, Math.max(1, durationSeconds)),
     }
+    if (options.extraParameterIds)
+      request.extraParameterIds = [...options.extraParameterIds]
     emit({ type: 'natural-capture-request', request })
     return request.id
+  }
+
+  /** The stage's model registers its running capture here and clears it with `null` when the capture stops. */
+  function setCaptureMarker(marker: NaturalCaptureMarker | null) {
+    captureMarker = marker
+  }
+
+  /**
+   * Stamps a scenario event into the capture that runs in this window, on the same clock as its samples.
+   * In-window only: the event is not broadcast. Returns `false` when no capture runs here.
+   */
+  function markCaptureEvent(event: ScenarioEvent) {
+    if (!captureMarker)
+      return false
+    captureMarker(event)
+    return true
   }
 
   function completeCapture(id: string, capturedTrace: NaturalTrace, report: LivelinessReport) {
@@ -282,6 +308,8 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
     trace,
     failure,
     requestCapture,
+    setCaptureMarker,
+    markCaptureEvent,
     completeCapture,
     failCapture,
     cancelCapture,

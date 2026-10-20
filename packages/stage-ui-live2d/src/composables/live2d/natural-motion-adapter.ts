@@ -221,6 +221,14 @@ export class Live2DNaturalMotionAdapter {
     this.physicsOutputSkips = 0
   }
 
+  /**
+   * The Natural controller this adapter drives. QA attaches its observer here (`natural.setObserver`);
+   * the adapter owns every other call, so callers must not advance or configure it directly.
+   */
+  get natural(): Live2DNaturalMotion {
+    return this.controller
+  }
+
   /** The Natural controller's mood afterglow, read by the stage for LLM state feedback. */
   get mood() {
     return this.controller.moodState

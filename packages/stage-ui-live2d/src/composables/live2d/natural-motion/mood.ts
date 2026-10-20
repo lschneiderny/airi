@@ -26,6 +26,8 @@ export class NaturalMood {
   private settings = defaultExpressionPerformanceSettings.moodDynamics
   private readonly episodes = new Map<string, { emotion: ReactionEpisode['emotion'], dose: number }>()
 
+  constructor(private readonly emotions = naturalEmotions) {}
+
   setPerformanceSettings(settings: ExpressionPerformanceSettings['moodDynamics']) {
     this.settings = { ...settings }
   }
@@ -50,7 +52,7 @@ export class NaturalMood {
     const gain = episode.moodGain ?? this.settings[`${episode.band}Gain`]
     const dose = gain * clamp(episode.intensity, 0, 1)
     const delta = Math.max(0, dose - (episode.escalation ? previous!.dose : 0))
-    const [valence, arousal, tension] = naturalEmotions[episode.emotion].mood
+    const [valence, arousal, tension] = this.emotions[episode.emotion].mood
     this.valence = clamp(this.valence + delta * valence, -1, 1)
     this.arousal = clamp(this.arousal + delta * arousal, -1, 1)
     this.tension = clamp(this.tension + delta * tension, 0, 1)

@@ -47,22 +47,34 @@ export class NaturalHoldLayer {
   private settings = defaultExpressionPerformanceSettings.held
   private strengths: Partial<Record<PerformanceEmotion, number>> = {}
   private changes = 0
-  private side = 1
+  private currentSide: -1 | 1 = 1
   private currentFace = { ...neutralFace }
   private currentPosture: Vec3 = [0, 0, 0]
   private currentModulation = { ...neutralModulation }
   private leftBrow = 0
   private rightBrow = 0
 
+  constructor(private readonly emotions = naturalEmotions) {}
+
   get emotion() {
     return this.held?.emotion ?? null
   }
 
+  /** The commanded 0..1 strength of the held emotion, before per-model strengths; 0 while nothing is held. */
+  get strength() {
+    return this.held?.strength ?? 0
+  }
+
+  /** Sign of the sided posture axes; 1 raises the left brow. It keeps its last value after a release. */
+  get side() {
+    return this.currentSide
+  }
+
   /** Invalid commands are ignored. Repeated commands neither reroll sides nor restart onset. */
   set(held: { readonly emotion: PerformanceEmotion, readonly strength: number } | null) {
-    if (held && (!Number.isFinite(held.strength) || !Object.hasOwn(naturalEmotions, held.emotion)))
+    if (held && (!Number.isFinite(held.strength) || !Object.hasOwn(this.emotions, held.emotion)))
       return
-    const next = held && naturalEmotions[held.emotion].held
+    const next = held && this.emotions[held.emotion].held
       ? { emotion: held.emotion, strength: Math.max(0, Math.min(1, held.strength)) }
       : null
     if (next?.emotion !== this.held?.emotion && next) {
@@ -70,7 +82,7 @@ export class NaturalHoldLayer {
       let hash = 0
       for (const letter of next.emotion)
         hash = (Math.imul(hash, 31) + letter.charCodeAt(0)) >>> 0
-      this.side = (hash + this.changes) % 2 === 0 ? 1 : -1
+      this.currentSide = (hash + this.changes) % 2 === 0 ? 1 : -1
     }
     this.held = next
   }
@@ -93,7 +105,7 @@ export class NaturalHoldLayer {
   step(dt: number) {
     if (!Number.isFinite(dt) || dt <= 0)
       return
-    const spec = this.held ? naturalEmotions[this.held.emotion].held : undefined
+    const spec = this.held ? this.emotions[this.held.emotion].held : undefined
     const strength = this.held ? this.held.strength * (this.strengths[this.held.emotion] ?? 1) : 0
     const active = spec !== undefined && strength > 0
     const tau = active ? this.settings.onsetTau : this.settings.releaseTau
@@ -106,12 +118,12 @@ export class NaturalHoldLayer {
       this.currentFace[key] = target + (this.currentFace[key] - target) * decay
     }
     const brow = active ? (spec.face.oneSidedBrow ?? 0) * strength : 0
-    const left = this.side === 1 ? brow : 0
-    const right = this.side === -1 ? brow : 0
+    const left = this.currentSide === 1 ? brow : 0
+    const right = this.currentSide === -1 ? brow : 0
     this.leftBrow = left + (this.leftBrow - left) * decay
     this.rightBrow = right + (this.rightBrow - right) * decay
     for (const axis of axes) {
-      const target = active ? spec.posture[axis] * strength * (spec.sided.includes(axis) ? this.side : 1) : 0
+      const target = active ? spec.posture[axis] * strength * (spec.sided.includes(axis) ? this.currentSide : 1) : 0
       this.currentPosture[axis] = target + (this.currentPosture[axis] - target) * postureDecay
     }
     for (const key of modulationKeys) {

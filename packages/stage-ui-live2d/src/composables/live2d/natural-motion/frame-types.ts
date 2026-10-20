@@ -1,4 +1,7 @@
+import type { Band, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
+
 import type { NaturalBreathOutput } from './breath'
+import type { GestureKind, naturalEmotions } from './emotions'
 import type { NaturalFaceOutput } from './face'
 import type { GazePoint } from './gaze'
 import type { PostureHome } from './posture'
@@ -11,7 +14,61 @@ export interface Live2DNaturalMotionOptions {
   random?: RandomStream
   /** Rest posture; `desk` is the calibration fixture of the liveliness gate. @default 'product' */
   home?: PostureHome
+  /**
+   * QA seam: the per-emotion recipe table that impulses, held emotions, gestures, and mood read.
+   * Scorer mutation tests pass a modified copy; the controller reads it and never mutates it.
+   * @default naturalEmotions
+   */
+  emotionTable?: typeof naturalEmotions
 }
+
+/**
+ * What the controller performed, reported to a {@link NaturalMotionObserver}. `at` is active seconds
+ * on the controller clock: the start of the grid step that first performs the change.
+ *
+ * `side` is the sign (-1 or 1) a layer applies to its sided axes and its one-sided brow:
+ * - `impulse`: a negative side raises the left brow (`browLY`);
+ * - `hold`: side 1 raises the left brow; `null` while nothing is held;
+ * - `gesture`: the clip's sided axes; drawn even for clips without sided axes.
+ */
+export type NaturalMotionEvent = NaturalImpulseEvent | NaturalHoldEvent | NaturalGestureEvent
+
+/** An emotion episode started or escalated. `band` is the band performed, `clear` while band recruitment is off; `intensity` is clamped to 0..1. */
+export interface NaturalImpulseEvent {
+  kind: 'impulse'
+  at: number
+  emotion: PerformanceEmotion
+  band: Band
+  intensity: number
+  side: -1 | 1
+}
+
+/**
+ * The held emotion or its side changed. `emotion` is `null` when the hold is released or while held
+ * emotions are switched off; `strength` is the commanded 0..1 strength before per-model strengths.
+ */
+export interface NaturalHoldEvent {
+  kind: 'hold'
+  at: number
+  emotion: PerformanceEmotion | null
+  strength: number
+  side: -1 | 1 | null
+}
+
+/** A gesture clip started; `shake-or-drop` reports the clip it chose. */
+export interface NaturalGestureEvent {
+  kind: 'gesture'
+  at: number
+  gesture: Exclude<GestureKind, 'shake-or-drop'>
+  side: -1 | 1
+}
+
+/**
+ * Receives performed events synchronously inside `advance` and the setters that advance.
+ * It only receives values the controller already computed, so attaching one never changes motion.
+ * An observer that throws is reported with `console.error`; the step it interrupted still completes.
+ */
+export type NaturalMotionObserver = (event: NaturalMotionEvent) => void
 
 /** Normalized pose commands in [-1, 1]. */
 export interface Live2DNaturalMotionPose {

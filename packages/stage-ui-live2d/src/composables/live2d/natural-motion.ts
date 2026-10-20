@@ -3,7 +3,7 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 
 import type { NaturalBreathOutput } from './natural-motion/breath'
 import type { NaturalFaceOutput } from './natural-motion/face'
-import type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionVoice } from './natural-motion/frame-types'
+import type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionVoice, NaturalMotionEvent, NaturalMotionObserver } from './natural-motion/frame-types'
 import type { GazePoint } from './natural-motion/gaze'
 import type { NaturalEpisode } from './natural-motion/mood'
 import type { PendingAction } from './natural-motion/pending-actions'
@@ -11,12 +11,14 @@ import type { Vec3 } from './natural-motion/posture'
 import type { Live2DRigProfile } from './natural-motion/rig-profile'
 import type { Live2DTouchRegion } from './touch-gestures'
 
+import { errorMessageFrom } from '@moeru/std'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 
 import { EMOTION_VALUES } from '../../constants/emotions'
 import { NaturalBlinkScheduler } from './natural-motion/blink'
 import { NaturalBodyLayer } from './natural-motion/body'
 import { NaturalBreathLayer } from './natural-motion/breath'
+import { naturalEmotions } from './natural-motion/emotions'
 import { NaturalPerformanceEnergy } from './natural-motion/energy'
 import { NaturalFaceLayer } from './natural-motion/face'
 import { withHints } from './natural-motion/face-hints'
@@ -33,7 +35,7 @@ import { createRandomStream, deriveSeed } from './natural-motion/random'
 import { NaturalSpeechEmphasis, SpeechOnsetShifts } from './natural-motion/speech-emphasis'
 import { NaturalPetLayer } from './natural-motion/touch'
 
-export type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionPose, Live2DNaturalMotionVoice } from './natural-motion/frame-types'
+export type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionPose, Live2DNaturalMotionVoice, NaturalGestureEvent, NaturalHoldEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionObserver } from './natural-motion/frame-types'
 
 // Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
 // Index 4 belonged to the v1 fixation rule and now seeds the gaze layer that replaces it.
@@ -76,8 +78,9 @@ export class Live2DNaturalMotion {
   private readonly blink: NaturalBlinkScheduler
   private readonly breath: NaturalBreathLayer
   private readonly energy = new NaturalPerformanceEnergy()
-  private readonly mood = new NaturalMood()
-  private readonly hold = new NaturalHoldLayer()
+  private readonly emotions: typeof naturalEmotions
+  private readonly mood: NaturalMood
+  private readonly hold: NaturalHoldLayer
   private readonly gestures: NaturalGestures
   private emotionStrengths: Partial<Record<PerformanceEmotion, number>> = {}
   private performanceSettings = defaultExpressionPerformanceSettings
@@ -105,8 +108,24 @@ export class Live2DNaturalMotion {
   private previous: Snapshot
   private next: Snapshot
   private suspended = false
+  private observer: NaturalMotionObserver | null = null
+  /** The hold last reported to the observer; only compared while one is attached. */
+  private reportedHoldEmotion: PerformanceEmotion | null = null
+  private reportedHoldSide: -1 | 1 | null = null
+  /** Delivers one event to the observer; a failing observer cannot interrupt the step that reports to it. */
+  private readonly notify = (event: NaturalMotionEvent) => {
+    try {
+      this.observer?.(event)
+    }
+    catch (error) {
+      console.error('[natural-motion] The observer failed:', errorMessageFrom(error) ?? 'unknown error')
+    }
+  }
 
   constructor(options: Live2DNaturalMotionOptions = {}) {
+    this.emotions = options.emotionTable ?? naturalEmotions
+    this.mood = new NaturalMood(this.emotions)
+    this.hold = new NaturalHoldLayer(this.emotions)
     const seed = options.seed ?? Math.floor((options.random ?? Math.random)() * 2 ** 32)
     const stream = (layer: keyof typeof streamIndex) => createRandomStream(deriveSeed(seed, streamIndex[layer]))
     const home = postureHomes[options.home ?? 'product']
@@ -123,7 +142,7 @@ export class Live2DNaturalMotion {
     this.blink = new NaturalBlinkScheduler(stream('blink'))
     this.breath = new NaturalBreathLayer(stream('breath'))
     this.emphasis = new NaturalSpeechEmphasis(stream('emphasis'))
-    this.impulses = new NaturalImpulses(stream('impulses'))
+    this.impulses = new NaturalImpulses(stream('impulses'), this.emotions)
     this.gestures = new NaturalGestures(stream('gestures'))
     this.previous = { head: [...home], body: this.body.pose, gaze: { x: 0, y: 0 }, face: NaturalFaceLayer.rest(), blinkFactor: 1, breath: this.breath.output }
     this.next = this.integrate()
@@ -170,6 +189,18 @@ export class Live2DNaturalMotion {
       blink: { blinkFactor: lerp(a.blinkFactor, b.blinkFactor, weight) },
       breath,
     }
+  }
+
+  /**
+   * Reports performed impulses, hold changes, and gesture starts to `observer`, or stops reporting with `null`.
+   * Reporting never changes motion: the observer receives values the controller already computed, and
+   * no event is built while no observer is attached. A newly attached observer receives the current
+   * hold, if any, on the next grid step.
+   */
+  setObserver(observer: NaturalMotionObserver | null) {
+    this.observer = observer
+    this.reportedHoldEmotion = null
+    this.reportedHoldSide = null
   }
 
   /** Applies voice activity and the mouth level from the next grid step; the mouth suppression applies immediately. */
@@ -283,13 +314,15 @@ export class Live2DNaturalMotion {
     this.stepIndex++
     const c = this.pet.active ? null : this.cursor
     this.gaze.setCursor(c, stepStart)
-    const pokeState = startPending(this.pending.splice(0), stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })
+    const pokeState = startPending(this.pending.splice(0), stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings, emotions: this.emotions, notify: this.observer ? this.notify : undefined }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })
     this.pokes = pokeState.pokes
     this.lastPokeSurprise = pokeState.lastPokeSurprise
     this.energy.step(step)
     this.mood.step(step)
     if (this.performanceSettings.heldEmotions)
       this.hold.step(step)
+    if (this.observer)
+      this.reportHold(stepStart)
     this.pet.step(step)
     const moodScales = modulateByMood({
       amplitudeScale: this.energy.amplitudeScale * this.pet.postureAmplitudeScale,
@@ -378,6 +411,17 @@ export class Live2DNaturalMotion {
       blinkFactor: this.blink.step(step),
       breath: this.breath.step(step),
     }
+  }
+
+  /** Reports the performed hold when its emotion or side differs from the last report; switched-off held emotions perform none. */
+  private reportHold(at: number) {
+    const emotion = this.performanceSettings.heldEmotions ? this.hold.emotion : null
+    const side = emotion === null ? null : this.hold.side
+    if (emotion === this.reportedHoldEmotion && side === this.reportedHoldSide)
+      return
+    this.reportedHoldEmotion = emotion
+    this.reportedHoldSide = side
+    this.notify({ kind: 'hold', at, emotion, strength: emotion === null ? 0 : this.hold.strength, side })
   }
 
   /** Exact two-stage critically damped follower update over one grid step. */

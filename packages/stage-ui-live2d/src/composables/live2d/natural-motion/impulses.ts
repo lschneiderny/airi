@@ -1,4 +1,4 @@
-import type { ExpressionPerformanceSettings, PerformanceEmotion, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
+import type { Band, ExpressionPerformanceSettings, PerformanceEmotion, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
 
 import type { GazePoint } from './gaze'
 import type { Vec3 } from './posture'
@@ -94,7 +94,7 @@ interface HintPulse {
   head: number
   body: number
   direction: Vec3
-  side: number
+  side: -1 | 1
 }
 
 /**
@@ -116,7 +116,7 @@ export class NaturalImpulses {
   private settings = defaultExpressionPerformanceSettings.naturalBands
   private bands = true
 
-  constructor(private readonly random: RandomStream) {}
+  constructor(private readonly random: RandomStream, private readonly emotions = naturalEmotions) {}
 
   setPerformanceSettings(settings: ExpressionPerformanceSettings['naturalBands'], bands = true) {
     this.settings = structuredClone(settings)
@@ -126,9 +126,10 @@ export class NaturalImpulses {
   /**
    * Unknown or expired escalation ids are ignored; they cannot resurrect a stale reaction.
    * `head: false` leaves face hints, recruitment signals, and random draws intact while a gesture owns head/body offsets.
+   * A started reaction also reports the band it performed, its clamped intensity, and its side.
    */
-  trigger(episode: ReactionEpisode, at: number, options: { readonly head: boolean } = { head: true }): { glance: Glance | null, energy: boolean } | null {
-    const spec = naturalEmotions[episode.emotion].impulse
+  trigger(episode: ReactionEpisode, at: number, options: { readonly head: boolean } = { head: true }): { glance: Glance | null, energy: boolean, band: Band, intensity: number, side: -1 | 1 } | null {
+    const spec = this.emotions[episode.emotion].impulse
     const strength = Math.max(0, Math.min(1, Number.isFinite(episode.intensity) ? episode.intensity : 0))
     if (!spec || strength === 0)
       return null
@@ -140,7 +141,7 @@ export class NaturalImpulses {
       return null
     const band = this.bands ? episode.band : 'clear'
     const settings = { ...this.settings[band] }
-    const side = previous?.side ?? (this.random() < 0.5 ? -1 : 1)
+    const side: -1 | 1 = previous?.side ?? (this.random() < 0.5 ? -1 : 1)
     const head = spec.head.map((value, axis) => spec.sided.includes(axis as 0 | 1 | 2) ? side * value : value) as Vec3
     const direction = previous?.direction ?? perturbDirection(this.random, head)
     // Gesture clips replace both pulse channels, after side/direction draws so the impulse stream stays aligned.
@@ -172,7 +173,7 @@ export class NaturalImpulses {
       side,
     })
     const point = spec.glance ?? { x: 0, y: 0 }
-    return { glance: band === 'slight' ? null : { point: { x: side * point.x, y: point.y }, hold: settings.faceHold }, energy: band === 'strong' }
+    return { glance: band === 'slight' ? null : { point: { x: side * point.x, y: point.y }, hold: settings.faceHold }, energy: band === 'strong', band, intensity: strength, side }
   }
 
   /** Starts a head-only gesture along `direction` (length at most 1), used by desktop reactions. */
