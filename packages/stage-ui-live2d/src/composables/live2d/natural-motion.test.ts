@@ -480,6 +480,77 @@ describe('natural motion', () => {
     })
   })
 
+  describe('screen attention with a moving cursor', () => {
+    // The cursor stays up and left of every autonomous target, so cursor fixations (65% of the way) are unmistakable.
+    const cursorAt = (time: number) => ({ x: -0.9 + 0.1 * Math.sin(5 * time), y: 0.8 })
+    // Autonomous targets stay within 0.2 of the center; cursor fixations sit near x = -0.585.
+    const offCursor = (point: { x: number, y: number }) => point.x > -0.3
+
+    /** Moves the cursor every frame from `from` to `to` seconds at 120 Hz, as Model.vue reports it, and returns the fixations. */
+    function track(motion: Live2DNaturalMotion, from: number, to: number) {
+      const points = []
+      for (let frame = Math.round(from * 120); frame < Math.round(to * 120); frame++) {
+        motion.setCursor(cursorAt(frame / 120), frame / 120)
+        points.push(motion.advance(frame / 120).fixation)
+      }
+      return points
+    }
+
+    it.each([
+      { name: 'a game in front while watching', state: { ...idle, mode: 'watching', attention: 'screen' } },
+      { name: 'the ACT look:"screen" cue while talking', state: { ...idle, mode: 'talking', attention: 'screen' } },
+    ] satisfies { name: string, state: PerformanceState }[])('never fixates the cursor for $name', ({ state }) => {
+      const motion = new Live2DNaturalMotion({ seed: 83 })
+      motion.setPerformance(state, 0.5, 0)
+
+      expect(track(motion, 0, 20).every(offCursor)).toBe(true)
+    })
+
+    it('still follows the cursor under cursor attention', () => {
+      const motion = new Live2DNaturalMotion({ seed: 83 })
+      motion.setPerformance({ ...idle, mode: 'watching', attention: 'cursor' }, 0.5, 0)
+      const points = track(motion, 0, 20)
+
+      expect(points.filter(point => !offCursor(point)).length / points.length).toBeGreaterThan(0.5)
+    })
+
+    it('keeps the look:"screen" cue off the cursor through a pause between speech clips', () => {
+      const motion = new Live2DNaturalMotion({ seed: 83 })
+      motion.setPerformance({ ...idle, mode: 'talking', attention: 'screen' }, 0.5, 0)
+      track(motion, 0, 2)
+      // During the pause Model.vue reports cursor attention, and the held cue must still win.
+      motion.setPerformance({ ...idle, mode: 'watching', attention: 'cursor' }, 0.5, 2)
+
+      expect(track(motion, 2, 2.3).every(offCursor)).toBe(true)
+    })
+
+    it('leaves the cursor with one eased saccade when screen attention begins', () => {
+      const motion = new Live2DNaturalMotion({ seed: 83 })
+      motion.setPerformance({ ...idle, mode: 'watching', attention: 'cursor' }, 0.5, 0)
+      motion.advance(2)
+      // A newly active cursor draws the gaze at once.
+      const onCursor = track(motion, 2, 2.2).at(-1)!
+      motion.setPerformance({ ...idle, mode: 'watching', attention: 'screen' }, 0.5, 2.2)
+      const after = track(motion, 2.2, 6)
+      // A saccade lasts at most 90 ms, so 150 ms after the switch the gaze has landed.
+      const saccade = [onCursor, ...after.slice(0, 18)]
+      const landed = saccade.at(-1)!
+      const distance = Math.hypot(landed.x - onCursor.x, landed.y - onCursor.y)
+      const steps = saccade.slice(1).map((point, i) => Math.hypot(point.x - saccade[i].x, point.y - saccade[i].y))
+      const between = saccade.filter((point) => {
+        const travelled = Math.hypot(point.x - onCursor.x, point.y - onCursor.y)
+        return travelled > 0.05 * distance && travelled < 0.95 * distance
+      })
+
+      expect(offCursor(onCursor)).toBe(false)
+      expect(distance).toBeGreaterThan(0.3)
+      // Eased: the move passes through several intermediate frames, and no frame jumps a large share of it.
+      expect(between.length).toBeGreaterThanOrEqual(3)
+      expect(Math.max(...steps)).toBeLessThan(0.35 * distance)
+      expect(after.slice(18).every(offCursor)).toBe(true)
+    })
+  })
+
   it('flinches away from a poke, shows surprise, and meets the camera', () => {
     const poked = new Live2DNaturalMotion({ seed: 61 })
     const control = new Live2DNaturalMotion({ seed: 61 })
