@@ -6,20 +6,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 import { toExposedExpressions } from './performance/use-stage-performance-conductor'
-import { useAiriRuntimePrompt } from './use-airi-runtime-prompt'
+import { useStageContractPrompt, useStageLiveStatePrompt } from './use-airi-runtime-prompt'
 
-const i18nMock = vi.hoisted(() => ({
-  hasTranslation: vi.fn<(key: string, locale: string) => boolean>(),
-  locale: { value: 'en' },
-}))
+type Translate = (key: string, params?: Record<string, string>) => string
 
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({
-    locale: i18nMock.locale,
-    t: (key: string, params?: Record<string, string>) => params ? `${key}\n${Object.entries(params).map(([name, value]) => `[${name}]\n${value}`).join('\n')}` : key,
-    te: (key: string, currentLocale: string) => i18nMock.hasTranslation(key, currentLocale),
-  }),
-}))
+/** Echoes the key and its parameters, so a test can assert which keys a prompt used. */
+const echoTranslate: Translate = (key, params) => params ? `${key}\n${Object.entries(params).map(([name, value]) => `[${name}]\n${value}`).join('\n')}` : key
+
+const i18nMock = vi.hoisted(() => {
+  const t: Translate = key => key
+  return { t }
+})
+
+vi.mock('vue-i18n', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue-i18n')>()
+  return {
+    ...actual,
+    useI18n: () => ({ t: (key: string, params?: Record<string, string>) => i18nMock.t(key, params) }),
+  }
+})
 
 function entry(id: string, kind: CatalogEntry['kind'], overrides: Partial<CatalogEntry> = {}): CatalogEntry {
   return { id: `${id}.exp3.json`, label: id, kind, group: null, confirmed: true, exposedToLlm: true, mappings: [], fileName: `${id}.exp3.json`, parameterIds: [`P-${id}`], ...overrides }
@@ -41,35 +46,22 @@ function listedLabels(prompt: string) {
   return new Set(list.split('\n').flatMap(line => line.replace(/^- \w+: /, '').split(', ')).filter(Boolean))
 }
 
-describe('useAiriRuntimePrompt', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-    i18nMock.hasTranslation.mockReset()
-  })
+beforeEach(() => {
+  setActivePinia(createPinia())
+  i18nMock.t = echoTranslate
+})
 
-  it('returns no prompt for a locale that still uses the combined prompt', () => {
-    i18nMock.hasTranslation.mockReturnValue(false)
-
-    expect(useAiriRuntimePrompt().value).toBe('')
-  })
-
-  it('assembles the emotion and emoji prompt for a split locale', () => {
-    i18nMock.hasTranslation.mockReturnValue(true)
-
-    const prompt = useAiriRuntimePrompt().value
+describe('useStageContractPrompt', () => {
+  it('assembles the emotion and emoji rules without the shared closing', () => {
+    const prompt = useStageContractPrompt().value
 
     expect(prompt).toContain('base.prompt.emotion')
-    expect(prompt).toContain('base.prompt.suffix')
     expect(prompt).toContain('base.prompt.emoji')
-    // Nothing is exposed and state feedback is off by default.
-    expect(prompt).not.toContain('base.prompt.expressions')
-    expect(prompt).not.toContain('base.prompt.expression-state')
+    expect(prompt).not.toContain('base.prompt.suffix')
   })
 
   it('keeps the nine original emotion lines byte-for-byte and appends the newer emotions', () => {
-    i18nMock.hasTranslation.mockReturnValue(true)
-
-    expect(useAiriRuntimePrompt().value).toContain([
+    expect(useStageContractPrompt().value).toContain([
       '- happy (Emotion for feeling Happy)',
       '- sad (Emotion for feeling Sad)',
       '- angry (Emotion for feeling Angry)',
@@ -85,33 +77,67 @@ describe('useAiriRuntimePrompt', () => {
     ].join('\n'))
   })
 
-  it('lists exactly the exposed expressions by kind and no outfit, system, or unexposed entry', () => {
-    i18nMock.hasTranslation.mockReturnValue(true)
+  it('carries no live state, so it stays identical while the performance state changes', async () => {
+    const prompt = useStageContractPrompt()
+    const before = prompt.value
+
+    usePerformanceRuntimeState().publish({ exposed: toExposedExpressions(catalog), active: [{ slot: 'face', label: 'anger' }], mood: null })
+    await useExpressionPerformanceSettings().update({ stateFeedback: true })
+
+    expect(prompt.value).toBe(before)
+  })
+
+  it('renders a key that the active locale lacks from English', async () => {
+    const { createI18n } = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
+    // The contract keys are the subject here. Every other key is irrelevant to this composable.
+    const i18n = createI18n({
+      legacy: false,
+      locale: 'th',
+      fallbackLocale: 'en',
+      fallbackWarn: false,
+      missingWarn: false,
+      messages: {
+        en: { base: { prompt: { emotion: 'en-emotion', emoji: 'en-emoji' } } },
+        th: { base: { prompt: { emotion: 'th-emotion' } } },
+      },
+    })
+    i18nMock.t = (key, params) => i18n.global.t(key, params ?? {})
+
+    const prompt = useStageContractPrompt().value
+
+    expect(prompt.startsWith('th-emotion\n\n')).toBe(true)
+    expect(prompt.endsWith('\n\nen-emoji')).toBe(true)
+  })
+})
+
+describe('useStageLiveStatePrompt', () => {
+  it('is empty while nothing is exposed and state feedback is off', () => {
+    expect(useStageLiveStatePrompt().value).toBe('')
+  })
+
+  it('carries no stage contract', () => {
     usePerformanceRuntimeState().publish({ exposed: toExposedExpressions(catalog), active: [], mood: null })
 
-    const prompt = useAiriRuntimePrompt().value
+    const prompt = useStageLiveStatePrompt().value
+
+    expect(prompt).not.toContain('base.prompt.emotion')
+    expect(prompt).not.toContain('base.prompt.emoji')
+  })
+
+  it('lists exactly the exposed expressions by kind and no outfit, system, or unexposed entry', () => {
+    usePerformanceRuntimeState().publish({ exposed: toExposedExpressions(catalog), active: [], mood: null })
+
+    const prompt = useStageLiveStatePrompt().value
 
     expect(listedLabels(prompt)).toEqual(new Set(['anger', 'tear', 'game']))
     expect(prompt).toContain('- face: anger\n- effect: tear\n- prop: game')
     expect(prompt).not.toMatch(/hat|watermark|smile|pout|P-/)
   })
 
-  it('keeps the rest of the prompt and adds no list when the locale lacks the expressions key', () => {
-    i18nMock.hasTranslation.mockImplementation(key => key !== 'base.prompt.expressions')
-    usePerformanceRuntimeState().publish({ exposed: toExposedExpressions(catalog), active: [], mood: null })
-
-    const prompt = useAiriRuntimePrompt().value
-
-    expect(prompt).toContain('base.prompt.emotion')
-    expect(prompt).not.toContain('base.prompt.expressions')
-    expect(prompt).not.toContain('anger')
-  })
-
   it('reports active expressions and mood only while state feedback is on', async () => {
-    i18nMock.hasTranslation.mockReturnValue(true)
     const runtimeState = usePerformanceRuntimeState()
     runtimeState.publish({ exposed: toExposedExpressions(catalog), active: [{ slot: 'face', label: 'anger' }], mood: { valence: -0.2, arousal: 0.3, tension: 0.4 } })
-    const prompt = useAiriRuntimePrompt()
+    const prompt = useStageLiveStatePrompt()
     expect(prompt.value).not.toContain('base.prompt.expression-state')
 
     await useExpressionPerformanceSettings().update({ stateFeedback: true })

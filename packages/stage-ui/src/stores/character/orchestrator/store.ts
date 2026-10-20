@@ -6,7 +6,7 @@ import { defineStore, storeToRefs } from 'pinia'
 import { ref } from 'vue'
 
 import { useCharacterNotebookStore, useCharacterStore } from '../'
-import { useAiriRuntimePrompt } from '../../../composables/use-airi-runtime-prompt'
+import { useStageContractPrompt, useStageLiveStatePrompt } from '../../../composables/use-airi-runtime-prompt'
 import { useLLM } from '../../ai/chat-llm/llm'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
 import { useConsciousnessStore } from '../../modules/consciousness'
@@ -20,7 +20,8 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
   const characterStore = useCharacterStore()
   const notebookStore = useCharacterNotebookStore()
   const { systemPrompt } = storeToRefs(characterStore)
-  const runtimePrompt = useAiriRuntimePrompt()
+  const stageContractPrompt = useStageContractPrompt()
+  const liveStatePrompt = useStageLiveStatePrompt()
   const modsServerChannelStore = useModsServerChannelStore()
 
   const processing = ref(false)
@@ -135,8 +136,9 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
           model,
           provider,
         },
-        systemPrompt: systemPrompt.value,
-        runtimePrompt: runtimePrompt.value,
+        // The stable stage contract belongs to the system prompt. Only the live state rides with the notify.
+        systemPrompt: [systemPrompt.value, stageContractPrompt.value].filter(Boolean).join('\n\n'),
+        runtimePrompt: liveStatePrompt.value,
         control,
       })
       if (!result.commands.length)
