@@ -482,16 +482,19 @@ describe('situation gate loop', () => {
    * A leader in a host that supports unprompted turns, with a visible stage, an attentive user, and desktop and
    * foreground samples that its producers keep fresh, so only the gate's own rules decide.
    */
-  function startQuietLeader(options: { capable?: boolean, leader?: boolean } = {}) {
+  function startQuietLeader(options: { capable?: boolean, leader?: boolean, foreground?: () => ForegroundWindowSample | null } = {}) {
     const leadership = createLeadership(options.leader ?? true)
     const store = useSituationStore()
     const hooks = createChatHooks()
     const chat = createChatControls()
     const desktop = useDesktopActivityStore()
     const foreground = useForegroundWindowStore()
+    // `options.foreground` returns the next foreground sample, or `null` once its producer stops.
     const keepFresh = () => {
       desktop.setSnapshot(desktopSample())
-      foreground.setSample(foregroundSample())
+      const sample = options.foreground ? options.foreground() : foregroundSample()
+      if (sample)
+        foreground.setSample(sample)
     }
     keepFresh()
     setInterval(keepFresh, 1_000)
@@ -745,6 +748,27 @@ describe('situation gate loop', () => {
     settings.update({ dontDisturb: false, quietApps: ['notepad.exe'] })
     await nextGateTick()
     expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'quiet-app' })
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+  })
+
+  it('stops suppressing for a game once its foreground samples go stale', async () => {
+    const game = { exePath: 'D:\\SteamLibrary\\steamapps\\common\\Hades\\Hades.exe', exeName: 'Hades.exe', title: 'Hades' }
+    let producing = true
+    const { store, chat, observability } = startQuietLeader({ foreground: () => producing ? foregroundSample(game) : null })
+    useSituationSettings().update({ speakDuringGames: false })
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    await nextGateTick()
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'busy-game' })
+
+    producing = false
+    await vi.advanceTimersByTimeAsync(FOREGROUND_SAMPLE_STALE_VISIBLE_MS + GATE_INTERVAL_MS)
+
+    // The reducer keeps the game as the session's last activity, but the stale sample that expired the category also
+    // holds the gate as stale, before any check of the activity, so the old game never suppresses on its own.
+    expect(store.state.activity?.category).toBe('game')
+    expect(store.foregroundCategory).toBeNull()
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'stale-signal' })
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
   })
 
