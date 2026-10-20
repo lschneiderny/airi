@@ -1202,10 +1202,12 @@ function evaluateCheck(check: ChannelCheck, context: EvaluationContext): Evaluat
   }
   const measure = (trial: EmotionTrialRecord) => trial.channels[check.channel]!
   const signOf = (trial: EmotionTrialRecord) => check.sign * (check.sided ? trial.side ?? 0 : 1)
-  // Paired when every trial has its stripped run; then d = delta - delta0, otherwise d = delta.
+  // Paired: d = delta - delta0. Unpaired: d = delta - mean(placebo), because idle statistics need not center on
+  // zero (the eyelid ratio is positive at idle). Without placebo windows the null is assumed zero-centered.
+  const nullCenter = placebo.length ? mean(placebo) : 0
   const differences = (list: EmotionTrialRecord[]) => {
     const paired = list.every(trial => measure(trial).paired !== null)
-    return list.map(trial => signOf(trial) * (measure(trial).value - (paired ? measure(trial).paired! : 0)))
+    return list.map(trial => signOf(trial) * (measure(trial).value - (paired ? measure(trial).paired! : nullCenter)))
   }
   const sigma0 = placebo.length >= 2 ? sampleSd(placebo) : null
   const primaryVariant: TrialVariant = check.cls === 'modulation' ? 'long-hold' : 'full'

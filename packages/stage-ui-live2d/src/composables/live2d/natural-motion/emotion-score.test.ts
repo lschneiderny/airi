@@ -320,6 +320,25 @@ describe('emotion scorer', () => {
     expect(angleY.pHolm).toBe(angleY.p)
   })
 
+  it('centers unpaired significance on the placebo null, not on zero', () => {
+    const random = createRandomStream(21)
+    // An idle statistic centered at -0.05 (the mouthForm check expects a decrease), as the idle eyelid ratio is offset.
+    const idle = () => -0.05 + 0.02 * gaussian(random)
+    const nulls: PlaceboRecord[] = Array.from({ length: 1000 }, (_, index) => ({ id: `p-${index}`, channels: { mouthForm: idle() } }))
+    const unpaired = (index: number, shift: number): EmotionTrialRecord => ({ ...trials('full', 1, 0)[0], trialId: `angry-strong-full-${index}`, channels: { mouthForm: { value: idle() + shift, paired: null } } })
+    const scoreOf = (shift: number) => scoreEmotionGate({ gate: emotionGate, checks: mouthFormCheck, trials: Array.from({ length: 100 }, (_, index) => unpaired(index, shift)), placebos: nulls, ranges, criteria: ['significance', 'sign'] }).results[0]
+
+    const idleResult = scoreOf(0)
+    expect(idleResult.pHolm).toBeGreaterThan(emotionGate.family.alpha)
+    expect(Math.abs(idleResult.E!)).toBeLessThan(3 * 0.02 / Math.sqrt(100))
+    expect(idleResult.verdict).not.toBe('pass')
+
+    const effect = scoreOf(-0.02)
+    expect(effect.pHolm).toBeLessThan(emotionGate.family.alpha)
+    expect(effect.E).toBeCloseTo(0.02, 2)
+    expect(effect.verdict).toBe('pass')
+  })
+
   it('drops one non-finite trial of many from the permutation test and keeps the rest', () => {
     const records = trials('full', 12, recipeAmplitude)
     const trialId = 'angry-strong-full-nan'
