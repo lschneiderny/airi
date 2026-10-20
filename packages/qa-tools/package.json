@@ -11,6 +11,7 @@
   },
   "license": "MIT",
   "scripts": {
+    "doctor": "tsx bin/doctor.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

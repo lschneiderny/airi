@@ -32,6 +32,7 @@
     "build:apps": "turbo run build -F=\"./apps/*\"",
     "build:packages": "turbo run build -F=\"./packages/*\"",
     "build:engines": "turbo run build -F=\"./engines/*\"",
+    "qa:doctor": "pnpm -F @proj-airi/qa-tools run doctor",
     "test": "vitest --coverage",
     "test:run": "vitest run && pnpm run test-stage-tamagotchi:run && pnpm run test-stage-web:run && pnpm run test-stage-pages:run && pnpm run test-ui:run && pnpm run test-stage-ui-live2d:run",
     "test-stage-pages:run": "pnpm -F @proj-airi/stage-pages test:run",
