@@ -4354,6 +4354,52 @@ importers:
         specifier: catalog:vitest
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/browser-playwright@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1(@noble/hashes@2.3.0)(canvas@3.2.3))(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))
 
+  packages/qa-tools:
+    dependencies:
+      '@moeru/std':
+        specifier: 'catalog:'
+        version: 0.1.0-beta.17
+      '@proj-airi/scenarios-stage-tamagotchi-electron':
+        specifier: workspace:^
+        version: link:../scenarios-stage-tamagotchi-electron
+      '@proj-airi/stage-shared':
+        specifier: workspace:^
+        version: link:../stage-shared
+      '@proj-airi/stage-ui':
+        specifier: workspace:^
+        version: link:../stage-ui
+      '@proj-airi/stage-ui-live2d':
+        specifier: workspace:^
+        version: link:../stage-ui-live2d
+      jszip:
+        specifier: 'catalog:'
+        version: 3.10.1
+      pinia:
+        specifier: 'catalog:'
+        version: 4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.41(typescript@6.0.3))
+      valibot:
+        specifier: 'catalog:'
+        version: 1.4.2(typescript@6.0.3)
+      vue:
+        specifier: 'catalog:'
+        version: 3.5.41(typescript@6.0.3)
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.2.0
+      '@vitejs/plugin-vue':
+        specifier: 'catalog:'
+        version: 6.0.8(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))(vue@3.5.41(typescript@6.0.3))
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.12
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: catalog:vitest
+        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/browser-playwright@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1(@noble/hashes@2.3.0)(canvas@3.2.3))(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))
+
   packages/scenarios-stage-tamagotchi-browser:
     dependencies:
       '@moeru/std':

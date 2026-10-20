@@ -22,6 +22,7 @@ export default defineConfig({
       'packages/plugin-sdk',
       'packages/plugin-sdk-tamagotchi',
       ...providerInferenceProjects.map(project => ({ ...project, root: 'packages/provider-inference' })),
+      'packages/qa-tools/vitest.node.config.ts',
       'packages/scenarios-stage-tamagotchi-browser',
       'packages/scenarios-stage-tamagotchi-electron',
       'packages/server-runtime',

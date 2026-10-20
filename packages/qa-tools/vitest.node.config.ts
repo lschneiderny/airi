@@ -1,0 +1,15 @@
+import Vue from '@vitejs/plugin-vue'
+
+import { defineProject } from 'vitest/config'
+
+export default defineProject({
+  root: import.meta.dirname,
+  plugins: [Vue()],
+  test: {
+    name: 'qa-tools:node',
+    include: ['src/**/*.test.ts'],
+    exclude: ['**/node_modules/**', '**/.git/**'],
+    pool: 'forks',
+    maxWorkers: 4,
+  },
+})
