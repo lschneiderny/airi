@@ -315,11 +315,6 @@ describe('store character-orchestrator', () => {
       await options?.onStreamEvent?.({ type: 'finish' } satisfies StreamEvent)
     })
 
-    const mockOnSparkNotifyReactionStreamEvent = vi.fn()
-    mockedStore(useCharacterStore, pinia).onSparkNotifyReactionStreamEvent = mockOnSparkNotifyReactionStreamEvent
-    const mockOnSparkNotifyReactionStreamEnd = vi.fn()
-    mockedStore(useCharacterStore, pinia).onSparkNotifyReactionStreamEnd = mockOnSparkNotifyReactionStreamEnd
-
     const situation = useSituationStore(pinia)
     situation.initialize(leaderRuntime())
 
@@ -357,8 +352,7 @@ describe('store character-orchestrator', () => {
     expect(sendSparkCommandMock).toHaveBeenCalledWith({ type: 'spark:command', data: result?.commands[0] })
 
     // The text is ignored: the gate decides from the observation whether she speaks.
-    expect(mockOnSparkNotifyReactionStreamEvent).not.toHaveBeenCalled()
-    expect(mockOnSparkNotifyReactionStreamEnd).not.toHaveBeenCalled()
+    expect(useCharacterStore(pinia).reactions).toEqual([])
     expect(notifyEvents(situation).map(item => item.topicKey)).toEqual([notifyTopicKey('minecraft', event.data.eventId)])
   })
 
@@ -398,11 +392,6 @@ describe('store character-orchestrator', () => {
       await options?.onStreamEvent?.({ type: 'finish' } satisfies StreamEvent)
     })
 
-    const onDelta = vi.fn()
-    const onEnd = vi.fn()
-    mockedStore(useCharacterStore, pinia).onSparkNotifyReactionStreamEvent = onDelta
-    mockedStore(useCharacterStore, pinia).onSparkNotifyReactionStreamEnd = onEnd
-
     const store = useCharacterOrchestratorStore(pinia)
     const event: WebSocketEventOf<'spark:notify'> = {
       type: 'spark:notify',
@@ -435,8 +424,7 @@ describe('store character-orchestrator', () => {
       type: 'spark:command',
       data: result?.commands[0],
     })
-    expect(onDelta).not.toHaveBeenCalled()
-    expect(onEnd).not.toHaveBeenCalled()
+    expect(useCharacterStore(pinia).reactions).toEqual([])
   })
 
   it('runs the forced command agent for a character-only notify when its caller forces a spark command', async () => {
