@@ -46,6 +46,13 @@ export default defineConfig({
           include: ['.github/scripts/**/*.test.ts'],
         },
       },
+      // Root development scripts, such as the `pnpm dev:*` launcher. They belong to no package.
+      {
+        test: {
+          name: 'root-scripts',
+          include: ['scripts/**/*.test.mjs'],
+        },
+      },
     ],
   },
 })
