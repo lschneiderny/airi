@@ -67,6 +67,14 @@ describe('createRun', () => {
     expect(run.finish({ exitCode: 1, summary: 'bad' })).not.toHaveProperty('gate')
   })
 
+  it('records the launched root process only when one was recorded', () => {
+    const launched = createRun({ ...baseOptions(), label: 'launched' })
+    launched.recordProcess({ rootPid: 4242, created: 1234, commandLine: 'node pnpm.mjs --dir C:/repo dev' })
+    expect(launched.finish({ exitCode: 0, summary: 'ok' }).process).toEqual({ rootPid: 4242, created: 1234, commandLine: 'node pnpm.mjs --dir C:/repo dev' })
+
+    expect(createRun(baseOptions()).finish({ exitCode: 0, summary: 'ok' })).not.toHaveProperty('process')
+  })
+
   it('refuses an existing run dir', () => {
     createRun(baseOptions())
     expect(() => createRun(baseOptions())).toThrow()

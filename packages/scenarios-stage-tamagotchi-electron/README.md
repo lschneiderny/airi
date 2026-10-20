@@ -53,6 +53,10 @@ pnpm exec vishot capture \
 
 Set `AIRI_DISPLAY_MODEL_FORMAT` to `live2d`, `vrm`, or `mmd`. The scenario skips first-run onboarding in the capture profile, imports and selects the supplied file through the model chooser, captures the main stage, then restores persisted state and removes the imported fixture.
 
+## Remote debug helpers
+
+`@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug` holds the Chrome DevTools Protocol helpers for scripts that start the real app with `APP_REMOTE_DEBUG=true`: `findAvailablePort`, `waitForRemoteDebug`, `findDebugTarget`, `waitFor` and `CdpClient`. Every wait is bounded; `CdpClient.connect`, `send` and `evaluate` take a `timeoutMs` (default 30 s). The stage-tamagotchi smoke scripts and the qa-tools T3 harness use it. It is separate from the vishot scenarios above, which do not use remote debug.
+
 ## Scenario Authoring
 
 ```ts

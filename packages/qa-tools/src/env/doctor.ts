@@ -7,6 +7,7 @@ import { execPath, platform, env as processEnv, version as processVersion } from
 import { errorMessageFrom } from '@moeru/std'
 
 import { resolvePnpm, resolveVitestEntry } from './pnpm'
+import { commandLineContainsPath, killOwnedTree, killTree, listLiveProcesses } from './processes'
 
 export type DoctorStatus = 'ok' | 'warn' | 'fail'
 
@@ -56,6 +57,8 @@ export interface DoctorProbes {
   env: Record<string, string | undefined>
   listRig: (dir: string) => RigListing
   listProcesses: () => Promise<ProcessEntry[]>
+  /** The checkout the doctor checks; `stray-electron` reports only processes of this worktree. */
+  repoRoot: string
 }
 
 export interface DoctorCheck {
@@ -206,11 +209,12 @@ function createDoctorChecks(probes: DoctorProbes): DoctorCheck[] {
       run: async () => {
         const strays = (await probes.listProcesses()).filter(({ commandLine }) => {
           const lower = commandLine.toLowerCase()
-          return lower.includes('stage-tamagotchi') && lower.includes('electron')
+          // Other worktrees run their own dev sessions; only this checkout's processes conflict with a run here.
+          return lower.includes('stage-tamagotchi') && lower.includes('electron') && commandLineContainsPath(commandLine, probes.repoRoot)
         })
         return strays.length === 0
-          ? ok('no stage-tamagotchi electron processes')
-          : { status: 'warn', detail: `stage-tamagotchi electron processes running: PIDs ${strays.map(({ pid }) => pid).join(', ')}`, fix: 'Stop the dev session that owns them before a rendered run; doctor never kills processes.' }
+          ? ok('no stage-tamagotchi electron processes from this worktree')
+          : { status: 'warn', detail: `stage-tamagotchi electron processes from this worktree running: PIDs ${strays.map(({ pid }) => pid).join(', ')}`, fix: 'Stop the dev session that owns them before a rendered run; doctor never kills processes.' }
       },
     },
   ]
@@ -290,8 +294,16 @@ export function spawnWarmRun(repoRoot: string, timeoutMs = 300_000): Promise<War
     child.stdout.on('data', (chunk: string) => output += chunk)
     child.stderr.on('data', (chunk: string) => output += chunk)
     const timer = setTimeout(() => {
-      output += `\nqa-tools doctor: warm-up exceeded ${timeoutMs} ms; killed PID ${child.pid}`
-      child.kill()
+      output += `\nqa-tools doctor: warm-up exceeded ${timeoutMs} ms; killing the process tree of PID ${child.pid}`
+      // `child.kill()` ends only the Vitest node process on Windows and can orphan its Chromium; kill the tree,
+      // after checking that the live PID is still this worktree's Vitest. When the listing fails or ownership is
+      // refused, nothing is signalled and the output records why.
+      if (child.pid !== undefined) {
+        void killOwnedTree({ pid: child.pid }, { ownedPaths: [repoRoot] }, { list: listLiveProcesses, kill: killTree })
+          .catch((error) => {
+            output += `\nqa-tools doctor: tree kill not performed: ${errorMessageFrom(error) ?? 'unknown error'}`
+          })
+      }
     }, timeoutMs)
     child.on('error', (error) => {
       clearTimeout(timer)
@@ -392,5 +404,6 @@ export function createSystemProbes(repoRoot: string, env: Record<string, string 
     env,
     listRig: listRigModels,
     listProcesses: () => listProcesses(10_000),
+    repoRoot,
   }
 }

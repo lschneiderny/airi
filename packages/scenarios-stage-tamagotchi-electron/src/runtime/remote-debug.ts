@@ -1,10 +1,15 @@
 /**
- * Shared Chrome DevTools Protocol helpers for smoke scripts that launch the
- * real Electron app (via `APP_REMOTE_DEBUG`) and talk to one of its
- * renderers over CDP. Kept here, rather than inline in each smoke script, so
- * the wait/retry and protocol-framing pieces stay in one place as more
- * smoke scripts are added.
+ * Shared Chrome DevTools Protocol helpers for scripts that launch the real
+ * Electron app (via `APP_REMOTE_DEBUG`) and talk to one of its renderers over
+ * CDP: the stage-tamagotchi smoke scripts and the qa-tools T3 harness. Kept in
+ * one module so the wait/retry and protocol-framing pieces stay in one place.
+ * Every wait is bounded: `waitFor` by its timeout (an attempt still running at
+ * the deadline is abandoned and its signal aborted, which cancels `fetchJson`),
+ * `connect` and `send` by `timeoutMs`.
  */
+
+/** Default bound for one CDP command; long-running evaluations pass their own. */
+export const defaultCdpTimeoutMs = 30_000
 
 export interface DebugTarget {
   id: string
@@ -47,51 +52,77 @@ export async function findAvailablePort(): Promise<number> {
  * Electron's remote-debug endpoint and a renderer's readiness both come up
  * asynchronously after the process starts, so callers throughout the smoke
  * scripts wait on this instead of a fixed sleep.
+ *
+ * The deadline is enforced even when an attempt never settles: the attempt is
+ * raced against the remaining time, and its `signal` is aborted at the
+ * deadline so a probe that passes it on (for example to `fetchJson`) cancels
+ * its request.
  */
 export async function waitFor<T>(
   label: string,
-  probe: () => Promise<T | undefined> | T | undefined,
+  probe: (signal: AbortSignal) => Promise<T | undefined> | T | undefined,
   timeoutMs: number,
   intervalMs: number,
 ): Promise<T> {
-  const start = Date.now()
+  const deadline = Date.now() + timeoutMs
   let lastError: unknown
-
-  while ((Date.now() - start) < timeoutMs) {
-    try {
-      const value = await probe()
-      if (value !== undefined)
-        return value
-    }
-    catch (error) {
-      lastError = error
-    }
-    await sleep(intervalMs)
+  const timedOut = () => {
+    const suffix = lastError instanceof Error ? `: ${lastError.message}` : ''
+    return new Error(`${label} timed out after ${timeoutMs}ms${suffix}`)
   }
 
-  const suffix = lastError instanceof Error ? `: ${lastError.message}` : ''
-  throw new Error(`${label} timed out after ${timeoutMs}ms${suffix}`)
+  while (Date.now() < deadline) {
+    const attempt = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const expired = new Promise<'expired'>((resolveExpired) => {
+      timer = setTimeout(resolveExpired, Math.max(0, deadline - Date.now()), 'expired')
+    })
+    const running = Promise.resolve().then(() => probe(attempt.signal))
+    // An abandoned attempt may still reject later (for example with the abort error); that outcome is not needed.
+    running.catch(() => {})
+    try {
+      const outcome = await Promise.race([running, expired])
+      if (outcome === 'expired') {
+        attempt.abort(new Error(`${label} attempt abandoned at the deadline`))
+        lastError = lastError ?? new Error('the last attempt did not settle')
+        throw timedOut()
+      }
+      if (outcome !== undefined)
+        return outcome as T
+    }
+    catch (error) {
+      if (attempt.signal.aborted)
+        throw error
+      lastError = error
+    }
+    finally {
+      clearTimeout(timer)
+    }
+    await sleep(Math.min(intervalMs, Math.max(0, deadline - Date.now())))
+  }
+
+  throw timedOut()
 }
 
-export async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url)
+export async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(url, { signal })
   if (!response.ok)
     throw new Error(`${url} returned ${response.status}`)
   return await response.json() as T
 }
 
-export async function waitForRemoteDebug(debugPort: number): Promise<string> {
-  return await waitFor('Electron remote debug endpoint', async () => {
-    const data = await fetchJson<{ webSocketDebuggerUrl?: string }>(`http://127.0.0.1:${debugPort}/json/version`)
+export async function waitForRemoteDebug(debugPort: number, timeoutMs = 120_000): Promise<string> {
+  return await waitFor('Electron remote debug endpoint', async (signal) => {
+    const data = await fetchJson<{ webSocketDebuggerUrl?: string }>(`http://127.0.0.1:${debugPort}/json/version`, signal)
     return data.webSocketDebuggerUrl
-  }, 120_000, 500)
+  }, timeoutMs, 500)
 }
 
-export async function findDebugTarget(debugPort: number, label: string, predicate: (target: DebugTarget) => boolean): Promise<DebugTarget> {
-  return await waitFor(label, async () => {
-    const targets = await fetchJson<DebugTarget[]>(`http://127.0.0.1:${debugPort}/json/list`)
+export async function findDebugTarget(debugPort: number, label: string, predicate: (target: DebugTarget) => boolean, timeoutMs = 120_000): Promise<DebugTarget> {
+  return await waitFor(label, async (signal) => {
+    const targets = await fetchJson<DebugTarget[]>(`http://127.0.0.1:${debugPort}/json/list`, signal)
     return targets.find(predicate)
-  }, 120_000, 500)
+  }, timeoutMs, 500)
 }
 
 /**
@@ -141,12 +172,22 @@ export class CdpClient {
     })
   }
 
-  static async connect(url: string): Promise<CdpClient> {
+  static async connect(url: string, timeoutMs = defaultCdpTimeoutMs): Promise<CdpClient> {
     const socket = new WebSocket(url)
-    await new Promise<void>((resolveOpen, reject) => {
-      socket.addEventListener('open', () => resolveOpen(), { once: true })
-      socket.addEventListener('error', () => reject(new Error(`failed to connect CDP target: ${url}`)), { once: true })
-    })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await new Promise<void>((resolveOpen, reject) => {
+        timer = setTimeout(() => {
+          socket.close()
+          reject(new Error(`CDP connect to ${url} timed out after ${timeoutMs}ms`))
+        }, timeoutMs)
+        socket.addEventListener('open', () => resolveOpen(), { once: true })
+        socket.addEventListener('error', () => reject(new Error(`failed to connect CDP target: ${url}`)), { once: true })
+      })
+    }
+    finally {
+      clearTimeout(timer)
+    }
     return new CdpClient(socket)
   }
 
@@ -165,26 +206,37 @@ export class CdpClient {
     return () => listeners.delete(listener)
   }
 
-  async send(method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>> {
+  /** Sends one command and awaits its response; rejects when no response arrives within `timeoutMs`. */
+  async send(method: string, params?: Record<string, unknown>, timeoutMs = defaultCdpTimeoutMs): Promise<Record<string, unknown>> {
     if (!this.socket) {
       throw new Error('CDP socket is closed')
     }
 
     const id = this.nextId++
+    let timer: ReturnType<typeof setTimeout> | undefined
     const promise = new Promise<Record<string, unknown>>((resolveMessage, reject) => {
       this.pending.set(id, { resolve: resolveMessage, reject })
+      timer = setTimeout(() => {
+        if (this.pending.delete(id))
+          reject(new Error(`CDP ${method} (request ${id}) timed out after ${timeoutMs}ms`))
+      }, timeoutMs)
     })
 
     this.socket.send(JSON.stringify({ id, method, params: params ?? {} }))
-    return await promise
+    try {
+      return await promise
+    }
+    finally {
+      clearTimeout(timer)
+    }
   }
 
-  async evaluate<T>(expression: string): Promise<T> {
+  async evaluate<T>(expression: string, timeoutMs = defaultCdpTimeoutMs): Promise<T> {
     const response = await this.send('Runtime.evaluate', {
       expression,
       awaitPromise: true,
       returnByValue: true,
-    })
+    }, timeoutMs)
     const result = response.result
     if (!isRecord(result))
       throw new Error('Runtime.evaluate missing result')

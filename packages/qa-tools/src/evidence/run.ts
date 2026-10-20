@@ -22,6 +22,14 @@ export interface RunArtifact {
   sha256: string
 }
 
+/** The root of a process tree the run launched, for example the Electron dev session of a T3 run. */
+export interface RunProcess {
+  rootPid: number
+  /** Creation time of the root (Windows FILETIME UTC), so a reused PID is never taken for it. */
+  created?: number
+  commandLine: string
+}
+
 export interface RunResult {
   exitCode: number
   summary: string
@@ -38,6 +46,7 @@ export interface RunManifest {
   command: string[]
   env: Record<string, string>
   gate?: RunGate
+  process?: RunProcess
   artifacts: RunArtifact[]
   result: RunResult
 }
@@ -62,6 +71,8 @@ export interface RunHandle {
   dir: string
   path: (name: string) => string
   addArtifact: (relPath: string, kind: string) => RunArtifact
+  /** Records the root process the run launched; `run.json` lists it as `process`. */
+  recordProcess: (process: RunProcess) => void
   finish: (result: RunResult) => RunManifest
 }
 
@@ -118,6 +129,7 @@ export function createRun(options: CreateRunOptions): RunHandle {
   mkdirSync(dir)
 
   const artifacts: RunArtifact[] = []
+  let launched: RunProcess | undefined
 
   const path = (name: string): string => {
     const full = resolve(dir, name)
@@ -140,6 +152,9 @@ export function createRun(options: CreateRunOptions): RunHandle {
       artifacts.push(artifact)
       return artifact
     },
+    recordProcess(process) {
+      launched = { ...process }
+    },
     finish(result) {
       const manifest: RunManifest = {
         runId,
@@ -152,6 +167,7 @@ export function createRun(options: CreateRunOptions): RunHandle {
         command: options.command ?? process.argv,
         env: pickRunEnv(options.env ?? process.env),
         ...(options.gate ? { gate: options.gate } : {}),
+        ...(launched ? { process: launched } : {}),
         artifacts: [...artifacts],
         result,
       }

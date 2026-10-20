@@ -10,7 +10,10 @@
     "url": "https://github.com/moeru-ai"
   },
   "license": "MIT",
-  "exports": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./runtime/remote-debug": "./src/runtime/remote-debug.ts"
+  },
   "scripts": {
     "test:run": "vitest run",
     "typecheck": "tsc --noEmit"

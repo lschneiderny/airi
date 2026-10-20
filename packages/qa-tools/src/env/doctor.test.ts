@@ -29,6 +29,7 @@ function healthyProbes(overrides: Partial<DoctorProbes> = {}): DoctorProbes {
     env: { AIRI_QA_RIG_FORBOOTH: '/rigs/forbooth', AIRI_QA_RIG_BEAR: '/rigs/bear' },
     listRig: () => ({ isDirectory: true, models: ['model/rig.model3.json'] }),
     listProcesses: async () => [{ pid: 7, commandLine: 'node vitest run' }],
+    repoRoot: 'C:/repo',
     ...overrides,
   }
 }
@@ -134,16 +135,25 @@ describe('runDoctor', () => {
     expect(noModel.status).toBe('fail')
   })
 
-  it('stray-electron warns with the PIDs of stage-tamagotchi electron processes only', async () => {
+  it('stray-electron warns with the PIDs of this worktree\'s stage-tamagotchi electron processes only', async () => {
     const row = await rowOf('stray-electron', healthyProbes({ listProcesses: async () => [
       { pid: 41, commandLine: 'C:\\repo\\apps\\stage-tamagotchi\\node_modules\\Electron\\dist\\electron.exe .' },
       { pid: 42, commandLine: 'node electron-vite dev' },
       { pid: 43, commandLine: 'node apps/stage-tamagotchi/scripts/build.js' },
+      { pid: 44, commandLine: 'C:\\repo-other\\apps\\stage-tamagotchi\\node_modules\\Electron\\dist\\electron.exe .' },
     ] }))
 
     expect(row.status).toBe('warn')
     expect(row.detail).toContain('41')
-    expect(row.detail).not.toMatch(/42|43/)
+    expect(row.detail).not.toMatch(/42|43|44/)
+  })
+
+  it('stray-electron is ok when only other worktrees run stage-tamagotchi electron', async () => {
+    const row = await rowOf('stray-electron', healthyProbes({ listProcesses: async () => [
+      { pid: 44, commandLine: 'C:\\repo-other\\apps\\stage-tamagotchi\\node_modules\\Electron\\dist\\electron.exe .' },
+    ] }))
+
+    expect(row.status).toBe('ok')
   })
 
   it('turns a throwing probe into a fail row and still runs later checks', async () => {

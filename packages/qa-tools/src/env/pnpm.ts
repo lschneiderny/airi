@@ -84,8 +84,11 @@ export function resolvePnpm(options: ResolvePnpmOptions): ResolvedPnpm {
   ].join('\n'))
 }
 
-/** Spawns `node <pnpm entry> ...args` without a shell and logs which pnpm was used to stderr. */
-export function spawnPnpm(args: readonly string[], options: ResolvePnpmOptions & { cwd?: string, stdio?: 'inherit' | 'pipe' } = { repoRoot: cwd() }) {
+/**
+ * Spawns `node <pnpm entry> ...args` without a shell and logs which pnpm was used to stderr.
+ * `detached` starts a new process group on POSIX, so the whole tree can be signalled through the group.
+ */
+export function spawnPnpm(args: readonly string[], options: ResolvePnpmOptions & { cwd?: string, stdio?: 'inherit' | 'pipe', detached?: boolean } = { repoRoot: cwd() }) {
   const { version, node, entry } = resolvePnpm(options)
   stderr.write(`qa-tools: pnpm ${version} via ${entry}\n`)
   return spawn(node, [entry, ...args], {
@@ -93,6 +96,7 @@ export function spawnPnpm(args: readonly string[], options: ResolvePnpmOptions &
     env: { ...(options.env ?? processEnv) } as NodeJS.ProcessEnv,
     shell: false,
     stdio: options.stdio ?? 'inherit',
+    detached: options.detached ?? false,
   })
 }
 
