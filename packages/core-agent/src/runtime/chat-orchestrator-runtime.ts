@@ -921,6 +921,8 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
 
       const categorizer = createStreamingCategorizer(activeProvider)
       let streamPosition = 0
+      // ACT markers accepted for this turn, recovered ones included. The parser counts recoveries itself.
+      let actCount = 0
       const stickers = options.stickers
       let stickerEmitted = false
 
@@ -998,6 +1000,9 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
             return
           }
 
+          if (/^<\|ACT\b/.test(special))
+            actCount++
+
           if (turnState === 'holding') {
             heldSpecials.push(special)
             return
@@ -1027,6 +1032,15 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         // Models sometimes write [ACT ...] or <ACT ...>. Rewrite those into real cues instead of speaking them.
         recoverCueNames: ['ACT', 'DELAY'],
       })
+
+      const setCueStats = () => {
+        streamingMessageContext.cueStats = {
+          act: actCount,
+          recovered: parser.stats.recovered,
+          origin: unprompted ? 'unprompted' : 'user',
+          declined: turnState === 'declined',
+        }
+      }
 
       const toolCallQueue = createQueue<ChatSlices>({
         handlers: [
@@ -1255,6 +1269,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       if (turnState === 'declined') {
         generationCompleted = true
         // Hosts close the empty speech response that they opened before composition.
+        setCueStats()
         await hooks.emitStreamEndHooks(streamingMessageContext)
         if (shouldAbort())
           return
@@ -1291,6 +1306,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
 
       if (shouldAbort())
         return
+      setCueStats()
       await hooks.emitStreamEndHooks(streamingMessageContext)
       if (shouldAbort())
         return

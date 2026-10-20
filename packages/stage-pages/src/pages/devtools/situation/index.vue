@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import type { ActComplianceRecord } from '@proj-airi/stage-ui/stores/devtools/act-compliance'
 import type { SituationInspection, SituationPreview } from '@proj-airi/stage-ui/stores/devtools/situation-observability'
 
 import { errorMessageFrom } from '@moeru/std'
+import { useActComplianceStore } from '@proj-airi/stage-ui/stores/devtools/act-compliance'
 import { useSituationObservabilityStore } from '@proj-airi/stage-ui/stores/devtools/situation-observability'
 import { useIntervalFn } from '@vueuse/core'
 import { onMounted, ref, shallowRef } from 'vue'
 
+import SituationActCompliance from './components/situation-act-compliance.vue'
 import SituationBlock from './components/situation-block.vue'
 import SituationEvents from './components/situation-events.vue'
 import SituationSource from './components/situation-source.vue'
@@ -16,6 +19,7 @@ const REFRESH_INTERVAL_MS = 1_000
 
 // Read-only: the page reads the leader through the store's leader-routed actions and never changes the situation.
 const observability = useSituationObservabilityStore()
+const actCompliance = useActComplianceStore()
 
 const inspection = shallowRef<SituationInspection>()
 const inspectedAtMs = ref<number>()
@@ -23,6 +27,8 @@ const inspectError = ref<string>()
 const preview = shallowRef<SituationPreview>()
 const previewError = ref<string>()
 const previewing = ref(false)
+const complianceRecords = shallowRef<ActComplianceRecord[]>([])
+const complianceError = ref<string>()
 let refreshing = false
 
 async function refresh() {
@@ -36,6 +42,13 @@ async function refresh() {
   }
   catch (error) {
     inspectError.value = errorMessageFrom(error) ?? 'The leader window did not answer.'
+  }
+  try {
+    complianceRecords.value = (await actCompliance.inspect()).records
+    complianceError.value = undefined
+  }
+  catch (error) {
+    complianceError.value = errorMessageFrom(error) ?? 'The leader window did not answer.'
   }
   finally {
     refreshing = false
@@ -82,7 +95,9 @@ onMounted(refresh)
       />
     </template>
 
-    <!-- Gate decisions and ACT compliance panels go here, below the block they explain. -->
+    <SituationActCompliance :records="complianceRecords" :error="complianceError" />
+
+    <!-- The gate decisions panel goes here, below the block it explains. -->
   </div>
 </template>
 

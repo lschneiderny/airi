@@ -58,6 +58,7 @@ export type {
   ChatStreamEvent,
   ChatStreamEventContext,
   ChatToolReference,
+  ChatTurnCueStats,
   ContextMessage,
   ErrorMessage,
   StreamingAssistantMessage,
