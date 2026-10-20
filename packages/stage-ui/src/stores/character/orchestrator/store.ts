@@ -1,7 +1,7 @@
 import type { SparkNotifyResponseControl } from '@proj-airi/core-agent/agents/spark-notify'
 import type { WebSocketBaseEvent, WebSocketEventOf, WebSocketEvents } from '@proj-airi/server-sdk'
 
-import { createSparkNotifyAgent, createSparkNotifyReactionPlugin } from '@proj-airi/core-agent/agents/spark-notify'
+import { createSparkNotifyAgent } from '@proj-airi/core-agent/agents/spark-notify'
 import { defineStore, storeToRefs } from 'pinia'
 import { ref } from 'vue'
 
@@ -10,6 +10,7 @@ import { useStageContractPrompt, useStageLiveStatePrompt } from '../../../compos
 import { useLLM } from '../../ai/chat-llm/llm'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
 import { useConsciousnessStore } from '../../modules/consciousness'
+import { ingestSparkNotify } from '../../situation/sensors/notify'
 
 export { sparkNotifyCommandSchema } from '@proj-airi/core-agent/agents/spark-notify'
 
@@ -47,6 +48,8 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
   let tickTimer: ReturnType<typeof setInterval> | undefined
   let initialized = false
   const eventUnsubscribes: Array<() => void> = []
+  // The agent runs only for the commands of notifies addressed beyond the character. Whether the character speaks
+  // about a notify is the situation gate's decision, so this agent has no reaction plugin and its text is ignored.
   const sparkNotifyAgent = createSparkNotifyAgent({
     runner: {
       run: request => stream(
@@ -63,13 +66,13 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
         },
       ),
     },
-    plugins: [
-      createSparkNotifyReactionPlugin({
-        onDelta: (eventId, text) => characterStore.onSparkNotifyReactionStreamEvent(eventId, text),
-        onEnd: (eventId, text) => characterStore.onSparkNotifyReactionStreamEnd(eventId, text),
-      }),
-    ],
   })
+
+  /** Whether a notify is addressed to any module besides the character, which only the commands-only agent serves. */
+  function hasModuleDestinations(event: WebSocketEventOf<'spark:notify'>) {
+    const destinations: unknown = event.data.destinations
+    return Array.isArray(destinations) && destinations.some(destination => destination !== 'character')
+  }
 
   function computeNextRunAt(event: WebSocketEventOf<'spark:notify'>, attempts: number) {
     const now = Date.now()
@@ -139,7 +142,7 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
         // The stable stage contract belongs to the system prompt. Only the live state rides with the notify.
         systemPrompt: [systemPrompt.value, stageContractPrompt.value].filter(Boolean).join('\n\n'),
         runtimePrompt: liveStatePrompt.value,
-        control,
+        control: { ...control, commandsOnly: true },
       })
       if (!result.commands.length)
         return result
@@ -158,7 +161,17 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
     }
   }
 
+  /**
+   * Handles one `spark:notify`: it always becomes a situation observation, and the gate decides whether the character
+   * speaks about it. Only a notify with destinations beyond `'character'` also runs the commands-only agent, at once
+   * when it is immediate and the agent is idle, otherwise through the queue. Returns the agent result of an immediate
+   * run, or `undefined`.
+   */
   async function handleIncomingSparkNotify(event: WebSocketEventOf<'spark:notify'>, control?: SparkNotifyResponseControl) {
+    ingestSparkNotify(event)
+    if (!hasModuleDestinations(event))
+      return undefined
+
     if (event.data.urgency === 'immediate' && !processing.value) {
       return await processSparkNotify(event, control)
     }
@@ -207,7 +220,8 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
         },
       }
 
-      enqueueSparkNotify(event, { reason: 'task:due' })
+      // A reminder is for the character only, so it is an observation and never an agent run.
+      ingestSparkNotify(event)
       notebookStore.markTaskNotified(task.id, now + attentionConfig.value.requeueDelayMs)
     }
   }

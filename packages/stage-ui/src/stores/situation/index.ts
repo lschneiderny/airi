@@ -13,6 +13,7 @@ import {
   initialSituationState,
   markShown,
   markAddressed as markSituationAddressed,
+  notifyTopicKey,
   promotionGateMemory,
   recordFireOutcome,
   recordUserTurn,
@@ -27,7 +28,7 @@ import { defineStore } from 'pinia'
 import { computed, shallowRef, watch } from 'vue'
 
 import { useSituationSettings } from '../../features/situation/settings'
-import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceRequestTurns, voiceTurnsChanged } from '../../services/speech/bus'
+import { chatComposerActivityChangedEvent, getSpeechBusContext, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestTurns, voiceTurnsChanged } from '../../services/speech/bus'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { startConversationSensor } from './sensors/conversation'
 import { DESKTOP_SAMPLE_STALE_MS, startDesktopSensor } from './sensors/desktop'
@@ -51,6 +52,15 @@ export const GATE_INTERVAL_MS = 2_000
 export const COMPOSER_INPUT_RECENT_MS = 10_000
 /** A composer report expires this long after it arrived, so a closed window cannot hold the gate forever. */
 export const COMPOSER_REPORT_EXPIRY_MS = 15_000
+
+/**
+ * How many notify topics the leader remembers after they entered the situation.
+ *
+ * Tuning: the scheduler re-sends a due reminder about every 30 s with the same event id. A notify that decayed out of
+ * the event ring would otherwise come back as new (and urgent), so she would mention it twice. Raise it if many
+ * notifications arrive while a reminder stays due.
+ */
+export const SEEN_NOTIFY_TOPICS_MAX = 256
 
 /** `submitUnprompted` returns this error when another unprompted turn is still pending: busy, not a failure. */
 const UNPROMPTED_BUSY_ERROR = 'Another unprompted turn is still pending'
@@ -103,6 +113,7 @@ export const useSituationStore = defineStore('situation', () => {
   let chatHooks: SituationChatHooks | undefined
   let chat: SituationChatControls | undefined
   let stopConversation: (() => void) | undefined
+  let stopNotifyListener: (() => void) | undefined
   let stopLeadershipListener: (() => void) | undefined
   const observability = useSituationObservabilityStore()
   const settings = useSituationSettings()
@@ -123,6 +134,8 @@ export const useSituationStore = defineStore('situation', () => {
   let speakingTurns: readonly TurnRef[] = []
   /** The newest report of each chat composer, with the local time it arrived. */
   const composers = new Map<string, { hasDraft: boolean, lastInputAtMs: number, receivedAtMs: number }>()
+  /** Notify topic keys that entered the situation during this leadership, oldest first. */
+  const seenNotifyTopics = new Set<string>()
 
   // Feeds the devtools Situation inspector of this window. Sync flush keeps it equal to the state after every call.
   watch([leading, current], ([isLeading, state]) => observability.publishLiveState(isLeading, state), { flush: 'sync', immediate: true })
@@ -328,6 +341,11 @@ export const useSituationStore = defineStore('situation', () => {
     // Sensors report their current readings at once, so they start after `leading` lets `ingest` through.
     sensors = startSensors()
     startConversation()
+    // Notifies that follower windows received arrive here; repeats of ones this window ingested are dropped by `ingest`.
+    stopNotifyListener = getSpeechBusContext().on(situationNotifyObservedEvent, ({ body }) => {
+      if (body)
+        ingest(body)
+    })
     ticker = setInterval(() => {
       const nowMs = Date.now()
       sensors?.check(nowMs)
@@ -342,6 +360,8 @@ export const useSituationStore = defineStore('situation', () => {
     sensors = undefined
     stopConversation?.()
     stopConversation = undefined
+    stopNotifyListener?.()
+    stopNotifyListener = undefined
     if (ticker !== undefined)
       clearInterval(ticker)
     ticker = undefined
@@ -350,14 +370,29 @@ export const useSituationStore = defineStore('situation', () => {
     leading.value = false
     syncGateLoop()
     current.value = initialSituationState
+    seenNotifyTopics.clear()
     foregroundCategory.value = null
   }
 
-  /** Folds one observation into the situation. Followers and uninitialized windows ignore it. */
+  /**
+   * Folds one observation into the situation. Followers and uninitialized windows ignore it.
+   *
+   * A notify enters the situation once per leadership: a repeat of a remembered topic key is dropped even after its
+   * event decayed out of the ring, so one notification is never raised (and spoken) twice.
+   */
   function ingest(observation: Observation) {
     if (!leading.value)
       return
+    const notifyKey = observation.kind === 'notify' ? notifyTopicKey(observation.sourceKey, observation.eventId) : undefined
+    if (notifyKey !== undefined && seenNotifyTopics.has(notifyKey))
+      return
     current.value = reduceSituation(current.value, observation, Date.now(), { selfAppIds: sensors?.selfAppIds() ?? [] })
+    if (notifyKey !== undefined && current.value.events.some(event => event.topicKey === notifyKey)) {
+      seenNotifyTopics.add(notifyKey)
+      const oldest = seenNotifyTopics.size > SEEN_NOTIFY_TOPICS_MAX ? seenNotifyTopics.values().next().value : undefined
+      if (oldest !== undefined)
+        seenNotifyTopics.delete(oldest)
+    }
   }
 
   /**
