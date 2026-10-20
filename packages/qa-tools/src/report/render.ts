@@ -5,7 +5,7 @@ import type { RunInput, ScenarioEvent, ScreenshotInput, T3Facet } from './inputs
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { emotionCells, visualCheckItems, visualRangeShare, visualSizeRatio } from './cells'
+import { emotionCells, isGated, rowVerdict, visualCheckItems, visualRangeShare, visualSizeRatio } from './cells'
 import { escapeHtml, formatNumber, formatPair, pngDataUrl, shortSha } from './html-utils'
 import { loadRunInput, rigFromEnv } from './inputs'
 import { reportLimitations } from './limitations'
@@ -51,6 +51,8 @@ function levelOf(run: RunInput): string {
     levels.push(run.gate.report.level)
   if (run.t3)
     levels.push('t3')
+  if (run.uncaptured)
+    levels.push('t3 (session not captured)')
   if (run.test)
     levels.push('qa:test')
   return levels.join(', ') || '—'
@@ -87,7 +89,7 @@ function channelDetails(cell: EmotionCell): string {
   const rows = cell.channels.map(({ result, levels }) => {
     const cells = [
       `<td class="mono">${escapeHtml(result.channel)}${result.unsigned ? ' <span class="badge note">unsigned</span>' : ''}</td>`,
-      `<td>${badge(result.verdict)}</td>`,
+      `<td>${badge(rowVerdict(result))}</td>`,
       `<td class="num">${result.n ?? '—'}</td>`,
       `<td class="num">${formatNumber(result.E)}</td>`,
       `<td class="num">${formatPair(result.ci)}</td>`,
@@ -109,8 +111,10 @@ function channelDetails(cell: EmotionCell): string {
 
 function verdictTable(view: GateView): string {
   const rows = view.cells.map((cell) => {
-    const failing = cell.channels.filter(row => row.result.verdict !== 'pass')
-    const tally = `${cell.channels.length - failing.length} pass, ${failing.filter(r => r.result.verdict === 'fail').length} fail, ${failing.filter(r => r.result.verdict === 'n/a').length} n/a`
+    const gated = cell.channels.filter(row => isGated(row.result))
+    const notGated = cell.channels.length - gated.length
+    const failing = gated.filter(row => row.result.verdict !== 'pass')
+    const tally = `${gated.length - failing.length} pass, ${failing.filter(r => r.result.verdict === 'fail').length} fail, ${failing.filter(r => r.result.verdict === 'n/a').length} n/a${notGated ? `, ${notGated} not gated` : ''}`
     const failed = failing.map(row => `${row.result.channel}: ${(row.result.failed ?? []).join(', ') || row.result.verdict}`).join('; ')
     return `<tr id="verdict-${escapeHtml(cell.key.replace(':', '-'))}"><td class="mono">${escapeHtml(cell.emotion)}</td><td>${escapeHtml(cell.band)}</td><td>${badge(cell.verdict)}</td><td>${escapeHtml(tally)}</td><td class="wrap">${escapeHtml(failed || '—')}</td><td class="wrap">${channelDetails(cell)}</td></tr>`
   })
@@ -206,6 +210,8 @@ function t3Section(inputs: readonly RunInput[]): string {
   for (const run of inputs) {
     if (run.t3)
       blocks.push(contactSheet(run, run.t3))
+    if (run.uncaptured)
+      blocks.push(`<h3>${escapeHtml(run.manifest?.runId ?? run.name)} ${badge('fail')}</h3><div class="callout warn"><p><strong>T3 session not captured.</strong> The session failed before it recorded a trace or a screenshot: ${escapeHtml(run.uncaptured.reason)}</p></div>`)
   }
   return blocks.length ? section('t3', 'T3 rendered runs', blocks.join('')) : ''
 }
@@ -243,7 +249,7 @@ function knownFailuresSection(inputs: readonly RunInput[]): string {
 
 function inputsSection(inputs: readonly RunInput[]): string {
   const rows = inputs.map((run) => {
-    const facets = [run.gate ? 'gate report' : null, run.t3 ? 'T3 screenshots' : null, run.test ? 'qa:test summary' : null].filter((f): f is string => f !== null)
+    const facets = [run.gate ? 'gate report' : null, run.t3 ? 'T3 screenshots' : null, run.uncaptured ? `T3 session not captured (${run.uncaptured.reason})` : null, run.test ? 'qa:test summary' : null].filter((f): f is string => f !== null)
     const issues = run.issues.length ? `<ul class="plain">${run.issues.map(issue => `<li><span class="mono">${escapeHtml(issue.file)}</span>: ${escapeHtml(issue.problem)}</li>`).join('')}</ul>` : '<span class="muted">none</span>'
     return `<tr><td class="mono wrap">${escapeHtml(run.dir)}</td><td class="wrap">${escapeHtml(facets.join(', ') || 'nothing usable')}</td><td class="wrap">${issues}</td></tr>`
   })
@@ -254,7 +260,7 @@ function missingInputsCallout(inputs: readonly RunInput[]): string {
   const problems = inputs.flatMap(run => run.issues.map(issue => `<li><span class="mono">${escapeHtml(run.name)}/${escapeHtml(issue.file)}</span>: ${escapeHtml(issue.problem)}</li>`))
   if (problems.length === 0)
     return ''
-  const nothing = inputs.every(run => !run.gate && !run.t3 && !run.test)
+  const nothing = inputs.every(run => !run.gate && !run.t3 && !run.uncaptured && !run.test)
   return `<div class="callout fail"><p><strong>${nothing ? 'No usable input: the sections below are empty because these files are missing or unreadable.' : 'Some inputs are missing or unreadable; the affected sections are incomplete.'}</strong></p><ul class="plain">${problems.join('')}</ul></div>`
 }
 

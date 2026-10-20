@@ -2,6 +2,7 @@ import type { ChannelRow, EmotionCell, TrajectoryBand } from './cells'
 
 import { emotionGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 
+import { rowVerdict } from './cells'
 import { escapeHtml } from './html-utils'
 import { axisUnit, drawnOverlays, unitLabel } from './panel-units'
 
@@ -116,8 +117,8 @@ function panel(row: ChannelRow, top: number, showLabels: boolean): string {
     parts.push(bandPath(row.trajectory, scale, 'traj', `paired mean trajectory, ${row.trajectory.trials} trials, bootstrap 95% band`))
   if (show('release') && row.release)
     parts.push(bandPath(row.release, scale, 'release', `held-only release grid (30 Hz), ${row.release.trials} trials, bootstrap 95% band`))
-  const verdict = result.verdict
-  parts.push(`<text class="label verdict-${verdict === 'n/a' ? 'na' : verdict}" x="${gutter - 8}" y="${top + 14}" text-anchor="end">${escapeHtml(result.channel)}</text>`)
+  const verdict = rowVerdict(result)
+  parts.push(`<text class="label verdict-${verdict === 'pass' || verdict === 'fail' ? verdict : 'na'}" x="${gutter - 8}" y="${top + 14}" text-anchor="end">${escapeHtml(result.channel)}</text>`)
   parts.push(`<text class="sub" x="${gutter - 8}" y="${top + 29}" text-anchor="end">${escapeHtml(verdict)}${result.failed?.length ? `: ${escapeHtml(result.failed.join(','))}` : ''}</text>`)
   parts.push(`<text class="sub" x="${gutter - 8}" y="${top + 44}" text-anchor="end">±${escapeHtml(fmt(extent))} ${escapeHtml(unitLabel(axisUnit(row.cls)))}</text>`)
   if (showLabels) {

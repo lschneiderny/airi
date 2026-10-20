@@ -103,6 +103,8 @@ export interface RunInput {
   manifest: ReportManifest | null
   gate: GateFacet | null
   t3: T3Facet | null
+  /** A T3 session that failed before it captured anything (no trace, no screenshots), with its own failure summary. */
+  uncaptured: { reason: string } | null
   test: TestSummary | null
   issues: InputIssue[]
 }
@@ -222,23 +224,37 @@ export function loadRunInput(dir: string): RunInput {
   const issues: InputIssue[] = []
   const name = basename(dir)
   if (!existsSync(dir) || !statSync(dir).isDirectory())
-    return { dir, name, manifest: null, gate: null, t3: null, test: null, issues: [{ file: '.', problem: 'run directory does not exist' }] }
+    return { dir, name, manifest: null, gate: null, t3: null, uncaptured: null, test: null, issues: [{ file: '.', problem: 'run directory does not exist' }] }
 
   const manifest = readSchema(join(dir, 'run.json'), manifestSchema)
   if (!manifest.ok)
     issues.push({ file: 'run.json', problem: manifest.problem })
   const manifestValue = manifest.ok ? manifest.value : null
   const gate = loadGate(dir, issues)
-  const t3 = loadT3(dir, manifestValue, issues)
+  const uncaptured = uncapturedSession(dir, manifestValue)
+  const t3 = uncaptured ? null : loadT3(dir, manifestValue, issues)
   const test = loadTest(dir, issues)
-  if (!gate && !t3 && !test) {
+  if (!gate && !t3 && !test && !uncaptured) {
     issues.push(
       { file: 'report.json', problem: 'missing (a gate run needs it)' },
       { file: 'scenario.json, screenshots.json', problem: 'missing (a T3 run needs them)' },
       { file: 'summary.json', problem: 'missing (a qa:test run needs it)' },
     )
   }
-  return { dir, name, manifest: manifestValue, gate, t3, test, issues: dedupeIssues(issues) }
+  return { dir, name, manifest: manifestValue, gate, t3, uncaptured, test, issues: dedupeIssues(issues) }
+}
+
+/**
+ * A T3 session run dir (`qa:motion t3`, label `t3-<scenario id>`) whose run failed before it wrote a trace or a
+ * screenshot index, for example when the cursor would not park. It has nothing to show, which is a session outcome,
+ * not a missing input.
+ */
+function uncapturedSession(dir: string, manifest: ReportManifest | null): { reason: string } | null {
+  if (!manifest || manifest.tool !== 'motion' || !manifest.label.startsWith('t3-') || manifest.result.exitCode === 0)
+    return null
+  if (existsSync(join(dir, 'trace.json')) || existsSync(join(dir, 'screenshots.json')))
+    return null
+  return { reason: manifest.result.summary }
 }
 
 function dedupeIssues(issues: InputIssue[]): InputIssue[] {

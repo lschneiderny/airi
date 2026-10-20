@@ -275,6 +275,42 @@ describe('renderReport', () => {
     expect(rendered.html).toContain('corrupt-run/report.json')
   })
 
+  it('judges a cell by its gated checks only and shows not-gated rows with their reason', () => {
+    const report = {
+      ...gateReport(),
+      gateId: 'natural-emotion-t3',
+      level: 't3',
+      results: [
+        check('angry', 'strong', 'browMean', { gated: true, transferRatio: 1.01 }),
+        check('angry', 'strong', 'angleY', { gated: false, verdict: 'n/a', reasons: ['posture: reported, not gated at T3'] }),
+        check('angry', 'strong', 'cheek', { gated: false, verdict: 'n/a', reasons: ['rig: trace has no ParamCheek column; not gated'] }),
+      ],
+    }
+    writeJson(gateDir, 'report.json', report)
+    rmSync(join(gateDir, 'partials'), { recursive: true, force: true })
+
+    const [cell] = emotionCells(JSON.parse(readFileSync(join(gateDir, 'report.json'), 'utf8')), []).cells
+    expect(cell.verdict).toBe('pass')
+    expect(visualCheckItems([cell])).toEqual([])
+    const { html } = renderReport({ runDirs: [gateDir], now })
+    const row = html.slice(html.indexOf('id="verdict-angry-strong"'), html.indexOf('</tr>', html.indexOf('id="verdict-angry-strong"')))
+    expect(row).toContain('badge pass')
+    expect(row).toContain('1 pass, 0 fail, 0 n/a, 2 not gated')
+    expect(html).toContain('not gated')
+    expect(html).toContain('posture: reported, not gated at T3')
+  })
+
+  it('shows a T3 session that never captured as such, with its failure reason, not as missing inputs', () => {
+    const session = join(root, '20261020-000300-motion-t3-t3-idle-liveliness-3')
+    writeJson(session, 'run.json', manifest('20261020-000300-motion-t3-t3-idle-liveliness-3', { label: 't3-t3-idle-liveliness-3', result: { exitCode: 1, summary: 'failed: Cursor parking failed: the cursor is at 106,0 after parking, not 0,0' } }))
+    writeJson(session, 'scenario.json', { version: 1, id: 't3-idle-liveliness-3', seed: 3, durationSeconds: 599, levels: ['t1', 't3'], events: [] })
+    const rendered = renderReport({ runDirs: [gateDir, session], now })
+
+    expect(rendered.issues).toEqual([])
+    expect(rendered.html).toContain('session not captured')
+    expect(rendered.html).toContain('Cursor parking failed: the cursor is at 106,0 after parking')
+  })
+
   it('writes <firstRunDir>/report.html deterministically and overwrites an earlier report', () => {
     writeFileSync(join(gateDir, 'report.html'), 'stale')
     const first = writeReport({ runDirs: [gateDir, t3Dir], now })

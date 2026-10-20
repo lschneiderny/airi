@@ -33,6 +33,8 @@ const emotionResultSchema = v.looseObject({
   reasons: v.optional(v.array(v.string())),
   /** T3 transfer gate (todo 16): `E_T3 / E_T1` for this channel, when the run scored it. */
   transferRatio: v.optional(v.nullable(v.number())),
+  /** `false` for rows a gate reports without judging (T3 posture, a channel the rig lacks); absent means gated. */
+  gated: v.optional(v.boolean()),
 })
 export type EmotionResult = v.InferOutput<typeof emotionResultSchema>
 
@@ -124,7 +126,8 @@ export function emotionCells(report: GateReport, partials: readonly EmotionCellP
     const result = parsed.output
     const key = `${result.emotion}:${result.band}`
     const cell = cells.get(key) ?? { key, emotion: result.emotion, band: result.band, verdict: 'pass', channels: [] }
-    if (result.verdict !== 'pass')
+    // Only gated checks decide the cell; a not-gated row is shown with its reason and never fails it.
+    if (isGated(result) && result.verdict !== 'pass')
       cell.verdict = 'fail'
     cell.channels.push({
       result,
@@ -140,6 +143,16 @@ export function emotionCells(report: GateReport, partials: readonly EmotionCellP
     cells: [...cells.values()].sort((a, b) => a.emotion.localeCompare(b.emotion) || bandOrder.indexOf(a.band) - bandOrder.indexOf(b.band)),
     malformed,
   }
+}
+
+/** Whether a result row counts toward its cell's verdict. */
+export function isGated(result: EmotionResult): boolean {
+  return result.gated !== false
+}
+
+/** The verdict to show for one row: `not gated` for rows the gate reports without judging. */
+export function rowVerdict(result: EmotionResult): string {
+  return isGated(result) ? result.verdict : 'not gated'
 }
 
 function looksLikeEmotionRow(raw: unknown): boolean {
@@ -232,7 +245,7 @@ export function visualCheckItems(cells: readonly EmotionCell[], malformed: reado
   const items: VisualCheckItem[] = []
   for (const cell of cells) {
     const reasons: string[] = []
-    const failing = cell.channels.filter(row => row.result.verdict !== 'pass')
+    const failing = cell.channels.filter(row => isGated(row.result) && row.result.verdict !== 'pass')
     if (failing.length > 0)
       reasons.push(`${failing.length} failing check${failing.length === 1 ? '' : 's'}: ${failing.map(row => `${row.result.channel} (${(row.result.failed ?? []).join(', ') || row.result.verdict})`).join('; ')}`)
     for (const row of cell.channels) {
