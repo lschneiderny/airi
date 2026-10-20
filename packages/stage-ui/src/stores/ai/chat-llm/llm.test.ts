@@ -391,4 +391,34 @@ describe('isToolRelatedError', () => {
       },
     })
   })
+
+  it('lists the builtin tools on a user turn', async () => {
+    streamTextMock.mockImplementation(() => createMockStreamResult())
+
+    await useLLM().stream('model-a', provider, helloTurns, { origin: 'user' })
+
+    expect(streamTextMock.mock.calls[0]?.[0]?.tools?.map(toolNameFrom)).toContain('builtIn_emitSparkCommand')
+  })
+
+  it('sends no tools on an unprompted turn', async () => {
+    streamTextMock.mockImplementation(() => createMockStreamResult())
+
+    await useLLM().stream('model-a', provider, helloTurns, { origin: 'unprompted' })
+
+    expect(streamTextMock.mock.calls[0]?.[0]?.tools).toBeUndefined()
+    expect(mcpMock).not.toHaveBeenCalled()
+    expect(debugMock).not.toHaveBeenCalled()
+    expect(createSparkCommandToolMock).not.toHaveBeenCalled()
+  })
+
+  it('sends no tools with a resolved step on an unprompted turn', async () => {
+    streamTextMock.mockImplementation(() => createMockStreamResult())
+
+    await useLLM().stream('model-a', provider, helloTurns, {
+      origin: 'unprompted',
+      resolveStep: async () => ({ model: 'model-b', chatProvider: provider, providerId: 'test', systemPrompt: '' }),
+    })
+
+    expect(streamTextMock.mock.calls[0]?.[0]?.tools).toBeUndefined()
+  })
 })

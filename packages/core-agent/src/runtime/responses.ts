@@ -174,6 +174,8 @@ export function streamResponses(input: {
   onEvent: (event: StreamEvent) => Promise<void>
 }) {
   const items = renderConversation(input.conversation, input.scope)
+  // An unprompted turn may only speak or decline, so a hosted search must not run before the turn is decided.
+  const hostedSearchAllowed = input.options?.origin !== 'unprompted'
   const scopes: string[] = []
   const generation = createGeneration({
     turnId: input.options?.requestCorrelation?.turnId ?? input.options?.generationTurnId,
@@ -220,7 +222,7 @@ export function streamResponses(input: {
           topP: next.topP,
           headers: mergeRequestHeaders(nextRequest.config.headers, next.headers),
           tools: toolsSupported
-            ? nextRequest.webSearch ? [...(next.tools ?? []), { type: 'web_search' as const }] : next.tools
+            ? nextRequest.webSearch && hostedSearchAllowed ? [...(next.tools ?? []), { type: 'web_search' as const }] : next.tools
             : undefined,
           toolChoice: undefined,
         })
@@ -243,7 +245,7 @@ export function streamResponses(input: {
     temperature: input.options?.temperature,
     topP: input.options?.topP,
     headers: mergeRequestHeaders(input.config.headers, input.options?.headers),
-    tools: input.webSearch ? [...(input.tools ?? []), { type: 'web_search' }] : input.tools,
+    tools: input.webSearch && hostedSearchAllowed ? [...(input.tools ?? []), { type: 'web_search' }] : input.tools,
     toolChoice: input.options?.resolveStep ? undefined : toolChoice(input.options?.toolChoice),
     stopWhen: stepCountAtLeast(10),
     onEvent: async (event) => {
