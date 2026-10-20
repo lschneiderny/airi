@@ -7,6 +7,7 @@ import { themeColorFromValue, useThemeColor } from '@proj-airi/stage-layouts/com
 import { artistrySyncConfig } from '@proj-airi/stage-shared'
 import { ToasterRoot } from '@proj-airi/stage-ui/components'
 import { updateModelAssetStatus, useInferencePreload } from '@proj-airi/stage-ui/composables'
+import { useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
 import { usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
 import { initializeAnalytics } from '@proj-airi/stage-ui/libs/product-signals'
 import { isSherpawModelBundled, setSherpawModelAssetHost } from '@proj-airi/stage-ui/libs/providers/providers/sherpaw/model-assets'
@@ -111,6 +112,8 @@ const builtinToolsStore = useTamagotchiBuiltinToolsStore()
 const homeAssistantStore = useTamagotchiHomeAssistantStore()
 const mcpToolsStore = useTamagotchiMcpToolsStore()
 const pluginToolsStore = useTamagotchiPluginToolsStore()
+// The settings window routes presence setting changes to the leader, so every renderer registers the store.
+useSituationSettings()
 const syncedPinia = usePiniaSynced()
 const isSpotlightWindow = initialRoutePath === '/spotlight'
 // The floating chat resizes from its own grip, which keeps the corner beside the character in place.

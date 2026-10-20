@@ -170,6 +170,7 @@ export default defineConfig({
         '**/settings/account/**',
         '**/settings/flux.vue',
         '**/settings/capacitor.vue',
+        '**/settings/presence/**',
         '**/settings/providers/**/official-provider*.vue',
       ],
     }),

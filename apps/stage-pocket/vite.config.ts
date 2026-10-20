@@ -157,6 +157,7 @@ export default defineConfig({
             ...base,
             '**/settings/connection/index.vue',
             '**/settings/modules/beat-sync.vue',
+            '**/settings/presence/**',
           ],
         },
       ],

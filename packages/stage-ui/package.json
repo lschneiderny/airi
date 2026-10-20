@@ -31,6 +31,7 @@
     "./features/devtools/motion/live2d": "./src/features/devtools/motion/live2d/index.ts",
     "./features/devtools/motion/natural": "./src/features/devtools/motion/natural/index.ts",
     "./features/motions/live2d": "./src/features/motions/live2d/index.ts",
+    "./features/situation/settings": "./src/features/situation/settings.ts",
     "./libs/inference/adapters/*": "./src/libs/inference/adapters/*.ts",
     "./libs/inference": "./src/libs/inference/index.ts",
     "./libs/product-signals": "./src/libs/product-signals/index.ts",
