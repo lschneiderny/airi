@@ -40,7 +40,7 @@ import { useStagePerformanceConductor } from '../../composables/performance/use-
 // import { useDuckDb } from '../../composables/use-duck-db'
 import { Emotion, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { live2dMotionMagicProfiles, useLive2DMotionMagic, useLive2DMotionMagicSettings } from '../../features/motions/live2d'
-import { getSpeechBusContext, speechInputUserSpeakingChangedEvent, speechOutputGetPlaybackState, speechOutputPlaybackStateChangedEvent } from '../../services/speech/bus'
+import { getSpeechBusContext, speechInputUserSpeakingChangedEvent, speechOutputGetPlaybackState, speechOutputPlaybackStateChangedEvent, voiceGenerationEnded } from '../../services/speech/bus'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useAudioContext, useSpeakingStore } from '../../stores/audio'
 import { useBackgroundStore } from '../../stores/background'
@@ -708,6 +708,12 @@ chatHookCleanups.push(onTokenSpecial(async (special, context) => {
     await playSpecialToken(special, { turnId: context.turnId })
   else
     voice.getSpeech(context)?.special(special)
+}))
+
+// A held turn that is cancelled or fails before it speaks never reaches its stream end.
+chatHookCleanups.push(getSpeechBusContext().on(voiceGenerationEnded, ({ body }) => {
+  if (body)
+    deferredSurfaceResets.delete(body.turnId)
 }))
 
 chatHookCleanups.push(onStreamEnd(async (context) => {

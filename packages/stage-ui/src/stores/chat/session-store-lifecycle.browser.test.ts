@@ -38,6 +38,7 @@ const saveSessionMock = vi.fn<(id: string, rec: ChatSessionRecord) => Promise<vo
 const deleteSessionRepoMock = vi.fn<(id: string) => Promise<void>>()
 const releaseAssetsMock = vi.fn<(id: string, ids: Iterable<string>) => Promise<void>>()
 const getOutboxMock = vi.fn<(uid: string) => Promise<import('../../database/repos/chat-sessions.repo').ChatSendOutboxEntry[]>>()
+const enqueueOutboxMock = vi.fn<(uid: string, entry: import('../../database/repos/chat-sessions.repo').ChatSendOutboxEntry) => Promise<void>>()
 const dropOutboxForSessionMock = vi.fn<(uid: string, id: string) => Promise<void>>()
 const getTombstonesMock = vi.fn<(uid: string) => Promise<string[]>>()
 const removeTombstonesMock = vi.fn<(uid: string, ids: string[]) => Promise<void>>()
@@ -58,7 +59,7 @@ vi.mock('../../database/repos/chat-sessions.repo', () => ({
     deleteSession: (id: string) => deleteSessionRepoMock(id),
     releaseAssets: (id: string, ids: Iterable<string>) => releaseAssetsMock(id, ids),
     getOutbox: (uid: string) => getOutboxMock(uid),
-    enqueueOutbox: vi.fn().mockResolvedValue(undefined),
+    enqueueOutbox: (uid: string, entry: import('../../database/repos/chat-sessions.repo').ChatSendOutboxEntry) => enqueueOutboxMock(uid, entry),
     dequeueOutbox: vi.fn().mockResolvedValue(undefined),
     updateOutboxEntries: vi.fn().mockResolvedValue(undefined),
     dropOutboxForSession: (uid: string, id: string) => dropOutboxForSessionMock(uid, id),
@@ -140,6 +141,7 @@ beforeEach(() => {
   deleteSessionRepoMock.mockReset().mockResolvedValue(undefined)
   releaseAssetsMock.mockReset().mockResolvedValue(undefined)
   getOutboxMock.mockReset().mockResolvedValue([])
+  enqueueOutboxMock.mockReset().mockResolvedValue(undefined)
   dropOutboxForSessionMock.mockReset().mockResolvedValue(undefined)
   getTombstonesMock.mockReset().mockResolvedValue([])
   removeTombstonesMock.mockReset().mockResolvedValue(undefined)
@@ -546,6 +548,62 @@ describe('chat-session-store · cloud placeholder hydration', () => {
     await store.setActiveSession(remoteChat.id)
 
     expect(pullMessagesMock.mock.calls.filter(([request]) => request.chatId === remoteChat.id)).toHaveLength(2)
+  })
+})
+
+describe('chat-session-store · cloud backfill', () => {
+  it('keeps an unprompted trigger and its reply out of the outbox when a local session first gets a cloud chat', async () => {
+    // ROOT CAUSE:
+    //
+    // The backfill checked each message on its own. An unprompted trigger is
+    // not syncable, but its reply is a completed assistant message, so the
+    // reply was uploaded without its source turn. The live push path already
+    // skips a reply whose source turn stays local.
+    const localMeta: ChatSessionMeta = {
+      sessionId: 'anonymous-session',
+      userId: 'cloud-user',
+      characterId: 'default',
+      createdAt: 1,
+      updatedAt: 1,
+    }
+    userIdRef.value = 'cloud-user'
+    getIndexMock.mockResolvedValue({
+      userId: 'cloud-user',
+      characters: {
+        default: {
+          activeSessionId: localMeta.sessionId,
+          sessions: { [localMeta.sessionId]: localMeta },
+        },
+      },
+    })
+    getSessionMock.mockResolvedValue({
+      meta: localMeta,
+      messages: [
+        { id: 'user-1', role: 'user', content: 'hello' },
+        { id: 'reply-1', role: 'assistant', content: 'Hi there.', slices: [{ type: 'text', text: 'Hi there.' }], tool_results: [] },
+        { id: 'trigger-1', role: 'user', content: '(No one spoke to you. You may speak up about: QA topic)', origin: 'unprompted', trigger: { topicKey: 'qa', text: 'QA topic' } },
+        { id: 'reply-2', role: 'assistant', content: 'Oh, a QA topic!', slices: [{ type: 'text', text: 'Oh, a QA topic!' }], tool_results: [] },
+        { id: 'user-2', role: 'user', content: 'and now?' },
+        { id: 'reply-3', role: 'assistant', content: 'Still here.', slices: [{ type: 'text', text: 'Still here.' }], tool_results: [] },
+      ],
+    })
+
+    const store = useChatSessionStore()
+    await store.initialize()
+    expect(store.getSessionMessagesIfLoaded(localMeta.sessionId)?.some(message => message.id === 'reply-2')).toBe(true)
+
+    cloudWsStatus = 'open'
+    cloudStatusListener?.('open')
+    await vi.waitFor(() => {
+      expect(store.cloudSyncReady).toBe(true)
+    })
+
+    expect(enqueueOutboxMock.mock.calls.map(([, entry]) => [entry.messageId, entry.role, entry.cloudChatId])).toEqual([
+      ['user-1', 'user', localMeta.sessionId],
+      ['reply-1', 'assistant', localMeta.sessionId],
+      ['user-2', 'user', localMeta.sessionId],
+      ['reply-3', 'assistant', localMeta.sessionId],
+    ])
   })
 })
 

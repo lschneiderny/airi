@@ -1,3 +1,4 @@
+import type { GenerationProvider } from '@proj-airi/provider-inference'
 import type { ExpressionPerformanceSettings, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
 import type { NaturalEpisode } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import type { Component, ComponentInternalInstance, VNode } from 'vue'
@@ -7,8 +8,8 @@ import type { StagePerformanceScene } from '../../composables/performance/use-st
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
 import { createPickerDecider, defaultExpressionPerformanceSettings, replayAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { Live2DNaturalMotion } from '@proj-airi/stage-ui-live2d/composables/live2d'
-import { createPinia, setActivePinia } from 'pinia'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { createPinia, getActivePinia, setActivePinia } from 'pinia'
+import { afterEach, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
 import { defineComponent, getCurrentInstance, h, isVNode, nextTick, shallowRef, watch } from 'vue'
 import { createI18n } from 'vue-i18n'
@@ -16,11 +17,16 @@ import { createI18n } from 'vue-i18n'
 import { StagePerformanceConductor, useStagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
 import { Emotion, EMOTION_EmotionMotionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
+import { useLLM } from '../../stores/ai/chat-llm/llm'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useChatStore } from '../../stores/chat'
+import { useChatSessionStore } from '../../stores/chat/session-store'
+import { useChatStreamStore } from '../../stores/chat/stream-store'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
+import { useConsciousnessStore } from '../../stores/modules/consciousness'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
+import { ChatHistory } from '../scenarios/chat'
 
 /** Walks the rendered tree under `vnode` for the first instance of `type`, through child components, fragments and slots. */
 function findInstance(vnode: VNode | null | undefined, type: Component): ComponentInternalInstance | undefined {
@@ -70,6 +76,68 @@ beforeAll(async () => {
   live2d = await import('@proj-airi/stage-ui-live2d')
   Stage = (await import('./Stage.vue')).default
 })
+
+/** The loader the chat history shows for an assistant reply that has no text yet. */
+const streamingPlaceholder = '[i-eos-icons\\:three-dots-loading]'
+
+/**
+ * Lets the real chat store send through a fake provider. Each request stays open until it is aborted or released.
+ * Call it after `renderStage`, then wait on `requests` to see a request reach the provider.
+ */
+async function holdProviderRequests() {
+  const cards = useAiriCardStore()
+  await cards.initialize()
+  const card = cards.getCard(cards.activeCardId)!
+  await cards.updateCard(cards.activeCardId, {
+    ...card,
+    extensions: { ...card.extensions, airi: { ...card.extensions.airi, modules: { ...card.extensions.airi.modules, consciousness: { provider: 'openai', model: 'test-model' } } } },
+  })
+  const sessions = useChatSessionStore()
+  await sessions.initialize()
+  const sessionId = sessions.activeSessionId
+  onTestFinished(() => sessions.deleteSession(sessionId))
+  const consciousness = useConsciousnessStore()
+  consciousness.activeProvider = 'openai'
+  consciousness.activeModel = 'test-model'
+  const provider: GenerationProvider = {
+    generation: model => ({ protocol: 'chat-completions', config: { model, baseURL: 'https://example.com/' } }),
+  }
+  vi.spyOn(consciousness, 'getChatProviderInstance').mockResolvedValue(provider)
+  const requests = shallowRef<Array<{ signal: AbortSignal, release: () => void }>>([])
+  vi.spyOn(useLLM(), 'stream').mockImplementation(async (_model, _provider, _messages, options) => {
+    const signal = options!.abortSignal!
+    const released = Promise.withResolvers<void>()
+    requests.value = [...requests.value, { signal, release: released.resolve }]
+    signal.addEventListener('abort', () => released.resolve(), { once: true })
+    await released.promise
+    if (signal.aborted)
+      return
+    await options?.onStreamEvent?.({ type: 'text-delta', text: 'Sure.' })
+    await options?.onStreamEvent?.({ type: 'finish' })
+  })
+  // Releases any request a test leaves open.
+  onTestFinished(() => requests.value.forEach(request => request.release()))
+  return { sessionId, requests }
+}
+
+/** Mounts the chat history with the bindings of the stage-layouts `InteractiveArea`. */
+function renderHistory() {
+  const chat = useChatStore()
+  const sessions = useChatSessionStore()
+  const stream = useChatStreamStore()
+  return render(defineComponent({
+    setup() {
+      return () => h(ChatHistory, {
+        messages: sessions.messages,
+        sending: chat.activeTurns.some(turn => turn.sessionId === sessions.activeSessionId),
+        streamingMessage: stream.streamingMessage,
+        style: 'height: 400px; width: 360px;',
+      })
+    },
+  }), {
+    global: { plugins: [getActivePinia()!, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
+  })
+}
 
 async function renderStage(driver: 'natural' | 'universal' | 'magic') {
   const pinia = createPinia()
@@ -195,31 +263,69 @@ describe('stage emotion routing on Live2D', () => {
     expect(episodes.value).toEqual([])
   })
 
-  it('keeps presence idle and plays no Think motion while an unprompted turn is undecided', async () => {
+  it('keeps presence idle, plays no Think motion, and shows no placeholder while an unprompted request is undecided', async () => {
     const { scene, motionGroups } = await renderStage('universal')
+    const { sessionId, requests } = await holdProviderRequests()
     const chat = useChatStore()
-    const unprompted = {
-      sessionId: 'session-unprompted',
-      turnId: 'unprompted-1',
-      message: { role: 'user' as const, content: '(No one spoke to you.)', origin: 'unprompted' as const },
-      contexts: {},
-      composedMessage: [],
-      origin: 'unprompted' as const,
-    }
+    const history = renderHistory()
 
-    // The runtime raises raw `sending` for the undecided turn. Only a user turn raises `userSending`.
-    chat.sending = true
-    await chat.emitBeforeSendHooks('(No one spoke to you.)', unprompted)
+    const unpromptedStarted = until(() => requests.value.length, count => count === 1)
+    const unprompted = chat.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-1' })
+    await unpromptedStarted
     await nextTick()
 
+    // The request is at the provider, and the model has not decided yet.
+    expect(chat.sending).toBe(true)
     expect(scene.props.presence).toEqual(presenceBubbleIdle)
     expect(motionGroups.value).not.toContain(EmotionThinkMotionName)
+    expect(history.container.querySelector('[data-chat-message-role="assistant"]')).toBeNull()
+    expect(history.container.querySelector(streamingPlaceholder)).toBeNull()
 
+    // A user request in flight shows all three, so the checks above can fail.
     const thinking = until(() => scene.props.presence, presence => presence === presenceBubbleThinking)
-    chat.userSending = true
-    await chat.emitBeforeSendHooks('hello', { ...unprompted, turnId: 'user-1', message: { role: 'user', content: 'hello' }, origin: undefined })
-    await thinking
+    const userStarted = until(() => requests.value.length, count => count === 2)
+    const user = chat.send({ sessionId, messageId: 'user-1', text: 'hello' })
+    await Promise.all([thinking, userStarted])
+    expect(await unprompted).toEqual({ status: 'cancelled' })
     expect(motionGroups.value).toContain(EmotionThinkMotionName)
+    await vi.waitFor(() => expect(history.container.querySelector(streamingPlaceholder)).not.toBeNull())
+
+    requests.value[1].release()
+    await user
+  })
+
+  it('drops the deferred caption reset of a held unprompted turn that is cancelled', async () => {
+    await renderStage('universal')
+    const { sessionId, requests } = await holdProviderRequests()
+    const chat = useChatStore()
+    const present = new BroadcastChannel('airi-chat-present')
+    const sentinel = new BroadcastChannel('airi-chat-present')
+    onTestFinished(() => {
+      present.close()
+      sentinel.close()
+    })
+    const received = shallowRef<string[]>([])
+    present.onmessage = (event: MessageEvent<{ type: string }>) => {
+      received.value = [...received.value, event.data.type]
+    }
+
+    const started = until(() => requests.value.length, count => count === 1)
+    const unprompted = chat.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'held-1' })
+    await started
+    await chat.cancelTurn({ sessionId, turnId: 'held-1' })
+    expect(await unprompted).toEqual({ status: 'cancelled' })
+
+    // A later literal with the same turn id resets nothing. The sentinel is delivered after any reset it posts.
+    await chat.emitTokenLiteralHooks('Hi', {
+      sessionId,
+      turnId: 'held-1',
+      message: { role: 'user', content: 'hello' },
+      contexts: {},
+      composedMessage: [],
+    })
+    const delivered = until(() => received.value, types => types.includes('sentinel'))
+    sentinel.postMessage({ type: 'sentinel' })
+    expect(await delivered).toEqual(['sentinel'])
   })
 
   it('passes the performance settings document to the Live2D scene', async () => {

@@ -975,8 +975,12 @@ export const useChatSessionStore = defineStore('chat-session', () => {
         // overwrites by messageId so re-running reconcile doesn't
         // multiply rows.
         const localMessages = sessionMessages.value[result.sessionId] ?? []
+        // A reply stays local with its source turn, as on the live push path in `chat.ts`.
+        let sourceSyncable = true
         for (const message of localMessages) {
-          if (!message.id || !isCloudSyncableMessage(message))
+          if (message.role === 'user')
+            sourceSyncable = isCloudSyncableMessage(message)
+          if (!message.id || !isCloudSyncableMessage(message) || (message.role === 'assistant' && !sourceSyncable))
             continue
           const text = extractMessageText(message)
           if (!text)
