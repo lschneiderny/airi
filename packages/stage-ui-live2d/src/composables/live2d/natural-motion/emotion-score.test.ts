@@ -223,6 +223,41 @@ describe('emotion scorer', () => {
     expect(empty.reasons).toContain('significance: no usable full trials')
   })
 
+  it('treats a non-finite window sample as a missing measurement outside the Holm family', () => {
+    const trialId = 'angry-strong-full-1'
+    const checks = buildEmotionChecks().filter(check => ['angry:strong:mouthForm', 'angry:strong:angleY'].includes(check.key))
+    const rangesWithHead = { ...ranges, ParamAngleY: { min: -30, max: 30, default: 0 } }
+    const measureTrial = (nanAt: number | null) => {
+      const run = syntheticTrace(1, trialEvents(trialId), relative => heldEffect(relative, recipeAmplitude, 0.6))
+      const head = run.t.map((time, index) => (index % 7 - 3) * 0.1 + (time > pulseAt ? -3 : 0))
+      if (nanAt !== null)
+        run.channels.ParamMouthForm[Math.round((pulseAt + nanAt) * 30)] = Number.NaN
+      return measureEmotionTrial({ ...run, channels: { ...run.channels, ParamAngleY: head }, ranges: rangesWithHead }, null, { trialId, variant: 'full', gate: emotionGate })
+    }
+    const scoreOf = (nanAt: number | null) => scoreEmotionGate({ gate: emotionGate, checks, trials: [measureTrial(nanAt)], placebos: [], ranges: rangesWithHead, criteria: ['significance'] })
+    const familySize = (results: ReturnType<typeof scoreOf>['results']) => results.filter(result => result.pHolm !== null).length
+
+    const clean = scoreOf(null)
+    expect(familySize(clean.results)).toBe(checks.length)
+
+    const record = measureTrial(1)
+    expect(record.channels.mouthForm).toBeUndefined()
+    expect(record.missing.mouthForm).toContain('non-finite')
+    expect(record.channels.angleY).toBeDefined()
+
+    const { results } = scoreOf(1)
+    const mouthForm = results.find(result => result.channel === 'mouthForm')!
+    expect(mouthForm.verdict).toBe('n/a')
+    expect(mouthForm.failed).toEqual([])
+    expect(mouthForm.p).toBeNull()
+    expect(mouthForm.pHolm).toBeNull()
+    expect(mouthForm.reasons).toContain(`${trialId} cannot measure mouthForm: ${record.missing.mouthForm}`)
+    expect(familySize(results)).toBe(checks.length - 1)
+    // The remaining channel is adjusted alone, so Holm leaves its p-value unchanged.
+    const angleY = results.find(result => result.channel === 'angleY')!
+    expect(angleY.pHolm).toBe(angleY.p)
+  })
+
   it('rejects a trial whose window overlaps another emotion within its lifetime', () => {
     const trialId = 'angry-strong-full-1'
     const other = (at: number) => scenario({ kind: 'emotion', at, emotion: 'happy', band: 'clear', source: 'devtools', trialId: 'other' })

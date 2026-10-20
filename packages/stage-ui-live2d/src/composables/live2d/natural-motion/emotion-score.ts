@@ -565,6 +565,16 @@ function windowValues(times: readonly number[], values: readonly number[], start
   return values.slice(from, to)
 }
 
+/**
+ * The reason a measurement is missing when any listed sample is NaN or infinite, else `null`. A non-finite sample
+ * would otherwise turn the effect into NaN, which no comparison rejects (a permutation test then reports p = 0).
+ */
+function nonFiniteReason(channel: ScoredChannel, ...windows: readonly (readonly number[])[]): string | null {
+  return windows.some(values => values.some(value => !Number.isFinite(value)))
+    ? `non-finite sample in the ${channel} trial window`
+    : null
+}
+
 /** Linear interpolation at `time`; `NaN` outside the sampled span. */
 function interpolate(times: readonly number[], values: readonly number[], time: number) {
   if (!times.length || time < times[0] - 1e-9 || time > times[times.length - 1] + 1e-9)
@@ -656,6 +666,9 @@ function modulationStatistic(trace: NaturalTrace, channel: ScoredChannel, start:
       const lid = channelSeries(trace, 'eyelid')
       if ('reason' in lid)
         return lid.reason
+      const invalid = nonFiniteReason(channel, windowValues(times, lid.values, start - 1, end + 1))
+      if (invalid)
+        return invalid
       // Half a blink of continuity keeps the log finite when a window has none.
       return Math.log((detectBlinks(times, lid.values, start, end).length + 0.5) / (end - start))
     }
@@ -663,6 +676,9 @@ function modulationStatistic(trace: NaturalTrace, channel: ScoredChannel, start:
       const breath = trace.channels.ParamBreath
       if (!breath)
         return 'trace has no ParamBreath column'
+      const invalid = nonFiniteReason(channel, windowValues(times, breath, start, end))
+      if (invalid)
+        return invalid
       const crossings = breathCrossings(times, breath, start, end)
       if (crossings.length < 2)
         return 'fewer than two breath crossings in the window'
@@ -676,6 +692,9 @@ function modulationStatistic(trace: NaturalTrace, channel: ScoredChannel, start:
           return series.reason
         axes.push(windowValues(times, series.values, start, end))
       }
+      const invalidAxes = nonFiniteReason(channel, ...axes)
+      if (invalidAxes)
+        return invalidAxes
       return Math.log(detrendedRms(windowValues(times, times, start, end), axes))
     }
     case 'cameraFixation': {
@@ -686,6 +705,9 @@ function modulationStatistic(trace: NaturalTrace, channel: ScoredChannel, start:
           return series.reason
         columns.push(windowValues(times, series.values, start, end))
       }
+      const invalidColumns = nonFiniteReason(channel, ...columns)
+      if (invalidColumns)
+        return invalidColumns
       const [eyeX, eyeY, headX, headY] = columns
       const fixated = eyeX.filter((_, index) => Math.hypot(eyeX[index] + gazeCompensation.x * headX[index], eyeY[index] + gazeCompensation.y * headY[index]) < cameraRadius).length
       // Laplace-style continuity keeps the log finite for all-off or all-on windows.
@@ -707,6 +729,9 @@ function eventDelta(trace: NaturalTrace, channel: ScoredChannel, pulse: number, 
   const scored = windowValues(trace.t, series.values, pulse + window[0], pulse + window[1])
   if (baseline.length < 2 || scored.length < 2)
     return `window around ${pulse} s is outside the trace`
+  const invalid = nonFiniteReason(channel, baseline, scored)
+  if (invalid)
+    return invalid
   if (cls === 'eyelid') {
     const base = quantile(baseline, 0.8)
     const level = quantile(scored, 0.8)
