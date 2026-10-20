@@ -2,123 +2,109 @@
 
 ## Purpose
 
-Agent-executed QA tooling for AIRI. It resolves the repository's pinned pnpm without going through `.cmd` shims, and is the home for the preflight, known-failure, evidence, and motion QA tools that build on it.
+This private, Node-only package runs repository QA checks for motion, test failures, rendered Electron scenarios, reports, and evidence. Product packages must not depend on it.
 
 ## Usage
 
-```ts
-import { resolvePnpm, spawnPnpm } from './src/env/pnpm'
+Run `pnpm qa:doctor` first. It checks whether the current worktree can produce meaningful results and does not repair the environment.
 
-const { version, node, entry } = resolvePnpm({ repoRoot: process.cwd(), env: process.env })
-const child = spawnPnpm(['-F', '@proj-airi/qa-tools', 'typecheck'], { cwd: process.cwd() })
-```
+| Command | Use |
+| --- | --- |
+| `pnpm qa:doctor [--json] [--warm]` | Check Node, pinned pnpm, installation, built packages, Cubism Core, Chromium, rig paths, and conflicting Electron processes. `--warm` runs the stage-ui browser warm-up. |
+| `pnpm qa:test --all` | Run the registered Vitest package and project set, then report new, known, fixed, and flaky-passed tests. |
+| `pnpm qa:test --package <name> [--package <name>...] [--project node\|browser] [--registry <file>] [--timeout <seconds>]` | Run selected test targets. |
+| `pnpm qa:motion gate emotion --level t1 [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N]` | Score the deterministic controller simulation against committed emotion rules. |
+| `pnpm qa:motion gate liveliness --level t1 [--workers N] [--timeout-minutes N]` | Check idle motion against the committed generated-liveliness rules. |
+| `pnpm qa:motion gate <emotion\|liveliness> --level t2 --rig forbooth [options]` | Run the selected gate against the headless ForBOOTH rig and Cubism Core. Set `AIRI_QA_RIG_FORBOOTH`; set `AIRI_QA_CUBISM_CORE` when the core is not at the checkout's default path. |
+| `pnpm qa:motion t3 --rig forbooth --scenario <builtin:name\|file.json> [--keep-open]` | Drive a scenario in the rendered Electron app and collect a Natural trace and screenshots. |
+| `pnpm qa:motion validate-scorer --level t1 [--sections aa,zero,mutations,unmutated,determinism] [--seeds N] [--workers N] [--timeout-minutes N]` | Evaluate scorer false positives, mutation detection, unmutated gate power, and determinism. A missed validation threshold exits 1 by design. |
+| `pnpm qa:report <runDir> [<runDir>...] [--out <file>]` | Combine gate, T3, and test-run evidence into a self-contained HTML review page. |
 
-- `resolvePnpm` finds `<PNPM_HOME>/.tools/pnpm/<version>/node_modules/pnpm/bin/pnpm.mjs` for the `packageManager` version in the root `package.json`. It falls back to `npm_execpath` only when that is a JS file of the same pnpm version, and otherwise throws an error naming the expected path. It never runs `corepack` or `pnpm self-update`.
-- `resolveVitestEntry` returns the Vitest CLI file so callers spawn `node <entry>` directly.
-- Tests: `pnpm -F @proj-airi/qa-tools exec vitest run --project node`.
+`--seeds N` reduces a run and the report records that selection. It does not change the committed gate. Exit code 0 means the requested check passed, 1 means a check failed or a run broke, and 2 means invalid arguments or setup; T3 also uses 130 for interruption.
 
-### Doctor
+## Levels
 
-Run `pnpm qa:doctor` from the repository root before a QA run. It reports, and never fixes, these checks in order: `node-version` (major.minor against `.tool-versions`), `pnpm`, `install`, `built-packages` (runtime `./dist/` exports of `packages/*` and a current `packages/i18n/dist`), `cubism-core`, `playwright` (Chromium), `rigs` (`AIRI_QA_RIG_FORBOOTH` / `AIRI_QA_RIG_BEAR`), and `stray-electron`.
+| Level | What it proves | What it cannot prove |
+| --- | --- | --- |
+| T0 | Unit tests cover local contracts and deterministic behavior. | Integration with the full controller, a rig, or a rendered application. |
+| T1 | A deterministic scenario exercises the real decider, conductor, hold performer, Natural controller, adapter, and shared scorer without a rig. | Cubism physics, rig-specific parameter behavior, pixels, or visual naturalness. |
+| T2 | The real ForBOOTH rig, Cubism Core, physics, and pose run headlessly at a fixed timestep. The spike measured exact Chromium parameter parity and more than 10x real time. | Renderer pixels, complete application behavior, or naturalness. |
+| T3 | The Electron renderer dispatches scenario events through its development-only bridge and captures the resulting trace and screenshots. | Statistical confidence from a single rendered scenario or visual naturalness. |
+| T4 | Luke reviews the report and rendered images for appearance and naturalness. | An automated, reproducible naturalness score. |
 
-- `--json` prints the rows `{ id, status, detail, fix }` as JSON.
-- `--warm` also runs `packages/stage-ui/src/components/scenes/live2d-blink-ownership.browser.test.ts` once in the browser project. It reruns once only when the first run fails with `optimized dependencies changed`, and then reports `warm: ok after reload`.
-- The exit code is 1 when any row is `fail`, 2 for unknown flags, and 0 otherwise. Each check is bounded by a 15 s timeout; a check that hangs becomes a `fail` row.
-- `runDoctor(probes)` in `src/env/doctor.ts` takes injectable probes; `createSystemProbes(repoRoot)` supplies the real ones.
+Statistical scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which remains Luke's visual call. Desk VTS recordings are valid for idle liveliness only.
 
-### T2 headless rig runner
+## Scenarios
 
-`src/t2/runner.ts` runs a motion scenario on the real ForBOOTH model (moc, physics, pose) in Node at a fixed 1/60 s step, without Electron or a GPU. It uses the scenario sink that T1 uses (`src/motion/scenario-sink.ts`: conductor, scene, hold performer, Natural adapter), so only the model and the per-frame step differ. See `docs/t2-spike.md` for the feasibility evidence.
+Scenario files use the shared `@proj-airi/stage-shared/motion-scenario` contract. The same scenario can run at T1, T2, and T3 when its events are supported at those levels. T3 scenarios cannot contain speech or cursor events. `builtin:t3-smoke` is a rendered smoke scenario; scenario events and Natural events are timestamped in the captured trace.
 
-```ts
-const runtime = await loadT2Runtime() // reads AIRI_QA_RIG_FORBOOTH and AIRI_QA_CUBISM_CORE
-const trace = runT2(scenario, runtime, { catalog })
-```
+## Gates
 
-- Inputs: `AIRI_QA_RIG_FORBOOTH` is the rig folder (the `.model3.json` may sit up to two folders below it); `AIRI_QA_CUBISM_CORE` is a local `live2dcubismcore.min.js` (the core is gitignored). A missing or empty rig or a missing core throws `T2SetupError` (`exitCode` 2), naming the missing `.moc3` or core.
-- Without `AIRI_QA_CUBISM_CORE`, the default is the current checkout's `apps/stage-tamagotchi/public/assets/js/CubismSdkForWeb-5-r.3/Core/live2dcubismcore.min.js`, not the main checkout. Fresh worktrees need the environment variable.
-- The runner uses `ExpressionComposer` and slot leases directly: the Pinia expression store reads `performance.now()`, which would make fades depend on wall time rather than the simulated clock.
-- Expression bases restore before the SDK motion-manager update; composition and `adapter.frame` run on `afterMotionUpdate`, before Natural's late composition, physics and pose. Models and moc allocations are released after every scenario.
-- The Cubism core prints its version line when each model is constructed. Gate logs retain those lines; they are not verdicts.
-- Mesh deformation (`model.update()`) is skipped by default: it reads parameters and never writes them, and it costs about 90% of a frame. `deform: true` runs it for the parameter-identity check.
-- The trace records the rig's own parameter ranges plus the parameters that the catalog's expression files drive (the six ForBOOTH switches). A trace with no moving parameter throws.
-- Not reproduced from the stage: the beat-sync, idle-focus and light-squint plugins, manual motion control, expression group conflicts, and rest-set entries. Auto blink, lip sync and breath come from the Natural adapter's attention, as for an unattended stage.
-- `pnpm -F @proj-airi/qa-tools t2:probe [--identity]` runs one 10 s trial and prints the trace sha256, the speed multiple, and with `--identity` the parameter difference with and without deformation. It exits 2 for a missing or empty rig or core.
-- The probe remains a narrow determinism/deformation diagnostic; gate execution uses the shared CLI and scorer below.
-- Rig tests skip, with a logged reason, when `AIRI_QA_RIG_FORBOOTH` or the core is absent.
+Gate definitions live in `packages/stage-ui-live2d/src/composables/live2d/natural-motion/gates.ts`.
+
+| Gate id | Version | Meaning |
+| --- | --- | --- |
+| `natural-idle-liveliness` | 1 | Idle Natural metrics against reference bands. |
+| `natural-talking` | 1 | Talking head speed relative to silence and speech-onset enrichment. |
+| `natural-emotion` | 1 | Emotion direction, recipe-relative size, release, and visibility above the idle null. |
+| `natural-emotion-t3` | 2 | Rendered emotion transfer against session-local placebo windows and a same-commit T1 reference. |
+| `natural-idle-liveliness` at T3 | 1 | Rendered idle liveliness from three captures, aggregated by the liveliness gate. |
+
+Changing a gate means editing `gates.ts` and bumping its `version` in a commit before running it. Reports record the gate id, version, and source file SHA. Never tune a gate or Natural recipe merely to make a failing run pass. Failures are findings.
+
+T1 is the deterministic controller simulation. T2 uses the real headless rig and the shared scorer. The idle liveliness gate keeps its original seeds, warm-up, scored duration, and metric list.
 
 ## Evidence
 
-Run directories: `createRun({ tool, label, repoRoot })` from `src/evidence/run.ts` creates `.temp/qa/<YYYYMMDD-HHmmss>-<tool>-<label>/` (gitignored) and refuses to reuse an existing directory. The handle offers `path(name)` (rejects paths that leave the run dir), `addArtifact(relPath, kind)` (records sha256) and `finish({ exitCode, summary })`, which writes `run.json`: `runId`, `tool`, `label`, `gitSha`, `dirty`, `startedAt`, `endedAt`, `command`, `env` (only `APP_*` and `AIRI_QA_*` keys), optional `gate`, `artifacts` and `result`. `tool` and `label` accept letters, digits, `.`, `_` and `-` only.
+After argument and environment checks pass, `pnpm qa:test`, `pnpm qa:motion gate` at T1, T2, or T3, direct `pnpm qa:motion t3`, and `pnpm qa:motion validate-scorer` create unique runs under `.temp/qa/<timestamp>-<tool>-<label>/`. Each run's `run.json` records its command, source SHA, dirty state, relevant `APP_*` and `AIRI_QA_*` environment values, gate provenance when applicable, artifact hashes, and result. A T3 gate also creates one run per capture session. An emotion `--rescore` creates its new run only after the archive passes validation; a refusal exits 2 before creating it. The standalone `t2:probe` prints a JSON summary and creates no run directory.
 
-Archiving: before a worktree is removed, copy its evidence into the main checkout:
+`pnpm qa:doctor` prints its findings, including with `--warm`, and creates no run directory or manifest. `pnpm qa:report` writes `report.html` into the first input run directory or the path passed with `--out`; it creates no separate run directory or manifest. The evidence archive command copies files under `.omo/evidence/<slug>` and writes that archive's `manifest.json`, not a QA run directory or `run.json`.
+
+Archive plan evidence into the main checkout before removing a worktree:
 
 ```bash
 pnpm -F @proj-airi/qa-tools run evidence archive --plan <slug> --from <worktree-path>
 ```
 
-- The main checkout is the first entry of `git worktree list --porcelain`. `<worktree>/.omo/evidence/<slug>/` is copied to `<main>/.omo/evidence/<slug>/` through a staging dir, then renamed into place. The source is never modified or deleted.
-- If a same-named file exists with different bytes, nothing is copied and the command exits 1 (conflicts are listed). Identical files are skipped, so re-running is safe.
-- `manifest.json` in the destination lists every file with `sha256` and `bytes`, sorted by path; it is regenerated on each run and is identical when nothing changed.
-- Exit codes: 0 archived, 1 refused or failed, 2 usage error. Evidence is never committed (`.omo/evidence/` is gitignored).
+The archive command preserves the source, refuses conflicting bytes, and writes a hash manifest. Run output and evidence are not committed.
 
 ## Known failures
 
-`known-failures.json` lists the tests that already fail on the integration base, so a QA run fails only on new failures. `pnpm qa:test` runs the selected Vitest suites with the JSON reporter and compares the results with the registry.
+`packages/qa-tools/known-failures.json` is the committed baseline. `pnpm qa:test` matches package, project, file, and full test name. New failures and suite errors fail the command. Known failures are reported without being called passes; fixed known failures are reported for registry removal, and flaky entries that pass are identified separately.
 
-```bash
-pnpm qa:test --all                                   # stage-shared, stage-ui-live2d, stage-ui (node + browser), qa-tools, scenarios-stage-tamagotchi-electron, pipelines-audio
-pnpm qa:test --package @proj-airi/stage-ui --project browser
-pnpm qa:test --package @proj-airi/stage-shared --registry <file> --timeout 600
-```
+Never skip, delete, or weaken a test to clear a failure. Fix a regression or add a registry entry only when there is a concrete cause, date, and removal condition.
 
-- Each suite runs as `node <vitest entry> run --config <package>/vitest.config.ts [--project <p>] --reporter=json` from the package directory. Reports and logs go to a `createRun` directory, `.temp/qa/<YYYYMMDD-HHmmss>-test-<label>/` (`vitest-<package>-<project>.json` and `.log`, `summary.json`, and `run.json` listing them with sha256).
-- A registry entry matches on `package` + `project` (`node`, `browser`, or `default` for configs without projects) + `file` (relative to the package) + `name` (describe titles and the test title joined with ` > `). Every entry needs a concrete `reason`, a `since` date and a `removeWhen` condition. The schema lives in `src/known-failures/schema.ts`.
-- The output lists NEW failures, KNOWN failing tests, FIXED known failures (remove them from the registry; an entry whose test no longer runs is listed as "not run"), and flaky entries that passed.
-- `flaky: true` marks one test that fails only sometimes. A failure counts as known and a pass is reported without being called fixed. The marker covers only the listed test, so a new flaky-looking failure still counts as new.
-- Exit 1 for any new failure or any suite error: a suite that timed out (default 1800 s per suite, after which its process tree is killed), crashed, wrote no report, reported unhandled errors, or exited non-zero without a failing test. Suite errors never match the registry. Exit 2 for bad arguments or an invalid registry.
-- Never skip, delete or edit a test to clear a failure. Fix the test, or add an entry with its reason.
+## Bridge gates
 
-## Production bundle check
+The motion QA bridge is development-only and uses remote debug; it adds no listening port. Registration requires all three gates: a development build, `APP_REMOTE_DEBUG=true`, and `APP_MOTION_QA_BRIDGE=true`. The bridge uses typed Eventa commands as one dispatcher and validation boundary, not as an isolation or security boundary. Production bundle checks verify that bridge markers are absent.
 
-The Electron app has a dev-only motion QA bridge (`globalThis.__airiMotionQa`, reached over remote debug). After `pnpm -F @proj-airi/stage-tamagotchi build`, prove that no production chunk contains it:
+## T2 status
 
-```bash
-pnpm -F @proj-airi/qa-tools exec tsx bin/check-prod-bundle.ts [directory]
-```
+T2 is GO, path A. The Cubism Core and ForBOOTH rig ran in Node without a GPU using two documented global shims. Across 600 frames and 281 parameters, Node and Chromium differed by 0; the negative control differed by 30. The measured Natural, adapter, and physics loop reached 55.19x real time. The runner skips mesh deformation because it reads but does not write parameters and costs about 90% of a frame.
 
-- It scans every `.js` file under `apps/stage-tamagotchi/out/renderer` (or `[directory]`) for `__airiMotionQa`, `motion-qa:` and `installMotionQaDispatcher`, and prints each match with its file and offset.
-- Exit codes: 0 no marker found, 1 any marker found, 2 when the directory is missing or holds no `.js` files, so a missing build never reads as clean.
-- `fixtures/prod-bundle-leak/` holds one leaking chunk; running the checker on it must exit 1.
+## Known limitations
 
-## Motion gates
+Luke accepted these scorer-validation limits on 2026-10-20. The x0 mutation detection rate is 92.9% because impulse hints remain active and can produce the same face-channel effects as the held recipe. Ignore-side detection is 83.3% because T1 fixes the hold side per emotion. The x0.5 size mutation detection rate is 64.4% because the size-band lower bound is exactly 0.5. Unmutated sets pass 84% to 88% of checks, rather than every check.
 
-`pnpm qa:motion gate <emotion | liveliness> --level <t1 | t2> [--rig forbooth] [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N]` runs a committed gate (`stage-ui-live2d` `natural-motion/gates.ts`) and judges it.
+The scorer redesign is deferred to a separate plan. Until then, `validate-scorer` exits 1 by design when these thresholds are missed. Do not retune gates or recipes to conceal the findings.
 
-- T2 requires `--rig forbooth` and the local rig/core inputs above. Full and held-only emotion variants each use seeds 1..30; long holds retain their committed count. Liveliness runs three 600 s simulations, including the unchanged 180 s warm-up. Reports record the effective seed and duration budgets.
-- T2 reports post-physics parameter measurements, not rendered parity beyond the specific todo-7 spike measurement. Gate failures are findings, not authorization to retune motion or scoring constants.
+Smoke timing is recorded, not asserted. Quiet-machine measurements were 44.7 to 65.0 seconds against a 60-second target; the full gate was 294.6 seconds against a 300-second target.
 
-- It creates a run directory (`gate` records `{ id, version, fileSha }`, with the version as a string), spawns Vitest on `gates/*.gate.ts` (project `gate`, one file per emotion plus `null.gate.ts` for the placebo null, or `liveliness.gate.ts`), aggregates `partials/*.json`, and writes `report.json`, `summary.txt`, `timing.json` and `vitest.log`.
-- `report.json`: `{ gateId, version, fileSha, inputHash, level, limitation, pass, nullStats, results, determinismHash }` (schema: `src/motion/gate/report.ts`). `determinismHash` covers everything except timings, and is the same for any `--workers` count.
-- `reportSchema: 2` adds review fields to every emotion result, read by `qa:report` and never by a verdict: `trajectory` (the paired mean of the full trials on a 0.1 s grid from -1 s to 10 s after the pulse, direction-folded like `E` and in the scorer's `E` units: half-range for face and posture, log-ratio for the eyelid; with a seeded 200-resample bootstrap band) and `levels` (per Cubism parameter: mean baseline, mean and extreme scored-window peak, and the rig's `min`/`max`, in raw units). They come from `samples` in the emotion-cell partials (`src/motion/gate/samples.ts`); reports without `reportSchema` predate them.
-- `--seeds N` runs at most N seeds per variant; the report records `selection.seedsLimit`. The committed counts live in the gate, never in the CLI.
-- Exit codes: 0 every check passed, 1 a check failed or the run broke (a missing partial, a Vitest failure, the timeout), 2 a usage or T2 setup error (including invalid model3 JSON or a missing rig/core). `pnpm qa:motion` passes the code through.
-- Timing targets (full gate 5 min, smoke 60 s on 16 cores) are recorded in `timing.json` and `run.json` with the CPU load before the run; they are not asserted.
-- Every report states that scores prove direction, size relative to the recipe, release and detectability above the rig's idle noise, not naturalness.
+Naturalness remains Luke's visual call. ForBOOTH's watermark covers part of the face in T3 screenshots. Per Luke's rule, acceptance on one rig counts for the other.
 
 ### T3 gates
 
-`pnpm qa:motion gate <emotion | liveliness> --level t3 --rig forbooth [--t1-report <run dir>]` runs a committed gate in the rendered app through the T3 harness below (one launch, capture and teardown per session). It takes no `--emotions`, `--bands`, `--seeds`, `--workers` or `--timeout-minutes`.
+`pnpm qa:motion gate emotion --level t3 --rig forbooth [--t1-report <run dir>]` and `pnpm qa:motion gate liveliness --level t3 --rig forbooth` run committed gates in the rendered app. Emotion `--rescore <gate run dir>` re-scores archived sessions without launching Electron. A live gate uses a separate launch, capture, and teardown for each session. These commands do not accept `--emotions`, `--bands`, `--seeds`, `--workers`, or `--timeout-minutes`.
 
 - Preflight, before anything launches (exit 2 with the reason): `AIRI_QA_RIG_FORBOOTH` must name a rig; doctor's `stray-electron` probe must find no stage-tamagotchi Electron process of this worktree; the emotion gate needs a T1 emotion report at the same commit with a result for every face check of its cells. Without `--t1-report`, the newest `.temp/qa/*-motion-gate-emotion-t1` run at `HEAD` is used; create one with `pnpm qa:motion gate emotion --level t1 --emotions angry,sad,love,sleepy --bands clear,strong`.
-- Emotion (`naturalEmotionT3Gate`, `src/motion/gate/t3-scenario.ts`): 10 pulses each of angry strong, sad clear, love clear and sleepy strong in a seeded order that never repeats a cell back to back. Pulses are spaced by `ceil(naturalEmotionLifetime + 5)` s (18 s strong, 14 s clear; at least 12 s and the lifetime plus 4 s), and each is followed by one placebo whose baseline starts after the pulse's lifetime and whose scored window ends 0.5 s before the next pulse. Lead placebos on the 6 s idle spacing bring the total to at least 50. The pulses are split over at least three sessions that fit the 599 s capture limit and share one duration.
+- Emotion (`naturalEmotionT3Gate`, `src/motion/gate/t3-scenario.ts`): 10 pulses each of angry strong, sad clear, love clear, and sleepy strong, ordered by a seed so the same cell never repeats consecutively. The gate uses three capture sessions so each session forms its own stratum for the placebo null. The planner assigns the 40 pulses across three equal 300-second scenarios, leaving room for warm-up and placebo windows below the 599-second scenario limit imposed by the renderer's 600-second capture cap and the harness's one-second capture margin. It places placebo windows after each pulse and adds lead placebos until the run has at least 50. The archived accepted run contains 52 placebo windows.
 - Scoring (`src/motion/gate/t3-score.ts`) uses the shared scorer with no stripped run: `measureEmotionTrial(trace, null, ...)`, `measurePlacebos` and `scoreEmotionGate` (significance, sign, visibility). The placebo null is session-stratified (`naturalEmotionT3Gate` v2, `placeboNull`): every record carries its session as `stratum`, each trial's visibility hit uses its own session's placebo q90, `E` is the mean trial-minus-own-session-null difference with a bootstrap that resamples within sessions, and significance is `stratifiedUnpairedPValue`, a permutation test that relabels trials and placebos only within each session. The roughly 17 windows per session are too few for a session-only null, so the 50-window minimum applies to the total (the archived run has 52). `report.json` states this under `nullModel`, with per-session trial and placebo counts and per-session null statistics; `nullStats` is pooled for display only; checks of sided channels are unsigned unless the trace has the hold side. A face or eyelid check passes with at least 6 trials above the placebo q90, a face check also needs `E_T3 / E_T1` within [0.7, 1.3], and the release fails only when the tau fitted to the mean unpaired release trajectory exceeds 3 x the nominal `held.releaseTau`. A criterion without data is `n/a`, which fails the gate, except for a channel whose parameter no trace of the rig has (ForBOOTH has no `ParamCheek`): that check is listed with the reason and not gated. Posture checks are reported and pooled per channel, never gated. Slow-modulation checks need long holds, which T3 does not run, so they are not scored. Each result keeps the scorer's own verdict under `scorer`.
-- Liveliness: three 599 s idle scenarios (captures of 600 s, a marker each minute, no inputs) with cursor attention off and the cursor parked, each warm-up-trimmed by 180 s and aggregated with `naturalIdleLivelinessGate` like T2 (median; any hard failure fails).
+- Liveliness: three 599-second idle scenarios, each captured for 600 seconds, with a marker each minute and no inputs. Cursor attention is off and the OS cursor is parked. Each trace is trimmed by the unchanged 180-second warm-up and aggregated with `naturalIdleLivelinessGate` as in T2. A median is used; any hard failure fails. A conflicting stage-tamagotchi Electron process from this worktree refuses the run before launch with exit 2. A cursor-parking failure is recorded as a failed session.
 - Output: the gate run dir (`.temp/qa/<ts>-motion-gate-<target>-t3/`) holds `scenarios/`, `partials/`, `report.json` (level `t3`, the rules, the T1 reference, the plan and every session run id), `summary.txt`, `timing.json` and `report.html` rendered with each session's T3 run dir. Each session's own run dir keeps `trace.json` with its scenario and Natural events and the screenshots. A session that fails (verification, cursor parking, launch) adds a failing `session:<id>` row, and the remaining sessions still run; an interrupt or a refusal stops the run.
-- `--rescore <gate run dir>` scores an archived emotion run again from its session traces with the current scorer and rules, launching nothing. Before anything is parsed, every artifact it reads is checked against the sha256 recorded in its own run dir's `run.json` when it was written (`src/motion/gate/t3-archive.ts`): the gate run's `report.json` and `scenarios/*.json`, the T1 reference's `report.json`, and each traced session's `scenario.json`, `trace.json`, `bridge.json` and `verification.json`. A changed or missing file, or one without a recorded digest (unverifiable), exits 2 with `archive invariant "artifact-digest"` naming the file. This binds the archive to what the capture wrote; `run.json` itself is the digest source and is not authenticated. It scores the scenarios the run performed, read back from its `scenarios/` and checked against every layout invariant the live planner guarantees (`t3PlanFromScenarios`: strictly increasing times, the planner's scenario identity and settings, event kinds, cell membership, unique trial and placebo ids, pulse-id numbering, session count and equal duration of at most 599 s, warm-up, pulse spacing, pulses per cell, no back-to-back cell, one placebo per pulse gap, every placebo window clear of every pulse's lifetime and of the next pulse, non-overlapping placebo windows, screenshots, at least 50 placebo windows). It also requires each session trace to stamp exactly its scenario's events, every field compared (`trace-identity`: kind, at, trialId, emotion, band, source and any other field), and each session run dir to belong to its scenario (`session-header`: the same `scenario.json`, run label `t3-<scenario id>`, the gate run's commit, trace version 2, Natural driver and capture length, the forbooth rig with the same model file, file count and zip size as the first session, and the bridge configuration with cursor attention off, expressions on, the scenario's held emotions and the captured model). A violation exits 2 naming the invariant, before any run dir is created. It requires the archived T1 reference to be present with the same `determinismHash`, writes a new `<ts>-motion-gate-emotion-t3-rescore` run dir with `rescoreOf`, and uses the same scoring and output code as a live run.
+- `--rescore <gate run dir>` scores an archived emotion run again with the current scorer and rules, launching nothing. Before parsing scoring inputs, it checks every artifact it will read against the SHA-256 recorded in that run directory's `run.json` at capture time (`src/motion/gate/t3-archive.ts`): the gate run's `report.json` and `scenarios/*.json`, the T1 reference's `report.json`, and each traced session's `scenario.json`, `trace.json`, `bridge.json` and `verification.json`. A changed or missing file, or one without a digest, exits 2 with the named `archive invariant "artifact-digest"`. It then checks the planner's layout invariants, exact trace-event identity (`trace-identity`), and session headers (`session-header`). Those refusals also exit 2 with the named invariant, before any rescore run directory is created. A valid archive uses the same scoring and output code as a live run and writes a new rescore directory with `rescoreOf`. The manifest is trusted: rewriting an artifact and its corresponding `run.json` digest together is not detected.
 - Exit codes: 0 every gated check passed, 1 a check failed or a session broke, 2 refused before launch (or an archive that cannot be re-scored), 130 interrupted.
 
-## T3 rendered runs
+Rendered T3 gates require an UNDISTURBED desktop. Mouse movement can fail cursor parking. Focus changes or window occlusion can throttle frames and corrupt long captures. Warn the user before starting a long capture, then keep the desktop, app focus, and window visibility unchanged until it ends.
 
 `qa:motion t3` runs one motion scenario in the real Electron app and captures what Natural performed:
 
@@ -165,12 +151,14 @@ AIRI_QA_RIG_FORBOOTH="<rig dir>" node --import tsx packages/qa-tools/bin/motion.
 - `determinism`: two independent runs give identical scores, and shuffled events or records change nothing.
 - The CLI runs one Vitest process per shard and phase (simulate, then score) and writes `validation.json` (every number, threshold and verdict, with no run id or time) and `summary.txt`. Exit codes: 0 every threshold met, 1 a threshold missed or the run broke, 2 a usage error. A missed threshold is a finding for Luke; never change a gate constant to meet it.
 
+## Review report
+
+`pnpm qa:report` writes one self-contained HTML page from gate, T3, or `qa:test` run directories. It shows provenance, the required limitations statement, gate verdicts and failed checks, plots when review data is present, rendered screenshots, known failures, and missing or unreadable inputs. A generated report is a review aid; it does not change a gate verdict or make a naturalness claim.
+
 ## When to use
 
-- A QA script must spawn pnpm or Vitest reliably, for example while `PNPM_HOME` shims may be regenerated (exit 127).
-- Running agent QA that needs the shared helpers in this package.
+Use this package when motion needs a gate verdict, an agent needs to run a rendered scenario, a test run must distinguish new failures from the baseline, or QA evidence needs a portable report and durable archive.
 
 ## When not to use
 
-- Product code: nothing in the apps or runtime packages should depend on this package.
-- Ordinary development; use `pnpm` directly.
+Do not use this package from product code or for ordinary development commands. It does not replace unit tests, manual visual review, or Luke's naturalness judgment.
