@@ -20,11 +20,12 @@ import { getEventSourceKey, getMetadataSourceLabel } from '../../../utils/event-
 import { useLlmStreamingControlStore } from '../../ai/chat-llm/streaming-control'
 import { useCharacterOrchestratorStore } from '../../character'
 import { useChatStore } from '../../chat'
-import { useChatContextStore } from '../../chat/context-store'
 import { useChatSessionStore } from '../../chat/session-store'
 import { useChatStreamStore } from '../../chat/stream-store'
 import { useContextObservabilityStore } from '../../devtools/context-observability'
 import { useConsciousnessStore } from '../../modules/consciousness'
+import { ingestContextMessage } from '../../situation/sensors/context'
+import { startMinecraftSensor } from '../../situation/sensors/minecraft'
 import { useModsServerChannelStore } from './channel-server'
 import { createContextChannel } from './context-channel'
 
@@ -53,7 +54,6 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
   const chatOrchestrator = useChatStore()
   const chatSession = useChatSessionStore()
   const chatStream = useChatStreamStore()
-  const chatContext = useChatContextStore()
   const serverChannelStore = useModsServerChannelStore()
   const contextObservability = useContextObservabilityStore()
   const characterOrchestratorStore = useCharacterOrchestratorStore()
@@ -197,6 +197,10 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
     })
   }
 
+  /**
+   * Folds a context message into the situation. Only the leader window ingests; a follower gets no result, so it
+   * records no `store-ingested` phase but still records and broadcasts the message.
+   */
   function ingestContextMessageSafely(options: {
     channel: 'server' | 'broadcast' | 'input'
     contextMessage: ContextMessage
@@ -206,7 +210,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
     try {
       return {
         ok: true as const,
-        result: chatContext.ingestContextMessage(options.contextMessage),
+        result: ingestContextMessage(options.contextMessage),
       }
     }
     catch (error) {
@@ -607,6 +611,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
       await serverChannelStore.ensureConnected()
 
       registerConsumers()
+      disposeHookFns.value.push(startMinecraftSensor())
       disposeHookFns.value.push(serverChannelStore.onReconnected(() => registerConsumers()))
 
       const remoteContexts = new WeakSet<object>()
@@ -735,7 +740,9 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
         })
         const contextMessage: ContextMessage = {
           ...event.data,
-          metadata: event.metadata,
+          // The event metadata names the sender and wins on conflicts. The update's own metadata is kept, because
+          // the situation reads `module` and `capturedAt` from it to recognize and time vision output.
+          metadata: { ...event.data.metadata, ...event.metadata },
           createdAt: Date.now(),
         }
         const ingestAttempt = ingestContextMessageSafely({
@@ -845,7 +852,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
             })
             const contextMessage: ContextMessage = {
               ...update,
-              metadata: event.metadata,
+              metadata: { ...update.metadata, ...event.metadata },
               createdAt,
             }
             const ingestAttempt = ingestContextMessageSafely({
