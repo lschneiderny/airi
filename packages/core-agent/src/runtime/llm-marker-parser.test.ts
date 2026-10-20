@@ -74,16 +74,18 @@ describe('useLlmmarkerParser', () => {
   describe('recoverCueNames', () => {
     const recoverCueNames = ['ACT', 'DELAY']
 
-    async function run(chunks: string[], extra: { recoverCueNames?: string[] } = { recoverCueNames }) {
+    async function run(chunks: string[], extra: { recoverCueNames?: string[], acceptRecovered?: boolean } = { recoverCueNames }) {
       const literals: string[] = []
       const specials: string[] = []
       let fullText: string | undefined
       const parser = useLlmmarkerParser({
-        ...extra,
+        recoverCueNames: extra.recoverCueNames,
         onLiteral: (literal) => {
           literals.push(literal)
         },
-        onSpecial: (special) => {
+        onSpecial: (special, recovery) => {
+          if (recovery && extra.acceptRecovered === false)
+            return false
           specials.push(special)
         },
         onEnd: (text) => {
@@ -125,7 +127,7 @@ describe('useLlmmarkerParser', () => {
     })
 
     it('leaves non-cue brackets and longer names literal', async () => {
-      for (const input of ['[note] text', '[ACTION] go', '<ACTOR> hi', '<b>bold</b>', 'a < b and [1]', '[ACT', '<|AC']) {
+      for (const input of ['[note] text', '[ACTION] go', '<ACTOR> hi', '<b>bold</b>', 'a < b and [1]', '[ACT']) {
         for (const [a, b] of splitsOf(input)) {
           const result = await run([a, b])
           expect(result.literal, input).toBe(input)
@@ -200,6 +202,91 @@ describe('useLlmmarkerParser', () => {
       const result = await run(['Hi [ACT ha', 'ppy] there <|DELAY 1|> [aside] ok'])
       expect(result.fullText).toBe('Hi  there <|DELAY 1|> [aside] ok')
       expect(result.recovered).toBe(1)
+    })
+
+    it('drops an unterminated canonical tail at the end of the stream like the unset parser', async () => {
+      for (const input of ['Hi <|ACT happy', 'Hi <|DELAY 1', 'Hi <|AC', 'Hi <|ACT {"emotion":"ha']) {
+        for (const [a, b] of splitsOf(input)) {
+          const result = await run([a, b])
+          const unset = await run([a, b], {})
+          expect(result, `${input} split at ${a.length}`).toMatchObject({ literal: 'Hi ', specials: [], fullText: input, recovered: 0 })
+          expect(result.literal).toBe(unset.literal)
+        }
+      }
+    })
+
+    it('does not let an unclosed JSON opener swallow later prose or markers', async () => {
+      const opener = '<|ACT {"emotion":"happy"}'
+      const prose = ' Hello there, it is so good to see you again today, really it is. '
+      const input = `${opener}${prose}<|DELAY 1|> bye`
+      for (const [a, b] of splitsOf(input)) {
+        const result = await run([a, b])
+        expect(result.specials, `split at ${a.length}`).toEqual(['<|DELAY 1|>'])
+        expect(result.literal, `split at ${a.length}`).toBe(`${opener}${prose} bye`)
+        expect(result.recovered).toBe(0)
+      }
+    })
+
+    it('speaks the rest of the reply when a JSON opener never gets its closer', async () => {
+      const input = '<|ACT {"emotion":"happy"} Hello there, it is so good to see you again today.'
+      for (const [a, b] of splitsOf(input)) {
+        const result = await run([a, b])
+        expect(result, `split at ${a.length}`).toMatchObject({ literal: input, specials: [], fullText: input, recovered: 0 })
+      }
+    })
+
+    it.each([
+      ['<|ACT {"emotion":"happy","note":"a > b"}|> Hi', '<|ACT {"emotion":"happy","note":"a > b"}|>', 0],
+      ['<ACT {"note":"}>"}> Hi', '<|ACT {"note":"}>"}|>', 1],
+      ['[ACT {"note":"x ] \\" }"}] Hi', '<|ACT {"note":"x ] \\" }"}|>', 1],
+    ])('closes the JSON body of %j only after its balanced brace', async (input, special, recovered) => {
+      for (const [a, b] of splitsOf(input)) {
+        const result = await run([a, b])
+        expect(result.specials, `split at ${a.length}`).toEqual([special])
+        expect(result.literal, `split at ${a.length}`).toBe(' Hi')
+        expect(result.recovered).toBe(recovered)
+      }
+    })
+
+    it('requires the closer within 64 characters after the balanced brace', async () => {
+      for (const [gap, ok] of [[62, true], [63, false]] as const) {
+        const body = `{"a":1}${'x'.repeat(gap)}`
+        const input = `<ACT ${body}|> tail`
+        for (const [a, b] of splitsOf(input)) {
+          const result = await run([a, b])
+          if (ok) {
+            expect(result.specials, `gap ${gap} split at ${a.length}`).toEqual([`<|ACT ${body}|>`])
+            expect(result.literal).toBe(' tail')
+          }
+          else {
+            expect(result.specials, `gap ${gap} split at ${a.length}`).toEqual([])
+            expect(result.literal).toBe(input)
+          }
+        }
+      }
+    })
+
+    it('flushes a JSON body that does not balance within 1024 characters', async () => {
+      const head = `<|ACT {"note":"${'x'.repeat(1100)}`
+      const input = `${head} <|DELAY 1|> bye`
+      for (const [a, b] of splitsOf(input)) {
+        const result = await run([a, b])
+        expect(result.specials, `split at ${a.length}`).toEqual(['<|DELAY 1|>'])
+        expect(result.literal, `split at ${a.length}`).toBe(`${head}  bye`)
+      }
+    })
+
+    it('speaks the raw text of a recovered cue that onSpecial rejects', async () => {
+      const input = 'Hi [ACT happy] there <ACT sad> ok <|ACT calm|>'
+      for (const [a, b] of splitsOf(input)) {
+        const result = await run([a, b], { recoverCueNames, acceptRecovered: false })
+        expect(result, `split at ${a.length}`).toMatchObject({
+          literal: 'Hi [ACT happy] there <ACT sad> ok ',
+          specials: ['<|ACT calm|>'],
+          fullText: input,
+          recovered: 0,
+        })
+      }
     })
 
     it('keeps the original output byte for byte when the option is unset', async () => {

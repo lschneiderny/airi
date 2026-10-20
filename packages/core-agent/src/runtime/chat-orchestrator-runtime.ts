@@ -959,9 +959,14 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
             publishStream()
           }
         },
-        onSpecial: async (special) => {
+        onSpecial: async (special, recovery) => {
           if (shouldAbort() || outputClosed())
             return
+
+          // A recovered near-miss cue inside reasoning stays reasoning text. Rejecting it makes the parser pass
+          // the original text to onLiteral. Native markers in reasoning keep their existing handling below.
+          if (recovery && !categorizer.filterToSpeech(recovery.raw, streamPosition))
+            return false
 
           if (unprompted && normalizeMarker(special) === declineMarker) {
             // Only a marker in visible speech before the first spoken text declines. Reasoning can mention it.

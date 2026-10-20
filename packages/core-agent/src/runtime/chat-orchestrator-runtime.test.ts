@@ -2272,6 +2272,39 @@ describe('unprompted turns', () => {
     expect(saved?.role === 'assistant' && saved.categorization?.speech).toBe(' Hello there [aside] not a cue')
   })
 
+  it('keeps a near-miss cue inside reasoning as reasoning text at every chunk split', async () => {
+    const reply = '<think>Maybe I should use [ACT happy] or <|ACT sad|> here.</think>Hello there [ACT calm] bye'
+    const closeTag = reply.indexOf('</think>')
+    for (let split = 0; split <= reply.length; split++) {
+      // Splitting inside `</think>` leaks `/think>` into speech even without any cue. That is a streaming categorizer
+      // limitation outside marker recovery, so those offsets are not exercised here.
+      if (split > closeTag && split < closeTag + '</think>'.length)
+        continue
+      const harness = createHarness()
+      const literals: string[] = []
+      const specials: string[] = []
+      harness.runtime.hooks.onTokenLiteral(async (text) => {
+        literals.push(text)
+      })
+      harness.runtime.hooks.onTokenSpecial(async (text) => {
+        specials.push(text)
+      })
+      harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+        for (const text of [reply.slice(0, split), reply.slice(split)].filter(Boolean))
+          await options?.onStreamEvent?.({ type: 'text-delta', text })
+        await options?.onStreamEvent?.({ type: 'finish' })
+      })
+
+      await harness.runtime.ingest('Hi', { model: 'test', chatProvider: provider })
+
+      const saved = harness.sessionMessages['session-1'].at(-1)
+      // Native markers in reasoning were already specials before recovery existed. Only the near-miss stays text.
+      expect(specials, `split at ${split}`).toEqual(['<|ACT sad|>', '<|ACT calm|>'])
+      expect(literals.join('').replace(/\s+/g, ' '), `split at ${split}`).toBe('Hello there bye')
+      expect(saved?.role === 'assistant' && saved.categorization?.reasoning, `split at ${split}`).toBe('Maybe I should use [ACT happy] or <|ACT sad|> here.')
+    }
+  })
+
   // (5)
   it('consumes a silent marker that arrives after speech started', async () => {
     const harness = createHarness()
