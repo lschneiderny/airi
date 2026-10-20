@@ -283,6 +283,7 @@ export class Live2DNaturalMotion {
     this.stepIndex++
     const c = this.pet.active ? null : this.cursor
     this.gaze.setCursor(c, stepStart)
+    this.gaze.setAside(this.energy.aside, stepStart)
     const pokeState = startPending(this.pending.splice(0), stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })
     this.pokes = pokeState.pokes
     this.lastPokeSurprise = pokeState.lastPokeSurprise

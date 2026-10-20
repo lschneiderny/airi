@@ -25,8 +25,13 @@ const targets = {
   peripheral: { x: 0.12, y: 0 },
   // Thinking glances aside and up; selected only when its weight is above 0.
   peripheralUp: { x: 0.15, y: 0.12 },
+  // Aside attention looks clearly off camera and slightly down; the side is drawn per cue.
+  aside: { x: 0.55, y: -0.15 },
 }
 const targetJitter = 0.02
+// Aside attention can lapse briefly within one cue, for example between speech clips.
+// Re-entering within this many seconds keeps the side, so one cue looks to one side.
+const asideSideMemory = 2
 // Share of fixation choices that land on an active cursor.
 const cursorWeight = 0.8
 // Cursor attention looks most of the way toward the cursor, as in v1.
@@ -67,6 +72,10 @@ export class NaturalGazeLayer {
   private saccadeDuration = 0
   private nextFixationAt: number
   private cursor: GazePoint | null = null
+  /** The off-camera fixation of aside attention, with its side already drawn, or `null` when inactive. */
+  private aside: GazePoint | null = null
+  private asideSide = 1
+  private asideReleasedAt = Number.NEGATIVE_INFINITY
 
   constructor(private readonly random: RandomStream) {
     this.nextFixationAt = this.drawHold()
@@ -84,6 +93,27 @@ export class NaturalGazeLayer {
     this.cursor = cursor
     if (previous === null && cursor !== null)
       this.saccadeTo('cursor', at)
+  }
+
+  /**
+   * Turns aside attention on or off at `at`. Turning it on draws a side and saccades
+   * off camera; autonomous fixations then stay near that point, so glances return to it.
+   * Turning it on again within {@link asideSideMemory} seconds keeps the side. Turning
+   * it off returns the gaze to the camera.
+   */
+  setAside(active: boolean, at: number) {
+    if (active === (this.aside !== null))
+      return
+    if (active) {
+      if (at - this.asideReleasedAt > asideSideMemory)
+        this.asideSide = this.random() < 0.5 ? -1 : 1
+      this.aside = { x: this.asideSide * targets.aside.x, y: targets.aside.y }
+      this.saccadeTo(this.jittered(this.aside), at)
+      return
+    }
+    this.aside = null
+    this.asideReleasedAt = at
+    this.saccadeTo(this.jittered(targets.camera), at)
   }
 
   /**
@@ -145,6 +175,9 @@ export class NaturalGazeLayer {
   }
 
   private drawTarget(): Target {
+    // Aside attention outranks the camera-fixation probability, so a hold that raises it cannot pull the gaze back.
+    if (this.aside)
+      return this.jittered(this.aside)
     if (this.cursor && this.random() < cursorWeight)
       return 'cursor'
     const choice = this.random()

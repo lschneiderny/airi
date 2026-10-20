@@ -9,7 +9,7 @@ function settle(energy: NaturalPerformanceEnergy, seconds: number) {
     energy.step(step)
 }
 
-function state(mode: 'idle' | 'watching' | 'listening' | 'thinking' | 'talking', extra: { attention?: 'camera' | 'screen' | 'cursor', away?: boolean } = {}) {
+function state(mode: 'idle' | 'watching' | 'listening' | 'thinking' | 'talking', extra: { attention?: 'camera' | 'screen' | 'cursor' | 'aside', away?: boolean } = {}) {
   return { mode, attention: extra.attention ?? 'camera', away: extra.away ?? false } as const
 }
 
@@ -117,5 +117,17 @@ describe('natural performance energy', () => {
     expect(energy.targetWeights).toEqual({ desk: 1, peripheral: 1, peripheralUp: 1 })
     energy.setState(state('watching', { attention: 'cursor' }), 0.5)
     expect(energy.targetWeights).toEqual({ desk: 1, peripheral: 1, peripheralUp: 0 })
+  })
+
+  it('maps ACT cue attention while talking or thinking', () => {
+    const energy = new NaturalPerformanceEnergy()
+    energy.setState(state('talking', { attention: 'screen' }), 0.5)
+    expect(energy.targetWeights).toEqual({ desk: 2, peripheral: 1, peripheralUp: 0 })
+    expect(energy.aside).toBe(false)
+    energy.setState(state('talking', { attention: 'aside' }), 0.5)
+    expect(energy.aside).toBe(true)
+    expect(energy.targetWeights).toEqual({ desk: 1, peripheral: 1, peripheralUp: 0 })
+    energy.setState(state('talking'), 0.5)
+    expect(energy.aside).toBe(false)
   })
 })

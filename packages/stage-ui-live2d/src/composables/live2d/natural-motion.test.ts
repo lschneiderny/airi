@@ -376,6 +376,29 @@ describe('natural motion', () => {
     expect(Math.hypot(woken.advance(4).fixation.x, woken.advance(4).fixation.y)).toBeLessThan(0.05)
   })
 
+  it('keeps ACT aside attention through a held emotion and returns to it after an emotion glance', () => {
+    const motion = new Live2DNaturalMotion({ seed: 71 })
+    // Love raises camera fixation by 0.25 while it is held.
+    motion.setHeldEmotion({ emotion: 'love', strength: 1 }, 0)
+    motion.setPerformance({ ...idle, mode: 'talking', attention: 'aside' }, 0.5, 0)
+    const held = []
+    for (let frame = 30; frame <= 4 * 60; frame++)
+      held.push(motion.advance(frame / 60).fixation)
+    const side = Math.sign(held[0].x)
+    // Think glances aside and up at (+-0.3, 0.25) for the clear band's 1.2 s hold.
+    motion.impulse({ id: 'think', emotion: Emotion.Think, nominal: 0.6, intensity: 0.6, band: 'clear', escalation: false }, 4)
+    const glancing = motion.advance(4.6).fixation
+    const returned = motion.advance(6.5).fixation
+    motion.setPerformance({ ...idle, mode: 'talking', attention: 'camera' }, 0.5, 6.5)
+    const released = motion.advance(6.7).fixation
+
+    expect(held.every(point => Math.abs(point.x - side * 0.55) < 0.1 && Math.abs(point.y + 0.15) < 0.1)).toBe(true)
+    expect(glancing.y).toBeGreaterThan(0.2)
+    expect(Math.abs(returned.x - side * 0.55)).toBeLessThan(0.1)
+    expect(Math.abs(returned.y + 0.15)).toBeLessThan(0.1)
+    expect(Math.hypot(released.x, released.y)).toBeLessThan(0.1)
+  })
+
   it('flinches away from a poke, shows surprise, and meets the camera', () => {
     const poked = new Live2DNaturalMotion({ seed: 61 })
     const control = new Live2DNaturalMotion({ seed: 61 })

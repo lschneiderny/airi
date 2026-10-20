@@ -23,6 +23,20 @@ const emotionSet = new Set<string>(emotionValues)
 
 export type StreamingControlEmotion = (typeof emotionValues)[number]
 
+/**
+ * Where an ACT cue directs the character's gaze: at the user, at their screen, or away.
+ */
+export type StreamingControlLook = 'you' | 'screen' | 'away'
+
+/** Accepted `look` words; `camera` and `aside` are synonyms the model may use. */
+const lookValues: ReadonlyMap<string, StreamingControlLook> = new Map([
+  ['you', 'you'],
+  ['camera', 'you'],
+  ['screen', 'screen'],
+  ['away', 'away'],
+  ['aside', 'away'],
+])
+
 export interface StreamingControlEmotionPayload {
   /** Canonical normalized emotion. */
   name: StreamingControlEmotion
@@ -37,6 +51,8 @@ export interface NormalizedActPayload {
   motion?: string
   /** Expression label for the consumer to resolve; never matched or evaluated here. */
   expression?: string
+  /** Gaze direction emitted by the model, when present and supported. */
+  look?: StreamingControlLook
 }
 
 /**
@@ -157,6 +173,21 @@ function normalizeCue(value: unknown): string | undefined {
 }
 
 /**
+ * Converts a `look` word into a canonical direction; unknown words are dropped.
+ *
+ * Examples:
+ * - " Camera " -> "you"
+ * - "aside" -> "away"
+ * - "ceiling" -> undefined
+ */
+function normalizeLook(value: unknown): StreamingControlLook | undefined {
+  if (typeof value !== 'string')
+    return undefined
+
+  return lookValues.get(value.trim().toLowerCase())
+}
+
+/**
  * Normalizes ACT token payloads.
  *
  * Input:
@@ -180,10 +211,12 @@ export function normalizeActPayload(
   const emotion = normalizeEmotion(payload.emotion, payload.intensity)
   const motion = normalizeCue(payload.motion)
   const expression = normalizeCue(payload.expression)
+  const look = normalizeLook(payload.look)
 
   return {
     ...(emotion && { emotion }),
     ...(motion && { motion }),
     ...(expression && { expression }),
+    ...(look && { look }),
   }
 }

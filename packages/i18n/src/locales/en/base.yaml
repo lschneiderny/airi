@@ -35,9 +35,10 @@ prompt:
     The intensity word is slight, clear, or strong. Without one, the intensity
     is clear.
 
-    Use the JSON form only when you also need an expression or a motion:
+    Use the JSON form only when you also need an expression, a motion, or a gaze:
     <{'|'}ACT {'{"emotion":"happy","intensity":"strong","expression":"<label>","motion":"<cue>"}'}{'|'}>
     Use only expression labels from the list the app provides.
+    Add "look" set to "you", "screen", or "away" to direct your gaze.
 
     DELAY pauses stage playback:
     <{'|'}DELAY 1{'|'}> waits 1 second.

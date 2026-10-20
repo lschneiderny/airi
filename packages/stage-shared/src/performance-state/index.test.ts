@@ -31,6 +31,7 @@ function inputsAt(nowMs: number, overrides: Partial<PerformanceInputs> = {}): Pe
     desktop: quietDesktop(),
     visible: true,
     override: null,
+    cueAttention: null,
     ...overrides,
   }
 }
@@ -142,6 +143,41 @@ describe('resolvePerformanceState', () => {
 
     expect(web.state).toEqual({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' })
     expect(wayland.state).toEqual({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' })
+  })
+
+  it.each([
+    ['talking', { speaking: true }, 'aside', 'aside'],
+    ['talking', { speaking: true }, 'screen', 'screen'],
+    ['talking', { speaking: true }, 'camera', 'camera'],
+    ['thinking', { generating: true }, 'aside', 'aside'],
+  ] as const)('lets the ACT cue direct attention while %s (%j, cue %s)', (mode, overrides, cueAttention, attention) => {
+    const [result] = run([inputsAt(T0, { ...overrides, cueAttention, cursorMovedAtMs: T0 })])
+
+    expect(result.state.mode).toBe(mode)
+    expect(result.state.attention).toBe(attention)
+  })
+
+  it('keeps listening, watching, and idle attention when an ACT cue is set', () => {
+    const listening = run([inputsAt(T0, { userSpeaking: true, generating: true, cueAttention: 'aside' })])[0]
+    const watchingCursor = run([inputsAt(T0, { cursorMovedAtMs: T0, cueAttention: 'aside' })])[0]
+    const watchingScreen = run([inputsAt(T0, { desktop: quietDesktop({ idleSeconds: 0 }), cueAttention: 'aside' })])[0]
+    const idle = run([inputsAt(T0, { cueAttention: 'aside' })])[0]
+
+    expect([listening, watchingCursor, watchingScreen, idle].map(r => [r.state.mode, r.state.attention])).toEqual([
+      ['listening', 'camera'],
+      ['watching', 'cursor'],
+      ['watching', 'screen'],
+      ['idle', 'camera'],
+    ])
+  })
+
+  it('returns attention to camera once talking ends, even while the cue is still set', () => {
+    const results = run([
+      inputsAt(T0, { speaking: true, cueAttention: 'aside' }),
+      inputsAt(T0 + 400, { cueAttention: 'aside' }),
+    ])
+
+    expect(results.map(r => [r.state.mode, r.state.attention])).toEqual([['talking', 'aside'], ['idle', 'camera']])
   })
 
   it('marks the user away after 300 s idle, when locked, or when suspended', () => {

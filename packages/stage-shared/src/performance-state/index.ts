@@ -11,8 +11,14 @@
  */
 export type PerformanceMode = 'idle' | 'watching' | 'listening' | 'thinking' | 'talking'
 
-/** Where the character directs attention. The gaze layer maps each value to a fixation target. */
-export type PerformanceAttention = 'camera' | 'screen' | 'cursor'
+/**
+ * Where the character directs attention. The gaze layer maps each value to a fixation target.
+ * `aside` looks off camera; only an ACT cue's `look` selects it.
+ */
+export type PerformanceAttention = 'camera' | 'screen' | 'cursor' | 'aside'
+
+/** Attention an ACT cue can request for the current turn. */
+export type PerformanceCueAttention = 'camera' | 'screen' | 'aside'
 
 /**
  * Why `reactSeq` last advanced.
@@ -92,6 +98,11 @@ export interface PerformanceInputs {
    */
   visible: boolean
   override: PerformanceOverride | null
+  /**
+   * Attention requested by the current turn's ACT cue, or `null` when it named none.
+   * It replaces the resolved attention only while the mode is `talking` or `thinking`.
+   */
+  cueAttention: PerformanceCueAttention | null
 }
 
 /**
@@ -191,6 +202,9 @@ function idleSecondsOf(desktop: DesktopActivitySnapshot | null): number | null {
  *
  * `away` is an overlay on the mode, not a mode: the character can still talk
  * while the user is away. While away, desktop activity cannot select `watching`.
+ *
+ * Attention is `cursor` or `screen` while watching, the ACT cue's attention while
+ * talking or thinking when the cue named one, and `camera` otherwise.
  */
 export function resolvePerformanceState(inputs: PerformanceInputs, previous: ResolverMemory): PerformanceResolution {
   // Clamp time so it never runs backwards. A stepped-back clock would
@@ -298,6 +312,9 @@ export function resolvePerformanceState(inputs: PerformanceInputs, previous: Res
   let attention: PerformanceAttention = 'camera'
   if (mode === 'watching')
     attention = cursorActive ? 'cursor' : 'screen'
+  // The cue directs her gaze only while she performs the reply; listening and watching stay hers.
+  else if ((mode === 'talking' || mode === 'thinking') && inputs.cueAttention !== null)
+    attention = inputs.cueAttention
 
   return {
     state: { mode, attention, away, reactSeq, reactKind },

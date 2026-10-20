@@ -68,6 +68,8 @@ export class NaturalPerformanceEnergy {
   targetWeights: Readonly<GazeTargetWeights> = defaultWeights
   /** Probability that a detected speech onset becomes an emphasis nod: `0.15 + 0.2E`. */
   emphasisAcceptance = 0.25
+  /** Whether attention is `aside`; the gaze layer then holds an off-camera fixation instead of drawing targets. */
+  aside = false
 
   private mode: PerformanceMode = 'idle'
   private tau = fade.default
@@ -96,7 +98,9 @@ export class NaturalPerformanceEnergy {
     this.away = state.away
     this.energy = clamp01(Number.isFinite(energy) ? energy : 0.5)
     this.emphasisAcceptance = 0.15 + 0.2 * this.energy
-    if (state.mode === 'watching' && state.attention === 'screen')
+    this.aside = state.attention === 'aside'
+    // Screen attention outside watching comes from an ACT cue and weights the desk the same way.
+    if (state.attention === 'screen')
       this.targetWeights = { ...defaultWeights, desk: 2 }
     else if (state.mode === 'thinking')
       this.targetWeights = { ...defaultWeights, peripheralUp: 1 }
