@@ -93,7 +93,34 @@ export function getSparkNotifyHandlingAgentInstruction(moduleName: string) {
   ].join('\n')
 }
 
+function forcedSparkCommandPolicy(): SparkNotifyRuntimePolicy {
+  return {
+    allowNoResponse: false,
+    allowSparkCommand: true,
+    supportsTools: true,
+    waitForTools: true,
+    toolChoice: {
+      type: 'function',
+      function: { name: 'builtIn_sparkCommand' },
+    } satisfies ToolChoice,
+    ignoreTextOutput: true,
+  }
+}
+
 function resolveSparkNotifyRuntimePolicy(control?: SparkNotifyResponseControl): SparkNotifyRuntimePolicy {
+  if (control?.commandsOnly) {
+    if (control.forceSparkCommandResponse)
+      return forcedSparkCommandPolicy()
+
+    return {
+      allowNoResponse: true,
+      allowSparkCommand: true,
+      supportsTools: true,
+      waitForTools: true,
+      ignoreTextOutput: true,
+    }
+  }
+
   if (control?.forceTextResponse) {
     return {
       allowNoResponse: false,
@@ -104,19 +131,8 @@ function resolveSparkNotifyRuntimePolicy(control?: SparkNotifyResponseControl): 
     }
   }
 
-  if (control?.forceSparkCommandResponse) {
-    return {
-      allowNoResponse: false,
-      allowSparkCommand: true,
-      supportsTools: true,
-      waitForTools: true,
-      toolChoice: {
-        type: 'function',
-        function: { name: 'builtIn_sparkCommand' },
-      } satisfies ToolChoice,
-      ignoreTextOutput: true,
-    }
-  }
+  if (control?.forceSparkCommandResponse)
+    return forcedSparkCommandPolicy()
 
   if (control?.forceResponse) {
     return {

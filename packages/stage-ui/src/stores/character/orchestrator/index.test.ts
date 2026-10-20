@@ -3,6 +3,7 @@ import type { WebSocketEventOf } from '@proj-airi/server-sdk'
 /* eslint-disable style/indent-binary-ops */
 /* eslint-disable style/operator-linebreak */
 import type { Pinia, Store, StoreDefinition } from 'pinia'
+import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 import type { Mock } from 'vitest'
 import type { UnwrapRef } from 'vue'
 import type z from 'zod'
@@ -11,18 +12,21 @@ import type { StreamEvent } from '../../ai/chat-llm/llm'
 import type { AiriCard } from '../../modules'
 
 import { renderConversationPreview } from '@proj-airi/core-agent'
+import { effectiveSalience, notifyTopicKey } from '@proj-airi/stage-shared/situation'
 import { tool } from '@xsai/tool'
 import { nanoid } from 'nanoid'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
 import { sparkNotifyCommandSchema, useCharacterOrchestratorStore } from '.'
-import { useCharacterStore } from '..'
+import { useCharacterNotebookStore, useCharacterStore } from '..'
 import { useLLM } from '../../ai/chat-llm/llm'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
 import { useAiriCardStore, useConsciousnessStore } from '../../modules'
 import { useProviderStore } from '../../providers/provider'
+import { useSituationStore } from '../../situation'
+import { TASK_SCHEDULER_SOURCE } from '../../situation/sensors/notify'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
@@ -78,6 +82,27 @@ function getArraySchema(schema?: Record<string, any>) {
 
   const candidates = [...(schema.anyOf ?? []), ...(schema.oneOf ?? [])]
   return candidates.find((candidate: Record<string, any>) => candidate?.type === 'array')
+}
+
+/** A synced runtime that makes this window the leader at once, as the plugin reports the current role on subscribe. */
+function leaderRuntime(): SyncedPiniaRuntime {
+  return {
+    dispose: vi.fn(),
+    getLeaderId: vi.fn(),
+    getParticipantCount: vi.fn(() => 1),
+    isLeader: () => true,
+    onCoordinationChange: vi.fn(() => vi.fn()),
+    onLeadershipChange: vi.fn((listener: (isLeader: boolean) => void) => {
+      listener(true)
+      return vi.fn()
+    }),
+    participantId: 'orchestrator-test',
+    plugin: vi.fn(),
+  }
+}
+
+function notifyEvents(store: ReturnType<typeof useSituationStore>) {
+  return store.state.events.filter(event => event.kind === 'notify')
 }
 
 describe('sparkNotifyCommandSchema', () => {
@@ -155,7 +180,123 @@ describe('store character-orchestrator', () => {
     } satisfies AiriCard
   })
 
-  it('handles immediate spark:notify with reaction and commands', async () => {
+  afterEach(() => {
+    useSituationStore(pinia).dispose()
+    vi.useRealTimers()
+  })
+
+  it('turns a character-only spark:notify into one situation observation without an agent run', async () => {
+    const mockStream = vi.fn()
+    mockedStore(useLLM, pinia).stream = mockStream
+    const situation = useSituationStore(pinia)
+    situation.initialize(leaderRuntime())
+
+    const store = useCharacterOrchestratorStore(pinia)
+    const event: WebSocketEventOf<'spark:notify'> = {
+      type: 'spark:notify',
+      source: 'plugin:airi-plugin-web-extension',
+      data: {
+        id: nanoid(),
+        eventId: nanoid(),
+        kind: 'ping',
+        urgency: 'soon',
+        headline: 'User is watching: QA video',
+        note: 'x'.repeat(300),
+        destinations: ['character'],
+      },
+    }
+
+    const result = await store.handleSparkNotify(event)
+    // The same event delivered again (a reconnect, a re-sent notify) adds nothing.
+    await store.handleSparkNotify(event)
+
+    expect(result).toBeUndefined()
+    expect(mockStream).not.toHaveBeenCalled()
+    expect(sendSparkCommandMock).not.toHaveBeenCalled()
+    expect(store.scheduledNotifies).toEqual([])
+    const notifies = notifyEvents(situation)
+    expect(notifies).toHaveLength(1)
+    expect(notifies[0].topicKey).toBe(notifyTopicKey('plugin:airi-plugin-web-extension', event.data.eventId))
+    expect(notifies[0].text).toBe(`User is watching: QA video: ${'x'.repeat(200)}`)
+    expect(notifies[0].salience).toBe(0.7)
+  })
+
+  it('forwards a notify that a follower window received to the leader, which keeps one observation', async () => {
+    const situation = useSituationStore(pinia)
+    situation.initialize(leaderRuntime())
+    // The devtools simulator runs in the settings window: a second Pinia whose situation store never leads.
+    const followerPinia = createPinia()
+    const follower = useCharacterOrchestratorStore(followerPinia)
+    const event: WebSocketEventOf<'spark:notify'> = {
+      type: 'spark:notify',
+      source: 'devtools',
+      data: { id: nanoid(), eventId: nanoid(), kind: 'ping', urgency: 'soon', headline: 'Simulated in a follower', destinations: ['character'] },
+    }
+
+    // Store helpers resolve the active Pinia, as each window has its own.
+    setActivePinia(followerPinia)
+    await follower.handleSparkNotify(event)
+    setActivePinia(pinia)
+    const topicKey = notifyTopicKey('devtools', event.data.eventId)
+    expect(notifyEvents(situation).map(item => item.topicKey)).toEqual([topicKey])
+    // A server notify reaches every window: the leader ingests it itself and also receives the follower's copy.
+    await useCharacterOrchestratorStore(pinia).handleSparkNotify(event)
+
+    expect(useSituationStore(followerPinia).state.events).toEqual([])
+    expect(notifyEvents(situation).map(item => item.topicKey)).toEqual([topicKey])
+  })
+
+  it('ignores malformed spark:notify payloads without throwing or running the agent', async () => {
+    const mockStream = vi.fn()
+    mockedStore(useLLM, pinia).stream = mockStream
+    const situation = useSituationStore(pinia)
+    situation.initialize(leaderRuntime())
+    const store = useCharacterOrchestratorStore(pinia)
+
+    // Wire payloads that break the protocol, parsed the way the server channel parses them.
+    const malformed = [
+      '{"type":"spark:notify","source":"plugin:broken","data":{"headline":42,"eventId":"e-1","urgency":"soon","destinations":["character"]}}',
+      '{"type":"spark:notify","source":"plugin:broken","data":{"headline":"No event id","urgency":"soon","destinations":["character"]}}',
+      '{"type":"spark:notify","source":"plugin:broken","data":{"headline":"   ","eventId":"e-3","urgency":"soon","destinations":"minecraft"}}',
+    ]
+    for (const payload of malformed)
+      await store.handleSparkNotify(JSON.parse(payload))
+
+    expect(notifyEvents(situation)).toEqual([])
+    expect(mockStream).not.toHaveBeenCalled()
+  })
+
+  it('raises a critical reminder at full salience and never re-creates it after it decays', async () => {
+    vi.useFakeTimers()
+    const mockStream = vi.fn()
+    mockedStore(useLLM, pinia).stream = mockStream
+    const situation = useSituationStore(pinia)
+    situation.initialize(leaderRuntime())
+    const notebook = useCharacterNotebookStore(pinia)
+    const task = notebook.scheduleTask({ title: 'Stretch', priority: 'critical', dueAt: Date.now() })
+
+    const store = useCharacterOrchestratorStore(pinia)
+    store.startTicker()
+    await vi.advanceTimersByTimeAsync(store.attentionConfig.tickIntervalMs)
+
+    const topicKey = notifyTopicKey(TASK_SCHEDULER_SOURCE, task.id)
+    const [reminder] = notifyEvents(situation)
+    expect(reminder?.topicKey).toBe(topicKey)
+    expect(reminder?.salience).toBe(1)
+    expect(reminder?.text).toBe('Task reminder: Stretch')
+    situation.markAddressed(topicKey)
+
+    // The scheduler re-sends the due reminder every 30 s; its event decays out of the ring within about two hours.
+    await vi.advanceTimersByTimeAsync(3 * 60 * 60 * 1000)
+    store.stopTicker()
+
+    expect(notebook.tasks[0].lastNotifiedAt).toBeGreaterThan(Date.now() - 60_000)
+    expect(effectiveSalience(reminder, Date.now())).toBeLessThan(0.05)
+    expect(situation.state.events.filter(event => event.topicKey === topicKey)).toEqual([])
+    expect(mockStream).not.toHaveBeenCalled()
+  })
+
+  it('runs the commands-only agent for module destinations, ignores its text, and sends its commands', async () => {
     const mockStream = vi.fn()
     mockedStore(useLLM, pinia).stream = mockStream
     mockedStore(useLLM, pinia).stream.mockImplementation(async (_model: string, _provider: unknown, _messages: unknown, options: any) => {
@@ -179,6 +320,9 @@ describe('store character-orchestrator', () => {
     const mockOnSparkNotifyReactionStreamEnd = vi.fn()
     mockedStore(useCharacterStore, pinia).onSparkNotifyReactionStreamEnd = mockOnSparkNotifyReactionStreamEnd
 
+    const situation = useSituationStore(pinia)
+    situation.initialize(leaderRuntime())
+
     const store = useCharacterOrchestratorStore(pinia)
     const event: WebSocketEventOf<'spark:notify'> = {
       type: 'spark:notify',
@@ -189,7 +333,7 @@ describe('store character-orchestrator', () => {
         kind: 'alarm',
         urgency: 'immediate',
         headline: 'Hit by zombie',
-        destinations: ['character'],
+        destinations: ['character', 'minecraft'],
       },
     }
 
@@ -207,51 +351,32 @@ describe('store character-orchestrator', () => {
     expect(mockStream.mock.calls[0][1]).not.toBeNull()
     expect((mockStream.mock.calls[0][2] as Conversation).turns).toHaveLength(2)
     expect(mockStream.mock.calls[0][3]).toHaveProperty('tools')
+    expect(mockStream.mock.calls[0][3].toolChoice).toBeUndefined()
+    expect(mockStream.mock.calls[0][3].tools.map((item: { function: { name: string } }) => item.function.name)).toContain('builtIn_sparkNoResponse')
+    expect(sendSparkCommandMock).toHaveBeenCalledTimes(1)
+    expect(sendSparkCommandMock).toHaveBeenCalledWith({ type: 'spark:command', data: result?.commands[0] })
 
-    expect(mockOnSparkNotifyReactionStreamEvent).toHaveBeenCalledWith(event.data.id, 'Ahhh, got hit by zombie!')
-    expect(mockOnSparkNotifyReactionStreamEnd).toHaveBeenCalledTimes(1)
+    // The text is ignored: the gate decides from the observation whether she speaks.
+    expect(mockOnSparkNotifyReactionStreamEvent).not.toHaveBeenCalled()
+    expect(mockOnSparkNotifyReactionStreamEnd).not.toHaveBeenCalled()
+    expect(notifyEvents(situation).map(item => item.topicKey)).toEqual([notifyTopicKey('minecraft', event.data.eventId)])
   })
 
-  it('supports forcing text-only spark:notify responses', async () => {
+  it('queues a non-immediate module notify for the commands-only agent', async () => {
     const mockStream = vi.fn()
     mockedStore(useLLM, pinia).stream = mockStream
-    mockedStore(useLLM, pinia).stream.mockImplementation(async (_model: string, _provider: unknown, _messages: unknown, options: any) => {
-      await options?.onStreamEvent?.({ type: 'text-delta', text: 'I choose d5 to pressure the center.' } satisfies StreamEvent)
-      await options?.onStreamEvent?.({ type: 'finish' } satisfies StreamEvent)
-    })
-
-    const onDelta = vi.fn()
-    const onEnd = vi.fn()
-    mockedStore(useCharacterStore, pinia).onSparkNotifyReactionStreamEvent = onDelta
-    mockedStore(useCharacterStore, pinia).onSparkNotifyReactionStreamEnd = onEnd
-
     const store = useCharacterOrchestratorStore(pinia)
     const event: WebSocketEventOf<'spark:notify'> = {
       type: 'spark:notify',
-      source: 'plugin:airi-plugin-game-chess',
-      data: {
-        id: nanoid(),
-        eventId: nanoid(),
-        kind: 'ping',
-        urgency: 'immediate',
-        headline: 'AIRI played d5',
-        destinations: ['character'],
-      },
+      source: 'minecraft',
+      data: { id: nanoid(), eventId: nanoid(), kind: 'ping', urgency: 'later', headline: 'Night falls', destinations: ['minecraft'] },
     }
 
-    await store.handleSparkNotifyWithReaction(event, {
-      forceTextResponse: true,
-    })
+    const result = await store.handleSparkNotify(event)
 
-    const streamOptions = mockStream.mock.lastCall?.[3]
-    expect(streamOptions).toMatchObject({
-      supportsTools: false,
-      tools: [],
-      waitForTools: false,
-    })
-    expect(streamOptions?.toolChoice).toBeUndefined()
-    expect(onDelta).toHaveBeenCalled()
-    expect(onEnd).toHaveBeenCalled()
+    expect(result).toBeUndefined()
+    expect(mockStream).not.toHaveBeenCalled()
+    expect(store.scheduledNotifies.map(item => item.event.data.id)).toEqual([event.data.id])
   })
 
   it('supports forcing spark-command responses', async () => {
@@ -288,7 +413,7 @@ describe('store character-orchestrator', () => {
         kind: 'alarm',
         urgency: 'immediate',
         headline: 'Take cover',
-        destinations: ['character'],
+        destinations: ['minecraft'],
       },
     }
 
@@ -311,7 +436,7 @@ describe('store character-orchestrator', () => {
       data: result?.commands[0],
     })
     expect(onDelta).not.toHaveBeenCalled()
-    expect(onEnd).toHaveBeenCalledWith(event.data.id, '')
+    expect(onEnd).not.toHaveBeenCalled()
   })
 
   // https://github.com/moeru-ai/airi/pull/2464#discussion_r3933609456
@@ -333,12 +458,11 @@ describe('store character-orchestrator', () => {
         kind: 'ping',
         urgency: 'immediate',
         headline: 'Legacy rendering',
-        destinations: ['character'],
+        destinations: ['character', 'plugin:airi-plugin-game-chess'],
       },
     }
 
     await store.handleSparkNotify(event, {
-      forceTextResponse: true,
       messageOverride: {
         appendSystemInstructions: ['Plugin-specific hint'],
         appendUserSections: ['Rendered board snapshot'],

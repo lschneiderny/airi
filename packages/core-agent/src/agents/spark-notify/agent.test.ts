@@ -81,6 +81,42 @@ describe('createSparkNotifyAgent', () => {
     expect(run).toHaveBeenCalledTimes(1)
   })
 
+  it('runs a commands-only notify with tools, no forced tool choice, and ignored text', async () => {
+    const onDelta = vi.fn()
+    const onEnd = vi.fn()
+    const run = vi.fn(async (request: SparkNotifyRunRequest) => {
+      expect(request.policy.supportsTools).toBe(true)
+      expect(request.policy.waitForTools).toBe(true)
+      expect(request.policy.toolChoice).toBeUndefined()
+      expect(request.tools.map(tool => tool.function.name).sort()).toEqual(['builtIn_sparkCommand', 'builtIn_sparkNoResponse'])
+      const sparkCommand = request.tools.find(tool => tool.function.name === 'builtIn_sparkCommand')
+      await sparkCommand?.execute({ commands: [{ destinations: ['minecraft'], intent: 'action', priority: 'high', interrupt: 'false', ack: 'go', guidance: null }] }, { messages: [], toolCallId: 'call-1' })
+      await request.onStreamEvent({ type: 'text-delta', text: 'This must not be spoken.' })
+    })
+    const agent = createSparkNotifyAgent({
+      runner: { run },
+      plugins: [createSparkNotifyReactionPlugin({ onDelta, onEnd })],
+      createId: () => 'generated-id',
+    })
+
+    const result = await agent.handle({
+      event: createEvent(),
+      selectedChat: {
+        providerId: 'mock-provider',
+        model: 'mock-model',
+        provider: { generation: model => ({ protocol: 'chat-completions', config: { model, baseURL: 'https://example.test/' } }) },
+      },
+      systemPrompt: 'You are a character.',
+      // A text-forcing caller cannot turn a commands-only run into speech.
+      control: { commandsOnly: true, forceTextResponse: true },
+    })
+
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(onDelta).not.toHaveBeenCalled()
+    expect(onEnd).toHaveBeenCalledWith('spark-1', '')
+    expect(result.commands).toEqual([expect.objectContaining({ destinations: ['minecraft'], parentEventId: 'spark-1', priority: 'high', ack: 'go' })])
+  })
+
   // https://github.com/moeru-ai/airi/pull/2464#discussion_r3933609456
   it('keeps appended sections when the host replaces the user payload', async () => {
     const run = vi.fn(async (request: SparkNotifyRunRequest) => {

@@ -1,4 +1,5 @@
 import type { TurnRef } from '@proj-airi/core-agent'
+import type { NotifyObservation } from '@proj-airi/stage-shared/situation'
 
 import type { VoiceMessageSnapshot } from '../../libs/voice/voice-message'
 import type { WakeWordPreparation } from '../../libs/voice/wake-word-detector'
@@ -40,6 +41,13 @@ export const speechInputUserSpeakingChangedEvent = defineEventa<{ speaking: bool
  * `hasDraft: false` when it closes. The leader's situation gate stays quiet while any composer reports writing.
  */
 export const chatComposerActivityChangedEvent = defineEventa<{ sourceId: string, hasDraft: boolean, lastInputAtMs: number }>('eventa:chat:composer-activity-changed')
+
+/**
+ * A `spark:notify` observation that a follower window received, for example from the devtools context-flow simulator.
+ * Only the leader folds notifies into the situation, so followers forward theirs here. A server notify reaches every
+ * window, so the leader also receives forwarded copies of notifies it ingested itself; it drops them by topic key.
+ */
+export const situationNotifyObservedEvent = defineEventa<NotifyObservation>('eventa:situation:notify-observed')
 
 const BUS_CHANNEL_NAME = 'proj-airi:pipelines:outputs:speech'
 

@@ -83,6 +83,21 @@ export interface SparkNotifyResponseControl {
    */
   forceSparkCommandResponse?: boolean
   /**
+   * Runs the notify for its commands only: spark-command tools stay available, text output is ignored, and the
+   * model may choose not to respond. No tool choice is forced.
+   *
+   * Use when:
+   * - Another path (for example the situation gate) decides whether the character speaks about the notify
+   * - The host still needs downstream modules to receive spark commands
+   *
+   * Expects:
+   * - This takes precedence over `forceTextResponse` and `forceResponse`; with `forceSparkCommandResponse` the
+   *   forced spark-command policy applies, which also ignores text
+   *
+   * @default false
+   */
+  commandsOnly?: boolean
+  /**
    * Host-local message serialization override applied only while rendering the current notify turn.
    *
    * @default undefined
