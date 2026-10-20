@@ -1,0 +1,388 @@
+import type { ActivityObservation, ContextObservation, NotifyObservation, Observation, PresenceObservation, SituationEvent, SituationState } from '.'
+
+import { describe, expect, it } from 'vitest'
+
+import {
+  advanceSituation,
+  effectiveSalience,
+  initialSituationState,
+  markAddressed,
+  markShown,
+  notifyTopicKey,
+  reduceSituation,
+  SITUATION_EVENTS_MAX,
+} from '.'
+
+const T0 = 1_700_000_000_000
+const SEC = 1000
+const MIN = 60 * SEC
+
+function activity(appId: string, atMs: number, overrides: Partial<ActivityObservation> = {}): ActivityObservation {
+  return { kind: 'activity', appId, label: appId.toUpperCase(), category: 'other', title: null, atMs, ...overrides }
+}
+
+function presence(state: PresenceObservation['state'], atMs: number): PresenceObservation {
+  return { kind: 'presence', state, atMs }
+}
+
+function context(sourceKey: string, text: string, atMs: number, overrides: Partial<ContextObservation> = {}): ContextObservation {
+  return { kind: 'context', sourceKey, text, atMs, ...overrides }
+}
+
+function notify(overrides: Partial<NotifyObservation> = {}): NotifyObservation {
+  return {
+    kind: 'notify',
+    sourceKey: 'plugin:widget',
+    eventId: 'evt-1',
+    headline: 'Tea is ready',
+    urgency: 'soon',
+    reminder: false,
+    critical: false,
+    atMs: T0,
+    ...overrides,
+  }
+}
+
+/** Feeds observations in order, each reduced at its own `atMs`, carrying state between them. */
+function run(observations: Observation[], state: SituationState = initialSituationState): SituationState {
+  for (const observation of observations)
+    state = reduceSituation(state, observation, observation.atMs)
+  return state
+}
+
+function eventsOf(state: SituationState, kind: SituationEvent['kind']): SituationEvent[] {
+  return state.events.filter(event => event.kind === kind)
+}
+
+describe('reduceSituation activity', () => {
+  it('creates the app-switch event only after the app settles for 75 s', () => {
+    const state = run([activity('z', T0 - 10 * MIN), activity('a', T0)])
+
+    expect(eventsOf(advanceSituation(state, T0 + 74_999), 'app-switch').filter(e => e.topicKey === 'activity:a')).toHaveLength(0)
+    const settled = advanceSituation(state, T0 + 75_000)
+    const events = eventsOf(settled, 'app-switch').filter(e => e.topicKey === 'activity:a')
+    expect(events).toHaveLength(1)
+    expect(events[0].atMs).toBe(T0 + 75_000)
+    expect(settled.activity?.appId).toBe('a')
+  })
+
+  it('emits no app-switch event for the first app ever seen', () => {
+    const state = advanceSituation(run([activity('a', T0)]), T0 + 10 * MIN)
+
+    expect(eventsOf(state, 'app-switch')).toHaveLength(0)
+  })
+
+  it('merges a detour that returns within 30 s and keeps the original span', () => {
+    const base = run([activity('z', T0 - 10 * MIN), activity('a', T0)])
+    const state = advanceSituation(run([activity('b', T0 + 10 * SEC), activity('a', T0 + 30 * SEC)], base), T0 + 5 * MIN)
+
+    expect(state.activity).toMatchObject({ appId: 'a', sinceMs: T0 })
+    expect(eventsOf(state, 'app-switch').map(e => e.topicKey)).toEqual(['activity:a'])
+    expect(state.recentActivities.map(a => a.appId)).toEqual(['z'])
+  })
+
+  it('does not merge a detour longer than 30 s', () => {
+    const base = run([activity('z', T0 - 10 * MIN), activity('a', T0)])
+    const state = run([activity('b', T0 + 10 * SEC), activity('a', T0 + 41 * SEC)], base)
+
+    expect(state.activity).toMatchObject({ appId: 'a', sinceMs: T0 + 41 * SEC })
+    expect(state.recentActivities.map(a => a.appId)).toEqual(['b', 'a', 'z'])
+  })
+
+  it('emits one burst event for 3 switches within 2 min', () => {
+    const base = run([activity('a', T0)])
+    const two = run([activity('b', T0 + 30 * SEC), activity('c', T0 + 60 * SEC)], base)
+    expect(eventsOf(two, 'switching-burst')).toHaveLength(0)
+
+    const three = run([activity('d', T0 + 90 * SEC)], two)
+    expect(eventsOf(three, 'switching-burst').map(e => e.text)).toEqual(['switching between C and D'])
+
+    const four = run([activity('e', T0 + 100 * SEC)], three)
+    expect(eventsOf(four, 'switching-burst')).toHaveLength(1)
+    expect(eventsOf(four, 'app-switch')).toHaveLength(0)
+  })
+
+  it('does not count switches older than 2 min as a burst', () => {
+    const state = run([activity('a', T0), activity('b', T0 + 60 * SEC), activity('c', T0 + 130 * SEC), activity('d', T0 + 190 * SEC)])
+
+    expect(eventsOf(state, 'switching-burst')).toHaveLength(0)
+  })
+
+  it('emits long-session events at exactly 30 min, 1 h, 2 h and 3 h, once each', () => {
+    let state = run([activity('a', T0, { label: 'Elden Ring', category: 'game' })])
+    const seen: SituationEvent[] = []
+    const record = (next: SituationState): void => {
+      for (const event of next.events) {
+        if (event.kind === 'long-session' && !seen.some(s => s.id === event.id))
+          seen.push(event)
+      }
+    }
+
+    state = advanceSituation(state, T0 + 30 * MIN - 1)
+    expect(eventsOf(state, 'long-session')).toHaveLength(0)
+    state = advanceSituation(state, T0 + 30 * MIN)
+    expect(eventsOf(state, 'long-session').map(e => [e.topicKey, e.text, e.atMs])).toEqual([
+      ['activity:a:tier:1', 'Elden Ring (game) for about 30 min', T0 + 30 * MIN],
+    ])
+    record(state)
+
+    for (let minute = 31; minute <= 190; minute += 1) {
+      state = advanceSituation(state, T0 + minute * MIN)
+      record(state)
+      if (minute === 59)
+        expect(state.events.some(e => e.topicKey === 'activity:a:tier:2')).toBe(false)
+      if (minute === 60)
+        expect(state.events.some(e => e.topicKey === 'activity:a:tier:2')).toBe(true)
+    }
+    expect(seen.map(e => [e.topicKey, e.tier, e.atMs - T0])).toEqual([
+      ['activity:a:tier:1', 1, 30 * MIN],
+      ['activity:a:tier:2', 2, 60 * MIN],
+      ['activity:a:tier:3', 3, 120 * MIN],
+      ['activity:a:tier:4', 4, 180 * MIN],
+    ])
+    expect(seen.map(e => e.text.split('about ')[1])).toEqual(['30 min', '1 h', '2 h', '3 h'])
+  })
+
+  it('catches up every missed tier when advanced far ahead in one step', () => {
+    const state = advanceSituation(run([activity('a', T0)]), T0 + 4 * 60 * MIN)
+
+    expect(eventsOf(state, 'long-session').map(e => e.tier)).toEqual([4])
+    const midway = advanceSituation(run([activity('a', T0)]), T0 + 125 * MIN)
+    expect(eventsOf(midway, 'long-session').map(e => e.tier)).toEqual([1, 2, 3])
+  })
+
+  it('updates the title without an event when only the title changes', () => {
+    const base = run([activity('z', T0 - 10 * MIN), activity('a', T0, { title: 'one' })])
+    const state = run([activity('a', T0 + 10 * MIN, { title: 'two' })], base)
+
+    expect(state.activity).toMatchObject({ appId: 'a', title: 'two', sinceMs: T0 })
+    expect(eventsOf(state, 'app-switch').map(e => e.atMs)).toEqual([T0 + 75 * SEC])
+    expect(state.recentActivities.map(a => a.appId)).toEqual(['z'])
+  })
+
+  it('keeps at most 5 recent activities and merges same-app consecutive spans', () => {
+    const apps = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+    const state = run(apps.map((appId, index) => activity(appId, T0 + index * 10 * MIN)))
+
+    expect(state.recentActivities.map(a => a.appId)).toEqual(['g', 'f', 'e', 'd', 'c'])
+  })
+
+  it('ignores activity from selfAppIds without touching state', () => {
+    const base = run([activity('a', T0)])
+    const state = reduceSituation(base, activity('AIRI', T0 + 5 * MIN), T0 + 5 * MIN, { selfAppIds: ['airi'] })
+
+    expect(state.activity?.appId).toBe('a')
+    expect(state.recentActivities).toEqual([])
+  })
+})
+
+describe('reduceSituation presence', () => {
+  it('emits returned only when away for at least 5 min', () => {
+    const shortAway = run([presence('here', T0 - MIN), presence('away', T0), presence('here', T0 + 5 * MIN - 1)])
+    expect(eventsOf(shortAway, 'returned')).toHaveLength(0)
+    expect(eventsOf(shortAway, 'went-away')).toHaveLength(1)
+
+    const longAway = run([presence('here', T0 - MIN), presence('away', T0), presence('here', T0 + 5 * MIN)])
+    expect(eventsOf(longAway, 'returned').map(e => [e.topicKey, e.text])).toEqual([['presence:return', 'came back after 5 min away']])
+  })
+
+  it('counts the away time through an unknown sample', () => {
+    const state = run([presence('away', T0), presence('unknown', T0 + MIN), presence('here', T0 + 20 * MIN)])
+
+    expect(eventsOf(state, 'returned').map(e => e.text)).toEqual(['came back after 20 min away'])
+  })
+
+  it('emits a wake event', () => {
+    const state = run([{ kind: 'wake', cause: 'unlock', atMs: T0 }])
+
+    expect(eventsOf(state, 'wake').map(e => [e.topicKey, e.salience])).toEqual([['wake', 0.5]])
+  })
+})
+
+describe('reduceSituation conversation, context, notify, stage, busy', () => {
+  it('updates lastUserAtMs only for user turns with origin user', () => {
+    const state = run([
+      { kind: 'conversation', who: 'user', origin: 'unprompted', atMs: T0 },
+      { kind: 'conversation', who: 'character', origin: 'user', atMs: T0 + SEC },
+    ])
+    expect(state.conversation).toEqual({ lastUserAtMs: null, lastCharacterAtMs: T0 + SEC, lastUnpromptedAtMs: null })
+
+    const next = run([
+      { kind: 'conversation', who: 'user', origin: 'user', atMs: T0 + 2 * SEC },
+      { kind: 'conversation', who: 'character', origin: 'unprompted', atMs: T0 + 3 * SEC },
+    ], state)
+    expect(next.conversation).toEqual({ lastUserAtMs: T0 + 2 * SEC, lastCharacterAtMs: T0 + 3 * SEC, lastUnpromptedAtMs: T0 + 3 * SEC })
+  })
+
+  it('emits a context event only when the text changed, with default and vision salience', () => {
+    let state = run([context('game', 'in a dungeon', T0), context('vision', 'a cat', T0)])
+    expect(eventsOf(state, 'context').map(e => [e.topicKey, e.salience])).toEqual([['context:game', 0.3], ['context:vision', 0.4]])
+
+    state = run([context('game', 'in a dungeon', T0 + MIN)], state)
+    expect(state.contexts.game).toEqual({ text: 'in a dungeon', atMs: T0 + MIN })
+    expect(eventsOf(state, 'context').find(e => e.topicKey === 'context:game')?.atMs).toBe(T0)
+
+    state = run([context('game', 'at a boss', T0 + 2 * MIN, { salience: 0.9 })], state)
+    const game = eventsOf(state, 'context').filter(e => e.topicKey === 'context:game')
+    expect(game.map(e => [e.text, e.salience])).toEqual([['at a boss', 0.9]])
+  })
+
+  it('maps notify urgency and critical reminders to salience', () => {
+    const state = run([
+      notify({ eventId: 'a', urgency: 'immediate' }),
+      notify({ eventId: 'b', urgency: 'soon' }),
+      notify({ eventId: 'c', urgency: 'later' }),
+      notify({ eventId: 'd', urgency: 'later', reminder: true, critical: true, note: 'now' }),
+    ])
+
+    expect(state.events.map(e => [e.topicKey, e.salience, e.text])).toEqual([
+      ['notify:plugin:widget:a', 1.0, 'Tea is ready'],
+      ['notify:plugin:widget:b', 0.7, 'Tea is ready'],
+      ['notify:plugin:widget:c', 0.4, 'Tea is ready'],
+      ['notify:plugin:widget:d', 1.0, 'Tea is ready: now'],
+    ])
+  })
+
+  it('deduplicates notify observations by topic key, even when re-enqueued later', () => {
+    const first = notify({ reminder: true })
+    const state = run([first, { ...first, atMs: T0 + 30 * SEC }, { ...first, atMs: T0 + 60 * SEC }])
+
+    expect(eventsOf(state, 'notify')).toHaveLength(1)
+    expect(eventsOf(state, 'notify')[0].atMs).toBe(T0)
+  })
+
+  it('keys a widget-shaped notify by eventId, not by the widget id', () => {
+    const widgetEvent = { ...notify({ sourceKey: 'plugin:widget', eventId: 'event-9' }), id: 'widget-1' }
+    const state = run([widgetEvent])
+    const topicKey = notifyTopicKey('plugin:widget', 'event-9')
+
+    expect(eventsOf(state, 'notify').map(e => e.topicKey)).toEqual([topicKey])
+    const addressed = markAddressed(state, topicKey, T0 + SEC)
+    expect(eventsOf(addressed, 'notify')[0].addressedAtMs).toBe(T0 + SEC)
+    expect(notifyTopicKey('plugin:widget', 'widget-1')).not.toBe(topicKey)
+  })
+
+  it('replaces stage and busy without events', () => {
+    const state = run([
+      { kind: 'stage', exposed: 'a', active: 'b', mood: 'calm', atMs: T0 },
+      { kind: 'busy', state: 'fullscreen', atMs: T0 },
+    ])
+
+    expect(state.stage).toEqual({ exposed: 'a', active: 'b', mood: 'calm', atMs: T0 })
+    expect(state.busy).toEqual({ state: 'fullscreen', atMs: T0 })
+    expect(state.events).toEqual([])
+  })
+})
+
+describe('events: decay, ring and marks', () => {
+  it('computes effective salience by half-life', () => {
+    const event = { salience: 0.8, atMs: T0, halfLifeMs: 10 * MIN }
+
+    expect(effectiveSalience(event, T0)).toBeCloseTo(0.8)
+    expect(effectiveSalience(event, T0 + 10 * MIN)).toBeCloseTo(0.4)
+    expect(effectiveSalience(event, T0 + 20 * MIN)).toBeCloseTo(0.2)
+    expect(effectiveSalience(event, T0 - MIN)).toBeCloseTo(0.8)
+  })
+
+  it('drops events below 0.05 effective salience', () => {
+    const base = run([context('game', 'x', T0)])
+
+    expect(advanceSituation(base, T0 + 70 * MIN).events).toHaveLength(1)
+    const later = advanceSituation(base, T0 + 80 * MIN)
+    expect(later.events).toHaveLength(0)
+    expect(later.contexts.game.text).toBe('x')
+  })
+
+  it('keeps only the 32 newest events', () => {
+    const state = run(Array.from({ length: 40 }, (_, index) => context(`s${index}`, `t${index}`, T0 + index * SEC)))
+
+    expect(state.events).toHaveLength(SITUATION_EVENTS_MAX)
+    expect(state.events[0].topicKey).toBe('context:s8')
+    expect(state.events.at(-1)?.topicKey).toBe('context:s39')
+  })
+
+  it('marks shown and addressed once, keeping the first time', () => {
+    const base = run([context('game', 'x', T0)])
+    const id = base.events[0].id
+    const shown = markShown(markShown(base, [id, 'missing'], T0 + SEC), [id], T0 + 2 * SEC)
+    const addressed = markAddressed(markAddressed(shown, 'context:game', T0 + 3 * SEC), 'context:game', T0 + 4 * SEC)
+
+    expect(addressed.events[0]).toMatchObject({ shownAtMs: T0 + SEC, addressedAtMs: T0 + 3 * SEC })
+    expect(base.events[0]).toMatchObject({ shownAtMs: null, addressedAtMs: null })
+  })
+})
+
+describe('purity and time', () => {
+  it('never lets time go backwards and ignores stale observations', () => {
+    const base = run([presence('here', T0 + 10 * SEC), context('game', 'new', T0 + 10 * SEC)])
+    const state = reduceSituation(base, presence('away', T0 + 5 * SEC), T0 + 5 * SEC)
+
+    expect(state.nowMs).toBe(T0 + 10 * SEC)
+    expect(state.presence.state).toBe('here')
+    expect(eventsOf(state, 'went-away')).toHaveLength(0)
+
+    const staleContext = reduceSituation(state, context('game', 'old', T0 + SEC), T0 + SEC)
+    expect(staleContext.contexts.game.text).toBe('new')
+    expect(staleContext.nowMs).toBe(T0 + 10 * SEC)
+    expect(staleContext.events.map(e => e.id)).toEqual(base.events.map(e => e.id))
+  })
+
+  it('does not duplicate events for a repeated observation', () => {
+    const wake: Observation = { kind: 'wake', cause: 'resume', atMs: T0 }
+    const once = run([wake])
+    const twice = run([wake, wake])
+
+    expect(twice.events).toEqual(once.events)
+    const shown = markShown(once, [once.events[0].id], T0 + SEC)
+    expect(reduceSituation(shown, wake, T0 + 2 * SEC).events[0].shownAtMs).toBe(T0 + SEC)
+  })
+
+  it('ignores malformed observations', () => {
+    const base = run([activity('a', T0)])
+    const unknownKind: unknown = { kind: 'teleport', atMs: T0 + SEC }
+    const bad = [
+      activity('b', Number.NaN),
+      activity('b', -5),
+      activity('b', Number.POSITIVE_INFINITY),
+      activity('', T0 + SEC),
+      activity('   ', T0 + SEC),
+      activity('b', T0 + SEC, { category: 'weird' as never }),
+      unknownKind as Observation,
+      notify({ eventId: '' }),
+      notify({ urgency: 'now' as never }),
+      context('', 'x', T0 + SEC),
+      presence('sleeping' as never, T0 + SEC),
+    ]
+
+    for (const observation of bad) {
+      const state = reduceSituation(base, observation, T0 + SEC)
+      expect(state.activity?.appId).toBe('a')
+      expect(state.events).toEqual([])
+      expect(state.presence).toEqual(base.presence)
+    }
+    expect(reduceSituation(base, activity('b', T0 + SEC), Number.NaN)).toBe(base)
+    expect(reduceSituation(base, activity('b', T0 + SEC), -1)).toBe(base)
+    expect(advanceSituation(base, Number.NaN)).toBe(base)
+  })
+
+  it('clamps an observation from the future to now', () => {
+    const state = reduceSituation(initialSituationState, activity('a', T0 + 10 * MIN), T0)
+
+    expect(state.activity?.sinceMs).toBe(T0)
+    expect(state.nowMs).toBe(T0)
+  })
+
+  it('is pure: identical inputs give deep-equal outputs and inputs stay untouched', () => {
+    const base = run([activity('z', T0 - MIN), activity('a', T0), context('game', 'x', T0)])
+    const snapshot = JSON.stringify(base)
+    const observation = activity('b', T0 + 2 * MIN)
+
+    const first = reduceSituation(base, observation, T0 + 2 * MIN)
+    const second = reduceSituation(base, observation, T0 + 2 * MIN)
+
+    expect(first).toEqual(second)
+    expect(JSON.stringify(base)).toBe(snapshot)
+    expect(first).not.toBe(base)
+    expect(JSON.stringify(initialSituationState)).toBe(JSON.stringify(run([])))
+  })
+})
