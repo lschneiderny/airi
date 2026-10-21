@@ -865,3 +865,9 @@ pass through to the underlying `BasicButton`.
   :takeover="takeover"
 />
 ```
+
+---
+
+## Live2D scene API
+
+`Live2D.vue` in `@proj-airi/stage-ui-live2d` is a scene component, not a `@proj-airi/ui` primitive. Its `naturalEnergy` and `performanceSettings` props, its `touch` event, and its exposed `applySlots` and `applyHolds` methods are documented in the [stage-ui-live2d README](../../../../packages/stage-ui-live2d/README.md), under Expression slots, Held emotions, Energy, and Touch: poke and pet.

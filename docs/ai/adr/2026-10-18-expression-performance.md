@@ -337,7 +337,7 @@ Each tool returns JSON `{ success, active?, error?, available?, expressions? }`.
 The synced `usePerformanceRuntimeState` store carries `exposed`, `active`, and `mood` from the stage renderer, its only writer, to the other windows.
 The runtime prompt appends `base.prompt.expressions` with the exposed labels grouped by kind when the list is non-empty. With `stateFeedback` on, it also appends `base.prompt.expression-state` with the active expressions and the mood. Mood is published only while `mood` is on and Natural drives the model, sampled every 2 s.
 
-Prompt-key rule: these keys are appended under `te(...)` guards and are not in `RUNTIME_PROMPT_KEYS`. A key missing in another locale removes only its own line instead of the whole runtime prompt.
+Prompt-key rule: these keys are appended under `te(...)` guards and are not in `RUNTIME_PROMPT_KEYS`. A key missing in another locale removes only its own line instead of the whole runtime prompt. This guard-based behavior is superseded: runtime prompts now use ordinary translated fallback through `fallbackLocale: 'en'`, as described in [2026-10-19-situational-presence](2026-10-19-situational-presence.md).
 
 ## Affect traces
 
@@ -395,7 +395,7 @@ Switches:
 
 Sections:
 
-- `intensity`: `slight` 0.25, `clear` 0.6, `strong` 0.9, `clearFrom` 0.5, `strongFrom` 0.8, `jitter` 0.04, `habituationWindow` 15, `habituationBase` 0.8, `habituationFloor` 0.35, `escalationWindow` 2. The ACT parser uses fixed word values equal to the `slight`, `clear`, and `strong` defaults, and the Natural lab pulses use the default document's values.
+- `intensity`: `slight` 0.25, `clear` 0.6, `strong` 0.9, `clearFrom` 0.5, `strongFrom` 0.8, `jitter` 0.04, `habituationWindow` 15, `habituationBase` 0.8, `habituationFloor` 0.35, `escalationWindow` 2. The ACT parser uses fixed word values equal to the `slight`, `clear`, and `strong` defaults, and the Natural lab pulses use the configured document values for the selected band.
 - `naturalBands`: the `slight`, `clear`, and `strong` band tables above, plus `headGain` 0.12, `bodyGain` 0.06, `energyAmplitude` 0.3, `energyRate` 0.5, `energySeconds` 2.
 - `moodDynamics`: `valenceTau` 45, `arousalTau` 20, `tensionTau` 30, `slightGain` 0.15, `clearGain` 0.25, `strongGain` 0.4, `amplitude` 0.2, `shiftRate` 0.3, `cameraValence` 0.1, `cameraTension` 0.15, `emphasis` 0.1, `mouthForm` 0.08.
 - `picker`: `recencyDepth` 0.8, `recencyTau` 8, `effectGateFrom` 0.5, `effectGateTo` 0.8.

@@ -81,7 +81,7 @@ Natural never writes these channels:
 
 - any parameter that model physics outputs;
 - a body axis that physics derives from the head; the adapter skips it and the model's physics remains authoritative;
-- the mouth while the character speaks, and for 0.7 seconds after speech ends, so lipsync owns it;
+- mouth opening (`ParamMouthOpenY`) while the character speaks and for 0.7 seconds after speech ends, so lipsync owns mouth opening; other face offsets, including mouth form, still compose;
 - a face channel that a playing explicit motion clip animates.
 
 Head, body, and eye posture fades out while manual or spring motion control is active or an exclusive owner holds the model.

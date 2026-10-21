@@ -8,7 +8,7 @@ Status: accepted
 This ADR supersedes these parts of earlier ADRs:
 
 - `docs/ai/adr/2026-10-18-expression-performance.md`, non-goal "No gesture library and no second settings document": Natural now has gesture clips. The rest of that non-goal still holds, because the held-emotion tunables live in the existing settings document.
-- `docs/ai/adr/2026-10-18-expression-performance.md`, the Natural band table: with `heldEmotions` on, the body also moves at clear, and emotions that have a gesture drop the impulse head pulse and body lean and play a gesture clip instead, unless that gesture is cooling down.
+- `docs/ai/adr/2026-10-18-expression-performance.md`, the Natural band table: with `heldEmotions` on, the body also moves at clear, and emotions that have a gesture suppress the impulse head pulse and body lean. Gesture admission is decided separately, so a cooling-down gesture can be skipped while both impulse motions remain suppressed.
 - `docs/ai/adr/2026-10-17-natural-motion-v2-performance-state.md`, non-goal "Only the Energy slider and the cursor attention toggle are user-facing": Settings also show per-model emotion strength sliders and the held-emotions switch.
 
 ## Context

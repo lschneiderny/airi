@@ -131,6 +131,8 @@ AIRI_QA_RIG_FORBOOTH="<rig dir>" node --import tsx packages/qa-tools/bin/motion.
 
 `pnpm qa:report <runDir> [<runDir>...] [--out <file>]` writes one self-contained HTML page, `<firstRunDir>/report.html`, from any mix of run directories: gate runs (`report.json`), T3 runs (`scenario.json`, `screenshots.json`, `screenshots/`) and `qa:test` runs (`summary.json`). Rerunning overwrites the file.
 
+The report is a review aid. It does not change a gate verdict or make a naturalness claim.
+
 - Header: run ids, levels, rig, git SHA with the dirty flag, and gate id, version and `fileSha`, from `run.json` and `report.json`.
 - The limitations statement from `src/report/limitations.ts` (`reportLimitations`), verbatim, near the top and in the footer.
 - Verdicts: one row per emotion x band with its failed checks named; per-channel numbers (`E`, CI, expected, size ratio, `d`, hit rate, Holm p, tau, transfer ratio when a result carries `transferRatio`) in a `<details>` block. Liveliness reports show their metrics against the reference bands.
@@ -154,10 +156,6 @@ AIRI_QA_RIG_FORBOOTH="<rig dir>" node --import tsx packages/qa-tools/bin/motion.
 - `unmutated`: 5 reseeded full gate runs, which must pass every check.
 - `determinism`: two independent runs give identical scores, and shuffled events or records change nothing.
 - The CLI runs one Vitest process per shard and phase (simulate, then score) and writes `validation.json` (every number, threshold and verdict, with no run id or time) and `summary.txt`. Exit codes: 0 every threshold met, 1 a threshold missed or the run broke, 2 a usage error. A missed threshold is a finding for Luke; never change a gate constant to meet it.
-
-## Review report
-
-`pnpm qa:report` writes one self-contained HTML page from gate, T3, or `qa:test` run directories. It shows provenance, the required limitations statement, gate verdicts and failed checks, plots when review data is present, rendered screenshots, known failures, and missing or unreadable inputs. A generated report is a review aid; it does not change a gate verdict or make a naturalness claim.
 
 ## When to use
 

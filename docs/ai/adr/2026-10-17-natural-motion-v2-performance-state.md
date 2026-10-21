@@ -117,11 +117,11 @@ The adapter applies these rules:
 
 - Natural writes head XYZ, body XYZ, and eye XY posture. It skips a body axis that physics derives from the head.
 - Natural composes face micro-offsets on brows, eye smile, and mouth form, and composes the eyelids.
-- Natural owns the cheek channel but currently writes it with a 0 offset; it is reserved.
+- Natural composes cheek offsets from pet and held-emotion hints; otherwise it leaves the channel at its base value.
 - Natural blink replaces the SDK blink plugin while Natural is selected, and it blinks only while the user's auto-blink setting is on.
 - Natural writes breath unless manual breath control is active.
 - Natural never writes a parameter that physics outputs.
-- Natural never writes the mouth while the character speaks or within 0.7 s after speech ends, so lipsync owns the mouth.
+- Natural does not write the mouth-opening channel (`ParamMouthOpenY`) while the character speaks or within 0.7 s after speech ends, so lipsync owns mouth opening. Other face offsets, including mouth form, still compose.
 - Posture fades out while manual or spring motion control is active.
 - While an exclusive owner holds the model, posture fades out, the controller suspends, and face, blink, and breath composition stops.
 - On a channel that a playing explicit clip animates, posture keeps a 10% residual, and face channels are skipped.
@@ -133,7 +133,7 @@ The stage emotion queue routes each emotion by renderer and Live2D motion driver
 
 | Renderer and driver | Route |
 | --- | --- |
-| Live2D with Natural | `Live2D.vue` `setEmotion(name, intensity)` queues a Natural impulse. |
+| Live2D with Natural | `Live2D.vue` queues Natural emotion episodes through the performance conductor. This replaces the earlier `setEmotion(name, intensity)` interface. See [2026-10-18-expression-performance](2026-10-18-expression-performance.md) and [2026-10-19-natural-emotion-revamp](2026-10-19-natural-emotion-revamp.md). |
 | Live2D with Universal or MAGIC | The emotion's motion group plays through the Live2D parameter store. |
 | VRM | The VRM viewer sets the matching expression. |
 | Spine | The Spine scene's `setEmotion` handles it. |
@@ -141,7 +141,7 @@ The stage emotion queue routes each emotion by renderer and Live2D motion driver
 | MMD | The MMD scene's `setEmotion` handles it. |
 
 A Natural impulse is a short head gesture plus decaying face hints, and some emotions add a glance.
-Impulses add to every other layer, so they never reset the pose. Neutral does nothing, and the same emotion within 2 s is ignored.
+Impulses add to every other layer, so they never reset the pose. Neutral does nothing. The earlier local two-second emotion dedupe described here was superseded by conductor-managed episodes; see [2026-10-18-expression-performance](2026-10-18-expression-performance.md) and [2026-10-19-natural-emotion-revamp](2026-10-19-natural-emotion-revamp.md).
 The adapter drops emotions queued while Natural is inactive, because they are stale by the time it resumes.
 An impulse or a desktop reaction also raises posture amplitude and shift rate for 2 s.
 
