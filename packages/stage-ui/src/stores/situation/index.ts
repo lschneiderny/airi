@@ -99,7 +99,8 @@ interface RunningSensors {
  * conversation turns, stage state),
  * and a demoted or disposed window stops the sensors and the ticker and drops its state. Follower windows never
  * register sensors, so their chat hooks and desktop samples produce no observations. The conversation sensor runs
- * on the hooks that the chat store hands over through {@link observeChat}.
+ * on the hooks that the chat store hands over through {@link observeChat}. Only the user input listeners run in
+ * every initialized window, so {@link untilUserIdle} answers wherever a widget reaction is served.
  *
  * In a host that declared the `unprompted` capability ({@link setHostCapabilities}), the leader also runs the
  * opportunity gate every {@link GATE_INTERVAL_MS}. A fire addresses its topic, then starts one unprompted turn through
@@ -134,11 +135,14 @@ export const useSituationStore = defineStore('situation', () => {
   let firing: { turnId: string, spoken: boolean } | undefined
   /** Advances on every promotion and demotion, so a result from an earlier leadership is dropped. */
   let leadership = 0
-  let stopSignalListeners: (() => void) | undefined
+  let stopVoiceTurnListener: (() => void) | undefined
+  let stopUserInputListeners: (() => void) | undefined
   let remoteUserSpeaking = false
   let speakingTurns: readonly TurnRef[] = []
   /** The newest report of each chat composer, with the local time it arrived. */
   const composers = new Map<string, { hasDraft: boolean, lastInputAtMs: number, receivedAtMs: number }>()
+  /** Re-checks of the pending {@link untilUserIdle} waits, run on every voice input or composer report. */
+  const userInputWaiters = new Set<() => void>()
   /** Notify topic keys that entered the situation during this leadership, oldest first. */
   const seenNotifyTopics = new Set<string>()
   /** Topics that another caller's forced turn is about to raise. The gate never picks them; see {@link holdTopic}. */
@@ -221,45 +225,118 @@ export const useSituationStore = defineStore('situation', () => {
     }
   }
 
-  /** Listens on the speech bus for voice input, character speech, and composer activity of every window. */
-  function startSignalListeners() {
+  /** Listens on the speech bus for the character speech of every window, for the gate. */
+  function startVoiceTurnListener() {
     const context = getSpeechBusContext()
-    const stops = [
-      context.on(speechInputUserSpeakingChangedEvent, ({ body }) => {
-        if (body)
-          remoteUserSpeaking = body.speaking
-      }),
-      context.on(voiceTurnsChanged, ({ body }) => {
-        if (body)
-          speakingTurns = body
-      }),
-      context.on(chatComposerActivityChangedEvent, ({ body }) => {
-        if (body)
-          composers.set(body.sourceId, { hasDraft: body.hasDraft, lastInputAtMs: body.lastInputAtMs, receivedAtMs: Date.now() })
-      }),
-    ]
+    const stop = context.on(voiceTurnsChanged, ({ body }) => {
+      if (body)
+        speakingTurns = body
+    })
     // The audio host answers with its current turns, so a leader that starts mid-reply does not miss them.
     context.emit(voiceRequestTurns, undefined)
+    return () => {
+      stop()
+      speakingTurns = []
+    }
+  }
+
+  /**
+   * Listens on the speech bus for the voice input and composer activity of every window. Unlike the rest of the store
+   * this runs in followers too, from {@link initialize} until {@link dispose}: any main window may serve a widget
+   * reaction, and the reaction waits through {@link untilUserIdle} wherever it runs.
+   */
+  function startUserInputListeners() {
+    const context = getSpeechBusContext()
+    const recheckWaiters = () => {
+      for (const recheck of [...userInputWaiters])
+        recheck()
+    }
+    const stops = [
+      context.on(speechInputUserSpeakingChangedEvent, ({ body }) => {
+        if (!body)
+          return
+        remoteUserSpeaking = body.speaking
+        recheckWaiters()
+      }),
+      context.on(chatComposerActivityChangedEvent, ({ body }) => {
+        if (!body)
+          return
+        composers.set(body.sourceId, { hasDraft: body.hasDraft, lastInputAtMs: body.lastInputAtMs, receivedAtMs: Date.now() })
+        recheckWaiters()
+      }),
+    ]
     return () => {
       for (const stop of stops)
         stop()
       remoteUserSpeaking = false
-      speakingTurns = []
       composers.clear()
     }
   }
 
   function userTyping(nowMs: number): boolean {
-    let typing = false
+    return typingEndsAtMs(nowMs) !== undefined
+  }
+
+  /**
+   * Returns the time at which the last composer that reports writing stops counting, or `undefined` when none does.
+   * A report counts until it expires; one without a draft counts only until its input is no longer recent.
+   */
+  function typingEndsAtMs(nowMs: number): number | undefined {
+    let endsAtMs: number | undefined
     for (const [sourceId, report] of composers) {
       if (nowMs - report.receivedAtMs > COMPOSER_REPORT_EXPIRY_MS) {
         composers.delete(sourceId)
         continue
       }
-      if (report.hasDraft || nowMs - report.lastInputAtMs < COMPOSER_INPUT_RECENT_MS)
-        typing = true
+      if (report.hasDraft || nowMs - report.lastInputAtMs < COMPOSER_INPUT_RECENT_MS) {
+        const expiresAtMs = report.receivedAtMs + COMPOSER_REPORT_EXPIRY_MS
+        const reportEndsAtMs = report.hasDraft ? expiresAtMs : Math.min(expiresAtMs, report.lastInputAtMs + COMPOSER_INPUT_RECENT_MS)
+        endsAtMs = Math.max(endsAtMs ?? reportEndsAtMs, reportEndsAtMs)
+      }
     }
-    return typing
+    return endsAtMs
+  }
+
+  /**
+   * Whether the user is mid-input in any window: speaking into the microphone, or writing in a chat composer (a draft
+   * that is not sent yet, or input within {@link COMPOSER_INPUT_RECENT_MS}). Reads `false` before {@link initialize}.
+   */
+  function userMidInput(nowMs = Date.now()): boolean {
+    return remoteUserSpeaking || userTyping(nowMs)
+  }
+
+  /**
+   * Resolves `true` once the user is no longer mid-input (see {@link userMidInput}), at once when they are not, and
+   * `false` when they still are after `timeoutMs`.
+   *
+   * Use when:
+   * - A forced turn skips the gate and must not start while the user speaks or writes, for example a widget reaction.
+   */
+  function untilUserIdle(timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      let recheckTimer: ReturnType<typeof setTimeout> | undefined
+      const deadline = setTimeout(finish, timeoutMs, false)
+      function recheck() {
+        clearTimeout(recheckTimer)
+        const nowMs = Date.now()
+        if (!userMidInput(nowMs)) {
+          finish(true)
+          return
+        }
+        // Writing ends with time alone, without another report; speaking ends only with a report.
+        const endsAtMs = typingEndsAtMs(nowMs)
+        if (endsAtMs !== undefined)
+          recheckTimer = setTimeout(recheck, Math.max(1, endsAtMs - nowMs))
+      }
+      function finish(idle: boolean) {
+        clearTimeout(recheckTimer)
+        clearTimeout(deadline)
+        userInputWaiters.delete(recheck)
+        resolve(idle)
+      }
+      userInputWaiters.add(recheck)
+      recheck()
+    })
   }
 
   /** Changes the gate memory and shows the change in the devtools Situation inspector at once. */
@@ -380,7 +457,7 @@ export const useSituationStore = defineStore('situation', () => {
     if (shouldRun && gateTicker === undefined) {
       setGateMemory(promotionGateMemory(Date.now()))
       wasStageShown = false
-      stopSignalListeners = startSignalListeners()
+      stopVoiceTurnListener = startVoiceTurnListener()
       gateTicker = setInterval(gateTick, GATE_INTERVAL_MS)
       stopGateEvaluation = observability.serveGateEvaluation(() => gateTick(true))
     }
@@ -389,8 +466,8 @@ export const useSituationStore = defineStore('situation', () => {
       gateTicker = undefined
       stopGateEvaluation?.()
       stopGateEvaluation = undefined
-      stopSignalListeners?.()
-      stopSignalListeners = undefined
+      stopVoiceTurnListener?.()
+      stopVoiceTurnListener = undefined
       setGateMemory(initialGateMemory)
     }
   }
@@ -534,17 +611,20 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   /**
-   * Binds the store to synchronized leadership. Repeated calls keep the first subscription. The listener runs
-   * immediately with the current role, so an initial leader starts at once.
+   * Binds the store to synchronized leadership and starts the user input listeners. Repeated calls keep the first
+   * subscription. The leadership listener runs immediately with the current role, so an initial leader starts at once.
    */
   function initialize(syncedPinia: SyncedPiniaRuntime) {
+    stopUserInputListeners ??= startUserInputListeners()
     stopLeadershipListener ??= syncedPinia.onLeadershipChange(isLeader => isLeader ? startLeading() : stopLeading())
   }
 
-  /** Stops the leadership subscription, the sensors, and the ticker of this window. */
+  /** Stops the leadership subscription, the user input listeners, the sensors, and the ticker of this window. */
   function dispose() {
     stopLeadershipListener?.()
     stopLeadershipListener = undefined
+    stopUserInputListeners?.()
+    stopUserInputListeners = undefined
     stopLeading()
   }
 
@@ -561,6 +641,8 @@ export const useSituationStore = defineStore('situation', () => {
     markAddressed,
     holdTopic,
     onNotifySpoken,
+    userMidInput,
+    untilUserIdle,
     observeChat,
     setStageVisible,
     setHostCapabilities,

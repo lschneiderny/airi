@@ -102,9 +102,10 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
    */
   const SPARK_NOTIFY_REACTION_TIMEOUT_MS = 30_000
   /**
-   * How long a forced reaction waits for the character to finish her current reply, speech included.
+   * How long a forced reaction waits for a quiet moment: the character has finished her current reply, speech included,
+   * and the user is neither speaking nor writing a message.
    *
-   * Tuning: past it the reaction gives up with its fallback instead of talking over her; keep it below
+   * Tuning: past it the reaction gives up with its fallback instead of talking over either of them; keep it below
    * {@link SPARK_NOTIFY_REACTION_TIMEOUT_MS}, so the turn still has time to generate.
    */
   const SPARK_NOTIFY_QUIET_WAIT_MS = 20_000
@@ -334,14 +335,31 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
   }
 
   /**
+   * Resolves `true` at a moment when the character is quiet (see {@link untilCharacterQuiet}) and the user is not
+   * mid-input, so a forced turn talks over neither of them. Resolves `false` when no such moment comes within
+   * `timeoutMs`. Her reply to a user who sends meanwhile opens a voice turn, so the wait checks her again after the
+   * user stops.
+   */
+  async function untilQuietMoment(timeoutMs: number): Promise<boolean> {
+    const deadlineAtMs = Date.now() + timeoutMs
+    while (await untilCharacterQuiet(deadlineAtMs - Date.now())) {
+      if (!situation.userMidInput())
+        return true
+      if (!await situation.untilUserIdle(deadlineAtMs - Date.now()))
+        return false
+    }
+    return false
+  }
+
+  /**
    * Answers one widget reaction request with a forced unprompted chat turn, so the reaction is spoken and stored like
    * any other reply, with the spoke-up cue in history.
    *
    * The notify becomes a situation observation first. The commands-only agent runs beside the turn when the notify is
    * addressed beyond the character; a caller that forces a spark command gets only that agent run and its fallback.
    * The turn's message id is `spark:<id>`, the streaming-control turn id that CALL handlers listen to. A forced turn
-   * skips the gate, so it first waits until the character is quiet and never talks over her reply to the user; a
-   * user send that comes later cancels it. Meanwhile the gate holds the notify topic, and the turn addresses it only
+   * skips the gate, so it first waits until the character is quiet and the user is neither speaking nor writing, and
+   * never talks over either of them; a user send during the wait goes first, and one that comes later cancels it. Meanwhile the gate holds the notify topic, and the turn addresses it only
    * once it speaks.
    *
    * Returns the spoken text with `spoken: true`, or the fallback text when the turn was declined, cancelled, failed,
@@ -389,7 +407,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
       // The headline is plugin input; one that is missing or blank leaves nothing to speak about.
       const note = observation.note ? `: ${observation.note}` : ''
       const topicText = options.messageOverride?.replaceUserMessage?.trim() || (observation.headline ? `${observation.headline}${note}` : '')
-      if (!topicText || !await untilCharacterQuiet(SPARK_NOTIFY_QUIET_WAIT_MS))
+      if (!topicText || !await untilQuietMoment(SPARK_NOTIFY_QUIET_WAIT_MS))
         return fallback
 
       const result = await chatOrchestrator.submitUnprompted({
