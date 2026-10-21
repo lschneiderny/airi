@@ -95,3 +95,53 @@ describe('stripsRecoveredCue', () => {
     expect(stripsRecoveredCue(special, raw)).toBe(false)
   })
 })
+
+describe('stripsRecoveredCue for DELAY durations, line-broken ACT cues and colon-form cues', () => {
+  it.each([
+    ['<|DELAY 1s|>', '[DELAY 1s]'],
+    ['<|DELAY 0|>', '[DELAY 0]'],
+    ['<|DELAY 2 seconds|>', '[DELAY 2 seconds]'],
+    ['<|DELAY 1.5s|>', '[DELAY 1.5s]'],
+    ['<|ACT\nhappy|>', '[ACT\nhappy]'],
+    ['<|ACT\r\nhappy|>', '[ACT\r\nhappy]'],
+    ['<|ACT\n2|>', '[ACT\n2]'],
+    ['<|ACT:{"emotion":"happy",}|>', '[ACT:{"emotion":"happy",}]'],
+    ['<|ACT: {"emotion":"calm"}|>', '[ACT: {"emotion":"calm"}]'],
+    ['<|ACT:|>', '[ACT:]'],
+    ['<|DELAY:|>', '[DELAY:]'],
+    ['<|DELAY:{"seconds":1}|>', '[DELAY:{"seconds":1}]'],
+    ['<|DELAY:1s|>', '[DELAY:1s]'],
+    ['<|DELAY:.5s|>', '[DELAY:.5s]'],
+    ['<|DELAY: 2 seconds|>', '[DELAY: 2 seconds]'],
+    ['<|DELAY:1|>', '[DELAY:1]'],
+    ['<|DELAY .5s|>', '[DELAY .5s]'],
+    ['<|DELAY .5|>', '[DELAY .5]'],
+  ])('strips the malformed cue %j written as %j', (special, raw) => {
+    expect(stripsRecoveredCue(special, raw)).toBe(true)
+  })
+
+  it.each([
+    ['<|ACT 2|>', '[ACT 2]'],
+    ['<|ACT 2 later|>', '[ACT 2 later]'],
+    ['<|ACT calm|>', '[ACT calm]'],
+    ['<|ACT:calm|>', '[ACT:calm]'],
+    ['<|DELAY soon|>', '[DELAY soon]'],
+    ['<|DELAY -1|>', '[DELAY -1]'],
+    ['<|DELAY 1s|>', '[delay 1s]'],
+    ['<|DELAY 1s|>', '[Delay 1s]'],
+    ['<|ACT\nhappy|>', '[act\nhappy]'],
+    ['<|ACT\nhappy|>', '[Act\nhappy]'],
+    ['<|DELAY 1|>', '[DELAY 1]'],
+    ['<|DELAY 1.5|>', '[DELAY 1.5]'],
+    ['<|ACT:Happy|>', '[ACT:Happy]'],
+    ['<|DELAY 1s|>', '<DELAY 1s>'],
+    ['<|DELAY:1s|>', '[delay:1s]'],
+    ['<|DELAY .5s|>', '[Delay .5s]'],
+    ['<|DELAY:soon|>', '[DELAY:soon]'],
+    ['<|ACT:2|>', '[ACT:2]'],
+    ['<|ACT .5|>', '[ACT .5]'],
+    ['<|DELAY .5s|>', '<DELAY .5s>'],
+  ])('does not strip %j written as %j', (special, raw) => {
+    expect(stripsRecoveredCue(special, raw)).toBe(false)
+  })
+})
