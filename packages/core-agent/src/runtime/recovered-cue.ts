@@ -49,14 +49,25 @@ export function acceptsRecoveredCue(special: string, raw: string): boolean {
  * - `special` is the canonical `<|NAME body|>` form and `raw` is the text the model wrote.
  *
  * Returns:
- * - `true` when `raw` names `ACT` or `DELAY` in upper case after `[`, its body is empty or starts with `{`, and the body
- *   is no valid payload, such as `[ACT {"emotion":"happy",}]` or `[ACT]`. Prose does not take that shape.
- * - `false` otherwise. Prose such as "[Act 2]" or "[ACT calm]" stays spoken verbatim.
+ * - `true` when `raw` names `ACT` or `DELAY` in upper case after `[`, the body is no valid payload, and the cue has
+ *   one of these marker shapes. Prose does not take them.
+ *   - The body is empty or starts with `{`, directly or after a `:` right behind the name, such as
+ *     `[ACT {"emotion":"happy",}]`, `[ACT]`, `[ACT:{"emotion":"happy",}]` or `[DELAY:]`.
+ *   - A `DELAY` body starts with a digit, such as `[DELAY 1s]`, `[DELAY 0]` or `[DELAY 2 seconds]`.
+ *   - A line break follows `ACT` directly, such as `[ACT\nhappy]`.
+ * - `false` otherwise. Prose such as "[Act 2]", "[ACT 2]" or "[ACT calm]" stays spoken verbatim.
  */
 export function stripsRecoveredCue(special: string, raw: string): boolean {
   const name = /^\[\|?(ACT|DELAY)/.exec(raw)?.[1]
   if (!name || performs(special))
     return false
-  const body = special.slice(`<|${name}`.length, -'|>'.length).trim()
-  return body === '' || body.startsWith('{')
+  if (/^\[\|?ACT[\r\n]/.test(raw))
+    return true
+  const rest = special.slice(`<|${name}`.length, -'|>'.length)
+  const colon = rest.startsWith(':')
+  const body = (colon ? rest.slice(1) : rest).trim()
+  if (body === '' || body.startsWith('{'))
+    return true
+  // A digit-led ACT body stays spoken, because "In [ACT 2] she leaves" is screenplay prose.
+  return !colon && name === 'DELAY' && /^\d/.test(body)
 }
