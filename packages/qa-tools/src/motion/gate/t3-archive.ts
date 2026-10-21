@@ -1,3 +1,6 @@
+import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
+import type { NaturalTrace } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
+
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -30,6 +33,13 @@ const ArchivedRunSchema = v.looseObject({
 
 /** The files a traced session contributes to scoring and to the session-header and trace-identity checks. */
 export const t3SessionArtifacts = ['scenario.json', 'trace.json', 'bridge.json', 'verification.json'] as const
+
+/** Scoring must use the posture home requested by the scenario, including its default. */
+export function assertT3TraceHome(scenario: Pick<MotionScenario, 'id' | 'home'>, trace: Pick<NaturalTrace, 'meta'>): void {
+  const expected = scenario.home ?? 'desk'
+  if (trace.meta.home !== expected)
+    throw new Error(`archive invariant "posture-home": scenario ${scenario.id} requested ${expected}, but trace.meta.home is ${trace.meta.home}`)
+}
 
 function recordedArtifacts(dir: string): Map<string, string> {
   const manifestPath = join(dir, 'run.json')
@@ -77,12 +87,21 @@ export function verifyT3Archive(sourceDir: string, repoRoot: string): string[] {
   if (!archived.success)
     throw new ArchiveDigestError(`${join(sourceDir, 'report.json')} lists no sessions or T1 reference to verify`)
   covered.push(...verifyRecordedArtifacts(join(repoRoot, '.temp', 'qa', archived.output.t1Reference.runId), ['report.json']))
+  const tracedSessions: string[] = []
   for (const session of archived.output.sessions) {
     if (!session.runDir)
       continue
     const traced = recordedArtifacts(session.runDir).has('trace.json') || existsSync(join(session.runDir, 'trace.json'))
-    if (traced)
+    if (traced) {
       covered.push(...verifyRecordedArtifacts(session.runDir, t3SessionArtifacts))
+      tracedSessions.push(session.runDir)
+    }
+  }
+  // Semantic checks follow all digest checks, so no unverified scoring input is parsed.
+  for (const dir of tracedSessions) {
+    const scenario = JSON.parse(readFileSync(join(dir, 'scenario.json'), 'utf8')) as MotionScenario
+    const trace = JSON.parse(readFileSync(join(dir, 'trace.json'), 'utf8')) as NaturalTrace
+    assertT3TraceHome(scenario, trace)
   }
   return covered
 }

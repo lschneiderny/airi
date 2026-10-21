@@ -33,7 +33,7 @@ import { aggregateLiveliness, formatSummary, hashPartials, seal } from './aggreg
 import { cellPartialName, livelinessGateFor, livelinessPartialName, nullPartialName } from './options'
 import { writePartial } from './partials'
 import { currentReportSchema, parseGateReport } from './report'
-import { verifyT3Archive } from './t3-archive'
+import { assertT3TraceHome, verifyT3Archive } from './t3-archive'
 import { buildT3EmotionPlan, buildT3IdleScenario, t3PlanFromScenarios, t3ScenarioSettings, t3SessionHeaderMismatch, t3TraceMismatch } from './t3-scenario'
 import { measureT3Session, scoreT3Emotion } from './t3-score'
 import { trimWarmUp } from './trials'
@@ -269,6 +269,8 @@ function scoreEmotionSessions(run: RunHandle, outcomes: readonly SessionOutcome[
     throw new Error('[qa-tools] The T3 scenario settings are invalid')
   const settings = parsed.value
   const scored = outcomes.filter((outcome): outcome is SessionOutcome & { trace: NaturalTrace } => outcome.trace !== null)
+  for (const outcome of scored)
+    assertT3TraceHome(outcome.scenario, outcome.trace)
   // Each session is its own stratum: its trials meet only its own placebo windows (naturalEmotionT3Gate.placeboNull).
   const measures = scored.map(outcome => measureT3Session(outcome.trace, plan.sessions.find(session => session.scenario.id === outcome.scenario.id)!.pulses.map(pulse => pulse.trialId), emotionGate, settings, outcome.scenario.id))
   const records = measures.flatMap(measure => measure.records)
@@ -328,6 +330,8 @@ function scoreEmotionSessions(run: RunHandle, outcomes: readonly SessionOutcome[
 function scoreLivelinessSessions(run: RunHandle, outcomes: readonly SessionOutcome[], expected: number, fileSha: string): GateReport {
   const gate = livelinessGateFor('t3')
   const scored = outcomes.filter((outcome): outcome is SessionOutcome & { trace: NaturalTrace } => outcome.trace !== null)
+  for (const outcome of scored)
+    assertT3TraceHome(outcome.scenario, outcome.trace)
   scored.forEach((outcome, index) => {
     const partial: LivelinessPartial = { kind: 'liveliness-trace', seed: gate.seeds[index], trace: trimWarmUp(outcome.trace, gate.warmUpSeconds) }
     writePartial(run.dir, livelinessPartialName(gate.seeds[index]), partial)

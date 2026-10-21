@@ -26,7 +26,7 @@ function writeArchive(root: string) {
   write(session, {
     'scenario.json': scenario,
     // The reviewer's round-4 targets: the stamped pulse time and the Natural hold side that folds signed checks.
-    'trace.json': { version: 2, t: [0, 1], events: [{ t: 44.0319, source: 'scenario', event: scenario.events[0] }, { t: 44.05, source: 'natural', event: { kind: 'hold', emotion: 'love', side: 1 } }] },
+    'trace.json': { version: 2, meta: { home: 'desk' }, t: [0, 1], events: [{ t: 44.0319, source: 'scenario', event: scenario.events[0] }, { t: 44.05, source: 'natural', event: { kind: 'hold', emotion: 'love', side: 1 } }] },
     'bridge.json': { rig: { name: 'forbooth' } },
     'verification.json': { ok: true, failures: [] },
   })
@@ -49,8 +49,8 @@ describe('verifyT3Archive', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  interface TraceFile { events: { t: number, event: { side?: number } }[] }
-  interface ManifestFile { artifacts: { path: string }[] }
+  interface TraceFile { meta: { home: string }, events: { t: number, event: { side?: number } }[] }
+  interface ManifestFile { artifacts: { path: string, sha256: string }[] }
   const editJson = <T>(file: string, edit: (value: T) => void) => {
     const value = JSON.parse(readFileSync(file, 'utf8')) as T
     edit(value)
@@ -76,6 +76,20 @@ describe('verifyT3Archive', () => {
       trace.events[1].event.side = -1
     })
     refuses('trace.json has sha256')
+  })
+
+  it.each([undefined, 'product'])('refuses a digest-valid trace with the wrong posture home (scenario home: %s)', (home) => {
+    editJson<{ home?: string }>(join(archive.session, 'scenario.json'), (scenario) => {
+      scenario.home = home
+    })
+    editJson<TraceFile>(join(archive.session, 'trace.json'), (trace) => {
+      trace.meta.home = home === undefined ? 'product' : 'desk'
+    })
+    editJson<ManifestFile>(join(archive.session, 'run.json'), (manifest) => {
+      for (const artifact of manifest.artifacts)
+        artifact.sha256 = sha256Buffer(readFileSync(join(archive.session, artifact.path)))
+    })
+    refuses('archive invariant "posture-home"')
   })
 
   it('refuses the reviewer\'s pulse stamped 1.5 s later', () => {
