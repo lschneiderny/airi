@@ -127,7 +127,8 @@ Worker routing note: in this environment some omo categories have routed to unav
 ### Parallel execution waves
 > Target 5-8 todos per wave. Fewer than 3 (except the final) means you under-split.
 - **Wave 0 (contracts, vocabulary first):** todo 1, then todos 2 and 3 in parallel. They touch different packages: 2 is stage-ui-live2d `natural-motion/`, 3 is stage-shared.
-- **Wave 1 (parallel, disjoint files):** todos 4 (stage-shared deciders), 5 (stage-ui-live2d `expression/hold.ts`), 6 (stage-ui-live2d `natural-motion/hold.ts`, `blink.ts`, `breath.ts`, `speech-emphasis.ts`), 7 (stage-ui-live2d `natural-motion/gestures.ts`), 8 (settings store, UI, i18n).
+- **Wave 1 (parallel, isolated lanes):** todos 4 (stage-shared deciders), 5 (stage-ui-live2d `expression/hold.ts`), 6 (stage-ui-live2d `natural-motion/hold.ts`, `blink.ts`, `breath.ts`, `speech-emphasis.ts`), 7 (stage-ui-live2d `natural-motion/gestures.ts`), 8 (settings store, UI, i18n).
+  - Execution ownership correction: todos 6 and 7 both edit `natural-motion/emotions.ts`. Split todo 7 into independently verified units: 7a implements the gesture engine, tests, and any required `GestureKind` union addition, but does not populate table mappings; 7b populates the gesture mappings after the held-recipe changes from todo 6 and the verified 7a engine have landed. The initial five lanes remain parallel, with only the final gesture-table mapping stage serialized. Root alone integrates each verified unit.
 - **Wave 2 (integration, serial):** todo 9 (facade `natural-motion.ts`), then todo 10 (adapter, Model.vue, Live2D.vue, conductor).
 - **Wave 3 (docs + acceptance, parallel):** todos 11 and 12.
 - **Final wave:** F1-F4.
@@ -151,7 +152,7 @@ Worker routing note: in this environment some omo categories have routed to unav
 ## Todos
 > Implementation + Test = ONE todo. Never separate.
 <!-- APPEND TASK BATCHES BELOW THIS LINE WITH edit/apply_patch - never rewrite the headers above. -->
-- [ ] 1. Add the love, flustered, and sleepy emotions to every closed vocabulary
+- [x] 1. Add the love, flustered, and sleepy emotions to every closed vocabulary
   What to do:
   - Before editing, record the baseline suite results (see Verification strategy) to `task-0-baseline.txt`.
   - Add `Love = 'love'`, `Flustered = 'flustered'`, `Sleepy = 'sleepy'` to BOTH `Emotion` enums: `packages/stage-ui-live2d/src/constants/emotions.ts:1-11` and `packages/stage-ui/src/constants/emotions.ts:1-11`.
@@ -196,7 +197,7 @@ Worker routing note: in this environment some omo categories have routed to unav
   Commit: Y | feat(stage-shared): add love, flustered, and sleepy emotions
   Recommended task executor category: deep-low - mechanical but wide, with many exhaustive records; decisions are fully specified.
 
-- [ ] 2. Consolidate the per-emotion Natural tables into one typed module
+- [x] 2. Consolidate the per-emotion Natural tables into one typed module
   What to do:
   - Create `packages/stage-ui-live2d/src/composables/live2d/natural-motion/emotions.ts` exporting `naturalEmotions satisfies Record<PerformanceEmotion, NaturalEmotionSpec>`.
   - `NaturalEmotionSpec` = `{ impulse?: EmotionSpec (moved from impulses.ts:43-66), mood: readonly [number, number, number] (moved from mood.ts:5-15), held?: HeldSpec, gesture?: GestureKind }`.
@@ -225,7 +226,7 @@ Worker routing note: in this environment some omo categories have routed to unav
   Commit: Y | refactor(stage-ui-live2d): consolidate Natural emotion tables
   Recommended task executor category: deep-low - a contained refactor with strict no-behavior-change proof.
 
-- [ ] 3. Add the hold contract and held-emotion settings to stage-shared
+- [x] 3. Add the hold contract and held-emotion settings to stage-shared
   What to do:
   - In `packages/stage-shared/src/expression-performance/types.ts`:
     - Add `HoldCommand = { emotion: PerformanceEmotion | null, strength: number, holdSeconds: number, until: 'speech' | 'hold', turnId?: string }`; `emotion: null` releases the hold.
@@ -256,7 +257,7 @@ Worker routing note: in this environment some omo categories have routed to unav
   Commit: Y | feat(stage-shared): add emotion hold contract and held-emotion settings
   Recommended task executor category: deep-low - contract change with fixture fan-out inside one package.
 
-- [ ] 4. Emit holds from both deciders and derive emotions from explicit expressions
+- [x] 4. Emit holds from both deciders and derive emotions from explicit expressions
   What to do: in stage-shared, both picker and planner:
   - (a) **Emotion signal with an accepted episode:** push `{ emotion, strength: episode.intensity, holdSeconds, until, turnId }`. Turn-bound signals use `holdSeconds = settings.naturalBands[episode.band].faceHold` and `until: 'speech'`; turnless ones use `holdSeconds = settings.held.turnlessSeconds` and `until: 'hold'`. An escalation pushes a hold with the higher strength.
   - (b) **Neutral that resets reaction state:** push `{ emotion: null, strength: 0, holdSeconds: 0, until: 'hold', turnId }`.
@@ -267,6 +268,7 @@ Worker routing note: in this environment some omo categories have routed to unav
     - Push the episode, if any, and a hold whose `holdSeconds`/`until` equal the slot command's own (`selection.ts:107`), with the same turnId.
     - Do NOT run automatic picks, and keep the existing explicit slot command and occupant updates unchanged.
     - Entries without mappings behave exactly as today.
+    - When `heldEmotions` is false, mapped explicit expressions also keep the old slot-only behavior: do not mutate reaction state or emit a derived episode/hold. This preserves the global A/B contract in IS-8; direct emotion episodes still support the old impulse behavior.
   - Put the shared logic in one exported helper in `selection.ts` (`explicitExpressionReaction`) used by both deciders.
   - Add trace tests: (1) a recorded expression signal replays to the same episode and hold; (2) a replay of an emotion-only trace equals the live decisions, including holds.
   Must NOT do: change slot outputs for any existing scenario; read clocks or randomness outside the decider state; touch stage-ui.
@@ -295,7 +297,7 @@ Worker routing note: in this environment some omo categories have routed to unav
   Commit: Y | feat(stage-shared): decide emotion holds and derive emotions from expressions
   Recommended task executor category: deep-low - pure, well-specified decider logic with replay tests.
 
-- [ ] 5. Build the emotion hold performer with lease and manual sources
+- [x] 5. Build the emotion hold performer with lease and manual sources
   What to do:
   - Create `packages/stage-ui-live2d/src/composables/live2d/expression/hold.ts` exporting `class EmotionHoldPerformer`, with:
     - `applyHolds(commands: HoldCommand[], now)`: a null emotion releases; otherwise create a lease via `createLease` from `slots.ts`, carrying the emotion in `expressionId` as `emotion:<name>`, or generalize `SlotLease` with a type parameter without changing its existing behavior.
@@ -311,6 +313,7 @@ Worker routing note: in this environment some omo categories have routed to unav
     - holdCap bounds everything;
     - a newer hold replaces an older one;
     - manual overrides and then falls back to the lease when cleared;
+    - a hold created or replaced after clip-start adopts the active speech fact and lasts through that clip instead of expiring as unstarted;
     - invalid commands (non-finite holdSeconds, unknown until) are dropped with `console.warn`, mirroring `expression-store.ts:225-228`.
   Must NOT do: depend on the expression store or catalog; change `slots.ts` behavior (generalization only); touch Model.vue (todo 10 wires it).
   Closes: GAP-2 (performer side), GAP-3 (manual source)
@@ -328,7 +331,7 @@ Worker routing note: in this environment some omo categories have routed to unav
   Commit: Y | feat(stage-ui-live2d): add emotion hold performer
   Recommended task executor category: deep-low - small stateful class reusing existing lease functions.
 
-- [ ] 6. Build the Natural hold layer and the blink, breath, and nod scale hooks
+- [x] 6. Build the Natural hold layer and the blink, breath, and nod scale hooks
   What to do:
   - **New file** `packages/stage-ui-live2d/src/composables/live2d/natural-motion/hold.ts`, exporting `class NaturalHoldLayer` with:
     - `set(held: { emotion, strength } | null)`;
@@ -389,7 +392,7 @@ Worker routing note: in this environment some omo categories have routed to unav
   Commit: Y | feat(stage-ui-live2d): add Natural held-emotion layer and layer scale hooks
   Recommended task executor category: deep-low - numeric layer with exact specs and identity tests.
 
-- [ ] 7. Build the Natural gesture clips
+- [x] 7. Build the Natural gesture clips
   What to do:
   - Create `packages/stage-ui-live2d/src/composables/live2d/natural-motion/gestures.ts` with `class NaturalGestures(random: RandomStream)`:
     - `trigger(kind: GestureKind, strength, band, at): boolean`: false when on cooldown, when the band is slight, or when strength <= 0.
@@ -431,7 +434,7 @@ Worker routing note: in this environment some omo categories have routed to unav
   Commit: Y | feat(stage-ui-live2d): add Natural emotion gesture clips
   Recommended task executor category: deep-low - self-contained deterministic shape functions.
 
-- [ ] 8. Add per-model emotion strength settings and the held-emotions switch to the UI
+- [x] 8. Add per-model emotion strength settings and the held-emotions switch to the UI
   What to do:
   - In `packages/stage-ui-live2d/src/composables/live2d/live2d.ts`:
     - Add `live2dNaturalEmotionStrength = useLocalStorageManualReset<Record<string, Partial<Record<PerformanceEmotion, number>>>>('settings/live2d/natural-emotion-strength', {})`.
@@ -471,7 +474,7 @@ Worker routing note: in this environment some omo categories have routed to unav
   Commit: Y | feat(stage-ui): add per-model emotion strength and held-emotion switch
   Recommended task executor category: visual-engineering - settings UI with layout and i18n.
 
-- [ ] 9. Wire held emotions and gestures into the Natural facade
+- [x] 9. Wire held emotions and gestures into the Natural facade
   What to do, in `packages/stage-ui-live2d/src/composables/live2d/natural-motion.ts`:
   - Append `gestures: 12` to `streamIndex` (`:73`).
   - Construct `NaturalHoldLayer` (no stream) and `NaturalGestures(stream('gestures'))`.
@@ -504,7 +507,7 @@ Worker routing note: in this environment some omo categories have routed to unav
     - (c) New, `heldEmotions:true`:
       - a clear happy with a hold gives a held mean brow/eyeSmile/mouthForm offset of at least 50% of the recipe x 0.6 over the hold window;
       - body peak at clear is > 0 and < body peak at strong;
-      - after release, offsets return within 4 x releaseTau to < 1% of peak.
+      - after release, offsets return within 5 x releaseTau to < 1% of peak. Exact exponential decay leaves 1.83% after four time constants and 0.67% after five; preserve the specified release tau rather than adding a tail snap.
     - (d) Happy-to-sad switch: no frame-to-frame jump above the step bound.
     - (e) Pet during a held happy: eyeSmile is closer to the pet target than without the pet.
     - (f) A strength-0 emotion produces output identical to no emotion.
@@ -526,9 +529,10 @@ Worker routing note: in this environment some omo categories have routed to unav
   Commit: Y | feat(stage-ui-live2d): perform held emotions and gestures in Natural
   Recommended task executor category: deep-high - central composition with determinism invariants and several interacting rules.
 
-- [ ] 10. Plumb holds, preview, and strengths from the conductor to Natural
+- [x] 10. Plumb holds, preview, and strengths from the conductor to Natural
   What to do:
   - **Conductor** (`packages/stage-ui/src/composables/performance/use-stage-performance-conductor.ts`):
+    - Normalize the effective decider context's `heldEmotions` to false outside Natural without mutating the stored document. The existing conductor calls deciders for every driver, so this prevents expression-derived reaction state from changing later Universal/MAGIC slot decisions.
     - Add `applyHolds(commands: HoldCommand[], now: number)` to `StagePerformanceScene` (`:68-73`).
     - In `emotion()` (`:203-211`), `expression()` (`:231-233`), the clear path (`:236-...`), and `dispatch()` (`:428-434`), send `decision.holds` via `scene.applyHolds` when the driver is natural.
     - `expression()` must also dispatch `decision.episodes` to `scene.setEmotion` when the driver is natural; today it dispatches slots only.
@@ -544,13 +548,15 @@ Worker routing note: in this environment some omo categories have routed to unav
     - Clear the performer when the model unmounts or changes (where `pendingNaturalEmotions` is cleared, `:565`).
   - **Adapter** (`natural-motion-adapter.ts`):
     - Add `heldEmotion` and `emotionStrengths` to `Live2DNaturalMotionAttention` (`:36-49`).
-    - In `compose()` after `setPet` (`:299`), call `controller.setHeldEmotion(active ? attention.heldEmotion : null, this.time)` and `controller.setEmotionStrengths(attention.emotionStrengths)`.
+    - In `compose()`, call `controller.setEmotionStrengths(attention.emotionStrengths)` before any controller call that can advance time, including suspension/performance setters. Those setters can start an already queued episode, which must see the latest per-model strength.
+    - After `setPet` (`:299`), call `controller.setHeldEmotion(active ? attention.heldEmotion : null, this.time)`.
   - Tests:
     - Conductor node test (existing conductor test file):
       - an LLM `expression('Angry')` whose entry maps to angry dispatches one episode and one hold to a fake scene;
       - under the universal driver, holds are not dispatched;
+      - a mapped explicit expression followed by an emotion under Universal/MAGIC preserves the old slot-only reaction history and existing slot outputs;
       - a slotless clear dispatches a null hold.
-    - Adapter test: a held emotion is ignored while inactive.
+    - Adapter tests: a held emotion is ignored while inactive; an emotion queued on one frame and changed to per-model strength 0 before the next compose tick produces no impulse, gesture or mood dose. Compare actual output/state with a no-emotion control, not only setter call order.
     - Model-level browser test, if one exists for Model.vue wiring; otherwise a node test of the manual-hold selection helper, exported from a small pure function in `expression/hold.ts`: rest-set ids are excluded, and the latest toggle wins.
   Must NOT do: change expression-store semantics; dispatch holds for non-natural drivers; touch Universal/MAGIC paths.
   Closes: GAP-2, GAP-3 (runtime), IS-7 wiring
@@ -573,7 +579,7 @@ Worker routing note: in this environment some omo categories have routed to unav
   Commit: Y | feat(stage-ui): route emotion holds and expression emotions to Natural
   Recommended task executor category: deep-low - integration across known seams with fakes for tests.
 
-- [ ] 11. Write the ADR and update the READMEs
+- [x] 11. Write the ADR and update the READMEs
   What to do:
   - Create `docs/ai/adr/2026-10-19-natural-emotion-revamp.md`, following the format of `docs/ai/adr/2026-10-18-expression-performance.md`. Cover:
     - context (decoration-only stamps);
@@ -597,7 +603,7 @@ Worker routing note: in this environment some omo categories have routed to unav
   Commit: Y | docs(stage-ui-live2d): document held Natural emotions
   Recommended task executor category: writing - ADR and README prose.
 
-- [ ] 12. Run rendered acceptance on ForBOOTH and the regression sweep
+- [x] 12. Run rendered acceptance on ForBOOTH and the regression sweep (accepted partial by Luke 2026-10-19: rule 1 22/22, rules 2/3 noise-limited; see ledger)
   What to do:
   - **(a) Regression sweep** on the integration tip, run serially:
     - the four package suites;
@@ -610,7 +616,7 @@ Worker routing note: in this environment some omo categories have routed to unav
     - In the catalog editor, confirm these mappings and screenshot them: `expression1` (Angry) -> angry, kind effect, minBand strong; `expression2` (Crying Eyes) -> sad; `expression7` (Hearts 1) -> love; `脸红2` (Blush) -> flustered; `expression13` (Sleepy) -> sleepy; `expression5` (Star Eyes) -> happy, kind effect.
     - For EACH of the 11 non-neutral emotions at clear and at strong:
       - fire a lab pulse;
-      - capture a 6 s post-physics parameter trace at 30 Hz;
+      - capture a 7 s post-physics parameter trace at 30 Hz, including the required t = 6.4 s release sample;
       - take screenshots at t=0.5 s and t=3 s at the corner window size.
   - **Preregistered pass rules** (write them to `task-12-prereg.json` BEFORE capturing). For each emotion and band:
     - (1) Over t in [0.5 s, 3.5 s], every recipe channel with |value| >= 0.3 has a mean deviation from the pre-pulse 1 s baseline of the correct sign and at least 40% of the recipe x band nominal (clear 0.6, strong 0.9) x half-range.
@@ -645,16 +651,16 @@ Worker routing note: in this environment some omo categories have routed to unav
 
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
-- [ ] F1. Plan compliance audit
+- [x] F1. Plan compliance audit
   Read this plan and `git log a..b` on the integration branch. Every todo's Must/Must NOT items and acceptance commands are satisfied with receipts in `.omo/evidence/natural-emotion-revamp/`, and nothing outside scope changed. Check in particular: no non-English locale edits; no `package.json` or lockfile changes; no Kirie edits; stream indices 0-11 unchanged. Verdict APPROVE/REJECT with file:line evidence.
   Recommended task executor category: unspecified-high
-- [ ] F2. Code quality review
+- [x] F2. Code quality review
   Review the diff against `.agents/skills/enforce-rules-for-typescript/SKILL.md`, `enforce-rules-for-vitest`, `enforce-rules-for-unocss`, and the root `AGENTS.md`: kebab-case files, no `any`, no sleeps in tests, `// NOTICE:` on any workaround, and no unused exports. Re-run the four package suites and the package typechecks (serially).
   Recommended task executor category: unspecified-high
-- [ ] F3. Real manual QA
+- [x] F3. Real manual QA
   An independent agent repeats todo 12's preview, ACT, A/B, and rest-set checks plus 4 sampled emotion x band cells (angry strong, sad clear, love clear, sleepy strong) on ForBOOTH in a fresh isolated profile, and attaches screenshots. It does not reuse todo 12's captures.
   Recommended task executor category: unspecified-high
-- [ ] F4. Ideal-state fidelity
+- [x] F4. Ideal-state fidelity
   Check the delivered behavior against IS-1..IS-11 one row at a time, using the Success criteria table. Any IS row without passing evidence becomes a new `- [ ] N.` todo, never a note. Results are surfaced to Luke for his QA and explicit okay before completion.
   Recommended task executor category: unspecified-high
 
