@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { useLlmmarkerParser } from './llm-marker-parser'
-import { acceptsRecoveredCue } from './recovered-cue'
+import { acceptsRecoveredCue, stripsRecoveredCue } from './recovered-cue'
 
 describe('acceptsRecoveredCue', () => {
   // Wired like the chat runtime: a rejected recovered cue is spoken as the text the model wrote.
@@ -67,5 +67,31 @@ describe('acceptsRecoveredCue', () => {
 
   it('leaves native markers to the existing parsing', async () => {
     expect(await run('A <|ACT banana|> b')).toEqual({ literal: 'A  b', specials: ['<|ACT banana|>'], fullText: 'A <|ACT banana|> b', recovered: 0 })
+  })
+})
+
+describe('stripsRecoveredCue', () => {
+  it.each([
+    ['<|ACT {"emotion":"happy",}|>', '[ACT {"emotion":"happy",}]'],
+    ['<|ACT {"emotion":"calm"}|>', '[ACT {"emotion":"calm"}]'],
+    ['<|ACT {"emotion":"happy"|>', '[ACT {"emotion":"happy"]'],
+    ['<|ACT|>', '[ACT]'],
+    ['<|DELAY|>', '[DELAY]'],
+    ['<|DELAY {"seconds":1}|>', '[DELAY {"seconds":1}]'],
+  ])('strips the marker-shaped square-bracket cue %j that does not parse', (special, raw) => {
+    expect(stripsRecoveredCue(special, raw)).toBe(true)
+  })
+
+  it.each([
+    ['<|ACT 2|>', '[Act 2]'],
+    ['<|ACT calm|>', '[ACT calm]'],
+    ['<|ACT {"emotion":"calm"}|>', '[Act {"emotion":"calm"}]'],
+    ['<|ACT|>', '[act]'],
+    ['<|ACT happy|>', '[ACT happy]'],
+    ['<|ACT {"emotion":"happy"}|>', '[ACT {"emotion":"happy"}]'],
+    ['<|DELAY 1|>', '[DELAY 1]'],
+    ['<|ACT {"emotion":"happy",}|>', '<ACT {"emotion":"happy",}>'],
+  ])('does not strip %j written as %j', (special, raw) => {
+    expect(stripsRecoveredCue(special, raw)).toBe(false)
   })
 })

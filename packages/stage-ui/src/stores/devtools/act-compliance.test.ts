@@ -14,7 +14,7 @@ import {
 const T0 = Date.UTC(2026, 9, 20, 9, 0, 0)
 
 function cueStats(overrides: Partial<ChatTurnCueStats> = {}): ChatTurnCueStats {
-  return { act: 0, recovered: 0, origin: 'user', declined: false, ...overrides }
+  return { act: 0, recovered: 0, rejected: 0, origin: 'user', declined: false, ...overrides }
 }
 
 describe('act compliance store', () => {

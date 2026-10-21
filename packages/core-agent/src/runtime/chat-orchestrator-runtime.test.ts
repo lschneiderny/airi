@@ -2297,6 +2297,33 @@ describe('unprompted turns', () => {
     expect(saved?.role === 'assistant' && saved.categorization?.speech).toBe('We start [Act 2] now  ok')
   })
 
+  it.each([
+    ['[ACT {"emotion":"happy",}] Hi'],
+    ['[ACT] Hi'],
+  ])('strips the marker-shaped near-miss in %j whose body is not a valid cue', async (reply) => {
+    const harness = createHarness()
+    const literals: string[] = []
+    const specials: string[] = []
+    harness.runtime.hooks.onTokenLiteral(async (text) => {
+      literals.push(text)
+    })
+    harness.runtime.hooks.onTokenSpecial(async (text) => {
+      specials.push(text)
+    })
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      await options?.onStreamEvent?.({ type: 'text-delta', text: reply })
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest('Hi', { model: 'test', chatProvider: provider })
+
+    // The stored speech is categorized from the parser's end text, so it shows whether the marker left that text too.
+    const saved = harness.sessionMessages['session-1'].at(-1)
+    expect(specials).toEqual([])
+    expect(literals.join('')).toBe(' Hi')
+    expect(saved?.role === 'assistant' && saved.categorization?.speech).toBe(' Hi')
+  })
+
   it('keeps a near-miss cue inside reasoning as reasoning text at every chunk split', async () => {
     const reply = '<think>Maybe I should use [ACT happy] or <|ACT sad|> here.</think>Hello there [ACT curious] bye'
     const closeTag = reply.indexOf('</think>')
@@ -2759,6 +2786,10 @@ describe('cue stats of a turn', () => {
     ['a near-miss inside reasoning', ['<think>maybe [ACT happy]</think>', 'Hi'], { act: 0, recovered: 0 }],
     // Prose that looks like a cue stays speech, because `2` is not a valid ACT body. It counts as neither ACT nor recovered.
     ['prose that reads as a cue', ['In [Act 2] the hero returns.'], { act: 0, recovered: 0 }],
+    // A marker-shaped body that is no valid cue is stripped from speech. It counts as rejected, not as ACT or recovered.
+    ['a marker-shaped ACT that does not parse', ['[ACT {"emotion":"happy",}] Hi'], { act: 0, recovered: 0, rejected: 1 }],
+    ['an empty ACT near-miss', ['[ACT] Hi'], { act: 0, recovered: 0, rejected: 1 }],
+    ['an empty DELAY near-miss', ['[DELAY] Hi'], { act: 0, recovered: 0, rejected: 1 }],
   ])('counts %s', async (_name, chunks, expected) => {
     const harness = createHarness()
     const seen = recordCueStats(harness)
@@ -2767,7 +2798,7 @@ describe('cue stats of a turn', () => {
     await harness.runtime.ingest('Hi', { model: 'test', chatProvider: provider }, 'session-1')
 
     expect(seen.filter(entry => entry.hook === 'stream-end')).toEqual([
-      { hook: 'stream-end', cueStats: { ...expected, origin: 'user', declined: false } },
+      { hook: 'stream-end', cueStats: { rejected: 0, ...expected, origin: 'user', declined: false } },
     ])
   })
 
@@ -2783,8 +2814,8 @@ describe('cue stats of a turn', () => {
     expect(seen).toEqual([
       { hook: 'token-special', cueStats: undefined },
       { hook: 'token-special', cueStats: undefined },
-      { hook: 'stream-end', cueStats: { act: 2, recovered: 1, origin: 'user', declined: false } },
-      { hook: 'stream-end', cueStats: { act: 0, recovered: 0, origin: 'user', declined: false } },
+      { hook: 'stream-end', cueStats: { act: 2, recovered: 1, rejected: 0, origin: 'user', declined: false } },
+      { hook: 'stream-end', cueStats: { act: 0, recovered: 0, rejected: 0, origin: 'user', declined: false } },
     ])
   })
 
@@ -2797,7 +2828,7 @@ describe('cue stats of a turn', () => {
 
     expect(harness.settled).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', status: 'declined' }])
     expect(seen).toEqual([
-      { hook: 'stream-end', cueStats: { act: 1, recovered: 1, origin: 'unprompted', declined: true } },
+      { hook: 'stream-end', cueStats: { act: 1, recovered: 1, rejected: 0, origin: 'unprompted', declined: true } },
     ])
   })
 
@@ -2809,7 +2840,7 @@ describe('cue stats of a turn', () => {
     await harness.runtime.ingest('(No one spoke to you.)', { model: 'test', chatProvider: provider, origin: 'unprompted', messageId: 'trigger-1' }, 'session-1')
 
     expect(seen.filter(entry => entry.hook === 'stream-end')).toEqual([
-      { hook: 'stream-end', cueStats: { act: 1, recovered: 0, origin: 'unprompted', declined: false } },
+      { hook: 'stream-end', cueStats: { act: 1, recovered: 0, rejected: 0, origin: 'unprompted', declined: false } },
     ])
   })
 })
