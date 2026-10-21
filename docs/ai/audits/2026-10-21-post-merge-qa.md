@@ -18,7 +18,7 @@ Severity: High means users of a shipped surface lose a feature. Medium means a w
 
 | ID | Severity | Finding | Evidence | Fix |
 | --- | --- | --- | --- | --- |
-| H1 | High | A packaged desktop build drops koffi's runtime code, so Windows foreground sensing is silently `null` in installed builds. | `apps/stage-tamagotchi/electron-builder.config.ts:100` excludes every dependency `src` directory. Both koffi entries (`index.js`, `index.cjs`) re-export `./src/koffi/*`. `debug` and `superjson` already need re-includes at `:101-102` for the same reason. | Re-include `**/node_modules/koffi/**/*` next to the existing re-includes. Verify with an unpacked build that `app.asar` contains `koffi/src`. |
+| H1 | High (withdrawn) | Suspected: a packaged desktop build drops koffi's runtime code, so Windows foreground sensing is silently `null` in installed builds. Packaging disproved this (see Resolution). | `apps/stage-tamagotchi/electron-builder.config.ts:100` excludes every dependency `src` directory. Both koffi entries (`index.js`, `index.cjs`) re-export `./src/koffi/*`. `debug` and `superjson` already need re-includes at `:101-102` for the same reason. | Re-include `**/node_modules/koffi/**/*` next to the existing re-includes. Verify with an unpacked build that `app.asar` contains `koffi/src`. |
 | M1 | Medium | Settings pages and tests remain for the providers that `a2d14ad7c` removed from the app catalog. Opening those routes throws `Provider definition for <id> not found`. | 5 stage-pages browser failures (`minimax-speech.browser.test.ts` ×3, `provider-config-persistence.browser.test.ts` Comet ×2) and 18 unhandled errors. `packages/stage-ui/src/libs/providers/providers/index.ts` filters these IDs out. | Remove the orphan pages and tests for removed provider IDs, or move the Comet persistence cases to a retained provider. |
 | M2 | Medium | Kirie exposes the Presence settings page, but Kirie never starts the situation runtime. Its toggles do nothing. | `apps/stage-tamagotchi-kirie/kirie.config.ts:147-158` lacks the `**/settings/presence/**` exclusion that the web and Pocket configs have. The page sets `settingsEntry: true`. | Add the exclusion. |
 | M3 | Medium | The Windows UnoCSS scan globs still match zero files in the stage-tamagotchi and stage-pages browser test configs (stage-ui was fixed earlier). | `apps/stage-tamagotchi/vitest.config.ts:34-38` and `packages/stage-pages/vitest.config.ts:28-31` build absolute globs from `import.meta.dirname` (0 matches vs 99/145 matches relative). Probable symptoms: `chat-danmaku-feed-menu.browser.test.ts` fails deterministically (the switch never becomes stable), and the new Presence narrow-width test failed once in the full run (378 > 360) but passes in isolation. | Use package-root-relative globs as `packages/stage-ui/vitest.config.ts:45-49` does. Rerun both suites. |
@@ -42,18 +42,29 @@ Severity: High means users of a shipped surface lose a feature. Medium means a w
 
 ## Resolution
 
+The fixes landed on `main` through `luke/fix/post-merge-qa` and were verified at the final tree with `pnpm verify` (typecheck 55/55, lint 0 errors, related tests passing) and a full serial rerun of every `test:run` suite.
+
 | ID | Status | Commit | Verification |
 | --- | --- | --- | --- |
-| H1 | open | | |
-| M1 | open | | |
-| M2 | open | | |
-| M3 | open | | |
-| M4 | open | | |
-| M5 | open | | |
-| L1 | open | | |
-| L2 | open | | |
-| L3 | open | | |
-| L4 | open | | |
-| L5 | open | | |
-| L6 | open | | |
-| L7 | open | | |
+| H1 | false positive | none | Unpacked `electron-builder --dir --win --x64` builds with and without the re-include both package `node_modules/koffi/src/**`. Each loads koffi from `app.asar` under `ELECTRON_RUN_AS_NODE` and calls `user32!GetForegroundWindow` (`KOFFI_OK version=3.3.3 hwnd=true`). The static file-matcher probe was wrong, so no change shipped. |
+| M1 | fixed | `898455bd5` | Nine orphan pages and the MiniMax test are removed. The two Comet-only #2449 cases are removed, and the three OpenAI-compatible #2449 cases remain. Full stage-pages run: 14 files, 44 tests, 0 failures, no `Provider definition ... not found` errors. |
+| M2 | fixed | `fdd3f8229` | `kirie build web`: the bundle contains `/settings/presence` once without the exclusion and zero times with it. The control route `/settings/airi-card` is present in both builds. |
+| M3 | fixed | `c44e75fc1`, `801ff9b19` | Danmaku test: fails before (timeout), passes after (2/2). Full Electron browser project: 171/171. The Presence overflow came from the test fixture missing the Tailwind reset that the hosts load (content-box textareas measured 380 px). Two full stage-pages runs pass. |
+| M4 | fixed | `25ee5a9fd` | Kirie browser project now collects the test: 3 files, 8 tests pass. |
+| M5 | fixed | `337899d3a` | `eslint pnpm-workspace.yaml` exits 0. Before the change it reported 2 errors. The lockfile is unchanged. |
+| L1 | fixed | `63ae1320d` | `git status` no longer lists `.omo/ulw-loop/`. |
+| L2 | fixed | `521eb49af` | Repository search finds no consumer; dynamic keys only use `bands.*` and `names.*`. |
+| L3 | fixed | `8eb11a17f` | Package typecheck exits 0, and the test passes 5/5. |
+| L4 | fixed | `0091856a9` | The lab browser test passes 9/9 twice, with subscribe-before-click waits. |
+| L5 | fixed | `d3104d529` | Each corrected sentence cites its source line (`.omo/evidence/post-merge-qa/l5-l6.txt`). |
+| L6 | fixed | `d3104d529` | A pointer section is appended to `ui-components.md`. |
+| L7 | fixed | `0eaaad756` | The scratch files are deleted and the plans are committed. |
+
+Final test state compared with the baseline:
+
+- Electron browser project: 171/171 (baseline: 1 failure, the danmaku menu).
+- stage-pages: 44/44 in 14 files (baseline: 6 failures and 18 unhandled errors).
+- Kirie: 40/40 in 13 files, now including the model settings runtime test.
+- Live2D browser: 25/25. stage-web was not rerun: its single test passed at baseline, and no change touches stage-web.
+- Root Vitest: the same 23 pre-existing failures as the baseline, none new.
+- stage-ui: the 24 registered Node 26 `localStorage` failures, plus one `airi-card-sync.browser.test.ts` failure in the full run. That test passes 14/14 twice in isolation, and earlier notes record it as flaky under machine load. No change touches it.
