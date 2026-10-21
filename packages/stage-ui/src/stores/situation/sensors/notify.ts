@@ -45,12 +45,14 @@ export function notifyObservationFrom(event: WebSocketEventOf<'spark:notify'>, n
  * Folds one `spark:notify` event into the leader's situation. The opportunity gate then decides whether the
  * character speaks about it. Any other window forwards the observation to the leader on the speech bus, so a notify
  * that only a follower received (the devtools simulator runs in the settings window) still reaches the situation.
+ * Returns the observation, whose topic key names the notify in every window.
  */
-export function ingestSparkNotify(event: WebSocketEventOf<'spark:notify'>) {
+export function ingestSparkNotify(event: WebSocketEventOf<'spark:notify'>): NotifyObservation {
   const situation = useSituationStore()
   const observation = notifyObservationFrom(event, Date.now())
   if (situation.leading)
     situation.ingest(observation)
   else
     getSpeechBusContext().emit(situationNotifyObservedEvent, observation)
+  return observation
 }

@@ -1,7 +1,9 @@
 import type { SparkNotifyResponseControl } from '@proj-airi/core-agent/agents/spark-notify'
 import type { WebSocketBaseEvent, WebSocketEventOf, WebSocketEvents } from '@proj-airi/server-sdk'
+import type { NotifyObservation } from '@proj-airi/stage-shared/situation'
 
 import { createSparkNotifyAgent } from '@proj-airi/core-agent/agents/spark-notify'
+import { notifyTopicKey } from '@proj-airi/stage-shared/situation'
 import { defineStore, storeToRefs } from 'pinia'
 import { ref } from 'vue'
 
@@ -13,6 +15,14 @@ import { useConsciousnessStore } from '../../modules/consciousness'
 import { ingestSparkNotify } from '../../situation/sensors/notify'
 
 export { sparkNotifyCommandSchema } from '@proj-airi/core-agent/agents/spark-notify'
+
+/**
+ * How many notify ids each window remembers by topic key.
+ *
+ * Tuning: a reaction that the gate starts names only its notify topic, and each window looks the notify id up here.
+ * Raise it if many notifications arrive before she speaks about an older one.
+ */
+const SPARK_NOTIFY_IDS_MAX = 256
 
 export const useCharacterOrchestratorStore = defineStore('character-orchestrator', () => {
   const { stream } = useLLM()
@@ -45,6 +55,9 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
     maxAttempts: 3,
   })
 
+  /** The `data.id` of every notify this window handled, by its topic key, oldest first. */
+  const sparkNotifyIds = new Map<string, string>()
+
   let tickTimer: ReturnType<typeof setInterval> | undefined
   let initialized = false
   const eventUnsubscribes: Array<() => void> = []
@@ -67,6 +80,27 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
       ),
     },
   })
+
+  function rememberSparkNotifyId(event: WebSocketEventOf<'spark:notify'>, observation: NotifyObservation) {
+    const id: unknown = event.data?.id
+    if (typeof id !== 'string' || !id || !observation.eventId)
+      return
+    sparkNotifyIds.set(notifyTopicKey(observation.sourceKey, observation.eventId), id)
+    const oldest = sparkNotifyIds.size > SPARK_NOTIFY_IDS_MAX ? sparkNotifyIds.keys().next().value : undefined
+    if (oldest !== undefined)
+      sparkNotifyIds.delete(oldest)
+  }
+
+  /**
+   * Returns the `data.id` of the notify behind a notify topic key, when this window handled that notify.
+   *
+   * Use when:
+   * - A spoken reaction names only its topic, for example one that the gate started in the leader, and the devtools
+   *   reactions list of this window keys reactions by notify id.
+   */
+  function sparkNotifyIdOf(topicKey: string): string | undefined {
+    return sparkNotifyIds.get(topicKey)
+  }
 
   /** Whether a notify is addressed to any module besides the character, which only the commands-only agent serves. */
   function hasModuleDestinations(event: WebSocketEventOf<'spark:notify'>) {
@@ -162,14 +196,15 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
   }
 
   /**
-   * Handles one `spark:notify`: it always becomes a situation observation, and the gate decides whether the character
-   * speaks about it. Only a notify with destinations beyond `'character'` also runs the commands-only agent, at once
-   * when it is immediate and the agent is idle, otherwise through the queue. Returns the agent result of an immediate
-   * run, or `undefined`.
+   * Handles one `spark:notify`: it always becomes a situation observation, synchronously before the first await, and
+   * the gate (or a widget reaction's forced turn) decides whether the character speaks about it. Only a notify with
+   * destinations beyond `'character'`, or one whose caller forces a spark command, also runs the commands-only agent,
+   * at once when it is immediate and the agent is idle, otherwise through the queue. Returns the agent result of an
+   * immediate run, or `undefined`.
    */
   async function handleIncomingSparkNotify(event: WebSocketEventOf<'spark:notify'>, control?: SparkNotifyResponseControl) {
-    ingestSparkNotify(event)
-    if (!hasModuleDestinations(event))
+    rememberSparkNotifyId(event, ingestSparkNotify(event))
+    if (!hasModuleDestinations(event) && !control?.forceSparkCommandResponse)
       return undefined
 
     if (event.data.urgency === 'immediate' && !processing.value) {
@@ -178,21 +213,6 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
 
     enqueueSparkNotify(event, { reason: 'spark:notify', control })
     return undefined
-  }
-
-  async function handleSparkNotifyWithReaction(
-    event: WebSocketEventOf<'spark:notify'>,
-    options?: SparkNotifyResponseControl & { fallbackText?: string },
-  ) {
-    await handleIncomingSparkNotify(event, options)
-
-    const reaction = [...characterStore.reactions]
-      .reverse()
-      .find(item => item.sourceEventId === event.data.id)
-      ?.message
-      ?.trim()
-
-    return reaction || options?.fallbackText || ''
   }
 
   function enqueueDueTasks(now: number) {
@@ -221,7 +241,7 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
       }
 
       // A reminder is for the character only, so it is an observation and never an agent run.
-      ingestSparkNotify(event)
+      rememberSparkNotifyId(event, ingestSparkNotify(event))
       notebookStore.markTaskNotified(task.id, now + attentionConfig.value.requeueDelayMs)
     }
   }
@@ -334,7 +354,7 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
     dispose,
 
     handleSparkNotify: handleIncomingSparkNotify,
-    handleSparkNotifyWithReaction,
     handleSparkEmit,
+    sparkNotifyIdOf,
   }
 })

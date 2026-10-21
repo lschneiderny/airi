@@ -8,6 +8,7 @@ import type { SparkNotifyPerformanceResult, SparkNotifyReactionOptions } from '.
 import { errorMessageFrom } from '@moeru/std'
 import { encodeBase64 } from '@moeru/std/base64'
 import { isStageTamagotchi, isStageWeb } from '@proj-airi/stage-shared'
+import { notifyTopicKey } from '@proj-airi/stage-shared/situation'
 import { useBroadcastChannel } from '@vueuse/core'
 import { Mutex } from 'es-toolkit'
 import { nanoid } from 'nanoid'
@@ -15,17 +16,19 @@ import { defineStore, storeToRefs } from 'pinia'
 import { computed, ref, shallowReactive, toRaw, watch } from 'vue'
 
 import { ChatAssetTooLargeError, chatEventAttachmentsOf, MAX_CHAT_ASSET_BYTES, readChatAsset } from '../../../libs/chat-assets'
-import { getSpeechBusContext, voiceGenerationEnded } from '../../../services/speech/bus'
+import { getSpeechBusContext, voiceGenerationEnded, voiceRequestTurns, voiceTurnsChanged } from '../../../services/speech/bus'
 import { getEventSourceKey, getMetadataSourceLabel } from '../../../utils/event-source'
 import { useLlmStreamingControlStore } from '../../ai/chat-llm/streaming-control'
-import { useCharacterOrchestratorStore } from '../../character'
+import { useCharacterOrchestratorStore, useCharacterStore } from '../../character'
 import { useChatStore } from '../../chat'
 import { useChatSessionStore } from '../../chat/session-store'
 import { useChatStreamStore } from '../../chat/stream-store'
 import { useContextObservabilityStore } from '../../devtools/context-observability'
 import { useConsciousnessStore } from '../../modules/consciousness'
+import { useSituationStore } from '../../situation'
 import { ingestContextMessage } from '../../situation/sensors/context'
 import { startMinecraftSensor } from '../../situation/sensors/minecraft'
+import { notifyObservationFrom } from '../../situation/sensors/notify'
 import { useModsServerChannelStore } from './channel-server'
 import { createContextChannel } from './context-channel'
 
@@ -57,10 +60,21 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
   const serverChannelStore = useModsServerChannelStore()
   const contextObservability = useContextObservabilityStore()
   const characterOrchestratorStore = useCharacterOrchestratorStore()
+  const characterStore = useCharacterStore()
+  const situation = useSituationStore()
   const consciousnessStore = useConsciousnessStore()
   const { activeProvider, activeModel, activeTemperature, activeTopP } = storeToRefs(consciousnessStore)
   const streamingControl = useLlmStreamingControlStore()
 
+  /**
+   * A notify reaction that she spoke. `id` is the notify's `data.id` when the speaking window knows it; a window that
+   * receives a reaction without one looks it up by `topicKey` among the notifies it handled.
+   */
+  interface SpokenSparkNotifyReaction {
+    topicKey: string
+    id?: string
+    text: string
+  }
   type SparkNotifyBridgeMessage
     = | {
       type: 'request'
@@ -79,7 +93,24 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
       reaction: string
       performance?: SparkNotifyPerformanceResult
     }
+    | ({ type: 'reaction' } & SpokenSparkNotifyReaction)
   const SPARK_NOTIFY_BRIDGE_CHANNEL_NAME = 'airi-spark-notify-bridge'
+  /**
+   * How long a widget waits for a reaction before it uses its fallback text.
+   *
+   * Tuning: a forced reaction turn waits in the session queue behind any running turn and its speech, then generates.
+   */
+  const SPARK_NOTIFY_REACTION_TIMEOUT_MS = 30_000
+  /**
+   * How long a forced reaction waits for a quiet moment: the character has finished her current reply, speech included,
+   * and the user is neither speaking nor writing a message.
+   *
+   * Tuning: past it the reaction gives up with its fallback instead of talking over either of them; keep it below
+   * {@link SPARK_NOTIFY_REACTION_TIMEOUT_MS}, so the turn still has time to generate.
+   */
+  const SPARK_NOTIFY_QUIET_WAIT_MS = 20_000
+  /** A window that hosts her voice answers a turns request at once; without an answer, nothing can be talked over. */
+  const VOICE_HOST_ANSWER_MS = 1_000
   const sparkNotifyBridgeInstanceId = `spark-notify-${nanoid()}`
   const sparkNotifyHostRole = ref<'main' | 'client'>('client')
   const sparkNotifyBridgeWaiters = new Map<string, {
@@ -87,6 +118,10 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
     timeout?: ReturnType<typeof setTimeout>
   }>()
   const { post: postSparkNotifyBridgeMessage, data: incomingSparkNotifyBridgeMessage } = useBroadcastChannel<SparkNotifyBridgeMessage, SparkNotifyBridgeMessage>({ name: SPARK_NOTIFY_BRIDGE_CHANNEL_NAME })
+  /** How many notify ids this window remembers as recorded, so a reaction that arrives twice is recorded once. */
+  const RECORDED_SPARK_NOTIFY_REACTIONS_MAX = 256
+  /** Notify ids whose spoken reaction this window recorded, oldest first. */
+  const recordedSparkNotifyReactions = new Set<string>()
 
   const disposeHookFns = ref<Array<() => void>>([])
   // Remote stream data belongs to this renderer only. Keeping its visibility
@@ -224,6 +259,35 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
     }
   }
 
+  /**
+   * Records one spoken notify reaction in this window's character store, which the devtools reactions list of this
+   * window reads. Each notify id is recorded once; a reaction whose notify this window cannot name is dropped.
+   */
+  function recordSpokenSparkNotifyReaction(reaction: SpokenSparkNotifyReaction) {
+    const id = reaction.id ?? characterOrchestratorStore.sparkNotifyIdOf(reaction.topicKey)
+    if (!id || recordedSparkNotifyReactions.has(id))
+      return
+    recordedSparkNotifyReactions.add(id)
+    const oldest = recordedSparkNotifyReactions.size > RECORDED_SPARK_NOTIFY_REACTIONS_MAX ? recordedSparkNotifyReactions.values().next().value : undefined
+    if (oldest !== undefined)
+      recordedSparkNotifyReactions.delete(oldest)
+    characterStore.recordSparkNotifyReaction(id, reaction.text)
+  }
+
+  /**
+   * Records a spoken notify reaction in this window and posts it to every other window. Character stores are not
+   * synced, and the notify may have reached only another window, for example the devtools simulator's.
+   */
+  function shareSpokenSparkNotifyReaction(reaction: SpokenSparkNotifyReaction) {
+    const id = reaction.id ?? characterOrchestratorStore.sparkNotifyIdOf(reaction.topicKey)
+    const shared: SpokenSparkNotifyReaction = id ? { ...reaction, id } : reaction
+    recordSpokenSparkNotifyReaction(shared)
+    postSparkNotifyBridgeMessage({ type: 'reaction', ...shared })
+  }
+
+  // Only the leader's gate fires, so only the leader shares the reactions it starts.
+  situation.onNotifySpoken(shareSpokenSparkNotifyReaction)
+
   function withStreamingCallPrompt(options: SparkNotifyReactionOptions, callPrompt: string): SparkNotifyReactionOptions {
     if (!callPrompt) {
       return options
@@ -241,7 +305,68 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
     }
   }
 
-  async function handleSparkNotifyReactionLocal(options: SparkNotifyReactionOptions, identity?: { id?: string, eventId?: string }) {
+  /**
+   * Resolves `true` once the character has no open voice response, which covers a reply that is still generating and
+   * one whose speech is still playing. Resolves `true` at once when no window answers for her voice, and `false` when
+   * she is still busy after `timeoutMs`.
+   */
+  function untilCharacterQuiet(timeoutMs: number): Promise<boolean> {
+    const bus = getSpeechBusContext()
+    return new Promise((resolve) => {
+      let answered = false
+      const stop = bus.on(voiceTurnsChanged, ({ body }) => {
+        answered = true
+        if (body?.length === 0)
+          finish(true)
+      })
+      const noHost = setTimeout(() => {
+        if (!answered)
+          finish(true)
+      }, VOICE_HOST_ANSWER_MS)
+      const deadline = setTimeout(finish, timeoutMs, false)
+      function finish(quiet: boolean) {
+        clearTimeout(noHost)
+        clearTimeout(deadline)
+        stop()
+        resolve(quiet)
+      }
+      bus.emit(voiceRequestTurns, undefined)
+    })
+  }
+
+  /**
+   * Resolves `true` at a moment when the character is quiet (see {@link untilCharacterQuiet}) and the user is not
+   * mid-input, so a forced turn talks over neither of them. Resolves `false` when no such moment comes within
+   * `timeoutMs`. Her reply to a user who sends meanwhile opens a voice turn, so the wait checks her again after the
+   * user stops.
+   */
+  async function untilQuietMoment(timeoutMs: number): Promise<boolean> {
+    const deadlineAtMs = Date.now() + timeoutMs
+    while (await untilCharacterQuiet(deadlineAtMs - Date.now())) {
+      if (!situation.userMidInput())
+        return true
+      if (!await situation.untilUserIdle(deadlineAtMs - Date.now()))
+        return false
+    }
+    return false
+  }
+
+  /**
+   * Answers one widget reaction request with a forced unprompted chat turn, so the reaction is spoken and stored like
+   * any other reply, with the spoke-up cue in history.
+   *
+   * The notify becomes a situation observation first. The commands-only agent runs beside the turn when the notify is
+   * addressed beyond the character; a caller that forces a spark command gets only that agent run and its fallback.
+   * The turn's message id is `spark:<id>`, the streaming-control turn id that CALL handlers listen to. A forced turn
+   * skips the gate, so it first waits until the character is quiet and the user is neither speaking nor writing, and
+   * never talks over either of them; a user send during the wait goes first, and one that comes later cancels it. Meanwhile the gate holds the notify topic, and the turn addresses it only
+   * once it speaks.
+   *
+   * Returns the spoken text with `spoken: true`, or the fallback text when the turn was declined, cancelled, failed,
+   * or found another unprompted turn pending.
+   */
+  async function performSparkNotifyReaction(options: SparkNotifyReactionOptions, identity?: { id?: string, eventId?: string }): Promise<{ spoken: boolean, reaction: string }> {
+    const fallback = { spoken: false, reaction: options.fallbackResponseText ?? '' }
     const event: WebSocketEventOf<'spark:notify'> = {
       type: 'spark:notify',
       source: options.source ?? 'plugin-module-host',
@@ -261,19 +386,55 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
       },
     }
 
+    const observation = notifyObservationFrom(event, Date.now())
+    const topicKey = notifyTopicKey(observation.sourceKey, observation.eventId)
+    let release: (() => void) | undefined
+
     try {
-      return await characterOrchestratorStore.handleSparkNotifyWithReaction(event, {
-        fallbackText: options.fallbackResponseText,
-        forceResponse: options.forceResponse,
-        forceTextResponse: options.forceTextResponse,
+      // The hold starts before the notify enters the situation, so no gate tick can raise it before the turn starts.
+      release = situation.holdTopic(topicKey)
+      // The orchestrator ingests the notify synchronously, then runs the commands-only agent when one is due.
+      const commands = characterOrchestratorStore.handleSparkNotify(event, {
         forceSparkCommandResponse: options.forceSparkCommandResponse,
         messageOverride: options.messageOverride,
       })
+      if (options.forceSparkCommandResponse) {
+        await commands
+        return fallback
+      }
+      void commands.catch(error => console.warn('[context-bridge] spark:notify commands failed', error))
+
+      // The headline is plugin input; one that is missing or blank leaves nothing to speak about.
+      const note = observation.note ? `: ${observation.note}` : ''
+      const topicText = options.messageOverride?.replaceUserMessage?.trim() || (observation.headline ? `${observation.headline}${note}` : '')
+      if (!topicText || !await untilQuietMoment(SPARK_NOTIFY_QUIET_WAIT_MS))
+        return fallback
+
+      const result = await chatOrchestrator.submitUnprompted({
+        force: true,
+        topicKey,
+        topicText,
+        messageId: `spark:${event.data.id}`,
+        supplement: options.messageOverride?.appendSystemInstructions?.join('\n\n'),
+      })
+      if (result.status !== 'spoken' || !result.text.trim())
+        return fallback
+
+      const reaction = result.text.trim()
+      shareSpokenSparkNotifyReaction({ topicKey, id: event.data.id, text: reaction })
+      return { spoken: true, reaction }
     }
     catch (error) {
       console.warn('[context-bridge] spark:notify handling failed; using fallback', error)
-      return options.fallbackResponseText
+      return fallback
     }
+    finally {
+      release?.()
+    }
+  }
+
+  async function handleSparkNotifyReactionLocal(options: SparkNotifyReactionOptions) {
+    return (await performSparkNotifyReaction(options)).reaction
   }
 
   function setSparkNotifyHostRole(role: 'main' | 'client') {
@@ -290,7 +451,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
       const timeout = setTimeout(() => {
         sparkNotifyBridgeWaiters.delete(requestId)
         resolve(options.fallbackResponseText)
-      }, 5000)
+      }, SPARK_NOTIFY_REACTION_TIMEOUT_MS)
 
       sparkNotifyBridgeWaiters.set(requestId, {
         resolve: ({ reaction }) => {
@@ -345,12 +506,15 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
       }
     })
 
-    reactionPromise = handleSparkNotifyReactionLocal(withStreamingCallPrompt(
+    reactionPromise = performSparkNotifyReaction(withStreamingCallPrompt(
       options,
       turn.renderManifestPrompt(),
     ), { id: sparkNotifyId })
-      .then((reaction) => {
+      .then(({ spoken, reaction }) => {
         latestReaction = reaction
+        // A spoken turn ends when its speech finishes. Nothing else ends the streaming turn of one that never spoke.
+        if (!spoken)
+          turn.complete()
         return reaction
       })
       .catch(() => {
@@ -391,7 +555,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
       const timeout = setTimeout(() => {
         sparkNotifyBridgeWaiters.delete(requestId)
         resolve(createFallbackPerformanceResult(options, 'timeout'))
-      }, Math.max(1, options.timeoutMs ?? 5000))
+      }, Math.max(1, options.timeoutMs ?? SPARK_NOTIFY_REACTION_TIMEOUT_MS))
 
       sparkNotifyBridgeWaiters.set(requestId, {
         resolve: async ({ reaction, performance }) => {
@@ -703,6 +867,13 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
               ...(performance ? { performance } : {}),
             })
           })
+          return
+        }
+
+        if (event.type === 'reaction') {
+          // Another window posted it; any page can post on this channel, so the fields are checked first.
+          if (typeof event.topicKey === 'string' && typeof event.text === 'string' && (event.id === undefined || typeof event.id === 'string'))
+            recordSpokenSparkNotifyReaction({ topicKey: event.topicKey, id: event.id, text: event.text })
           return
         }
 

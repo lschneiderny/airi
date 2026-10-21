@@ -79,7 +79,7 @@ export interface SparkNotifyReactionOptions
   /**
    * Maximum time to wait for a registered performance call after spark notify starts.
    *
-   * @default 5000
+   * @default 30000
    */
   timeoutMs?: number
 }

@@ -58,8 +58,8 @@ export const SWITCH_BURST_WINDOW_MS = 2 * MINUTE_MS
 export const LONG_SESSION_TIERS_MS: readonly number[] = Object.freeze([30 * MINUTE_MS, 60 * MINUTE_MS, 120 * MINUTE_MS, 180 * MINUTE_MS])
 
 /**
- * Minimum time away before the `went-away` event exists and before coming back emits `returned`, so a lock that
- * ends at once leaves no topic. Tuning: lower to react to short breaks.
+ * Minimum time away before the `went-away` event exists, before coming back emits `returned`, and before an unlock
+ * or resume emits `wake`, so a lock that ends at once leaves no topic. Tuning: lower to react to short breaks.
  */
 export const RETURNED_AFTER_AWAY_MS = 5 * MINUTE_MS
 
@@ -226,6 +226,8 @@ function applyPresence(draft: Draft, o: PresenceObservation, at: number): void {
   else if (o.state === 'here' || o.state === 'idle') {
     const awaySince = tracking.awaySinceMs
     tracking.awaySinceMs = null
+    if (awaySince !== null)
+      tracking.lastAwayMs = at - awaySince
     if (awaySince !== null && at - awaySince >= RETURNED_AFTER_AWAY_MS) {
       pushEvent(draft, makeEvent(
         'returned',
@@ -364,7 +366,13 @@ function applyObservation(draft: Draft, observation: Observation, now: number, o
     case 'presence':
       applyPresence(draft, observation, at)
       break
-    case 'wake':
+    case 'wake': {
+      // A wake ends the current away span, or the span that just ended when the return was reported first. A span
+      // shorter than the returned threshold (an instant lock) leaves no topic; a wake without a span to measure keeps it.
+      const tracking = draft.tracking
+      const awayMs = tracking.awaySinceMs !== null ? at - tracking.awaySinceMs : tracking.lastAwayMs
+      if (awayMs !== null && awayMs < RETURNED_AFTER_AWAY_MS)
+        break
       // The newest wake in the ring wins; an older wake must not replace it.
       if ((observation.cause === 'unlock' || observation.cause === 'resume') && !draft.events.some(event => event.topicKey === WAKE_TOPIC_KEY && event.atMs > at)) {
         pushEvent(draft, makeEvent(
@@ -376,6 +384,7 @@ function applyObservation(draft: Draft, observation: Observation, now: number, o
         ))
       }
       break
+    }
     case 'activity':
       applyActivity(draft, observation, at, new Set((options.selfAppIds ?? []).map(id => id.toLowerCase())))
       break

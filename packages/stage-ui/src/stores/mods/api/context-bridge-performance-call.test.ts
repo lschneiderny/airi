@@ -1,30 +1,29 @@
+import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../../chat'
+
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
+import { getSpeechBusContext, voiceRequestTurns, voiceTurnsChanged } from '../../../services/speech/bus'
 import { useLlmStreamingControlStore } from '../../ai/chat-llm/streaming-control'
 import { useContextBridgeStore } from './context-bridge'
 
-type SparkNotifyReactionMock = (event: {
-  data?: {
-    id?: string
-  }
-}, options?: unknown) => Promise<string>
-
-const handleSparkNotifyWithReaction = vi.fn<SparkNotifyReactionMock>(async () => 'reaction text')
-
-function getLastSparkEventId() {
-  return handleSparkNotifyWithReaction.mock.calls.at(-1)?.[0]?.data?.id
-}
+// The reaction is a forced unprompted chat turn; its reply text is the reaction.
+const submitUnprompted = vi.fn<(payload: ChatUnpromptedPayload) => Promise<ChatUnpromptedResult>>()
+/** Resolves with the message id of the next reaction turn. CALL specials of that chat turn carry it as turn id. */
+let submittedTurnId: PromiseWithResolvers<string>
 
 vi.mock('../../character', () => ({
   useCharacterOrchestratorStore: () => ({
-    handleSparkNotifyWithReaction,
+    handleSparkNotify: vi.fn(async () => undefined),
+  }),
+  useCharacterStore: () => ({
+    recordSparkNotifyReaction: vi.fn(),
   }),
 }))
 
 vi.mock('../../chat', () => ({
-  useChatStore: () => ({}),
+  useChatStore: () => ({ submitUnprompted }),
 }))
 
 vi.mock('../../chat/session-store', () => ({
@@ -64,9 +63,22 @@ vi.mock('./channel-server', () => ({
 }))
 
 describe('dispatchSparkNotifyPerformance', () => {
+  let stopVoiceHost: () => void
+
   beforeEach(() => {
     setActivePinia(createPinia())
-    handleSparkNotifyWithReaction.mockClear()
+    submittedTurnId = Promise.withResolvers<string>()
+    submitUnprompted.mockReset().mockImplementation(async (payload) => {
+      submittedTurnId.resolve(payload.messageId!)
+      return { status: 'spoken', text: 'reaction text' }
+    })
+    // The audio host reports a quiet character, so a forced reaction starts at once.
+    const bus = getSpeechBusContext()
+    stopVoiceHost = bus.on(voiceRequestTurns, () => bus.emit(voiceTurnsChanged, []))
+  })
+
+  afterEach(() => {
+    stopVoiceHost()
   })
 
   /**
@@ -99,12 +111,11 @@ describe('dispatchSparkNotifyPerformance', () => {
       timeoutMs: 1000,
     })
 
-    const sparkEventId = getLastSparkEventId()
-    expect(sparkEventId).toEqual(expect.any(String))
+    // The chat turn runs under the streaming-control turn id, so the CALL handlers receive its CALL specials.
+    const turnId = await submittedTurnId.promise
+    expect(turnId).toMatch(/^spark:/)
 
-    await streamingControl.dispatchWith('<|CALL ["plugin.action"]|>', {
-      turnId: `spark:${sparkEventId}`,
-    })
+    await streamingControl.dispatchWith('<|CALL ["plugin.action"]|>', { turnId })
 
     await expect(resultPromise).resolves.toEqual({
       type: 'called',
@@ -112,16 +123,10 @@ describe('dispatchSparkNotifyPerformance', () => {
       reaction: 'reaction text',
     })
     expect(handler).toHaveBeenCalledTimes(1)
-    expect(handleSparkNotifyWithReaction).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        messageOverride: expect.objectContaining({
-          appendSystemInstructions: [
-            expect.stringContaining('<|CALL ["plugin.action"]|>'),
-          ],
-        }),
-      }),
-    )
+    expect(submitUnprompted).toHaveBeenCalledWith(expect.objectContaining({
+      force: true,
+      supplement: expect.stringContaining('<|CALL ["plugin.action"]|>'),
+    }))
   })
 
   it('includes the CALL payload in the performance result', async () => {
@@ -143,12 +148,10 @@ describe('dispatchSparkNotifyPerformance', () => {
         },
       ],
     })
-    const sparkEventId = getLastSparkEventId()
-    expect(sparkEventId).toEqual(expect.any(String))
+    const turnId = await submittedTurnId.promise
+    expect(turnId).toMatch(/^spark:/)
 
-    await streamingControl.dispatchWith('<|CALL ["plugin.action", {"move":"Nf3"}]|>', {
-      turnId: `spark:${sparkEventId}`,
-    })
+    await streamingControl.dispatchWith('<|CALL ["plugin.action", {"move":"Nf3"}]|>', { turnId })
 
     await expect(resultPromise).resolves.toEqual({
       type: 'called',
@@ -213,14 +216,43 @@ describe('dispatchSparkNotifyPerformance', () => {
         },
       ],
     })
-    const sparkEventId = getLastSparkEventId()
-    expect(sparkEventId).toEqual(expect.any(String))
-    streamingControl.completeTurn(`spark:${sparkEventId}`)
+    const turnId = await submittedTurnId.promise
+    expect(turnId).toMatch(/^spark:/)
+    streamingControl.completeTurn(turnId)
 
     await expect(resultPromise).resolves.toEqual({
       type: 'completed',
       reaction: 'reaction text',
     })
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  /**
+   * @example
+   * submitUnprompted.mockResolvedValueOnce({ status: 'declined' })
+   * await expect(store.dispatchSparkNotifyPerformance({ fallbackResponseText: 'fallback text', calls })).resolves.toEqual({ type: 'completed', reaction: 'fallback text' })
+   */
+  it('completes with the fallback when the reaction turn is not spoken, without waiting for a turn end', async () => {
+    const store = useContextBridgeStore()
+    store.setSparkNotifyHostRole('main')
+    const handler = vi.fn()
+    submitUnprompted.mockResolvedValueOnce({ status: 'declined' })
+
+    const result = await store.dispatchSparkNotifyPerformance({
+      headline: 'Plugin performance',
+      fallbackResponseText: 'fallback text',
+      calls: [
+        {
+          manifest: {
+            name: 'plugin.action',
+            prompt: 'Run the plugin action when the model is ready.',
+          },
+          handler,
+        },
+      ],
+    })
+
+    expect(result).toEqual({ type: 'completed', reaction: 'fallback text' })
     expect(handler).not.toHaveBeenCalled()
   })
 })

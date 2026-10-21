@@ -2220,6 +2220,19 @@ describe('chat store contract', () => {
       expect(prompts[0].indexOf('CALL manifest text')).toBeGreaterThan(forced)
     })
 
+    // A widget reaction registers its CALL handlers under `spark:<id>` and submits that id as the message id.
+    it('runs a forced turn under its message id, so the CALL specials of a widget reaction reach its handlers', async () => {
+      llmStreamMock.mockImplementation(replyWith(['<|CALL ["plugin.action"]|>', ' Nice move.']))
+      const store = useChatStore()
+      const specialHook = vi.fn()
+      store.onTokenSpecial(specialHook)
+
+      const result = await store.submitUnprompted({ topicKey: 'notify:widget:e-1', topicText: 'QA widget', force: true, messageId: 'spark:widget-1' })
+
+      expect(result).toEqual({ status: 'spoken', text: expect.stringContaining('Nice move.') })
+      expect(specialHook).toHaveBeenCalledWith('<|CALL ["plugin.action"]|>', expect.objectContaining({ turnId: 'spark:widget-1', origin: 'unprompted' }))
+    })
+
     it('declines on SILENT without changing history, syncing, or opening a voice turn that never ends', async () => {
       llmStreamMock.mockImplementation(replyWith(['<|SILENT|>']))
       const ended: unknown[] = []
