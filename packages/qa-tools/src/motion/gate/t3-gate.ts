@@ -7,6 +7,7 @@ import type { RunHandle } from '../../evidence/run'
 import type { ResolvedRig } from '../../t3/args'
 import type { EmotionCellPartial, LivelinessPartial, NullPartial } from './partials'
 import type { GateReport } from './report'
+import type { T3SessionHeader } from './t3-scenario'
 import type { T3ReleaseRecord } from './t3-score'
 
 import process, { pid, ppid } from 'node:process'
@@ -32,7 +33,7 @@ import { aggregateLiveliness, formatSummary, hashPartials, seal } from './aggreg
 import { cellPartialName, livelinessGateFor, livelinessPartialName, nullPartialName } from './options'
 import { writePartial } from './partials'
 import { currentReportSchema, parseGateReport } from './report'
-import { buildT3EmotionPlan, buildT3IdleScenario, t3PlanFromScenarios, t3ScenarioSettings, t3TraceMismatch } from './t3-scenario'
+import { buildT3EmotionPlan, buildT3IdleScenario, t3PlanFromScenarios, t3ScenarioSettings, t3SessionHeaderMismatch, t3TraceMismatch } from './t3-scenario'
 import { measureT3Session, scoreT3Emotion } from './t3-score'
 import { trimWarmUp } from './trials'
 
@@ -200,7 +201,8 @@ function rescoreT3Emotion(source: string, repoRoot: string, gateFileSha: () => s
     if (report.gateId !== naturalEmotionT3Gate.id)
       throw new Error(`gate ${report.gateId} is not ${naturalEmotionT3Gate.id}`)
     archived = v.parse(ArchivedEmotionSchema, report)
-    sourceRunId = (JSON.parse(readFileSync(join(sourceDir, 'run.json'), 'utf8')) as { runId: string }).runId
+    const sourceManifest = JSON.parse(readFileSync(join(sourceDir, 'run.json'), 'utf8')) as { runId: string, gitSha: string }
+    sourceRunId = sourceManifest.runId
     const scenarioFiles = readdirSync(join(sourceDir, 'scenarios')).filter(name => name.endsWith('.json')).sort()
     plan = t3PlanFromScenarios(naturalEmotionT3Gate, emotionGate, t3Settings(), scenarioFiles.map(name => JSON.parse(readFileSync(join(sourceDir, 'scenarios', name), 'utf8')) as MotionScenario))
     const t1Dir = join(repoRoot, '.temp', 'qa', archived.t1Reference.runId)
@@ -208,16 +210,26 @@ function rescoreT3Emotion(source: string, repoRoot: string, gateFileSha: () => s
     if (t1Report.determinismHash !== archived.t1Reference.determinismHash)
       throw new Error(`T1 reference ${t1Dir} has determinismHash ${t1Report.determinismHash}, not the archived ${archived.t1Reference.determinismHash}`)
     t1 = { dir: t1Dir, report: t1Report }
+    let rig: { model3: unknown, files: unknown, bytes: unknown } | undefined
+    const readJsonFile = (dir: string, name: string): Record<string, unknown> => existsSync(join(dir, name)) ? JSON.parse(readFileSync(join(dir, name), 'utf8')) as Record<string, unknown> : {}
     outcomes = plan.sessions.flatMap((session) => {
       const entry = archived.sessions.find(item => item.scenarioId === session.scenario.id)
       if (!entry)
         return []
       const tracePath = entry.runDir ? join(entry.runDir, 'trace.json') : null
       const trace = tracePath && existsSync(tracePath) ? JSON.parse(readFileSync(tracePath, 'utf8')) as NaturalTrace : null
-      // A trace that recorded other events than its scenario would let one trial id select another trial's pulse.
-      const mismatch = trace ? t3TraceMismatch(session.scenario, scenarioEventsOf(v.parse(TraceEventsSchema, trace))) : null
-      if (mismatch)
-        throw new Error(`archive invariant "trace-identity": ${mismatch}`)
+      if (trace && entry.runDir) {
+        // The session must be the archived scenario's own capture, on the same build and the same rig as the others.
+        const bridge = readJsonFile(entry.runDir, 'bridge.json') as T3SessionHeader['bridge']
+        const header = t3SessionHeaderMismatch(session.scenario, { sessionScenario: readJsonFile(entry.runDir, 'scenario.json'), manifest: readJsonFile(entry.runDir, 'run.json'), trace, bridge }, { gitSha: sourceManifest.gitSha, rigName: 'forbooth', rig })
+        if (header)
+          throw new Error(`archive invariant "session-header": ${header}`)
+        rig ??= { model3: bridge.rig?.model3, files: bridge.rig?.files, bytes: bridge.rig?.bytes }
+        // A trace that recorded other events than its scenario would let one trial id select another trial's pulse or recipe.
+        const mismatch = t3TraceMismatch(session.scenario, scenarioEventsOf(v.parse(TraceEventsSchema, trace)))
+        if (mismatch)
+          throw new Error(`archive invariant "trace-identity": ${mismatch}`)
+      }
       return [{ scenario: session.scenario, runDir: entry.runDir, runId: entry.runId, exitCode: entry.exitCode, summary: entry.summary, trace }]
     })
   }

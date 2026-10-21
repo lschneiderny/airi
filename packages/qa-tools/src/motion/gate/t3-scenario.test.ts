@@ -1,11 +1,13 @@
-import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
+import type { MotionScenario, ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
+
+import type { T3SessionHeader } from './t3-scenario'
 
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { hashSeed, naturalEmotionLifetime } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
 import { emotionGate, naturalEmotionT3Gate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 import { describe, expect, it } from 'vitest'
 
-import { buildT3EmotionPlan, buildT3IdleScenario, t3PlanFromScenarios, t3PulseOrder, t3TraceMismatch } from './t3-scenario'
+import { buildT3EmotionPlan, buildT3IdleScenario, t3PlanFromScenarios, t3PulseOrder, t3SessionHeaderMismatch, t3TraceMismatch } from './t3-scenario'
 
 const settings = defaultExpressionPerformanceSettings
 
@@ -166,12 +168,69 @@ describe('t3PlanFromScenarios', () => {
 })
 
 describe('t3TraceMismatch', () => {
-  it('names a trace whose stamped events differ from the scenario', () => {
-    const [scenario] = buildT3EmotionPlan(naturalEmotionT3Gate, emotionGate, settings).sessions.map(session => session.scenario)
-    expect(t3TraceMismatch(scenario, scenario.events)).toBeNull()
-    const swapped = scenario.events.map((event, index) => index === 4 && event.kind === 'emotion' ? { ...event, trialId: 'other-trial' } : event)
-    expect(t3TraceMismatch(scenario, swapped)).toContain('other-trial')
-    expect(t3TraceMismatch(scenario, scenario.events.slice(1))).toContain('event 0')
+  const archived = () => buildT3EmotionPlan(naturalEmotionT3Gate, emotionGate, settings, hashSeed('natural-emotion-t3@1:order')).sessions[0].scenario
+  /** The trace's stamped scenario events: the scenario's own events, with one changed by `tamper`. */
+  const stamped = (tamper: (events: ScenarioEvent[]) => void) => {
+    const events = structuredClone(archived().events)
+    tamper(events)
+    return events
+  }
+  const love = (events: ScenarioEvent[]) => events.find(event => event.kind === 'emotion' && event.trialId === 'love-clear-t3-1')!
+
+  it('accepts a trace that stamped exactly its scenario', () => {
+    expect(t3TraceMismatch(archived(), archived().events)).toBeNull()
+  })
+  it.each([
+    ['emotion', 'the reviewer\'s love-clear-t3-1 relabelled from love to sad', (events: ScenarioEvent[]) => { Object.assign(love(events), { emotion: 'sad' }) }],
+    ['band', 'a pulse relabelled to another band', (events: ScenarioEvent[]) => { Object.assign(love(events), { band: 'strong' }) }],
+    ['trialId', 'a pulse given another trial id', (events: ScenarioEvent[]) => { Object.assign(love(events), { trialId: 'love-clear-t3-2' }) }],
+    ['kind', 'a pulse stamped as another kind', (events: ScenarioEvent[]) => { Object.assign(love(events), { kind: 'act' }) }],
+    ['at', 'a pulse stamped at another scheduled time', (events: ScenarioEvent[]) => { Object.assign(love(events), { at: 45 }) }],
+    ['source', 'a pulse stamped from another source', (events: ScenarioEvent[]) => { Object.assign(love(events), { source: 'act' }) }],
+    ['trialId', 'a placebo given another id', (events: ScenarioEvent[]) => { Object.assign(events.find(event => event.kind === 'placebo')!, { trialId: 'other-placebo' }) }],
+    ['strength', 'a field the scenario event does not have', (events: ScenarioEvent[]) => { Object.assign(love(events), { strength: 2 }) }],
+    ['count', 'a stamped event missing', (events: ScenarioEvent[]) => { events.splice(3, 1) }],
+  ])('names field "%s": %s', (field, _, tamper) => {
+    expect(t3TraceMismatch(archived(), stamped(tamper))).toContain(`field "${field}"`)
+  })
+})
+
+describe('t3SessionHeaderMismatch', () => {
+  const scenario = buildT3EmotionPlan(naturalEmotionT3Gate, emotionGate, settings, hashSeed('natural-emotion-t3@1:order')).sessions[0].scenario
+  const capture = scenario.durationSeconds + 1
+  const rig = { model3: '/ForBOOTH/ForBOOTH.model3.json', files: 103, bytes: 154854967 }
+  const header = (): T3SessionHeader => ({
+    sessionScenario: structuredClone(scenario),
+    manifest: { label: `t3-${scenario.id}`, gitSha: 'b18f0044e' },
+    trace: { version: 2, meta: { driver: 'natural', durationSeconds: capture, model: 'display-model-1' } },
+    bridge: { rig: { name: 'forbooth', ...rig }, configured: { modelId: 'display-model-1', driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true }, capture: { durationSeconds: capture } },
+  })
+  const check = (value: T3SessionHeader) => t3SessionHeaderMismatch(scenario, value, { gitSha: 'b18f0044e', rigName: 'forbooth', rig })
+
+  it('accepts the session that ran the archived scenario', () => {
+    expect(check(header())).toBeNull()
+  })
+  it.each([
+    ['scenario.json', (value: T3SessionHeader) => { (value.sessionScenario as { seed: number }).seed = 9 }],
+    ['run.label', (value: T3SessionHeader) => { value.manifest.label = 't3-t3-emotion-transfer-2-of-3' }],
+    ['run.gitSha', (value: T3SessionHeader) => { value.manifest.gitSha = 'ca3d1a550' }],
+    ['trace.version', (value: T3SessionHeader) => { value.trace.version = 1 }],
+    ['trace.meta.driver', (value: T3SessionHeader) => { value.trace.meta!.driver = 'universal' }],
+    ['trace.meta.durationSeconds', (value: T3SessionHeader) => { value.trace.meta!.durationSeconds = capture - 60 }],
+    ['bridge.capture.durationSeconds', (value: T3SessionHeader) => { value.bridge.capture!.durationSeconds = capture - 60 }],
+    ['bridge.rig.name', (value: T3SessionHeader) => { value.bridge.rig!.name = 'bear' }],
+    ['bridge.rig.model3', (value: T3SessionHeader) => { value.bridge.rig!.model3 = '/Bear/bear.model3.json' }],
+    ['bridge.rig.files', (value: T3SessionHeader) => { value.bridge.rig!.files = 102 }],
+    ['bridge.rig.bytes', (value: T3SessionHeader) => { value.bridge.rig!.bytes = 1 }],
+    ['bridge.configured.driver', (value: T3SessionHeader) => { value.bridge.configured!.driver = 'universal' }],
+    ['bridge.configured.cursorAttention', (value: T3SessionHeader) => { value.bridge.configured!.cursorAttention = true }],
+    ['bridge.configured.expressionEnabled', (value: T3SessionHeader) => { value.bridge.configured!.expressionEnabled = false }],
+    ['bridge.configured.heldEmotions', (value: T3SessionHeader) => { value.bridge.configured!.heldEmotions = false }],
+    ['bridge.configured.modelId', (value: T3SessionHeader) => { value.bridge.configured!.modelId = 'display-model-2' }],
+  ])('names header "%s"', (field, tamper) => {
+    const value = header()
+    tamper(value)
+    expect(check(value)).toContain(`header "${field}"`)
   })
 })
 

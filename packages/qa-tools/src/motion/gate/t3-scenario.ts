@@ -3,6 +3,8 @@ import type { MotionScenario, ScenarioEvent } from '@proj-airi/stage-shared/moti
 import type { EmotionGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
 import type { EmotionT3Gate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 
+import { isDeepStrictEqual } from 'node:util'
+
 import { MotionScenarioSchema } from '@proj-airi/stage-shared/motion-scenario'
 import { hashSeed, naturalEmotionLifetime } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
 import { createRandomStream } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/random'
@@ -327,18 +329,67 @@ export function t3PlanFromScenarios(t3: EmotionT3Gate, gate: EmotionGate, settin
 }
 
 /**
- * Why a session's trace does not record exactly its scenario: the stamped scenario events (without the capture marker)
- * must have the scenario's kinds, times and trial ids in order. `null` when they match.
+ * Why a session's trace does not record exactly its scenario, or `null` when it does. The stamped scenario events
+ * (without the capture marker) must equal the scenario's events one for one, field by field: every field a scenario event
+ * carries is compared, because the scorer reads `kind`, `trialId`, `emotion` and `band` (trial identity, recipe and
+ * lifetime) and orders equal-time events by the whole event. The reason names the first differing field. Stamped times
+ * (the trace's `t`) are not compared: a throttled session stamps late, and its verification records that.
  */
 export function t3TraceMismatch(scenario: MotionScenario, stamped: readonly ScenarioEvent[]): string | null {
-  for (let index = 0; index < Math.max(scenario.events.length, stamped.length); index++) {
-    const expected = scenario.events[index]
-    const actual = stamped[index]
-    const id = (event: ScenarioEvent | undefined) => event && 'trialId' in event ? event.trialId : undefined
-    if (!expected || !actual || expected.kind !== actual.kind || expected.at !== actual.at || id(expected) !== id(actual))
-      return `${scenario.id}: event ${index} is ${expected ? `${expected.kind}@${expected.at} ${id(expected) ?? ''}` : 'missing'} in the scenario but ${actual ? `${actual.kind}@${actual.at} ${id(actual) ?? ''}` : 'missing'} in the trace`
+  if (stamped.length !== scenario.events.length)
+    return `${scenario.id}: field "count": the trace stamps ${stamped.length} scenario events, the scenario has ${scenario.events.length}`
+  for (let index = 0; index < scenario.events.length; index++) {
+    const expected = scenario.events[index] as Record<string, unknown>
+    const actual = stamped[index] as Record<string, unknown>
+    const field = [...new Set([...Object.keys(expected), ...Object.keys(actual)])].sort().find(key => expected[key] !== actual[key])
+    if (field !== undefined)
+      return `${scenario.id}: field "${field}" of event ${index} (${String(expected.kind)} at ${String(expected.at)} s, ${String(expected.trialId ?? '')}) is ${JSON.stringify(actual[field])} in the trace, ${JSON.stringify(expected[field])} in the scenario`
   }
   return null
+}
+
+/** What a session run dir records about its capture; every field is optional because an archive may be damaged. */
+export interface T3SessionHeader {
+  /** The session's own `scenario.json`. */
+  sessionScenario: unknown
+  /** The session's `run.json`. */
+  manifest: { label?: unknown, gitSha?: unknown }
+  trace: { version?: unknown, meta?: { driver?: unknown, durationSeconds?: unknown, model?: unknown } }
+  /** The session's `bridge.json`. */
+  bridge: { rig?: { name?: unknown, model3?: unknown, files?: unknown, bytes?: unknown }, configured?: { modelId?: unknown, driver?: unknown, cursorAttention?: unknown, expressionEnabled?: unknown, heldEmotions?: unknown }, capture?: { durationSeconds?: unknown } }
+}
+
+/**
+ * Why a session run dir does not belong to its archived scenario, or `null` when it does. The session must have run
+ * that exact scenario (`scenario.json` equal, run label `t3-<scenario id>`) from the gate run's commit (`gitSha`), on the
+ * expected rig (`rigName`, and `rig` when given: the same model file, file count and zipped byte count as the first session;
+ * the zip's sha256 differs per session because the archive stores timestamps), with the Natural driver,
+ * cursor attention off, expressions on and the scenario's held-emotion setting, and its capture must be the scenario's
+ * length plus one second (at most 600 s) of the configured model. The reason names the first header field that differs.
+ */
+export function t3SessionHeaderMismatch(scenario: MotionScenario, header: T3SessionHeader, expected: { gitSha: string, rigName: string, rig?: { model3: unknown, files: unknown, bytes: unknown } }): string | null {
+  const captureSeconds = Math.min(600, scenario.durationSeconds + 1)
+  const checks: [field: string, actual: unknown, wanted: unknown][] = [
+    ['run.label', header.manifest.label, `t3-${scenario.id}`.replaceAll(/[^\w.-]/g, '-')],
+    ['run.gitSha', header.manifest.gitSha, expected.gitSha],
+    ['trace.version', header.trace.version, 2],
+    ['trace.meta.driver', header.trace.meta?.driver, 'natural'],
+    ['trace.meta.durationSeconds', header.trace.meta?.durationSeconds, captureSeconds],
+    ['bridge.capture.durationSeconds', header.bridge.capture?.durationSeconds, captureSeconds],
+    ['bridge.rig.name', header.bridge.rig?.name, expected.rigName],
+    ...(expected.rig === undefined
+      ? []
+      : [['bridge.rig.model3', header.bridge.rig?.model3, expected.rig.model3], ['bridge.rig.files', header.bridge.rig?.files, expected.rig.files], ['bridge.rig.bytes', header.bridge.rig?.bytes, expected.rig.bytes]] as [string, unknown, unknown][]),
+    ['bridge.configured.driver', header.bridge.configured?.driver, 'natural'],
+    ['bridge.configured.cursorAttention', header.bridge.configured?.cursorAttention, false],
+    ['bridge.configured.expressionEnabled', header.bridge.configured?.expressionEnabled, true],
+    ['bridge.configured.heldEmotions', header.bridge.configured?.heldEmotions, scenario.settings?.heldEmotions ?? true],
+    ['bridge.configured.modelId', header.bridge.configured?.modelId, header.trace.meta?.model],
+  ]
+  if (!isDeepStrictEqual(header.sessionScenario, scenario))
+    return `${scenario.id}: header "scenario.json" differs from the archived scenario`
+  const broken = checks.find(([, actual, wanted]) => actual !== wanted)
+  return broken ? `${scenario.id}: header "${broken[0]}" is ${JSON.stringify(broken[1])}, expected ${JSON.stringify(broken[2])}` : null
 }
 
 /** One idle capture of the T3 liveliness gate: no inputs, a marker each minute so the trace carries scenario events. */
