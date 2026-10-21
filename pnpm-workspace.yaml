@@ -110,7 +110,6 @@ catalog:
   '@auv-js/sdk': 0.0.28
   '@aws-sdk/client-s3': ^3.1135.0
   '@aws-sdk/s3-request-presigner': ^3.1135.0
-  '@ax-llm/ax': ^24.0.5
   '@better-auth/cli': ^1.4.22
   '@better-auth/drizzle-adapter': 1.6.25
   '@better-auth/oauth-provider': 1.6.25
@@ -434,7 +433,6 @@ catalog:
   sponsors-svg: ^0.3.0
   srvx: ^0.12.7
   std-env: ^4.2.0
-  stockfish: ^18.0.8
   stripe: ^22.5.0
   superjson: ^2.2.6
   taze: ^21.1.0
@@ -510,7 +508,6 @@ catalogs:
 
 allowBuilds:
   '@anthropic-ai/claude-code': true
-  '@ax-llm/ax': false
   '@discordjs/opus': true
   '@ffmpeg-installer/darwin-arm64': true
   '@ffmpeg-installer/darwin-x64': true
@@ -539,7 +536,6 @@ allowBuilds:
   sharp: true
   simple-git-hooks: false # [workaround] With `shellEmulator: true`, simple-git-hooks install may fail when no .git dir exists.
   spawn-sync: true
-  stockfish: true
   uiohook-napi: true
   utf-8-validate: true
   vue-demi: true
