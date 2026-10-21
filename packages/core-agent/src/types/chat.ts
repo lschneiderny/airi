@@ -136,6 +136,8 @@ export interface ChatTurnCueStats {
   act: number
   /** Near-miss cues (`[ACT ...]`, `<ACT ...>` and similar) the parser rewrote into markers. */
   recovered: number
+  /** Near-miss cues stripped from speech without being performed, because their marker-shaped body is no valid payload. */
+  rejected: number
   origin: 'user' | 'unprompted'
   /** The unprompted turn ended without speech. Its cues were never performed. */
   declined: boolean

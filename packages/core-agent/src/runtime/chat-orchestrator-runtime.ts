@@ -15,7 +15,7 @@ import { formatTimePrefix } from '../messages/datetime-prefix'
 import { renderConversationPreview } from '../messages/preview'
 import { createChatHooks } from './agent-hooks'
 import { useLlmmarkerParser } from './llm-marker-parser'
-import { acceptsRecoveredCue } from './recovered-cue'
+import { acceptsRecoveredCue, stripsRecoveredCue } from './recovered-cue'
 import { categorizeResponse, createStreamingCategorizer } from './response-categoriser'
 
 const REASONING_UI_FLUSH_CHUNK_SIZE = 24
@@ -924,6 +924,8 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       let streamPosition = 0
       // ACT markers accepted for this turn, recovered ones included. The parser counts recoveries itself.
       let actCount = 0
+      // Near-miss cues stripped from speech without being performed. The parser counts them as recovered.
+      let strippedCueCount = 0
       const stickers = options.stickers
       let stickerEmitted = false
 
@@ -977,8 +979,13 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           if (recovery && !categorizer.filterToSpeech(recovery.raw, streamPosition))
             return false
           // A bracketed near-miss whose body is no valid ACT or DELAY payload is prose, such as "[Act 2]". It stays spoken.
-          if (recovery && !acceptsRecoveredCue(special, recovery.raw))
-            return false
+          // A marker-shaped one, such as `[ACT {"emotion":"happy",}]`, is never prose. Accepting it unperformed strips it.
+          if (recovery && !acceptsRecoveredCue(special, recovery.raw)) {
+            if (!stripsRecoveredCue(special, recovery.raw))
+              return false
+            strippedCueCount++
+            return
+          }
 
           if (unprompted && normalizeMarker(special) === declineMarker) {
             // Only a marker in visible speech before the first spoken text declines. Reasoning can mention it.
@@ -1040,7 +1047,8 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       const setCueStats = () => {
         streamingMessageContext.cueStats = {
           act: actCount,
-          recovered: parser.stats.recovered,
+          recovered: parser.stats.recovered - strippedCueCount,
+          rejected: strippedCueCount,
           origin: unprompted ? 'unprompted' : 'user',
           declined: turnState === 'declined',
         }
