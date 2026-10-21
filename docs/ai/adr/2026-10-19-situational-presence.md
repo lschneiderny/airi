@@ -96,7 +96,7 @@ The adapter applies the privacy and freshness rules:
 
 `evaluateGate` is pure. It checks, in order:
 
-1. The hard suppressors: `disabled`, `dont-disturb`, `stage-hidden`, `presence-away`, `presence-unknown`, `stale-signal`, `user-speaking` (also when unknown), `user-typing`, `character-speaking`, `generating`, `queued`, `busy-*` for the Windows notification states, `quiet-app` for calls and the quiet-app list, and `busy-game` when **Speak during games** is off.
+1. The hard suppressors: `disabled`, `dont-disturb`, `stage-hidden`, `presence-away`, `presence-unknown`, `stale-signal`, `user-speaking` (also when unknown), `user-typing`, `character-speaking`, `generating`, `queued`, `busy-*` for the Windows notification states that block speech, including the `unknown` state, `quiet-app` for calls and the quiet-app list, and `busy-game` when **Speak during games** is off.
 2. The best topic: a world-origin event that is not addressed and whose effective salience reaches `0.65 - 0.5c`, where `c` is Chattiness. Otherwise the decision is `no-topic`.
 3. The urgent bypass: an immediate notify or a critical reminder skips the timing guards and `busy-game`, never another hard suppressor.
 4. The timing guards: `in-exchange` within 120 s of a user turn, `gap` within `max(3, 20(1 - c))` minutes times `2^backoffLevel` of the last fire, doubled while a game is in front, and `hourly-cap` at `round(1 + 6c)` fires per hour. At the default Chattiness of 0.5, this allows about four remarks an hour with gaps of at least 10 minutes.
@@ -136,7 +136,7 @@ The protocol is unchanged. `origin` is a local runtime field, and the plugin-pro
 Every `spark:notify` becomes one `notify` observation, built only by `notifyObservationFrom`, and the gate decides whether she speaks about it.
 The leader remembers notify topic keys for its leadership, so a scheduler reminder that is re-sent after its event decayed is never raised twice.
 Follower windows forward their notify observations to the leader through `situationNotifyObservedEvent`.
-Only a notify addressed beyond `character` runs the spark-notify agent, with the `commandsOnly` control: spark-command tools stay available, no tool choice is forced, and text output is ignored. `spark:command` events keep their ids, `parentEventId`, and destinations.
+A notify addressed beyond `character` runs the spark-notify agent with the `commandsOnly` control: spark-command tools stay available, no tool choice is forced, and text output is ignored. A widget request with `forceSparkCommandResponse` also runs the commands-only agent, and that run forces the spark-command tool. `spark:command` events keep their ids, `parentEventId`, and destinations.
 
 Widget reaction requests keep their request and response contract. A forced unprompted turn now answers them:
 
@@ -169,7 +169,9 @@ A locale that lacks a key renders the English text through the i18n `fallbackLoc
 
 ACT accepts a bare-word form next to JSON: `<|ACT happy|>`, `<|ACT happy strong|>`, `<|ACT sad 0.3|>`, and `<|ACT:happy|>`. An unknown word such as `<|ACT banana|>` is rejected with `parse-failed`.
 The flat JSON form also reads a top-level `intensity`.
-The runtime recovers near-miss markers such as `[ACT happy]` or `<ACT happy>` into canonical ACT and DELAY specials, only when the body is a valid payload. Prose such as `[Act 2]` stays in the spoken text.
+The runtime recovers near-miss markers such as `[ACT happy]` or `<ACT happy>` into canonical ACT and DELAY specials.
+A square-bracket near-miss is recovered only when its body is a valid DELAY duration or an ACT payload, so prose such as `[Act 2]` stays in the spoken text.
+An angle-bracket near-miss is always recovered, even with an invalid body such as `<ACT banana>`, so its markup never reaches speech. Otherwise the streaming response categorizer would treat it as a tag and hide the speech after it.
 One ACT that names a motion and an emotion applies both.
 The devtools record ACT compliance per turn.
 The [Natural emotion revamp ADR](2026-10-19-natural-emotion-revamp.md) records the emotion vocabulary of 12 emotions, the hold contract, and the conductor routing that these cues feed.

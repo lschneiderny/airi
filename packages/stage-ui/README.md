@@ -393,7 +393,7 @@ Do not read them in the Electron main process.
 ### Unprompted turns
 
 `useChatStore().submitUnprompted({ topicKey, topicText, force?, messageId?, supplement? })` starts one turn without user input in the leader's active session. It resolves to `spoken` with the text, `declined`, `cancelled`, or `failed`.
-Without `force`, the model may decline with `<|SILENT|>`. A decline writes an `unprompted-declined` control record and nothing else.
+`force` changes only the instruction: without it, the instruction invites the model to decline with `<|SILENT|>`, and with it, the instruction asks her to speak. A forced turn still declines when the reply starts with the decline marker or has no visible speech. A decline writes an `unprompted-declined` control record and nothing else.
 At most one unprompted turn is pending at a time. A user send in the same session cancels it.
 `userSending` ignores unprompted turns, so the presence bubble and the streaming placeholder follow user turns only.
 Chat history shows a muted "Spoke up about X" cue above the reply unless **Show unprompted cue** is off. Unprompted turns are excluded from cloud sync.
