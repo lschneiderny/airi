@@ -33,6 +33,7 @@ import { aggregateLiveliness, formatSummary, hashPartials, seal } from './aggreg
 import { cellPartialName, livelinessGateFor, livelinessPartialName, nullPartialName } from './options'
 import { writePartial } from './partials'
 import { currentReportSchema, parseGateReport } from './report'
+import { verifyT3Archive } from './t3-archive'
 import { buildT3EmotionPlan, buildT3IdleScenario, t3PlanFromScenarios, t3ScenarioSettings, t3SessionHeaderMismatch, t3TraceMismatch } from './t3-scenario'
 import { measureT3Session, scoreT3Emotion } from './t3-score'
 import { trimWarmUp } from './trials'
@@ -184,7 +185,8 @@ const ArchivedEmotionSchema = v.looseObject({
 
 /**
  * `gate emotion --level t3 --rescore <gate run dir>`: scores an archived T3 emotion run again from its session traces with
- * the current scorer and rules, without launching anything. It uses the T1 reference the archived run named (its
+ * the current scorer and rules, without launching anything. First every artifact it reads is checked against the sha256
+ * recorded in its run dir's `run.json` at capture time (`verifyT3Archive`). It uses the T1 reference the archived run named (its
  * determinism hash must match) and the scenarios the run performed (`t3PlanFromScenarios` checks them against the
  * gate's layout rules), so it judges exactly what was captured even when the committed plan has changed since.
  * Exit codes: 0 every gated check passed, 1 a check failed, 2 the archive cannot be re-scored.
@@ -197,6 +199,9 @@ function rescoreT3Emotion(source: string, repoRoot: string, gateFileSha: () => s
   let outcomes: SessionOutcome[]
   let sourceRunId: string
   try {
+    // Before anything is parsed for scoring: every artifact the re-score reads must still match its capture digest.
+    const covered = verifyT3Archive(sourceDir, repoRoot)
+    console.info(`qa-tools gate t3: ${covered.length} archived artifacts match their capture digests`)
     const report = parseGateReport(JSON.parse(readFileSync(join(sourceDir, 'report.json'), 'utf8')))
     if (report.gateId !== naturalEmotionT3Gate.id)
       throw new Error(`gate ${report.gateId} is not ${naturalEmotionT3Gate.id}`)
