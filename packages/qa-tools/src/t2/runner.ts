@@ -39,6 +39,8 @@ const defaultMaxWallSeconds = 900
 
 interface CubismCoreModel {
   getModel: () => { parameters: Omit<CubismParameterTable, 'ids'> & { ids: string[], values: Float32Array } }
+  getParameterValueByIndex: (index: number) => number
+  setParameterValueByIndex: (index: number, value: number) => void
   getParameterValueById: (id: string) => number
   setParameterValueById: (id: string, value: number) => void
   getParameterIndex: (id: string) => number
@@ -243,7 +245,7 @@ export function runT2(input: MotionScenario, runtime: T2Runtime, options: RunT2O
       })
 
       return {
-        model: internalModel as unknown as ScenarioHost['model'],
+        model: internalModel,
         rigProfile,
         recorder,
         modelId: 'forbooth',

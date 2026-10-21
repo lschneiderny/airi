@@ -10,7 +10,7 @@ interface CubismCoreGlobal {
   window?: unknown
 }
 
-const coreGlobal = globalThis as unknown as CubismCoreGlobal
+const coreGlobal = globalThis as CubismCoreGlobal
 
 /** Where `apps/stage-tamagotchi` keeps the core; it is gitignored and absent from fresh worktrees. */
 export const defaultCorePath = join(import.meta.dirname, '../../../../apps/stage-tamagotchi/public/assets/js/CubismSdkForWeb-5-r.3/Core/live2dcubismcore.min.js')
@@ -34,10 +34,9 @@ export async function loadCubismCoreInNode(corePath: string) {
   if (coreGlobal.Live2DCubismCore === undefined) {
     if (coreGlobal.__dirname === undefined) {
       // NOTICE:
-      // The core's Emscripten loader takes its Node branch, which evaluates `__dirname + "/"`.
-      // In an ES module process the global scope has no CommonJS `__dirname`, so it throws.
+      // The core's Node loader evaluates `__dirname + "/"`, which ES modules lack.
       // Source: live2dcubismcore.min.js line 9, Cubism SDK for Web 5-r.3.
-      // Removal condition: the core is loaded through a CommonJS wrapper that provides `__dirname`.
+      // Remove when a CommonJS wrapper provides `__dirname`.
       coreGlobal.__dirname = dirname(corePath)
       shims.push('globalThis.__dirname')
     }

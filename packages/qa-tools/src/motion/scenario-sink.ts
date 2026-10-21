@@ -63,20 +63,20 @@ export interface ScenarioSinkOptions {
   emotionTable?: typeof naturalEmotions
 }
 
-/** Fake timers: callbacks run in due order, ties in arming order, when the sim loop reaches their time. */
+/** Simulated timers fire in due order, ties in arming order; canceled native handles only identify them. */
 function createSimTimers(levelName: string) {
-  let seq = 0
-  let pending: { id: number, due: number, callback: () => void }[] = []
+  let pending: { id: TimerHandle, due: number, callback: () => void }[] = []
   return {
     setTimeout(callback: () => void, ms: number, now: number) {
-      const id = ++seq
+      const id = setTimeout(() => {}, 0)
+      clearTimeout(id)
       const due = now + ms / 1000
       const at = pending.findIndex(timer => timer.due > due)
       pending.splice(at < 0 ? pending.length : at, 0, { id, due, callback })
-      return id as unknown as TimerHandle
+      return id
     },
     clearTimeout(handle: TimerHandle) {
-      pending = pending.filter(timer => timer.id !== handle as unknown as number)
+      pending = pending.filter(timer => timer.id !== handle)
     },
     /** Runs every timer due at or before `now`, including timers they arm. */
     fireDue(now: number) {

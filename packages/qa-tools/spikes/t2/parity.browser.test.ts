@@ -45,7 +45,7 @@ async function loadCore() {
 it('runs the T2 loop on the real core in headless Chromium', async () => {
   const version = await loadCore()
   // Imported after the core: the module checks `window.Live2DCubismCore` at top level.
-  const cubism4 = await import('pixi-live2d-display/cubism4') as unknown as Cubism4Module
+  const cubism4 = await import('pixi-live2d-display/cubism4') as Cubism4Module
   const { mocBase64, ...wire } = await commands.t2ReadRig()
   const moc = Uint8Array.from(atob(mocBase64), char => char.charCodeAt(0)).buffer
 
