@@ -150,6 +150,7 @@ export default defineKirieConfig({
                 '**/settings/connection/index.vue',
                 '**/settings/data/index.vue',
                 '**/settings/models/index.vue',
+                '**/settings/presence/**',
                 '**/settings/system/general.vue',
                 '**/settings/modules/mcp.vue',
                 '**/devtools/index.vue',
