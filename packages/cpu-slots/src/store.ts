@@ -72,6 +72,16 @@ export class StoreBusyError extends Error {
   }
 }
 
+interface ProcessCache {
+  at: number
+  /** Observation order. A capture can prove absence only for deaths observed before it began. */
+  seq: number
+  snapshot: ProcessSnapshot
+}
+
+/** Rename errors that mean another process holds or replaced the path; the caller retries on its next poll. */
+const busyCodes = ['EEXIST', 'ENOTEMPTY', 'EPERM', 'EACCES', 'EBUSY']
+
 function code(error: unknown): unknown {
   return error instanceof Error && 'code' in error ? error.code : undefined
 }
@@ -126,7 +136,10 @@ export class Store {
   private token?: string
   private lastTick: number
   private skipTicketPruningAt?: number
-  private processCache?: { at: number, snapshot: ProcessSnapshot }
+  private processCache?: ProcessCache
+  private observations = 0
+  /** First observation of each lease's owner death, so a later capture can judge its workload. */
+  private readonly deaths = new Map<string, number>()
 
   constructor(options: StoreOptions) {
     this.root = options.root
@@ -295,21 +308,46 @@ export class Store {
       if (now - this.lastTick > 30_000 || now < this.lastTick)
         this.skipTicketPruningAt = now
       this.lastTick = now
-      const leases = this.records('leases', leaseRecord).filter(({ value, path, mtimeMs }) => {
-        const ownerAlive = this.alive(value.pid) && (now - mtimeMs < 45_000 || this.sameProcess(value.pid, value.startedAt))
-        if (ownerAlive || workloadAlive(value, this.cachedProcesses()))
+      const skipTickets = this.skipTicketPruningAt === now
+      // Observe every owner before any process snapshot is captured. A capture
+      // taken before an owner died has no record of the children it spawned
+      // last, so it can never prove that owner's workload is gone.
+      const owners = this.records('leases', leaseRecord)
+        .map(record => ({ ...record, alive: this.alive(record.value.pid), seq: ++this.observations }))
+      const waiters = this.records('tickets', ticketRecord)
+        .map(record => ({ ...record, alive: skipTickets || this.alive(record.value.pid) }))
+      const present = new Set(owners.map(({ value }) => value.id))
+      for (const id of this.deaths.keys()) {
+        if (!present.has(id))
+          this.deaths.delete(id)
+      }
+      for (const { value, mtimeMs, alive, seq } of owners) {
+        const death = !alive
+          ? seq
+          : now - mtimeMs >= 45_000 ? this.identityDeath(value, value.createdAt) : undefined
+        if (death === undefined)
+          this.deaths.delete(value.id)
+        else
+          this.deaths.set(value.id, Math.min(death, this.deaths.get(value.id) ?? death))
+      }
+      const leases = owners.filter(({ value, path }) => {
+        const death = this.deaths.get(value.id)
+        if (death === undefined)
           return true
-        // An old positive snapshot can only delay pruning. An old negative
-        // cannot prove that a newly orphaned workload has already exited.
-        if (this.processCache!.at < now)
+        const processes = this.processesAfter(death)
+        if (!processes || workloadAlive(value, processes))
           return true
+        this.deaths.delete(value.id)
         this.remove(path)
         return false
       }).map(({ value }) => value)
-      const tickets = this.records('tickets', ticketRecord).filter(({ value, path, mtimeMs }) => {
-        if (this.skipTicketPruningAt === now)
+      // Waiters touch their ticket every 500 ms, so identity is rechecked only
+      // once a ticket misses about four touches. A steady queue then costs no
+      // process lookups; a reused pid is caught at most 2 s after its last touch.
+      const tickets = waiters.filter(({ value, path, mtimeMs, alive }) => {
+        if (skipTickets)
           return true
-        if (now - mtimeMs < 45_000 && this.alive(value.pid) && this.sameProcess(value.pid, value.startedAt))
+        if (now - mtimeMs < 45_000 && alive && (now - mtimeMs < 2_000 || this.identityDeath(value, value.createdAt) === undefined))
           return true
         this.remove(path)
         return false
@@ -318,11 +356,53 @@ export class Store {
     })
   }
 
-  private cachedProcesses(): ProcessSnapshot {
+  /** M4 caps process snapshots at one per 2 s per observer; a clock jump backwards resets the cap. */
+  private canRefresh(now: number): boolean {
+    const cache = this.processCache
+    return !cache || now - cache.at >= 2_000 || now < cache.at
+  }
+
+  private refresh(now: number): ProcessCache {
+    this.processCache = { at: now, seq: ++this.observations, snapshot: this.processes() }
+    return this.processCache
+  }
+
+  /**
+   * A snapshot whose capture began after `death`, or undefined until the cap
+   * allows one. The lease keeps counting meanwhile, so reclaim waits at most one
+   * 2 s window plus the observer's next poll.
+   */
+  private processesAfter(death: number): ProcessSnapshot | undefined {
     const now = this.now()
-    if (!this.processCache || now - this.processCache.at >= 2_000 || now < this.processCache.at)
-      this.processCache = { at: now, snapshot: this.processes() }
-    return this.processCache.snapshot
+    const cache = this.canRefresh(now) ? this.refresh(now) : this.processCache!
+    return cache.seq > death ? cache.snapshot : undefined
+  }
+
+  /**
+   * Checks the identity of a pid that `isAlive` reported live, using one batched
+   * snapshot for the whole tick instead of one OS lookup per record. `since` is a
+   * time after the process started, so a capture taken later can miss the pid
+   * only if it has exited. Returns undefined for the same process, otherwise the
+   * observation order of its death.
+   */
+  private identityDeath({ pid, startedAt }: ProcessIdentity, since: number): number | undefined {
+    const now = this.now()
+    if (now > since && this.canRefresh(now))
+      this.refresh(now)
+    const cache = this.processCache
+    if (cache && cache.at > since) {
+      const info = cache.snapshot.processes.find(record => record.pid === pid)
+      if (info && Math.abs(info.startedAt - startedAt) <= 2_000)
+        return undefined
+      // A different process holding the pid proves the owner died before this
+      // capture began. An absent pid may have exited while it was running.
+      return info ? cache.seq - 0.5 : cache.seq
+    }
+    return this.sameProcess(pid, startedAt) ? undefined : ++this.observations
+  }
+
+  private ownerGone(owner: LockOwner): boolean {
+    return !this.alive(owner.pid) || this.identityDeath(owner, owner.at) !== undefined
   }
 
   private records<T>(directory: string, valid: (value: unknown) => value is T): { value: T, path: string, mtimeMs: number }[] {
@@ -358,7 +438,7 @@ export class Store {
     const path = join(this.root, 'broker.lock')
     const current = this.readOwner(path)
     if (current) {
-      if (this.alive(current.pid) && this.sameProcess(current.pid, current.startedAt))
+      if (!this.ownerGone(current))
         throw new StoreBusyError('lock-busy', current, this.now())
       if (!this.retireLock(current))
         throw new StoreBusyError('lock-busy')
@@ -392,7 +472,7 @@ export class Store {
         this.prepare()
         throw new StoreBusyError('lock-busy')
       }
-      if (['EEXIST', 'ENOTEMPTY', 'EPERM', 'EACCES', 'EBUSY'].includes(String(code(error))))
+      if (busyCodes.includes(String(code(error))))
         throw new StoreBusyError('lock-busy')
       throw error
     }
@@ -401,15 +481,20 @@ export class Store {
     }
   }
 
+  /**
+   * Removes unpublished `.tmp` lock directories and stranded `.tomb` directories
+   * once their recorded owner is gone, or after 10 s without an owner. Neither
+   * kind ever blocks an acquirer; this only keeps the store root tidy.
+   */
   private cleanTemporaryLocks(): void {
     for (const name of this.fs.list(this.root)) {
-      if (!/^broker\.lock\..+\.tmp$/.test(name))
+      if (!/^broker\.lock\..+\.(?:tmp|tomb)$/.test(name))
         continue
       const path = join(this.root, name)
       const current = this.readOwner(path)
       try {
         if (current
-          ? !this.alive(current.pid) || !this.sameProcess(current.pid, current.startedAt)
+          ? this.ownerGone(current)
           : this.now() - this.fs.stat(path).mtimeMs > 10_000) {
           this.fs.remove(path)
         }
@@ -430,10 +515,22 @@ export class Store {
     catch (error) {
       if (code(error) === 'ENOENT')
         return false
+      if (busyCodes.includes(String(code(error))))
+        throw new StoreBusyError('lock-busy')
       throw error
     }
     if (this.readOwner(tomb)?.token !== expected?.token) {
-      this.rename(tomb, path)
+      try {
+        this.rename(tomb, path)
+      }
+      catch (error) {
+        // Another acquirer published, or cleaned the tombstone, while the lock
+        // was set aside. The stranded owner sees lock-lost on its next commit,
+        // and cleanTemporaryLocks removes the tombstone once that owner is gone.
+        if (code(error) === 'ENOENT' || busyCodes.includes(String(code(error))))
+          throw new StoreBusyError('lock-busy')
+        throw error
+      }
       return false
     }
     this.fs.remove(tomb)

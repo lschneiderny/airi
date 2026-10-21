@@ -36,6 +36,33 @@ function createStore(pid = 10, overrides: Partial<StoreOptions> = {}): Store {
   })
 }
 
+/** Live owners appear with their recorded start time, or a new one when their pid was reused. */
+function observe(): ProcessSnapshot {
+  return {
+    platform: processes.platform,
+    processes: [
+      ...[...live].map(pid => ({ pid, ppid: 1, startedAt: reused.has(pid) ? 9_000_000_000 : 1_000 })),
+      ...processes.processes,
+    ],
+  }
+}
+
+function putLease(id: string, pid: number): void {
+  nodeFs.mkdir(join(root, 'leases'))
+  writeJson(join(root, 'leases', `${id}.json`), {
+    id,
+    pid,
+    startedAt: 1_000,
+    class: 'test',
+    slots: 3,
+    exclusive: false,
+    cwd: '/worktree',
+    command: 'test command',
+    createdAt: clock,
+    workload: [],
+  })
+}
+
 function writeJson(path: string, value: unknown): void {
   nodeFs.write(path, JSON.stringify(value))
   nodeFs.touch(path, clock)
@@ -67,7 +94,7 @@ beforeEach(() => {
   live = new Set([10, 20, 30])
   reused = new Set()
   processes = { platform: 'win32', processes: [] }
-  snapshot = vi.fn(() => processes)
+  snapshot = vi.fn(observe)
 })
 
 afterEach(() => {
@@ -113,6 +140,50 @@ describe('token checked lock', () => {
     expect(() => createStore(10, { fs }).enqueue(request)).toThrow(StoreBusyError)
     expect(JSON.parse(nodeFs.read(join(root, 'broker.lock', 'owner.json'))).token).toBe('A')
     expect(nodeFs.list(root).filter(name => name.endsWith('.tomb'))).toEqual([])
+  })
+
+  it('reports a publication during the tombstone rename-back as busy and later cleans the stranded tombstone', () => {
+    putLock(40, 'stale')
+    const lock = join(root, 'broker.lock')
+    let step = 0
+    const fs: StoreFs = {
+      ...nodeFs,
+      rename(from, to) {
+        if (step === 0 && from === lock) {
+          step = 1
+          writeJson(join(from, 'owner.json'), { token: 'A', pid: 20, startedAt: 1_000, at: clock })
+        }
+        else if (step === 1 && to === lock) {
+          step = 2
+          putLock(30, 'C')
+        }
+        nodeFs.rename(from, to)
+      },
+    }
+    expect(() => createStore(10, { fs }).enqueue(request)).toThrow(StoreBusyError)
+    expect(step).toBe(2)
+    expect(JSON.parse(nodeFs.read(join(lock, 'owner.json'))).token).toBe('C')
+    const tombs = () => nodeFs.list(root).filter(name => name.endsWith('.tomb'))
+    expect(tombs()).toHaveLength(1)
+    expect(JSON.parse(nodeFs.read(join(root, tombs()[0], 'owner.json'))).token).toBe('A')
+    expect(() => createStore().snapshot()).toThrow(StoreBusyError)
+    expect(tombs()).toHaveLength(1)
+    live.delete(20)
+    live.delete(30)
+    expect(createStore().enqueue(request).seq).toBe(1)
+    expect(tombs()).toEqual([])
+  })
+
+  it('cleans an ownerless tombstone only after ten seconds', () => {
+    const tomb = join(root, 'broker.lock.abandoned.tomb')
+    nodeFs.mkdir(tomb)
+    nodeFs.touch(tomb, clock)
+    const store = createStore()
+    store.snapshot()
+    expect(nodeFs.list(root)).toContain('broker.lock.abandoned.tomb')
+    clock += 10_001
+    store.snapshot()
+    expect(nodeFs.list(root)).not.toContain('broker.lock.abandoned.tomb')
   })
 
   it('a4 keeps a slow live holder and sequences subsequent commits strictly', () => {
@@ -334,7 +405,6 @@ describe('tickets, leases, and heartbeat', () => {
     createStore(20).touchTicket(next.seq)
     expect(store.snapshot().leases).toEqual([lease])
     expect(store.grant(next.seq, 6)).toBeUndefined()
-    expect(snapshot).not.toHaveBeenCalled()
   })
 
   it.each(['dead', 'reused'] as const)('a7b/a7c replaces a stale lease when its owner is %s', (state) => {
@@ -358,16 +428,45 @@ describe('tickets, leases, and heartbeat', () => {
     expect(createStore().snapshot().leases).toEqual([])
   })
 
-  it('checks lease identity only once the heartbeat becomes stale', () => {
+  it('checks lease identity only once the heartbeat becomes stale, from the batched snapshot', () => {
     const same = vi.fn(() => true)
     const store = createStore(10, { isSameProcess: same })
     takeLease(store)
-    same.mockClear()
     store.snapshot()
-    expect(same).not.toHaveBeenCalled()
+    expect(snapshot).not.toHaveBeenCalled()
     clock += 45_000
     store.snapshot()
-    expect(same).toHaveBeenCalledWith(10, 1_000)
+    expect(snapshot).toHaveBeenCalledTimes(1)
+    expect(same).not.toHaveBeenCalled()
+  })
+
+  it('judges every stale lease and ticket in one tick from a single process snapshot', () => {
+    nodeFs.mkdir(join(root, 'tickets'))
+    for (const [index, pid] of [10, 20, 30].entries()) {
+      putLease(`lease-${pid}`, pid)
+      writeJson(join(root, 'tickets', `${index + 1}.json`), {
+        seq: index + 1,
+        id: `ticket-${pid}`,
+        pid,
+        startedAt: 1_000,
+        class: 'test',
+        min: 1,
+        max: 1,
+        exclusive: false,
+        cwd: '/worktree',
+        command: 'test command',
+        createdAt: clock,
+      })
+    }
+    clock += 46_000
+    for (const name of nodeFs.list(join(root, 'tickets')))
+      nodeFs.touch(join(root, 'tickets', name), clock - 3_000)
+    const same = vi.fn(() => true)
+    const state = createStore(10, { isSameProcess: same, budget: 12 }).snapshot()
+    expect(state.leases).toHaveLength(3)
+    expect(state.tickets).toHaveLength(3)
+    expect(snapshot).toHaveBeenCalledTimes(1)
+    expect(same).not.toHaveBeenCalled()
   })
 
   it('a8 skips ticket pruning for a long observer tick, then prunes on its next poll', () => {
@@ -573,6 +672,48 @@ describe('workload registration, pruning, and release parity', () => {
     clock += 1_500
     expect(observer.snapshot().leases).toEqual([lease])
     expect(snapshot).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not prune a lease against a snapshot captured before its owner died in the same tick', () => {
+    const sorted: StoreFs = { ...nodeFs, list: path => nodeFs.list(path).sort() }
+    putLease('a-lease', 30)
+    putLease('b-lease', 20)
+    live.delete(30)
+    // The capture triggered by a-lease predates b-lease's owner death and the
+    // child that owner spawned just before it died.
+    snapshot.mockImplementationOnce(() => {
+      const captured = observe()
+      live.delete(20)
+      processes = { platform: 'win32', processes: [{ pid: 50, ppid: 20, startedAt: clock + 1 }] }
+      return captured
+    })
+    const observer = createStore(10, { fs: sorted })
+    const ids = () => observer.snapshot().leases.map(lease => lease.id)
+    expect(ids()).toEqual(['b-lease'])
+    expect(ids()).toEqual(['b-lease'])
+    expect(snapshot).toHaveBeenCalledTimes(1)
+    clock += 2_000
+    expect(ids()).toEqual(['b-lease'])
+    expect(snapshot).toHaveBeenCalledTimes(2)
+    processes = { platform: 'win32', processes: [] }
+    clock += 2_000
+    expect(ids()).toEqual([])
+  })
+
+  it('does not let a pre-death snapshot prune under a frozen clock', () => {
+    takeLease(createStore(30))
+    live.delete(30)
+    const observer = createStore()
+    expect(observer.snapshot().leases).toEqual([])
+    const holder = createStore(20)
+    const lease = takeLease(holder)
+    holder.addWorkload(lease, 40)
+    live.delete(20)
+    processes = { platform: 'win32', processes: [{ pid: 40, ppid: 1, startedAt: clock }] }
+    expect(observer.snapshot().leases).toEqual([lease])
+    const ticket = observer.enqueue(request)
+    expect(observer.grant(ticket.seq, 6)).toBeUndefined()
+    expect(snapshot).toHaveBeenCalledTimes(1)
   })
 
   it('accepts a fresh snapshot taken after the observer tick began', () => {
