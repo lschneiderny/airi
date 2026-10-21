@@ -12,7 +12,7 @@ import { ksTestUniform } from '../ks'
 import { aaSetCount, mutationSeedSet, unmutatedSetCount } from './plan'
 import { recordsPartialName, scorePartialName } from './units'
 
-/** Thresholds of qa-tooling todo 13, fixed before any validation run. */
+/** Thresholds of qa-tooling todo 13 (protocol 1) and motion-gate-redesign (protocol 2), fixed before any protocol-2 run. */
 export const validationThresholds = {
   aa: { maxSetsWithAnyPass: 1, placeboHitRate: 0.1, placeboHitRateTolerance: 0.03, ksPAbove: 0.01 },
   zero: { maxPassingChecks: 0 },
@@ -66,6 +66,10 @@ export const protocolNotes = [
   'KS pools one p-value per distinct test per A/A set: checks of the same channel and direction share identical trial values.',
   'Mutation kill rates are conditional on the targeted criterion passing on unmutated set 1 (same seeds); checks where the criterion is not evaluable are excluded. Unconditional rates are reported too.',
   'ignore-side cannot reach the one-sided brow (browAsym): NaturalHoldLayer applies its own side to it, and no emotionTable, setEmotionStrengths, or settings seam removes that; those checks are listed as not mutable.',
+  'Protocol 2, K1 (x0): the x0 experiment includes held-only cells and its kill rule is detection-or-size (significance, visibility or size fails); the 0.99 minimum is unchanged. Fixed before the first protocol-2 run.',
+  'Protocol 2, K2 (ignore-side): two variants, ignore-side (sided = []) and ignore-side-neg (sided = [] with posture negated on the formerly sided axes); checks whose cell trials all carry the side a variant reproduces are listed as notMutable, and the 0.95 minimum applies to the pooled mutable checks of both variants. Fixed before the first protocol-2 run.',
+  'Protocol 2, K3 (x0.5): a check is killed when its x0.5 sizeRatio divided by the unmutated set-1 sizeRatio is at most Math.SQRT1_2; the 0.90 minimum applies to clear and strong checks, and the gate-verdict size kill rate is reported only. Fixed before the first protocol-2 run.',
+  'Protocol 2, K4 (unmutated): a check failing in at least 4 of 5 sets is a persistent finding and fails the section; the remaining fail verdicts must not exceed the 0.99 quantile of Binomial(N, 0.01), where N counts non-n/a check-set pairs excluding persistent checks, and n/a never counts. Fixed before the first protocol-2 run.',
   'Old rules: checkpoint-12 rule 1 (|recipe| >= 0.3 face channels, mean [0.5, 3.5] s minus [-1, 0] s of the right sign and >= 40% of recipe x band nominal, eyelid as 1 - multiplier on the 80th-percentile log ratio) and rule 3 (head angle bias of the right sign at clear and strong), each on one trial; rule 2 (release) needs an emotion and is not applicable to emotion-free data.',
 ]
 
@@ -454,6 +458,7 @@ export function evaluateValidation(context: EvaluateContext) {
   const thresholdsMet = Object.values(verdicts).every(value => value === true)
   return {
     task: '13',
+    protocolVersion: 2,
     gate: { id: gate.id, version: gate.version, fileSha: context.fileSha, visibilityQuantile: gate.visibility.quantile, alpha },
     level: 't1',
     sections: [...options.sections],
@@ -479,7 +484,7 @@ const percent = (value: number | null | undefined) => value === null || value ==
 
 /** Plain-text summary of `validation.json`. */
 export function formatValidationSummary(report: ValidationReport): string {
-  const lines = [`scorer validation (${report.gate.id} v${report.gate.version}, ${report.level}${report.seedsLimit === null ? '' : `, seeds limited to ${report.seedsLimit}`}): ${report.thresholdsMet ? 'ALL THRESHOLDS MET' : 'THRESHOLDS NOT MET'}`]
+  const lines = [`protocol ${report.protocolVersion}`, `scorer validation (${report.gate.id} v${report.gate.version}, ${report.level}${report.seedsLimit === null ? '' : `, seeds limited to ${report.seedsLimit}`}): ${report.thresholdsMet ? 'ALL THRESHOLDS MET' : 'THRESHOLDS NOT MET'}`]
   if (report.aa) {
     lines.push(`A/A: ${report.aa.verdict ? 'PASS' : 'FAIL'}; sets with any pass ${report.aa.setsWithAnyPass}/${report.aa.sets} (max ${report.aa.maxSetsWithAnyPass}); placebo hit rate ${report.aa.placeboHitRate.mean?.toFixed(4)} over ${report.aa.placeboHitRate.checks} checks (0.10 +- 0.03); KS p ${report.aa.ks?.p.toExponential(3)} (n ${report.aa.ks?.n}, D ${report.aa.ks?.d.toFixed(4)}; must be > 0.01)`)
     lines.push(`  zero-spread channels: ${report.aa.zeroSpreadChannels.join(', ') || 'none'} (hit rate ${report.aa.zeroSpreadHitRate.mean ?? 'n/a'} over ${report.aa.zeroSpreadHitRate.checks} checks)`)
