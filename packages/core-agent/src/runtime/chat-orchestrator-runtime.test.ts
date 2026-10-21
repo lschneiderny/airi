@@ -2757,8 +2757,8 @@ describe('cue stats of a turn', () => {
     ['a recovered DELAY', ['[DELAY 1] e'], { act: 0, recovered: 1 }],
     ['two ACTs', ['<|ACT happy|> x ', '<|ACT sad|> y'], { act: 2, recovered: 0 }],
     ['a near-miss inside reasoning', ['<think>maybe [ACT happy]</think>', 'Hi'], { act: 0, recovered: 0 }],
-    // Prose that looks like a cue is recovered. The stage rejects `2`, which the compliance view reports.
-    ['prose that reads as a cue', ['In [Act 2] the hero returns.'], { act: 1, recovered: 1 }],
+    // Prose that looks like a cue stays speech, because `2` is not a valid ACT body. It counts as neither ACT nor recovered.
+    ['prose that reads as a cue', ['In [Act 2] the hero returns.'], { act: 0, recovered: 0 }],
   ])('counts %s', async (_name, chunks, expected) => {
     const harness = createHarness()
     const seen = recordCueStats(harness)
