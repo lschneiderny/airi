@@ -113,15 +113,18 @@ describe('natural motion lab', () => {
   it('writes the performance override from its controls', async () => {
     const { screen, override } = await renderLab()
 
+    const enabled = until(() => override.overrideEnabled).toBe(true, { timeout: 5000, throwOnTimeout: true })
     await screen.getByRole('switch').nth(0).click()
-    await expect.poll(() => override.overrideEnabled).toBe(true)
+    await enabled
 
+    const talking = until(() => override.overrideMode).toBe('talking', { timeout: 5000, throwOnTimeout: true })
     await screen.getByRole('radio', { name: /options\.talking/ }).click()
-    await expect.poll(() => override.overrideMode).toBe('talking')
+    await talking
     expect(override.performanceOverride).toEqual({ mode: 'talking', energy: null })
 
+    const energy = until(() => override.overrideEnergy).toBe(0.5, { timeout: 5000, throwOnTimeout: true })
     await screen.getByRole('switch').nth(1).click()
-    await expect.poll(() => override.overrideEnergy).toBe(0.5)
+    await energy
   })
 
   it('disables the energy override while the state override is off', async () => {
@@ -133,8 +136,9 @@ describe('natural motion lab', () => {
 
     await stateSwitch.click()
     await expect.element(energySwitch).toBeEnabled()
+    const energy = until(() => override.overrideEnergy).toBe(0.5, { timeout: 5000, throwOnTimeout: true })
     await energySwitch.click()
-    await expect.poll(() => override.overrideEnergy).toBe(0.5)
+    await energy
     const energySlider = screen.getByTestId('natural-override-energy').getByRole('slider')
     await expect.element(energySlider).toBeEnabled()
 
