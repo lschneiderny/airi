@@ -9,6 +9,7 @@ import { createI18n } from 'vue-i18n'
 
 import PresencePage from './index.vue'
 
+import '@unocss/reset/tailwind.css'
 import 'virtual:uno.css'
 
 const key = 'settings/situation'
