@@ -80,6 +80,9 @@ devtools:
     situation:
       title: Situation
       description: Inspect what the character knows about your situation and the block each chat request carries
+      act-compliance:
+        stripped: Stripped
+        stripped-note: Stripped cues looked like ACT or DELAY markers but had no valid payload, so speech dropped them. A turn whose only cues were stripped counts as rejected.
     presence-bubble:
       title: Presence Bubble
       description: Drive the bubble above the character and watch it in the main window

@@ -9,6 +9,7 @@ import {
   actComplianceRates,
 } from '@proj-airi/stage-ui/stores/devtools/act-compliance'
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { formatClock } from '../situation-format'
 
@@ -16,6 +17,8 @@ const props = defineProps<{
   records: readonly ActComplianceRecord[]
   error?: string
 }>()
+
+const { t } = useI18n()
 
 const rates = computed(() => actComplianceRates(props.records))
 
@@ -70,6 +73,7 @@ const cellClass = ['px-2 py-1.5 text-left align-top']
       Rates cover the {{ rates.turns }} spoken turns among the last {{ ACT_COMPLIANCE_RATE_WINDOW }} recorded.
       {{ rates.declined }} declined turns are excluded. A turn with a rejected marker counts as rejected even when the
       marker was recovered from prose.
+      {{ t('tamagotchi.settings.devtools.pages.situation.act-compliance.stripped-note') }}
     </div>
 
     <div :class="['overflow-x-auto', ...cardClass]">
@@ -96,6 +100,9 @@ const cellClass = ['px-2 py-1.5 text-left align-top']
             </th>
             <th :class="cellClass">
               Rejected
+            </th>
+            <th :class="cellClass">
+              {{ t('tamagotchi.settings.devtools.pages.situation.act-compliance.stripped') }}
             </th>
           </tr>
         </thead>
@@ -128,6 +135,9 @@ const cellClass = ['px-2 py-1.5 text-left align-top']
               <div v-if="record.rejectedTokens.length > 0" :class="['font-mono', ...noteClass]">
                 {{ record.rejectedTokens.join(' ') }}
               </div>
+            </td>
+            <td :class="cellClass" data-column="stripped">
+              {{ record.stripped }}
             </td>
           </tr>
         </tbody>

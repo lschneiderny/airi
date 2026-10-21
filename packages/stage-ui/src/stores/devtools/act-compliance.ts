@@ -29,12 +29,15 @@ export interface ActComplianceRecord {
   rejected: number
   /** The first rejected markers of this turn, as written after recovery. */
   rejectedTokens: string[]
+  /** Marker-shaped cues the runtime stripped from speech because their body was no valid payload (`cueStats.rejected`). */
+  stripped: number
   noAct: boolean
 }
 
 /**
  * Which bucket a turn counts in. A rejection wins over recovery: prose such as `[Act 2]` is recovered as a cue,
- * then rejected by the stage, and must not read as a successful recovery.
+ * then rejected by the stage, and must not read as a successful recovery. A turn whose only cues the runtime
+ * stripped also counts as rejected, but a native or recovered cue of the same turn wins over the stripped ones.
  */
 export type ActComplianceOutcome = 'rejected' | 'recovered' | 'parsed' | 'none'
 
@@ -60,13 +63,15 @@ export interface ActComplianceInspection {
  */
 export const actComplianceInspectInvoke = defineInvokeEventa<ActComplianceInspection>('eventa:devtools:act-compliance:inspect')
 
-export function actComplianceOutcome(record: Pick<ActComplianceRecord, 'act' | 'recovered' | 'rejected'>): ActComplianceOutcome {
+export function actComplianceOutcome(record: Pick<ActComplianceRecord, 'act' | 'recovered' | 'rejected' | 'stripped'>): ActComplianceOutcome {
   if (record.rejected > 0)
     return 'rejected'
   if (record.recovered > 0)
     return 'recovered'
   if (record.act > 0)
     return 'parsed'
+  if (record.stripped > 0)
+    return 'rejected'
   return 'none'
 }
 
@@ -115,6 +120,7 @@ export const useActComplianceStore = defineStore('devtools:act-compliance', () =
       recovered: stats.recovered,
       rejected: early?.count ?? 0,
       rejectedTokens: early?.tokens ?? [],
+      stripped: stats.rejected,
       noAct: stats.act === 0,
     }
     records.value = [record, ...records.value].slice(0, ACT_COMPLIANCE_HISTORY_MAX)
