@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { writePartial } from '../gate/partials'
 import { parseValidateArgs } from './cli'
-import { evaluateValidation, formatValidationSummary, killState } from './evaluate'
+import { evaluateValidation, formatValidationSummary, killState, sizeCalibration } from './evaluate'
 import { aaSetCount, assignShards, buildValidationPlan, emotionTableFor, validationSections } from './plan'
 import { recordsPartialName, scorePartialName } from './units'
 
@@ -163,5 +163,41 @@ describe('killState', () => {
     expect(killState({ ...outcomes, significance: null, visibility: null }, 'detection')).toBeNull()
     expect(killState({ ...outcomes, sign: false }, 'significance-or-sign')).toBe('killed')
     expect(killState({ ...outcomes, size: null }, 'size')).toBeNull()
+  })
+})
+
+describe('size calibration', () => {
+  it.each([
+    [0.5, 1, 'killed'],
+    [0.8, 1, 'survived'],
+    [Math.SQRT1_2, 1, 'killed'],
+    [0.5, 0, null],
+    [null, 1, null],
+    [0.5, null, null],
+  ] as const)('calibrates size ratio %s against %s as %s', (mutated, baseline, expected) => {
+    expect(sizeCalibration(checkResult({ sizeRatio: mutated }), checkResult({ sizeRatio: baseline }))).toBe(expected)
+  })
+
+  it('requires the paired baseline', () => {
+    expect(sizeCalibration(checkResult({ sizeRatio: 0.5 }), undefined)).toBeNull()
+    const run = syntheticRun(['mutations'])
+    run.score('mutation-x0.5', [checkResult({ sizeRatio: 0.5 })])
+    const report = run.evaluate()
+    expect(report.mutations!.find(entry => entry.mutation === 'x0.5')).toMatchObject({ killRate: null, verdict: false, reason: 'x0.5 calibration needs unmutated set 1' })
+    expect(() => formatValidationSummary(report)).not.toThrow()
+  })
+
+  it('gates clear and strong calibration while reporting the inclusive gate verdict and slight checks', () => {
+    const run = syntheticRun(['mutations', 'unmutated'])
+    const clear = checkResult()
+    const strongCheck = buildEmotionChecks().find(check => check.emotion === clear.emotion && check.channel === clear.channel && check.band === 'strong')!
+    const slightCheck = buildEmotionChecks().find(check => check.emotion === clear.emotion && check.channel === clear.channel && check.band === 'slight')!
+    const strong = checkResult({ key: strongCheck.key, band: 'strong', sizeRatio: 2, verdict: 'fail', failed: ['size'] })
+    const slight = checkResult({ key: slightCheck.key, band: 'slight' })
+    run.score('unmutated-1', [clear, strong, slight])
+    run.score('mutation-x0.5', [{ ...clear, sizeRatio: 0.5 }, { ...strong, sizeRatio: 1, verdict: 'pass', failed: [] }, slight])
+    const report = run.evaluate()
+    expect(report.mutations!.find(entry => entry.mutation === 'x0.5')).toMatchObject({ checks: 2, killRate: 1, gateVerdictKillRate: 0, verdict: true, reportedOnly: { checks: 1, killRate: 0 } })
+    expect(() => formatValidationSummary(report)).not.toThrow()
   })
 })

@@ -21,7 +21,7 @@ export const validationThresholds = {
     'sign-flip': { criterion: 'sign', minKillRate: 0.99 },
     'ignore-side': { criterion: 'sided checks (significance or sign)', minKillRate: 0.95 },
     'ignore-side-neg': { criterion: 'sided checks (significance or sign)', minKillRate: 0.95 },
-    'x0.5': { criterion: 'size, clear and strong (slight reported only)', minKillRate: 0.9 },
+    'x0.5': { criterion: 'paired held-only size calibration <= 0.707 (clear and strong; slight reported only)', minKillRate: 0.9 },
     'x2': { criterion: 'size upper bound', minKillRate: 0.9 },
     'release-tau-x3': { criterion: 'release', minKillRate: 0.95 },
     'blink-interval-1': { criterion: 'modulation (significance or sign)', minKillRate: 0.95 },
@@ -137,7 +137,14 @@ function mutationTargets(mutation: MutationId, results: readonly CheckResult[], 
   }
 }
 
-function killSummary(checks: readonly CheckResult[], rule: KillRule, alpha: number, baseline: Map<string, CheckResult> | null) {
+/** Paired held-only attenuation; a positive, evaluable baseline is required, independent of its size verdict. */
+export function sizeCalibration(mutated: CheckResult, baseline: CheckResult | undefined): KillState {
+  if (!baseline || baseline.sizeRatio === null || baseline.sizeRatio <= 0 || mutated.sizeRatio === null)
+    return null
+  return mutated.sizeRatio / baseline.sizeRatio <= Math.SQRT1_2 ? 'killed' : 'survived'
+}
+
+function killSummary(checks: readonly CheckResult[], rule: KillRule | 'size-calibration', alpha: number, baseline: Map<string, CheckResult> | null) {
   let killed = 0
   let evaluable = 0
   let conditionalKilled = 0
@@ -146,7 +153,8 @@ function killSummary(checks: readonly CheckResult[], rule: KillRule, alpha: numb
   const notEvaluable: string[] = []
   const baselineFailed: string[] = []
   for (const result of checks) {
-    const state = killState(criterionOutcomes(result, alpha), rule)
+    const reference = baseline?.get(result.key)
+    const state = rule === 'size-calibration' ? sizeCalibration(result, reference) : killState(criterionOutcomes(result, alpha), rule)
     if (state === null) {
       notEvaluable.push(result.key)
       continue
@@ -154,10 +162,10 @@ function killSummary(checks: readonly CheckResult[], rule: KillRule, alpha: numb
     evaluable++
     if (state === 'killed')
       killed++
-    const reference = baseline?.get(result.key)
     if (!reference)
       continue
-    if (killState(criterionOutcomes(reference, alpha), rule) !== 'survived') {
+    const referenceState = rule === 'size-calibration' ? sizeCalibration(reference, reference) : killState(criterionOutcomes(reference, alpha), rule)
+    if (referenceState !== 'survived') {
       baselineFailed.push(result.key)
       continue
     }
@@ -355,16 +363,20 @@ export function evaluateValidation(context: EvaluateContext) {
       const targets = mutationTargets(mutation, score.results, identicalCells)
       if (sideMutation)
         sideChecks.push(...targets.gated)
-      const gated = killSummary(targets.gated, rule, alpha, baseline)
-      const reported = targets.reported.length ? killSummary(targets.reported, rule, alpha, baseline) : null
+      const calibrationRule = mutation === 'x0.5' ? 'size-calibration' : rule
+      const gated = killSummary(targets.gated, calibrationRule, alpha, baseline)
+      const reported = targets.reported.length ? killSummary(targets.reported, calibrationRule, alpha, baseline) : null
+      const gateVerdict = mutation === 'x0.5' ? killSummary(targets.gated, rule, alpha, baseline) : null
       const minimum = validationThresholds.mutations[mutation].minKillRate
-      const rate = gated.killRate ?? gated.unconditionalKillRate
+      const rate = mutation === 'x0.5' ? gated.killRate : gated.killRate ?? gated.unconditionalKillRate
       return {
         mutation,
         criterion: validationThresholds.mutations[mutation].criterion,
         minKillRate: minimum,
         ...gated,
         reportedOnly: reported,
+        gateVerdictKillRate: gateVerdict ? gateVerdict.killRate ?? gateVerdict.unconditionalKillRate : null,
+        reason: mutation === 'x0.5' && !baseline ? 'x0.5 calibration needs unmutated set 1' : null,
         notMutable: targets.notMutable.map(result => result.key),
         verdict: rate !== null && rate >= minimum,
       }
@@ -433,7 +445,7 @@ export function formatValidationSummary(report: ValidationReport): string {
   if (report.zero)
     lines.push(`Zero recipe (paired): ${report.zero.verdict ? 'PASS' : 'FAIL'}; ${report.zero.passingChecks.length} of ${report.zero.checks} checks pass${report.zero.passingChecks.length ? `: ${report.zero.passingChecks.join(', ')}` : ''}`)
   for (const entry of report.mutations ?? [])
-    lines.push(`Mutation ${entry.mutation} (${entry.criterion}): ${entry.verdict ? 'PASS' : 'FAIL'}; kill rate ${percent(entry.killRate)} (${entry.conditionalKilled}/${entry.conditionalChecks}, min ${percent(entry.minKillRate)}), unconditional ${percent(entry.unconditionalKillRate)} (${entry.killed}/${entry.evaluable})${entry.reportedOnly ? `; slight ${percent(entry.reportedOnly.killRate)}` : ''}${entry.survivors.length ? `; survivors: ${entry.survivors.join(', ')}` : ''}`)
+    lines.push(`Mutation ${entry.mutation} (${entry.criterion}): ${entry.verdict ? 'PASS' : 'FAIL'}; kill rate ${percent(entry.killRate)} (${entry.conditionalKilled}/${entry.conditionalChecks}, min ${percent(entry.minKillRate)}), unconditional ${percent(entry.unconditionalKillRate)} (${entry.killed}/${entry.evaluable})${entry.reportedOnly ? `; slight ${percent(entry.reportedOnly.killRate)}` : ''}${entry.mutation === 'x0.5' ? `; gate-verdict size ${percent(entry.gateVerdictKillRate)} (reported only)` : ''}${entry.reason ? `; ${entry.reason}` : ''}${entry.survivors.length ? `; survivors: ${entry.survivors.join(', ')}` : ''}`)
   if (report.ignoreSidePooled) {
     const entry = report.ignoreSidePooled
     lines.push(`Mutation ignore-side pooled: ${entry.verdict ? 'PASS' : 'FAIL'}; kill rate ${percent(entry.killRate)} (${entry.conditionalKilled}/${entry.conditionalChecks}, min ${percent(entry.minKillRate)}), unconditional ${percent(entry.unconditionalKillRate)} (${entry.killed}/${entry.evaluable})`)
