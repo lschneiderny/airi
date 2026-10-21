@@ -134,8 +134,10 @@ export interface ChatStreamEventContext {
 export interface ChatTurnCueStats {
   /** ACT markers the reply emitted, including recovered near-misses. */
   act: number
-  /** Near-miss cues (`[ACT ...]`, `<ACT ...>` and similar) the parser rewrote into markers. */
+  /** Near-miss cues (`[ACT ...]`, `<ACT ...>` and similar) the parser rewrote into markers. Stripped near-misses count as `rejected`, not here. */
   recovered: number
+  /** Near-miss cues stripped from speech without being performed, because their marker-shaped body is no valid payload. */
+  rejected: number
   origin: 'user' | 'unprompted'
   /** The unprompted turn ended without speech. Its cues were never performed. */
   declined: boolean

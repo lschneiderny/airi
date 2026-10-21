@@ -14,7 +14,7 @@ import {
 const T0 = Date.UTC(2026, 9, 20, 9, 0, 0)
 
 function cueStats(overrides: Partial<ChatTurnCueStats> = {}): ChatTurnCueStats {
-  return { act: 0, recovered: 0, origin: 'user', declined: false, ...overrides }
+  return { act: 0, recovered: 0, rejected: 0, origin: 'user', declined: false, ...overrides }
 }
 
 describe('act compliance store', () => {
@@ -55,6 +55,25 @@ describe('act compliance store', () => {
     expect(actComplianceOutcome(store.records[1])).toBe('rejected')
     // The early rejection belongs to its turn only.
     expect(store.records[0]).toMatchObject({ turnId: 'next', rejected: 0, rejectedTokens: [] })
+  })
+
+  it('counts a turn whose only cues the runtime stripped as rejected, below native and recovered cues', async () => {
+    const store = useActComplianceStore()
+
+    store.recordStreamEnd({ turnId: 'stripped', cueStats: cueStats({ rejected: 1 }) }, T0)
+    store.recordStreamEnd({ turnId: 'parsed-and-stripped', cueStats: cueStats({ act: 1, rejected: 1 }) }, T0 + 1)
+    store.recordStreamEnd({ turnId: 'recovered-and-stripped', cueStats: cueStats({ act: 1, recovered: 1, rejected: 2 }) }, T0 + 2)
+    store.recordStreamEnd({ turnId: 'declined-stripped', cueStats: cueStats({ origin: 'unprompted', declined: true, rejected: 1 }) }, T0 + 3)
+
+    const { records } = await store.inspect()
+    // `stripped` comes from the runtime's cue stats; `rejected` stays the stage controller's count.
+    expect(records.map(record => [record.turnId, actComplianceOutcome(record), record.stripped, record.rejected, record.noAct])).toEqual([
+      ['declined-stripped', 'rejected', 1, 0, true],
+      ['recovered-and-stripped', 'recovered', 2, 0, false],
+      ['parsed-and-stripped', 'parsed', 1, 0, false],
+      ['stripped', 'rejected', 1, 0, true],
+    ])
+    expect(actComplianceRates(records)).toEqual({ turns: 3, declined: 1, parsed: 1, recovered: 1, rejected: 1, none: 0 })
   })
 
   it('ignores a stream end without cue stats and a repeated stream end of the same turn', () => {

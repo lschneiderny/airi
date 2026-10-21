@@ -19,12 +19,6 @@ export interface CharacterSparkNotifyReaction {
 }
 
 const MAX_REACTIONS = 200
-type ParserFactory = typeof useLlmmarkerParser
-let parserFactory: ParserFactory = useLlmmarkerParser
-
-export function setCharacterLlmMarkerParserFactoryForTest(factory: ParserFactory | null) {
-  parserFactory = factory ?? useLlmmarkerParser
-}
 
 export const useCharacterStore = defineStore('character', () => {
   const { activeCard, systemPrompt } = storeToRefs(useAiriCardStore())
@@ -37,7 +31,7 @@ export const useCharacterStore = defineStore('character', () => {
   async function emitTextOutput(text: string) {
     const speech = new Speech({ sessionId: sessions.activeSessionId, turnId: nanoid() }, 'read-aloud')
 
-    const parser = parserFactory({
+    const parser = useLlmmarkerParser({
       onLiteral: async (literal) => {
         if (literal)
           await speech.write(literal)

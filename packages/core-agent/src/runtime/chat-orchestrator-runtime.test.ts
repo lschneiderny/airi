@@ -2297,6 +2297,33 @@ describe('unprompted turns', () => {
     expect(saved?.role === 'assistant' && saved.categorization?.speech).toBe('We start [Act 2] now  ok')
   })
 
+  it.each([
+    ['[ACT {"emotion":"happy",}] Hi'],
+    ['[ACT] Hi'],
+  ])('strips the marker-shaped near-miss in %j whose body is not a valid cue', async (reply) => {
+    const harness = createHarness()
+    const literals: string[] = []
+    const specials: string[] = []
+    harness.runtime.hooks.onTokenLiteral(async (text) => {
+      literals.push(text)
+    })
+    harness.runtime.hooks.onTokenSpecial(async (text) => {
+      specials.push(text)
+    })
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      await options?.onStreamEvent?.({ type: 'text-delta', text: reply })
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest('Hi', { model: 'test', chatProvider: provider })
+
+    // The stored speech is categorized from the parser's end text, so it shows whether the marker left that text too.
+    const saved = harness.sessionMessages['session-1'].at(-1)
+    expect(specials).toEqual([])
+    expect(literals.join('')).toBe(' Hi')
+    expect(saved?.role === 'assistant' && saved.categorization?.speech).toBe(' Hi')
+  })
+
   it('keeps a near-miss cue inside reasoning as reasoning text at every chunk split', async () => {
     const reply = '<think>Maybe I should use [ACT happy] or <|ACT sad|> here.</think>Hello there [ACT curious] bye'
     const closeTag = reply.indexOf('</think>')
@@ -2759,6 +2786,10 @@ describe('cue stats of a turn', () => {
     ['a near-miss inside reasoning', ['<think>maybe [ACT happy]</think>', 'Hi'], { act: 0, recovered: 0 }],
     // Prose that looks like a cue stays speech, because `2` is not a valid ACT body. It counts as neither ACT nor recovered.
     ['prose that reads as a cue', ['In [Act 2] the hero returns.'], { act: 0, recovered: 0 }],
+    // A marker-shaped body that is no valid cue is stripped from speech. It counts as rejected, not as ACT or recovered.
+    ['a marker-shaped ACT that does not parse', ['[ACT {"emotion":"happy",}] Hi'], { act: 0, recovered: 0, rejected: 1 }],
+    ['an empty ACT near-miss', ['[ACT] Hi'], { act: 0, recovered: 0, rejected: 1 }],
+    ['an empty DELAY near-miss', ['[DELAY] Hi'], { act: 0, recovered: 0, rejected: 1 }],
   ])('counts %s', async (_name, chunks, expected) => {
     const harness = createHarness()
     const seen = recordCueStats(harness)
@@ -2767,7 +2798,7 @@ describe('cue stats of a turn', () => {
     await harness.runtime.ingest('Hi', { model: 'test', chatProvider: provider }, 'session-1')
 
     expect(seen.filter(entry => entry.hook === 'stream-end')).toEqual([
-      { hook: 'stream-end', cueStats: { ...expected, origin: 'user', declined: false } },
+      { hook: 'stream-end', cueStats: { rejected: 0, ...expected, origin: 'user', declined: false } },
     ])
   })
 
@@ -2783,8 +2814,8 @@ describe('cue stats of a turn', () => {
     expect(seen).toEqual([
       { hook: 'token-special', cueStats: undefined },
       { hook: 'token-special', cueStats: undefined },
-      { hook: 'stream-end', cueStats: { act: 2, recovered: 1, origin: 'user', declined: false } },
-      { hook: 'stream-end', cueStats: { act: 0, recovered: 0, origin: 'user', declined: false } },
+      { hook: 'stream-end', cueStats: { act: 2, recovered: 1, rejected: 0, origin: 'user', declined: false } },
+      { hook: 'stream-end', cueStats: { act: 0, recovered: 0, rejected: 0, origin: 'user', declined: false } },
     ])
   })
 
@@ -2797,7 +2828,7 @@ describe('cue stats of a turn', () => {
 
     expect(harness.settled).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', status: 'declined' }])
     expect(seen).toEqual([
-      { hook: 'stream-end', cueStats: { act: 1, recovered: 1, origin: 'unprompted', declined: true } },
+      { hook: 'stream-end', cueStats: { act: 1, recovered: 1, rejected: 0, origin: 'unprompted', declined: true } },
     ])
   })
 
@@ -2809,7 +2840,115 @@ describe('cue stats of a turn', () => {
     await harness.runtime.ingest('(No one spoke to you.)', { model: 'test', chatProvider: provider, origin: 'unprompted', messageId: 'trigger-1' }, 'session-1')
 
     expect(seen.filter(entry => entry.hook === 'stream-end')).toEqual([
-      { hook: 'stream-end', cueStats: { act: 1, recovered: 0, origin: 'unprompted', declined: false } },
+      { hook: 'stream-end', cueStats: { act: 1, recovered: 0, rejected: 0, origin: 'unprompted', declined: false } },
     ])
+  })
+})
+
+describe('malformed DELAY durations, line-broken ACT cues and colon-form cues that do not parse', () => {
+  /** Every way a stream can deliver `text`: whole, split once at each offset, and one character per chunk. */
+  function chunkingsOf(text: string) {
+    const splits = Array.from({ length: text.length - 1 }, (_, index) => [text.slice(0, index + 1), text.slice(index + 1)])
+    return [[text], ...splits, [...text]]
+  }
+
+  async function replay(chunks: string[]) {
+    const harness = createHarness()
+    const literals: string[] = []
+    const specials: string[] = []
+    let cueStats: ChatTurnCueStats | undefined
+    harness.runtime.hooks.onTokenLiteral(async (text) => {
+      literals.push(text)
+    })
+    harness.runtime.hooks.onTokenSpecial(async (text) => {
+      specials.push(text)
+    })
+    harness.runtime.hooks.onStreamEnd(async (context) => {
+      cueStats = context.cueStats && { ...context.cueStats }
+    })
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      for (const text of chunks)
+        await options?.onStreamEvent?.({ type: 'text-delta', text })
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest('Hi', { model: 'test', chatProvider: provider }, 'session-1')
+
+    // The stored speech is categorized from the parser's end text, so it shows whether the marker left that text too.
+    const saved = harness.sessionMessages['session-1'].at(-1)
+    return { literal: literals.join(''), specials, speech: saved?.role === 'assistant' ? saved.categorization?.speech : undefined, cueStats }
+  }
+
+  /**
+   * Checks one reply at every chunking. The runtime does not forward a whitespace-only literal to the hooks,
+   * so split runs compare the spoken text without whitespace. The whole-reply run and the stored speech compare exactly.
+   */
+  async function expectAtEveryChunking(reply: string, speech: string, cueStats: Omit<ChatTurnCueStats, 'origin' | 'declined'>) {
+    for (const chunks of chunkingsOf(reply)) {
+      const label = JSON.stringify(chunks)
+      const result = await replay(chunks)
+      expect(result.specials, label).toEqual([])
+      expect(result.literal.replace(/\s+/g, ''), label).toBe(speech.replace(/\s+/g, ''))
+      if (chunks.length === 1)
+        expect(result.literal, label).toBe(speech)
+      expect(result.speech, label).toBe(speech)
+      expect(result.cueStats, label).toEqual({ ...cueStats, origin: 'user', declined: false })
+    }
+  }
+
+  const placements: Array<[string, (marker: string) => string, string]> = [
+    ['start', marker => `${marker} Hi`, ' Hi'],
+    ['middle', marker => `Wait ${marker} go`, 'Wait  go'],
+    ['end', marker => `Wait ${marker}`, 'Wait '],
+  ]
+
+  it.each([
+    '[DELAY 1s]',
+    '[DELAY 0]',
+    '[DELAY 2 seconds]',
+    '[DELAY 1.5s]',
+    '[ACT\nhappy]',
+    '[ACT\r\nhappy]',
+    '[ACT:{"emotion":"happy",}]',
+    '[ACT:]',
+    '[DELAY:]',
+    '[DELAY:{"seconds":1}]',
+    '[DELAY:1s]',
+    '[DELAY:.5s]',
+    '[DELAY .5s]',
+  ].flatMap(marker => placements.map(([where, place, speech]) => [marker, where, place(marker), speech])))(
+    'strips %j at the %s of the turn at every chunk split and counts it as rejected',
+    async (_marker, _where, reply, speech) => {
+      await expectAtEveryChunking(reply, speech, { act: 0, recovered: 0, rejected: 1 })
+    },
+  )
+
+  it.each([
+    'In [ACT 2] she leaves',
+    'We start [Act 2] now',
+    'Be [ACT calm] now',
+    'Wait [delay 1s] go',
+    'Wait [Delay 1s] go',
+    'Wait [DELAY soon] go',
+    'Wait [DELAY -1] go',
+    'Wait [Delay .5s] go',
+    'Wait [DELAY:soon] go',
+  ])('keeps the prose %j spoken verbatim at every chunk split', async (reply) => {
+    await expectAtEveryChunking(reply, reply, { act: 0, recovered: 0, rejected: 0 })
+  })
+
+  it.each([
+    ['[DELAY 1] e', '<|DELAY 1|>', 0],
+    ['[DELAY 1.5] e', '<|DELAY 1.5|>', 0],
+    ['[ACT happy] e', '<|ACT happy|>', 1],
+    ['[ACT:Happy] e', '<|ACT:Happy|>', 1],
+  ])('still recovers and performs the valid near-miss %j', async (reply, special, act) => {
+    const result = await replay([reply])
+    expect(result).toEqual({
+      literal: ' e',
+      specials: [special],
+      speech: ' e',
+      cueStats: { act, recovered: 1, rejected: 0, origin: 'user', declined: false },
+    })
   })
 })
