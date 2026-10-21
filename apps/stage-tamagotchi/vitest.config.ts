@@ -31,11 +31,16 @@ export default defineConfig({
       // Late utility extraction can resize controls during layout assertions.
       content: {
         ...unoConfig.content,
+        // NOTICE:
+        // Keep these globs root-relative. On Windows, `import.meta.dirname` has
+        // backslashes that tinyglobby reads as escapes, matching zero files.
+        // Source: @unocss/vite setupContentExtractor.
+        // Removal condition: none; absolute patterns would reintroduce it.
         filesystem: [
-          `${import.meta.dirname}/src/**/*.vue`,
-          `${import.meta.dirname}/../../packages/stage-layouts/src/**/*.vue`,
-          `${import.meta.dirname}/../../packages/stage-ui/src/**/*.vue`,
-          `${import.meta.dirname}/../../packages/ui/src/**/*.vue`,
+          'src/**/*.vue',
+          '../../packages/stage-layouts/src/**/*.vue',
+          '../../packages/stage-ui/src/**/*.vue',
+          '../../packages/ui/src/**/*.vue',
         ],
       },
     }),

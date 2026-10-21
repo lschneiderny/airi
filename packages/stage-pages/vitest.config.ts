@@ -25,10 +25,15 @@ export default defineConfig({
       ...sharedUnoConfig(),
       configFile: false,
       content: {
+        // NOTICE:
+        // Keep these globs root-relative. On Windows, `import.meta.dirname` has
+        // backslashes that tinyglobby reads as escapes, matching zero files.
+        // Source: @unocss/vite setupContentExtractor.
+        // Removal condition: none; absolute patterns would reintroduce it.
         filesystem: [
-          `${import.meta.dirname}/src/**/*.vue`,
-          `${import.meta.dirname}/../stage-ui/src/**/*.vue`,
-          `${import.meta.dirname}/../ui/src/**/*.vue`,
+          'src/**/*.vue',
+          '../stage-ui/src/**/*.vue',
+          '../ui/src/**/*.vue',
         ],
       },
     }),
