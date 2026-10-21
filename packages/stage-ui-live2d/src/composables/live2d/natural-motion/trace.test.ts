@@ -1,4 +1,6 @@
-import type { NaturalTraceMeta } from './trace'
+import type { ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
+
+import type { NaturalTrace, NaturalTraceMeta } from './trace'
 
 import { describe, expect, it } from 'vitest'
 
@@ -72,6 +74,54 @@ describe('natural trace recorder', () => {
 
     expect(report.metrics['sd:ParamAngleX'].value).toBeGreaterThan(0)
     expect(JSON.parse(JSON.stringify(trace))).toEqual(trace)
+  })
+
+  it('stamps natural and scenario events on the sample origin without changing the score', () => {
+    const recorder = new NaturalTraceRecorder(parameters)
+    const scenario: ScenarioEvent = { kind: 'marker', at: 0.5, label: 'pulse' }
+    for (let frame = 0; frame <= 60 * 3; frame++) {
+      const now = 12.5 + frame / 60
+      if (frame === 30) {
+        recorder.mark(now, 'scenario', scenario)
+        recorder.mark(now, 'natural', { kind: 'hold', at: 4, emotion: 'angry', strength: 0.9, side: 1 })
+      }
+      recorder.sample(now, index => index === 0 ? 10 * Math.sin(now) : 0.9)
+    }
+    scenario.label = 'changed after marking'
+    const trace = recorder.build(meta)
+
+    expect(trace.version).toBe(2)
+    expect(trace.events).toEqual([
+      { t: 0.5, source: 'scenario', event: { kind: 'marker', at: 0.5, label: 'pulse' } },
+      { t: 0.5, source: 'natural', event: { kind: 'hold', at: 4, emotion: 'angry', strength: 0.9, side: 1 } },
+    ])
+    const withoutEvents: NaturalTrace = { ...trace, events: [] }
+    expect(scoreLiveliness(trace, trace.ranges)).toEqual(scoreLiveliness(withoutEvents, trace.ranges))
+  })
+
+  it('starts the time origin at a mark that precedes every frame', () => {
+    const recorder = new NaturalTraceRecorder(parameters)
+    recorder.mark(10, 'scenario', { kind: 'marker', at: 0, label: 'start' })
+    recorder.sample(10.25, () => 0)
+
+    expect(recorder.build(meta).t).toEqual([0.25])
+    expect(recorder.build(meta).events[0].t).toBe(0)
+  })
+
+  it('records extra rig parameters after the standard ones', () => {
+    const rig = {
+      ids: ['Param60', 'ParamAngleX', 'Unrelated'],
+      minimumValues: new Float32Array([0, -30, 0]),
+      maximumValues: new Float32Array([1, 30, 1]),
+      defaultValues: new Float32Array([0, 0, 0]),
+    }
+    const recorder = new NaturalTraceRecorder(rig, { extraParameterIds: ['Param60', 'ParamAngleX', 'Missing'] })
+    recorder.sample(0, index => index)
+    const trace = recorder.build(meta)
+
+    expect(Object.keys(trace.channels)).toEqual(['ParamAngleX', 'Param60'])
+    expect(trace.channels.Param60).toEqual([0])
+    expect(trace.ranges.Param60).toEqual({ min: 0, max: 1, default: 0 })
   })
 
   it('names downloads without characters Windows rejects', () => {

@@ -22,6 +22,7 @@ export default defineConfig({
       'packages/plugin-sdk',
       'packages/plugin-sdk-tamagotchi',
       ...providerInferenceProjects.map(project => ({ ...project, root: 'packages/provider-inference' })),
+      'packages/qa-tools/vitest.node.config.ts',
       'packages/scenarios-stage-tamagotchi-browser',
       'packages/scenarios-stage-tamagotchi-electron',
       'packages/server-runtime',
@@ -31,6 +32,13 @@ export default defineConfig({
       'packages/stage-ui-three',
       'packages/vitest-plugin-fakemic',
       'packages/vite-plugin-sherpaw',
+      // Root developer tools (`pnpm verify`, `pnpm wt`, `pnpm dev:top`). They belong to no package.
+      {
+        test: {
+          name: 'dev-tools',
+          include: ['scripts/dev-tools/**/*.test.ts'],
+        },
+      },
       // Scripts that GitHub Actions run. They belong to no package.
       {
         test: {

@@ -17,6 +17,7 @@ import { createLive2DLipSync } from '@proj-airi/model-driver-lipsync'
 import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import { normalizeActPayload, Playback } from '@proj-airi/pipelines-audio'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
+import { isMotionQaBridgeEnabled } from '@proj-airi/stage-shared/motion-scenario/flag'
 import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
@@ -32,7 +33,7 @@ import { useBroadcastChannel, useDocumentVisibility, useEventListener, useInterv
 // import embedWorkerURL from '@xsai-transformers/embed/worker?worker&url'
 // import { embed } from '@xsai/embed'
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, getCurrentScope, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue'
 
 import StageRenderError from './stage-render-error.vue'
 
@@ -521,6 +522,26 @@ watch(() => emotionPulse.value?.seq, () => {
   if (emotion)
     emotionsQueue.enqueue({ emotion, source: 'devtools' })
 })
+
+// The dev-only motion QA bridge answers remote-debug commands through this stage's real input paths. The
+// flag exists only when the Electron main process enabled the bridge and the renderer set it before mounting;
+// production builds drop this block, and with it the only import of the handler module.
+if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
+  const scope = getCurrentScope()
+  void import('../../composables/performance/use-motion-qa-bridge')
+    .then((module) => {
+      // The stage may unmount before the module arrives; a stopped scope must not gain handlers.
+      if (scope?.active) {
+        scope.run(() => module.useMotionQaBridge({
+          emotionsQueue,
+          dispatchAct: marker => streamingControl.dispatchWith(marker),
+          renderError: () => stageRenderError.value,
+        }))
+      }
+    })
+    .catch(error => console.error('[Stage] The motion QA bridge could not start:', errorMessageFrom(error) ?? 'unknown error'))
+}
+
 const speechDestination = audioContext.createGain()
 speechDestination.connect(audioContext.destination)
 const playback = new Playback(new BrowserPlayback(audioContext, {

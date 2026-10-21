@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "id": "t3-smoke",
+  "seed": 1,
+  "durationSeconds": 140,
+  "home": "desk",
+  "levels": [
+    "t1",
+    "t3"
+  ],
+  "settings": {
+    "heldEmotions": true,
+    "cursorAttention": false,
+    "expressionEnabled": true
+  },
+  "screenshotsAt": [
+    5,
+    7,
+    19,
+    21,
+    33,
+    35,
+    47,
+    49,
+    61,
+    63,
+    75,
+    77,
+    89,
+    91,
+    103,
+    105
+  ],
+  "events": [
+    {
+      "kind": "emotion",
+      "at": 4,
+      "emotion": "happy",
+      "band": "clear",
+      "source": "devtools",
+      "trialId": "smoke-happy"
+    },
+    {
+      "kind": "emotion",
+      "at": 18,
+      "emotion": "sad",
+      "band": "clear",
+      "source": "devtools",
+      "trialId": "smoke-sad"
+    },
+    {
+      "kind": "emotion",
+      "at": 32,
+      "emotion": "angry",
+      "band": "clear",
+      "source": "devtools",
+      "trialId": "smoke-angry"
+    },
+    {
+      "kind": "emotion",
+      "at": 46,
+      "emotion": "surprised",
+      "band": "clear",
+      "source": "devtools",
+      "trialId": "smoke-surprised"
+    },
+    {
+      "kind": "emotion",
+      "at": 60,
+      "emotion": "think",
+      "band": "clear",
+      "source": "devtools",
+      "trialId": "smoke-think"
+    },
+    {
+      "kind": "emotion",
+      "at": 74,
+      "emotion": "love",
+      "band": "clear",
+      "source": "devtools",
+      "trialId": "smoke-love"
+    },
+    {
+      "kind": "emotion",
+      "at": 88,
+      "emotion": "flustered",
+      "band": "clear",
+      "source": "devtools",
+      "trialId": "smoke-flustered"
+    },
+    {
+      "kind": "emotion",
+      "at": 102,
+      "emotion": "sleepy",
+      "band": "clear",
+      "source": "devtools",
+      "trialId": "smoke-sleepy"
+    },
+    {
+      "kind": "act",
+      "at": 116,
+      "marker": "<|ACT {\"emotion\":\"angry\"}|>",
+      "trialId": "smoke-act-angry"
+    },
+    {
+      "kind": "expression",
+      "at": 130,
+      "expressionId": "expression1",
+      "on": true
+    },
+    {
+      "kind": "expression",
+      "at": 134,
+      "expressionId": "expression1",
+      "on": false
+    }
+  ]
+}

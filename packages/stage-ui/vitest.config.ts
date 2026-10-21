@@ -41,9 +41,14 @@ export default defineConfig({
       // Vitest loads components after the stylesheet. Scan their source before
       // the initial CSS response instead of relying on Vite's HMR updates.
       content: {
+        // NOTICE:
+        // Keep these globs root-relative. On Windows, `import.meta.dirname` has
+        // backslashes that tinyglobby reads as escapes, matching zero files.
+        // Source: @unocss/vite setupContentExtractor.
+        // Removal condition: none; absolute patterns would reintroduce it.
         filesystem: [
-          `${import.meta.dirname}/src/**/*.vue`,
-          `${import.meta.dirname}/../ui/src/**/*.vue`,
+          'src/**/*.vue',
+          '../ui/src/**/*.vue',
         ],
       },
     }])),

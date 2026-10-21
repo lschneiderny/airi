@@ -58,9 +58,11 @@ const report: NaturalCaptureResult['report'] = {
 }
 
 const trace: CapturedTrace = {
+  version: 2,
   t: [0, 1 / 30],
   channels: { ParamAngleX: [0, 1] },
   ranges: { ParamAngleX: { min: -30, max: 30, default: 0 } },
+  events: [],
   meta: {
     model: 'fixture',
     driver: 'natural',

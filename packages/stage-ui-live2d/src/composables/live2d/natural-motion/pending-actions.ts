@@ -1,14 +1,15 @@
 import type { ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 
 import type { Live2DTouchRegion } from '../touch-gestures'
+import type { naturalEmotions } from './emotions'
 import type { NaturalPerformanceEnergy } from './energy'
+import type { NaturalMotionObserver } from './frame-types'
 import type { NaturalGazeLayer } from './gaze'
 import type { NaturalGestures } from './gestures'
 import type { NaturalImpulses } from './impulses'
 import type { NaturalEpisode, NaturalMood } from './mood'
 import type { Vec3 } from './posture'
 
-import { naturalEmotions } from './emotions'
 import { pokeDirection, pokeGlanceHold, pokeStrength, pokeSurpriseDedupeSeconds } from './touch'
 
 // Desktop reactions. Wake lifts the head slightly and glances at the camera; a screen
@@ -43,11 +44,15 @@ export interface PendingActionTargets {
   emotionStrengths: Partial<Record<PerformanceEmotion, number>>
   /** The mood, held-emotion, and band switches read when each episode starts. */
   settings: ExpressionPerformanceSettings
+  /** The recipe table the controller was built with; it decides which emotions play a gesture. */
+  emotions: typeof naturalEmotions
+  /** Receives started emotion impulses and gestures; absent while no observer is attached, so no event is built. */
+  notify?: NaturalMotionObserver
 }
 
 /** Starts emotion impulses and desktop reactions requested since the previous step; returns the updated poke surprise state. */
 export function startPending(actions: PendingAction[], at: number, targets: PendingActionTargets, pokeState: PokeSurpriseState): PokeSurpriseState {
-  const { impulses, gaze, energy, mood, gestures, emotionStrengths, settings } = targets
+  const { impulses, gaze, energy, mood, gestures, emotionStrengths, settings, emotions, notify } = targets
   let { pokes, lastPokeSurprise } = pokeState
   for (const action of actions) {
     if (action.kind === 'poke') {
@@ -68,12 +73,13 @@ export function startPending(actions: PendingAction[], at: number, targets: Pend
       const enabled = settings.heldEmotions
       if (enabled && emotionStrengths[action.episode.emotion] === 0)
         continue
-      const gesture = enabled ? naturalEmotions[action.episode.emotion].gesture : undefined
+      const gesture = enabled ? emotions[action.episode.emotion].gesture : undefined
       const started = impulses.trigger(action.episode, at, { head: gesture === undefined })
       if (!started)
         continue
+      notify?.({ kind: 'impulse', at, emotion: action.episode.emotion, band: started.band, intensity: started.intensity, side: started.side })
       if (gesture)
-        gestures.trigger(gesture, action.episode.intensity, settings.bands ? action.episode.band : 'clear', at)
+        gestures.trigger(gesture, action.episode.intensity, settings.bands ? action.episode.band : 'clear', at, notify && ((played, side) => notify({ kind: 'gesture', at, gesture: played, side })))
       if (settings.mood)
         mood.add(action.episode)
       if (started.glance)

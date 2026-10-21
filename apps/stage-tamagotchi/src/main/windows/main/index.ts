@@ -35,6 +35,7 @@ import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createConfig } from '../../libs/electron/persistence'
 import { protectPrivilegedWindowNavigation, setWindowAlwaysOnTop, transparentWindowConfig } from '../shared'
+import { mainWindowQuery } from './query'
 import { setupMainWindowElectronInvokes } from './rpc/index.electron'
 
 const appConfigSchema = object({
@@ -196,7 +197,7 @@ export async function setupMainWindow(params: {
   })
 
   await load(window, withHashRoute(baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')), '/', {
-    query: { 'synced-leader': 'true' },
+    query: mainWindowQuery(is.dev, env),
   }))
 
   // The inlay loads once and stays shown, so the first speech does not wait for a window and a page load.

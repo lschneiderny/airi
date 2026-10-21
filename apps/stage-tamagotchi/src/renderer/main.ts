@@ -4,6 +4,7 @@ import type { RouteRecordRaw } from 'vue-router'
 import Tres from '@tresjs/core'
 
 import { autoAnimatePlugin } from '@formkit/auto-animate/vue'
+import { errorMessageFrom } from '@moeru/std'
 import { PiniaColada } from '@pinia/colada'
 import { pushToTalkTriggerKey } from '@proj-airi/stage-ui/composables/push-to-talk-trigger'
 import { trackButtonPlugin } from '@proj-airi/stage-ui/directives/track-button'
@@ -47,6 +48,15 @@ configureAnalyticsAdapter(async (options) => {
   const { createOpenpanelAdapter } = await import('@proj-airi/stage-ui/libs/product-signals/openpanel')
   return createOpenpanelAdapter(options)
 })
+
+// The dev-only motion QA bridge. The flag is set synchronously, before `mount()`, so the stage's setup sees it;
+// production builds drop this block, and with it the only import of the dispatcher module.
+if (import.meta.env.DEV && resolveRendererWindowContext().motionQaBridge) {
+  Object.assign(globalThis, { __airiMotionQaEnabled: true })
+  void import('./bridges/motion-qa')
+    .then(module => module.installMotionQaDispatcher())
+    .catch(error => console.error('[motion-qa] The dispatcher could not be installed:', errorMessageFrom(error) ?? 'unknown error'))
+}
 
 const goNetwork = installGoNetwork()
 const pinia = createPinia()

@@ -62,6 +62,11 @@ minimumReleaseAgeExclude:
   - xsschema
 
 shellEmulator: true
+# pnpm 11 defaults this to `install`, which silently starts a full install inside any
+# `pnpm run` or `pnpm exec` after a manifest or lockfile change. With parallel worktrees
+# that is a multi-GB surprise in the middle of an unrelated command. Fail instead, and
+# run `pnpm install` explicitly.
+verifyDepsBeforeRun: error
 packages:
   - packages/**
   - plugins/**

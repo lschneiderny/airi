@@ -6,6 +6,8 @@ export interface RendererWindowContext {
   leadership: LeadershipMode
   /** Determines whether this renderer initializes Stage integrations. */
   stageRuntime: 'full' | 'minimal'
+  /** Whether main enabled the dev-only motion QA bridge for this window; see `mainWindowQuery`. */
+  motionQaBridge: boolean
 }
 
 function normalizeRoutePath(routePath: string) {
@@ -30,7 +32,7 @@ export function resolveInitialRendererRoutePath(routePath: string, hash = global
  *
  * @example
  * resolveRendererWindowContext('?synced-leader=false&stage-runtime=minimal')
- * // => { leadership: 'follower-only', stageRuntime: 'minimal' }
+ * // => { leadership: 'follower-only', stageRuntime: 'minimal', motionQaBridge: false }
  */
 export function resolveRendererWindowContext(search = globalThis.location?.search ?? ''): RendererWindowContext {
   const query = new URLSearchParams(search)
@@ -44,8 +46,13 @@ export function resolveRendererWindowContext(search = globalThis.location?.searc
   if (stageRuntime !== null && stageRuntime !== 'minimal')
     throw new TypeError(`Invalid stage-runtime query: ${stageRuntime}`)
 
+  const motionQaBridge = query.get('motion-qa-bridge')
+  if (motionQaBridge !== null && motionQaBridge !== 'true')
+    throw new TypeError(`Invalid motion-qa-bridge query: ${motionQaBridge}`)
+
   return {
     leadership: syncedLeader === 'true' ? 'leader-only' : 'follower-only',
     stageRuntime: stageRuntime === 'minimal' ? 'minimal' : 'full',
+    motionQaBridge: motionQaBridge === 'true',
   }
 }

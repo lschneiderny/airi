@@ -183,6 +183,7 @@
     "@proj-airi/iconify-meteocons": "catalog:",
     "@proj-airi/lobe-icons": "catalog:",
     "@proj-airi/plugin-sdk": "workspace:^",
+    "@proj-airi/scenarios-stage-tamagotchi-electron": "workspace:^",
     "@proj-airi/server-runtime": "workspace:^",
     "@proj-airi/stage-shared": "workspace:^",
     "@proj-airi/ui-transitions": "workspace:^",

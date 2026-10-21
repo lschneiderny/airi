@@ -39,8 +39,7 @@ import { fileURLToPath } from 'node:url'
 // import crashes before the smoke starts (see PR #2519 CI failure). Use
 // @moeru/std directly instead.
 import { errorMessageFrom } from '@moeru/std'
-
-import { CdpClient, fetchJson, findAvailablePort, findDebugTarget, isRecord, sleep, waitFor, waitForRemoteDebug } from './lib/remote-debug'
+import { CdpClient, fetchJson, findAvailablePort, findDebugTarget, isRecord, sleep, waitFor, waitForRemoteDebug } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 
 function errorMessageFromValue(error: unknown): string {
   return errorMessageFrom(error) ?? String(error)

@@ -89,6 +89,27 @@ On a channel that an explicit clip animates, posture keeps only 10% of its offse
 Eyelids that an expression closes stay closed, and a blink closes open eyelids fully.
 While Natural is selected, the SDK blink plugin is off and Natural's own blink scheduler replaces it.
 
+### Natural observer and QA seams
+
+`Live2DNaturalMotion.setObserver(observer)` reports what the controller performed. Pass `null` to stop reporting. The adapter exposes its controller as `natural`.
+
+- `impulse`: an emotion episode started, with its band, clamped intensity, and side.
+- `hold`: the held emotion or its side changed. A release, or held emotions switched off, reports `emotion: null`.
+- `gesture`: a gesture clip started. For angry, it names the clip it chose, `shake` or `drop`.
+
+Each event carries `at`, the active time of the grid step that first performs it.
+The observer receives values the controller already computed. It adds no random draw, and no event is built while no observer is attached, so motion is bit-identical with or without one.
+An observer that throws is reported with `console.error`, and the step continues.
+
+The `emotionTable` constructor option replaces the `naturalEmotions` recipe table for scorer mutation tests. Production code leaves it at the default.
+
+These subpath exports load in plain Node without pixi, Vue files, or `window`, so QA tools can run the controller outside the renderer:
+
+- `@proj-airi/stage-ui-live2d/composables/live2d/natural-motion`;
+- `@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/*`, for example `natural-motion/trace` or `natural-motion/speech-fixture`;
+- `@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter`;
+- `@proj-airi/stage-ui-live2d/composables/live2d/expression/hold`.
+
 ### Performance state
 
 The stage resolves a `PerformanceState` from `@proj-airi/stage-shared/performance-state` and passes it to the Live2D scene as the `performance` prop.
@@ -200,7 +221,7 @@ In the Electron stage window, clicks reach the canvas only over opaque pixels, b
 
 `scoreLiveliness` in `natural-motion/liveliness.ts` scores a timestamped parameter trace against reference bands. The bands come from recordings of a human performer in `natural-motion/reference-stats.ts`.
 The report lists every metric with its value and band, any hard failures, a score, and `pass`.
-The liveliness gate test scores generated Natural motion with it, so every motion change is checked in the test suite.
+The liveliness gate test scores generated Natural motion with it, so every motion change is checked in the test suite. The gated metrics, seeds, and timings come from `naturalIdleLivelinessGate` in `natural-motion/gates.ts` (see Natural QA).
 
 Score a trace from the repository root. The trace is JSON with `t` (seconds), `channels`, `ranges`, and optional `valid`. The command prints the report and exits 0 only when `pass` is true.
 
@@ -233,29 +254,45 @@ Recordings and exported traces are private. Write them under `.omo/evidence/`, w
 
 ### Natural QA
 
-Every statistical rendered gate scored from Natural traces (liveliness metrics and the band-recruitment analysis) uses 3 captures of the same duration on the same build, preregistered before data, aggregated per the gate's stated rule. Single captures are diagnostic only.
+QA gates are committed code in `natural-motion/gates.ts`. Each gate has an `id` and an integer `version`, and lists its metrics, thresholds, windows, trial counts, and seeds. Change a gate only by editing that file, and bump `version` when you do. Reports record the git SHA of the last commit that changed the file, so every verdict names the rules it was judged by.
+
+| Gate | Id | What it judges |
+| --- | --- | --- |
+| `naturalIdleLivelinessGate` | `natural-idle-liveliness` | Idle liveliness metrics in generated mode, seeds 1-3, 180 s warm-up, 1800 s scored. |
+| `naturalTalkingGate` | `natural-talking` | Talking head speed relative to silence and onset enrichment. |
+| `emotionGate` | `natural-emotion` | Emotion direction, size relative to the recipe, release, and detectability above idle noise. |
+
+Every report states the same limitation. Scores prove direction, size relative to the recipe, release, and detectability above the rig's idle noise. They do not prove naturalness, which stays a visual review. The desk VTS recordings are valid for idle liveliness only.
+
+Every statistical rendered gate scored from Natural traces uses 3 captures of the same duration on the same build, aggregated per the gate's rule. Single captures are diagnostic only.
 Functional event checks (a parameter rises after a marker, lipsync mouth > threshold, a tool result) are pass/fail runs, not statistical gates.
 
-Before capturing, write a preregistration JSON listing `createdAt` (an ISO timestamp), `gate`, `rig`, `captureCount`, and `durations` (seconds per capture). For example:
-
-```json
-{
-  "createdAt": "2026-10-18T10:00:00.000Z",
-  "gate": "idle-liveliness",
-  "rig": "ForBOOTH",
-  "captureCount": 3,
-  "durations": [600, 600, 600]
-}
-```
-
-Score the captures together:
+Score liveliness captures against a committed gate:
 
 ```bash
-pnpm -F @proj-airi/stage-ui-live2d exec tsx scripts/score-natural-captures.ts --prereg <prereg.json> <trace1.json> <trace2.json> <trace3.json>
+pnpm -F @proj-airi/stage-ui-live2d exec tsx scripts/score-natural-captures.ts --gate natural-idle-liveliness <trace1.json> <trace2.json> <trace3.json>
 ```
 
-The CLI requires at least 3 traces and refuses with exit 2 if the preregistration is missing, incomplete, or its `createdAt` is not earlier than every trace file's modification time. Keep the original capture files and their modification times.
-For liveliness, each metric is the median of its non-null measurements, band acceptance is recomputed on that median, and the score is the median of capture scores. Any hard failure in any capture fails the aggregate. Every banded median must pass; an entirely missing banded metric fails. The command prints aggregate JSON and exits 0 on pass or 1 on fail.
+The CLI requires at least 3 traces whose spans (last minus first timestamp) differ by at most 1 s. It exits 2 for an unknown gate, a missing argument, invalid traces, or unequal durations. The retired preregistration flag also exits 2 and names `--gate`.
+Each metric is the median of its non-null measurements, band acceptance is recomputed on that median, and the score is the median of capture scores. The gate passes when no capture has a hard failure and every metric in the gate's `metrics` list passes, exactly as the liveliness gate test judges it; other metrics are reported in `aggregate` only.
+The output JSON holds `gate` (`id`, `version`, `fileSha`), `limitation`, `pass`, `failures`, `durations`, and `aggregate`. The command exits 0 on pass and 1 on fail.
+
+The emotion scorer in `natural-motion/emotion-score.ts` is pure and reads NaturalTrace version 2 files. It has two stages:
+
+- `measureEmotionTrial` measures one trial from its emotion run and the stripped run with the same seed. `measurePlacebos` measures the placebo windows of an emotion-free run. Both produce JSON records.
+- `scoreEmotionGate` turns the records into one result per `ChannelCheck`. `buildEmotionChecks` generates the checks from the recipe table, so a recipe edit changes the expectations with it.
+
+Each result reports significance (a sign-flip permutation test with Holm correction across the run), sign, size relative to the recipe on held-only trials, visibility above the placebo null, and release. A criterion without data is `n/a`, never a pass.
+Every resampling stream is seeded from the gate id and the check key, so results are byte-identical across runs and do not depend on input order.
+A trial is rejected when another emotion event falls within `naturalEmotionLifetime` of its window.
+The face and eyelid release fit uses only held-only trials whose face residue has ended when the fit window starts. The residue is `naturalFaceResidue`: impulse face hints, the glance, and the strong energy overlay, each followed by gaze-evoked lid responses.
+Posture has no release check. It decays with `held.postureTau`, and in held-only runs gesture clips (up to 7.5 s) and the energy overlay still write the head and body during the release window.
+
+To compare Natural's frame cost before and after a runtime change, run the micro-benchmark from this package on the same machine. It prints the median of 5 runs, each of 10,000 idle adapter compositions on a stub rig:
+
+```bash
+node --expose-gc --import tsx scripts/bench-natural.ts
+```
 
 ### Natural motion lab
 
@@ -280,6 +317,10 @@ Affect-trace messages are Eventa events from `@proj-airi/stage-shared/expression
 The stage's model listens for frames only while a capture request is pending.
 It samples in the SDK `beforeModelUpdate` event. That event fires after Natural composition, physics, and pose, and before the SDK restores the saved parameters, so the trace records the values that are actually rendered.
 `NaturalTraceRecorder` keeps one frame per 1/30 s slot. It records head, body, eye, eyelid, eye smile, brow, mouth, cheek, and breath parameters that the rig has, together with their ranges.
+A capture request can name `extraParameterIds`, such as a ForBOOTH expression switch (`Param60`). The recorder adds columns for the ones the rig has.
+A trace has `version: 2` and an `events` list on the sample clock.
+While a capture runs, the stage attaches the Natural observer, so the list holds every impulse, hold change, and gesture that Natural performed.
+It also holds the scenario events that `markCaptureEvent` receives in the stage window. The scorer ignores events.
 The capture also records metadata: the model id, the driver, the energy, the posture home, the capture time and duration, and adapter counters.
 The adapter counters are the mean posture weight, the number of body writes, and the number of channels left to physics. They show what Natural wrote during the capture, and they stay at zero body writes on a rig whose physics derives the body from the head.
 If the model is unloaded during a capture, the capture fails.

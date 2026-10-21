@@ -1,0 +1,68 @@
+[
+  {
+    "id": "expression1",
+    "label": "Angry",
+    "kind": "effect",
+    "group": null,
+    "confirmed": true,
+    "exposedToLlm": true,
+    "mappings": [{ "emotion": "angry", "weight": 1, "minBand": "strong" }],
+    "fileName": "expression1.exp3.json",
+    "parameterIds": []
+  },
+  {
+    "id": "expression2",
+    "label": "Crying Eyes",
+    "kind": "face",
+    "group": null,
+    "confirmed": true,
+    "exposedToLlm": true,
+    "mappings": [{ "emotion": "sad", "weight": 1, "minBand": "clear" }],
+    "fileName": "expression2.exp3.json",
+    "parameterIds": []
+  },
+  {
+    "id": "expression7",
+    "label": "Hearts 1",
+    "kind": "face",
+    "group": null,
+    "confirmed": true,
+    "exposedToLlm": true,
+    "mappings": [{ "emotion": "love", "weight": 1, "minBand": "clear" }],
+    "fileName": "expression7.exp3.json",
+    "parameterIds": []
+  },
+  {
+    "id": "脸红2",
+    "label": "Blush",
+    "kind": "face",
+    "group": null,
+    "confirmed": true,
+    "exposedToLlm": true,
+    "mappings": [{ "emotion": "flustered", "weight": 1, "minBand": "clear" }],
+    "fileName": "脸红2.exp3.json",
+    "parameterIds": []
+  },
+  {
+    "id": "expression13",
+    "label": "Sleepy",
+    "kind": "face",
+    "group": null,
+    "confirmed": true,
+    "exposedToLlm": true,
+    "mappings": [{ "emotion": "sleepy", "weight": 1, "minBand": "clear" }],
+    "fileName": "expression13.exp3.json",
+    "parameterIds": []
+  },
+  {
+    "id": "expression5",
+    "label": "Star Eyes",
+    "kind": "effect",
+    "group": null,
+    "confirmed": true,
+    "exposedToLlm": true,
+    "mappings": [{ "emotion": "happy", "weight": 1, "minBand": "strong" }],
+    "fileName": "expression5.exp3.json",
+    "parameterIds": []
+  }
+]

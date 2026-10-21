@@ -413,6 +413,7 @@ async function performModelLoad() {
     expressionController.dispose()
     internalModelRef.value = undefined
     loadedModelId = undefined
+    naturalDiagnostics.setLoadedModelId(null)
 
     try {
       pixiApp.value.stage.removeChild(model.value)
@@ -700,6 +701,7 @@ async function performModelLoad() {
     savedEyeBlink.value = internalModel.eyeBlink
     savedExpressionManager.value = motionManager.expressionManager
     loadedModelId = pendingModel.id
+    naturalDiagnostics.setLoadedModelId(pendingModel.id ?? null)
 
     // --- Expression controller initialisation (conditional)
     if (live2dExpressionEnabled.value) {
@@ -1100,6 +1102,9 @@ watch(nowSpeaking, (speaking, wasSpeaking) => {
  *
  * The listener exists only while a request is pending. It detaches when the duration elapses,
  * when the request is cancelled, or when the model is destroyed.
+ *
+ * While it runs, the trace also stamps what Natural performed (its observer) and the scenario events
+ * that `markCaptureEvent` receives in this window, on the same clock as the samples.
  */
 function startNaturalCapture(request: NaturalCaptureRequest) {
   stopNaturalCapture?.()
@@ -1111,13 +1116,15 @@ function startNaturalCapture(request: NaturalCaptureRequest) {
   }
   const internalModel = current.internalModel
   const coreModel = internalModel.coreModel
-  const recorder = new NaturalTraceRecorder(coreModel.getModel().parameters)
+  const recorder = new NaturalTraceRecorder(coreModel.getModel().parameters, { extraParameterIds: request.extraParameterIds })
   const capturedAt = new Date().toISOString()
   const readDiagnostics = () => adapter.diagnostics
   adapter.resetDiagnostics()
 
   const stop = () => {
     internalModel.off('beforeModelUpdate', onFrame)
+    adapter.natural.setObserver(null)
+    naturalDiagnostics.setCaptureMarker(null)
     stopNaturalCapture = undefined
   }
   function finish() {
@@ -1145,9 +1152,17 @@ function startNaturalCapture(request: NaturalCaptureRequest) {
       finish()
   }
 
+  adapter.natural.setObserver(event => recorder.mark(performance.now() / 1000, 'natural', event))
+  naturalDiagnostics.setCaptureMarker(event => recorder.mark(performance.now() / 1000, 'scenario', event))
   internalModel.on('beforeModelUpdate', onFrame)
   stopNaturalCapture = stop
 }
+
+// Read on demand by the dev-only motion QA bridge in this window; nothing reads it otherwise.
+const releaseStageReader = naturalDiagnostics.registerStageReader(() => ({
+  naturalActive: naturalMotion !== undefined && live2dMotionDriver.value === 'natural' && !paused.value,
+  hold: holdPerformer.current(holdClock()),
+}))
 
 watch(naturalCaptureRequest, (request, previous) => {
   if (request && request.id !== previous?.id)
@@ -1326,6 +1341,8 @@ onUnmounted(() => {
   disposeShouldUpdateView?.()
   expressionController.dispose()
   loadedModelId = undefined
+  naturalDiagnostics.setLoadedModelId(null)
+  releaseStageReader()
 
   // Destroying a display object does not destroy its filters, and each mount
   // creates its own pair, so the light-map textures and the blur pass would

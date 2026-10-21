@@ -8,11 +8,11 @@ import { dirname, resolve } from 'node:path'
 import { env, exit, kill as killProcess } from 'node:process'
 import { fileURLToPath } from 'node:url'
 
+import { CdpClient, findAvailablePort, findDebugTarget, isRecord, sleep, waitFor, waitForRemoteDebug } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 import { errorMessageFromValue } from '@proj-airi/stage-shared'
 
 import { desktopOverlayPollHeartbeatMarker } from '../src/shared/desktop-overlay-heartbeat'
 import { selectDesktopOverlaySmokeCandidateId } from '../src/shared/desktop-overlay-live-window-smoke'
-import { CdpClient, findAvailablePort, findDebugTarget, isRecord, sleep, waitFor, waitForRemoteDebug } from './lib/remote-debug'
 
 interface McpResult {
   content?: unknown[]

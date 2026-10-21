@@ -18,6 +18,9 @@ interface Clip extends ClipShape {
   readonly start: number
 }
 
+/** A gesture that plays as one clip; `shake-or-drop` resolves to `shake` or `drop` when it triggers. */
+type PlayedGesture = Exclude<GestureKind, 'shake-or-drop'>
+
 /** Head amplitude per band; the slight band never triggers a gesture. */
 const bandAmplitude: Record<Band, number> = { slight: 0, clear: 0.6, strong: 1 }
 /** Body follows the head on yaw and roll only, at half the head amplitude. */
@@ -26,6 +29,22 @@ const bodyGain = 0.5
 const cooldowns = { 'laugh': 4, 'recoil': 3, 'angry': 5, 'sway': 4, 'tilt-in': 5, 'look-away': 4, 'nod-off': 8 } as const
 // Retire exponential tails once they have become negligible.
 const tailTaus = 15
+
+/**
+ * The longest lifetime `createClip` can draw per clip, in seconds after the start. Laugh ends by its fourth
+ * cycle at 4 Hz or faster (1 s); shake plays at most 3 cycles at 3 Hz (1 s). QA reads these bounds to keep
+ * scored windows clear of clip residue.
+ */
+export const gestureLifetimes: Readonly<Record<PlayedGesture, number>> = {
+  'laugh': 1,
+  'recoil': 0.72,
+  'shake': 1,
+  'drop': tailTaus * 0.15,
+  'sway': 2,
+  'tilt-in': tailTaus * 0.5,
+  'look-away': 1.65,
+  'nod-off': 1.2 + tailTaus * 0.3,
+}
 
 function cooldownKey(kind: GestureKind): keyof typeof cooldowns {
   return kind === 'shake' || kind === 'drop' || kind === 'shake-or-drop' ? 'angry' : kind
@@ -47,12 +66,10 @@ function taper(age: number, lifetime: number) {
 }
 
 /**
- * Draw order: side; angry choice only for shake-or-drop; laugh cycles, frequency,
+ * Draw order, after the side and angry choice that `trigger` draws: laugh cycles, frequency,
  * amplitude; shake cycles. All other clips need only the side. `scale` is strength x band amplitude.
  */
-function createClip(request: GestureKind, scale: number, random: RandomStream): ClipShape {
-  const side = random() < 0.5 ? -1 : 1
-  const kind = request === 'shake-or-drop' ? (random() < 0.5 ? 'shake' : 'drop') : request
+function createClip(kind: PlayedGesture, side: -1 | 1, scale: number, random: RandomStream): ClipShape {
   switch (kind) {
     case 'laugh': {
       const cycles = 2 + Math.floor(random() * 3)
@@ -141,8 +158,11 @@ export class NaturalGestures {
 
   constructor(private readonly random: RandomStream) {}
 
-  /** Returns whether a clip started. `shake-or-drop` plays one of the two with equal chance. */
-  trigger(kind: GestureKind, strength: number, band: Band, at: number): boolean {
+  /**
+   * Returns whether a clip started. `shake-or-drop` plays one of the two with equal chance.
+   * `started` receives the played gesture and its side, synchronously, only when a clip starts.
+   */
+  trigger(kind: GestureKind, strength: number, band: Band, at: number, started?: (gesture: PlayedGesture, side: -1 | 1) => void): boolean {
     const amplitude = bandAmplitude[band]
     if (!(strength > 0) || !Number.isFinite(strength) || amplitude === 0 || !Number.isFinite(at))
       return false
@@ -151,8 +171,12 @@ export class NaturalGestures {
     if (last !== undefined && at - last < cooldowns[key])
       return false
     this.lastTrigger.set(key, at)
-    const clip: Clip = { ...createClip(kind, Math.min(1, strength) * amplitude, this.random), start: at }
+    // Draw order: side, then the angry choice only for shake-or-drop, then the clip's own draws.
+    const side = this.random() < 0.5 ? -1 : 1
+    const played = kind === 'shake-or-drop' ? (this.random() < 0.5 ? 'shake' : 'drop') : kind
+    const clip: Clip = { ...createClip(played, side, Math.min(1, strength) * amplitude, this.random), start: at }
     this.heads.push(clip)
+    started?.(played, side)
     if (band === 'strong') {
       this.bodies.push({
         ...clip,
