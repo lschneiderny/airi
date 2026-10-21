@@ -1,13 +1,20 @@
 import process from 'node:process'
 
+import { resolve } from 'node:path'
+
 import Vue from '@vitejs/plugin-vue'
 
 import { defineConfig } from 'vitest/config'
+
+import ClosureReporter from './src/motion/cache/closure-reporter'
 
 export default defineConfig({
   root: import.meta.dirname,
   plugins: [Vue()],
   test: {
+    ...(process.env.QA_RUN_DIR
+      ? { reporters: ['default', new ClosureReporter(resolve(import.meta.dirname, '../..'), process.env.QA_RUN_DIR)] }
+      : {}),
     projects: [
       {
         extends: true,

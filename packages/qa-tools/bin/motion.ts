@@ -4,12 +4,19 @@ import { resolve } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
 
-import { gateUsage, runGateCli } from '../src/motion/gate/cli'
-import { runValidateCli, validateUsage } from '../src/motion/validation/cli'
-import { t3Usage } from '../src/t3/args'
-import { runT3Cli } from '../src/t3/cli'
+import { ClosureHooks } from '../src/motion/cache/closure-hooks'
 
-const usage = `Usage: motion <command>
+const repoRoot = resolve(import.meta.dirname, '..', '..', '..')
+const closure = new ClosureHooks(repoRoot, import.meta.url)
+
+async function main(argv: string[]): Promise<number> {
+  // Static imports execute before the hook installation, so application imports must be dynamic.
+  const { gateUsage, runGateCli } = await import('../src/motion/gate/cli')
+  const { runValidateCli, validateUsage } = await import('../src/motion/validation/cli')
+  const { t3Usage } = await import('../src/t3/args')
+  const { runT3Cli } = await import('../src/t3/cli')
+
+  const usage = `Usage: motion <command>
 
 Commands:
   gate <emotion | liveliness> --level <t1 | t2 | t3> ...   run a committed QA gate
@@ -21,9 +28,7 @@ ${t3Usage}
 
 ${validateUsage}`
 
-async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv
-  const repoRoot = resolve(import.meta.dirname, '..', '..', '..')
   if (command === 'gate')
     return runGateCli(rest, repoRoot)
   if (command === 't3')
@@ -35,8 +40,12 @@ async function main(argv: string[]): Promise<number> {
 }
 
 main(process.argv.slice(2)).then((code) => {
+  const argv = process.argv.slice(2)
+  const t1 = argv.includes('--level=t1') || (argv.includes('--level') && argv[argv.indexOf('--level') + 1] === 't1')
+  if (code !== 2 && (argv[0] === 'gate' || argv[0] === 'validate-scorer') && t1)
+    console.info(`CLI closure ${closure.write(resolve(repoRoot, '.temp', 'qa'))}`)
   process.exitCode = code
 }, (error) => {
   console.error(`qa-tools motion: ${errorMessageFrom(error) ?? 'unexpected failure'}`)
   process.exitCode = 1
-})
+}).finally(() => closure.stop())
