@@ -49,6 +49,8 @@ Every motion QA report and verdict must state:
 
 The desk VTS recordings are valid for idle liveliness only. Naturalness remains Luke's visual call. ForBOOTH's watermark covers part of the face in T3 screenshots; under Luke's rule, acceptance on one rig counts for the other.
 
+Gate wall time is recorded, not asserted; no test fails on timing. On a quiet 16-core machine at the integration tip, the full T1 emotion gate took 294.6 s against a 300 s target. The angry/strong smoke subset took 44.7 s and 45.5 s, and an independent run took 65.0 s, against a 60 s target. Luke accepted these measurements on 2026-10-20. Under load, times rise; the full gate took 415.6 s. Record the machine load with any timing.
+
 ## Gates and known failures
 
 Gate ids, versions, metrics, and budgets live in `packages/stage-ui-live2d/src/composables/live2d/natural-motion/gates.ts`. If a gate changes, edit that file and bump its version in a commit before running it. Never retune a gate or a Natural recipe to pass a failing run.
