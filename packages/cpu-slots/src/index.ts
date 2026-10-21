@@ -1,3 +1,5 @@
+export type { AcquireOptions, Lease } from './acquire'
+export { acquire, storeRoot } from './acquire'
 export { parseBudget } from './budget'
 export type { CpuClass } from './classes'
 export { classes } from './classes'
