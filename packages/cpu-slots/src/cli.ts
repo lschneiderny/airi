@@ -88,31 +88,14 @@ async function main(args: string[]): Promise<number> {
   }
   return new Promise<number>((resolve, reject) => {
     // cmd.exe requires argument quoting; Node's shell mode otherwise joins arguments verbatim.
-    const shell = process.platform === 'win32' && !/^node(?:\.exe)?$|\.exe$/i.test(substituted[0])
-    const argv = shell
+    const argv = process.platform === 'win32'
       ? substituted.map(arg => `"${arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1')}"`)
       : substituted
-    // cmd.exe loses piped output when detached, so only directly spawned executables detach.
-    const detached = !shell && !process.stdin.isTTY && !process.stdout.isTTY && !process.stderr.isTTY
     const child = spawn(argv[0], argv.slice(1), {
-      // A detached Windows child loses inherited stdio handles, so its output is relayed.
-      stdio: detached ? 'pipe' : 'inherit',
+      stdio: 'inherit',
       env: { ...process.env, ...lease.env },
-      shell,
-      // NOTICE:
-      // libuv kills a non-detached child with its parent's Windows job object.
-      // Root cause: only UV_PROCESS_DETACHED escapes it, and A20 needs workloads to outlive the coordinator.
-      // Source: node child_process 'detached' option.
-      // Removal condition: none; interactive terminals stay attached for Ctrl+C and TTY output.
-      detached,
+      shell: process.platform === 'win32',
     })
-    if (detached) {
-      child.stdout!.pipe(process.stdout)
-      child.stderr!.pipe(process.stderr)
-      process.stdin.pipe(child.stdin!)
-      // The coordinator may die first; the orphaned workload then loses its pipe, not the lease.
-      child.stdin!.on('error', () => {})
-    }
     // A win32 shell wrapper (cmd.exe) would otherwise die alone and orphan the real workload.
     const stop = (signal: NodeJS.Signals): void => {
       if (process.platform === 'win32' && child.pid)

@@ -246,25 +246,65 @@ it('inherits without tickets and rejects exclusive-under-shared with exit 2', as
   expect(await holder.exit()).toBe(0)
 }, 30_000)
 
-it.each(['tree', 'coordinator'])('a15/a20 prunes after %s death only when workload is gone', async (mode) => {
+// IS-4 allows 2.5 s from a workload's death to the next grant; the margin covers the process snapshot spawn.
+const IS4_BOUND_MS = 2_500
+const IS4_MARGIN_MS = 2_000
+
+// The registered workload announces itself only once the lease file lists it (state-driven, no sleeps).
+const registeredWorkload = `const fs=require('fs');const f=process.env.AIRI_CPU_SLOTS_DIR+'/leases/'+process.env.AIRI_CPU_LEASE+'.json';for(;;){try{if(JSON.parse(fs.readFileSync(f,'utf8')).workload.length)break}catch{}}process.stdout.write('W-RUN '+process.pid+'\\n');setInterval(()=>{},1000)`
+
+it('a15 prunes a lease after its whole tree is killed', async () => {
   const env = { AIRI_CPU_BUDGET: '6' }
-  // The coordinator registers its workload right after spawning it, so the workload
-  // announces itself only once the lease file lists it (no sleeps, state-driven).
-  const registered = `const fs=require('fs');const f=process.env.AIRI_CPU_SLOTS_DIR+'/leases/'+process.env.AIRI_CPU_LEASE+'.json';for(;;){try{if(JSON.parse(fs.readFileSync(f,'utf8')).workload.length)break}catch{}}process.stdout.write('W-RUN '+process.pid+'\\n');setInterval(()=>{},1000)`
-  const a = run(registered, env, ['--class', 'test', '--min', '6', '--max', '6'])
+  const a = run(registeredWorkload, env, ['--class', 'test', '--min', '6', '--max', '6'])
+  survivors.add(Number((await a.line(/^W-RUN (\d+)\r?$/m))[1]))
+  kill(a.child.pid!)
+  await a.exit()
+  const b = run(`console.log('B-RUN')`, env, ['--class', 'exclusive'])
+  await b.line(/^B-RUN\r?$/m)
+  expect(await b.exit()).toBe(0)
+}, 30_000)
+
+it('a20 keeps the lease while a workload that escaped its coordinator lives', async () => {
+  const env = { AIRI_CPU_BUDGET: '6' }
+  const coordinator = new Running([join(here, 'fixtures/escaper.ts')], env)
+  const workload = Number((await coordinator.line(/^W-RUN (\d+)\r?$/m))[1])
+  survivors.add(workload)
+  kill(coordinator.child.pid!, false)
+  await coordinator.exit()
+  expect(isAlive(workload)).toBe(true)
+  const status = new Running([cli, 'status', '--json'], env)
+  expect(await status.exit()).toBe(0)
+  const record = JSON.parse(status.output).leases[0]
+  expect(existsSync(join(root, 'leases', `${record.id}.json`))).toBe(true)
+  const b = run(`console.log('B-RUN')`, env, ['--class', 'exclusive'])
+  await b.line(/cpu-slots: waiting/, true)
+  expect(b.output).not.toContain('B-RUN')
+  kill(workload, false)
+  const killedAt = performance.now()
+  await b.line(/^B-RUN\r?$/m)
+  expect(performance.now() - killedAt).toBeLessThan(IS4_BOUND_MS + IS4_MARGIN_MS)
+  expect(await b.exit()).toBe(0)
+  survivors.delete(workload)
+}, 30_000)
+
+// Whether an attached workload dies with its coordinator depends on the OS (Windows job objects, POSIX
+// reparenting). The lease contract does not: a grant after the kill implies the workload is gone.
+it('a20c an attached CLI workload never outlives a grant that follows its coordinator kill', async () => {
+  const env = { AIRI_CPU_BUDGET: '6' }
+  const a = run(registeredWorkload, env, ['--class', 'test', '--min', '6', '--max', '6'])
   const workload = Number((await a.line(/^W-RUN (\d+)\r?$/m))[1])
   survivors.add(workload)
-  kill(a.child.pid!, mode === 'tree')
+  kill(a.child.pid!, false)
   await a.exit()
-  if (mode === 'coordinator')
-    expect(isAlive(workload)).toBe(true)
   const b = run(`console.log('B-RUN')`, env, ['--class', 'exclusive'])
-  if (mode === 'coordinator') {
-    await b.line(/cpu-slots: waiting/, true)
+  const waiting = b.line(/cpu-slots: waiting/, true).then(() => true, () => false)
+  const granted = b.line(/^B-RUN\r?$/m).then(() => true, () => false)
+  if (await Promise.race([waiting.then(didWait => didWait && 'waiting'), granted.then(() => 'granted')]) === 'waiting') {
     expect(b.output).not.toContain('B-RUN')
-    kill(workload, process.platform === 'win32')
+    kill(workload, false)
   }
-  await b.line(/^B-RUN\r?$/m)
+  expect(await granted).toBe(true)
+  expect(isAlive(workload)).toBe(false)
   expect(await b.exit()).toBe(0)
   survivors.delete(workload)
 }, 30_000)

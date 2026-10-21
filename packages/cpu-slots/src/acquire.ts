@@ -33,14 +33,17 @@ export function storeRoot(): string {
     ?? join(process.platform === 'win32' ? process.env.LOCALAPPDATA ?? tmpdir() : tmpdir(), 'airi-cpu-slots'))
 }
 
-/** Synchronous callers (exit handlers) cannot wait for the next poll, so they retry a busy lock briefly. */
-function whileBusy<T>(fn: () => T): T {
-  for (let attempt = 0; ; attempt++) {
+/** Longest an exit handler may block on a busy store lock. */
+const EXIT_BUSY_BUDGET_MS = 5_000
+
+/** Exit handlers cannot wait for another poll, so they retry synchronously until the deadline. */
+function whileBusy<T>(fn: () => T, deadline: number): T {
+  for (;;) {
     try {
       return fn()
     }
     catch (error) {
-      if (!(error instanceof StoreBusyError) || attempt >= 200)
+      if (!(error instanceof StoreBusyError) || Date.now() >= deadline)
         throw error
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25)
     }
@@ -68,21 +71,58 @@ function owned(store: Store, record: StoredLease): Lease {
     }
   }, 10_000)
   heartbeat.unref()
+
+  // Store writes after acquisition run in order. A busy lock is retried on a referenced timer, so a
+  // pending registration or release keeps the process alive without blocking its event loop.
+  const pending: { run: () => void, attempts: number }[] = []
+  let retry: ReturnType<typeof setTimeout> | undefined
+  const pump = (): void => {
+    retry = undefined
+    while (pending.length) {
+      const op = pending[0]
+      try {
+        op.run()
+        pending.shift()
+      }
+      catch (error) {
+        if (error instanceof StoreBusyError && ++op.attempts < 200) {
+          retry = setTimeout(pump, 25)
+          return
+        }
+        pending.shift()
+        console.error(`cpu-slots: store write failed (${String(error)})`)
+      }
+    }
+  }
+  const submit = (run: () => void): void => {
+    pending.push({ run, attempts: 0 })
+    if (!retry)
+      pump()
+  }
+
   let released = false
-  const release = (): void => {
-    if (released)
-      return
-    // Always use the store's synchronous snapshot guard, even without registered work.
-    whileBusy(() => store.releaseIfIdle(record))
+  const finish = (): void => {
     released = true
     clearInterval(heartbeat)
     held.delete(store.root)
     // eslint-disable-next-line ts/no-use-before-define -- mutual reference resolved before it runs
     process.removeListener('exit', onExit)
   }
+  const release = (): void => {
+    if (released)
+      return
+    finish()
+    // Always use the store's snapshot guard, even without registered work.
+    submit(() => void store.releaseIfIdle(record))
+  }
   const onExit = (): void => {
+    clearTimeout(retry)
+    const deadline = Date.now() + EXIT_BUSY_BUDGET_MS
     try {
-      release()
+      for (const op of pending.splice(0))
+        whileBusy(op.run, deadline)
+      if (!released)
+        whileBusy(() => store.releaseIfIdle(record), deadline)
     }
     catch {
       // A failed snapshot or busy lock cannot prove idleness. Leave pruning to an observer.
@@ -94,7 +134,7 @@ function owned(store: Store, record: StoredLease): Lease {
     exclusive: record.exclusive,
     inherited: false,
     env: { AIRI_CPU_LEASE: record.id, AIRI_CPU_GRANT: String(record.slots), AIRI_CPU_CLASS: record.class },
-    addWorkload: pid => whileBusy(() => store.addWorkload(record, pid)),
+    addWorkload: pid => submit(() => store.addWorkload(record, pid)),
     release,
   }
   held.set(store.root, lease)
