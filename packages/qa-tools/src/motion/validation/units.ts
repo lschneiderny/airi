@@ -45,7 +45,7 @@ function experimentOf(plan: ValidationPlan, id: string): Experiment {
 
 /** Simulates one generation unit and writes its records as one partial. */
 export function runGenerationUnit(unit: GenerationUnit, plan: ValidationPlan, gate: EmotionGate, runDir: string, boundMs: number): void {
-  const partial: ValidationRecordsPartial = { kind: 'validation-records', unit: unit.name, records: [], placebos: [], ranges: null, eventOrder: null }
+  const partial: ValidationRecordsPartial = { kind: 'validation-records', unit: unit.name, records: [], placebos: [], ranges: null, eventOrder: null, sideEquality: null }
   if (unit.kind === 'null') {
     for (const seed of seeds(unit.seeds)) {
       const run = runPlaceboSeed(seed, gate, boundMs)
@@ -74,6 +74,10 @@ export function runGenerationUnit(unit: GenerationUnit, plan: ValidationPlan, ga
     let invariant = true
     for (const seed of seeds(unit.seeds)) {
       const traces = runEmotionTrialTraces({ ...unit.cell, seed, gate, boundMs, emotionTable, held: experiment.held ?? undefined })
+      if (seed === unit.seeds.start && (unit.experiment === 'mutation-ignore-side' || unit.experiment === 'mutation-ignore-side-neg')) {
+        const unmutated = runEmotionTrialTraces({ ...unit.cell, seed, gate, boundMs, emotionTable: emotionTableFor('natural'), held: experiment.held ?? undefined })
+        partial.sideEquality = { seed, identical: isDeepStrictEqual(traces.run, unmutated.run) }
+      }
       const options = { trialId: traces.trialId, variant: unit.cell.variant, gate, settings: traces.settings }
       const record = measureEmotionTrial(traces.run, traces.paired, options)
       partial.records.push(record)

@@ -1,10 +1,54 @@
+import type { CheckResult, EmotionTrialRecord } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
+
+import type { ValidationOptions } from './plan'
+
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { naturalEmotions } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotions'
 import { buildEmotionChecks, emotionGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
+import { writePartial } from '../gate/partials'
 import { parseValidateArgs } from './cli'
-import { killState } from './evaluate'
+import { evaluateValidation, formatValidationSummary, killState } from './evaluate'
 import { aaSetCount, assignShards, buildValidationPlan, emotionTableFor, validationSections } from './plan'
+import { recordsPartialName, scorePartialName } from './units'
+
+const temporaryRuns: string[] = []
+afterEach(() => {
+  for (const run of temporaryRuns.splice(0))
+    rmSync(run, { recursive: true, force: true })
+})
+
+function checkResult(overrides: Partial<CheckResult> = {}): CheckResult {
+  const check = buildEmotionChecks().find(check => check.emotion === 'awkward' && check.band === 'clear' && check.sided && check.channel !== 'browAsym')!
+  return { key: check.key, emotion: check.emotion, band: check.band, channel: check.channel, unsigned: false, n: 10, rejected: 0, E: 1, ci: [1, 1], d: 1, hits: 10, hitRate: 1, p: 0, pHolm: 0, expected: 1, sizeRatio: 1, verdict: 'pass', failed: [], reasons: [], ...overrides }
+}
+
+function syntheticRun(sections: ValidationOptions['sections']) {
+  const options = { sections, seedsLimit: 2 }
+  const plan = buildValidationPlan(emotionGate, options)
+  const runDir = mkdtempSync(join(tmpdir(), 'scorer-validation-'))
+  temporaryRuns.push(runDir)
+  const score = (experiment: string, results: CheckResult[]) => {
+    const job = plan.jobs.find(job => job.experiment === experiment)!
+    writePartial(runDir, scorePartialName(job), { kind: 'validation-score', job: job.name, score: { gate: { id: emotionGate.id, version: emotionGate.version }, limitation: '', nullStats: {}, results, pass: results.every(result => result.verdict === 'pass') }, recordOrderInvariant: null })
+  }
+  for (const job of plan.jobs)
+    score(job.experiment, [])
+  const sideCell = (experiment: string, identical: boolean, sides: EmotionTrialRecord['side'][] = [1, 1]) => {
+    const unit = plan.units.find(unit => unit.kind === 'cell' && unit.experiment === experiment && unit.cell.emotion === 'awkward' && unit.cell.band === 'clear')!
+    const records: EmotionTrialRecord[] = sides.map((side, index) => ({ trialId: `synthetic-${index}`, emotion: 'awkward', band: 'clear', variant: 'full', side, rejected: null, releaseStart: 4, faceResidue: 0, channels: {}, missing: {} }))
+    writePartial(runDir, recordsPartialName(unit), { kind: 'validation-records', unit: unit.name, records, placebos: [], ranges: null, eventOrder: null, sideEquality: { seed: 1001, identical } })
+  }
+  for (const unit of plan.units) {
+    if (unit.kind === 'cell' && (unit.experiment === 'mutation-ignore-side' || unit.experiment === 'mutation-ignore-side-neg'))
+      writePartial(runDir, recordsPartialName(unit), { kind: 'validation-records', unit: unit.name, records: [], placebos: [], ranges: null, eventOrder: null, sideEquality: null })
+  }
+  return { score, sideCell, evaluate: () => evaluateValidation({ runDir, plan, gate: emotionGate, options, fileSha: 'synthetic' }) }
+}
 
 describe('parseValidateArgs', () => {
   it('defaults to every section and the committed seed counts', () => {
@@ -50,6 +94,18 @@ describe('validation plan', () => {
 })
 
 describe('mutation tables', () => {
+  it('negates exactly the formerly sided posture axes and clears their side dependence', () => {
+    const original = naturalEmotions.awkward.held!
+    const mutated = emotionTableFor('ignore-side-neg').awkward.held!
+    expect(mutated.posture).toEqual(([0, 1, 2] as const).map(axis => original.sided.includes(axis) ? -original.posture[axis] : original.posture[axis]))
+    expect(mutated.sided).toEqual([])
+    expect(mutated.face).toEqual(original.face)
+    expect(mutated.modulation).toEqual(original.modulation)
+    const plan = buildValidationPlan(emotionGate, { sections: ['mutations'], seedsLimit: null })
+    const cells = (id: string) => plan.experiments.flatMap(experiment => experiment.kind === 'gate' && experiment.id === id ? experiment.cells : [])
+    expect(cells('mutation-ignore-side-neg')).toEqual(cells('mutation-ignore-side'))
+  })
+
   it('zeroes every held recipe and impulse in the zero table without touching the committed table', () => {
     const zero = emotionTableFor('zero')
     expect(buildEmotionChecks(zero)).toEqual([])
@@ -65,6 +121,33 @@ describe('mutation tables', () => {
     expect(emotionTableFor('ignore-side').think.held?.sided).toEqual([])
     expect(emotionTableFor('blink-interval-1').surprised.held?.modulation.blinkInterval).toBe(1)
     expect(buildEmotionChecks(emotionTableFor('x0'))).toEqual([])
+  })
+})
+
+describe('ignore-side evaluation', () => {
+  it('excludes trace-identical cells and pools only mutable checks from both variants', () => {
+    const run = syntheticRun(['mutations', 'unmutated'])
+    const baseline = checkResult()
+    run.score('unmutated-1', [baseline])
+    run.score('mutation-ignore-side', [baseline])
+    run.score('mutation-ignore-side-neg', [checkResult({ E: -1, failed: ['sign'], verdict: 'fail' })])
+    run.sideCell('mutation-ignore-side', true)
+    run.sideCell('mutation-ignore-side-neg', false)
+    const report = run.evaluate()
+    const unchanged = report.mutations!.find(entry => entry.mutation === 'ignore-side')!
+    expect(unchanged.notMutable).toEqual([baseline.key])
+    expect(unchanged.checks).toBe(0)
+    expect(report.ignoreSidePooled).toMatchObject({ checks: 1, conditionalChecks: 1, killed: 1, killRate: 1, verdict: true })
+    const summary = formatValidationSummary(report)
+    expect(summary).toContain('Mutation ignore-side (')
+    expect(summary).toContain('Mutation ignore-side-neg (')
+    expect(summary).toContain('Mutation ignore-side pooled:')
+  })
+
+  it('refuses a cell with mixed hold sides even when its first trace is identical', () => {
+    const run = syntheticRun(['mutations'])
+    run.sideCell('mutation-ignore-side', true, [1, -1])
+    expect(() => run.evaluate()).toThrow('[qa-tools] ignore-side cell awkward:clear:full has mixed hold sides')
   })
 })
 

@@ -42,6 +42,8 @@ export interface ValidationRecordsPartial {
   ranges: ParameterRanges | null
   /** Determinism units: trials re-measured with shuffled and reversed trace events, and whether every record was equal. */
   eventOrder: { trials: number, invariant: boolean } | null
+  /** Constant-side mutations: first-seed trace equality with the unmutated run of this cell. */
+  sideEquality?: { seed: number, identical: boolean } | null
 }
 
 /** Scorer validation: one gate scoring of an experiment. */

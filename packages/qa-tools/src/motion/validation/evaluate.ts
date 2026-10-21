@@ -20,6 +20,7 @@ export const validationThresholds = {
     'x0': { criterion: 'detection or held-only size', minKillRate: 0.99 },
     'sign-flip': { criterion: 'sign', minKillRate: 0.99 },
     'ignore-side': { criterion: 'sided checks (significance or sign)', minKillRate: 0.95 },
+    'ignore-side-neg': { criterion: 'sided checks (significance or sign)', minKillRate: 0.95 },
     'x0.5': { criterion: 'size, clear and strong (slight reported only)', minKillRate: 0.9 },
     'x2': { criterion: 'size upper bound', minKillRate: 0.9 },
     'release-tau-x3': { criterion: 'release', minKillRate: 0.95 },
@@ -99,6 +100,7 @@ const mutationRule: Record<MutationId, KillRule> = {
   'x0': 'detection-or-size',
   'sign-flip': 'sign',
   'ignore-side': 'significance-or-sign',
+  'ignore-side-neg': 'significance-or-sign',
   'x0.5': 'size',
   'x2': 'size',
   'release-tau-x3': 'release',
@@ -110,15 +112,17 @@ const checksByKey = new Map(buildEmotionChecks().map(check => [check.key, check]
 const channelClass = (result: CheckResult) => checksByKey.get(result.key)!.cls
 
 /** Checks a mutation targets, and the targeted checks it cannot reach through any seam. */
-function mutationTargets(mutation: MutationId, results: readonly CheckResult[]): { gated: CheckResult[], reported: CheckResult[], notMutable: CheckResult[] } {
+function mutationTargets(mutation: MutationId, results: readonly CheckResult[], identicalCells: ReadonlySet<string>): { gated: CheckResult[], reported: CheckResult[], notMutable: CheckResult[] } {
   const none: CheckResult[] = []
   switch (mutation) {
     case 'x0':
     case 'sign-flip':
       return { gated: [...results], reported: none, notMutable: none }
-    case 'ignore-side': {
+    case 'ignore-side':
+    case 'ignore-side-neg': {
       const sided = results.filter(result => checksByKey.get(result.key)!.sided)
-      return { gated: sided.filter(result => result.channel !== 'browAsym'), reported: none, notMutable: sided.filter(result => result.channel === 'browAsym') }
+      const notMutable = sided.filter(result => result.channel === 'browAsym' || identicalCells.has(`${result.emotion}:${result.band}`))
+      return { gated: sided.filter(result => !notMutable.includes(result)), reported: none, notMutable }
     }
     case 'x0.5': {
       const sized = results.filter(result => channelClass(result) !== 'modulation')
@@ -326,13 +330,31 @@ export function evaluateValidation(context: EvaluateContext) {
   }
 
   let mutations = null
+  let ignoreSidePooled = null
   if (options.sections.includes('mutations')) {
     const baselineScore = options.sections.includes('unmutated') ? scoreOf(`unmutated-${mutationSeedSet}`) : null
     const baseline = baselineScore ? new Map(baselineScore.results.map(result => [result.key, result])) : null
+    const sideChecks: CheckResult[] = []
     mutations = (Object.keys(validationThresholds.mutations) as MutationId[]).map((mutation) => {
       const score = scoreOf(`mutation-${mutation}`)!
       const rule = mutationRule[mutation]
-      const targets = mutationTargets(mutation, score.results)
+      const identicalCells = new Set<string>()
+      const sideMutation = mutation === 'ignore-side' || mutation === 'ignore-side-neg'
+      if (sideMutation) {
+        for (const unit of plan.units) {
+          if (unit.kind !== 'cell' || unit.experiment !== `mutation-${mutation}`)
+            continue
+          const partial = readPartial<ValidationRecordsPartial>(runDir, recordsPartialName(unit), 'validation-records')
+          if (new Set(partial.records.map(record => record.side)).size > 1)
+            throw new Error(`[qa-tools] ignore-side cell ${unit.cell.emotion}:${unit.cell.band}:${unit.cell.variant} has mixed hold sides`)
+          // The first-seed trace proves the equality for this cell only while its hold side stays fixed.
+          if (partial.sideEquality?.identical === true)
+            identicalCells.add(`${unit.cell.emotion}:${unit.cell.band}`)
+        }
+      }
+      const targets = mutationTargets(mutation, score.results, identicalCells)
+      if (sideMutation)
+        sideChecks.push(...targets.gated)
       const gated = killSummary(targets.gated, rule, alpha, baseline)
       const reported = targets.reported.length ? killSummary(targets.reported, rule, alpha, baseline) : null
       const minimum = validationThresholds.mutations[mutation].minKillRate
@@ -347,7 +369,11 @@ export function evaluateValidation(context: EvaluateContext) {
         verdict: rate !== null && rate >= minimum,
       }
     })
-    verdicts.mutations = mutations.every(entry => entry.verdict)
+    const pooled = killSummary(sideChecks, 'significance-or-sign', alpha, baseline)
+    const minimum = validationThresholds.mutations['ignore-side'].minKillRate
+    const rate = pooled.killRate ?? pooled.unconditionalKillRate
+    ignoreSidePooled = { ...pooled, minKillRate: minimum, verdict: rate !== null && rate >= minimum }
+    verdicts.mutations = mutations.every(entry => entry.mutation === 'ignore-side' || entry.mutation === 'ignore-side-neg' || entry.verdict) && ignoreSidePooled.verdict
   }
 
   let determinism = null
@@ -382,6 +408,7 @@ export function evaluateValidation(context: EvaluateContext) {
     aa,
     zero,
     mutations,
+    ignoreSidePooled,
     unmutated,
     determinism,
     oldRuleComparison,
@@ -407,6 +434,10 @@ export function formatValidationSummary(report: ValidationReport): string {
     lines.push(`Zero recipe (paired): ${report.zero.verdict ? 'PASS' : 'FAIL'}; ${report.zero.passingChecks.length} of ${report.zero.checks} checks pass${report.zero.passingChecks.length ? `: ${report.zero.passingChecks.join(', ')}` : ''}`)
   for (const entry of report.mutations ?? [])
     lines.push(`Mutation ${entry.mutation} (${entry.criterion}): ${entry.verdict ? 'PASS' : 'FAIL'}; kill rate ${percent(entry.killRate)} (${entry.conditionalKilled}/${entry.conditionalChecks}, min ${percent(entry.minKillRate)}), unconditional ${percent(entry.unconditionalKillRate)} (${entry.killed}/${entry.evaluable})${entry.reportedOnly ? `; slight ${percent(entry.reportedOnly.killRate)}` : ''}${entry.survivors.length ? `; survivors: ${entry.survivors.join(', ')}` : ''}`)
+  if (report.ignoreSidePooled) {
+    const entry = report.ignoreSidePooled
+    lines.push(`Mutation ignore-side pooled: ${entry.verdict ? 'PASS' : 'FAIL'}; kill rate ${percent(entry.killRate)} (${entry.conditionalKilled}/${entry.conditionalChecks}, min ${percent(entry.minKillRate)}), unconditional ${percent(entry.unconditionalKillRate)} (${entry.killed}/${entry.evaluable})`)
+  }
   if (report.unmutated) {
     lines.push(`Unmutated: ${report.unmutated.verdict ? 'PASS' : 'FAIL'} (100% of checks must pass in every set)`)
     for (const entry of report.unmutated.perSet)

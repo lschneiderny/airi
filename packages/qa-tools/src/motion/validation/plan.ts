@@ -15,7 +15,7 @@ import { gateBands, gateEmotions, longHoldBands, seedRange, variantsFor } from '
 export const validationSections = ['aa', 'zero', 'mutations', 'unmutated', 'determinism'] as const
 export type ValidationSection = typeof validationSections[number]
 
-export const mutationIds = ['x0', 'sign-flip', 'ignore-side', 'x0.5', 'x2', 'release-tau-x3', 'blink-interval-1'] as const
+export const mutationIds = ['x0', 'sign-flip', 'ignore-side', 'ignore-side-neg', 'x0.5', 'x2', 'release-tau-x3', 'blink-interval-1'] as const
 export type MutationId = typeof mutationIds[number]
 export type TableId = 'natural' | 'zero' | Exclude<MutationId, 'release-tau-x3'>
 
@@ -102,6 +102,7 @@ function mutationCells(mutation: MutationId): CellSpec[] {
     case 'sign-flip':
       return allCells(['full', 'long-hold'])
     case 'ignore-side':
+    case 'ignore-side-neg':
       return allCells(['full'], sidedEmotions)
     case 'x0.5':
     case 'x2':
@@ -265,6 +266,11 @@ export function emotionTableFor(table: TableId): typeof naturalEmotions {
         flipHeld(held)
         break
       case 'ignore-side':
+        held.sided = []
+        break
+      case 'ignore-side-neg':
+        for (const axis of held.sided)
+          held.posture[axis] = -held.posture[axis]
         held.sided = []
         break
       case 'blink-interval-1':
