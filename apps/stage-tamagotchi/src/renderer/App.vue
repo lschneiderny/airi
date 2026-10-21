@@ -65,7 +65,7 @@ import {
   electronPluginUnload,
 } from '../shared/eventa/plugin/host'
 import { electronPluginToolsChanged } from '../shared/eventa/plugin/tools'
-import { initializeIOTraceRecordingBridge } from './bridges/io-trace-recording'
+import { initializeIOTraceHubBridge } from './bridges/io-trace-hub'
 import { initializeStageThreeRuntimeTraceBridge } from './bridges/stage-three-runtime-trace'
 import { useLanguage } from './composables/use-language'
 import { useServerChannelSettingsStore } from './stores/settings/server-channel'
@@ -121,9 +121,8 @@ const isSpotlightWindow = initialRoutePath === '/spotlight'
 // The floating chat resizes from its own grip, which keeps the corner beside the character in place.
 const isFloatingChatWindow = initialRoutePath === '/chat-floating'
 const isSettingsWindow = initialRoutePath === '/settings' || initialRoutePath.startsWith('/settings/')
-const stopIOTraceRecordingBridge = initialRoutePath === '/'
-  ? initializeIOTraceRecordingBridge(context.value)
-  : undefined
+// Every window sends its spans to the hub, so the IO tracer and the trace files have the spans of every window.
+const stopIOTraceHubBridge = initializeIOTraceHubBridge(context.value)
 
 async function refreshPluginRuntimeTools() {
   try {
@@ -399,7 +398,7 @@ watch(themeColorsHueDynamic, () => {
 }, { immediate: true })
 
 onUnmounted(() => {
-  stopIOTraceRecordingBridge?.()
+  stopIOTraceHubBridge()
   stopModelAssetStatus()
   stopLeadershipListener?.()
   chatStore.dispose()

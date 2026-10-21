@@ -126,7 +126,7 @@ describe('createWindowContext', () => {
   it('changes the IO trace recording once and pushes the new state once to each window', async () => {
     const setStoredEnabled = vi.fn()
     const service = new IOTraceRecordingService({ directory, getStoredEnabled: () => false, setStoredEnabled })
-    const windows = await openWindows((context, window) => registerIOTraceRecording(context, service, window))
+    const windows = await openWindows(context => registerIOTraceRecording(context, service))
     const changes = windows.map(() => vi.fn())
     windows.forEach(({ context }, index) => context.on(ioTraceRecordingChanged, changes[index]))
 
