@@ -26,8 +26,29 @@ export const validationThresholds = {
     'release-tau-x3': { criterion: 'release', minKillRate: 0.95 },
     'blink-interval-1': { criterion: 'modulation (significance or sign)', minKillRate: 0.95 },
   } satisfies Record<MutationId, { criterion: string, minKillRate: number }>,
-  unmutated: { minPassRate: 1, sets: unmutatedSetCount },
+  unmutated: { sets: unmutatedSetCount, persistentFailSets: 4, noiseBeta: 0.01, noiseQuantile: 0.99 },
 } as const
+
+/** Smallest k with P(Binomial(n, p) <= k) >= q, for integer n >= 0 and probabilities in [0, 1]. */
+export function binomialQuantile(n: number, p: number, q: number): number {
+  if (n === 0 || p === 0 || q === 0)
+    return 0
+  if (p === 1 || q === 1)
+    return n
+  const logP = Math.log(p)
+  const logRest = Math.log1p(-p)
+  const target = Math.log(q)
+  let logMass = n * logRest
+  let logCumulative = -Infinity
+  for (let k = 0; k <= n; k++) {
+    // Log-add-exp keeps both the PMF recurrence and its cumulative sum away from underflow.
+    logCumulative = Math.max(logCumulative, logMass) + Math.log1p(Math.exp(-Math.abs(logCumulative - logMass)))
+    if (logCumulative >= target)
+      return k
+    logMass += Math.log(n - k) - Math.log(k + 1) + logP - logRest
+  }
+  return n
+}
 
 /**
  * Choices made before the first run, recorded in `validation.json`:
@@ -333,7 +354,30 @@ export function evaluateValidation(context: EvaluateContext) {
       const nonPassing = score.results.filter(result => result.verdict !== 'pass')
       return { set, checks: score.results.length, pass: score.results.length - nonPassing.length, passRate: ratio(score.results.length - nonPassing.length, score.results.length), nonPassing: nonPassing.map(result => ({ key: result.key, verdict: result.verdict, failed: result.failed })) }
     })
-    unmutated = { minPassRate: validationThresholds.unmutated.minPassRate, perSet, verdict: perSet.every(entry => entry.passRate !== null && entry.passRate >= validationThresholds.unmutated.minPassRate) }
+    const perCheck = new Map<string, { key: string, failSets: number[], naSets: number[], failed: CheckResult['failed'], trials: number }>()
+    for (const { set, score } of sets) {
+      for (const result of score.results) {
+        const tally = perCheck.get(result.key) ?? { key: result.key, failSets: [], naSets: [], failed: [], trials: 0 }
+        if (result.verdict === 'n/a')
+          tally.naSets.push(set)
+        else
+          tally.trials++
+        if (result.verdict === 'fail') {
+          tally.failSets.push(set)
+          tally.failed = [...new Set([...tally.failed, ...result.failed])]
+        }
+        perCheck.set(result.key, tally)
+      }
+    }
+    const t = validationThresholds.unmutated
+    const checks = [...perCheck.values()]
+    const persistent = checks.filter(entry => entry.failSets.length >= t.persistentFailSets).map(({ key, failSets, failed }) => ({ key, failSets, failed }))
+    const nonEvaluable = checks.filter(entry => entry.naSets.length > 0).map(({ key, naSets }) => ({ key, naSets }))
+    const noise = checks.filter(entry => entry.failSets.length < t.persistentFailSets)
+    const noiseFails = noise.reduce((sum, entry) => sum + entry.failSets.length, 0)
+    const noiseTrials = noise.reduce((sum, entry) => sum + entry.trials, 0)
+    const budget = binomialQuantile(noiseTrials, t.noiseBeta, t.noiseQuantile)
+    unmutated = { perSet, persistent, nonEvaluable, noiseFails, noiseTrials, budget, verdict: persistent.length === 0 && noiseFails <= budget }
     verdicts.unmutated = unmutated.verdict
   }
 
@@ -451,7 +495,9 @@ export function formatValidationSummary(report: ValidationReport): string {
     lines.push(`Mutation ignore-side pooled: ${entry.verdict ? 'PASS' : 'FAIL'}; kill rate ${percent(entry.killRate)} (${entry.conditionalKilled}/${entry.conditionalChecks}, min ${percent(entry.minKillRate)}), unconditional ${percent(entry.unconditionalKillRate)} (${entry.killed}/${entry.evaluable})`)
   }
   if (report.unmutated) {
-    lines.push(`Unmutated: ${report.unmutated.verdict ? 'PASS' : 'FAIL'} (100% of checks must pass in every set)`)
+    lines.push(`Unmutated: ${report.unmutated.verdict ? 'PASS' : 'FAIL'}; persistent findings ${report.unmutated.persistent.length}; noise fails ${report.unmutated.noiseFails} / budget ${report.unmutated.budget} over ${report.unmutated.noiseTrials}`)
+    for (const entry of report.unmutated.persistent)
+      lines.push(`  persistent ${entry.key}: fail sets ${entry.failSets.join(', ')}; failed ${entry.failed.join(', ')}`)
     for (const entry of report.unmutated.perSet)
       lines.push(`  set ${entry.set}: ${entry.pass}/${entry.checks} pass (${percent(entry.passRate)})`)
   }

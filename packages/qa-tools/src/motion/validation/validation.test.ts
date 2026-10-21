@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { writePartial } from '../gate/partials'
 import { parseValidateArgs } from './cli'
-import { evaluateValidation, formatValidationSummary, killState, sizeCalibration } from './evaluate'
+import { binomialQuantile, evaluateValidation, formatValidationSummary, killState, sizeCalibration } from './evaluate'
 import { aaSetCount, assignShards, buildValidationPlan, emotionTableFor, validationSections } from './plan'
 import { recordsPartialName, scorePartialName } from './units'
 
@@ -199,5 +199,58 @@ describe('size calibration', () => {
     const report = run.evaluate()
     expect(report.mutations!.find(entry => entry.mutation === 'x0.5')).toMatchObject({ checks: 2, killRate: 1, gateVerdictKillRate: 0, verdict: true, reportedOnly: { checks: 1, killRate: 0 } })
     expect(() => formatValidationSummary(report)).not.toThrow()
+  })
+})
+
+describe('unmutated noise budget', () => {
+  it('matches an independent plain binomial cumulative sum', () => {
+    const n = 1685
+    const p = 0.01
+    let mass = (1 - p) ** n
+    let cumulative = mass
+    let expected = 0
+    while (cumulative < 0.99) {
+      expected++
+      mass *= (n - expected + 1) / expected * p / (1 - p)
+      cumulative += mass
+    }
+    expect(binomialQuantile(n, p, 0.99)).toBe(expected)
+    expect(expected).toBeGreaterThanOrEqual(24)
+    expect(expected).toBeLessThanOrEqual(30)
+  })
+
+  it('handles empty and degenerate binomial distributions', () => {
+    expect(binomialQuantile(0, 0.01, 0.99)).toBe(0)
+    expect(binomialQuantile(5, 0, 0.99)).toBe(0)
+    expect(binomialQuantile(5, 1, 0.99)).toBe(5)
+    expect(binomialQuantile(5, 0.01, 0)).toBe(0)
+    expect(binomialQuantile(5, 0.01, 1)).toBe(5)
+  })
+
+  it('reports a four-of-five failure as persistent and excludes it from noise', () => {
+    const run = syntheticRun(['unmutated'])
+    const result = checkResult()
+    for (let set = 1; set <= 5; set++)
+      run.score(`unmutated-${set}`, [set <= 4 ? { ...result, verdict: 'fail', failed: ['visibility'] } : result])
+    const report = run.evaluate()
+    expect(report.unmutated).toMatchObject({ persistent: [{ key: result.key, failSets: [1, 2, 3, 4], failed: ['visibility'] }], noiseFails: 0, noiseTrials: 0, budget: 0, verdict: false })
+    expect(report.unmutated!.perSet[0].nonPassing).toEqual([{ key: result.key, verdict: 'fail', failed: ['visibility'] }])
+    expect(() => formatValidationSummary(report)).not.toThrow()
+  })
+
+  it('reports all n/a sets separately without spending the noise budget', () => {
+    const run = syntheticRun(['unmutated'])
+    const result = checkResult({ verdict: 'n/a', sizeRatio: null, pHolm: null, hitRate: null })
+    for (let set = 1; set <= 5; set++)
+      run.score(`unmutated-${set}`, [result])
+    expect(run.evaluate().unmutated).toMatchObject({ persistent: [], nonEvaluable: [{ key: result.key, naSets: [1, 2, 3, 4, 5] }], noiseFails: 0, noiseTrials: 0, budget: 0, verdict: true })
+  })
+
+  it.each([[2, true], [3, false]] as const)('counts %s nonpersistent failures against the fixed noise budget', (failSets, verdict) => {
+    const run = syntheticRun(['unmutated'])
+    const results = buildEmotionChecks().slice(0, 5).map(check => checkResult({ key: check.key, emotion: check.emotion, band: check.band, channel: check.channel }))
+    for (let set = 1; set <= 5; set++)
+      run.score(`unmutated-${set}`, results.map((result, index) => index === 0 && set <= failSets ? { ...result, verdict: 'fail', failed: ['sign'] } : result))
+    expect(run.evaluate().unmutated).toMatchObject({ persistent: [], noiseFails: failSets, noiseTrials: 25, budget: 2, verdict })
   })
 })
