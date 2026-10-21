@@ -57,7 +57,7 @@ Gate ids, versions, metrics, and budgets live in `packages/stage-ui-live2d/src/c
 
 `pnpm qa:test` compares results with `packages/qa-tools/known-failures.json`. Report new failures as findings. Do not skip, delete, or weaken tests. Add a known-failure entry only with a concrete cause, date, and removal condition. Remove fixed entries when the runner reports them as fixed.
 
-Scorer validation has accepted limits recorded on 2026-10-20: x0 detection is 92.9% because impulse hints remain; ignore-side detection is 83.3% because the T1 hold side is fixed per emotion; x0.5 size detection is 64.4% because the size-band lower bound is exactly 0.5; and unmutated sets pass 84% to 88% of checks. Redesign is deferred to a separate plan. Until then, `validate-scorer` exits 1 by design when those thresholds are missed.
+Scorer validation uses protocol 2, fixed before the first full run. The run passed A/A, zero, mutations, and determinism, but unmutated failed: 37 checks were persistent findings, grouped by failed criterion as visibility 7, significance 6, release 31, and size 3. The remaining 66 noise failures exceeded the budget of 25 over 1,500 check-set pairs, missing the prediction that only persistent findings would fail. No constants, recipes, or gates were retuned. See `docs/ai/adr/2026-10-21-scorer-validation-protocol-2.md` for the rules and full findings.
 
 ## Evidence and heavy runs
 
