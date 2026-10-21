@@ -110,6 +110,12 @@ describe('stripsRecoveredCue for DELAY durations, line-broken ACT cues and colon
     ['<|ACT:|>', '[ACT:]'],
     ['<|DELAY:|>', '[DELAY:]'],
     ['<|DELAY:{"seconds":1}|>', '[DELAY:{"seconds":1}]'],
+    ['<|DELAY:1s|>', '[DELAY:1s]'],
+    ['<|DELAY:.5s|>', '[DELAY:.5s]'],
+    ['<|DELAY: 2 seconds|>', '[DELAY: 2 seconds]'],
+    ['<|DELAY:1|>', '[DELAY:1]'],
+    ['<|DELAY .5s|>', '[DELAY .5s]'],
+    ['<|DELAY .5|>', '[DELAY .5]'],
   ])('strips the malformed cue %j written as %j', (special, raw) => {
     expect(stripsRecoveredCue(special, raw)).toBe(true)
   })
@@ -129,6 +135,12 @@ describe('stripsRecoveredCue for DELAY durations, line-broken ACT cues and colon
     ['<|DELAY 1.5|>', '[DELAY 1.5]'],
     ['<|ACT:Happy|>', '[ACT:Happy]'],
     ['<|DELAY 1s|>', '<DELAY 1s>'],
+    ['<|DELAY:1s|>', '[delay:1s]'],
+    ['<|DELAY .5s|>', '[Delay .5s]'],
+    ['<|DELAY:soon|>', '[DELAY:soon]'],
+    ['<|ACT:2|>', '[ACT:2]'],
+    ['<|ACT .5|>', '[ACT .5]'],
+    ['<|DELAY .5s|>', '<DELAY .5s>'],
   ])('does not strip %j written as %j', (special, raw) => {
     expect(stripsRecoveredCue(special, raw)).toBe(false)
   })

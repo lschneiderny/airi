@@ -2913,6 +2913,9 @@ describe('malformed DELAY durations, line-broken ACT cues and colon-form cues th
     '[ACT:]',
     '[DELAY:]',
     '[DELAY:{"seconds":1}]',
+    '[DELAY:1s]',
+    '[DELAY:.5s]',
+    '[DELAY .5s]',
   ].flatMap(marker => placements.map(([where, place, speech]) => [marker, where, place(marker), speech])))(
     'strips %j at the %s of the turn at every chunk split and counts it as rejected',
     async (_marker, _where, reply, speech) => {
@@ -2928,6 +2931,8 @@ describe('malformed DELAY durations, line-broken ACT cues and colon-form cues th
     'Wait [Delay 1s] go',
     'Wait [DELAY soon] go',
     'Wait [DELAY -1] go',
+    'Wait [Delay .5s] go',
+    'Wait [DELAY:soon] go',
   ])('keeps the prose %j spoken verbatim at every chunk split', async (reply) => {
     await expectAtEveryChunking(reply, reply, { act: 0, recovered: 0, rejected: 0 })
   })

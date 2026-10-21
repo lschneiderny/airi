@@ -53,7 +53,8 @@ export function acceptsRecoveredCue(special: string, raw: string): boolean {
  *   one of these marker shapes. Prose does not take them.
  *   - The body is empty or starts with `{`, directly or after a `:` right behind the name, such as
  *     `[ACT {"emotion":"happy",}]`, `[ACT]`, `[ACT:{"emotion":"happy",}]` or `[DELAY:]`.
- *   - A `DELAY` body starts with a digit, such as `[DELAY 1s]`, `[DELAY 0]` or `[DELAY 2 seconds]`.
+ *   - A `DELAY` body starts with a digit or a dot, directly or after a `:` right behind the name, such as
+ *     `[DELAY 1s]`, `[DELAY 0]`, `[DELAY 2 seconds]`, `[DELAY .5s]` or `[DELAY:1s]`.
  *   - A line break follows `ACT` directly, such as `[ACT\nhappy]`.
  * - `false` otherwise. Prose such as "[Act 2]", "[ACT 2]" or "[ACT calm]" stays spoken verbatim.
  */
@@ -64,10 +65,9 @@ export function stripsRecoveredCue(special: string, raw: string): boolean {
   if (/^\[\|?ACT[\r\n]/.test(raw))
     return true
   const rest = special.slice(`<|${name}`.length, -'|>'.length)
-  const colon = rest.startsWith(':')
-  const body = (colon ? rest.slice(1) : rest).trim()
+  const body = (rest.startsWith(':') ? rest.slice(1) : rest).trim()
   if (body === '' || body.startsWith('{'))
     return true
   // A digit-led ACT body stays spoken, because "In [ACT 2] she leaves" is screenplay prose.
-  return !colon && name === 'DELAY' && /^\d/.test(body)
+  return name === 'DELAY' && /^[\d.]/.test(body)
 }
