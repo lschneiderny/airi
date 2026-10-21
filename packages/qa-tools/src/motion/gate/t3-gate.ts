@@ -27,11 +27,12 @@ import { createRun, readGitStateFromRepo } from '../../evidence/run'
 import { writeReport } from '../../report/render'
 import { maxT3ScenarioSeconds, resolveRig, t3RigCatalogs, T3UsageError } from '../../t3/args'
 import { runT3 } from '../../t3/run-t3'
+import { scenarioEventsOf, TraceEventsSchema } from '../../t3/verify-trace'
 import { aggregateLiveliness, formatSummary, hashPartials, seal } from './aggregate'
 import { cellPartialName, livelinessGateFor, livelinessPartialName, nullPartialName } from './options'
 import { writePartial } from './partials'
 import { currentReportSchema, parseGateReport } from './report'
-import { buildT3EmotionPlan, buildT3IdleScenario, t3PlanFromScenarios, t3ScenarioSettings } from './t3-scenario'
+import { buildT3EmotionPlan, buildT3IdleScenario, t3PlanFromScenarios, t3ScenarioSettings, t3TraceMismatch } from './t3-scenario'
 import { measureT3Session, scoreT3Emotion } from './t3-score'
 import { trimWarmUp } from './trials'
 
@@ -192,6 +193,7 @@ function rescoreT3Emotion(source: string, repoRoot: string, gateFileSha: () => s
   let plan: ReturnType<typeof t3PlanFromScenarios>
   let archived: v.InferOutput<typeof ArchivedEmotionSchema>
   let t1: { dir: string, report: GateReport }
+  let outcomes: SessionOutcome[]
   let sourceRunId: string
   try {
     const report = parseGateReport(JSON.parse(readFileSync(join(sourceDir, 'report.json'), 'utf8')))
@@ -206,19 +208,23 @@ function rescoreT3Emotion(source: string, repoRoot: string, gateFileSha: () => s
     if (t1Report.determinismHash !== archived.t1Reference.determinismHash)
       throw new Error(`T1 reference ${t1Dir} has determinismHash ${t1Report.determinismHash}, not the archived ${archived.t1Reference.determinismHash}`)
     t1 = { dir: t1Dir, report: t1Report }
+    outcomes = plan.sessions.flatMap((session) => {
+      const entry = archived.sessions.find(item => item.scenarioId === session.scenario.id)
+      if (!entry)
+        return []
+      const tracePath = entry.runDir ? join(entry.runDir, 'trace.json') : null
+      const trace = tracePath && existsSync(tracePath) ? JSON.parse(readFileSync(tracePath, 'utf8')) as NaturalTrace : null
+      // A trace that recorded other events than its scenario would let one trial id select another trial's pulse.
+      const mismatch = trace ? t3TraceMismatch(session.scenario, scenarioEventsOf(v.parse(TraceEventsSchema, trace))) : null
+      if (mismatch)
+        throw new Error(`archive invariant "trace-identity": ${mismatch}`)
+      return [{ scenario: session.scenario, runDir: entry.runDir, runId: entry.runId, exitCode: entry.exitCode, summary: entry.summary, trace }]
+    })
   }
   catch (error) {
     console.error(`Cannot re-score ${sourceDir}: ${errorMessageFrom(error) ?? 'unreadable archive'}`)
     return 2
   }
-  const outcomes: SessionOutcome[] = plan.sessions.flatMap((session) => {
-    const entry = archived.sessions.find(item => item.scenarioId === session.scenario.id)
-    if (!entry)
-      return []
-    const tracePath = entry.runDir ? join(entry.runDir, 'trace.json') : null
-    const trace = tracePath && existsSync(tracePath) ? JSON.parse(readFileSync(tracePath, 'utf8')) as NaturalTrace : null
-    return [{ scenario: session.scenario, runDir: entry.runDir, runId: entry.runId, exitCode: entry.exitCode, summary: entry.summary, trace }]
-  })
   const fileSha = gateFileSha()
   const run = createRun({ tool: 'motion', label: 'gate-emotion-t3-rescore', repoRoot, gate: { id: naturalEmotionT3Gate.id, version: String(naturalEmotionT3Gate.version), fileSha } })
   console.info(`qa-tools gate t3: re-scoring ${sourceRunId} into ${run.dir}; T1 reference ${t1.dir}`)

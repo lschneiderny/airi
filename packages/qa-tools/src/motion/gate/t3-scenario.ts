@@ -6,7 +6,7 @@ import type { EmotionT3Gate } from '@proj-airi/stage-ui-live2d/composables/live2
 import { MotionScenarioSchema } from '@proj-airi/stage-shared/motion-scenario'
 import { hashSeed, naturalEmotionLifetime } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
 import { createRandomStream } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/random'
-import { parse } from 'valibot'
+import { parse, safeParse } from 'valibot'
 
 import { maxEventLagSeconds } from '../../t3/verify-trace'
 
@@ -157,41 +157,188 @@ export function buildT3EmotionPlan(t3: EmotionT3Gate, gate: EmotionGate, setting
   throw new Error(`[qa-tools] ${t3.id}: one block of ${t3.cells.length} pulses does not fit in ${t3.maxSessionSeconds} s`)
 }
 
+/** A layout invariant of the live planner that an archived scenario set breaks; `invariant` names the rule. */
+export class T3ArchiveError extends Error {
+  constructor(readonly invariant: string, detail: string) {
+    super(`archive invariant "${invariant}": ${detail}`)
+  }
+}
+
+const epsilon = 1e-9
+
 /**
- * The plan of scenarios that already ran (`--rescore`): pulses, spacing and placebo counts read back from the archived
- * scenario files, so a re-score judges exactly what was performed even when the committed plan has changed since.
- * Throws when the archive breaks the gate's layout: a cell without `trialsPerCell` pulses, too few placebo windows, a
- * pulse closer to the next than its spacing rule, or a session longer than `maxSessionSeconds`.
+ * The plan of scenarios that already ran (`--rescore`), read back from the archived scenario files so a re-score judges
+ * exactly what was performed even when the committed plan has changed since. Every layout invariant `buildT3EmotionPlan`
+ * guarantees is checked first, and the first one broken throws `T3ArchiveError`:
+ * - `monotonic-times`: event times strictly increase within each session;
+ * - `scenario-identity`: scenarios `t3-emotion-transfer-<i>-of-<n>` in order, seed `i`, home `desk`, levels t1 and t3,
+ *   the planner's settings, and a valid scenario;
+ * - `event-kinds`: only `emotion` (source `devtools`) and `placebo` events;
+ * - `cell-membership`: every pulse is one of the gate's cells;
+ * - `unique-ids`: trial and placebo ids are unique across the archive and never shared between the two kinds;
+ * - `trial-id-format`: pulse ids are `<emotion>-<band>-t3-<n>`, numbered 1, 2, ... per cell in session order;
+ * - `session-count` and `session-duration`: at least `minSessions` sessions, one shared duration of at most `maxSessionSeconds`;
+ * - `warm-up`: no event before the gate's warm-up;
+ * - `pulse-spacing`: each pulse lasts until the next (or the session end) at least the planner's spacing for its band,
+ *   which is at least `max(minSpacingSeconds, naturalEmotionLifetime + lifetimeMarginSeconds)`;
+ * - `cell-count`: `trialsPerCell` pulses per cell;
+ * - `back-to-back`: no cell is pulsed twice in a row within a session;
+ * - `placebo-per-pulse`: exactly one placebo between consecutive pulses and after the last pulse;
+ * - `placebo-window`: every placebo's window (baseline start to scored-window end) starts after the lifetime of every
+ *   earlier pulse and ends `maxEventLagSeconds` before every later pulse, inside the session;
+ * - `placebo-overlap`: placebo windows do not overlap one another;
+ * - `placebo-total`: at least `minPlacebos` placebo windows in total;
+ * - `screenshots`: 1 s and 3 s after the first pulse of each cell in each session.
  */
 export function t3PlanFromScenarios(t3: EmotionT3Gate, gate: EmotionGate, settings: ExpressionPerformanceSettings, scenarios: readonly MotionScenario[]): T3EmotionPlan {
   const spacing: T3EmotionPlan['spacing'] = {}
   for (const cell of t3.cells)
     spacing[cell.band] = t3PulseSpacing(t3, gate, settings, cell.band)
-  const sessions = scenarios.map((input): T3EmotionSession => {
-    const scenario = parse(MotionScenarioSchema, input)
-    if (scenario.durationSeconds > t3.maxSessionSeconds)
-      throw new Error(`[qa-tools] ${scenario.id} lasts ${scenario.durationSeconds} s, above ${t3.maxSessionSeconds} s`)
+  const fail = (invariant: string, detail: string): never => {
+    throw new T3ArchiveError(invariant, detail)
+  }
+
+  for (const input of scenarios) {
+    input.events.forEach((event, index) => {
+      if (index > 0 && !(event.at > input.events[index - 1].at))
+        fail('monotonic-times', `${input.id}: event ${index} at ${event.at} s does not come after ${input.events[index - 1].at} s`)
+    })
+  }
+  const expectedSettings = JSON.stringify(t3ScenarioSettings(gate))
+  const parsed = scenarios.map((input, index) => {
+    const result = safeParse(MotionScenarioSchema, input)
+    if (!result.success)
+      return fail('scenario-identity', `${input.id} is not a valid scenario: ${result.issues.map(issue => issue.message).join('; ')}`)
+    const scenario = result.output
+    const id = `t3-emotion-transfer-${index + 1}-of-${scenarios.length}`
+    if (scenario.id !== id || scenario.seed !== index + 1 || scenario.home !== 'desk' || JSON.stringify(scenario.levels) !== JSON.stringify(['t1', 't3']) || JSON.stringify(scenario.settings) !== expectedSettings)
+      fail('scenario-identity', `session ${index + 1} (${scenario.id}) is not the planner's ${id} with seed ${index + 1}, home desk, levels t1/t3 and its settings`)
+    for (const event of scenario.events) {
+      if (event.kind !== 'placebo' && (event.kind !== 'emotion' || event.source !== 'devtools'))
+        fail('event-kinds', `${scenario.id}: a ${event.kind} event at ${event.at} s; the planner writes only devtools emotion and placebo events`)
+      if (event.kind === 'emotion' && !t3.cells.some(cell => cell.emotion === event.emotion && cell.band === event.band))
+        fail('cell-membership', `${scenario.id}: ${event.emotion} ${event.band} at ${event.at} s is not a cell of ${t3.id}`)
+    }
+    return scenario
+  })
+
+  const ids = new Map<string, string>()
+  for (const scenario of parsed) {
+    for (const event of scenario.events) {
+      const id = event.kind === 'emotion' || event.kind === 'placebo' ? event.trialId : undefined
+      if (!id)
+        fail('unique-ids', `${scenario.id}: the ${event.kind} event at ${event.at} s has no trialId`)
+      if (ids.has(id!))
+        fail('unique-ids', `${scenario.id}: ${event.kind} id ${id} at ${event.at} s repeats the ${ids.get(id!)}`)
+      ids.set(id!, `${event.kind} at ${event.at} s in ${scenario.id}`)
+    }
+  }
+  const counters = new Map<string, number>()
+  for (const scenario of parsed) {
+    for (const event of scenario.events) {
+      if (event.kind !== 'emotion')
+        continue
+      const key = `${event.emotion}-${event.band}`
+      const n = (counters.get(key) ?? 0) + 1
+      counters.set(key, n)
+      if (event.trialId !== `${key}-t3-${n}`)
+        fail('trial-id-format', `${scenario.id}: the pulse at ${event.at} s has id ${event.trialId}, expected ${key}-t3-${n}`)
+    }
+  }
+
+  if (parsed.length < t3.minSessions)
+    fail('session-count', `${parsed.length} sessions, below ${t3.minSessions}`)
+  const duration = parsed[0].durationSeconds
+  for (const scenario of parsed) {
+    if (scenario.durationSeconds !== duration || scenario.durationSeconds > t3.maxSessionSeconds)
+      fail('session-duration', `${scenario.id} lasts ${scenario.durationSeconds} s; every session must last the same ${duration} s, at most ${t3.maxSessionSeconds} s`)
+    if (scenario.events.length && scenario.events[0].at < gate.scenario.warmup - epsilon)
+      fail('warm-up', `${scenario.id}: the first event at ${scenario.events[0].at} s is inside the ${gate.scenario.warmup} s warm-up`)
+  }
+
+  const sessions = parsed.map((scenario): T3EmotionSession => {
     const emotions = scenario.events.filter(event => event.kind === 'emotion')
     const pulses = emotions.map((event, index): T3PulseSlot => {
       const next = emotions[index + 1]?.at ?? scenario.durationSeconds
-      const rule = Math.max(t3.minSpacingSeconds, naturalEmotionLifetime(settings, event.band) + t3.lifetimeMarginSeconds)
-      if (next - event.at < rule - 1e-9)
-        throw new Error(`[qa-tools] ${scenario.id}: the pulse at ${event.at} s is ${next - event.at} s before the next, below ${rule} s`)
+      const required = spacing[event.band]!.spacing
+      if (next - event.at < required - epsilon)
+        fail('pulse-spacing', `${scenario.id}: the ${event.band} pulse at ${event.at} s lasts ${next - event.at} s until the next, below the planner's ${required} s (at least max(${t3.minSpacingSeconds}, lifetime ${spacing[event.band]!.lifetime} + ${t3.lifetimeMarginSeconds}))`)
       const placebo = scenario.events.find(entry => entry.kind === 'placebo' && entry.at > event.at && entry.at < next)
-      return { emotion: event.emotion, band: event.band, trialId: event.trialId ?? `${scenario.id}-${event.at}`, at: event.at, spacing: next - event.at, placeboAt: placebo?.at ?? Number.NaN }
+      return { emotion: event.emotion, band: event.band, trialId: event.trialId!, at: event.at, spacing: next - event.at, placeboAt: placebo?.at ?? Number.NaN }
     })
     return { scenario, pulses, placebos: scenario.events.filter(event => event.kind === 'placebo').length }
   })
+
   const all = sessions.flatMap(session => session.pulses)
   for (const cell of t3.cells) {
     const count = all.filter(pulse => pulse.emotion === cell.emotion && pulse.band === cell.band).length
     if (count !== t3.trialsPerCell)
-      throw new Error(`[qa-tools] the archive has ${count} ${cell.emotion} ${cell.band} pulses, not ${t3.trialsPerCell}`)
+      fail('cell-count', `${count} ${cell.emotion} ${cell.band} pulses, not ${t3.trialsPerCell}`)
   }
+
+  const [baselineStart] = gate.windows.baseline
+  const windowEnd = gate.windows.face[1]
+  for (const { scenario, pulses } of sessions) {
+    pulses.slice(1).forEach((pulse, index) => {
+      if (pulse.emotion === pulses[index].emotion && pulse.band === pulses[index].band)
+        fail('back-to-back', `${scenario.id}: ${pulse.emotion} ${pulse.band} at ${pulses[index].at} s and ${pulse.at} s in a row`)
+    })
+    pulses.forEach((pulse, index) => {
+      const next = pulses[index + 1]?.at ?? scenario.durationSeconds
+      const between = scenario.events.filter(event => event.kind === 'placebo' && event.at > pulse.at && event.at < next).length
+      if (between !== 1)
+        fail('placebo-per-pulse', `${scenario.id}: ${between} placebos between the pulse at ${pulse.at} s and ${next} s, expected 1`)
+    })
+    const placebos = scenario.events.filter(event => event.kind === 'placebo')
+    for (const placebo of placebos) {
+      const from = placebo.at + baselineStart
+      const to = placebo.at + windowEnd
+      if (from < -epsilon || to > scenario.durationSeconds + epsilon)
+        fail('placebo-window', `${scenario.id}: the placebo at ${placebo.at} s has its window [${from}, ${to}] s outside the session`)
+      for (const pulse of pulses) {
+        const lifetime = spacing[pulse.band]!.lifetime
+        const clearAfter = from >= pulse.at + lifetime - epsilon
+        const clearBefore = to + maxEventLagSeconds <= pulse.at + epsilon
+        if (!clearAfter && !clearBefore)
+          fail('placebo-window', `${scenario.id}: the placebo at ${placebo.at} s has its window [${from}, ${to}] s within the ${pulse.emotion} ${pulse.band} pulse at ${pulse.at} s and its ${lifetime} s lifetime (or less than ${maxEventLagSeconds} s before it)`)
+      }
+    }
+    placebos.slice(1).forEach((placebo, index) => {
+      if (placebo.at + baselineStart < placebos[index].at + windowEnd - epsilon)
+        fail('placebo-overlap', `${scenario.id}: the placebo windows at ${placebos[index].at} s and ${placebo.at} s overlap`)
+    })
+    const shots: number[] = []
+    const seen = new Set<string>()
+    for (const pulse of pulses) {
+      const key = `${pulse.emotion}-${pulse.band}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        shots.push(pulse.at + 1, pulse.at + 3)
+      }
+    }
+    if (JSON.stringify(scenario.screenshotsAt ?? []) !== JSON.stringify(shots))
+      fail('screenshots', `${scenario.id}: screenshots at ${JSON.stringify(scenario.screenshotsAt ?? [])}, the planner takes ${JSON.stringify(shots)}`)
+  }
+
   const placebos = sessions.reduce((sum, session) => sum + session.placebos, 0)
   if (placebos < t3.minPlacebos)
-    throw new Error(`[qa-tools] the archive has ${placebos} placebo windows, below ${t3.minPlacebos}`)
+    fail('placebo-total', `${placebos} placebo windows, below ${t3.minPlacebos}`)
   return { sessions, spacing, placebos }
+}
+
+/**
+ * Why a session's trace does not record exactly its scenario: the stamped scenario events (without the capture marker)
+ * must have the scenario's kinds, times and trial ids in order. `null` when they match.
+ */
+export function t3TraceMismatch(scenario: MotionScenario, stamped: readonly ScenarioEvent[]): string | null {
+  for (let index = 0; index < Math.max(scenario.events.length, stamped.length); index++) {
+    const expected = scenario.events[index]
+    const actual = stamped[index]
+    const id = (event: ScenarioEvent | undefined) => event && 'trialId' in event ? event.trialId : undefined
+    if (!expected || !actual || expected.kind !== actual.kind || expected.at !== actual.at || id(expected) !== id(actual))
+      return `${scenario.id}: event ${index} is ${expected ? `${expected.kind}@${expected.at} ${id(expected) ?? ''}` : 'missing'} in the scenario but ${actual ? `${actual.kind}@${actual.at} ${id(actual) ?? ''}` : 'missing'} in the trace`
+  }
+  return null
 }
 
 /** One idle capture of the T3 liveliness gate: no inputs, a marker each minute so the trace carries scenario events. */

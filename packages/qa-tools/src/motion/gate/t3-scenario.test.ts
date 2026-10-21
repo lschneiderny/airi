@@ -1,9 +1,11 @@
+import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
+
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
-import { naturalEmotionLifetime } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
+import { hashSeed, naturalEmotionLifetime } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
 import { emotionGate, naturalEmotionT3Gate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 import { describe, expect, it } from 'vitest'
 
-import { buildT3EmotionPlan, buildT3IdleScenario, t3PlanFromScenarios, t3PulseOrder } from './t3-scenario'
+import { buildT3EmotionPlan, buildT3IdleScenario, t3PlanFromScenarios, t3PulseOrder, t3TraceMismatch } from './t3-scenario'
 
 const settings = defaultExpressionPerformanceSettings
 
@@ -54,19 +56,122 @@ describe('buildT3EmotionPlan', () => {
 })
 
 describe('t3PlanFromScenarios', () => {
-  it('reads back the pulses and placebo counts of archived scenarios, and refuses an archive that breaks the layout', () => {
-    const plan = buildT3EmotionPlan(naturalEmotionT3Gate, emotionGate, settings, 41)
-    const read = t3PlanFromScenarios(naturalEmotionT3Gate, emotionGate, settings, plan.sessions.map(session => session.scenario))
+  // The archived run was planned by naturalEmotionT3Gate v1, whose pulse order comes from this seed.
+  const archivedSeed = hashSeed('natural-emotion-t3@1:order')
+  const archive = () => buildT3EmotionPlan(naturalEmotionT3Gate, emotionGate, settings, archivedSeed).sessions.map(session => structuredClone(session.scenario))
+  const validate = (scenarios: MotionScenario[]) => t3PlanFromScenarios(naturalEmotionT3Gate, emotionGate, settings, scenarios)
+  const refuses = (invariant: string, mutate: (scenarios: MotionScenario[]) => MotionScenario[] | void) => {
+    const scenarios = archive()
+    const mutated = mutate(scenarios) ?? scenarios
+    expect(() => validate(mutated)).toThrow(`archive invariant "${invariant}"`)
+  }
+  const emotions = (scenario: MotionScenario) => scenario.events.filter(event => event.kind === 'emotion')
+  /** Rewrites pulse ids the way the planner numbers them, so a cell edit tests its own invariant and not the id format. */
+  const renumber = (scenarios: MotionScenario[]) => {
+    const counters = new Map<string, number>()
+    for (const event of scenarios.flatMap(emotions)) {
+      const key = `${event.emotion}-${event.band}`
+      counters.set(key, (counters.get(key) ?? 0) + 1)
+      event.trialId = `${key}-t3-${counters.get(key)}`
+    }
+  }
+
+  it('accepts the archived run\'s layout and reads back its pulses and placebos', () => {
+    const plan = buildT3EmotionPlan(naturalEmotionT3Gate, emotionGate, settings, archivedSeed)
+    const read = validate(archive())
     // Spacing is read up to the next pulse, so only a padded session's last pulse reads longer than planned.
     expect(read.sessions.map(session => session.pulses.map(pulse => [pulse.trialId, pulse.at, pulse.placeboAt]))).toEqual(plan.sessions.map(session => session.pulses.map(pulse => [pulse.trialId, pulse.at, pulse.placeboAt])))
-    expect(read.placebos).toBe(plan.placebos)
+    expect(read.placebos).toBe(52)
+  })
 
-    const [first, ...rest] = plan.sessions.map(session => session.scenario)
-    // Pull the second pulse 8 s toward the first: closer than the spacing rule allows.
-    const secondPulse = first.events.filter(event => event.kind === 'emotion')[1]
-    const moved = { ...first, events: first.events.map(event => event === secondPulse ? { ...event, at: event.at - 8 } : event).sort((a, b) => a.at - b.at) }
-    expect(() => t3PlanFromScenarios(naturalEmotionT3Gate, emotionGate, settings, [moved, ...rest])).toThrow('below')
-    expect(() => t3PlanFromScenarios(naturalEmotionT3Gate, emotionGate, settings, rest)).toThrow('pulses')
+  it('refuses the reviewer\'s placebo moved from 54 s into the 44 s pulse window', () => refuses('placebo-window', ([first]) => {
+    const placebo = first.events.find(event => event.kind === 'placebo' && event.at === 54)!
+    expect(emotions(first)[0].at).toBe(44)
+    placebo.at = 44.1
+  }))
+  it('refuses the reviewer\'s duplicated emotion trialId', () => refuses('unique-ids', ([first]) => {
+    emotions(first)[1].trialId = emotions(first)[0].trialId
+  }))
+  it('refuses a duplicated placebo id', () => refuses('unique-ids', ([first]) => {
+    const placebos = first.events.filter(event => event.kind === 'placebo')
+    placebos[1].trialId = placebos[0].trialId
+  }))
+  it('refuses a placebo window that runs into the next pulse', () => refuses('placebo-window', ([first]) => {
+    first.events.find(event => event.kind === 'placebo' && event.at === 54)!.at = 55
+  }))
+  it('refuses times that do not strictly increase', () => refuses('monotonic-times', ([first]) => {
+    first.events[1].at = first.events[0].at
+  }))
+  it('refuses a scenario that is not the planner\'s session', () => refuses('scenario-identity', ([, second]) => {
+    second.settings = { ...second.settings, heldEmotions: false }
+  }))
+  it('refuses an event kind the planner never writes', () => refuses('event-kinds', ([first]) => {
+    first.events.splice(1, 0, { kind: 'marker', at: 21, label: 'extra' })
+  }))
+  it('refuses a pulse outside the gate\'s cells', () => refuses('cell-membership', ([first]) => {
+    Object.assign(emotions(first)[0], { emotion: 'happy' })
+  }))
+  it('refuses a pulse id out of the planner\'s numbering', () => refuses('trial-id-format', ([first]) => {
+    emotions(first)[0].trialId = 'love-clear-t3-99'
+  }))
+  it('refuses fewer sessions than the gate needs', () => refuses('session-count', (scenarios) => {
+    const kept = scenarios.slice(0, 2)
+    kept.forEach((scenario, index) => {
+      scenario.id = `t3-emotion-transfer-${index + 1}-of-2`
+    })
+    return kept
+  }))
+  it('refuses sessions of different durations', () => refuses('session-duration', ([, second]) => {
+    second.durationSeconds += 10
+  }))
+  it('refuses sessions longer than one capture', () => refuses('session-duration', (scenarios) => {
+    for (const scenario of scenarios)
+      scenario.durationSeconds = 600
+  }))
+  it('refuses an event inside the warm-up', () => refuses('warm-up', ([first]) => {
+    first.events[0].at = 10
+  }))
+  it('refuses a pulse closer to the next than the planner spacing', () => refuses('pulse-spacing', ([first]) => {
+    emotions(first)[1].at -= 1
+  }))
+  it('refuses a cell with the wrong pulse count', () => refuses('cell-count', (scenarios) => {
+    const pulse = scenarios.flatMap(emotions).find(event => event.emotion === 'angry' && event.band === 'strong')!
+    Object.assign(pulse, { emotion: 'sleepy' })
+    renumber(scenarios)
+  }))
+  it('refuses the same cell twice in a row', () => refuses('back-to-back', (scenarios) => {
+    // Swap one pulse's cell with a same-band pulse elsewhere so counts and spacing stay valid.
+    const pulses = emotions(scenarios[0])
+    const index = pulses.findIndex((pulse, at) => at > 0 && pulse.band === pulses[at - 1].band && pulse.emotion !== pulses[at - 1].emotion)
+    const target = pulses[index]
+    const donor = scenarios.flatMap(emotions).find(event => event !== pulses[index - 1] && event.emotion === pulses[index - 1].emotion && event.band === pulses[index - 1].band)!
+    const [moved, kept] = [target.emotion, pulses[index - 1].emotion]
+    Object.assign(target, { emotion: kept })
+    Object.assign(donor, { emotion: moved })
+    renumber(scenarios)
+  }))
+  it('refuses a pulse gap without its placebo', () => refuses('placebo-per-pulse', ([first]) => {
+    first.events.splice(first.events.findIndex(event => event.kind === 'placebo' && event.at === 54), 1)
+  }))
+  it('refuses overlapping placebo windows', () => refuses('placebo-overlap', ([first]) => {
+    first.events[1].at = 23
+  }))
+  it('refuses screenshots the planner does not take', () => refuses('screenshots', ([first]) => {
+    first.screenshotsAt = first.screenshotsAt!.map((at, index) => index === 0 ? at + 1 : at)
+  }))
+  it('refuses fewer placebo windows than the gate needs', () => refuses('placebo-total', (scenarios) => {
+    for (const scenario of scenarios)
+      scenario.events = scenario.events.filter(event => event.kind !== 'placebo' || !event.trialId?.includes('-lead-'))
+  }))
+})
+
+describe('t3TraceMismatch', () => {
+  it('names a trace whose stamped events differ from the scenario', () => {
+    const [scenario] = buildT3EmotionPlan(naturalEmotionT3Gate, emotionGate, settings).sessions.map(session => session.scenario)
+    expect(t3TraceMismatch(scenario, scenario.events)).toBeNull()
+    const swapped = scenario.events.map((event, index) => index === 4 && event.kind === 'emotion' ? { ...event, trialId: 'other-trial' } : event)
+    expect(t3TraceMismatch(scenario, swapped)).toContain('other-trial')
+    expect(t3TraceMismatch(scenario, scenario.events.slice(1))).toContain('event 0')
   })
 })
 
