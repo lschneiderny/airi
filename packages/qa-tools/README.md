@@ -84,9 +84,9 @@ T2 is GO, path A. The Cubism Core and ForBOOTH rig ran in Node without a GPU usi
 
 ## Known limitations
 
-Luke accepted these scorer-validation limits on 2026-10-20. The x0 mutation detection rate is 92.9% because impulse hints remain active and can produce the same face-channel effects as the held recipe. Ignore-side detection is 83.3% because T1 fixes the hold side per emotion. The x0.5 size mutation detection rate is 64.4% because the size-band lower bound is exactly 0.5. Unmutated sets pass 84% to 88% of checks, rather than every check.
+The protocol-1 limits are historical: x0 detection was 92.9% with impulse hints active, `ignore-side` detection was 83.3% with a fixed hold side, x0.5 size detection was 64.4% at the inclusive 0.5 size boundary, and unmutated sets passed 84% to 88% of checks. Protocol 2 addresses these validation-design causes without changing gates or Natural motion. See `docs/ai/adr/2026-10-21-scorer-validation-protocol-2.md`.
 
-The scorer redesign is deferred to a separate plan. Until then, `validate-scorer` exits 1 by design when these thresholds are missed. Do not retune gates or recipes to conceal the findings.
+The first full protocol-2 run passed A/A, zero, mutations, and determinism; unmutated failed. Mutations met their thresholds: x0 killed 324/325 eligible checks, pooled ignore-side killed 72/72 mutable checks, and x0.5 calibration killed 174/174 clear and strong checks. The unmutated run found 37 persistent failures: visibility 7, significance 6, release 31, and size 3. Its remaining 66 noise failures exceeded the budget of 25 across 1,500 check-set pairs, so the prediction that failures would come only from persistent checks was missed. These findings were recorded without retuning. See .omo/evidence/motion-gate-redesign/findings.md for the full list.
 
 Smoke timing is recorded, not asserted. Quiet-machine measurements were 44.7 to 65.0 seconds against a 60-second target; the full gate was 294.6 seconds against a 300-second target.
 
@@ -152,8 +152,8 @@ The report is a review aid. It does not change a gate verdict or make a naturaln
 
 - `aa`: 20 seed sets of emotion-free runs, scored unpaired as every emotion and band against the committed placebo null. At most 1 set may pass any significance or visibility check, the placebo hit rate must be 0.10 +- 0.03, and the p-values must be uniform (Kolmogorov-Smirnov p > 0.01, `src/motion/ks.ts`). The old checkpoint-12 single-trial rules are scored on the same trials for comparison.
 - `zero`: an all-zero emotion table, scored paired, must pass nothing.
-- `mutations`: x0, sign flip, ignore side, x0.5, x2, `releaseTau` x3 and blink interval 1, each applied through the `emotionTable` seam or scenario `settings.performance`, with the kill rate of the targeted criterion.
-- `unmutated`: 5 reseeded full gate runs, which must pass every check.
+- `mutations`: x0, sign flip, `ignore-side`, `ignore-side-neg`, x0.5, x2, `releaseTau` x3 and blink interval 1, each applied through the `emotionTable` seam or scenario `settings.performance`. K1 scores x0 using detection or held-only size, with a 0.99 minimum. K2 proves per-cell equality for both constant-side variants, excludes `notMutable` checks, and applies the 0.95 minimum to their pooled mutable checks. K3 uses paired held-only size calibration for x0.5, with a 0.90 minimum on clear and strong checks; slight checks and the gate-verdict size kill rate are reported only.
+- `unmutated`: 5 reseeded full gate runs. A check failing in at least 4 of 5 sets is a persistent finding and fails the section. Other failures are compared with the 0.99 quantile of Binomial(`noiseTrials`, 0.01); `n/a` results are reported separately and do not count.
 - `determinism`: two independent runs give identical scores, and shuffled events or records change nothing.
 - The CLI runs one Vitest process per shard and phase (simulate, then score) and writes `validation.json` (every number, threshold and verdict, with no run id or time) and `summary.txt`. Exit codes: 0 every threshold met, 1 a threshold missed or the run broke, 2 a usage error. A missed threshold is a finding for Luke; never change a gate constant to meet it.
 

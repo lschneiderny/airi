@@ -48,6 +48,6 @@ The Cubism Core header identifies the file as Redistributable Code and refers to
 - A committed known-failures registry distinguishes new failures from the existing baseline without treating known failures as passes.
 - T2 is GO by path A. Its recorded parity difference against Chromium is zero across 600 frames and 281 parameters, and its measured Natural, adapter, and physics loop runs at 55.19 times real time. Mesh deformation is skipped because it does not write parameters and accounts for about 90% of frame cost.
 - Quiet-machine timing is recorded, not asserted: smoke runs took 44.7 to 65.0 seconds against a 60-second target, and the full gate took 294.6 seconds against a 300-second target.
-- Scorer validation has accepted limits: x0 detection is 92.9% because impulse hints remain; ignore-side detection is 83.3% because T1 fixes the hold side per emotion; x0.5 size detection is 64.4% because the size-band lower bound is exactly 0.5; and unmutated sets pass 84% to 88% of checks. Redesign is deferred to a separate plan. `validate-scorer` exits 1 when these thresholds are missed until then.
+- The protocol-1 scorer-validation limits are superseded by [scorer validation protocol 2](2026-10-21-scorer-validation-protocol-2.md).
 - Naturalness remains Luke's visual call. The ForBOOTH watermark covers part of the face in T3 screenshots. Under Luke's rule, acceptance on one rig counts for the other.
 - Gate failures remain findings. They do not authorize recipe or threshold changes.
