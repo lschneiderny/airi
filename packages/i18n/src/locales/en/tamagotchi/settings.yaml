@@ -259,7 +259,6 @@ devtools:
       emotions:
         title: Emotions
         description: Send an emotion through the same queue that chat replies use.
-        intensity: Intensity
         bands:
           slight: Slight
           clear: Clear
