@@ -8,7 +8,7 @@ import type { Mock } from 'vitest'
 import type { UnwrapRef } from 'vue'
 import type z from 'zod'
 
-import type { StreamEvent } from '../../ai/chat-llm/llm'
+import type { LlmStreamOptions, StreamEvent } from '../../ai/chat-llm/llm'
 import type { AiriCard } from '../../modules'
 
 import { renderConversationPreview } from '@proj-airi/core-agent'
@@ -432,7 +432,7 @@ describe('store character-orchestrator', () => {
   })
 
   it('runs the forced command agent for a character-only notify when its caller forces a spark command', async () => {
-    const mockStream = vi.fn(async (_model: string, _provider: unknown, _messages: unknown, options: any) => {
+    const mockStream = vi.fn(async (_model: string, _provider: unknown, _messages: unknown, options?: LlmStreamOptions) => {
       await options?.onStreamEvent?.({ type: 'finish' } satisfies StreamEvent)
     })
     mockedStore(useLLM, pinia).stream = mockStream
