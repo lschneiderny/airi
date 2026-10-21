@@ -24,6 +24,7 @@ lerna-debug.log*
 .omo/evidence/
 .omo/boulder.json
 .omo/ulw-execute/
+.omo/ulw-loop/
 .omo/slop/
 
 # Anything .local, especially for .env.local
