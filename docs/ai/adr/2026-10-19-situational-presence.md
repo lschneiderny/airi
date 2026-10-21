@@ -46,13 +46,13 @@ The reducer applies these rules:
 - A new foreground app becomes current at once. Its `app-switch` event exists only after the app stays in front for 75 s. A switch back within 30 s merges with no event, and three or more switches within 2 minutes yield one `switching between A and B` event.
 - Long sessions emit one `long-session` event per tier, at 30 minutes and at 1, 2, and 3 hours.
 - A `went-away` event exists only after the user has been away for 5 minutes, and coming back after that emits `returned`. A lock that ends at once therefore creates no away topic.
-- A `wake` observation emits a `wake` event. The desktop sensor reports a wake on every unlock and resume, so a one-second lock still creates the wake topic. Todo 42 plans to apply the same 5-minute minimum to the wake topic (todo 42).
+- A `wake` observation emits a `wake` event only when the away span that it ends lasted at least 5 minutes. The span runs from the start of the current away span, or it is the span that just ended when the return was reported before the wake. A one-second lock therefore creates neither an away topic nor a wake topic. A wake with no away span to measure still emits the event.
 - A context observation replaces the text of its source and emits an event only when the text changed.
 - A notify observation emits one event per `notifyTopicKey(sourceKey, eventId)`.
 - Observations caused by the character's own turns are tagged with the origin `self`, and the gate never picks them as topics.
 - The ring keeps the 32 newest events. An event whose effective salience falls below 0.05 is dropped.
 
-Each event carries two mention flags that code sets: `shownAtMs` when a block first renders it as `New:`, and `addressedAtMs` when the gate fires on its topic. The model keeps no bookkeeping marker.
+Each event carries two mention flags that code sets: `shownAtMs` when a block first renders it as `New:`, and `addressedAtMs` when its topic is addressed. The gate addresses a topic when it fires on it. Every spoken unprompted turn addresses its trigger topic at its first literal, and a declined unprompted turn addresses it when its stream ends. The model keeps no bookkeeping marker.
 
 `renderSituation` produces one block: a `[Situation HH:MM]` header, then at most 6 lines and 500 characters of flat bullets.
 The bullets are presence, the current and previous app, up to two unshown `New:` events with relative times, one conversation line, one line per context source, and the stage line with exposed expressions and mood.
@@ -108,6 +108,7 @@ The leader runs the gate every 2 s, only in a host that called `setHostCapabilit
 The Electron app also reports stage visibility through `setStageVisible`, and a host that never reports it counts as hidden.
 User typing comes from `chatComposerActivityChangedEvent` on the speech bus, which every composer window emits. Character speech comes from `voiceTurnsChanged`.
 On a fire, the store addresses the topic first, then calls `submitUnprompted`, and starts no other turn until that one has a result.
+The gate never picks a topic that a widget reaction holds (see Plugin notifications).
 
 ### Unprompted turns in the runtime
 
@@ -137,14 +138,23 @@ The leader remembers notify topic keys for its leadership, so a scheduler remind
 Follower windows forward their notify observations to the leader through `situationNotifyObservedEvent`.
 Only a notify addressed beyond `character` runs the spark-notify agent, with the `commandsOnly` control: spark-command tools stay available, no tool choice is forced, and text output is ignored. `spark:command` events keep their ids, `parentEventId`, and destinations.
 
-Widget reaction requests keep their request and response contract (todo 27):
+Widget reaction requests keep their request and response contract. A forced unprompted turn now answers them:
 
-- `handleSparkNotifyReactionLocal` ingests the notify, addresses its topic before any await, and calls `submitUnprompted` with `force: true`, the topic key `notifyTopicKey(sourceKey, eventId)`, and the message id `spark:<id>` (todo 27).
-- It returns the spoken text, or `fallbackText` when the turn is declined, cancelled, or failed (todo 27).
-- A CALL in the reply reaches the performance handlers registered for `spark:<id>`, because the runtime turn id equals the message id (todo 27).
-- The reaction timeouts grow from 5 s to 30 s, because a forced turn waits in the session FIFO behind a running turn and its speech (todo 27).
+- The context bridge holds the topic key `notifyTopicKey(sourceKey, eventId)` with `holdTopic` before the notify enters the situation, and releases it when the reaction settles. The gate never picks a held topic, so it cannot raise the same notify while the reaction waits. A hold does not address the topic.
+- A forced turn skips the gate, so the reaction first waits up to 20 s for a quiet moment. In a quiet moment the character has no open voice response, and the user is neither speaking into the microphone nor writing in a chat composer. Writing means a draft that is not sent, or composer input within the last 10 s. Every initialized window tracks these user-input reports from the speech bus, so the wait works in the window that serves the request. A user send during the wait goes first. When no quiet moment comes, the reaction returns `fallbackText` without a model call.
+- The reaction then calls `submitUnprompted` with `force: true`, the held topic key, the message id `spark:<id>`, and the `appendSystemInstructions` (including the CALL manifest) as `supplement`. A user send after the turn started cancels it.
+- It returns the spoken text, or `fallbackText` when the turn is declined, cancelled, or failed, or when another unprompted turn is pending. A request with `forceSparkCommandResponse` runs only the commands-only agent and returns `fallbackText`.
+- A spoken reaction addresses its topic at its first literal. A declined reaction addresses its topic too, because staying silent was her decision and raising the topic later would contradict it. A cancelled, failed, or busy reaction leaves the topic unaddressed, so the gate may raise it later. A declined topic never becomes her last remark on the conversation line.
+- A CALL in the reply reaches the performance handlers registered for `spark:<id>`, because the runtime turn id equals the message id.
+- The client-role reaction timeout and the default `dispatchSparkNotifyPerformance` timeout are 30 s instead of 5 s, because a forced turn waits for a quiet moment and in the session FIFO before it generates.
 
-The side-path reaction speech is removed. The character store keeps `reactions`, `recordSparkNotifyReaction`, and the read-aloud path of `emitTextOutput` (todo 28).
+The side-path reaction speech is removed, so a notify is spoken once, through a chat turn. The character store keeps `reactions`, `recordSparkNotifyReaction`, and the read-aloud path of `emitTextOutput`.
+Character stores are not synced, so a spoken notify reaction is shared with every window:
+
+- The leader reports each spoken gate fire about a notify through `onNotifySpoken`, and a widget reaction reports its own spoken reply.
+- The reporting window records the reaction and posts `{ type: 'reaction', topicKey, id, text }` on the `airi-spark-notify-bridge` BroadcastChannel.
+- Every receiving window records it once per notify id in its devtools reactions list. A window resolves a missing id from its own notify registry (`sparkNotifyIdOf`) and drops a reaction whose notify it cannot name.
+- Declined, cancelled, and failed turns record nothing.
 
 ### Stage contract and persona
 
@@ -200,11 +210,15 @@ Preview never marks events as shown.
 - **Pacing is untested in daily use.** The gate constants are starting values. Duration remarks at 30 minutes and 1 hour may feel mechanical.
 - **Other hosts.** Stage-web and Pocket render the block without presence data and run no gate. Kirie shares the chat store without initializing the situation store, so its requests carry no block.
 - **Gate details.** The game gap multiplier reads the reducer's activity, which never expires. Because the gate holds with `stale-signal` before it reads that activity, a stale game cannot hold the gate. A fire just before the stage is minimized can still speak while the stage is hidden. If the audio host dies mid-speech without reporting, `characterSpeaking` stays true and she stays quiet until the next leadership.
+- **Lost shared reactions.** If leadership changes while a gate-fired turn about a notify runs, the turn's reaction is not shared. She spoke, but the devtools reactions lists miss it.
+- **Voice sends.** Speech input has no recent-input window, so a widget reaction's quiet wait ends as soon as the user stops speaking. The reaction can therefore start before speech-to-text submits the user's message. That send then cancels the reaction, and the widget gets its fallback, but the first words of the reaction may already play. No test covers this gap.
+- **Widget budget in client windows.** A widget request served through a client-role window resolves with its fallback after 30 s in total. The quiet wait can use up to 20 s of that budget, which leaves less time to generate. When the client times out first, the widget shows its fallback while the main window can still speak the reaction.
 
 Pre-existing gaps that this design does not fix:
 
 - The web extension sends `spark:notify` with `destinations: ['character']`, and no stage peer matches that destination. Its notifications therefore never reach the situation.
 - A message typed into a follower chat window while the previous reply is speaking and the leader reloads is lost. `requestStopSpeaking` waits forever for the reloaded leader, and later sends from that window are ignored. This also happens on main.
+- The context bridge watches the `airi-spark-notify-bridge` channel only after the server channel connects. Without a connected server channel, client-role widget requests time out to their fallback, and that window records no shared reactions.
 
 ## Alternatives
 

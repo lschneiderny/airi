@@ -357,13 +357,16 @@ The [situational presence ADR](../../docs/ai/adr/2026-10-19-situational-presence
 ### Situation store
 
 `useSituationStore` in `stores/situation` holds the situation of the leader window. It is neither synced nor persisted.
-Each host calls `initialize(syncedPinia)` next to the chat store. The leader starts the sensors and a 1-second advance ticker, and a follower ignores every call.
+Each host calls `initialize(syncedPinia)` next to the chat store. The leader starts the sensors and a 1-second advance ticker. A follower ignores every other call, but it tracks the user's voice and composer activity for `untilUserIdle`.
 Every chat request carries the block from `renderForRequest` as its only runtime context. Outside the leader, `renderForRequest` returns `undefined`, so a host that never initializes the store sends no block.
 
 - `setHostCapabilities({ unprompted: true })` runs the opportunity gate every 2 seconds in the leader. Only the Electron app sets it.
 - `setStageVisible(visible)` reports whether the stage is on screen. A host that never calls it counts as hidden, so the gate stays quiet.
 - `ingest(observation)` folds one observation. Sensors call it; other code rarely needs it.
 - `markAddressed(topicKey)` keeps a topic from being raised again, for example when a caller speaks about that topic itself.
+- `holdTopic(topicKey)` keeps a topic away from the gate until the returned function releases it, without addressing it. Use it while a forced turn about that topic is on its way.
+- `userMidInput()` and `untilUserIdle(timeoutMs)` report whether the user is speaking into the microphone or writing in a chat composer in any window. They work in every initialized window.
+- `onNotifySpoken(listener)` reports each spoken gate fire about a notify, with its topic key and reply text.
 
 Use this store to give the model awareness of the user's situation and to run unprompted remarks.
 Do not read it in follower windows, and do not store its block or window titles in chat history.
@@ -395,8 +398,10 @@ At most one unprompted turn is pending at a time. A user send in the same sessio
 `userSending` ignores unprompted turns, so the presence bubble and the streaming placeholder follow user turns only.
 Chat history shows a muted "Spoke up about X" cue above the reply unless **Show unprompted cue** is off. Unprompted turns are excluded from cloud sync.
 
-Widget reaction requests use `submitUnprompted` with `force: true` and the message id `spark:<id>`, and return the spoken text or the fallback text (todo 27).
-The character store no longer speaks spark reactions through its own `Speech` client (todo 28).
+Widget reaction requests (`dispatchSparkNotifyReaction` and `dispatchSparkNotifyPerformance`) use `submitUnprompted` with `force: true` and the message id `spark:<id>`.
+The context bridge holds the notify topic with `holdTopic`, so the gate cannot raise it meanwhile. It first waits up to 20 seconds until the character has no open voice response and `untilUserIdle` reports that the user is neither speaking nor writing.
+A request returns the spoken text, or the fallback text when no quiet moment comes or the turn is declined, cancelled, failed, or busy. A declined reaction addresses its topic. A cancelled, failed, or busy one leaves the topic for the gate.
+The character store no longer speaks spark reactions through its own `Speech` client. A spoken notify reaction, from a gate fire or a widget request, is posted on the `airi-spark-notify-bridge` BroadcastChannel and recorded once per notify id in the `reactions` of every window.
 
 Use `submitUnprompted` for remarks that code decided to offer: gate fires and forced reactions.
 Do not pass a raw window title in `topicText`, because the trigger message is stored in history.
