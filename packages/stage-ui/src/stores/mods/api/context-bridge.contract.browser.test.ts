@@ -24,6 +24,13 @@ const serverEventHooks = new Map<string, HookCallback[]>()
 
 // Delegates to the real situation sensor. A test forces a failure with `mockImplementationOnce`.
 const { situationIngestMock } = vi.hoisted(() => ({ situationIngestMock: vi.fn() }))
+/**
+ * The character stores of every bridge, in creation order: each window records reactions in its own store and names
+ * only the notifies listed in its `notifyIds`.
+ */
+const { characterWindows } = vi.hoisted(() => ({
+  characterWindows: [] as Array<{ reactions: Array<[string, string]>, notifyIds: Map<string, string> }>,
+}))
 const beginStreamMock = vi.fn()
 const appendStreamLiteralMock = vi.fn()
 const finalizeStreamMock = vi.fn()
@@ -231,12 +238,21 @@ vi.mock('vue-i18n', () => ({
 }))
 
 vi.mock('../../character', () => ({
-  useCharacterOrchestratorStore: () => ({
-    handleSparkNotify: vi.fn(async () => undefined),
-  }),
-  useCharacterStore: () => ({
-    recordSparkNotifyReaction: vi.fn(),
-  }),
+  // A bridge resolves the orchestrator, then the character store, once each when it is created.
+  useCharacterOrchestratorStore: () => {
+    const window = { reactions: [] as Array<[string, string]>, notifyIds: new Map<string, string>() }
+    characterWindows.push(window)
+    return {
+      handleSparkNotify: vi.fn(async () => undefined),
+      sparkNotifyIdOf: (topicKey: string) => window.notifyIds.get(topicKey),
+    }
+  },
+  useCharacterStore: () => {
+    const window = characterWindows.at(-1)!
+    return {
+      recordSparkNotifyReaction: (id: string, message: string) => window.reactions.push([id, message]),
+    }
+  },
 }))
 
 vi.mock('../../chat', () => ({
@@ -298,6 +314,7 @@ vi.mock('./channel-server', () => ({
 describe('context bridge contract', () => {
   beforeEach(() => {
     localStorage.clear()
+    characterWindows.length = 0
     pinia = createPinia()
     setActivePinia(pinia)
     consciousness = useConsciousnessStore(pinia)
@@ -1241,6 +1258,66 @@ describe('context bridge contract', () => {
     expect(chatOrchestratorMock.submitUnprompted).toHaveBeenCalledWith(expect.objectContaining({ force: true, topicText: 'QA widget', messageId: expect.stringMatching(/^spark:/) }))
   })
 
+  /** Another Stage window, such as settings: its own Pinia and bridge, initialized as every non-widget window is. */
+  async function createSecondWindowBridge() {
+    const windowPinia = createPinia()
+    const bridge = useContextBridgeStore(windowPinia)
+    await bridge.initialize()
+    onTestFinished(async () => {
+      await bridge.dispose()
+      disposePinia(windowPinia)
+      setActivePinia(pinia)
+    })
+    return { bridge, character: characterWindows.at(-1)! }
+  }
+
+  it('records a spoken widget reaction once in its own window and once in every other window', async () => {
+    const main = useContextBridgeStore()
+    main.setSparkNotifyHostRole('main')
+    await main.initialize()
+    const mainCharacter = characterWindows[0]
+    const second = await createSecondWindowBridge()
+    chatOrchestratorMock.submitUnprompted.mockResolvedValue({ status: 'spoken', text: 'Oh, a QA widget!' })
+
+    const reaction = await main.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
+    const notifyId = (chatOrchestratorMock.submitUnprompted.mock.calls[0]![0] as { messageId: string }).messageId.replace(/^spark:/, '')
+    await vi.waitFor(() => {
+      expect(second.character.reactions).toEqual([[notifyId, 'Oh, a QA widget!']])
+    })
+    // The same reaction arriving again, here and in the main window, records nothing new. One channel delivers in
+    // order, so once the sentinel is recorded everywhere, the repeat was handled before it.
+    const repeat = new BroadcastChannel('airi-spark-notify-bridge')
+    onTestFinished(() => repeat.close())
+    repeat.postMessage({ type: 'reaction', topicKey: 'notify:plugin-module-host:any', id: notifyId, text: 'Oh, a QA widget!' })
+    repeat.postMessage({ type: 'reaction', topicKey: 'notify:qa:sentinel', id: 'sentinel', text: 'sentinel' })
+    await vi.waitFor(() => {
+      expect(mainCharacter.reactions.at(-1)).toEqual(['sentinel', 'sentinel'])
+      expect(second.character.reactions.at(-1)).toEqual(['sentinel', 'sentinel'])
+    })
+
+    expect(reaction).toBe('Oh, a QA widget!')
+    expect(mainCharacter.reactions).toEqual([[notifyId, 'Oh, a QA widget!'], ['sentinel', 'sentinel']])
+    expect(second.character.reactions).toEqual([[notifyId, 'Oh, a QA widget!'], ['sentinel', 'sentinel']])
+  })
+
+  it('records a gate reaction that names only its topic in the window that received the notify', async () => {
+    const second = await createSecondWindowBridge()
+    // The settings window ran the simulator, so it alone knows the notify id behind the topic.
+    second.character.notifyIds.set('notify:devtools:qa-video', 'qa-video-delivery')
+    const leader = new BroadcastChannel('airi-spark-notify-bridge')
+    onTestFinished(() => leader.close())
+
+    // A notify this window never handled, and a malformed post, record nothing; the last post arrives after both.
+    leader.postMessage({ type: 'reaction', topicKey: 'notify:devtools:unknown', text: 'Not mine.' })
+    leader.postMessage({ type: 'reaction', topicKey: 'notify:devtools:qa-video', id: 7, text: 42 })
+    leader.postMessage({ type: 'reaction', topicKey: 'notify:devtools:qa-video', text: 'Oh, a QA video!' })
+    await vi.waitFor(() => {
+      expect(second.character.reactions).toHaveLength(1)
+    })
+
+    expect(second.character.reactions).toEqual([['qa-video-delivery', 'Oh, a QA video!']])
+  })
+
   it('answers a declined widget reaction with its fallback text', async () => {
     const main = useContextBridgeStore()
     main.setSparkNotifyHostRole('main')
@@ -1252,5 +1329,7 @@ describe('context bridge contract', () => {
 
     expect(reaction).toBe('fallback')
     expect(chatOrchestratorMock.submitUnprompted).toHaveBeenCalledOnce()
+    // The main window ran the declined turn, so it would have recorded a reaction before answering.
+    expect(characterWindows[0].reactions).toEqual([])
   })
 })

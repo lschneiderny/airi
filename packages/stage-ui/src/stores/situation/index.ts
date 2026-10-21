@@ -149,6 +149,7 @@ export const useSituationStore = defineStore('situation', () => {
   const heldTopics = new Set<string>()
   /** The unprompted turn whose first literal was seen last, so its topic is addressed once. */
   let lastSpokenUnpromptedTurnId: string | undefined
+  const notifySpokenListeners = new Set<(spoken: { topicKey: string, text: string }) => void>()
 
   // Feeds the devtools Situation inspector of this window. Sync flush keeps it equal to the state after every call.
   watch([leading, current], ([isLeading, state]) => observability.publishLiveState(isLeading, state), { flush: 'sync', immediate: true })
@@ -411,6 +412,7 @@ export const useSituationStore = defineStore('situation', () => {
   async function fire(controls: SituationChatControls, decision: Extract<GateDecision, { fire: true }>, before: GateMemory) {
     const turn = { turnId: nanoid(), spoken: false }
     const startedIn = leadership
+    const aboutNotify = current.value.events.some(event => event.topicKey === decision.topicKey && event.kind === 'notify')
     firing = turn
     markAddressed(decision.topicKey)
     let result: ChatUnpromptedResult
@@ -432,6 +434,21 @@ export const useSituationStore = defineStore('situation', () => {
     }
     if (!turn.spoken)
       setGateMemory(recordFireOutcome(gateMemory, result.status, Date.now()))
+    const text = result.status === 'spoken' ? result.text.trim() : ''
+    if (aboutNotify && text) {
+      for (const listener of notifySpokenListeners)
+        listener({ topicKey: decision.topicKey, text })
+    }
+  }
+
+  /**
+   * Calls `listener` with the topic key and reply text of every gate-fired turn about a notify that was spoken.
+   * Declined, cancelled, and failed turns are not reported. Only the leader fires, so only its listeners are called.
+   * Returns a function that removes the listener.
+   */
+  function onNotifySpoken(listener: (spoken: { topicKey: string, text: string }) => void): () => void {
+    notifySpokenListeners.add(listener)
+    return () => notifySpokenListeners.delete(listener)
   }
 
   /** Runs the gate loop only while this window leads in a host that supports unprompted turns. */
@@ -623,6 +640,7 @@ export const useSituationStore = defineStore('situation', () => {
     renderForRequest,
     markAddressed,
     holdTopic,
+    onNotifySpoken,
     userMidInput,
     untilUserIdle,
     observeChat,

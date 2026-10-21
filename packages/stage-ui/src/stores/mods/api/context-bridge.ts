@@ -66,6 +66,15 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
   const { activeProvider, activeModel, activeTemperature, activeTopP } = storeToRefs(consciousnessStore)
   const streamingControl = useLlmStreamingControlStore()
 
+  /**
+   * A notify reaction that she spoke. `id` is the notify's `data.id` when the speaking window knows it; a window that
+   * receives a reaction without one looks it up by `topicKey` among the notifies it handled.
+   */
+  interface SpokenSparkNotifyReaction {
+    topicKey: string
+    id?: string
+    text: string
+  }
   type SparkNotifyBridgeMessage
     = | {
       type: 'request'
@@ -84,6 +93,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
       reaction: string
       performance?: SparkNotifyPerformanceResult
     }
+    | ({ type: 'reaction' } & SpokenSparkNotifyReaction)
   const SPARK_NOTIFY_BRIDGE_CHANNEL_NAME = 'airi-spark-notify-bridge'
   /**
    * How long a widget waits for a reaction before it uses its fallback text.
@@ -108,6 +118,10 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
     timeout?: ReturnType<typeof setTimeout>
   }>()
   const { post: postSparkNotifyBridgeMessage, data: incomingSparkNotifyBridgeMessage } = useBroadcastChannel<SparkNotifyBridgeMessage, SparkNotifyBridgeMessage>({ name: SPARK_NOTIFY_BRIDGE_CHANNEL_NAME })
+  /** How many notify ids this window remembers as recorded, so a reaction that arrives twice is recorded once. */
+  const RECORDED_SPARK_NOTIFY_REACTIONS_MAX = 256
+  /** Notify ids whose spoken reaction this window recorded, oldest first. */
+  const recordedSparkNotifyReactions = new Set<string>()
 
   const disposeHookFns = ref<Array<() => void>>([])
   // Remote stream data belongs to this renderer only. Keeping its visibility
@@ -245,6 +259,35 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
     }
   }
 
+  /**
+   * Records one spoken notify reaction in this window's character store, which the devtools reactions list of this
+   * window reads. Each notify id is recorded once; a reaction whose notify this window cannot name is dropped.
+   */
+  function recordSpokenSparkNotifyReaction(reaction: SpokenSparkNotifyReaction) {
+    const id = reaction.id ?? characterOrchestratorStore.sparkNotifyIdOf(reaction.topicKey)
+    if (!id || recordedSparkNotifyReactions.has(id))
+      return
+    recordedSparkNotifyReactions.add(id)
+    const oldest = recordedSparkNotifyReactions.size > RECORDED_SPARK_NOTIFY_REACTIONS_MAX ? recordedSparkNotifyReactions.values().next().value : undefined
+    if (oldest !== undefined)
+      recordedSparkNotifyReactions.delete(oldest)
+    characterStore.recordSparkNotifyReaction(id, reaction.text)
+  }
+
+  /**
+   * Records a spoken notify reaction in this window and posts it to every other window. Character stores are not
+   * synced, and the notify may have reached only another window, for example the devtools simulator's.
+   */
+  function shareSpokenSparkNotifyReaction(reaction: SpokenSparkNotifyReaction) {
+    const id = reaction.id ?? characterOrchestratorStore.sparkNotifyIdOf(reaction.topicKey)
+    const shared: SpokenSparkNotifyReaction = id ? { ...reaction, id } : reaction
+    recordSpokenSparkNotifyReaction(shared)
+    postSparkNotifyBridgeMessage({ type: 'reaction', ...shared })
+  }
+
+  // Only the leader's gate fires, so only the leader shares the reactions it starts.
+  situation.onNotifySpoken(shareSpokenSparkNotifyReaction)
+
   function withStreamingCallPrompt(options: SparkNotifyReactionOptions, callPrompt: string): SparkNotifyReactionOptions {
     if (!callPrompt) {
       return options
@@ -378,7 +421,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
         return fallback
 
       const reaction = result.text.trim()
-      characterStore.recordSparkNotifyReaction(event.data.id, reaction)
+      shareSpokenSparkNotifyReaction({ topicKey, id: event.data.id, text: reaction })
       return { spoken: true, reaction }
     }
     catch (error) {
@@ -824,6 +867,13 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
               ...(performance ? { performance } : {}),
             })
           })
+          return
+        }
+
+        if (event.type === 'reaction') {
+          // Another window posted it; any page can post on this channel, so the fields are checked first.
+          if (typeof event.topicKey === 'string' && typeof event.text === 'string' && (event.id === undefined || typeof event.id === 'string'))
+            recordSpokenSparkNotifyReaction({ topicKey: event.topicKey, id: event.id, text: event.text })
           return
         }
 
