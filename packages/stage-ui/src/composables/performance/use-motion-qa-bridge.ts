@@ -180,6 +180,9 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
     if (scenarioRunning)
       throw new Error('A scenario is already running')
     scenarioRunning = true
+    // Keep the home through capture completion, which can follow the last scenario event.
+    // The next scenario replaces it; disposing this bridge restores the product home.
+    diagnostics.setPostureHome(scenario.home ?? 'desk')
 
     const player = createScenarioPlayer(scenario)
     const lastAt = scenario.events.at(-1)?.at ?? 0
@@ -300,8 +303,9 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
   onScopeDispose(() => {
     for (const dispose of disposers)
       dispose()
-    for (const reject of [...abandon])
+    for (const reject of abandon)
       reject(new Error('The stage that answered the motion QA bridge was disposed'))
+    diagnostics.setPostureHome('product')
     release()
   })
 }

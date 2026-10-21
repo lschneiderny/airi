@@ -16,6 +16,7 @@ import type { ArchiveExpressionFile, Model3ExpressionRef } from '../../../compos
 import type { SpeechEvent } from '../../../composables/live2d/expression/slots'
 import type { Live2DModelCanvasRect } from '../../../composables/live2d/head-anchor'
 import type { Live2DNaturalMotionAttention } from '../../../composables/live2d/natural-motion-adapter'
+import type { NaturalMotionObserver } from '../../../composables/live2d/natural-motion/frame-types'
 import type { NaturalEpisode } from '../../../composables/live2d/natural-motion/mood'
 import type { Live2DTouchEvent, Live2DTouchSample } from '../../../composables/live2d/touch-gestures'
 import type { NaturalCaptureRequest } from '../../../stores'
@@ -159,6 +160,10 @@ const { live2dMotionDriver, live2dNaturalCursorAttention, live2dNaturalTouch, li
 const naturalDiagnostics = useNaturalMotionDiagnostics()
 const { pendingRequest: naturalCaptureRequest } = storeToRefs(naturalDiagnostics)
 let naturalMotion: Live2DNaturalMotionAdapter | undefined
+/** Owned by the loaded model; replaced on load and cleared before destruction. */
+let rebuildNaturalMotion: (() => void) | undefined
+/** A capture can span an adapter rebuild; reattach its observer without restarting the recorder. */
+let naturalCaptureObserver: NaturalMotionObserver | null = null
 /** Detaches the running trace capture without answering it; set only while a capture runs. */
 let stopNaturalCapture: (() => void) | undefined
 const localFocus = new Point()
@@ -374,6 +379,7 @@ function destroyModel(target: Live2DModel) {
   }
   naturalMotion?.dispose()
   naturalMotion = undefined
+  rebuildNaturalMotion = undefined
   releaseHeldEmotion()
   target.destroy({ texture: true, baseTexture: true })
 }
@@ -589,7 +595,7 @@ async function performModelLoad() {
     pendingNaturalEmotions.length = 0
     pendingNaturalPokes.length = 0
     releaseHeldEmotion()
-    const naturalAdapter = new Live2DNaturalMotionAdapter(
+    const createNaturalAdapter = () => new Live2DNaturalMotionAdapter(
       internalModel,
       readRigProfile(),
       () => {
@@ -624,10 +630,22 @@ async function performModelLoad() {
         }
       },
       document,
+      Math.random,
+      { home: naturalDiagnostics.postureHome },
     )
+    let naturalAdapter = createNaturalAdapter()
     naturalMotion = naturalAdapter
     naturalAdapter.setPaused(paused.value)
     naturalAdapter.setPerformanceSettings(props.performanceSettings)
+    rebuildNaturalMotion = () => {
+      naturalAdapter.natural.setObserver(null)
+      naturalAdapter.dispose()
+      naturalAdapter = createNaturalAdapter()
+      naturalMotion = naturalAdapter
+      naturalAdapter.setPaused(paused.value)
+      naturalAdapter.setPerformanceSettings(props.performanceSettings)
+      naturalAdapter.natural.setObserver(naturalCaptureObserver)
+    }
     // Physics normally loads inside setupLive2DModel; a late load must still hand its outputs back to physics.
     live2DModel.on('physicsLoaded', () => naturalAdapter.setRigProfile(readRigProfile()))
     motionManagerUpdate.register((ctx) => {
@@ -1080,6 +1098,8 @@ watch(live2dMotionDriver, async (driver, previous) => {
 })
 
 watch(paused, value => naturalMotion?.setPaused(value))
+// Synchronous so a scenario's first dispatch cannot precede its requested home.
+watch(() => naturalDiagnostics.postureHome, () => rebuildNaturalMotion?.(), { flush: 'sync' })
 // A model loaded later receives the current settings when its Natural adapter is created.
 watch(() => props.performanceSettings, (settings) => {
   naturalMotion?.setPerformanceSettings(settings)
@@ -1118,12 +1138,13 @@ function startNaturalCapture(request: NaturalCaptureRequest) {
   const coreModel = internalModel.coreModel
   const recorder = new NaturalTraceRecorder(coreModel.getModel().parameters, { extraParameterIds: request.extraParameterIds })
   const capturedAt = new Date().toISOString()
-  const readDiagnostics = () => adapter.diagnostics
+  const readDiagnostics = () => naturalMotion!.diagnostics
   adapter.resetDiagnostics()
 
   const stop = () => {
     internalModel.off('beforeModelUpdate', onFrame)
-    adapter.natural.setObserver(null)
+    naturalCaptureObserver = null
+    naturalMotion?.natural.setObserver(null)
     naturalDiagnostics.setCaptureMarker(null)
     stopNaturalCapture = undefined
   }
@@ -1152,7 +1173,8 @@ function startNaturalCapture(request: NaturalCaptureRequest) {
       finish()
   }
 
-  adapter.natural.setObserver(event => recorder.mark(performance.now() / 1000, 'natural', event))
+  naturalCaptureObserver = event => recorder.mark(performance.now() / 1000, 'natural', event)
+  adapter.natural.setObserver(naturalCaptureObserver)
   naturalDiagnostics.setCaptureMarker(event => recorder.mark(performance.now() / 1000, 'scenario', event))
   internalModel.on('beforeModelUpdate', onFrame)
   stopNaturalCapture = stop

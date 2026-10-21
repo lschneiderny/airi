@@ -3,6 +3,7 @@ import type { ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 
 import type { EmotionHold } from '../composables/live2d/expression/hold'
 import type { LivelinessReport } from '../composables/live2d/natural-motion/liveliness'
+import type { PostureHome } from '../composables/live2d/natural-motion/posture'
 import type { NaturalTrace } from '../composables/live2d/natural-motion/trace'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -156,6 +157,12 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
   let stageReader: (() => NaturalStageSnapshot) | null = null
   /** Id of the model whose load committed in this window's stage, or `null` while none is loaded. Never shared. */
   const loadedModelId = shallowRef<string | null>(null)
+  /** In-window posture selection. Not persisted or broadcast; normal stages retain the product home. */
+  const postureHome = shallowRef<PostureHome>('product')
+
+  function setPostureHome(home: PostureHome) {
+    postureHome.value = home
+  }
 
   function settles(id: string) {
     return !pendingRequest.value || pendingRequest.value.id === id
@@ -343,6 +350,8 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
     setCaptureMarker,
     markCaptureEvent,
     loadedModelId,
+    postureHome,
+    setPostureHome,
     setLoadedModelId,
     registerStageReader,
     stageSnapshot,

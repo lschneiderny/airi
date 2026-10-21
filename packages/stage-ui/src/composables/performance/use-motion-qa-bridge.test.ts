@@ -148,6 +148,20 @@ describe('useMotionQaBridge', () => {
     expect(log).toEqual(['mark:marker:after'])
   })
 
+  it.each([undefined, 'desk', 'product'] as const)('applies scenario home %s before dispatch and retains it until disposal', async (home) => {
+    const diagnostics = useNaturalMotionDiagnostics()
+    expect(diagnostics.postureHome).toBe('product')
+    diagnostics.setPostureHome(home === 'product' ? 'desk' : 'product')
+    scope.run(() => watch(() => diagnostics.postureHome, value => log.push(`home:${value}`), { flush: 'sync' }))
+    const input = { ...scenario([{ kind: 'emotion', at: 0, emotion: 'happy' as const, band: 'clear' as const, source: 'devtools' as const }]), home }
+    expect(await drive(clock, dispatch({ name: 'runScenario', input: { scenario: input } }))).toMatchObject({ ok: true })
+    expect(diagnostics.postureHome).toBe(home ?? 'desk')
+    expect(log[0]).toBe(`home:${home ?? 'desk'}`)
+    expect(log.at(-1)).toContain('queue:happy:')
+    scope.stop()
+    expect(diagnostics.postureHome).toBe('product')
+  })
+
   it('returns schema errors as replies with their paths', async () => {
     const reply = await dispatch({ name: 'configure', input: { driver: 'magic' } })
     expect(reply.ok).toBe(false)

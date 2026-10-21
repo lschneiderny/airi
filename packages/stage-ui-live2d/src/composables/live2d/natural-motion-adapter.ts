@@ -167,7 +167,7 @@ export class Live2DNaturalMotionAdapter {
     private readonly attention: () => Live2DNaturalMotionAttention,
     private readonly visibility?: Pick<Document, 'hidden' | 'addEventListener' | 'removeEventListener'>,
     random = Math.random,
-    /** QA seam: a fixed controller seed, posture home, and emotion table (scorer mutation runs). The stage passes none. */
+    /** Constructor overrides: the stage selects its posture home; fixed seeds and emotion tables serve QA runs. */
     options: Pick<Live2DNaturalMotionOptions, 'seed' | 'home' | 'emotionTable'> = {},
   ) {
     this.home = options.home ?? 'product'

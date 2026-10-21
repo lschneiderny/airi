@@ -94,6 +94,8 @@ Naturalness remains Luke's visual call. ForBOOTH's watermark covers part of the 
 
 ### T3 gates
 
+The diagnostics store's local `postureHome` defaults to `product`. At `runScenario`, the bridge synchronously sets it to `scenario.home ?? 'desk'`. Model owns rebuilding the adapter for that home, preserving an already-running recorder and reattaching its observer. The home persists after the last event and capture, until the next scenario replaces it or bridge scope disposal restores `product`. The `t3-smoke` fixture already requests `desk`.
+
 `pnpm qa:motion gate emotion --level t3 --rig forbooth [--t1-report <run dir>]` and `pnpm qa:motion gate liveliness --level t3 --rig forbooth` run committed gates in the rendered app. Emotion `--rescore <gate run dir>` re-scores archived sessions without launching Electron. A live gate uses a separate launch, capture, and teardown for each session. These commands do not accept `--emotions`, `--bands`, `--seeds`, `--workers`, or `--timeout-minutes`.
 
 - Preflight, before anything launches (exit 2 with the reason): `AIRI_QA_RIG_FORBOOTH` must name a rig; doctor's `stray-electron` probe must find no stage-tamagotchi Electron process of this worktree; the emotion gate needs a T1 emotion report at the same commit with a result for every face check of its cells. Without `--t1-report`, the newest `.temp/qa/*-motion-gate-emotion-t1` run at `HEAD` is used; create one with `pnpm qa:motion gate emotion --level t1 --emotions angry,sad,love,sleepy --bands clear,strong`.
