@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { nodeFs } from '../src/fs-adapter'
 import { decide } from '../src/grant'
+import { snapshotProcesses } from '../src/processes'
 import { Store, StoreBusyError } from '../src/store'
 
 let root: string
@@ -714,6 +715,23 @@ describe('workload registration, pruning, and release parity', () => {
     const ticket = observer.enqueue(request)
     expect(observer.grant(ticket.seq, 6)).toBeUndefined()
     expect(snapshot).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a lease whose dead owner pid was reused by the snapshot probe while its child lives', () => {
+    putLease('b-lease', 20)
+    live.delete(20)
+    const created = clock
+    const observer = createStore(10, {
+      snapshotProcesses: () => snapshotProcesses('win32', () => ({
+        pid: 20,
+        stdout: JSON.stringify([
+          { ProcessId: 10, ParentProcessId: 4, CreationDate: '/Date(1000)/' },
+          { ProcessId: 20, ParentProcessId: 10, CreationDate: `/Date(${created + 50})/` },
+          { ProcessId: 50, ParentProcessId: 20, CreationDate: `/Date(${created + 10})/` },
+        ]),
+      })),
+    })
+    expect(observer.snapshot().leases.map(lease => lease.id)).toEqual(['b-lease'])
   })
 
   it('accepts a fresh snapshot taken after the observer tick began', () => {
