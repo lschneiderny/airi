@@ -98,6 +98,7 @@ function chunks(range: SeedRange, size: number): SeedRange[] {
 function mutationCells(mutation: MutationId): CellSpec[] {
   switch (mutation) {
     case 'x0':
+      return allCells(['full', 'held-only', 'long-hold'])
     case 'sign-flip':
       return allCells(['full', 'long-hold'])
     case 'ignore-side':

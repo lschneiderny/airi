@@ -25,6 +25,13 @@ describe('parseValidateArgs', () => {
 })
 
 describe('validation plan', () => {
+  it('includes held-only cells for x0 without changing sign-flip cells', () => {
+    const plan = buildValidationPlan(emotionGate, { sections: ['mutations'], seedsLimit: null })
+    const variants = (id: string) => plan.experiments.flatMap(experiment => experiment.kind === 'gate' && experiment.id === id ? experiment.cells.map(cell => cell.variant) : [])
+    expect(variants('mutation-x0')).toContain('held-only')
+    expect(variants('mutation-sign-flip')).not.toContain('held-only')
+  })
+
   it('builds 20 disjoint A/A seed sets against the committed null seeds', () => {
     const plan = buildValidationPlan(emotionGate, { sections: ['aa'], seedsLimit: null })
     const sets = plan.experiments.flatMap(experiment => experiment.kind === 'aa' ? [experiment.seeds] : [])
@@ -63,6 +70,10 @@ describe('mutation tables', () => {
 
 describe('killState', () => {
   const outcomes = { significance: true, sign: true, visibility: true, size: true, release: true }
+  it('kills a detected zeroed recipe on held-only size and preserves unevaluable size', () => {
+    expect(killState({ ...outcomes, size: false, release: null }, 'detection-or-size')).toBe('killed')
+    expect(killState({ ...outcomes, size: null, release: null }, 'detection-or-size')).toBe('survived')
+  })
   it('kills on a failed detection criterion and leaves unevaluable checks out', () => {
     expect(killState({ ...outcomes, visibility: false }, 'detection')).toBe('killed')
     expect(killState({ ...outcomes, visibility: null }, 'detection')).toBe('survived')

@@ -17,7 +17,7 @@ export const validationThresholds = {
   aa: { maxSetsWithAnyPass: 1, placeboHitRate: 0.1, placeboHitRateTolerance: 0.03, ksPAbove: 0.01 },
   zero: { maxPassingChecks: 0 },
   mutations: {
-    'x0': { criterion: 'detection', minKillRate: 0.99 },
+    'x0': { criterion: 'detection or held-only size', minKillRate: 0.99 },
     'sign-flip': { criterion: 'sign', minKillRate: 0.99 },
     'ignore-side': { criterion: 'sided checks (significance or sign)', minKillRate: 0.95 },
     'x0.5': { criterion: 'size, clear and strong (slight reported only)', minKillRate: 0.9 },
@@ -68,12 +68,16 @@ export function criterionOutcomes(result: CheckResult, alpha: number): Outcomes 
   }
 }
 
-type KillRule = 'detection' | 'sign' | 'significance-or-sign' | 'size' | 'release'
+type KillRule = 'detection' | 'detection-or-size' | 'sign' | 'significance-or-sign' | 'size' | 'release'
 
 /** Whether a check caught the mutation under `rule`: `killed`, `survived`, or `null` when not evaluable. */
 export function killState(outcomes: Outcomes, rule: KillRule): KillState {
   const fromOutcome = (outcome: Outcome): KillState => outcome === null ? null : outcome ? 'survived' : 'killed'
   switch (rule) {
+    case 'detection-or-size':
+      if (outcomes.significance === false || outcomes.visibility === false || outcomes.size === false)
+        return 'killed'
+      return outcomes.significance === true ? 'survived' : null
     case 'detection':
       if (outcomes.significance === false || outcomes.visibility === false)
         return 'killed'
@@ -92,7 +96,7 @@ export function killState(outcomes: Outcomes, rule: KillRule): KillState {
 }
 
 const mutationRule: Record<MutationId, KillRule> = {
-  'x0': 'detection',
+  'x0': 'detection-or-size',
   'sign-flip': 'sign',
   'ignore-side': 'significance-or-sign',
   'x0.5': 'size',
