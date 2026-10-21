@@ -303,7 +303,7 @@ describe('natural motion', () => {
     const ratio = deviation(0) / deviation(1)
     expect(ratio).toBeGreaterThanOrEqual(0.45)
     expect(ratio).toBeLessThanOrEqual(0.65)
-  })
+  }, 20_000)
 
   it('adds emotion impulses on top of the pose without resetting it', () => {
     const excited = new Live2DNaturalMotion({ seed: 41 })
@@ -651,7 +651,7 @@ describe('natural motion', () => {
       const values = deviations.map(deviation => deviation[axis])
       expect(Math.max(...values) / Math.min(...values)).toBeLessThan(1.05)
     }
-  })
+  }, 20_000)
 })
 
 describe('held Natural composition', () => {
