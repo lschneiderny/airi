@@ -4371,6 +4371,9 @@ importers:
       '@moeru/std':
         specifier: 'catalog:'
         version: 0.1.0-beta.17
+      '@proj-airi/pipelines-audio':
+        specifier: workspace:^
+        version: link:../pipelines-audio
       '@proj-airi/scenarios-stage-tamagotchi-electron':
         specifier: workspace:^
         version: link:../scenarios-stage-tamagotchi-electron

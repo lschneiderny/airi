@@ -10,13 +10,13 @@ import type { readLive2DRigProfile } from '@proj-airi/stage-ui-live2d/composable
 import type { NaturalTrace, NaturalTraceRecorder } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
 import type { StagePerformanceScene } from '@proj-airi/stage-ui/composables/performance/use-stage-performance-conductor'
 
+import { normalizeActPayload, tokenAct } from '@proj-airi/pipelines-audio'
 import { parseExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { createScenarioPlayer, MotionScenarioSchema } from '@proj-airi/stage-shared/motion-scenario'
 import { EmotionHoldPerformer } from '@proj-airi/stage-ui-live2d/composables/live2d/expression/hold'
 import { Live2DNaturalMotionAdapter } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
 import { syllableFixture } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/speech-fixture'
 import { StagePerformanceConductor } from '@proj-airi/stage-ui/composables/performance/use-stage-performance-conductor'
-import { useEmotionsMessageQueue } from '@proj-airi/stage-ui/composables/queues'
 import { createPinia, setActivePinia } from 'pinia'
 import { parse } from 'valibot'
 
@@ -24,9 +24,10 @@ import { parse } from 'valibot'
 const maxSteps = 120 * 3600
 /** Timers one step may fire; the conductor never chains more than a handful. */
 const maxTimersPerStep = 1_000
+/** The ACT parser the stage's streaming control runs; its `parse` is synchronous and has no side effects. */
+const actParser = tokenAct()
 
 type TimerHandle = ReturnType<typeof setTimeout>
-type ActParserQueue = Parameters<typeof useEmotionsMessageQueue>[0]
 
 /** What a QA level supplies to the shared scenario sink: the model, its recorder, and one frame of its pipeline. */
 export interface ScenarioHost {
@@ -216,12 +217,13 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
               conductor.emotion(event.emotion, settings.intensity[event.band], event.source)
               break
             case 'act': {
-              // The stage's own ACT parser; it enqueues synchronously for a marker without awaits.
-              const parsed: { name: string, intensity: number }[] = []
-              useEmotionsMessageQueue({ enqueue: (payload: { name: string, intensity: number }) => parsed.push(payload) } as unknown as ActParserQueue).enqueue(event.marker)
-              if (parsed.length === 0)
+              // The stage's emotions queue (`useEmotionsMessageQueue`) runs this parser and normalizer inside
+              // `dispatchWith` and delivers the emotion after an await. The sim step is synchronous, so it calls them directly.
+              const token = actParser.match(event.marker) ? actParser.parse(event.marker) : undefined
+              const emotion = token ? normalizeActPayload(token.payload).emotion : undefined
+              if (!emotion)
                 throw new Error(`[qa-tools] ACT marker has no recognized emotion: ${event.marker}`)
-              conductor.emotion(parsed[0].name, parsed[0].intensity, 'act')
+              conductor.emotion(emotion.name, emotion.intensity, 'act')
               break
             }
             case 'mode':
