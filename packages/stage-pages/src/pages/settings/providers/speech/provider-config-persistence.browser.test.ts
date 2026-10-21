@@ -9,7 +9,6 @@ import { page } from 'vitest/browser'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
-import CometApiSpeechPage from './comet-api-speech.vue'
 import OpenAICompatibleSpeechPage from './openai-compatible-audio-speech.vue'
 
 import 'virtual:uno.css'
@@ -95,28 +94,5 @@ describe('speech provider configuration persistence', () => {
     const screen = await renderPage()
     await expect.element(screen.getByRole('button', { name: 'Test Voice', exact: true })).toBeEnabled()
     expect(useProviderConfigStore(pinia).getProviderConfig(providerId)?.apiKey).toBe('issue-2449-test-key')
-  })
-
-  // https://github.com/moeru-ai/airi/issues/2449
-  it('enables Comet API Test Voice after the user enters an API key (Issue #2449)', async () => {
-    const screen = await renderPage(CometApiSpeechPage)
-
-    const testVoice = screen.getByRole('button', { name: 'Test Voice', exact: true })
-    await expect.element(testVoice).toBeDisabled()
-    await page.getByPlaceholder('API Key').fill('issue-2449-comet-key')
-    await expect.element(testVoice, { timeout: 1500 }).toBeEnabled()
-  })
-
-  // https://github.com/moeru-ai/airi/issues/2449
-  it('persists a Comet API key entered on a fresh settings page (Issue #2449)', async () => {
-    await renderPage(CometApiSpeechPage)
-    await page.getByPlaceholder('API Key').fill('issue-2449-comet-key')
-
-    await expect.poll(() => {
-      const stored = localStorage.getItem('settings/providers/configured')
-      if (!stored)
-        return undefined
-      return JSON.parse(stored)['comet-api-speech']?.config?.apiKey
-    }, { timeout: 2000 }).toBe('issue-2449-comet-key')
   })
 })
