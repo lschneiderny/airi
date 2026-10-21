@@ -415,8 +415,6 @@ chatHookCleanups.push(streamingControl.onSignal(async (signal, context) => {
     const act = normalizeActPayload(signal.payload)
     if (act.look) {
       cueLook.value = { turnId: context.turnId, attention: cueAttentionByLook[act.look] }
-      // eslint-disable-next-line no-console
-      console.debug('performance cue look', act.look, cueLook.value.attention)
     }
     else if (cueLook.value && cueLook.value.turnId !== context.turnId) {
       // A cue from another turn never carries its gaze over.
