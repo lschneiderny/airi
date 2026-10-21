@@ -120,6 +120,18 @@ export default defineConfig({
     ],
   },
 }, {
+  files: ['**/*.md'],
+  rules: {
+    // NOTICE:
+    // These rules crash the whole lint run on a bare URL inside brackets.
+    // The GFM autolink transform emits nodes without positions.
+    // Source: https://github.com/eslint/markdown/issues/619
+    // Removal condition: @eslint/markdown guards those nodes in these rules.
+    'markdown/no-invalid-label-refs': 'off',
+    'markdown/no-reference-like-urls': 'off',
+    'markdown/no-space-in-emphasis': 'off',
+  },
+}, {
   ignores: [
     '**/*.md',
   ],
