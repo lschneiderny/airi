@@ -52,6 +52,26 @@ export function planVerify(changed: ChangedFile[], packagePaths: string[]): Veri
   }
 }
 
+const workerFlag = /^--(?:maxWorkers|concurrency)(?:=|$)/
+
+/**
+ * Drops the CPU-budget flags (`--maxWorkers`, `--concurrency`) so the verify cache key does not depend on the
+ * grant a run happened to receive. Both `--flag=N` and `--flag N` spellings are removed.
+ */
+export function stripWorkerFlags(command: string[]): string[] {
+  const kept: string[] = []
+  for (let index = 0; index < command.length; index++) {
+    const token = command[index]
+    if (!workerFlag.test(token)) {
+      kept.push(token)
+      continue
+    }
+    if (!token.includes('='))
+      index++
+  }
+  return kept
+}
+
 export interface VerifyArgs {
   base: string
   steps: VerifyStep[]

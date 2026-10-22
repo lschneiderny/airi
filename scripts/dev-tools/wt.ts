@@ -3,12 +3,13 @@ import type { WorktreeState } from './wt-plan'
 
 import process from 'node:process'
 
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { userInfo } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
+import { acquire } from '@proj-airi/cpu-slots'
 
 import { git, listWorktrees, repoRoot } from './lib/git'
 import { attribute, normalizePath, snapshotProcesses } from './lib/processes'
@@ -77,13 +78,26 @@ function list(root: string): number {
   return 0
 }
 
-function install(path: string): number {
+async function install(path: string): Promise<number> {
   console.info(`\nInstalling in ${path}`)
-  // pnpm is a .cmd/.ps1 shim on Windows, which only a shell can start.
-  return spawnSync('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], { cwd: path, stdio: 'inherit', shell: process.platform === 'win32' }).status ?? 1
+  // The lease comes from this checkout's cpu-slots; the new worktree may predate the package.
+  const lease = await acquire({ class: 'install', cwd: path, command: `pnpm install (${basename(path)})` })
+  try {
+    return await new Promise<number>((resolve, reject) => {
+      // pnpm is a .cmd/.ps1 shim on Windows, which only a shell can start.
+      const child = spawn('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], { cwd: path, env: { ...process.env, ...lease.env }, stdio: 'inherit', shell: process.platform === 'win32' })
+      child.once('error', reject)
+      if (child.pid !== undefined)
+        lease.addWorkload(child.pid)
+      child.once('close', code => resolve(code ?? 1))
+    })
+  }
+  finally {
+    lease.release()
+  }
 }
 
-function create(root: string, argv: string[]): number {
+async function create(root: string, argv: string[]): Promise<number> {
   const name = argv[0]
   if (!name || !validName(name)) {
     console.error(`A worktree name of letters, digits, '.', '_' or '-' is required.\n${usage}`)
@@ -110,7 +124,7 @@ function create(root: string, argv: string[]): number {
   const base = option('--base') ?? mainBranch(root)
   git(root, ['worktree', 'add', '-b', branch, path, base])
   console.info(`Created ${path} on ${branch} from ${base}`)
-  return argv.includes('--no-install') ? 0 : install(path)
+  return argv.includes('--no-install') ? 0 : await install(path)
 }
 
 function removeDirectory(path: string): void {
@@ -196,13 +210,13 @@ function gc(root: string, argv: string[]): number {
   return failures ? 1 : 0
 }
 
-function main(argv: string[]): number {
+async function main(argv: string[]): Promise<number> {
   const root = repoRoot(process.cwd())
   const [command, ...rest] = argv
   if (command === 'ls')
     return list(root)
   if (command === 'new')
-    return create(root, rest)
+    return await create(root, rest)
   if (command === 'rm')
     return remove(root, rest)
   if (command === 'gc')
@@ -212,7 +226,7 @@ function main(argv: string[]): number {
 }
 
 try {
-  process.exitCode = main(process.argv.slice(2))
+  process.exitCode = await main(process.argv.slice(2))
 }
 catch (error) {
   console.error(`wt broke: ${errorMessageFrom(error) ?? 'unknown error'}`)

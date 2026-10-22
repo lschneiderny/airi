@@ -1,3 +1,5 @@
+import type { CpuClass } from '@proj-airi/cpu-slots'
+
 import type { VerifyStep } from './verify-plan'
 
 import process from 'node:process'
@@ -5,11 +7,12 @@ import process from 'node:process'
 import { delimiter, join, relative } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
+import { acquire } from '@proj-airi/cpu-slots'
 
 import { capture, chunk, run } from './lib/exec'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { readPass, verifyCacheKey, writePass } from './verify-cache'
-import { extraTestConfigs, parseVerifyArgs, planVerify, verifyUsage } from './verify-plan'
+import { extraTestConfigs, parseVerifyArgs, planVerify, stripWorkerFlags, verifyUsage } from './verify-plan'
 
 // Windows rejects command lines over 32767 characters; 150 repo paths stay well under it.
 const filesPerCommand = 150
@@ -17,6 +20,10 @@ const filesPerCommand = 150
 interface Command {
   label: string
   args: string[]
+  /** The CPU slot class the command runs under. */
+  cpuClass: CpuClass
+  /** Whether the granted slot count is passed to the command as `--concurrency`. */
+  concurrency?: boolean
 }
 
 interface StepResult {
@@ -40,7 +47,7 @@ function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnT
       ? ['-F=./packages/*', '-F=./apps/*', '-F=./server/**', '-F=./services/*']
       : [`--filter=...[${base}]`]
     const label = plan.typecheck.kind === 'all' ? `every package (${plan.typecheck.reason})` : 'changed packages and their dependents'
-    return [{ label, args: node('node_modules/turbo/bin/turbo', ['run', 'typecheck', ...filters, '--output-logs=errors-only']) }]
+    return [{ label, args: node('node_modules/turbo/bin/turbo', ['run', 'typecheck', ...filters, '--output-logs=errors-only']), cpuClass: 'typecheck', concurrency: true }]
   }
   if (step === 'lint') {
     if (!plan.lintFiles.length)
@@ -48,6 +55,7 @@ function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnT
     return chunk(plan.lintFiles, filesPerCommand).map((files, index, all) => ({
       label: `${files.length} changed file(s)${all.length > 1 ? ` [batch ${index + 1}/${all.length}]` : ''}`,
       args: node('node_modules/@moeru/eslint-config/src/moeru-lint.js', files),
+      cpuClass: 'lint',
     }))
   }
   if (!plan.testFiles.length)
@@ -58,6 +66,8 @@ function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnT
   return configs.flatMap(({ config, project }) => chunk(absoluteFiles, filesPerCommand).map(files => ({
     label: `tests related to changes (${config}${project ? `, project ${project}` : ''})`,
     args: node('node_modules/vitest/vitest.mjs', ['related', '--run', '--passWithNoTests', '--config', config, ...(project ? ['--project', project] : []), ...files]),
+    // Every extra config holds browser projects; the root config only runs node tests. The child's vitest wrapper enforces the cap.
+    cpuClass: project || config !== 'vitest.config.ts' ? 'browser' : 'test',
   })))
 }
 
@@ -85,6 +95,7 @@ async function main(): Promise<number> {
   const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH'
   const env = { ...process.env, [pathKey]: `${join(root, 'node_modules/.bin')}${delimiter}${process.env[pathKey] ?? ''}` }
 
+  const slotsEnabled = !process.env.CI && process.env.AIRI_CPU_SLOTS !== 'off'
   console.info(`verify: ${changed.length} changed file(s) since ${args.base} (${base.slice(0, 9)}), tree ${tree.slice(0, 9)}`)
   const results: StepResult[] = []
   for (const step of args.steps) {
@@ -93,7 +104,7 @@ async function main(): Promise<number> {
       results.push({ step, status: 'skipped', detail: commands, durationMs: 0 })
       continue
     }
-    const command = commands.flatMap(item => item.args)
+    const command = stripWorkerFlags(commands.flatMap(item => item.args))
     const key = verifyCacheKey({ tree, step, command, node: process.version, platform: process.platform })
     const cached = args.force ? null : readPass(cacheDir, key)
     if (cached) {
@@ -102,7 +113,7 @@ async function main(): Promise<number> {
     }
     if (args.dryRun) {
       for (const item of commands)
-        console.info(`[${step}] ${item.label}\n  node ${[relative(root, item.args[0]), ...item.args.slice(1)].join(' ')}`)
+        console.info(`[${step}] ${item.label} (class ${item.cpuClass})\n  node ${[relative(root, item.args[0]), ...item.args.slice(1), ...(item.concurrency && slotsEnabled ? ['--concurrency={grant}'] : [])].join(' ')}`)
       results.push({ step, status: 'skipped', detail: 'dry run', durationMs: 0 })
       continue
     }
@@ -110,7 +121,15 @@ async function main(): Promise<number> {
     let failed: string | null = null
     for (const item of commands) {
       console.info(`\n[${step}] ${item.label}`)
-      const exitCode = await run(process.execPath, item.args, { cwd: root, env })
+      const lease = await acquire({ class: item.cpuClass, cwd: root, command: `verify ${step}: ${item.label}` })
+      let exitCode: number
+      try {
+        const args = item.concurrency && lease.grant !== null ? [...item.args, `--concurrency=${lease.grant}`] : item.args
+        exitCode = await run(process.execPath, args, { cwd: root, env: { ...env, ...lease.env }, onSpawn: lease.addWorkload })
+      }
+      finally {
+        lease.release()
+      }
       if (exitCode !== 0) {
         failed = `${item.label} exited ${exitCode}`
         break
