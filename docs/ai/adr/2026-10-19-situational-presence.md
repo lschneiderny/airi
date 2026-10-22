@@ -84,13 +84,14 @@ The foreground sensor is Windows-only and has three parts:
 
 - `packages/electron-eventa` defines the invoke `electron.foregroundWindow.sample` as `eventa:invoke:electron:foreground-window:sample`. It returns a `ForegroundWindowSample` or `null`.
 - `createForegroundWindowService` in the Electron main process answers it with synchronous koffi calls to `GetForegroundWindow`, `GetWindowTextW`, `GetWindowThreadProcessId`, `QueryFullProcessImageNameW`, and `SHQueryUserNotificationState`. It loads koffi lazily, closes every process handle, and never logs titles. A sample has `ownProcess: true` for the main process, every process in `app.getAppMetrics()`, and the Godot stage sidecar.
-- The renderer producer polls once per second, also while the stage is hidden or minimized, and writes the sample into the stage-shared holder.
+- The renderer producer polls once per second, also while the stage is hidden or minimized, and writes the sample into the stage-shared holder. The stage window runs it only while the `shareForegroundWindow` setting is true. Stopping it clears the sample, so no FFI call runs while sharing is off.
 
 The adapter applies the privacy and freshness rules:
 
 - It skips samples with `ownProcess: true`, so AIRI's own windows never reach the model.
 - An app on the title denylist is reported by its app name and category with a `null` title.
 - A sample is fresh for 5 s while the stage is visible and for 20 s while it is hidden or minimized, because Chromium throttles timers in a minimized window. An older sample reports busy `unknown` and clears the foreground category.
+- While `shareForegroundWindow` is false, the adapter treats every sample as missing and clears the foreground category. The leader's situation drops the current and recent apps, their app-switch, long-session, and switching-burst events, and the busy state (`forgetForeground`). The gate reads the foreground signal as stale.
 
 ### Opportunity gate and model veto
 
@@ -134,6 +135,7 @@ The protocol is unchanged. `origin` is a local runtime field, and the plugin-pro
 ### Plugin notifications
 
 Every `spark:notify` becomes one `notify` observation, built only by `notifyObservationFrom`, and the gate decides whether she speaks about it.
+The server channel routes a notify by its `route.destinations`, or by its `data.destinations` when it has no route envelope, and matches them against peer names, plugin and instance ids, and announced modules. Stage windows connect as `proj-airi:stage-tamagotchi` or `proj-airi:stage-web`, so a plugin reaches them with `proj-airi:stage-*`. The web extension puts that glob in `route.destinations` and keeps `data.destinations: ['character']`, so its video notify reaches the stage as a character-only notify. The Minecraft bridge puts the glob in `data.destinations`.
 The leader remembers notify topic keys for its leadership, so a scheduler reminder that is re-sent after its event decayed is never raised twice.
 Follower windows forward their notify observations to the leader through `situationNotifyObservedEvent`.
 A notify addressed beyond `character` runs the spark-notify agent with the `commandsOnly` control: spark-command tools stay available, no tool choice is forced, and text output is ignored. A widget request with `forceSparkCommandResponse` also runs the commands-only agent, and that run forces the spark-command tool. `spark:command` events keep their ids, `parentEventId`, and destinations.
@@ -190,11 +192,12 @@ Other drivers and renderers ignore `look`.
 Full window titles go to the model after normalization, including to cloud providers.
 Normalization strips app-name suffixes and unsaved markers, collapses whitespace, and caps the title at 120 characters.
 The title denylist, which by default lists password managers, removes titles for its apps.
+**Share the foreground app and window titles** (`shareForegroundWindow`, on by default) turns foreground sensing off. While it is off, nothing samples the foreground window, and neither the situation nor the block holds an app, title, or app category. The gate then holds with `stale-signal`, as on a host without a foreground reader, so the character does not speak up on her own. Replies to the user and widget reactions, which are forced turns, still run. No other signal lets the gate pass without a fresh foreground sample.
 Titles are never written to chat history or cloud sync. The trigger text of an unprompted turn uses the app label, category, and duration only.
 
 ### Controls and observability
 
-`useSituationSettings` stores one Valibot document at `settings/situation` with these fields: `unpromptedEnabled`, `chattiness`, `dontDisturb`, `quietApps`, `titleDenylist`, `showUnpromptedCue`, and `speakDuringGames`.
+`useSituationSettings` stores one Valibot document at `settings/situation` with these fields: `unpromptedEnabled`, `chattiness`, `dontDisturb`, `shareForegroundWindow`, `quietApps`, `titleDenylist`, `showUnpromptedCue`, and `speakDuringGames`.
 An invalid field falls back to its default, and the leader routes updates.
 **Settings > Presence** edits the document in the Electron app. Stage-web and Pocket exclude the page.
 
@@ -215,10 +218,10 @@ Preview never marks events as shown.
 - **Lost shared reactions.** If leadership changes while a gate-fired turn about a notify runs, the turn's reaction is not shared. She spoke, but the devtools reactions lists miss it.
 - **Voice sends.** Speech input has no recent-input window, so a widget reaction's quiet wait ends as soon as the user stops speaking. The reaction can therefore start before speech-to-text submits the user's message. That send then cancels the reaction, and the widget gets its fallback, but the first words of the reaction may already play. No test covers this gap.
 - **Widget budget in client windows.** A widget request served through a client-role window resolves with its fallback after 30 s in total. The quiet wait can use up to 20 s of that budget, which leaves less time to generate. When the client times out first, the widget shows its fallback while the main window can still speak the reaction.
+- **Privacy.** With foreground sharing on, window titles reach cloud models, and only the title denylist filters them. Turning sharing off removes the app and title from the situation at once. Her last spoken unprompted topic can still name an app label, and chat history keeps what she already said.
 
 Pre-existing gaps that this design does not fix:
 
-- The web extension sends `spark:notify` with `destinations: ['character']`, and no stage peer matches that destination. Its notifications therefore never reach the situation.
 - A message typed into a follower chat window while the previous reply is speaking and the leader reloads is lost. `requestStopSpeaking` waits forever for the reloaded leader, and later sends from that window are ignored. This also happens on main.
 - The context bridge watches the `airi-spark-notify-bridge` channel only after the server channel connects. Without a connected server channel, client-role widget requests time out to their fallback, and that window records no shared reactions.
 

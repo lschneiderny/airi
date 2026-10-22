@@ -377,17 +377,19 @@ Do not read it in follower windows, and do not store its block or window titles 
 Only the leader runs them. Context messages from the context bridge reach the situation through `ingestContextMessage`, and notifications through `notifyObservationFrom`.
 A follower window forwards its notify observations to the leader over the speech bus with `situationNotifyObservedEvent`.
 The foreground sensor skips AIRI's own windows, drops titles of apps on the title denylist, and treats a sample older than 5 seconds (20 seconds while the stage is hidden) as stale.
+While `shareForegroundWindow` is false, it reports nothing, and the store drops every app, title, and app category from the situation with `forgetForeground`. The gate then holds with `stale-signal`.
 
 Add a sensor when a new signal should reach the model's view of the situation.
 Do not send ambient context to the model in any other way: the situation block is the only ambient channel.
 
 ### Presence settings
 
-`useSituationSettings` in `features/situation/settings` stores one document at `settings/situation`: `unpromptedEnabled`, `chattiness` (0 to 1, default 0.5), `dontDisturb`, `quietApps`, `titleDenylist`, `showUnpromptedCue`, and `speakDuringGames`.
+`useSituationSettings` in `features/situation/settings` stores one document at `settings/situation`: `unpromptedEnabled`, `chattiness` (0 to 1, default 0.5), `dontDisturb`, `shareForegroundWindow` (default true), `quietApps`, `titleDenylist`, `showUnpromptedCue`, and `speakDuringGames`.
 An invalid field falls back to its default. The leader routes `update` and `reset`.
 **Settings > Presence** edits it in the Electron app. Web and Pocket exclude the page, because they run no unprompted turns.
 
-Use these settings to control how often and when the character speaks up, and which window titles the model may see.
+Use these settings to control how often and when the character speaks up, and whether and which window titles the model may see.
+Turning `shareForegroundWindow` off also stops unprompted speech, because the gate needs a fresh foreground sample. Replies to the user still work.
 Do not read them in the Electron main process.
 
 ### Unprompted turns

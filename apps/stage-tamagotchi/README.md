@@ -23,10 +23,11 @@ Situational presence is supported only in the Electron desktop app on Windows. O
 - koffi loads lazily on the first sample and is imported only under `src/main`. `electron.vite.config.ts` externalizes it, and electron-builder unpacks its `.node` binary from ASAR.
 - The sample marks AIRI's own windows, including the Godot stage sidecar, with `ownProcess: true`. The service never logs titles.
 - On other platforms, or when koffi fails to load, the invoke returns `null`. The situation then has no foreground app, and the gate holds with `stale-signal`, so other Electron hosts never speak unprompted. Web, Pocket and Kirie exclude presence.
-- The renderer producer `useForegroundWindowProducerStore` polls once per second, also while the stage is hidden or minimized. `pages/index.vue` starts it in the main window only.
+- The renderer producer `useForegroundWindowProducerStore` polls once per second, also while the stage is hidden or minimized. `pages/index.vue` runs it in the main window only, and only while **Share the foreground app and window titles** is on. Turning that setting off stops the poll and clears the last sample.
 - `App.vue` declares the `unprompted` host capability and reports stage visibility to the situation store.
 
 Window titles reach the chat model, including cloud providers. Add password managers and other sensitive apps to the title denylist in **Settings > Presence**; their app name and category still reach the model.
+To send no app or title at all, turn off **Share the foreground app and window titles** in **Settings > Presence**. The character then stops speaking up on her own, because the gate holds with `stale-signal`. She still answers when you talk to her.
 Use this sensor for awareness of the user's foreground app. Do not use it to capture screen content, and do not call koffi from the renderer.
 
 ## Computer use
