@@ -80,11 +80,11 @@ A process belongs to the worktree whose path appears in its command line, or els
 
 A waiting step prints `cpu-slots: waiting for N slot(s) ...`. Run `pnpm slots status` to see the holders.
 
-Passing steps are cached under `<git common dir>/airi-verify/`, keyed by the working tree hash, the command, the Node version, and the platform. `--force` ignores that cache and reruns every step. Failures are never cached. A pass is not cached when files changed while its step ran.
+Passing steps are cached under `<git common dir>/airi-verify/`, keyed by the working tree hash, the command, the Node version, and the platform. `--force` ignores that cache and reruns every step. Verify strips `--concurrency` and `--maxWorkers` from each step's arguments before it caches the step (`stripWorkerFlags` in `scripts/dev-tools/verify-plan.ts:61`, applied at `scripts/dev-tools/verify.ts:107`), so worker counts do not change the cache key. Failures are never cached. A pass is not cached when files changed while its step ran.
 
 `pnpm dev:top` prints `cpu slots: held X/Y, N queued` in its header, with one line per lease and queued caller. If the store lock is held, it prints `cpu slots: busy (lock held), try again`. If the store cannot be read, it prints `cpu slots: unavailable (...)`. `pnpm dev:top kill <worktree>` is a dry run unless `--yes` is passed, and `--orphans` limits it to orphaned processes. Each kill re-reads the live command line first.
 
-Editing `packages/cpu-slots/README.md` currently invalidates the Turbo typecheck cache for the whole repository. See the cpu-slots README.
+Editing any file under `packages/cpu-slots`, including its README, currently invalidates the Turbo typecheck cache for the whole repository. The cause and the measured cost are in the cpu-slots README under "Turbo cache cost".
 
 ## Moving the repository to a Dev Drive (Windows 11)
 
