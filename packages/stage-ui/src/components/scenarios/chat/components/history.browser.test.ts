@@ -57,6 +57,29 @@ function dispatchPointerSwipe(element: HTMLElement, startX: number, endX: number
   }))
 }
 
+/**
+ * Runs `steps` with a fake `setTimeout` clock while browser frames stay real.
+ *
+ * Wheel Gestures ends a stream with `setTimeout` and reads gesture timing from event time stamps.
+ * A real sleep under load can pass that deadline before the next assertion runs, so `wait(ms)`
+ * advances the fake clock instead. Timers still pending when `steps` returns are dropped.
+ */
+async function withIdleClock(steps: (wait: (ms: number) => Promise<void>) => Promise<void>) {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    await steps(async (ms) => {
+      vi.advanceTimersByTime(ms)
+      await nextTick()
+    })
+  }
+  finally {
+    vi.useRealTimers()
+  }
+}
+
+// Wheel Gestures caps its adaptive ending window at this many milliseconds.
+const maximumWheelEndingMs = 1000
+
 let wheelEventTimeStamp = 0
 
 function createWheelEvent(init: WheelEventInit) {
@@ -870,28 +893,31 @@ describe('chat history', () => {
       ctrlKey: true,
       deltaX: 60,
     })
-    swipeRoots[0].dispatchEvent(zoomEvent)
     const verticalScrollEvents = [0.2, 0.25, 0.25, 0.3].map(portion => createWheelEvent({
       bubbles: true,
       cancelable: true,
       deltaX: 2 * portion,
       deltaY: 60 * portion,
     }))
-    for (const event of verticalScrollEvents)
-      swipeRoots[1].dispatchEvent(event)
-    await new Promise(resolve => setTimeout(resolve, 150))
-    expect(screen.emitted('replyMessage')).toBeUndefined()
-    expect(zoomEvent.defaultPrevented).toBe(false)
-    for (const event of verticalScrollEvents)
-      expect(event.defaultPrevented).toBe(false)
+    await withIdleClock(async (wait) => {
+      swipeRoots[0].dispatchEvent(zoomEvent)
+      for (const event of verticalScrollEvents)
+        swipeRoots[1].dispatchEvent(event)
+      await wait(150)
+      expect(screen.emitted('replyMessage')).toBeUndefined()
+      expect(zoomEvent.defaultPrevented).toBe(false)
+      for (const event of verticalScrollEvents)
+        expect(event.defaultPrevented).toBe(false)
 
-    expect(dispatchHorizontalPan(swipeRoots[0], -60)).toBe(false)
-    await new Promise(resolve => setTimeout(resolve, 150))
-    expect(screen.emitted('replyMessage')).toBeUndefined()
+      expect(dispatchHorizontalPan(swipeRoots[0], -60)).toBe(false)
+      await wait(150)
+      expect(screen.emitted('replyMessage')).toBeUndefined()
 
-    // The root fills the complete message row, so a pan can start beside the bubble.
-    expect(dispatchHorizontalPan(swipeRoots[0], 60)).toBe(true)
-    expect(dispatchHorizontalPan(swipeRoots[1], 60)).toBe(true)
+      // The root fills the complete message row, so a pan can start beside the bubble.
+      expect(dispatchHorizontalPan(swipeRoots[0], 60)).toBe(true)
+      expect(dispatchHorizontalPan(swipeRoots[1], 60)).toBe(true)
+      await wait(maximumWheelEndingMs)
+    })
 
     await vi.waitFor(() => {
       expect(screen.emitted('replyMessage')).toEqual([
@@ -985,13 +1011,16 @@ describe('chat history', () => {
     if (!swipeRoot)
       throw new Error('Expected a desktop message swipe root.')
 
-    dispatchHorizontalPan(swipeRoot, 60)
-    await new Promise(resolve => setTimeout(resolve, 80))
-    expect(screen.emitted('replyMessage')).toBeUndefined()
+    await withIdleClock(async (wait) => {
+      dispatchHorizontalPan(swipeRoot, 60)
+      await wait(80)
+      expect(screen.emitted('replyMessage')).toBeUndefined()
 
-    dispatchHorizontalPan(swipeRoot, 3)
-    await new Promise(resolve => setTimeout(resolve, 80))
-    expect(screen.emitted('replyMessage')).toBeUndefined()
+      dispatchHorizontalPan(swipeRoot, 3)
+      await wait(80)
+      expect(screen.emitted('replyMessage')).toBeUndefined()
+      await wait(maximumWheelEndingMs)
+    })
 
     await vi.waitFor(() => {
       expect(screen.emitted('replyMessage')).toEqual([[
@@ -1187,27 +1216,31 @@ describe('chat history', () => {
     expect(getTranslateX(swipeSurface)).toBeCloseTo(getExpectedLeftSwipeOffset(swipeRoot, 30), 3)
 
     const decayingDeltas = [6, 4, 2, 1]
-    for (const [index, deltaX] of decayingDeltas.entries()) {
-      swipeRoot.dispatchEvent(createWheelEvent({
-        bubbles: true,
-        cancelable: true,
-        deltaX,
-        deltaY: 1,
-      }))
-      if (index < decayingDeltas.length - 1)
-        await new Promise(resolve => setTimeout(resolve, 20))
-    }
-    await new Promise(resolve => requestAnimationFrame(resolve))
+    await withIdleClock(async (wait) => {
+      for (const [index, deltaX] of decayingDeltas.entries()) {
+        swipeRoot.dispatchEvent(createWheelEvent({
+          bubbles: true,
+          cancelable: true,
+          deltaX,
+          deltaY: 1,
+        }))
+        if (index < decayingDeltas.length - 1)
+          await wait(20)
+      }
+      await new Promise(resolve => requestAnimationFrame(resolve))
 
-    const heldOffset = getExpectedLeftSwipeOffset(swipeRoot, 43)
-    expect(getTranslateX(swipeSurface)).toBeCloseTo(heldOffset, 3)
-    expect(screen.emitted('replyMessage')).toBeUndefined()
+      const heldOffset = getExpectedLeftSwipeOffset(swipeRoot, 43)
+      expect(getTranslateX(swipeSurface)).toBeCloseTo(heldOffset, 3)
+      expect(screen.emitted('replyMessage')).toBeUndefined()
 
-    await new Promise(resolve => setTimeout(resolve, 80))
-    expect(getTranslateX(swipeSurface)).toBeCloseTo(heldOffset, 3)
+      await wait(80)
+      expect(getTranslateX(swipeSurface)).toBeCloseTo(heldOffset, 3)
+      await wait(maximumWheelEndingMs)
+    })
 
-    await new Promise(resolve => setTimeout(resolve, 260))
-    expect(swipeSurface.style.transform).toBe('translate3d(0px, 0px, 0px)')
+    await vi.waitFor(() => {
+      expect(swipeSurface.style.transform).toBe('translate3d(0px, 0px, 0px)')
+    })
     expect(screen.emitted('replyMessage')).toBeUndefined()
   })
 
@@ -1251,20 +1284,24 @@ describe('chat history', () => {
     })
     observer.observe(swipeSurface, { attributeFilter: ['style'], attributes: true })
 
-    dispatchHorizontalPan(swipeRoot, 80)
-    await new Promise(resolve => requestAnimationFrame(resolve))
     const heldOffset = getExpectedLeftSwipeOffset(swipeRoot, 80)
-    expect(getTranslateX(swipeSurface)).toBeCloseTo(heldOffset, 3)
+    await withIdleClock(async (wait) => {
+      dispatchHorizontalPan(swipeRoot, 80)
+      await new Promise(resolve => requestAnimationFrame(resolve))
+      expect(getTranslateX(swipeSurface)).toBeCloseTo(heldOffset, 3)
 
-    await new Promise(resolve => setTimeout(resolve, 80))
-    await nextTick()
-    expect(getTranslateX(swipeSurface)).toBeCloseTo(heldOffset, 3)
-    expect(screen.emitted('replyMessage')).toBeUndefined()
+      await wait(80)
+      expect(getTranslateX(swipeSurface)).toBeCloseTo(heldOffset, 3)
+      expect(screen.emitted('replyMessage')).toBeUndefined()
 
-    await new Promise(resolve => setTimeout(resolve, 60))
-    expect(getTranslateX(swipeSurface)).not.toBeCloseTo(heldOffset, 3)
+      // The adaptive ending signal arrives within the next 60 ms and releases the pan.
+      await wait(60)
+      expect(swipeSurface.dataset.swipeActive).toBe('false')
+    })
 
-    await new Promise(resolve => setTimeout(resolve, 240))
+    await vi.waitFor(() => {
+      expect(getTranslateX(swipeSurface)).toBe(0)
+    })
     observer.disconnect()
 
     expect(screen.emitted('replyMessage')).toEqual([[
@@ -1314,16 +1351,19 @@ describe('chat history', () => {
     if (!swipeRoot)
       throw new Error('Expected a desktop message swipe root.')
 
-    dispatchHorizontalPan(swipeRoot, 50)
-    await new Promise(resolve => setTimeout(resolve, 20))
-    dispatchHorizontalPan(swipeRoot, 3)
-    await new Promise(resolve => setTimeout(resolve, 20))
-    dispatchHorizontalPan(swipeRoot, 3)
-    await new Promise(resolve => setTimeout(resolve, 20))
-    dispatchHorizontalPan(swipeRoot, 3)
-    await new Promise(resolve => setTimeout(resolve, 80))
+    await withIdleClock(async (wait) => {
+      dispatchHorizontalPan(swipeRoot, 50)
+      await wait(20)
+      dispatchHorizontalPan(swipeRoot, 3)
+      await wait(20)
+      dispatchHorizontalPan(swipeRoot, 3)
+      await wait(20)
+      dispatchHorizontalPan(swipeRoot, 3)
+      await wait(80)
 
-    expect(screen.emitted('replyMessage')).toBeUndefined()
+      expect(screen.emitted('replyMessage')).toBeUndefined()
+      await wait(maximumWheelEndingMs)
+    })
 
     await vi.waitFor(() => {
       expect(screen.emitted('replyMessage')).toEqual([[
@@ -1805,8 +1845,10 @@ describe('chat history', () => {
     if (!swipeRoot)
       throw new Error('Expected a desktop message swipe root.')
 
-    dispatchHorizontalPan(swipeRoot, 60)
-    await new Promise(resolve => setTimeout(resolve, 150))
+    await withIdleClock(async (wait) => {
+      dispatchHorizontalPan(swipeRoot, 60)
+      await wait(150)
+    })
 
     expect(screen.emitted('replyMessage')).toBeUndefined()
     expect(screen.container.querySelector('.i-solar\\:reply-bold-duotone')).toBeNull()
