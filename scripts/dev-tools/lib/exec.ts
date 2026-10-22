@@ -17,10 +17,39 @@ export function run(command: string, args: string[], options: { cwd: string, env
   })
 }
 
-/** Splits `items` into chunks of at most `size`, so long file lists stay under the Windows command-line limit. */
-export function chunk<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = []
-  for (let index = 0; index < items.length; index += size)
-    chunks.push(items.slice(index, index + size))
+/**
+ * A chunk stays under both limits: `maxItems` bounds the count for short paths, `maxLength` bounds the joined length for long ones.
+ * Each item costs its length plus 3: a separator and the pair of quotes a batch-file shim adds. An item longer than `maxLength` gets its own chunk.
+ */
+export interface ChunkLimits {
+  maxItems: number
+  maxLength: number
+}
+
+/** A command that starts `node` or another executable directly is limited by CreateProcess to 32767 characters; 24000 leaves room for flags. */
+export const nodeCommandChunkLimits: ChunkLimits = { maxItems: 150, maxLength: 24_000 }
+
+/**
+ * A command that starts a `node_modules/.bin` shim runs through cmd.exe, which rejects lines over 8191 characters.
+ * `moeru-lint` starts `oxlint` and `eslint` that way, so its file lists use this limit; 6500 leaves room for the program, flags, and escaping.
+ */
+export const shimCommandChunkLimits: ChunkLimits = { maxItems: 150, maxLength: 6_500 }
+
+export function chunkByLength(items: string[], limits: ChunkLimits): string[][] {
+  const chunks: string[][] = []
+  let current: string[] = []
+  let currentLength = 0
+  for (const item of items) {
+    const cost = item.length + 3
+    if (current.length && (current.length >= limits.maxItems || currentLength + cost > limits.maxLength)) {
+      chunks.push(current)
+      current = []
+      currentLength = 0
+    }
+    current.push(item)
+    currentLength += cost
+  }
+  if (current.length)
+    chunks.push(current)
   return chunks
 }

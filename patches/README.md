@@ -21,3 +21,17 @@ pnpm patch @xsai-ext/responses@0.5.1
 # Edit the directory printed by pnpm.
 pnpm patch-commit <directory>
 ```
+
+## nano-staged 1.0.2
+
+This patch splits `git add` and `git checkout` over long path lists into several commands. Without it, `pnpm nano-staged` fails with `spawn ENAMETOOLONG` after the lint tasks pass once about 300 files are staged, because Windows rejects command lines over 32767 characters.
+
+The root `nano-staged.mjs` splits the lint commands the same way. Remove the patch when nano-staged chunks its own git commands. `git diff` for partially staged files is not chunked, so a commit that stages more than about 300 partially staged files can still fail.
+
+To update the patch:
+
+```sh
+pnpm patch nano-staged@1.0.2
+# Edit the directory printed by pnpm.
+pnpm patch-commit <directory>
+```

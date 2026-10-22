@@ -10,13 +10,10 @@ import { delimiter, join, relative } from 'node:path'
 import { errorMessageFrom } from '@moeru/std'
 import { acquire } from '@proj-airi/cpu-slots'
 
-import { capture, chunk, run } from './lib/exec'
+import { capture, chunkByLength, nodeCommandChunkLimits, run, shimCommandChunkLimits } from './lib/exec'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { readPass, verifyCacheKey, writePass } from './verify-cache'
 import { extraTestConfigs, parseVerifyArgs, planVerify, stripWorkerFlags, verifyUsage } from './verify-plan'
-
-// Windows rejects command lines over 32767 characters; 150 repo paths stay well under it.
-const filesPerCommand = 150
 
 interface Command {
   label: string
@@ -58,7 +55,7 @@ function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnT
   if (step === 'lint') {
     if (!plan.lintFiles.length)
       return 'no lintable file changed'
-    return chunk(plan.lintFiles, filesPerCommand).map((files, index, all) => ({
+    return chunkByLength(plan.lintFiles, shimCommandChunkLimits).map((files, index, all) => ({
       label: `${files.length} changed file(s)${all.length > 1 ? ` [batch ${index + 1}/${all.length}]` : ''}`,
       args: node('node_modules/@moeru/eslint-config/src/moeru-lint.js', files),
       cpuClass: 'lint',
@@ -69,7 +66,7 @@ function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnT
   const configs = [{ config: 'vitest.config.ts', project: undefined as string | undefined }, ...(plan.extraTestConfigs ? extraTestConfigs : [])]
   // `vitest related` resolves relative paths against the config's root, and the extra configs are rooted in their packages.
   const absoluteFiles = plan.testFiles.map(file => join(root, file))
-  return configs.flatMap(({ config, project }) => chunk(absoluteFiles, filesPerCommand).map(files => ({
+  return configs.flatMap(({ config, project }) => chunkByLength(absoluteFiles, nodeCommandChunkLimits).map(files => ({
     label: `tests related to changes (${config}${project ? `, project ${project}` : ''})`,
     args: node('node_modules/vitest/vitest.mjs', ['related', '--run', '--passWithNoTests', '--config', config, ...(project ? ['--project', project] : []), ...files]),
     // Every extra config holds browser projects; the root config only runs node tests. The child's vitest wrapper enforces the cap.

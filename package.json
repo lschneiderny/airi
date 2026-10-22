@@ -125,8 +125,5 @@
   ],
   "simple-git-hooks": {
     "pre-commit": "pnpm nano-staged"
-  },
-  "nano-staged": {
-    "*": "moeru-lint --fix"
   }
 }

@@ -1,0 +1,59 @@
+diff --git a/lib/git.js b/lib/git.js
+index 43cc8632bcbd756e446abcf1edcaedb8ad742c02..5e5f97f5884b033758b01cc40a304eb64d1b3c3d 100644
+--- a/lib/git.js
++++ b/lib/git.js
+@@ -27,6 +27,32 @@ const DIFF_ARGS = [
+   '--submodule=short',
+ ]
+ 
++// Windows rejects command lines over 32767 characters, so long path lists run as several git commands.
++const MAX_PATHS_LENGTH = 24_000
++
++function chunkPaths(paths) {
++  const chunks = []
++  let current = []
++  let length = 0
++
++  for (const path of paths) {
++    if (current.length && length + path.length + 1 > MAX_PATHS_LENGTH) {
++      chunks.push(current)
++      current = []
++      length = 0
++    }
++
++    current.push(path)
++    length += path.length + 1
++  }
++
++  if (current.length) {
++    chunks.push(current)
++  }
++
++  return chunks
++}
++
+ function group(entries = []) {
+   const deleted = []
+   const changed = []
+@@ -142,8 +168,8 @@ export function createGit(cwd = process.cwd()) {
+     async add(paths, opts = {}) {
+       paths = toArray(paths)
+ 
+-      if (paths.length) {
+-        const args = ['add', '-A', '--', ...paths]
++      for (const chunk of chunkPaths(paths)) {
++        const args = ['add', '-A', '--', ...chunk]
+         await git.exec(args, opts)
+       }
+     },
+@@ -151,8 +177,8 @@ export function createGit(cwd = process.cwd()) {
+     async checkout(paths, opts = {}) {
+       paths = toArray(paths)
+ 
+-      if (paths.length) {
+-        const args = ['checkout', '-q', '--force', '--', ...paths]
++      for (const chunk of chunkPaths(paths)) {
++        const args = ['checkout', '-q', '--force', '--', ...chunk]
+         await git.exec(args, opts)
+       }
+     },
