@@ -21,6 +21,15 @@ export default withCpuSlots(defineConfig({
       'packages/input-playstation-dualsense-5',
       'packages/model-driver-lipsync/vitest.node.config.ts',
       'packages/better-ws',
+      'packages/model-driver-magic-live2d',
+      'packages/motion-driver-magic',
+      'packages/plugin-protocol',
+      'packages/stage-layouts',
+      'packages/stage-ui-tachie',
+      'integrations/minecraft',
+      'services/computer-use-mcp',
+      'scripts/sponsorkit',
+      'apps/stage-tamagotchi-kirie/vitest.node.config.ts',
       'packages/plugin-sdk',
       'packages/plugin-sdk-tamagotchi',
       ...providerInferenceProjects.map(project => ({ ...project, root: 'packages/provider-inference' })),
@@ -53,6 +62,43 @@ export default withCpuSlots(defineConfig({
         test: {
           name: 'github-scripts',
           include: ['.github/scripts/**/*.test.ts'],
+        },
+      },
+      // Node projects of packages whose own config also holds browser projects. Their browser projects run through
+      // `pnpm test:run`'s package scripts. These packages declare no node-only config, so the projects are inline.
+      {
+        test: {
+          name: 'audio:node',
+          include: ['packages/audio/src/**/*.test.ts'],
+          exclude: ['packages/audio/src/**/*.browser.test.ts'],
+        },
+      },
+      {
+        test: {
+          name: 'stage-ui-mmd:node',
+          include: ['packages/stage-ui-mmd/src/**/*.test.ts'],
+          exclude: ['packages/stage-ui-mmd/src/**/*.browser.test.ts'],
+        },
+      },
+      // The audio test fixtures. Its fakemic projects need built apps and a microphone runtime, so only the unit project runs here.
+      {
+        test: {
+          name: 'testing-audio:unit',
+          include: ['packages/testing-audio/src/**/*.test.ts'],
+        },
+      },
+      // Packages without a Vitest config of their own.
+      {
+        test: {
+          name: 'telegram-bot',
+          include: ['integrations/telegram-bot/**/*.test.ts'],
+          exclude: ['**/node_modules/**'],
+        },
+      },
+      {
+        test: {
+          name: 'twitter-services',
+          include: ['integrations/twitter-services/src/**/*.test.ts'],
         },
       },
       // Root development scripts, such as the `pnpm dev:*` launcher. They belong to no package.

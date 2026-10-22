@@ -6,10 +6,16 @@ import { acquire } from '@proj-airi/cpu-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { verifyCacheKey } from './verify-cache'
-import { parseVerifyArgs, planVerify, stripWorkerFlags } from './verify-plan'
+import { parseVerifyArgs, planVerify, stripWorkerFlags, testPrerequisiteTurboArgs } from './verify-plan'
 
 const packages = ['packages/stage-ui', 'apps/stage-tamagotchi']
 const file = (path: string, deleted = false) => ({ path, deleted })
+
+describe('testPrerequisiteTurboArgs', () => {
+  it('builds only the workspace packages that tests import, with quiet output', () => {
+    expect(testPrerequisiteTurboArgs).toEqual(['run', 'build', '-F=./packages/*', '--output-logs=errors-only'])
+  })
+})
 
 describe('planVerify', () => {
   it('typechecks affected packages when only package files changed', () => {

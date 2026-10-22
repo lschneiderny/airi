@@ -1,8 +1,12 @@
 import type { TestRunSuite } from './test-run-plan'
 
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
-import { runSuites, summarizeSuites, testRunSuites } from './test-run-plan'
+import { buildWorkspacePackagesCommand, runSuites, summarizeSuites, testRunSuites, vitestConfigCoverage } from './test-run-plan'
 
 const suites: TestRunSuite[] = [
   { label: 'a', command: 'run a' },
@@ -16,8 +20,9 @@ function clock() {
 }
 
 describe('testRunSuites', () => {
-  it('keeps the suites and order of the former && chain', () => {
-    expect(testRunSuites.map(suite => suite.command)).toEqual([
+  it('rebuilds stale workspace packages first, then runs the suites in order', () => {
+    expect(testRunSuites[0].command).toBe(buildWorkspacePackagesCommand)
+    expect(testRunSuites.slice(1).map(suite => suite.command)).toEqual([
       'pnpm exec vitest run',
       'pnpm run test-stage-tamagotchi:run',
       'pnpm run test-stage-web:run',
@@ -27,6 +32,8 @@ describe('testRunSuites', () => {
       'pnpm run test-model-driver-lipsync:run',
       'pnpm run test-stage-ui-three:run',
       'pnpm run test-stage-ui-mmd:run',
+      'pnpm run test-audio-browser:run',
+      'pnpm run test-stage-tamagotchi-kirie-browser:run',
     ])
   })
 })
@@ -72,5 +79,40 @@ describe('summarizeSuites', () => {
     expect(summary.lines[1]).toContain('FAILED')
     expect(summary.lines[3]).toContain('exit signal')
     expect(summary.lines.at(-1)).toBe('1/3 suites passed; failed: a, c')
+  })
+})
+
+describe('vitestConfigCoverage', () => {
+  const root = join(import.meta.dirname, '..', '..')
+  const trackedConfigs = execFileSync('git', ['ls-files', '**/vitest.config.*', '**/vitest.*.config.*', 'vitest.config.*'], { cwd: root, encoding: 'utf8' })
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line && line !== 'vitest.config.ts')
+  const rootConfig = readFileSync(join(root, 'vitest.config.ts'), 'utf8')
+  const packageScripts = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> }).scripts
+
+  it('accounts for every tracked Vitest config', () => {
+    expect(Object.keys(vitestConfigCoverage).sort()).toEqual([...trackedConfigs].sort())
+  })
+
+  it('explains each excluded config', () => {
+    const unexplained = Object.entries(vitestConfigCoverage).filter(([, entry]) => entry.runBy.length === 0 && !entry.note)
+    expect(unexplained.map(([config]) => config)).toEqual([])
+  })
+
+  it('points each runner at a project or script that exists', () => {
+    const missing: string[] = []
+    for (const [config, entry] of Object.entries(vitestConfigCoverage)) {
+      for (const runner of entry.runBy) {
+        if (runner === 'root') {
+          if (!rootConfig.includes(dirname(config)))
+            missing.push(`${config}: the root config names no project in ${dirname(config)}`)
+        }
+        else if (!testRunSuites.some(suite => suite.command === `pnpm run ${runner}`) || !packageScripts[runner]) {
+          missing.push(`${config}: test:run has no script ${runner}`)
+        }
+      }
+    }
+    expect(missing).toEqual([])
   })
 })

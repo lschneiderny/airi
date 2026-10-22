@@ -21,7 +21,17 @@ export const extraTestConfigs: { config: string, project?: string }[] = [
   { config: 'packages/stage-ui-three/vitest.config.ts', project: 'browser' },
   { config: 'packages/stage-ui-mmd/vitest.config.ts', project: 'browser' },
   { config: 'packages/stage-pages/vitest.config.ts' },
+  { config: 'apps/stage-web/vitest.config.ts', project: 'browser' },
+  { config: 'apps/stage-tamagotchi-kirie/vitest.config.ts', project: 'browser' },
+  { config: 'packages/audio/vitest.config.ts', project: 'browser' },
 ]
+
+/**
+ * Turbo arguments that rebuild stale workspace package output before the test step. Tests import `dist` output such as
+ * the i18n locales, and a pull or merge that changes package sources leaves it stale while the install step stays
+ * skipped. Turbo skips a package whose input hash is unchanged.
+ */
+export const testPrerequisiteTurboArgs = ['run', 'build', '-F=./packages/*', '--output-logs=errors-only']
 
 export type TypecheckScope = { kind: 'none' } | { kind: 'affected' } | { kind: 'all', reason: string }
 

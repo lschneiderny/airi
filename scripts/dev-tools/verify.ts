@@ -13,7 +13,7 @@ import { acquire } from '@proj-airi/cpu-slots'
 import { capture, chunkByLength, nodeCommandChunkLimits, run, shimCommandChunkLimits } from './lib/exec'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { readPass, verifyCacheKey, writePass } from './verify-cache'
-import { extraTestConfigs, parseVerifyArgs, planVerify, stripWorkerFlags, verifyUsage } from './verify-plan'
+import { extraTestConfigs, parseVerifyArgs, planVerify, stripWorkerFlags, testPrerequisiteTurboArgs, verifyUsage } from './verify-plan'
 
 interface Command {
   label: string
@@ -66,12 +66,19 @@ function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnT
   const configs = [{ config: 'vitest.config.ts', project: undefined as string | undefined }, ...(plan.extraTestConfigs ? extraTestConfigs : [])]
   // `vitest related` resolves relative paths against the config's root, and the extra configs are rooted in their packages.
   const absoluteFiles = plan.testFiles.map(file => join(root, file))
-  return configs.flatMap(({ config, project }) => chunkByLength(absoluteFiles, nodeCommandChunkLimits).map(files => ({
+  const rebuild: Command = {
+    label: 'rebuild stale workspace packages',
+    args: node('node_modules/turbo/bin/turbo', testPrerequisiteTurboArgs),
+    cpuClass: 'build',
+    concurrency: true,
+  }
+  const related: Command[] = configs.flatMap(({ config, project }) => chunkByLength(absoluteFiles, nodeCommandChunkLimits).map(files => ({
     label: `tests related to changes (${config}${project ? `, project ${project}` : ''})`,
     args: node('node_modules/vitest/vitest.mjs', ['related', '--run', '--passWithNoTests', '--config', config, ...(project ? ['--project', project] : []), ...files]),
     // Every extra config holds browser projects; the root config only runs node tests. The child's vitest wrapper enforces the cap.
     cpuClass: project || config !== 'vitest.config.ts' ? 'browser' : 'test',
   })))
+  return [rebuild, ...related]
 }
 
 async function main(): Promise<number> {
