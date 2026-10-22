@@ -1,28 +1,49 @@
 /* eslint-disable no-console -- the CLI prints to stdout */
+import type { ChildProcess } from 'node:child_process'
+
 import type { CpuClass } from './classes'
 
 import process from 'node:process'
 
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { constants } from 'node:os'
 
-import { acquire, storeRoot } from './acquire'
-import { parseBudget } from './budget'
+import { acquire } from './acquire'
 import { classes } from './classes'
-import { Store, StoreBusyError } from './store'
+import { readStatus } from './status'
+import { StoreBusyError } from './store'
+import { resolveWin32Command, shimCommandLine } from './win32-command'
+
+/**
+ * Programs spawn directly, so arguments never meet a shell. Only a win32 .cmd/.bat shim (pnpm,
+ * turbo) goes through cmd.exe, with arguments escaped by shimCommandLine.
+ */
+function launch(argv: string[], env: NodeJS.ProcessEnv): ChildProcess {
+  const [command, ...args] = argv
+  if (process.platform === 'win32') {
+    const pathKey = Object.keys(env).find(key => key.toLowerCase() === 'path')
+    const { shim, doubleEscape } = resolveWin32Command(command, (pathKey && env[pathKey]) || '', env.PATHEXT, existsSync)
+    if (shim) {
+      return spawn(env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `"${shimCommandLine(shim, args, doubleEscape)}"`], {
+        stdio: 'inherit',
+        env,
+        windowsVerbatimArguments: true,
+      })
+    }
+  }
+  return spawn(command, args, { stdio: 'inherit', env })
+}
 
 async function main(args: string[]): Promise<number> {
   const verb = args.shift()
   if (verb === 'status') {
     if (args.length > 1 || (args.length === 1 && args[0] !== '--json'))
       throw new Error('usage: status [--json]')
-    const root = storeRoot()
-    const budget = parseBudget()
-    const store = new Store({ root, budget })
-    let state
+    let status
     for (;;) {
       try {
-        state = store.snapshot()
+        status = readStatus()
         break
       }
       catch (error) {
@@ -31,24 +52,16 @@ async function main(args: string[]): Promise<number> {
         await new Promise<void>(resolve => setTimeout(resolve, 500))
       }
     }
-    const now = Date.now()
-    const status = {
-      path: root,
-      leases: state.leases.map(lease => ({ ...lease, age: now - lease.createdAt })),
-      queue: state.tickets.map(ticket => ({ ...ticket, wait: now - ticket.createdAt })),
-      held: state.leases.reduce((sum, lease) => sum + lease.slots, 0),
-      budget,
-    }
     if (args[0] === '--json') {
       console.log(JSON.stringify(status))
     }
     else {
-      console.log(root)
+      console.log(status.storePath)
       for (const lease of status.leases)
         console.log(`${lease.class} ${lease.slots} slots ${lease.cwd} ${lease.age}ms ${lease.command}`)
       for (const ticket of status.queue)
         console.log(`queued ${ticket.class} ${ticket.min}-${ticket.max} ${ticket.wait}ms ${ticket.command}`)
-      console.log(`held ${status.held}/${budget}`)
+      console.log(`held ${status.held}/${status.budget}`)
     }
     return 0
   }
@@ -87,15 +100,7 @@ async function main(args: string[]): Promise<number> {
     throw new Error('empty command')
   }
   return new Promise<number>((resolve, reject) => {
-    // cmd.exe requires argument quoting; Node's shell mode otherwise joins arguments verbatim.
-    const argv = process.platform === 'win32'
-      ? substituted.map(arg => `"${arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1')}"`)
-      : substituted
-    const child = spawn(argv[0], argv.slice(1), {
-      stdio: 'inherit',
-      env: { ...process.env, ...lease.env },
-      shell: process.platform === 'win32',
-    })
+    const child = launch(substituted, { ...process.env, ...lease.env })
     // A win32 shell wrapper (cmd.exe) would otherwise die alone and orphan the real workload.
     const stop = (signal: NodeJS.Signals): void => {
       if (process.platform === 'win32' && child.pid)

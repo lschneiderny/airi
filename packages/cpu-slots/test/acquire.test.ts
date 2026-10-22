@@ -63,6 +63,17 @@ describe('acquire lifecycle', () => {
     expect([process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')]).toEqual(signals)
   })
 
+  it('reference counts in-process reuse so only the last release frees the lease', async () => {
+    const first = await take()
+    const second = await take({ ...request, class: 'browser' })
+    const store = new Store({ root, budget: 8 })
+    second.release()
+    second.release()
+    expect(store.snapshot().leases).toHaveLength(1)
+    first.release()
+    expect(store.snapshot().leases).toHaveLength(0)
+  })
+
   it('a11 release then reacquire queues a new class and lease', async () => {
     const first = await take()
     first.release()

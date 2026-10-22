@@ -21,20 +21,23 @@ export interface Lease {
   grant: number | null
   exclusive: boolean
   inherited: boolean
+  /** Ticket sequence of an acquired lease, which fixes the grant order. */
+  seq?: number
   env: Partial<Record<'AIRI_CPU_LEASE' | 'AIRI_CPU_GRANT' | 'AIRI_CPU_CLASS', string>>
   addWorkload: (pid: number) => void
   release: () => void
 }
 
-const held = new Map<string, Lease>()
+/** The in-process lease per store; reuse is reference counted so only the last release frees it. */
+const held = new Map<string, { lease: Lease, retain: () => Lease }>()
 
 export function storeRoot(): string {
   return resolve(process.env.AIRI_CPU_SLOTS_DIR
     ?? join(process.platform === 'win32' ? process.env.LOCALAPPDATA ?? tmpdir() : tmpdir(), 'airi-cpu-slots'))
 }
 
-/** Longest an exit handler may block on a busy store lock. */
-const EXIT_BUSY_BUDGET_MS = 5_000
+/** Longest an exit handler may block on a busy store lock; pruning reclaims anything left behind. */
+const EXIT_BUSY_BUDGET_MS = 2_000
 
 /** Exit handlers cannot wait for another poll, so they retry synchronously until the deadline. */
 function whileBusy<T>(fn: () => T, deadline: number): T {
@@ -50,18 +53,88 @@ function whileBusy<T>(fn: () => T, deadline: number): T {
   }
 }
 
+const activeWriters = new Set<Writer>()
+let exitHooked = false
+
+function hookExit(): void {
+  if (exitHooked)
+    return
+  exitHooked = true
+  process.on('exit', () => {
+    const deadline = Date.now() + EXIT_BUSY_BUDGET_MS
+    for (const writer of activeWriters) {
+      try {
+        writer.flush(deadline)
+      }
+      catch {
+        // A busy lock at exit leaves the write to pruning by the next observer.
+      }
+    }
+  })
+}
+
+/**
+ * Store writes after acquisition (workload registration, release) run in order. A busy lock is
+ * retried on a referenced timer, so a pending write keeps the process alive without blocking its
+ * event loop. Owned and inherited leases share it.
+ */
+class Writer {
+  private readonly pending: { run: () => void, attempts: number }[] = []
+  private retry: ReturnType<typeof setTimeout> | undefined
+
+  submit(run: () => void): void {
+    this.pending.push({ run, attempts: 0 })
+    activeWriters.add(this)
+    hookExit()
+    if (!this.retry)
+      this.pump()
+  }
+
+  /** Drains synchronously for an exit handler; throws if the lock stays busy past the deadline. */
+  flush(deadline: number): void {
+    clearTimeout(this.retry)
+    this.retry = undefined
+    for (const op of this.pending.splice(0))
+      whileBusy(op.run, deadline)
+    activeWriters.delete(this)
+  }
+
+  private readonly pump = (): void => {
+    this.retry = undefined
+    while (this.pending.length) {
+      const op = this.pending[0]
+      try {
+        op.run()
+        this.pending.shift()
+      }
+      catch (error) {
+        if (error instanceof StoreBusyError && ++op.attempts < 200) {
+          this.retry = setTimeout(this.pump, 25)
+          return
+        }
+        this.pending.shift()
+        console.error(`cpu-slots: store write failed (${String(error)})`)
+      }
+    }
+    activeWriters.delete(this)
+  }
+}
+
 function noop(): Lease {
   return { id: '', grant: null, exclusive: false, inherited: false, env: {}, addWorkload() {}, release() {} }
 }
 
 function reuse(lease: Lease, request: AcquireOptions): Lease {
-  if (classes[request.class].exclusive && !lease.exclusive)
-    throw new CpuSlotsError('exclusive-under-shared')
   const grant = Math.min(request.max ?? classes[request.class].max, lease.grant!)
   return { ...lease, grant, inherited: true, env: { ...lease.env, AIRI_CPU_GRANT: String(grant) } }
 }
 
-function owned(store: Store, record: StoredLease): Lease {
+function assertShareable(lease: Lease, request: AcquireOptions): void {
+  if (classes[request.class].exclusive && !lease.exclusive)
+    throw new CpuSlotsError('exclusive-under-shared')
+}
+
+function owned(store: Store, record: StoredLease, seq: number): Lease {
   const heartbeat = setInterval(() => {
     try {
       store.heartbeat(record)
@@ -72,72 +145,55 @@ function owned(store: Store, record: StoredLease): Lease {
   }, 10_000)
   heartbeat.unref()
 
-  // Store writes after acquisition run in order. A busy lock is retried on a referenced timer, so a
-  // pending registration or release keeps the process alive without blocking its event loop.
-  const pending: { run: () => void, attempts: number }[] = []
-  let retry: ReturnType<typeof setTimeout> | undefined
-  const pump = (): void => {
-    retry = undefined
-    while (pending.length) {
-      const op = pending[0]
-      try {
-        op.run()
-        pending.shift()
-      }
-      catch (error) {
-        if (error instanceof StoreBusyError && ++op.attempts < 200) {
-          retry = setTimeout(pump, 25)
-          return
-        }
-        pending.shift()
-        console.error(`cpu-slots: store write failed (${String(error)})`)
-      }
-    }
-  }
-  const submit = (run: () => void): void => {
-    pending.push({ run, attempts: 0 })
-    if (!retry)
-      pump()
-  }
-
+  const writer = new Writer()
   let released = false
-  const finish = (): void => {
+  const free = (): void => {
     released = true
     clearInterval(heartbeat)
     held.delete(store.root)
     // eslint-disable-next-line ts/no-use-before-define -- mutual reference resolved before it runs
     process.removeListener('exit', onExit)
-  }
-  const release = (): void => {
-    if (released)
-      return
-    finish()
     // Always use the store's snapshot guard, even without registered work.
-    submit(() => void store.releaseIfIdle(record))
+    writer.submit(() => void store.releaseIfIdle(record))
+  }
+  let refs = 1
+  const handle = (): Lease => {
+    let done = false
+    return {
+      id: record.id,
+      grant: record.slots,
+      exclusive: record.exclusive,
+      inherited: false,
+      seq,
+      env: { AIRI_CPU_LEASE: record.id, AIRI_CPU_GRANT: String(record.slots), AIRI_CPU_CLASS: record.class },
+      addWorkload: pid => writer.submit(() => store.addWorkload(record, pid)),
+      release() {
+        if (done)
+          return
+        done = true
+        if (--refs === 0)
+          free()
+      },
+    }
   }
   const onExit = (): void => {
-    clearTimeout(retry)
-    const deadline = Date.now() + EXIT_BUSY_BUDGET_MS
     try {
-      for (const op of pending.splice(0))
-        whileBusy(op.run, deadline)
+      writer.flush(Date.now() + EXIT_BUSY_BUDGET_MS)
       if (!released)
-        whileBusy(() => store.releaseIfIdle(record), deadline)
+        whileBusy(() => store.releaseIfIdle(record), Date.now() + EXIT_BUSY_BUDGET_MS)
     }
     catch {
       // A failed snapshot or busy lock cannot prove idleness. Leave pruning to an observer.
     }
   }
-  const lease: Lease = {
-    id: record.id,
-    grant: record.slots,
-    exclusive: record.exclusive,
-    inherited: false,
-    env: { AIRI_CPU_LEASE: record.id, AIRI_CPU_GRANT: String(record.slots), AIRI_CPU_CLASS: record.class },
-    addWorkload: pid => submit(() => store.addWorkload(record, pid)),
-    release,
-  }
-  held.set(store.root, lease)
+  const lease = handle()
+  held.set(store.root, {
+    lease,
+    retain() {
+      refs++
+      return handle()
+    },
+  })
   process.on('exit', onExit)
   return lease
 }
@@ -158,8 +214,10 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
   const budget = parseBudget()
   const root = storeRoot()
   const current = held.get(root)
-  if (current)
-    return reuse(current, request)
+  if (current) {
+    assertShareable(current.lease, request)
+    return reuse(current.retain(), request)
+  }
   const store = new Store({ root, budget })
   let ticket: Ticket | undefined
   let waiting = false
@@ -172,6 +230,8 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
       request.signal?.removeEventListener('abort', onAbort)
     }
     const tick = (): void => {
+      // A busy lock is brief, so it is retried sooner than the regular poll.
+      let delay = 500
       try {
         if (request.signal?.aborted) {
           if (ticket)
@@ -187,15 +247,18 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
             if (parent) {
               const advertised = Number(process.env.AIRI_CPU_GRANT)
               const grant = Number.isSafeInteger(advertised) && advertised > 0 ? Math.min(advertised, parent.slots) : parent.slots
-              return reuse({
+              const writer = new Writer()
+              const inherited: Lease = {
                 id: parent.id,
                 grant,
                 exclusive: parent.exclusive,
                 inherited: true,
                 env: { AIRI_CPU_LEASE: parent.id, AIRI_CPU_GRANT: String(grant), AIRI_CPU_CLASS: parent.class },
-                addWorkload: pid => store.addWorkload(parent, pid),
+                addWorkload: pid => writer.submit(() => store.addWorkload(parent, pid)),
                 release() {},
-              }, request)
+              }
+              assertShareable(inherited, request)
+              return reuse(inherited, request)
             }
           }
           if (!ticket || !store.touchTicket(ticket.seq))
@@ -205,7 +268,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
           if (decision.kind === 'grant' && decision.ticketSeq === ticket.seq) {
             const record = store.grant(ticket.seq, decision.slots)
             if (record)
-              return owned(store, record)
+              return owned(store, record, ticket.seq)
           }
           if (!waiting) {
             console.error(`cpu-slots: waiting for ${Math.min(min, budget)} slot(s) of ${request.class} (held ${state.leases.reduce((sum, lease) => sum + lease.slots, 0)}/${budget}, ${state.tickets.filter(other => other.seq < ticket!.seq).length} ahead)`)
@@ -232,12 +295,13 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
           }
           return
         }
+        delay = 50
         if (!waiting) {
           console.error(`cpu-slots: waiting for ${Math.min(min, budget)} slot(s) of ${request.class} (held ?/${budget}, ? ahead; ${error.message})`)
           waiting = true
         }
       }
-      timer = setTimeout(tick, 500)
+      timer = setTimeout(tick, delay)
     }
     const onAbort = (): void => {
       clearTimeout(timer)
