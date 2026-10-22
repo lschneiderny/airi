@@ -180,7 +180,6 @@ function assertShareable(lease: Lease, request: AcquireOptions): void {
 
 function owned(store: Store, record: StoredLease, seq: number): Lease {
   leaseStores.add(store)
-  hookExit()
   const heartbeat = setInterval(() => {
     try {
       store.heartbeat(record)
@@ -199,8 +198,13 @@ function owned(store: Store, record: StoredLease, seq: number): Lease {
     held.delete(store.root)
     // eslint-disable-next-line ts/no-use-before-define -- mutual reference resolved before it runs
     process.removeListener('exit', onExit)
-    // Always use the store's snapshot guard, even without registered work.
-    writer.submit(() => void store.releaseIfIdle(record))
+    // Always use the store's snapshot guard, even without registered work. A store whose markers are
+    // all written needs no retry at exit.
+    writer.submit(() => {
+      store.releaseIfIdle(record)
+      if (store.retryRetirements())
+        leaseStores.delete(store)
+    })
   }
   let refs = 1
   const handle = (): Lease => {

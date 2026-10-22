@@ -374,7 +374,8 @@ describe('audit follow-ups (2026-10-22)', () => {
     const lease = await fresh.acquire(request)
     const lock = join(root, 'broker.lock')
     let blocked = true
-    let markFailures = 2
+    // The release's own leave(), its retry afterwards, and the writer's retry all fail; exit writes it.
+    let markFailures = 3
     const original = { ...fresh.fs }
     vi.spyOn(fresh.fs, 'rename').mockImplementation((from, to) => {
       if (blocked && from === lock && to.endsWith('.tomb'))

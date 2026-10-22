@@ -401,10 +401,14 @@ export class Store {
     }
   }
 
-  /** Writes again the retirement markers this instance could not write; lock(), release, and exit call it. */
-  retryRetirements(): void {
+  /**
+   * Writes again the retirement markers this instance could not write; lock(), release, and exit call
+   * it. True when none is left unwritten.
+   */
+  retryRetirements(): boolean {
     for (const token of this.unmarked)
       this.markRetired(token)
+    return this.unmarked.size === 0
   }
 
   release(lease: StoredLease): boolean {
