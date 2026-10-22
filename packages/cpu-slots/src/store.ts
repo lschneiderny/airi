@@ -71,7 +71,7 @@ export interface StoreOptions {
 }
 
 export class StoreBusyError extends Error {
-  constructor(public readonly reason: 'lock-busy' | 'lock-lost', public readonly owner?: LockOwner, now?: number) {
+  constructor(public readonly reason: 'lock-busy' | 'lock-lost' | 'entry-busy', public readonly owner?: LockOwner, now?: number) {
     super(owner && now !== undefined && now - owner.at > 30_000
       ? `lock held by pid ${owner.pid} for ${Math.floor((now - owner.at) / 1_000)}s`
       : reason)
@@ -91,6 +91,15 @@ const busyCodes = ['EEXIST', 'ENOTEMPTY', 'EPERM', 'EACCES', 'EBUSY']
 
 function code(error: unknown): unknown {
   return error instanceof Error && 'code' in error ? error.code : undefined
+}
+
+/**
+ * Opening or stating an entry fails with these codes on win32 while another process renames or
+ * deletes it: a file inside a delete-pending directory reports EPERM, and a sharing violation
+ * reports EBUSY. The entry settles within one transaction, so a read that hits one is retried.
+ */
+function inFlux(error: unknown): boolean {
+  return ['EPERM', 'EBUSY'].includes(String(code(error)))
 }
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -384,7 +393,7 @@ export class Store {
           const value = this.readJson(path)
           if (ticketRecord(value))
             continue
-          const { mtimeMs } = this.fs.stat(path)
+          const mtimeMs = this.mtime(path)
           const pid = object(value) && Number.isSafeInteger(value.pid) ? Number(value.pid) : undefined
           result.push({ file, ...(pid === undefined ? {} : { pid }), mtimeMs })
         }
@@ -471,8 +480,10 @@ export class Store {
         continue
       const path = join(this.root, directory, name)
       try {
+        // A record in flux is never skipped: a missing lease would undercount usage, and a
+        // missing ticket would let a later waiter jump the queue. readJson and mtime report it busy.
         const value = this.readJson(path)
-        const { mtimeMs } = this.fs.stat(path)
+        const mtimeMs = this.mtime(path)
         if (valid(value))
           result.push({ value, path, mtimeMs })
         else if (this.now() - mtimeMs >= 45_000)
@@ -506,7 +517,7 @@ export class Store {
     }
     else {
       try {
-        if (this.now() - this.fs.stat(path).mtimeMs <= 10_000 || !this.retireLock(undefined))
+        if (this.now() - this.mtime(path) <= 10_000 || !this.retireLock(undefined))
           throw new StoreBusyError('lock-busy')
       }
       catch (error) {
@@ -549,29 +560,28 @@ export class Store {
    * retirement markers once their owner's pid is dead, when M3 covers that lock
    * anyway. Markers skip the identity lookup: one left by a reused pid is inert
    * garbage. None of them ever blocks an acquirer; this only keeps the root tidy.
+   *
+   * Other processes rename and delete these entries concurrently, so an entry that has vanished
+   * or is in flux is skipped and left to a later call. Any other error, such as EACCES or EROFS
+   * from an unusable store, still fails.
    */
   private cleanTemporaryLocks(): void {
     for (const name of this.fs.list(this.root)) {
       const path = join(this.root, name)
-      if (name.endsWith('.retired') && name.startsWith('broker.lock.')) {
-        const marker = this.readJson(path)
-        try {
-          if (owner(marker) ? !this.alive(marker.pid) : this.now() - this.fs.stat(path).mtimeMs > 10_000)
-            this.fs.remove(path)
-        }
-        catch (error) {
-          if (code(error) !== 'ENOENT')
-            throw error
-        }
+      const retired = name.endsWith('.retired') && name.startsWith('broker.lock.')
+      if (!retired && !/^broker\.lock\..+\.(?:tmp|tomb)$/.test(name))
         continue
-      }
-      if (!/^broker\.lock\..+\.(?:tmp|tomb)$/.test(name))
-        continue
-      const current = this.readOwner(path)
       try {
+        if (retired) {
+          const marker = this.readJson(path)
+          if (owner(marker) ? !this.alive(marker.pid) : this.now() - this.mtime(path) > 10_000)
+            this.fs.remove(path)
+          continue
+        }
+        const current = this.readOwner(path)
         if (current
           ? this.reclaimable(current)
-          : this.now() - this.fs.stat(path).mtimeMs > 10_000) {
+          : this.now() - this.mtime(path) > 10_000) {
           this.fs.remove(path)
           // A lock directory is never copied, so its marker now names nothing.
           if (current)
@@ -579,7 +589,7 @@ export class Store {
         }
       }
       catch (error) {
-        if (code(error) !== 'ENOENT')
+        if (!(error instanceof StoreBusyError) && code(error) !== 'ENOENT' && !inFlux(error))
           throw error
       }
     }
@@ -598,6 +608,9 @@ export class Store {
         throw new StoreBusyError('lock-busy')
       throw error
     }
+    // An unreadable tombstone throws StoreBusyError and stays set aside: others delete only
+    // reclaimable tombstones, and a racing owner sees lock-lost and marks its lock retired, so
+    // cleanTemporaryLocks removes it. Renaming it back could publish a half-deleted, ownerless lock.
     if (this.readOwner(tomb)?.token !== expected?.token) {
       try {
         this.rename(tomb, path)
@@ -694,6 +707,19 @@ export class Store {
     catch (error) {
       if (code(error) === 'ENOENT' || error instanceof SyntaxError)
         return undefined
+      if (inFlux(error))
+        throw new StoreBusyError('entry-busy')
+      throw error
+    }
+  }
+
+  private mtime(path: string): number {
+    try {
+      return this.fs.stat(path).mtimeMs
+    }
+    catch (error) {
+      if (inFlux(error))
+        throw new StoreBusyError('entry-busy')
       throw error
     }
   }

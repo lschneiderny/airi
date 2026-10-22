@@ -551,6 +551,120 @@ describe('token checked lock', () => {
   })
 })
 
+describe('win32 sharing errors on entries in flux', () => {
+  /**
+   * Fails `op` on matching paths with `code`, as NTFS does while another process renames or deletes
+   * the entry: opening a file inside a delete-pending directory fails with EPERM.
+   */
+  function flux(op: 'read' | 'stat' | 'remove', matches: (path: string) => boolean, code: string, failures = Infinity): StoreFs {
+    const fail = (path: string): void => {
+      if (matches(path) && failures-- > 0)
+        throw Object.assign(new Error(code), { code })
+    }
+    return {
+      ...nodeFs,
+      read(path) {
+        if (op === 'read')
+          fail(path)
+        return nodeFs.read(path)
+      },
+      stat(path) {
+        if (op === 'stat')
+          fail(path)
+        return nodeFs.stat(path)
+      },
+      remove(path) {
+        if (op === 'remove')
+          fail(path)
+        nodeFs.remove(path)
+      },
+    }
+  }
+
+  function putEntry(name: string, pid: number): string {
+    const path = join(root, name)
+    nodeFs.mkdir(path)
+    writeJson(join(path, 'owner.json'), { token: 'flux', pid, startedAt: 1_000, at: clock })
+    nodeFs.touch(path, clock)
+    return path
+  }
+
+  it.each([
+    ['tmp', 'EPERM'],
+    ['tmp', 'EBUSY'],
+    ['tomb', 'EPERM'],
+    ['tomb', 'EBUSY'],
+  ])('f4-b1 skips a .%s lock entry whose owner read fails with %s, then tidies it once it settles', (kind, code) => {
+    const entry = putEntry(`broker.lock.flux.${kind}`, 20)
+    live.delete(20)
+    const store = createStore(10, { fs: flux('read', path => path.startsWith(entry), code) })
+    expect(store.enqueue(request).seq).toBe(1)
+    expect(nodeFs.list(root)).toContain(`broker.lock.flux.${kind}`)
+    expect(createStore(10).enqueue(request).seq).toBe(2)
+    expect(nodeFs.list(root).filter(name => name.startsWith('broker.lock'))).toEqual([])
+  })
+
+  it.each(['EPERM', 'EBUSY'])('skips a retirement marker and a dead lock entry that fail with %s while being deleted', (code) => {
+    const marker = join(root, 'broker.lock.flux.retired')
+    writeJson(marker, { token: 'flux', pid: 20, startedAt: 1_000, at: clock })
+    const entry = putEntry('broker.lock.dead.tmp', 20)
+    live.delete(20)
+    expect(createStore(10, { fs: flux('read', path => path === marker, code) }).enqueue(request).seq).toBe(1)
+    expect(createStore(10, { fs: flux('remove', path => path === entry, code) }).enqueue(request).seq).toBe(2)
+    expect(nodeFs.list(root)).toContain('broker.lock.dead.tmp')
+    expect(createStore(10).enqueue(request).seq).toBe(3)
+    expect(nodeFs.list(root).filter(name => name.startsWith('broker.lock'))).toEqual([])
+  })
+
+  it.each(['EPERM', 'EBUSY'])('reports the published lock as busy while its owner read fails with %s', (code) => {
+    putLock(20)
+    const owner = join(root, 'broker.lock', 'owner.json')
+    const store = createStore(10, { fs: flux('read', path => path === owner, code, 1) })
+    expect(() => store.enqueue(request)).toThrow(StoreBusyError)
+    expect(JSON.parse(nodeFs.read(owner)).token).toBe('owner')
+    live.delete(20)
+    expect(store.enqueue(request).seq).toBe(1)
+  })
+
+  it.each(['EPERM', 'EBUSY'])('reports a breaker whose tombstone read fails with %s as busy and cleans the stranded tombstone later', (code) => {
+    putLock(20, 'stale')
+    live.delete(20)
+    const store = createStore(10, { fs: flux('read', path => path.includes('.tomb'), code, 1) })
+    expect(() => store.enqueue(request)).toThrow(StoreBusyError)
+    expect(nodeFs.list(root).filter(name => name.endsWith('.tomb'))).toHaveLength(1)
+    expect(store.enqueue(request).seq).toBe(1)
+    expect(nodeFs.list(root).filter(name => name.startsWith('broker.lock'))).toEqual([])
+  })
+
+  it.each([
+    ['read', 'EPERM'],
+    ['read', 'EBUSY'],
+    ['stat', 'EPERM'],
+    ['stat', 'EBUSY'],
+  ] as const)('reports a lease whose %s fails with %s as busy instead of dropping it', (op, code) => {
+    const lease = takeLease(createStore(20))
+    const store = createStore(10, { fs: flux(op, path => path.startsWith(join(root, 'leases')), code, 1) })
+    expect(() => store.snapshot()).toThrow(StoreBusyError)
+    expect(store.snapshot().leases).toEqual([lease])
+  })
+
+  it.each(['EACCES', 'EROFS'])('still fails fast on %s from a lock entry read or an unwritable store root', (code) => {
+    const entry = putEntry('broker.lock.denied.tmp', 20)
+    expect(() => createStore(10, { fs: flux('read', path => path.startsWith(entry), code) }).enqueue(request))
+      .toThrow(expect.objectContaining({ code }))
+    nodeFs.remove(entry)
+    const unwritable: StoreFs = {
+      ...nodeFs,
+      mkdir(path) {
+        if (path.endsWith('.tmp'))
+          throw Object.assign(new Error(code), { code })
+        nodeFs.mkdir(path)
+      },
+    }
+    expect(() => createStore(10, { fs: unwritable }).enqueue(request)).toThrow(expect.objectContaining({ code }))
+  })
+})
+
 describe('tickets, leases, and heartbeat', () => {
   it('a5 prunes a dead head waiter so the next ticket can run', () => {
     const first = createStore(20).enqueue(request)
