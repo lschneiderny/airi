@@ -17,12 +17,12 @@ remote downloads. The Resource Status Island shows transfer progress and errors.
 
 ## Foreground window sensor
 
-On Windows, the app tells the character which app is in front, so her situation block names it and the opportunity gate can stay quiet during calls, fullscreen apps, and quiet time.
+Situational presence is supported only in the Electron desktop app on Windows. On Windows, the app tells the character which app is in front, so her situation block names it and the opportunity gate can stay quiet during calls, fullscreen apps, and quiet time.
 
 - The main process service `createForegroundWindowService` answers the Eventa invoke `electron.foregroundWindow.sample`. It calls `GetForegroundWindow`, `GetWindowTextW`, `GetWindowThreadProcessId`, `QueryFullProcessImageNameW`, and `SHQueryUserNotificationState` through koffi.
 - koffi loads lazily on the first sample and is imported only under `src/main`. `electron.vite.config.ts` externalizes it, and electron-builder unpacks its `.node` binary from ASAR.
 - The sample marks AIRI's own windows, including the Godot stage sidecar, with `ownProcess: true`. The service never logs titles.
-- On other platforms, or when koffi fails to load, the invoke returns `null`. The situation then has no foreground app, and the gate holds with `stale-signal`, so the character does not speak unprompted.
+- On other platforms, or when koffi fails to load, the invoke returns `null`. The situation then has no foreground app, and the gate holds with `stale-signal`, so other Electron hosts never speak unprompted. Web, Pocket and Kirie exclude presence.
 - The renderer producer `useForegroundWindowProducerStore` polls once per second, also while the stage is hidden or minimized. `pages/index.vue` starts it in the main window only.
 - `App.vue` declares the `unprompted` host capability and reports stage visibility to the situation store.
 

@@ -92,6 +92,13 @@ Smoke timing is recorded, not asserted. Quiet-machine measurements were 44.7 to 
 
 Naturalness remains Luke's visual call. ForBOOTH's watermark covers part of the face in T3 screenshots. Per Luke's rule, acceptance on one rig counts for the other.
 
+### T1 limitations
+
+- **ACT markers need an emotion.** A scenario ACT marker that carries only `expression` (or only `motion` or `look`) throws at T1 with `ACT marker has no recognized emotion`, because the T1 sink applies only the marker's emotion (`src/motion/scenario-sink.ts`). Put an `emotion` in the marker, or use an `expression` event.
+- **Traces show no catalog expressions.** T1 has no rig, so it decides expression slot commands but does not apply them (`src/motion/t1/runner.ts`). A T1 trace records what Natural performed and never shows a catalog expression.
+- **Visibility is uninformative on a channel whose idle null never moves.** A zero-spread null makes a hit rate and uniform p-values impossible by construction, so scorer validation reports those channels separately (`zeroSpreadChannels` in `src/motion/validation/evaluate.ts`). At T1 this affects eyeSmile and cheek.
+- **`QA_RUN_DIR` in your shell enables the gate project.** `vitest.config.ts` includes `gates/**/*.gate.ts` whenever `QA_RUN_DIR` is set, so a plain package test run in a dev shell with it exported picks up gate files. Unset it before running the package tests directly; `qa:motion gate` sets it per run.
+
 ### T3 gates
 
 Before scoring, live T3 gates require `trace.meta.home` to equal the scenario's `home` (default `desk`). Emotion `--rescore` checks the same `posture-home` invariant after all artifact digests pass; a mismatch exits 2 before creating a run directory.
