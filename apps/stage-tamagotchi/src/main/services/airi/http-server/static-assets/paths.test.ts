@@ -74,7 +74,8 @@ describe('static asset paths', () => {
     await mkdir(join(root, 'dist', 'ui'), { recursive: true })
     await writeFile(join(root, 'dist', 'ui', 'index.html'), '<html></html>')
 
-    await expect(resolveStaticAssetFilePath(root, 'dist/ui/index.html')).resolves.toContain('dist/ui/index.html')
+    // The resolved file path uses the platform separator.
+    await expect(resolveStaticAssetFilePath(root, 'dist/ui/index.html')).resolves.toContain(join('dist', 'ui', 'index.html'))
     await expect(resolveStaticAssetFilePath(root, '../outside.txt')).resolves.toBeUndefined()
   })
 
