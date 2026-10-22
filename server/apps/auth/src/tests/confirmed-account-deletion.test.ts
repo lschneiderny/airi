@@ -74,7 +74,11 @@ describe('confirmed account deletion', () => {
     await db.$client.close()
   })
 
-  /** Seeds an account with a fresh persisted session, without contacting a social provider. */
+  /**
+   * Seeds an account with a fresh persisted session, without contacting a social provider.
+   * `created_at` is a timestamp without time zone, so the column default `now()` stores local wall time,
+   * which reads back hours stale outside UTC. Better Auth always writes an explicit `createdAt`, as here.
+   */
   async function seedAccount(id = 'owner', email = 'person@example.com') {
     await db.insert(schema.user).values({ id, name: id, email, emailVerified: true })
     await db.insert(schema.account).values({ id, userId: id, providerId: 'steam', accountId: id })
@@ -82,6 +86,7 @@ describe('confirmed account deletion', () => {
       id: `session-${id}`,
       token: `token-${id}`,
       userId: id,
+      createdAt: new Date(),
       expiresAt: new Date(Date.now() + 60 * 60 * 1000),
     })
   }
@@ -130,6 +135,7 @@ describe('confirmed account deletion', () => {
         id: 'second-session',
         token: 'second-token',
         userId: 'owner',
+        createdAt: new Date(),
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       })
 
