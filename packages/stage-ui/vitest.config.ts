@@ -12,6 +12,7 @@ import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 import { sharedUnoConfig } from '../../uno.config'
+import { domStorageExecArgv } from '../../vitest.dom-storage'
 
 export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
@@ -61,6 +62,7 @@ export default withCpuSlots(defineConfig({
         extends: true,
         test: {
           name: 'node',
+          execArgv: domStorageExecArgv,
           include: ['src/**/*.test.ts'],
           exclude: ['src/**/*.browser.test.ts'],
           fileParallelism: false,
