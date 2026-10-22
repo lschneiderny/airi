@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@moeru/std": "catalog:",
+    "@proj-airi/cpu-slots": "workspace:^",
     "@proj-airi/pipelines-audio": "workspace:^",
     "@proj-airi/scenarios-stage-tamagotchi-electron": "workspace:^",
     "@proj-airi/stage-shared": "workspace:^",
