@@ -6,7 +6,9 @@ import { execFileSync } from 'node:child_process'
 import { basename } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
+import { readStatus } from '@proj-airi/cpu-slots'
 
+import { cpuSlotsJson, readCpuSlots, renderCpuSlots } from './lib/cpu-slots'
 import { listWorktrees, repoRoot } from './lib/git'
 import { ancestry, attribute, isOrphan, normalizePath, rollup, snapshotProcesses } from './lib/processes'
 
@@ -119,10 +121,14 @@ function main(argv: string[]): number {
     console.error(`Unknown argument ${JSON.stringify(unknown[0])}\n${usage}`)
     return 2
   }
+  const cpuSlots = readCpuSlots(() => readStatus())
   if (argv.includes('--json')) {
-    console.info(JSON.stringify({ worktrees: rollup(processes).map(group => ({ ...group, name: label(group.worktree, names) })), processes: processes.filter(info => info.worktree !== null) }, null, 2))
+    console.info(JSON.stringify({ worktrees: rollup(processes).map(group => ({ ...group, name: label(group.worktree, names) })), processes: processes.filter(info => info.worktree !== null), cpuSlots: cpuSlotsJson(cpuSlots) }, null, 2))
     return 0
   }
+  for (const line of renderCpuSlots(cpuSlots))
+    console.info(line)
+  console.info('')
   printRollup(processes, names, argv.includes('--processes'))
   return 0
 }
