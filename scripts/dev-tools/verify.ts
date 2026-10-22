@@ -4,6 +4,7 @@ import type { VerifyStep } from './verify-plan'
 
 import process from 'node:process'
 
+import { readFileSync } from 'node:fs'
 import { delimiter, join, relative } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -33,9 +34,14 @@ interface StepResult {
   durationMs: number
 }
 
-function packagePaths(root: string): string[] {
-  const listing = JSON.parse(capture(process.execPath, [join(root, 'node_modules/turbo/bin/turbo'), 'ls', '--output=json'], { cwd: root })) as { packages: { items: { path: string }[] } }
-  return listing.packages.items.map(item => item.path.replaceAll('\\', '/'))
+function workspacePackages(root: string): { paths: string[], rootDependencyPaths: string[] } {
+  const listing = JSON.parse(capture(process.execPath, [join(root, 'node_modules/turbo/bin/turbo'), 'ls', '--output=json'], { cwd: root })) as { packages: { items: { name: string, path: string }[] } }
+  const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { dependencies?: Record<string, string>, devDependencies?: Record<string, string> }
+  const rootWorkspaceDeps = new Set(Object.entries({ ...manifest.dependencies, ...manifest.devDependencies }).filter(([, range]) => range.startsWith('workspace:')).map(([name]) => name))
+  return {
+    paths: listing.packages.items.map(item => item.path.replaceAll('\\', '/')),
+    rootDependencyPaths: listing.packages.items.filter(item => rootWorkspaceDeps.has(item.name)).map(item => item.path.replaceAll('\\', '/')),
+  }
 }
 
 function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnType<typeof planVerify>): Command[] | string {
@@ -88,7 +94,8 @@ async function main(): Promise<number> {
     return 2
   }
   const changed = changedFiles(root, base)
-  const plan = planVerify(changed, packagePaths(root))
+  const workspaces = workspacePackages(root)
+  const plan = planVerify(changed, workspaces.paths, workspaces.rootDependencyPaths)
   const tree = workingTreeHash(root)
   const cacheDir = join(gitCommonDir(root), 'airi-verify')
   // Windows spells the variable `Path`; a second `PATH` key would hide the system directories.

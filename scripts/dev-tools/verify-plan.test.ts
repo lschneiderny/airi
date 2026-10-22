@@ -25,6 +25,17 @@ describe('planVerify', () => {
     expect(planVerify([file('pnpm-lock.yaml')], packages).typecheck.kind).toBe('all')
   })
 
+  it('plans the directory scope when the change is confined to a root dependency', () => {
+    const withSlots = [...packages, 'packages/cpu-slots']
+    expect(planVerify([file('packages/cpu-slots/README.md')], withSlots, ['packages/cpu-slots']).typecheck)
+      .toEqual({ kind: 'all', reason: 'packages/cpu-slots/README.md is in a root dependency' })
+  })
+
+  it('keeps the affected scope for a package the root does not depend on', () => {
+    expect(planVerify([file('packages/stage-ui/src/a.ts')], [...packages, 'packages/cpu-slots'], ['packages/cpu-slots']).typecheck)
+      .toEqual({ kind: 'affected' })
+  })
+
   it('treats a nested package.json as a package change, not a root change', () => {
     expect(planVerify([file('packages/stage-ui/package.json')], packages).typecheck).toEqual({ kind: 'affected' })
   })

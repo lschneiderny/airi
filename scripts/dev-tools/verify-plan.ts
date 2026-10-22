@@ -34,15 +34,25 @@ function inPackage(path: string, packagePaths: string[]): boolean {
   return packagePaths.some(packagePath => path === packagePath || path.startsWith(`${packagePath}/`))
 }
 
-/** Decides what each step covers. `packagePaths` are workspace package directories relative to the root, using `/`. */
-export function planVerify(changed: ChangedFile[], packagePaths: string[]): VerifyPlan {
+/**
+ * Decides what each step covers. `packagePaths` are workspace package directories relative to the root, using `/`.
+ * `rootDependencyPaths` are the directories of the workspace packages the root `package.json` depends on. Turbo's
+ * `...[ref]` filter reaches the root workspace through them, and from there every package, so a change confined to one
+ * of them uses the same directory scope as a root config change.
+ */
+export function planVerify(changed: ChangedFile[], packagePaths: string[], rootDependencyPaths: string[] = []): VerifyPlan {
   const present = changed.filter(file => !file.deleted).map(file => file.path)
   const globalFile = changed.find(file => typecheckGlobalFile.test(file.path))
   let typecheck: TypecheckScope = { kind: 'none' }
-  if (globalFile)
+  if (globalFile) {
     typecheck = { kind: 'all', reason: `${globalFile.path} changed` }
-  else if (changed.some(file => inPackage(file.path, packagePaths)))
-    typecheck = { kind: 'affected' }
+  }
+  else if (changed.some(file => inPackage(file.path, packagePaths))) {
+    const rootDependency = changed.find(file => inPackage(file.path, rootDependencyPaths))
+    typecheck = rootDependency
+      ? { kind: 'all', reason: `${rootDependency.path} is in a root dependency` }
+      : { kind: 'affected' }
+  }
   const testFiles = present.filter(path => codeFile.test(path))
   return {
     typecheck,
