@@ -47,7 +47,7 @@ Exit handlers share a 2 s budget (`EXIT_BUSY_BUDGET_MS`). A running snapshot can
 
 ## Inheritance
 
-A process started under a lease can reuse it. `acquire` reads `AIRI_CPU_LEASE` from the environment. When the store holds a lease with that id, the child takes it without a new ticket. Its grant is `AIRI_CPU_GRANT`, capped at the parent's slots, and then at the request's `max` (`packages/cpu-slots/src/acquire.ts:163-164`, `:285-301`). When `AIRI_CPU_GRANT` is not a positive integer, the parent's slots are used. The child never releases the parent's lease. An exclusive request under a shared lease fails with `exclusive-under-shared` (`acquire.ts:167-170`), and `pnpm slots run` exits 2 (`cli.ts:137-142`).
+A process started under a lease can reuse it. `acquire` reads `AIRI_CPU_LEASE` from the environment. When the store holds a lease with that id, the child takes it without a new ticket. Its grant is `AIRI_CPU_GRANT`, capped at the parent's slots, and then at the request's `max`, or at the class default max when `max` is unset (`packages/cpu-slots/src/acquire.ts:163-164`, `:285-301`). When `AIRI_CPU_GRANT` is not a positive integer, the parent's slots are used. The child never releases the parent's lease. An exclusive request under a shared lease fails with `exclusive-under-shared` (`acquire.ts:167-170`), and `pnpm slots run` exits 2 (`cli.ts:137-142`).
 
 ## Vitest integration
 
@@ -61,7 +61,7 @@ A process started under a lease can reuse it. `acquire` reads `AIRI_CPU_LEASE` f
 
 ## Turbo cache cost
 
-Typecheck depends on the cpu-slots build, and the build's input list is narrowed in `turbo.json`. The cost is still high. A README-only edit to this package invalidates the build and all 57 typecheck tasks on a quiet tree. Warm, all 57 tasks hit the cache in 802 ms. After a README edit, none hit, and the run took 2m 9.8s. The cause is the root `package.json` devDependency `"@proj-airi/cpu-slots": "workspace:^"`, which Turbo folds into the global hash. README.md is also in the typecheck default inputs. Until both paths are fixed, expect a full typecheck after any edit to this README. See the ADR for the fix plan.
+Typecheck depends on the cpu-slots build, and the build's input list is narrowed in `turbo.json`. The cost is still high. A README-only edit to this package invalidates the build and all 57 typecheck tasks on a quiet tree. Warm, all 57 tasks hit the cache in 802 ms. After a README edit, none hit, and the run took 2m 9.8s. The cause is the root `package.json` devDependency `"@proj-airi/cpu-slots": "workspace:^"`, which Turbo folds into the global hash. README.md is also in the typecheck default inputs. Until both causes are fixed, expect a full typecheck after any edit to this README. The ADR's Follow-ups describe what removing the root dependency needs.
 
 ## Troubleshooting
 
