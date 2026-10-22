@@ -1,24 +1,24 @@
-import type { ViteUserConfig } from 'vitest/config'
+import type { Plugin, ViteUserConfig } from 'vitest/config'
 
 import type { CpuClass } from './classes'
 
 import process from 'node:process'
 
-import { acquire } from './acquire'
+import { acquire, processState } from './acquire'
+import { parseBudget } from './budget'
+import { classes } from './classes'
+import { assertFreshBuild } from './stale-build'
 
 type TestConfig = NonNullable<ViteUserConfig['test']>
 
-/** The grant chosen by this process's first wrapped config; later configs are projects and reuse it. */
-let chosenGrant: number | undefined
-
-function isWatchMode(config: ViteUserConfig): boolean {
-  const watch = config.test?.watch
-  if (typeof watch === 'boolean')
-    return watch
+/**
+ * An explicit watch request takes no lease, since the session would hold it until the user quits.
+ * Vitest decides its default (watch in a TTY outside agents and CI) after config loading, so the plugin
+ * below hands the lease back then.
+ */
+function requestsWatch(): boolean {
   const args = process.argv.slice(2)
-  if (!/vitest/i.test(process.argv[1] ?? ''))
-    return false
-  return !args.some(arg => arg === 'run' || arg === 'related' || arg === '--run' || arg === '--watch=false')
+  return /vitest/i.test(process.argv[1] ?? '') && args.some(arg => arg === 'watch' || arg === '--watch' || arg === '--watch=true')
 }
 
 type Project = NonNullable<TestConfig['projects']>[number]
@@ -53,26 +53,42 @@ function clamp(test: TestConfig | undefined, grant: number, add: boolean): TestC
 /**
  * Caps Vitest workers to the CPU slot grant.
  *
- * Only `maxWorkers` is touched. The first wrapped config in a process (the root) gets `maxWorkers`
+ * Only `maxWorkers` is touched (plus one plugin that releases the lease in watch mode). The first wrapped config in a process (the root) gets `maxWorkers`
  * when it has none; later configs are projects and are only clamped downward, because project limits
  * win over root limits and adding one would split Vitest's sequence groups.
  */
 export function withCpuSlots(config: ViteUserConfig): () => Promise<ViteUserConfig> {
   return async () => {
-    if (isWatchMode(config))
-      return config
+    assertFreshBuild()
+    const state = processState()
+    const first = state.vitestGrant === undefined
+    if (requestsWatch()) {
+      if (process.env.CI || process.env.AIRI_CPU_SLOTS === 'off')
+        return config
+      // Without a lease, the grant a free store would give this class caps the workers.
+      state.vitestGrant ??= Math.min(classes[detectClass(config)].max, parseBudget())
+      return { ...config, test: clamp(config.test, state.vitestGrant, first) }
+    }
     const lease = await acquire({ class: detectClass(config), cwd: process.cwd(), command: `vitest ${process.argv.slice(2).join(' ')}`.trim() })
     if (lease.grant === null)
       return config
-    const first = chosenGrant === undefined
-    if (first) {
+    // Every bundled copy of this module shares the process state, so one process makes one choice.
+    if (state.vitestGrant === undefined) {
       const parent = lease.env.AIRI_CPU_CLASS
       const advertised = Number(process.env.AIRI_CPU_GRANT)
       // Gate and exclusive parents size their child runs explicitly, so their grant passes through.
-      chosenGrant = lease.inherited && (parent === 'gate' || parent === 'exclusive') && Number.isSafeInteger(advertised) && advertised > 0
+      state.vitestGrant = lease.inherited && (parent === 'gate' || parent === 'exclusive') && Number.isSafeInteger(advertised) && advertised > 0
         ? advertised
         : lease.grant
     }
-    return { ...config, test: clamp(config.test, chosenGrant!, first) }
+    const releaseInWatchMode: Plugin = {
+      name: 'cpu-slots:release-in-watch-mode',
+      configureVitest({ vitest }) {
+        // A watch session lives until the user quits, so it must not hold a lease that long.
+        if (vitest.config.watch)
+          lease.release()
+      },
+    }
+    return { ...config, plugins: [...(config.plugins ?? []), releaseInWatchMode], test: clamp(config.test, state.vitestGrant, first) }
   }
 }
