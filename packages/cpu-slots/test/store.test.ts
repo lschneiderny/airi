@@ -78,7 +78,7 @@ function putLock(pid: number, token = 'owner'): void {
 
 function takeLease(store = createStore()): StoredLease {
   const ticket = store.enqueue(request)
-  const lease = store.grant(ticket.seq, 6)
+  const lease = store.grant(ticket.seq, 6, ticket.id)
   expect(lease).toBeDefined()
   return lease!
 }
@@ -289,7 +289,7 @@ describe('token checked lock', () => {
     }
     const store = createStore(10, { fs })
     const ticket = store.enqueue(request)
-    expect(() => store.grant(ticket.seq, 6)).toThrow('busy')
+    expect(() => store.grant(ticket.seq, 6, ticket.id)).toThrow('busy')
     expect(attempts).toBe(6)
     expect(store.snapshot().tickets).toEqual([ticket])
     expect(nodeFs.list(join(root, 'leases'))).toEqual([])
@@ -310,7 +310,7 @@ describe('token checked lock', () => {
     }
     const store = createStore(10, { fs })
     const ticket = store.enqueue(request)
-    expect(() => store.grant(ticket.seq, 6)).toThrow(expect.objectContaining({ reason: 'lock-lost' }))
+    expect(() => store.grant(ticket.seq, 6, ticket.id)).toThrow(expect.objectContaining({ reason: 'lock-lost' }))
     expect(nodeFs.list(join(root, 'leases'))).toEqual([])
     expect(JSON.parse(nodeFs.read(join(root, 'broker.lock', 'owner.json'))).token).toBe('replacement')
   })
@@ -672,8 +672,8 @@ describe('tickets, leases, and heartbeat', () => {
     const second = store.enqueue(request)
     live.delete(20)
     expect(store.snapshot().tickets.map(ticket => ticket.seq)).toEqual([second.seq])
-    expect(store.grant(first.seq, 6)).toBeUndefined()
-    expect(store.grant(second.seq, 6)?.pid).toBe(10)
+    expect(store.grant(first.seq, 6, first.id)).toBeUndefined()
+    expect(store.grant(second.seq, 6, second.id)?.pid).toBe(10)
   })
 
   it('a6 re-enqueues an untouched expired waiter at the back', () => {
@@ -682,7 +682,7 @@ describe('tickets, leases, and heartbeat', () => {
     expireWithoutGap(store)
     const second = createStore(20).enqueue(request)
     expect(store.snapshot().tickets).toEqual([second])
-    expect(store.touchTicket(first.seq)).toBe(false)
+    expect(store.touchTicket(first.seq, first.id)).toBe(false)
     const replacement = store.enqueue(request)
     expect(replacement.seq).toBeGreaterThan(second.seq)
     expect(store.snapshot().tickets.map(ticket => ticket.seq)).toEqual([second.seq, replacement.seq])
@@ -692,7 +692,7 @@ describe('tickets, leases, and heartbeat', () => {
     const store = createStore()
     const ticket = store.enqueue(request)
     clock += 500
-    expect(store.touchTicket(ticket.seq)).toBe(true)
+    expect(store.touchTicket(ticket.seq, ticket.id)).toBe(true)
     expect(nodeFs.stat(join(root, 'tickets', `${ticket.seq}.json`)).mtimeMs).toBe(clock)
     store.removeTicket(ticket.seq)
     expect(store.snapshot().tickets).toEqual([])
@@ -703,9 +703,9 @@ describe('tickets, leases, and heartbeat', () => {
     const lease = takeLease(store)
     const next = createStore(20).enqueue(request)
     expireWithoutGap(store)
-    createStore(20).touchTicket(next.seq)
+    createStore(20).touchTicket(next.seq, next.id)
     expect(store.snapshot().leases).toEqual([lease])
-    expect(store.grant(next.seq, 6)).toBeUndefined()
+    expect(store.grant(next.seq, 6, next.id)).toBeUndefined()
   })
 
   it.each(['dead', 'reused'] as const)('a7b/a7c replaces a stale lease when its owner is %s', (state) => {
@@ -714,13 +714,13 @@ describe('tickets, leases, and heartbeat', () => {
     const observer = createStore()
     const next = observer.enqueue(request)
     expireWithoutGap(observer)
-    observer.touchTicket(next.seq)
+    observer.touchTicket(next.seq, next.id)
     if (state === 'dead')
       live.delete(20)
     else
       reused.add(20)
     expect(observer.snapshot().leases).toEqual([])
-    expect(observer.grant(next.seq, 6)?.pid).toBe(10)
+    expect(observer.grant(next.seq, 6, next.id)?.pid).toBe(10)
   })
 
   it('prunes a dead owner immediately even with a fresh heartbeat', () => {
@@ -789,7 +789,7 @@ describe('tickets, leases, and heartbeat', () => {
     const state = store.snapshot()
     expect(state.leases.reduce((total, lease) => total + lease.slots, 0)).toBe(12)
     expect(decide(state, 6)).toEqual({ kind: 'wait', reason: 'over-budget' })
-    expect(store.grant(ticket.seq, 6)).toBeUndefined()
+    expect(store.grant(ticket.seq, 6, ticket.id)).toBeUndefined()
     expect(store.release(first)).toBe(true)
     expect(store.snapshot().leases).toEqual([second])
   })
@@ -834,10 +834,10 @@ describe('tickets, leases, and heartbeat', () => {
     const store = createStore()
     const a = store.enqueue(request)
     const b = store.enqueue(request)
-    expect(store.grant(b.seq, 6)).toBeUndefined()
-    expect(store.grant(a.seq, 5)).toBeUndefined()
-    expect(store.grant(a.seq, 6)?.slots).toBe(6)
-    expect(store.grant(b.seq, 6)).toBeUndefined()
+    expect(store.grant(b.seq, 6, b.id)).toBeUndefined()
+    expect(store.grant(a.seq, 5, a.id)).toBeUndefined()
+    expect(store.grant(a.seq, 6, a.id)?.slots).toBe(6)
+    expect(store.grant(b.seq, 6, b.id)).toBeUndefined()
   })
 
   it('serializes exclusive requests with finite clamped bounds', () => {
@@ -845,7 +845,7 @@ describe('tickets, leases, and heartbeat', () => {
     const ticket = store.enqueue({ ...request, class: 'exclusive' })
     expect(ticket).toMatchObject({ min: 6, max: 6, exclusive: true })
     expect(store.snapshot().tickets).toEqual([ticket])
-    expect(store.grant(ticket.seq, 6)?.exclusive).toBe(true)
+    expect(store.grant(ticket.seq, 6, ticket.id)?.exclusive).toBe(true)
   })
 })
 
@@ -871,13 +871,13 @@ describe('write then verify', () => {
         nodeFs.remove(lock)
         const ticketPath = join(root, 'tickets', `${a.seq}.json`)
         nodeFs.rename(ticketPath, `${ticketPath}.tmp`)
-        expect(second.grant(b.seq, 6)).toBeDefined()
+        expect(second.grant(b.seq, 6, b.id)).toBeDefined()
         nodeFs.rename(`${ticketPath}.tmp`, ticketPath)
         nodeFs.mkdir(lock)
         nodeFs.write(join(lock, 'owner.json'), saved)
       },
     })
-    expect(first.grant(a.seq, 6)).toBeUndefined()
+    expect(first.grant(a.seq, 6, a.id)).toBeUndefined()
     expect(interleaved).toBe(true)
     const state = first.snapshot()
     expect(state.leases).toHaveLength(1)
@@ -1013,7 +1013,7 @@ describe('workload registration, pruning, and release parity', () => {
     processes = { platform: 'win32', processes: [{ pid: 40, ppid: 1, startedAt: clock }] }
     expect(observer.snapshot().leases).toEqual([lease])
     const ticket = observer.enqueue(request)
-    expect(observer.grant(ticket.seq, 6)).toBeUndefined()
+    expect(observer.grant(ticket.seq, 6, ticket.id)).toBeUndefined()
     expect(snapshot).toHaveBeenCalledTimes(1)
   })
 
@@ -1040,5 +1040,55 @@ describe('workload registration, pruning, and release parity', () => {
     const observer = createStore(10, { now: () => clock++ })
     expect(observer.snapshot().leases).toEqual([])
     expect(snapshot).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('audit follow-ups (2026-10-22)', () => {
+  it('f16 refuses to touch or grant a seq whose file now holds another ticket id', () => {
+    const store = createStore()
+    const ours = store.enqueue(request)
+    // A writer past a broken lock queued its own ticket under the same seq.
+    const theirs = { ...ours, id: 'other-ticket', pid: 20 }
+    writeJson(join(root, 'tickets', `${ours.seq}.json`), theirs)
+    expect(store.touchTicket(ours.seq, ours.id)).toBe(false)
+    expect(store.grant(ours.seq, 6, ours.id)).toBeUndefined()
+    expect(nodeFs.list(join(root, 'leases'))).toEqual([])
+    expect(store.snapshot().tickets).toEqual([theirs])
+  })
+
+  it('f31 enqueue under a ticket id that is already queued returns that ticket instead of a second one', () => {
+    const store = createStore()
+    const first = store.enqueue(request, 'call-id')
+    expect(store.enqueue(request, 'call-id')).toEqual(first)
+    expect(nodeFs.list(join(root, 'tickets'))).toEqual([`${first.seq}.json`])
+  })
+
+  it('f31 adopts a lease whose grant committed before its transaction failed, and removes its ticket', () => {
+    const store = createStore()
+    const ticket = store.enqueue({ ...request, class: 'exclusive' }, 'call-id')
+    // The grant wrote its lease, then failed before it removed the ticket.
+    writeJson(join(root, 'leases', 'call-id.json'), { ...ticket, slots: 6, workload: [] })
+    const adopted = store.adopt('call-id')
+    expect(adopted).toMatchObject({ id: 'call-id', pid: 10, slots: 6, exclusive: true })
+    expect(store.snapshot()).toEqual({ leases: [adopted], tickets: [] })
+    expect(store.adopt('other-call')).toBeUndefined()
+  })
+
+  it('f31 drops an adopted lease that no longer fits beside the live leases', () => {
+    const store = createStore()
+    const ticket = store.enqueue({ ...request, class: 'exclusive' }, 'call-id')
+    writeJson(join(root, 'leases', 'call-id.json'), { ...ticket, slots: 6, workload: [] })
+    putLease('foreign', 20)
+    expect(store.adopt('call-id')).toBeUndefined()
+    expect(nodeFs.list(join(root, 'leases'))).toEqual(['foreign.json'])
+    expect(store.snapshot().tickets).toEqual([ticket])
+  })
+
+  it('f31 withdraw removes the ticket and any lease of a call', () => {
+    const store = createStore()
+    const ticket = store.enqueue(request, 'call-id')
+    writeJson(join(root, 'leases', 'call-id.json'), { ...ticket, slots: 6, workload: [] })
+    store.withdraw('call-id')
+    expect(store.snapshot()).toEqual({ leases: [], tickets: [] })
   })
 })

@@ -198,7 +198,11 @@ export class Store {
     }
   }
 
-  enqueue(request: StoreRequest): Ticket {
+  /**
+   * Queues `request` under ticket `id`. A caller that retries after a failed transaction passes the
+   * same id, and gets back the ticket that transaction may already have committed instead of a second one.
+   */
+  enqueue(request: StoreRequest, id: string = randomUUID()): Ticket {
     return this.transact(() => {
       const defaults = classes[request.class]
       const min = Math.min(request.min ?? defaults.min, this.budget)
@@ -206,12 +210,15 @@ export class Store {
       if (!Number.isSafeInteger(min) || min < 1 || !Number.isSafeInteger(max) || max < min)
         throw new Error('Invalid slot range')
       const state = this.snapshot()
+      const existing = state.tickets.find(ticket => ticket.id === id)
+      if (existing)
+        return existing
       const counter = this.readJson(join(this.root, 'counter.json'))
       const next = object(counter) && Number.isSafeInteger(counter.next) ? Number(counter.next) : 1
       const seq = Math.max(next, 1, ...state.tickets.map(ticket => ticket.seq + 1))
       const ticket: Ticket = {
         seq,
-        id: randomUUID(),
+        id,
         pid: this.pid,
         startedAt: this.startedAt,
         class: request.class,
@@ -228,11 +235,16 @@ export class Store {
     })
   }
 
-  touchTicket(seq: number): boolean {
+  /** Refreshes ticket `id` at `seq`. False when that file is gone or now holds another ticket. */
+  touchTicket(seq: number, id: string): boolean {
     return this.transact(() => {
       this.checkToken()
+      const path = this.ticketPath(seq)
+      const current = this.readJson(path)
+      if (!ticketRecord(current) || current.id !== id)
+        return false
       try {
-        this.fs.touch(this.ticketPath(seq), this.now())
+        this.fs.touch(path, this.now())
         return true
       }
       catch (error) {
@@ -247,13 +259,16 @@ export class Store {
     this.transact(() => this.remove(this.ticketPath(seq)))
   }
 
-  grant(ticketSeq: number, slots: number): StoredLease | undefined {
+  /** Grants ticket `ticketId` at `ticketSeq` when it heads the queue for `slots`; a seq that now holds another ticket is refused. */
+  grant(ticketSeq: number, slots: number, ticketId: string): StoredLease | undefined {
     return this.transact(() => {
       const state = this.snapshot()
       const decision = decide(state, this.budget)
       if (decision.kind !== 'grant' || decision.ticketSeq !== ticketSeq || decision.slots !== slots)
         return undefined
       const ticket = state.tickets.find(ticket => ticket.seq === ticketSeq)!
+      if (ticket.id !== ticketId)
+        return undefined
       const lease: StoredLease = {
         id: ticket.id,
         pid: ticket.pid,
@@ -268,16 +283,45 @@ export class Store {
       }
       const path = this.leasePath(lease.id)
       this.write(path, lease)
-      const live = this.snapshot().leases
-      const own = live.find(record => record.id === lease.id)
-      const others = live.filter(record => record.id !== lease.id)
-      if (!own || live.reduce((total, record) => total + record.slots, 0) > this.budget
-        || (lease.exclusive ? others.length > 0 : others.some(record => record.exclusive))) {
+      if (!this.fits(lease, this.snapshot().leases)) {
         this.remove(path)
         return undefined
       }
       this.remove(this.ticketPath(ticketSeq))
       return lease
+    })
+  }
+
+  /**
+   * The lease a grant of ticket `id` committed when that grant's transaction failed after its write:
+   * its caller never learned of the lease, and would otherwise queue again and wait on its own lease.
+   * The lease is verified again like a fresh grant, and its ticket, when still queued, is removed.
+   */
+  adopt(id: string): StoredLease | undefined {
+    return this.transact(() => {
+      const path = this.leasePath(id)
+      if (this.readJson(path) === undefined)
+        return undefined
+      const state = this.snapshot()
+      const lease = state.leases.find(record => record.id === id)
+      if (!lease || lease.pid !== this.pid)
+        return undefined
+      if (!this.fits(lease, state.leases)) {
+        this.remove(path)
+        return undefined
+      }
+      for (const ticket of state.tickets.filter(ticket => ticket.id === id))
+        this.remove(this.ticketPath(ticket.seq))
+      return lease
+    })
+  }
+
+  /** Removes ticket `id` and any lease a grant committed for it, for a caller that stops waiting. */
+  withdraw(id: string): void {
+    this.transact(() => {
+      for (const ticket of this.snapshot().tickets.filter(ticket => ticket.id === id))
+        this.remove(this.ticketPath(ticket.seq))
+      this.remove(this.leasePath(id))
     })
   }
 
@@ -722,6 +766,14 @@ export class Store {
         throw new StoreBusyError('entry-busy')
       throw error
     }
+  }
+
+  /** Write-then-verify: whether `lease` may stand beside the live leases of a fresh snapshot. */
+  private fits(lease: StoredLease, live: StoredLease[]): boolean {
+    const others = live.filter(record => record.id !== lease.id)
+    return live.some(record => record.id === lease.id)
+      && live.reduce((total, record) => total + record.slots, 0) <= this.budget
+      && !(lease.exclusive ? others.length > 0 : others.some(record => record.exclusive))
   }
 
   private checkToken(): void {

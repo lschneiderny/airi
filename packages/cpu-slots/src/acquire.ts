@@ -3,6 +3,7 @@ import type { StoredLease, StoreRequest, Ticket } from './store'
 
 import process from 'node:process'
 
+import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -259,6 +260,9 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
     return reuse(current.retain(), request)
   }
   const store = new Store({ root, budget })
+  // One id for the whole call: every ticket it queues and the lease it is granted carry it, so a retry
+  // finds what an earlier, failed transaction of this call already committed.
+  const id = randomUUID()
   let ticket: Ticket | undefined
   let waiting = false
   let inheritedChecked = false
@@ -274,16 +278,14 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
       let delay = 500
       try {
         if (request.signal?.aborted) {
-          if (ticket)
-            store.removeTicket(ticket.seq)
+          store.withdraw(id)
           finish()
           reject(request.signal.reason ?? new Error('cancelled'))
           return
         }
-        const result = store.transact(() => {
+        const result = store.transact((): Lease | { record: StoredLease, seq: number } | undefined => {
           if (!inheritedChecked) {
             const parent = store.snapshot().leases.find(lease => lease.id === process.env.AIRI_CPU_LEASE)
-            inheritedChecked = true
             if (parent) {
               const advertised = Number(process.env.AIRI_CPU_GRANT)
               const grant = Number.isSafeInteger(advertised) && advertised > 0 ? Math.min(advertised, parent.slots) : parent.slots
@@ -301,24 +303,35 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
               return reuse(inherited, request)
             }
           }
-          if (!ticket || !store.touchTicket(ticket.seq))
-            ticket = store.enqueue(request)
+          // Adopt this call's lease before touching or queueing a ticket. A transaction can report busy
+          // after its grant committed, even between grant()'s own steps, which no rule in transact()
+          // can classify; a new ticket would then wait on that lease forever. The id finds it every time.
+          const adopted = ticket && store.adopt(id)
+          if (adopted)
+            return { record: adopted, seq: ticket!.seq }
+          if (!ticket || !store.touchTicket(ticket.seq, id))
+            ticket = store.enqueue(request, id)
           const state = store.snapshot()
           const decision = decide(state, budget)
           if (decision.kind === 'grant' && decision.ticketSeq === ticket.seq) {
-            const record = store.grant(ticket.seq, decision.slots)
+            const record = store.grant(ticket.seq, decision.slots, id)
             if (record)
-              return owned(store, record, ticket.seq)
+              return { record, seq: ticket.seq }
           }
           if (!waiting) {
             console.error(`cpu-slots: waiting for ${Math.min(min, budget)} slot(s) of ${request.class} (held ${state.leases.reduce((sum, lease) => sum + lease.slots, 0)}/${budget}, ${state.tickets.filter(other => other.seq < ticket!.seq).length} ahead)`)
             waiting = true
           }
         })
+        // Only a committed transaction settles the inheritance check; a busy one repeats it.
+        inheritedChecked = true
         if (result) {
+          // Registration (heartbeat, exit hook) happens once the transaction has committed, so a
+          // retried transaction never registers the same lease twice.
+          const lease = 'record' in result ? owned(store, result.record, result.seq) : result
           finish()
-          console.error(`cpu-slots: granted ${result.grant} (${request.class})`)
-          resolveLease(result)
+          console.error(`cpu-slots: granted ${lease.grant} (${request.class})`)
+          resolveLease(lease)
           return
         }
       }

@@ -29,7 +29,8 @@ it('reads an absent store as empty without creating it', () => {
 it('reads a live lease and a queued ticket, with storePath first', () => {
   const store = new Store({ root, budget: 8 })
   const request = { class: 'test', cwd: '/worktree', command: 'job' } as const
-  const lease = store.grant(store.enqueue({ ...request, min: 6, max: 6 }).seq, 6)!
+  const granted = store.enqueue({ ...request, min: 6, max: 6 })
+  const lease = store.grant(granted.seq, 6, granted.id)!
   const ticket = store.enqueue({ ...request, min: 6, max: 6 })
   const status = readStatus({ root })
   expect(Object.keys(status)[0]).toBe('storePath')

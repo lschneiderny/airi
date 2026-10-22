@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { acquire } from '../src/acquire'
+import { nodeFs } from '../src/fs-adapter'
 import { workloadAlive } from '../src/liveness'
 import { Store } from '../src/store'
 
@@ -128,7 +129,8 @@ describe('acquire lifecycle', () => {
   it('re-enqueues a pruned ticket and cancels without leaving a ticket', async () => {
     vi.useFakeTimers()
     const holderStore = new Store({ root, budget: 8 })
-    const holder = holderStore.grant(holderStore.enqueue({ ...request, min: 8, max: 8 }).seq, 8)!
+    const held = holderStore.enqueue({ ...request, min: 8, max: 8 })
+    const holder = holderStore.grant(held.seq, 8, held.id)!
     const abort = new AbortController()
     const pending = acquire({ ...request, signal: abort.signal })
     const rejected = expect(pending).rejects.toThrow('cancel-test')
@@ -151,7 +153,7 @@ describe('acquire lifecycle', () => {
     holder.release()
     const store = new Store({ root, budget: 8 })
     const blocker = store.enqueue({ ...request, class: 'exclusive' })
-    const blockLease = store.grant(blocker.seq, 8)!
+    const blockLease = store.grant(blocker.seq, 8, blocker.id)!
     const order: number[] = []
     const pending = Array.from({ length: 20 }, (_, index) => acquire({ ...request, class: 'exclusive' }).then((lease) => {
       order.push(index)
@@ -167,7 +169,7 @@ describe('acquire lifecycle', () => {
   it('a10 inherits a live store lease without queueing, then queues after release', async () => {
     const store = new Store({ root, budget: 8 })
     const ticket = store.enqueue(request)
-    const parent = store.grant(ticket.seq, 6)!
+    const parent = store.grant(ticket.seq, 6, ticket.id)!
     vi.stubEnv('AIRI_CPU_LEASE', parent.id)
     vi.stubEnv('AIRI_CPU_GRANT', '6')
     const child = await take({ ...request, class: 'browser' })
@@ -205,7 +207,7 @@ describe('releaseIfIdle uses the pruning workload rule', () => {
       snapshotProcesses: snapshots,
     })
     const ticket = store.enqueue(request)
-    const record = store.grant(ticket.seq, 6)!
+    const record = store.grant(ticket.seq, 6, ticket.id)!
     if (registered)
       store.addWorkload(record, 20)
     expect(workloadAlive(record, snapshot)).toBe(alive)
@@ -213,5 +215,88 @@ describe('releaseIfIdle uses the pruning workload rule', () => {
     expect(snapshots).toHaveBeenCalledTimes(1)
     ownerAlive = false
     expect(store.snapshot().leases.some(lease => lease.id === record.id)).toBe(alive)
+  })
+})
+
+describe('audit follow-ups (2026-10-22)', () => {
+  const owner = (): string => join(root, 'broker.lock', 'owner.json')
+  const epermError = (): Error => Object.assign(new Error('EPERM'), { code: 'EPERM' })
+
+  /**
+   * Fails the next read of the lock's owner.json with EPERM, once `trigger` has seen a matching rename or
+   * remove: the store then reports entry-busy from its next lock check, after that step committed.
+   */
+  function failLockCheckAfter(trigger: (op: 'rename' | 'remove', path: string) => boolean): () => number {
+    const original = { ...nodeFs }
+    let armed = false
+    let fired = 0
+    vi.spyOn(nodeFs, 'rename').mockImplementation((from, to) => {
+      original.rename(from, to)
+      if (!fired && trigger('rename', to))
+        armed = true
+    })
+    vi.spyOn(nodeFs, 'remove').mockImplementation((path) => {
+      original.remove(path)
+      if (!fired && trigger('remove', path))
+        armed = true
+    })
+    vi.spyOn(nodeFs, 'read').mockImplementation((path) => {
+      if (armed && path === owner()) {
+        armed = false
+        fired++
+        throw epermError()
+      }
+      return original.read(path)
+    })
+    return () => fired
+  }
+
+  /** Starts an acquire that the test settles by aborting, and records how it settled. */
+  function track(options: AcquireOptions): { abort: AbortController, settled: () => { lease?: Lease, error?: unknown } | undefined } {
+    const abort = new AbortController()
+    let result: { lease?: Lease, error?: unknown } | undefined
+    acquire({ ...options, signal: abort.signal }).then((lease) => {
+      leases.push(lease)
+      result = { lease }
+    }, (error: unknown) => {
+      result = { error }
+    })
+    return { abort, settled: () => result }
+  }
+
+  const grantedTicket = (op: 'rename' | 'remove', path: string): boolean => op === 'remove' && /tickets[\\/]\d+\.json$/.test(path)
+  const writtenLease = (op: 'rename' | 'remove', path: string): boolean => op === 'rename' && path.startsWith(join(root, 'leases'))
+
+  it('f31 a lock check that fails after the grant committed leaves one lease, not two', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fired = failLockCheckAfter(grantedTicket)
+    const call = track(request)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(fired()).toBe(1)
+    const lease = call.settled()?.lease
+    expect(readdirSync(join(root, 'leases'))).toEqual([`${lease!.id}.json`])
+    expect(lease).toMatchObject({ grant: 6, inherited: false })
+    expect(readdirSync(join(root, 'tickets'))).toEqual([])
+    call.abort.abort()
+  })
+
+  it.each([
+    ['after the grant committed', grantedTicket],
+    ['between the lease write and the ticket removal', writtenLease],
+  ] as const)('f31 an exclusive request whose lock check fails %s is granted instead of waiting on itself', async (_name, trigger) => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fired = failLockCheckAfter(trigger)
+    const call = track({ ...request, class: 'exclusive' })
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(fired()).toBe(1)
+    try {
+      expect(call.settled()?.lease).toMatchObject({ grant: 8, exclusive: true })
+      expect(readdirSync(join(root, 'leases'))).toHaveLength(1)
+    }
+    finally {
+      call.abort.abort()
+    }
   })
 })
