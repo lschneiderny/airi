@@ -222,7 +222,7 @@ Preview never marks events as shown.
 
 Pre-existing gaps that this design does not fix:
 
-- A message typed into a follower chat window while the previous reply is speaking and the leader reloads is lost. `requestStopSpeaking` waits forever for the reloaded leader, and later sends from that window are ignored. This also happens on main.
+- A message typed into a follower chat window while the previous reply is speaking and the leader reloads used to be lost: `requestStopSpeaking` waited forever for the reloaded leader, and later sends from that window were ignored. Each output host connection now carries a `hostId` in its snapshots, and a host detaches when its page hides. A stop request that the departed host did not answer starts again with the next host, so the message is sent once the reloaded leader is back. Two gaps remain. When the previous reply was itself sent from that follower window, its `send` call was still running, and tab-election delivers it again to the new leader, which generates that reply again; the new message waits until it ends. A message sent in the moment before the leader's page unloads can still fail with the aborted turn, and the composer then keeps it.
 - The context bridge watches the `airi-spark-notify-bridge` channel only after the server channel connects. Without a connected server channel, client-role widget requests time out to their fallback, and that window records no shared reactions.
 
 ## Alternatives

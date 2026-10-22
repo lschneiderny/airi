@@ -7,6 +7,7 @@ import type { ChatToolReference } from '../types/chat'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { errorMessageFrom } from '@moeru/std'
 import { turnKey } from '@proj-airi/core-agent'
+import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
 import { computed, onScopeDispose, shallowRef, watch } from 'vue'
 
@@ -63,6 +64,8 @@ export const useVoiceStore = defineStore('voice', () => {
   /** One trace per open response turn. It ends after the response drains, is cancelled, or fails to open. */
   const speechTraces = new Map<string, ReturnType<typeof traceSpeechOutput>>()
   let output: ((turn: TurnRef) => SpeechOutput) | undefined
+  /** Identifies the current output connection in snapshots; see {@link VoiceHostSnapshot.hostId}. */
+  let hostId: string | undefined
   let listening: VoicePluginHandle | undefined
   let detectorOptions: Pick<VoiceActivityOptions, 'detectWakeWord' | 'acceptSpeech'> = {}
   const inputRequests = new Map<string, SpeechInputAttempt>()
@@ -139,6 +142,7 @@ export const useVoiceStore = defineStore('voice', () => {
 
     const snapshot: VoiceHostSnapshot = {
       connected: true,
+      hostId,
       microphone: { enabled: devices.enabled, ready: !!devices.stream, error: devices.error },
       wakeWords: { preparation: wakeWordDetection.preparation, ...(wakeWordDetection.error ? { error: wakeWordDetection.error } : {}) },
       drafts: drafts.value.map(draft => ({ ...draft })),
@@ -314,12 +318,19 @@ export const useVoiceStore = defineStore('voice', () => {
     }
   }
 
-  /** The mounted scene supplies its browser output. Detachment stops only this host's responses. */
+  /**
+   * The mounted scene supplies its browser output. Detachment stops only this host's responses.
+   *
+   * The host also detaches when its page hides, for example on a reload, so other windows learn at once that it is
+   * gone and ask its successor instead.
+   */
   function connectOutput(factory: (turn: TurnRef) => SpeechOutput) {
     if (output)
       throw new Error('Voice output host is already connected')
 
     output = factory
+    hostId = nanoid()
+    let detached = false
     const context = getSpeechBusContext()
     const producers = new Map<string, SpeechStream>()
     const opened = new Set<string>()
@@ -411,7 +422,15 @@ export const useVoiceStore = defineStore('voice', () => {
       }),
       context.on(voiceRequestTurns, () => context.emit(voiceTurnsChanged, activeTurns.value.map(turn => ({ ...turn })))),
       defineInvokeHandler(context, voiceGetTurns, () => activeTurns.value.map(turn => ({ ...turn }))),
-      defineInvokeHandler(context, voiceInterrupt, async request => ({ status: (await interrupt(request.turns, request.cause).done).status })),
+      defineInvokeHandler(context, voiceInterrupt, async (request) => {
+        const { status } = await interrupt(request.turns, request.cause).done
+        // A host that detached meanwhile stopped the responses itself, and on a page that unloads it could not record
+        // the interruption. A failed receipt would fail the caller's send, so it rejects instead, and the caller asks
+        // the next host (see useSpeechOutputControlStore).
+        if (detached)
+          throw new Error('Voice output host detached')
+        return { status }
+      }),
       defineInvokeHandler(context, voiceSpeechCommand, async (body) => {
         // The full key isolates a producer from other windows and turns.
         const key = JSON.stringify([body.originId, body.producerId, body.turn.sessionId, body.turn.turnId])
@@ -460,9 +479,14 @@ export const useVoiceStore = defineStore('voice', () => {
     updateActiveTurns()
     publishSnapshot()
 
-    return () => {
+    function detach() {
+      if (detached)
+        return
+      detached = true
+      window.removeEventListener('pagehide', detach, { capture: true })
       stops.forEach(stop => stop())
       output = undefined
+      hostId = undefined
       for (const entry of responses.values())
         entry.response.cancel('Voice output host detached')
       responses.clear()
@@ -474,6 +498,12 @@ export const useVoiceStore = defineStore('voice', () => {
       context.emit(voiceTurnsChanged, [])
       context.emit(voiceSnapshotChanged, { connected: false, drafts: drafts.value.map(draft => ({ ...draft })) })
     }
+
+    // A capture listener runs before the non-capture `pagehide` listener with which setupSynced disposes the synced
+    // runtime. An interruption that the host is recording fails once that runtime is gone, and `detached` must be set
+    // by then, so the host sends no failed receipt for it.
+    window.addEventListener('pagehide', detach, { capture: true })
+    return detach
   }
 
   function startListening(options: Pick<VoiceActivityOptions, 'detectWakeWord' | 'acceptSpeech'> = detectorOptions) {

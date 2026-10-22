@@ -1,9 +1,11 @@
+import type { VoiceHostSnapshot } from '../services/speech/bus'
+
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
-import { getSpeechBusContext, speechInputUserSpeakingChangedEvent } from '../services/speech/bus'
+import { getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceSnapshotChanged } from '../services/speech/bus'
 import { useHearingStore } from './modules/hearing'
 import { useSettingsAudioDevice } from './settings/audio-device'
 import { useVoiceStore } from './voice'
@@ -80,5 +82,34 @@ describe('voice store user speech', () => {
     await nextTick()
     getSpeechBusContext().emit(speechInputUserSpeakingChangedEvent, { speaking: false })
     await expect.poll(() => changes).toEqual([false])
+  })
+})
+
+describe('voice store output host', () => {
+  it('names each output connection, and detaches when its page hides', () => {
+    const { voice } = mountVoice()
+    const snapshots: VoiceHostSnapshot[] = []
+    const stop = getSpeechBusContext().on(voiceSnapshotChanged, ({ body }) => {
+      if (body)
+        snapshots.push(body)
+    })
+    cleanups.push(stop)
+    const failOutput = () => {
+      throw new Error('This test opens no response')
+    }
+
+    const disconnect = voice.connectOutput(failOutput)
+    const first = snapshots.at(-1)
+    expect(first).toMatchObject({ connected: true, hostId: expect.any(String) })
+
+    // A reload hides the page first. The host leaves the bus then, so no window waits for its answers.
+    window.dispatchEvent(new Event('pagehide'))
+    expect(snapshots.at(-1)).toEqual({ connected: false, drafts: [] })
+    disconnect()
+    expect(snapshots.filter(snapshot => !snapshot.connected)).toHaveLength(1)
+
+    cleanups.push(voice.connectOutput(failOutput))
+    expect(snapshots.at(-1)).toMatchObject({ connected: true, hostId: expect.any(String) })
+    expect(snapshots.at(-1)?.hostId).not.toBe(first?.hostId)
   })
 })

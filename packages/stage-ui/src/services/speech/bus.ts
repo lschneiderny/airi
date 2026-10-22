@@ -111,6 +111,11 @@ export interface VoiceDraft {
 /** A snapshot replaces earlier presentation state. Commands still target the original request or draft identity. */
 export interface VoiceHostSnapshot {
   readonly connected: boolean
+  /**
+   * Identifies one connection of the output host. A new value means that the host window reloaded or another window
+   * took over, so a request that the earlier host received gets no answer. A disconnected snapshot has none.
+   */
+  readonly hostId?: string
   readonly microphone?: { readonly enabled: boolean, readonly ready: boolean, readonly error?: string }
   /** Preparation of the host's wake word detector. Settings in other windows read it from here. */
   readonly wakeWords?: { readonly preparation: WakeWordPreparation, readonly error?: string }
