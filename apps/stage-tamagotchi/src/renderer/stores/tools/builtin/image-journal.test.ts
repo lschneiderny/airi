@@ -1,12 +1,17 @@
+import type * as ImageJournal from './image-journal'
+
 import { resolveArtistryConfigFromStore } from '@proj-airi/stage-ui/stores/modules/artistry'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { installStrictToolSchemaMatchers } from '../testing/strict-tool-schema'
 
 installStrictToolSchemaMatchers()
 
 describe('image_journal config snapshot', () => {
-  it('uses required nullable fields for strict provider schemas', async () => {
+  let imageJournalTools: typeof ImageJournal.imageJournalTools
+
+  // The first import transforms the artistry store graph cold, which can pass a 15 s test timeout under load.
+  beforeAll(async () => {
     const mockLocation = {
       origin: 'http://localhost',
       hash: '',
@@ -19,11 +24,14 @@ describe('image_journal config snapshot', () => {
     })
     vi.stubGlobal('location', mockLocation)
 
-    const { imageJournalTools } = await import('./image-journal')
+    ;({ imageJournalTools } = await import('./image-journal'))
+  }, 60_000)
+
+  it('uses required nullable fields for strict provider schemas', async () => {
     const tools = await imageJournalTools()
 
     expect(tools).toSatisfyStrictToolSchemas()
-  }, 15_000)
+  })
 
   it('extracts plain values instead of leaking Ref objects', () => {
     const config = resolveArtistryConfigFromStore({
