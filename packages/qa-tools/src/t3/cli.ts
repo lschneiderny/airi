@@ -5,6 +5,8 @@ import process, { env, pid, ppid, stderr, stdout } from 'node:process'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
+import { acquire } from '@proj-airi/cpu-slots'
+
 import { loadT3Scenario, parseT3Args, resolveRig, t3RigCatalogs, t3Usage, T3UsageError } from './args'
 import { runT3 } from './run-t3'
 
@@ -48,7 +50,16 @@ export async function runT3Cli(argv: readonly string[], repoRoot: string): Promi
   for (const [signal, listener] of listeners)
     process.on(signal, listener)
 
+  let lease: Awaited<ReturnType<typeof acquire>> | undefined
   try {
+    // Exclusive: a rendered run measures frames, so nothing else may compete. `--keep-open` holds the lease until teardown.
+    lease = await acquire({ class: 'exclusive', command: `qa:motion t3 ${argv.join(' ')}`, cwd: repoRoot, signal: controller.signal }).catch((error: unknown) => {
+      if (controller.signal.aborted)
+        return undefined
+      throw error
+    })
+    if (!lease)
+      return 130
     const result = await runT3({
       repoRoot,
       rig: prepared.rig,
@@ -64,6 +75,7 @@ export async function runT3Cli(argv: readonly string[], repoRoot: string): Promi
     return result.exitCode
   }
   finally {
+    lease?.release()
     for (const [signal, listener] of listeners)
       process.off(signal, listener)
   }

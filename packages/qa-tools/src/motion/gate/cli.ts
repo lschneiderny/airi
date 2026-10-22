@@ -1,3 +1,4 @@
+import type { CpuClass, Lease } from '@proj-airi/cpu-slots'
 import type { Band, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 
 import type { GateLevel, GateSelection } from './options'
@@ -10,6 +11,7 @@ import { cpus, freemem, totalmem } from 'node:os'
 import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
+import { acquire, CpuSlotsError } from '@proj-airi/cpu-slots'
 
 import { resolveVitestEntry } from '../../env/pnpm'
 import { createRun } from '../../evidence/run'
@@ -28,14 +30,15 @@ export const gateUsage = `Usage: motion gate <emotion | liveliness> --level <t1 
   --emotions comma list of: ${gateEmotions.join(', ')} (emotion gate only; default all)
   --bands    comma list of: ${gateBands.join(', ')} (emotion gate only; default all)
   --seeds    run at most N seeds per variant, a reduced run that the report records (emotion gate only)
-  --workers  Vitest workers (default: cores - 1); the report is the same for any count
+  --workers  Vitest workers (default: the CPU slot grant; a larger value is clamped to it); the report is the same for any count
 Exit codes: 0 every check passed, 1 a check failed or the run broke, 2 usage, T2/T3 setup error or a T3 refusal before launch, 130 T3 interrupted.`
 
 export interface GateCommand {
   target: 'emotion' | 'liveliness'
   level: GateLevel
   selection: GateSelection
-  workers: number
+  /** The requested worker count, or `null` for the CPU slot grant (resolved after acquire). */
+  workers: number | null
   timeoutMinutes: number
   /** `--level t3` emotion gate: the T1 reference run dir, or `null` to find it. */
   t1Report: string | null
@@ -65,7 +68,7 @@ function parsePositiveInteger(raw: string | undefined, name: string): number | n
 }
 
 /** Validates `gate` arguments (everything after the `gate` word is the caller's `rest`). */
-export function parseGateArgs(rest: string[], defaultWorkers = Math.max(1, cpus().length - 1)): ParsedGateArgs {
+export function parseGateArgs(rest: string[]): ParsedGateArgs {
   let values: { 'level'?: string, 'rig'?: string, 'emotions'?: string, 'bands'?: string, 'seeds'?: string, 'workers'?: string, 'timeout-minutes'?: string, 't1-report'?: string, 'rescore'?: string }
   let positionals: string[]
   try {
@@ -116,7 +119,7 @@ export function parseGateArgs(rest: string[], defaultWorkers = Math.max(1, cpus(
     return { ok: false, message: timeoutMinutes }
   return {
     ok: true,
-    command: { target, level: values.level, selection: { emotions, bands, seedsLimit: seeds }, workers: workers ?? defaultWorkers, timeoutMinutes: timeoutMinutes ?? (target === 'emotion' ? 90 : 30), t1Report: values['t1-report'] ?? null, rescore: values.rescore ?? null },
+    command: { target, level: values.level, selection: { emotions, bands, seedsLimit: seeds }, workers, timeoutMinutes: timeoutMinutes ?? (target === 'emotion' ? 90 : 30), t1Report: values['t1-report'] ?? null, rescore: values.rescore ?? null },
   }
 }
 
@@ -137,12 +140,37 @@ async function sampleCpuUtilization(ms = 500): Promise<number> {
   return total > 0 ? 1 - (after.idle - before.idle) / total : 0
 }
 
+/**
+ * Waits for a CPU slot lease. Returns the lease, or an exit code after printing why it could not be taken.
+ * `timeoutMinutes` bounds the wait, so a stuck holder cannot hang the command forever.
+ */
+export async function acquireLease(request: { class: CpuClass, command: string, cwd: string, timeoutMinutes?: number }): Promise<Lease | number> {
+  try {
+    return await acquire({ class: request.class, command: request.command, cwd: request.cwd, signal: request.timeoutMinutes === undefined ? undefined : AbortSignal.timeout(request.timeoutMinutes * 60_000) })
+  }
+  catch (error) {
+    console.error(`Cannot get CPU slots: ${errorMessageFrom(error) ?? 'unknown error'}`)
+    return error instanceof CpuSlotsError ? 2 : 1
+  }
+}
+
+/** The worker count for a run: the grant by default, an explicit request clamped to it. Without a grant (CI or slots off) the old default applies. */
+export function resolveWorkers(requested: number | null, grant: number | null): number {
+  if (grant === null)
+    return requested ?? Math.max(1, cpus().length - 1)
+  if (requested !== null && requested > grant) {
+    console.info(`--workers ${requested} clamped to grant ${grant}`)
+    return grant
+  }
+  return requested ?? grant
+}
+
 interface VitestResult {
   exitCode: number | null
   timedOut: boolean
 }
 
-function runVitest(repoRoot: string, files: string[], env: NodeJS.ProcessEnv, workers: number, logFile: string, timeoutMs: number): Promise<VitestResult> {
+function runVitest(repoRoot: string, files: string[], env: NodeJS.ProcessEnv, workers: number, logFile: string, timeoutMs: number, lease: Lease): Promise<VitestResult> {
   return new Promise((done, fail) => {
     const log = openSync(logFile, 'w')
     const child = spawn(process.execPath, [resolveVitestEntry(), 'run', '--config', 'packages/qa-tools/vitest.config.ts', '--project', 'gate', '--maxWorkers', String(workers), ...files], {
@@ -150,6 +178,8 @@ function runVitest(repoRoot: string, files: string[], env: NodeJS.ProcessEnv, wo
       env,
       stdio: ['ignore', log, log],
     })
+    if (child.pid !== undefined)
+      lease.addWorkload(child.pid)
     let timedOut = false
     const timer = setTimeout(() => {
       timedOut = true
@@ -181,9 +211,21 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
     console.error(`${parsed.message}\n${gateUsage}`)
     return 2
   }
-  const { target, level, selection, workers, timeoutMinutes } = parsed.command
-  if (level === 't3')
-    return runT3Gate({ target, t1Report: parsed.command.t1Report, rescore: parsed.command.rescore }, repoRoot, env, () => gateFileSha(repoRoot))
+  const { target, level, selection, timeoutMinutes } = parsed.command
+  if (level === 't3') {
+    // A re-score launches nothing, so it takes no lease.
+    if (parsed.command.rescore !== null)
+      return runT3Gate({ target, t1Report: parsed.command.t1Report, rescore: parsed.command.rescore }, repoRoot, env, () => gateFileSha(repoRoot))
+    const t3Lease = await acquireLease({ class: 'exclusive', command: `qa:motion ${rest.join(' ')}`, cwd: repoRoot })
+    if (typeof t3Lease === 'number')
+      return t3Lease
+    try {
+      return await runT3Gate({ target, t1Report: parsed.command.t1Report, rescore: null }, repoRoot, env, () => gateFileSha(repoRoot))
+    }
+    finally {
+      t3Lease.release()
+    }
+  }
   if (level === 't2') {
     try {
       await loadT2Runtime({ rigRoot: env.AIRI_QA_RIG_FORBOOTH, corePath: env.AIRI_QA_CUBISM_CORE })
@@ -193,6 +235,10 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
       return error instanceof T2SetupError ? 2 : 1
     }
   }
+  const lease = await acquireLease({ class: 'gate', command: `qa:motion ${rest.join(' ')}`, cwd: repoRoot, timeoutMinutes })
+  if (typeof lease === 'number')
+    return lease
+  const workers = resolveWorkers(parsed.command.workers, lease.grant)
   const emotionGate = emotionGateFor(level)
   const naturalIdleLivelinessGate = livelinessGateFor(level)
   const gate = target === 'emotion' ? emotionGate : naturalIdleLivelinessGate
@@ -204,6 +250,7 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
   }
   catch (error) {
     console.error(`Cannot start the run: ${errorMessageFrom(error) ?? 'unknown error'}`)
+    lease.release()
     return 1
   }
 
@@ -215,10 +262,12 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
   mkdirSync(run.path('partials'), { recursive: true })
 
   const finish = (exitCode: number, summary: string) => {
+    lease.release()
     const wallSeconds = Math.round((Date.now() - started) / 100) / 10
     const timing = {
       wallSeconds,
       workers,
+      grant: lease.grant,
       cores: cpus().length,
       cpuUtilizationBefore: Math.round(cpuBefore * 1000) / 1000,
       freeMemoryGb: Math.round(freemem() / 2 ** 30 * 10) / 10,
@@ -236,13 +285,14 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
   try {
     const result = await runVitest(repoRoot, files, {
       ...env,
+      ...lease.env,
       QA_RUN_DIR: run.dir,
       QA_GATE: gate.id,
       QA_LEVEL: level,
       QA_EMOTIONS: selection.emotions.join(','),
       QA_BANDS: selection.bands.join(','),
       ...(selection.seedsLimit === null ? {} : { QA_SEEDS: String(selection.seedsLimit) }),
-    }, workers, run.path('vitest.log'), timeoutMinutes * 60_000)
+    }, workers, run.path('vitest.log'), timeoutMinutes * 60_000, lease)
     run.addArtifact('vitest.log', 'log')
     if (result.exitCode !== 0) {
       const reason = result.timedOut ? `timed out after ${timeoutMinutes} min` : `vitest exited ${result.exitCode}`

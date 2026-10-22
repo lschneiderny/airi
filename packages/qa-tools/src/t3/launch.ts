@@ -6,6 +6,7 @@ import type { LiveProcess, OwnedProcess, ProcessLister } from '../env/processes'
 import { createWriteStream } from 'node:fs'
 import { platform, env as processEnv } from 'node:process'
 
+import { acquire } from '@proj-airi/cpu-slots'
 import { CdpClient, findAvailablePort, findDebugTarget, waitForRemoteDebug } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 
 import { spawnPnpm } from '../env/pnpm'
@@ -47,9 +48,12 @@ export const fatalStartupPattern = /App threw an error during load[^\n]*\n?[^\n]
 export async function launchStageTamagotchi(options: { repoRoot: string, profileDir: string, logFile: string, list: ProcessLister }): Promise<LaunchedApp> {
   const port = await findAvailablePort()
   const env = t3LaunchEnv(options.profileDir, port)
+  // The caller (`runT3Cli`, `gate --level t3`) already holds the exclusive lease, so this reuses it in-process and only
+  // reads its env. A direct caller without one queues here and gives the lease back when the app exits.
+  const lease = await acquire({ class: 'exclusive', command: `stage-tamagotchi dev (T3, ${options.repoRoot})`, cwd: options.repoRoot })
   const child = spawnPnpm(['--dir', options.repoRoot, '-F', '@proj-airi/stage-tamagotchi', 'dev'], {
     repoRoot: options.repoRoot,
-    env: { ...processEnv, ...env },
+    env: { ...processEnv, ...env, ...lease.env },
     stdio: 'pipe',
     detached: platform !== 'win32',
   })
@@ -70,14 +74,21 @@ export async function launchStageTamagotchi(options: { repoRoot: string, profile
   fatal.catch(() => {})
   const exited = new Promise<number | null>((resolveExit) => {
     child.once('exit', (code) => {
+      if (!lease.inherited)
+        lease.release()
       log.end()
       resolveExit(code)
     })
-    child.once('error', () => resolveExit(null))
+    child.once('error', () => {
+      if (!lease.inherited)
+        lease.release()
+      resolveExit(null)
+    })
   })
   if (child.pid === undefined)
     throw new Error(`Could not start the stage-tamagotchi dev session: ${(await exited) ?? 'no exit code'}`)
   const pid = child.pid
+  lease.addWorkload(pid)
   const live: LiveProcess | undefined = (await options.list()).find(entry => entry.pid === pid)
   const root: OwnedProcess = { pid, created: live?.created, commandLine: live?.commandLine ?? child.spawnargs.join(' ') }
   return {

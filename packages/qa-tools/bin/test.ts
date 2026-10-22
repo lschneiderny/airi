@@ -3,13 +3,15 @@ import type { Buffer } from 'node:buffer'
 import type { KnownFailureRegistry } from '../src/known-failures/schema'
 import type { SuiteOutcome, SuiteTarget } from '../src/known-failures/suite'
 
+import process, { argv, execPath, exit, kill, platform, stderr, stdout } from 'node:process'
+
 import { spawn } from 'node:child_process'
 import { createWriteStream, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { argv, execPath, exit, kill, platform, stderr, stdout } from 'node:process'
 import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
+import { acquire } from '@proj-airi/cpu-slots'
 
 import { resolveVitestEntry } from '../src/env/pnpm'
 import { createRun } from '../src/evidence/run'
@@ -34,6 +36,11 @@ function suiteFileBase(target: SuiteTarget): string {
   return `vitest-${target.package.replace(/^@[^/]+\//, '')}-${target.project}`
 }
 
+/** Browser projects drive a real browser and get the `browser` class; every other suite gets `test`. */
+function suiteClass(target: SuiteTarget): 'browser' | 'test' {
+  return target.project === 'browser' ? 'browser' : 'test'
+}
+
 function killTree(pid: number) {
   // Vitest starts workers and browsers; killing only the direct child would leave them running.
   if (platform === 'win32')
@@ -52,13 +59,18 @@ async function runSuite(target: SuiteTarget, runDir: string, vitestEntry: string
     args.push('--project', target.project)
   args.push('--reporter=json', `--outputFile=${reportFile}`)
 
+  // The suite's own vitest wrapper enforces the cap from the lease env, so no --maxWorkers flag is passed here.
+  // The wait is bounded by the per-suite timeout; the run is bounded by it again below.
+  const lease = await acquire({ class: suiteClass(target), command: `qa:test ${label(target)}`, cwd: packageDir, signal: AbortSignal.timeout(timeoutSeconds * 1000) })
   const log = createWriteStream(logFile)
   log.write(`$ ${execPath} ${args.join(' ')}\n(cwd ${packageDir})\n\n`)
   let output = ''
   const started = Date.now()
   stdout.write(`running ${label(target)} ...\n`)
 
-  const child = spawn(execPath, args, { cwd: packageDir, shell: false, stdio: ['ignore', 'pipe', 'pipe'], detached: platform !== 'win32' })
+  const child = spawn(execPath, args, { cwd: packageDir, env: { ...process.env, ...lease.env }, shell: false, stdio: ['ignore', 'pipe', 'pipe'], detached: platform !== 'win32' })
+  if (child.pid !== undefined)
+    lease.addWorkload(child.pid)
   const collect = (chunk: Buffer) => {
     output += chunk.toString()
     log.write(chunk)
@@ -76,7 +88,10 @@ async function runSuite(target: SuiteTarget, runDir: string, vitestEntry: string
   const exitCode = await new Promise<number | null>((resolveExit, reject) => {
     child.once('error', reject)
     child.once('close', code => resolveExit(code))
-  }).finally(() => clearTimeout(timer))
+  }).finally(() => {
+    clearTimeout(timer)
+    lease.release()
+  })
   await new Promise<void>(resolveEnd => log.end(resolveEnd))
 
   const outcome = evaluateSuiteRun({

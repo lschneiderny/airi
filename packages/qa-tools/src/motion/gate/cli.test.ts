@@ -4,16 +4,16 @@ import { join } from 'node:path'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { parseGateArgs, runGateCli } from './cli'
+import { parseGateArgs, resolveWorkers, runGateCli } from './cli'
 import { emotionGateFor, gateBands, gateEmotions, livelinessGateFor } from './options'
 
-const parse = (...args: string[]) => parseGateArgs(args, 4)
+const parse = (...args: string[]) => parseGateArgs(args)
 
 describe('parseGateArgs', () => {
-  it('defaults to every emotion and band and the given worker count', () => {
+  it('defaults to every emotion and band and leaves the worker count to the slot grant', () => {
     const result = parse('emotion', '--level', 't1')
 
-    expect(result).toEqual({ ok: true, command: { target: 'emotion', level: 't1', selection: { emotions: [...gateEmotions], bands: [...gateBands], seedsLimit: null }, workers: 4, timeoutMinutes: 90, t1Report: null, rescore: null } })
+    expect(result).toEqual({ ok: true, command: { target: 'emotion', level: 't1', selection: { emotions: [...gateEmotions], bands: [...gateBands], seedsLimit: null }, workers: null, timeoutMinutes: 90, t1Report: null, rescore: null } })
   })
 
   it('accepts filters and dedupes repeated values', () => {
@@ -29,6 +29,7 @@ describe('parseGateArgs', () => {
     [['emotion', '--level', 't1', '--seeds', '0'], '--seeds'],
     [['emotion', '--level', 't1', '--seeds', '2.5'], '--seeds'],
     [['emotion', '--level', 't1', '--workers', 'many'], '--workers'],
+    [['emotion', '--level', 't1', '--workers', '0'], '--workers'],
     [['emotion'], '--level is required'],
     [['emotion', '--level', 't2'], '--rig forbooth'],
     [['emotion', '--level', 't2', '--rig', 'bear'], '--rig forbooth'],
@@ -70,6 +71,27 @@ describe('parseGateArgs', () => {
   })
 })
 
+describe('resolveWorkers', () => {
+  it('defaults to the grant and clamps a larger request to it', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    try {
+      expect(resolveWorkers(null, 6)).toBe(6)
+      expect(resolveWorkers(2, 6)).toBe(2)
+      expect(info).not.toHaveBeenCalled()
+      expect(resolveWorkers(20, 6)).toBe(6)
+      expect(info.mock.calls.flat().join('\n')).toContain('--workers 20 clamped to grant 6')
+    }
+    finally {
+      info.mockRestore()
+    }
+  })
+
+  it('keeps the request when no grant applies', () => {
+    expect(resolveWorkers(20, null)).toBe(20)
+    expect(resolveWorkers(null, null)).toBeGreaterThanOrEqual(1)
+  })
+})
+
 describe('runGateCli', () => {
   it.each([undefined, '{'])('exits 2 for an unusable T2 rig before creating a run: %s', async (json) => {
     const root = mkdtempSync(join(tmpdir(), 'qa-cli-t2-'))
@@ -87,6 +109,7 @@ describe('runGateCli', () => {
   })
 
   it('exits 2 for T3 without a rig before creating a run', async () => {
+    vi.stubEnv('AIRI_CPU_SLOTS', 'off')
     const root = mkdtempSync(join(tmpdir(), 'qa-cli-t3-'))
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
@@ -95,6 +118,7 @@ describe('runGateCli', () => {
       expect(readdirSync(root)).toEqual([])
     }
     finally {
+      vi.unstubAllEnvs()
       error.mockRestore()
       rmSync(root, { recursive: true, force: true })
     }

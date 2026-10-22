@@ -1,3 +1,5 @@
+import type { Lease } from '@proj-airi/cpu-slots'
+
 import type { ValidationOptions, ValidationSection } from './plan'
 
 import process from 'node:process'
@@ -13,6 +15,7 @@ import { emotionGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natur
 
 import { resolveVitestEntry } from '../../env/pnpm'
 import { createRun } from '../../evidence/run'
+import { acquireLease, resolveWorkers } from '../gate/cli'
 import { evaluateValidation, formatValidationSummary } from './evaluate'
 import { buildValidationPlan, validationSections } from './plan'
 import { recordsPartialName, scorePartialName } from './units'
@@ -22,12 +25,13 @@ export const validateUsage = `Usage: motion validate-scorer --level t1 [--sectio
   --level     t1 (the only level available)
   --sections  comma list of validation sections (default all)
   --seeds     run at most N seeds per range, a reduced run that validation.json records
-  --workers   parallel Vitest processes per phase (default: cores - 1); results do not depend on it
+  --workers   parallel Vitest processes per phase (default: the CPU slot grant; a larger value is clamped to it); results do not depend on it
 Exit codes: 0 every threshold met, 1 a threshold missed or the run broke, 2 usage error.`
 
 export interface ValidateCommand {
   options: ValidationOptions
-  workers: number
+  /** The requested process count, or `null` for the CPU slot grant (resolved after acquire). */
+  workers: number | null
   timeoutMinutes: number
 }
 
@@ -40,7 +44,7 @@ function positiveInteger(raw: string | undefined, name: string): number | null |
   return Number.isInteger(value) && value > 0 ? value : `--${name} must be a positive integer, got ${JSON.stringify(raw)}`
 }
 
-export function parseValidateArgs(rest: string[], defaultWorkers = Math.max(1, cpus().length - 1)): ParsedValidateArgs {
+export function parseValidateArgs(rest: string[]): ParsedValidateArgs {
   let values: { 'level'?: string, 'sections'?: string, 'seeds'?: string, 'workers'?: string, 'timeout-minutes'?: string }
   let positionals: string[]
   try {
@@ -75,19 +79,21 @@ export function parseValidateArgs(rest: string[], defaultWorkers = Math.max(1, c
   const timeoutMinutes = positiveInteger(values['timeout-minutes'], 'timeout-minutes')
   if (typeof timeoutMinutes === 'string')
     return { ok: false, message: timeoutMinutes }
-  return { ok: true, command: { options: { sections, seedsLimit: seeds }, workers: workers ?? defaultWorkers, timeoutMinutes: timeoutMinutes ?? 180 } }
+  return { ok: true, command: { options: { sections, seedsLimit: seeds }, workers, timeoutMinutes: timeoutMinutes ?? 180 } }
 }
 
 /** Runs one phase as `shards` parallel Vitest processes of `gates/validation.gate.ts`; each owns a slice of the work. */
-async function runPhase(repoRoot: string, phase: 'generate' | 'score', shards: number, env: NodeJS.ProcessEnv, runDir: string, deadline: number): Promise<string[]> {
+async function runPhase(repoRoot: string, phase: 'generate' | 'score', shards: number, env: NodeJS.ProcessEnv, runDir: string, deadline: number, lease: Lease): Promise<string[]> {
   const failures = await Promise.all(Array.from({ length: shards }, (_, shard) => new Promise<string | null>((done, fail) => {
     const logFile = join(runDir, `vitest-${phase}-${shard}.log`)
     const log = openSync(logFile, 'w')
     const child = spawn(process.execPath, [resolveVitestEntry(), 'run', '--config', 'packages/qa-tools/vitest.config.ts', '--project', 'gate', '--maxWorkers', '1', 'gates/validation.gate.ts'], {
       cwd: repoRoot,
-      env: { ...env, QA_RUN_DIR: runDir, QA_VALIDATION_PHASE: phase, QA_VALIDATION_SHARD: String(shard), QA_VALIDATION_SHARDS: String(shards) },
+      env: { ...env, ...lease.env, QA_RUN_DIR: runDir, QA_VALIDATION_PHASE: phase, QA_VALIDATION_SHARD: String(shard), QA_VALIDATION_SHARDS: String(shards) },
       stdio: ['ignore', log, log],
     })
+    if (child.pid !== undefined)
+      lease.addWorkload(child.pid)
     let timedOut = false
     const timer = setTimeout(() => {
       timedOut = true
@@ -117,16 +123,28 @@ export async function runValidateCli(rest: string[], repoRoot: string, env: Node
     console.error(`${parsed.message}\n${validateUsage}`)
     return 2
   }
-  const { options, workers, timeoutMinutes } = parsed.command
+  const { options, timeoutMinutes } = parsed.command
+  const lease = await acquireLease({ class: 'gate', command: `qa:motion validate-scorer ${rest.join(' ')}`, cwd: repoRoot, timeoutMinutes })
+  if (typeof lease === 'number')
+    return lease
+  const workers = resolveWorkers(parsed.command.workers, lease.grant)
   const fileSha = execFileSync('git', ['-C', repoRoot, 'hash-object', 'packages/stage-ui-live2d/src/composables/live2d/natural-motion/gates.ts'], { encoding: 'utf8' }).trim()
-  const run = createRun({ tool: 'motion', label: 'validate-scorer-t1', repoRoot, gate: { id: emotionGate.id, version: String(emotionGate.version), fileSha } })
+  let run: ReturnType<typeof createRun>
+  try {
+    run = createRun({ tool: 'motion', label: 'validate-scorer-t1', repoRoot, gate: { id: emotionGate.id, version: String(emotionGate.version), fileSha } })
+  }
+  catch (error) {
+    lease.release()
+    throw error
+  }
   const started = Date.now()
   const deadline = started + timeoutMinutes * 60_000
   const plan = buildValidationPlan(emotionGate, options)
   const shardEnv = { ...env, QA_VALIDATION_SECTIONS: options.sections.join(','), ...(options.seedsLimit === null ? {} : { QA_SEEDS: String(options.seedsLimit) }) }
   const finish = (exitCode: number, summary: string) => {
+    lease.release()
     const wallSeconds = Math.round((Date.now() - started) / 100) / 10
-    writeFileSync(run.path('timing.json'), `${JSON.stringify({ wallSeconds, workers, cores: cpus().length, units: plan.units.length, jobs: plan.jobs.length }, null, 2)}\n`)
+    writeFileSync(run.path('timing.json'), `${JSON.stringify({ wallSeconds, workers, grant: lease.grant, cores: cpus().length, units: plan.units.length, jobs: plan.jobs.length }, null, 2)}\n`)
     run.addArtifact('timing.json', 'timing')
     run.finish({ exitCode, summary: `${summary} [wall ${wallSeconds}s, ${workers} processes]` })
     console.info(`run ${run.runId} (${wallSeconds}s, ${workers} processes): ${summary}`)
@@ -136,7 +154,7 @@ export async function runValidateCli(rest: string[], repoRoot: string, env: Node
   try {
     for (const phase of ['generate', 'score'] as const) {
       const items = phase === 'generate' ? plan.units.map(recordsPartialName) : plan.jobs.map(scorePartialName)
-      const failures = await runPhase(repoRoot, phase, Math.min(workers, items.length), shardEnv, run.dir, deadline)
+      const failures = await runPhase(repoRoot, phase, Math.min(workers, items.length), shardEnv, run.dir, deadline, lease)
       const missing = items.filter(name => !existsSync(join(run.dir, 'partials', name)))
       if (failures.length || missing.length) {
         console.error(`Validation ${phase} phase broke:\n${failures.join('\n')}${missing.length ? `\n${missing.length} partial(s) missing, for example ${missing.slice(0, 5).join(', ')}` : ''}`)
