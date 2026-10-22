@@ -91,8 +91,10 @@ function majorMinor(version: string): string | undefined {
 function distTargets(exports: unknown): string[] {
   if (typeof exports === 'string')
     return exports.startsWith('./dist/') ? [exports] : []
-  // `types` conditions are skipped: the doctor checks what runtimes load, and packages/i18n declares
-  // `./dist/locales/{es,ru,fr,vi}/index.d.mts` that its tsdown build never emits, even on a fresh build.
+  // NOTICE:
+  // `types` conditions are skipped: packages/i18n exports `./dist/locales/{es,ru,fr,vi}/index.d.mts`, which its tsdown build never emits.
+  // Source: packages/i18n/package.json exports.
+  // Remove once the build emits them or the exports drop them.
   if (exports && typeof exports === 'object')
     return Object.entries(exports).flatMap(([condition, value]) => condition === 'types' ? [] : distTargets(value))
   return []
