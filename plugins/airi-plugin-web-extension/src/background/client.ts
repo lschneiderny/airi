@@ -35,14 +35,14 @@ export function createClientState(): ClientState {
   }
 }
 
+/** The module identity the server requires on announce: a session-unique module id inside the named extension. */
 function createIdentity() {
   return {
-    kind: 'plugin',
-    plugin: {
+    id: nanoid(),
+    extension: {
       id: PLUGIN_NAME,
       version: typeof packageJSON.version === 'string' ? packageJSON.version : undefined,
     },
-    id: nanoid(),
     labels: {
       runtime: 'web-extension',
     },
