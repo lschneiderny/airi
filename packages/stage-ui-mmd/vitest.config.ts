@@ -3,6 +3,7 @@ import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
 
 export default withCpuSlots(defineConfig({
+  root: import.meta.dirname,
   test: {
     projects: [
       {
