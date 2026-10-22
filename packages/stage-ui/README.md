@@ -365,7 +365,7 @@ Every chat request carries the block from `renderForRequest` as its only runtime
 - `ingest(observation)` folds one observation. Sensors call it; other code rarely needs it.
 - `markAddressed(topicKey)` keeps a topic from being raised again, for example when a caller speaks about that topic itself.
 - `holdTopic(topicKey)` keeps a topic away from the gate until the returned function releases it, without addressing it. Use it while a forced turn about that topic is on its way.
-- `userMidInput()` and `untilUserIdle(timeoutMs)` report whether the user is speaking into the microphone or writing in a chat composer in any window. They work in every initialized window.
+- `userMidInput()` and `untilUserIdle(timeoutMs)` report whether the user is speaking into the microphone, waiting for speech-to-text to finish what they said, or writing in a chat composer in any window. They work in every initialized window.
 - `onNotifySpoken(listener)` reports each spoken gate fire about a notify, with its topic key and reply text.
 
 Use this store to give the model awareness of the user's situation and to run unprompted remarks.

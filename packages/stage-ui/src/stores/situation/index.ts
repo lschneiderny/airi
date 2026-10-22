@@ -30,7 +30,7 @@ import { defineStore } from 'pinia'
 import { computed, shallowRef, watch } from 'vue'
 
 import { useSituationSettings } from '../../features/situation/settings'
-import { chatComposerActivityChangedEvent, getSpeechBusContext, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestTurns, voiceTurnsChanged } from '../../services/speech/bus'
+import { chatComposerActivityChangedEvent, getSpeechBusContext, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged } from '../../services/speech/bus'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { startConversationSensor } from './sensors/conversation'
 import { DESKTOP_SAMPLE_STALE_MS, startDesktopSensor } from './sensors/desktop'
@@ -139,6 +139,11 @@ export const useSituationStore = defineStore('situation', () => {
   let stopVoiceTurnListener: (() => void) | undefined
   let stopUserInputListeners: (() => void) | undefined
   let remoteUserSpeaking = false
+  /**
+   * Whether the voice host presents an input that it still captures or transcribes. The user stopped speaking, but
+   * speech-to-text has not submitted their message yet, so a turn that started now would be cancelled by that send.
+   */
+  let remoteUserInputInFlight = false
   let speakingTurns: readonly TurnRef[] = []
   /** The newest report of each chat composer, with the local time it arrived. */
   const composers = new Map<string, { hasDraft: boolean, lastInputAtMs: number, receivedAtMs: number }>()
@@ -267,6 +272,13 @@ export const useSituationStore = defineStore('situation', () => {
         remoteUserSpeaking = body.speaking
         recheckWaiters()
       }),
+      context.on(voiceSnapshotChanged, ({ body }) => {
+        if (!body)
+          return
+        const phase = body.connected ? body.input?.phase : undefined
+        remoteUserInputInFlight = phase === 'capturing' || phase === 'finalizing'
+        recheckWaiters()
+      }),
       context.on(chatComposerActivityChangedEvent, ({ body }) => {
         if (!body)
           return
@@ -278,6 +290,7 @@ export const useSituationStore = defineStore('situation', () => {
       for (const stop of stops)
         stop()
       remoteUserSpeaking = false
+      remoteUserInputInFlight = false
       composers.clear()
     }
   }
@@ -306,12 +319,18 @@ export const useSituationStore = defineStore('situation', () => {
     return endsAtMs
   }
 
+  /** Whether the user speaks into the microphone, or speech-to-text still finishes what they said. */
+  function userSpeakingOrTranscribing(): boolean {
+    return remoteUserSpeaking || remoteUserInputInFlight
+  }
+
   /**
-   * Whether the user is mid-input in any window: speaking into the microphone, or writing in a chat composer (a draft
-   * that is not sent yet, or input within {@link COMPOSER_INPUT_RECENT_MS}). Reads `false` before {@link initialize}.
+   * Whether the user is mid-input in any window: speaking into the microphone, speech-to-text still finishing their
+   * message, or writing in a chat composer (a draft that is not sent yet, or input within
+   * {@link COMPOSER_INPUT_RECENT_MS}). Reads `false` before {@link initialize}.
    */
   function userMidInput(nowMs = Date.now()): boolean {
-    return remoteUserSpeaking || userTyping(nowMs)
+    return userSpeakingOrTranscribing() || userTyping(nowMs)
   }
 
   /**
@@ -360,7 +379,7 @@ export const useSituationStore = defineStore('situation', () => {
 
   function gateSignals(controls: SituationChatControls, nowMs: number): GateSignals {
     return {
-      userSpeaking: remoteUserSpeaking,
+      userSpeaking: userSpeakingOrTranscribing(),
       userTyping: userTyping(nowMs),
       characterSpeaking: speakingTurns.length > 0,
       generating: controls.sending(),

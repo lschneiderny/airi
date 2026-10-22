@@ -14,7 +14,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
-import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceRequestTurns, voiceTurnsChanged } from '../../../services/speech/bus'
+import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged } from '../../../services/speech/bus'
 import { COMPOSER_INPUT_RECENT_MS, GATE_INTERVAL_MS, useSituationStore } from '../../situation'
 import { ingestSparkNotify, notifyObservationFrom } from '../../situation/sensors/notify'
 import { useContextBridgeStore } from './context-bridge'
@@ -410,6 +410,28 @@ describe('widget spark reactions', () => {
     bus.emit(speechInputUserSpeakingChangedEvent, { speaking: false })
 
     await expect(reaction).resolves.toBe('There you are.')
+    expect(submitUnprompted).toHaveBeenCalledOnce()
+  })
+
+  it('holds the forced turn while speech-to-text finishes the user\'s message, and starts it once the input settles', async () => {
+    const { bridge } = startLeader()
+    chatSpeaks('Heard you.')
+    const bus = getSpeechBusContext()
+    const inputIn = (phase: 'capturing' | 'finalizing' | 'settled') => ({ connected: true, hostId: 'host-1', drafts: [], input: { requestId: 'mic', sessionId: 'session-1', phase, text: 'hello there', segments: [] } })
+    bus.emit(voiceSnapshotChanged, inputIn('capturing'))
+    bus.emit(speechInputUserSpeakingChangedEvent, { speaking: true })
+
+    const reaction = bridge.dispatchSparkNotifyReaction({ headline: 'QA widget', fallbackResponseText: 'fallback' })
+    // The user stops speaking, in the order the voice host reports it. The host still transcribes, and only then
+    // submits the user's message, which would cancel a reaction that already started speaking.
+    bus.emit(voiceSnapshotChanged, inputIn('finalizing'))
+    bus.emit(speechInputUserSpeakingChangedEvent, { speaking: false })
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(submitUnprompted).not.toHaveBeenCalled()
+
+    bus.emit(voiceSnapshotChanged, inputIn('settled'))
+
+    await expect(reaction).resolves.toBe('Heard you.')
     expect(submitUnprompted).toHaveBeenCalledOnce()
   })
 

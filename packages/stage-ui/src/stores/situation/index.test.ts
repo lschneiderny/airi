@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GATE_INTERVAL_MS, useSituationStore } from '.'
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useSituationSettings } from '../../features/situation/settings'
-import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceTurnsChanged } from '../../services/speech/bus'
+import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceSnapshotChanged, voiceTurnsChanged } from '../../services/speech/bus'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { DESKTOP_SAMPLE_STALE_MS } from './sensors/desktop'
 import { FOREGROUND_SAMPLE_STALE_HIDDEN_MS, FOREGROUND_SAMPLE_STALE_VISIBLE_MS } from './sensors/foreground'
@@ -877,6 +877,12 @@ describe('situation gate loop', () => {
     await nextGateTick()
     expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'user-speaking' })
     bus.emit(speechInputUserSpeakingChangedEvent, { speaking: false })
+
+    // Speech-to-text still finishes the message that the user just spoke.
+    bus.emit(voiceSnapshotChanged, { connected: true, drafts: [], input: { requestId: 'mic', sessionId: 'session-1', phase: 'finalizing', text: 'hello', segments: [] } })
+    await nextGateTick()
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'user-speaking' })
+    bus.emit(voiceSnapshotChanged, { connected: true, drafts: [], input: { requestId: 'mic', sessionId: 'session-1', phase: 'settled', text: 'hello', segments: [] } })
 
     bus.emit(voiceTurnsChanged, [{ sessionId: 'session-1', turnId: 'reply-1' }])
     await nextGateTick()
