@@ -25,7 +25,8 @@ describe('cloudflare Pages routing', () => {
   })
 
   it('requires old and current asset namespaces to revalidate cached responses', async () => {
-    const headers = await readFile(resolve(publicDirectory, '_headers'), 'utf8')
+    // A Windows checkout with core.autocrlf stores the file with CRLF; the rule text is what matters.
+    const headers = (await readFile(resolve(publicDirectory, '_headers'), 'utf8')).replaceAll('\r\n', '\n')
 
     expect(headers).toContain('/assets/*\n  cache-control: public, no-cache')
     expect(headers).toContain('/assets-v2/*\n  cache-control: public, no-cache')
