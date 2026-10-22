@@ -5,6 +5,11 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
+    "@proj-airi/cpu-slots#build": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "tsdown.config.ts", "package.json", "tsconfig.json", "$TURBO_ROOT$/tsconfig.json"],
+      "outputs": ["dist/**"]
+    },
     "typecheck": {
       "dependsOn": ["^typecheck", "@proj-airi/cpu-slots#build"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.json"]
