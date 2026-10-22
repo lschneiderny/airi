@@ -75,3 +75,9 @@ The store is guarded by a directory lock, `broker.lock`.
 - Remove the root devDependency on `@proj-airi/cpu-slots`. That needs both changes: move the dev tools into their own workspace package, and give the root `vitest.config.ts` a different way to import the wrapper (it imports `@proj-airi/cpu-slots/vitest` at line 1). Moving the dev tools alone does not remove the dependency. Removing it would fix the Turbo global hash and make the `verify.ts` root-dependency mapping unnecessary. Until then, any cpu-slots edit still invalidates every Turbo task cache.
 - Exclude `packages/cpu-slots/README.md` from the typecheck inputs.
 - Track descendants on POSIX through `setsid`, which the cpu-slots README notes is not tracked today.
+- Add an opt-out for indexing of the cache and store directories.
+- Add Defender guidance for the store and cache paths.
+- Add a worktree pool, so new worktrees inherit a warm budget.
+- Add an idle reaper for leases whose owners stay alive without doing work.
+- Add a T2 result cache, with the same closure rules, because T2 results are not cached today.
+- Add an adaptive budget that follows the machine's load.
