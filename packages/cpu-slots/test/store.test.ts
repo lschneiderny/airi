@@ -1115,6 +1115,14 @@ describe('audit follow-ups (2026-10-22)', () => {
     expect(store.snapshot().tickets).toEqual([ticket])
   })
 
+  it('f05 records the granted slots in place of {grant} in the lease command', () => {
+    const store = createStore()
+    const ticket = store.enqueue({ ...request, command: 'turbo run typecheck --concurrency={grant}' })
+    expect(ticket.command).toBe('turbo run typecheck --concurrency={grant}')
+    expect(store.grant(ticket.seq, 6, ticket.id)?.command).toBe('turbo run typecheck --concurrency=6')
+    expect(store.snapshot().leases.map(lease => lease.command)).toEqual(['turbo run typecheck --concurrency=6'])
+  })
+
   it('f09 returns a committed result when retiring the lock fails with a non-busy error, and warns', () => {
     const owner = join(root, 'broker.lock', 'owner.json')
     let armed = false

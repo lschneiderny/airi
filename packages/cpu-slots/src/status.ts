@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 
 import { storeRoot, whileBusy } from './acquire'
 import { parseBudget } from './budget'
-import { Store } from './store'
+import { Store, StoreBusyError } from './store'
 
 /** A live ticket file the queue cannot read; it is never granted, so status shows it instead of hiding it. */
 export interface MalformedQueueEntry {
@@ -25,6 +25,41 @@ export interface Status {
 
 /** Longest readStatus retries a busy broker lock before it throws. */
 const STATUS_BUSY_BUDGET_MS = 2_000
+
+/** Longest `pnpm slots status` keeps retrying a busy store. */
+export const STATUS_WAIT_CAP_MS = 30_000
+
+export interface StatusWaitOptions {
+  root?: string
+  capMs?: number
+  now?: () => number
+  wait?: (ms: number) => Promise<void>
+  read?: (options: { root?: string }) => Status
+}
+
+/**
+ * Reads the status, retrying a busy store every 500 ms until `capMs` has passed. The last
+ * StoreBusyError is thrown after that, and its message names the busy reason.
+ */
+export async function readStatusWithin(options: StatusWaitOptions = {}): Promise<Status> {
+  const {
+    capMs = STATUS_WAIT_CAP_MS,
+    now = Date.now,
+    wait = ms => new Promise<void>(resolve => setTimeout(resolve, ms)),
+    read = readStatus,
+  } = options
+  const deadline = now() + capMs
+  for (;;) {
+    try {
+      return read({ root: options.root })
+    }
+    catch (error) {
+      if (!(error instanceof StoreBusyError) || now() >= deadline)
+        throw error
+      await wait(500)
+    }
+  }
+}
 
 /**
  * Reads a pruned snapshot of the store without acquiring anything. A missing store reads as empty and

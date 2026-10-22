@@ -11,7 +11,7 @@ import { constants } from 'node:os'
 
 import { acquire } from './acquire'
 import { classes } from './classes'
-import { readStatus } from './status'
+import { readStatusWithin, STATUS_WAIT_CAP_MS } from './status'
 import { StoreBusyError } from './store'
 import { resolveWin32Command, shimCommandLine } from './win32-command'
 
@@ -41,16 +41,14 @@ async function main(args: string[]): Promise<number> {
     if (args.length > 1 || (args.length === 1 && args[0] !== '--json'))
       throw new Error('usage: status [--json]')
     let status
-    for (;;) {
-      try {
-        status = readStatus()
-        break
-      }
-      catch (error) {
-        if (!(error instanceof StoreBusyError))
-          throw error
-        await new Promise<void>(resolve => setTimeout(resolve, 500))
-      }
+    try {
+      status = await readStatusWithin()
+    }
+    catch (error) {
+      if (!(error instanceof StoreBusyError))
+        throw error
+      console.error(`cpu-slots: status gave up after ${STATUS_WAIT_CAP_MS / 1_000}s; the store stayed busy (${error.message})`)
+      return 3
     }
     if (args[0] === '--json') {
       console.log(JSON.stringify(status))

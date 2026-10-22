@@ -6,7 +6,8 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-import { readStatus, Store } from '../src'
+import { readStatus, Store, StoreBusyError } from '../src'
+import { readStatusWithin } from '../src/status'
 
 let root: string
 
@@ -44,4 +45,30 @@ it('lists a live ticket the queue cannot read instead of hiding it', () => {
   // The shape an acquire() without cwd and command wrote before requests were validated.
   writeFileSync(join(root, 'tickets', '1.json'), JSON.stringify({ seq: 1, id: 'hidden', pid: process.pid, startedAt: 1, class: 'typecheck', min: 2, max: 6, exclusive: false, createdAt: Date.now() }))
   expect(readStatus({ root }).queue).toEqual([{ malformed: true, file: '1.json', pid: process.pid, touched: expect.any(Number) }])
+})
+
+it('f23 retries a busy store every 500 ms, then gives up at the cap with the busy reason', async () => {
+  let clock = 0
+  const waits: number[] = []
+  const read = vi.fn((): never => {
+    throw new StoreBusyError('lock-busy')
+  })
+  await expect(readStatusWithin({ capMs: 30_000, now: () => clock, wait: async (ms) => {
+    waits.push(ms)
+    clock += ms
+  }, read })).rejects.toThrow(expect.objectContaining({ name: 'StoreBusyError', reason: 'lock-busy' }))
+  expect(waits).toEqual(Array.from({ length: 60 }).fill(500))
+  expect(read).toHaveBeenCalledTimes(61)
+})
+
+it('f23 returns the status once the store is free', async () => {
+  let busy = 2
+  const status = { storePath: root, budget: 8, held: 0, leases: [], queue: [] }
+  const read = vi.fn(() => {
+    if (busy-- > 0)
+      throw new StoreBusyError('entry-busy')
+    return status
+  })
+  await expect(readStatusWithin({ now: () => 0, wait: async () => {}, read })).resolves.toBe(status)
+  expect(read).toHaveBeenCalledTimes(3)
 })

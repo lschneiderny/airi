@@ -302,7 +302,8 @@ export class Store {
         slots,
         exclusive: ticket.exclusive,
         cwd: ticket.cwd,
-        command: ticket.command,
+        // The label shows the grant the `{grant}` template of `pnpm slots run` receives.
+        command: ticket.command.replaceAll('{grant}', String(slots)),
         createdAt: this.now(),
         workload: [],
       }
