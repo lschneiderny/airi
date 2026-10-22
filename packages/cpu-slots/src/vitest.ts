@@ -34,17 +34,29 @@ function detectClass(config: ViteUserConfig): CpuClass {
   return browser ? 'browser' : 'test'
 }
 
+// NOTICE:
+// Vitest's browser pool reads only the project's own `maxWorkers` (default min(12, cpus - 1)), never the root value.
+// Source: node_modules/vitest/dist/chunks/cli-api.CnMVyzaz.js:2405 and 2479-2483 (vitest 4.1.11).
+// Removal condition: vitest's browser pool falls back to the root `maxWorkers`.
+function isParallelBrowser(test: TestConfig | undefined): boolean {
+  return test?.browser?.enabled === true && test.fileParallelism !== false
+}
+
 function clamp(test: TestConfig | undefined, grant: number, add: boolean): TestConfig {
   const next: TestConfig = { ...test }
   if (typeof next.maxWorkers === 'number')
     next.maxWorkers = Math.min(next.maxWorkers, grant)
-  else if (add && next.maxWorkers === undefined)
+  else if (next.maxWorkers === undefined && (add || isParallelBrowser(next)))
     next.maxWorkers = grant
   if (next.projects) {
     next.projects = next.projects.map((project) => {
-      if (!isInline(project) || typeof project.test?.maxWorkers !== 'number')
+      if (!isInline(project))
         return project
-      return { ...project, test: { ...project.test, maxWorkers: Math.min(project.test.maxWorkers, grant) } }
+      if (typeof project.test?.maxWorkers === 'number')
+        return { ...project, test: { ...project.test, maxWorkers: Math.min(project.test.maxWorkers, grant) } }
+      if (project.test?.maxWorkers === undefined && isParallelBrowser(project.test))
+        return { ...project, test: { ...project.test, maxWorkers: grant } }
+      return project
     })
   }
   return next
@@ -55,7 +67,8 @@ function clamp(test: TestConfig | undefined, grant: number, add: boolean): TestC
  *
  * Only `maxWorkers` is touched (plus one plugin that releases the lease in watch mode). The first wrapped config in a process (the root) gets `maxWorkers`
  * when it has none; later configs are projects and are only clamped downward, because project limits
- * win over root limits and adding one would split Vitest's sequence groups.
+ * win over root limits and adding one would split Vitest's sequence groups. A parallel browser project
+ * is the exception: it gets the same process-wide grant, since its pool ignores the root value.
  */
 export function withCpuSlots(config: ViteUserConfig): () => Promise<ViteUserConfig> {
   return async () => {

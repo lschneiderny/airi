@@ -205,6 +205,38 @@ describe('withCpuSlots', () => {
     expect(projects[0].test?.maxWorkers).toBe(2)
     expect(projects[1].test).not.toHaveProperty('maxWorkers')
   })
+
+  it('sizes an inline browser project at the grant, since the browser pool ignores the root value', async () => {
+    vi.stubEnv('AIRI_CPU_BUDGET', '2')
+    const { withCpuSlots } = await load()
+    const config = await withCpuSlots({
+      test: {
+        projects: [
+          { test: { name: 'unset', browser: { enabled: true } } },
+          { test: { name: 'lower', maxWorkers: 1, browser: { enabled: true } } },
+          { test: { name: 'higher', maxWorkers: 8, browser: { enabled: true } } },
+          { test: { name: 'serial', fileParallelism: false, browser: { enabled: true } } },
+          { test: { name: 'node' } },
+        ],
+      },
+    })()
+    const projects = config.test?.projects as ViteUserConfig[]
+    expect(projects[0].test?.maxWorkers).toBe(2)
+    expect(projects[1].test?.maxWorkers).toBe(1)
+    expect(projects[2].test?.maxWorkers).toBe(2)
+    expect(projects[3].test).not.toHaveProperty('maxWorkers')
+    expect(projects[4].test).not.toHaveProperty('maxWorkers')
+  })
+
+  it('sizes a later project config with browser mode at the grant of the first call', async () => {
+    vi.stubEnv('AIRI_CPU_BUDGET', '2')
+    const { withCpuSlots } = await load()
+    expect((await withCpuSlots({ test: {} })()).test?.maxWorkers).toBe(2)
+    const browser = await withCpuSlots({ test: { name: 'browser', browser: { enabled: true } } })()
+    expect(browser.test?.maxWorkers).toBe(2)
+    const node = await withCpuSlots({ test: { name: 'node' } })()
+    expect(node.test).not.toHaveProperty('maxWorkers')
+  })
 })
 
 describe('assertFreshBuild', () => {
