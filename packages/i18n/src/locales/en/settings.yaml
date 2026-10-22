@@ -746,6 +746,9 @@ pages:
     show-unprompted-cue:
       title: Show unprompted cue
       description: Mark messages the character sent on its own in the chat.
+    share-foreground-window:
+      title: Share the foreground app and window titles
+      description: Let the character see which app is in front and its window title. When off, AIRI stops reading them, and the character stops speaking up on its own until you turn this back on. It still answers when you talk to it.
     quiet-apps:
       title: Quiet apps
       description: The character stays quiet while one of these apps is in the foreground. Enter one app file name per line, such as zoom.exe. Use * to match any characters.

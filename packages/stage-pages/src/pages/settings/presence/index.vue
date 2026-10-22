@@ -87,6 +87,13 @@ function formatChattiness(value: number) {
       placement="right"
       @update:model-value="updateSettings({ showUnpromptedCue: $event })"
     />
+    <FieldCheckbox
+      :model-value="settings.document.shareForegroundWindow"
+      :label="t('settings.pages.presence.share-foreground-window.title')"
+      :description="t('settings.pages.presence.share-foreground-window.description')"
+      placement="right"
+      @update:model-value="updateSettings({ shareForegroundWindow: $event })"
+    />
     <label
       v-for="list in appLists"
       :key="list.field"
