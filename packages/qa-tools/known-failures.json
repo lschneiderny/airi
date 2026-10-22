@@ -160,15 +160,6 @@
       "since": "2026-10-20",
       "removeWhen": "the test passes in 3 consecutive pnpm qa:test --package @proj-airi/stage-ui --project browser runs and the layout/timing cause is fixed",
       "flaky": true
-    },
-    {
-      "package": "@proj-airi/api-server",
-      "project": "default",
-      "file": "src/routes/revenuecat/route.test.ts",
-      "name": "revenuecat routes > grants the new capacitor on PRODUCT_CHANGE and not the old product in the event",
-      "reason": "After PRODUCT_CHANGE, reconciliation raises capacitorQuota to 5000 but leaves capacitorFlux at 2000 (AssertionError: expected capacitorFlux 2000 to be 5000). It fails the same way alone and with TZ=UTC, so it is a billing behavior or expectation mismatch, not a Windows or load issue. Pre-existing on main; pnpm qa:test does not run this package, root pnpm test:run does.",
-      "since": "2026-10-22",
-      "removeWhen": "PRODUCT_CHANGE grants the new capacitor balance, or the api-server owner revises the expectation, and the test passes in root pnpm test:run"
     }
   ]
 }

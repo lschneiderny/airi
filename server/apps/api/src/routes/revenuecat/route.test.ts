@@ -182,20 +182,55 @@ describe('revenuecat routes', () => {
     expect(await readWallet('user-1')).toMatchObject({ capacitorFlux: 1500, capacitorQuota: 2000 })
   })
 
+  // https://github.com/moeru-ai/airi/issues/2981
+  // A refill needs a last refill earlier than the new period start, so the clock moves from the first event to the upgrade.
   it('grants the new capacitor on PRODUCT_CHANGE and not the old product in the event', async () => {
-    const { app } = await setup()
-    entitlements['user-1'] = [goEntitlement]
-    await postWebhook(app, webhookBody())
+    const upgradedAt = new Date('2026-10-15T00:00:00.000Z')
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-02T00:00:00.000Z') })
+    try {
+      const { app } = await setup()
+      entitlements['user-1'] = [goEntitlement]
+      await postWebhook(app, webhookBody())
 
-    entitlements['user-1'] = [{
-      entitlementId: 'airi_plus',
-      productId: 'rc_plus_monthly',
-      purchasedAt: new Date('2026-10-15T00:00:00.000Z'),
-      accessUntil: goEntitlement.accessUntil,
-    }]
-    await postWebhook(app, webhookBody({ id: 'sub-event-2', type: 'PRODUCT_CHANGE', product_id: 'rc_go_monthly' }))
+      vi.setSystemTime(upgradedAt)
+      entitlements['user-1'] = [{
+        entitlementId: 'airi_plus',
+        productId: 'rc_plus_monthly',
+        purchasedAt: upgradedAt,
+        accessUntil: goEntitlement.accessUntil,
+      }]
+      await postWebhook(app, webhookBody({ id: 'sub-event-2', type: 'PRODUCT_CHANGE', product_id: 'rc_go_monthly' }))
 
-    expect(await readWallet('user-1')).toMatchObject({ capacitorFlux: 5000, capacitorQuota: 5000 })
+      expect(await readWallet('user-1')).toMatchObject({ capacitorFlux: 5000, capacitorQuota: 5000 })
+    }
+    finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // A period that starts before the last refill does not refill again, so a stale or late read of RevenueCat
+  // cannot grant one period twice. The new quota still applies, and the spent amount stays spent.
+  it('keeps the spent capacitor on PRODUCT_CHANGE to a period that started before the last refill', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-16T00:00:00.000Z') })
+    try {
+      const { billing, app } = await setup()
+      entitlements['user-1'] = [goEntitlement]
+      await postWebhook(app, webhookBody())
+      await billing.postFluxUsage({ userId: 'user-1', source: { type: 'test', id: 'req-1' }, amountMicroFlux: 500_000_000 })
+
+      entitlements['user-1'] = [{
+        entitlementId: 'airi_plus',
+        productId: 'rc_plus_monthly',
+        purchasedAt: new Date('2026-10-15T00:00:00.000Z'),
+        accessUntil: goEntitlement.accessUntil,
+      }]
+      await postWebhook(app, webhookBody({ id: 'sub-event-2', type: 'PRODUCT_CHANGE', product_id: 'rc_go_monthly' }))
+
+      expect(await readWallet('user-1')).toMatchObject({ capacitorFlux: 1500, capacitorQuota: 5000 })
+    }
+    finally {
+      vi.useRealTimers()
+    }
   })
 
   it('expires the capacitor when RevenueCat reports no active capacitor', async () => {
