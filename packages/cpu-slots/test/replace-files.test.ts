@@ -7,7 +7,7 @@ import * as fs from 'node:fs'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { replaceFiles } from '../tsdown.config'
+import { removeStaleStaging, replaceFiles } from '../tsdown.config'
 
 const roots: string[] = []
 
@@ -137,5 +137,22 @@ describe('replaceFiles', () => {
 
     await expect(replaceFiles(staging, dist)).rejects.toThrow(staging)
     expect(fs.readFileSync(join(dist, 'vitest.mjs'), 'utf8')).toBe('old')
+  })
+})
+
+describe('removeStaleStaging', () => {
+  it('f30 removes the staging directories of dead build processes and keeps live ones and other entries', () => {
+    const { staging: cache } = dirs()
+    for (const name of ['dist-111', 'dist-222', `dist-${process.pid}`, 'other', 'dist-abc'])
+      fs.mkdirSync(join(cache, name))
+    fs.writeFileSync(join(cache, 'dist-111', 'vitest.mjs'), 'half-written')
+
+    expect(removeStaleStaging(cache, { alive: pid => pid === 222 })).toEqual(['dist-111'])
+    expect(fs.readdirSync(cache).sort()).toEqual(['dist-222', `dist-${process.pid}`, 'dist-abc', 'other'].sort())
+  })
+
+  it('f30 does nothing when the cache directory does not exist', () => {
+    const { staging } = dirs()
+    expect(removeStaleStaging(join(staging, 'absent'), { alive: () => false })).toEqual([])
   })
 })

@@ -10,21 +10,64 @@ import { defineConfig } from 'tsdown'
 
 const srcDir = resolve(import.meta.dirname, 'src')
 const distDir = resolve(import.meta.dirname, 'dist')
-// Vitest configs load dist/vitest.mjs at any moment, so the build never cleans or writes dist itself.
-// It writes to a staging directory of its own process, and `build:done` renames each file over dist.
-const stagingDir = resolve(import.meta.dirname, 'node_modules', '.cache', `dist-${process.pid}`)
+// NOTICE:
+// Vitest configs load dist/vitest.mjs at any moment, so the build stages into dist-<pid> instead of dist.
+// tsdown cleans and writes its outDir in place, so a load could read a missing wrapper.
+// Source: commit 639979638; `replaceFiles` renames each staged file over dist.
+// Removal condition: tsdown publishes its outDir atomically.
+const cacheDir = resolve(import.meta.dirname, 'node_modules', '.cache')
+const stagingDir = join(cacheDir, `dist-${process.pid}`)
 const placeholder = '__CPU_SLOTS_BUILD_STAMP__'
 
 // NOTICE:
-// This repeats hashSources from src/stale-build.ts, because tsdown loads this config natively and Node
-// cannot resolve the extension-less relative imports of src/. The shipped-dist test in
-// test/vitest-wrapper.test.ts fails when the two drift apart.
+// This repeats hashSources from src/stale-build.ts and the isAlive probe from src/liveness.ts.
+// tsdown loads this config natively, and Node cannot resolve the extension-less imports of src/.
+// test/vitest-wrapper.test.ts fails when the two hashSources drift apart.
 // Removal condition: tsdown loads its config through a loader that resolves extension-less imports.
 function hashSources(files: string[]): string {
   const hash = createHash('sha256')
   for (const file of [...files].sort())
     hash.update(`${file}\0${nodeFs.readFileSync(join(srcDir, file), 'utf8').replace(/\r\n/g, '\n')}\0`)
   return hash.digest('hex')
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  }
+  catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
+/** The file system calls `removeStaleStaging` makes. Tests inject them. */
+export type StagingFs = Pick<typeof nodeFs, 'existsSync' | 'readdirSync' | 'rmSync'>
+
+/**
+ * Deletes the `dist-<pid>` staging directories in `dir` whose build process is gone, and returns their
+ * names. A build that crashes before `build:done` leaves its directory, and only a completed
+ * `replaceFiles` removes one. A directory whose pid a later process reuses stays until that process exits.
+ */
+export function removeStaleStaging(dir: string, options: { fs?: StagingFs, alive?: (pid: number) => boolean } = {}): string[] {
+  const { fs = nodeFs, alive = pidAlive } = options
+  if (!fs.existsSync(dir))
+    return []
+  const removed: string[] = []
+  for (const name of fs.readdirSync(dir)) {
+    const pid = Number(/^dist-(\d+)$/.exec(name)?.[1])
+    if (!Number.isSafeInteger(pid) || pid <= 0 || pid === process.pid || alive(pid))
+      continue
+    try {
+      fs.rmSync(join(dir, name), { recursive: true, force: true })
+      removed.push(name)
+    }
+    catch (error) {
+      // A leftover only wastes disk space, so it must not fail the build; the next build tries again.
+      console.warn(`cpu-slots: could not remove the stale build directory ${join(dir, name)} (${String(error)})`)
+    }
+  }
+  return removed
 }
 
 /** The file system calls `replaceFiles` makes. Tests inject failures through it. */
@@ -94,6 +137,9 @@ export default defineConfig({
   outDir: stagingDir,
   dts: true,
   hooks: {
+    'build:prepare': () => {
+      removeStaleStaging(cacheDir)
+    },
     'build:done': () => replaceFiles(stagingDir, distDir),
   },
   // The types belong to the consuming project's own vitest and vite, so they stay imports.
