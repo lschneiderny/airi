@@ -62,6 +62,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^",
     "@types/node": "catalog:",
     "@vitest/browser-playwright": "catalog:vitest",
     "@xsai/generate-speech": "catalog:",

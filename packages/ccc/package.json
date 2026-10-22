@@ -13,5 +13,8 @@
   "dependencies": {
     "meta-png": "catalog:",
     "valibot": "catalog:"
+  },
+  "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^"
   }
 }

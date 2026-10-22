@@ -3,10 +3,11 @@ import { cwd } from 'node:process'
 import vue from '@vitejs/plugin-vue'
 import Info from 'unplugin-info/vite'
 
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { loadEnv } from 'vite'
 import { defineProject } from 'vitest/config'
 
-export default defineProject({
+export default withCpuSlots(defineProject({
   root: import.meta.dirname,
   plugins: [Info(), vue()],
   test: {
@@ -17,4 +18,4 @@ export default defineProject({
     fileParallelism: false,
     maxWorkers: 1,
   },
-})
+}))

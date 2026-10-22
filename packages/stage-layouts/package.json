@@ -60,6 +60,7 @@
   },
   "devDependencies": {
     "@nekopaw/tempora": "catalog:",
+    "@proj-airi/cpu-slots": "workspace:^",
     "@proj-airi/stage-shared": "workspace:^",
     "@types/audioworklet": "catalog:",
     "@types/three": "catalog:",

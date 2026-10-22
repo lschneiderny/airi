@@ -1,8 +1,9 @@
 import Vue from '@vitejs/plugin-vue'
 
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineProject } from 'vitest/config'
 
-export default defineProject({
+export default withCpuSlots(defineProject({
   root: import.meta.dirname,
   plugins: [Vue()],
   test: {
@@ -15,4 +16,4 @@ export default defineProject({
     // selects this project with any other one needs it in its own group.
     sequence: { groupOrder: 1 },
   },
-})
+}))

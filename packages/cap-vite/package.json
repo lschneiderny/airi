@@ -43,5 +43,8 @@
     "@moeru/std": "catalog:",
     "cac": "catalog:",
     "tinyexec": "catalog:"
+  },
+  "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^"
   }
 }

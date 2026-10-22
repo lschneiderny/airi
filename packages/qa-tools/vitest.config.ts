@@ -4,11 +4,12 @@ import { resolve } from 'node:path'
 
 import Vue from '@vitejs/plugin-vue'
 
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
 import ClosureReporter from './src/motion/cache/closure-reporter'
 
-export default defineConfig({
+export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
   plugins: [Vue()],
   test: {
@@ -38,4 +39,4 @@ export default defineConfig({
       },
     ],
   },
-})
+}))

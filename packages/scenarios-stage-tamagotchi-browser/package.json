@@ -37,6 +37,7 @@
     "@iconify-json/material-symbols": "catalog:",
     "@iconify-json/mdi": "catalog:",
     "@iconify-json/ph": "catalog:",
+    "@proj-airi/cpu-slots": "workspace:^",
     "@unocss/reset": "catalog:",
     "@vitejs/plugin-vue": "catalog:",
     "unplugin-vue-router": "catalog:",

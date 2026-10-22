@@ -59,5 +59,8 @@
     "nanoid": "catalog:",
     "valibot": "catalog:",
     "xsschema": "catalog:"
+  },
+  "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^"
   }
 }

@@ -62,6 +62,7 @@
     "@iconify-json/tabler": "catalog:",
     "@iconify-json/vscode-icons": "catalog:",
     "@intlify/unplugin-vue-i18n": "catalog:",
+    "@proj-airi/cpu-slots": "workspace:^",
     "@proj-airi/iconify-meteocons": "catalog:",
     "@proj-airi/lobe-icons": "catalog:",
     "@shikijs/markdown-it": "catalog:",

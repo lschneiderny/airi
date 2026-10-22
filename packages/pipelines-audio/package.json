@@ -40,5 +40,7 @@
     "clustr": "catalog:",
     "nanoid": "catalog:"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^"
+  }
 }

@@ -49,6 +49,7 @@
     "zod-to-json-schema": "catalog:"
   },
   "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^",
     "@types/ws": "catalog:"
   }
 }

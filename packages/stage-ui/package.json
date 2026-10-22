@@ -217,6 +217,7 @@
     "@moeru/std": "catalog:",
     "@pinia/testing": "catalog:",
     "@proj-airi/api-server": "workspace:*",
+    "@proj-airi/cpu-slots": "workspace:^",
     "@proj-airi/lobe-icons": "catalog:",
     "@proj-airi/stream-kit": "workspace:*",
     "@types/audioworklet": "catalog:",

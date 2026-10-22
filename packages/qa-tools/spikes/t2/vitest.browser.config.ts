@@ -18,6 +18,7 @@ import { createRequire } from 'node:module'
 import { basename, dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
 import { defaultCorePath } from './core-node'
@@ -52,7 +53,7 @@ const t2WriteResult: BrowserCommand<[json: string]> = (_context, json) => {
   return out
 }
 
-export default defineConfig({
+export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
   publicDir: dirname(corePath),
   cacheDir: join(import.meta.dirname, '../../../../.temp/qa/t2-spike/vite-cache'),
@@ -71,4 +72,4 @@ export default defineConfig({
       commands: { t2CoreUrl, t2ReadRig, t2WriteResult },
     },
   },
-})
+}))

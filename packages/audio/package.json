@@ -57,6 +57,7 @@
     "nanoid": "catalog:"
   },
   "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^",
     "@types/audioworklet": "catalog:",
     "vue": "catalog:"
   }

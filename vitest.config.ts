@@ -1,8 +1,9 @@
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
 import { providerInferenceProjects } from './packages/provider-inference/vitest.config'
 
-export default defineConfig({
+export default withCpuSlots(defineConfig({
   test: {
     projects: [
       'server/apps/auth',
@@ -56,4 +57,4 @@ export default defineConfig({
       },
     ],
   },
-})
+}))

@@ -68,6 +68,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^",
     "@types/ioredis-mock": "catalog:",
     "@types/pg": "catalog:",
     "@types/ws": "catalog:",

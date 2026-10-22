@@ -36,5 +36,7 @@
   "dependencies": {
     "@types/w3c-web-hid": "catalog:"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^"
+  }
 }

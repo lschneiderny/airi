@@ -18,6 +18,7 @@
     "wlipsync": "catalog:"
   },
   "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^",
     "vitest": "catalog:vitest"
   }
 }

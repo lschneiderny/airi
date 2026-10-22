@@ -1,11 +1,12 @@
 import vue from '@vitejs/plugin-vue'
 import Info from 'unplugin-info/vite'
 
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { DownloadLive2DSDK } from '@proj-airi/unplugin-live2d-sdk'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
 
-export default defineConfig({
+export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
   plugins: [
     Info(),
@@ -49,4 +50,4 @@ export default defineConfig({
       },
     ],
   },
-})
+}))

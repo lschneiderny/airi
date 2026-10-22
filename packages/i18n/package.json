@@ -67,6 +67,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^",
     "unplugin-yaml": "catalog:",
     "valibot": "catalog:",
     "xast-util-to-xml": "catalog:",

@@ -5,12 +5,13 @@ import UnoCSS from 'unocss/vite'
 import Info from 'unplugin-info/vite'
 import VueRouter from 'vue-router/vite'
 
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
 
 import { sharedUnoConfig } from '../../uno.config'
 
-export default defineConfig({
+export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
   plugins: [
     Info(),
@@ -49,4 +50,4 @@ export default defineConfig({
       ],
     },
   },
-})
+}))

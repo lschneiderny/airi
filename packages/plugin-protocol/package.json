@@ -35,5 +35,8 @@
   "dependencies": {
     "@moeru/eventa": "catalog:",
     "@xsai/shared-chat": "catalog:"
+  },
+  "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^"
   }
 }

@@ -5,6 +5,7 @@ import UnoCss from 'unocss/vite'
 import Info from 'unplugin-info/vite'
 import VueRouter from 'vue-router/vite'
 
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { DownloadLive2DSDK } from '@proj-airi/unplugin-live2d-sdk'
 import { playwright } from '@vitest/browser-playwright'
 import { loadEnv } from 'vite'
@@ -12,7 +13,7 @@ import { defineConfig } from 'vitest/config'
 
 import unoConfig from './uno.config'
 
-export default defineConfig({
+export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
   plugins: [
     Info(),
@@ -84,4 +85,4 @@ export default defineConfig({
       },
     ],
   },
-})
+}))

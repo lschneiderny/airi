@@ -55,6 +55,7 @@
     "@electron-toolkit/preload": "catalog:",
     "@moeru/eventa": "catalog:",
     "@nekopaw/tempora": "catalog:",
+    "@proj-airi/cpu-slots": "workspace:^",
     "@proj-airi/electron-screen-capture": "workspace:^",
     "@types/audioworklet": "catalog:"
   }

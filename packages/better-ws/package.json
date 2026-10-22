@@ -50,5 +50,8 @@
     "crossws": "catalog:",
     "h3": "catalog:",
     "srvx": "catalog:"
+  },
+  "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^"
   }
 }

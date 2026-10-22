@@ -34,5 +34,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^"
+  }
 }

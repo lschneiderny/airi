@@ -42,5 +42,8 @@
     "@proj-airi/server-shared": "workspace:^",
     "superjson": "catalog:",
     "valibot": "catalog:"
+  },
+  "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^"
   }
 }

@@ -1,11 +1,12 @@
 import Vue from '@vitejs/plugin-vue'
 
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig, mergeConfig } from 'vitest/config'
 
 import stageWebConfig from './vite.config'
 
-export default defineConfig({
+export default withCpuSlots(defineConfig({
   plugins: [Vue()],
   test: {
     projects: [
@@ -35,4 +36,4 @@ export default defineConfig({
       })),
     ],
   },
-})
+}))

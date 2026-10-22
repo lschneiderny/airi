@@ -44,6 +44,7 @@
     "vue": "catalog:"
   },
   "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^",
     "@types/culori": "catalog:",
     "@types/three": "catalog:",
     "vitest": "catalog:vitest",

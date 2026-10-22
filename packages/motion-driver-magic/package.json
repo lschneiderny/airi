@@ -36,5 +36,7 @@
   "dependencies": {
     "es-toolkit": "catalog:"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^"
+  }
 }

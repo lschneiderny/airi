@@ -2,9 +2,10 @@ import { join } from 'node:path'
 
 import fakemic, { electron, web } from '@proj-airi/vitest-plugin-fakemic'
 
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
-export default defineConfig({
+export default withCpuSlots(defineConfig({
   test: {
     projects: [
       fakemic({
@@ -45,4 +46,4 @@ export default defineConfig({
       },
     ],
   },
-})
+}))

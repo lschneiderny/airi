@@ -1,14 +1,15 @@
 import { join } from 'node:path'
 import { cwd } from 'node:process'
 
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
-export default defineConfig(({ mode }) => {
-  return {
+export default defineConfig(async ({ mode }) => {
+  return withCpuSlots({
     test: {
       include: ['src/**/*.test.ts'],
       env: loadEnv(mode, join(cwd(), 'apps', 'ui-server-auth'), ''),
     },
-  }
+  })()
 })

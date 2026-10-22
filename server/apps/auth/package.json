@@ -52,6 +52,7 @@
   "devDependencies": {
     "@better-auth/cli": "catalog:",
     "@electric-sql/pglite": "catalog:",
+    "@proj-airi/cpu-slots": "workspace:^",
     "@types/pg": "catalog:",
     "drizzle-kit": "catalog:",
     "kysely": "catalog:",

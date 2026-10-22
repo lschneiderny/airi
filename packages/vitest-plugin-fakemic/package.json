@@ -21,6 +21,7 @@
     "vitest": "catalog:vitest"
   },
   "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^",
     "@types/node": "catalog:"
   }
 }

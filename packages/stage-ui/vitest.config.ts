@@ -5,6 +5,7 @@ import UnoCSS from 'unocss/vite'
 import Info from 'unplugin-info/vite'
 import VueRouter from 'vue-router/vite'
 
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { playwright } from '@vitest/browser-playwright'
 import { mergeConfigs } from 'unocss'
 import { loadEnv } from 'vite'
@@ -12,7 +13,7 @@ import { defineConfig } from 'vitest/config'
 
 import { sharedUnoConfig } from '../../uno.config'
 
-export default defineConfig({
+export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
   // Shared settings pages import these optional UI dependencies through the
   // component barrel. Bundle them before a browser test starts to avoid HMR.
@@ -86,4 +87,4 @@ export default defineConfig({
       },
     ],
   },
-})
+}))

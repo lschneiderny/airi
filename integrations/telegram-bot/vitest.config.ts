@@ -1,12 +1,13 @@
 import { cwd } from 'node:process'
 
+import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(async ({ mode }) => {
   console.info('mode', mode)
 
-  return {
+  return withCpuSlots({
     test: {
       // mode defines what ".env.{mode}" file to choose if exists
       env: loadEnv(mode, cwd(), ''),
@@ -22,5 +23,5 @@ export default defineConfig(({ mode }) => {
         },
       ],
     },
-  }
+  })()
 })

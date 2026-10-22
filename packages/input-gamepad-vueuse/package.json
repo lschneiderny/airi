@@ -41,6 +41,7 @@
     "@vueuse/core": "catalog:"
   },
   "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^",
     "vue": "catalog:"
   }
 }

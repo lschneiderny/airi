@@ -177,6 +177,7 @@
     "@intlify/unplugin-vue-i18n": "catalog:",
     "@modelcontextprotocol/sdk": "catalog:",
     "@pnpm/find-workspace-dir": "catalog:",
+    "@proj-airi/cpu-slots": "workspace:^",
     "@proj-airi/electron-eventa": "workspace:^",
     "@proj-airi/electron-screen-capture": "workspace:^",
     "@proj-airi/electron-vueuse": "workspace:^",
