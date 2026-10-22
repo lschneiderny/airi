@@ -9,7 +9,7 @@ import en from '@proj-airi/i18n/locales/en'
 import { errorMessageFrom } from '@moeru/std'
 import { createPinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
 import { page, userEvent } from 'vitest/browser'
 import { nextTick, watch } from 'vue'
@@ -110,6 +110,18 @@ function fieldOf(slider: Locator) {
 }
 
 describe('live2D model settings', () => {
+  // The first import of the settings module graph transforms it cold: 6-8 s alone, over 15 s under load.
+  // Loading it here keeps that one-time cost out of the first test's timeout; later imports hit the module cache.
+  beforeAll(async () => {
+    Object.assign(window, { Live2DCubismCore: {} })
+    await Promise.all([
+      import('@proj-airi/stage-ui-live2d'),
+      import('./live2d.vue'),
+      import('../../../../features/performance/settings'),
+      import('virtual:uno.css'),
+    ])
+  }, 60_000)
+
   afterEach(() => {
     cleanup()
     localStorage.clear()
@@ -680,7 +692,7 @@ describe('live2D model settings', () => {
     { width: 1280, theme: 'dark', size: 'desktop' },
     { width: 390, theme: 'light', size: 'mobile' },
     { width: 390, theme: 'dark', size: 'mobile' },
-  ])('keeps natural controls usable at narrow width ($size $theme)', async ({ width, theme, size }) => {
+  ])('keeps natural controls usable at narrow width ($size $theme)', async ({ width, theme }) => {
     await page.viewport(width, 1000)
     document.documentElement.classList.toggle('dark', theme === 'dark')
     document.body.className = 'bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 p-4'
@@ -723,12 +735,6 @@ describe('live2D model settings', () => {
       expect(bounds.width).toBeGreaterThanOrEqual(24)
     }
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width)
-    await Promise.all(document.getAnimations()
-      .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
-      .map(animation => animation.finished))
-    await page.screenshot({
-      path: `../../../../../../../.omo/evidence/live2d-presence-v2/task-11-${size}${theme === 'dark' ? '-dark' : ''}.png`,
-    })
   })
 
   it.each([
@@ -736,7 +742,7 @@ describe('live2D model settings', () => {
     { width: 1280, theme: 'dark', size: 'desktop' },
     { width: 390, theme: 'light', size: 'mobile' },
     { width: 390, theme: 'dark', size: 'mobile' },
-  ])('keeps the expanded Emotion strength group usable at narrow width ($size $theme)', async ({ width, theme, size }) => {
+  ])('keeps the expanded Emotion strength group usable at narrow width ($size $theme)', async ({ width, theme }) => {
     // The expanded group is taller than a 1000px viewport; the element capture frames only visible pixels.
     await page.viewport(width, 2400)
     document.documentElement.classList.toggle('dark', theme === 'dark')
@@ -754,15 +760,5 @@ describe('live2D model settings', () => {
       expect(bounds.width).toBeGreaterThanOrEqual(24)
     }
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width)
-    await Promise.all(document.getAnimations()
-      .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
-      .map(animation => animation.finished))
-    const animation = screen.getByRole('button', { name: t('settings.live2d.animation.title'), exact: true }).element().parentElement
-    if (!animation)
-      throw new Error('the Animation section has no container')
-    await page.screenshot({
-      element: animation,
-      path: `../../../../../../../.omo/evidence/natural-emotion-revamp/task-8-settings${size === 'mobile' ? '-mobile' : ''}${theme === 'dark' ? '-dark' : ''}.png`,
-    })
   })
 })
