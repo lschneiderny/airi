@@ -10,6 +10,9 @@ vi.mock('tinyexec', () => ({
   x,
 }))
 
+// The wrapper path comes from the module URL, so Windows separates its segments with backslashes.
+const wrapperConfigPath = /packages[\\/]cap-vite[\\/](?:src|dist)[\\/]vite-wrapper-config\.(?:ts|mjs)$/
+
 describe('prepareCapViteLaunch', () => {
   it('captures the user config while forwarding the remaining vite args', async () => {
     const { prepareCapViteLaunch } = await import('./index')
@@ -19,7 +22,7 @@ describe('prepareCapViteLaunch', () => {
       configLoader: 'runner',
       projectRoot: process.cwd(),
       viteArgs: ['--host', '0.0.0.0', '--configLoader', 'runner'],
-      wrapperConfigFile: expect.stringMatching(/packages\/cap-vite\/(src|dist)\/vite-wrapper-config\.(ts|mjs)$/),
+      wrapperConfigFile: expect.stringMatching(wrapperConfigPath),
     })
   })
 
@@ -31,7 +34,7 @@ describe('prepareCapViteLaunch', () => {
       configLoader: undefined,
       projectRoot: resolve(process.cwd(), 'apps/stage-pocket'),
       viteArgs: ['apps/stage-pocket', '--host', '0.0.0.0'],
-      wrapperConfigFile: expect.stringMatching(/packages\/cap-vite\/(src|dist)\/vite-wrapper-config\.(ts|mjs)$/),
+      wrapperConfigFile: expect.stringMatching(wrapperConfigPath),
     })
   })
 
@@ -58,7 +61,7 @@ describe('runCapVite', () => {
 
     expect(x).toHaveBeenCalledWith('vite', [
       '--config',
-      expect.stringMatching(/packages\/cap-vite\/(src|dist)\/vite-wrapper-config\.(ts|mjs)$/),
+      expect.stringMatching(wrapperConfigPath),
       '--host',
       '0.0.0.0',
       '--configLoader=runner',
