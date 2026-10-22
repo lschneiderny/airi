@@ -19,7 +19,7 @@ export default withCpuSlots(defineConfig({
       'packages/input-gamepad',
       'packages/input-gamepad-vueuse',
       'packages/input-playstation-dualsense-5',
-      'packages/model-driver-lipsync',
+      'packages/model-driver-lipsync/vitest.node.config.ts',
       'packages/better-ws',
       'packages/plugin-sdk',
       'packages/plugin-sdk-tamagotchi',

@@ -194,7 +194,7 @@ class Live2DLipSyncProcessor {
   stop(): void {
     cancelAnimationFrame(this.outputFrameId)
     this.outputFrameId = 0
-    this.lipSync?.node.disconnect()
+    this.lipSync?.dispose()
     this.lipSync = undefined
     this.analyser?.disconnect()
     this.analyser = undefined

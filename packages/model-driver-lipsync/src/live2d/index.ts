@@ -1,6 +1,6 @@
-import type { Profile } from 'wlipsync'
+import type { Profile, WLipSyncAudioNode } from 'wlipsync'
 
-import { createWLipSyncNode } from 'wlipsync'
+import { createWLipSyncAnalysis } from '../runtime/wlipsync/analysis'
 
 const RAW_KEYS = ['A', 'E', 'I', 'O', 'U', 'S'] as const
 const RAW_TO_VOWEL: Record<typeof RAW_KEYS[number], VowelKey> = {
@@ -17,9 +17,14 @@ export type VowelKey = 'A' | 'E' | 'I' | 'O' | 'U'
 
 export interface Live2DLipSync {
   /**
-   * The underlying wLipSync AudioWorkletNode. Connect your audio source to it.
+   * Node in the caller's AudioContext. Connect your audio source to it.
    */
-  node: Awaited<ReturnType<typeof createWLipSyncNode>>
+  input: AudioNode
+  /**
+   * The wLipSync AudioWorkletNode that reports volume and weights.
+   * It runs in a separate 48 kHz AudioContext when the caller's context is faster, so never connect sources to it.
+   */
+  node: WLipSyncAudioNode
   /**
    * Get per-vowel weights (already remapped from AEIOUS to AEIOU) scaled by current volume.
    */
@@ -32,6 +37,10 @@ export interface Live2DLipSync {
    * Convenience helper to connect an audio source node to the lip sync node.
    */
   connectSource: (source: AudioNode) => void
+  /**
+   * Disconnects the input and releases the analysis AudioContext when one was created.
+   */
+  dispose: () => void
 }
 
 export interface Live2DLipSyncOptions {
@@ -73,7 +82,7 @@ export async function createLive2DLipSync(
   profile: Profile,
   options: Live2DLipSyncOptions = {},
 ): Promise<Live2DLipSync> {
-  const node = await createWLipSyncNode(audioContext, profile)
+  const { input, node, dispose } = await createWLipSyncAnalysis(audioContext, profile)
 
   const cap = options.cap ?? 0.7
   const volumeScale = options.volumeScale ?? 0.9
@@ -141,7 +150,7 @@ export async function createLive2DLipSync(
 
   const connectSource = (source: AudioNode) => {
     try {
-      source.connect(node)
+      source.connect(input)
     }
     catch (error) {
       console.error('[model-driver-lipsync] failed to connect source to lip sync node', error)
@@ -149,9 +158,11 @@ export async function createLive2DLipSync(
   }
 
   return {
+    input,
     node,
     getVowelWeights,
     getMouthOpen,
     connectSource,
+    dispose,
   }
 }

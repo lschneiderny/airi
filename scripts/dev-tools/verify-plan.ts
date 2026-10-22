@@ -17,6 +17,7 @@ export const extraTestConfigs: { config: string, project?: string }[] = [
   { config: 'apps/stage-tamagotchi/vitest.config.ts', project: 'browser' },
   { config: 'packages/stage-ui/vitest.config.ts' },
   { config: 'packages/stage-ui-live2d/vitest.config.ts', project: 'browser' },
+  { config: 'packages/model-driver-lipsync/vitest.config.ts', project: 'browser' },
   { config: 'packages/stage-pages/vitest.config.ts' },
 ]
 

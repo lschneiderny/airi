@@ -455,7 +455,6 @@ async function playSpecialToken(
     streamId: options?.streamId,
   })
 }
-const lipSyncNode = ref<AudioNode>()
 
 // --- Performance state for the Natural motion driver
 // This stage is the only writer. It resolves every 250 ms, so dwell and release timers advance
@@ -636,14 +635,7 @@ function stopLipSyncLoop() {
 function resetLive2dLipSync() {
   stopLipSyncLoop()
 
-  try {
-    lipSyncNode.value?.disconnect()
-  }
-  catch {
-
-  }
-
-  lipSyncNode.value = undefined
+  live2dLipSync.value?.dispose()
   live2dLipSync.value = undefined
   lipSyncStarted.value = false
 }
@@ -669,8 +661,7 @@ async function setupLipSync() {
   try {
     const lipSync = await createLive2DLipSync(audioContext, wlipsyncProfile as Profile, live2dLipSyncOptions)
     live2dLipSync.value = lipSync
-    lipSyncNode.value = lipSync.node
-    speechDestination.connect(lipSync.node)
+    speechDestination.connect(lipSync.input)
     await audioContext.resume()
     lipSyncStarted.value = true
     syncLipSyncLoop()
