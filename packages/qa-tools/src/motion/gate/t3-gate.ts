@@ -49,6 +49,19 @@ export interface T3GateCommand {
 const fixturesDir = resolve(import.meta.dirname, '..', '..', '..', 'fixtures')
 const t1EmotionRunPattern = /-motion-gate-emotion-t1$/
 
+/** Why an explicit `--t1-report` cannot be used, judged from its `run.json` alone, or `null`. Runs before any lease or rig setup. */
+export function explicitT1ReferenceProblem(explicit: string): string | null {
+  const dir = resolve(explicit)
+  let manifest: { cache?: { hit?: boolean } }
+  try {
+    manifest = JSON.parse(readFileSync(join(dir, 'run.json'), 'utf8')) as { cache?: { hit?: boolean } }
+  }
+  catch (error) {
+    return `T1 reference ${dir} is not a run directory: ${errorMessageFrom(error) ?? 'unreadable run.json'}`
+  }
+  return manifest.cache?.hit ? `T1 reference ${dir} is a cached run; rerun it with --fresh` : null
+}
+
 /** The T1 emotion report the transfer ratio needs: same commit, and a result for every face check of the T3 cells (a missing `E` makes that ratio `n/a`). */
 export function findT1Reference(repoRoot: string, gitSha: string, explicit: string | null): { dir: string, report: GateReport } | string {
   const faceKeys = buildEmotionChecks()

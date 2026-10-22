@@ -21,7 +21,7 @@ import { loadT2Runtime } from '../../t2/runner'
 import { cacheFinishedRun, lookupResult, prepareCache, replayHit } from '../cache/lookup'
 import { aggregateEmotion, aggregateLiveliness, formatSummary } from './aggregate'
 import { emotionGateFor, gateBands, gateEmotions, livelinessGateFor } from './options'
-import { runT3Gate } from './t3-gate'
+import { explicitT1ReferenceProblem, runT3Gate } from './t3-gate'
 
 export const gateUsage = `Usage: motion gate <emotion | liveliness> --level <t1 | t2 | t3> [--rig forbooth] [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N] [--t1-report <run dir>] [--rescore <gate run dir>] [--fresh]
 
@@ -156,6 +156,10 @@ export async function acquireLease(request: { class: CpuClass, command: string, 
     return await acquire({ class: request.class, command: request.command, cwd: request.cwd, signal: request.timeoutMinutes === undefined ? undefined : AbortSignal.timeout(request.timeoutMinutes * 60_000) })
   }
   catch (error) {
+    if (request.timeoutMinutes !== undefined && error instanceof Error && error.name === 'TimeoutError') {
+      console.error(`Timed out after ${request.timeoutMinutes} min waiting for CPU slots (${request.class}). Nothing was launched; see \`pnpm slots status\` for the holders.`)
+      return 2
+    }
     console.error(`Cannot get CPU slots: ${errorMessageFrom(error) ?? 'unknown error'}`)
     return error instanceof CpuSlotsError ? 2 : 1
   }
@@ -223,7 +227,15 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
     // A re-score launches nothing, so it takes no lease.
     if (parsed.command.rescore !== null)
       return runT3Gate({ target, t1Report: parsed.command.t1Report, rescore: parsed.command.rescore }, repoRoot, env, () => gateFileSha(repoRoot))
-    const t3Lease = await acquireLease({ class: 'exclusive', command: `qa:motion ${rest.join(' ')}`, cwd: repoRoot })
+    // An explicit T1 reference is argument validation: refuse it before waiting for the whole machine or resolving the rig.
+    if (parsed.command.t1Report !== null) {
+      const refusal = explicitT1ReferenceProblem(parsed.command.t1Report)
+      if (refusal !== null) {
+        console.error(refusal)
+        return 2
+      }
+    }
+    const t3Lease = await acquireLease({ class: 'exclusive', command: `qa:motion ${rest.join(' ')}`, cwd: repoRoot, timeoutMinutes })
     if (typeof t3Lease === 'number')
       return t3Lease
     try {

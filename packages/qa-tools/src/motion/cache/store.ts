@@ -11,8 +11,11 @@ const staleTemporaryMs = 60 * 60 * 1000
 const keyPattern = /^[0-9a-f]{64}$/
 const entryIdPattern = /^\d{15}-[0-9a-f]{8}$/
 
+// The version changes whenever the closure gains inputs: an older entry lacks them and could hit on a change it never recorded.
+const entryVersion = 2
+
 const EntrySchema = v.object({
-  version: v.literal(1),
+  version: v.literal(entryVersion),
   key: v.string(),
   entryId: v.string(),
   createdAt: v.string(),
@@ -65,7 +68,7 @@ export function writeEntry(storeRoot: string, entry: Omit<CacheEntry, 'version' 
   const now = (clock.now ?? Date.now)()
   const suffix = (clock.random ?? (() => Math.floor(Math.random() * 2 ** 32).toString(16).padStart(8, '0')))()
   const entryId = `${String(now).padStart(15, '0')}-${suffix}`
-  const full: CacheEntry = { version: 1, ...entry, entryId, createdAt: new Date(now).toISOString() }
+  const full: CacheEntry = { version: entryVersion, ...entry, entryId, createdAt: new Date(now).toISOString() }
   const keyDir = join(storeRoot, entry.key)
   const temporary = join(keyDir, `.tmp-${process.pid}-${suffix}`)
   mkdirSync(temporary, { recursive: true })

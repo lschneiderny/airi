@@ -4,7 +4,7 @@ import process from 'node:process'
 
 import { Buffer } from 'node:buffer'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -45,10 +45,20 @@ function populate(root: string): void {
   write(root, 'pnpm-workspace.yaml', 'packages:\n  - packages/*\n')
   write(root, 'patches/dep.patch', 'patch\n')
   write(root, 'packages/qa-tools/package.json', '{"name":"qa-tools","exports":{".":"./a.ts"}}\n')
-  write(root, 'packages/qa-tools/tsconfig.json', '{"compilerOptions":{}}\n')
+  write(root, 'tsconfig.json', '// shared base\n{ "compilerOptions": { "strict": true, }, }\n')
+  write(root, 'packages/tsconfig-base/package.json', '{"name":"@fixture/tsconfig"}\n')
+  write(root, 'packages/tsconfig-base/tsconfig.json', '{}\n')
+  if (!existsSync(join(root, 'node_modules', '@fixture', 'tsconfig'))) {
+    mkdirSync(join(root, 'node_modules', '@fixture'), { recursive: true })
+    symlinkSync(join(root, 'packages', 'tsconfig-base'), join(root, 'node_modules', '@fixture', 'tsconfig'), process.platform === 'win32' ? 'junction' : 'dir')
+  }
+  write(root, 'packages/qa-tools/tsconfig.json', '{"extends":"@fixture/tsconfig/tsconfig.json"}\n')
   write(root, 'packages/stage-ui-live2d/package.json', '{"name":"live2d"}\n')
+  write(root, 'packages/stage-ui-live2d/tsconfig.json', '{ /* comment */ "extends": "../../tsconfig.json" }\n')
+  write(root, 'packages/qa-tools/src/reporter.ts', 'import \'./nested\'\nexport {}\n')
+  write(root, 'packages/qa-tools/src/nested.ts', 'export const nested = 1\n')
   for (const file of closureFiles)
-    write(root, file, `export const name = '${file}'\n`)
+    write(root, file, file === 'packages/qa-tools/vitest.config.ts' ? 'import \'./src/reporter\'\n' : `export const name = '${file}'\n`)
 }
 
 function keyOf(overrides: Partial<Parameters<typeof computeCacheKey>[0]> = {}, root = repo): string {
@@ -173,6 +183,32 @@ describe('closure validation', () => {
       write(repo, file, original)
     }
     expect(findHit(planFor(repo), repo)).not.toBeNull()
+  })
+
+  it('misses when a config reached through extends changes, by relative path or package specifier', () => {
+    const plan = planFor(repo)
+    record(repo, plan)
+    const stored = readEntries(store, plan.key)[0].entry.closure.map(item => item.repoPath)
+    expect(stored).toEqual(expect.arrayContaining(['tsconfig.json', 'packages/tsconfig-base/tsconfig.json']))
+    for (const file of ['tsconfig.json', 'packages/tsconfig-base/tsconfig.json']) {
+      const original = readFileSync(join(repo, file))
+      write(repo, file, `${original.toString()}\n`)
+      expect(findHit(plan, repo), file).toBeNull()
+      write(repo, file, original)
+    }
+    expect(findHit(plan, repo)).not.toBeNull()
+  })
+
+  it('misses when a local import of vitest.config.ts changes, transitively', () => {
+    const plan = planFor(repo)
+    record(repo, plan)
+    for (const file of ['packages/qa-tools/src/reporter.ts', 'packages/qa-tools/src/nested.ts']) {
+      const original = readFileSync(join(repo, file))
+      write(repo, file, `${original.toString()}// edit\n`)
+      expect(findHit(plan, repo), file).toBeNull()
+      write(repo, file, original)
+    }
+    expect(findHit(plan, repo)).not.toBeNull()
   })
 
   it('b6: normalization keeps repository files and drops query, virtual ids, dependencies, and outside paths', () => {

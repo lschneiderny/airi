@@ -1,14 +1,18 @@
+import type * as TypeScript from 'typescript'
+
 import type { CreateRunOptions, RunGate } from '../../evidence/run'
 import type { CacheEntry, StoreClock, StoredEntry } from './store'
 
 import { copyFileSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { isAbsolute, join, posix, resolve } from 'node:path'
+import { createRequire } from 'node:module'
+import { dirname, isAbsolute, join, posix, resolve } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
 
 import * as v from 'valibot'
 
 import { createRun } from '../../evidence/run'
+import { normalizeModuleId } from './closure'
 import { computeCacheKey, sha256Bytes } from './key'
 import { defaultStoreRoot, readEntries, writeEntry } from './store'
 
@@ -17,6 +21,12 @@ type ClosureEntry = CacheEntry['closure'][number]
 const ClosureFileSchema = v.array(v.object({ repoPath: v.string(), sha256: v.string() }))
 const closureFilePattern = /^closure-(vite|cli)-\d+\.json$/
 const tsconfigPattern = /^tsconfig.*\.json$/
+const nodeRequire = createRequire(import.meta.url)
+/** The one config file whose own local imports (a reporter, for example) shape every run. */
+const vitestConfigPath = 'packages/qa-tools/vitest.config.ts'
+const localImportPattern = /\bfrom\s*['"](\.{1,2}\/[^'"]+)['"]|\bimport\s*(?:\(\s*)?['"](\.{1,2}\/[^'"]+)['"]/g
+const sourceFilePattern = /\.(?:[cm]?[jt]s|tsx)$/
+const importSuffixes = ['', '.ts', '.mts', '.js', '.mjs', '.json', '/index.ts']
 
 export interface CachePlan {
   storeRoot: string
@@ -83,7 +93,76 @@ export function findHit(plan: CachePlan, repoRoot: string): StoredEntry | null {
   return null
 }
 
-/** `package.json` and `tsconfig*.json` beside the nearest manifest above each closure file: build settings that change transforms. */
+function isFile(path: string): boolean {
+  return existsSync(path) && statSync(path).isFile()
+}
+
+function tsconfigExtends(file: string): string[] {
+  const ts = nodeRequire('typescript') as typeof TypeScript
+  const value = (ts.readConfigFile(file, ts.sys.readFile).config as { extends?: unknown } | undefined)?.extends
+  if (typeof value === 'string')
+    return [value]
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function resolveExtends(file: string, spec: string): string | undefined {
+  if (spec.startsWith('.') || isAbsolute(spec)) {
+    const base = resolve(dirname(file), spec)
+    return [base, `${base}.json`].find(isFile)
+  }
+  const fromConfig = createRequire(file)
+  for (const name of [spec, `${spec}.json`, `${spec}/tsconfig.json`]) {
+    try {
+      return fromConfig.resolve(name)
+    }
+    catch {
+      // Not that spelling of the specifier; the next one may resolve.
+    }
+  }
+  return undefined
+}
+
+/** Every config reached through `extends`, transitively, resolving relative and package specifiers. Dependencies drop out in normalization. */
+function extendedConfigs(repoRoot: string, configs: Iterable<string>): string[] {
+  const found = new Set<string>()
+  const queue = [...configs]
+  for (let repoPath = queue.pop(); repoPath !== undefined; repoPath = queue.pop()) {
+    const file = resolve(repoRoot, repoPath)
+    for (const spec of tsconfigExtends(file)) {
+      const target = resolveExtends(file, spec)
+      const next = target === undefined ? undefined : normalizeModuleId(target, repoRoot)
+      if (next !== undefined && !found.has(next)) {
+        found.add(next)
+        queue.push(next)
+      }
+    }
+  }
+  return [...found]
+}
+
+/** Local relative files a source file imports, transitively. A regular expression is enough: this reads one known config. */
+function localImports(repoRoot: string, repoPath: string): string[] {
+  const seen = new Set([repoPath])
+  const queue = [repoPath]
+  for (let current = queue.pop(); current !== undefined; current = queue.pop()) {
+    const file = resolve(repoRoot, current)
+    if (!sourceFilePattern.test(file))
+      continue
+    for (const match of readFileSync(file, 'utf8').matchAll(localImportPattern)) {
+      const base = resolve(dirname(file), match[1] ?? match[2])
+      const target = importSuffixes.map(suffix => `${base}${suffix}`).find(isFile)
+      const next = target === undefined ? undefined : normalizeModuleId(target, repoRoot)
+      if (next !== undefined && !seen.has(next)) {
+        seen.add(next)
+        queue.push(next)
+      }
+    }
+  }
+  seen.delete(repoPath)
+  return [...seen]
+}
+
+/** `package.json` and `tsconfig*.json` beside the nearest manifest above each closure file, plus the configs those extend: build settings that change transforms. */
 function ownerFiles(repoRoot: string, repoPaths: Iterable<string>): string[] {
   const owners = new Set<string>()
   for (const repoPath of repoPaths) {
@@ -99,7 +178,8 @@ function ownerFiles(repoRoot: string, repoPaths: Iterable<string>): string[] {
         files.add(dir === '.' ? name : `${dir}/${name}`)
     }
   }
-  return [...files]
+  const configs = [...files].filter(file => tsconfigPattern.test(posix.basename(file)))
+  return [...files, ...extendedConfigs(repoRoot, configs)]
 }
 
 export interface RecordInput {
@@ -150,8 +230,9 @@ export function recordResult(input: RecordInput): RecordOutcome {
       return { stored: false, reason: `${item.repoPath} changed between the worker and the CLI` }
     captured.set(item.repoPath, item.sha256)
   }
+  const roots = new Set([...captured.keys(), ...(captured.has(vitestConfigPath) ? localImports(repoRoot, vitestConfigPath) : [])])
   const closure: ClosureEntry[] = []
-  for (const repoPath of [...new Set([...captured.keys(), ...ownerFiles(repoRoot, captured.keys())])].sort()) {
+  for (const repoPath of [...new Set([...roots, ...ownerFiles(repoRoot, roots)])].sort()) {
     const sha256 = hashRepoFile(repoRoot, repoPath)
     if (sha256 === null || (captured.has(repoPath) && captured.get(repoPath) !== sha256))
       return { stored: false, reason: `${repoPath} changed during the run` }
