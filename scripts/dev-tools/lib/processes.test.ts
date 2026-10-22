@@ -2,7 +2,7 @@ import type { ProcessInfo } from './processes'
 
 import { describe, expect, it } from 'vitest'
 
-import { ancestry, attribute, classifyTool, isOrphan, normalizePath, rollup } from './processes'
+import { ancestry, attribute, classifyTool, cpuPercentFromRaw, isOrphan, normalizePath, rollup } from './processes'
 
 const proc = (pid: number, ppid: number, name: string, command: string, memoryMb = 100, cpuPercent = 0): ProcessInfo => ({ pid, ppid, name, command, memoryMb, cpuPercent, startedAt: null })
 
@@ -69,5 +69,24 @@ describe('ancestry', () => {
   it('returns the process and its live ancestors, and survives a parent cycle', () => {
     expect(ancestry([proc(1, 0, 'a', ''), proc(2, 1, 'b', ''), proc(3, 2, 'c', '')], 3)).toEqual(new Set([3, 2, 1]))
     expect(ancestry([proc(1, 2, 'a', ''), proc(2, 1, 'b', '')], 1)).toEqual(new Set([1, 2]))
+  })
+})
+
+describe('cpuPercentFromRaw', () => {
+  const sec = 10_000_000
+  it('turns raw 100 ns deltas into percent of one core', () => {
+    const first = [{ i: 0, c: 0, t: 100 }, { i: 10, c: 5 * sec, t: 1000 * sec }, { i: 11, c: 0, t: 1000 * sec }, { i: 12, c: 0, t: 1000 * sec }]
+    const second = [{ i: 0, c: 99 * sec, t: 1001 * sec }, { i: 10, c: 9 * sec, t: 1001 * sec }, { i: 11, c: 0.5 * sec, t: 1002 * sec }, { i: 13, c: sec, t: 1001 * sec }]
+    const result = cpuPercentFromRaw(first, second)
+    expect(result.get(10)).toBeCloseTo(400)
+    expect(result.get(11)).toBeCloseTo(25)
+  })
+
+  it('drops PID 0, processes seen once, and counters that went backwards', () => {
+    const result = cpuPercentFromRaw(
+      [{ i: 0, c: 0, t: 0 }, { i: 20, c: 100, t: 0 }, { i: 21, c: 5, t: 10 }],
+      [{ i: 0, c: 50, t: 10 }, { i: 20, c: 50, t: 10 }, { i: 21, c: 5, t: 10 }, { i: 22, c: 5, t: 10 }],
+    )
+    expect([...result.keys()]).toEqual([])
   })
 })

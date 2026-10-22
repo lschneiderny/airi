@@ -13,27 +13,67 @@ export interface ProcessInfo {
   command: string
 }
 
+/** One raw perf-counter reading: cumulative CPU time and the system clock it was read at, both in 100 ns units. */
+export interface RawCpuSample {
+  /** IDProcess */
+  i: number
+  /** PercentProcessorTime (raw: cumulative processor time) */
+  c: number
+  /** Timestamp_Sys100NS */
+  t: number
+}
+
+/**
+ * Percent of one core per PID from two raw readings, so a busy multi-threaded process can exceed 100.
+ * PID 0 (Idle and `_Total`) is dropped, and a PID missing from either reading or whose counter went backwards (PID reuse) is left out.
+ */
+export function cpuPercentFromRaw(first: RawCpuSample[], second: RawCpuSample[]): Map<number, number> {
+  const before = new Map(first.filter(sample => sample.i !== 0).map(sample => [sample.i, sample]))
+  const result = new Map<number, number>()
+  for (const after of second) {
+    const earlier = before.get(after.i)
+    if (after.i === 0 || !earlier)
+      continue
+    const elapsed = after.t - earlier.t
+    const used = after.c - earlier.c
+    if (elapsed > 0 && used >= 0)
+      result.set(after.i, used / elapsed * 100)
+  }
+  return result
+}
+
+// NOTICE: raw counter deltas replace the Formatted class, whose percentage spans its own previous sample.
+// A query soon after another reader reported 21.49 cores for a steady ~3.5-core load.
+// Removal: none expected.
 const windowsSnapshot = `
-$cpu = @{}
-Get-CimInstance Win32_PerfFormattedData_PerfProc_Process | ForEach-Object { $cpu[[int]$_.IDProcess] = [double]$_.PercentProcessorTime }
-Get-CimInstance Win32_Process | ForEach-Object {
+function Read-Raw { Get-CimInstance Win32_PerfRawData_PerfProc_Process | ForEach-Object { [pscustomobject]@{ i = [int]$_.IDProcess; c = [double]$_.PercentProcessorTime; t = [double]$_.Timestamp_Sys100NS } } }
+$first = @(Read-Raw)
+Start-Sleep -Milliseconds 1000
+$processes = @(Get-CimInstance Win32_Process | ForEach-Object {
   [pscustomobject]@{
     pid = [int]$_.ProcessId
     ppid = [int]$_.ParentProcessId
     name = $_.Name
     memoryMb = [math]::Round($_.WorkingSetSize / 1MB)
-    cpuPercent = $(if ($cpu.ContainsKey([int]$_.ProcessId)) { $cpu[[int]$_.ProcessId] } else { 0 })
     startedAt = $(if ($_.CreationDate) { $_.CreationDate.ToString('o') } else { $null })
     command = $(if ($_.CommandLine) { $_.CommandLine } else { '' })
   }
-} | ConvertTo-Json -Compress -Depth 2
+})
+$second = @(Read-Raw)
+[pscustomobject]@{ first = $first; second = $second; processes = $processes } | ConvertTo-Json -Compress -Depth 4
 `
+
+interface WindowsSnapshot {
+  first: RawCpuSample[]
+  second: RawCpuSample[]
+  processes: Omit<ProcessInfo, 'cpuPercent'>[]
+}
 
 export function snapshotProcesses(): ProcessInfo[] {
   if (process.platform === 'win32') {
-    const json = capture('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', windowsSnapshot], { cwd: process.cwd() })
-    const parsed = JSON.parse(json) as ProcessInfo | ProcessInfo[]
-    return Array.isArray(parsed) ? parsed : [parsed]
+    const snapshot = JSON.parse(capture('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', windowsSnapshot], { cwd: process.cwd() })) as WindowsSnapshot
+    const cpu = cpuPercentFromRaw(snapshot.first, snapshot.second)
+    return snapshot.processes.map(info => ({ ...info, cpuPercent: cpu.get(info.pid) ?? 0 }))
   }
   // `lstart` prints five space-separated tokens, such as `Tue Oct 20 17:31:59 2026`.
   return capture('ps', ['-axo', 'pid=,ppid=,rss=,pcpu=,lstart=,args='], { cwd: process.cwd() }).split('\n').flatMap((line) => {
