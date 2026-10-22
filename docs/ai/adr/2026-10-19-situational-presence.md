@@ -192,7 +192,7 @@ Other drivers and renderers ignore `look`.
 Full window titles go to the model after normalization, including to cloud providers.
 Normalization strips app-name suffixes and unsaved markers, collapses whitespace, and caps the title at 120 characters.
 The title denylist, which by default lists password managers, removes titles for its apps.
-**Share the foreground app and window titles** (`shareForegroundWindow`, on by default) turns foreground sensing off. While it is off, nothing samples the foreground window, and neither the situation nor the block holds an app, title, or app category. The gate then holds with `stale-signal`, as on a host without a foreground reader, so the character does not speak up on her own. Replies to the user and widget reactions, which are forced turns, still run. No other signal lets the gate pass without a fresh foreground sample.
+**Share the foreground app and window titles** (`shareForegroundWindow`, on by default) turns foreground sensing off. While it is off, nothing samples the foreground window, and neither the situation nor the block holds an app, title, or app category. The gate then holds with `stale-signal`, as on a host without a foreground reader, so the character does not speak up on her own. Replies to the user and widget reactions, which are forced turns, still run. No other signal lets the gate pass without a fresh foreground sample. This switch does not cover the web extension: the extension's own settings decide which page and video details it sends to the stage, and from there to the model.
 Titles are never written to chat history or cloud sync. The trigger text of an unprompted turn uses the app label, category, and duration only.
 
 ### Controls and observability

@@ -746,6 +746,8 @@ Luke authorized implementing the report's recommendations. They ran as ulw-loop 
   - When no voice output host is connected, a send now waits up to 10 s for one to return before it fails. Before, it failed at once (`speech-output-control.ts`).
   - The reload fix relies on the voice store's `pagehide` listener running before setupSynced's. A plain comment documents this, but nothing enforces the order.
   - The web-extension `vue-tsc` compile still has 7 pre-existing errors.
+  - Fixing the extension's module identity means an installed web extension now connects for the first time. It sends page and video details to the stage under its own settings, which are on by default. The foreground-sharing switch does not cover it; the presence ADR now says so. Decide whether the extension's defaults should be off, or tied to that switch.
+- **Packaging:** the G8 installer build left out the Godot stage because its build output was missing, and it bundles only the x64 koffi package. Both need checking before a release build.
 - **cpu-slots:**
   - The process lookup timeout is now 30 s, so a hung PowerShell can hold the store lock for up to 30 s.
   - The F07 double-holder gap remains, as do process snapshots taken inside the global lock.
