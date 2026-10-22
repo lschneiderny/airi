@@ -37,6 +37,8 @@ jobs:
     name: Build ${{ matrix.depot }} depot
     runs-on: ${{ matrix.os }}
     env:
+      # Fail packaging if the exported Godot stage sidecar is missing.
+      AIRI_REQUIRE_GODOT_STAGE: 'true'
       VITE_DISTRIBUTION: steam
       VITE_DISABLE_CUSTOM_PROVIDERS: 'true'
       VITE_DISABLE_FLUX_PURCHASE: 'true'

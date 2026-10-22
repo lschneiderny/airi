@@ -58,6 +58,14 @@ Use this feature for local native applications. It does not expose a remote-devi
 The desktop package includes the platform CLI as an optional dependency and unpacks its executable from ASAR.
 Do not omit optional dependencies when building an installer. Windows ARM64 and Linux musl do not have a matching CLI in this version.
 
+## Packaging
+
+The installer bundles the Godot stage sidecar from `engines/stage-tamagotchi-godot/out/<win|mac|linux>` as `resources/godot-stage`. Exporting it needs the Godot 4.7.1 editor with export templates and the .NET 10 SDK (see the engine README, "Exporting").
+
+`electron-builder.config.ts` checks that output in `beforePack`. By default a missing or empty directory logs a warning and the package is built without the sidecar, so the Godot renderer cannot start. Set `AIRI_REQUIRE_GODOT_STAGE=true` to fail packaging instead; the release workflows do.
+
+Windows installers are x64 only (`--windows --x64`), so only `@koromix/koffi-win32-x64` is bundled.
+
 ## Verification
 
 Run the focused runtime tests:

@@ -2,7 +2,11 @@
 
 import type { Configuration } from 'electron-builder'
 
+import process from 'node:process'
+
 import { execSync } from 'node:child_process'
+import { readdirSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 import { isMacOS } from 'std-env'
 
@@ -40,7 +44,44 @@ else {
   console.warn('[electron-builder/config] Xcode version is 26 or above. Using .icon format for macOS app icon.')
 }
 
+// NOTICE:
+// electron-builder only logs a missing extraResources source and exits 0, so a package
+// can silently lack the Godot sidecar. Release CI sets AIRI_REQUIRE_GODOT_STAGE=true to fail.
+// Remove when electron-builder fails on missing sources.
+const godotStageOutDirByPlatform: Record<string, string> = {
+  win32: 'win',
+  darwin: 'mac',
+  linux: 'linux',
+}
+
+function checkGodotStageOutput(platformName: string, projectDir: string) {
+  const osDir = godotStageOutDirByPlatform[platformName]
+  if (!osDir)
+    return
+
+  const outDir = resolve(projectDir, '../../engines/stage-tamagotchi-godot/out', osDir)
+  let hasOutput = false
+  try {
+    hasOutput = readdirSync(outDir).length > 0
+  }
+  catch {}
+  if (hasOutput)
+    return
+
+  const message = `Godot stage sidecar output is missing or empty: ${outDir}. `
+    + 'Export it first (godot --headless --export-release, see engines/stage-tamagotchi-godot/README.md); '
+    + 'without it the packaged app cannot start the Godot renderer.'
+
+  if (process.env.AIRI_REQUIRE_GODOT_STAGE === 'true')
+    throw new Error(`[electron-builder/config] ${message}`)
+
+  console.warn(`[electron-builder/config] Warning: ${message} Continuing without it; set AIRI_REQUIRE_GODOT_STAGE=true to fail instead.`)
+}
+
 export default {
+  beforePack: async (context) => {
+    checkGodotStageOutput(context.electronPlatformName, context.packager.projectDir)
+  },
   appId: 'ai.moeru.airi',
   productName: 'AIRI',
   directories: {
