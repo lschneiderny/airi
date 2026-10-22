@@ -44,6 +44,8 @@
     "test-ui:run": "vitest run --config packages/stage-ui/vitest.config.ts",
     "test-stage-ui-live2d:run": "vitest run --config packages/stage-ui-live2d/vitest.config.ts --project browser",
     "test-model-driver-lipsync:run": "vitest run --config packages/model-driver-lipsync/vitest.config.ts --project browser",
+    "test-stage-ui-three:run": "vitest run --config packages/stage-ui-three/vitest.config.ts --project browser",
+    "test-stage-ui-mmd:run": "vitest run --config packages/stage-ui-mmd/vitest.config.ts --project browser",
     "lint": "moeru-lint .",
     "lint:fix": "moeru-lint --fix .",
     "lint:swift": "pnpm -rF @proj-airi/stage-pocket run lint:swift",

@@ -15,6 +15,8 @@ export const testRunSuites: readonly TestRunSuite[] = [
   { label: 'test-ui:run', command: 'pnpm run test-ui:run' },
   { label: 'test-stage-ui-live2d:run', command: 'pnpm run test-stage-ui-live2d:run' },
   { label: 'test-model-driver-lipsync:run', command: 'pnpm run test-model-driver-lipsync:run' },
+  { label: 'test-stage-ui-three:run', command: 'pnpm run test-stage-ui-three:run' },
+  { label: 'test-stage-ui-mmd:run', command: 'pnpm run test-stage-ui-mmd:run' },
 ]
 
 export interface SuiteResult {

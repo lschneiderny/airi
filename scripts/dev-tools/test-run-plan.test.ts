@@ -25,6 +25,8 @@ describe('testRunSuites', () => {
       'pnpm run test-ui:run',
       'pnpm run test-stage-ui-live2d:run',
       'pnpm run test-model-driver-lipsync:run',
+      'pnpm run test-stage-ui-three:run',
+      'pnpm run test-stage-ui-mmd:run',
     ])
   })
 })

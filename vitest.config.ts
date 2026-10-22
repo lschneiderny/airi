@@ -31,7 +31,7 @@ export default withCpuSlots(defineConfig({
       'packages/server-sdk',
       'packages/stage-shared',
       'packages/stage-ui-live2d/vitest.node.config.ts',
-      'packages/stage-ui-three',
+      'packages/stage-ui-three/vitest.node.config.ts',
       'packages/vitest-plugin-fakemic',
       'packages/vite-plugin-sherpaw',
       // Root developer tools (`pnpm verify`, `pnpm wt`, `pnpm dev:top`). They belong to no package.
