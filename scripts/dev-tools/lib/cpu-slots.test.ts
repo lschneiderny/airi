@@ -17,6 +17,13 @@ const busyStatus: CpuSlotsStatus = {
   queue: [{ class: 'gate', pid: 3333, command: 'qa:motion gate', wait: 9_500 }],
 }
 
+const malformedStatus: CpuSlotsStatus = {
+  budget: 12,
+  held: 0,
+  leases: [],
+  queue: [{ malformed: true, file: 'ticket-9.json', pid: 4444, touched: 2_500 }],
+}
+
 describe('renderCpuSlots', () => {
   it('prints a zero header for an empty store', () => {
     expect(renderCpuSlots({ kind: 'ok', status: empty })).toEqual(['cpu slots: held 0/12, 0 queued'])
@@ -32,10 +39,17 @@ describe('renderCpuSlots', () => {
     expect(lines[3]).toContain('pid 3333')
   })
 
+  it('renders a malformed queue entry with its pid and touch age, and counts it as queued', () => {
+    const lines = renderCpuSlots({ kind: 'ok', status: malformedStatus })
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toContain('held 0/12, 1 queued')
+    expect(lines[1]).toContain('queued malformed pid 4444 (ticket-9.json) touched 2s')
+  })
+
   it('reports a busy lock without a status body', () => {
     const lines = renderCpuSlots({ kind: 'busy' })
     expect(lines).toHaveLength(1)
-    expect(lines[0]).toContain('busy')
+    expect(lines[0]).toContain('cpu slots: busy (lock held), try again')
   })
 })
 
@@ -82,6 +96,15 @@ describe('cpuSlotsJson', () => {
       held: 5,
       leases: busyStatus.leases,
       queue: busyStatus.queue,
+    })
+  })
+
+  it('passes malformed queue entries through unchanged', () => {
+    expect(cpuSlotsJson({ kind: 'ok', status: malformedStatus })).toEqual({
+      budget: 12,
+      held: 0,
+      leases: [],
+      queue: malformedStatus.queue,
     })
   })
 })

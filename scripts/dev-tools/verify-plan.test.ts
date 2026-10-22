@@ -103,6 +103,10 @@ describe('per-command slot acquisition', () => {
     rmSync(store, { recursive: true, force: true })
   })
 
+  // NOTICE:
+  // The test runs three real acquisitions against the broker, which snapshots processes on each acquire.
+  // acquire() builds its Store without snapshotProcesses or processStartedAt (packages/cpu-slots/src/acquire.ts), so no fake can be injected.
+  // Removal condition: drop the explicit timeout once acquire() accepts injected store options.
   it('grants the next step immediately after the previous step releases', async () => {
     const request = (cpuClass: 'typecheck' | 'lint' | 'test') => ({ class: cpuClass, cwd: process.cwd(), command: `verify ${cpuClass}`, signal: AbortSignal.timeout(10_000) })
     const first = await acquire(request('typecheck'))
@@ -114,5 +118,5 @@ describe('per-command slot acquisition', () => {
     const third = await acquire(request('test'))
     expect(third.grant).toBeGreaterThan(0)
     third.release()
-  })
+  }, 30_000)
 })

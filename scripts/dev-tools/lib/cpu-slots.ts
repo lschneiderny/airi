@@ -1,3 +1,5 @@
+import type { MalformedQueueEntry } from '@proj-airi/cpu-slots'
+
 import { errorMessageFrom } from '@moeru/std'
 import { StoreBusyError } from '@proj-airi/cpu-slots'
 
@@ -6,7 +8,7 @@ export interface CpuSlotsStatus {
   budget: number
   held: number
   leases: { class: string, slots: number, pid: number, command: string, age: number }[]
-  queue: { class: string, pid: number, command: string, wait: number }[]
+  queue: ({ class: string, pid: number, command: string, wait: number } | MalformedQueueEntry)[]
 }
 
 export type CpuSlotsView
@@ -46,15 +48,19 @@ const clip = (command: string) => command.slice(0, 120)
 
 export function renderCpuSlots(view: CpuSlotsView): string[] {
   if (view.kind === 'busy')
-    return ['CPU slots: busy (lock held), try again']
+    return ['cpu slots: busy (lock held), try again']
   if (view.kind === 'error')
     return [`cpu slots: unavailable (${view.message})`]
   const { status } = view
   const lines = [`cpu slots: held ${status.held}/${status.budget}, ${status.queue.length} queued`]
   for (const lease of status.leases)
     lines.push(`  lease ${lease.class} ${lease.slots} slots pid ${lease.pid} age ${seconds(lease.age)}  ${clip(lease.command)}`)
-  for (const ticket of status.queue)
-    lines.push(`  queued ${ticket.class} pid ${ticket.pid} waiting ${seconds(ticket.wait)}  ${clip(ticket.command)}`)
+  for (const entry of status.queue) {
+    if ('malformed' in entry)
+      lines.push(`  queued malformed pid ${entry.pid ?? '?'} (${entry.file}) touched ${seconds(entry.touched)}`)
+    else
+      lines.push(`  queued ${entry.class} pid ${entry.pid} waiting ${seconds(entry.wait)}  ${clip(entry.command)}`)
+  }
   return lines
 }
 
