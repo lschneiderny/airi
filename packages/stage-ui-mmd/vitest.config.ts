@@ -19,7 +19,7 @@ export default withCpuSlots(defineConfig({
           browser: {
             enabled: true,
             headless: true,
-            provider: playwright(),
+            provider: playwright({ launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] } }),
             instances: [
               { browser: 'chromium' },
             ],

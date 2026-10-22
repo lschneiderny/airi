@@ -1,10 +1,11 @@
-import type { Profile, WLipSyncAudioNode, WLipSyncVowel } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
+import type { WLipSyncAnalysis } from '@proj-airi/model-driver-lipsync/runtime/wlipsync'
+import type { Profile, WLipSyncVowel } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import type { Ref } from 'vue'
 
 import type { VowelSlot } from '../../constants/morphs'
 import type { MorphController } from './morph'
 
-import { createWLipSyncNode } from '@proj-airi/model-driver-lipsync/runtime/wlipsync'
+import { createWLipSyncAnalysis } from '@proj-airi/model-driver-lipsync/runtime/wlipsync'
 import {
   createWLipSyncVowelDriver,
   WLIP_SYNC_VOWELS,
@@ -31,30 +32,30 @@ export function useMMDLipSync(
   audioContext: Readonly<Ref<AudioContext | undefined>>,
   audioSource: Readonly<Ref<AudioBufferSourceNode | undefined>>,
 ) {
-  const lipSyncNode = shallowRef<WLipSyncAudioNode>()
+  const lipSyncAnalysis = shallowRef<WLipSyncAnalysis>()
   const vowelDriver = createWLipSyncVowelDriver()
 
   watch(audioContext, (context, _, onCleanup) => {
-    lipSyncNode.value = undefined
+    lipSyncAnalysis.value = undefined
     vowelDriver.reset()
     if (!context)
       return
 
     let active = true
-    let createdNode: undefined | WLipSyncAudioNode
+    let createdAnalysis: undefined | WLipSyncAnalysis
     onCleanup(() => {
       active = false
-      createdNode?.disconnect()
+      createdAnalysis?.dispose()
     })
 
-    void createWLipSyncNode(context, wlipsyncProfile as Profile)
-      .then((node) => {
-        createdNode = node
+    void createWLipSyncAnalysis(context, wlipsyncProfile as Profile)
+      .then((analysis) => {
+        createdAnalysis = analysis
         if (!active) {
-          node.disconnect()
+          analysis.dispose()
           return
         }
-        lipSyncNode.value = node
+        lipSyncAnalysis.value = analysis
       })
       .catch((error) => {
         if (active)
@@ -62,12 +63,12 @@ export function useMMDLipSync(
       })
   }, { immediate: true })
 
-  watch([lipSyncNode, audioSource], ([node, source], _, onCleanup) => {
-    if (!node || !source)
+  watch([lipSyncAnalysis, audioSource], ([analysis, source], _, onCleanup) => {
+    if (!analysis || !source)
       return
 
     try {
-      source.connect(node)
+      source.connect(analysis.input)
     }
     catch (error) {
       console.error('[stage-ui-mmd] Failed to connect the MMD lip-sync node.', error)
@@ -76,7 +77,7 @@ export function useMMDLipSync(
 
     onCleanup(() => {
       try {
-        source.disconnect(node)
+        source.disconnect(analysis.input)
       }
       catch {
         // The source can end before Vue runs this watcher cleanup.
@@ -85,7 +86,7 @@ export function useMMDLipSync(
   }, { immediate: true })
 
   function update(morphs: MorphController | undefined, delta = 0.016) {
-    const node = lipSyncNode.value
+    const node = lipSyncAnalysis.value?.node
     if (!morphs || !node)
       return
 
