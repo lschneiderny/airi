@@ -69,6 +69,23 @@ pnpm dev:top kill <worktree> --orphans --yes
 
 A process belongs to the worktree whose path appears in its command line, or else to its nearest ancestor's worktree. An orphan is a Node.js, Electron, or Godot process whose parent has exited. `kill` stops each process tree once, from its top-most member. Right before each kill it re-reads the live command line, because Windows reuses PIDs. It never stops the tree it runs in.
 
+## CPU slots and the verify cache
+
+`pnpm verify` takes a lease from the CPU slot budget for each step, so steps from several worktrees queue instead of oversubscribing the machine. The classes are:
+
+- `typecheck`: one `turbo run typecheck` command, with `--concurrency={grant}`.
+- `lint`: `moeru-lint` in chunks.
+- `test`: `vitest related --run` for the root config.
+- `browser`: extra configs and browser-mode projects.
+
+A waiting step prints `cpu-slots: waiting for N slot(s) ...`. Run `pnpm slots status` to see the holders.
+
+Passing steps are cached under `<git common dir>/airi-verify/`, keyed by the working tree hash, the command, the Node version, and the platform. `--force` ignores that cache and reruns every step. Failures are never cached. A pass is not cached when files changed while its step ran.
+
+`pnpm dev:top` prints `cpu slots: held X/Y, N queued` in its header, with one line per lease and queued caller. If the store lock is held, it prints `cpu slots: busy (lock held), try again`. If the store cannot be read, it prints `cpu slots: unavailable (...)`. `pnpm dev:top kill <worktree>` is a dry run unless `--yes` is passed, and `--orphans` limits it to orphaned processes. Each kill re-reads the live command line first.
+
+Editing `packages/cpu-slots/README.md` currently invalidates the Turbo typecheck cache for the whole repository. See the cpu-slots README.
+
 ## Moving the repository to a Dev Drive (Windows 11)
 
 A Dev Drive is a ReFS volume that Microsoft Defender scans in performance mode. It cuts the scanning cost of `node_modules` across many worktrees. These steps need an administrator shell and a pause in all dev work.

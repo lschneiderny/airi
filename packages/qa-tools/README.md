@@ -127,6 +127,22 @@ AIRI_QA_RIG_FORBOOTH="<rig dir>" node --import tsx packages/qa-tools/bin/motion.
 - Exit codes: 0 verified, 1 run, verification or teardown failure, 2 usage or environment error before launch (for example `AIRI_QA_RIG_FORBOOTH` unset, a scenario without level `t3` or longer than 599 s), 130 interrupted. `pnpm qa:motion` and the `node --import tsx` form preserve these codes; `pnpm -F @proj-airi/qa-tools exec tsx bin/motion.ts` reports every failure as 1.
 - A hard kill of the CLI itself (for example `taskkill /F` on its PID) skips teardown. Check for leftovers with `pnpm qa:doctor` (`stray-electron`) and stop them by hand after confirming their command lines contain your worktree path.
 - `builtin:t3-smoke` (`fixtures/scenarios/t3-smoke.json`, levels `t1` and `t3`, 140 s): clear pulses of happy, sad, angry, surprised, think, love, flustered and sleepy 14 s apart (longer than `naturalEmotionLifetime` for clear, 8.7 s, and strong, 12.3 s), one `<|ACT {"emotion":"angry"}|>` marker, `expression1` on and off, and screenshots 1 s and 3 s after each pulse. The same file runs unchanged through `runT1`, and both traces stamp the same scenario events.
+## Result cache
+
+Completed T1 runs are stored in `<git common dir>/airi-qa-cache`, whether they pass or fail. A rerun whose inputs match a stored entry is replayed: it prints `CACHED from <run id>`, copies the stored files, sets `cache: { hit: true, sourceRunId, entryId }` in `run.json`, starts no Vitest process, and takes no CPU lease. A measured hit ran in 0.3 s (2.7 s with pnpm and tsx startup). The matching miss ran Vitest for about 12.9 s.
+
+The key covers the arguments, the environment variables with the prefixes `QA_`, `VITE_`, and `VITEST_` plus `NODE_OPTIONS`, `NODE_ENV`, and `TZ` (`QA_RUN_DIR` is excluded), the gate file hash, the install inputs (`package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, and `patches/`), and the runtime identity (Node, platform, architecture, and the Vitest version and hash).
+
+A hit requires every recorded file to exist with identical bytes, including line endings. The recorded closure is the repository files reached through the Vitest config's module graph, plus the `extends` chains of the tsconfig files. A corrupt entry counts as a miss. If the key cannot be built, the run prints `QA cache disabled for this run: <reason>` and runs normally.
+
+Limits:
+
+- `--fresh` skips the lookup, and the run is still stored.
+- A cached run is never T3 acceptance evidence. `gate emotion --level t3 --t1-report <cached run>` refuses it before any lease is taken.
+- An environment variable outside the filtered prefixes does not enter the key, so changing it can return a stale hit. The same applies to a relative import written with a `.js` suffix for a `.ts` file: that form was measured as a stale hit (probe D4). The repository config chain does not use either form today.
+
+Worker count: `gate --workers` defaults to the CPU slot grant and is clamped to it. See the cpu-slots README for the classes.
+
 ## Review report
 
 `pnpm qa:report <runDir> [<runDir>...] [--out <file>]` writes one self-contained HTML page, `<firstRunDir>/report.html`, from any mix of run directories: gate runs (`report.json`), T3 runs (`scenario.json`, `screenshots.json`, `screenshots/`) and `qa:test` runs (`summary.json`). Rerunning overwrites the file.
