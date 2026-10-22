@@ -5,6 +5,8 @@ import type {
   WorkerToParentMessage,
 } from './js-planner-sandbox-protocol'
 
+import process from 'node:process'
+
 import { fork } from 'node:child_process'
 import { realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -72,7 +74,12 @@ export async function executeSandboxWorker(
         `--allow-fs-read=${PNPM_MODULE_STORE_PATH}`,
         '--disable-proto=throw',
         '--frozen-intrinsics',
-        '--experimental-transform-types',
+        // NOTICE:
+        // Node 26 removed this flag and an unknown flag aborts the worker.
+        // Older Node needs it to load the TypeScript worker entry.
+        // Source: process.allowedNodeEnvironmentFlags lists the accepted flags.
+        // Removal: drop the spread once no supported Node needs the flag.
+        ...(process.allowedNodeEnvironmentFlags.has('--experimental-transform-types') ? ['--experimental-transform-types'] : []),
         '--no-warnings',
       ],
       serialization: 'advanced',

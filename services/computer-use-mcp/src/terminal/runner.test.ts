@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { execPath } from 'node:process'
 
 import { describe, expect, it } from 'vitest'
@@ -23,7 +24,8 @@ async function expectProcessReaped(pid: number, timeoutMs = 3_000): Promise<void
   throw new Error(`process ${pid} still alive after ${timeoutMs}ms — its process group was not reaped`)
 }
 
-describe('createLocalShellRunner', () => {
+// The runner spawns a POSIX login shell (the service targets macOS); hosts without /bin/zsh, such as Windows, cannot run it.
+describe.skipIf(!existsSync('/bin/zsh'))('createLocalShellRunner', () => {
   it('executes commands and keeps cwd sticky across calls', async () => {
     const runner = createLocalShellRunner(createTestConfig({
       terminalShell: '/bin/zsh',
