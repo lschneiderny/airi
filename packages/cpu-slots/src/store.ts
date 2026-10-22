@@ -35,6 +35,13 @@ export interface StoreState extends BrokerState {
   tickets: Ticket[]
 }
 
+/** A ticket file the queue cannot read. Status lists it so a waiter is never invisible. */
+export interface MalformedTicket {
+  file: string
+  pid?: number
+  mtimeMs: number
+}
+
 export interface StoreRequest {
   class: CpuClass
   min?: number
@@ -95,7 +102,8 @@ function identity(value: unknown): value is ProcessIdentity {
 }
 
 function owner(value: unknown): value is LockOwner {
-  return identity(value) && 'token' in value && typeof value.token === 'string' && 'at' in value && Number.isFinite(value.at)
+  return identity(value) && 'token' in value && typeof value.token === 'string' && /^[\w-]+$/.test(value.token)
+    && 'at' in value && Number.isFinite(value.at)
 }
 
 function commonRecord(value: unknown): value is Record<string, unknown> & ProcessIdentity {
@@ -134,6 +142,11 @@ export class Store {
   private readonly started: (pid: number) => number | undefined
   private readonly beforeCommit?: (path: string) => void
   private token?: string
+  /**
+   * Tokens of this instance's finished locks whose retirement marker could not be
+   * written. lock() writes them again, and this instance may break those locks.
+   */
+  private readonly unmarked = new Set<string>()
   private lastTick: number
   private skipTicketPruningAt?: number
   private processCache?: ProcessCache
@@ -172,10 +185,7 @@ export class Store {
     }
     finally {
       this.token = undefined
-      // Never remove another owner's lock, including one installed during a hook.
-      const current = this.readOwner(join(this.root, 'broker.lock'))
-      if (current?.token === token)
-        this.retireLock(current)
+      this.leave(token)
     }
   }
 
@@ -274,10 +284,16 @@ export class Store {
     }
   }
 
-  addWorkload(lease: StoredLease, pid: number): void {
-    // Even a child that exits before the lookup remains an ancestry anchor for
-    // its surviving descendants. Registration time conservatively bounds identity.
-    const startedAt = this.started(pid) ?? this.now()
+  /**
+   * Even a child that exits before the lookup remains an ancestry anchor for its
+   * surviving descendants. Registration time conservatively bounds identity.
+   */
+  workloadStartedAt(pid: number): number {
+    return this.started(pid) ?? this.now()
+  }
+
+  /** Callers that retry a busy lock pass the start time they looked up once. */
+  addWorkload(lease: StoredLease, pid: number, startedAt = this.workloadStartedAt(pid)): void {
     this.transact(() => {
       const current = this.readJson(this.leasePath(lease.id))
       const workload = leaseRecord(current) ? current.workload : lease.workload
@@ -356,6 +372,31 @@ export class Store {
     })
   }
 
+  /** Ticket files that fail validation and are not yet stale; snapshot() prunes stale ones. */
+  malformedTickets(): MalformedTicket[] {
+    return this.transact(() => {
+      const result: MalformedTicket[] = []
+      for (const file of this.fs.list(join(this.root, 'tickets'))) {
+        if (!file.endsWith('.json'))
+          continue
+        const path = join(this.root, 'tickets', file)
+        try {
+          const value = this.readJson(path)
+          if (ticketRecord(value))
+            continue
+          const { mtimeMs } = this.fs.stat(path)
+          const pid = object(value) && Number.isSafeInteger(value.pid) ? Number(value.pid) : undefined
+          result.push({ file, ...(pid === undefined ? {} : { pid }), mtimeMs })
+        }
+        catch (error) {
+          if (code(error) !== 'ENOENT')
+            throw error
+        }
+      }
+      return result
+    })
+  }
+
   /** M4 caps process snapshots at one per 2 s per observer; a clock jump backwards resets the cap. */
   private canRefresh(now: number): boolean {
     const cache = this.processCache
@@ -405,6 +446,24 @@ export class Store {
     return !this.alive(owner.pid) || this.identityDeath(owner, owner.at) !== undefined
   }
 
+  /**
+   * A lock that no transaction holds: one its owner marked retired after its
+   * transaction ended, one of this instance's own whose marker is still unwritten,
+   * or one whose owner is gone. The cheap checks run first, so a retired lock costs
+   * no process lookup.
+   */
+  private reclaimable(owner: LockOwner): boolean {
+    if (this.unmarked.has(owner.token))
+      return true
+    const marker = this.readJson(this.markerPath(owner.token))
+    return (object(marker) && marker.token === owner.token) || this.ownerGone(owner)
+  }
+
+  /** Outside every lock directory, so it applies wherever a breaker has moved that directory. */
+  private markerPath(token: string): string {
+    return join(this.root, `broker.lock.${token}.retired`)
+  }
+
   private records<T>(directory: string, valid: (value: unknown) => value is T): { value: T, path: string, mtimeMs: number }[] {
     const result: { value: T, path: string, mtimeMs: number }[] = []
     for (const name of this.fs.list(join(this.root, directory))) {
@@ -435,10 +494,12 @@ export class Store {
 
   private lock(): string {
     this.cleanTemporaryLocks()
+    for (const token of this.unmarked)
+      this.markRetired(token)
     const path = join(this.root, 'broker.lock')
     const current = this.readOwner(path)
     if (current) {
-      if (!this.ownerGone(current))
+      if (!this.reclaimable(current))
         throw new StoreBusyError('lock-busy', current, this.now())
       if (!this.retireLock(current))
         throw new StoreBusyError('lock-busy')
@@ -465,9 +526,12 @@ export class Store {
     }))
     try {
       this.fs.rename(temporary, path)
-      return token
     }
     catch (error) {
+      // Only an unpublished lock is cleaned up here. After a successful rename,
+      // nothing may throw before transact owns the token and its finally can
+      // retire or mark the lock.
+      this.fs.remove(temporary)
       if (code(error) === 'ENOENT') {
         this.prepare()
         throw new StoreBusyError('lock-busy')
@@ -476,27 +540,42 @@ export class Store {
         throw new StoreBusyError('lock-busy')
       throw error
     }
-    finally {
-      this.fs.remove(temporary)
-    }
+    return token
   }
 
   /**
    * Removes unpublished `.tmp` lock directories and stranded `.tomb` directories
-   * once their recorded owner is gone, or after 10 s without an owner. Neither
-   * kind ever blocks an acquirer; this only keeps the store root tidy.
+   * once no transaction can hold them, or after 10 s without an owner, and
+   * retirement markers once their owner's pid is dead, when M3 covers that lock
+   * anyway. Markers skip the identity lookup: one left by a reused pid is inert
+   * garbage. None of them ever blocks an acquirer; this only keeps the root tidy.
    */
   private cleanTemporaryLocks(): void {
     for (const name of this.fs.list(this.root)) {
+      const path = join(this.root, name)
+      if (name.endsWith('.retired') && name.startsWith('broker.lock.')) {
+        const marker = this.readJson(path)
+        try {
+          if (owner(marker) ? !this.alive(marker.pid) : this.now() - this.fs.stat(path).mtimeMs > 10_000)
+            this.fs.remove(path)
+        }
+        catch (error) {
+          if (code(error) !== 'ENOENT')
+            throw error
+        }
+        continue
+      }
       if (!/^broker\.lock\..+\.(?:tmp|tomb)$/.test(name))
         continue
-      const path = join(this.root, name)
       const current = this.readOwner(path)
       try {
         if (current
-          ? this.ownerGone(current)
+          ? this.reclaimable(current)
           : this.now() - this.fs.stat(path).mtimeMs > 10_000) {
           this.fs.remove(path)
+          // A lock directory is never copied, so its marker now names nothing.
+          if (current)
+            this.forget(current.token)
         }
       }
       catch (error) {
@@ -533,8 +612,74 @@ export class Store {
       }
       return false
     }
-    this.fs.remove(tomb)
+    try {
+      this.fs.remove(tomb)
+    }
+    catch (error) {
+      // The lock is already retired. Another acquirer's cleanTemporaryLocks may be
+      // reading the tombstone; it never blocks anyone and is cleaned up later.
+      if (!busyCodes.includes(String(code(error))))
+        throw error
+    }
+    if (expected)
+      this.forget(expected.token)
     return true
+  }
+
+  /** Drops the retirement marker of a lock whose directory no longer exists. */
+  private forget(token: string): void {
+    this.unmarked.delete(token)
+    try {
+      this.fs.remove(this.markerPath(token))
+    }
+    catch (error) {
+      // A leftover marker names a lock that no longer exists, so it authorizes
+      // nothing; cleanTemporaryLocks removes it once its owner is gone.
+      if (!busyCodes.includes(String(code(error))))
+        throw error
+    }
+  }
+
+  /**
+   * Ends this instance's hold on the lock `token` after its transaction. If the
+   * lock is still published under that token, it is retired. Otherwise it may sit
+   * in a breaker's tombstone that is renamed back later, and on win32 the retire
+   * rename itself fails with EPERM while another process has a handle inside the
+   * lock directory. In both cases the lock is marked retired, so any copy of it
+   * that is ever published again stays breakable instead of wedging every process.
+   * Busy failures never escape, so a committed transaction is never reported as
+   * failed.
+   */
+  private leave(token: string): void {
+    let retired = false
+    try {
+      // Never remove another owner's lock, including one installed during a hook.
+      const current = this.readOwner(join(this.root, 'broker.lock'))
+      retired = current?.token === token && this.retireLock(current)
+    }
+    catch (error) {
+      if (!(error instanceof StoreBusyError))
+        throw error
+    }
+    finally {
+      if (!retired)
+        this.markRetired(token)
+    }
+  }
+
+  /**
+   * Records that this instance never uses the lock `token` again. A failed write
+   * must not hide a committed transaction: the token is kept, lock() writes it
+   * again on this instance's next call, and meanwhile this instance may break it.
+   */
+  private markRetired(token: string): void {
+    try {
+      this.fs.write(this.markerPath(token), JSON.stringify({ token, pid: this.pid, startedAt: this.startedAt, at: this.now() }))
+      this.unmarked.delete(token)
+    }
+    catch {
+      this.unmarked.add(token)
+    }
   }
 
   private readOwner(path: string): LockOwner | undefined {

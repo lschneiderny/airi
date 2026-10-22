@@ -354,6 +354,192 @@ describe('token checked lock', () => {
     expect(nodeFs.list(root)).not.toContain('broker.lock.abandoned.tmp')
   })
 
+  // win32 rejects a directory rename while another process has a handle inside it, such as a waiter
+  // reading owner.json. Only the rename that retires the published lock fails here.
+  function lockedTomb(fails: () => boolean): { fs: StoreFs, attempts: () => number } {
+    let attempts = 0
+    const lock = join(root, 'broker.lock')
+    const fs: StoreFs = {
+      ...nodeFs,
+      rename(from, to) {
+        if (from === lock && to.endsWith('.tomb')) {
+          attempts++
+          if (fails())
+            throw Object.assign(new Error('EPERM'), { code: 'EPERM' })
+        }
+        nodeFs.rename(from, to)
+      },
+    }
+    return { fs, attempts: () => attempts }
+  }
+
+  it.each(['its owner', 'another store'])('a lock whose retirement fails six times is reclaimed by %s on its next call', (next) => {
+    let failures = 6
+    const { fs, attempts } = lockedTomb(() => failures-- > 0)
+    const owner = createStore(10, { fs })
+    expect(owner.transact(() => 'work')).toBe('work')
+    expect(attempts()).toBe(6)
+    expect(nodeFs.list(root)).toContain('broker.lock')
+    const store = next === 'its owner' ? owner : createStore(20, { fs })
+    expect(store.transact(() => 'next')).toBe('next')
+    expect(nodeFs.list(root).filter(name => name.startsWith('broker.lock'))).toEqual([])
+    expect(createStore(30).enqueue(request).seq).toBe(1)
+    expect(owner.transact(() => 'again')).toBe('again')
+    // A retired lock is reclaimed without judging its live owner's identity.
+    expect(snapshot).not.toHaveBeenCalled()
+  })
+
+  it('keeps a lock whose retirement fails past every retry busy for all, commits once, and frees it when the rename works', () => {
+    let blocked = true
+    const { fs, attempts } = lockedTomb(() => blocked)
+    const owner = createStore(10, { fs })
+    const other = createStore(20, { fs })
+    const ticket = owner.enqueue(request)
+    for (let poll = 0; poll < 5; poll++) {
+      expect(() => other.snapshot()).toThrow(StoreBusyError)
+      expect(() => owner.snapshot()).toThrow(StoreBusyError)
+    }
+    expect(attempts()).toBe(66)
+    expect(nodeFs.list(join(root, 'tickets'))).toEqual([`${ticket.seq}.json`])
+    blocked = false
+    expect(other.snapshot().tickets).toEqual([ticket])
+    expect(owner.snapshot().tickets).toEqual([ticket])
+    expect(nodeFs.list(root).filter(name => name.startsWith('broker.lock'))).toEqual([])
+    expect(snapshot).not.toHaveBeenCalled()
+  })
+
+  /**
+   * A store whose first tombstone rename of the published lock is delayed until `racer` has broken
+   * that same lock and published its own: the rename lands inside racer's transaction and moves
+   * racer's lock aside, racer's commit sees lock-lost, and the delayed store restores the lock on
+   * the token mismatch. `failures` EPERM renames come first.
+   */
+  function delayedBreaker(pid: number, racer: Store, failures = 0): Store {
+    let raced = false
+    const lock = join(root, 'broker.lock')
+    return createStore(pid, {
+      fs: {
+        ...nodeFs,
+        rename(from, to) {
+          if (from === lock && to.endsWith('.tomb')) {
+            if (failures-- > 0)
+              throw Object.assign(new Error('EPERM'), { code: 'EPERM' })
+            if (!raced) {
+              raced = true
+              expect(() => racer.transact(() => nodeFs.rename(from, to))).toThrow(expect.objectContaining({ reason: 'lock-lost' }))
+              return
+            }
+          }
+          nodeFs.rename(from, to)
+        },
+      },
+    })
+  }
+
+  it('w2 an owner whose delayed reclaim restores a newer lock leaves no lock that wedges the store', () => {
+    const other = createStore(20)
+    const owner = delayedBreaker(10, other, 6)
+    expect(owner.transact(() => 'work')).toBe('work')
+    expect(() => owner.transact(() => 'next')).toThrow(StoreBusyError)
+    expect(nodeFs.list(root)).toContain('broker.lock')
+    expect(owner.transact(() => 'owner')).toBe('owner')
+    expect(other.transact(() => 'other')).toBe('other')
+    expect(createStore(30).enqueue(request).seq).toBe(1)
+    expect(nodeFs.list(root).filter(name => name.startsWith('broker.lock'))).toEqual([])
+  })
+
+  it('w1 a losing breaker that restores the winner\'s lock leaves no lock that wedges the store', () => {
+    live.add(40)
+    let failures = 6
+    const owner = createStore(10, { fs: lockedTomb(() => failures-- > 0).fs })
+    expect(owner.transact(() => 'work')).toBe('work')
+    const winner = createStore(20)
+    const loser = delayedBreaker(30, winner)
+    expect(() => loser.snapshot()).toThrow(StoreBusyError)
+    expect(nodeFs.list(root)).toContain('broker.lock')
+    for (const store of [winner, loser, owner, createStore(40)])
+      expect(store.transact(() => 'proceeds')).toBe('proceeds')
+    expect(createStore(40).enqueue(request).seq).toBe(1)
+  })
+
+  it('w3 a losing breaker of a dead owner\'s lock leaves no lock that wedges the store', () => {
+    putLock(40, 'stale')
+    const winner = createStore(20)
+    const loser = delayedBreaker(30, winner)
+    expect(() => loser.snapshot()).toThrow(StoreBusyError)
+    expect(nodeFs.list(root)).toContain('broker.lock')
+    for (const store of [winner, loser, createStore(10)])
+      expect(store.transact(() => 'proceeds')).toBe('proceeds')
+  })
+
+  it('s7 a lock moved aside while its owner marks it retired is still breakable once restored', () => {
+    let failures = 6
+    let raced = false
+    const lock = join(root, 'broker.lock')
+    const aside = join(root, 'broker.lock.loser.tomb')
+    const owner = createStore(10, {
+      fs: {
+        ...lockedTomb(() => failures-- > 0).fs,
+        write(path, text) {
+          if (raced || !path.includes('retired')) {
+            nodeFs.write(path, text)
+            return
+          }
+          raced = true
+          nodeFs.rename(lock, aside)
+          try {
+            nodeFs.write(path, text)
+          }
+          finally {
+            nodeFs.rename(aside, lock)
+          }
+        },
+      },
+    })
+    expect(owner.transact(() => 'work')).toBe('work')
+    expect(raced).toBe(true)
+    expect(nodeFs.list(root)).toContain('broker.lock')
+    expect(createStore(20).transact(() => 'other')).toBe('other')
+    expect(createStore(30).enqueue(request).seq).toBe(1)
+  })
+
+  it.each([1, Infinity])('a retirement marker that fails to write %s time(s) never hides the commit or wedges the store', (markFailures) => {
+    let failures = 6
+    let markAttempts = 0
+    const owner = createStore(10, {
+      fs: {
+        ...lockedTomb(() => failures-- > 0).fs,
+        write(path, text) {
+          if (path.includes('retired') && markAttempts++ < markFailures)
+            throw Object.assign(new Error('EACCES'), { code: 'EACCES' })
+          nodeFs.write(path, text)
+        },
+      },
+    })
+    expect(owner.transact(() => 'work')).toBe('work')
+    expect(markAttempts).toBeGreaterThan(0)
+    expect(owner.transact(() => 'again')).toBe('again')
+    expect(createStore(20).enqueue(request).seq).toBe(1)
+  })
+
+  it('treats a busy tombstone removal after retiring its own lock as done', () => {
+    let failed = false
+    const fs: StoreFs = {
+      ...nodeFs,
+      remove(path) {
+        if (!failed && path.endsWith('.tomb')) {
+          failed = true
+          throw Object.assign(new Error('EBUSY'), { code: 'EBUSY' })
+        }
+        nodeFs.remove(path)
+      },
+    }
+    expect(createStore(10, { fs }).transact(() => 'work')).toBe('work')
+    expect(failed).toBe(true)
+    expect(nodeFs.list(root)).not.toContain('broker.lock')
+    expect(createStore(20).enqueue(request).seq).toBe(1)
+  })
+
   it('breaks a hand-created ownerless published lock only after ten seconds', () => {
     const path = join(root, 'broker.lock')
     nodeFs.mkdir(path)

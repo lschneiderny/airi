@@ -1,4 +1,6 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import process from 'node:process'
+
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -33,5 +35,12 @@ it('reads a live lease and a queued ticket, with storePath first', () => {
   expect(Object.keys(status)[0]).toBe('storePath')
   expect(status).toMatchObject({ storePath: root, budget: 8, held: 6 })
   expect(status.leases.map(({ id }) => id)).toEqual([lease.id])
-  expect(status.queue.map(({ seq }) => seq)).toEqual([ticket.seq])
+  expect(status.queue).toMatchObject([{ seq: ticket.seq }])
+})
+
+it('lists a live ticket the queue cannot read instead of hiding it', () => {
+  mkdirSync(join(root, 'tickets'))
+  // The shape an acquire() without cwd and command wrote before requests were validated.
+  writeFileSync(join(root, 'tickets', '1.json'), JSON.stringify({ seq: 1, id: 'hidden', pid: process.pid, startedAt: 1, class: 'typecheck', min: 2, max: 6, exclusive: false, createdAt: Date.now() }))
+  expect(readStatus({ root }).queue).toEqual([{ malformed: true, file: '1.json', pid: process.pid, touched: expect.any(Number) }])
 })
