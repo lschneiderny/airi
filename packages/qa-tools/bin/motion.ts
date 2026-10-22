@@ -30,20 +30,16 @@ ${validateUsage}`
 
   const [command, ...rest] = argv
   if (command === 'gate')
-    return runGateCli(rest, repoRoot)
+    return runGateCli(rest, repoRoot, process.env, closure)
   if (command === 't3')
     return runT3Cli(rest, repoRoot)
   if (command === 'validate-scorer')
-    return runValidateCli(rest, repoRoot)
+    return runValidateCli(rest, repoRoot, process.env, closure)
   console.error(command === undefined || command === '--help' ? usage : `Unknown command ${JSON.stringify(command)}\n${usage}`)
   return command === '--help' ? 0 : 2
 }
 
 main(process.argv.slice(2)).then((code) => {
-  const argv = process.argv.slice(2)
-  const t1 = argv.includes('--level=t1') || (argv.includes('--level') && argv[argv.indexOf('--level') + 1] === 't1')
-  if (code !== 2 && (argv[0] === 'gate' || argv[0] === 'validate-scorer') && t1)
-    console.info(`CLI closure ${closure.write(resolve(repoRoot, '.temp', 'qa'))}`)
   process.exitCode = code
 }, (error) => {
   console.error(`qa-tools motion: ${errorMessageFrom(error) ?? 'unexpected failure'}`)

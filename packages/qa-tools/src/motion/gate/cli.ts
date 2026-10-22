@@ -1,6 +1,7 @@
 import type { CpuClass, Lease } from '@proj-airi/cpu-slots'
 import type { Band, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 
+import type { ClosureWriter } from '../cache/lookup'
 import type { GateLevel, GateSelection } from './options'
 
 import process from 'node:process'
@@ -17,11 +18,12 @@ import { resolveVitestEntry } from '../../env/pnpm'
 import { createRun } from '../../evidence/run'
 import { T2SetupError } from '../../t2/errors'
 import { loadT2Runtime } from '../../t2/runner'
+import { cacheFinishedRun, lookupResult, prepareCache, replayHit } from '../cache/lookup'
 import { aggregateEmotion, aggregateLiveliness, formatSummary } from './aggregate'
 import { emotionGateFor, gateBands, gateEmotions, livelinessGateFor } from './options'
 import { runT3Gate } from './t3-gate'
 
-export const gateUsage = `Usage: motion gate <emotion | liveliness> --level <t1 | t2 | t3> [--rig forbooth] [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N] [--t1-report <run dir>] [--rescore <gate run dir>]
+export const gateUsage = `Usage: motion gate <emotion | liveliness> --level <t1 | t2 | t3> [--rig forbooth] [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N] [--t1-report <run dir>] [--rescore <gate run dir>] [--fresh]
 
   --level    t1 (controller simulation), t2 (headless real rig) or t3 (rendered Electron app, committed cells only)
   --rig      forbooth (required for t2 and t3; local rig and core environment variables)
@@ -31,6 +33,7 @@ export const gateUsage = `Usage: motion gate <emotion | liveliness> --level <t1 
   --bands    comma list of: ${gateBands.join(', ')} (emotion gate only; default all)
   --seeds    run at most N seeds per variant, a reduced run that the report records (emotion gate only)
   --workers  Vitest workers (default: the CPU slot grant; a larger value is clamped to it); the report is the same for any count
+  --fresh    t1 only: skip the result cache lookup and compute the run (the result is still stored). A cached run is a local check, so acceptance evidence needs --fresh
 Exit codes: 0 every check passed, 1 a check failed or the run broke, 2 usage, T2/T3 setup error or a T3 refusal before launch, 130 T3 interrupted.`
 
 export interface GateCommand {
@@ -44,6 +47,8 @@ export interface GateCommand {
   t1Report: string | null
   /** `--level t3` emotion gate: an archived gate run dir to re-score, or `null` for a live run. */
   rescore: string | null
+  /** `--level t1`: skip the cache lookup. */
+  fresh: boolean
 }
 
 export type ParsedGateArgs = { ok: true, command: GateCommand } | { ok: false, message: string }
@@ -69,12 +74,12 @@ function parsePositiveInteger(raw: string | undefined, name: string): number | n
 
 /** Validates `gate` arguments (everything after the `gate` word is the caller's `rest`). */
 export function parseGateArgs(rest: string[]): ParsedGateArgs {
-  let values: { 'level'?: string, 'rig'?: string, 'emotions'?: string, 'bands'?: string, 'seeds'?: string, 'workers'?: string, 'timeout-minutes'?: string, 't1-report'?: string, 'rescore'?: string }
+  let values: { 'level'?: string, 'rig'?: string, 'emotions'?: string, 'bands'?: string, 'seeds'?: string, 'workers'?: string, 'timeout-minutes'?: string, 't1-report'?: string, 'rescore'?: string, 'fresh'?: boolean }
   let positionals: string[]
   try {
     ({ values, positionals } = parseArgs({
       args: rest,
-      options: { 'level': { type: 'string' }, 'rig': { type: 'string' }, 'emotions': { type: 'string' }, 'bands': { type: 'string' }, 'seeds': { type: 'string' }, 'workers': { type: 'string' }, 'timeout-minutes': { type: 'string' }, 't1-report': { type: 'string' }, 'rescore': { type: 'string' } },
+      options: { 'level': { type: 'string' }, 'rig': { type: 'string' }, 'emotions': { type: 'string' }, 'bands': { type: 'string' }, 'seeds': { type: 'string' }, 'workers': { type: 'string' }, 'timeout-minutes': { type: 'string' }, 't1-report': { type: 'string' }, 'rescore': { type: 'string' }, 'fresh': { type: 'boolean' } },
       strict: true,
       allowPositionals: true,
     }))
@@ -95,6 +100,8 @@ export function parseGateArgs(rest: string[]): ParsedGateArgs {
     return { ok: false, message: '--rig applies to --level t2 or t3 only' }
   if (values.level === 't3' && (values.emotions !== undefined || values.bands !== undefined || values.seeds !== undefined || values.workers !== undefined || values['timeout-minutes'] !== undefined))
     return { ok: false, message: '--emotions, --bands, --seeds, --workers and --timeout-minutes do not apply to --level t3, which runs the committed cells of naturalEmotionT3Gate' }
+  if (values.fresh && values.level !== 't1')
+    return { ok: false, message: '--fresh applies to --level t1 only; T2 and T3 runs are never cached' }
   if (values['t1-report'] !== undefined && (values.level !== 't3' || target !== 'emotion'))
     return { ok: false, message: '--t1-report applies to the emotion gate at --level t3 only' }
   if (values.rescore !== undefined && (values.level !== 't3' || target !== 'emotion' || values['t1-report'] !== undefined))
@@ -119,7 +126,7 @@ export function parseGateArgs(rest: string[]): ParsedGateArgs {
     return { ok: false, message: timeoutMinutes }
   return {
     ok: true,
-    command: { target, level: values.level, selection: { emotions, bands, seedsLimit: seeds }, workers, timeoutMinutes: timeoutMinutes ?? (target === 'emotion' ? 90 : 30), t1Report: values['t1-report'] ?? null, rescore: values.rescore ?? null },
+    command: { target, level: values.level, selection: { emotions, bands, seedsLimit: seeds }, workers, timeoutMinutes: timeoutMinutes ?? (target === 'emotion' ? 90 : 30), t1Report: values['t1-report'] ?? null, rescore: values.rescore ?? null, fresh: values.fresh ?? false },
   }
 }
 
@@ -205,7 +212,7 @@ function runVitest(repoRoot: string, files: string[], env: NodeJS.ProcessEnv, wo
 const timingTargets = { fullGateSeconds: 300, smokeSeconds: 60, cores: 16 }
 
 /** Runs one gate end to end. Returns 0 pass, 1 fail or broken run, 2 usage or rig setup error. */
-export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.ProcessEnv = process.env): Promise<number> {
+export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.ProcessEnv = process.env, closure?: ClosureWriter): Promise<number> {
   const parsed = parseGateArgs(rest)
   if (!parsed.ok) {
     console.error(`${parsed.message}\n${gateUsage}`)
@@ -235,14 +242,29 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
       return error instanceof T2SetupError ? 2 : 1
     }
   }
-  const lease = await acquireLease({ class: 'gate', command: `qa:motion ${rest.join(' ')}`, cwd: repoRoot, timeoutMinutes })
-  if (typeof lease === 'number')
-    return lease
-  const workers = resolveWorkers(parsed.command.workers, lease.grant)
   const emotionGate = emotionGateFor(level)
   const naturalIdleLivelinessGate = livelinessGateFor(level)
   const gate = target === 'emotion' ? emotionGate : naturalIdleLivelinessGate
   const fileSha = gateFileSha(repoRoot)
+  const gateEnv = {
+    QA_GATE: gate.id,
+    QA_LEVEL: level,
+    QA_EMOTIONS: selection.emotions.join(','),
+    QA_BANDS: selection.bands.join(','),
+    ...(selection.seedsLimit === null ? {} : { QA_SEEDS: String(selection.seedsLimit) }),
+  }
+  // Only T1 is cached. The worker count is not an input: the report is the same for any count.
+  const cachePlan = level === 't1'
+    ? prepareCache({ repoRoot, args: { command: 'gate', target, level, emotions: selection.emotions, bands: selection.bands, seeds: selection.seedsLimit }, env: { ...env, ...gateEnv }, gateFileSha: () => gateFileSha(repoRoot) })
+    : null
+  // A hit starts no process and takes no lease.
+  const hit = cachePlan ? lookupResult(cachePlan, repoRoot, parsed.command.fresh) : null
+  if (cachePlan && hit)
+    return replayHit({ hit, repoRoot, label: `gate-${target}-${level}`, gate: { id: gate.id, version: String(gate.version), fileSha }, startedAtMs: cachePlan.startedAtMs })
+  const lease = await acquireLease({ class: 'gate', command: `qa:motion ${rest.join(' ')}`, cwd: repoRoot, timeoutMinutes })
+  if (typeof lease === 'number')
+    return lease
+  const workers = resolveWorkers(parsed.command.workers, lease.grant)
 
   let run
   try {
@@ -286,12 +308,8 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
     const result = await runVitest(repoRoot, files, {
       ...env,
       ...lease.env,
+      ...gateEnv,
       QA_RUN_DIR: run.dir,
-      QA_GATE: gate.id,
-      QA_LEVEL: level,
-      QA_EMOTIONS: selection.emotions.join(','),
-      QA_BANDS: selection.bands.join(','),
-      ...(selection.seedsLimit === null ? {} : { QA_SEEDS: String(selection.seedsLimit) }),
     }, workers, run.path('vitest.log'), timeoutMinutes * 60_000, lease)
     run.addArtifact('vitest.log', 'log')
     if (result.exitCode !== 0) {
@@ -308,7 +326,11 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
     writeFileSync(run.path('summary.txt'), summary)
     run.addArtifact('summary.txt', 'summary')
     console.info(summary)
-    return finish(report.pass ? 0 : 1, report.pass ? 'all checks passed' : `${report.results.filter(result => result.verdict !== 'pass').length} check(s) failed or incomplete`)
+    const verdictSummary = report.pass ? 'all checks passed' : `${report.results.filter(result => result.verdict !== 'pass').length} check(s) failed or incomplete`
+    const exitCode = finish(report.pass ? 0 : 1, verdictSummary)
+    if (cachePlan)
+      cacheFinishedRun({ plan: cachePlan, repoRoot, closure, runDir: run.dir, sourceRunId: run.runId, exitCode, summary: verdictSummary, artifacts: ['report.json', 'summary.txt'] })
+    return exitCode
   }
   catch (error) {
     console.error(`Gate run broke: ${errorMessageFrom(error) ?? 'unknown error'}`)

@@ -32,7 +32,7 @@ export class ClosureHooks {
     })
   }
 
-  /** The caller supplies the artifact directory; the spike uses the QA root, keyed by CLI pid. */
+  /** Writes the closure of this CLI process into the run directory of the run that is ending. */
   write(runDir: string): string {
     const path = join(runDir, `closure-cli-${process.pid}.json`)
     const closure = captureClosure(this.ids, this.repoRoot)

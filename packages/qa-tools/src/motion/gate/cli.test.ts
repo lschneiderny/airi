@@ -13,7 +13,7 @@ describe('parseGateArgs', () => {
   it('defaults to every emotion and band and leaves the worker count to the slot grant', () => {
     const result = parse('emotion', '--level', 't1')
 
-    expect(result).toEqual({ ok: true, command: { target: 'emotion', level: 't1', selection: { emotions: [...gateEmotions], bands: [...gateBands], seedsLimit: null }, workers: null, timeoutMinutes: 90, t1Report: null, rescore: null } })
+    expect(result).toEqual({ ok: true, command: { target: 'emotion', level: 't1', selection: { emotions: [...gateEmotions], bands: [...gateBands], seedsLimit: null }, workers: null, timeoutMinutes: 90, t1Report: null, rescore: null, fresh: false } })
   })
 
   it('accepts filters and dedupes repeated values', () => {

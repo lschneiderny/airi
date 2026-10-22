@@ -35,6 +35,13 @@ export interface RunResult {
   summary: string
 }
 
+/** Marks a run that replayed a stored result instead of computing it: a local check, never acceptance evidence. */
+export interface RunCache {
+  hit: true
+  sourceRunId: string
+  entryId: string
+}
+
 export interface RunManifest {
   runId: string
   tool: string
@@ -47,6 +54,7 @@ export interface RunManifest {
   env: Record<string, string>
   gate?: RunGate
   process?: RunProcess
+  cache?: RunCache
   artifacts: RunArtifact[]
   result: RunResult
 }
@@ -56,6 +64,7 @@ export interface CreateRunOptions {
   label: string
   repoRoot: string
   gate?: RunGate
+  cache?: RunCache
   /** Injectable for tests. Defaults to the current time. */
   now?: () => Date
   /** Injectable for tests. Defaults to `git rev-parse HEAD` / `git status --porcelain`. */
@@ -168,6 +177,7 @@ export function createRun(options: CreateRunOptions): RunHandle {
         env: pickRunEnv(options.env ?? process.env),
         ...(options.gate ? { gate: options.gate } : {}),
         ...(launched ? { process: launched } : {}),
+        ...(options.cache ? { cache: options.cache } : {}),
         artifacts: [...artifacts],
         result,
       }

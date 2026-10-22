@@ -61,7 +61,14 @@ export function findT1Reference(repoRoot: string, gitSha: string, explicit: stri
   const problems: string[] = []
   for (const dir of candidates) {
     try {
-      const manifest = JSON.parse(readFileSync(join(dir, 'run.json'), 'utf8')) as { gitSha?: string }
+      const manifest = JSON.parse(readFileSync(join(dir, 'run.json'), 'utf8')) as { gitSha?: string, cache?: { hit?: boolean } }
+      // A replayed result is a local check; the transfer ratios of an acceptance run divide by a computed one.
+      if (manifest.cache?.hit) {
+        if (explicit !== null)
+          return `T1 reference ${dir} is a cached run; rerun it with --fresh`
+        problems.push(`${dir}: cached run; rerun it with --fresh`)
+        continue
+      }
       if (manifest.gitSha !== gitSha) {
         problems.push(`${dir}: commit ${manifest.gitSha ?? 'unknown'}, not ${gitSha}`)
         continue

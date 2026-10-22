@@ -52,7 +52,7 @@ function syntheticRun(sections: ValidationOptions['sections']) {
 
 describe('parseValidateArgs', () => {
   it('defaults to every section and the committed seed counts', () => {
-    expect(parseValidateArgs(['--level', 't1'])).toEqual({ ok: true, command: { options: { sections: [...validationSections], seedsLimit: null }, workers: null, timeoutMinutes: 180 } })
+    expect(parseValidateArgs(['--level', 't1'])).toEqual({ ok: true, command: { options: { sections: [...validationSections], seedsLimit: null }, workers: null, timeoutMinutes: 180, fresh: false } })
   })
 
   it.each([

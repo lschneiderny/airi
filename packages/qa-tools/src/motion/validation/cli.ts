@@ -1,5 +1,6 @@
 import type { Lease } from '@proj-airi/cpu-slots'
 
+import type { ClosureWriter } from '../cache/lookup'
 import type { ValidationOptions, ValidationSection } from './plan'
 
 import process from 'node:process'
@@ -15,17 +16,19 @@ import { emotionGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natur
 
 import { resolveVitestEntry } from '../../env/pnpm'
 import { createRun } from '../../evidence/run'
+import { cacheFinishedRun, lookupResult, prepareCache, replayHit } from '../cache/lookup'
 import { acquireLease, resolveWorkers } from '../gate/cli'
 import { evaluateValidation, formatValidationSummary } from './evaluate'
 import { buildValidationPlan, validationSections } from './plan'
 import { recordsPartialName, scorePartialName } from './units'
 
-export const validateUsage = `Usage: motion validate-scorer --level t1 [--sections ${validationSections.join(',')}] [--seeds N] [--workers N] [--timeout-minutes N]
+export const validateUsage = `Usage: motion validate-scorer --level t1 [--sections ${validationSections.join(',')}] [--seeds N] [--workers N] [--timeout-minutes N] [--fresh]
 
   --level     t1 (the only level available)
   --sections  comma list of validation sections (default all)
   --seeds     run at most N seeds per range, a reduced run that validation.json records
   --workers   parallel Vitest processes per phase (default: the CPU slot grant; a larger value is clamped to it); results do not depend on it
+  --fresh     skip the result cache lookup and compute the run (the result is still stored). A cached run is a local check, so acceptance evidence needs --fresh
 Exit codes: 0 every threshold met, 1 a threshold missed or the run broke, 2 usage error.`
 
 export interface ValidateCommand {
@@ -33,6 +36,8 @@ export interface ValidateCommand {
   /** The requested process count, or `null` for the CPU slot grant (resolved after acquire). */
   workers: number | null
   timeoutMinutes: number
+  /** Skip the cache lookup. */
+  fresh: boolean
 }
 
 export type ParsedValidateArgs = { ok: true, command: ValidateCommand } | { ok: false, message: string }
@@ -45,12 +50,12 @@ function positiveInteger(raw: string | undefined, name: string): number | null |
 }
 
 export function parseValidateArgs(rest: string[]): ParsedValidateArgs {
-  let values: { 'level'?: string, 'sections'?: string, 'seeds'?: string, 'workers'?: string, 'timeout-minutes'?: string }
+  let values: { 'level'?: string, 'sections'?: string, 'seeds'?: string, 'workers'?: string, 'timeout-minutes'?: string, 'fresh'?: boolean }
   let positionals: string[]
   try {
     ({ values, positionals } = parseArgs({
       args: rest,
-      options: { 'level': { type: 'string' }, 'sections': { type: 'string' }, 'seeds': { type: 'string' }, 'workers': { type: 'string' }, 'timeout-minutes': { type: 'string' } },
+      options: { 'level': { type: 'string' }, 'sections': { type: 'string' }, 'seeds': { type: 'string' }, 'workers': { type: 'string' }, 'timeout-minutes': { type: 'string' }, 'fresh': { type: 'boolean' } },
       strict: true,
       allowPositionals: true,
     }))
@@ -79,7 +84,7 @@ export function parseValidateArgs(rest: string[]): ParsedValidateArgs {
   const timeoutMinutes = positiveInteger(values['timeout-minutes'], 'timeout-minutes')
   if (typeof timeoutMinutes === 'string')
     return { ok: false, message: timeoutMinutes }
-  return { ok: true, command: { options: { sections, seedsLimit: seeds }, workers, timeoutMinutes: timeoutMinutes ?? 180 } }
+  return { ok: true, command: { options: { sections, seedsLimit: seeds }, workers, timeoutMinutes: timeoutMinutes ?? 180, fresh: values.fresh ?? false } }
 }
 
 /** Runs one phase as `shards` parallel Vitest processes of `gates/validation.gate.ts`; each owns a slice of the work. */
@@ -117,18 +122,26 @@ async function runPhase(repoRoot: string, phase: 'generate' | 'score', shards: n
 }
 
 /** Runs the scorer validation end to end. Returns the process exit code: 0 all thresholds met, 1 missed or broken, 2 usage. */
-export async function runValidateCli(rest: string[], repoRoot: string, env: NodeJS.ProcessEnv = process.env): Promise<number> {
+export async function runValidateCli(rest: string[], repoRoot: string, env: NodeJS.ProcessEnv = process.env, closure?: ClosureWriter): Promise<number> {
   const parsed = parseValidateArgs(rest)
   if (!parsed.ok) {
     console.error(`${parsed.message}\n${validateUsage}`)
     return 2
   }
   const { options, timeoutMinutes } = parsed.command
+  const gateFileSha = () => execFileSync('git', ['-C', repoRoot, 'hash-object', 'packages/stage-ui-live2d/src/composables/live2d/natural-motion/gates.ts'], { encoding: 'utf8' }).trim()
+  const fileSha = gateFileSha()
+  const shardEnv = { ...env, QA_VALIDATION_SECTIONS: options.sections.join(','), ...(options.seedsLimit === null ? {} : { QA_SEEDS: String(options.seedsLimit) }) }
+  // The process count is not an input: results do not depend on it.
+  const cachePlan = prepareCache({ repoRoot, args: { command: 'validate-scorer', level: 't1', sections: options.sections, seeds: options.seedsLimit }, env: shardEnv, gateFileSha })
+  // A hit starts no process and takes no lease.
+  const hit = cachePlan ? lookupResult(cachePlan, repoRoot, parsed.command.fresh) : null
+  if (cachePlan && hit)
+    return replayHit({ hit, repoRoot, label: 'validate-scorer-t1', gate: { id: emotionGate.id, version: String(emotionGate.version), fileSha }, startedAtMs: cachePlan.startedAtMs })
   const lease = await acquireLease({ class: 'gate', command: `qa:motion validate-scorer ${rest.join(' ')}`, cwd: repoRoot, timeoutMinutes })
   if (typeof lease === 'number')
     return lease
   const workers = resolveWorkers(parsed.command.workers, lease.grant)
-  const fileSha = execFileSync('git', ['-C', repoRoot, 'hash-object', 'packages/stage-ui-live2d/src/composables/live2d/natural-motion/gates.ts'], { encoding: 'utf8' }).trim()
   let run: ReturnType<typeof createRun>
   try {
     run = createRun({ tool: 'motion', label: 'validate-scorer-t1', repoRoot, gate: { id: emotionGate.id, version: String(emotionGate.version), fileSha } })
@@ -140,7 +153,6 @@ export async function runValidateCli(rest: string[], repoRoot: string, env: Node
   const started = Date.now()
   const deadline = started + timeoutMinutes * 60_000
   const plan = buildValidationPlan(emotionGate, options)
-  const shardEnv = { ...env, QA_VALIDATION_SECTIONS: options.sections.join(','), ...(options.seedsLimit === null ? {} : { QA_SEEDS: String(options.seedsLimit) }) }
   const finish = (exitCode: number, summary: string) => {
     lease.release()
     const wallSeconds = Math.round((Date.now() - started) / 100) / 10
@@ -168,7 +180,11 @@ export async function runValidateCli(rest: string[], repoRoot: string, env: Node
     writeFileSync(run.path('summary.txt'), summary)
     run.addArtifact('summary.txt', 'summary')
     console.info(summary)
-    return finish(report.thresholdsMet ? 0 : 1, report.thresholdsMet ? 'every threshold met' : `thresholds missed: ${Object.entries(report.verdicts).filter(([, verdict]) => verdict !== true).map(([name]) => name).join(', ')}`)
+    const verdictSummary = report.thresholdsMet ? 'every threshold met' : `thresholds missed: ${Object.entries(report.verdicts).filter(([, verdict]) => verdict !== true).map(([name]) => name).join(', ')}`
+    const exitCode = finish(report.thresholdsMet ? 0 : 1, verdictSummary)
+    if (cachePlan)
+      cacheFinishedRun({ plan: cachePlan, repoRoot, closure, runDir: run.dir, sourceRunId: run.runId, exitCode, summary: verdictSummary, artifacts: ['validation.json', 'summary.txt'] })
+    return exitCode
   }
   catch (error) {
     console.error(`Validation broke: ${errorMessageFrom(error) ?? 'unknown error'}`)
