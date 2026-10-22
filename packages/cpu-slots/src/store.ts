@@ -68,15 +68,34 @@ export interface StoreOptions {
   fs?: StoreFs
   /** Runs before a mutation, with the lock checked again after the hook returns. */
   beforeCommit?: (path: string) => void
+  /** Blocks between rename retries; tests inject a no-op. */
+  sleep?: (ms: number) => void
 }
 
+export type StoreBusyReason = 'lock-busy' | 'lock-lost' | 'entry-busy' | 'snapshot-failed'
+
 export class StoreBusyError extends Error {
-  constructor(public readonly reason: 'lock-busy' | 'lock-lost' | 'entry-busy', public readonly owner?: LockOwner, now?: number) {
+  constructor(
+    public readonly reason: StoreBusyReason,
+    /** The lock owner, when known; for `entry-busy` on the lock, the last owner this store read. */
+    public readonly owner?: LockOwner,
+    now?: number,
+    /** The store entry that stayed unreadable or could not be replaced, for `entry-busy`. */
+    public readonly path?: string,
+    detail?: string,
+  ) {
     super(owner && now !== undefined && now - owner.at > 30_000
       ? `lock held by pid ${owner.pid} for ${Math.floor((now - owner.at) / 1_000)}s`
-      : reason)
+      : [reason, path ?? detail].filter(Boolean).join(': '))
     this.name = 'StoreBusyError'
   }
+}
+
+/** Pauses between rename attempts while another process briefly holds the entry open. */
+const renameRetryDelaysMs = [1, 2, 4, 8, 16]
+
+function blockFor(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
 
 interface ProcessCache {
@@ -150,7 +169,12 @@ export class Store {
   private readonly processes: () => ProcessSnapshot
   private readonly started: (pid: number) => number | undefined
   private readonly beforeCommit?: (path: string) => void
+  private readonly sleep: (ms: number) => void
   private token?: string
+  /** The last foreign owner read from the published lock, named when its owner.json stays unreadable. */
+  private lockOwner?: LockOwner
+  /** When the last process lookup failed; lookups pause 2 s after a failure, like the regular cap. */
+  private lookupFailedAt?: number
   /**
    * Tokens of this instance's finished locks whose retirement marker could not be
    * written. lock() writes them again, and this instance may break those locks.
@@ -175,6 +199,7 @@ export class Store {
     this.processes = options.snapshotProcesses ?? snapshotProcesses
     this.started = options.processStartedAt ?? processStartedAt
     this.beforeCommit = options.beforeCommit
+    this.sleep = options.sleep ?? blockFor
     this.lastTick = this.now()
   }
 
@@ -356,15 +381,29 @@ export class Store {
     })
   }
 
-  /** Shared guard for explicit release and the caller's synchronous exit cleanup. */
+  /**
+   * Shared guard for explicit release and the caller's synchronous exit cleanup. A release is often the
+   * last transaction of its process, so it retries unwritten retirement markers afterwards.
+   */
   releaseIfIdle(lease: StoredLease): boolean {
-    return this.transact(() => {
-      const current = this.readJson(this.leasePath(lease.id))
-      if (workloadAlive(leaseRecord(current) ? current : lease, this.processes()))
-        return false
-      this.remove(this.leasePath(lease.id))
-      return true
-    })
+    try {
+      return this.transact(() => {
+        const current = this.readJson(this.leasePath(lease.id))
+        if (workloadAlive(leaseRecord(current) ? current : lease, this.lookup(this.processes)))
+          return false
+        this.remove(this.leasePath(lease.id))
+        return true
+      })
+    }
+    finally {
+      this.retryRetirements()
+    }
+  }
+
+  /** Writes again the retirement markers this instance could not write; lock(), release, and exit call it. */
+  retryRetirements(): void {
+    for (const token of this.unmarked)
+      this.markRetired(token)
   }
 
   release(lease: StoredLease): boolean {
@@ -457,8 +496,27 @@ export class Store {
   }
 
   private refresh(now: number): ProcessCache {
-    this.processCache = { at: now, seq: ++this.observations, snapshot: this.processes() }
+    const failed = this.lookupFailedAt
+    if (failed !== undefined && now >= failed && now - failed < 2_000)
+      throw new StoreBusyError('snapshot-failed', undefined, undefined, undefined, 'waiting 2 s after a failed process lookup')
+    this.processCache = { at: now, seq: ++this.observations, snapshot: this.lookup(this.processes) }
     return this.processCache
+  }
+
+  /**
+   * Runs a process lookup. A failed one, such as a PowerShell snapshot that hits its 10 s timeout, proves
+   * nothing about any process, so it is reported busy and every caller retries it on a later poll.
+   */
+  private lookup<T>(read: () => T): T {
+    try {
+      const result = read()
+      this.lookupFailedAt = undefined
+      return result
+    }
+    catch (error) {
+      this.lookupFailedAt = this.now()
+      throw new StoreBusyError('snapshot-failed', undefined, undefined, undefined, String(error))
+    }
   }
 
   /**
@@ -492,7 +550,7 @@ export class Store {
       // capture began. An absent pid may have exited while it was running.
       return info ? cache.seq - 0.5 : cache.seq
     }
-    return this.sameProcess(pid, startedAt) ? undefined : ++this.observations
+    return this.lookup(() => this.sameProcess(pid, startedAt)) ? undefined : ++this.observations
   }
 
   private ownerGone(owner: LockOwner): boolean {
@@ -549,11 +607,11 @@ export class Store {
 
   private lock(): string {
     this.cleanTemporaryLocks()
-    for (const token of this.unmarked)
-      this.markRetired(token)
+    this.retryRetirements()
     const path = join(this.root, 'broker.lock')
     const current = this.readOwner(path)
     if (current) {
+      this.lockOwner = current
       if (!this.reclaimable(current))
         throw new StoreBusyError('lock-busy', current, this.now())
       if (!this.retireLock(current))
@@ -648,7 +706,7 @@ export class Store {
     catch (error) {
       if (code(error) === 'ENOENT')
         return false
-      if (busyCodes.includes(String(code(error))))
+      if (error instanceof StoreBusyError || busyCodes.includes(String(code(error))))
         throw new StoreBusyError('lock-busy')
       throw error
     }
@@ -663,7 +721,7 @@ export class Store {
         // Another acquirer published, or cleaned the tombstone, while the lock
         // was set aside. The stranded owner sees lock-lost on its next commit,
         // and cleanTemporaryLocks removes the tombstone once that owner is gone.
-        if (code(error) === 'ENOENT' || busyCodes.includes(String(code(error))))
+        if (code(error) === 'ENOENT' || error instanceof StoreBusyError || busyCodes.includes(String(code(error))))
           throw new StoreBusyError('lock-busy')
         throw error
       }
@@ -704,8 +762,8 @@ export class Store {
    * rename itself fails with EPERM while another process has a handle inside the
    * lock directory. In both cases the lock is marked retired, so any copy of it
    * that is ever published again stays breakable instead of wedging every process.
-   * Busy failures never escape, so a committed transaction is never reported as
-   * failed.
+   * No failure escapes, so a committed transaction is never reported as failed: a
+   * busy one is expected, and any other is reported on stderr.
    */
   private leave(token: string): void {
     let retired = false
@@ -716,7 +774,7 @@ export class Store {
     }
     catch (error) {
       if (!(error instanceof StoreBusyError))
-        throw error
+        console.error(`cpu-slots: could not retire the store lock; it is marked retired instead (${String(error)})`)
     }
     finally {
       if (!retired)
@@ -752,9 +810,15 @@ export class Store {
       if (code(error) === 'ENOENT' || error instanceof SyntaxError)
         return undefined
       if (inFlux(error))
-        throw new StoreBusyError('entry-busy')
+        throw this.entryBusy(path)
       throw error
     }
+  }
+
+  /** Names the entry, and for the published lock's owner.json the last owner this store read there. */
+  private entryBusy(path: string): StoreBusyError {
+    const lockEntry = path === join(this.root, 'broker.lock', 'owner.json')
+    return new StoreBusyError('entry-busy', lockEntry ? this.lockOwner : undefined, undefined, path)
   }
 
   private mtime(path: string): number {
@@ -763,7 +827,7 @@ export class Store {
     }
     catch (error) {
       if (inFlux(error))
-        throw new StoreBusyError('entry-busy')
+        throw this.entryBusy(path)
       throw error
     }
   }
@@ -802,6 +866,10 @@ export class Store {
     this.fs.remove(path)
   }
 
+  /**
+   * Retries a win32 sharing error after a short, growing pause. One that outlasts every retry means
+   * another process still holds the entry, so it is reported busy and retried on the caller's next poll.
+   */
   private rename(from: string, to: string, checkOwnership = false): void {
     for (let attempt = 0; ; attempt++) {
       try {
@@ -811,8 +879,11 @@ export class Store {
         return
       }
       catch (error) {
-        if (attempt >= 5 || !['EPERM', 'EBUSY'].includes(String(code(error))))
+        if (!inFlux(error))
           throw error
+        if (attempt >= renameRetryDelaysMs.length)
+          throw new StoreBusyError('entry-busy', undefined, undefined, to)
+        this.sleep(renameRetryDelaysMs[attempt])
       }
     }
   }

@@ -299,4 +299,100 @@ describe('audit follow-ups (2026-10-22)', () => {
       call.abort.abort()
     }
   })
+
+  it('f24 names a store entry that stays busy for 30 s with its last holder, and rejects with entry-unreadable after 5 min', async () => {
+    vi.useFakeTimers()
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // A live foreign owner holds the lock, so the first poll records it; then its owner.json stays unreadable.
+    const lock = join(root, 'broker.lock')
+    mkdirSync(lock)
+    writeFileSync(join(lock, 'owner.json'), JSON.stringify({ token: 'other', pid: process.pid, startedAt: 1, at: Date.now() + 3_600_000 }))
+    const call = track(request)
+    const read = nodeFs.read
+    vi.spyOn(nodeFs, 'read').mockImplementation((path) => {
+      if (path === owner())
+        throw epermError()
+      return read(path)
+    })
+    try {
+      await vi.advanceTimersByTimeAsync(100)
+      expect(errors).not.toHaveBeenCalledWith(expect.stringContaining('busy for'))
+      vi.setSystemTime(Date.now() + 30_000)
+      await vi.advanceTimersByTimeAsync(50)
+      expect(errors).toHaveBeenCalledWith(expect.stringContaining(`${owner()} busy for 30s; lock last held by pid ${process.pid}`))
+      expect(call.settled()).toBeUndefined()
+      vi.setSystemTime(Date.now() + 270_000)
+      await vi.advanceTimersByTimeAsync(50)
+      expect(call.settled()?.error).toMatchObject({ name: 'CpuSlotsError', code: 'entry-unreadable', message: `entry-unreadable: ${owner()}` })
+    }
+    finally {
+      call.abort.abort()
+    }
+  })
+
+  it('f18 keeps a waiter queued through a failed process snapshot instead of rejecting it', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const dead = 2_000_000_001
+    vi.spyOn(liveness, 'isAlive').mockImplementation(pid => pid !== dead)
+    mkdirSync(join(root, 'leases'), { recursive: true })
+    writeFileSync(join(root, 'leases', 'dead.json'), JSON.stringify({ id: 'dead', pid: dead, startedAt: 1, class: 'exclusive', slots: 8, exclusive: true, cwd: '/w', command: 'dead', createdAt: Date.now(), workload: [] }))
+    vi.mocked(processes.snapshotProcesses).mockImplementationOnce(() => {
+      throw Object.assign(new Error('spawnSync powershell.exe ETIMEDOUT'), { code: 'ETIMEDOUT' })
+    })
+    const call = track(request)
+    await vi.advanceTimersByTimeAsync(3_000)
+    try {
+      expect(call.settled()?.lease).toMatchObject({ grant: 6 })
+      expect(readdirSync(join(root, 'leases'))).not.toContain('dead.json')
+    }
+    finally {
+      call.abort.abort()
+    }
+  })
+
+  it('f08 exit writes a retirement marker that the release could not', async () => {
+    vi.resetModules()
+    const fresh = {
+      acquire: (await import('../src/acquire')).acquire,
+      fs: (await import('../src/fs-adapter')).nodeFs,
+      liveness: await import('../src/liveness'),
+      processes: await import('../src/processes'),
+    }
+    vi.spyOn(fresh.liveness, 'isSameProcess').mockReturnValue(true)
+    vi.spyOn(fresh.processes, 'snapshotProcesses').mockReturnValue({ platform: process.platform, processes: [] })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    // Exit listeners are collected instead of registered, so the test runs them itself.
+    const exits: (() => void)[] = []
+    const on = process.on.bind(process)
+    vi.spyOn(process, 'on').mockImplementation(((event: string, listener: () => void) => {
+      if (event !== 'exit')
+        return on(event, listener)
+      exits.push(listener)
+      return process
+    }) as typeof process.on)
+    const lease = await fresh.acquire(request)
+    const lock = join(root, 'broker.lock')
+    let blocked = true
+    let markFailures = 2
+    const original = { ...fresh.fs }
+    vi.spyOn(fresh.fs, 'rename').mockImplementation((from, to) => {
+      if (blocked && from === lock && to.endsWith('.tomb'))
+        throw epermError()
+      original.rename(from, to)
+    })
+    vi.spyOn(fresh.fs, 'write').mockImplementation((path, text) => {
+      if (path.endsWith('.retired') && markFailures-- > 0)
+        throw Object.assign(new Error('EACCES'), { code: 'EACCES' })
+      original.write(path, text)
+    })
+    lease.release()
+    const markers = (): string[] => readdirSync(root).filter(name => name.endsWith('.retired'))
+    expect(markers()).toEqual([])
+    for (const listener of exits)
+      listener()
+    expect(markers()).toHaveLength(1)
+    blocked = false
+    expect(new Store({ root, budget: 8 }).snapshot()).toEqual({ leases: [], tickets: [] })
+  })
 })

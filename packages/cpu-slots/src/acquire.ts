@@ -85,6 +85,8 @@ export function whileBusy<T>(fn: () => T, deadline: number): T {
 }
 
 const activeWriters = new Set<Writer>()
+/** Stores that held a lease in this process; exit writes their unwritten retirement markers. */
+const leaseStores = new Set<Store>()
 let exitHooked = false
 
 function hookExit(): void {
@@ -100,8 +102,14 @@ function hookExit(): void {
         // A busy lock at exit leaves the write to pruning by the next observer.
       }
     }
+    for (const store of leaseStores)
+      store.retryRetirements()
   })
 }
+
+/** How long one store entry may stay unreadable before the waiting line names it, and before acquire gives up. */
+const ENTRY_BUSY_REPORT_MS = 30_000
+const ENTRY_BUSY_LIMIT_MS = 300_000
 
 /**
  * Store writes after acquisition (workload registration, release) run in order. A busy lock is
@@ -171,6 +179,8 @@ function assertShareable(lease: Lease, request: AcquireOptions): void {
 }
 
 function owned(store: Store, record: StoredLease, seq: number): Lease {
+  leaseStores.add(store)
+  hookExit()
   const heartbeat = setInterval(() => {
     try {
       store.heartbeat(record)
@@ -221,6 +231,7 @@ function owned(store: Store, record: StoredLease, seq: number): Lease {
     catch {
       // A failed snapshot or busy lock cannot prove idleness. Leave pruning to an observer.
     }
+    store.retryRetirements()
   }
   const lease = handle()
   held.set(store.root, {
@@ -266,6 +277,8 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
   let ticket: Ticket | undefined
   let waiting = false
   let inheritedChecked = false
+  /** The store entry that has stayed unreadable on every poll since `since`. */
+  let unreadable: { path: string, since: number, reported: boolean } | undefined
   return new Promise<Lease>((resolveLease, reject) => {
     let timer: ReturnType<typeof setTimeout> | undefined
     const finish = (): void => {
@@ -325,6 +338,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
         })
         // Only a committed transaction settles the inheritance check; a busy one repeats it.
         inheritedChecked = true
+        unreadable = undefined
         if (result) {
           // Registration (heartbeat, exit hook) happens once the transaction has committed, so a
           // retried transaction never registers the same lease twice.
@@ -352,6 +366,26 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
         if (!waiting) {
           console.error(`cpu-slots: waiting for ${Math.min(min, budget)} slot(s) of ${request.class} (held ?/${budget}, ? ahead; ${error.message})`)
           waiting = true
+        }
+        if (error.reason === 'entry-busy' && error.path) {
+          const now = Date.now()
+          if (unreadable?.path !== error.path)
+            unreadable = { path: error.path, since: now, reported: false }
+          const elapsed = now - unreadable.since
+          if (elapsed >= ENTRY_BUSY_LIMIT_MS) {
+            // The ticket is left behind: the store cannot be written, and pruning drops it 45 s after its last touch.
+            finish()
+            reject(new CpuSlotsError('entry-unreadable', unreadable.path))
+            return
+          }
+          if (elapsed >= ENTRY_BUSY_REPORT_MS && !unreadable.reported) {
+            unreadable.reported = true
+            const holder = error.owner ? `; lock last held by pid ${error.owner.pid}` : ''
+            console.error(`cpu-slots: waiting for ${Math.min(min, budget)} slot(s) of ${request.class} (${unreadable.path} busy for ${Math.floor(elapsed / 1_000)}s${holder})`)
+          }
+        }
+        else {
+          unreadable = undefined
         }
       }
       timer = setTimeout(tick, delay)

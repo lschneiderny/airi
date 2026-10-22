@@ -1044,6 +1044,8 @@ describe('workload registration, pruning, and release parity', () => {
 })
 
 describe('audit follow-ups (2026-10-22)', () => {
+  const noSleep = (): void => {}
+
   it('f16 refuses to touch or grant a seq whose file now holds another ticket id', () => {
     const store = createStore()
     const ours = store.enqueue(request)
@@ -1090,5 +1092,96 @@ describe('audit follow-ups (2026-10-22)', () => {
     writeJson(join(root, 'leases', 'call-id.json'), { ...ticket, slots: 6, workload: [] })
     store.withdraw('call-id')
     expect(store.snapshot()).toEqual({ leases: [], tickets: [] })
+  })
+
+  it.each(['EPERM', 'EBUSY'])('f25 pauses between %s rename retries and reports a lasting one as busy with the lease path', (errorCode) => {
+    const delays: number[] = []
+    const fs: StoreFs = {
+      ...nodeFs,
+      rename(from, to) {
+        if (to.includes(join(root, 'leases')))
+          throw Object.assign(new Error(errorCode), { code: errorCode })
+        nodeFs.rename(from, to)
+      },
+    }
+    const store = createStore(10, { fs, sleep: ms => delays.push(ms) })
+    const ticket = store.enqueue(request)
+    expect(() => store.grant(ticket.seq, 6, ticket.id)).toThrow(expect.objectContaining({
+      name: 'StoreBusyError',
+      reason: 'entry-busy',
+      path: join(root, 'leases', `${ticket.id}.json`),
+    }))
+    expect(delays).toEqual([1, 2, 4, 8, 16])
+    expect(store.snapshot().tickets).toEqual([ticket])
+  })
+
+  it('f09 returns a committed result when retiring the lock fails with a non-busy error, and warns', () => {
+    const owner = join(root, 'broker.lock', 'owner.json')
+    let armed = false
+    let reads = 0
+    const fs: StoreFs = {
+      ...nodeFs,
+      read(path) {
+        // The first owner read after the work is the commit check; the second is leave().
+        if (armed && path === owner && ++reads === 2)
+          throw Object.assign(new Error('EACCES'), { code: 'EACCES' })
+        return nodeFs.read(path)
+      },
+    }
+    const warning = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(createStore(10, { fs }).transact(() => {
+        armed = true
+        return 'committed'
+      })).toBe('committed')
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining('EACCES'))
+    }
+    finally {
+      warning.mockRestore()
+    }
+    expect(createStore(20).enqueue(request).seq).toBe(1)
+  })
+
+  it('f08 a release writes a retirement marker that its own transaction could not', () => {
+    const lock = join(root, 'broker.lock')
+    let blocked = false
+    let markFailures = 0
+    const fs: StoreFs = {
+      ...nodeFs,
+      rename(from, to) {
+        if (blocked && from === lock && to.endsWith('.tomb'))
+          throw Object.assign(new Error('EPERM'), { code: 'EPERM' })
+        nodeFs.rename(from, to)
+      },
+      write(path, text) {
+        if (path.endsWith('.retired') && markFailures-- > 0)
+          throw Object.assign(new Error('EACCES'), { code: 'EACCES' })
+        nodeFs.write(path, text)
+      },
+    }
+    const store = createStore(10, { fs, sleep: noSleep })
+    const lease = takeLease(store)
+    blocked = true
+    markFailures = 1
+    expect(store.releaseIfIdle(lease)).toBe(true)
+    expect(nodeFs.list(root).filter(name => name.endsWith('.retired'))).toHaveLength(1)
+    blocked = false
+    expect(createStore(20).enqueue(request).seq).toBe(2)
+  })
+
+  it('f18 reports a failed process snapshot as busy, pauses lookups for 2 s, then prunes once one succeeds', () => {
+    takeLease(createStore(20))
+    live.delete(20)
+    snapshot.mockImplementationOnce(() => {
+      throw Object.assign(new Error('spawnSync powershell.exe ETIMEDOUT'), { code: 'ETIMEDOUT' })
+    })
+    const observer = createStore()
+    expect(() => observer.snapshot()).toThrow(expect.objectContaining({ name: 'StoreBusyError', reason: 'snapshot-failed' }))
+    clock += 500
+    expect(() => observer.snapshot()).toThrow(expect.objectContaining({ name: 'StoreBusyError', reason: 'snapshot-failed' }))
+    expect(snapshot).toHaveBeenCalledTimes(1)
+    clock += 1_500
+    expect(observer.snapshot().leases).toEqual([])
+    expect(snapshot).toHaveBeenCalledTimes(2)
   })
 })
