@@ -26,3 +26,11 @@ steps; this package does not yet coordinate running processes.
 
 Do not use it to limit long-running development servers or as an operating-system
 CPU quota.
+
+## Vitest entry
+
+`@proj-airi/cpu-slots/vitest` resolves to a bundled `dist/vitest.mjs` built by `tsdown` (`pnpm -F @proj-airi/cpu-slots build`, also part of `pnpm build:packages`, which runs after install). Vite externalizes the package when it loads a vitest config, so Node imports the entry natively and cannot resolve the extension-less relative imports of `src/`; the bundle inlines them. Everything else, including the CLI, the tests, and the `.` export, runs from `src/`.
+
+An interactive bare `vitest` acquires its lease at startup, so it can queue behind other runs, and releases it as soon as Vitest resolves to watch mode. `vitest --watch` takes no lease and caps workers at the grant a free store would give.
+
+`dist/vitest.mjs` records a hash of the sources it bundles and fails the config load with a stale-build error when they change, because only the post-install build and `turbo` (typecheck depends on the cpu-slots build) rebuild it.

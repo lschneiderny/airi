@@ -6,7 +6,7 @@
       "outputs": ["dist/**"]
     },
     "typecheck": {
-      "dependsOn": ["^typecheck"],
+      "dependsOn": ["^typecheck", "@proj-airi/cpu-slots#build"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.json"]
     },
     "@proj-airi/electron-vueuse#build": {

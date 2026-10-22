@@ -28,8 +28,23 @@ export interface Lease {
   release: () => void
 }
 
-/** The in-process lease per store; reuse is reference counted so only the last release frees it. */
-const held = new Map<string, { lease: Lease, retain: () => Lease }>()
+/**
+ * Process-wide state, shared by every copy of this module in the process: Vite bundles each config
+ * file separately, so module-level variables would give each config file its own state.
+ */
+export interface ProcessState {
+  /** The in-process lease per store; reuse is reference counted so only the last release frees it. */
+  held: Map<string, { lease: Lease, retain: () => Lease }>
+  /** The worker grant chosen by the first wrapped vitest config in this process. */
+  vitestGrant?: number
+}
+
+export function processState(): ProcessState {
+  const registry = globalThis as typeof globalThis & Record<symbol, ProcessState | undefined>
+  return registry[Symbol.for('@proj-airi/cpu-slots')] ??= { held: new Map() }
+}
+
+const held = processState().held
 
 export function storeRoot(): string {
   return resolve(process.env.AIRI_CPU_SLOTS_DIR
