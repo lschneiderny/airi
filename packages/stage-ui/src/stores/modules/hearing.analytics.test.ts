@@ -1,6 +1,9 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// A static import keeps the cold transform of the store's module graph (about 9 s under load) out of the test timeouts.
+import { useHearingStore } from './hearing'
+
 const analyticsMock = vi.hoisted(() => ({
   allowComposableCall: true,
   trackMicrophonePermissionDenied: vi.fn(),
@@ -58,7 +61,6 @@ describe('useHearingStore analytics lifecycle', () => {
    * await hearingStore.transcription(providerId, provider, model, file)
    */
   it('does not call analytics composables when a recording is transcribed later', async () => {
-    const { useHearingStore } = await import('./hearing')
     const hearingStore = useHearingStore()
     analyticsMock.allowComposableCall = false
 
@@ -81,14 +83,13 @@ describe('useHearingStore analytics lifecycle', () => {
       char_count: 5,
       stream: false,
     })
-  }, 10000)
+  })
 
   /**
    * @example
    * await expect(hearingStore.transcription(providerId, provider, model, file)).rejects.toThrow()
    */
   it('normalizes microphone permission failures for analytics', async () => {
-    const { useHearingStore } = await import('./hearing')
     const hearingStore = useHearingStore()
     const permissionError = new DOMException('User denied microphone', 'NotAllowedError')
     transcriptionMock.generateTranscription.mockRejectedValueOnce(permissionError)
@@ -110,5 +111,5 @@ describe('useHearingStore analytics lifecycle', () => {
       stt_provider_id: 'openai-compatible-audio-transcription',
       error_code: 'permission_denied',
     })
-  }, 10000)
+  })
 })
