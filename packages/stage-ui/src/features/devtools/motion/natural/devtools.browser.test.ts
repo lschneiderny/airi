@@ -266,8 +266,9 @@ describe('natural motion lab', () => {
     const sink = vi.fn(() => 'C:/evidence/natural-trace.json')
     setNaturalTraceSink(sink)
 
+    const requested = until(() => diagnostics.pendingRequest?.durationSeconds).toBe(60, { timeout: 5000, throwOnTimeout: true })
     await screen.getByRole('button', { name: /capture\.start/ }).nth(0).click()
-    await expect.poll(() => diagnostics.pendingRequest?.durationSeconds).toBe(60)
+    await requested
     await expect.element(screen.getByTestId('natural-capture-pending')).toBeVisible()
 
     diagnostics.completeCapture(diagnostics.pendingRequest!.id, trace, report)
