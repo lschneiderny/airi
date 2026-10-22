@@ -30,6 +30,28 @@ const runCommand: ProcessCommand = (command, args) => {
   return { stdout: result.stdout, pid: result.pid }
 }
 
+/**
+ * The process that created `info`, when the snapshot still holds it. Windows
+ * keeps a dead parent's pid in ParentProcessId and reuses pids, so a holder
+ * created after the child is a later process that merely reuses that pid.
+ */
+export function liveParent(info: ProcessRecord, byPid: ReadonlyMap<number, ProcessRecord>): ProcessRecord | undefined {
+  const parent = byPid.get(info.ppid)
+  return parent && parent !== info && parent.startedAt <= info.startedAt ? parent : undefined
+}
+
+function descendsFrom(info: ProcessRecord, ancestor: ProcessRecord, byPid: ReadonlyMap<number, ProcessRecord>): boolean {
+  const visited = new Set<ProcessRecord>()
+  let current: ProcessRecord | undefined = info
+  while (current && current.startedAt >= ancestor.startedAt && !visited.has(current)) {
+    if (current === ancestor)
+      return true
+    visited.add(current)
+    current = liveParent(current, byPid)
+  }
+  return false
+}
+
 function creationTime(value: string): number {
   const milliseconds = /^\/Date\((-?\d+)(?:[+-]\d+)?\)\/$/.exec(value)
   return milliseconds ? Number(milliseconds[1]) : Date.parse(value)
@@ -63,22 +85,14 @@ export function snapshotProcesses(platform = process.platform, run: ProcessComma
       return { pid: Number(pid), ppid: Number(ppid), pgid: Number(pgid), startedAt: Date.parse(date.join(' ')) }
     })
   }
-  // The snapshot command is our own child, not leased work. Keeping it would
-  // make every release see a live descendant and retain an otherwise idle lease.
+  // The probe is our own child, not leased work; keeping it would retain every
+  // idle lease on release. Drop only what the probe created: it may hold a dead
+  // owner's pid, which that owner's surviving children still name as parent.
   const byPid = new Map(processes.map(info => [info.pid, info]))
+  const probe = probePid === undefined ? undefined : byPid.get(probePid)
   return {
     platform,
-    processes: processes.filter((info) => {
-      const visited = new Set<number>()
-      let current: ProcessRecord | undefined = info
-      while (current && !visited.has(current.pid)) {
-        if (current.pid === probePid)
-          return false
-        visited.add(current.pid)
-        current = byPid.get(current.ppid)
-      }
-      return true
-    }),
+    processes: probe ? processes.filter(info => !descendsFrom(info, probe, byPid)) : processes,
   }
 }
 

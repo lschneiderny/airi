@@ -115,6 +115,50 @@ describe('workloadAlive', () => {
     })).toBe(false)
   })
 
+  it('does not attribute children of a later process that reused the owner pid', () => {
+    expect(workloadAlive(lease, {
+      platform: 'win32',
+      processes: [
+        { pid: 10, ppid: 1, startedAt: 15_000 },
+        { pid: 30, ppid: 10, startedAt: 16_000 },
+      ],
+    })).toBe(false)
+  })
+
+  it('still counts an owner child created before a later process reused the owner pid', () => {
+    expect(workloadAlive(lease, {
+      platform: 'win32',
+      processes: [
+        { pid: 10, ppid: 1, startedAt: 17_000 },
+        { pid: 30, ppid: 10, startedAt: 16_000 },
+      ],
+    })).toBe(true)
+  })
+
+  it('counts a workload descendant that was given the dead owner pid', () => {
+    expect(workloadAlive(lease, {
+      platform: 'win32',
+      processes: [{ pid: 10, ppid: 20, startedAt: 12_000 }],
+    })).toBe(true)
+  })
+
+  it('counts a POSIX child started in the same truncated second as the lease', () => {
+    expect(workloadAlive({ ...lease, createdAt: 10_500 }, {
+      platform: 'linux',
+      processes: [{ pid: 30, ppid: 10, pgid: 30, startedAt: 10_000 }],
+    })).toBe(true)
+  })
+
+  it('does not count a POSIX group led by a later process that reused a workload pid', () => {
+    expect(workloadAlive(lease, {
+      platform: 'linux',
+      processes: [
+        { pid: 20, ppid: 1, pgid: 20, startedAt: 14_000 },
+        { pid: 30, ppid: 1, pgid: 20, startedAt: 15_000 },
+      ],
+    })).toBe(false)
+  })
+
   it('returns false when the entire workload is gone', () => {
     expect(workloadAlive(lease, { platform: 'win32', processes: [] })).toBe(false)
   })
@@ -191,6 +235,39 @@ describe('dependency-free process commands', () => {
         { ProcessId: 60, ParentProcessId: 50, CreationDate: '/Date(12000)/' },
       ]),
     })).processes.map(info => info.pid)).toEqual([10, 20])
+  })
+
+  it('keeps a dead owner child when the probe reuses that owner pid', () => {
+    expect(snapshotProcesses('win32', () => ({
+      pid: 20,
+      stdout: JSON.stringify([
+        { ProcessId: 10, ParentProcessId: 4, CreationDate: '/Date(1000)/' },
+        { ProcessId: 20, ParentProcessId: 10, CreationDate: '/Date(12050)/' },
+        { ProcessId: 50, ParentProcessId: 20, CreationDate: '/Date(12010)/' },
+      ]),
+    })).processes.map(info => info.pid)).toEqual([10, 50])
+  })
+
+  it('follows a chain to the probe only through parents created no later than their child', () => {
+    expect(snapshotProcesses('win32', () => ({
+      pid: 50,
+      stdout: JSON.stringify([
+        { ProcessId: 10, ParentProcessId: 1, CreationDate: '/Date(1000)/' },
+        { ProcessId: 50, ParentProcessId: 10, CreationDate: '/Date(12000)/' },
+        { ProcessId: 60, ParentProcessId: 50, CreationDate: '/Date(13000)/' },
+        { ProcessId: 70, ParentProcessId: 60, CreationDate: '/Date(12500)/' },
+      ]),
+    })).processes.map(info => info.pid)).toEqual([10, 70])
+  })
+
+  it('drops nothing when the probe is missing from its own listing', () => {
+    expect(snapshotProcesses('win32', () => ({
+      pid: 99,
+      stdout: JSON.stringify([
+        { ProcessId: 10, ParentProcessId: 1, CreationDate: '/Date(1000)/' },
+        { ProcessId: 60, ParentProcessId: 99, CreationDate: '/Date(13000)/' },
+      ]),
+    })).processes.map(info => info.pid)).toEqual([10, 60])
   })
 
   it('excludes ps itself from a POSIX snapshot', () => {
