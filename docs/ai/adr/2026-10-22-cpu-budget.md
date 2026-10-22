@@ -1,7 +1,7 @@
 # CPU slot budget and QA result cache
 
 Date: 2026-10-22
-Status: proposed
+Status: accepted
 
 ## Problem
 

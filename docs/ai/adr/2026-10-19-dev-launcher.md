@@ -1,7 +1,7 @@
 # Development launcher without batch-file prompts
 
 Date: 2026-10-19
-Status: proposed
+Status: accepted
 
 ## Problem
 
