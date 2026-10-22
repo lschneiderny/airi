@@ -1,5 +1,7 @@
 # live2d-presence-v1 - Work Plan
 
+> **Closed 2026-10-22 as superseded by `live2d-presence-v2`.** v2 replaced the controller that row 5 and F1-F4 would have tested, and v2 rows 14, 23 and 24 covered the same rendered scenarios. See `docs/ai/audits/2026-10-22-workstream-audit.md`, decision D2.
+
 ## TL;DR (For humans)
 <!-- Fill this LAST, after the detailed plan below is written, so it summarizes the REAL plan. -->
 <!-- Plain English for a non-engineer: NO file paths, NO todo numbers, NO wave/agent/tool names. -->
