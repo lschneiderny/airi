@@ -32,8 +32,9 @@ export async function createWLipSyncAnalysis(context: AudioContext, profile: Pro
 
   // NOTICE:
   // wlipsync@1.3.1 traps ("memory access out of bounds") above 64 kHz, so 192 kHz devices read volume 0.
-  // Its WASM window grows with the context rate and overflows a fixed region. Analyse at 48 kHz instead.
-  // Source: wlipsync/dist/audio-processor.js `set_input(sampleRate)`.
+  // Its analysis window grows with the context rate and overflows a fixed WASM region in `execute`
+  // once it exceeds about 4096 samples. `set_input` itself succeeds. Analyse at 48 kHz instead.
+  // Source: wlipsync/dist/audio-processor.js.
   // Remove when the wlipsync@1.3.1 browser test stops reporting processorerror.
   const analysisContext = new AudioContext({ sampleRate: WLIPSYNC_MAX_SAMPLE_RATE })
   const input = context.createMediaStreamDestination()

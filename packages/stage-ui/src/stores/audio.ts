@@ -67,9 +67,12 @@ function calculateVolume(analyser: AnalyserNode, mode: 'linear' | 'minmax' = 'li
 export const useAudioContext = defineStore('audio-context', () => {
   // NOTICE:
   // Pin 48 kHz so lip sync works on 192 kHz output devices.
-  // wlipsync@1.3.1 passes the context rate to WASM `set_input`, which fails at 192 kHz.
-  // Source: node_modules/.pnpm/wlipsync@1.3.1/node_modules/wlipsync/dist/audio-processor.js
-  // Remove when a wlipsync release accepts 192 kHz in `set_input`.
+  // wlipsync@1.3.1 sizes its analysis window from the context rate. Above about 64 kHz the window passes
+  // about 4096 samples and the WASM `execute` call traps ("memory access out of bounds"), so volume stays 0.
+  // `set_input` itself succeeds. The VRM, MMD and Live2D paths bridge faster contexts through `createWLipSyncAnalysis`.
+  // Source: node_modules/.pnpm/wlipsync@1.3.1/node_modules/wlipsync/dist/audio-processor.js and
+  // the 192 kHz test in packages/model-driver-lipsync/src/live2d/index.browser.test.ts.
+  // Remove when that wlipsync@1.3.1 browser test stops reporting processorerror, meaning `execute` accepts 192 kHz.
   const audioContext = shallowRef<AudioContext>(new AudioContext({ sampleRate: 48000 }))
 
   return {
