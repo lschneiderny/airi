@@ -118,6 +118,7 @@ pnpm lint:fix
 pnpm verify                        # Changed-file typecheck, lint, and related tests
 pnpm wt ls                         # Worktrees: idle time, uncommitted files, live processes
 pnpm dev:top                       # Dev process memory and CPU per worktree
+pnpm slots status                  # CPU slot budget: store path, held leases, queued work
 ```
 After each task, run `pnpm verify` before finishing. It typechecks the changed packages and their dependents through Turbo, lints the changed files, and runs the tests related to them. It typechecks every package when a root config file changes. It skips a step that already passed on the same working tree.
 Use `pnpm lint` or root `pnpm typecheck` only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
@@ -125,6 +126,8 @@ When `pnpm run` or `pnpm exec` fails because dependencies are out of date, run `
 Create and remove worktrees with `pnpm wt new <name>` and `pnpm wt rm <name>`. Stop a worktree's processes with `pnpm dev:top kill <name> --yes`, never by PID alone.
 If Vitest finds no tests, inspect `vitest.config.ts` includes. Source-only packages can lack build scripts. Use their nested guidance.
 Electron build runs `electron-vite build`, not typecheck. Its typecheck runs `vue-tsc --noEmit`. Stage UI uses `test:run` and has no compilation build.
+
+Build, typecheck, and QA scripts take CPU slots from a shared budget through `pnpm slots run --class <class>`. If a command waits, run `pnpm slots status` to see who holds the budget and what is queued. Set `AIRI_CPU_SLOTS=off` to disable the broker for a shell and run commands without a lease. If a command prints `cpu-slots: dist/vitest.mjs is stale`, run `pnpm -F @proj-airi/cpu-slots build`. Never bypass the broker or its stale guard.
 
 ## TASK ROUTING
 Read the listed file before starting. Skill paths below are under `.agents/skills/`.

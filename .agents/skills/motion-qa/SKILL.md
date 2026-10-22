@@ -67,6 +67,8 @@ After validation passes, `qa:test`, `qa:motion gate` at T1/T2/T3, direct `qa:mot
 pnpm -F @proj-airi/qa-tools run evidence archive --plan <slug> --from <worktree-path>
 ```
 
-Do not commit evidence or rig/core assets. Keep gate and browser runs serial. Before starting or while any heavyweight run is active, treat `H:/llm/ollama/tmp/qa-tooling-heavy.lock` as a stop signal. Never overlap T3 captures with browser suites, builds, root typecheck, or lint. Check the lock convention before acquiring or removing it; remove only a lock created by your own run.
+Do not commit evidence or rig/core assets. Heavy runs take a class from the CPU slot budget: gate runs take `gate`, and T3 captures take `exclusive`, which waits until no other lease holds slots. Run `pnpm slots status` before a heavy run to see the current holder and queue. Never overlap T3 captures with browser suites, builds, root typecheck, or lint. Let the broker queue a run rather than starting it by hand.
+
+Acceptance evidence needs `--fresh` on every T1 gate and `validate-scorer` run, so the result is computed rather than read from the cache. A cached run is a local check. `--t1-report` refuses a cached run with exit 2, so pass a run made with `--fresh`.
 
 For details and current gate behavior, read [`packages/qa-tools/README.md`](../../../packages/qa-tools/README.md) and [`docs/ai/adr/2026-10-20-motion-qa-levels.md`](../../../docs/ai/adr/2026-10-20-motion-qa-levels.md).
