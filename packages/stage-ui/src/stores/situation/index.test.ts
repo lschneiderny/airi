@@ -485,6 +485,64 @@ describe('situation store', () => {
     expect(vi.getTimerCount()).toBe(1)
   })
 
+  it('names the foreground app and title in the block while foreground sharing is on', () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    store.setStageVisible(true)
+
+    useForegroundWindowStore().setSample(foregroundSample())
+
+    expect(store.renderForRequest(Date.now())).toContain('- Now: Notepad (other): notes.txt, for less than a minute')
+  })
+
+  it('forgets the foreground app, title and category when foreground sharing turns off, and keeps none while it is off', async () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    store.setStageVisible(true)
+    const foreground = useForegroundWindowStore()
+    const game = 'D:\\SteamLibrary\\steamapps\\common\\Hades\\Hades.exe'
+    // The first app only starts the session; switching to the game and staying there settles an app-switch topic.
+    foreground.setSample(foregroundSample())
+    vi.advanceTimersByTime(1_000)
+    foreground.setSample(foregroundSample({ exePath: game, exeName: 'Hades.exe', title: 'Asphodel run 3' }))
+    vi.advanceTimersByTime(SETTLE_MS)
+    expect(store.state.events.map(event => event.kind)).toContain('app-switch')
+    expect(store.foregroundCategory).toBeNull()
+    foreground.setSample(foregroundSample({ exePath: game, exeName: 'Hades.exe', title: 'Asphodel run 3' }))
+    expect(store.foregroundCategory).toBe('game')
+
+    await useSituationSettings().update({ shareForegroundWindow: false })
+    // A reply that was already in flight still lands in the shared store.
+    foreground.setSample(foregroundSample({ title: 'secret plans.txt - Notepad' }))
+    vi.advanceTimersByTime(SETTLE_MS)
+
+    expect(store.state.activity).toBeNull()
+    expect(store.state.recentActivities).toEqual([])
+    expect(store.state.events.filter(event => event.topicKey.startsWith('activity:'))).toEqual([])
+    expect(store.foregroundCategory).toBeNull()
+    const block = store.renderForRequest(Date.now())
+    expect(block).not.toMatch(/Now:|Before that:/u)
+    expect(JSON.stringify({ block, state: store.state })).not.toMatch(/hades|asphodel|notepad|notes\.txt|secret/iu)
+  })
+
+  it('reports the foreground app again once foreground sharing is back on', async () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    store.setStageVisible(true)
+    const settings = useSituationSettings()
+    await settings.update({ shareForegroundWindow: false })
+    useForegroundWindowStore().setSample(foregroundSample())
+    expect(store.state.activity).toBeNull()
+
+    await settings.update({ shareForegroundWindow: true })
+
+    expect(store.state.activity).toMatchObject({ appId: 'notepad', title: 'notes.txt' })
+    expect(store.renderForRequest(Date.now())).toContain('- Now: Notepad (other): notes.txt')
+  })
+
   it('stores stage visibility, which starts hidden', () => {
     const store = useSituationStore()
     expect(store.stageVisible).toBe(false)
@@ -888,6 +946,25 @@ describe('situation gate loop', () => {
     expect(store.foregroundCategory).toBeNull()
     expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'stale-signal' })
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
+  })
+
+  it('holds as stale while foreground sharing is off, even when a sample is still fresh', async () => {
+    const { chat, observability } = startQuietLeader()
+    const settings = useSituationSettings()
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+
+    await settings.update({ shareForegroundWindow: false })
+    await nextGateTick()
+
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'stale-signal' })
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+
+    await settings.update({ shareForegroundWindow: true })
+    await nextGateTick()
+
+    expect(observability.gate?.decision).toMatchObject({ fire: true })
+    expect(chat.submitUnprompted).toHaveBeenCalledTimes(1)
   })
 
   it('stops the gate on demotion and drops the result of a turn from the earlier leadership', async () => {

@@ -56,6 +56,7 @@ describe('situation settings', () => {
       unpromptedEnabled: true,
       chattiness: 0.5,
       dontDisturb: false,
+      shareForegroundWindow: true,
       quietApps: ['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe'],
       titleDenylist: ['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe'],
       showUnpromptedCue: true,
@@ -144,7 +145,7 @@ describe('situation settings', () => {
         }
       }, { flush: 'sync' })
     })
-    expect(await follower.store.update({ chattiness: 0.8, quietApps: ['notepad.exe'] })).toEqual({ success: true })
+    expect(await follower.store.update({ chattiness: 0.8, quietApps: ['notepad.exe'], shareForegroundWindow: false })).toEqual({ success: true })
     await snapshot
     // A second leader-routed command is a transport barrier, not a timing wait.
     // @ts-expect-error Deliberately exercise malformed runtime input.
@@ -152,6 +153,7 @@ describe('situation settings', () => {
     expect(rejected.success).toBe(false)
     expect(leader.store.document).toEqual(follower.store.document)
     expect(leader.store.document.quietApps).toEqual(['notepad.exe'])
+    expect(leader.store.document.shareForegroundWindow).toBe(false)
     expect(mutations).toBe(1)
     expect(leaderAction).toHaveBeenCalledTimes(2)
     expect(persist.mock.calls.filter(([storageKey]) => storageKey === key)).toHaveLength(1)

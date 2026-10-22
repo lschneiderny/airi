@@ -23,6 +23,7 @@ import {
   BASE_SALIENCE,
   contextTopicKey,
   HALF_LIFE_MS,
+  initialSituationState,
   longSessionSalience,
   notifyTopicKey,
   PRESENCE_RETURN_TOPIC_KEY,
@@ -444,6 +445,36 @@ export function advanceSituation(state: SituationState, nowMs: number): Situatio
     return state
   const draft = cloneDraft(state)
   advanceDraft(draft, nowMs)
+  return draft
+}
+
+/** Event kinds that only foreground activity observations produce. */
+const FOREGROUND_EVENT_KINDS: ReadonlySet<SituationEventKind> = new Set<SituationEventKind>(['app-switch', 'long-session', 'switching-burst'])
+
+/**
+ * Drops everything that came from the foreground app: the current and recent apps (window title and category
+ * included), their app-switch, long-session, and switching-burst events, the busy state read from the shell, and the
+ * reducer's activity bookkeeping. The result matches a host that never had a foreground reader; the rest of the
+ * situation is kept.
+ *
+ * Use when:
+ * - The user stops sharing the foreground app and window titles, so the next prompt must not carry them
+ */
+export function forgetForeground(state: SituationState): SituationState {
+  const draft = cloneDraft(state)
+  draft.activity = null
+  draft.recentActivities = []
+  draft.events = draft.events.filter(event => !FOREGROUND_EVENT_KINDS.has(event.kind))
+  draft.busy = initialSituationState.busy
+  draft.tracking = {
+    ...draft.tracking,
+    activityAtMs: null,
+    settledSinceMs: null,
+    tierSinceMs: null,
+    tierDone: 0,
+    switchTimes: [],
+    burstActive: false,
+  }
   return draft
 }
 

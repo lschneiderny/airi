@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   advanceSituation,
   effectiveSalience,
+  forgetForeground,
   initialSituationState,
   markAddressed,
   markShown,
@@ -545,5 +546,34 @@ describe('markAddressed', () => {
     state = run([context('last', 'newest', T0 + 40 * SEC)], state)
     expect(state.events).toHaveLength(SITUATION_EVENTS_MAX)
     expect(state.events.some(e => e.topicKey === 'context:game')).toBe(false)
+  })
+})
+
+describe('forgetForeground', () => {
+  it('drops the apps, their topics and the busy state, and keeps everything else', () => {
+    const state = run([
+      presence('here', T0),
+      activity('z', T0, { title: 'draft.txt' }),
+      activity('a', T0 + MIN, { title: 'secret plans', category: 'game' }),
+      { kind: 'busy', state: 'fullscreen', atMs: T0 + MIN },
+      context('vision', 'A cat on the desk', T0 + MIN),
+      notify({ atMs: T0 + MIN }),
+    ])
+    const settled = advanceSituation(state, T0 + 3 * MIN)
+    expect(eventsOf(settled, 'app-switch')).toHaveLength(1)
+
+    const forgotten = forgetForeground(settled)
+
+    expect(forgotten.activity).toBeNull()
+    expect(forgotten.recentActivities).toEqual([])
+    expect(forgotten.busy).toEqual(initialSituationState.busy)
+    expect(forgotten.events.map(event => event.kind).sort()).toEqual(['context', 'notify'])
+    expect(forgotten.presence).toEqual(settled.presence)
+    expect(forgotten.contexts).toEqual(settled.contexts)
+    expect(JSON.stringify(forgotten)).not.toMatch(/secret|draft/u)
+    // A later app starts a new session instead of continuing the forgotten one.
+    const next = reduceSituation(forgotten, activity('b', T0 + 4 * MIN), T0 + 4 * MIN)
+    expect(next.activity).toMatchObject({ appId: 'b', sinceMs: T0 + 4 * MIN })
+    expect(next.recentActivities).toEqual([])
   })
 })

@@ -20,6 +20,7 @@ import {
 import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
 import { useCanvasPixelIsTransparentAtPoint } from '@proj-airi/stage-ui/composables/canvas-alpha'
 import { useVoiceListening } from '@proj-airi/stage-ui/composables/voice-input-mode'
+import { useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
 import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { useVoiceStore } from '@proj-airi/stage-ui/stores/voice'
@@ -106,9 +107,16 @@ const { stagePaused } = storeToRefs(useStageWindowLifecycleStore())
 const desktopActivityProducer = useDesktopActivityProducerStore()
 desktopActivityProducer.start()
 onScopeDispose(() => desktopActivityProducer.stop())
-// Only the stage window samples the foreground app, so follower windows never poll the main process.
+// Only the stage window samples the foreground app, so follower windows never poll the main process. It samples only
+// while the user shares the foreground app; stopping also clears the last sample.
 const foregroundWindowProducer = useForegroundWindowProducerStore()
-foregroundWindowProducer.start()
+const situationSettings = useSituationSettings()
+watch(() => situationSettings.document.shareForegroundWindow, (sharing) => {
+  if (sharing)
+    foregroundWindowProducer.start()
+  else
+    foregroundWindowProducer.stop()
+}, { immediate: true })
 onScopeDispose(() => foregroundWindowProducer.stop())
 const { fadeOnHoverEnabled } = storeToRefs(useControlsIslandStore())
 const modelSettingsRuntimeOwnerInstanceId = `tamagotchi-main-stage:${Math.random().toString(36).slice(2, 10)}`

@@ -10,6 +10,7 @@ import { errorMessageFrom } from '@moeru/std'
 import {
   advanceSituation,
   evaluateGate,
+  forgetForeground,
   initialGateMemory,
   initialSituationState,
   markShown,
@@ -153,6 +154,14 @@ export const useSituationStore = defineStore('situation', () => {
 
   // Feeds the devtools Situation inspector of this window. Sync flush keeps it equal to the state after every call.
   watch([leading, current], ([isLeading, state]) => observability.publishLiveState(isLeading, state), { flush: 'sync', immediate: true })
+
+  // The foreground sensor stops reporting by itself; what it reported earlier must leave the state too, so the next
+  // prompt carries no app or title. Followers hold the initial state, and the situation is neither synced nor
+  // persisted, so this watcher writes no replicated state.
+  watch(() => settings.document.shareForegroundWindow, (sharing) => {
+    if (!sharing && leading.value)
+      current.value = forgetForeground(current.value)
+  }, { flush: 'sync' })
 
   function advance(nowMs: number) {
     if (!leading.value)
@@ -357,7 +366,8 @@ export const useSituationStore = defineStore('situation', () => {
       generating: controls.sending(),
       queued: controls.pendingQueuedSendCount(),
       desktopFresh: isRecent(desktopActivity.snapshot?.sampledAtMs, nowMs, DESKTOP_SAMPLE_STALE_MS),
-      foregroundFresh: isRecent(foregroundWindow.sample?.sampledAtMs, nowMs, FOREGROUND_SAMPLE_STALE_VISIBLE_MS),
+      // Without foreground sharing the gate holds as on a host without a foreground reader.
+      foregroundFresh: settings.document.shareForegroundWindow && isRecent(foregroundWindow.sample?.sampledAtMs, nowMs, FOREGROUND_SAMPLE_STALE_VISIBLE_MS),
       stageVisible: stageVisible.value,
     }
   }

@@ -287,6 +287,47 @@ describe('foreground situation sensor', () => {
     ])
   })
 
+  it('reports nothing while foreground sharing is off, and the current sample once it is on again', async () => {
+    const settings = useSituationSettings()
+    await settings.update({ shareForegroundWindow: false })
+    const { observations, categories, publish, sensor } = run()
+
+    publish(T0)
+    publish(T0 + 1_000, { notificationState: 'presentation' })
+    sensor.check(T0 + 2_000)
+
+    expect(observations).toEqual([])
+    expect(categories).toEqual([])
+
+    await settings.update({ shareForegroundWindow: true })
+
+    expect(observations).toEqual([
+      { kind: 'busy', state: 'presentation', atMs: T0 + 1_000 },
+      { kind: 'activity', appId: 'notepad', label: 'Notepad', category: 'other', title: 'notes.txt', atMs: T0 + 1_000 },
+    ])
+    expect(categories).toEqual(['other'])
+  })
+
+  it('clears the category when foreground sharing turns off, and reports the same app again once it is on', async () => {
+    const settings = useSituationSettings()
+    const { activities, categories, observations, publish } = run()
+    publish(T0)
+
+    await settings.update({ shareForegroundWindow: false })
+    publish(T0 + 1_000, { title: 'secret plans.txt - Notepad' })
+
+    expect(categories).toEqual(['other', null])
+    expect(JSON.stringify(observations)).not.toMatch(/secret/u)
+
+    await settings.update({ shareForegroundWindow: true })
+
+    expect(activities()).toEqual([
+      { kind: 'activity', appId: 'notepad', label: 'Notepad', category: 'other', title: 'notes.txt', atMs: T0 },
+      { kind: 'activity', appId: 'notepad', label: 'Notepad', category: 'other', title: 'secret plans.txt', atMs: T0 + 1_000 },
+    ])
+    expect(categories).toEqual(['other', null, 'other'])
+  })
+
   it('reads nothing after it stops', () => {
     const { observations, publish, sensor } = run()
     publish(T0)

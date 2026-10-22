@@ -22,6 +22,12 @@ const situationSettingsEntries = {
   chattiness: optional(pipe(number(), transform(value => clamp(value, 0, 1))), 0.5),
   /** True suppresses unprompted turns until the user turns it off. @default false */
   dontDisturb: optional(boolean(), false),
+  /**
+   * False stops reading the user's foreground app and window title: the Electron host stops sampling, and the situation
+   * keeps no app, title, or app category. The opportunity gate then holds as it does on a host without a foreground
+   * reader, so the character stops speaking up on her own until it is true again. @default true
+   */
+  shareForegroundWindow: optional(boolean(), true),
   /** Foreground exe-name globs during which the character stays quiet. */
   quietApps: exePatterns(['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe']),
   /** Foreground exe-name globs whose window titles are never recorded. */
