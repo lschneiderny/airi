@@ -601,11 +601,11 @@ describe('vOICEVOX provider defaults', () => {
     const speech = useSpeechStore()
     speech.activeSpeechProvider = OFFICIAL_SPEECH_PROVIDER_ID
     speech.activeSpeechModel = 'model-a'
-    await new Promise(resolve => setTimeout(resolve, 20))
+    // The watcher reloads asynchronously, so wait for each reload instead of a fixed delay.
+    await vi.waitFor(() => expect(loads).toHaveBeenCalledWith(OFFICIAL_SPEECH_PROVIDER_ID, 'model-a', expect.anything()), { timeout: 5000 })
     loads.mockClear()
     speech.activeSpeechModel = 'model-b'
-    await new Promise(resolve => setTimeout(resolve, 20))
-    expect(loads).toHaveBeenCalledWith(OFFICIAL_SPEECH_PROVIDER_ID, 'model-b', expect.anything())
+    await vi.waitFor(() => expect(loads).toHaveBeenCalledWith(OFFICIAL_SPEECH_PROVIDER_ID, 'model-b', expect.anything()), { timeout: 5000 })
   })
 
   // https://github.com/moeru-ai/airi/pull/2490#discussion_r3964660980
