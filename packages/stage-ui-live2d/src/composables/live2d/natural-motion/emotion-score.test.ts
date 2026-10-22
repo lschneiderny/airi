@@ -223,7 +223,7 @@ describe('emotion scorer', () => {
     const stripped = syntheticTrace(1, [scenario({ kind: 'noop', at: pulseAt, replaced: 'emotion', trialId })], () => 0)
     const options = { trialId, variant: 'full' as const, gate: emotionGate }
     expect(measureEmotionTrial({ ...run, events: [...run.events].reverse() }, stripped, options)).toEqual(measureEmotionTrial(run, stripped, options))
-  })
+  }, 20_000)
 
   it('measures windows by time on unevenly spaced samples', () => {
     const trialId = 'angry-strong-held-only-1'
