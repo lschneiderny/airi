@@ -36,11 +36,26 @@ export function storeRoot(): string {
     ?? join(process.platform === 'win32' ? process.env.LOCALAPPDATA ?? tmpdir() : tmpdir(), 'airi-cpu-slots'))
 }
 
-/** Longest an exit handler may block on a busy store lock; pruning reclaims anything left behind. */
+/**
+ * Longest all exit handlers together may block on a busy store lock; pruning reclaims anything left
+ * behind. A store call already running at the deadline (a process snapshot takes about 0.5 s on
+ * win32) still finishes, for about 2.5 s in total.
+ */
 const EXIT_BUSY_BUDGET_MS = 2_000
+let exitDeadline: number | undefined
 
-/** Exit handlers cannot wait for another poll, so they retry synchronously until the deadline. */
-function whileBusy<T>(fn: () => T, deadline: number): T {
+/**
+ * Runs one exit step against the deadline every exit handler shares, fixed when the first of them
+ * runs. Once it has passed, later steps are skipped and left to pruning.
+ */
+function beforeExitDeadline(step: (deadline: number) => void): void {
+  exitDeadline ??= Date.now() + EXIT_BUSY_BUDGET_MS
+  if (Date.now() < exitDeadline)
+    step(exitDeadline)
+}
+
+/** Synchronous callers cannot wait for another poll, so they retry a busy lock until the deadline. */
+export function whileBusy<T>(fn: () => T, deadline: number): T {
   for (;;) {
     try {
       return fn()
@@ -61,10 +76,9 @@ function hookExit(): void {
     return
   exitHooked = true
   process.on('exit', () => {
-    const deadline = Date.now() + EXIT_BUSY_BUDGET_MS
     for (const writer of activeWriters) {
       try {
-        writer.flush(deadline)
+        beforeExitDeadline(deadline => writer.flush(deadline))
       }
       catch {
         // A busy lock at exit leaves the write to pruning by the next observer.
@@ -120,6 +134,12 @@ class Writer {
   }
 }
 
+/** A busy lock retries the write; the OS start-time lookup (a PowerShell spawn on win32) runs once. */
+function registration(store: Store, lease: StoredLease, pid: number): () => void {
+  let startedAt: number | undefined
+  return () => store.addWorkload(lease, pid, startedAt ??= store.workloadStartedAt(pid))
+}
+
 function noop(): Lease {
   return { id: '', grant: null, exclusive: false, inherited: false, env: {}, addWorkload() {}, release() {} }
 }
@@ -166,7 +186,7 @@ function owned(store: Store, record: StoredLease, seq: number): Lease {
       inherited: false,
       seq,
       env: { AIRI_CPU_LEASE: record.id, AIRI_CPU_GRANT: String(record.slots), AIRI_CPU_CLASS: record.class },
-      addWorkload: pid => writer.submit(() => store.addWorkload(record, pid)),
+      addWorkload: pid => writer.submit(registration(store, record, pid)),
       release() {
         if (done)
           return
@@ -178,9 +198,9 @@ function owned(store: Store, record: StoredLease, seq: number): Lease {
   }
   const onExit = (): void => {
     try {
-      writer.flush(Date.now() + EXIT_BUSY_BUDGET_MS)
+      beforeExitDeadline(deadline => writer.flush(deadline))
       if (!released)
-        whileBusy(() => store.releaseIfIdle(record), Date.now() + EXIT_BUSY_BUDGET_MS)
+        beforeExitDeadline(deadline => whileBusy(() => store.releaseIfIdle(record), deadline))
     }
     catch {
       // A failed snapshot or busy lock cannot prove idleness. Leave pruning to an observer.
@@ -202,6 +222,11 @@ function owned(store: Store, record: StoredLease, seq: number): Lease {
 export async function acquire(request: AcquireOptions): Promise<Lease> {
   if (!Object.hasOwn(classes, request.class))
     throw new Error('bad-class')
+  // A ticket the store cannot read is never granted, so reject before writing one.
+  if (typeof request.command !== 'string' || !request.command)
+    throw new Error('bad-command')
+  if (typeof request.cwd !== 'string' || !request.cwd)
+    throw new Error('bad-cwd')
   const defaults = classes[request.class]
   const min = request.min ?? defaults.min
   const max = request.max ?? defaults.max
@@ -254,7 +279,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
                 exclusive: parent.exclusive,
                 inherited: true,
                 env: { AIRI_CPU_LEASE: parent.id, AIRI_CPU_GRANT: String(grant), AIRI_CPU_CLASS: parent.class },
-                addWorkload: pid => writer.submit(() => store.addWorkload(parent, pid)),
+                addWorkload: pid => writer.submit(registration(store, parent, pid)),
                 release() {},
               }
               assertShareable(inherited, request)

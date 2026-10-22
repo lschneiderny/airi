@@ -35,6 +35,13 @@ export interface StoreState extends BrokerState {
   tickets: Ticket[]
 }
 
+/** A ticket file the queue cannot read. Status lists it so a waiter is never invisible. */
+export interface MalformedTicket {
+  file: string
+  pid?: number
+  mtimeMs: number
+}
+
 export interface StoreRequest {
   class: CpuClass
   min?: number
@@ -134,6 +141,11 @@ export class Store {
   private readonly started: (pid: number) => number | undefined
   private readonly beforeCommit?: (path: string) => void
   private token?: string
+  /**
+   * Token of this instance's finished lock that could not be moved aside. It is
+   * still published but held by no transaction, so the next lock() retires it.
+   */
+  private retiring?: string
   private lastTick: number
   private skipTicketPruningAt?: number
   private processCache?: ProcessCache
@@ -175,7 +187,7 @@ export class Store {
       // Never remove another owner's lock, including one installed during a hook.
       const current = this.readOwner(join(this.root, 'broker.lock'))
       if (current?.token === token)
-        this.retireLock(current)
+        this.unlock(current)
     }
   }
 
@@ -274,10 +286,16 @@ export class Store {
     }
   }
 
-  addWorkload(lease: StoredLease, pid: number): void {
-    // Even a child that exits before the lookup remains an ancestry anchor for
-    // its surviving descendants. Registration time conservatively bounds identity.
-    const startedAt = this.started(pid) ?? this.now()
+  /**
+   * Even a child that exits before the lookup remains an ancestry anchor for its
+   * surviving descendants. Registration time conservatively bounds identity.
+   */
+  workloadStartedAt(pid: number): number {
+    return this.started(pid) ?? this.now()
+  }
+
+  /** Callers that retry a busy lock pass the start time they looked up once. */
+  addWorkload(lease: StoredLease, pid: number, startedAt = this.workloadStartedAt(pid)): void {
     this.transact(() => {
       const current = this.readJson(this.leasePath(lease.id))
       const workload = leaseRecord(current) ? current.workload : lease.workload
@@ -356,6 +374,31 @@ export class Store {
     })
   }
 
+  /** Ticket files that fail validation and are not yet stale; snapshot() prunes stale ones. */
+  malformedTickets(): MalformedTicket[] {
+    return this.transact(() => {
+      const result: MalformedTicket[] = []
+      for (const file of this.fs.list(join(this.root, 'tickets'))) {
+        if (!file.endsWith('.json'))
+          continue
+        const path = join(this.root, 'tickets', file)
+        try {
+          const value = this.readJson(path)
+          if (ticketRecord(value))
+            continue
+          const { mtimeMs } = this.fs.stat(path)
+          const pid = object(value) && Number.isSafeInteger(value.pid) ? Number(value.pid) : undefined
+          result.push({ file, ...(pid === undefined ? {} : { pid }), mtimeMs })
+        }
+        catch (error) {
+          if (code(error) !== 'ENOENT')
+            throw error
+        }
+      }
+      return result
+    })
+  }
+
   /** M4 caps process snapshots at one per 2 s per observer; a clock jump backwards resets the cap. */
   private canRefresh(now: number): boolean {
     const cache = this.processCache
@@ -405,6 +448,18 @@ export class Store {
     return !this.alive(owner.pid) || this.identityDeath(owner, owner.at) !== undefined
   }
 
+  /**
+   * A lock that no transaction holds: this instance's own retiring lock, one its
+   * owner marked retired after its transaction ended, or one whose owner is gone.
+   * The cheap checks run first, so a retired lock costs no process lookup.
+   */
+  private reclaimable(path: string, owner: LockOwner): boolean {
+    if (owner.token === this.retiring)
+      return true
+    const marker = this.readJson(join(path, 'retired.json'))
+    return (object(marker) && marker.token === owner.token) || this.ownerGone(owner)
+  }
+
   private records<T>(directory: string, valid: (value: unknown) => value is T): { value: T, path: string, mtimeMs: number }[] {
     const result: { value: T, path: string, mtimeMs: number }[] = []
     for (const name of this.fs.list(join(this.root, directory))) {
@@ -437,11 +492,15 @@ export class Store {
     this.cleanTemporaryLocks()
     const path = join(this.root, 'broker.lock')
     const current = this.readOwner(path)
+    // Tokens are unique, so a different published token means the retiring lock is gone.
+    if (current?.token !== this.retiring)
+      this.retiring = undefined
     if (current) {
-      if (!this.ownerGone(current))
+      if (!this.reclaimable(path, current))
         throw new StoreBusyError('lock-busy', current, this.now())
       if (!this.retireLock(current))
         throw new StoreBusyError('lock-busy')
+      this.retiring = undefined
     }
     else {
       try {
@@ -494,7 +553,7 @@ export class Store {
       const current = this.readOwner(path)
       try {
         if (current
-          ? this.ownerGone(current)
+          ? this.reclaimable(path, current)
           : this.now() - this.fs.stat(path).mtimeMs > 10_000) {
           this.fs.remove(path)
         }
@@ -533,8 +592,43 @@ export class Store {
       }
       return false
     }
-    this.fs.remove(tomb)
+    try {
+      this.fs.remove(tomb)
+    }
+    catch (error) {
+      // The lock is already retired. Another acquirer's cleanTemporaryLocks may be
+      // reading the tombstone; it never blocks anyone and is cleaned up later.
+      if (!busyCodes.includes(String(code(error))))
+        throw error
+    }
     return true
+  }
+
+  /**
+   * Retires this instance's lock after its transaction has ended. On win32 the
+   * rename fails with EPERM while another process has a handle inside the lock
+   * directory. Throwing would leave the lock published to a live owner that no
+   * longer uses it, wedging every process, and would report a committed
+   * transaction as failed. Instead the owner marks the lock retired, which lets
+   * any acquirer break it, and records it so its own next lock() retires it.
+   */
+  private unlock(current: LockOwner): void {
+    try {
+      this.retireLock(current)
+    }
+    catch (error) {
+      if (!(error instanceof StoreBusyError))
+        throw error
+      this.retiring = current.token
+      try {
+        this.fs.write(join(this.root, 'broker.lock', 'retired.json'), JSON.stringify({ token: current.token }))
+      }
+      catch (markError) {
+        // ENOENT: the lock is no longer published, so nothing is left to mark.
+        if (code(markError) !== 'ENOENT')
+          throw markError
+      }
+    }
   }
 
   private readOwner(path: string): LockOwner | undefined {
