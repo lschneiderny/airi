@@ -4,10 +4,13 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { readStatus, Store, StoreBusyError } from '../src'
 import { readStatusWithin } from '../src/status'
+
+import * as liveness from '../src/liveness'
+import * as processes from '../src/processes'
 
 let root: string
 
@@ -17,6 +20,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.unstubAllEnvs()
   rmSync(root, { recursive: true, force: true })
 })
@@ -71,4 +75,27 @@ it('f23 returns the status once the store is free', async () => {
   })
   await expect(readStatusWithin({ now: () => 0, wait: async () => {}, read })).resolves.toBe(status)
   expect(read).toHaveBeenCalledTimes(3)
+})
+
+describe('f18 a process snapshot that times out while status prunes a dead owner', () => {
+  const dead = 2_000_000_001
+  const timedOut = (): never => {
+    throw Object.assign(new Error('spawnSync powershell.exe ETIMEDOUT'), { code: 'ETIMEDOUT' })
+  }
+
+  beforeEach(() => {
+    vi.spyOn(liveness, 'isAlive').mockImplementation(pid => pid !== dead)
+    mkdirSync(join(root, 'leases'))
+    writeFileSync(join(root, 'leases', 'dead.json'), JSON.stringify({ id: 'dead', pid: dead, startedAt: 1, class: 'test', slots: 6, exclusive: false, cwd: '/w', command: 'dead', createdAt: Date.now(), workload: [] }))
+  })
+
+  it('is reported busy, not as the raw spawn error', () => {
+    vi.spyOn(processes, 'snapshotProcesses').mockImplementation(timedOut)
+    expect(() => readStatus({ root })).toThrow(expect.objectContaining({ name: 'StoreBusyError', reason: 'snapshot-failed' }))
+  })
+
+  it('is retried by pnpm slots status, which then prunes the dead lease', async () => {
+    vi.spyOn(processes, 'snapshotProcesses').mockImplementationOnce(timedOut).mockReturnValue({ platform: process.platform, processes: [] })
+    await expect(readStatusWithin({ root, now: () => 0, wait: async () => {} })).resolves.toMatchObject({ held: 0, leases: [] })
+  })
 })

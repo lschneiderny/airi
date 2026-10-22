@@ -43,13 +43,13 @@ A lease lasts as long as its workload. A registered process, or any descendant o
 
 `decide(state, budget)` is pure. It grants the lowest ticket sequence first (FIFO). A waiting ticket reports one reason: `queue-empty`, `over-budget`, `exclusive-held`, `leases-held`, or `insufficient-slots`. Waiters poll every 500 ms, or every 50 ms right after a busy lock.
 
-The store is written under a directory lock. Every mutation runs in one transaction. A grant is written as a lease, then checked again, and removed if the check fails. A lease is reclaimed only after its owner's death is observed and a process snapshot shows the workload is gone. Snapshots are rate-capped at one per 2 s per observer, and each snapshot process has a 10 s timeout (`Store.canRefresh` in `packages/cpu-slots/src/store.ts`, `processes.ts:22`).
+The store is written under a directory lock. Every mutation runs in one transaction. A grant is written as a lease, then checked again, and removed if the check fails. A lease is reclaimed only after its owner's death is observed and a process snapshot shows the workload is gone. Snapshots are rate-capped at one per 2 s per observer, and each snapshot process has a 30 s timeout (`Store.canRefresh` in `packages/cpu-slots/src/store.ts`, `PROCESS_LOOKUP_TIMEOUT_MS` in `processes.ts`). A snapshot takes about 0.5 s; the timeout only cuts off a hung PowerShell, because a timed-out lookup is retried and its work is lost.
 
 One `acquire` call uses one id for every ticket it queues and for the lease it is granted. `touchTicket` and `grant` compare that id, not only the ticket sequence, so a sequence that now holds another caller's ticket is never touched or granted. When a transaction reports busy after its grant committed, the next poll adopts the lease that carries the call's id (`Store.adopt`), after checking it again like a fresh grant, instead of queueing a second ticket behind its own lease. A cancelled call removes its ticket and any such lease (`Store.withdraw`).
 
 A failed process lookup, such as a PowerShell snapshot that hits its timeout, proves nothing about any process. The store reports it as busy (`snapshot-failed`), waiters retry it, and lookups pause for 2 s after a failure. Measured on Windows, a lease was reclaimed 752 ms after its child died when the coordinator was killed without `/T`. Across eight coordinator-only kill repros, death to grant took 322 to 2203 ms, inside the 2.5 s bound, and no grant was made while the workload lived.
 
-Exit handlers share a 2 s budget (`EXIT_BUSY_BUDGET_MS`). A running snapshot can push the total to about 2.5 s.
+Exit handlers share a 2 s budget (`EXIT_BUSY_BUDGET_MS`). A running snapshot can push the total to about 2.5 s, or up to its 30 s timeout when PowerShell hangs.
 
 ## Inheritance
 

@@ -16,10 +16,17 @@ export interface ProcessSnapshot {
 
 export type ProcessCommand = (command: string, args: string[]) => { stdout: string, pid?: number }
 
+/**
+ * A snapshot takes about 0.5 s on win32 (median 520 ms at 62% load), but timed out at 10 s with nine heavy
+ * lanes running. The store retries a failed lookup, and a timed-out one is wasted work, so the bound sits
+ * far above a slow success: 30 s. It only cuts off a hung PowerShell.
+ */
+export const PROCESS_LOOKUP_TIMEOUT_MS = 30_000
+
 const runCommand: ProcessCommand = (command, args) => {
   const result = spawnSync(command, args, {
     encoding: 'utf8',
-    timeout: 10_000,
+    timeout: PROCESS_LOOKUP_TIMEOUT_MS,
     windowsHide: true,
     env: { ...process.env, LC_ALL: 'C' },
   })
