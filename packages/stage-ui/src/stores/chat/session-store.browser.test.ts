@@ -238,7 +238,7 @@ describe('chat session synchronization', () => {
     await vi.waitFor(() => expect(followerStore.sessionMetas[sessionId]?.controlEvents).toEqual([event]))
   })
 
-  it('records a follower unprompted decline once and keeps the newest 50 control events', async () => {
+  it('records a follower unprompted decline once and keeps only the newest 10 declines, without evicting interruptions', async () => {
     const namespace = `chat-session:${crypto.randomUUID()}`
     const leader = createSyncedContext(namespace, 'leader-only')
     await vi.waitFor(() => expect(leader.runtime.isLeader()).toBe(true))
@@ -258,16 +258,18 @@ describe('chat session synchronization', () => {
     await followerStore.recordUnpromptedDecline({ ...decline(0), topicKey: 'retry' })
     expect(leaderStore.sessionMetas[sessionId]?.controlEvents).toEqual([{ kind: 'unprompted-declined', ...decline(0) }])
 
+    const interruption = { eventId: 'interrupt-kept', turn: { sessionId, turnId: 'reply' }, cause: 'button', playback: { groupId: 'audio', status: 'silent' as const, played: [] } }
+    await leaderStore.recordInterruption(interruption)
     for (let index = 1; index <= 54; index++)
       await leaderStore.recordUnpromptedDecline(decline(index))
 
+    // Declines are records that no prompt reads, so they stop growing the synced session at 10, and the interruption
+    // that later voice requests read stays.
     const events = leaderStore.sessionMetas[sessionId]?.controlEvents ?? []
-    expect(events).toHaveLength(50)
-    expect(events[0]).toEqual({ kind: 'unprompted-declined', ...decline(5) })
-    expect(events.at(-1)).toEqual({ kind: 'unprompted-declined', ...decline(54) })
+    expect(events).toEqual([interruption, ...Array.from({ length: 10 }, (_, offset) => ({ kind: 'unprompted-declined', ...decline(45 + offset) }))])
     // A decline adds no message. The runtime committed nothing for it.
     expect(leaderStore.getSessionMessages(sessionId)).toHaveLength(before)
-    await vi.waitFor(() => expect(followerStore.sessionMetas[sessionId]?.controlEvents).toHaveLength(50))
+    await vi.waitFor(() => expect(followerStore.sessionMetas[sessionId]?.controlEvents).toHaveLength(11))
   })
 
   it('acknowledges a follower submission after storage and deduplicates its retry', async () => {

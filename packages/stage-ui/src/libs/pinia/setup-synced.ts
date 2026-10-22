@@ -26,6 +26,10 @@ export function setupSynced(options: Pick<SyncedOptions, 'leadership'> = {}): { 
     // Chat and image-generation actions can outlive the plugin's 30-second
     // default. Keep the timeout aligned with the previous Electron coordinator.
     callTimeout: 5 * 60 * 1000,
+    // A completed operation record answers only a caller that retries its call, and the plugin keeps every record
+    // younger than `callTimeout` for that. An older record answers no caller, so none is kept past that window. The
+    // default kept the newest 128, whose results grew the replicated state.
+    commandHistoryLimit: 1,
     ...options,
     onError(error) {
       console.error('[stage-synced-pinia] Synchronization failed:', error)

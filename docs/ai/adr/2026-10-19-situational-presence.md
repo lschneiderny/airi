@@ -125,7 +125,7 @@ For `origin: 'unprompted'`:
 
 `useChatStore().submitUnprompted` is a leader-routed synced action. It sends to the leader's active session with the trigger text `(No one spoke to you. You may speak up about: <topic>)` and the `base.prompt.unprompted` instruction, or `base.prompt.unprompted-forced` when `force` is set.
 At most one unprompted turn is pending at a time. A user send in the same session cancels a queued or generating unprompted turn.
-A decline writes an `unprompted-declined` control record, which never reaches a prompt. The session store deduplicates control records and keeps the newest 50.
+A decline writes an `unprompted-declined` control record, which never reaches a prompt. The session store deduplicates control records and keeps the newest 50, of which only the newest 10 declines. Declines therefore stop growing the synced session, and they never push out the voice interruptions that later requests read.
 Unprompted trigger messages and their replies are excluded from cloud sync.
 `userSending` excludes unprompted turns, so the presence bubble, the streaming placeholder, and the Think motion follow user turns only.
 Chat history shows a muted "Spoke up about X" cue above the reply. The **Show unprompted cue** setting hides it, but the model still receives the trigger.

@@ -26,7 +26,8 @@ export interface ChatSessionMeta {
   updatedAt: number
   /**
    * Control events, newest last and capped to the newest 50. Interruptions (records without `kind`) inform later voice
-   * requests without adding user messages. Unprompted declines stay local and never reach a prompt.
+   * requests without adding user messages. Unprompted declines stay local and never reach a prompt; only the newest 10
+   * of them are kept.
    */
   controlEvents?: Array<StoredVoiceInterruption | StoredUnpromptedDecline>
   /**

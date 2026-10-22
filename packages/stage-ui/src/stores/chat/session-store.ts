@@ -57,6 +57,12 @@ export interface DeleteChatMessagePayload {
 const OUTBOX_MAX_ATTEMPTS = 5
 /** A session keeps this many of its newest control events. */
 const MAX_CONTROL_EVENTS = 50
+/**
+ * Of those, a session keeps this many of its newest unprompted declines. No prompt reads a decline, and situational
+ * presence can record one every few minutes, so declines must neither grow the synced session nor push out the voice
+ * interruptions that later requests read.
+ */
+const MAX_UNPROMPTED_DECLINES = 10
 
 const useChatSessionSelectionStore = defineStore('chat-session-selection', () => {
   const activeSessionId = ref('')
@@ -405,7 +411,8 @@ export const useChatSessionStore = defineStore('chat-session', () => {
 
   /**
    * Persists a control event under its turn's session. Retries retain the original event identity, so an event that is
-   * already stored is not added again. The session keeps the newest {@link MAX_CONTROL_EVENTS} events.
+   * already stored is not added again. The session keeps the newest {@link MAX_CONTROL_EVENTS} events, and of them the
+   * newest {@link MAX_UNPROMPTED_DECLINES} declines.
    */
   async function recordControlEvent(event: StoredVoiceInterruption | StoredUnpromptedDecline) {
     const sessionId = event.turn.sessionId
@@ -413,8 +420,13 @@ export const useChatSessionStore = defineStore('chat-session', () => {
       throw new Error('Cannot record a control event for an unknown session')
     const generation = getSessionGeneration(sessionId)
     const meta = sessionMetas.value[sessionId]
-    if (!meta.controlEvents?.some(record => record.eventId === event.eventId))
-      meta.controlEvents = [...(meta.controlEvents ?? []), event].slice(-MAX_CONTROL_EVENTS)
+    if (!meta.controlEvents?.some(record => record.eventId === event.eventId)) {
+      const events = [...(meta.controlEvents ?? []), event]
+      let excessDeclines = events.filter(record => 'kind' in record).length - MAX_UNPROMPTED_DECLINES
+      meta.controlEvents = events
+        .filter(record => !('kind' in record) || excessDeclines-- <= 0)
+        .slice(-MAX_CONTROL_EVENTS)
+    }
     await persistSession(sessionId)
     if (generation !== getSessionGeneration(sessionId) || !sessionMetas.value[sessionId])
       throw new Error('Session changed before control event persistence completed')
