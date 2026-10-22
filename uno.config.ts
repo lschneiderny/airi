@@ -200,9 +200,10 @@ export function sharedUnoConfig() {
     },
     rules: [
 
-      [/^mask-\[(.*)\]$/, ([, suffix]) => ({ '-webkit-mask-image': suffix.replace(/_/g, ' ') })],
+      // The group always matches, but a match array element is typed `string | undefined` under `noUncheckedIndexedAccess`.
+      [/^mask-\[(.*)\]$/, ([, suffix = '']) => ({ '-webkit-mask-image': suffix.replace(/_/g, ' ') })],
 
-      [/^bg-dotted-\[(.*)\]$/, ([, color], { theme }) => {
+      [/^bg-dotted-\[(.*)\]$/, ([, color = ''], { theme }) => {
         const parsedColor = parseColor(color, theme)
         // Util usage: https://github.com/unocss/unocss/blob/f57ef6ae50006a92f444738e50f3601c0d1121f2/packages-presets/preset-mini/src/_utils/utilities.ts#L186
         return {

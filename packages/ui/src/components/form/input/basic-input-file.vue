@@ -26,11 +26,7 @@ function handleFileChange(e: Event) {
   if (!input.files)
     return
 
-  files.value = []
-
-  for (let i = 0; i < input.files.length; i++) {
-    files.value.push(input.files[i])
-  }
+  files.value = Array.from(input.files)
 
   emit('update:modelValue', files.value)
 

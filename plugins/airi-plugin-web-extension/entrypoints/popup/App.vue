@@ -24,7 +24,7 @@ onMounted(() => popup.init())
         <div :class="['flex-1', 'text-xs', 'leading-snug', 'opacity-80']">
           {{ popup.lastError.value }}
         </div>
-        <Button variant="danger" size="sm" @click="popup.clearLastError">
+        <Button color="red" size="sm" @click="popup.clearLastError">
           Clear
         </Button>
       </div>

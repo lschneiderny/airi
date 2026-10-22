@@ -47,11 +47,11 @@ const props = withDefaults(defineProps<{
 const modelValue = defineModel<T>({ required: false })
 
 const normalizedOptions = computed<SelectOptionGroupItem<T>[]>(() => {
-  if (!props.options.length) {
+  const [firstOption] = props.options
+  if (!firstOption) {
     return []
   }
 
-  const [firstOption] = props.options
   if ('value' in firstOption) {
     return [
       {
