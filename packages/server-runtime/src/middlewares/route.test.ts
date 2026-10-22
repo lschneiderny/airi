@@ -256,6 +256,25 @@ describe('route middleware', () => {
     expect(matchesDestinations(['missing'], peer)).toBe(false)
   })
 
+  it('delivers a character notify to stage windows only through the route envelope', () => {
+    const stages = [
+      createPeer({ id: 'peer-tamagotchi', name: 'proj-airi:stage-tamagotchi' }),
+      createPeer({ id: 'peer-web', name: 'proj-airi:stage-web' }),
+    ]
+    const minecraft = createPeer({ id: 'peer-minecraft', name: 'minecraft-bot', extension: 'minecraft-bot', instanceId: 'minecraft-1' })
+    // The web extension's video notify, before and after it gained the route envelope.
+    const data: WebSocketEvents['spark:notify'] = { id: 'evt-video', eventId: 'spark-video', kind: 'ping', urgency: 'soon', headline: 'User is watching: a video', destinations: ['character'] }
+    const addressedOnly = createSparkNotifyEvent({ data })
+    const routed = createSparkNotifyEvent({ data, route: { destinations: ['proj-airi:stage-*'] } })
+
+    // No peer is named `character`, so a notify routed by its data destinations alone reaches no stage window.
+    expect(stages.map(peer => matchesDestinations(collectDestinations(addressedOnly)!, peer))).toEqual([false, false])
+    expect(stages.map(peer => matchesDestinations(collectDestinations(routed)!, peer))).toEqual([true, true])
+    expect(matchesDestinations(collectDestinations(routed)!, minecraft)).toBe(false)
+    // The stage still reads the data destinations as addressed to the character only.
+    expect(routed.data.destinations).toEqual(['character'])
+  })
+
   it('policy middleware filters targets', () => {
     const peers = new Map<string, AuthenticatedPeer>([
       ['peer-1', createPeer({ id: 'peer-1', name: 'telegram', extension: 'telegram-bot', instanceId: 'telegram-1', labels: { env: 'prod' } })],

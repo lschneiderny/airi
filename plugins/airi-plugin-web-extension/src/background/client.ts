@@ -11,6 +11,13 @@ import { errorMessageFromValue } from '../utils/error-message'
 
 const PLUGIN_NAME = 'proj-airi:plugin-web-extension'
 
+/**
+ * The server channel peers that host the character: every stage window connects with a name such as
+ * `proj-airi:stage-tamagotchi` or `proj-airi:stage-web`. No peer is named `character`, so a notify routed only by its
+ * `data.destinations` never reaches one.
+ */
+const STAGE_PEERS = 'proj-airi:stage-*'
+
 export interface ClientState {
   client: Client | null
   connected: boolean
@@ -132,8 +139,12 @@ function sendSparkNotify(state: ClientState, data: { headline: string, note?: st
       headline: data.headline,
       note: data.note,
       payload: data.payload,
+      // The stage reads this as "for the character only", so the notify becomes a situation topic and starts no
+      // commands-only agent run. Any other entry here would cost a model call for every video.
       destinations: ['character'],
     },
+    // The server routes by the envelope before the data, so this delivers the notify to the stage windows.
+    route: { destinations: [STAGE_PEERS] },
   })
 }
 

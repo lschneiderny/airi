@@ -41,6 +41,13 @@ export default withCpuSlots(defineConfig({
           include: ['scripts/dev-tools/**/*.test.ts'],
         },
       },
+      // The browser extension's background logic. The extension builds with WXT and has no test config of its own.
+      {
+        test: {
+          name: 'web-extension',
+          include: ['plugins/airi-plugin-web-extension/src/**/*.test.ts'],
+        },
+      },
       // Scripts that GitHub Actions run. They belong to no package.
       {
         test: {
