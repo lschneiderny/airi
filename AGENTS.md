@@ -127,7 +127,7 @@ Create and remove worktrees with `pnpm wt new <name>` and `pnpm wt rm <name>`. S
 If Vitest finds no tests, inspect `vitest.config.ts` includes. Source-only packages can lack build scripts. Use their nested guidance.
 Electron build runs `electron-vite build`, not typecheck. Its typecheck runs `vue-tsc --noEmit`. Stage UI uses `test:run` and has no compilation build.
 
-Build, typecheck, and QA scripts take CPU slots from a shared budget through `pnpm slots run --class <class>`. If a command waits, run `pnpm slots status` to see who holds the budget and what is queued. Set `AIRI_CPU_SLOTS=off` to disable the broker for a shell and run commands without a lease. If a command prints `cpu-slots: dist/vitest.mjs is stale`, run `pnpm -F @proj-airi/cpu-slots build`. Never bypass the broker or its stale guard.
+Build, typecheck, and QA scripts take CPU slots from a shared budget through `pnpm slots run --class <class>`. If a command waits, run `pnpm slots status` to see who holds the budget and what is queued. `AIRI_CPU_SLOTS=off` is a supported opt-out only for one-off diagnosis of the broker itself; never use it for routine runs. If a command prints `cpu-slots: dist/vitest.mjs is stale`, run `pnpm -F @proj-airi/cpu-slots build`. Never bypass the stale-build guard.
 
 ## TASK ROUTING
 Read the listed file before starting. Skill paths below are under `.agents/skills/`.
