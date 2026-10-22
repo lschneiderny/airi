@@ -21,6 +21,7 @@ import { ref } from 'vue'
 
 import { sparkNotifyCommandSchema, useCharacterOrchestratorStore } from '.'
 import { useCharacterNotebookStore } from '..'
+import { useSituationSettings } from '../../../features/situation/settings'
 import { useLLM } from '../../ai/chat-llm/llm'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
 import { useAiriCardStore, useConsciousnessStore } from '../../modules'
@@ -219,6 +220,28 @@ describe('store character-orchestrator', () => {
     expect(notifies[0].topicKey).toBe(notifyTopicKey('plugin:airi-plugin-web-extension', event.data.eventId))
     expect(notifies[0].text).toBe(`User is watching: QA video: ${'x'.repeat(200)}`)
     expect(notifies[0].salience).toBe(0.7)
+  })
+
+  it('runs no agent and keeps no observation for a web extension notify while browser sharing is off', async () => {
+    const mockStream = vi.fn()
+    mockedStore(useLLM, pinia).stream = mockStream
+    const situation = useSituationStore(pinia)
+    situation.initialize(leaderRuntime())
+    await useSituationSettings(pinia).update({ shareBrowserActivity: false })
+
+    const store = useCharacterOrchestratorStore(pinia)
+    // A module destination would otherwise run the commands-only agent at once, which sends the notify to the model.
+    const event: WebSocketEventOf<'spark:notify'> = {
+      type: 'spark:notify',
+      source: 'proj-airi:plugin-web-extension',
+      data: { id: nanoid(), eventId: nanoid(), kind: 'ping', urgency: 'immediate', headline: 'User is watching: QA video', destinations: ['character', 'minecraft'] },
+    }
+
+    expect(await store.handleSparkNotify(event)).toBeUndefined()
+    expect(mockStream).not.toHaveBeenCalled()
+    expect(sendSparkCommandMock).not.toHaveBeenCalled()
+    expect(store.scheduledNotifies).toEqual([])
+    expect(notifyEvents(situation)).toEqual([])
   })
 
   it('forwards a notify that a follower window received to the leader, which keeps one observation', async () => {

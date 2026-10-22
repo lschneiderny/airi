@@ -478,6 +478,54 @@ export function forgetForeground(state: SituationState): SituationState {
   return draft
 }
 
+/**
+ * Whether `sourceKey` belongs to the source `namespace`: it is the namespace itself, or a module inside it. An extension
+ * module's source key is `<extension id>:<module id>` (`getMetadataSourceLabel` in stage-ui), so the extension id is
+ * the namespace of every module the extension opens. `proj-airi:x-fork:m` is not inside `proj-airi:x`.
+ */
+export function isSourceInNamespace(sourceKey: string, namespace: string): boolean {
+  return sourceKey === namespace || sourceKey.startsWith(`${namespace}:`)
+}
+
+/** Whether a context or notify topic key belongs to a source inside `namespace` (see {@link isSourceInNamespace}). */
+export function isTopicFromSource(topicKey: string, namespace: string): boolean {
+  const contextTopic = contextTopicKey(namespace)
+  return topicKey === contextTopic || topicKey.startsWith(`${contextTopic}:`) || topicKey.startsWith(notifyTopicKey(namespace, ''))
+}
+
+/**
+ * Drops everything that one source namespace (see {@link isSourceInNamespace}) put into the situation: its contexts,
+ * its context and notify events, and her pending or last unprompted topic when its text came from one of them. The
+ * rest of the situation is kept.
+ *
+ * Use when:
+ * - The user stops sharing a source, such as the web extension, so the next prompt must not carry what it sent
+ *
+ * Expects:
+ * - Her last topic is matched by text, so a topic whose event already left the ring keeps its text.
+ */
+export function forgetSource(state: SituationState, namespace: string): SituationState {
+  const draft = cloneDraft(state)
+  const forgottenTexts = new Set<string>()
+  for (const [sourceKey, context] of Object.entries(draft.contexts)) {
+    if (!isSourceInNamespace(sourceKey, namespace))
+      continue
+    forgottenTexts.add(context.text)
+    delete draft.contexts[sourceKey]
+  }
+  draft.events = draft.events.filter((event) => {
+    const fromSource = (event.kind === 'context' || event.kind === 'notify') && isTopicFromSource(event.topicKey, namespace)
+    if (fromSource)
+      forgottenTexts.add(event.text)
+    return !fromSource
+  })
+  if (draft.tracking.addressedTopic !== null && forgottenTexts.has(draft.tracking.addressedTopic))
+    draft.tracking = { ...draft.tracking, addressedTopic: null }
+  if (draft.conversation.lastUnpromptedTopic !== null && forgottenTexts.has(draft.conversation.lastUnpromptedTopic))
+    draft.conversation = { ...draft.conversation, lastUnpromptedTopic: null }
+  return draft
+}
+
 /** Marks events as shown in a prompt. The first time wins; unknown ids are ignored. */
 export function markShown(state: SituationState, eventIds: readonly string[], nowMs: number): SituationState {
   if (!isTime(nowMs))

@@ -8,6 +8,9 @@ import type { LlmStreamOptions } from './ai/chat-llm/llm'
 import { errorMessageFrom } from '@moeru/std'
 import { SpanStatusCode } from '@opentelemetry/api'
 import { IOAttributes, IOSpanNames } from '@proj-airi/stage-shared'
+import { notifyTopicKey } from '@proj-airi/stage-shared/situation'
+import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
+import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -2254,6 +2257,44 @@ describe('chat store contract', () => {
       // Neither the trigger nor its reply is mirrored to the cloud.
       expect(pushMessageToCloudMock).not.toHaveBeenCalled()
       expect(controlRecords).toEqual([])
+    })
+
+    it('keeps the title and link of a web extension topic out of the stored trigger, while its request still carries them', async () => {
+      const prompts: string[] = []
+      llmStreamMock.mockImplementation(replyWith(['Enjoying the video?'], prompts))
+      const store = useChatStore()
+      leadSituation()
+      const situation = useSituationStore()
+      situation.setHostCapabilities({ unprompted: true })
+      situation.setStageVisible(true)
+      // Fresh desktop and foreground samples, so only the topic decides whether the gate fires.
+      useDesktopActivityStore().setSnapshot({ idleSeconds: 0, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, systemAudioLevel: null, screenChange: null, sampledAtMs: Date.now() })
+      useForegroundWindowStore().setSample({ exePath: 'C:\\Windows\\notepad.exe', exeName: 'notepad.exe', title: 'notes.txt - Notepad', pid: 7, ownProcess: false, notificationState: 'accepts', sampledAtMs: Date.now() })
+      // What the web extension sends for one video: a context update and a notify, from one module.
+      const source = 'proj-airi:plugin-web-extension:module-a'
+      situation.ingest({ kind: 'context', sourceKey: source, text: 'User is watching: Secret video Channel: QA channel. URL: https://example.test/watch?v=secret.', atMs: Date.now() })
+      situation.ingest({ kind: 'notify', sourceKey: source, eventId: 'video-1', headline: 'User is watching: Secret video', note: 'Channel: QA channel', urgency: 'soon', reminder: false, critical: false, atMs: Date.now() })
+      const completed = new Promise<void>(resolve => store.onChatTurnComplete(async () => resolve()))
+
+      const evaluation = await useSituationObservabilityStore().evaluateGate()
+      expect(evaluation).toMatchObject({ status: 'evaluated', decision: { fire: true, topicKey: notifyTopicKey(source, 'video-1') } })
+      await completed
+
+      expect(sessionMessages['session-1'].slice(1)).toMatchObject([
+        { role: 'user', origin: 'unprompted', trigger: { topicKey: notifyTopicKey(source, 'video-1') } },
+        { role: 'assistant', content: expect.stringContaining('Enjoying the video?') },
+      ])
+      expect(JSON.stringify(sessionMessages['session-1'])).not.toMatch(/secret|example\.test|QA channel/iu)
+      // The request of that turn still names the video in its situation block, which only the per-request context holds.
+      expect(prompts).toHaveLength(1)
+      expect(ingestContextMessageMock).toHaveBeenCalledWith(expect.objectContaining({
+        contextId: 'system:situation',
+        text: expect.stringContaining('Secret video'),
+      }))
+      expect(ingestContextMessageMock).toHaveBeenCalledWith(expect.objectContaining({
+        contextId: 'system:situation',
+        text: expect.stringContaining('https://example.test/watch?v=secret'),
+      }))
     })
 
     it('tags the captured provider request with its turn and origin, and counts spoken and declined turns', async () => {

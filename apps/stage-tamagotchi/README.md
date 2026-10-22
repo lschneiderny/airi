@@ -28,6 +28,7 @@ Situational presence is supported only in the Electron desktop app on Windows. O
 
 Window titles reach the chat model, including cloud providers. Add password managers and other sensitive apps to the title denylist in **Settings > Presence**; their app name and category still reach the model.
 To send no app or title at all, turn off **Share the foreground app and window titles** in **Settings > Presence**. The character then stops speaking up on her own, because the gate holds with `stale-signal`. She still answers when you talk to her.
+The AIRI web extension sends page and video titles, links, and subtitles on its own. That switch does not cover it. To keep them from the model, turn off **Share browser activity** in **Settings > Presence**.
 Use this sensor for awareness of the user's foreground app. Do not use it to capture screen content, and do not call koffi from the renderer.
 
 ## Computer use

@@ -378,18 +378,20 @@ Only the leader runs them. Context messages from the context bridge reach the si
 A follower window forwards its notify observations to the leader over the speech bus with `situationNotifyObservedEvent`.
 The foreground sensor skips AIRI's own windows, drops titles of apps on the title denylist, and treats a sample older than 5 seconds (20 seconds while the stage is hidden) as stale.
 While `shareForegroundWindow` is false, it reports nothing, and the store drops every app, title, and app category from the situation with `forgetForeground`. The gate then holds with `stale-signal`.
+While `shareBrowserActivity` is false, `ingest` drops every context and notify whose source key belongs to the web extension (`WEB_EXTENSION_SOURCE`, `proj-airi:plugin-web-extension`), and the store removes what the extension already sent with `forgetSource`. The character orchestrator also runs no spark agent for such a notify. `sharesSource(sourceKey)` answers whether a source is shared.
 
 Add a sensor when a new signal should reach the model's view of the situation.
 Do not send ambient context to the model in any other way: the situation block is the only ambient channel.
 
 ### Presence settings
 
-`useSituationSettings` in `features/situation/settings` stores one document at `settings/situation`: `unpromptedEnabled`, `chattiness` (0 to 1, default 0.5), `dontDisturb`, `shareForegroundWindow` (default true), `quietApps`, `titleDenylist`, `showUnpromptedCue`, and `speakDuringGames`.
+`useSituationSettings` in `features/situation/settings` stores one document at `settings/situation`: `unpromptedEnabled`, `chattiness` (0 to 1, default 0.5), `dontDisturb`, `shareForegroundWindow` (default true), `shareBrowserActivity` (default true), `quietApps`, `titleDenylist`, `showUnpromptedCue`, and `speakDuringGames`.
 An invalid field falls back to its default. The leader routes `update` and `reset`.
 **Settings > Presence** edits it in the Electron app. Web and Pocket exclude the page, because they run no unprompted turns.
 
 Use these settings to control how often and when the character speaks up, and whether and which window titles the model may see.
 Turning `shareForegroundWindow` off also stops unprompted speech, because the gate needs a fresh foreground sample. Replies to the user still work.
+Turning `shareBrowserActivity` off removes the web extension's page and video titles, links, subtitles, and video notifications from the situation. It does not affect foreground sharing or the gate. Web and Pocket have no control for it, so the extension always reaches the situation there.
 Do not read them in the Electron main process.
 
 ### Unprompted turns
@@ -397,6 +399,7 @@ Do not read them in the Electron main process.
 `useChatStore().submitUnprompted({ topicKey, topicText, force?, messageId?, supplement? })` starts one turn without user input in the leader's active session. It resolves to `spoken` with the text, `declined`, `cancelled`, or `failed`.
 `force` changes only the instruction: without it, the instruction invites the model to decline with `<|SILENT|>`, and with it, the instruction asks her to speak. A forced turn still declines when the reply starts with the decline marker or has no visible speech. A decline writes an `unprompted-declined` control record and nothing else.
 At most one unprompted turn is pending at a time. A user send in the same session cancels it.
+The trigger message keeps `topicText` in chat history, so the gate never passes a window title or a web extension title or link as `topicText`. For a web extension topic it passes only the kind of topic, and the situation block of the request carries the details.
 `userSending` ignores unprompted turns, so the presence bubble and the streaming placeholder follow user turns only.
 Chat history shows a muted "Spoke up about X" cue above the reply unless **Show unprompted cue** is off. Unprompted turns are excluded from cloud sync.
 

@@ -28,6 +28,12 @@ const situationSettingsEntries = {
    * reader, so the character stops speaking up on her own until it is true again. @default true
    */
   shareForegroundWindow: optional(boolean(), true),
+  /**
+   * False ignores everything the AIRI web extension sends (page and video titles, links, subtitles, and video
+   * notifications), and the leader's situation forgets what it already sent. Independent of
+   * `shareForegroundWindow`. @default true
+   */
+  shareBrowserActivity: optional(boolean(), true),
   /** Foreground exe-name globs during which the character stays quiet. */
   quietApps: exePatterns(['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe']),
   /** Foreground exe-name globs whose window titles are never recorded. */

@@ -9,9 +9,11 @@ import { ref } from 'vue'
 
 import { useCharacterNotebookStore, useCharacterStore } from '../'
 import { useStageContractPrompt, useStageLiveStatePrompt } from '../../../composables/use-airi-runtime-prompt'
+import { getEventSourceKey } from '../../../utils/event-source'
 import { useLLM } from '../../ai/chat-llm/llm'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
 import { useConsciousnessStore } from '../../modules/consciousness'
+import { useSituationStore } from '../../situation'
 import { ingestSparkNotify } from '../../situation/sensors/notify'
 
 export { sparkNotifyCommandSchema } from '@proj-airi/core-agent/agents/spark-notify'
@@ -34,6 +36,7 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
   const stageContractPrompt = useStageContractPrompt()
   const liveStatePrompt = useStageLiveStatePrompt()
   const modsServerChannelStore = useModsServerChannelStore()
+  const situationStore = useSituationStore()
 
   const processing = ref(false)
   const pendingNotifies = ref<Array<WebSocketEventOf<'spark:notify'>>>([])
@@ -200,9 +203,12 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
    * the gate (or a widget reaction's forced turn) decides whether the character speaks about it. Only a notify with
    * destinations beyond `'character'`, or one whose caller forces a spark command, also runs the commands-only agent,
    * at once when it is immediate and the agent is idle, otherwise through the queue. Returns the agent result of an
-   * immediate run, or `undefined`.
+   * immediate run, or `undefined`. A notify from a source the user does not share, such as the web extension while
+   * browser sharing is off, is dropped before either step, so it reaches no model.
    */
   async function handleIncomingSparkNotify(event: WebSocketEventOf<'spark:notify'>, control?: SparkNotifyResponseControl) {
+    if (!situationStore.sharesSource(getEventSourceKey(event)))
+      return undefined
     rememberSparkNotifyId(event, ingestSparkNotify(event))
     if (!hasModuleDestinations(event) && !control?.forceSparkCommandResponse)
       return undefined

@@ -94,6 +94,13 @@ function formatChattiness(value: number) {
       placement="right"
       @update:model-value="updateSettings({ shareForegroundWindow: $event })"
     />
+    <FieldCheckbox
+      :model-value="settings.document.shareBrowserActivity"
+      :label="t('settings.pages.presence.share-browser-activity.title')"
+      :description="t('settings.pages.presence.share-browser-activity.description')"
+      placement="right"
+      @update:model-value="updateSettings({ shareBrowserActivity: $event })"
+    />
     <label
       v-for="list in appLists"
       :key="list.field"

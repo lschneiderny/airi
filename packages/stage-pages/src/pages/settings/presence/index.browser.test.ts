@@ -70,6 +70,24 @@ describe('presence settings page', () => {
     expect(JSON.parse(localStorage.getItem(key)!).shareForegroundWindow).toBe(true)
   })
 
+  it('turns browser sharing off and on, and persists it', async () => {
+    const { screen, settings } = await renderPage()
+    expect(t('settings.pages.presence.share-browser-activity.title')).not.toBe('settings.pages.presence.share-browser-activity.title')
+    const sharing = screen.getByRole('switch', { name: t('settings.pages.presence.share-browser-activity.title') })
+    await expect.element(sharing).toBeChecked()
+
+    await sharing.click()
+    await expect.element(sharing).not.toBeChecked()
+    expect(settings.document.shareBrowserActivity).toBe(false)
+    expect(JSON.parse(localStorage.getItem(key)!).shareBrowserActivity).toBe(false)
+    // The two sharing switches are independent.
+    expect(settings.document.shareForegroundWindow).toBe(true)
+
+    await sharing.click()
+    await expect.element(sharing).toBeChecked()
+    expect(JSON.parse(localStorage.getItem(key)!).shareBrowserActivity).toBe(true)
+  })
+
   it('commits a quiet app list on change and shows the normalized entries', async () => {
     const { screen, settings } = await renderPage()
     const quietApps = screen.getByRole('textbox', { name: t('settings.pages.presence.quiet-apps.title') })

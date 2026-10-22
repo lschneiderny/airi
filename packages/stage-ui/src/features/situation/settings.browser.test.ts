@@ -57,6 +57,7 @@ describe('situation settings', () => {
       chattiness: 0.5,
       dontDisturb: false,
       shareForegroundWindow: true,
+      shareBrowserActivity: true,
       quietApps: ['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe'],
       titleDenylist: ['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe'],
       showUnpromptedCue: true,

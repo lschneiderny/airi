@@ -11,8 +11,11 @@ import {
   advanceSituation,
   evaluateGate,
   forgetForeground,
+  forgetSource,
   initialGateMemory,
   initialSituationState,
+  isSourceInNamespace,
+  isTopicFromSource,
   markShown,
   markAddressed as markSituationAddressed,
   notifyTopicKey,
@@ -63,6 +66,24 @@ export const COMPOSER_REPORT_EXPIRY_MS = 15_000
  * notifications arrive while a reminder stays due.
  */
 export const SEEN_NOTIFY_TOPICS_MAX = 256
+
+/**
+ * The source namespace of the AIRI web extension. Its module identity names the extension
+ * `proj-airi:plugin-web-extension` (`PLUGIN_NAME` in `plugins/airi-plugin-web-extension/src/background/client.ts`), so
+ * its context updates and notifies carry source keys `proj-airi:plugin-web-extension:<module id>`.
+ */
+export const WEB_EXTENSION_SOURCE = 'proj-airi:plugin-web-extension'
+
+/**
+ * The topic text of an unprompted turn. Its trigger message keeps this text in chat history. A web extension topic's
+ * own text holds a page or video title and full link, so its trigger names only the kind of topic. The details reach
+ * the model through the situation block of the same request, while the topic's context line or `New:` line is in it.
+ */
+function unpromptedTopicText(topicKey: string, text: string, aboutNotify: boolean): string {
+  if (!isTopicFromSource(topicKey, WEB_EXTENSION_SOURCE))
+    return text
+  return aboutNotify ? 'a video the user started watching in the browser' : 'what the user has open in the browser'
+}
 
 /** `submitUnprompted` returns this error when another unprompted turn is still pending: busy, not a failure. */
 const UNPROMPTED_BUSY_ERROR = 'Another unprompted turn is still pending'
@@ -167,6 +188,20 @@ export const useSituationStore = defineStore('situation', () => {
     if (!sharing && leading.value)
       current.value = forgetForeground(current.value)
   }, { flush: 'sync' })
+
+  // The same for the web extension: what it already sent leaves the state, so the next prompt carries none of it.
+  watch(() => settings.document.shareBrowserActivity, (sharing) => {
+    if (!sharing && leading.value)
+      current.value = forgetSource(current.value, WEB_EXTENSION_SOURCE)
+  }, { flush: 'sync' })
+
+  /**
+   * Whether the user shares what a source sends. Only the web extension has a switch (`shareBrowserActivity`); every
+   * other source is always shared.
+   */
+  function sharesSource(sourceKey: string): boolean {
+    return settings.document.shareBrowserActivity || !isSourceInNamespace(sourceKey, WEB_EXTENSION_SOURCE)
+  }
 
   function advance(nowMs: number) {
     if (!leading.value)
@@ -446,7 +481,7 @@ export const useSituationStore = defineStore('situation', () => {
     markAddressed(decision.topicKey)
     let result: ChatUnpromptedResult
     try {
-      result = await controls.submitUnprompted({ topicKey: decision.topicKey, topicText: decision.topicText, messageId: turn.turnId })
+      result = await controls.submitUnprompted({ topicKey: decision.topicKey, topicText: unpromptedTopicText(decision.topicKey, decision.topicText, aboutNotify), messageId: turn.turnId })
     }
     catch (error) {
       result = { status: 'failed', error: errorMessageFrom(error) ?? 'Unknown unprompted turn failure' }
@@ -549,10 +584,13 @@ export const useSituationStore = defineStore('situation', () => {
    * Folds one observation into the situation. Followers and uninitialized windows ignore it.
    *
    * A notify enters the situation once per leadership: a repeat of a remembered topic key is dropped even after its
-   * event decayed out of the ring, so one notification is never raised (and spoken) twice.
+   * event decayed out of the ring, so one notification is never raised (and spoken) twice. A context or notify from a
+   * source the user does not share ({@link sharesSource}) is dropped.
    */
   function ingest(observation: Observation) {
     if (!leading.value)
+      return
+    if ((observation.kind === 'context' || observation.kind === 'notify') && !sharesSource(observation.sourceKey))
       return
     const notifyKey = observation.kind === 'notify' ? notifyTopicKey(observation.sourceKey, observation.eventId) : undefined
     if (notifyKey !== undefined && seenNotifyTopics.has(notifyKey))
@@ -665,6 +703,7 @@ export const useSituationStore = defineStore('situation', () => {
     stageVisible: computed(() => stageVisible.value),
     hostSupportsUnprompted: computed(() => hostSupportsUnprompted.value),
     ingest,
+    sharesSource,
     advance,
     renderForRequest,
     markAddressed,

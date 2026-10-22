@@ -1,6 +1,6 @@
 import type { ChatHookRegistry, ChatStreamEventContext } from '@proj-airi/core-agent'
 import type { DesktopActivitySnapshot } from '@proj-airi/stage-shared/performance-state'
-import type { ActivityObservation, WakeObservation } from '@proj-airi/stage-shared/situation'
+import type { ActivityObservation, ContextObservation, NotifyObservation, WakeObservation } from '@proj-airi/stage-shared/situation'
 import type { ForegroundWindowSample } from '@proj-airi/stage-shared/stores/foreground-window'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
@@ -543,6 +543,37 @@ describe('situation store', () => {
     expect(store.renderForRequest(Date.now())).toContain('- Now: Notepad (other): notes.txt')
   })
 
+  it('ignores the web extension while browser sharing is off, and forgets what it already shared', async () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    store.initialize(leadership.runtime)
+    const settings = useSituationSettings()
+    // The extension's source keys name its module inside the extension: `<extension id>:<module id>`.
+    const browsing = (text: string): ContextObservation => ({ kind: 'context', sourceKey: 'proj-airi:plugin-web-extension:module-a', text, atMs: Date.now() })
+    const watching = (eventId: string, headline: string): NotifyObservation => ({ kind: 'notify', sourceKey: 'proj-airi:plugin-web-extension:module-b', eventId, headline, urgency: 'soon', reminder: false, critical: false, atMs: Date.now() })
+    expect(settings.document.shareBrowserActivity).toBe(true)
+    store.ingest(browsing('User is browsing: Secret page (https://example.test/secret).'))
+    store.ingest(watching('video-1', 'User is watching: Secret video'))
+    store.ingest({ kind: 'context', sourceKey: 'vision', text: 'A cat on the desk', atMs: Date.now() })
+    const shared = store.renderForRequest(Date.now())
+    expect(shared).toContain('Secret page (https://example.test/secret)')
+    expect(shared).toContain('Secret video')
+
+    await settings.update({ shareBrowserActivity: false })
+    expect(JSON.stringify(store.state)).not.toMatch(/secret/iu)
+    // What the extension sends while sharing is off never enters the situation.
+    store.ingest(browsing('User is browsing: Hidden page (https://example.test/hidden).'))
+    store.ingest(watching('video-2', 'User is watching: Hidden video'))
+
+    const block = store.renderForRequest(Date.now())
+    expect(block).toContain('A cat on the desk')
+    expect(JSON.stringify({ block, state: store.state })).not.toMatch(/secret|hidden|example\.test/iu)
+
+    await settings.update({ shareBrowserActivity: true })
+    store.ingest(browsing('User is browsing: Docs page (https://example.test/docs).'))
+    expect(store.renderForRequest(Date.now())).toContain('Docs page (https://example.test/docs)')
+  })
+
   it('stores stage visibility, which starts hidden', () => {
     const store = useSituationStore()
     expect(store.stageVisible).toBe(false)
@@ -621,6 +652,23 @@ describe('situation gate loop', () => {
     await hooks.emitAssistantMessageHooks(output, 'Still at it?', context)
     await hooks.emitChatTurnCompleteHooks({ output, outputText: 'Still at it?', toolCalls: [] }, context)
   }
+
+  it('names a web extension page topic by its kind in the unprompted trigger, never by its title or link', async () => {
+    const { store, chat, observability } = startQuietLeader()
+    // A plain context is a weaker topic than a notify; the most talkative setting lets it through.
+    await useSituationSettings().update({ chattiness: 1 })
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    store.ingest({ kind: 'context', sourceKey: 'proj-airi:plugin-web-extension:module-a', text: 'User is browsing: Secret page (https://example.test/secret).', atMs: Date.now() })
+
+    await nextGateTick()
+
+    expect(observability.gate?.decision).toMatchObject({ fire: true, topicKey: 'context:proj-airi:plugin-web-extension:module-a' })
+    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+    const payload = chat.submitUnprompted.mock.calls[0][0]
+    expect(payload.topicKey).toBe('context:proj-airi:plugin-web-extension:module-a')
+    expect(payload.topicText.trim()).not.toBe('')
+    expect(payload.topicText).not.toMatch(/secret|example\.test/iu)
+  })
 
   it('fires once when the user is quiet, after marking the topic addressed', async () => {
     const { store, chat, observability } = startQuietLeader()

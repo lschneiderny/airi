@@ -6,6 +6,7 @@ import {
   advanceSituation,
   effectiveSalience,
   forgetForeground,
+  forgetSource,
   initialSituationState,
   markAddressed,
   markShown,
@@ -575,5 +576,54 @@ describe('forgetForeground', () => {
     const next = reduceSituation(forgotten, activity('b', T0 + 4 * MIN), T0 + 4 * MIN)
     expect(next.activity).toMatchObject({ appId: 'b', sinceMs: T0 + 4 * MIN })
     expect(next.recentActivities).toEqual([])
+  })
+})
+
+describe('forgetSource', () => {
+  const extension = 'proj-airi:plugin-web-extension'
+  const spoken = (atMs: number): Observation => ({ kind: 'conversation', who: 'character', origin: 'unprompted', atMs })
+
+  function shared(): SituationState {
+    return run([
+      presence('here', T0),
+      context(`${extension}:module-a`, 'User is browsing: Secret page (https://example.test/secret?token=1).', T0),
+      context('vision', 'A cat on the desk', T0),
+      // Another extension whose id only starts with the same characters is a different source.
+      context(`${extension}-fork:module`, 'Fork page', T0),
+      notify({ sourceKey: `${extension}:module-b`, eventId: 'video-1', headline: 'User is watching: Secret video', atMs: T0 }),
+      notify({ atMs: T0 }),
+    ])
+  }
+
+  it('drops the contexts and events of every module of one source, and keeps everything else', () => {
+    const state = shared()
+
+    const forgotten = forgetSource(state, extension)
+
+    expect(Object.keys(forgotten.contexts).sort()).toEqual([`${extension}-fork:module`, 'vision'])
+    expect(forgotten.events.map(event => event.topicKey).sort()).toEqual([
+      `context:${extension}-fork:module`,
+      'context:vision',
+      notifyTopicKey('plugin:widget', 'evt-1'),
+    ])
+    expect(forgotten.presence).toEqual(state.presence)
+    expect(JSON.stringify(forgotten)).not.toMatch(/secret/iu)
+    expect(state.events).toHaveLength(5)
+  })
+
+  it('forgets her pending and last unprompted topic when it came from the source', () => {
+    const remarked = reduceSituation(markAddressed(shared(), notifyTopicKey(`${extension}:module-b`, 'video-1'), T0 + MIN), spoken(T0 + MIN), T0 + MIN)
+    expect(remarked.conversation.lastUnpromptedTopic).toBe('User is watching: Secret video')
+    const pending = markAddressed(remarked, `context:${extension}:module-a`, T0 + 2 * MIN)
+    expect(pending.tracking.addressedTopic).toMatch(/Secret page/u)
+
+    const forgotten = forgetSource(pending, extension)
+
+    expect(forgotten.conversation).toEqual({ ...pending.conversation, lastUnpromptedTopic: null })
+    expect(forgotten.tracking.addressedTopic).toBeNull()
+    expect(JSON.stringify(forgotten)).not.toMatch(/secret/iu)
+    // A topic from another source stays her last remark.
+    const vision = reduceSituation(markAddressed(shared(), 'context:vision', T0 + MIN), spoken(T0 + MIN), T0 + MIN)
+    expect(forgetSource(vision, extension).conversation.lastUnpromptedTopic).toBe('A cat on the desk')
   })
 })

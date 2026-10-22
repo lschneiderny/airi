@@ -97,7 +97,8 @@ export interface ChatSendPayload {
 
 /**
  * A turn that the character starts without user input. The leader sends it to its active session.
- * `topicText` is shown to the model and stored on the trigger message, so it never holds a raw window title.
+ * `topicText` is shown to the model and stored on the trigger message, so it never holds a raw window title, nor a
+ * page or video title or link from the web extension.
  */
 export interface ChatUnpromptedPayload {
   /** Situation topic that the turn is about. A declined turn records it. */
