@@ -5,7 +5,7 @@ import process from 'node:process'
 
 import { spawn, spawnSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -352,8 +352,27 @@ it('keeps the exit code and registers the workload of an inherited run while the
   expect(await holder.exit()).toBe(0)
 }, 180_000)
 
-// The busy-lock variant of the waiting line has no counts, so these counts prove the ticket exists.
-const queued = /waiting for \d+ slot\(s\) of exclusive \(held \d+\/\d+, \d+ ahead\)/
+/**
+ * Resolves once `count` ticket files exist. A holder prints one waiting line, and when its first poll
+ * meets a busy lock that line is the busy variant, printed before it enqueues; only the files prove the
+ * queue order. Polls the store on a timer, bounded like `line()`.
+ */
+async function queuedTickets(count: number): Promise<void> {
+  const tickets = (): number => {
+    try {
+      return readdirSync(join(root, 'tickets')).filter(name => name.endsWith('.json')).length
+    }
+    catch {
+      return 0
+    }
+  }
+  const deadline = Date.now() + 30_000
+  while (tickets() < count) {
+    if (Date.now() > deadline)
+      throw new Error(`Timed out waiting for ${count} ticket(s), found ${tickets()}`)
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
+}
 
 it('a14 three processes and an in-process caller are granted strictly in ticket order', async () => {
   vi.stubEnv('AIRI_CPU_SLOTS_DIR', root)
@@ -367,11 +386,11 @@ it('a14 three processes and an in-process caller are granted strictly in ticket 
   const abort = new AbortController()
   try {
     const first = new Running([join(here, 'fixtures/holder.ts'), 'exclusive'])
-    await first.line(queued, true)
+    await queuedTickets(1)
     const second = new Running([join(here, 'fixtures/holder.ts'), 'exclusive'])
-    await second.line(queued, true)
+    await queuedTickets(2)
     const third = new Running([join(here, 'fixtures/holder.ts'), 'exclusive'])
-    await third.line(queued, true)
+    await queuedTickets(3)
     // Last in line: a lease owned by this process stays held while any child of it lives.
     const inProcess = acquire({ class: 'exclusive', cwd, command: 'in-process', signal: abort.signal })
     inProcess.catch(() => {})
