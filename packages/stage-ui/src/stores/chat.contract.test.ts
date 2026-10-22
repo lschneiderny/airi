@@ -808,6 +808,69 @@ describe('chat store contract', () => {
     }
   })
 
+  it('runs a follower send once when a new leader receives it again, so the next send waits behind no replay', async () => {
+    // A leader reload ends the leader mid-reply. tab-election then sends every call that was still in flight to the new
+    // leader again (at-least-once delivery). The new leader must find the stored user message and run no second turn.
+    const namespace = `chat-redelivery:${crypto.randomUUID()}`
+    // The follower's call outlives the leader change. The new leader stops waiting for its predecessor's state after 1 s.
+    const mountRuntime = (leadership: 'leader-only' | 'follower-only', callTimeout: number) => {
+      const pinia = createPinia()
+      const runtime = createSyncedPiniaPlugin({ callTimeout, leadership, namespace })
+      pinia.use(runtime.plugin)
+      createApp({}).use(pinia)
+      return { pinia, runtime }
+    }
+    const first = mountRuntime('leader-only', 1000)
+    const follower = mountRuntime('follower-only', 20_000)
+    let second: ReturnType<typeof mountRuntime> | undefined
+    const stalled = Promise.withResolvers<void>()
+    const prompts: string[] = []
+    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, context: Conversation, options: StreamOptions) => {
+      const user = JSON.stringify(context.turns.findLast(turn => turn.type === 'user')?.content)
+      prompts.push(user.includes('first question') ? 'first' : user.includes('second question') ? 'second' : 'other')
+      // The first leader never finishes its reply: its page reloads mid-reply.
+      if (prompts.length === 1)
+        await stalled.promise
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+
+    try {
+      await vi.waitFor(() => expect(first.runtime.isLeader()).toBe(true))
+      setActivePinia(first.pinia)
+      useChatStore()
+      setActivePinia(follower.pinia)
+      const followerStore = useChatStore()
+      await vi.waitFor(() => expect(follower.runtime.getLeaderId()).toBe(first.runtime.participantId))
+
+      const firstSend = followerStore.send({ sessionId: 'session-1', text: 'first question' })
+      await vi.waitFor(() => expect(prompts).toEqual(['first']))
+      first.runtime.dispose()
+      disposePinia(first.pinia)
+
+      second = mountRuntime('leader-only', 1000)
+      setActivePinia(second.pinia)
+      useChatStore()
+      await vi.waitFor(() => expect(second!.runtime.isLeader()).toBe(true), { timeout: 5000 })
+      await firstSend
+      setActivePinia(follower.pinia)
+      await followerStore.send({ sessionId: 'session-1', text: 'second question' })
+
+      const userTexts = (sessionMessages['session-1'] ?? []).filter(message => message.role === 'user').map(message => JSON.stringify(message.content))
+      expect(userTexts.filter(text => text.includes('first question'))).toHaveLength(1)
+      expect(userTexts.filter(text => text.includes('second question'))).toHaveLength(1)
+      // The new leader generated no replay of the first turn, so the second turn ran next.
+      expect(prompts).toEqual(['first', 'second'])
+    }
+    finally {
+      stalled.resolve()
+      follower.runtime.dispose()
+      second?.runtime.dispose()
+      disposePinia(follower.pinia)
+      if (second)
+        disposePinia(second.pinia)
+    }
+  })
+
   it('starts chat-model telemetry and captures the provider prompt after vision preprocessing', async () => {
     visionMocks.configured = true
     let resolveVision!: (description: string) => void

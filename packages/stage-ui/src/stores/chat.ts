@@ -16,7 +16,7 @@ import { createChatOrchestratorRuntime, renderConversationPreview } from '@proj-
 import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import { IOAttributes, IOEvents, IOSpanNames, IOSubsystems } from '@proj-airi/stage-shared'
 import { nanoid } from 'nanoid'
-import { defineStore, storeToRefs } from 'pinia'
+import { defineStore, getActivePinia, storeToRefs } from 'pinia'
 import { computed, shallowRef, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -257,6 +257,7 @@ const STORED_TOOL_IMAGE = 'A tool image was left out of the history.'
 const UNREADABLE_EARLIER_IMAGE = 'The user attached an image here earlier. The vision model failed to read it.'
 
 export const useChatStore = defineStore('chat', () => {
+  const pinia = getActivePinia()
   const { t } = useI18n()
   const stageContractPrompt = useStageContractPrompt()
   const situationStore = useSituationStore()
@@ -1199,8 +1200,20 @@ export const useChatStore = defineStore('chat', () => {
     return { status: 'acknowledged' as const }
   }
 
-  /** Sends one serializable chat request through the elected leader. */
-  async function send(payload: ChatSendPayload): Promise<ChatSendResult> {
+  /**
+   * Sends one serializable chat request through the elected leader.
+   *
+   * The calling window names the user message. After a leader reload, tab-election delivers each running call to the
+   * new leader again, which then finds the message its predecessor stored: the runtime ends that turn at its `existing`
+   * receipt instead of storing the message twice and generating the reply again.
+   */
+  function send(payload: ChatSendPayload): Promise<ChatSendResult> {
+    // Through the store, so pinia-plugin-synced routes the call to the leader.
+    return useChatStore(pinia).sendInLeader(payload.messageId ? payload : { ...payload, messageId: nanoid() })
+  }
+
+  /** Runs one chat request in the elected leader. Callers use {@link send}, which gives the message its identity. */
+  async function sendInLeader(payload: ChatSendPayload): Promise<ChatSendResult> {
     try {
       return await executeSend(payload)
     }
@@ -1348,6 +1361,7 @@ export const useChatStore = defineStore('chat', () => {
     rerunToolCall,
     retry,
     send,
+    sendInLeader,
     submit,
     submitUnprompted,
     settleAudioTranscript,
@@ -1383,7 +1397,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 }, {
   synced: {
-    actions: ['submit', 'submitUnprompted', 'settleAudioTranscript', 'cancelTurn', 'receiveInterruption', 'cancelPendingSends', 'cleanup', 'deleteSession', 'rerunToolCall', 'retry', 'send'],
+    actions: ['submit', 'submitUnprompted', 'settleAudioTranscript', 'cancelTurn', 'receiveInterruption', 'cancelPendingSends', 'cleanup', 'deleteSession', 'rerunToolCall', 'retry', 'sendInLeader'],
     state: true,
   },
 })
