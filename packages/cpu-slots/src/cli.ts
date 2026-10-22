@@ -59,8 +59,12 @@ async function main(args: string[]): Promise<number> {
       console.log(status.storePath)
       for (const lease of status.leases)
         console.log(`${lease.class} ${lease.slots} slots ${lease.cwd} ${lease.age}ms ${lease.command}`)
-      for (const ticket of status.queue)
-        console.log(`queued ${ticket.class} ${ticket.min}-${ticket.max} ${ticket.wait}ms ${ticket.command}`)
+      for (const ticket of status.queue) {
+        if ('malformed' in ticket)
+          console.log(`queued malformed ${ticket.file} pid ${ticket.pid ?? '?'} touched ${ticket.touched}ms ago`)
+        else
+          console.log(`queued ${ticket.class} ${ticket.min}-${ticket.max} ${ticket.wait}ms ${ticket.command}`)
+      }
       console.log(`held ${status.held}/${status.budget}`)
     }
     return 0

@@ -354,6 +354,78 @@ describe('token checked lock', () => {
     expect(nodeFs.list(root)).not.toContain('broker.lock.abandoned.tmp')
   })
 
+  // win32 rejects a directory rename while another process has a handle inside it, such as a waiter
+  // reading owner.json. Only the rename that retires the published lock fails here.
+  function lockedTomb(fails: () => boolean): { fs: StoreFs, attempts: () => number } {
+    let attempts = 0
+    const lock = join(root, 'broker.lock')
+    const fs: StoreFs = {
+      ...nodeFs,
+      rename(from, to) {
+        if (from === lock && to.endsWith('.tomb')) {
+          attempts++
+          if (fails())
+            throw Object.assign(new Error('EPERM'), { code: 'EPERM' })
+        }
+        nodeFs.rename(from, to)
+      },
+    }
+    return { fs, attempts: () => attempts }
+  }
+
+  it.each(['its owner', 'another store'])('a lock whose retirement fails six times is reclaimed by %s on its next call', (next) => {
+    let failures = 6
+    const { fs, attempts } = lockedTomb(() => failures-- > 0)
+    const owner = createStore(10, { fs })
+    expect(owner.transact(() => 'work')).toBe('work')
+    expect(attempts()).toBe(6)
+    expect(nodeFs.list(root)).toContain('broker.lock')
+    const store = next === 'its owner' ? owner : createStore(20, { fs })
+    expect(store.transact(() => 'next')).toBe('next')
+    expect(nodeFs.list(root).filter(name => name.startsWith('broker.lock'))).toEqual([])
+    expect(createStore(30).enqueue(request).seq).toBe(1)
+    expect(owner.transact(() => 'again')).toBe('again')
+    // A retired lock is reclaimed without judging its live owner's identity.
+    expect(snapshot).not.toHaveBeenCalled()
+  })
+
+  it('keeps a lock whose retirement fails past every retry busy for all, commits once, and frees it when the rename works', () => {
+    let blocked = true
+    const { fs, attempts } = lockedTomb(() => blocked)
+    const owner = createStore(10, { fs })
+    const other = createStore(20, { fs })
+    const ticket = owner.enqueue(request)
+    for (let poll = 0; poll < 5; poll++) {
+      expect(() => other.snapshot()).toThrow(StoreBusyError)
+      expect(() => owner.snapshot()).toThrow(StoreBusyError)
+    }
+    expect(attempts()).toBe(66)
+    expect(nodeFs.list(join(root, 'tickets'))).toEqual([`${ticket.seq}.json`])
+    blocked = false
+    expect(other.snapshot().tickets).toEqual([ticket])
+    expect(owner.snapshot().tickets).toEqual([ticket])
+    expect(nodeFs.list(root).filter(name => name.startsWith('broker.lock'))).toEqual([])
+    expect(snapshot).not.toHaveBeenCalled()
+  })
+
+  it('treats a busy tombstone removal after retiring its own lock as done', () => {
+    let failed = false
+    const fs: StoreFs = {
+      ...nodeFs,
+      remove(path) {
+        if (!failed && path.endsWith('.tomb')) {
+          failed = true
+          throw Object.assign(new Error('EBUSY'), { code: 'EBUSY' })
+        }
+        nodeFs.remove(path)
+      },
+    }
+    expect(createStore(10, { fs }).transact(() => 'work')).toBe('work')
+    expect(failed).toBe(true)
+    expect(nodeFs.list(root)).not.toContain('broker.lock')
+    expect(createStore(20).enqueue(request).seq).toBe(1)
+  })
+
   it('breaks a hand-created ownerless published lock only after ten seconds', () => {
     const path = join(root, 'broker.lock')
     nodeFs.mkdir(path)

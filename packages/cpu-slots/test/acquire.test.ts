@@ -1,9 +1,9 @@
-import type { Lease } from '../src/acquire'
+import type { AcquireOptions, Lease } from '../src/acquire'
 import type { ProcessSnapshot } from '../src/processes'
 
 import process from 'node:process'
 
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -72,6 +72,34 @@ describe('acquire lifecycle', () => {
     expect(store.snapshot().leases).toHaveLength(1)
     first.release()
     expect(store.snapshot().leases).toHaveLength(0)
+  })
+
+  it.each<[string, unknown, string]>([
+    ['no cwd or command', { class: 'typecheck' }, 'bad-command'],
+    ['no command', { class: 'typecheck', cwd: '/test-worktree' }, 'bad-command'],
+    ['an array command', { class: 'typecheck', cwd: '/test-worktree', command: ['a', 'b'] }, 'bad-command'],
+    ['no cwd', { class: 'typecheck', command: 'test' }, 'bad-cwd'],
+  ])('rejects a request with %s before writing a ticket', async (_name, malformed, error) => {
+    // Fake timers stop the poll loop of an implementation that queues instead of rejecting.
+    vi.useFakeTimers()
+    await expect(acquire(malformed as AcquireOptions)).rejects.toThrow(error)
+    expect(readdirSync(root)).toEqual([])
+  })
+
+  it('looks a workload start time up once per registration, not on every busy-lock retry', async () => {
+    vi.useFakeTimers()
+    const started = vi.spyOn(processes, 'processStartedAt').mockReturnValue(123)
+    const lease = await take()
+    // A live owner holds the broker lock; its future timestamp keeps identity on the mocked isSameProcess.
+    const lock = join(root, 'broker.lock')
+    mkdirSync(lock)
+    writeFileSync(join(lock, 'owner.json'), JSON.stringify({ token: 'other', pid: process.pid, startedAt: 1, at: Date.now() + 3_600_000 }))
+    lease.addWorkload(4242)
+    await vi.advanceTimersByTimeAsync(100)
+    rmSync(lock, { recursive: true })
+    await vi.advanceTimersByTimeAsync(25)
+    expect(started).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(readFileSync(join(root, 'leases', `${lease.id}.json`), 'utf8')).workload).toEqual([{ pid: 4242, startedAt: 123 }])
   })
 
   it('a11 release then reacquire queues a new class and lease', async () => {
