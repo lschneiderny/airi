@@ -25,9 +25,9 @@ export default withCpuSlots(defineConfig({
           include: ['src/**/*.browser.test.ts'],
           // NOTICE:
           // These files fail and are excluded so the other browser tests run.
-          // Root cause: undiagnosed. The speech file never requests the streaming voices
-          // endpoint in two tests, and polaroid times out after 15000ms.
-          // Source: `pnpm test-stage-web:run`; see .omo/evidence/followups-2/r5-coverage.md.
+          // Observed: two official-provider-speech-streaming tests see no /audio/voices/streaming request after sign-in.
+          // Observed: polaroid times out after 15000ms loading the imported Hiyori Live2D preset zip.
+          // Neither cause is isolated yet. Source: `pnpm test-stage-web:run`.
           // Removal: delete an entry when its file passes again.
           exclude: [
             'src/pages/official-provider-speech-streaming.browser.test.ts',
