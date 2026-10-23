@@ -80,6 +80,7 @@ export default withCpuSlots(defineConfig({
           browser: {
             enabled: true,
             headless: true,
+            testerHtmlPath: './src/test/tester.html',
             provider: playwright({ launchOptions: { args: ['--autoplay-policy=no-user-gesture-required', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] } }),
             instances: [
               { browser: 'chromium' },

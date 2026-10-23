@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vitest Browser Tester</title>
+    <script>
+      // NOTICE:
+      // This drops one browser notification, which carries no error object. The chat
+      // history test files produce about 50 of them per full browser project run.
+      // Virtua's ResizeObserver callback re-renders the measured list in the same frame,
+      // and the message items grow. Chromium defers the remaining observations to the
+      // next frame and fires this ErrorEvent, as the spec requires; no observation is lost.
+      // Vitest only logs the event, because it has no error object, but Vite's client
+      // forwards it as "[Unhandled error]", which hides real errors in the run log.
+      // Source: https://www.w3.org/TR/resize-observer/#deliver-resize-error and the
+      // virtua README section "What is ResizeObserver loop completed with undelivered
+      // notifications. error?" (node_modules/virtua/README.md, virtua 0.50.4).
+      // This classic script runs before the Vite client and the Vitest error catcher
+      // register their listeners. Listeners on the same target run in registration
+      // order, so a setup file would run too late to stop them.
+      // Removal condition: Virtua no longer changes observed sizes inside its observer
+      // callback, or the browser stops reporting deferred notifications.
+      window.addEventListener('error', (event) => {
+        if (event.error == null && event.message === 'ResizeObserver loop completed with undelivered notifications.')
+          event.stopImmediatePropagation()
+      })
+    </script>
+  </head>
+  <body>
+  </body>
+</html>
