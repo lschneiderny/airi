@@ -64,6 +64,7 @@
     "@proj-airi/stage-shared": "workspace:^",
     "@types/audioworklet": "catalog:",
     "@types/three": "catalog:",
+    "@vitejs/plugin-vue": "catalog:",
     "@vue/test-utils": "catalog:",
     "jsdom": "catalog:",
     "unplugin-info": "catalog:",
