@@ -34,7 +34,8 @@ bridge, captures a Natural trace and screenshots into .temp/qa/<runId>/, and tea
   --rig        rig name; forbooth reads AIRI_QA_RIG_FORBOOTH
   --scenario   a scenario JSON file, or builtin:<name> from packages/qa-tools/fixtures/scenarios/
   --keep-open  after the run, keep the app open until Ctrl+C, then tear down
-Exit codes: 0 pass, 1 run or verification failure, 2 usage or environment error before launch, 130 interrupted.
+Exit codes: 0 pass, 1 run or verification failure, 2 usage or environment error before launch, 3 no exclusive CPU
+lease within 30 min (see pnpm slots status), 130 interrupted.
 `
 
 export function parseT3Args(argv: readonly string[]): T3CliOptions {
