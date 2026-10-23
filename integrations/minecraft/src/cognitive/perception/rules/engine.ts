@@ -258,7 +258,7 @@ export class RuleEngine {
     }
 
     if (nowMs < detectorState.lastUpdateMs) {
-      this.recordDetectorDecision(Object.freeze({
+      const ignored = Object.freeze({
         ruleName: rule.name,
         mode: rule.detector.mode,
         groupKey,
@@ -266,8 +266,11 @@ export class RuleEngine {
         threshold: rule.detector.threshold,
         windowMs: rule.detector.windowMs,
         eventTs: nowMs,
-        decision: 'ignored_out_of_order',
-      }))
+        decision: 'ignored_out_of_order' as const,
+      })
+      this.recordDetectorDecision(ignored)
+      // An out-of-order event is dropped, so say so: it is rare and otherwise leaves no trace outside the debug snapshot.
+      this.deps.logger.withFields(ignored).warn('RuleEngine: ignored out-of-order event')
       return
     }
 
@@ -283,7 +286,7 @@ export class RuleEngine {
     // Update state
     this.detectors.set(stateKey, newDetectorState)
 
-    this.recordDetectorDecision(Object.freeze({
+    const decided = Object.freeze({
       ruleName: rule.name,
       mode: rule.detector.mode,
       groupKey,
@@ -291,11 +294,13 @@ export class RuleEngine {
       threshold: rule.detector.threshold,
       windowMs: rule.detector.windowMs,
       eventTs: nowMs,
-      decision: fired ? 'fired' : 'matched_not_fired',
-    }))
+      decision: fired ? 'fired' as const : 'matched_not_fired' as const,
+    })
+    this.recordDetectorDecision(decided)
 
-    // If fired, emit signal
+    // If fired, emit signal. Only firing is logged; matched_not_fired is the per-event hot path and stays out of the log.
     if (fired) {
+      this.deps.logger.withFields(decided).log('RuleEngine: detector fired')
       this.emitSignal(rule, event)
     }
   }

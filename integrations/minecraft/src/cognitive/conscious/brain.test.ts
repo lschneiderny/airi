@@ -362,7 +362,7 @@ inv;
     expect(enqueueSpy).not.toHaveBeenCalled()
   })
 
-  it('does not pass a timeout to llmAgent calls', async () => {
+  it('passes the 60s per-attempt timeout to llmAgent calls', async () => {
     const deps: any = createDeps('await chat("hi")')
     deps.llmAgent.callLLM = vi.fn(async () => ({
       text: 'await chat("hi")',
@@ -374,7 +374,7 @@ inv;
 
     expect(deps.llmAgent.callLLM).toHaveBeenCalledTimes(1)
     const llmCallOptions = deps.llmAgent.callLLM.mock.calls[0]?.[0]
-    expect(llmCallOptions?.timeoutMs).toBeUndefined()
+    expect(llmCallOptions?.timeoutMs).toBe(60_000)
     expect(llmCallOptions?.abortSignal).toBeInstanceOf(AbortSignal)
   })
 
