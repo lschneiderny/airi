@@ -464,7 +464,7 @@ catalog:
   uuid: ^14.0.2
   valibot: ^1.4.2
   vaul-vue: ^0.4.1
-  vec3: ^0.2.0
+  vec3: ^0.1.10
   vieval: ^0.0.12
   virtua: ^0.50.4
   vite: ^8.2.2
