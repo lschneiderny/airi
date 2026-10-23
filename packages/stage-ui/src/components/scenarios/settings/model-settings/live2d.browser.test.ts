@@ -737,6 +737,9 @@ describe('live2D model settings', () => {
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width)
   })
 
+  // Each case mounts the settings page and makes three real clicks: CPU-bound main-thread work,
+  // under 1 s when idle. Under 20x CDP CPU throttling a case took 11-16 s, or 23-26 s when it
+  // opened the Animation section first, so it exceeded the 15 s default.
   it.each([
     { width: 1280, theme: 'light', size: 'desktop' },
     { width: 1280, theme: 'dark', size: 'desktop' },
@@ -760,5 +763,5 @@ describe('live2D model settings', () => {
       expect(bounds.width).toBeGreaterThanOrEqual(24)
     }
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width)
-  })
+  }, 30_000)
 })
