@@ -2511,6 +2511,26 @@ describe('unprompted turns', () => {
     expect(harness.order.some(entry => entry.includes('ACT'))).toBe(false)
   })
 
+  // https://github.com/moeru-ai/airi/issues/2988
+  // Upstream fixed this case in #2993 for notice replies, where `fullText.trim()` counted parsed-away markers as a
+  // visible reply. Here only visible speech commits an unprompted turn, so the same reply declines.
+  it('declines an unprompted reply that only contains reasoning and an ACT marker (Issue #2988)', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    const [generatedTurn] = chatMessagesToTurns([{ role: 'assistant', content: '' }])
+    if (generatedTurn.type !== 'assistant')
+      throw new Error('Expected assistant turn')
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '<think>Reasoning.</think><|ACT {"emotion":"neutral"}|>' })
+      await options?.onGeneratedTurn?.(generatedTurn)
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+
+    expectDeclined(harness)
+  })
+
   it('speaks only the text after a recovered cue and keeps the cue out of the stored speech', async () => {
     const harness = createHarness()
     const literals: string[] = []
