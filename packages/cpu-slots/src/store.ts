@@ -103,6 +103,16 @@ interface ProcessCache {
   /** Observation order. A capture can prove absence only for deaths observed before it began. */
   seq: number
   snapshot: ProcessSnapshot
+  /**
+   * The workload of each lease, by lease id, as last read under the lock before this capture began. The
+   * capture runs outside the lock, so it vouches only for these: a workload registered later may have
+   * started after it.
+   */
+  known: ReadonlyMap<string, ReadonlySet<string>>
+}
+
+function workKey(work: ProcessIdentity): string {
+  return `${work.pid}:${work.startedAt}`
 }
 
 /** Rename errors that mean another process holds or replaced the path; the caller retries on its next poll. */
@@ -183,6 +193,13 @@ export class Store {
   private lastTick: number
   private skipTicketPruningAt?: number
   private processCache?: ProcessCache
+  /** Set under the lock when a decision needs a newer process capture; transact takes it after the lock. */
+  private captureWanted = false
+  /** Why the capture the last transaction wanted could not be taken; snapshot() reports it as busy. */
+  private captureFailure?: StoreBusyError
+  /** The workload of each lease as last read under the lock; the next capture records it as `known`. */
+  private lastRead: ReadonlyMap<string, ReadonlySet<string>> = new Map()
+  private captures = 0
   private observations = 0
   /** First observation of each lease's owner death, so a later capture can judge its workload. */
   private readonly deaths = new Map<string, number>()
@@ -203,6 +220,16 @@ export class Store {
     this.lastTick = this.now()
   }
 
+  /** Process captures this store has taken; a poller that sees it change can use the new one at once. */
+  get captureCount(): number {
+    return this.captures
+  }
+
+  /**
+   * Runs `fn` under the store lock. No process lookup runs while the lock is held: a decision that needs
+   * a newer capture keeps the lease or ticket for now, and the capture is taken here after the lock is
+   * released, so a slow PowerShell snapshot never blocks other stores.
+   */
   transact<T>(fn: () => T): T {
     if (this.token) {
       this.checkToken()
@@ -220,6 +247,7 @@ export class Store {
     finally {
       this.token = undefined
       this.leave(token)
+      this.captureFailure = this.takeWantedCapture()
     }
   }
 
@@ -385,16 +413,31 @@ export class Store {
   /**
    * Shared guard for explicit release and the caller's synchronous exit cleanup. A release is often the
    * last transaction of its process, so it retries unwritten retirement markers afterwards.
+   *
+   * The fresh capture is taken before the lock. It vouches for the workload the record named just before
+   * it began; when the record under the lock names more, another process registered work meanwhile, and
+   * the check runs again with a new capture. After three such rounds the lease is kept, never released.
    */
   releaseIfIdle(lease: StoredLease): boolean {
+    const path = this.leasePath(lease.id)
     try {
-      return this.transact(() => {
-        const current = this.readJson(this.leasePath(lease.id))
-        if (workloadAlive(leaseRecord(current) ? current : lease, this.lookup(this.processes)))
-          return false
-        this.remove(this.leasePath(lease.id))
-        return true
-      })
+      for (let round = 1; ; round++) {
+        const before = this.readJson(path)
+        const known = new Set((leaseRecord(before) ? before : lease).workload.map(workKey))
+        const { snapshot } = this.capture(this.now())
+        const idle = this.transact(() => {
+          const current = this.readJson(path)
+          const record = leaseRecord(current) ? current : lease
+          if (!record.workload.every(work => known.has(workKey(work))))
+            return undefined
+          if (workloadAlive(record, snapshot))
+            return false
+          this.remove(path)
+          return true
+        })
+        if (idle !== undefined || round === 3)
+          return idle ?? false
+      }
     }
     finally {
       this.retryRetirements()
@@ -415,7 +458,24 @@ export class Store {
     return this.releaseIfIdle(lease)
   }
 
+  /**
+   * The pruned leases and tickets. Called inside a transaction, it decides from the captures already
+   * taken and keeps whatever needs a newer one. Called on its own, it takes that capture after the lock
+   * and reads the store once more, and reports a capture that failed as busy (`snapshot-failed`).
+   */
   snapshot(): StoreState {
+    if (this.token)
+      return this.observe()
+    const captures = this.captures
+    const state = this.transact(() => this.observe())
+    if (this.captures !== captures)
+      return this.transact(() => this.observe())
+    if (this.captureFailure)
+      throw this.captureFailure
+    return state
+  }
+
+  private observe(): StoreState {
     return this.transact(() => {
       const now = this.now()
       if (now - this.lastTick > 30_000 || now < this.lastTick)
@@ -429,6 +489,7 @@ export class Store {
         .map(record => ({ ...record, alive: this.alive(record.value.pid), seq: ++this.observations }))
       const waiters = this.records('tickets', ticketRecord)
         .map(record => ({ ...record, alive: skipTickets || this.alive(record.value.pid) }))
+      this.lastRead = new Map(owners.map(({ value }) => [value.id, new Set(value.workload.map(workKey))]))
       const present = new Set(owners.map(({ value }) => value.id))
       for (const id of this.deaths.keys()) {
         if (!present.has(id))
@@ -447,12 +508,15 @@ export class Store {
         const death = this.deaths.get(value.id)
         if (death === undefined)
           return true
-        const processes = this.processesAfter(death)
-        if (!processes || workloadAlive(value, processes))
-          return true
-        this.deaths.delete(value.id)
-        this.remove(path)
-        return false
+        const processes = this.processesAfter(death, value)
+        if (processes && !workloadAlive(value, processes)) {
+          this.deaths.delete(value.id)
+          this.remove(path)
+          return false
+        }
+        // Kept until a capture shows its workload gone; transact takes the next one after the lock.
+        this.captureWanted = true
+        return true
       }).map(({ value }) => value)
       // Waiters touch their ticket every 500 ms, so identity is rechecked only
       // once a ticket misses about four touches. A steady queue then costs no
@@ -500,16 +564,46 @@ export class Store {
     return !cache || now - cache.at >= 2_000 || now < cache.at
   }
 
+  /** Never called while this store holds the lock. */
   private refresh(now: number): ProcessCache {
     const failed = this.lookupFailedAt
     if (failed !== undefined && now >= failed && now - failed < 2_000)
       throw new StoreBusyError('snapshot-failed', undefined, undefined, undefined, 'waiting 2 s after a failed process lookup')
-    this.processCache = { at: now, seq: ++this.observations, snapshot: this.lookup(this.processes) }
+    return this.capture(now)
+  }
+
+  /** A full process snapshot; never taken while this store holds the lock. */
+  private capture(now: number): ProcessCache {
+    const seq = ++this.observations
+    const known = this.lastRead
+    const snapshot = this.lookup(this.processes)
+    this.captures++
+    this.captureWanted = false
+    this.processCache = { at: now, seq, snapshot, known }
     return this.processCache
   }
 
   /**
-   * Runs a process lookup. A failed one, such as a PowerShell snapshot that hits its 10 s timeout, proves
+   * Takes the capture a transaction asked for, once its lock is released and the cap allows one. A
+   * failure is returned, never thrown, because that transaction has already committed.
+   */
+  private takeWantedCapture(): StoreBusyError | undefined {
+    const now = this.now()
+    if (!this.captureWanted || !this.canRefresh(now))
+      return undefined
+    try {
+      this.refresh(now)
+      return undefined
+    }
+    catch (error) {
+      if (error instanceof StoreBusyError)
+        return error
+      throw error
+    }
+  }
+
+  /**
+   * Runs a process lookup. A failed one, such as a PowerShell snapshot that hits its 30 s timeout, proves
    * nothing about any process, so it is reported busy and every caller retries it on a later poll.
    */
   private lookup<T>(read: () => T): T {
@@ -525,14 +619,16 @@ export class Store {
   }
 
   /**
-   * A snapshot whose capture began after `death`, or undefined until the cap
-   * allows one. The lease keeps counting meanwhile, so reclaim waits at most one
-   * 2 s window plus the observer's next poll.
+   * The capture that can judge `lease`: it began after `death`, and the lease named no workload it does
+   * not know. Undefined until such a capture exists; the lease keeps counting meanwhile, so reclaim waits
+   * at most one 2 s window plus the observer's next poll.
    */
-  private processesAfter(death: number): ProcessSnapshot | undefined {
-    const now = this.now()
-    const cache = this.canRefresh(now) ? this.refresh(now) : this.processCache!
-    return cache.seq > death ? cache.snapshot : undefined
+  private processesAfter(death: number, lease: StoredLease): ProcessSnapshot | undefined {
+    const cache = this.processCache
+    const known = cache?.known.get(lease.id)
+    if (!cache || cache.seq <= death || !known || !lease.workload.every(work => known.has(workKey(work))))
+      return undefined
+    return cache.snapshot
   }
 
   /**
@@ -540,12 +636,18 @@ export class Store {
    * snapshot for the whole tick instead of one OS lookup per record. `since` is a
    * time after the process started, so a capture taken later can miss the pid
    * only if it has exited. Returns undefined for the same process, otherwise the
-   * observation order of its death.
+   * observation order of its death. Under the lock no lookup runs: without a
+   * capture that can judge the pid, it counts as the same process until
+   * transact has taken one.
    */
   private identityDeath({ pid, startedAt }: ProcessIdentity, since: number): number | undefined {
     const now = this.now()
-    if (now > since && this.canRefresh(now))
-      this.refresh(now)
+    if (now > since && this.canRefresh(now)) {
+      if (this.token)
+        this.captureWanted = true
+      else
+        this.refresh(now)
+    }
     const cache = this.processCache
     if (cache && cache.at > since) {
       const info = cache.snapshot.processes.find(record => record.pid === pid)
@@ -554,6 +656,10 @@ export class Store {
       // A different process holding the pid proves the owner died before this
       // capture began. An absent pid may have exited while it was running.
       return info ? cache.seq - 0.5 : cache.seq
+    }
+    if (this.token) {
+      this.captureWanted = true
+      return undefined
     }
     return this.lookup(() => this.sameProcess(pid, startedAt)) ? undefined : ++this.observations
   }
@@ -715,23 +821,11 @@ export class Store {
         throw new StoreBusyError('lock-busy')
       throw error
     }
-    // An unreadable tombstone throws StoreBusyError and stays set aside: others delete only
-    // reclaimable tombstones, and a racing owner sees lock-lost and marks its lock retired, so
-    // cleanTemporaryLocks removes it. Renaming it back could publish a half-deleted, ownerless lock.
-    if (this.readOwner(tomb)?.token !== expected?.token) {
-      try {
-        this.rename(tomb, path)
-      }
-      catch (error) {
-        // Another acquirer published, or cleaned the tombstone, while the lock
-        // was set aside. The stranded owner sees lock-lost on its next commit,
-        // and cleanTemporaryLocks removes the tombstone once that owner is gone.
-        if (code(error) === 'ENOENT' || error instanceof StoreBusyError || busyCodes.includes(String(code(error))))
-          throw new StoreBusyError('lock-busy')
-        throw error
-      }
+    // A lock moved aside is never published again (F07), so two owners never both pass checkToken.
+    // A newer owner whose lock this stale view retired sees lock-lost on its next check, and
+    // cleanTemporaryLocks removes the tombstone. The ADR explains why renaming it back was unsafe.
+    if (this.readOwner(tomb)?.token !== expected?.token)
       return false
-    }
     try {
       this.fs.remove(tomb)
     }
@@ -763,10 +857,10 @@ export class Store {
   /**
    * Ends this instance's hold on the lock `token` after its transaction. If the
    * lock is still published under that token, it is retired. Otherwise it may sit
-   * in a breaker's tombstone that is renamed back later, and on win32 the retire
-   * rename itself fails with EPERM while another process has a handle inside the
-   * lock directory. In both cases the lock is marked retired, so any copy of it
-   * that is ever published again stays breakable instead of wedging every process.
+   * in a breaker's tombstone, and on win32 the retire rename itself fails with
+   * EPERM while another process has a handle inside the lock directory. In both
+   * cases the lock is marked retired, so the published lock stays breakable and
+   * the tombstone is removed instead of wedging every process.
    * No failure escapes, so a committed transaction is never reported as failed: a
    * busy one is expected, and any other is reported on stderr.
    */

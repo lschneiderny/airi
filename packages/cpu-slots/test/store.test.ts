@@ -1,6 +1,6 @@
 import type { StoreFs } from '../src/fs-adapter'
 import type { ProcessSnapshot } from '../src/processes'
-import type { StoredLease, StoreOptions } from '../src/store'
+import type { StoredLease, StoreOptions, Ticket } from '../src/store'
 
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -124,7 +124,7 @@ describe('token checked lock', () => {
     expect(createStore().enqueue(request).seq).toBe(1)
   })
 
-  it('a3 restores the replacement token after a double break', () => {
+  it('a3 leaves a replacement lock aside after a double break instead of publishing it again', () => {
     putLock(30, 'stale')
     live.delete(30)
     let raced = false
@@ -139,40 +139,52 @@ describe('token checked lock', () => {
       },
     }
     expect(() => createStore(10, { fs }).enqueue(request)).toThrow(StoreBusyError)
-    expect(JSON.parse(nodeFs.read(join(root, 'broker.lock', 'owner.json'))).token).toBe('A')
-    expect(nodeFs.list(root).filter(name => name.endsWith('.tomb'))).toEqual([])
-  })
-
-  it('reports a publication during the tombstone rename-back as busy and later cleans the stranded tombstone', () => {
-    putLock(40, 'stale')
-    const lock = join(root, 'broker.lock')
-    let step = 0
-    const fs: StoreFs = {
-      ...nodeFs,
-      rename(from, to) {
-        if (step === 0 && from === lock) {
-          step = 1
-          writeJson(join(from, 'owner.json'), { token: 'A', pid: 20, startedAt: 1_000, at: clock })
-        }
-        else if (step === 1 && to === lock) {
-          step = 2
-          putLock(30, 'C')
-        }
-        nodeFs.rename(from, to)
-      },
-    }
-    expect(() => createStore(10, { fs }).enqueue(request)).toThrow(StoreBusyError)
-    expect(step).toBe(2)
-    expect(JSON.parse(nodeFs.read(join(lock, 'owner.json'))).token).toBe('C')
+    expect(nodeFs.list(root)).not.toContain('broker.lock')
     const tombs = () => nodeFs.list(root).filter(name => name.endsWith('.tomb'))
     expect(tombs()).toHaveLength(1)
     expect(JSON.parse(nodeFs.read(join(root, tombs()[0], 'owner.json'))).token).toBe('A')
-    expect(() => createStore().snapshot()).toThrow(StoreBusyError)
-    expect(tombs()).toHaveLength(1)
+    expect(createStore(30).enqueue(request).seq).toBe(1)
     live.delete(20)
-    live.delete(30)
-    expect(createStore().enqueue(request).seq).toBe(1)
+    expect(createStore().enqueue(request).seq).toBe(2)
     expect(tombs()).toEqual([])
+  })
+
+  it('f07 never publishes again a live lock that a stale breaker moved aside, so no foreign transaction interleaves with it', () => {
+    const lock = join(root, 'broker.lock')
+    const foreign = createStore(30)
+    let theirs: Ticket | undefined
+    // The breaker reads the owner of a lock that has since been replaced, a dead pid's: a stale view.
+    let staleReads = 1
+    const breaker = createStore(20, {
+      fs: {
+        ...nodeFs,
+        read(path) {
+          if (path === join(lock, 'owner.json') && staleReads-- > 0)
+            return JSON.stringify({ token: 'stale', pid: 40, startedAt: 1_000, at: clock })
+          return nodeFs.read(path)
+        },
+        rename(from, to) {
+          nodeFs.rename(from, to)
+          // A whole foreign transaction runs while the live lock is set aside.
+          if (!theirs && from === lock && to.endsWith('.tomb'))
+            theirs = foreign.enqueue(request)
+        },
+      },
+    })
+    let raced = false
+    const owner = createStore(10, {
+      beforeCommit() {
+        if (raced)
+          return
+        raced = true
+        expect(() => breaker.transact(() => 'never')).toThrow(StoreBusyError)
+      },
+    })
+    expect(() => owner.enqueue(request)).toThrow(expect.objectContaining({ reason: 'lock-lost' }))
+    expect(theirs?.seq).toBe(1)
+    expect(createStore(30).snapshot().tickets).toEqual([theirs])
+    expect(owner.enqueue(request).seq).toBe(2)
+    expect(nodeFs.list(root).filter(name => name.endsWith('.tomb'))).toEqual([])
   })
 
   it('cleans an ownerless tombstone only after ten seconds', () => {
@@ -411,7 +423,7 @@ describe('token checked lock', () => {
   /**
    * A store whose first tombstone rename of the published lock is delayed until `racer` has broken
    * that same lock and published its own: the rename lands inside racer's transaction and moves
-   * racer's lock aside, racer's commit sees lock-lost, and the delayed store restores the lock on
+   * racer's lock aside, racer's commit sees lock-lost, and the delayed store leaves the lock aside on
    * the token mismatch. `failures` EPERM renames come first.
    */
   function delayedBreaker(pid: number, racer: Store, failures = 0): Store {
@@ -436,19 +448,19 @@ describe('token checked lock', () => {
     })
   }
 
-  it('w2 an owner whose delayed reclaim restores a newer lock leaves no lock that wedges the store', () => {
+  it('w2 an owner whose delayed reclaim moves a newer lock aside leaves no lock that wedges the store', () => {
     const other = createStore(20)
     const owner = delayedBreaker(10, other, 6)
     expect(owner.transact(() => 'work')).toBe('work')
     expect(() => owner.transact(() => 'next')).toThrow(StoreBusyError)
-    expect(nodeFs.list(root)).toContain('broker.lock')
+    expect(nodeFs.list(root)).not.toContain('broker.lock')
     expect(owner.transact(() => 'owner')).toBe('owner')
     expect(other.transact(() => 'other')).toBe('other')
     expect(createStore(30).enqueue(request).seq).toBe(1)
     expect(nodeFs.list(root).filter(name => name.startsWith('broker.lock'))).toEqual([])
   })
 
-  it('w1 a losing breaker that restores the winner\'s lock leaves no lock that wedges the store', () => {
+  it('w1 a losing breaker that moves the winner\'s lock aside leaves no lock that wedges the store', () => {
     live.add(40)
     let failures = 6
     const owner = createStore(10, { fs: lockedTomb(() => failures-- > 0).fs })
@@ -456,7 +468,7 @@ describe('token checked lock', () => {
     const winner = createStore(20)
     const loser = delayedBreaker(30, winner)
     expect(() => loser.snapshot()).toThrow(StoreBusyError)
-    expect(nodeFs.list(root)).toContain('broker.lock')
+    expect(nodeFs.list(root)).not.toContain('broker.lock')
     for (const store of [winner, loser, owner, createStore(40)])
       expect(store.transact(() => 'proceeds')).toBe('proceeds')
     expect(createStore(40).enqueue(request).seq).toBe(1)
@@ -467,7 +479,7 @@ describe('token checked lock', () => {
     const winner = createStore(20)
     const loser = delayedBreaker(30, winner)
     expect(() => loser.snapshot()).toThrow(StoreBusyError)
-    expect(nodeFs.list(root)).toContain('broker.lock')
+    expect(nodeFs.list(root)).not.toContain('broker.lock')
     for (const store of [winner, loser, createStore(10)])
       expect(store.transact(() => 'proceeds')).toBe('proceeds')
   })
@@ -1191,5 +1203,74 @@ describe('audit follow-ups (2026-10-22)', () => {
     clock += 1_500
     expect(observer.snapshot().leases).toEqual([])
     expect(snapshot).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('process snapshots outside the store lock (follow-ups round 2)', () => {
+  it('f18 takes every process snapshot while the store lock is free', () => {
+    const locked: boolean[] = []
+    snapshot.mockImplementation(() => {
+      locked.push(nodeFs.list(root).includes('broker.lock'))
+      return observe()
+    })
+    takeLease(createStore(20))
+    live.delete(20)
+    const observer = createStore()
+    // A dead owner's lease, a stale heartbeat's identity check, and a release each need one.
+    expect(observer.snapshot().leases).toEqual([])
+    const lease = takeLease(observer)
+    clock += 45_000
+    expect(observer.snapshot().leases).toEqual([lease])
+    expect(observer.releaseIfIdle(lease)).toBe(true)
+    expect(locked).toEqual([false, false, false])
+  })
+
+  it('f18 keeps a dead owner\'s lease whose workload was registered while the capture ran', () => {
+    const lease = takeLease(createStore(20))
+    live.delete(20)
+    snapshot.mockImplementationOnce(() => {
+      const captured = observe()
+      // An inherited child registers new work while the lock is free; this capture cannot see it.
+      writeJson(join(root, 'leases', `${lease.id}.json`), { ...lease, workload: [{ pid: 40, startedAt: clock }] })
+      processes = { platform: 'win32', processes: [{ pid: 40, ppid: 1, startedAt: clock }] }
+      return captured
+    })
+    const observer = createStore()
+    const ids = () => observer.snapshot().leases.map(record => record.id)
+    expect(ids()).toEqual([lease.id])
+    clock += 2_000
+    expect(ids()).toEqual([lease.id])
+    processes = { platform: 'win32', processes: [] }
+    clock += 2_000
+    expect(ids()).toEqual([])
+    expect(snapshot).toHaveBeenCalledTimes(3)
+  })
+
+  it('f18 a release keeps a lease whose workload was registered while its capture ran', () => {
+    const store = createStore(20)
+    const lease = takeLease(store)
+    snapshot.mockImplementationOnce(() => {
+      const captured = observe()
+      writeJson(join(root, 'leases', `${lease.id}.json`), { ...lease, workload: [{ pid: 40, startedAt: clock }] })
+      processes = { platform: 'win32', processes: [{ pid: 40, ppid: 1, startedAt: clock }] }
+      return captured
+    })
+    expect(store.releaseIfIdle(lease)).toBe(false)
+    expect(snapshot).toHaveBeenCalledTimes(2)
+    expect(nodeFs.list(join(root, 'leases'))).toEqual([`${lease.id}.json`])
+  })
+
+  it('f18 a capture that fails after the lock never undoes the committed transaction', () => {
+    takeLease(createStore(20))
+    live.delete(20)
+    snapshot.mockImplementationOnce(() => {
+      throw Object.assign(new Error('spawnSync powershell.exe ETIMEDOUT'), { code: 'ETIMEDOUT' })
+    })
+    const observer = createStore()
+    const ticket = observer.enqueue(request)
+    expect(snapshot).toHaveBeenCalledTimes(1)
+    expect(nodeFs.list(join(root, 'tickets'))).toEqual([`${ticket.seq}.json`])
+    clock += 2_000
+    expect(observer.snapshot()).toEqual({ leases: [], tickets: [ticket] })
   })
 })

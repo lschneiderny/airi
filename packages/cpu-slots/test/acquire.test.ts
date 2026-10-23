@@ -103,6 +103,15 @@ describe('acquire lifecycle', () => {
     expect(JSON.parse(readFileSync(join(root, 'leases', `${lease.id}.json`), 'utf8')).workload).toEqual([{ pid: 4242, startedAt: 123 }])
   })
 
+  it('registers one process exit listener however many leases it holds', async () => {
+    const before = process.listenerCount('exit')
+    for (let index = 0; index < 11; index++) {
+      vi.stubEnv('AIRI_CPU_SLOTS_DIR', join(root, `store-${index}`))
+      await take()
+    }
+    expect(process.listenerCount('exit') - before).toBeLessThanOrEqual(1)
+  })
+
   it('a11 release then reacquire queues a new class and lease', async () => {
     const first = await take()
     first.release()
@@ -353,6 +362,8 @@ describe('audit follow-ups (2026-10-22)', () => {
 
   it('f08 exit writes a retirement marker that the release could not', async () => {
     vi.resetModules()
+    // The exit listener is shared by every module copy in the process; forget it, as a fresh process would.
+    Reflect.deleteProperty(globalThis, Symbol.for('@proj-airi/cpu-slots/exit-handlers'))
     const fresh = {
       acquire: (await import('../src/acquire')).acquire,
       fs: (await import('../src/fs-adapter')).nodeFs,

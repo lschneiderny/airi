@@ -71,8 +71,10 @@ export function readStatus(options: { root?: string } = {}): Status {
   if (!existsSync(storePath))
     return { storePath, budget, held: 0, leases: [], queue: [] }
   const store = new Store({ root: storePath, budget })
+  // snapshot() runs on its own, not inside one transaction with the malformed list, so it takes the process
+  // capture it needs after its lock, prunes with it, and reports a failed capture as busy.
   const { state, malformed } = whileBusy(
-    () => store.transact(() => ({ state: store.snapshot(), malformed: store.malformedTickets() })),
+    () => ({ state: store.snapshot(), malformed: store.malformedTickets() }),
     Date.now() + STATUS_BUSY_BUDGET_MS,
   )
   const now = Date.now()

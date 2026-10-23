@@ -87,24 +87,48 @@ export function whileBusy<T>(fn: () => T, deadline: number): T {
 const activeWriters = new Set<Writer>()
 /** Stores that held a lease in this process; exit writes their unwritten retirement markers. */
 const leaseStores = new Set<Store>()
+/** The exit cleanup of each lease this module copy owns and has not freed. */
+const leaseExits = new Set<() => void>()
 let exitHooked = false
 
+/** The exit handlers of every copy of this module, run by one process `exit` listener. */
+const exitHandlersKey = Symbol.for('@proj-airi/cpu-slots/exit-handlers')
+
+function runExitHandlers(): void {
+  for (const onExit of leaseExits)
+    onExit()
+  for (const writer of activeWriters) {
+    try {
+      beforeExitDeadline(deadline => writer.flush(deadline))
+    }
+    catch {
+      // A busy lock at exit leaves the write to pruning by the next observer.
+    }
+  }
+  for (const store of leaseStores)
+    store.retryRetirements()
+}
+
+/**
+ * Adds this module copy's exit handlers to the one process `exit` listener, which the first copy
+ * registers. Leases share it, and so do the copies Vite bundles per config file, so holding many
+ * leases never adds a listener per lease (that tripped MaxListenersExceededWarning).
+ */
 function hookExit(): void {
   if (exitHooked)
     return
   exitHooked = true
-  process.on('exit', () => {
-    for (const writer of activeWriters) {
-      try {
-        beforeExitDeadline(deadline => writer.flush(deadline))
-      }
-      catch {
-        // A busy lock at exit leaves the write to pruning by the next observer.
-      }
-    }
-    for (const store of leaseStores)
-      store.retryRetirements()
-  })
+  const registry = globalThis as typeof globalThis & Record<symbol, Set<() => void> | undefined>
+  let handlers = registry[exitHandlersKey]
+  if (!handlers) {
+    const created = new Set<() => void>()
+    handlers = registry[exitHandlersKey] = created
+    process.on('exit', () => {
+      for (const handler of created)
+        handler()
+    })
+  }
+  handlers.add(runExitHandlers)
 }
 
 /** How long one store entry may stay unreadable before the waiting line names it, and before acquire gives up. */
@@ -197,7 +221,7 @@ function owned(store: Store, record: StoredLease, seq: number): Lease {
     clearInterval(heartbeat)
     held.delete(store.root)
     // eslint-disable-next-line ts/no-use-before-define -- mutual reference resolved before it runs
-    process.removeListener('exit', onExit)
+    leaseExits.delete(onExit)
     // Always use the store's snapshot guard, even without registered work. A store whose markers are
     // all written needs no retry at exit.
     writer.submit(() => {
@@ -245,7 +269,8 @@ function owned(store: Store, record: StoredLease, seq: number): Lease {
       return handle()
     },
   })
-  process.on('exit', onExit)
+  leaseExits.add(onExit)
+  hookExit()
   return lease
 }
 
@@ -293,6 +318,8 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
     const tick = (): void => {
       // A busy lock is brief, so it is retried sooner than the regular poll.
       let delay = 500
+      // A process capture the transaction asked for is taken after its lock; the next poll uses it at once.
+      const captures = store.captureCount
       try {
         if (request.signal?.aborted) {
           store.withdraw(id)
@@ -343,6 +370,8 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
         // Only a committed transaction settles the inheritance check; a busy one repeats it.
         inheritedChecked = true
         unreadable = undefined
+        if (store.captureCount !== captures)
+          delay = 50
         if (result) {
           // Registration (heartbeat, exit hook) happens once the transaction has committed, so a
           // retried transaction never registers the same lease twice.
