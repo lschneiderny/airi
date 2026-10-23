@@ -4,7 +4,6 @@ import type { ServerChannel } from '../../services/airi/channel-server'
 import { join, resolve } from 'node:path'
 
 import { defineInvokeHandler } from '@moeru/eventa'
-import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { safeClose } from '@proj-airi/electron-vueuse/main'
 import { BrowserWindow, ipcMain } from 'electron'
 import { isMacOS } from 'std-env'
@@ -13,6 +12,7 @@ import icon from '../../../../resources/icon.png?asset'
 
 import { electronOnboardingClose } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { createAuthService } from '../../services/airi/auth'
 import { protectPrivilegedWindowNavigation, toggleWindowShow } from '../shared'
@@ -65,7 +65,7 @@ export function setupOnboardingWindowManager(params: {
     // manage events within eventa's context system.
     ipcMain.setMaxListeners(0)
 
-    const { context } = createContext(ipcMain, newWindow)
+    const { context } = createWindowContext(newWindow)
 
     defineInvokeHandler(context, electronOnboardingClose, async () => {
       safeClose(newWindow)

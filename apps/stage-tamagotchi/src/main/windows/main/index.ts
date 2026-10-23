@@ -21,7 +21,6 @@ import { fileURLToPath } from 'node:url'
 
 import { is } from '@electron-toolkit/utils'
 import { defineInvokeHandler } from '@moeru/eventa'
-import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { initScreenCaptureForWindow } from '@proj-airi/electron-screen-capture/main'
 import { defu } from 'defu'
 import { BrowserWindow, ipcMain } from 'electron'
@@ -34,6 +33,7 @@ import { electronStartDraggingWindow } from '../../../shared/eventa'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createConfig } from '../../libs/electron/persistence'
+import { createWindowContext } from '../../libs/electron/window-context'
 import { protectPrivilegedWindowNavigation, setWindowAlwaysOnTop, transparentWindowConfig } from '../shared'
 import { mainWindowQuery } from './query'
 import { setupMainWindowElectronInvokes } from './rpc/index.electron'
@@ -232,7 +232,7 @@ export async function setupMainWindow(params: {
     // manage events within eventa's context system.
     ipcMain.setMaxListeners(0)
 
-    const { context } = createContext(ipcMain, window)
+    const { context } = createWindowContext(window)
     const cleanUpWindowDraggingInvokeHandler = defineInvokeHandler(context, electronStartDraggingWindow, handleStartDraggingWindow)
 
     window.on('closed', () => {

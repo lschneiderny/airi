@@ -12,7 +12,6 @@ import type { SpotlightWindowManager } from '../../spotlight'
 import type { WidgetsWindowManager } from '../../widgets'
 
 import { defineInvokeHandler } from '@moeru/eventa'
-import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { ipcMain } from 'electron'
 
 import {
@@ -22,6 +21,7 @@ import {
   electronSpotlightShortcutGet,
   electronSpotlightShortcutSet,
 } from '../../../../shared/eventa'
+import { createWindowContext } from '../../../libs/electron/window-context'
 import { createAuthService } from '../../../services/airi/auth'
 import { createGodotStageService } from '../../../services/airi/godot-stage'
 import { registerIOTraceRecording } from '../../../services/airi/io-trace-recording/register'
@@ -51,12 +51,12 @@ export async function setupSettingsWindowInvokes(params: {
   ipcMain.setMaxListeners(0)
 
   // Keep Settings IPC isolated and dispose its handlers when the window closes.
-  const { context } = createContext(ipcMain, params.settingsWindow, { onlySameWindow: true })
+  const { context } = createWindowContext(params.settingsWindow)
 
   await setupBaseWindowElectronInvokes({ context, window: params.settingsWindow, i18n: params.i18n, serverChannel: params.serverChannel })
 
   createWidgetsService({ context, widgetsManager: params.widgetsManager, window: params.settingsWindow })
-  createAutoUpdaterService({ window: params.settingsWindow, service: params.autoUpdater })
+  createAutoUpdaterService({ context, window: params.settingsWindow, service: params.autoUpdater })
   createMcpServersService({ context, manager: params.mcpManager })
   createGodotStageService({ context, manager: params.godotStageManager, window: params.settingsWindow })
   createAuthService({ context, window: params.settingsWindow })
