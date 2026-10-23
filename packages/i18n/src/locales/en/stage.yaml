@@ -84,6 +84,7 @@ chat:
     finalizing: Finishing…
     sent: Sent
   voice-input: Voice input
+  reply-cut-off: The reply was cut off because the window that runs the chat reloaded. Retry to send this message again.
   error-details:
     show: Show details
     hide: Hide details

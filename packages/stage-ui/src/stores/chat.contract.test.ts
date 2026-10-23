@@ -874,6 +874,65 @@ describe('chat store contract', () => {
     }
   })
 
+  it('marks a follower send whose reply a leader change cut off, so the user sees it and can retry', async () => {
+    // A leader reload cuts off the reply, or comes before the reply reached the model. The new leader receives the send
+    // again and finds the stored message. It generates nothing, so without a mark the user's message stays unanswered.
+    const namespace = `chat-cut-off:${crypto.randomUUID()}`
+    const mountRuntime = (leadership: 'leader-only' | 'follower-only', callTimeout: number) => {
+      const pinia = createPinia()
+      const runtime = createSyncedPiniaPlugin({ callTimeout, leadership, namespace })
+      pinia.use(runtime.plugin)
+      createApp({}).use(pinia)
+      return { pinia, runtime }
+    }
+    const first = mountRuntime('leader-only', 1000)
+    const follower = mountRuntime('follower-only', 20_000)
+    let second: ReturnType<typeof mountRuntime> | undefined
+    const stalled = Promise.withResolvers<void>()
+    let prompts = 0
+    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {
+      prompts += 1
+      // The first leader's page reloads before it has a reply.
+      if (prompts === 1)
+        await stalled.promise
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+
+    try {
+      await vi.waitFor(() => expect(first.runtime.isLeader()).toBe(true))
+      setActivePinia(first.pinia)
+      useChatStore()
+      setActivePinia(follower.pinia)
+      const followerStore = useChatStore()
+      await vi.waitFor(() => expect(follower.runtime.getLeaderId()).toBe(first.runtime.participantId))
+
+      const send = followerStore.send({ sessionId: 'session-1', text: 'cut off question' })
+      await vi.waitFor(() => expect(prompts).toBe(1))
+      first.runtime.dispose()
+      disposePinia(first.pinia)
+      second = mountRuntime('leader-only', 1000)
+      setActivePinia(second.pinia)
+      useChatStore()
+      await vi.waitFor(() => expect(second!.runtime.isLeader()).toBe(true), { timeout: 5000 })
+      await send
+
+      const messages = sessionMessages['session-1'] ?? []
+      const question = messages.findIndex(message => message.role === 'user' && JSON.stringify(message.content).includes('cut off question'))
+      expect(question).toBeGreaterThan(-1)
+      // The error item carries the retry action, which sends the user message before it again.
+      expect(messages.slice(question + 1)).toEqual([expect.objectContaining({ role: 'error', content: 'stage.chat.reply-cut-off' })])
+      expect(prompts).toBe(1)
+    }
+    finally {
+      stalled.resolve()
+      follower.runtime.dispose()
+      second?.runtime.dispose()
+      disposePinia(follower.pinia)
+      if (second)
+        disposePinia(second.pinia)
+    }
+  })
+
   it('starts chat-model telemetry and captures the provider prompt after vision preprocessing', async () => {
     visionMocks.configured = true
     let resolveVision!: (description: string) => void

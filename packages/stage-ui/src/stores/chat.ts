@@ -1213,10 +1213,29 @@ export const useChatStore = defineStore('chat', () => {
     return useChatStore(pinia).sendInLeader(payload.messageId ? payload : { ...payload, messageId: nanoid() })
   }
 
-  /** Runs one chat request in the elected leader. Callers use {@link send}, which gives the message its identity. */
+  /**
+   * Runs one chat request in the elected leader. Callers use {@link send}, which gives the message its identity.
+   *
+   * A send whose message an earlier leader already stored runs nothing here: the runtime ends the turn at its `existing`
+   * receipt. When nothing follows that message, a leader reload cut off its reply, or came before the request reached
+   * the model. History cannot tell the two apart, and neither is generated again. An error item marks the message
+   * instead, and its Retry action sends the message again.
+   */
   async function sendInLeader(payload: ChatSendPayload): Promise<ChatSendResult> {
     try {
-      return await executeSend(payload)
+      const startedAtMs = Date.now()
+      const result = await executeSend(payload)
+      const last = chatSession.getSessionMessagesIfLoaded(payload.sessionId)?.at(-1)
+      // The runtime stamps a message when it builds the turn, so one older than this execution was stored earlier.
+      if (last?.role === 'user' && last.id === payload.messageId && last.createdAt !== undefined && last.createdAt < startedAtMs) {
+        chatSession.appendSessionMessage(payload.sessionId, {
+          role: 'error',
+          content: t('stage.chat.reply-cut-off'),
+          id: nanoid(),
+          createdAt: Date.now(),
+        })
+      }
+      return result
     }
     catch (error) {
       appendSendError(payload.sessionId, error)
