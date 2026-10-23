@@ -74,7 +74,7 @@ describe('command Parser', () => {
     const result = parseTwitterCommand('get timeline count:  15  ')
 
     expect(result).not.toBeNull()
-    expect(result).toMatchObject({ command: 'get timeline', content: 'count:  15  ', count: 15 })
+    expect(result).toMatchObject({ command: 'get timeline', content: 'count:  15', count: 15 })
   })
 
   it('should reject unknown commands', () => {
