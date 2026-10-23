@@ -143,4 +143,44 @@ describe('speech output control', () => {
       vi.useRealTimers()
     }
   })
+
+  it('fails a request that a host which ends without reporting holds, once no host returns, as after a crash', async () => {
+    const context = getSpeechBusContext()
+    const sender = createStore()
+    // The host holds this lock while it is connected. The browser releases it with the page, also on a crash.
+    const lock = `speech-output-test-host:${crypto.randomUUID()}`
+    const held = Promise.withResolvers<void>()
+    const crashed = Promise.withResolvers<void>()
+    void navigator.locks.request(lock, () => {
+      held.resolve()
+      return crashed.promise
+    })
+    await held.promise
+    context.emit(voiceSnapshotChanged, { connected: true, hostId: 'host-1', lock, drafts: [] })
+    const received = Promise.withResolvers<void>()
+    const stopHost = [
+      defineInvokeHandler(context, voiceGetTurns, () => [{ sessionId: 'alice', turnId: 'reply-a' }]),
+      defineInvokeHandler(context, voiceInterrupt, () => {
+        received.resolve()
+        return new Promise<{ status: 'recorded' }>(() => {})
+      }),
+    ]
+    const request = sender.requestStopSpeaking({ reason: 'manual-chat', sessionId: 'alice' })
+    await received.promise
+
+    // The host's renderer crashes before it answers: no snapshot arrives, only the lock is released.
+    stopHost.forEach(stop => stop())
+    vi.useFakeTimers()
+    try {
+      const failed = expect(request).rejects.toThrow()
+      crashed.resolve()
+      // Lock requests are granted in order, so this one runs after the store saw the host end.
+      await navigator.locks.request(lock, () => {})
+      await vi.advanceTimersByTimeAsync(10_000)
+      await failed
+    }
+    finally {
+      vi.useRealTimers()
+    }
+  })
 })

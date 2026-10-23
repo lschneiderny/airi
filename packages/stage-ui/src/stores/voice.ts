@@ -22,7 +22,7 @@ import { observeInputLevel } from '../libs/voice/input-level'
 import { createVoiceActivityPlugin } from '../libs/voice/voice-activity-plugin'
 import { createVoiceEndJudgePlugin } from '../libs/voice/voice-end-judge-plugin'
 import { createVoiceRephrasePlugin } from '../libs/voice/voice-rephrase-plugin'
-import { getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceGenerationEnded, voiceGetTurns, voiceInputCommand, voiceInputLevel, voiceInterrupt, voiceLevelMonitor, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceSpeechCommand, voiceTurnsChanged } from '../services/speech/bus'
+import { getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceGenerationEnded, voiceGetTurns, voiceHostLockName, voiceInputCommand, voiceInputLevel, voiceInterrupt, voiceLevelMonitor, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceSpeechCommand, voiceTurnsChanged } from '../services/speech/bus'
 import { SileroVad } from '../workers/vad/silero-vad'
 import { useLlmStreamingControlStore } from './ai/chat-llm/streaming-control'
 import { useAudioContext, useSpeakingStore } from './audio'
@@ -67,6 +67,8 @@ export const useVoiceStore = defineStore('voice', () => {
   let output: ((turn: TurnRef) => SpeechOutput) | undefined
   /** Identifies the current output connection in snapshots; see {@link VoiceHostSnapshot.hostId}. */
   let hostId: string | undefined
+  /** The Web Lock that the current output connection holds; see {@link VoiceHostSnapshot.lock}. */
+  let hostLock: string | undefined
   let listening: VoicePluginHandle | undefined
   let detectorOptions: Pick<VoiceActivityOptions, 'detectWakeWord' | 'acceptSpeech'> = {}
   const inputRequests = new Map<string, SpeechInputAttempt>()
@@ -144,6 +146,7 @@ export const useVoiceStore = defineStore('voice', () => {
     const snapshot: VoiceHostSnapshot = {
       connected: true,
       hostId,
+      ...(hostLock ? { lock: hostLock } : {}),
       microphone: { enabled: devices.enabled, ready: !!devices.stream, error: devices.error },
       wakeWords: { preparation: wakeWordDetection.preparation, ...(wakeWordDetection.error ? { error: wakeWordDetection.error } : {}) },
       drafts: drafts.value.map(draft => ({ ...draft })),
@@ -323,15 +326,27 @@ export const useVoiceStore = defineStore('voice', () => {
    * The mounted scene supplies its browser output. Detachment stops only this host's responses.
    *
    * The host also detaches when its page hides, for example on a reload, so other windows learn at once that it is
-   * gone and ask its successor instead.
+   * gone and ask its successor instead. A host that ends without detaching, because its window crashed or was killed,
+   * still releases the Web Lock that it holds while connected, and other windows watch that lock.
    */
   function connectOutput(factory: (turn: TurnRef) => SpeechOutput) {
     if (output)
       throw new Error('Voice output host is already connected')
 
     output = factory
-    hostId = nanoid()
+    const connectionId = nanoid()
+    hostId = connectionId
     let detached = false
+    const released = Promise.withResolvers<void>()
+    const lock = voiceHostLockName(connectionId)
+    navigator.locks.request(lock, () => {
+      if (detached)
+        return
+      // Snapshots name the lock only once it is held, so no window can take it as a sign that the host is gone.
+      hostLock = lock
+      publishSnapshot()
+      return released.promise
+    }).catch(report)
     const context = getSpeechBusContext()
     const producers = new Map<string, SpeechStream>()
     const opened = new Set<string>()
@@ -492,6 +507,7 @@ export const useVoiceStore = defineStore('voice', () => {
       stops.forEach(stop => stop())
       output = undefined
       hostId = undefined
+      hostLock = undefined
       for (const entry of responses.values())
         entry.response.cancel('Voice output host detached')
       responses.clear()
@@ -502,6 +518,7 @@ export const useVoiceStore = defineStore('voice', () => {
       updateActiveTurns()
       context.emit(voiceTurnsChanged, [])
       context.emit(voiceSnapshotChanged, { connected: false, drafts: drafts.value.map(draft => ({ ...draft })) })
+      released.resolve()
     }
 
     return detach

@@ -116,6 +116,12 @@ export interface VoiceHostSnapshot {
    * took over, so a request that the earlier host received gets no answer. A disconnected snapshot has none.
    */
   readonly hostId?: string
+  /**
+   * The Web Lock that this host connection holds until it detaches; see {@link voiceHostLockName}. The browser releases
+   * a lock with the page that holds it, also when its renderer crashes or its window is killed without reporting, so
+   * {@link watchVoiceHostEnd} learns that the host is gone. A snapshot sent before the host holds its lock has none.
+   */
+  readonly lock?: string
   readonly microphone?: { readonly enabled: boolean, readonly ready: boolean, readonly error?: string }
   /** Preparation of the host's wake word detector. Settings in other windows read it from here. */
   readonly wakeWords?: { readonly preparation: WakeWordPreparation, readonly error?: string }
@@ -162,6 +168,26 @@ export type VoiceInputCommand
  */
 export const voiceInputCommand = defineInvokeEventa<{ status: 'accepted' | 'closed', text?: string }, VoiceInputCommand>('eventa:voice:input-command')
 export const voiceRequestSnapshot = defineEventa('eventa:voice:request-snapshot')
+
+/** Names the Web Lock that one output host connection holds while it is connected; see {@link VoiceHostSnapshot.lock}. */
+export function voiceHostLockName(hostId: string) {
+  return `proj-airi:voice-host:${hostId}`
+}
+
+/**
+ * Calls `onEnded` once the voice host that holds `lock` ends, also when its window crashes or is killed and sends no
+ * disconnected snapshot. Aborting `signal` stops watching.
+ *
+ * `onEnded` runs while this window holds the lock it was granted, so a lock request for the same name that starts
+ * after this call runs after `onEnded`.
+ */
+export function watchVoiceHostEnd(lock: string, signal: AbortSignal, onEnded: () => void) {
+  // A shared request waits while the host holds the lock exclusively, and every window that watches is granted at once.
+  navigator.locks.request(lock, { mode: 'shared', signal }, () => onEnded()).catch((error: unknown) => {
+    if (!signal.aborted)
+      console.error('[speech-bus] Watching the voice host failed:', error)
+  })
+}
 export const voiceSnapshotChanged = defineEventa<VoiceHostSnapshot>('eventa:voice:snapshot-changed')
 
 /**

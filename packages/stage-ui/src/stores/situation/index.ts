@@ -33,7 +33,7 @@ import { defineStore } from 'pinia'
 import { computed, shallowRef, watch } from 'vue'
 
 import { useSituationSettings } from '../../features/situation/settings'
-import { chatComposerActivityChangedEvent, getSpeechBusContext, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged } from '../../services/speech/bus'
+import { chatComposerActivityChangedEvent, getSpeechBusContext, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { startConversationSensor } from './sensors/conversation'
 import { DESKTOP_SAMPLE_STALE_MS, startDesktopSensor } from './sensors/desktop'
@@ -293,12 +293,34 @@ export const useSituationStore = defineStore('situation', () => {
    * Listens on the speech bus for the voice input and composer activity of every window. Unlike the rest of the store
    * this runs in followers too, from {@link initialize} until {@link dispose}: any main window may serve a widget
    * reaction, and the reaction waits through {@link untilUserIdle} wherever it runs.
+   *
+   * The voice host reports speech and transcription only while it lives. A host whose window crashes or is killed
+   * sends no further report, so the store also watches the host's lock and stops counting its input when it ends.
    */
   function startUserInputListeners() {
     const context = getSpeechBusContext()
     const recheckWaiters = () => {
       for (const recheck of [...userInputWaiters])
         recheck()
+    }
+    let watchedHost: { lock: string, stop: AbortController } | undefined
+    const watchHost = (lock: string | undefined) => {
+      if (watchedHost?.lock === lock)
+        return
+      watchedHost?.stop.abort('Voice host replaced')
+      watchedHost = undefined
+      if (!lock)
+        return
+      const host = { lock, stop: new AbortController() }
+      watchedHost = host
+      watchVoiceHostEnd(lock, host.stop.signal, () => {
+        if (watchedHost !== host)
+          return
+        watchedHost = undefined
+        remoteUserSpeaking = false
+        remoteUserInputInFlight = false
+        recheckWaiters()
+      })
     }
     const stops = [
       context.on(speechInputUserSpeakingChangedEvent, ({ body }) => {
@@ -312,6 +334,7 @@ export const useSituationStore = defineStore('situation', () => {
           return
         const phase = body.connected ? body.input?.phase : undefined
         remoteUserInputInFlight = phase === 'capturing' || phase === 'finalizing'
+        watchHost(body.connected ? body.lock : undefined)
         recheckWaiters()
       }),
       context.on(chatComposerActivityChangedEvent, ({ body }) => {
@@ -324,6 +347,7 @@ export const useSituationStore = defineStore('situation', () => {
     return () => {
       for (const stop of stops)
         stop()
+      watchHost(undefined)
       remoteUserSpeaking = false
       remoteUserInputInFlight = false
       composers.clear()
