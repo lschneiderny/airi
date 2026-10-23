@@ -14,7 +14,7 @@ import { isEqual } from 'es-toolkit'
 import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
 import { array, looseObject, object, parse, safeParse, string } from 'valibot'
-import { computed, ref, toRaw, watch } from 'vue'
+import { computed, onScopeDispose, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 
@@ -658,13 +658,20 @@ export const useAiriCardStore = defineStore('airi-card', () => {
   let syncedOwnerId: string | undefined
   let activeSynchronization: Promise<void> | undefined
   let hasQueuedSynchronization = false
+  // A disposed store belongs to a closed window or a replaced Pinia. Its run
+  // must stop: the next request would read whatever `fetch` and session are
+  // current then, and could send this store's cards to another account.
+  let disposed = false
+  onScopeDispose(() => {
+    disposed = true
+  })
 
   /**
    * Compares the local cards with the server and exchanges the changes. The
    * selected card is not synchronized, so each device keeps its own selection.
    *
    * A call during a run queues one more run and returns with the active run.
-   * Errors are logged. The next request sends the same changes again. A user
+   * Disposing the store ends the run before its next request. Errors are logged. The next request sends the same changes again. A user
    * without an account never sends a request.
    *
    * This synchronized action executes in the leader, one run at a time.
@@ -696,7 +703,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
   }
 
   async function runCardSynchronization(ownerId: string) {
-    if (ownerId === 'local' || !cloudSyncEnabled.value)
+    if (disposed || ownerId === 'local' || !cloudSyncEnabled.value)
       return
 
     syncClient ??= createDocumentSyncClient({ serverUrl: SERVER_URL, path: CARDS_PATH, fetch: authedFetch })
@@ -711,7 +718,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       client: syncClient,
       state: await documentSyncRepo.getState(SYNC_STATE_NAME, ownerId) ?? { documents: {} },
       // The new account starts its own run from the `userId` watcher.
-      isCurrent: () => userId.value === ownerId,
+      isCurrent: () => !disposed && userId.value === ownerId,
       saveState: state => documentSyncRepo.saveState(SYNC_STATE_NAME, ownerId, state),
       // Each device creates the built-in card in its own language. Only its edits are synchronized.
       readLocal: () => Object.fromEntries([...toRaw(cards.value)].map(([id, card]) => [id, splitCard(toRaw(card), id === 'default' ? builtInVariants.value : [])])),

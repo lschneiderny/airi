@@ -101,11 +101,17 @@ function createFakeCardServer() {
       requests.push += 1
       if (refusing.has(id))
         return new Response(null, { status: 413, statusText: 'Payload Too Large' })
-      const { fields } = JSON.parse(String(init.body)) as { fields: Array<{ key: string, value: unknown }> }
+      const { fields } = JSON.parse(String(init.body)) as { fields: Array<{ key: string, value: unknown } | { key: string, removed: true }> }
       const document: ServerDocument = documents.get(id) ?? { revision: 0, deletedAt: null, fields: new Map(), history: [] }
       document.revision += 1
       document.deletedAt = null
       for (const field of fields) {
+        // A removed field leaves the document. Its history row has no value.
+        if ('removed' in field) {
+          document.fields.delete(field.key)
+          document.history.push({ revision: document.revision, key: field.key, value: null })
+          continue
+        }
         document.fields.set(field.key, { revision: document.revision, value: field.value })
         document.history.push({ revision: document.revision, key: field.key, value: field.value })
       }
@@ -382,6 +388,45 @@ describe('card synchronization across windows', () => {
 
     expect(await leader.cards.restoreDeletedCard('remote')).toBe(false)
     expect(onError).not.toHaveBeenCalled()
+  })
+
+  // ROOT CAUSE:
+  //
+  // A run outlived its disposed store. Under load, its next request used the
+  // next test's `fetch` and sent old cards to that test's server.
+  //
+  // We fixed this by ending the run, and any queued run, when the store is disposed.
+  it('sends nothing after its window closes during a run', async () => {
+    let releaseList!: () => void
+    const listHeld = new Promise<void>(resolve => releaseList = resolve)
+    let reportListStarted!: () => void
+    const listStarted = new Promise<void>(resolve => reportListStarted = resolve)
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/character-cards') && init?.method !== 'PUT') {
+        reportListStarted()
+        await listHeld
+      }
+      return server.fetchCards(input, init)
+    })
+    const { leader, follower } = await createWindows()
+    await leader.cards.addCard({ name: 'Luna', version: '1.0.0' }, 'scratch')
+    signIn(leader.auth, accountId())
+    await listStarted
+
+    // The window closes while its run waits for the server.
+    disposePinia(leader.pinia)
+    // A disposed store runs the action itself. During a run, the call queues one
+    // more run and returns when both end.
+    const run = leader.cards.synchronizeCards()
+    // The action made the closed Pinia active. Another one is active after a
+    // window closes, as the next test's is.
+    setActivePinia(follower.pinia)
+    const later = createFakeCardServer()
+    vi.stubGlobal('fetch', later.fetchCards)
+    releaseList()
+    await run
+
+    expect(cardRequestsOf(later.fetchCards)).toEqual([])
   })
 
   it('sends nothing while cloud sync is off, the default, even for a signed-in user', async () => {
