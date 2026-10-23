@@ -26,6 +26,10 @@ const user: User = {
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 }
 
+// The voice catalog requires a bearer token for authentication-owned providers
+// (hasProviderVoiceCatalogAccess in the provider store), so a signed-in state needs it.
+const accessToken = 'restored-access-token'
+
 const session: Session = {
   id: 'session-1',
   token: 'server-session-token',
@@ -138,7 +142,7 @@ describe('official streaming speech provider settings', () => {
     const pinia = createPinia()
 
     const { errors } = await renderPage(pinia)
-    useAuthStore(pinia).$patch({ user, session })
+    useAuthStore(pinia).$patch({ user, session, token: accessToken })
     const providerConfigStore = useProviderConfigStore(pinia)
 
     await expect.poll(() => providerConfigStore.getProviderConfig(providerId)?.model).toBe('volcengine/seed-tts-2.0')
@@ -173,7 +177,7 @@ describe('official streaming speech provider settings', () => {
         actionOrder.push('voices')
     })
 
-    useAuthStore(pinia).$patch({ user, session })
+    useAuthStore(pinia).$patch({ user, session, token: accessToken })
     await expect.poll(() => actionOrder).toEqual(['configured', 'voices'])
     expect(errors.map(error => errorMessageFrom(error))).toEqual([])
   })
@@ -207,7 +211,7 @@ describe('official streaming speech provider settings', () => {
     const setProviderUnconfigured = vi.spyOn(providerStore, 'setProviderUnconfigured')
     const setProviderAvailabilityOverride = vi.spyOn(providerStore, 'setProviderAvailabilityOverride')
 
-    useAuthStore(pinia).$patch({ user, session })
+    useAuthStore(pinia).$patch({ user, session, token: accessToken })
     await expect.poll(() => providerStore.modelLoadError[providerId]).toContain('streaming models upstream 502')
 
     expect(setProviderAvailabilityOverride).not.toHaveBeenCalledWith(providerId, false)

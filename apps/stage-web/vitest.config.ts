@@ -24,15 +24,11 @@ export default withCpuSlots(defineConfig({
           name: 'browser',
           include: ['src/**/*.browser.test.ts'],
           // NOTICE:
-          // These files fail and are excluded so the other browser tests run.
-          // Observed: two official-provider-speech-streaming tests see no /audio/voices/streaming request after sign-in.
-          // Observed: polaroid times out after 15000ms loading the imported Hiyori Live2D preset zip.
-          // Neither cause is isolated yet. Source: `pnpm test-stage-web:run`.
-          // Removal: delete an entry when its file passes again.
-          exclude: [
-            'src/pages/official-provider-speech-streaming.browser.test.ts',
-            'src/pages/devtools/polaroid.browser.test.ts',
-          ],
+          // Run the browser files one after another. Chromium renders every Live2D and VRM canvas in software WebGL,
+          // so concurrent files share the CPU and the polaroid test (2 s alone) passed the 15 s test timeout at 17 s.
+          // Source: `pnpm test-stage-web:run` with parallel files; the same test passes 3 of 3 alone.
+          // Removal condition: the browser pool gives each file its own GPU or the suite stops sharing a renderer.
+          fileParallelism: false,
           setupFiles: ['./src/test/setup-live2d.browser.ts'],
           browser: {
             enabled: true,
