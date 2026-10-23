@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GATE_INTERVAL_MS, useSituationStore } from '.'
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useSituationSettings } from '../../features/situation/settings'
-import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceSnapshotChanged, voiceTurnsChanged } from '../../services/speech/bus'
+import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged } from '../../services/speech/bus'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { DESKTOP_SAMPLE_STALE_MS } from './sensors/desktop'
 import { FOREGROUND_SAMPLE_STALE_HIDDEN_MS, FOREGROUND_SAMPLE_STALE_VISIBLE_MS } from './sensors/foreground'
@@ -974,6 +974,41 @@ describe('situation gate loop', () => {
     await nextGateTick()
     expect(observability.gate?.decision).toMatchObject({ fire: true, reason: 'ready' })
     expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+  })
+
+  it('stops counting the character as speaking once the voice host ends mid-speech without reporting', async () => {
+    const bus = getSpeechBusContext()
+    const lock = `situation-test-voice-host:${crypto.randomUUID()}`
+    const held = Promise.withResolvers<void>()
+    const crashed = Promise.withResolvers<void>()
+    void navigator.locks.request(lock, () => {
+      held.resolve()
+      return crashed.promise
+    })
+    await held.promise
+    // The audio host runs in another window, which connected before this leader started, and it is speaking a reply.
+    const stopHost = [
+      bus.on(voiceRequestSnapshot, () => bus.emit(voiceSnapshotChanged, { connected: true, hostId: 'host-1', lock, drafts: [] })),
+      bus.on(voiceRequestTurns, () => bus.emit(voiceTurnsChanged, [{ sessionId: 'session-1', turnId: 'reply-1' }])),
+    ]
+    try {
+      const { chat, observability } = startQuietLeader()
+      await vi.advanceTimersByTimeAsync(GAP_MS)
+      offerTopic()
+      await nextGateTick()
+      expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'character-speaking' })
+
+      // The host's renderer crashes mid-speech: no turns change arrives, only the lock is released.
+      crashed.resolve()
+      // Lock requests are granted in order, so this one runs after every window that waited for the host to end.
+      await navigator.locks.request(lock, () => {})
+      await nextGateTick()
+      expect(observability.gate?.decision).toMatchObject({ fire: true, reason: 'ready' })
+      expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+    }
+    finally {
+      stopHost.forEach(stop => stop())
+    }
   })
 
   it('holds while the stage is hidden and waits a full gap after it is shown again', async () => {

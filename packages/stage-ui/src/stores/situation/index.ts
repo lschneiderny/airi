@@ -33,7 +33,7 @@ import { defineStore } from 'pinia'
 import { computed, shallowRef, watch } from 'vue'
 
 import { useSituationSettings } from '../../features/situation/settings'
-import { chatComposerActivityChangedEvent, getSpeechBusContext, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
+import { chatComposerActivityChangedEvent, getSpeechBusContext, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { startConversationSensor } from './sensors/conversation'
 import { DESKTOP_SAMPLE_STALE_MS, startDesktopSensor } from './sensors/desktop'
@@ -295,7 +295,8 @@ export const useSituationStore = defineStore('situation', () => {
    * reaction, and the reaction waits through {@link untilUserIdle} wherever it runs.
    *
    * The voice host reports speech and transcription only while it lives. A host whose window crashes or is killed
-   * sends no further report, so the store also watches the host's lock and stops counting its input when it ends.
+   * sends no further report, so the store also watches the host's lock. When the lock ends, the store stops counting
+   * the host's input and its speaking turns, which the same connection reports.
    */
   function startUserInputListeners() {
     const context = getSpeechBusContext()
@@ -319,6 +320,7 @@ export const useSituationStore = defineStore('situation', () => {
         watchedHost = undefined
         remoteUserSpeaking = false
         remoteUserInputInFlight = false
+        speakingTurns = []
         recheckWaiters()
       })
     }
@@ -344,6 +346,8 @@ export const useSituationStore = defineStore('situation', () => {
         recheckWaiters()
       }),
     ]
+    // The host answers with its snapshot, so a window that starts after the host connected still learns its lock.
+    context.emit(voiceRequestSnapshot, undefined)
     return () => {
       for (const stop of stops)
         stop()
