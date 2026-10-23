@@ -24,9 +24,11 @@ pnpm patch-commit <directory>
 
 ## nano-staged 1.0.2
 
-This patch splits `git add` and `git checkout` over long path lists into several commands. Without it, `pnpm nano-staged` fails with `spawn ENAMETOOLONG` after the lint tasks pass once about 300 files are staged, because Windows rejects command lines over 32767 characters.
+This patch splits `git add`, `git checkout`, and the `git diff` backup of partially staged files over long path lists into several commands. Without it, `pnpm nano-staged` fails with `spawn ENAMETOOLONG` once about 300 files are staged, or about 300 files are partially staged, because Windows rejects command lines over 32767 characters. The backup diff writes one patch file per chunk and joins them in order into the single patch that nano-staged applies afterwards.
 
-The root `nano-staged.mjs` splits the lint commands the same way. Remove the patch when nano-staged chunks its own git commands. `git diff` for partially staged files is not chunked, so a commit that stages more than about 300 partially staged files can still fail.
+In a scratch repository with 400 partially staged files (42000 characters of paths), nano-staged without the `git diff` chunking failed at "Backing up unstaged changes" with `spawn ENAMETOOLONG`, and with it the commit flow completed and kept every staged and unstaged change.
+
+The root `nano-staged.mjs` splits the lint commands the same way. Remove the patch when nano-staged chunks its own git commands.
 
 To update the patch:
 
