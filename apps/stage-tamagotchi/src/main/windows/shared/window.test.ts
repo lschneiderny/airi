@@ -25,6 +25,7 @@ vi.mock('std-env', () => ({
 
 vi.mock('../../services/electron', () => ({
   createAppService: vi.fn(),
+  createAppVersionService: vi.fn(),
   createDesktopActivityService: vi.fn(),
   createForegroundWindowService: vi.fn(),
   createPowerMonitorService: vi.fn(),
