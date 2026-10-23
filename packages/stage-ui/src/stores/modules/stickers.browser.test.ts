@@ -57,13 +57,16 @@ it('requires opt-in and restores the preference when the store is recreated', as
 it('decodes every bundled image without an external image service', async () => {
   expect(chatStickers).toHaveLength(12)
   expect(new Set(chatStickers.flatMap(sticker => [...sticker.emotions]))).toEqual(new Set(stickerEmotions))
-  for (const sticker of chatStickers) {
+  // Each bundled image is a 1254 x 1254 PNG of about 1.6 MB. Decoded one after another, the 12
+  // images took 3 s in an idle full run and over 15 s under load. Decoding them together took
+  // 0.35 s.
+  await Promise.all(chatStickers.map(async (sticker) => {
     const image = new Image()
     image.src = sticker.src
     await image.decode()
     expect(image.naturalWidth).toBeGreaterThan(0)
     expect(new URL(image.src).origin).toBe(location.origin)
-  }
+  }))
 })
 
 it('excludes unknown bundled metadata from the sendable catalog without inventing an image URL', async () => {
