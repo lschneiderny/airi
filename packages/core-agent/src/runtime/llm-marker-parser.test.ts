@@ -437,4 +437,49 @@ describe('useLlmmarkerParser', () => {
       })
     })
   })
+  // A flush emits the held text and waits for its handler. Parsing continues after it.
+  it('emits the held-back end of the text on flush, and keeps parsing after it', async () => {
+    const collectedLiterals: string[] = []
+    const parser = useLlmmarkerParser({
+      onLiteral: (literal) => {
+        collectedLiterals.push(literal)
+      },
+    })
+
+    await parser.consume('查曼谷和上海未来三天的天气。')
+    await parser.flush()
+    expect(collectedLiterals.join('')).toBe('查曼谷和上海未来三天的天气。')
+
+    await parser.consume('第 1/3 步完成。')
+    await parser.end()
+    expect(collectedLiterals.join('')).toBe('查曼谷和上海未来三天的天气。第 1/3 步完成。')
+  })
+  // Near-miss recovery holds a cue opener back. A flush ends the text of a model step, so a partial opener cannot
+  // complete and is emitted as text. An opened cue stays held for the next text or the end of the stream.
+  it('flushes a partial cue opener as text and keeps an opened cue during recovery', async () => {
+    const literals: string[] = []
+    const specials: string[] = []
+    const parser = useLlmmarkerParser({
+      recoverCueNames: ['ACT'],
+      onLiteral: (literal) => {
+        literals.push(literal)
+      },
+      onSpecial: (special) => {
+        specials.push(special)
+      },
+    })
+
+    await parser.consume('Hi [AC')
+    await parser.flush()
+    expect(literals.join('')).toBe('Hi [AC')
+
+    await parser.consume(' then [ACT happy')
+    await parser.flush()
+    expect(literals.join('')).toBe('Hi [AC then ')
+
+    await parser.consume(']')
+    await parser.end()
+    expect(specials).toEqual(['<|ACT happy|>'])
+    expect(literals.join('')).toBe('Hi [AC then ')
+  })
 })
