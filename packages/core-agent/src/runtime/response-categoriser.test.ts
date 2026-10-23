@@ -77,6 +77,22 @@ describe('createStreamingCategorizer', () => {
     }
   })
 
+  it('keeps a `<` that ends a chunk out of speech when the next chunk opens a tag', () => {
+    // ROOT CAUSE:
+    //
+    // The text `<` rewrite also matched a `<` at the end of the buffer. The marker parser can emit `<` alone before
+    // `think>` arrives, so that `<` was spoken as text and the reasoning tag that it started was not hidden.
+    const categorizer = createStreamingCategorizer()
+    let spoken = ''
+    let position = 0
+    for (const piece of ['<', 'think>hidden</think>', 'Hello']) {
+      categorizer.consume(piece)
+      spoken += categorizer.filterToSpeech(piece, position)
+      position += piece.length
+    }
+    expect(spoken).toBe('Hello')
+  })
+
   it('should handle tags split across chunks', () => {
     const categorizer = createStreamingCategorizer()
     const chunks = [
