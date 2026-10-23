@@ -34,7 +34,10 @@ describe('chatSendButton', () => {
     await screen.getByTestId('chat-send-button').click()
 
     expect(sent).toHaveLength(1)
-    expect(page.getByRole('menu').query()).toBeNull()
+    // The pointer rests on the button before the click. On a loaded machine that rest can pass the
+    // hover delay, and the hover opens the menu. The click must leave it closed; a menu that is
+    // closing still keeps its element while its exit animation runs.
+    expect(page.getByRole('menu').query()?.getAttribute('data-state') ?? 'closed').toBe('closed')
   })
 
   it('chooses the send key from the menu that a right-click opens', async () => {
