@@ -4,6 +4,7 @@ import type { Plugin } from 'vue'
 
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 
+import { onPageHide } from '../page-hide'
 import { injectKeyPiniaSynced } from './synced-context'
 
 export { injectKeyPiniaSynced, usePiniaSynced } from './synced-context'
@@ -37,19 +38,21 @@ export function setupSynced(options: Pick<SyncedOptions, 'leadership'> = {}): { 
   })
 
   let disposed = false
+  let stopPageHide: (() => void) | undefined
   const dispose = () => {
     if (disposed)
       return
 
     disposed = true
-    window.removeEventListener('pagehide', dispose)
+    stopPageHide?.()
     runtime.dispose()
   }
 
   const vue: Plugin = {
     install(app) {
       app.provide(injectKeyPiniaSynced, runtime)
-      window.addEventListener('pagehide', dispose, { once: true })
+      // The runtime closes after the window's hosts are released; see onPageHide.
+      stopPageHide = onPageHide('dispose-runtime', dispose)
       app.onUnmount(dispose)
     },
   }

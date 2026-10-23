@@ -17,6 +17,7 @@ import { useVoiceDrafts } from '../composables/voice-drafts'
 import { useVoiceEndJudge } from '../composables/voice-end-judge'
 import { createVoiceInputTracer } from '../composables/voice-input-trace'
 import { useVoiceRephrase } from '../composables/voice-rephrase'
+import { onPageHide } from '../libs/page-hide'
 import { observeInputLevel } from '../libs/voice/input-level'
 import { createVoiceActivityPlugin } from '../libs/voice/voice-activity-plugin'
 import { createVoiceEndJudgePlugin } from '../libs/voice/voice-end-judge-plugin'
@@ -479,11 +480,15 @@ export const useVoiceStore = defineStore('voice', () => {
     updateActiveTurns()
     publishSnapshot()
 
+    // An interruption that the host is recording fails once the synced runtime is gone, and `detached` must be set by
+    // then, so the host sends no failed receipt for it. onPageHide releases hosts before the runtime closes.
+    const stopPageHide = onPageHide('release-host', detach)
+
     function detach() {
       if (detached)
         return
       detached = true
-      window.removeEventListener('pagehide', detach, { capture: true })
+      stopPageHide()
       stops.forEach(stop => stop())
       output = undefined
       hostId = undefined
@@ -499,10 +504,6 @@ export const useVoiceStore = defineStore('voice', () => {
       context.emit(voiceSnapshotChanged, { connected: false, drafts: drafts.value.map(draft => ({ ...draft })) })
     }
 
-    // A capture listener runs before the non-capture `pagehide` listener with which setupSynced disposes the synced
-    // runtime. An interruption that the host is recording fails once that runtime is gone, and `detached` must be set
-    // by then, so the host sends no failed receipt for it.
-    window.addEventListener('pagehide', detach, { capture: true })
     return detach
   }
 
