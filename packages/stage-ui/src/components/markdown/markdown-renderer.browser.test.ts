@@ -4,6 +4,35 @@ import { defineComponent, onMounted, ref, useTemplateRef } from 'vue'
 
 import MarkdownRenderer from './markdown-renderer.vue'
 
+/**
+ * The longest wait for rich output. The first highlighted message loads Shiki,
+ * its themes and grammars and the Oniguruma WebAssembly. On a loaded machine
+ * that took longer than the 1 s of `expect.poll`, so the wait follows DOM
+ * changes instead of a clock and keeps this bound only to fail with a message.
+ */
+const RICH_RENDER_TIMEOUT_MS = 10_000
+
+/** Resolves with the first element in `root` that matches `selector`, now or after a later DOM change. */
+function waitForElement(root: Element, selector: string) {
+  return new Promise<Element>((resolve, reject) => {
+    const observer = new MutationObserver(check)
+    const timer = setTimeout(() => {
+      observer.disconnect()
+      reject(new Error(`No element matched ${selector} within ${RICH_RENDER_TIMEOUT_MS} ms.`))
+    }, RICH_RENDER_TIMEOUT_MS)
+    function check() {
+      const element = root.querySelector(selector)
+      if (!element)
+        return
+      clearTimeout(timer)
+      observer.disconnect()
+      resolve(element)
+    }
+    observer.observe(root, { attributes: true, childList: true, subtree: true })
+    check()
+  })
+}
+
 const MarkdownMountProbe = defineComponent({
   components: {
     MarkdownRenderer,
@@ -66,7 +95,7 @@ describe('markdown renderer initial content', () => {
       props: { content: '~~~typescript\nconst answer = 42\n~~~' },
     })
 
-    await expect.poll(() => screen.container.querySelector('pre')?.className).toContain('shiki')
+    await waitForElement(screen.container, 'pre.shiki')
     await expect.element(screen.getByText('const answer = 42')).toBeVisible()
   })
 
