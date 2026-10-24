@@ -23,22 +23,37 @@ const channelIds = {
 
 export type NaturalChannel = keyof typeof channelIds
 
-/** Resolves blush, not cheek inflation, from a conventional id or the rig's CDI display name. */
+/**
+ * Reject puff/inflation ids and CDI names first, then prefer exact ParamCheek,
+ * other conventional aliases in model order, and CDI blush names in metadata order.
+ * Missing or malformed optional CDI leaves conventional-id discovery available.
+ */
 export function resolveCheekParameterId(ids: readonly string[], displayInfo?: unknown): string | undefined {
-  const standard = ids.find(id => id === channelIds.cheek)
+  // Case-insensitive substrings: puff, inflat (inflate/inflation), swell, U+9F13, U+81A8.
+  const inflation = /puff|inflat|swell|\u9F13|\u81A8/i
+  const names = new Map<string, string>()
+  const excluded = new Set<string>()
+  if (displayInfo && typeof displayInfo === 'object' && 'Parameters' in displayInfo && Array.isArray(displayInfo.Parameters)) {
+    for (const parameter of displayInfo.Parameters) {
+      if (parameter && typeof parameter === 'object' && 'Id' in parameter && typeof parameter.Id === 'string'
+        && 'Name' in parameter && typeof parameter.Name === 'string') {
+        names.set(parameter.Id, parameter.Name)
+        if (inflation.test(parameter.Name))
+          excluded.add(parameter.Id)
+      }
+    }
+  }
+  const candidates = ids.filter(id => !inflation.test(id) && !excluded.has(id))
+  const standard = candidates.find(id => id === channelIds.cheek)
   if (standard)
     return standard
-  const alias = ids.find(id => /^(?:param[_-]?)?(?:cheek\d*|blush|hoppe)$/i.test(id))
+  const alias = candidates.find(id => /^(?:param[_-]?)?(?:cheek\d*|blush|hoppe)$/i.test(id))
   if (alias)
     return alias
-  if (!displayInfo || typeof displayInfo !== 'object' || !('Parameters' in displayInfo) || !Array.isArray(displayInfo.Parameters))
-    return undefined
-  for (const parameter of displayInfo.Parameters) {
-    if (parameter && typeof parameter === 'object' && 'Id' in parameter && typeof parameter.Id === 'string'
-      && 'Name' in parameter && typeof parameter.Name === 'string'
-      && /^(?:cheek|blush|hoppe|\u8138\u7EA2|\u81C9\u7D05|\u8D64\u9762|\u982C\u67D3\u3081)$/i.test(parameter.Name.trim())
-      && ids.includes(parameter.Id)) {
-      return parameter.Id
+  for (const [id, name] of names) {
+    if (/^(?:cheek|blush|hoppe|\u8138\u7EA2|\u81C9\u7D05|\u8D64\u9762|\u982C\u67D3\u3081)$/i.test(name.trim())
+      && candidates.includes(id)) {
+      return id
     }
   }
 }

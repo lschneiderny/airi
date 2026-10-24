@@ -73,9 +73,18 @@ Natural owns these channels when the model has them:
 - body XYZ (`ParamBodyAngleX`, `ParamBodyAngleY`, `ParamBodyAngleZ`), except an axis that rig physics derives from the head;
 - eye XY (`ParamEyeBallX`, `ParamEyeBallY`);
 - face micro-offsets on brows, eye smile, and mouth form, and the eyelid composition (eye smile comes only from emotion hints);
-- cheek (`ParamCheek`), which a pet and a held emotion with a cheek value raise; otherwise Natural leaves it at its base value with a 0 offset. When the standard id is absent, Natural resolves conventional cheek/blush/hoppe ids or a blush CDI display name, including Chinese and Japanese blush labels, never cheek inflation. ZIP and restored-directory models retain these names. Traces sample the resolved physical parameter under the canonical `ParamCheek` channel;
+- cheek (`ParamCheek`), which a pet and a held emotion with a cheek value raise; otherwise Natural leaves it at its base value with a 0 offset. Natural resolves blush using the rule below, never cheek inflation. ZIP and restored-directory models retain CDI names. Traces sample the resolved physical parameter under the canonical `ParamCheek` channel;
 - Natural blink, while the user's auto-blink setting is on;
 - breath (`ParamBreath`), unless manual breath control is active.
+
+Blush resolution first excludes every candidate whose id or CDI display name contains any of these case-insensitive substrings: `puff`, `inflat` (including inflate and inflation), `swell`, `鼓`, or `膨`. This exclusion also applies to exact `ParamCheek`, even if another metadata entry labels the same id as blush. Among the remaining candidates, preference is:
+
+1. Exact `ParamCheek`, including when CDI is absent or its name is neutral or blush-related.
+2. The first conventional alias in model parameter order: optional `param` prefix with optional `_` or `-`, followed by `cheek` with optional digits, `blush`, or `hoppe`, matched case-insensitively against the entire id.
+3. The first CDI entry in metadata order whose id exists in the model and whose trimmed display name exactly matches `Cheek`, `Blush`, `hoppe`, `脸红`, `臉紅`, `赤面`, or `頬染め`, case-insensitively.
+4. No blush channel.
+
+Missing or malformed optional CDI is ignored without throwing; conventional-id resolution remains available.
 
 Natural never writes these channels:
 

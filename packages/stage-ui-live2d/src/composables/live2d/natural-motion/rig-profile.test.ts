@@ -22,6 +22,50 @@ function rig(links: [string, string, number?][]): PhysicsRigLike {
 }
 
 describe('rig profile', () => {
+  it('rejects a conventional blush alias whose CDI name identifies cheek puff', () => {
+    const displayInfo = { Parameters: [{ Id: 'ParamCheek2', Name: 'Cheek Puff' }, { Id: 'CustomBlush', Name: 'Blush' }] }
+    expect(resolveCheekParameterId(['ParamCheek2', 'CustomBlush'], displayInfo)).toBe('CustomBlush')
+  })
+
+  it.each([
+    ['hoppe', 'Cheek Inflate'],
+    ['cheekpuff', 'Cheek'],
+    ['ParamCheek', 'Cheek Puff'],
+  ])('rejects inflation candidate %s named %s in favor of a blush display name', (id, name) => {
+    const displayInfo = { Parameters: [{ Id: id, Name: name }, { Id: 'CustomBlush', Name: 'Blush' }] }
+    expect(resolveCheekParameterId([id, 'CustomBlush'], displayInfo)).toBe('CustomBlush')
+    expect(readLive2DRigProfile(parameters([id, 'CustomBlush']), undefined, displayInfo).channels.get('cheek')?.id).toBe('CustomBlush')
+  })
+
+  it.each(['puff', 'Inflate', 'inflation', 'Swelling', '\u9F13\u8138', '\u81A8\u3089\u307F'])('excludes %s in either an id or a CDI name', (term) => {
+    expect(resolveCheekParameterId([`Custom${term}`], { Parameters: [{ Id: `Custom${term}`, Name: 'Blush' }] })).toBeUndefined()
+    expect(resolveCheekParameterId(['ParamCheek'], { Parameters: [{ Id: 'ParamCheek', Name: `Cheek ${term}` }] })).toBeUndefined()
+  })
+
+  it('returns no blush when every candidate is inflation', () => {
+    const displayInfo = { Parameters: [{ Id: 'ParamCheek2', Name: 'Cheek Puff' }, { Id: 'cheekpuff', Name: 'Blush' }] }
+    expect(resolveCheekParameterId(['ParamCheek2', 'cheekpuff'], displayInfo)).toBeUndefined()
+  })
+
+  it('resolves a ForBOOTH-like blush id without selecting cheekpuff', () => {
+    const displayInfo = { Parameters: [{ Id: 'cheekpuff', Name: '\u9F13\u8138' }, { Id: 'Param85', Name: '\u8138\u7EA2' }] }
+    expect(resolveCheekParameterId(['cheekpuff', 'Param85'], displayInfo)).toBe('Param85')
+  })
+
+  it.each(['Blush', 'Cheek', 'Neutral'])('keeps a real ParamCheek named %s ahead of other blush candidates', (name) => {
+    const displayInfo = { Parameters: [{ Id: 'CustomBlush', Name: 'Blush' }, { Id: 'ParamCheek', Name: name }] }
+    expect(resolveCheekParameterId(['CustomBlush', 'Param_Blush', 'ParamCheek'], displayInfo)).toBe('ParamCheek')
+  })
+
+  it('prefers an eligible conventional alias over a CDI blush match', () => {
+    const displayInfo = { Parameters: [{ Id: 'ParamCheek', Name: 'Cheek Puff' }, { Id: 'CustomBlush', Name: 'Blush' }] }
+    expect(resolveCheekParameterId(['CustomBlush', 'ParamCheek', 'Param_Blush'], displayInfo)).toBe('Param_Blush')
+  })
+
+  it.each(['Cheek', 'Blush', 'hoppe', '\u8138\u7EA2', '\u81C9\u7D05', '\u8D64\u9762', '\u982C\u67D3\u3081'])('matches the trimmed CDI blush label %s case-insensitively', (name) => {
+    expect(resolveCheekParameterId(['Custom'], { Parameters: [{ Id: 'Custom', Name: ` ${name.toUpperCase()} ` }] })).toBe('Custom')
+  })
+
   it.each(['ParamCheek2', 'Param_Blush', 'hoppe'])('resolves the conventional blush alias %s', (id) => {
     expect(readLive2DRigProfile(parameters([id]), undefined).channels.get('cheek')?.id).toBe(id)
   })
@@ -37,8 +81,11 @@ describe('rig profile', () => {
 
   it('prefers the standard blush parameter over aliases and ignores invalid metadata', () => {
     expect(resolveCheekParameterId(['Param_Blush', 'ParamCheek'])).toBe('ParamCheek')
-    for (const displayInfo of [null, {}, { Parameters: {} }, { Parameters: [null, { Id: 1, Name: 'Blush' }] }])
+    for (const displayInfo of [undefined, null, {}, [], { Parameters: {} }, { Parameters: [null, { Id: 1, Name: 'Blush' }, { Id: 'ParamCheek', Name: 1 }] }]) {
       expect(resolveCheekParameterId(['Other'], displayInfo)).toBeUndefined()
+      expect(resolveCheekParameterId(['Param_Blush', 'ParamCheek'], displayInfo)).toBe('ParamCheek')
+      expect(resolveCheekParameterId(['Param_Blush'], displayInfo)).toBe('Param_Blush')
+    }
   })
 
   it('a: detects Bear-like body ownership from head inputs', () => {

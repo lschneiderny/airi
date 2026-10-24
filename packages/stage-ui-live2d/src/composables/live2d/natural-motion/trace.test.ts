@@ -38,12 +38,12 @@ function record(hz: number, seconds: number, start = 12.5) {
 describe('natural trace recorder', () => {
   it('records the resolved blush parameter under the canonical scored cheek channel', () => {
     const rig = {
-      ids: ['cheekpuff', 'CustomBlush'],
+      ids: ['ParamCheek2', 'CustomBlush'],
       minimumValues: [0, 0],
       maximumValues: [1, 2],
       defaultValues: [0, 0.1],
     }
-    const recorder = new NaturalTraceRecorder(rig, { displayInfo: { Parameters: [{ Id: 'CustomBlush', Name: 'Blush' }] } })
+    const recorder = new NaturalTraceRecorder(rig, { displayInfo: { Parameters: [{ Id: 'ParamCheek2', Name: 'Cheek Puff' }, { Id: 'CustomBlush', Name: 'Blush' }] } })
     recorder.sample(0, index => index === 1 ? 0.6 : 0)
     const trace = recorder.build(meta)
     expect(trace.channels).toEqual({ ParamCheek: [0.6] })
