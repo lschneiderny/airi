@@ -2,11 +2,18 @@ import type { InferOutput } from 'valibot'
 
 import type { NumberRange } from './settings'
 
-import { array, boolean, finite, literal, maxValue, minValue, nullable, number, optional, parse, picklist, pipe, safeParse, strictObject, string, transform } from 'valibot'
+import { array, boolean, check, finite, literal, maxValue, minLength, minValue, nullable, number, optional, parse, picklist, pipe, safeParse, startsWith, strictObject, string, transform } from 'valibot'
 
-export const ExpressionKindSchema = picklist(['face', 'effect', 'outfit', 'prop', 'system'])
+import { entrySlots, usableMembers } from './combos'
+
+export const ExpressionKindSchema = picklist(['face', 'effect', 'outfit', 'prop', 'system', 'unsorted', 'combo'])
 export type ExpressionKind = InferOutput<typeof ExpressionKindSchema>
 export const llmAllowedKinds = ['face', 'effect', 'prop'] as const
+export const ExpressionAreaSchema = picklist(['whole-look', 'eyes', 'mouth', 'cheeks', 'effects', 'outfit-hair', 'props', 'hidden'])
+export type ExpressionArea = InferOutput<typeof ExpressionAreaSchema>
+export const ComboMemberSchema = strictObject({ expressionId: string(), strength: pipe(number(), finite(), minValue(0), maxValue(1)) })
+export const SlotNameSchema = picklist(['face', 'effect', 'prop'])
+export type SlotName = InferOutput<typeof SlotNameSchema>
 
 /** Persisted mapping weights: any positive finite value. */
 export const mappingWeightRange: NumberRange = [Number.MIN_VALUE, Number.MAX_VALUE]
@@ -43,6 +50,12 @@ export function createCatalogEntrySchema(weights: NumberRange) {
     mappings: array(pendingMappingSchema(weights)),
     fileName: string(),
     parameterIds: array(string()),
+    area: optional(ExpressionAreaSchema),
+    members: optional(array(ComboMemberSchema)),
+    slots: optional(array(SlotNameSchema)),
+    aliases: optional(array(string())),
+    duplicateOf: optional(string()),
+    labelSource: optional(picklist(['model', 'vtube', 'file', 'user'])),
   }), transform(entry => ({ ...entry, mappings: resolveMappings(entry.mappings, entry.kind) })))
 }
 export const CatalogEntrySchema = createCatalogEntrySchema(mappingWeightRange)
@@ -58,11 +71,35 @@ export const CuratedOverrideSchema = strictObject({
   exposedToLlm: optional(boolean()),
   inverted: optional(boolean()),
   mappings: optional(array(persistedPendingMappingSchema)),
+  area: optional(ExpressionAreaSchema),
+  keepSeparate: optional(boolean()),
 })
 export type CuratedOverride = InferOutput<typeof CuratedOverrideSchema>
+export const ComboDocumentSchema = strictObject({
+  id: pipe(string(), startsWith('combo:')),
+  label: pipe(string(), minLength(1)),
+  members: pipe(array(ComboMemberSchema), minLength(1)),
+  mappings: array(persistedPendingMappingSchema),
+  exposedToLlm: boolean(),
+  area: optional(ExpressionAreaSchema),
+})
+export type ComboDocument = InferOutput<typeof ComboDocumentSchema>
+export const CustomExpressionDocumentSchema = strictObject({
+  id: pipe(string(), startsWith('custom:')),
+  label: pipe(string(), minLength(1)),
+  kind: pipe(ExpressionKindSchema, check(kind => kind !== 'combo')),
+  area: optional(ExpressionAreaSchema),
+  parameterId: string(),
+  delta: pipe(number(), finite()),
+  mappings: array(persistedPendingMappingSchema),
+  exposedToLlm: boolean(),
+})
+export type CustomExpressionDocument = InferOutput<typeof CustomExpressionDocumentSchema>
 export const CuratedCatalogDocumentSchema = strictObject({
   version: literal(1),
   overrides: array(CuratedOverrideSchema),
+  combos: optional(array(ComboDocumentSchema)),
+  customs: optional(array(CustomExpressionDocumentSchema)),
 })
 export type CuratedCatalogDocument = InferOutput<typeof CuratedCatalogDocumentSchema>
 export const RestSetSchema = strictObject({ version: literal(1), active: array(string()) })
@@ -78,21 +115,62 @@ export function parseRestSet(input: unknown) {
   return result.success ? { success: true as const, value: result.output } : { success: false as const, issues: result.issues }
 }
 
-/** Only discovered ids can be curated; omitted fields retain their derived values. */
-export function mergeCatalog(derived: CatalogEntry[], curated: CuratedCatalogDocument | null): CatalogEntry[] {
-  return derived.map((entry) => {
+/** Own overrides take precedence over alias overrides; omitted fields retain derived values. */
+export function mergeCatalog(derived: CatalogEntry[], curated: CuratedCatalogDocument | null, customEntries: CatalogEntry[] = []): CatalogEntry[] {
+  const catalog = derived.map((entry) => {
     const override = curated?.overrides.find(candidate => candidate.id === entry.id)
+      ?? entry.aliases?.map(alias => curated?.overrides.find(candidate => candidate.id === alias)).find(candidate => candidate !== undefined)
     if (!override)
       return entry
-    const fields = Object.fromEntries(Object.entries(override).filter(([, value]) => value !== undefined))
+    const fields = Object.fromEntries(Object.entries(override).filter(([key, value]) => key !== 'id' && key !== 'keepSeparate' && value !== undefined))
     return parse(CatalogEntrySchema, { ...entry, ...fields })
+  })
+  catalog.push(...customEntries)
+  for (const document of curated?.combos ?? []) {
+    const entry: CatalogEntry = {
+      ...document,
+      kind: 'combo',
+      group: null,
+      confirmed: true,
+      fileName: '',
+      labelSource: 'user',
+      parameterIds: [],
+      mappings: resolveMappings(document.mappings, 'combo'),
+    }
+    const members = usableMembers(entry, catalog).map(member => catalog.find(candidate => candidate.id === member.expressionId)!)
+    entry.parameterIds = [...new Set(members.flatMap(member => member.parameterIds))]
+    const areas = [...new Set(members.map(member => member.area))]
+    entry.area = document.area ?? (areas.length === 1 ? areas[0] : 'whole-look')
+    entry.slots = entrySlots(entry, catalog)
+    catalog.push(entry)
+  }
+  return catalog
+}
+
+export function customEntryFromDocument(document: CustomExpressionDocument): CatalogEntry {
+  return parse(CatalogEntrySchema, {
+    id: document.id,
+    label: document.label,
+    kind: document.kind,
+    area: document.area,
+    mappings: document.mappings,
+    exposedToLlm: document.exposedToLlm,
+    fileName: '',
+    parameterIds: [document.parameterId],
+    group: null,
+    confirmed: true,
+    labelSource: 'user',
   })
 }
 
 export function isAutoEligible(entry: CatalogEntry): boolean {
-  return entry.kind === 'face' || entry.kind === 'effect'
+  if (entry.duplicateOf !== undefined)
+    return false
+  return entry.kind === 'face' || entry.kind === 'effect' || (entry.kind === 'combo' && (entry.slots?.length ?? 0) > 0 && !entry.slots!.includes('prop'))
 }
 
 export function isLlmEligible(entry: CatalogEntry): boolean {
-  return entry.exposedToLlm && (llmAllowedKinds as readonly ExpressionKind[]).includes(entry.kind)
+  if (entry.duplicateOf !== undefined)
+    return false
+  return entry.exposedToLlm && ((llmAllowedKinds as readonly ExpressionKind[]).includes(entry.kind) || (entry.kind === 'combo' && (entry.slots?.length ?? 0) > 0))
 }
