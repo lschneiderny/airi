@@ -6,6 +6,8 @@ import { Button, Checkbox, Input, Select } from '@proj-airi/ui'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { groupDisplayName } from './expression-group-name'
+
 type Entry = Live2DExpressionSettingsSnapshot['groups'][number]
 
 interface DraftMapping {
@@ -16,8 +18,8 @@ interface DraftMapping {
 
 const props = defineProps<{
   entry: Entry
-  /** Existing group names across the catalog; "none" is always offered. */
-  groupNames: string[]
+  /** Every group in the catalog with its member labels in catalog order; "none" is always offered. */
+  groups: { name: string, labels: string[] }[]
 }>()
 const emit = defineEmits<{
   (e: 'command', command: Live2DExpressionSettingsCommand): void
@@ -30,11 +32,6 @@ const llmKinds: ExpressionKind[] = ['face', 'effect', 'prop']
 const emotions: EmotionMapping['emotion'][] = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'love', 'flustered', 'sleepy']
 const bands: EmotionMapping['minBand'][] = ['slight', 'clear', 'strong']
 const noGroup = '__none__'
-
-// Derived groups are named `group:<file>`; the prefix is an internal marker, not part of the name.
-function groupLabel(name: string) {
-  return name.replace(/^group:/, '')
-}
 const minWeight = 0.1
 const maxWeight = 5
 
@@ -43,22 +40,30 @@ const emotionOptions = computed(() => emotions.map(emotion => ({ value: emotion,
 const bandOptions = computed(() => bands.map(band => ({ value: band, label: t(`settings.live2d.expressions.bands.${band}`) })))
 const groupOptions = computed(() => [
   { value: noGroup, label: t('settings.live2d.expressions.group-none') },
-  ...[...new Set([...props.groupNames, ...(props.entry.group ? [props.entry.group] : [])])].map(name => ({ value: name, label: groupLabel(name) })),
+  ...props.groups.map(group => ({ value: group.name, label: groupDisplayName(group.labels) })),
 ])
+const mappedEmotions = computed(() => [...new Set(props.entry.mappings.map(mapping => mapping.emotion))]
+  .map(emotion => t(`settings.live2d.expressions.emotions.${emotion}`))
+  .join(', '))
+const switchValue = computed(() => props.entry.inverted ? !props.entry.active : props.entry.active)
+
+function setSwitch(value: boolean) {
+  emit('command', { type: 'set-active', id: props.entry.id, active: props.entry.inverted ? !value : value })
+}
 
 const open = ref(false)
 const baseline = ref('')
 const draftLabel = ref('')
 const draftKind = ref<ExpressionKind>('face')
 const draftGroup = ref(noGroup)
-const draftConfirmed = ref(false)
+const draftInverted = ref(false)
 const draftMappings = ref<DraftMapping[]>([])
 
 function loadDraft() {
   draftLabel.value = props.entry.label
   draftKind.value = props.entry.kind
   draftGroup.value = props.entry.group ?? noGroup
-  draftConfirmed.value = props.entry.confirmed
+  draftInverted.value = props.entry.inverted ?? false
   draftMappings.value = props.entry.mappings.map(mapping => ({ emotion: mapping.emotion, weight: mapping.weight, minBand: mapping.minBand }))
   baseline.value = JSON.stringify(props.entry)
 }
@@ -98,7 +103,8 @@ function apply() {
       label: draftLabel.value.trim(),
       kind: draftKind.value,
       group: draftGroup.value === noGroup ? null : draftGroup.value,
-      confirmed: draftConfirmed.value,
+      confirmed: true,
+      inverted: draftInverted.value,
       mappings: draftMappings.value.map(mapping => ({ emotion: mapping.emotion, weight: mapping.weight as number, minBand: mapping.minBand })),
     },
   })
@@ -120,38 +126,17 @@ function resetEntry() {
     ]"
   >
     <div :class="['flex flex-wrap items-center gap-2']">
-      <div :class="['min-w-0 flex flex-1 flex-col gap-1']">
+      <div :class="['min-w-0 flex flex-1 basis-40 flex-col gap-1']">
         <span
           :class="[
             'break-words',
             'text-sm font-medium text-neutral-700 dark:text-neutral-300',
           ]"
         >{{ entry.label }}</span>
-        <div :class="['flex flex-wrap items-center gap-1', 'text-xs']">
-          <span
-            :class="[
-              'rounded-full px-2 py-0.5',
-              'bg-primary-100 dark:bg-primary-900/40',
-              'text-primary-700 dark:text-primary-200',
-            ]"
-          >{{ t(`settings.live2d.expressions.kinds.${entry.kind}`) }}</span>
-          <span
-            v-if="entry.group"
-            :class="[
-              'max-w-full break-all rounded-lg px-2 py-0.5',
-              'bg-neutral-100 dark:bg-neutral-800',
-              'text-neutral-600 dark:text-neutral-300',
-            ]"
-          >{{ groupLabel(entry.group) }}</span>
-          <span
-            :class="[
-              'rounded-full px-2 py-0.5',
-              entry.confirmed
-                ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200'
-                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200',
-            ]"
-          >{{ entry.confirmed ? t('settings.live2d.expressions.confirmed') : t('settings.live2d.expressions.suggested') }}</span>
-        </div>
+        <span
+          v-if="mappedEmotions"
+          :class="['break-words', 'text-xs text-neutral-500 dark:text-neutral-400']"
+        >{{ mappedEmotions }}</span>
       </div>
       <div :class="['flex flex-wrap items-center gap-3']">
         <label
@@ -166,11 +151,11 @@ function resetEntry() {
           />
         </label>
         <label :class="['flex items-center gap-2', 'text-xs text-neutral-500 dark:text-neutral-400']">
-          {{ t('settings.live2d.expressions.preview') }}
+          {{ t('settings.live2d.expressions.switch') }}
           <Checkbox
-            :model-value="entry.active"
-            :aria-label="`${t('settings.live2d.expressions.preview')}: ${entry.label}`"
-            @update:model-value="emit('command', { type: 'toggle', id: entry.id })"
+            :model-value="switchValue"
+            :aria-label="`${t('settings.live2d.expressions.switch')}: ${entry.label}`"
+            @update:model-value="setSwitch"
           />
         </label>
         <Button size="sm" :aria-expanded="open" @click="toggleEditor">
@@ -219,8 +204,11 @@ function resetEntry() {
       </div>
 
       <label :class="['flex items-center justify-between gap-2', 'text-sm text-neutral-700 dark:text-neutral-300']">
-        {{ t('settings.live2d.expressions.fields.confirmed') }}
-        <Checkbox v-model="draftConfirmed" :aria-label="t('settings.live2d.expressions.fields.confirmed')" />
+        <span :class="['min-w-0 flex flex-1 flex-col gap-0.5']">
+          {{ t('settings.live2d.expressions.fields.inverted') }}
+          <span :class="['text-xs text-neutral-500 dark:text-neutral-400']">{{ t('settings.live2d.expressions.fields.inverted-description') }}</span>
+        </span>
+        <Checkbox v-model="draftInverted" :class="['shrink-0']" :aria-label="t('settings.live2d.expressions.fields.inverted')" />
       </label>
 
       <div :class="['flex flex-col gap-2']">

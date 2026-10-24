@@ -182,25 +182,39 @@ describe('live2D model settings', () => {
     await expect.element(screen.getByText('happy', { exact: true })).toBeVisible()
     await expect.element(screen.getByText('surprised', { exact: true })).toBeVisible()
 
-    await screen.getByRole('switch', { name: `${t('settings.live2d.expressions.preview')}: happy` }).click()
+    await screen.getByRole('switch', { name: `${t('settings.live2d.expressions.switch')}: happy` }).click()
 
-    expect(onLive2dExpressionCommand).toHaveBeenCalledWith({ type: 'toggle', id: 'happy.exp3.json' })
+    expect(onLive2dExpressionCommand).toHaveBeenCalledWith({ type: 'set-active', id: 'happy.exp3.json', active: true })
     expect(useExpressionStore(pinia).definitions).toEqual([])
   })
 
-  it('renders catalog labels and kinds, and offers the AI toggle only for face, effect, and prop', async () => {
+  it('renders slim rows with a mapping summary, and offers the AI toggle only for face, effect, and prop', async () => {
     const { screen } = await renderRemoteExpressions([
-      expressionEntry({ id: 'a', label: 'Blush', kind: 'face', group: 'Cheeks', confirmed: true }),
+      expressionEntry({ id: 'a', label: 'Blush', kind: 'face', group: 'Cheeks', confirmed: true, mappings: [{ emotion: 'angry', weight: 1, minBand: 'clear' }, { emotion: 'angry', weight: 2, minBand: 'strong' }, { emotion: 'flustered', weight: 1, minBand: 'clear' }] }),
       expressionEntry({ id: 'b', label: 'Hat', kind: 'outfit' }),
     ])
+    for (const key of ['kinds.face', 'kinds.outfit', 'confirmed', 'emotions.angry', 'emotions.flustered'])
+      expect(t(`settings.live2d.expressions.${key}`)).not.toBe(`settings.live2d.expressions.${key}`)
     await expect.element(screen.getByText('Blush', { exact: true })).toBeVisible()
     await expect.element(screen.getByText('Hat', { exact: true })).toBeVisible()
-    await expect.element(screen.getByText(t('settings.live2d.expressions.kinds.face'), { exact: true })).toBeVisible()
-    await expect.element(screen.getByText(t('settings.live2d.expressions.kinds.outfit'), { exact: true })).toBeVisible()
-    await expect.element(screen.getByText('Cheeks', { exact: true })).toBeVisible()
-    await expect.element(screen.getByText(t('settings.live2d.expressions.confirmed'), { exact: true })).toBeVisible()
+    await expect.element(screen.getByText(`${t('settings.live2d.expressions.emotions.angry')}, ${t('settings.live2d.expressions.emotions.flustered')}`, { exact: true })).toBeVisible()
+    await expect.element(screen.getByText(t('settings.live2d.expressions.kinds.face'), { exact: true })).not.toBeInTheDocument()
+    await expect.element(screen.getByText(t('settings.live2d.expressions.kinds.outfit'), { exact: true })).not.toBeInTheDocument()
+    await expect.element(screen.getByText('Cheeks', { exact: true })).not.toBeInTheDocument()
+    await expect.element(screen.getByText(t('settings.live2d.expressions.confirmed'), { exact: true })).not.toBeInTheDocument()
     await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.llm-exposed')}: Blush` })).toBeVisible()
     await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.llm-exposed')}: Hat` })).not.toBeInTheDocument()
+  })
+
+  it('shows an inverted entry as on while inactive and turns it on through set-active', async () => {
+    const { screen, onLive2dExpressionCommand } = await renderRemoteExpressions([
+      expressionEntry({ id: 'coat.exp3.json', label: 'coat', kind: 'outfit', inverted: true, active: false }),
+    ])
+    const coat = screen.getByRole('switch', { name: `${t('settings.live2d.expressions.switch')}: coat` })
+    await expect.element(coat).toBeChecked()
+    await coat.click()
+    expect(onLive2dExpressionCommand).toHaveBeenCalledTimes(1)
+    expect(onLive2dExpressionCommand).toHaveBeenCalledWith({ type: 'set-active', id: 'coat.exp3.json', active: true })
   })
 
   it('emits update-entry when a label is edited and applied', async () => {
@@ -212,7 +226,22 @@ describe('live2D model settings', () => {
     expect(onLive2dExpressionCommand).toHaveBeenCalledWith({
       type: 'update-entry',
       id: 'red.exp3.json',
-      patch: { label: 'Blush', kind: 'face', group: null, confirmed: false, mappings: [] },
+      patch: { label: 'Blush', kind: 'face', group: null, confirmed: true, inverted: false, mappings: [] },
+    })
+  })
+
+  it('includes the inverted checkbox in the applied patch', async () => {
+    const { screen, onLive2dExpressionCommand } = await renderRemoteExpressions([expressionEntry({ id: 'coat.exp3.json', label: 'coat', kind: 'outfit' })])
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    expect(t('settings.live2d.expressions.fields.inverted')).not.toBe('settings.live2d.expressions.fields.inverted')
+    await expect.element(screen.getByText(t('settings.live2d.expressions.fields.inverted-description'), { exact: true })).toBeVisible()
+    await screen.getByRole('switch', { name: t('settings.live2d.expressions.fields.inverted'), exact: true }).click()
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true }).click()
+    expect(onLive2dExpressionCommand).toHaveBeenCalledTimes(1)
+    expect(onLive2dExpressionCommand).toHaveBeenCalledWith({
+      type: 'update-entry',
+      id: 'coat.exp3.json',
+      patch: { label: 'coat', kind: 'outfit', group: null, confirmed: true, inverted: true, mappings: [] },
     })
   })
 

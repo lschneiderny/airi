@@ -99,7 +99,14 @@ function applyExpressionSettingsCommand(command: Live2DExpressionSettingsCommand
   expressionStore.applySettingsCommand(command)
 }
 
-const expressionGroupNames = computed(() => [...new Set(expressionSettingsSnapshot.value.groups.flatMap(entry => entry.group ? [entry.group] : []))])
+const expressionGroups = computed(() => {
+  const groups = new Map<string, string[]>()
+  for (const entry of expressionSettingsSnapshot.value.groups) {
+    if (entry.group)
+      groups.set(entry.group, [...(groups.get(entry.group) ?? []), entry.label])
+  }
+  return [...groups].map(([name, labels]) => ({ name, labels }))
+})
 const performanceSettings = useExpressionPerformanceSettings()
 const deciderOptions = computed<SelectTabOption<ExpressionPerformanceSettings['decider']>[]>(() => [
   {
@@ -931,7 +938,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
           v-for="entry in expressionSettingsSnapshot.groups"
           :key="entry.id"
           :entry="entry"
-          :group-names="expressionGroupNames"
+          :groups="expressionGroups"
           @command="applyExpressionSettingsCommand"
         />
       </div>
