@@ -135,6 +135,10 @@ watch(() => props.cursorPosition, (cursorPosition) => {
   activeCursorPosition.value = cursorPosition ? { ...cursorPosition } : null
   if (clearCursorFocusTimeout)
     clearTimeout(clearCursorFocusTimeout)
+  clearCursorFocusTimeout = undefined
+  // Natural eases its own attention, so its cursor clears only when the host stops reporting one; an expiry would snap the gaze away.
+  if (live2dMotionDriver.value === 'natural')
+    return
   clearCursorFocusTimeout = setTimeout(() => {
     activeCursorPosition.value = null
   }, 1000)

@@ -178,6 +178,10 @@ const touchPoint = new Point()
 /** Head and body boxes in model canvas space, re-measured at most every 100 ms while the pointer moves. */
 let touchRegions: { head: Live2DModelCanvasRect | undefined, unscaledHead: Live2DModelCanvasRect | undefined, body: Live2DModelCanvasRect | undefined, measuredAtMs: number } | undefined
 const touchRegionsMaxAgeMs = 100
+/** Latest primary pointermove over the canvas in model canvas space, stamped with `performance.now()`. */
+let latestPointer: { x: number, y: number, atMs: number } | undefined
+/** A pointer sample younger than this drives Natural attention instead of the host cursor mapping. */
+const pointerFreshMs = 100
 /** Parameter ids the playing explicit clip animates; Natural masks them. Empty while no clip plays. */
 let clipOwnedIds: ReadonlySet<string> = new Set<string>()
 /** Latest SDK timestamp (seconds) seen by the Natural frame hook; NaN before the first frame of a model. */
@@ -600,10 +604,17 @@ async function performModelLoad() {
       readRigProfile(),
       () => {
         let cursor = null
+        // A fresh canvas pointer sample wins over the host cursor mapping, so gaze and touch share one input.
+        const pointer = latestPointer && performance.now() - latestPointer.atMs < pointerFreshMs ? latestPointer : undefined
         // The controller decides what an aside or screen cue does with the cursor; the host only reports it.
-        if (live2dNaturalCursorAttention.value && props.eyeFocusSourceActive) {
-          localFocus.set(props.focusAt.x, props.focusAt.y)
-          live2DModel.toModelPosition(localFocus, localFocus)
+        if (live2dNaturalCursorAttention.value && (props.eyeFocusSourceActive || pointer)) {
+          if (pointer) {
+            localFocus.set(pointer.x, pointer.y)
+          }
+          else {
+            localFocus.set(props.focusAt.x, props.focusAt.y)
+            live2DModel.toModelPosition(localFocus, localFocus)
+          }
           // Offset from the eye anchor in head widths, y up. Without a head box the anchor and unit are fractions of the canvas.
           const head = readTouchRegions(performance.now())?.unscaledHead
           const anchorX = head ? head.x + head.width / 2 : 0.5 * internalModel.originalWidth
@@ -652,8 +663,8 @@ async function performModelLoad() {
     live2DModel.on('physicsLoaded', () => naturalAdapter.setRigProfile(readRigProfile()))
     motionManagerUpdate.register((ctx) => {
       sdkNowSeconds = ctx.now
-      // A pet ends when the pointer rests, which produces no pointer event.
-      if (touchGestures.petting)
+      // A pet ends and a held press commits as a poke while the pointer rests, which produces no pointer event.
+      if (touchGestures.petting || touchGestures.pressPending)
         handleTouchEvents(touchGestures.update(performance.now()))
       naturalAdapter.frame(ctx.now)
     }, 'final')
@@ -1277,25 +1288,40 @@ function acrossRectY(value: number, rect: Live2DModelCanvasRect | undefined) {
  * backing size over displayed size gives the global point `toModelPosition` expects. This
  * is the same mapping the eye focus uses, without depending on the render scale setting.
  */
-function touchSampleFrom(event: PointerEvent, canvas: HTMLCanvasElement): Live2DTouchSample | undefined {
+function modelPointFrom(event: PointerEvent, canvas: HTMLCanvasElement) {
   const current = model.value
   const rect = canvas.getBoundingClientRect()
   if (!current || rect.width <= 0 || rect.height <= 0)
-    return undefined
-  const regions = readTouchRegions(event.timeStamp)
-  if (!regions)
     return undefined
   touchPoint.set(
     (event.clientX - rect.left) * canvas.width / rect.width,
     (event.clientY - rect.top) * canvas.height / rect.height,
   )
   current.toModelPosition(touchPoint, touchPoint)
+  return touchPoint
+}
+
+function touchSampleFrom(event: PointerEvent, canvas: HTMLCanvasElement): Live2DTouchSample | undefined {
+  const current = model.value
+  const regions = current && readTouchRegions(event.timeStamp)
+  if (!current || !regions)
+    return undefined
+  const point = modelPointFrom(event, canvas)
+  if (!point)
+    return undefined
+  const head = regions.head && regions.head.width > 0 ? regions.head : undefined
   return {
     timeMs: event.timeStamp,
-    x: touchPoint.x,
-    y: touchPoint.y,
-    region: live2DTouchRegionAt(touchPoint, regions),
+    x: point.x,
+    y: point.y,
+    region: live2DTouchRegionAt(point, regions),
     scale: regions.head?.width ?? regions.body?.width ?? current.internalModel.originalWidth,
+    // Offset from the scaled head center in head widths, so the gesture can allow its margin zone.
+    head: head && {
+      x: (point.x - (head.x + head.width / 2)) / head.width,
+      y: (point.y - (head.y + head.height / 2)) / head.width,
+      halfHeight: head.height / 2 / head.width,
+    },
   }
 }
 
@@ -1312,7 +1338,15 @@ function handleTouchEvents(events: Live2DTouchEvent[]) {
 }
 
 function onTouchPointer(event: PointerEvent) {
-  if (!touchActive.value || !event.isPrimary || !(event.currentTarget instanceof HTMLCanvasElement))
+  if (!event.isPrimary || !(event.currentTarget instanceof HTMLCanvasElement))
+    return
+  // Natural attention reads this sample even while touch is off, so record it before the touch gate.
+  if (event.type === 'pointermove') {
+    const point = modelPointFrom(event, event.currentTarget)
+    if (point)
+      latestPointer = { x: point.x, y: point.y, atMs: performance.now() }
+  }
+  if (!touchActive.value)
     return
   if (event.type === 'pointerleave' || event.type === 'pointercancel') {
     handleTouchEvents(touchGestures.cancelled(event.timeStamp))
