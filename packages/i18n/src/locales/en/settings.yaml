@@ -307,13 +307,63 @@ live2d:
     reset-entry: Reset to detected
     reload: Load latest values
     stale: This expression changed elsewhere while you were editing.
-    group-none: No group
+    group-none: None
     add-mapping: Add emotion mapping
     remove-mapping: Remove mapping
+    reactions:
+      title: Reactions
+      description: What the character shows for each emotion. Select expressions and save them as a combo.
+      empty: Nothing is mapped to this emotion yet.
+      add: Add expression
+      remove: Remove {label} from {emotion}
+      preview: Preview {label}
+      select: Select {label}
+      make-combo: Make combo
+      make-combo-hint: Select expressions first.
+    combos:
+      title: Combos
+      description: Expressions that turn on together. Emotions, the AI, saved defaults, and you can all turn a combo on.
+      empty: No combos yet. Make one from a reaction.
+      new: New combo
+      default-label: '{emotion} look'
+      members: Members
+      add-member: Add member
+      remove-member: Remove {label}
+      strength: Strength
+      strength-hint: Strength blends smoothly only for expressions that add to their parameters.
+      manual-only: Contains an outfit, system, or unsorted expression, so only you and saved defaults can turn it on.
+      save: Save combo
+      cancel: Cancel
+      delete: Delete combo
+      delete-confirm: 'Delete {label}? Saved defaults that use it stop using it.'
+    areas:
+      title: Everything else
+      whole-look: Whole looks
+      eyes: Eyes
+      mouth: Mouth
+      cheeks: Cheeks
+      effects: Effects
+      outfit-hair: 'Outfit & hair'
+      props: Props
+      hidden: Hidden
+      unsorted: Unsorted
+      unsorted-description: The app couldn't tell what these are. They stay out of the AI's list and automatic picks until you give them a kind.
+    duplicates:
+      also: 'Also: {labels}'
+      keep-separate: Show {label} separately
+    custom:
+      add: Add custom expression
+      parameter: Switch
+      value: Value
+      label: Label
+      create: Create
+      none-free: This model has no free switches left.
+      delete: Delete custom expression
     fields:
       label: Label
       kind: Kind
-      group: Group
+      group: Choose one with
+      area: Area
       mappings: Emotion mappings
       inverted: Switch shows the opposite
       inverted-description: Use this when turning the expression on hides something, such as a coat.
@@ -326,6 +376,9 @@ live2d:
       outfit: Outfit
       prop: Prop
       system: System
+      unsorted: Unsorted
+      combo: Combo
+    overridden-by: Hidden by {label} while it is active
     bands:
       slight: Slight
       clear: Clear
@@ -358,7 +411,7 @@ live2d:
       description: Keep each emotion's face and posture for as long as the speech or expression that caused it. Turn this off to compare with the earlier brief reactions. Natural only.
     auto-expressions:
       title: Automatic expressions
-      description: Pick confirmed expressions from emotions without an explicit AI request.
+      description: Pick expressions from emotions without an explicit AI request.
     state-feedback:
       title: State feedback
       description: Tell the AI which expressions are currently active. Each request includes the active expressions and mood.
