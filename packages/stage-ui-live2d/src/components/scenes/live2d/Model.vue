@@ -813,7 +813,7 @@ async function initExpressionController(internalModel?: PixiLive2DInternalModel,
     const base = new URL(settings.url, 'https://archive.invalid/')
     return decodeURI(new URL(path, base).pathname.slice(1))
   }
-  await expressionController.initialise(modelId, expressionRefs, readExpFile, settings._expFiles, resolvePath, settings._vtubeData)
+  await expressionController.initialise(modelId, expressionRefs, readExpFile, settings._expFiles, resolvePath, settings._vtubeData, (settings as { _cdiData?: unknown })._cdiData)
 }
 
 async function setMotion(motionName: string, index?: number) {

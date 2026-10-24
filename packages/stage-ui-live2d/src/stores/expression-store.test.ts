@@ -9,12 +9,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useExpressionStore } from './expression-store'
 
-const defs: NamedExpressionDefinition[] = ['smile', 'frown', 'glasses'].map(id => ({
+const defs: NamedExpressionDefinition[] = ['smile', 'frown', 'glasses'].map((id, index) => ({
   id,
   name: id,
   fadeIn: 0,
   fadeOut: 1,
-  parameters: [{ id: 'switch', value: 1, blend: 'Add' }],
+  parameters: [{ id: 'ParamMouthForm', value: index + 1, blend: 'Add' }],
 }))
 
 describe('curated expression catalog', () => {
@@ -31,6 +31,33 @@ describe('curated expression catalog', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+
+  it('loads curated keepSeparate before deriving and rederives using retained model metadata', () => {
+    const store = useExpressionStore()
+    const duplicates: NamedExpressionDefinition[] = ['a', 'b'].map(id => ({
+      id,
+      name: id,
+      parameters: [{ id: 'opaque', value: 1, blend: 'Add' }],
+    }))
+    storage.set('expression-catalog:a', JSON.stringify({ version: 1, overrides: [{ id: 'b', keepSeparate: true }] }))
+    const refs = [{ File: 'a', Name: 'Puff Cheeks' }]
+    const vtube = { Hotkeys: [{ Action: 'ToggleExpression', File: 'b', Name: '鼓脸' }] }
+    const displayInfo = { Parameters: [{ Id: 'opaque', Name: '鼓脸' }] }
+    store.registerDefinitions('a', duplicates, refs, vtube, displayInfo)
+    expect(store.derived.every(entry => entry.duplicateOf === undefined)).toBe(true)
+    expect(store.derived.map(entry => entry.area)).toEqual(['cheeks', 'cheeks'])
+    store.updateEntry('b', { keepSeparate: false })
+    store.rederive()
+    expect(store.derived[0]).toMatchObject({ label: 'Puff Cheeks', labelSource: 'model', aliases: ['b'], area: 'cheeks' })
+    expect(store.derived[1]).toMatchObject({ label: '鼓脸', labelSource: 'vtube', duplicateOf: 'a' })
+    store.updateEntry('b', { keepSeparate: true })
+    store.rederive()
+    expect(store.derived.every(entry => entry.duplicateOf === undefined && entry.aliases === undefined)).toBe(true)
+    expect(store.curated.overrides).toEqual([{ id: 'b', keepSeparate: true }])
+    store.dispose()
+    store.rederive()
+    expect(store.derived).toEqual([])
   })
 
   it('fades expressions without a valid file fade over the slot default fade', () => {

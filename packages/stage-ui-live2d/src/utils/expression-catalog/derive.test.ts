@@ -33,19 +33,20 @@ describe('catalog derivation', () => {
   })
 
   it('uses model3 then VTS then basename and leaves all entries unconfirmed', () => {
-    const defs = ['one', 'two', 'three', 'four'].map(id => definition(`${id}.exp3.json`, { switch: 1 }))
+    const defs = ['one', 'two', 'three', 'four'].map((id, index) => definition(`${id}.exp3.json`, { switch: index + 1 }))
     const entries = deriveCatalog(defs, [{ File: defs[0].id, Name: 'Model name' }, { File: defs[3].id, Name: 42 }], {
       Hotkeys: ['one', 'two', 'four'].map(id => ({ Action: 'ToggleExpression', File: `${id}.exp3.json`, Name: 'VTS name' })),
     })
     expect(entries.map(entry => entry.label)).toEqual(['Model name', 'VTS name', 'three', 'VTS name'])
+    expect(entries.map(entry => entry.labelSource)).toEqual(['model', 'vtube', 'file', 'vtube'])
     for (const entry of entries) {
       expect(entry.confirmed).toBe(false)
       expect(entry.exposedToLlm).toBe(['face', 'effect', 'prop'].includes(entry.kind))
       expect(entry.mappings).toEqual(suggestMappings(entry.label, entry.fileName, entry.kind))
       expect(entry.parameterIds).toEqual(['switch'])
     }
-    // None of these labels is in the lexicon, so the derived faces carry no mappings but are exposed by kind.
-    expect(entries.every(entry => entry.kind === 'face' && entry.exposedToLlm && entry.mappings.length === 0)).toBe(true)
+    // Unknown switches have no evidence of a facial expression.
+    expect(entries.every(entry => entry.kind === 'unsorted' && !entry.exposedToLlm && entry.mappings.length === 0 && entry.area === 'hidden')).toBe(true)
   })
 
   it.each([
@@ -68,9 +69,25 @@ describe('catalog derivation', () => {
     const defs = [definition(`${label}.exp3.json`, { switch: 1 })]
     const [entry] = deriveCatalog(defs, [{ File: defs[0].id, Name: label }], {})
     expect(entry.kind).toBe(kind)
-    expect(entry.mappings).toEqual(mappings.map(mapping => ({ ...mapping, weight: 1 })))
+    const weight = ['Blush', 'Crying Eyes', '脸红2'].includes(label) ? 0.5 : 1
+    expect(entry.mappings).toEqual(mappings.map(mapping => ({ ...mapping, weight })))
     expect(entry.exposedToLlm).toBe(kind === 'face' || kind === 'effect' || kind === 'prop')
     expect(entry.confirmed).toBe(false)
+  })
+
+  it.each([
+    ['expression19', 'Param82', '口罩', 'unsorted', 'hidden', []],
+    ['expression20', 'Param83', '面罩', 'unsorted', 'hidden', []],
+    ['Bowtie', '换领结', '', 'unsorted', 'hidden', []],
+    ['Bloodstain', '血迹', '', 'unsorted', 'hidden', []],
+    ['Angry', 'Param60', '生气按键', 'face', 'whole-look', [{ emotion: 'angry', weight: 1, minBand: 'clear' }]],
+    ['Puff Cheeks', 'cheekpuff', '鼓脸', 'face', 'cheeks', [{ emotion: 'angry', weight: 0.5, minBand: 'clear' }]],
+    ['Hearts 1', '心心眼', '', 'face', 'eyes', [{ emotion: 'love', weight: 0.5, minBand: 'clear' }]],
+    ['Flat Mouth', '贱兮兮', '', 'face', 'mouth', []],
+    ['Drum mouth', '[Drum mouth]鼓嘴→', '', 'face', 'mouth', []],
+  ])('derives rig case %s with parameter evidence', (label, id, name, kind, area, mappings) => {
+    const [entry] = deriveCatalog([definition(`${label}.exp3.json`, { [id]: 1 })], [], {}, { Parameters: [{ Id: id, Name: name }] })
+    expect(entry).toMatchObject({ kind, area, mappings, exposedToLlm: kind === 'face' })
   })
 
   it('returns mappings in lexicon emotion order without duplicates and none for outfit or system kinds', () => {

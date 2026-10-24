@@ -42,6 +42,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   const composer = markRaw(new ExpressionComposer())
   const derived = ref<CatalogEntry[]>([])
   const curated = ref<CuratedCatalogDocument>({ version: 1, overrides: [] })
+  let deriveInputs: { defs: NamedExpressionDefinition[], model3Refs: { File: string, Name?: unknown }[], vtube?: unknown, displayInfo?: unknown } | undefined
   const catalog = computed(() => mergeCatalog(derived.value, curated.value))
   const llmEligibleEntries = computed(() => catalog.value.filter(isLlmEligible))
   const autoEligibleEntries = computed(() => catalog.value.filter(isAutoEligible))
@@ -79,10 +80,19 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     })),
   }))
 
-  function registerDefinitions(id: string, defs: NamedExpressionDefinition[], model3Refs: { File: string, Name?: unknown }[] = [], vtube?: unknown) {
+  /** Rebuild duplicate ownership after curated keepSeparate changes without reloading the model. */
+  function rederive() {
+    if (!deriveInputs)
+      return
+    const { defs, model3Refs, vtube, displayInfo } = deriveInputs
+    const keepSeparate = new Set(curated.value.overrides.filter(override => override.keepSeparate === true).map(override => override.id))
+    derived.value = deriveCatalog(defs, model3Refs, vtube, displayInfo, keepSeparate)
+  }
+
+  function registerDefinitions(id: string, defs: NamedExpressionDefinition[], model3Refs: { File: string, Name?: unknown }[] = [], vtube?: unknown, displayInfo?: unknown) {
     modelId.value = id
     definitions.value = defs
-    derived.value = deriveCatalog(defs, model3Refs, vtube)
+    deriveInputs = { defs, model3Refs, vtube, displayInfo }
     curated.value = { version: 1, overrides: [] }
     slotActive.value = []
     leases.value = emptyLeases()
@@ -98,6 +108,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     catch (error) {
       console.warn('[expression-store] Invalid curated catalog discarded:', errorMessageFrom(error))
     }
+    rederive()
     restSet.value = []
     composer.define(defs)
     try {
@@ -183,6 +194,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     restSuppressed.value = []
     leases.value = emptyLeases()
     derived.value = []
+    deriveInputs = undefined
     curated.value = { version: 1, overrides: [] }
     composer.define([])
   }
@@ -204,5 +216,5 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     }
   }
 
-  return { definitions, modelId, restSet, restSuppressed, manualActive, slotActive, leases, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, registerDefinitions, activate, activateFromSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, dispose, applySettingsCommand }
+  return { definitions, modelId, restSet, restSuppressed, manualActive, slotActive, leases, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, registerDefinitions, rederive, activate, activateFromSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, dispose, applySettingsCommand }
 })

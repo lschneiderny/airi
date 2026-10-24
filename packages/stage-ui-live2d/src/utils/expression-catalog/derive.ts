@@ -1,8 +1,13 @@
-import type { CatalogEntry, EmotionMapping, ExpressionKind } from '@proj-airi/stage-shared/expression-performance'
+import type { CatalogEntry, EmotionMapping, ExpressionArea, ExpressionKind } from '@proj-airi/stage-shared/expression-performance'
 
 import type { ExpressionDefinition } from '../../composables/live2d/expression/compose'
 
 import { llmAllowedKinds, parseVtubeHotkeys } from '@proj-airi/stage-shared/expression-performance'
+
+import { faceRegions, suggestArea } from './area'
+import { deduplicateCatalog } from './dedupe'
+import { readParameterDisplayNames } from './display-names'
+import { emotionTokens, matchesEmotion, matchesToken } from './tokens'
 
 function baseName(path: string): string {
   return path.split(/[\\/]/).pop()!.replace(/\.exp3\.json$/i, '')
@@ -43,27 +48,8 @@ export function suggestKind(label: string, fileName: string): ExpressionKind {
 
 const negationTokens = ['cancel', 'off', 'hide', 'hidden', 'remove', 'no', 'disappear', '取消', '隐藏', '关闭']
 
-const emotionTokens: [EmotionMapping['emotion'], string[]][] = [
-  ['happy', ['happy', 'smile', 'grin', 'joy', 'laugh', 'wink', 'star eyes', 'cat mouth', 'tongue out', '笑', '吐舌']],
-  ['sad', ['sad', 'cry', 'crying', 'tear', 'sob', '哭', '流泪']],
-  ['angry', ['angry', 'anger', 'rage', 'mad', 'disdain', 'black face', 'puff cheeks', 'pout', '生气', '愤怒', '鼓脸']],
-  ['think', ['think', 'thinking', '思考']],
-  ['surprised', ['surprise', 'surprised', 'shock', 'shocked', 'exclamation', '惊']],
-  ['awkward', ['awkward', 'sweat', '尴尬', '汗']],
-  ['question', ['question', 'confusion', 'confused', '问号', '疑问']],
-  ['curious', ['curious']],
-  ['love', ['love', 'heart', '爱心']],
-  ['flustered', ['blush', 'red', 'shy', 'embarrassed', 'spiral eyes', '脸红', '害羞']],
-  ['sleepy', ['sleepy', 'sleep', 'zzz', 'snot', '困', '睡']],
-]
-
-function matchesToken(text: string, token: string): boolean {
-  // Non-ASCII (CJK) tokens match by substring; English tokens need word boundaries.
-  return /[^\x00-\x7F]/.test(token) ? text.includes(token) : new RegExp(`(?:^|[^a-z])${token}s?(?=$|[^a-z])`).test(text)
-}
-
 /** Lexicon mappings for face and effect expressions; negated labels such as "cancel" get none. */
-export function suggestMappings(label: string, fileName: string, kind: ExpressionKind): EmotionMapping[] {
+export function suggestMappings(label: string, fileName: string, kind: ExpressionKind, area?: ExpressionArea): EmotionMapping[] {
   if (kind !== 'face' && kind !== 'effect')
     return []
   const text = `${label} ${baseName(fileName)}`.toLowerCase()
@@ -71,7 +57,7 @@ export function suggestMappings(label: string, fileName: string, kind: Expressio
     return []
   return emotionTokens
     .filter(([, tokens]) => tokens.some(token => matchesToken(text, token)))
-    .map(([emotion]) => ({ emotion, weight: 1, minBand: kind === 'effect' ? 'strong' : 'clear' }))
+    .map(([emotion]) => ({ emotion, weight: kind === 'face' && (area === 'eyes' || area === 'mouth' || area === 'cheeks') ? 0.5 : 1, minBand: kind === 'effect' ? 'strong' : 'clear' }))
 }
 
 /** Connected components never cross kinds or use system-owned parameters. */
@@ -129,27 +115,41 @@ export function deriveCatalog(
   defs: ExpressionDefinition[],
   model3Refs: { File: string, Name?: unknown }[],
   vtube: unknown,
+  displayInfo?: unknown,
+  keepSeparate: ReadonlySet<string> = new Set(),
 ): CatalogEntry[] {
   const labels = readVtubeHotkeyLabels(vtube)
+  const displayNames = readParameterDisplayNames(displayInfo)
   const entries = defs.map((def): CatalogEntry => {
     const reference = model3Refs.find(ref => ref.File === def.id)
     // Explicit model names outrank vendor labels; filenames cover unnamed files.
     let label = labels.get(baseName(def.id).toLowerCase()) ?? baseName(def.id)
-    if (typeof reference?.Name === 'string' && cleanLabel(reference.Name))
+    let labelSource: CatalogEntry['labelSource'] = labels.has(baseName(def.id).toLowerCase()) ? 'vtube' : 'file'
+    if (typeof reference?.Name === 'string' && cleanLabel(reference.Name)) {
       label = cleanLabel(reference.Name)
-    const kind = suggestKind(label, def.id)
+      labelSource = 'model'
+    }
+    const parameterIds = def.parameters.map(parameter => parameter.id)
+    let kind = suggestKind(label, def.id)
+    if (kind === 'face' && faceRegions(parameterIds, label, displayNames).size === 0 && !matchesEmotion(label))
+      kind = 'unsorted'
+    const area = kind === 'unsorted' ? 'hidden' : suggestArea(kind, parameterIds, label, displayNames)
     return {
       id: def.id,
       label,
+      labelSource,
       kind,
+      area,
       group: null,
       confirmed: false,
       exposedToLlm: (llmAllowedKinds as readonly ExpressionKind[]).includes(kind),
-      mappings: suggestMappings(label, def.id, kind),
+      mappings: suggestMappings(label, def.id, kind, area),
       fileName: def.id,
-      parameterIds: def.parameters.map(parameter => parameter.id),
+      parameterIds,
     }
   })
-  const groups = suggestGroups(defs, entries.map(entry => entry.kind))
-  return entries.map(entry => ({ ...entry, group: groups.get(entry.id)! }))
+  const deduplicated = deduplicateCatalog(entries, defs, new Set(model3Refs.map(ref => ref.File)), keepSeparate)
+  const primaryDefs = defs.filter((_, index) => deduplicated[index].duplicateOf === undefined)
+  const groups = suggestGroups(primaryDefs, deduplicated.filter(entry => entry.duplicateOf === undefined).map(entry => entry.kind))
+  return deduplicated.map(entry => ({ ...entry, group: groups.get(entry.id) ?? null }))
 }

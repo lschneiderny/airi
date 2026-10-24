@@ -54,6 +54,16 @@ describe('useExpressionController', () => {
     { name: 'eat', fileName: 'model/eat.exp3.json', data: { FadeInTime: 0, FadeOutTime: 0, Parameters: [{ Id: 'Param2', Value: 0, Blend: 'Add' }, { Id: 'Param4', Value: 1, Blend: 'Add' }] } },
   ]
 
+  it('forwards display names to derivation', async () => {
+    const { controller, store } = rig()
+    await controller.initialise('model', [], async () => '', [{
+      name: 'expression1',
+      fileName: 'expression1.exp3.json',
+      data: { Parameters: [{ Id: 'opaque', Value: 1 }] },
+    }], path => path, undefined, { Parameters: [{ Id: 'opaque', Name: '鼓脸' }] })
+    expect(store.catalog[0]).toMatchObject({ kind: 'face', area: 'cheeks', labelSource: 'file' })
+  })
+
   it('registers unreferenced archive expressions and gives referenced names precedence without fetching', async () => {
     const { controller, store } = rig()
     const read = vi.fn(async () => '')
