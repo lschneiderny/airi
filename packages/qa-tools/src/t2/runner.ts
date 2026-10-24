@@ -20,6 +20,7 @@ import { ExpressionComposer } from '@proj-airi/stage-ui-live2d/composables/live2
 import { readLive2DRigProfile } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/rig-profile'
 import { NaturalTraceRecorder } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
 import { createSlotLeases, emptyLeases } from '@proj-airi/stage-ui-live2d/stores/expression-slot-leases'
+import { resolve } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { computed, ref } from 'vue'
 
 import { runScenarioSink } from '../motion/scenario-sink'
@@ -201,22 +202,21 @@ export function runT2(input: MotionScenario, runtime: T2Runtime, options: RunT2O
       const definitions = readCatalogDefinitions(rig, catalog)
       const composer = new ExpressionComposer()
       composer.define(definitions)
-      const slotActive = ref<string[]>([])
+      let claimSeq = 0
       const leases = ref<SlotLeases>(emptyLeases())
       const muted = ref(false)
       const slotSettings = ref({ speechGrace: settings.slots.speechGrace, unstartedExpiry: settings.slots.unstartedExpiry, holdCap: settings.slots.holdCap })
       const slots = createSlotLeases({
         catalog: computed(() => catalog),
-        slotActive,
+        manualActive: ref<string[]>([]),
         leases,
         muted,
         slotSettings,
         composer,
-        ownersOf: id => ({ rest: false, manual: false, slot: slotActive.value.includes(id) }),
-        isActive: id => slotActive.value.includes(id),
-        deactivate: (id, now = 0) => {
-          slotActive.value = slotActive.value.filter(active => active !== id)
-          composer.deactivate(id, now)
+        nextClaimSequence: () => ++claimSeq,
+        reconcile: (now) => {
+          const claims = [...new Map(Object.values(leases.value).flatMap(lease => lease ? [[lease.expressionId, { expressionId: lease.expressionId, layer: 1, seq: lease.claimSequence }] as const] : [])).values()]
+          composer.setTargets(resolve(claims, catalog).targets, now)
         },
       })
       slots.setSlotSettings(settings.slots)

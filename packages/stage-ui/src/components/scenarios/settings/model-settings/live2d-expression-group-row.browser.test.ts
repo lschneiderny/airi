@@ -38,6 +38,10 @@ function expressionEntry(overrides: Partial<ExpressionEntry>): ExpressionEntry {
     fileName: 'entry.exp3.json',
     parameterIds: [],
     active: false,
+    effective: overrides.active ?? false,
+    overriddenBy: null,
+    via: [],
+    isDefault: false,
     ...overrides,
   }
 }

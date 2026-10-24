@@ -115,7 +115,7 @@ describe('expression tools', () => {
 
     expect(result.success).toBe(false)
     expect(new Set(result.available)).toEqual(new Set(['Anger', 'tear', 'game']))
-    expect(store.slotActive).toEqual([])
+    expect(store.leases).toEqual({ face: null, effect: null, prop: null })
   })
 
   it.each([0, 0.5, 31, Number.NaN, '5'])('rejects hold_seconds %s outside 1-30', async (holdSeconds) => {

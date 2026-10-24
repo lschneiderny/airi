@@ -251,7 +251,7 @@ describe('stage performance conductor', () => {
     expect(scene.onSpeech.mock.calls.filter(([event]) => event === 'turn-end').map(([, turnId]) => turnId)).toEqual(['turn-a'])
     expect(store.leases.face).toBeNull()
     expect(store.leases.effect).toMatchObject({ expressionId: 'tear', turnId: 'turn-b' })
-    expect(store.slotActive).toEqual(['tear'])
+    expect(store.leases.effect?.expressionId).toBe('tear')
   })
 
   it('resolves an ACT expression by exact id or case-insensitive trimmed label, and drops other names', () => {

@@ -45,6 +45,10 @@ function expressionEntry(overrides: Partial<ExpressionEntry>): ExpressionEntry {
     fileName: 'entry.exp3.json',
     parameterIds: [],
     active: false,
+    effective: overrides.active ?? false,
+    overriddenBy: null,
+    via: [],
+    isDefault: false,
     ...overrides,
   }
 }
@@ -167,8 +171,8 @@ describe('live2D model settings', () => {
       updatedAt: 1,
       live2dExpressions: {
         groups: [
-          { id: 'happy.exp3.json', name: 'happy', label: 'happy', kind: 'face', group: null, confirmed: false, exposedToLlm: false, mappings: [], fileName: 'happy.exp3.json', parameterIds: [], active: false },
-          { id: 'surprised.exp3.json', name: 'surprised', label: 'surprised', kind: 'face', group: null, confirmed: false, exposedToLlm: false, mappings: [], fileName: 'surprised.exp3.json', parameterIds: [], active: true },
+          { id: 'happy.exp3.json', name: 'happy', label: 'happy', kind: 'face', group: null, confirmed: false, exposedToLlm: false, mappings: [], fileName: 'happy.exp3.json', parameterIds: [], active: false, effective: false, overriddenBy: null, via: [], isDefault: false },
+          { id: 'surprised.exp3.json', name: 'surprised', label: 'surprised', kind: 'face', group: null, confirmed: false, exposedToLlm: false, mappings: [], fileName: 'surprised.exp3.json', parameterIds: [], active: true, effective: true, overriddenBy: null, via: [], isDefault: false },
         ],
       },
     } satisfies ModelSettingsRuntimeSnapshot

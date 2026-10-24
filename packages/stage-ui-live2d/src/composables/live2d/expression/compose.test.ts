@@ -109,7 +109,7 @@ describe('expression composer', () => {
       definition('a', [{ id: 'x', value: 0.5, blend: 'Add' }]),
       definition('b', [{ id: 'y', value: 0.25, blend: 'Add' }]),
     ])
-    composer.setActiveSet(['a', 'b'], 0)
+    composer.setTargets(['a', 'b'].map(id => ({ id, weight: 1 })), 0)
     frame(composer, model, 0)
     expect(model.read('x')).toBe(0.75)
     expect(model.read('y')).toBe(0.75)
@@ -126,7 +126,7 @@ describe('expression composer', () => {
       definition('a', [{ id: 'x', value: 2, blend: 'Add' }]),
       definition('b', [{ id: 'x', value: 0, blend: 'Add' }, { id: 'untouched', value: 1, blend: 'Multiply' }]),
     ])
-    composer.setActiveSet(['a', 'b'], 0)
+    composer.setTargets(['a', 'b'].map(id => ({ id, weight: 1 })), 0)
     const reads: string[] = []
     composer.compose(0, (id) => {
       reads.push(id)
@@ -143,7 +143,7 @@ describe('expression composer', () => {
       definition('second', [{ id: 'x', value: 4, blend: 'Overwrite' }, { id: 'x', value: -3, blend: 'Add' }], 2),
       definition('first', [{ id: 'x', value: 10, blend: 'Add' }, { id: 'x', value: 2, blend: 'Multiply' }], 2),
     ])
-    composer.setActiveSet(['first', 'second'], 0)
+    composer.setTargets(['first', 'second'].map(id => ({ id, weight: 1 })), 0)
     composer.compose(1, model.read, model.write, () => [0, 8])
     const afterFirst = (2 + 10 * 0.5) * (1 + (2 - 1) * 0.5)
     expect(model.read('x')).toBeCloseTo(afterFirst + (4 - afterFirst) * 0.5 - 3 * 0.5)
@@ -177,7 +177,7 @@ describe('expression composer', () => {
       definition('a', [{ id: 'x', value: 2, blend: 'Add' }], 2, 2),
       definition('b', [{ id: 'x', value: 0.5, blend: 'Multiply' }]),
     ])
-    composer.setActiveSet(['a', 'b'], 0)
+    composer.setTargets(['a', 'b'].map(id => ({ id, weight: 1 })), 0)
     expect(composer.weightOf('a', 1)).toBeCloseTo(0.5)
     const before = composer.weightOf('a', 0.5)
     composer.deactivate('a', 0.5)
@@ -245,10 +245,10 @@ describe('expression composer', () => {
     const composer = new ExpressionComposer()
     composer.setDefaultFadeSeconds(2)
     composer.define([{ id: 'unset', parameters: [], fadeOut: -1 }, definition('explicit', [], 0.5, 0)])
-    composer.setActiveSet(['unset', 'explicit'], 0)
+    composer.setTargets(['unset', 'explicit'].map(id => ({ id, weight: 1 })), 0)
     expect(composer.weightOf('unset', 1)).toBeCloseTo(0.5)
     expect(composer.weightOf('explicit', 0.25)).toBeCloseTo(0.5)
-    composer.setActiveSet([], 2)
+    composer.setTargets([], 2)
     expect(composer.weightOf('unset', 3)).toBeCloseTo(0.5)
     expect(composer.activeIds()).toEqual(['unset'])
   })
@@ -258,7 +258,7 @@ describe('expression composer', () => {
     composer.define([])
     composer.activate('unknown', 0)
     composer.deactivate('unknown', 0)
-    composer.setActiveSet(['unknown'], 0)
+    composer.setTargets(['unknown'].map(id => ({ id, weight: 1 })), 0)
     expect(composer.weightOf('unknown', 1)).toBe(0)
     expect(composer.activeIds()).toEqual([])
     composer.define([definition('empty', [])])
@@ -274,7 +274,7 @@ describe('expression composer', () => {
     composer.activate('a', 0)
     composer.activate('a', 0.5)
     expect(composer.weightOf('a', 1)).toBeCloseTo(0.5)
-    composer.setActiveSet([], 1)
+    composer.setTargets([], 1)
     expect(composer.weightOf('a', 2)).toBe(0)
   })
 

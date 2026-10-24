@@ -15,6 +15,7 @@ export interface SlotLeaseSettings {
 /** A transient activation owned by one slot; times share the caller's monotonic clock. */
 export interface SlotLease {
   expressionId: string
+  claimSequence: number
   turnId: string | null
   activatedAt: number
   holdSeconds: number
@@ -25,9 +26,10 @@ export interface SlotLease {
   turnEndedAt: number | null
 }
 
-export function createLease(expressionId: string, command: Pick<SlotCommand, 'turnId' | 'holdSeconds' | 'until'>, now: number): SlotLease {
+export function createLease(expressionId: string, command: Pick<SlotCommand, 'turnId' | 'holdSeconds' | 'until'>, now: number, claimSequence = 0): SlotLease {
   return {
     expressionId,
+    claimSequence,
     turnId: command.turnId ?? null,
     activatedAt: now,
     holdSeconds: command.holdSeconds,

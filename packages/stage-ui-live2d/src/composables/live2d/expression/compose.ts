@@ -75,10 +75,6 @@ export class ExpressionComposer {
     this.weightOf(id, now)
   }
 
-  setActiveSet(ids: string[], now: number): void {
-    this.setTargets(ids.map(id => ({ id, weight: 1 })), now)
-  }
-
   setTargets(targets: { id: string, weight: number }[], now: number): void {
     const desired = new Set(targets.map(target => target.id))
     for (const id of this.instances.keys()) {

@@ -5,7 +5,7 @@ import type { SlotLeaseSettings } from '../composables/live2d/expression/slots'
 import type { SlotLeases } from './expression-slot-leases'
 
 import { errorMessageFrom } from '@moeru/std'
-import { defaultExpressionPerformanceSettings, isAutoEligible, isLlmEligible, mergeCatalog, parseCuratedCatalogDocument, parseRestSet } from '@proj-airi/stage-shared/expression-performance'
+import { defaultExpressionPerformanceSettings, expandEntry, isAutoEligible, isLlmEligible, mergeCatalog, parseCuratedCatalogDocument, parseRestSet, resolveAlias } from '@proj-airi/stage-shared/expression-performance'
 import { defineStore } from 'pinia'
 import { computed, markRaw, ref } from 'vue'
 
@@ -21,7 +21,56 @@ export interface NamedExpressionDefinition extends ExpressionDefinition {
 
 /** Target activation state; fading releases remain owned by the composer until zero. */
 export interface Live2DExpressionSettingsSnapshot {
-  groups: (CatalogEntry & { name: string, active: boolean })[]
+  groups: (CatalogEntry & { name: string, active: boolean, effective: boolean, overriddenBy: string | null, via: string[], isDefault: boolean })[]
+}
+
+export interface ExpressionClaim {
+  expressionId: string
+  layer: number
+  seq: number
+}
+
+/** Resolves ownership without deleting losing claims or changing the catalog. */
+export function resolve(claims: ExpressionClaim[], catalog: CatalogEntry[]) {
+  const ordered = [...claims].sort((a, b) => b.layer - a.layer || b.seq - a.seq)
+  const holder = new Map<string, { memberId: string, triggerId: string }>()
+  const weights = new Map<string, number>()
+  const masked = new Map<string, string>()
+  const effective = new Set<string>()
+  const via = new Map<string, string[]>()
+  const accepted = new Map<ExpressionClaim, string[]>()
+  for (const claim of ordered) {
+    const entry = catalog.find(entry => entry.id === claim.expressionId)
+    if (!entry)
+      continue
+    const members: string[] = []
+    for (const { expressionId, strength } of expandEntry(entry, catalog)) {
+      const member = catalog.find(entry => entry.id === expressionId)!
+      const held = member.group === null ? undefined : holder.get(member.group)
+      if (held && held.memberId !== expressionId) {
+        masked.set(expressionId, held.triggerId)
+        continue
+      }
+      if (member.group !== null)
+        holder.set(member.group, { memberId: expressionId, triggerId: held?.triggerId ?? entry.id })
+      weights.set(expressionId, Math.max(weights.get(expressionId) ?? 0, strength))
+      members.push(expressionId)
+      effective.add(expressionId)
+      effective.add(entry.id)
+      if (entry.kind === 'combo') {
+        const owners = via.get(expressionId) ?? []
+        if (!owners.includes(entry.id))
+          via.set(expressionId, [...owners, entry.id])
+      }
+    }
+    accepted.set(claim, members)
+  }
+  const ids = new Set<string>()
+  for (const claim of [...ordered].reverse()) {
+    for (const id of accepted.get(claim) ?? [])
+      ids.add(id)
+  }
+  return { targets: [...ids].map(id => ({ id, weight: weights.get(id)! })), masked, effective, via }
 }
 
 export type Live2DExpressionSettingsCommand
@@ -39,6 +88,8 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   const restSet = ref<string[]>([])
   // Current non-transient targets, including rest entries until manually toggled off.
   const manualActive = ref<string[]>([])
+  const manualSeq = ref<Record<string, number>>({})
+  let claimSeq = 0
   const composer = markRaw(new ExpressionComposer())
   const derived = ref<CatalogEntry[]>([])
   const curated = ref<CuratedCatalogDocument>({ version: 1, overrides: [] })
@@ -46,7 +97,6 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   const catalog = computed(() => mergeCatalog(derived.value, curated.value))
   const llmEligibleEntries = computed(() => catalog.value.filter(isLlmEligible))
   const autoEligibleEntries = computed(() => catalog.value.filter(isAutoEligible))
-  const slotActive = ref<string[]>([])
   // Rest-set members the user toggled off this session; cleared by resetAll and saveDefaults.
   const restSuppressed = ref<string[]>([])
   const leases = ref<SlotLeases>(emptyLeases())
@@ -56,9 +106,9 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   /** The single ownership computation behind the composer target, the snapshot and group protection. */
   function ownersOf(id: string) {
     return {
-      rest: restSet.value.includes(id) && !restSuppressed.value.includes(id),
+      rest: restSet.value.includes(id) && manualActive.value.includes(id),
       manual: manualActive.value.includes(id),
-      slot: slotActive.value.includes(id),
+      slot: slotNames.some(slot => leases.value[slot]?.expressionId === id),
     }
   }
 
@@ -67,8 +117,35 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     return owners.rest || owners.manual || owners.slot
   }
 
-  const { activateFromSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases } = createSlotLeases({ catalog, slotActive, leases, muted, slotSettings, composer, ownersOf, isActive, deactivate })
-  const { updateEntry, resetEntry } = createCatalogPersistence({ modelId, derived, curated })
+  const claims = computed<ExpressionClaim[]>(() => [
+    ...manualActive.value.map(expressionId => ({ expressionId, layer: 0, seq: manualSeq.value[expressionId] })),
+    ...[...new Set(slotNames.flatMap(slot => leases.value[slot] ? [leases.value[slot]!.expressionId] : []))]
+      .map(expressionId => ({ expressionId, layer: 1, seq: Math.max(...slotNames.flatMap(slot => leases.value[slot]?.expressionId === expressionId ? [leases.value[slot]!.claimSequence] : [])) })),
+  ])
+  const resolved = computed(() => resolve(claims.value, catalog.value))
+  function reconcile(now = performance.now() / 1000) {
+    composer.setTargets(resolved.value.targets, now)
+  }
+
+  const { activateFromSlot, releaseSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases } = createSlotLeases({
+    catalog,
+    manualActive,
+    leases,
+    muted,
+    slotSettings,
+    composer,
+    reconcile,
+    nextClaimSequence: () => ++claimSeq,
+  })
+  const persistence = createCatalogPersistence({ modelId, derived, curated })
+  function updateEntry(id: string, patch: Omit<CuratedOverride, 'id'>) {
+    persistence.updateEntry(id, patch)
+    reconcile()
+  }
+  function resetEntry(id: string) {
+    persistence.resetEntry(id)
+    reconcile()
+  }
 
   const settingsSnapshot = computed<Live2DExpressionSettingsSnapshot>(() => ({
     groups: catalog.value.map(entry => ({
@@ -77,6 +154,10 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
       mappings: entry.mappings.map(mapping => ({ ...mapping })),
       name: entry.label,
       active: isActive(entry.id),
+      effective: resolved.value.effective.has(entry.id),
+      overriddenBy: resolved.value.effective.has(entry.id) ? null : catalog.value.find(trigger => trigger.id === resolved.value.masked.get(entry.id))?.label ?? null,
+      via: resolved.value.via.get(entry.id) ?? [],
+      isDefault: restSet.value.includes(entry.id),
     })),
   }))
 
@@ -94,7 +175,6 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     definitions.value = defs
     deriveInputs = { defs, model3Refs, vtube, displayInfo }
     curated.value = { version: 1, overrides: [] }
-    slotActive.value = []
     leases.value = emptyLeases()
     try {
       const raw = localStorage.getItem(`expression-catalog:${id}`)
@@ -116,7 +196,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
       if (raw !== null) {
         const parsed = parseRestSet(JSON.parse(raw))
         if (parsed.success)
-          restSet.value = [...new Set(parsed.value.active)].filter(activeId => defs.some(def => def.id === activeId))
+          restSet.value = [...new Set(parsed.value.active.map(activeId => resolveAlias(activeId, catalog.value)))].filter(activeId => catalog.value.some(entry => entry.id === activeId))
         else
           console.warn('[expression-store] Invalid rest set:', parsed.issues)
       }
@@ -127,34 +207,47 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     resetAll()
   }
 
-  function activate(id: string) {
-    if (!definitions.value.some(def => def.id === id) || manualActive.value.includes(id))
+  function activate(id: string, now = performance.now() / 1000) {
+    id = resolveAlias(id, catalog.value)
+    const entry = catalog.value.find(entry => entry.id === id)
+    if (!entry)
       return
-    const entry = catalog.value.find(entry => entry.id === id)!
-    if (entry.group !== null) {
+    if (entry.kind !== 'combo' && entry.group !== null) {
       for (const other of catalog.value) {
-        if (other.id !== id && other.group === entry.group)
-          deactivate(other.id)
+        if (other.id !== id && other.kind !== 'combo' && other.group === entry.group && manualActive.value.includes(other.id)) {
+          removeBaseClaim(other.id)
+        }
+      }
+    }
+    manualSeq.value = { ...manualSeq.value, [id]: ++claimSeq }
+    if (!manualActive.value.includes(id))
+      manualActive.value = [...manualActive.value, id]
+    // Slot precedence must not make a user's newly asserted switch invisible.
+    for (const { expressionId } of expandEntry(entry, catalog.value)) {
+      const maskingId = resolved.value.masked.get(expressionId)
+      for (const slot of slotNames) {
+        if (maskingId && leases.value[slot]?.expressionId === maskingId)
+          releaseSlot(slot, now, false)
       }
     }
     restSuppressed.value = restSuppressed.value.filter(suppressedId => suppressedId !== id)
-    manualActive.value = [...manualActive.value, id]
-    composer.activate(id, performance.now() / 1000)
+    reconcile(now)
   }
 
-  function deactivate(id: string, now = performance.now() / 1000) {
+  function removeBaseClaim(id: string) {
     if (restSet.value.includes(id) && !restSuppressed.value.includes(id))
       restSuppressed.value = [...restSuppressed.value, id]
     manualActive.value = manualActive.value.filter(activeId => activeId !== id)
-    slotActive.value = slotActive.value.filter(activeId => activeId !== id)
-    for (const slot of slotNames) {
-      if (leases.value[slot]?.expressionId === id)
-        leases.value = { ...leases.value, [slot]: null }
-    }
-    composer.deactivate(id, now)
+    delete manualSeq.value[id]
+  }
+
+  function deactivate(id: string, now = performance.now() / 1000) {
+    removeBaseClaim(resolveAlias(id, catalog.value))
+    reconcile(now)
   }
 
   function toggle(id: string) {
+    id = resolveAlias(id, catalog.value)
     if (manualActive.value.includes(id))
       deactivate(id)
     else
@@ -164,8 +257,9 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   function saveDefaults() {
     if (!modelId.value)
       return
-    restSet.value = [...manualActive.value]
+    restSet.value = [...manualActive.value].sort((a, b) => manualSeq.value[a] - manualSeq.value[b])
     restSuppressed.value = []
+    reconcile()
     try {
       localStorage.setItem(`expression-rest:${modelId.value}`, JSON.stringify({ version: 1, active: restSet.value }))
     }
@@ -176,12 +270,10 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
 
   function resetAll() {
     restSuppressed.value = []
-    manualActive.value = []
-    slotActive.value = []
+    manualActive.value = [...restSet.value]
+    manualSeq.value = Object.fromEntries(restSet.value.map(id => [id, ++claimSeq]))
     leases.value = emptyLeases()
-    composer.setActiveSet([], performance.now() / 1000)
-    for (const id of restSet.value)
-      activate(id)
+    reconcile()
   }
 
   function dispose() {
@@ -190,7 +282,8 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     modelId.value = ''
     restSet.value = []
     manualActive.value = []
-    slotActive.value = []
+    manualSeq.value = {}
+    claimSeq = 0
     restSuppressed.value = []
     leases.value = emptyLeases()
     derived.value = []
@@ -216,5 +309,5 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     }
   }
 
-  return { definitions, modelId, restSet, restSuppressed, manualActive, slotActive, leases, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, registerDefinitions, rederive, activate, activateFromSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, dispose, applySettingsCommand }
+  return { definitions, modelId, restSet, restSuppressed, manualActive, manualSeq, leases, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, ownersOf, reconcile, registerDefinitions, rederive, activate, activateFromSlot, releaseSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, dispose, applySettingsCommand }
 })
