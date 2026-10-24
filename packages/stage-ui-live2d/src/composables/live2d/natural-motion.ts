@@ -55,6 +55,35 @@ const followers = {
 // Attention calms autonomous posture without freezing it.
 const attentionCalm = 0.3
 
+// Head widths: outer distance where cursor approach starts smoothing.
+const approachFarDistance = 1.6
+// Head widths: inner distance where cursor approach reaches full strength.
+const approachNearDistance = 0.9
+// Seconds: smoothing time for the cursor approach.
+const approachSmoothingSeconds = 0.2
+// Head widths above the eye anchor: threshold for the upward-cursor pose.
+const aboveAnchorThreshold = 0.2
+// Eye-target units: maximum upward cursor target during approach.
+const aboveAnchorEyeLimit = 0.35
+// Hand-relative scale: horizontal pet-hand offset for the gaze override.
+const petOverrideXScale = 0.1
+// Eye-target units: downward gaze override while petting.
+const petOverrideY = -0.12
+// Seconds: minimum pet duration before the camera glance at pet end.
+const longPetDurationSeconds = 3
+// Seconds: duration of the camera glance after a long pet.
+const petGlanceDurationSeconds = 1.2
+// Seconds: smoothing time for the gaze-on-cursor pose response.
+const cursorFixationSmoothingSeconds = 0.3
+// Unitless: retained head-follow share when gaze is not fixed on the cursor.
+const headFollowBaseShare = 0.4
+// Unitless: additional head-follow share when gaze is fixed on the cursor.
+const headFollowCursorShare = 0.6
+// Unitless head-pitch contribution: downward tuck at full approach.
+const approachHeadTuck = 0.05
+// Unitless eye-opening reduction: softening at full approach.
+const approachEyeSoftening = 0.12
+
 type Axis = keyof typeof followers
 
 interface Snapshot {
@@ -337,13 +366,13 @@ export class Live2DNaturalMotion {
     const attention = this.cursorAttention.step(step, stepStart, { cursor: this.cursor, permission })
     const mapped = this.mappedCursor
     const proximity = this.cursor !== null && permission === 'full'
-      ? Math.max(0, Math.min(1, (1.6 - mapped.distance) / (1.6 - 0.9)))
+      ? Math.max(0, Math.min(1, (approachFarDistance - mapped.distance) / (approachFarDistance - approachNearDistance)))
       : 0
-    this.approach += (proximity * proximity * (3 - 2 * proximity) - this.approach) * (1 - Math.exp(-step / 0.2))
-    const above = this.cursor !== null && this.cursor.y > 0.2
+    this.approach += (proximity * proximity * (3 - 2 * proximity) - this.approach) * (1 - Math.exp(-step / approachSmoothingSeconds))
+    const above = this.cursor !== null && this.cursor.y > aboveAnchorThreshold
     this.pet.step(step)
     const cursorShare = attention.weight * (1 - this.pet.level)
-    this.gaze.setCursorTarget({ x: mapped.eye.x, y: above ? Math.min(0.35, mapped.eye.y) : mapped.eye.y }, attention.oriented ? cursorShare : 0)
+    this.gaze.setCursorTarget({ x: mapped.eye.x, y: above ? Math.min(aboveAnchorEyeLimit, mapped.eye.y) : mapped.eye.y }, attention.oriented ? cursorShare : 0)
     for (const event of attention.events) {
       if (event.kind === 'notice' && stepStart >= this.petGlanceUntil)
         this.gaze.orient(stepStart)
@@ -362,7 +391,7 @@ export class Live2DNaturalMotion {
       // only an active pet or its still-owned tail can keep the override.
       const overriding = permission === 'full' && this.pet.level > 0.5 && (this.pet.active || this.petOverride)
       if (overriding) {
-        this.gaze.setOverride({ x: 0.1 * this.petHand.x, y: -0.12 }, stepStart)
+        this.gaze.setOverride({ x: petOverrideXScale * this.petHand.x, y: petOverrideY }, stepStart)
       }
       else if (this.petOverride) {
         this.gaze.setOverride(null, stepStart)
@@ -377,8 +406,8 @@ export class Live2DNaturalMotion {
         this.notify({ kind: 'touch', at: stepStart, touch: 'pet-start', region: 'head' })
     }
     else if (!this.pet.active && this.petStartedAt !== null) {
-      if (permission === 'full' && stepStart - this.petStartedAt > 3)
-        this.petGlanceUntil = this.gaze.glance({ x: 0, y: 0 }, 1.2, stepStart)
+      if (permission === 'full' && stepStart - this.petStartedAt > longPetDurationSeconds)
+        this.petGlanceUntil = this.gaze.glance({ x: 0, y: 0 }, petGlanceDurationSeconds, stepStart)
       this.petStartedAt = null
       if (this.observer)
         this.notify({ kind: 'touch', at: stepStart, touch: 'pet-end', region: 'head' })
@@ -433,11 +462,11 @@ export class Live2DNaturalMotion {
     }
     if (stepStart >= this.petGlanceUntil)
       this.attention.update(this.posture, this.gaze, stepStart, step)
-    this.onCursor += (Number(this.gaze.onCursor) - this.onCursor) * (1 - Math.exp(-step / 0.3))
-    const headShare = cursorShare * (0.4 + 0.6 * this.onCursor)
+    this.onCursor += (Number(this.gaze.onCursor) - this.onCursor) * (1 - Math.exp(-step / cursorFixationSmoothingSeconds))
+    const headShare = cursorShare * (headFollowBaseShare + headFollowCursorShare * this.onCursor)
     this.follow({
       cursorX: headShare * mapped.head.x,
-      cursorY: headShare * (above ? mapped.head.y * (1 - this.approach) - 0.05 * this.approach : mapped.head.y),
+      cursorY: headShare * (above ? mapped.head.y * (1 - this.approach) - approachHeadTuck * this.approach : mapped.head.y),
     })
     const posture = this.posture.step(step, [this.x.cursorX, this.x.cursorY, 0])
     // Eye compensation sees the complete head pose.
@@ -481,7 +510,7 @@ export class Live2DNaturalMotion {
       }
     }
     const face = withHints(this.face.step(step), stepStart + step, this.impulses, this.pet, moodMouthForm(this.mood, this.performanceSettings), this.performanceSettings.heldEmotions && this.hold.level > 0 ? { hold: this.hold, accentScale: this.performanceSettings.held.accentScale } : undefined)
-    face.eyeOpenMultiplier *= 1 - 0.12 * this.approach
+    face.eyeOpenMultiplier *= 1 - approachEyeSoftening * this.approach
     return {
       head,
       body: this.body.step(step, followerHead).map((value, axis) => clamp(value + lean[axis], 1)) as Vec3,
