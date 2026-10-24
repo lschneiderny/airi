@@ -62,7 +62,7 @@ import { scoreLiveliness } from '../../../composables/live2d/natural-motion/live
 import { readLive2DRigProfile } from '../../../composables/live2d/natural-motion/rig-profile'
 import { NaturalTraceRecorder } from '../../../composables/live2d/natural-motion/trace'
 import { Live2DTouchGestures } from '../../../composables/live2d/touch-gestures'
-import { eyeAnchorShare, live2DTouchRegionAt, live2DVisibleBounds, scaleLive2DRect } from '../../../composables/live2d/touch-regions'
+import { live2DTouchRegionAt, live2DVisibleBounds, scaleLive2DRect } from '../../../composables/live2d/touch-regions'
 import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { ScreenAmbientLightFilter } from '../../../filters/screen-ambient-light'
 import { getLive2DMotionControlModelOffset, useL2dViewControl, useLive2DMotionControl, useLive2dParams, useNaturalMotionDiagnostics } from '../../../stores'
@@ -176,7 +176,7 @@ let naturalPetHand: { x: number, y: number } | null = null
 const touchGestures = new Live2DTouchGestures({ requireHold: live2dNaturalTouchPetRequiresHold.value })
 const touchPoint = new Point()
 /** Head and body boxes in model canvas space, re-measured at most every 100 ms while the pointer moves. */
-let touchRegions: { head: Live2DModelCanvasRect | undefined, unscaledHead: Live2DModelCanvasRect | undefined, body: Live2DModelCanvasRect | undefined, measuredAtMs: number } | undefined
+let touchRegions: { head: Live2DModelCanvasRect | undefined, unscaledHead: Live2DModelCanvasRect | undefined, eyeAnchor: { x: number, y: number } | undefined, body: Live2DModelCanvasRect | undefined, measuredAtMs: number } | undefined
 const touchRegionsMaxAgeMs = 100
 /** Latest primary pointermove over the canvas in model canvas space, stamped with `performance.now()`. */
 let latestPointer: { x: number, y: number, atMs: number } | undefined
@@ -615,10 +615,11 @@ async function performModelLoad() {
             localFocus.set(props.focusAt.x, props.focusAt.y)
             live2DModel.toModelPosition(localFocus, localFocus)
           }
-          // Offset from the eye anchor in head widths, y up. Without a head box the anchor and unit are fractions of the canvas.
-          const head = readTouchRegions(performance.now())?.unscaledHead
-          const anchorX = head ? head.x + head.width / 2 : 0.5 * internalModel.originalWidth
-          const anchorY = head ? head.y + eyeAnchorShare * head.height : 0.3 * internalModel.originalHeight
+          // Offset from the measured eye anchor in head widths, y up; the user's touch scale never changes the cursor unit.
+          const regions = readTouchRegions(performance.now())
+          const head = regions?.unscaledHead
+          const anchorX = regions?.eyeAnchor?.x ?? 0.5 * internalModel.originalWidth
+          const anchorY = regions?.eyeAnchor?.y ?? 0.3 * internalModel.originalHeight
           const unit = head && head.width > 0 ? head.width : 0.3 * internalModel.originalWidth
           cursor = { x: (localFocus.x - anchorX) / unit, y: (anchorY - localFocus.y) / unit }
         }
@@ -1265,9 +1266,10 @@ function readTouchRegions(timeMs: number) {
   if (touchRegions && timeMs - touchRegions.measuredAtMs < touchRegionsMaxAgeMs)
     return touchRegions
   const internalModel = current.internalModel
-  const head = headTracker.bounds(internalModel)
+  const interaction = headTracker.interactionBounds(internalModel)
+  const head = interaction?.head
   const headScale = live2dNaturalTouchHeadScale.value[props.modelId ?? ''] ?? 1
-  touchRegions = { head: head && scaleLive2DRect(head, headScale), unscaledHead: head, body: live2DVisibleBounds(internalModel), measuredAtMs: timeMs }
+  touchRegions = { head: head && scaleLive2DRect(head, headScale), unscaledHead: head, eyeAnchor: interaction?.eyeAnchor, body: live2DVisibleBounds(internalModel), measuredAtMs: timeMs }
   return touchRegions
 }
 

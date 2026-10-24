@@ -1,6 +1,6 @@
 import type { Live2DHeadSource } from './head-anchor'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { createLive2DHeadTracker } from './head-anchor'
 
@@ -18,6 +18,8 @@ interface RiggedModelOptions {
   bodyFollow?: number
   /** Drawables that only move once physics has run. */
   physicsDriven?: number[]
+  /** Direct feature-parameter deformation, independent of head physics. */
+  features?: Record<string, number[]>
   hitAreas?: Record<string, { index: number }>
 }
 
@@ -30,11 +32,17 @@ interface RiggedModelOptions {
 function riggedModel(options: RiggedModelOptions): Live2DHeadSource & { updates: number } {
   const angleParameters = options.angleParameters ?? ['ParamAngleX']
   const bodyParameters = options.bodyParameters ?? []
+  const featureParameters = Object.keys(options.features ?? {})
   const physicsDriven = options.physicsDriven ?? []
-  const values = new Map([...angleParameters, ...bodyParameters].map(id => [id, 0]))
+  const parameters = [...angleParameters, ...bodyParameters, ...featureParameters]
+  const virtualParameters = new Map<string, number>()
+  const values = new Map(parameters.map(id => [id, 0]))
+  const maximumValues = parameters.map(() => 30)
+  const minimumValues = parameters.map(() => -30)
   let head = 0
   let body = 0
   let swung = 0
+  let features = featureParameters.map(() => 0)
 
   const headValue = () => angleParameters.reduce((total, id) => total + (values.get(id) ?? 0), 0)
 
@@ -49,13 +57,25 @@ function riggedModel(options: RiggedModelOptions): Live2DHeadSource & { updates:
       update() {
         head = headValue()
         body = bodyParameters.reduce((total, id) => total + (values.get(id) ?? 0), 0)
+        features = featureParameters.map(id => values.get(id) ?? 0)
       },
       getDrawableCount: () => options.drawables,
-      getParameterIndex: (id: string) => [...angleParameters, ...bodyParameters].indexOf(id),
+      getDrawableDynamicFlagIsVisible: () => true,
+      getDrawableOpacity: () => 1,
+      getParameterCount: () => parameters.length,
+      getParameterIndex: (id: string) => {
+        const index = parameters.indexOf(id)
+        if (index >= 0)
+          return index
+        // Cubism allocates stable virtual indices beyond its real parameter table.
+        if (!virtualParameters.has(id))
+          virtualParameters.set(id, parameters.length + virtualParameters.size)
+        return virtualParameters.get(id)!
+      },
       getParameterValueById: (id: string) => values.get(id) ?? 0,
       setParameterValueById: (id: string, value: number) => void values.set(id, value),
-      getParameterMaximumValue: () => 30,
-      getParameterMinimumValue: () => -30,
+      getParameterMaximumValue: (index: number) => maximumValues[index],
+      getParameterMinimumValue: (index: number) => minimumValues[index],
     },
     getDrawableBounds: (index: number) => {
       let offset = 0
@@ -65,6 +85,10 @@ function riggedModel(options: RiggedModelOptions): Live2DHeadSource & { updates:
         offset += body
       if (physicsDriven.includes(index))
         offset += swung
+      featureParameters.forEach((id, at) => {
+        if (options.features?.[id].includes(index))
+          offset += features[at]
+      })
 
       return { x: offset, y: index * 10, width: 8, height: 8 }
     },
@@ -90,12 +114,37 @@ describe('live2D head tracker', () => {
     expect(model.coreModel.getParameterValueById('ParamAngleX')).toBe(12)
   })
 
+  it('rechecks visibility and opacity without replacing the tracked selection', () => {
+    const model = riggedModel({ drawables: 5, head: [1, 3] })
+    const tracker = createLive2DHeadTracker()
+    let visible = false
+    let opacity = 1
+    model.coreModel.getDrawableDynamicFlagIsVisible = index => index !== 3 || visible
+    model.coreModel.getDrawableOpacity = index => index === 3 ? opacity : 1
+
+    expect(tracker.bounds(model)).toEqual({ x: 0, y: 10, width: 8, height: 8 })
+    visible = true
+    opacity = 0
+    expect(tracker.bounds(model)).toEqual({ x: 0, y: 10, width: 8, height: 8 })
+    opacity = 0.009
+    expect(tracker.bounds(model)).toEqual({ x: 0, y: 10, width: 8, height: 8 })
+    opacity = 0.01
+    expect(tracker.bounds(model)).toEqual({ x: 0, y: 10, width: 8, height: 28 })
+    visible = false
+    expect(tracker.bounds(model)).toEqual({ x: 0, y: 10, width: 8, height: 8 })
+  })
+
   it('takes an author-declared head area without turning anything', () => {
     const model = riggedModel({ drawables: 4, head: [2], hitAreas: { Head: { index: 0 } } })
+    const update = vi.spyOn(model.coreModel, 'update')
+    const tracker = createLive2DHeadTracker()
 
-    const bounds = createLive2DHeadTracker().bounds(model)
-
-    expect(bounds).toEqual({ x: 0, y: 0, width: 8, height: 8 })
+    expect(tracker.bounds(model)).toEqual({ x: 0, y: 0, width: 8, height: 8 })
+    expect(tracker.interactionBounds(model)).toEqual({
+      head: { x: 0, y: 0, width: 8, height: 8 },
+      eyeAnchor: { x: 4, y: 4.4 },
+    })
+    expect(update).not.toHaveBeenCalled()
   })
 
   it('reports no head when the model states none', () => {
@@ -123,6 +172,127 @@ describe('live2D head tracker', () => {
 
     expect(bounds?.y).toBe(0)
     expect(bounds?.height).toBe(28)
+  })
+
+  it.each([false, true])('caches separate face and physics selections regardless of first consumer (face first: %s)', (faceFirst) => {
+    const model = riggedModel({
+      drawables: 4,
+      head: [0],
+      physicsDriven: [3],
+      features: { ParamEyeLOpen: [1], ParamMouthOpenY: [2] },
+    })
+    const tracker = createLive2DHeadTracker()
+    const update = vi.spyOn(model.coreModel, 'update')
+
+    if (faceFirst)
+      tracker.interactionBounds(model)
+    tracker.bounds(model)
+    const interaction = tracker.interactionBounds(model)!
+    update.mockClear()
+
+    const bubble = tracker.bounds(model)
+    expect(bubble?.y).toBe(0)
+    expect(bubble?.height).toBe(38)
+    expect(interaction.head.width).toBeCloseTo(12.8)
+    expect(interaction.head.height).toBeCloseTo(28.8)
+    expect(interaction.head.x).toBeCloseTo(-2.4)
+    expect(interaction.head.y).toBeCloseTo(4.6)
+    expect(interaction.eyeAnchor).toEqual({ x: 4, y: 14 })
+    expect(tracker.interactionBounds(model)).toEqual(interaction)
+    expect(tracker.bounds(model)).toEqual(bubble)
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    'ParamEyeLOpen',
+    'ParamEyeROpen',
+    'ParamEyeBallX',
+    'ParamEyeBallY',
+    'ParamBrowLY',
+    'ParamBrowRY',
+    'ParamMouthOpenY',
+    'ParamMouthForm',
+  ])('measures %s movers without evaluating physics and restores their pose', (id) => {
+    const model = riggedModel({ drawables: 4, head: [], physicsDriven: [3], features: { [id]: [1] } })
+    const evaluate = vi.spyOn(model.physics!, 'evaluate')
+    model.coreModel.setParameterValueById(id, 30)
+
+    const interaction = createLive2DHeadTracker().interactionBounds(model)!
+    expect(interaction.head.x).toBeCloseTo(27.6)
+    expect(interaction.head.width).toBeCloseTo(12.8)
+    expect(model.coreModel.getParameterValueById(id)).toBe(30)
+    expect(model.getDrawableBounds(1)).toEqual({ x: 30, y: 10, width: 8, height: 8 })
+    expect(evaluate).not.toHaveBeenCalled()
+  })
+
+  it('caches absent face features and falls back to the physics box', () => {
+    const model = riggedModel({ drawables: 4, head: [], physicsDriven: [2] })
+    const tracker = createLive2DHeadTracker()
+    const update = vi.spyOn(model.coreModel, 'update')
+
+    const interaction = tracker.interactionBounds(model)!
+    expect(interaction.head).toEqual(tracker.bounds(model))
+    expect(interaction.head.height).toBe(8)
+    expect(interaction.eyeAnchor.y).toBe(24.4)
+    update.mockClear()
+    expect(tracker.interactionBounds(model)).toEqual(interaction)
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it.each(['empty', 'head', 'head-and-eyes'])('never reads ranges or probes values at virtual indices (%s)', (rig) => {
+    const model = riggedModel({
+      drawables: 3,
+      head: [0],
+      angleParameters: rig === 'empty' ? [] : ['ParamAngleX'],
+      features: rig === 'head-and-eyes' ? { ParamEyeLOpen: [1] } : {},
+    })
+    const core = model.coreModel
+    const count = core.getParameterCount()
+    const minimum = vi.spyOn(core, 'getParameterMinimumValue')
+    const maximum = vi.spyOn(core, 'getParameterMaximumValue')
+    const values = vi.spyOn(core, 'getParameterValueById')
+    const writes = vi.spyOn(core, 'setParameterValueById')
+    const tracker = createLive2DHeadTracker()
+
+    tracker.bounds(model)
+    tracker.interactionBounds(model)
+
+    for (const [index] of [...minimum.mock.calls, ...maximum.mock.calls]) {
+      expect(index).toBeGreaterThanOrEqual(0)
+      expect(index).toBeLessThan(count)
+    }
+    for (const [id] of [...values.mock.calls, ...writes.mock.calls])
+      expect(core.getParameterIndex(id)).toBeLessThan(count)
+    expect(new Set(values.mock.calls.map(([id]) => id)).size).toBe(count)
+  })
+
+  it('rechecks visible face and eye features, falling back only while all features are hidden', () => {
+    const model = riggedModel({
+      drawables: 4,
+      head: [0],
+      physicsDriven: [3],
+      features: { ParamEyeLOpen: [1], ParamMouthOpenY: [2] },
+    })
+    const tracker = createLive2DHeadTracker()
+    let eyesVisible = true
+    let mouthOpacity = 1
+    model.coreModel.getDrawableDynamicFlagIsVisible = index => index !== 1 || eyesVisible
+    model.coreModel.getDrawableOpacity = index => index === 2 ? mouthOpacity : 1
+
+    expect(tracker.interactionBounds(model)?.eyeAnchor).toEqual({ x: 4, y: 14 })
+    mouthOpacity = 0.009
+    expect(tracker.interactionBounds(model)?.head.height).toBeCloseTo(12.8)
+    mouthOpacity = 0.01
+    expect(tracker.interactionBounds(model)?.head.height).toBeCloseTo(28.8)
+    eyesVisible = false
+    expect(tracker.interactionBounds(model)?.head.height).toBeCloseTo(12.8)
+    expect(tracker.interactionBounds(model)?.eyeAnchor.y).toBeCloseTo(24.64)
+    mouthOpacity = 0
+    expect(tracker.interactionBounds(model)?.head).toEqual(tracker.bounds(model))
+    eyesVisible = true
+    mouthOpacity = 1
+    expect(tracker.interactionBounds(model)?.eyeAnchor).toEqual({ x: 4, y: 14 })
+    expect(tracker.interactionBounds(model)?.head.height).toBeCloseTo(28.8)
   })
 
   it('drops what follows the body as much as the head', () => {
@@ -158,10 +328,21 @@ describe('live2D head tracker', () => {
 
   it('answers again for a replaced model after a reset', () => {
     const tracker = createLive2DHeadTracker()
-    tracker.bounds(riggedModel({ drawables: 3, head: [0] }))
+    const original = riggedModel({ drawables: 4, head: [0], physicsDriven: [2], features: { ParamEyeLOpen: [0] } })
+    tracker.bounds(original)
+    tracker.interactionBounds(original)
 
     tracker.reset()
 
-    expect(tracker.bounds(riggedModel({ drawables: 3, head: [], angleParameters: [] }))).toBeUndefined()
+    const absent = riggedModel({ drawables: 3, head: [], angleParameters: [] })
+    expect(tracker.bounds(absent)).toBeUndefined()
+    expect(tracker.interactionBounds(absent)).toBeUndefined()
+
+    tracker.reset()
+
+    const replacement = riggedModel({ drawables: 4, head: [1], physicsDriven: [3], features: { ParamEyeROpen: [1] } })
+    expect(tracker.bounds(replacement)?.height).toBe(28)
+    expect(tracker.interactionBounds(replacement)?.head.height).toBeCloseTo(12.8)
+    expect(tracker.interactionBounds(replacement)?.eyeAnchor).toEqual({ x: 4, y: 14 })
   })
 })

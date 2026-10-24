@@ -192,14 +192,14 @@ Character card profiles scale mood strength and mood length:
 
 Natural has its own Cursor attention setting, enabled by default.
 It does not change Universal's mouse tracking preference or saved idle animation.
-When cursor attention is enabled, Natural maps the cursor from an eye anchor at 55% of the measured head height, in head-width units. It notices every near cursor and independently decides whether to engage medium and far cursors. Engagement starts with a notice glance, then progresses to full attention. Attention fades when the cursor rests or disappears; `Live2D.vue` does not expire Natural's cursor position after one second.
+When cursor attention is enabled, Natural maps the cursor from the center of measured eye-feature drawables, in units of the interaction head box width. The tracker uses an authored head or face hit area when available; otherwise it identifies visible face features moved by standard eye-open, eyeball, brow, and mouth parameters, without settling physics. That face-feature box expands by `faceToHeadScale` (1.6) around its center. If face measurement fails, the physics-inclusive head box is used. The presence bubble continues to use that physics-inclusive box. It notices every near cursor and independently decides whether to engage medium and far cursors. Engagement starts with a notice glance, then progresses to full attention. Attention fades when the cursor rests or disappears; `Live2D.vue` does not expire Natural's cursor position after one second.
 Resetting Live2D settings restores Universal and enables both cursor preferences.
 
 ### Touch: poke and pet
 
 Natural has a Poke and pet setting, stored as `settings/live2d/natural-touch` and enabled by default.
 A second setting, `settings/live2d/natural-touch-pet-requires-hold`, counts strokes as petting only while the left mouse button is held. It is off by default.
-A third setting, Head area for petting, scales the measured head box around its center for the selected model, from 0.5× to 2×. It is stored per stage model id in `settings/live2d/natural-touch-head-scale`.
+A third setting, Head area for petting, scales the interaction box around its center for the selected model, from 0.5× to 2×. This box uses an authored head or face hit area, otherwise the face-feature measure expanded by `faceToHeadScale` (1.6), otherwise the physics-inclusive head box. The setting is stored per stage model id in `settings/live2d/natural-touch-head-scale`.
 The settings page shows these settings only while Natural is selected. Touch does nothing under Universal or MAGIC, and nothing while the stage is paused.
 
 `Live2DTouchGestures` classifies pointer input on the Live2D canvas, mapped into model canvas space:
@@ -210,7 +210,7 @@ The settings page shows these settings only while Natural is selected. Touch doe
 
 The scene updates the classifier every rendered frame while a pet is active or a poke press is pending. This lets a resting pointer end an idle pet or commit an eligible hover poke.
 
-The head is the box `createLive2DHeadTracker` measures: the model's `head` or `face` hit area, or otherwise the drawables that move when the head turns. A model without either has no head, so it can be poked but not petted.
+The touch head region follows this fallback order: authored `head` or `face` hit area, face-feature measure expanded by `faceToHeadScale` (1.6), then physics-inclusive head box. Face features are visible drawables moved by the rig's standard eye-open, eyeball, brow, and mouth parameters, measured without settling physics. Parameter presence is checked against the real parameter table because Cubism returns virtual indices for absent ids. The per-model head-scale setting applies after this selection. The presence bubble still uses the physics-inclusive head box.
 The body is the box around the drawables the renderer currently draws, not the padded model canvas.
 
 A poke turns and rolls the head away from the poke point; vertical position also sets pitch, so a top-of-head poke pushes down. It starts a short surprise impulse and glances at the camera for 0.9 seconds. A head poke moves more than a body poke.

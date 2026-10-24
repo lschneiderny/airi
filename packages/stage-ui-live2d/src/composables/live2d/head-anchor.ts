@@ -1,6 +1,8 @@
 import type { Matrix } from '@pixi/math'
 import type { Bounds } from 'pixi-live2d-display/cubism4'
 
+import { eyeAnchorShare, scaleLive2DRect } from './touch-regions'
+
 /** A point in the model's own canvas space, before any stage transform. */
 interface Live2DModelCanvasPoint {
   x: number
@@ -27,6 +29,9 @@ export interface Live2DHeadSource {
   coreModel: {
     update: () => void
     getDrawableCount: () => number
+    getDrawableDynamicFlagIsVisible: (index: number) => boolean
+    getDrawableOpacity: (index: number) => number
+    getParameterCount: () => number
     getParameterIndex: (id: string) => number
     getParameterValueById: (id: string) => number
     setParameterValueById: (id: string, value: number) => void
@@ -60,6 +65,16 @@ const headAreaNames = new Set(['head', 'face'])
  * independently and which therefore has no head to follow.
  */
 const headAngleParameterIds = ['ParamAngleX', 'ParamAngleY', 'ParamAngleZ']
+
+const eyeParameterIds = ['ParamEyeLOpen', 'ParamEyeROpen', 'ParamEyeBallX', 'ParamEyeBallY']
+const faceParameterIds = [...eyeParameterIds, 'ParamBrowLY', 'ParamBrowRY', 'ParamMouthOpenY', 'ParamMouthForm']
+
+/**
+ * Face features span less than the head. Expand their box by 1.6 around its center
+ * for the cursor unit and touch region, without including physics-carried hair.
+ * The user's touch head-scale adjustment applies after this shared conversion.
+ */
+const faceToHeadScale = 1.6
 
 /** Simulated seconds given to physics so its springs reach their new rest. */
 const physicsSettleSeconds = 0.6
@@ -116,8 +131,7 @@ function travelled(before: Bounds, after: Bounds) {
  * // => { x: 1104, y: 402, width: 768, height: 690 }
  */
 export function createLive2DHeadTracker() {
-  let tracked: number[] | undefined
-  let selected = false
+  const selections = new Map<'physics' | 'face' | 'eyes', number[] | undefined>()
 
   function selectByHitArea(internalModel: Live2DHeadSource) {
     const headArea = Object.entries(internalModel.hitAreas)
@@ -127,36 +141,41 @@ export function createLive2DHeadTracker() {
   }
 
   /**
-   * Turns the head and keeps whatever moved with it.
+   * Changes the requested parameters and keeps whatever moved with them.
    *
-   * Physics runs before the reading, so hair and accessories the head swings
-   * indirectly move as they would on screen. The parameters are put back and the
-   * springs settled again, so the pose a caller sees is the one it had.
+   * The bubble needs physics-carried hair and accessories to clear the silhouette.
+   * Touch and cursor sizing instead probe face features without physics. Some rigs
+   * route even their head angles through physics, so a direct head-angle probe
+   * would find nothing. Eye parameters separately identify the gaze anchor.
+   * Every measure uses the same movement threshold and restores its parameters.
    *
    * Leaning the body is not measured as a control: a body carries the head with
    * it, so a head drawable answers to both and comparing the two rejects the
    * head itself. What merely follows the head barely moves, and the threshold
    * below already drops it.
    */
-  function selectByHeadAngle(internalModel: Live2DHeadSource) {
+  function selectByParameters(internalModel: Live2DHeadSource, ids: string[], withPhysics: boolean) {
     const core = internalModel.coreModel
     const count = core.getDrawableCount()
+    const parameterCount = core.getParameterCount()
 
-    const present = (ids: string[]) => ids
+    // Cubism gives absent IDs virtual indices beyond the real parameter table.
+    const parameters = ids
       .map(id => ({ id, index: core.getParameterIndex(id) }))
-      .filter(parameter => parameter.index >= 0)
+      .filter(parameter => parameter.index >= 0 && parameter.index < parameterCount)
 
-    const head = present(headAngleParameterIds)
-    if (head.length === 0 || count === 0)
+    if (parameters.length === 0 || count === 0)
       return undefined
 
-    const held = head.map(parameter => core.getParameterValueById(parameter.id))
-    const restore = () => head.forEach((parameter, at) => core.setParameterValueById(parameter.id, held[at]))
+    const held = parameters.map(parameter => core.getParameterValueById(parameter.id))
+    const restore = () => parameters.forEach((parameter, at) => core.setParameterValueById(parameter.id, held[at]))
 
     const settle = () => {
-      const steps = Math.ceil(physicsSettleSeconds / physicsStepSeconds)
-      for (let step = 0; step < steps; step++)
-        internalModel.physics?.evaluate(core, physicsStepSeconds)
+      if (withPhysics) {
+        const steps = Math.ceil(physicsSettleSeconds / physicsStepSeconds)
+        for (let step = 0; step < steps; step++)
+          internalModel.physics?.evaluate(core, physicsStepSeconds)
+      }
 
       core.update()
     }
@@ -178,19 +197,19 @@ export function createLive2DHeadTracker() {
     settle()
     const resting = measureEvery(internalModel, count)
 
-    head.forEach((parameter, at) => core.setParameterValueById(parameter.id, farEnd(parameter, held[at])))
+    parameters.forEach((parameter, at) => core.setParameterValueById(parameter.id, farEnd(parameter, held[at])))
     settle()
     const turned = measureEvery(internalModel, count)
 
     restore()
     settle()
 
-    const byHead = resting.map((bounds, index) => travelled(bounds, turned[index]))
-    const largest = Math.max(...byHead)
+    const distances = resting.map((bounds, index) => travelled(bounds, turned[index]))
+    const largest = Math.max(...distances)
     if (largest <= 0)
       return undefined
 
-    const moved = byHead
+    const moved = distances
       .map((distance, index) => ({ distance, index }))
       .filter(entry => entry.distance >= largest * movedShare)
       .map(entry => entry.index)
@@ -198,42 +217,69 @@ export function createLive2DHeadTracker() {
     return moved.length > 0 ? moved : undefined
   }
 
+  function readBounds(internalModel: Live2DHeadSource, measure: 'physics' | 'face' | 'eyes'): Live2DModelCanvasRect | undefined {
+    if (!selections.has(measure)) {
+      const tracked = measure === 'physics'
+        ? selectByHitArea(internalModel) ?? selectByParameters(internalModel, headAngleParameterIds, true)
+        : selectByParameters(internalModel, measure === 'face' ? faceParameterIds : eyeParameterIds, false)
+      selections.set(measure, tracked)
+    }
+
+    const tracked = selections.get(measure)
+    if (!tracked)
+      return undefined
+
+    let union: Bounds | undefined
+    for (const index of tracked) {
+      // Selection is cached, but expressions can hide or reveal a tracked part each frame.
+      if (!internalModel.coreModel.getDrawableDynamicFlagIsVisible(index) || internalModel.coreModel.getDrawableOpacity(index) < 0.01)
+        continue
+      const drawable = internalModel.getDrawableBounds(index)
+      if (drawable.width <= 0 || drawable.height <= 0)
+        continue
+
+      if (!union)
+        union = { ...drawable }
+      else
+        unionInto(union, drawable)
+    }
+
+    return union ? { x: union.x, y: union.y, width: union.width, height: union.height } : undefined
+  }
+
   return {
     /**
-     * The head's box in model canvas space, or `undefined` when the model states
-     * no head.
-     *
-     * A box rather than a point, because a caller placing something beside the
-     * character has to know how wide the head is to clear it.
+     * The head's box in model canvas space, including physics-carried parts so a
+     * presence bubble clears the silhouette. An authored head/face hit area wins.
+     * Returns `undefined` when the model states no head.
      */
-    bounds(internalModel: Live2DHeadSource): Live2DModelCanvasRect | undefined {
-      if (!selected) {
-        selected = true
-        tracked = selectByHitArea(internalModel) ?? selectByHeadAngle(internalModel)
-      }
-
-      if (!tracked)
-        return undefined
-
-      let union: Bounds | undefined
-      for (const index of tracked) {
-        const drawable = internalModel.getDrawableBounds(index)
-        if (drawable.width <= 0 || drawable.height <= 0)
-          continue
-
-        if (!union)
-          union = { ...drawable }
-        else
-          unionInto(union, drawable)
-      }
-
-      return union ? { x: union.x, y: union.y, width: union.width, height: union.height } : undefined
+    bounds(internalModel: Live2DHeadSource) {
+      return readBounds(internalModel, 'physics')
     },
 
-    /** Drops the selection so the next model answers for itself. */
+    /**
+     * The interaction head box (whose width is the cursor unit) and eye anchor.
+     * An authored hit area wins unchanged, then face features expanded by
+     * `faceToHeadScale`, then the physics-inclusive box. Visible eye-feature
+     * drawables locate the eye anchor when the face measure is used; without them,
+     * hit areas and fallback boxes keep the existing proportional eye anchor.
+     * Selections are measured once and visibility every time. Reset on model swap.
+     */
+    interactionBounds(internalModel: Live2DHeadSource) {
+      const face = selectByHitArea(internalModel) ? undefined : readBounds(internalModel, 'face')
+      const head = face ? scaleLive2DRect(face, faceToHeadScale) : readBounds(internalModel, 'physics')
+      if (!head)
+        return undefined
+      const eyes = face && readBounds(internalModel, 'eyes')
+      const eyeAnchor = eyes
+        ? { x: eyes.x + eyes.width / 2, y: eyes.y + eyes.height / 2 }
+        : { x: head.x + head.width / 2, y: head.y + head.height * eyeAnchorShare }
+      return { head, eyeAnchor }
+    },
+
+    /** Drops every selection so the next model answers for itself. */
     reset() {
-      tracked = undefined
-      selected = false
+      selections.clear()
     },
   }
 }

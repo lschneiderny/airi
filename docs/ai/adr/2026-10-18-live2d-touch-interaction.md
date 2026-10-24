@@ -48,10 +48,10 @@ The scene calls `update` once per rendered frame while a pet is in progress or a
 
 ## Regions
 
-The head is `createLive2DHeadTracker().bounds`, which the presence bubble already uses: the `head` or `face` hit area, or otherwise the drawables that move when the head angles turn.
-Both target rigs declare no hit area and define `ParamAngleX/Y/Z`, so the second rule applies to them.
-A model that states neither has no head; it can be poked but not petted.
-The tracker measures the real head. A per-model setting scales that box around its center (0.5 to 2, default 1) for a rig whose measured head is too tight or too loose for petting.
+The presence bubble uses `createLive2DHeadTracker().bounds`: an authored `head` or `face` hit area, or otherwise visible drawables moved by head-angle parameters with physics included.
+Touch uses the interaction box instead: an authored hit area first, then a face-feature measure, then the physics-inclusive head box. The face measure selects visible drawables moved by the rig's eye-open, eyeball, brow, and mouth parameters, without settling physics; parameter presence is checked against the real parameter table because Cubism can return virtual indices for absent ids.
+The face-feature box expands around its center by `faceToHeadScale` (1.6) to make the interaction box. The per-model setting scales this resulting box around its center (0.5 to 2, default 1) when it is too tight or loose for petting.
+A model without any available head measure can be poked but not petted.
 
 The body is `live2DVisibleBounds`: the box around drawables whose visible flag is set and whose opacity is at least 0.01.
 The padded model canvas is not used, because its size says little about where the character is.
