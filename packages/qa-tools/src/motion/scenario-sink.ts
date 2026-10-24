@@ -8,6 +8,7 @@ import type { NaturalEpisode } from '@proj-airi/stage-ui-live2d/composables/live
 import type { PostureHome } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/posture'
 import type { readLive2DRigProfile } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/rig-profile'
 import type { NaturalTrace, NaturalTraceRecorder } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
+import type { Live2DTouchEvent, Live2DTouchSample } from '@proj-airi/stage-ui-live2d/composables/live2d/touch-gestures'
 import type { StagePerformanceScene } from '@proj-airi/stage-ui/composables/performance/use-stage-performance-conductor'
 
 import { normalizeActPayload, tokenAct } from '@proj-airi/pipelines-audio'
@@ -16,6 +17,8 @@ import { createScenarioPlayer, MotionScenarioSchema } from '@proj-airi/stage-sha
 import { EmotionHoldPerformer } from '@proj-airi/stage-ui-live2d/composables/live2d/expression/hold'
 import { Live2DNaturalMotionAdapter } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
 import { syllableFixture } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/speech-fixture'
+import { Live2DTouchGestures } from '@proj-airi/stage-ui-live2d/composables/live2d/touch-gestures'
+import { eyeAnchorShare } from '@proj-airi/stage-ui-live2d/composables/live2d/touch-regions'
 import { StagePerformanceConductor } from '@proj-airi/stage-ui/composables/performance/use-stage-performance-conductor'
 import { createPinia, setActivePinia } from 'pinia'
 import { parse } from 'valibot'
@@ -26,6 +29,23 @@ const maxSteps = 120 * 3600
 const maxTimersPerStep = 1_000
 /** The ACT parser the stage's streaming control runs; its `parse` is synchronous and has no side effects. */
 const actParser = tokenAct()
+/** Half height of the replayed head box, in head widths; pointer events are measured from its center. */
+const t1HeadHalfHeight = 0.6
+/** Body box around the head box: this many head widths to each side, down to this depth (y down). */
+const t1Body = { halfWidth: 1.5, bottom: 4 }
+
+const clampUnit = (value: number) => Math.max(-1, Math.min(1, value))
+
+/** A head-relative hand: x from -1 left to 1 right, y from -1 top to 1 bottom of the head box. */
+const headHand = (point: { x: number, y: number }) => ({ x: clampUnit(point.x / 0.5), y: clampUnit(point.y / t1HeadHalfHeight) })
+
+/** A pointer event as the touch classifier sees it: head-width space, so the classifier scale is 1. */
+function touchSample(event: { at: number, x: number, y: number }): Live2DTouchSample {
+  const { x, y } = event
+  const inHead = Math.abs(x) <= 0.5 && Math.abs(y) <= t1HeadHalfHeight
+  const region = inHead ? 'head' : Math.abs(x) <= t1Body.halfWidth && y <= t1Body.bottom ? 'body' : null
+  return { timeMs: event.at * 1000, x, y, region, scale: 1, head: { x, y, halfHeight: t1HeadHalfHeight } }
+}
 
 type TimerHandle = ReturnType<typeof setTimeout>
 
@@ -160,6 +180,16 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
     const emotionStrengths = {}
     const clipOwnedIds = new Set<string>()
     const pendingPokes: Live2DNaturalMotionAttention['pendingPokes'] = []
+    // The stage classifies hover pets; held-only pets are a user setting the scenarios do not exercise.
+    const gestures = new Live2DTouchGestures({ requireHold: false })
+    let pointer: { x: number, y: number } | null = null
+    let pet: Live2DNaturalMotionAttention['pet'] = null
+    const applyTouch = (events: Live2DTouchEvent[]) => {
+      for (const touch of events) {
+        if (touch.kind === 'poke')
+          pendingPokes.push({ region: touch.region, ...headHand(touch) })
+      }
+    }
 
     const adapter = new Live2DNaturalMotionAdapter(host.model, host.rigProfile, () => ({
       driver: 'natural',
@@ -178,7 +208,7 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
       cursor: cursorAttention ? cursor : null,
       cursorDismissed: !cursorAttention,
       pendingPokes,
-      pet: null,
+      pet,
     }), undefined, undefined, { seed: scenario.seed, home, emotionTable: options.emotionTable })
     adapter.setPerformanceSettings(settings)
 
@@ -239,6 +269,25 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
             case 'cursor':
               cursor = event.clear ? null : { x: event.x!, y: event.y! }
               break
+            case 'pointer': {
+              const sample = touchSample(event)
+              pointer = { x: event.x, y: event.y }
+              if (event.phase === 'move') {
+                applyTouch(gestures.moved(sample))
+                // The eye anchor sits below the head-box center (y down); the cursor offset is y up.
+                cursor = { x: event.x, y: -(event.y - (eyeAnchorShare - 0.5) * 2 * t1HeadHalfHeight) }
+              }
+              else if (event.phase === 'down') {
+                applyTouch(gestures.pressed(sample))
+              }
+              else if (event.phase === 'up') {
+                applyTouch(gestures.released(sample))
+              }
+              else {
+                applyTouch(gestures.cancelled(sample.timeMs))
+              }
+              break
+            }
             case 'expression':
               if (event.on) {
                 if (!conductor.expression(event.expressionId, undefined, 'act'))
@@ -257,6 +306,8 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
               break
           }
         }
+        applyTouch(gestures.update(simTime * 1000))
+        pet = gestures.petting && pointer ? headHand(pointer) : null
         conductor.sampleVoiceLevel(speechLevel())
         host.frame(adapter, simTime)
       }

@@ -31,7 +31,10 @@ export const ScenarioEventSchema = variant('kind', [
   strictObject({ kind: literal('act'), at: seconds, marker: nonEmpty, trialId }),
   strictObject({ kind: literal('mode'), at: seconds, mode: picklist(modes), energy: optional(pipe(number(), finite(), minValue(0), maxValue(1))) }),
   strictObject({ kind: literal('speech'), at: seconds, turnId: nonEmpty, seconds: pipe(number(), finite(), minValue(0)), envelopeSeed: uint32 }),
-  /** Either `x` and `y` (both) or `clear: true`; the scenario check enforces the pairing. */
+  /**
+   * The cursor offset Natural attends to: head widths from the eye anchor, x right and y up.
+   * Either `x` and `y` (both) or `clear: true`; the scenario check enforces the pairing.
+   */
   strictObject({ kind: literal('cursor'), at: seconds, x: optional(pipe(number(), finite())), y: optional(pipe(number(), finite())), clear: optional(literal(true)) }),
   /**
    * Pointer coordinates are head widths from the head-box center (x right, y down).
