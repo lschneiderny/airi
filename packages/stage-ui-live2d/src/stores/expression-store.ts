@@ -102,10 +102,10 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   const composer = markRaw(new ExpressionComposer())
   const derived = ref<CatalogEntry[]>([])
   const curated = ref<CuratedCatalogDocument>({ version: 1, overrides: [] })
-  const parameterIds = ref<string[]>([])
+  const parameters = ref<Omit<FreeParameter, 'name'>[]>([])
   const freeParameters = ref<FreeParameter[]>([])
   let deriveInputs: { defs: NamedExpressionDefinition[], model3Refs: { File: string, Name?: unknown }[], vtube?: unknown, displayInfo?: unknown } | undefined
-  const validCustoms = computed(() => (curated.value.customs ?? []).filter(custom => parameterIds.value.includes(custom.parameterId)))
+  const validCustoms = computed(() => (curated.value.customs ?? []).filter(custom => parameters.value.some(parameter => parameter.id === custom.parameterId)))
   const catalog = computed(() => mergeCatalog(derived.value, curated.value, validCustoms.value.map(customEntryFromDocument)))
   const llmEligibleEntries = computed(() => catalog.value.filter(isLlmEligible))
   const autoEligibleEntries = computed(() => catalog.value.filter(isAutoEligible))
@@ -183,7 +183,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
 
   function defineExpressions() {
     for (const custom of curated.value.customs ?? []) {
-      if (!parameterIds.value.includes(custom.parameterId))
+      if (!parameters.value.some(parameter => parameter.id === custom.parameterId))
         console.warn('[expression-store] Custom expression parameter is not in the model:', custom.parameterId)
     }
     definitions.value = [
@@ -215,8 +215,8 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   }
 
   function customDelta(parameterId: string, target: number) {
-    const parameter = freeParameters.value.find(parameter => parameter.id === parameterId)
-    if (!parameterIds.value.includes(parameterId) || !parameter || !Number.isFinite(target)) {
+    const parameter = parameters.value.find(parameter => parameter.id === parameterId)
+    if (!parameter || !Number.isFinite(target)) {
       console.warn('[expression-store] Invalid custom expression target:', parameterId, target)
       return
     }
@@ -292,9 +292,9 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     derived.value = deriveCatalog(defs, model3Refs, vtube, displayInfo, keepSeparate)
   }
 
-  function registerDefinitions(id: string, defs: NamedExpressionDefinition[], model3Refs: { File: string, Name?: unknown }[] = [], vtube?: unknown, displayInfo?: unknown, modelParameterIds: string[] = [], modelFreeParameters: FreeParameter[] = []) {
+  function registerDefinitions(id: string, defs: NamedExpressionDefinition[], model3Refs: { File: string, Name?: unknown }[] = [], vtube?: unknown, displayInfo?: unknown, modelParameters: Omit<FreeParameter, 'name'>[] = [], modelFreeParameters: FreeParameter[] = []) {
     modelId.value = id
-    parameterIds.value = [...modelParameterIds]
+    parameters.value = modelParameters.map(parameter => ({ ...parameter }))
     freeParameters.value = modelFreeParameters.map(parameter => ({ ...parameter }))
     deriveInputs = { defs, model3Refs, vtube, displayInfo }
     curated.value = { version: 1, overrides: [] }
@@ -406,7 +406,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   function dispose() {
     composer.restoreBases(() => {})
     definitions.value = []
-    parameterIds.value = []
+    parameters.value = []
     freeParameters.value = []
     modelId.value = ''
     restSet.value = []

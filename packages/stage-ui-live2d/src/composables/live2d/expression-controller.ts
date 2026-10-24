@@ -37,7 +37,7 @@ export function useExpressionController(options: ExpressionControllerOptions) {
     resolvePath: (path: string) => string = path => path,
     vtube?: unknown,
     displayInfo?: unknown,
-    parameterIds: string[] = [],
+    parameters: Omit<FreeParameter, 'name'>[] = [],
     freeParameters: FreeParameter[] = [],
   ) {
     const loadGeneration = ++generation
@@ -78,7 +78,7 @@ export function useExpressionController(options: ExpressionControllerOptions) {
     // A completed load owns registration; a detached model must not publish stale state.
     if (loadedModel && options.internalModel.value === loadedModel && loadGeneration === generation) {
       const writtenIds = new Set(definitions.flatMap(definition => definition.parameters.map(parameter => parameter.id)))
-      store.registerDefinitions(modelId ?? 'unknown', definitions, expressionRefs.map(ref => ({ ...ref, File: resolvePath(ref.File) })), vtube, displayInfo, parameterIds, freeParameters.filter(parameter => !writtenIds.has(parameter.id)))
+      store.registerDefinitions(modelId ?? 'unknown', definitions, expressionRefs.map(ref => ({ ...ref, File: resolvePath(ref.File) })), vtube, displayInfo, parameters, freeParameters.filter(parameter => !writtenIds.has(parameter.id)))
     }
   }
 

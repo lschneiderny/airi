@@ -64,7 +64,7 @@ describe('useExpressionController', () => {
     expect(store.catalog[0]).toMatchObject({ kind: 'face', area: 'cheeks', labelSource: 'file' })
   })
 
-  it('forwards model parameter ids and filters exp3 writes from offered free switches', async () => {
+  it('forwards the full parameter table and filters exp3 writes from offered free switches', async () => {
     const { controller, store } = rig()
     storage.set('expression-catalog:model', JSON.stringify({
       version: 1,
@@ -72,9 +72,11 @@ describe('useExpressionController', () => {
       customs: [{ id: 'custom:old', label: 'Old switch', kind: 'prop', parameterId: 'driven', delta: 0.5, mappings: [], exposedToLlm: true }],
     }))
     const parameter = (id: string) => ({ id, name: id, min: 0, max: 1, default: 0 })
-    await controller.initialise('model', [], async () => '', archive, path => path, undefined, undefined, ['Param2', 'Param4', 'free', 'driven'], ['Param2', 'Param4', 'free'].map(parameter))
+    await controller.initialise('model', [], async () => '', archive, path => path, undefined, undefined, ['Param2', 'Param4', 'free', 'driven'].map(parameter), ['Param2', 'Param4', 'free'].map(parameter))
     expect(store.settingsSnapshot.freeParameters).toEqual([parameter('free')])
     expect(store.definitions.at(-1)).toEqual({ id: 'custom:old', name: 'Old switch', parameters: [{ id: 'driven', value: 0.5, blend: 'Add' }] })
+    store.applySettingsCommand({ type: 'update-custom', id: 'custom:old', patch: { target: 1 } })
+    expect(store.definitions.at(-1)?.parameters).toEqual([{ id: 'driven', value: 1, blend: 'Add' }])
   })
 
   it('registers unreferenced archive expressions and gives referenced names precedence without fetching', async () => {

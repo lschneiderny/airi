@@ -153,7 +153,7 @@ describe('curated expression catalog', () => {
 
   it('persists a custom Add delta and mapping updates across registration, ignoring update-entry', () => {
     const store = useExpressionStore()
-    const register = () => store.registerDefinitions('a', defs, [], undefined, undefined, ['Param7'], switches)
+    const register = () => store.registerDefinitions('a', defs, [], undefined, undefined, switches, switches)
     register()
     store.applySettingsCommand({ type: 'create-custom', custom: { label: 'Earphones', parameterId: 'Param7', target: 3 } })
     const custom = store.catalog.at(-1)!
@@ -185,7 +185,7 @@ describe('curated expression catalog', () => {
     }))
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const store = useExpressionStore()
-    store.registerDefinitions('a', defs, [], undefined, undefined, ['driven'], [])
+    store.registerDefinitions('a', defs, [], undefined, undefined, [{ id: 'driven', min: -1, max: 1, default: 0 }], [])
     expect(store.settingsSnapshot.freeParameters).toEqual([])
     expect(store.catalog.some(entry => entry.id === 'custom:driven')).toBe(true)
     expect(store.catalog.some(entry => entry.id === 'custom:missing')).toBe(false)
@@ -200,9 +200,37 @@ describe('curated expression catalog', () => {
     expect(store.curated.customs).toHaveLength(2)
   })
 
+  it('persists target updates for a custom expression on a non-free parameter', () => {
+    storage.set('expression-catalog:a', JSON.stringify({
+      version: 1,
+      overrides: [],
+      customs: [{ id: 'custom:driven', label: 'Driven', kind: 'prop', parameterId: 'driven', delta: 0.7, mappings: [], exposedToLlm: true }],
+    }))
+    const store = useExpressionStore()
+    const register = () => store.registerDefinitions('a', defs, [], undefined, undefined, [{ id: 'driven', min: -0.5, max: 1, default: 0.25 }], [])
+    register()
+    expect(store.settingsSnapshot.freeParameters).toEqual([])
+    store.applySettingsCommand({ type: 'update-custom', id: 'custom:driven', patch: { target: 1 } })
+    expect(store.curated.customs?.[0].delta).toBe(0.75)
+    expect(JSON.parse(storage.get('expression-catalog:a')!).customs[0].delta).toBe(0.75)
+    register()
+    expect(store.definitions.at(-1)?.parameters).toEqual([{ id: 'driven', value: 0.75, blend: 'Add' }])
+    store.applySettingsCommand({ type: 'update-custom', id: 'custom:driven', patch: { target: -2 } })
+    expect(JSON.parse(storage.get('expression-catalog:a')!).customs[0].delta).toBe(-0.75)
+  })
+
+  it('creates a custom expression using a non-free parameter range and default', () => {
+    const store = useExpressionStore()
+    store.registerDefinitions('a', defs, [], undefined, undefined, [{ id: 'driven', min: -0.5, max: 1, default: 0.25 }], [])
+    store.applySettingsCommand({ type: 'create-custom', custom: { label: 'Driven', parameterId: 'driven', target: 2 } })
+    expect(store.settingsSnapshot.freeParameters).toEqual([])
+    expect(store.definitions.at(-1)?.parameters).toEqual([{ id: 'driven', value: 0.75, blend: 'Add' }])
+    expect(JSON.parse(storage.get('expression-catalog:a')!).customs[0].delta).toBe(0.75)
+  })
+
   it('deletes custom members and empty combos, clearing their saved and active claims', () => {
     const store = useExpressionStore()
-    store.registerDefinitions('a', defs, [], undefined, undefined, ['Param7'], switches)
+    store.registerDefinitions('a', defs, [], undefined, undefined, switches, switches)
     store.applySettingsCommand({ type: 'create-custom', custom: { label: 'Earphones', parameterId: 'Param7', target: 1 } })
     const custom = store.catalog.at(-1)!
     store.applySettingsCommand({ type: 'create-combo', combo: { label: 'Only custom', members: [{ expressionId: custom.id, strength: 1 }] } })

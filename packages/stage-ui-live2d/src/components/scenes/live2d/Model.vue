@@ -831,7 +831,13 @@ async function initExpressionController(internalModel?: PixiLive2DInternalModel,
     ]),
     displayNames: readParameterDisplayNames(displayInfo),
   })
-  await expressionController.initialise(modelId, expressionRefs, readExpFile, settings._expFiles, resolvePath, settings._vtubeData, displayInfo, parameters.ids, freeParameters)
+  const modelParameters = parameters.ids.map((id, index) => ({
+    id,
+    min: parameters.minimumValues[index],
+    max: parameters.maximumValues[index],
+    default: parameters.defaultValues[index],
+  }))
+  await expressionController.initialise(modelId, expressionRefs, readExpFile, settings._expFiles, resolvePath, settings._vtubeData, displayInfo, modelParameters, freeParameters)
 }
 
 async function setMotion(motionName: string, index?: number) {
