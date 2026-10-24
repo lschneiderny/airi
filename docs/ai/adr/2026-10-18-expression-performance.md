@@ -193,6 +193,7 @@ The model validator still reports unreferenced exp3 files, and says that they ar
 
 The **Expression system** switch is stored as `settings/live2d/expression-enabled`, and a fresh profile defaults it to `false`.
 While it is off, the model keeps the SDK expression manager and eye blink, and the expression runtime does not initialize. The catalog is then empty, so no expression fires automatically and no expression tool is registered. Natural emotion reactions still run.
+
 Superseded by [2026-10-24-expression-auto-setup](2026-10-24-expression-auto-setup.md).
 
 ## Catalog
@@ -203,6 +204,7 @@ Superseded by [2026-10-24-expression-auto-setup](2026-10-24-expression-auto-setu
 - `kind`: one of `face`, `effect`, `outfit`, `prop`, or `system`, suggested from tokens in the label and file name.
 - `group`: a suggested pick-one group. Expressions of the same suggested kind that share a parameter, where at least one sets a non-zero value, form a group. Parameters of `system` expressions are ignored.
 - `confirmed: false`, `exposedToLlm: false`, and no `mappings`.
+
 Superseded by [2026-10-24-expression-auto-setup](2026-10-24-expression-auto-setup.md).
 
 An `EmotionMapping` has an `emotion` other than `neutral`, a positive `weight` (default 1), and a `minBand` (default `clear` for faces and `strong` for effects).
@@ -221,6 +223,7 @@ Eligibility:
 
 - `isAutoEligible`: confirmed `face` and `effect` entries. Automatic selection never picks outfits, props, or system expressions.
 - `isLlmEligible`: confirmed, `exposedToLlm`, and of a kind in `llmAllowedKinds` (`face`, `effect`, and `prop`). Outfits and system expressions never reach the LLM, even when exposed.
+
 Superseded by [2026-10-24-expression-auto-setup](2026-10-24-expression-auto-setup.md).
 
 Pick-one groups at runtime:
@@ -238,6 +241,7 @@ Other windows never write the catalog. They render `Live2DExpressionSettingsSnap
 | `update-entry` | Stores a curated override for one entry. |
 | `reset-entry` | Removes the curated override of one entry. |
 | `confirm-all-suggested` | Confirms every entry with its suggested kind. |
+
 Superseded by [2026-10-24-expression-auto-setup](2026-10-24-expression-auto-setup.md).
 
 The Electron owner guard (owner instance id and model id) applies to every command.

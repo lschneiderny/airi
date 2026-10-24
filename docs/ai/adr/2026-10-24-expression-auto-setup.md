@@ -9,7 +9,7 @@ Luke's QA found that setting up expressions required too much manual work before
 
 ## Decision and scope
 
-The expression catalog uses an English and Chinese label lexicon to suggest kinds and emotion mappings during setup. The lexicon maps face and effect entries only, skips negated labels, assigns mapping weight 1, and sets the minimum band to `clear` for faces and `strong` for effects.
+The expression catalog uses an English and Chinese label lexicon to suggest emotion mappings during setup. Kind suggestion (`suggestKind`) already existed and was not changed by this plan. The lexicon maps face and effect entries only, skips negated labels, assigns mapping weight 1, and sets the minimum band to `clear` for faces and `strong` for effects.
 
 There is no confirmation gate. A fresh profile starts with the Expression system on. Eligibility is determined by kind: face and effect entries may be selected automatically, while face, effect, and prop entries may be exposed to the LLM. The default LLM access follows kind.
 
