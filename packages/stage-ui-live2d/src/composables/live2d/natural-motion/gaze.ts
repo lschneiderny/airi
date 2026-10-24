@@ -34,8 +34,6 @@ const targetJitter = 0.02
 const asideSideMemory = 2
 // Share of fixation choices that land on an active cursor.
 const cursorWeight = 0.8
-// Cursor attention looks most of the way toward the cursor, as in v1.
-const cursorGaze = 0.65
 // Pursuit speeds are in normalized eye units per second; time constants are seconds.
 const pursuitMaxSpeed = 1.5
 const pursuitVelocityTau = 0.1
@@ -93,20 +91,6 @@ export class NaturalGazeLayer {
 
   constructor(private readonly random: RandomStream) {
     this.nextFixationAt = this.drawHold()
-  }
-
-  /**
-   * Updates cursor attention. A newly active cursor and a released cursor both
-   * saccade at `at`: attention moves to the cursor, and release returns to the camera.
-   */
-  setCursor(cursor: GazePoint | null, at: number) {
-    const previous = this.cursor
-    // Release starts from the cursor-based gaze, so the saccade begins before the cursor is cleared.
-    if (previous !== null && cursor === null)
-      this.saccadeTo(this.jittered(targets.camera), at)
-    this.setCursorTarget(cursor && { x: cursorGaze * cursor.x, y: cursorGaze * cursor.y }, cursor ? 1 : 0)
-    if (previous === null && cursor !== null)
-      this.saccadeTo('cursor', at)
   }
 
   /** Stores an already mapped eye target and its fixation weight without moving the gaze. */
@@ -184,9 +168,11 @@ export class NaturalGazeLayer {
   /**
    * Saccades to `point` at `at` and holds it for `hold` seconds before autonomous
    * fixations resume. Used by emotion impulses and desktop reactions.
+   * Returns the active-time end of the hold, including the approach saccade.
    */
   glance(point: GazePoint, hold: number, at: number) {
     this.saccadeTo(point, at, hold)
+    return this.nextFixationAt
   }
 
   /** Advances by `dt` seconds and returns the gaze point before head compensation. */

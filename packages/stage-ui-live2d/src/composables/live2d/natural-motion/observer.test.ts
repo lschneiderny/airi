@@ -115,7 +115,7 @@ describe('natural motion observer', () => {
       { kind: 'hold', at: expect.any(Number), emotion: 'happy', strength: 0.6, side },
       { kind: 'hold', at: expect.any(Number), emotion: null, strength: 0, side: null },
     ])
-    expect(events.slice(0, 6).every(event => event.side === -1 || event.side === 1)).toBe(true)
+    expect(events.slice(0, 6).every(event => 'side' in event && (event.side === -1 || event.side === 1))).toBe(true)
     // Inputs before `advance(t)` start on the first grid step at or after `t`.
     for (const [index, input] of [20, 20, 20, 40, 40, 40, 50].entries()) {
       expect(events[index].at).toBeGreaterThanOrEqual(input - 1e-9)

@@ -46,11 +46,14 @@ export interface Live2DNaturalMotionAttention {
   heldEmotion: EmotionHold | null
   /** The model's per-emotion strength multipliers; missing emotions use 1. */
   emotionStrengths: Partial<Record<PerformanceEmotion, number>>
+  /** Cursor offset from the eye anchor in head widths (y up), or `null` when there is no cursor. */
   cursor: { x: number, y: number } | null
-  /** Host poke queue, `x` relative to the touched region's center (-1..1); emptied like `pendingEmotions`. */
-  pendingPokes: { region: Live2DTouchRegion, x: number }[]
-  /** Hand position relative to the head center (-1..1) while the user pets the head, otherwise `null`. */
-  pet: number | null
+  /** Cursor attention is switched off or an ACT aside cue looks away from it. */
+  cursorDismissed: boolean
+  /** Host poke queue, `x` and `y` relative to the touched region's center (-1..1, y down); emptied like `pendingEmotions`. */
+  pendingPokes: { region: Live2DTouchRegion, x: number, y: number }[]
+  /** Hand position relative to the head center (-1..1, y down) while the user pets the head, otherwise `null`. */
+  pet: { x: number, y: number } | null
 }
 
 /**
@@ -313,11 +316,11 @@ export class Live2DNaturalMotionAdapter {
     // Touch follows the same rule: a poke or pet from while Natural was inactive is stale.
     for (const poke of attention.pendingPokes.splice(0)) {
       if (active)
-        this.controller.poke(poke.region, poke.x, this.time)
+        this.controller.poke(poke.region, poke.x, poke.y, this.time)
     }
     this.controller.setPet(active ? attention.pet : null, this.time)
     this.controller.setHeldEmotion(active ? attention.heldEmotion : null, this.time)
-    this.controller.setCursor(attention.cursor, this.time)
+    this.controller.setCursor(attention.cursor, this.time, attention.cursorDismissed ? 'dismissed' : 'live')
     const frame = this.controller.advance(this.time)
     this.diagnosticFrames++
     this.weightSum += this.weight

@@ -176,6 +176,7 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
       heldEmotion: holdPerformer.current(simTime),
       emotionStrengths,
       cursor: cursorAttention ? cursor : null,
+      cursorDismissed: !cursorAttention,
       pendingPokes,
       pet: null,
     }), undefined, undefined, { seed: scenario.seed, home, emotionTable: options.emotionTable })

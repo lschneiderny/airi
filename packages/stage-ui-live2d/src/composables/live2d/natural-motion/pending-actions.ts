@@ -24,12 +24,7 @@ const glanceTargets = { camera: { x: 0, y: 0 }, desk: { x: 0, y: -0.18 } }
 export type PendingAction
   = | { kind: 'emotion', episode: NaturalEpisode }
     | { kind: 'react', reaction: 'wake' | 'screen-change' }
-    // NOTICE:
-    // The poke `y` is optional so the facade can keep queueing x-only pokes.
-    // Todo 4 keeps the facade on one-axis inputs until the two-axis inputs land.
-    // Source: .omo/plans/live2d-cursor-touch-integration.md todo 4.
-    // Removal: todo 6 of .omo/plans/live2d-cursor-touch-integration.md (facade two-axis inputs).
-    | { kind: 'poke', region: Live2DTouchRegion, x: number, y?: number }
+    | { kind: 'poke', region: Live2DTouchRegion, x: number, y: number }
 
 /** Poke surprise bookkeeping the owner carries between calls. */
 export interface PokeSurpriseState {

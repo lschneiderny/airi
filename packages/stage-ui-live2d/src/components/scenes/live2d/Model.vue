@@ -62,7 +62,7 @@ import { scoreLiveliness } from '../../../composables/live2d/natural-motion/live
 import { readLive2DRigProfile } from '../../../composables/live2d/natural-motion/rig-profile'
 import { NaturalTraceRecorder } from '../../../composables/live2d/natural-motion/trace'
 import { Live2DTouchGestures } from '../../../composables/live2d/touch-gestures'
-import { live2DTouchRegionAt, live2DVisibleBounds, scaleLive2DRect } from '../../../composables/live2d/touch-regions'
+import { eyeAnchorShare, live2DTouchRegionAt, live2DVisibleBounds, scaleLive2DRect } from '../../../composables/live2d/touch-regions'
 import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { ScreenAmbientLightFilter } from '../../../filters/screen-ambient-light'
 import { getLive2DMotionControlModelOffset, useL2dViewControl, useLive2DMotionControl, useLive2dParams, useNaturalMotionDiagnostics } from '../../../stores'
@@ -172,11 +172,11 @@ const pendingNaturalEmotions: NaturalEpisode[] = []
 /** Pokes for the Natural driver; the adapter drains the queue like the emotion queue. */
 const pendingNaturalPokes: Live2DNaturalMotionAttention['pendingPokes'] = []
 /** Hand position relative to the head center while the user pets it, read on every composition. */
-let naturalPetHand: number | null = null
+let naturalPetHand: { x: number, y: number } | null = null
 const touchGestures = new Live2DTouchGestures({ requireHold: live2dNaturalTouchPetRequiresHold.value })
 const touchPoint = new Point()
 /** Head and body boxes in model canvas space, re-measured at most every 100 ms while the pointer moves. */
-let touchRegions: { head: Live2DModelCanvasRect | undefined, body: Live2DModelCanvasRect | undefined, measuredAtMs: number } | undefined
+let touchRegions: { head: Live2DModelCanvasRect | undefined, unscaledHead: Live2DModelCanvasRect | undefined, body: Live2DModelCanvasRect | undefined, measuredAtMs: number } | undefined
 const touchRegionsMaxAgeMs = 100
 /** Parameter ids the playing explicit clip animates; Natural masks them. Empty while no clip plays. */
 let clipOwnedIds: ReadonlySet<string> = new Set<string>()
@@ -600,15 +600,16 @@ async function performModelLoad() {
       readRigProfile(),
       () => {
         let cursor = null
-        // Aside attention from an ACT cue looks away from everything, the cursor included. Screen attention,
-        // from a game or video in front or an ACT look cue, watches the screen instead of the mouse.
-        if (live2dNaturalCursorAttention.value && props.eyeFocusSourceActive && props.performance.attention !== 'aside' && props.performance.attention !== 'screen') {
+        // The controller decides what an aside or screen cue does with the cursor; the host only reports it.
+        if (live2dNaturalCursorAttention.value && props.eyeFocusSourceActive) {
           localFocus.set(props.focusAt.x, props.focusAt.y)
           live2DModel.toModelPosition(localFocus, localFocus)
-          cursor = {
-            x: Math.max(-1, Math.min(1, localFocus.x / internalModel.originalWidth * 2 - 1)),
-            y: Math.max(-1, Math.min(1, 1 - localFocus.y / internalModel.originalHeight * 2)),
-          }
+          // Offset from the eye anchor in head widths, y up. Without a head box the anchor and unit are fractions of the canvas.
+          const head = readTouchRegions(performance.now())?.unscaledHead
+          const anchorX = head ? head.x + head.width / 2 : 0.5 * internalModel.originalWidth
+          const anchorY = head ? head.y + eyeAnchorShare * head.height : 0.3 * internalModel.originalHeight
+          const unit = head && head.width > 0 ? head.width : 0.3 * internalModel.originalWidth
+          cursor = { x: (localFocus.x - anchorX) / unit, y: (anchorY - localFocus.y) / unit }
         }
         return {
           driver: live2dMotionDriver.value,
@@ -625,6 +626,7 @@ async function performModelLoad() {
           heldEmotion: holdPerformer.current(holdClock()),
           emotionStrengths: props.naturalEmotionStrength ?? defaultEmotionStrengths,
           cursor,
+          cursorDismissed: !live2dNaturalCursorAttention.value || props.performance.attention === 'aside',
           pendingPokes: pendingNaturalPokes,
           pet: naturalPetHand,
         }
@@ -1254,13 +1256,18 @@ function readTouchRegions(timeMs: number) {
   const internalModel = current.internalModel
   const head = headTracker.bounds(internalModel)
   const headScale = live2dNaturalTouchHeadScale.value[props.modelId ?? ''] ?? 1
-  touchRegions = { head: head && scaleLive2DRect(head, headScale), body: live2DVisibleBounds(internalModel), measuredAtMs: timeMs }
+  touchRegions = { head: head && scaleLive2DRect(head, headScale), unscaledHead: head, body: live2DVisibleBounds(internalModel), measuredAtMs: timeMs }
   return touchRegions
 }
 
 /** Position of `value` inside `rect` along X, from -1 at its left edge to 1 at its right. */
 function acrossRect(value: number, rect: Live2DModelCanvasRect | undefined) {
   return rect && rect.width > 0 ? Math.max(-1, Math.min(1, (value - rect.x) / rect.width * 2 - 1)) : 0
+}
+
+/** Position of `value` inside `rect` along Y, from -1 at its top edge to 1 at its bottom. */
+function acrossRectY(value: number, rect: Live2DModelCanvasRect | undefined) {
+  return rect && rect.height > 0 ? Math.max(-1, Math.min(1, (value - rect.y) / rect.height * 2 - 1)) : 0
 }
 
 /**
@@ -1294,8 +1301,10 @@ function touchSampleFrom(event: PointerEvent, canvas: HTMLCanvasElement): Live2D
 
 function handleTouchEvents(events: Live2DTouchEvent[]) {
   for (const event of events) {
-    if (event.kind === 'poke')
-      pendingNaturalPokes.push({ region: event.region, x: acrossRect(event.x, event.region === 'head' ? touchRegions?.head : touchRegions?.body) })
+    if (event.kind === 'poke') {
+      const box = event.region === 'head' ? touchRegions?.head : touchRegions?.body
+      pendingNaturalPokes.push({ region: event.region, x: acrossRect(event.x, box), y: acrossRectY(event.y, box) })
+    }
     if (event.kind === 'pet-end')
       naturalPetHand = null
     emits('touch', event)
@@ -1323,7 +1332,7 @@ function onTouchPointer(event: PointerEvent) {
     return
   }
   handleTouchEvents(touchGestures.moved(sample))
-  naturalPetHand = touchGestures.petting ? acrossRect(sample.x, touchRegions?.head) : null
+  naturalPetHand = touchGestures.petting ? { x: acrossRect(sample.x, touchRegions?.head), y: acrossRectY(sample.y, touchRegions?.head) } : null
 }
 
 const touchPointerEvents = ['pointerdown', 'pointermove', 'pointerup', 'pointerleave', 'pointercancel'] as const

@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Emotion } from '../../constants/emotions'
 import { Live2DNaturalMotion } from './natural-motion'
 import { Live2DNaturalMotionAdapter } from './natural-motion-adapter'
+import { mapCursor } from './natural-motion/cursor-attention'
 import { readLive2DRigProfile } from './natural-motion/rig-profile'
 
 // Posture fixture ranges: neutral 2, minimum -8, maximum 22.
@@ -89,8 +90,9 @@ function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore
     heldEmotion: null as Live2DNaturalMotionAttention['heldEmotion'],
     emotionStrengths: {} as Live2DNaturalMotionAttention['emotionStrengths'],
     cursor: null as { x: number, y: number } | null,
+    cursorDismissed: false,
     pendingPokes: [] as Live2DNaturalMotionAttention['pendingPokes'],
-    pet: null as number | null,
+    pet: null as { x: number, y: number } | null,
   }
   /** Values the motion update writes every frame, by parameter id. */
   const motion: Record<string, number> = {}
@@ -283,7 +285,8 @@ describe('natural motion adapter', () => {
     const n = near.frame(1).commanded
     const full = far.frame(1).commanded
     // Equal seeds share autonomous motion, so the cursor bias is the only difference.
-    expect(normalize(n[0]) - normalize(c[0])).toBeCloseTo((normalize(full[0]) - normalize(c[0])) * 0.25)
+    const ratio = mapCursor({ x: 0.25, y: 0 }).head.x / mapCursor({ x: 1, y: 0 }).head.x
+    expect(normalize(n[0]) - normalize(c[0])).toBeCloseTo((normalize(full[0]) - normalize(c[0])) * ratio)
     far.state.cursor = { x: -1, y: 1 }
     expect(far.frame(1).commanded).toEqual(full)
     for (let index = 1; index <= 100; index++) {
@@ -672,20 +675,20 @@ describe('natural motion adapter', () => {
     const setPet = vi.spyOn(Live2DNaturalMotion.prototype, 'setPet')
     try {
       const f = fixture()
-      f.state.pendingPokes.push({ region: 'head', x: 0.5 })
-      f.state.pet = 0.2
+      f.state.pendingPokes.push({ region: 'head', x: 0.5, y: -0.25 })
+      f.state.pet = { x: 0.2, y: -0.4 }
       // Touch from while Natural is inactive is dropped, not replayed on resume.
       f.frame(0)
       expect(f.state.pendingPokes).toHaveLength(0)
       expect(poke).not.toHaveBeenCalled()
       expect(setPet).toHaveBeenLastCalledWith(null, 0)
       f.state.eligible = true
-      f.state.pendingPokes.push({ region: 'body', x: -1 })
+      f.state.pendingPokes.push({ region: 'body', x: -1, y: 0.5 })
       f.frame(0.1)
       expect(f.state.pendingPokes).toHaveLength(0)
       expect(poke).toHaveBeenCalledTimes(1)
-      expect(poke).toHaveBeenCalledWith('body', -1, 0.1)
-      expect(setPet).toHaveBeenLastCalledWith(0.2, 0.1)
+      expect(poke).toHaveBeenCalledWith('body', -1, 0.5, 0.1)
+      expect(setPet).toHaveBeenLastCalledWith({ x: 0.2, y: -0.4 }, 0.1)
       f.frame(0.2)
       expect(poke).toHaveBeenCalledTimes(1)
       f.adapter.dispose()

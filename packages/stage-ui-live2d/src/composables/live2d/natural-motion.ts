@@ -18,6 +18,7 @@ import { EMOTION_VALUES } from '../../constants/emotions'
 import { NaturalBlinkScheduler } from './natural-motion/blink'
 import { NaturalBodyLayer } from './natural-motion/body'
 import { NaturalBreathLayer } from './natural-motion/breath'
+import { mapCursor, NaturalCursorAttention, releaseAt } from './natural-motion/cursor-attention'
 import { naturalEmotions } from './natural-motion/emotions'
 import { NaturalPerformanceEnergy } from './natural-motion/energy'
 import { NaturalFaceLayer } from './natural-motion/face'
@@ -35,22 +36,24 @@ import { createRandomStream, deriveSeed } from './natural-motion/random'
 import { NaturalSpeechEmphasis, SpeechOnsetShifts } from './natural-motion/speech-emphasis'
 import { NaturalPetLayer } from './natural-motion/touch'
 
-export type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionPose, Live2DNaturalMotionVoice, NaturalGestureEvent, NaturalHoldEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionObserver } from './natural-motion/frame-types'
+export type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionPose, Live2DNaturalMotionVoice, NaturalAttentionEvent, NaturalGestureEvent, NaturalHoldEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionObserver, NaturalTouchEvent } from './natural-motion/frame-types'
 
 // Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
 // Index 4 belonged to the v1 fixation rule and now seeds the gaze layer that replaces it.
-const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12 }
+const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12, cursorAttention: 13 }
 
 // Fixed integration grid. Processes advance only in whole steps and the output is
 // interpolated between the two grid states around the current time, so frame
 // partition never changes the sampled path and draws stay deterministic per seed.
 const step = 1 / 120
 
-// Critically damped follower time constants (seconds) of the v1 cursor head bias.
+// Critically damped follower time constants (seconds): the head trails eye pursuit.
 const followers = {
-  cursorX: 0.14,
-  cursorY: 0.17,
+  cursorX: 0.22,
+  cursorY: 0.26,
 }
+// Attention calms autonomous posture without freezing it.
+const attentionCalm = 0.3
 
 type Axis = keyof typeof followers
 
@@ -67,11 +70,12 @@ interface Snapshot {
  * Owns autonomous posture, gaze, body, face, blink, and breath, without model or renderer state.
  * Times are monotonic seconds. The first advance establishes the time origin.
  * Suspension freezes every process and active time; resume continues from the frozen state.
- * Cursor expiry and disabled attention are represented by a null cursor.
+ * Cursor loss fades attention; deliberate dismissal also ends pursuit immediately.
  */
 export class Live2DNaturalMotion {
   private readonly posture: NaturalPostureLayers
   private readonly gaze: NaturalGazeLayer
+  private readonly cursorAttention: NaturalCursorAttention
   private readonly body: NaturalBodyLayer
   private readonly attention: NaturalAttentionShifts
   private readonly face: NaturalFaceLayer
@@ -88,6 +92,11 @@ export class Live2DNaturalMotion {
   private readonly impulses: NaturalImpulses
   private readonly onsetShifts = new SpeechOnsetShifts()
   private readonly pet = new NaturalPetLayer()
+  private petHand = { x: 0, y: 0 }
+  private petStartedAt: number | null = null
+  private petOverride = false
+  /** Active-time deadline, including the saccade, of the grateful camera hold. */
+  private petGlanceUntil = 0
   /** Gives each poke's surprise its own episode id; reaction ids reject reuse without escalation. */
   private pokes = 0
   /** Active seconds of the last poke surprise; a repeat within `pokeSurpriseDedupeSeconds` only flinches. */
@@ -98,6 +107,11 @@ export class Live2DNaturalMotion {
   private voice: Live2DNaturalMotionVoice = { speaking: false, speechActiveOrRecent: false, level: 0 }
   private saccadeCount = 0
   private cursor: GazePoint | null = null
+  private cursorMode: 'live' | 'dismissed' = 'live'
+  /** Keep the last destination while a missing cursor's attention fades. */
+  private mappedCursor = mapCursor({ x: 0, y: 0 })
+  private onCursor = 0
+  private approach = 0
   private bodyFromHeadPhysics: Live2DRigProfile['bodyFromHeadPhysics'] = { x: false, y: false, z: false }
   private shiftCount = 0
   private readonly u = Object.fromEntries(Object.keys(followers).map(axis => [axis, 0])) as Record<Axis, number>
@@ -136,6 +150,7 @@ export class Live2DNaturalMotion {
       shift: stream('shift'),
     })
     this.gaze = new NaturalGazeLayer(stream('gaze'))
+    this.cursorAttention = new NaturalCursorAttention(stream('cursorAttention'))
     this.body = new NaturalBodyLayer(stream('body'), home)
     this.attention = new NaturalAttentionShifts(stream('attention'))
     this.face = new NaturalFaceLayer(stream('face'))
@@ -192,7 +207,7 @@ export class Live2DNaturalMotion {
   }
 
   /**
-   * Reports performed impulses, hold changes, and gesture starts to `observer`, or stops reporting with `null`.
+   * Reports performed impulses, holds, gestures, cursor attention, and touch to `observer`, or stops reporting with `null`.
    * Reporting never changes motion: the observer receives values the controller already computed, and
    * no event is built while no observer is attached. A newly attached observer receives the current
    * hold, if any, on the next grid step.
@@ -210,10 +225,13 @@ export class Live2DNaturalMotion {
     this.breath.speaking = voice.speaking
   }
 
-  /** Changes attention after advancing to this timestamp; it takes effect from the next grid step. */
-  setCursor(target: GazePoint | null, nowSeconds: number) {
+  /** Eye-anchored offset in head widths, Y up; attention changes from the next grid step. */
+  setCursor(offset: GazePoint | null, nowSeconds: number, mode: 'live' | 'dismissed' = 'live') {
     this.advance(nowSeconds)
-    this.cursor = target === null ? null : { x: clamp(target.x, 1), y: clamp(target.y, 1) }
+    this.cursor = offset === null ? null : { x: clamp(offset.x, 100), y: clamp(offset.y, 100) }
+    this.cursorMode = mode
+    if (this.cursor !== null)
+      this.mappedCursor = mapCursor(this.cursor)
   }
 
   /**
@@ -276,27 +294,23 @@ export class Live2DNaturalMotion {
 
   /**
    * Starts a poke reaction after advancing to this timestamp; it begins at the next grid step.
-   * `x` is the poke's horizontal position relative to the touched region's center, -1 left to
-   * 1 right. The head flinches away, the face shows a brief surprise, and the gaze meets the camera.
+   * Position is relative to the touched region's center: x from -1 left to 1 right, y from
+   * -1 top to 1 bottom. The head flinches away, the face shows surprise, and gaze meets the camera.
    */
-  poke(region: Live2DTouchRegion, x: number, nowSeconds: number) {
+  poke(region: Live2DTouchRegion, x: number, y: number, nowSeconds: number) {
     this.advance(nowSeconds)
-    this.pending.push({ kind: 'poke', region, x })
+    this.pending.push({ kind: 'poke', region, x, y })
   }
 
   /**
-   * Starts or continues a pet with the hand at `hand` (-1 left of the head center, 1 right), or
-   * ends it with `null`, after advancing to this timestamp. While a pet is in progress cursor
-   * attention is ignored, so the character settles into the hand instead of watching it.
+   * Starts or continues a pet with a head-relative hand (x: -1 left to 1 right, y: -1 top to
+   * 1 bottom), or ends it with `null`. The pet gradually takes gaze and head from the cursor.
    */
-  setPet(hand: number | null, nowSeconds: number) {
+  setPet(hand: { x: number, y: number } | null, nowSeconds: number) {
     this.advance(nowSeconds)
-    // NOTICE:
-    // The layer takes a two-axis hand; the facade still receives only x.
-    // Todo 4 keeps the facade on one-axis inputs until the two-axis inputs land.
-    // Source: .omo/plans/live2d-cursor-touch-integration.md todo 4.
-    // Removal: todo 6 of .omo/plans/live2d-cursor-touch-integration.md (facade two-axis inputs).
-    this.pet.set(hand === null ? null : { x: hand, y: 0 })
+    if (hand !== null)
+      this.petHand = { x: clamp(hand.x, 1), y: clamp(hand.y, 1) }
+    this.pet.set(hand)
   }
 
   /** Suspension freezes every layer; resume keeps all state, so output continues without a jump. */
@@ -317,13 +331,66 @@ export class Live2DNaturalMotion {
   private integrate(): Snapshot {
     const stepStart = this.stepIndex * step
     this.stepIndex++
-    // Aside attention looks away from the cursor too, and screen attention watches the screen instead of it.
-    // Model.vue drops the cursor for both; this also covers a pause between speech clips, where the held cue
-    // outlives that attention.
-    const c = this.pet.active || this.energy.aside || this.energy.screen ? null : this.cursor
-    this.gaze.setCursor(c, stepStart)
+    const permission = this.cursorMode === 'dismissed' || this.energy.aside || this.energy.screen ? 'dismiss' : 'full'
+    if (permission === 'dismiss')
+      this.petGlanceUntil = 0
+    const attention = this.cursorAttention.step(step, stepStart, { cursor: this.cursor, permission })
+    const mapped = this.mappedCursor
+    const proximity = this.cursor !== null && permission === 'full'
+      ? Math.max(0, Math.min(1, (1.6 - mapped.distance) / (1.6 - 0.9)))
+      : 0
+    this.approach += (proximity * proximity * (3 - 2 * proximity) - this.approach) * (1 - Math.exp(-step / 0.2))
+    const above = this.cursor !== null && this.cursor.y > 0.2
+    this.pet.step(step)
+    const cursorShare = attention.weight * (1 - this.pet.level)
+    this.gaze.setCursorTarget({ x: mapped.eye.x, y: above ? Math.min(0.35, mapped.eye.y) : mapped.eye.y }, attention.oriented ? cursorShare : 0)
+    for (const event of attention.events) {
+      if (event.kind === 'notice' && stepStart >= this.petGlanceUntil)
+        this.gaze.orient(stepStart)
+      else if (event.kind === 'release')
+        this.gaze.disengage(stepStart)
+      else if (event.kind === 'dismiss')
+        this.gaze.dismiss(stepStart)
+      if (this.observer)
+        this.notify({ kind: 'attention', at: event.at, phase: event.kind, distance: event.distance })
+    }
     this.gaze.setAside(this.energy.aside, stepStart)
-    const pokeState = startPending(this.pending.splice(0), stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings, emotions: this.emotions, notify: this.observer ? this.notify : undefined }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })
+    // Clearing an override starts a new fixation. Defer that transition (and
+    // cursor reorientation) until the long-pet camera glance has fully held.
+    if (stepStart >= this.petGlanceUntil) {
+      // A dismissed release tail cannot reacquire gaze when permission returns;
+      // only an active pet or its still-owned tail can keep the override.
+      const overriding = permission === 'full' && this.pet.level > 0.5 && (this.pet.active || this.petOverride)
+      if (overriding) {
+        this.gaze.setOverride({ x: 0.1 * this.petHand.x, y: -0.12 }, stepStart)
+      }
+      else if (this.petOverride) {
+        this.gaze.setOverride(null, stepStart)
+        if (attention.oriented && attention.weight > releaseAt)
+          this.gaze.orient(stepStart)
+      }
+      this.petOverride = overriding
+    }
+    if (this.pet.active && this.petStartedAt === null) {
+      this.petStartedAt = stepStart
+      if (this.observer)
+        this.notify({ kind: 'touch', at: stepStart, touch: 'pet-start', region: 'head' })
+    }
+    else if (!this.pet.active && this.petStartedAt !== null) {
+      if (permission === 'full' && stepStart - this.petStartedAt > 3)
+        this.petGlanceUntil = this.gaze.glance({ x: 0, y: 0 }, 1.2, stepStart)
+      this.petStartedAt = null
+      if (this.observer)
+        this.notify({ kind: 'touch', at: stepStart, touch: 'pet-end', region: 'head' })
+    }
+    const pending = this.pending.splice(0)
+    if (this.observer) {
+      for (const action of pending) {
+        if (action.kind === 'poke')
+          this.notify({ kind: 'touch', at: stepStart, touch: 'poke', region: action.region })
+      }
+    }
+    const pokeState = startPending(pending, stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings, emotions: this.emotions, notify: this.observer ? this.notify : undefined }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })
     this.pokes = pokeState.pokes
     this.lastPokeSurprise = pokeState.lastPokeSurprise
     this.energy.step(step)
@@ -332,9 +399,8 @@ export class Live2DNaturalMotion {
       this.hold.step(step)
     if (this.observer)
       this.reportHold(stepStart)
-    this.pet.step(step)
     const moodScales = modulateByMood({
-      amplitudeScale: this.energy.amplitudeScale * this.pet.postureAmplitudeScale,
+      amplitudeScale: this.energy.amplitudeScale * this.pet.postureAmplitudeScale * (1 - attentionCalm * cursorShare),
       shiftRateScale: this.energy.shiftRateScale,
       cameraFixationProbability: this.energy.cameraFixationProbability,
       emphasisAcceptance: this.energy.emphasisAcceptance,
@@ -365,11 +431,13 @@ export class Live2DNaturalMotion {
       if (remaining > 0.5 && this.posture.secondsUntilShift <= step)
         this.posture.postponeShift(remaining)
     }
-    this.attention.update(this.posture, this.gaze, stepStart, step)
-    // Cursor attention keeps the v1 head bias, smoothed so cursor changes never jump.
+    if (stepStart >= this.petGlanceUntil)
+      this.attention.update(this.posture, this.gaze, stepStart, step)
+    this.onCursor += (Number(this.gaze.onCursor) - this.onCursor) * (1 - Math.exp(-step / 0.3))
+    const headShare = cursorShare * (0.4 + 0.6 * this.onCursor)
     this.follow({
-      cursorX: 0.25 * (c?.x ?? 0),
-      cursorY: 0.20 * (c?.y ?? 0),
+      cursorX: headShare * mapped.head.x,
+      cursorY: headShare * (above ? mapped.head.y * (1 - this.approach) - 0.05 * this.approach : mapped.head.y),
     })
     const posture = this.posture.step(step, [this.x.cursorX, this.x.cursorY, 0])
     // Eye compensation sees the complete head pose.
@@ -412,11 +480,13 @@ export class Live2DNaturalMotion {
           lean[axis] += gestureBody[axis]
       }
     }
+    const face = withHints(this.face.step(step), stepStart + step, this.impulses, this.pet, moodMouthForm(this.mood, this.performanceSettings), this.performanceSettings.heldEmotions && this.hold.level > 0 ? { hold: this.hold, accentScale: this.performanceSettings.held.accentScale } : undefined)
+    face.eyeOpenMultiplier *= 1 - 0.12 * this.approach
     return {
       head,
       body: this.body.step(step, followerHead).map((value, axis) => clamp(value + lean[axis], 1)) as Vec3,
       gaze,
-      face: withHints(this.face.step(step), stepStart + step, this.impulses, this.pet, moodMouthForm(this.mood, this.performanceSettings), this.performanceSettings.heldEmotions && this.hold.level > 0 ? { hold: this.hold, accentScale: this.performanceSettings.held.accentScale } : undefined),
+      face,
       blinkFactor: this.blink.step(step),
       breath: this.breath.step(step),
     }

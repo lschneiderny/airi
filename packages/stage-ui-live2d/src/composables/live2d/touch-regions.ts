@@ -18,6 +18,9 @@ export interface Live2DVisibleDrawableSource {
   getDrawableBounds: (index: number) => Bounds
 }
 
+/** Share of the head box height, from its top, where the eyes sit; the cursor offset is measured from there. */
+export const eyeAnchorShare = 0.55
+
 /** Drawables fainter than this are not drawn in any way a user could aim at. */
 const minimumOpacity = 0.01
 

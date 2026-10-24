@@ -31,7 +31,23 @@ export interface Live2DNaturalMotionOptions {
  * - `hold`: side 1 raises the left brow; `null` while nothing is held;
  * - `gesture`: the clip's sided axes; drawn even for clips without sided axes.
  */
-export type NaturalMotionEvent = NaturalImpulseEvent | NaturalHoldEvent | NaturalGestureEvent
+export type NaturalMotionEvent = NaturalImpulseEvent | NaturalHoldEvent | NaturalGestureEvent | NaturalAttentionEvent | NaturalTouchEvent
+
+/** A cursor episode changed phase; distance is measured in head widths from the eye anchor. */
+export interface NaturalAttentionEvent {
+  kind: 'attention'
+  at: number
+  phase: 'notice' | 'engage' | 'release' | 'dismiss'
+  distance: number
+}
+
+/** A poke was performed or the pet target became active or inactive. */
+export interface NaturalTouchEvent {
+  kind: 'touch'
+  at: number
+  touch: 'poke' | 'pet-start' | 'pet-end'
+  region?: 'head' | 'body'
+}
 
 /** An emotion episode started or escalated. `band` is the band performed, `clear` while band recruitment is off; `intensity` is clamped to 0..1. */
 export interface NaturalImpulseEvent {

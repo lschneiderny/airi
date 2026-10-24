@@ -106,6 +106,7 @@ function idleAttention(): Live2DNaturalMotionAttention {
     heldEmotion: null,
     emotionStrengths: {},
     cursor: null,
+    cursorDismissed: false,
     pendingPokes: [],
     pet: null,
   }

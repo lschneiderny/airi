@@ -1,12 +1,16 @@
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
+import type { NaturalAttentionEvent, NaturalMotionEvent } from './natural-motion'
+
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it, vi } from 'vitest'
 
 import { Emotion } from '../../constants/emotions'
 import { Live2DNaturalMotion } from './natural-motion'
 import { NaturalBreathLayer } from './natural-motion/breath'
+import { lostTau, mapCursor, releaseAt } from './natural-motion/cursor-attention'
 import { NaturalPerformanceEnergy } from './natural-motion/energy'
+import { NaturalGazeLayer } from './natural-motion/gaze'
 import { NaturalHoldLayer } from './natural-motion/hold'
 import { NaturalSpeechEmphasis } from './natural-motion/speech-emphasis'
 
@@ -204,10 +208,14 @@ describe('natural motion', () => {
     motion.setCursor(null, 2.5)
     expect(motion.advance(2.5)).toEqual(attended)
     const released = motion.advance(2.5 + 1 / 60)
-    // Eyes may saccade back; head and body must not snap.
+    // Loss fades attention before releasing pursuit; head and body must not snap.
     expect(maximumDelta(released, attended, ['headX', 'headY', 'headZ', 'bodyX', 'bodyY', 'bodyZ'])).toBeLessThan(0.02)
-    expect(released.fixation.x).toBeGreaterThan(0.5)
-    expect(motion.advance(3.5).fixation.x).toBeLessThan(0.1)
+    expect(Math.hypot(released.fixation.x - attended.fixation.x, released.fixation.y - attended.fixation.y)).toBeLessThan(1.5 / 60)
+    expect(released.fixation.x).toBeGreaterThan(mapCursor({ x: 1, y: 1 }).eye.x - 0.05)
+    // From weight <= 1, loss crosses releaseAt by lostTau * ln(1/releaseAt).
+    // Disengagement then allows a 0.3 s hold and a saccade of at most 0.09 s.
+    const autonomousAt = 2.5 + lostTau * Math.log(1 / releaseAt) + 0.3 + 0.09 + 2 / 120
+    expect(motion.advance(autonomousAt).fixation.x).toBeLessThan(0.2)
   })
 
   it('keeps disabled cursor input equivalent to autonomous output', () => {
@@ -430,7 +438,7 @@ describe('natural motion', () => {
     it.each([0.3, 0.55])('keeps the aside target through a %s s pause between two talking spans', (gap) => {
       const { motion, side } = pausedAside()
       const paused = sample(motion, 2, 2 + gap)
-      motion.setCursor(null, 2 + gap)
+      motion.setCursor(null, 2 + gap, 'dismissed')
       motion.setPerformance(talkingAside, 0.5, 2 + gap)
       const resumed = sample(motion, 2 + gap, 3.5)
 
@@ -443,7 +451,7 @@ describe('natural motion', () => {
       const held = sample(motion, 2, 2.58)
       // The release saccade lasts at most 90 ms after the step that ends the hold.
       const released = sample(motion, 2.58, 2.75).at(-1)!
-      motion.setCursor(null, 2.8)
+      motion.setCursor(null, 2.8, 'dismissed')
       motion.setPerformance(talkingAside, 0.5, 2.8)
       // The first aside saccade lasts at most 90 ms; the 2 s side memory keeps the side.
       const resumed = sample(motion, 2.9, 3.5)
@@ -466,25 +474,29 @@ describe('natural motion', () => {
       expect(Math.hypot(point.x, point.y)).toBeLessThan(0.1)
     })
 
-    it('leaves a pause without a look cue unchanged: the gaze follows the cursor at once', () => {
+    it('follows the cursor within 0.6 s after notice during a pause without a look cue', () => {
       const motion = new Live2DNaturalMotion({ seed: 71 })
+      const events: NaturalMotionEvent[] = []
+      motion.setObserver(event => events.push(event))
       motion.setPerformance({ ...idle, mode: 'talking' }, 0.5, 0)
       sample(motion, 0, 2)
       motion.setPerformance(pause, 0.5, 2)
       motion.setCursor(cursor, 2)
-      const point = sample(motion, 2, 2.15).at(-1)!
+      const points = sample(motion, 2, 2.6)
 
-      // Cursor attention looks 65% of the way toward the cursor.
-      expect(point.x).toBeCloseTo(0.65 * cursor.x, 6)
-      expect(point.y).toBeCloseTo(0.65 * cursor.y, 6)
+      const target = mapCursor(cursor).eye
+      // Notice reaches the hand within this window; subsequent autonomous
+      // fixations may legitimately look elsewhere before the window ends.
+      expect(events.filter(event => event.kind === 'attention').map(event => event.phase)).toEqual(['notice', 'engage'])
+      expect(points.some(point => Math.hypot(point.x - target.x, point.y - target.y) < 0.01)).toBe(true)
     })
   })
 
   describe('screen attention with a moving cursor', () => {
-    // The cursor stays up and left of every autonomous target, so cursor fixations (65% of the way) are unmistakable.
+    // The radial cursor target stays up and left of every autonomous target.
     const cursorAt = (time: number) => ({ x: -0.9 + 0.1 * Math.sin(5 * time), y: 0.8 })
-    // Autonomous targets stay within 0.2 of the center; cursor fixations sit near x = -0.585.
-    const offCursor = (point: { x: number, y: number }) => point.x > -0.3
+    // mapCursor gives x between -0.38 and -0.31; autonomous targets stay within 0.2.
+    const offCursor = (point: { x: number, y: number }) => point.x > -0.25
 
     /** Moves the cursor every frame from `from` to `to` seconds at 120 Hz, as Model.vue reports it, and returns the fixations. */
     function track(motion: Live2DNaturalMotion, from: number, to: number) {
@@ -556,7 +568,7 @@ describe('natural motion', () => {
     const control = new Live2DNaturalMotion({ seed: 61 })
     poked.advance(0)
     control.advance(0)
-    poked.poke('head', 1, 2)
+    poked.poke('head', 1, 0, 2)
     let flinch = 0
     let brow = 0
     let glanceDistance = Number.NaN
@@ -579,8 +591,8 @@ describe('natural motion', () => {
     const repeated = new Live2DNaturalMotion({ seed: 61 })
     single.advance(0)
     repeated.advance(0)
-    single.poke('head', 1, 2)
-    repeated.poke('head', 1, 2)
+    single.poke('head', 1, 0, 2)
+    repeated.poke('head', 1, 0, 2)
     // Time only moves forward: each window starts one frame after the previous one ends.
     const browPeak = (motion: Live2DNaturalMotion, from: number, to: number) => {
       let brow = 0
@@ -590,28 +602,26 @@ describe('natural motion', () => {
     }
     browPeak(single, 2, 3)
     browPeak(repeated, 2, 3)
-    repeated.poke('head', 1, 3)
+    repeated.poke('head', 1, 0, 3)
     // The repeat adds no surprise of its own, so the brows match the single poke.
     expect(browPeak(repeated, 3, 4)).toBeCloseTo(browPeak(single, 3, 4), 6)
     browPeak(single, 4, 5)
     browPeak(repeated, 4, 5)
-    repeated.poke('head', 1, 5)
+    repeated.poke('head', 1, 0, 5)
     expect(browPeak(repeated, 5, 6)).toBeGreaterThan(browPeak(single, 5, 6) + 0.05)
   })
 
-  it('settles into a pet with happy closed eyes, ignores the cursor, and lets go after', () => {
+  it('lets the pet own gaze and head with happy closed eyes, then lets go', () => {
     const petted = new Live2DNaturalMotion({ seed: 67 })
     petted.advance(0)
     petted.setCursor({ x: 1, y: 1 }, 0)
-    petted.setPet(0, 1)
-    let nearestCursorGaze = Number.POSITIVE_INFINITY
-    // The release saccade away from the cursor lasts at most 90 ms, so sampling starts after it.
+    petted.setPet({ x: 0, y: 0 }, 1)
+    // The level crosses 0.5 in 0.35 * ln(2) seconds, then the override saccade lands.
     for (let frame = 90; frame <= 4 * 60; frame++) {
-      const { fixation } = petted.advance(frame / 60)
-      // Cursor attention would hold the gaze near 0.65 x the cursor.
-      nearestCursorGaze = Math.min(nearestCursorGaze, Math.hypot(fixation.x - 0.65, fixation.y - 0.65))
+      const { fixation, pose } = petted.advance(frame / 60)
+      expect(fixation.y).toBeLessThan(-0.05)
+      expect(pose.headY).toBeLessThan(0)
     }
-    expect(nearestCursorGaze).toBeGreaterThan(0.3)
     const held = petted.advance(4)
     expect(held.face.eyeOpenMultiplier).toBeLessThan(0.3)
     expect(held.face.eyeSmile).toBeGreaterThan(0.6)
@@ -652,6 +662,434 @@ describe('natural motion', () => {
       expect(Math.max(...values) / Math.min(...values)).toBeLessThan(1.05)
     }
   }, 20_000)
+})
+
+describe('continuous cursor attention and touch', () => {
+  function observed(seed: number) {
+    const motion = new Live2DNaturalMotion({ seed })
+    const events: NaturalMotionEvent[] = []
+    motion.setObserver(event => events.push(event))
+    motion.advance(0)
+    return { motion, events }
+  }
+
+  function attentionEvents(events: NaturalMotionEvent[]): NaturalAttentionEvent[] {
+    return events.filter((event): event is NaturalAttentionEvent => event.kind === 'attention')
+  }
+
+  it('(a) notices a moving near cursor before engaging it', () => {
+    const { motion, events } = observed(41)
+    for (let frame = 0; frame <= 120; frame++)
+      motion.setCursor({ x: 1, y: 0.1 * Math.sin(frame / 12) }, frame / 120)
+
+    const attention = attentionEvents(events)
+    expect(attention.map(event => event.phase)).toEqual(['notice', 'engage'])
+    expect(attention[1].at - attention[0].at).toBeGreaterThanOrEqual(0.25)
+    expect(attention[1].at - attention[0].at).toBeLessThanOrEqual(0.5 + 1 / 120)
+  })
+
+  it('(b) engages a far cursor for some seeds and ignores it for others', () => {
+    let engaged = 0
+    for (let seed = 0; seed < 50; seed++) {
+      const { motion, events } = observed(seed)
+      for (let frame = 0; frame <= 120; frame++)
+        motion.setCursor({ x: 9, y: 0.2 * Math.sin(frame / 12) }, frame / 120)
+      engaged += Number(attentionEvents(events).some(event => event.phase === 'engage'))
+    }
+    expect(engaged).toBeGreaterThan(0)
+    expect(engaged).toBeLessThan(50)
+  })
+
+  it('(c) melts into and out of a pet without a head jump or a camera fixation at onset', () => {
+    const { motion, events } = observed(67)
+    let previous = motion.advance(0)
+    let largestStep = 0
+    let nearestCamera = Number.POSITIVE_INFINITY
+    for (let frame = 0; frame <= 6 * 120; frame++) {
+      const time = frame / 120
+      motion.setCursor({ x: 1, y: 0.4 + 0.1 * Math.sin(time * 5) }, time)
+      if (frame === 120)
+        motion.setPet({ x: 0.3, y: 0.2 }, time)
+      if (frame === 3 * 120)
+        motion.setPet(null, time)
+      const current = motion.advance(time)
+      largestStep = Math.max(largestStep, maximumDelta(previous, current, [...headAxes]))
+      if (time >= 1 && time <= 1.5)
+        nearestCamera = Math.min(nearestCamera, Math.hypot(current.fixation.x, current.fixation.y))
+      previous = current
+    }
+    expect(largestStep).toBeLessThan(0.02)
+    expect(nearestCamera).toBeGreaterThan(0.05)
+    expect(events.filter(event => event.kind === 'touch').map(event => event.touch)).toEqual(['pet-start', 'pet-end'])
+  })
+
+  it('(d) tucks monotonically as a hand descends from above and rests near the head', () => {
+    const { motion } = observed(41)
+    const baseline = new Live2DNaturalMotion({ seed: 41 })
+    baseline.advance(0)
+    let previousDifference = Number.POSITIVE_INFINITY
+    let largestRise = Number.NEGATIVE_INFINITY
+    let nearMaximum = Number.NEGATIVE_INFINITY
+    for (let frame = 0; frame <= 4.6 * 120; frame++) {
+      const time = frame / 120
+      const y = Math.max(0.5, 1.6 - Math.max(0, time - 2))
+      motion.setCursor({ x: 0, y }, time)
+      const difference = motion.advance(time).pose.headY - baseline.advance(time).pose.headY
+      if (time >= 2) {
+        largestRise = Math.max(largestRise, difference - previousDifference)
+        previousDifference = difference
+      }
+      // The hand reaches r = 0.9 at 2.7 s; allow another 0.6 s for the head follower.
+      if (time >= 3.3)
+        nearMaximum = Math.max(nearMaximum, difference)
+    }
+    expect(largestRise).toBeLessThanOrEqual(1e-3)
+    expect(nearMaximum).toBeLessThanOrEqual(0)
+  })
+
+  it('(d2) pulls the head less at nine head widths than at three after engagement', () => {
+    // The same attention stream decides engagement in both runs; the seed also keeps
+    // both non-near interest spans alive until the comparison.
+    const seed = 26
+    const medium = observed(seed)
+    const far = observed(seed)
+    const baseline = new Live2DNaturalMotion({ seed })
+    baseline.advance(0)
+    for (let frame = 0; frame <= 240; frame++) {
+      const time = frame / 120
+      const y = 0.1 * Math.sin(time * 10)
+      medium.motion.setCursor({ x: 3, y }, time)
+      far.motion.setCursor({ x: 9, y }, time)
+    }
+    expect(attentionEvents(medium.events).map(event => event.phase)).toEqual(['notice', 'engage'])
+    expect(attentionEvents(far.events).map(event => event.phase)).toEqual(['notice', 'engage'])
+    const base = baseline.advance(2).pose.headX
+    const mediumPull = medium.motion.advance(2).pose.headX - base
+    const farPull = far.motion.advance(2).pose.headX - base
+    expect(mediumPull).toBeGreaterThan(0)
+    expect(farPull).toBeGreaterThan(0)
+    expect(farPull).toBeLessThan(mediumPull)
+  })
+
+  it('(e) gives mirrored paths identical attention and opposite directional pull', () => {
+    const right = observed(41)
+    const left = observed(41)
+    let rightSum = 0
+    let leftSum = 0
+    let count = 0
+    let smallestHeadDifference = Number.POSITIVE_INFINITY
+    for (let frame = 0; frame <= 4 * 120; frame++) {
+      const time = frame / 120
+      const x = 1 + 0.2 * Math.sin(time * 4)
+      right.motion.setCursor({ x, y: -0.1 }, time)
+      left.motion.setCursor({ x: -x, y: -0.1 }, time)
+      const a = right.motion.advance(time)
+      const b = left.motion.advance(time)
+      const engagedAt = attentionEvents(right.events).find(event => event.phase === 'engage')?.at
+      if (engagedAt !== undefined && time >= engagedAt + 0.3) {
+        smallestHeadDifference = Math.min(smallestHeadDifference, a.pose.headX - b.pose.headX)
+        rightSum += a.fixation.x
+        leftSum += b.fixation.x
+        count++
+      }
+    }
+    expect(attentionEvents(right.events)).toEqual(attentionEvents(left.events))
+    expect(count).toBeGreaterThan(0)
+    expect(smallestHeadDifference).toBeGreaterThan(0)
+    expect(rightSum / count).toBeGreaterThan(0)
+    expect(leftSum / count).toBeLessThan(0)
+  })
+
+  it('(f) replays the same cursor input independently of rendering frame partition', () => {
+    const samples = [30, 60, 144].map((rate) => {
+      const { motion, events } = observed(41)
+      // Input is a fixed 30 Hz path. Rendering may sample more often but must never
+      // change the input event times or the fixed-grid motion they produce.
+      const inputTimes = new Set(Array.from({ length: 121 }, (_, i) => i / 30))
+      const times = [...new Set([...inputTimes, ...Array.from({ length: 4 * rate + 1 }, (_, i) => i / rate)])].sort((a, b) => a - b)
+      const frames: Frame[] = []
+      for (const time of times) {
+        if (inputTimes.has(time))
+          motion.setCursor({ x: 1 + 0.3 * Math.sin(time * 4), y: 0.1 }, time)
+        const frame = motion.advance(time)
+        if (Number.isInteger(time))
+          frames.push(frame)
+      }
+      return { frames, events }
+    })
+    for (const actual of samples.slice(1)) {
+      expect(actual.events).toEqual(samples[0].events)
+      for (const [index, frame] of actual.frames.entries()) {
+        const expected = samples[0].frames[index]
+        expect(maximumDelta(frame, expected)).toBeLessThan(1e-9)
+        expect(Math.hypot(frame.fixation.x - expected.fixation.x, frame.fixation.y - expected.fixation.y)).toBeLessThan(1e-9)
+        for (const key of Object.keys(frame.face) as (keyof Frame['face'])[])
+          expect(Math.abs(frame.face[key] - expected.face[key])).toBeLessThan(1e-9)
+        expect(Math.abs(frame.blink.blinkFactor - expected.blink.blinkFactor)).toBeLessThan(1e-9)
+        for (const key of Object.keys(frame.breath) as (keyof Frame['breath'])[])
+          expect(Math.abs(frame.breath[key] - expected.breath[key])).toBeLessThan(1e-9)
+      }
+    }
+  })
+
+  it('(g) silently switches to screen attention after a resting cursor releases', () => {
+    const { motion, events } = observed(41)
+    motion.setCursor({ x: 1, y: 0 }, 0)
+    motion.advance(4)
+    expect(attentionEvents(events).map(event => event.phase)).toEqual(['notice', 'engage', 'release'])
+    motion.setPerformance({ ...idle, mode: 'watching', attention: 'screen' }, 0.5, 4)
+    motion.advance(5)
+    expect(attentionEvents(events).some(event => event.phase === 'dismiss')).toBe(false)
+  })
+
+  it('(h) dismisses cursor attention and looks aside within 0.4 s', () => {
+    const { motion, events } = observed(41)
+    motion.setCursor({ x: 1, y: 1 }, 0)
+    motion.setPerformance({ ...idle, mode: 'talking', attention: 'aside' }, 0.5, 0.6)
+    const point = motion.advance(1).fixation
+    const dismissal = attentionEvents(events).find(event => event.phase === 'dismiss')
+    expect(dismissal).toBeDefined()
+    expect(dismissal!.at).toBeLessThan(1)
+    expect(Math.abs(point.x)).toBeGreaterThan(0.4)
+    expect(point.y).toBeLessThan(-0.05)
+  })
+
+  it('(i) lowers head pitch when poked at the top of the head', () => {
+    const { motion, events } = observed(61)
+    const baseline = new Live2DNaturalMotion({ seed: 61 })
+    baseline.advance(0)
+    motion.poke('head', 0, -1, 2)
+    let lowest = 0
+    for (let frame = 241; frame <= 300; frame++) {
+      const time = frame / 120
+      lowest = Math.min(lowest, motion.advance(time).pose.headY - baseline.advance(time).pose.headY)
+    }
+    expect(lowest).toBeLessThan(-0.03)
+    expect(events.filter(event => event.kind === 'touch')).toEqual([{ kind: 'touch', at: 2, touch: 'poke', region: 'head' }])
+  })
+
+  it('(j) keeps sixty seconds of dismissed null cursor identical with no attention draws', () => {
+    const create = random.createRandomStream
+    let attentionDraws = 0
+    const instrument = vi.spyOn(random, 'createRandomStream').mockImplementation((seed) => {
+      const next = create(seed)
+      return () => {
+        if (seed === random.deriveSeed(41, 13))
+          attentionDraws++
+        return next()
+      }
+    })
+    try {
+      const { motion, events } = observed(41)
+      const reference = new Live2DNaturalMotion({ seed: 41 })
+      reference.advance(0)
+      for (let frame = 0; frame <= 60 * 120; frame++) {
+        const time = frame / 120
+        motion.setCursor(null, time, 'dismissed')
+        expect(motion.advance(time)).toEqual(reference.advance(time))
+      }
+      expect(events).toEqual([])
+      expect(attentionDraws).toBe(0)
+    }
+    finally {
+      instrument.mockRestore()
+    }
+  })
+
+  it('(k) notices and engages a moving near cursor within 0.6 s of leaving screen attention', () => {
+    const { motion, events } = observed(41)
+    motion.setPerformance({ ...idle, mode: 'watching', attention: 'screen' }, 0.5, 0)
+    for (let frame = 0; frame <= 312; frame++) {
+      const time = frame / 120
+      if (frame === 240)
+        motion.setPerformance({ ...idle, mode: 'watching', attention: 'cursor' }, 0.5, time)
+      motion.setCursor({ x: 1, y: 0.2 * Math.sin(time * 6) }, time)
+    }
+    const attention = attentionEvents(events)
+    expect(attention.map(event => event.phase)).toEqual(['notice', 'engage'])
+    expect(attention[0].at).toBeGreaterThanOrEqual(2)
+    expect(attention[1].at).toBeLessThanOrEqual(2.6)
+  })
+
+  it('(l) releases before the real resolver switches a resting cursor to screen at three seconds', () => {
+    const { motion, events } = observed(41)
+    motion.setPerformance({ ...idle, mode: 'watching', attention: 'cursor' }, 0.5, 0)
+    for (let frame = 0; frame <= 120; frame++)
+      motion.setCursor({ x: 1, y: frame / 600 }, frame / 120)
+    motion.setPerformance({ ...idle, mode: 'watching', attention: 'screen' }, 0.5, 4)
+    motion.advance(5)
+    const attention = attentionEvents(events)
+    expect(attention.map(event => event.phase)).toEqual(['notice', 'engage', 'release'])
+    expect(attention[2].at).toBeLessThan(1 + 2.4)
+  })
+
+  it('(m) dismisses an in-flight notice and leaves its target within 150 ms', () => {
+    const { motion, events } = observed(83)
+    motion.setCursor({ x: 1.5, y: 0 }, 0)
+    motion.advance(0.1)
+    const notice = attentionEvents(events)[0]
+    expect(notice.phase).toBe('notice')
+    const switchAt = notice.at + 0.2
+    motion.setPerformance({ ...idle, mode: 'watching', attention: 'screen' }, 0.5, switchAt)
+    const point = motion.advance(switchAt + 0.15).fixation
+    expect(attentionEvents(events).map(event => event.phase)).toEqual(['notice', 'dismiss'])
+    expect(Math.hypot(point.x - mapCursor({ x: 1.5, y: 0 }).eye.x, point.y)).toBeGreaterThan(0.3)
+  })
+
+  it.each(['release', 'dismiss'] as const)('(n) never renews pursuit on residual weight after %s over fifty seeds', (phase) => {
+    const target = mapCursor({ x: 3, y: 0 }).eye
+    let engagedSeeds = 0
+    let checkedSteps = 0
+    let nearest = Number.POSITIVE_INFINITY
+    for (let seed = 0; seed < 50; seed++) {
+      const { motion, events } = observed(seed)
+      motion.setCursor({ x: 3, y: 0 }, 0)
+      motion.advance(0.6)
+      if (!attentionEvents(events).some(event => event.phase === 'engage'))
+        continue
+      engagedSeeds++
+      if (phase === 'dismiss')
+        motion.setPerformance({ ...idle, mode: 'watching', attention: 'screen' }, 0.5, 0.6)
+      // Eight seconds includes the entire residual-weight decay to exact zero.
+      for (let frame = 73; frame <= 8 * 120; frame++) {
+        const time = frame / 120
+        const { fixation } = motion.advance(time)
+        const ended = attentionEvents(events).find(event => event.phase === phase)
+        if (ended !== undefined && time >= ended.at + (phase === 'release' ? 0.39 : 0.15)) {
+          nearest = Math.min(nearest, Math.hypot(fixation.x - target.x, fixation.y - target.y))
+          checkedSteps++
+        }
+      }
+      expect(attentionEvents(events).map(event => event.phase)).toEqual(['notice', 'engage', phase])
+    }
+    expect(engagedSeeds).toBeGreaterThanOrEqual(10)
+    expect(checkedSteps).toBeGreaterThan(0)
+    expect(nearest).toBeGreaterThan(0.3)
+  }, 20_000)
+
+  it('reports one grateful camera glance only after a pet longer than three active seconds', () => {
+    const glance = vi.spyOn(NaturalGazeLayer.prototype, 'glance')
+    try {
+      for (const duration of [2, 4]) {
+        const { motion, events } = observed(67)
+        motion.setPet({ x: 0.4, y: 0 }, 0)
+        motion.setPet(null, duration)
+        motion.advance(duration + 0.1)
+        expect(events.filter(event => event.kind === 'touch').map(event => event.touch)).toEqual(['pet-start', 'pet-end'])
+      }
+      expect(glance).toHaveBeenCalledExactlyOnceWith({ x: 0, y: 0 }, 1.2, expect.any(Number))
+    }
+    finally {
+      glance.mockRestore()
+    }
+  })
+
+  it.each([67, 41, 83].flatMap(seed => ['absent', 'moving', 'arriving'].map(cursor => ({ seed, cursor }))))('(T6-LONGPET) holds the camera for the full release glance with seed $seed and $cursor cursor', ({ seed, cursor }) => {
+    const { motion, events } = observed(seed)
+    motion.setPet({ x: 0.4, y: 0 }, 0)
+    let cameraSamples = 0
+    let resumedCursor = false
+    for (let frame = 0; frame <= 6 * 120; frame++) {
+      const time = frame / 120
+      const offset = { x: 1.5, y: -0.1 + 0.1 * Math.sin(time * 6) }
+      // The arriving case notices a cursor after the pet's release crosses 0.5,
+      // while the grateful camera glance must still own gaze.
+      if (cursor === 'moving' || (cursor === 'arriving' && time >= 4.7))
+        motion.setCursor(offset, time)
+      if (frame === 4 * 120)
+        motion.setPet(null, time)
+      const { fixation } = motion.advance(time)
+      // Sample every grid step through end + 1.2 s, allowing the maximum
+      // 90 ms saccade and one grid step before requiring camera fixation.
+      if (frame >= 4 * 120 + 12 && frame <= 4 * 120 + 144) {
+        expect(Math.hypot(fixation.x, fixation.y), `camera at ${time}s`).toBeLessThan(0.05)
+        cameraSamples++
+      }
+      if (time >= 5.3) {
+        const target = mapCursor(offset).eye
+        resumedCursor ||= Math.hypot(fixation.x - target.x, fixation.y - target.y) < 0.05
+      }
+    }
+    expect(cameraSamples).toBe(133)
+    expect(events.filter(event => event.kind === 'touch').map(event => event.touch)).toEqual(['pet-start', 'pet-end'])
+    if (cursor !== 'absent')
+      expect(resumedCursor).toBe(true)
+  })
+
+  it.each([41, 67, 83].flatMap(seed => (['aside', 'screen', 'dismissed'] as const).map(dismiss => ({ seed, dismiss }))))('(T6-DISMISS) keeps $dismiss authoritative over the released pet with seed $seed', ({ seed, dismiss }) => {
+    const { motion } = observed(seed)
+    motion.setPet({ x: 1, y: 0 }, 0)
+    let side = 0
+    let checked = 0
+    for (let frame = 0; frame <= 7 * 120; frame++) {
+      const time = frame / 120
+      motion.setCursor({ x: 1.5, y: -0.1 + 0.1 * Math.sin(time * 6) }, time, dismiss === 'dismissed' && frame >= 516 ? 'dismissed' : 'live')
+      if (frame === 480)
+        motion.setPet(null, time)
+      if (frame === 516 && dismiss !== 'dismissed')
+        motion.setPerformance({ ...idle, mode: 'talking', attention: dismiss }, 0.5, time)
+      const { fixation } = motion.advance(time)
+      // Dismiss at 4.3 s; by 4.45 s its eased saccade must have landed.
+      if (frame >= 534) {
+        if (dismiss === 'aside') {
+          side ||= Math.sign(fixation.x)
+          expect(side * fixation.x, `aside at ${time}s`).toBeGreaterThan(0.35)
+        }
+        else {
+          // The released pet's fixed target is (0.1, -0.12). Screen and
+          // disabled cursor attention must leave it for autonomous fixations.
+          expect(Math.hypot(fixation.x - 0.1, fixation.y + 0.12), `pet target at ${time}s`).toBeGreaterThan(0.05)
+          expect(fixation.x, `cursor at ${time}s`).toBeLessThan(0.35)
+        }
+        checked++
+      }
+    }
+    expect(checked).toBe(307)
+  })
+
+  it.each([41, 67, 83].flatMap(seed => (['screen', 'dismissed'] as const).map(dismiss => ({ seed, dismiss }))))('(T6-DISMISS) never restores a cancelled pet tail after $dismiss with seed $seed', ({ seed, dismiss }) => {
+    const { motion } = observed(seed)
+    motion.setPet({ x: 1, y: 0 }, 0)
+    for (let frame = 0; frame <= 534; frame++) {
+      const time = frame / 120
+      const offset = { x: 1.5, y: -0.1 + 0.1 * Math.sin(time * 6) }
+      // Dismiss from 4.1 to 4.2 s, while the decaying pet level is still > 0.5.
+      motion.setCursor(offset, time, dismiss === 'dismissed' && frame >= 492 && frame < 504 ? 'dismissed' : 'live')
+      if (frame === 480)
+        motion.setPet(null, time)
+      if (dismiss === 'screen' && (frame === 492 || frame === 504))
+        motion.setPerformance({ ...idle, attention: frame === 492 ? 'screen' : 'cursor' }, 0.5, time)
+      const { fixation } = motion.advance(time)
+      if (frame >= 522) {
+        const target = mapCursor(offset).eye
+        expect(Math.hypot(fixation.x - target.x, fixation.y - target.y), `resumed cursor at ${time}s`).toBeLessThan(0.05)
+      }
+    }
+  })
+
+  it('keeps observer attachment and detachment neutral for cursor and touch motion', () => {
+    const { motion, events } = observed(41)
+    const quiet = new Live2DNaturalMotion({ seed: 41 })
+    quiet.advance(0)
+    for (let frame = 0; frame <= 600; frame++) {
+      const time = frame / 120
+      for (const instance of [motion, quiet]) {
+        instance.setCursor({ x: 1, y: 0.2 * Math.sin(time * 5) }, time)
+        instance.setPet(time >= 1 && time < 3 ? { x: Math.sin(time), y: 0.5 } : null, time)
+        if (frame === 480)
+          instance.poke('body', 0.5, -1, time)
+      }
+      expect(motion.advance(time)).toEqual(quiet.advance(time))
+    }
+    expect(events.some(event => event.kind === 'attention')).toBe(true)
+    expect(events.filter(event => event.kind === 'touch').map(event => event.touch)).toEqual(['pet-start', 'pet-end', 'poke'])
+    const reported = events.length
+    motion.setObserver(null)
+    motion.poke('head', 0, 0, 6)
+    motion.setPet({ x: 0, y: 0 }, 6)
+    motion.advance(7)
+    expect(events).toHaveLength(reported)
+  })
 })
 
 describe('held Natural composition', () => {
@@ -875,8 +1313,8 @@ describe('held Natural composition', () => {
     const petOnly = new Live2DNaturalMotion({ seed: 41 })
     held.setHeldEmotion({ emotion, strength: 1 }, 0)
     petted.setHeldEmotion({ emotion, strength: 1 }, 0)
-    petted.setPet(0, 0)
-    petOnly.setPet(0, 0)
+    petted.setPet({ x: 0, y: 0 }, 0)
+    petOnly.setPet({ x: 0, y: 0 }, 0)
 
     const a = held.advance(4).face
     const b = petted.advance(4).face

@@ -34,13 +34,7 @@ const petPostureAmplitude = 0.4
  * if startled. A poke on the top of the head bonks it down instead. A head poke moves more than
  * a body poke.
  */
-export function pokeDirection(region: Live2DTouchRegion, x: number,
-  // NOTICE:
-  // `y` defaults to 0 so call sites that only know x keep compiling.
-  // Todo 4 keeps the facade on one-axis inputs until the two-axis inputs land.
-  // Source: .omo/plans/live2d-cursor-touch-integration.md todo 4.
-  // Removal: todo 6 of .omo/plans/live2d-cursor-touch-integration.md (facade two-axis inputs).
-  y = 0): Vec3 {
+export function pokeDirection(region: Live2DTouchRegion, x: number, y: number): Vec3 {
   const side = Math.max(-1, Math.min(1, x))
   const top = Math.max(0, -Math.max(-1, Math.min(1, y)))
   return region === 'head'
