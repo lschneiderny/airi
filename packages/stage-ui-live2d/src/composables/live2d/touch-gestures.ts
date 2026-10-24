@@ -15,6 +15,8 @@ export interface Live2DTouchSample {
   y: number
   region: Live2DTouchRegion | null
   scale: number
+  /** Offset from the scaled head center, x right and y down, in head widths. */
+  head?: { x: number, y: number, halfHeight: number }
 }
 
 export type Live2DTouchEvent
@@ -30,10 +32,15 @@ export interface Live2DTouchGestureOptions {
 /** A press released within this time and distance is a poke. */
 const pokeMaxMs = 400
 const pokeMaxTravel = 0.05
+const pokeCommitMs = 90
 /** Movement over the head inside this window decides whether a pet starts. */
-const petWindowMs = 1000
+const petWindowMs = 1500
 /** Head-relative path length the window must hold before a pet starts. */
-const petStartTravel = 0.5
+const petStartTravel = 0.35
+/** Accumulated movement that refreshes the idle clock, independent of sample rate. */
+const idleStep = 0.03
+const headMargin = { side: 0.5, top: 0.5, bottom: 0.15 }
+const minInHeadShare = 0.5
 /** Segments shorter than this neither count as a reversal nor reset one. */
 const reversalStep = 0.02
 /** A pet ends after this long without movement over the head. */
@@ -59,11 +66,13 @@ interface Point {
  * Returns:
  * - Events from each call, in order; `petting` reports the current pet state
  *
- * A poke is a short press that barely moves over any part of the model. A pet is movement
- * that stays over the head: half a head width of travel within one second. Without a held
- * button the travel must also reverse direction at least once, so a cursor passing over
- * the head on its way elsewhere is not a pet. With `requireHold`, only movement while the
- * button is held counts, and the press that turns into a pet is never also a poke.
+ * Hover pokes commit after 90 ms of a still press, or on an earlier release. A drag
+ * permanently resolves the pending press without a poke. Held-only mode commits on release.
+ * Pets need 0.35 head widths of travel in 1.5 seconds, with at least half the trail time
+ * inside the true head. Optional head geometry allows overshoots into a margin zone.
+ * Hover travel must reverse once to reject passing cursors. An accumulated movement
+ * anchor refreshes the idle clock at any pointer rate. With `requireHold`, only held
+ * movement counts, and a press that becomes a pet never also becomes a poke.
  */
 export class Live2DTouchGestures {
   requireHold: boolean
@@ -71,7 +80,8 @@ export class Live2DTouchGestures {
   private press: (Point & { region: Live2DTouchRegion, scale: number }) | undefined
   /** Whether a press that started over the model is still held. */
   private held = false
-  private trail: Point[] = []
+  private trail: (Point & { inHead: boolean })[] = []
+  private moveAnchor: Point | undefined
   private petStartedAtMs: number | undefined
   private lastHeadMoveAtMs = 0
   private leftHeadAtMs: number | undefined
@@ -84,29 +94,45 @@ export class Live2DTouchGestures {
     return this.petStartedAtMs !== undefined
   }
 
+  get pressPending(): boolean {
+    return this.held && this.press !== undefined
+  }
+
   pressed(sample: Live2DTouchSample): Live2DTouchEvent[] {
     this.press = sample.region === null ? undefined : { ...sample, region: sample.region }
     this.held = sample.region !== null
     // A held pet starts from this press, so earlier hover movement does not count toward it.
-    if (this.requireHold)
+    if (this.requireHold) {
       this.trail = []
+      this.moveAnchor = undefined
+    }
     return []
   }
 
   moved(sample: Live2DTouchSample): Live2DTouchEvent[] {
+    if (this.press && Math.hypot(sample.x - this.press.x, sample.y - this.press.y) / this.press.scale > pokeMaxTravel)
+      this.press = undefined
     const counts = !this.requireHold || this.held
-    if (sample.region !== 'head' || !counts) {
+    const head = sample.head
+    const inZone = head
+      ? Math.abs(head.x) <= 0.5 + headMargin.side
+      && head.y >= -head.halfHeight - headMargin.top && head.y <= head.halfHeight + headMargin.bottom
+      : sample.region === 'head'
+    if (!inZone || !counts) {
       this.trail = []
+      this.moveAnchor = undefined
       if (this.petting)
         this.leftHeadAtMs ??= sample.timeMs
-      return this.expire(sample.timeMs)
+      return this.update(sample.timeMs)
     }
 
     this.leftHeadAtMs = undefined
-    const last = this.trail.at(-1)
-    if (!last || Math.hypot(sample.x - last.x, sample.y - last.y) / sample.scale >= reversalStep / 2)
+    if (!this.moveAnchor || Math.hypot(sample.x - this.moveAnchor.x, sample.y - this.moveAnchor.y) / sample.scale >= idleStep) {
       this.lastHeadMoveAtMs = sample.timeMs
-    this.trail.push({ timeMs: sample.timeMs, x: sample.x, y: sample.y })
+      this.moveAnchor = sample
+    }
+    const inHead = head ? Math.abs(head.x) <= 0.5 && Math.abs(head.y) <= head.halfHeight : sample.region === 'head'
+    this.trail.push({ timeMs: sample.timeMs, x: sample.x, y: sample.y, inHead })
     while (this.trail.length > 0 && sample.timeMs - this.trail[0].timeMs > petWindowMs)
       this.trail.shift()
 
@@ -116,7 +142,7 @@ export class Live2DTouchGestures {
       this.press = undefined
       return [{ kind: 'pet-start' }]
     }
-    return this.expire(sample.timeMs)
+    return this.update(sample.timeMs)
   }
 
   released(sample: Live2DTouchSample): Live2DTouchEvent[] {
@@ -138,11 +164,17 @@ export class Live2DTouchGestures {
     this.press = undefined
     this.held = false
     this.trail = []
+    this.moveAnchor = undefined
     return this.petting ? [this.endPet(timeMs)] : []
   }
 
   /** Ends a pet whose pointer stopped moving or left the head. */
   update(timeMs: number): Live2DTouchEvent[] {
+    const press = this.press
+    if (!this.requireHold && this.pressPending && press && timeMs - press.timeMs >= pokeCommitMs && !this.petting) {
+      this.press = undefined
+      return [{ kind: 'poke', region: press.region, x: press.x, y: press.y }]
+    }
     return this.expire(timeMs)
   }
 
@@ -159,10 +191,17 @@ export class Live2DTouchGestures {
     this.petStartedAtMs = undefined
     this.leftHeadAtMs = undefined
     this.trail = []
+    this.moveAnchor = undefined
     return { kind: 'pet-end', durationMs }
   }
 
   private qualifies(scale: number) {
+    let inHeadMs = 0
+    for (let index = 1; index < this.trail.length; index++) {
+      if (this.trail[index - 1].inHead)
+        inHeadMs += this.trail[index].timeMs - this.trail[index - 1].timeMs
+    }
+    const durationMs = this.trail[this.trail.length - 1].timeMs - this.trail[0].timeMs
     let travel = 0
     let reversals = 0
     let direction: { x: number, y: number } | undefined
@@ -183,5 +222,6 @@ export class Live2DTouchGestures {
       anchor = point
     }
     return travel >= petStartTravel && (this.requireHold || reversals >= 1)
+      && durationMs > 0 && inHeadMs / durationMs >= minInHeadShare
   }
 }
