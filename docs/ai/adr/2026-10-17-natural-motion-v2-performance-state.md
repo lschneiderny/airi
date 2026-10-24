@@ -178,3 +178,9 @@ Documentation refers to recordings only by placeholder paths.
   Superseded in part by 2026-10-19-natural-emotion-revamp: Settings also show per-model emotion strength sliders and the held-emotions switch.
 - No new main-process polling. The renderer polls idle time only while the stage is visible.
 - No change to Universal or MAGIC motion behavior.
+
+## Cursor recency
+
+Natural owns cursor recency and attention decay. `Live2D.vue` retains the last host cursor position without applying its 1000 ms expiry while Natural is selected; the controller fades attention when the host reports no cursor. Other motion drivers keep the scene's 1000 ms expiry.
+
+Natural does not null the cursor when performance attention becomes `screen`, when an ACT cue selects `aside`, or when cursor attention is disabled. These states grant dismiss permission, so Natural can look away while retaining the cursor and its own attention history. A dismiss edge emits a dismissal only for an oriented notice or full episode. If the episode has already released, the later screen transition is silent and does not force another gaze change. Natural attention details and the head-anchored cursor contract are recorded in [the cursor attention ADR](2026-10-24-live2d-cursor-attention.md).

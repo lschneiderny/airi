@@ -96,8 +96,10 @@ While Natural is selected, the SDK blink plugin is off and Natural's own blink s
 - `impulse`: an emotion episode started, with its band, clamped intensity, and side.
 - `hold`: the held emotion or its side changed. A release, or held emotions switched off, reports `emotion: null`.
 - `gesture`: a gesture clip started. For angry, it names the clip it chose, `shake` or `drop`.
+- `attention`: the cursor episode changed phase to `notice`, `engage`, `release`, or `dismiss`, with its distance in head widths.
+- `touch`: the controller performed a `poke`, `pet-start`, or `pet-end`, with an optional `head` or `body` region.
 
-Each event carries `at`, the active time of the grid step that first performs it.
+Each observer event carries `at`, the active time of the grid step that first performs it. The controller observer's `touch` event is separate from the scene's `touch` emit. The scene emit forwards gesture-classifier events, including pet duration.
 The observer receives values the controller already computed. It adds no random draw, and no event is built while no observer is attached, so motion is bit-identical with or without one.
 An observer that throws is reported with `console.error`, and the step continues.
 
@@ -190,7 +192,7 @@ Character card profiles scale mood strength and mood length:
 
 Natural has its own Cursor attention setting, enabled by default.
 It does not change Universal's mouse tracking preference or saved idle animation.
-When cursor attention is enabled and the cursor is active, the gaze and a small head bias follow the cursor.
+When cursor attention is enabled, Natural maps the cursor from an eye anchor at 55% of the measured head height, in head-width units. It notices every near cursor and independently decides whether to engage medium and far cursors. Engagement starts with a notice glance, then progresses to full attention. Attention fades when the cursor rests or disappears; `Live2D.vue` does not expire Natural's cursor position after one second.
 Resetting Live2D settings restores Universal and enables both cursor preferences.
 
 ### Touch: poke and pet
@@ -202,16 +204,18 @@ The settings page shows these settings only while Natural is selected. Touch doe
 
 `Live2DTouchGestures` classifies pointer input on the Live2D canvas, mapped into model canvas space:
 
-- A poke is a press released within 400 ms that moved less than 5% of the head width, anywhere on the model.
-- A pet is movement over the head: half a head width of travel within one second. Without a held button the travel must also reverse direction at least once, so a cursor passing over the head is not a pet.
-- A pet ends after 600 ms without movement over the head, 250 ms after the pointer leaves the head, when the held button is released, or when the pointer leaves the canvas.
+- A hover poke commits at 90 ms while the press is held and remains eligible, or on an earlier eligible release within 400 ms and 5% of the scale. With the held-button setting, a poke commits only on an eligible release within 400 ms and 5% of the scale. Before commit, travel beyond 5% permanently rejects the press as a drag, even if the pointer returns.
+- A pet is at least 0.35 head widths of travel within 1.5 seconds, with at least half of the trail time inside the true head box. The trail allows overshoot into a margin zone around the head. Without a held button, travel must reverse direction at least once, so a cursor passing over the head is not a pet.
+- A pet ends after 600 ms without movement over the head, 250 ms after the pointer leaves the expanded margin zone (or the head region when head geometry is unavailable), when the held button is released, or when the pointer leaves the canvas.
+
+The scene updates the classifier every rendered frame while a pet is active or a poke press is pending. This lets a resting pointer end an idle pet or commit an eligible hover poke.
 
 The head is the box `createLive2DHeadTracker` measures: the model's `head` or `face` hit area, or otherwise the drawables that move when the head turns. A model without either has no head, so it can be poked but not petted.
 The body is the box around the drawables the renderer currently draws, not the padded model canvas.
 
-A poke turns and rolls the head away from the poke point and lifts it, starts a short surprise impulse, and glances at the camera for 0.9 seconds. A head poke moves more than a body poke.
+A poke turns and rolls the head away from the poke point; vertical position also sets pitch, so a top-of-head poke pushes down. It starts a short surprise impulse and glances at the camera for 0.9 seconds. A head poke moves more than a body poke.
 A pet fades in over about a second and out over about two. While it lasts, the eyes close to a quarter of their openness and smile, the mouth smiles, the cheek and brows rise, the head bows slightly and rolls with the hand, and posture drift calms.
-Cursor attention is ignored during a pet, so the character settles into the hand instead of looking at it.
+Cursor attention melts into the hand during a pet, with both horizontal and vertical hand position shaping the head response. A pet lasting more than 3 seconds ends with one 1.2 second camera glance.
 
 In the Electron stage window, clicks reach the canvas only over opaque pixels, because the window is click-through elsewhere. Hover pets still work there, because the window forwards pointer movement while it is click-through.
 
