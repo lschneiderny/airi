@@ -229,6 +229,10 @@ function resetToDefaultParameters() {
 
 const clearingCache = ref(false)
 
+// Held here, not in the section: the Expressions Collapsible unmounts its content while closed.
+const expressionSearch = ref('')
+const showAllExpressions = ref(false)
+
 async function clearModelCache() {
   clearingCache.value = true
   try {
@@ -917,6 +921,8 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       <Checkbox v-model="live2dExpressionEnabled" />
     </div>
     <Live2dExpressionsSection
+      v-model:search="expressionSearch"
+      v-model:show-all="showAllExpressions"
       :snapshot="expressionSettingsSnapshot"
       :enabled="live2dExpressionEnabled"
       @command="applyExpressionSettingsCommand"

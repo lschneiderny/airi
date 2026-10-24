@@ -281,6 +281,22 @@ describe('live2D model settings', () => {
       await expect.element(screen.getByText('coat', { exact: true })).not.toBeInTheDocument()
     })
 
+    it('keeps the search text and Show all after collapsing and reopening the Expressions section', async () => {
+      const { screen } = await renderRemoteExpressions(bearSnapshot(), { showAll: true })
+      const searchName = t('settings.live2d.expressions.search')
+      await screen.getByRole('searchbox', { name: searchName, exact: true }).fill('c')
+
+      const title = screen.getByText(t('settings.live2d.expressions.title'), { exact: true })
+      await title.click()
+      await expect.element(screen.getByRole('searchbox', { name: searchName, exact: true })).not.toBeInTheDocument()
+      await title.click()
+
+      await expect.element(screen.getByRole('searchbox', { name: searchName, exact: true })).toHaveValue('c')
+      await screen.getByRole('searchbox', { name: searchName, exact: true }).clear()
+      await expect.element(screen.getByRole('button', { name: t('settings.live2d.expressions.show-fewer'), exact: true })).toBeVisible()
+      await expect.element(screen.getByText('coat', { exact: true })).toBeVisible()
+    })
+
     it('shows an active system entry by default', async () => {
       const { screen } = await renderRemoteExpressions(bearSnapshot({ watermark: { active: true } }))
       await expect.element(screen.getByText('watermark', { exact: true })).toBeVisible()

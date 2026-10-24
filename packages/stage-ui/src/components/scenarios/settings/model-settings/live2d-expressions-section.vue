@@ -2,7 +2,7 @@
 import type { Live2DExpressionSettingsCommand, Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d'
 
 import { Button, Input } from '@proj-airi/ui'
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import Live2dExpressionEntry from './live2d-expression-entry.vue'
@@ -69,8 +69,9 @@ function expressionRowKey(row: ExpressionRow) {
   return row.type === 'group' ? `group:${row.group}` : row.entry.id
 }
 
-const showAllExpressions = ref(false)
-const expressionSearch = ref('')
+// The parent owns these so they survive the section unmounting when its Collapsible closes.
+const expressionSearch = defineModel<string>('search', { required: true })
+const showAllExpressions = defineModel<boolean>('showAll', { required: true })
 const expressionSearchActive = computed(() => expressionSearch.value.trim() !== '')
 const inUseExpressionRows = computed(() => expressionRows.value.filter(expressionRowInUse))
 const hiddenExpressionRowCount = computed(() => expressionRows.value.length - inUseExpressionRows.value.length)
