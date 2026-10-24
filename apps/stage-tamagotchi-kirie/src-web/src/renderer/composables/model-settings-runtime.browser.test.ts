@@ -99,7 +99,7 @@ describe('model settings runtime channel', () => {
       id: 'happy.exp3.json',
       name: 'happy',
       active: false,
-      exposedToLlm: false,
+      exposedToLlm: true,
     }])
 
     const invokeExpressionCommand = defineInvoke(settingsChannelContext.context, applyLive2DExpressionSettingsCommand)
