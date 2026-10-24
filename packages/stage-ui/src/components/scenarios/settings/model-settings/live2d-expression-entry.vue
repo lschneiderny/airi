@@ -1,20 +1,18 @@
 <script setup lang="ts">
-import type { EmotionMapping, ExpressionKind } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionKind } from '@proj-airi/stage-shared/expression-performance'
 import type { Live2DExpressionSettingsCommand, Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+
+import type { DraftMapping } from './live2d-expression-trigger-editor.vue'
 
 import { Button, Checkbox, Input, Select } from '@proj-airi/ui'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import Live2dExpressionTriggerEditor from './live2d-expression-trigger-editor.vue'
+
 import { groupDisplayName } from './expression-group-name'
 
 type Entry = Live2DExpressionSettingsSnapshot['entries'][number]
-
-interface DraftMapping {
-  emotion: EmotionMapping['emotion']
-  weight: number | undefined
-  minBand: EmotionMapping['minBand']
-}
 
 const props = defineProps<{
   entry: Entry
@@ -29,15 +27,9 @@ const { t } = useI18n()
 
 const kinds: ExpressionKind[] = ['face', 'effect', 'outfit', 'prop', 'system']
 const llmKinds: ExpressionKind[] = ['face', 'effect', 'prop']
-const emotions: EmotionMapping['emotion'][] = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'love', 'flustered', 'sleepy']
-const bands: EmotionMapping['minBand'][] = ['slight', 'clear', 'strong']
 const noGroup = '__none__'
-const minWeight = 0.1
-const maxWeight = 5
 
 const kindOptions = computed(() => kinds.map(kind => ({ value: kind, label: t(`settings.live2d.expressions.kinds.${kind}`) })))
-const emotionOptions = computed(() => emotions.map(emotion => ({ value: emotion, label: t(`settings.live2d.expressions.emotions.${emotion}`) })))
-const bandOptions = computed(() => bands.map(band => ({ value: band, label: t(`settings.live2d.expressions.bands.${band}`) })))
 const groupOptions = computed(() => [
   { value: noGroup, label: t('settings.live2d.expressions.group-none') },
   ...props.groups.map(group => ({ value: group.name, label: groupDisplayName(group.labels) })),
@@ -78,20 +70,10 @@ function toggleEditor() {
 const isStale = computed(() => open.value && JSON.stringify(props.entry) !== baseline.value)
 
 const labelError = computed(() => draftLabel.value.trim() === '' ? t('settings.live2d.expressions.validation.label-required') : '')
-function weightError(weight: number | undefined) {
-  return typeof weight === 'number' && Number.isFinite(weight) && weight >= minWeight && weight <= maxWeight
-    ? ''
-    : t('settings.live2d.expressions.validation.weight-range', { min: minWeight, max: maxWeight })
-}
-const hasErrors = computed(() => labelError.value !== '' || draftMappings.value.some(mapping => weightError(mapping.weight) !== ''))
-
-function addMapping() {
-  draftMappings.value = [...draftMappings.value, { emotion: 'happy', weight: 1, minBand: draftKind.value === 'effect' ? 'strong' : 'clear' }]
-}
-
-function removeMapping(index: number) {
-  draftMappings.value = draftMappings.value.filter((_, i) => i !== index)
-}
+const triggerEditor = ref<InstanceType<typeof Live2dExpressionTriggerEditor> | null>(null)
+const hasErrors = computed<boolean>(() => labelError.value !== '' || (triggerEditor.value?.hasErrors ?? false))
+// The header checkbox owns the AI toggle for entries, so the editor hides its own copy.
+const draftExposedToLlm = ref(false)
 
 function apply() {
   if (hasErrors.value)
@@ -211,40 +193,13 @@ function resetEntry() {
         <Checkbox v-model="draftInverted" :class="['shrink-0']" :aria-label="t('settings.live2d.expressions.fields.inverted')" />
       </label>
 
-      <div :class="['flex flex-col gap-2']">
-        <span :class="['text-xs text-neutral-500 dark:text-neutral-400']">{{ t('settings.live2d.expressions.fields.mappings') }}</span>
-        <div
-          v-for="(mapping, index) in draftMappings"
-          :key="index"
-          :class="['flex flex-col gap-2 rounded-lg p-2', 'bg-neutral-50 dark:bg-neutral-900']"
-        >
-          <div :class="['grid grid-cols-1 gap-2 sm:grid-cols-3']">
-            <div :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
-              {{ t('settings.live2d.expressions.fields.emotion') }}
-              <Select v-model="mapping.emotion" :options="emotionOptions" />
-            </div>
-            <label :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
-              {{ t('settings.live2d.expressions.fields.weight') }}
-              <Input v-model="mapping.weight" type="number" :aria-label="`${t('settings.live2d.expressions.fields.weight')} ${index + 1}`" />
-            </label>
-            <div :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
-              {{ t('settings.live2d.expressions.fields.min-band') }}
-              <Select v-model="mapping.minBand" :options="bandOptions" />
-            </div>
-          </div>
-          <span v-if="weightError(mapping.weight)" :class="['text-xs text-red-500']" role="alert">{{ weightError(mapping.weight) }}</span>
-          <div>
-            <Button size="sm" @click="removeMapping(index)">
-              {{ t('settings.live2d.expressions.remove-mapping') }}
-            </Button>
-          </div>
-        </div>
-        <div>
-          <Button size="sm" @click="addMapping">
-            {{ t('settings.live2d.expressions.add-mapping') }}
-          </Button>
-        </div>
-      </div>
+      <Live2dExpressionTriggerEditor
+        ref="triggerEditor"
+        v-model:mappings="draftMappings"
+        v-model:exposed-to-llm="draftExposedToLlm"
+        :can-expose-to-llm="false"
+        :default-min-band="draftKind === 'effect' ? 'strong' : 'clear'"
+      />
 
       <div :class="['flex flex-wrap gap-2']">
         <Button @click="apply">

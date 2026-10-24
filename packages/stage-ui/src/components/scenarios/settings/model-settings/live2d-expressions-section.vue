@@ -5,6 +5,7 @@ import { Button, Input } from '@proj-airi/ui'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import Live2dExpressionCombos from './live2d-expression-combos.vue'
 import Live2dExpressionEntry from './live2d-expression-entry.vue'
 import Live2dExpressionGroupRow from './live2d-expression-group-row.vue'
 
@@ -134,6 +135,8 @@ const visibleExpressionRows = computed(() => {
         {{ showAllExpressions ? t('settings.live2d.expressions.show-fewer') : t('settings.live2d.expressions.show-all', { count: hiddenExpressionRowCount }) }}
       </Button>
     </div>
+
+    <Live2dExpressionCombos :entries="props.snapshot.entries" :class="['mt-4']" @command="applyExpressionSettingsCommand" />
 
     <!-- Action buttons -->
     <div :class="['mt-4', 'flex flex-wrap gap-2']">
