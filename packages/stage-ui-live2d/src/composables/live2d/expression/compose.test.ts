@@ -30,6 +30,78 @@ function frame(composer: ExpressionComposer, model: ReturnType<typeof core>, now
 }
 
 describe('expression composer', () => {
+  it('fades to a fractional target and does not reset transitionAt on repeated targets', () => {
+    const composer = new ExpressionComposer()
+    composer.define([definition('a', [], 1, 2)])
+    composer.setTarget('a', 0.5, 0)
+    expect(composer.weightOf('a', 0)).toBe(0)
+    expect(composer.weightOf('a', 0.5)).toBeCloseTo(0.25)
+    composer.setTarget('a', 0.5, 0.5)
+    composer.setTarget('a', 0.5, 0.75)
+    expect(composer.weightOf('a', 1)).toBeCloseTo(0.5)
+    expect(composer.weightOf('a', 1.5)).toBeCloseTo(0.5)
+    expect(composer.activeIds()).toEqual(['a'])
+  })
+
+  it('uses fadeOut for lower nonzero targets and retires only after a zero target', () => {
+    const composer = new ExpressionComposer()
+    composer.define([definition('a', [], 1, 2)])
+    composer.activate('a', 0)
+    composer.setTarget('a', 0.4, 1)
+    expect(composer.weightOf('a', 2)).toBeCloseTo(0.7)
+    expect(composer.weightOf('a', 3)).toBeCloseTo(0.4)
+    expect(composer.activeIds()).toEqual(['a'])
+    composer.setTarget('a', 0, 3)
+    expect(composer.weightOf('a', 4)).toBeCloseTo(0.2)
+    expect(composer.activeIds()).toEqual(['a'])
+    expect(composer.weightOf('a', 5)).toBe(0)
+    expect(composer.activeIds()).toEqual([])
+  })
+
+  it('orders new targets by list order and keeps a reactivated fading instance in place', () => {
+    const composer = new ExpressionComposer()
+    const model = core({ x: 2 })
+    composer.define([
+      definition('multiply', [{ id: 'x', value: 3, blend: 'Multiply' }], 0, 2),
+      definition('add', [{ id: 'x', value: 2, blend: 'Add' }]),
+    ])
+    composer.setTargets([{ id: 'multiply', weight: 0.5 }, { id: 'add', weight: 0.5 }], 0)
+    frame(composer, model, 0)
+    expect(model.read('x')).toBe(5)
+    composer.setTargets([{ id: 'add', weight: 0.5 }], 1)
+    expect(composer.weightOf('multiply', 2)).toBeCloseTo(0.25)
+    composer.setTargets([{ id: 'add', weight: 0.5 }, { id: 'multiply', weight: 0.5 }], 2)
+    frame(composer, model, 2)
+    expect(model.read('x')).toBe(5)
+    expect(composer.activeIds()).toEqual(['multiply', 'add'])
+  })
+
+  it.each([
+    ['Add', 4, 4],
+    ['Multiply', 3, 4],
+  ] as const)('applies half of the %s effect at weight 0.5', (blend, value, expected) => {
+    const composer = new ExpressionComposer()
+    const model = core({ x: 2 })
+    composer.define([definition('a', [{ id: 'x', value, blend }])])
+    composer.setTarget('a', 0.5, 0)
+    frame(composer, model, 0)
+    expect(model.read('x')).toBe(expected)
+  })
+
+  it.each([
+    [-1, 0],
+    [2, 1],
+    [Number.NaN, 0],
+    [Number.POSITIVE_INFINITY, 1],
+    [Number.NEGATIVE_INFINITY, 0],
+  ])('clamps target %s to %s', (target, expected) => {
+    const composer = new ExpressionComposer()
+    composer.define([definition('a', [])])
+    composer.setTarget('a', target, 0)
+    expect(composer.weightOf('a', 0)).toBe(expected)
+    expect(composer.activeIds()).toEqual(expected === 0 ? [] : ['a'])
+  })
+
   it('(a) keeps separate Add expressions independent on activation and release', () => {
     const composer = new ExpressionComposer()
     const model = core({ x: 0.25, y: 0.5 })

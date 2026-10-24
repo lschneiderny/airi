@@ -11,7 +11,7 @@ export interface ExpressionInstance {
   id: string
   activationSequence: number
   fromWeight: number
-  targetWeight: 0 | 1
+  targetWeight: number
   transitionAt: number
   duration: number
 }
@@ -45,46 +45,48 @@ export class ExpressionComposer {
   }
 
   activate(id: string, now: number): void {
+    this.setTarget(id, 1, now)
+  }
+
+  deactivate(id: string, now: number): void {
+    this.setTarget(id, 0, now)
+  }
+
+  /** Targets a clamped strength without restarting an unchanged transition. */
+  setTarget(id: string, target: number, now: number): void {
     const definition = this.definitions.get(id)
     if (!definition)
       return
 
-    const fromWeight = this.weightOf(id, now)
+    target = Number.isNaN(target) ? 0 : Math.max(0, Math.min(1, target))
     const previous = this.instances.get(id)
-    if (previous?.targetWeight === 1)
+    if (previous?.targetWeight === target || (!previous && target === 0))
       return
 
+    const fromWeight = this.weightOf(id, now)
     this.instances.set(id, {
       id,
       activationSequence: previous?.activationSequence ?? this.sequence++,
       fromWeight,
-      targetWeight: 1,
+      targetWeight: target,
       transitionAt: now,
-      duration: this.fadeDuration(definition.fadeIn),
+      duration: this.fadeDuration(target > fromWeight ? definition.fadeIn : definition.fadeOut),
     })
-  }
-
-  deactivate(id: string, now: number): void {
-    const fromWeight = this.weightOf(id, now)
-    const instance = this.instances.get(id)
-    if (!instance || instance.targetWeight === 0)
-      return
-
-    instance.fromWeight = fromWeight
-    instance.targetWeight = 0
-    instance.transitionAt = now
-    instance.duration = this.fadeDuration(this.definitions.get(id)!.fadeOut)
     this.weightOf(id, now)
   }
 
   setActiveSet(ids: string[], now: number): void {
-    const desired = new Set(ids)
+    this.setTargets(ids.map(id => ({ id, weight: 1 })), now)
+  }
+
+  setTargets(targets: { id: string, weight: number }[], now: number): void {
+    const desired = new Set(targets.map(target => target.id))
     for (const id of this.instances.keys()) {
       if (!desired.has(id))
-        this.deactivate(id, now)
+        this.setTarget(id, 0, now)
     }
-    for (const id of desired)
-      this.activate(id, now)
+    for (const { id, weight } of targets)
+      this.setTarget(id, weight, now)
   }
 
   /** Samples a transition and retires completed releases, but not newly started fades. */
