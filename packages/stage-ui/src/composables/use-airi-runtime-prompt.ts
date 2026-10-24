@@ -7,9 +7,9 @@ import { EMOTION_PromptName_value, EMOTION_VALUES } from '../constants/emotions'
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 
-const EXPRESSION_KINDS = ['face', 'effect', 'prop'] as const
+const EXPRESSION_KINDS = ['face', 'effect', 'prop', 'combo'] as const
 
-/** Labels per kind that has exposed labels, in face, effect, prop order. */
+/** Labels per kind that has exposed labels, in face, effect, prop, combo order. */
 function exposedByKind(exposed: PerformanceRuntimeSnapshot['exposed']) {
   return EXPRESSION_KINDS.flatMap((kind) => {
     const labels = exposed.filter(entry => entry.kind === kind).map(entry => entry.label)
@@ -17,7 +17,7 @@ function exposedByKind(exposed: PerformanceRuntimeSnapshot['exposed']) {
   })
 }
 
-/** One line per kind that has exposed labels, in face, effect, prop order. */
+/** One line per kind that has exposed labels, in face, effect, prop, combo order. */
 function formatExposedList(exposed: PerformanceRuntimeSnapshot['exposed']) {
   return exposedByKind(exposed).map(({ kind, labels }) => `- ${kind}: ${labels.join(', ')}`).join('\n')
 }

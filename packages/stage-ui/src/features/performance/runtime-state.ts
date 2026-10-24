@@ -6,10 +6,13 @@ import { ref } from 'vue'
 
 export type ExposedExpressionKind = SlotCommand['slot']
 
+/** What the LLM sees an exposed expression as: a slot kind, or a combo that spans several slots. */
+export type ExposedExpressionGroup = ExposedExpressionKind | 'combo'
+
 /** An expression the LLM may name; labels only, never ids or parameters. */
 export interface ExposedExpression {
   label: string
-  kind: ExposedExpressionKind
+  kind: ExposedExpressionGroup
 }
 
 /** An exposed expression that currently occupies a performer slot. */

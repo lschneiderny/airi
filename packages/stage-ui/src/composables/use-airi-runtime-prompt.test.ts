@@ -134,6 +134,21 @@ describe('useStageLiveStatePrompt', () => {
     expect(prompt).not.toMatch(/hat|watermark|smile|P-/)
   })
 
+  it('lists a combo under its own group after prop and hides unsorted and duplicate entries', () => {
+    const withCombos = [
+      ...catalog,
+      entry('smile-and-tear', 'combo', { fileName: '', parameterIds: [], slots: ['face', 'effect'] }),
+      entry('expression19', 'unsorted'),
+      entry('anger-copy', 'face', { duplicateOf: 'anger.exp3.json' }),
+    ]
+    usePerformanceRuntimeState().publish({ exposed: toExposedExpressions(withCombos), active: [], mood: null })
+
+    const prompt = useStageLiveStatePrompt().value
+
+    expect(prompt).toContain('- face: anger, pout\n- effect: tear\n- prop: game\n- combo: smile-and-tear')
+    expect(prompt).not.toMatch(/expression19|anger-copy/)
+  })
+
   it('reports active expressions and mood only while state feedback is on', async () => {
     const runtimeState = usePerformanceRuntimeState()
     runtimeState.publish({ exposed: toExposedExpressions(catalog), active: [{ slot: 'face', label: 'anger' }], mood: { valence: -0.2, arousal: 0.3, tension: 0.4 } })

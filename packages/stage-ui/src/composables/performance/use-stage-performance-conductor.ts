@@ -2,7 +2,7 @@ import type { AffectSignal, AffectTrace, AffectTraceRequest, CatalogEntry, Decid
 import type { Live2DMotionDriver } from '@proj-airi/stage-ui-live2d'
 import type { NaturalEpisode } from '@proj-airi/stage-ui-live2d/composables/live2d'
 
-import type { ActiveExpression, ExposedExpression, PerformanceMoodSnapshot } from '../../features/performance/runtime-state'
+import type { ActiveExpression, ExposedExpression, ExposedExpressionGroup, PerformanceMoodSnapshot } from '../../features/performance/runtime-state'
 import type { ExecutableTool } from '../../stores/ai/chat-llm/tools'
 import type { ExpressionToolPort } from '../../tools/expression'
 
@@ -56,12 +56,27 @@ export function resolveExpressionName(name: string, eligible: readonly CatalogEn
   return wanted ? eligible.find(entry => entry.label.trim().toLowerCase() === wanted) : undefined
 }
 
-/** The labels and kinds the LLM may see: exposed face, effect, and prop entries only. */
+/** The group the LLM sees an entry in: its slot kind, or `combo` when it spans slots. No group means no exposure. */
+function exposedGroupOf(entry: CatalogEntry): ExposedExpressionGroup | undefined {
+  if (entry.kind === 'combo')
+    return entry.slots?.length ? 'combo' : undefined
+  return slotOfKind[entry.kind]
+}
+
+/** The labels and kinds the LLM may see: exposed face, effect, prop, and combo entries only. */
 export function toExposedExpressions(catalog: readonly CatalogEntry[]): ExposedExpression[] {
   return catalog.flatMap((entry) => {
-    const kind = slotOfKind[entry.kind]
+    const kind = exposedGroupOf(entry)
     return isLlmEligible(entry) && kind ? [{ label: entry.label, kind }] : []
   })
+}
+
+/** The slots whose lease must hold the entry for it to count as shown: a combo's spanned slots, else its own. */
+function shownSlotsOf(entry: CatalogEntry): SlotName[] {
+  if (entry.kind === 'combo')
+    return entry.slots ?? []
+  const slot = slotOfKind[entry.kind]
+  return slot ? [slot] : []
 }
 
 /** The Live2D scene surface the conductor dispatches to; `Live2DScene` exposes it. */
@@ -581,16 +596,15 @@ export function activeExpressionsOf(performer: ExpressionToolPerformer): ActiveE
 export function createExpressionToolPort(conductor: StagePerformanceConductor, performer: ExpressionToolPerformer): ExpressionToolPort {
   return {
     list: () => performer.llmEligibleEntries.flatMap((entry) => {
-      const kind = slotOfKind[entry.kind]
-      return kind ? [{ label: entry.label, kind, active: performer.leases[kind]?.expressionId === entry.id }] : []
+      const kind = exposedGroupOf(entry)
+      return kind ? [{ label: entry.label, kind, active: shownSlotsOf(entry).some(slot => performer.leases[slot]?.expressionId === entry.id) }] : []
     }),
     set: (name, holdSeconds) => {
       const entry = conductor.expression(name, holdSeconds, 'tool')
       if (!entry)
         return { success: false, error: `"${name}" is not an exposed expression.`, available: toExposedExpressions(performer.llmEligibleEntries).map(item => item.label) }
       // The performer can refuse a slot, for example to protect a saved default in its group.
-      const slot = slotOfKind[entry.kind]
-      if (!slot || performer.leases[slot]?.expressionId !== entry.id)
+      if (!shownSlotsOf(entry).some(slot => performer.leases[slot]?.expressionId === entry.id))
         return { success: false, error: `"${entry.label}" cannot be shown now.`, active: activeExpressionsOf(performer) }
       return { success: true, active: activeExpressionsOf(performer) }
     },

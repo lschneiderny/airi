@@ -1,6 +1,6 @@
 import type { Tool } from '@xsai/shared-chat'
 
-import type { ActiveExpression, ExposedExpressionKind } from '../features/performance/runtime-state'
+import type { ActiveExpression, ExposedExpressionGroup, ExposedExpressionKind } from '../features/performance/runtime-state'
 
 import { tool } from '@xsai/tool'
 import { z } from 'zod'
@@ -14,7 +14,7 @@ const expressionSlots = ['face', 'effect', 'prop'] as const satisfies readonly E
 /** An exposed expression and whether a slot shows it now. */
 export interface ListedExpression {
   label: string
-  kind: ExposedExpressionKind
+  kind: ExposedExpressionGroup
   active: boolean
 }
 
@@ -58,7 +58,7 @@ export async function createExpressionTools(port: ExpressionToolPort): Promise<T
   return await Promise.all([
     tool({
       name: 'set_expression',
-      description: 'Show one of the character\'s exposed expressions (faces, effects, or props) by label. Without hold_seconds it lasts while the current reply is spoken.',
+      description: 'Show one of the character\'s exposed expressions (faces, effects, props, or combos, which show several expressions together) by label. Without hold_seconds it lasts while the current reply is spoken.',
       execute: async (input) => {
         const name: unknown = input.expression
         const holdSeconds: unknown = input.hold_seconds

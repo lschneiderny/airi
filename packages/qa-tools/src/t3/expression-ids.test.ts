@@ -21,6 +21,14 @@ describe('toRenderedExpressionIds', () => {
     expect(scenario.events.find(event => event.kind === 'expression')).toMatchObject({ expressionId: 'expression1' })
   })
 
+  it('leaves an entry with an empty fileName unmapped', () => {
+    const combo = { ...catalog[0]!, id: 'pair', kind: 'combo' as const, fileName: '' }
+    const events = [{ kind: 'expression' as const, at: 1, expressionId: 'pair', on: true }]
+    const { scenario: rendered, mapped } = toRenderedExpressionIds({ ...scenario, events }, [combo])
+    expect(mapped).toEqual({})
+    expect(rendered.events).toEqual(events)
+  })
+
   it('leaves ids outside the catalog unchanged so the bridge rejects them', () => {
     const unknown = { ...scenario, events: [{ kind: 'expression' as const, at: 1, expressionId: 'not-in-catalog', on: true }] }
     const { scenario: rendered, mapped } = toRenderedExpressionIds(unknown, catalog)

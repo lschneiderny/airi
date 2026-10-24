@@ -9,7 +9,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
-import { createExpressionToolRegistration, expressionToolIds, maxAffectTraceEntries, StagePerformanceConductor, toExposedExpressions } from './use-stage-performance-conductor'
+import { createExpressionToolPort, createExpressionToolRegistration, expressionToolIds, maxAffectTraceEntries, StagePerformanceConductor, toExposedExpressions } from './use-stage-performance-conductor'
 
 // `createDecider` stays the real factory, wrapped in a spy so the timing tests can replace the
 // next decider with one that reports deadlines, which the picker never does (`mockReturnValueOnce`).
@@ -283,6 +283,48 @@ describe('stage performance conductor', () => {
     ])
     expect(warn).toHaveBeenCalledTimes(5)
     expect(warn).toHaveBeenCalledWith('[performance-conductor] Expression is not exposed and was dropped:', 'hat', 'available:', ['game', 'Blush'])
+  })
+
+  describe('combos', () => {
+    const combo = entry('pair', 'combo', [], { label: 'Pair', exposedToLlm: true, slots: ['face', 'effect'], fileName: '', parameterIds: [] })
+    const withCombos: CatalogEntry[] = [
+      ...catalog,
+      combo,
+      entry('slotless', 'combo', [], { exposedToLlm: true, slots: [] }),
+      entry('copy', 'face', [], { exposedToLlm: true, duplicateOf: 'anger' }),
+      entry('expression19', 'unsorted', [], { exposedToLlm: true }),
+    ]
+
+    it('exposes a combo that spans slots as its own group and skips slotless, duplicate, and unsorted entries', () => {
+      expect(toExposedExpressions(withCombos)).toEqual([{ label: 'game', kind: 'prop' }, { label: 'Pair', kind: 'combo' }])
+    })
+
+    it('resolves an exposed combo by label and carries its id on the expression signal', () => {
+      const { conductor } = createConductor('natural', fakeScene(), defaultExpressionPerformanceSettings, undefined, withCombos)
+      conductor.startRecording()
+
+      expect(conductor.expression('pair', undefined, 'tool', 'turn-a')?.id).toBe('pair')
+
+      const signals = conductor.exportTrace()!.entries.flatMap(item => item.type === 'signal' && item.signal.kind === 'expression' ? [item.signal] : [])
+      expect(signals.map(signal => signal.expressionId)).toEqual(['pair'])
+    })
+
+    it('answers an unexposed or duplicate label with success false and the available labels', () => {
+      const { conductor } = createConductor('natural', fakeScene(), defaultExpressionPerformanceSettings, undefined, withCombos)
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const port = createExpressionToolPort(conductor, { leases: { face: null, effect: null, prop: null }, llmEligibleEntries: withCombos.filter(candidate => candidate.exposedToLlm && candidate.duplicateOf === undefined && candidate.kind !== 'unsorted') })
+
+      for (const name of ['copy', 'expression19', 'anger'])
+        expect(port.set(name)).toMatchObject({ success: false, available: ['game', 'Pair'] })
+    })
+
+    it('reports a combo active while any slot it spans holds it', () => {
+      const { conductor } = createConductor('natural', fakeScene(), defaultExpressionPerformanceSettings, undefined, withCombos)
+      const performer = (effect: { expressionId: string } | null) => ({ leases: { face: null, effect, prop: null }, llmEligibleEntries: [combo] })
+
+      expect(createExpressionToolPort(conductor, performer(null)).list()).toEqual([{ label: 'Pair', kind: 'combo', active: false }])
+      expect(createExpressionToolPort(conductor, performer({ expressionId: 'pair' })).list()).toEqual([{ label: 'Pair', kind: 'combo', active: true }])
+    })
   })
 
   it('routes clears through the decider so an exact replay reproduces every dispatched slot command', () => {

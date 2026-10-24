@@ -1,5 +1,7 @@
 import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
 
+import type { ExpressionToolPort } from './expression'
+
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { createPinia, setActivePinia } from 'pinia'
@@ -71,6 +73,21 @@ describe('expression tools', () => {
     const parameters = tools.get('set_expression')!.function.parameters as { properties: { expression: { enum: string[] } } }
     expect(new Set(parameters.properties.expression.enum)).toEqual(new Set(['Anger', 'tear', 'game']))
     expect(JSON.stringify([...tools.values()].map(tool => tool.function))).not.toMatch(/hat|watermark|smile|P-/)
+  })
+
+  it('lists a combo label in the schema enum and describes combos in the tool description', async () => {
+    const port: ExpressionToolPort = {
+      list: () => [{ label: 'smile', kind: 'face', active: false }, { label: 'Pair', kind: 'combo', active: false }],
+      set: () => ({ success: true }),
+      clear: () => ({ success: true }),
+    }
+    const tools = new Map((await createExpressionTools(port)).map(item => [item.function.name, item]))
+
+    const set = tools.get('set_expression')!.function
+    expect((set.parameters as { properties: { expression: { enum: string[] } } }).properties.expression.enum).toEqual(['smile', 'Pair'])
+    expect(set.description).toContain('combos')
+    expect((await tools.get('set_expression')!.validate!({ expression: 'Pair' })).issues).toBeUndefined()
+    expect((await tools.get('set_expression')!.validate!({ expression: 'unknown' })).issues).toBeDefined()
   })
 
   it('offers derived face, effect, and prop labels without any manual curation', async () => {
