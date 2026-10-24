@@ -36,13 +36,5 @@ export function createCatalogPersistence(context: CatalogPersistenceContext) {
     persistCurated({ version: 1, overrides: curated.value.overrides.filter(entry => entry.id !== id) })
   }
 
-  function confirmAllSuggested() {
-    persistCurated({ version: 1, overrides: derived.value.map(entry => ({
-      ...curated.value.overrides.find(override => override.id === entry.id),
-      id: entry.id,
-      confirmed: true,
-    })) })
-  }
-
-  return { persistCurated, updateEntry, resetEntry, confirmAllSuggested }
+  return { persistCurated, updateEntry, resetEntry }
 }

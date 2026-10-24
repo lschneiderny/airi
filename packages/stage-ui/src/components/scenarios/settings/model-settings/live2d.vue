@@ -938,9 +938,6 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
 
       <!-- Action buttons -->
       <div :class="['mt-4', 'flex flex-wrap gap-2']">
-        <Button @click="applyExpressionSettingsCommand({ type: 'confirm-all-suggested' })">
-          {{ t('settings.live2d.expressions.confirm-all') }}
-        </Button>
         <Button @click="applyExpressionSettingsCommand({ type: 'save-defaults' })">
           {{ t('settings.live2d.expressions.save-default') }}
         </Button>

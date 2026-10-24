@@ -34,7 +34,7 @@ Edits are stored per model in `expression-catalog:${modelId}` as `{ version: 1, 
 - Only confirmed, LLM-exposed `face`, `effect`, and `prop` entries reach the LLM. Outfits and system expressions never do.
 - Activating a member of a pick-one group fades out the other members. An automatic or LLM activation never displaces a saved default, a manual toggle, or a member of a different kind; the activation is skipped instead.
 
-The stage window owns `useExpressionStore`. Other windows render its `settingsSnapshot` and send `Live2DExpressionSettingsCommand` values: `toggle`, `save-defaults`, `reset-all`, `update-entry`, `reset-entry`, and `confirm-all-suggested`.
+The stage window owns `useExpressionStore`. Other windows render its `settingsSnapshot` and send `Live2DExpressionSettingsCommand` values: `toggle`, `set-active`, `save-defaults`, `reset-all`, `update-entry`, and `reset-entry`.
 
 ### Expression slots
 

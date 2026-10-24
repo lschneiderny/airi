@@ -58,10 +58,7 @@ describe('curated expression catalog', () => {
     expect(store.llmEligibleEntries.map(entry => entry.id)).toEqual(['smile', 'frown'])
     store.resetEntry('smile')
     expect(store.catalog[0].label).toBe('smile')
-    store.confirmAllSuggested()
-    expect(store.catalog.every(entry => entry.confirmed)).toBe(true)
     expect(store.autoEligibleEntries.map(entry => entry.id)).toEqual(['smile', 'frown'])
-    // Confirming does not gate AI access; derived exposure still applies.
     expect(store.llmEligibleEntries.map(entry => entry.id)).toEqual(['smile', 'frown'])
   })
 
@@ -77,6 +74,46 @@ describe('curated expression catalog', () => {
     store.resetAll()
     expect(store.manualActive).toEqual(['smile'])
     expect(store.composer.weightOf('frown', 1)).toBe(0)
+  })
+
+  it('set-active true on a group member deactivates its siblings', () => {
+    const store = useExpressionStore()
+    store.registerDefinitions('a', defs)
+    store.applySettingsCommand({ type: 'set-active', id: 'smile', active: true })
+    store.applySettingsCommand({ type: 'set-active', id: 'frown', active: true })
+    expect(store.manualActive).toEqual(['frown'])
+    expect(store.composer.weightOf('smile', 1)).toBe(0)
+  })
+
+  it('set-active false on a slot-owned entry leaves it inactive', () => {
+    const store = useExpressionStore()
+    store.registerDefinitions('a', defs)
+    expect(store.activateFromSlot('smile', 'face')).toBe(true)
+    expect(store.settingsSnapshot.groups.find(entry => entry.id === 'smile')?.active).toBe(true)
+    store.applySettingsCommand({ type: 'set-active', id: 'smile', active: false })
+    expect(store.slotActive).toEqual([])
+    expect(store.settingsSnapshot.groups.find(entry => entry.id === 'smile')?.active).toBe(false)
+  })
+
+  it('set-active false on a rest-set member suppresses it until resetAll', () => {
+    const store = useExpressionStore()
+    store.registerDefinitions('a', defs)
+    store.activate('smile')
+    store.saveDefaults()
+    store.applySettingsCommand({ type: 'set-active', id: 'smile', active: false })
+    expect(store.restSuppressed).toEqual(['smile'])
+    expect(store.settingsSnapshot.groups.find(entry => entry.id === 'smile')?.active).toBe(false)
+    store.resetAll()
+    expect(store.restSuppressed).toEqual([])
+    expect(store.settingsSnapshot.groups.find(entry => entry.id === 'smile')?.active).toBe(true)
+  })
+
+  it('set-active true on a slot-owned entry records manual intent', () => {
+    const store = useExpressionStore()
+    store.registerDefinitions('a', defs)
+    expect(store.activateFromSlot('smile', 'face')).toBe(true)
+    store.applySettingsCommand({ type: 'set-active', id: 'smile', active: true })
+    expect(store.manualActive).toEqual(['smile'])
   })
 
   it('skips a face slot that would displace an active outfit in a user-edited group', () => {

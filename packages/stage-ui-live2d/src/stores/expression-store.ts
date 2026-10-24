@@ -30,7 +30,7 @@ export type Live2DExpressionSettingsCommand
     | { type: 'reset-all' }
     | { type: 'update-entry', id: string, patch: Omit<CuratedOverride, 'id'> }
     | { type: 'reset-entry', id: string }
-    | { type: 'confirm-all-suggested' }
+    | { type: 'set-active', id: string, active: boolean }
 
 /** Local to the renderer that owns the model. Other windows use snapshots and commands. */
 export const useExpressionStore = defineStore('live2d-expressions', () => {
@@ -67,7 +67,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   }
 
   const { activateFromSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases } = createSlotLeases({ catalog, slotActive, leases, muted, slotSettings, composer, ownersOf, isActive, deactivate })
-  const { updateEntry, resetEntry, confirmAllSuggested } = createCatalogPersistence({ modelId, derived, curated })
+  const { updateEntry, resetEntry } = createCatalogPersistence({ modelId, derived, curated })
 
   const settingsSnapshot = computed<Live2DExpressionSettingsSnapshot>(() => ({
     groups: catalog.value.map(entry => ({
@@ -199,10 +199,10 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
         return updateEntry(command.id, command.patch)
       case 'reset-entry':
         return resetEntry(command.id)
-      case 'confirm-all-suggested':
-        return confirmAllSuggested()
+      case 'set-active':
+        return command.active ? activate(command.id) : deactivate(command.id)
     }
   }
 
-  return { definitions, modelId, restSet, restSuppressed, manualActive, slotActive, leases, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, registerDefinitions, activate, activateFromSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, confirmAllSuggested, dispose, applySettingsCommand }
+  return { definitions, modelId, restSet, restSuppressed, manualActive, slotActive, leases, composer, derived, curated, catalog, llmEligibleEntries, autoEligibleEntries, settingsSnapshot, registerDefinitions, activate, activateFromSlot, applySlots, onSpeech, setMuted, setSlotSettings, tickLeases, deactivate, toggle, saveDefaults, resetAll, updateEntry, resetEntry, dispose, applySettingsCommand }
 })

@@ -132,6 +132,13 @@ describe('model settings runtime channel', () => {
     expect(applied).toBe(true)
     expect(useExpressionStore(settingsPinia).definitions).toEqual([])
 
+    await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'set-active', id: 'happy.exp3.json', active: false })
+    expect(ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(false)
+    const setActive = await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'set-active', id: 'happy.exp3.json', active: true })
+    expect(setActive).toBe(true)
+    expect(ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(true)
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.groups[0].active).toBe(true)
+
     const updated = await mountedSettingsRuntime.sendLive2DExpressionCommand({
       type: 'update-entry',
       id: 'happy.exp3.json',
