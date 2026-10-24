@@ -228,9 +228,8 @@ export function createStreamingCategorizer(
   // Fallback for filterToSpeech - uses rehype for robust incomplete tag detection
   function checkIncompleteTag(): boolean {
     try {
-      // A `<` that does not start a tag, as in `a < b` or `<=>`, is text, and so is `&`. rehype writes them as references.
-      // Write them so here too, or the source never equals the output and all later text counts as a tag.
-      // A `<` that ends the buffer can still start a tag in the next chunk, as `<` and then `think>`, so it stays raw.
+      // rehype writes a text `<` (as in `a < b`) and `&` as references, so write them so here too. A `<` that ends the
+      // buffer stays raw: the next chunk can turn it into a tag such as `<think>`.
       const source = buffer.replaceAll('&', '&#x26;').replace(/<(?![a-z/!]|$)/gi, '&#x3C;')
       const tree = unified().use(rehypeParse, { fragment: true }).parse(source) as Root
       const stringified = unified().use(rehypeStringify).stringify(tree).toString()
