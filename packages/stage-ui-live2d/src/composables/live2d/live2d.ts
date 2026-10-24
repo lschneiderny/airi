@@ -101,7 +101,7 @@ const live2dForceAutoBlinkEnabled = useVersionedLocalStorageManualReset<boolean>
     return false
   },
 })
-const live2dExpressionEnabled = useLocalStorageManualReset<boolean>('settings/live2d/expression-enabled', false)
+const live2dExpressionEnabled = useLocalStorageManualReset<boolean>('settings/live2d/expression-enabled', true)
 const live2dShadowEnabled = useLocalStorageManualReset<boolean>('settings/live2d/shadow-enabled', true)
 const live2dMaxFps = useLocalStorageManualReset<number>('settings/live2d/max-fps', 60)
 const live2dRenderScale = useLocalStorageManualReset<number>('settings/live2d/render-scale', 2)

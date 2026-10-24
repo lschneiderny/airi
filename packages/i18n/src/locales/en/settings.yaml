@@ -285,6 +285,16 @@ live2d:
   expressions:
     title: Expressions
     override-toggle: Expression system
+    switch: On
+    show-all: Show all ({count} hidden)
+    show-fewer: Show only expressions in use
+    search: Search expressions
+    none-in-use: No expressions are in use yet.
+    no-match: No expressions match this search.
+    group-select: Choose one
+    group-option-none: None
+    group-members: Edit members
+    group-members-close: Close members
     sdk-preset-preserved-notice: >
       SDK expression manager and eye blink are preserved when disabled.
     no-expression: No expressions available for this model.
@@ -310,6 +320,8 @@ live2d:
       group: Group
       confirmed: Confirmed
       mappings: Emotion mappings
+      inverted: Switch shows the opposite
+      inverted-description: Use this when turning the expression on hides something, such as a coat.
       emotion: Emotion
       weight: Weight
       min-band: Minimum strength
