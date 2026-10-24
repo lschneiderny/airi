@@ -4,6 +4,8 @@ import type { NaturalMotionEvent } from './frame-types'
 import type { LivelinessTrace, ParameterRanges } from './liveliness'
 import type { PostureHome } from './posture'
 
+import { resolveCheekParameterId } from './rig-profile'
+
 /**
  * Parameters a Natural trace records. These are the channels the liveliness scorer reads, plus the
  * face and breath channels Natural composes, so one trace explains a score without a second capture.
@@ -71,6 +73,8 @@ export interface NaturalTrace extends LivelinessTrace {
 }
 
 export interface NaturalTraceRecorderOptions {
+  /** CDI metadata used by the rig profile to resolve the blush channel. */
+  displayInfo?: unknown
   /** Rig-specific parameters recorded after the standard ones, such as a ForBOOTH expression switch (`Param60`). Absent ids get no column. */
   extraParameterIds?: readonly string[]
 }
@@ -107,7 +111,9 @@ export class NaturalTraceRecorder {
   constructor(parameters: CubismParameterTable, options: NaturalTraceRecorderOptions = {}) {
     const ids = Array.from(parameters.ids)
     for (const id of new Set([...naturalTraceParameterIds, ...options.extraParameterIds ?? []])) {
-      const index = ids.indexOf(id)
+      // Keep the canonical scored channel name while sampling the same physical parameter Natural drives.
+      const parameterId = id === 'ParamCheek' ? resolveCheekParameterId(ids, options.displayInfo) : id
+      const index = parameterId ? ids.indexOf(parameterId) : -1
       if (index < 0)
         continue
       this.columns.push({ id, index, values: [] })

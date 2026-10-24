@@ -2,7 +2,7 @@ import type { PhysicsRigLike } from './rig-profile'
 
 import { describe, expect, it } from 'vitest'
 
-import { readLive2DRigProfile } from './rig-profile'
+import { readLive2DRigProfile, resolveCheekParameterId } from './rig-profile'
 
 function parameters(ids: string[] = []) {
   return {
@@ -22,6 +22,25 @@ function rig(links: [string, string, number?][]): PhysicsRigLike {
 }
 
 describe('rig profile', () => {
+  it.each(['ParamCheek2', 'Param_Blush', 'hoppe'])('resolves the conventional blush alias %s', (id) => {
+    expect(readLive2DRigProfile(parameters([id]), undefined).channels.get('cheek')?.id).toBe(id)
+  })
+
+  it('resolves a blush display name without mistaking cheek inflation for blush', () => {
+    const input = parameters(['cheekpuff', 'CustomBlush'])
+    const displayInfo = { Parameters: [{ Id: 'cheekpuff', Name: 'Cheek Puff' }, { Id: 'CustomBlush', Name: '\u8138\u7EA2' }] }
+    expect(readLive2DRigProfile(input, undefined, displayInfo).channels.get('cheek'))
+      .toEqual({ id: 'CustomBlush', index: 1, min: -8, max: 22, neutral: 2 })
+    expect(resolveCheekParameterId(['cheekpuff'])).toBeUndefined()
+    expect(resolveCheekParameterId(['Other'], displayInfo)).toBeUndefined()
+  })
+
+  it('prefers the standard blush parameter over aliases and ignores invalid metadata', () => {
+    expect(resolveCheekParameterId(['Param_Blush', 'ParamCheek'])).toBe('ParamCheek')
+    for (const displayInfo of [null, {}, { Parameters: {} }, { Parameters: [null, { Id: 1, Name: 'Blush' }] }])
+      expect(resolveCheekParameterId(['Other'], displayInfo)).toBeUndefined()
+  })
+
   it('a: detects Bear-like body ownership from head inputs', () => {
     const profile = readLive2DRigProfile(parameters(), rig([['ParamAngleX', 'ParamBodyAngleX', 100]]))
     expect(profile.bodyFromHeadPhysics).toEqual({ x: true, y: false, z: false })

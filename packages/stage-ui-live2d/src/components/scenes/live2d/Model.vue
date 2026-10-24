@@ -593,7 +593,7 @@ async function performModelLoad() {
     // through the framework-internal `_physicsRig` field of the Cubism physics instance.
     // Source: pixi-live2d-display 0.4.0 types/index.d.ts (CubismPhysics._physicsRig).
     // Remove when pixi-live2d-display exposes the parsed physics rig through a public API.
-    const readRigProfile = () => readLive2DRigProfile(coreModel.getModel().parameters, internalModel.physics?._physicsRig)
+    const readRigProfile = () => readLive2DRigProfile(coreModel.getModel().parameters, internalModel.physics?._physicsRig, (internalModel.settings as { _cdiData?: unknown })._cdiData)
     sdkNowSeconds = Number.NaN
     speechEndedAtSeconds = null
     clipOwnedIds = new Set<string>()
@@ -1151,7 +1151,10 @@ function startNaturalCapture(request: NaturalCaptureRequest) {
   }
   const internalModel = current.internalModel
   const coreModel = internalModel.coreModel
-  const recorder = new NaturalTraceRecorder(coreModel.getModel().parameters, { extraParameterIds: request.extraParameterIds })
+  const recorder = new NaturalTraceRecorder(coreModel.getModel().parameters, {
+    extraParameterIds: request.extraParameterIds,
+    displayInfo: (internalModel.settings as { _cdiData?: unknown })._cdiData,
+  })
   const capturedAt = new Date().toISOString()
   const readDiagnostics = () => naturalMotion!.diagnostics
   adapter.resetDiagnostics()

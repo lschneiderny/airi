@@ -82,6 +82,22 @@ describe('live2d zip loader settings sanitization', () => {
     vi.unstubAllGlobals()
   })
 
+  it('retains CDI parameter names when a directory is replayed through FileLoader', async () => {
+    await import('./live2d-zip-loader')
+    const { FileLoader } = await import('pixi-live2d-display/cubism4')
+    const displayInfo = { Parameters: [{ Id: 'CustomBlush', Name: 'Blush' }] }
+    const settings = await FileLoader.createSettings([
+      fileWithRelativePath(createSpacePathSettingsText(), 'avatar.model3.json', 'model/avatar.model3.json'),
+      fileWithRelativePath(JSON.stringify(displayInfo), 'avatar.cdi3.json', 'model/avatar.cdi3.json'),
+    ])
+    try {
+      expect(settings).toHaveProperty('_cdiData', displayInfo)
+    }
+    finally {
+      URL.revokeObjectURL((settings as typeof settings & { _objectURL: string })._objectURL)
+    }
+  })
+
   it('extracts the first real VTube document while excluding AppleDouble metadata', async () => {
     await import('./live2d-zip-loader')
     const { ZipLoader } = await import('pixi-live2d-display/cubism4')

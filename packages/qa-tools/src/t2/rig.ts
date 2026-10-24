@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { T2SetupError } from './errors'
 
 interface Model3Json {
-  FileReferences?: { Moc?: string, Physics?: string, Pose?: string }
+  FileReferences?: { Moc?: string, Physics?: string, Pose?: string, DisplayInfo?: string }
 }
 
 /** Rig files the loop needs. Textures are never read. */
@@ -18,6 +18,7 @@ export interface T2RigData {
   moc: ArrayBuffer
   physicsJson: unknown
   poseJson: unknown
+  displayInfoJson: unknown
 }
 
 /** Depth 0 is the rig root; ForBOOTH keeps its `.model3.json` one folder below the root. */
@@ -78,5 +79,6 @@ export function readRig(root: string | undefined): T2RigData {
     moc: mocBytes.buffer.slice(mocBytes.byteOffset, mocBytes.byteOffset + mocBytes.byteLength) as ArrayBuffer,
     physicsJson: readJson(refs.Physics),
     poseJson: readJson(refs.Pose),
+    displayInfoJson: readJson(refs.DisplayInfo),
   }
 }

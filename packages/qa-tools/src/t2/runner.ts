@@ -190,7 +190,7 @@ export function runT2(input: MotionScenario, runtime: T2Runtime, options: RunT2O
       delete internalModel.breath
 
       const parameters = internalModel.coreModel.getModel().parameters
-      const rigProfile = readLive2DRigProfile(parameters, internalModel.physics?._physicsRig)
+      const rigProfile = readLive2DRigProfile(parameters, internalModel.physics?._physicsRig, rig.displayInfoJson)
 
       if (!deform) {
         // Deformation reads parameters to compute drawable vertices and opacities; it never writes a parameter.
@@ -222,7 +222,7 @@ export function runT2(input: MotionScenario, runtime: T2Runtime, options: RunT2O
       slots.setSlotSettings(settings.slots)
 
       const switchParameterIds = [...new Set(definitions.flatMap(definition => definition.parameters.map(parameter => parameter.id)))]
-      const recorder = new NaturalTraceRecorder(parameters, { extraParameterIds: switchParameterIds })
+      const recorder = new NaturalTraceRecorder(parameters, { extraParameterIds: switchParameterIds, displayInfo: rig.displayInfoJson })
 
       // Model.vue samples on `beforeModelUpdate`: after focus (Natural), physics, and pose, before
       // `model.update()` and `loadParameters()` restore the saved pre-composition values.

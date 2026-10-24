@@ -56,16 +56,17 @@ function physicsRig(links: [string, string][]): PhysicsRigLike {
   }
 }
 
-function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore = true }: {
+function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore = true, blush }: {
   omit?: string
   fixed?: string
   physics?: PhysicsRigLike
   profile?: (profile: Live2DRigProfile) => Live2DRigProfile
   /** `false` drops the SDK `loadParameters()` restore, so writes would persist across frames. */
   restore?: boolean
+  blush?: { id: string, name: string }
 } = {}) {
-  const ids = [...posture, ...Object.keys(face)].filter(id => id !== omit)
-  const range = (id: string) => face[id] ?? [2, -8, 22]
+  const ids = [...posture, ...Object.keys(face), ...blush ? [blush.id] : []].filter(id => id !== omit)
+  const range = (id: string) => id === blush?.id ? [0, 0, 1] : face[id] ?? [2, -8, 22]
   const parameters = {
     ids,
     defaultValues: new Float32Array(ids.map(id => range(id)[0])),
@@ -123,7 +124,7 @@ function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore
     },
   }
   const original = model.updateFocus
-  let profile = readLive2DRigProfile(parameters, physics)
+  let profile = readLive2DRigProfile(parameters, physics, blush ? { Parameters: [{ Id: blush.id, Name: blush.name }] } : undefined)
   if (editProfile)
     profile = editProfile(profile)
   const adapter = new Live2DNaturalMotionAdapter(model, profile, () => state, visibility, () => 0.8)
@@ -158,6 +159,17 @@ function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore
 }
 
 describe('natural motion adapter', () => {
+  it('raises the CDI-resolved blush parameter while petting', () => {
+    const f = fixture({ blush: { id: 'CustomBlush', name: 'Blush' } })
+    f.state.eligible = true
+    f.frame(0)
+    expect(f.frame(1).rendered[f.at('CustomBlush')]).toBe(0)
+    f.state.pet = { x: 0, y: 0 }
+    f.frame(1.01)
+    expect(f.frame(3).rendered[f.at('CustomBlush')]).toBeGreaterThan(0)
+    f.adapter.dispose()
+  })
+
   it('composes natural input before one physics pass', () => {
     const f = fixture()
     f.state.eligible = true

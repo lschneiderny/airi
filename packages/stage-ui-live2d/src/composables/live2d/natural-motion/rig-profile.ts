@@ -23,6 +23,26 @@ const channelIds = {
 
 export type NaturalChannel = keyof typeof channelIds
 
+/** Resolves blush, not cheek inflation, from a conventional id or the rig's CDI display name. */
+export function resolveCheekParameterId(ids: readonly string[], displayInfo?: unknown): string | undefined {
+  const standard = ids.find(id => id === channelIds.cheek)
+  if (standard)
+    return standard
+  const alias = ids.find(id => /^(?:param[_-]?)?(?:cheek\d*|blush|hoppe)$/i.test(id))
+  if (alias)
+    return alias
+  if (!displayInfo || typeof displayInfo !== 'object' || !('Parameters' in displayInfo) || !Array.isArray(displayInfo.Parameters))
+    return undefined
+  for (const parameter of displayInfo.Parameters) {
+    if (parameter && typeof parameter === 'object' && 'Id' in parameter && typeof parameter.Id === 'string'
+      && 'Name' in parameter && typeof parameter.Name === 'string'
+      && /^(?:cheek|blush|hoppe|\u8138\u7EA2|\u81C9\u7D05|\u8D64\u9762|\u982C\u67D3\u3081)$/i.test(parameter.Name.trim())
+      && ids.includes(parameter.Id)) {
+      return parameter.Id
+    }
+  }
+}
+
 /** The parsed Cubism physics fields needed for ownership discovery, without SDK imports. */
 export interface PhysicsRigLike {
   settings: { baseInputIndex: number, inputCount: number, baseOutputIndex: number, outputCount: number }[]
@@ -44,9 +64,13 @@ export interface Live2DRigProfile {
 export function readLive2DRigProfile(
   parameters: { ids: string[], minimumValues: ArrayLike<number>, maximumValues: ArrayLike<number>, defaultValues: ArrayLike<number> },
   physicsRig: PhysicsRigLike | undefined,
+  displayInfo?: unknown,
 ): Live2DRigProfile {
   const channels: Live2DRigProfile['channels'] = new Map()
-  for (const [channel, id] of Object.entries(channelIds)) {
+  for (const [channel, standardId] of Object.entries(channelIds)) {
+    const id = channel === 'cheek' ? resolveCheekParameterId(parameters.ids, displayInfo) : standardId
+    if (!id)
+      continue
     const index = parameters.ids.indexOf(id)
     if (index < 0 || parameters.minimumValues[index] === parameters.maximumValues[index])
       continue

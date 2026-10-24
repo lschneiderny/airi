@@ -73,7 +73,7 @@ Natural owns these channels when the model has them:
 - body XYZ (`ParamBodyAngleX`, `ParamBodyAngleY`, `ParamBodyAngleZ`), except an axis that rig physics derives from the head;
 - eye XY (`ParamEyeBallX`, `ParamEyeBallY`);
 - face micro-offsets on brows, eye smile, and mouth form, and the eyelid composition (eye smile comes only from emotion hints);
-- cheek (`ParamCheek`), which a pet and a held emotion with a cheek value raise; otherwise Natural leaves it at its base value with a 0 offset;
+- cheek (`ParamCheek`), which a pet and a held emotion with a cheek value raise; otherwise Natural leaves it at its base value with a 0 offset. When the standard id is absent, Natural resolves conventional cheek/blush/hoppe ids or a blush CDI display name, including Chinese and Japanese blush labels, never cheek inflation. ZIP and restored-directory models retain these names. Traces sample the resolved physical parameter under the canonical `ParamCheek` channel;
 - Natural blink, while the user's auto-blink setting is on;
 - breath (`ParamBreath`), unless manual breath control is active.
 

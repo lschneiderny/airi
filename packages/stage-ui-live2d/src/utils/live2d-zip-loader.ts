@@ -244,11 +244,21 @@ FileLoader.createSettings = async (files: File[]) => {
 
   // OPFS replays a directory through FileLoader, bypassing ZipLoader.createSettings.
   const metadataSettings = settings as ModelSettings & {
+    _cdiData?: unknown
     _expFiles?: Array<{ name: string, fileName: string, data: unknown }>
     _vtubeData?: unknown
   }
   metadataSettings._expFiles = []
   const archiveFiles = files.filter(file => !shouldIgnoreLive2DArchiveEntry(file.webkitRelativePath || file.name))
+  const cdi = archiveFiles.find(file => /\.cdi3\.json$/i.test(file.name))
+  if (cdi) {
+    try {
+      metadataSettings._cdiData = JSON.parse(await FileLoader.readText(cdi))
+    }
+    catch (error) {
+      console.warn('[FileLoader] Failed to parse CDI metadata:', errorMessageFrom(error))
+    }
+  }
   for (const file of archiveFiles.filter(file => /\.exp3\.json$/i.test(file.name))) {
     const fileName = file.webkitRelativePath || file.name
     try {
