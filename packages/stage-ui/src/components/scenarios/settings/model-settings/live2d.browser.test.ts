@@ -219,9 +219,17 @@ describe('live2D model settings', () => {
     await expect.element(screen.getByText(`${t('settings.live2d.expressions.emotions.angry')}, ${t('settings.live2d.expressions.emotions.flustered')}`, { exact: true })).toBeVisible()
     await expect.element(screen.getByText(t('settings.live2d.expressions.kinds.face'), { exact: true })).not.toBeInTheDocument()
     await expect.element(screen.getByText(t('settings.live2d.expressions.kinds.outfit'), { exact: true })).not.toBeInTheDocument()
-    await expect.element(screen.getByText(group, { exact: true })).not.toBeInTheDocument()
-    await expect.element(screen.getByText('Confirmed', { exact: true })).not.toBeInTheDocument()
     await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.llm-exposed')}: Cheeks Blush` })).toBeVisible()
+
+    // The expanded member row shows neither the stored group id nor its former prefix-stripped chip text, nor a review chip.
+    const memberRow = screen.getByRole('switch', { name: `${t('settings.live2d.expressions.switch')}: Cheeks Blush` }).element().closest('[class*="rounded-lg"]')
+    if (!memberRow)
+      throw new Error('the member switch is not inside a row')
+    const member = page.elementLocator(memberRow)
+    await expect.element(member.getByText('Cheeks Blush', { exact: true })).toBeVisible()
+    await expect.element(member.getByText(group, { exact: true })).not.toBeInTheDocument()
+    await expect.element(member.getByText(group.replace(/^group:/, ''), { exact: true })).not.toBeInTheDocument()
+    await expect.element(member.getByText('Confirmed', { exact: true })).not.toBeInTheDocument()
   })
 
   describe('relevance view', () => {
