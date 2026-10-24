@@ -106,7 +106,7 @@ describe('model settings runtime channel', () => {
     const mountedSettingsRuntime = settingsRuntime
 
     await firstSnapshot
-    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.groups).toMatchObject([{
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.entries).toMatchObject([{
       id: 'happy.exp3.json',
       name: 'happy',
       active: false,
@@ -123,21 +123,21 @@ describe('model settings runtime channel', () => {
 
     expect(staleOwnerResponse.applied).toBe(false)
     expect(staleOwnerResponse.rejectionReason).toBe('owner-changed')
-    expect(ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(false)
+    expect(ownerExpressionStore.settingsSnapshot.entries[0].active).toBe(false)
 
     const applied = await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'toggle', id: 'happy.exp3.json' })
 
-    expect(ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(true)
-    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.groups[0].active).toBe(true)
+    expect(ownerExpressionStore.settingsSnapshot.entries[0].active).toBe(true)
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.entries[0].active).toBe(true)
     expect(applied).toBe(true)
     expect(useExpressionStore(settingsPinia).definitions).toEqual([])
 
     await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'set-active', id: 'happy.exp3.json', active: false })
-    expect(ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(false)
+    expect(ownerExpressionStore.settingsSnapshot.entries[0].active).toBe(false)
     const setActive = await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'set-active', id: 'happy.exp3.json', active: true })
     expect(setActive).toBe(true)
-    expect(ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(true)
-    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.groups[0].active).toBe(true)
+    expect(ownerExpressionStore.settingsSnapshot.entries[0].active).toBe(true)
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.entries[0].active).toBe(true)
 
     const updated = await mountedSettingsRuntime.sendLive2DExpressionCommand({
       type: 'update-entry',
@@ -146,13 +146,28 @@ describe('model settings runtime channel', () => {
     })
     expect(updated).toBe(true)
     expect(ownerExpressionStore.catalog[0].label).toBe('Joyful')
-    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.groups[0].label).toBe('Joyful')
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.entries[0].label).toBe('Joyful')
+
+    const created = await mountedSettingsRuntime.sendLive2DExpressionCommand({
+      type: 'create-combo',
+      combo: { label: 'Happy combo', members: [{ expressionId: 'happy.exp3.json', strength: 0.7 }], emotion: 'happy' },
+    })
+    expect(created).toBe(true)
+    const remoteCombo = mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.entries.find(entry => entry.kind === 'combo')
+    expect(remoteCombo).toMatchObject({
+      id: expect.stringMatching(/^combo:/),
+      label: 'Happy combo',
+      members: [{ expressionId: 'happy.exp3.json', strength: 0.7 }],
+      mappings: [{ emotion: 'happy', weight: 1, minBand: 'clear' }],
+      usesOverwrite: false,
+    })
+    expect(ownerExpressionStore.catalog.find(entry => entry.id === remoteCombo?.id)).toMatchObject({ label: 'Happy combo' })
 
     ownerExpressionStore.registerDefinitions('model-b', expressionDefinitions)
     const rejected = await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'update-entry', id: 'happy.exp3.json', patch: { label: 'Stale' } })
 
     expect(rejected).toBe(false)
-    expect(ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(false)
+    expect(ownerExpressionStore.settingsSnapshot.entries[0].active).toBe(false)
     expect(ownerExpressionStore.catalog[0].label).toBe('happy')
     await nextTick()
     expect(mountedSettingsRuntime.runtimeSnapshot.value.modelId).toBe('model-b')

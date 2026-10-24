@@ -27,21 +27,21 @@ function applyExpressionSettingsCommand(command: Live2DExpressionSettingsCommand
 const expressionGroups = computed(() => {
   const groups = new Map<string, string[]>()
   // A group name may be an empty string; only null means ungrouped.
-  for (const entry of props.snapshot.groups) {
+  for (const entry of props.snapshot.entries) {
     if (entry.group !== null)
       groups.set(entry.group, [...(groups.get(entry.group) ?? []), entry.label])
   }
   return [...groups].map(([name, labels]) => ({ name, labels }))
 })
 
-type ExpressionSnapshotEntry = Live2DExpressionSettingsSnapshot['groups'][number]
+type ExpressionSnapshotEntry = Live2DExpressionSettingsSnapshot['entries'][number]
 type ExpressionRow
   = | { type: 'group', group: string, members: ExpressionSnapshotEntry[] }
     | { type: 'entry', entry: ExpressionSnapshotEntry }
 
 /** One row per group at its first member's position, and one row per ungrouped entry, in catalog order. */
 const expressionRows = computed<ExpressionRow[]>(() => {
-  const entries = props.snapshot.groups
+  const entries = props.snapshot.entries
   const seen = new Set<string>()
   const rows: ExpressionRow[] = []
   for (const entry of entries) {
@@ -91,7 +91,7 @@ const visibleExpressionRows = computed(() => {
   <div v-if="!props.enabled" py-2 text-xs text-neutral-500 dark:text-neutral-400>
     {{ t('settings.live2d.expressions.sdk-preset-preserved-notice') }}
   </div>
-  <template v-else-if="props.snapshot.groups.length === 0">
+  <template v-else-if="props.snapshot.entries.length === 0">
     <div py-2 text-sm text-neutral-500 dark:text-neutral-400>
       {{ t('settings.live2d.expressions.no-expression') }}
     </div>

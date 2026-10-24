@@ -1,3 +1,28 @@
+/** Parameters written by Model.vue's saved manual-control initialization. */
+export const manualControlParameterIds = [
+  'ParamAngleX',
+  'ParamAngleY',
+  'ParamAngleZ',
+  'ParamEyeLOpen',
+  'ParamEyeROpen',
+  'ParamEyeSmile',
+  'ParamBrowLX',
+  'ParamBrowRX',
+  'ParamBrowLY',
+  'ParamBrowRY',
+  'ParamBrowLAngle',
+  'ParamBrowRAngle',
+  'ParamBrowLForm',
+  'ParamBrowRForm',
+  'ParamMouthOpenY',
+  'ParamMouthForm',
+  'ParamCheek',
+  'ParamBodyAngleX',
+  'ParamBodyAngleY',
+  'ParamBodyAngleZ',
+  'ParamBreath',
+] as const
+
 const channelIds = {
   headX: 'ParamAngleX',
   headY: 'ParamAngleY',

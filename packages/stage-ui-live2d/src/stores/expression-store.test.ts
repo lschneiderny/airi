@@ -48,11 +48,9 @@ describe('curated expression catalog', () => {
     expect(store.derived.every(entry => entry.duplicateOf === undefined)).toBe(true)
     expect(store.derived.map(entry => entry.area)).toEqual(['cheeks', 'cheeks'])
     store.updateEntry('b', { keepSeparate: false })
-    store.rederive()
     expect(store.derived[0]).toMatchObject({ label: 'Puff Cheeks', labelSource: 'model', aliases: ['b'], area: 'cheeks' })
     expect(store.derived[1]).toMatchObject({ label: '鼓脸', labelSource: 'vtube', duplicateOf: 'a' })
     store.updateEntry('b', { keepSeparate: true })
-    store.rederive()
     expect(store.derived.every(entry => entry.duplicateOf === undefined && entry.aliases === undefined)).toBe(true)
     expect(store.curated.overrides).toEqual([{ id: 'b', keepSeparate: true }])
     store.dispose()
@@ -89,6 +87,148 @@ describe('curated expression catalog', () => {
     expect(store.llmEligibleEntries.map(entry => entry.id)).toEqual(['smile', 'frown'])
   })
 
+  it('persists combo create, update and delete, canonicalizes aliases, and reloads combo defaults', () => {
+    const store = useExpressionStore()
+    const modelDefs = [...defs, { ...defs[0], id: 'smile-alias', name: 'smile-alias' }]
+    const register = () => store.registerDefinitions('a', modelDefs, [{ File: 'smile', Name: 'Smile' }])
+    register()
+    store.applySettingsCommand({ type: 'create-combo', combo: { label: 'Happy look', members: [{ expressionId: 'smile-alias', strength: 0.7 }], emotion: 'happy' } })
+    const created = store.catalog.find(entry => entry.kind === 'combo')!
+    expect(() => structuredClone(store.settingsSnapshot)).not.toThrow()
+    expect(created.id).toMatch(/^combo:/)
+    expect(created).toMatchObject({ members: [{ expressionId: 'smile', strength: 0.7 }], mappings: [{ emotion: 'happy', weight: 1, minBand: 'clear' }], exposedToLlm: true })
+    store.applySettingsCommand({ type: 'update-combo', id: created.id, patch: { label: 'New look', members: [{ expressionId: 'frown', strength: 0.4 }], area: 'eyes' } })
+    store.activate(created.id)
+    store.saveDefaults()
+    register()
+    expect(store.catalog.find(entry => entry.id === created.id)).toMatchObject({ label: 'New look', members: [{ expressionId: 'frown', strength: 0.4 }], area: 'eyes' })
+    expect(store.restSet).toEqual([created.id])
+    expect(store.settingsSnapshot.entries.find(entry => entry.id === created.id)?.active).toBe(true)
+    const document = JSON.parse(storage.get('expression-catalog:a')!)
+    expect(document.version).toBe(1)
+    expect(document.combos).toHaveLength(1)
+    store.updateEntry('smile', { label: 'Grin' })
+    store.resetEntry('smile')
+    expect(JSON.parse(storage.get('expression-catalog:a')!).combos).toEqual(document.combos)
+    store.applySettingsCommand({ type: 'delete-combo', id: created.id })
+    register()
+    expect(store.catalog.some(entry => entry.id === created.id)).toBe(false)
+    expect(store.restSet).toEqual([])
+    expect(JSON.parse(storage.get('expression-rest:a')!).active).toEqual([])
+  })
+
+  it('loads an overrides-only version-1 document', () => {
+    storage.set('expression-catalog:a', JSON.stringify({ version: 1, overrides: [{ id: 'smile', label: 'Old saved label' }] }))
+    const store = useExpressionStore()
+    store.registerDefinitions('a', defs)
+    expect(store.catalog[0].label).toBe('Old saved label')
+    expect(store.settingsSnapshot.freeParameters).toEqual([])
+  })
+
+  it('rejects empty, nested, duplicate-alias and malformed combos without throwing or writing', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const store = useExpressionStore()
+    store.registerDefinitions('a', [...defs, { ...defs[0], id: 'alias', name: 'alias' }], [{ File: 'smile', Name: 'Smile' }])
+    for (const members of [[], [{ expressionId: 'combo:other', strength: 1 }], [{ expressionId: 'unknown', strength: 1 }], [{ expressionId: 'smile', strength: 1.5 }], [{ expressionId: 'smile', strength: 1 }, { expressionId: 'alias', strength: 1 }]]) {
+      expect(() => store.applySettingsCommand({ type: 'create-combo', combo: { label: 'Invalid', members } })).not.toThrow()
+    }
+    expect(store.catalog.filter(entry => entry.kind === 'combo')).toEqual([])
+    expect(storage.has('expression-catalog:a')).toBe(false)
+    expect(warn).toHaveBeenCalledTimes(5)
+  })
+
+  it('keeps an outfit combo manual-only and ignores update-entry for combo ids', () => {
+    const store = useExpressionStore()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    store.registerDefinitions('a', defs)
+    store.applySettingsCommand({ type: 'create-combo', combo: { label: 'Outfit', members: [{ expressionId: 'glasses', strength: 1 }] } })
+    const combo = store.catalog.at(-1)!
+    expect(combo).toMatchObject({ kind: 'combo', slots: [], exposedToLlm: false })
+    store.applySettingsCommand({ type: 'update-entry', id: combo.id, patch: { label: 'Ignored' } })
+    expect(store.catalog.at(-1)?.label).toBe('Outfit')
+    expect(warn).toHaveBeenCalledOnce()
+  })
+
+  const switches = [{ id: 'Param7', name: 'Earphones', min: -1, max: 2, default: 0.5 }]
+
+  it('persists a custom Add delta and mapping updates across registration, ignoring update-entry', () => {
+    const store = useExpressionStore()
+    const register = () => store.registerDefinitions('a', defs, [], undefined, undefined, ['Param7'], switches)
+    register()
+    store.applySettingsCommand({ type: 'create-custom', custom: { label: 'Earphones', parameterId: 'Param7', target: 3 } })
+    const custom = store.catalog.at(-1)!
+    expect(custom).toMatchObject({ kind: 'unsorted', exposedToLlm: false })
+    expect(store.definitions.at(-1)).toEqual({ id: custom.id, name: 'Earphones', parameters: [{ id: 'Param7', value: 1.5, blend: 'Add' }] })
+    expect(store.settingsSnapshot.freeParameters).toEqual([])
+    store.applySettingsCommand({ type: 'update-custom', id: custom.id, patch: { mappings: [{ emotion: 'happy', weight: 0.5 }], kind: 'prop', exposedToLlm: true } })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    store.applySettingsCommand({ type: 'update-entry', id: custom.id, patch: { mappings: [] } })
+    expect(warn).toHaveBeenCalledOnce()
+    register()
+    expect(store.catalog.at(-1)).toMatchObject({ id: custom.id, kind: 'prop', mappings: [{ emotion: 'happy', weight: 0.5, minBand: 'clear' }] })
+    expect(JSON.parse(storage.get('expression-catalog:a')!).customs[0]).toMatchObject({ delta: 1.5, mappings: [{ emotion: 'happy', weight: 0.5 }] })
+    store.activate(custom.id, 0)
+    let value = 0
+    store.composer.compose(1, () => 0.5, (_, next) => {
+      value = next
+    }, () => [-1, 2])
+    expect(value).toBe(2)
+    store.applySettingsCommand({ type: 'update-custom', id: custom.id, patch: { target: -5 } })
+    expect(store.definitions.at(-1)?.parameters[0].value).toBe(-1.5)
+  })
+
+  it('applies a valid persisted custom on a non-free model parameter but skips unknown parameter ids', () => {
+    storage.set('expression-catalog:a', JSON.stringify({
+      version: 1,
+      overrides: [],
+      customs: ['driven', 'missing'].map(parameterId => ({ id: `custom:${parameterId}`, label: parameterId, kind: 'prop', parameterId, delta: 0.7, mappings: [], exposedToLlm: true })),
+    }))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const store = useExpressionStore()
+    store.registerDefinitions('a', defs, [], undefined, undefined, ['driven'], [])
+    expect(store.settingsSnapshot.freeParameters).toEqual([])
+    expect(store.catalog.some(entry => entry.id === 'custom:driven')).toBe(true)
+    expect(store.catalog.some(entry => entry.id === 'custom:missing')).toBe(false)
+    store.activate('custom:driven', 0)
+    let value = 0
+    store.composer.compose(1, () => 0, (_, next) => {
+      value = next
+    }, () => [-1, 1])
+    expect(value).toBe(0.7)
+    expect(warn).toHaveBeenCalledWith(expect.any(String), 'missing')
+    expect(() => store.applySettingsCommand({ type: 'create-custom', custom: { label: 'Unknown', parameterId: 'missing', target: 1 } })).not.toThrow()
+    expect(store.curated.customs).toHaveLength(2)
+  })
+
+  it('deletes custom members and empty combos, clearing their saved and active claims', () => {
+    const store = useExpressionStore()
+    store.registerDefinitions('a', defs, [], undefined, undefined, ['Param7'], switches)
+    store.applySettingsCommand({ type: 'create-custom', custom: { label: 'Earphones', parameterId: 'Param7', target: 1 } })
+    const custom = store.catalog.at(-1)!
+    store.applySettingsCommand({ type: 'create-combo', combo: { label: 'Only custom', members: [{ expressionId: custom.id, strength: 1 }] } })
+    const emptyCombo = store.catalog.at(-1)!
+    store.applySettingsCommand({ type: 'create-combo', combo: { label: 'Mixed', members: [{ expressionId: custom.id, strength: 1 }, { expressionId: 'smile', strength: 1 }] } })
+    const mixed = store.catalog.at(-1)!
+    store.activate(custom.id)
+    store.activate(emptyCombo.id)
+    store.saveDefaults()
+    store.applySettingsCommand({ type: 'delete-custom', id: custom.id })
+    expect(store.catalog.some(entry => entry.id === custom.id || entry.id === emptyCombo.id)).toBe(false)
+    expect(store.catalog.find(entry => entry.id === mixed.id)?.members).toEqual([{ expressionId: 'smile', strength: 1 }])
+    expect(store.manualActive).toEqual([])
+    expect(store.restSet).toEqual([])
+    expect(JSON.parse(storage.get('expression-catalog:a')!).customs).toEqual([])
+    expect(JSON.parse(storage.get('expression-rest:a')!).active).toEqual([])
+    expect(store.settingsSnapshot.freeParameters).toEqual(switches)
+  })
+
+  it('marks Overwrite definitions and combos with usable Overwrite members', () => {
+    const store = useExpressionStore()
+    store.registerDefinitions('a', [{ ...defs[0], parameters: [{ id: 'ParamMouthForm', value: 1, blend: 'Overwrite' }] }, defs[1]])
+    store.applySettingsCommand({ type: 'create-combo', combo: { label: 'Overwrite', members: [{ expressionId: 'smile', strength: 0.7 }] } })
+    expect(store.settingsSnapshot.entries.map(entry => entry.usesOverwrite)).toEqual([true, false, true])
+  })
+
   it('fades other group members on manual activation and rest reset', () => {
     const store = useExpressionStore()
     store.registerDefinitions('a', defs)
@@ -116,10 +256,10 @@ describe('curated expression catalog', () => {
     const store = useExpressionStore()
     store.registerDefinitions('a', defs)
     expect(store.activateFromSlot('face', { slot: 'face', expressionId: 'smile', holdSeconds: 1, until: 'hold' })).toBe(true)
-    expect(store.settingsSnapshot.groups.find(entry => entry.id === 'smile')?.active).toBe(true)
+    expect(store.settingsSnapshot.entries.find(entry => entry.id === 'smile')?.active).toBe(true)
     store.applySettingsCommand({ type: 'set-active', id: 'smile', active: false })
     expect(Object.values(store.leases).flatMap(lease => lease ? [lease.expressionId] : [])).toEqual(['smile'])
-    expect(store.settingsSnapshot.groups.find(entry => entry.id === 'smile')?.active).toBe(true)
+    expect(store.settingsSnapshot.entries.find(entry => entry.id === 'smile')?.active).toBe(true)
   })
 
   it('set-active false on a rest-set member suppresses it until resetAll', () => {
@@ -129,10 +269,10 @@ describe('curated expression catalog', () => {
     store.saveDefaults()
     store.applySettingsCommand({ type: 'set-active', id: 'smile', active: false })
     expect(store.restSuppressed).toEqual(['smile'])
-    expect(store.settingsSnapshot.groups.find(entry => entry.id === 'smile')?.active).toBe(false)
+    expect(store.settingsSnapshot.entries.find(entry => entry.id === 'smile')?.active).toBe(false)
     store.resetAll()
     expect(store.restSuppressed).toEqual([])
-    expect(store.settingsSnapshot.groups.find(entry => entry.id === 'smile')?.active).toBe(true)
+    expect(store.settingsSnapshot.entries.find(entry => entry.id === 'smile')?.active).toBe(true)
   })
 
   it('set-active true on a slot-owned entry records manual intent', () => {
@@ -321,7 +461,7 @@ describe('speech-bound expression slots', () => {
   })
 
   const snapshotActive = (store: ReturnType<typeof slotStore>, id: string) =>
-    store.settingsSnapshot.groups.find(entry => entry.id === id)?.active
+    store.settingsSnapshot.entries.find(entry => entry.id === id)?.active
 
   it('deactivates a suppressed rest member on release so the render and the snapshot agree', () => {
     const store = slotStore()
@@ -490,7 +630,7 @@ describe('expression claims', () => {
       store,
       setTargets,
       targets: () => setTargets.mock.calls.at(-1)![0],
-      row: (id: string) => store.settingsSnapshot.groups.find(entry => entry.id === id)!,
+      row: (id: string) => store.settingsSnapshot.entries.find(entry => entry.id === id)!,
     }
   }
 
@@ -559,6 +699,22 @@ describe('expression claims', () => {
     store.toggle('combo:hair')
     expect(targets()).toEqual([{ id: 'hairA', weight: 1 }])
     expect(store.restSuppressed).toEqual([])
+  })
+
+  it.each(['manual', 'slot'] as const)('deleting an active %s combo restores masked rest members and clears leases', (owner) => {
+    const { store, targets, row } = fixture()
+    store.activate('hairA', 0)
+    store.saveDefaults()
+    if (owner === 'manual')
+      store.activate('combo:hair', 0)
+    else
+      store.applySlots([command('combo:hair')], 0)
+    expect(row('hairA').effective).toBe(false)
+    store.applySettingsCommand({ type: 'delete-combo', id: 'combo:hair' })
+    expect(targets()).toEqual([{ id: 'hairA', weight: 1 }])
+    expect(store.restSuppressed).toEqual([])
+    expect(store.manualActive).toEqual(['hairA'])
+    expect(store.leases).toEqual({ face: null, effect: null, prop: null })
   })
 
   it('manual plain toggle removes plain peers and suppresses a rest peer', () => {

@@ -8,7 +8,7 @@ import { useI18n } from 'vue-i18n'
 
 import { groupDisplayName } from './expression-group-name'
 
-type Entry = Live2DExpressionSettingsSnapshot['groups'][number]
+type Entry = Live2DExpressionSettingsSnapshot['entries'][number]
 
 interface DraftMapping {
   emotion: EmotionMapping['emotion']

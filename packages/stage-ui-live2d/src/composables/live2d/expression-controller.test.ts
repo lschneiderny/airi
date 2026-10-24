@@ -64,11 +64,24 @@ describe('useExpressionController', () => {
     expect(store.catalog[0]).toMatchObject({ kind: 'face', area: 'cheeks', labelSource: 'file' })
   })
 
+  it('forwards model parameter ids and filters exp3 writes from offered free switches', async () => {
+    const { controller, store } = rig()
+    storage.set('expression-catalog:model', JSON.stringify({
+      version: 1,
+      overrides: [],
+      customs: [{ id: 'custom:old', label: 'Old switch', kind: 'prop', parameterId: 'driven', delta: 0.5, mappings: [], exposedToLlm: true }],
+    }))
+    const parameter = (id: string) => ({ id, name: id, min: 0, max: 1, default: 0 })
+    await controller.initialise('model', [], async () => '', archive, path => path, undefined, undefined, ['Param2', 'Param4', 'free', 'driven'], ['Param2', 'Param4', 'free'].map(parameter))
+    expect(store.settingsSnapshot.freeParameters).toEqual([parameter('free')])
+    expect(store.definitions.at(-1)).toEqual({ id: 'custom:old', name: 'Old switch', parameters: [{ id: 'driven', value: 0.5, blend: 'Add' }] })
+  })
+
   it('registers unreferenced archive expressions and gives referenced names precedence without fetching', async () => {
     const { controller, store } = rig()
     const read = vi.fn(async () => '')
     await controller.initialise('model', [{ Name: 'Game prop', File: 'game.exp3.json' }], read, archive, path => `model/${path}`)
-    expect(store.settingsSnapshot.groups).toMatchObject([
+    expect(store.settingsSnapshot.entries).toMatchObject([
       { id: 'model/game.exp3.json', name: 'Game prop', active: false },
       { id: 'model/eat.exp3.json', name: 'eat', active: false },
     ])

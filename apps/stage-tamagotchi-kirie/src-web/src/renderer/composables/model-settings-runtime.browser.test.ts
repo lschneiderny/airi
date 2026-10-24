@@ -66,7 +66,7 @@ describe('model settings runtime channel', () => {
     }))
 
     const settingsRuntime = shallowRef<ReturnType<typeof useModelSettingsRuntimeSnapshot>>()
-    const initialSnapshot = until(() => settingsRuntime.value?.runtimeSnapshot.value.live2dExpressions?.groups.length).toMatch(length => length === 1, signalTimeout)
+    const initialSnapshot = until(() => settingsRuntime.value?.runtimeSnapshot.value.live2dExpressions?.entries.length).toMatch(length => length === 1, signalTimeout)
     const TestHost = defineComponent({
       setup() {
         useModelSettingsRuntimeOwner({
@@ -95,7 +95,7 @@ describe('model settings runtime channel', () => {
       throw new Error('The settings runtime did not mount.')
 
     await initialSnapshot
-    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.groups).toMatchObject([{
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.entries).toMatchObject([{
       id: 'happy.exp3.json',
       name: 'happy',
       active: false,
@@ -113,10 +113,10 @@ describe('model settings runtime channel', () => {
 
     expect(staleOwnerResponse.applied).toBe(false)
     expect(staleOwnerResponse.rejectionReason).toBe('owner-changed')
-    expect(ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(false)
+    expect(ownerExpressionStore.settingsSnapshot.entries[0].active).toBe(false)
 
-    const ownerActivated = until(() => ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(true, signalTimeout)
-    const settingsActivated = until(() => mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.groups[0].active).toBe(true, signalTimeout)
+    const ownerActivated = until(() => ownerExpressionStore.settingsSnapshot.entries[0].active).toBe(true, signalTimeout)
+    const settingsActivated = until(() => mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.entries[0].active).toBe(true, signalTimeout)
     const applied = await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'toggle', id: 'happy.exp3.json' })
 
     await ownerActivated
@@ -124,12 +124,27 @@ describe('model settings runtime channel', () => {
     expect(applied).toBe(true)
     expect(useExpressionStore(settingsPinia).definitions).toEqual([])
 
+    const created = await mountedSettingsRuntime.sendLive2DExpressionCommand({
+      type: 'create-combo',
+      combo: { label: 'Happy combo', members: [{ expressionId: 'happy.exp3.json', strength: 0.7 }], emotion: 'happy' },
+    })
+    expect(created).toBe(true)
+    const remoteCombo = mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions?.entries.find(entry => entry.kind === 'combo')
+    expect(remoteCombo).toMatchObject({
+      id: expect.stringMatching(/^combo:/),
+      label: 'Happy combo',
+      members: [{ expressionId: 'happy.exp3.json', strength: 0.7 }],
+      mappings: [{ emotion: 'happy', weight: 1, minBand: 'clear' }],
+      usesOverwrite: false,
+    })
+    expect(ownerExpressionStore.catalog.find(entry => entry.id === remoteCombo?.id)).toMatchObject({ label: 'Happy combo' })
+
     const modelChanged = until(() => mountedSettingsRuntime.runtimeSnapshot.value.modelId).toBe('model-b', signalTimeout)
     ownerExpressionStore.registerDefinitions('model-b', expressionDefinitions)
     const rejected = await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'toggle', id: 'happy.exp3.json' })
 
     expect(rejected).toBe(false)
-    expect(ownerExpressionStore.settingsSnapshot.groups[0].active).toBe(false)
+    expect(ownerExpressionStore.settingsSnapshot.entries[0].active).toBe(false)
     await modelChanged
   })
 

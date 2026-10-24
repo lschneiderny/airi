@@ -2,16 +2,18 @@ import type { CatalogEntry, CuratedCatalogDocument, CuratedOverride } from '@pro
 
 import type { ExpressionDefinition } from '../composables/live2d/expression/compose'
 import type { SlotLeaseSettings } from '../composables/live2d/expression/slots'
+import type { FreeParameter } from '../utils/expression-catalog/free-parameters'
+import type { ComboPatch, CreateComboInput, CustomPatch } from './expression-catalog-persistence'
 import type { SlotLeases } from './expression-slot-leases'
 
 import { errorMessageFrom } from '@moeru/std'
-import { defaultExpressionPerformanceSettings, expandEntry, isAutoEligible, isLlmEligible, mergeCatalog, parseCuratedCatalogDocument, parseRestSet, resolveAlias } from '@proj-airi/stage-shared/expression-performance'
+import { customEntryFromDocument, defaultExpressionPerformanceSettings, expandEntry, isAutoEligible, isLlmEligible, mergeCatalog, parseCuratedCatalogDocument, parseRestSet, resolveAlias } from '@proj-airi/stage-shared/expression-performance'
 import { defineStore } from 'pinia'
 import { computed, markRaw, ref } from 'vue'
 
 import { ExpressionComposer } from '../composables/live2d/expression/compose'
 import { slotNames } from '../composables/live2d/expression/slots'
-import { deriveCatalog } from '../utils/expression-catalog/derive'
+import { deriveCatalog, suggestKind } from '../utils/expression-catalog/derive'
 import { createCatalogPersistence } from './expression-catalog-persistence'
 import { createSlotLeases, emptyLeases } from './expression-slot-leases'
 
@@ -21,7 +23,8 @@ export interface NamedExpressionDefinition extends ExpressionDefinition {
 
 /** Target activation state; fading releases remain owned by the composer until zero. */
 export interface Live2DExpressionSettingsSnapshot {
-  groups: (CatalogEntry & { name: string, active: boolean, effective: boolean, overriddenBy: string | null, via: string[], isDefault: boolean })[]
+  entries: (CatalogEntry & { name: string, active: boolean, effective: boolean, overriddenBy: string | null, via: string[], isDefault: boolean, usesOverwrite: boolean })[]
+  freeParameters: FreeParameter[]
 }
 
 export interface ExpressionClaim {
@@ -80,6 +83,12 @@ export type Live2DExpressionSettingsCommand
     | { type: 'update-entry', id: string, patch: Omit<CuratedOverride, 'id'> }
     | { type: 'reset-entry', id: string }
     | { type: 'set-active', id: string, active: boolean }
+    | { type: 'create-combo', combo: CreateComboInput }
+    | { type: 'update-combo', id: string, patch: ComboPatch }
+    | { type: 'delete-combo', id: string }
+    | { type: 'create-custom', custom: { label: string, parameterId: string, target: number } }
+    | { type: 'update-custom', id: string, patch: Omit<CustomPatch, 'delta'> & { target?: number } }
+    | { type: 'delete-custom', id: string }
 
 /** Local to the renderer that owns the model. Other windows use snapshots and commands. */
 export const useExpressionStore = defineStore('live2d-expressions', () => {
@@ -93,8 +102,11 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   const composer = markRaw(new ExpressionComposer())
   const derived = ref<CatalogEntry[]>([])
   const curated = ref<CuratedCatalogDocument>({ version: 1, overrides: [] })
+  const parameterIds = ref<string[]>([])
+  const freeParameters = ref<FreeParameter[]>([])
   let deriveInputs: { defs: NamedExpressionDefinition[], model3Refs: { File: string, Name?: unknown }[], vtube?: unknown, displayInfo?: unknown } | undefined
-  const catalog = computed(() => mergeCatalog(derived.value, curated.value))
+  const validCustoms = computed(() => (curated.value.customs ?? []).filter(custom => parameterIds.value.includes(custom.parameterId)))
+  const catalog = computed(() => mergeCatalog(derived.value, curated.value, validCustoms.value.map(customEntryFromDocument)))
   const llmEligibleEntries = computed(() => catalog.value.filter(isLlmEligible))
   const autoEligibleEntries = computed(() => catalog.value.filter(isAutoEligible))
   // Rest-set members the user toggled off this session; cleared by resetAll and saveDefaults.
@@ -137,29 +149,139 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     reconcile,
     nextClaimSequence: () => ++claimSeq,
   })
-  const persistence = createCatalogPersistence({ modelId, derived, curated })
+  const persistence = createCatalogPersistence({ modelId, derived, curated, catalog })
   function updateEntry(id: string, patch: Omit<CuratedOverride, 'id'>) {
     persistence.updateEntry(id, patch)
+    if (patch.keepSeparate !== undefined)
+      rederive()
     reconcile()
   }
   function resetEntry(id: string) {
     persistence.resetEntry(id)
+    rederive()
     reconcile()
   }
 
   const settingsSnapshot = computed<Live2DExpressionSettingsSnapshot>(() => ({
-    groups: catalog.value.map(entry => ({
+    entries: catalog.value.map(entry => ({
       ...entry,
       parameterIds: [...entry.parameterIds],
       mappings: entry.mappings.map(mapping => ({ ...mapping })),
+      members: entry.members?.map(member => ({ ...member })),
+      aliases: entry.aliases ? [...entry.aliases] : undefined,
+      slots: entry.slots ? [...entry.slots] : undefined,
       name: entry.label,
       active: isActive(entry.id),
       effective: resolved.value.effective.has(entry.id),
       overriddenBy: resolved.value.effective.has(entry.id) ? null : catalog.value.find(trigger => trigger.id === resolved.value.masked.get(entry.id))?.label ?? null,
       via: resolved.value.via.get(entry.id) ?? [],
       isDefault: restSet.value.includes(entry.id),
+      usesOverwrite: expandEntry(entry, catalog.value).some(member => definitions.value.find(def => def.id === member.expressionId)?.parameters.some(parameter => parameter.blend === 'Overwrite')),
     })),
+    freeParameters: freeParameters.value.filter(parameter => !validCustoms.value.some(custom => custom.parameterId === parameter.id)).map(parameter => ({ ...parameter })),
   }))
+
+  function defineExpressions() {
+    for (const custom of curated.value.customs ?? []) {
+      if (!parameterIds.value.includes(custom.parameterId))
+        console.warn('[expression-store] Custom expression parameter is not in the model:', custom.parameterId)
+    }
+    definitions.value = [
+      ...deriveInputs?.defs ?? [],
+      ...validCustoms.value.map(custom => ({
+        id: custom.id,
+        name: custom.label,
+        parameters: [{ id: custom.parameterId, value: custom.delta, blend: 'Add' as const }],
+      })),
+    ]
+    composer.define(definitions.value)
+  }
+
+  /** Prune deleted triggers, not the members they masked. Reconciliation restores those members. */
+  function removeDeletedClaims() {
+    const ids = new Set(catalog.value.map(entry => entry.id))
+    manualActive.value = manualActive.value.filter(id => ids.has(id))
+    manualSeq.value = Object.fromEntries(Object.entries(manualSeq.value).filter(([id]) => ids.has(id)))
+    restSuppressed.value = restSuppressed.value.filter(id => ids.has(id))
+    for (const slot of slotNames) {
+      if (leases.value[slot] && !ids.has(leases.value[slot]!.expressionId))
+        leases.value[slot] = null
+    }
+    const remaining = restSet.value.filter(id => ids.has(id))
+    if (remaining.length !== restSet.value.length) {
+      restSet.value = remaining
+      localStorage.setItem(`expression-rest:${modelId.value}`, JSON.stringify({ version: 1, active: remaining }))
+    }
+  }
+
+  function customDelta(parameterId: string, target: number) {
+    const parameter = freeParameters.value.find(parameter => parameter.id === parameterId)
+    if (!parameterIds.value.includes(parameterId) || !parameter || !Number.isFinite(target)) {
+      console.warn('[expression-store] Invalid custom expression target:', parameterId, target)
+      return
+    }
+    return Math.max(parameter.min, Math.min(parameter.max, target)) - parameter.default
+  }
+
+  function createCustom(input: { label: string, parameterId: string, target: number }) {
+    const delta = customDelta(input.parameterId, input.target)
+    if (delta === undefined)
+      return
+    const suggested = suggestKind(input.label, '')
+    const kind = suggested === 'face' ? 'unsorted' : suggested
+    const id = persistence.createCustom({ label: input.label, parameterId: input.parameterId, delta, kind, mappings: [], exposedToLlm: kind === 'effect' || kind === 'prop' })
+    if (id) {
+      defineExpressions()
+      reconcile()
+    }
+    return id
+  }
+
+  function updateCustom(id: string, patch: Omit<CustomPatch, 'delta'> & { target?: number }) {
+    const custom = curated.value.customs?.find(custom => custom.id === id)
+    if (!custom)
+      return
+    const { target, ...fields } = patch
+    if (target !== undefined) {
+      const delta = customDelta(custom.parameterId, target)
+      if (delta === undefined)
+        return
+      if (!persistence.updateCustom(id, { ...fields, delta }))
+        return
+    }
+    else if (!persistence.updateCustom(id, fields)) {
+      return
+    }
+    defineExpressions()
+    reconcile()
+  }
+
+  function deleteCustom(id: string) {
+    if (persistence.deleteCustom(id)) {
+      defineExpressions()
+      removeDeletedClaims()
+      reconcile()
+    }
+  }
+
+  function createCombo(input: CreateComboInput) {
+    const id = persistence.createCombo(input)
+    if (id)
+      reconcile()
+    return id
+  }
+
+  function updateCombo(id: string, patch: ComboPatch) {
+    if (persistence.updateCombo(id, patch))
+      reconcile()
+  }
+
+  function deleteCombo(id: string) {
+    if (persistence.deleteCombo(id)) {
+      removeDeletedClaims()
+      reconcile()
+    }
+  }
 
   /** Rebuild duplicate ownership after curated keepSeparate changes without reloading the model. */
   function rederive() {
@@ -170,9 +292,10 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     derived.value = deriveCatalog(defs, model3Refs, vtube, displayInfo, keepSeparate)
   }
 
-  function registerDefinitions(id: string, defs: NamedExpressionDefinition[], model3Refs: { File: string, Name?: unknown }[] = [], vtube?: unknown, displayInfo?: unknown) {
+  function registerDefinitions(id: string, defs: NamedExpressionDefinition[], model3Refs: { File: string, Name?: unknown }[] = [], vtube?: unknown, displayInfo?: unknown, modelParameterIds: string[] = [], modelFreeParameters: FreeParameter[] = []) {
     modelId.value = id
-    definitions.value = defs
+    parameterIds.value = [...modelParameterIds]
+    freeParameters.value = modelFreeParameters.map(parameter => ({ ...parameter }))
     deriveInputs = { defs, model3Refs, vtube, displayInfo }
     curated.value = { version: 1, overrides: [] }
     leases.value = emptyLeases()
@@ -190,7 +313,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     }
     rederive()
     restSet.value = []
-    composer.define(defs)
+    defineExpressions()
     try {
       const raw = localStorage.getItem(`expression-rest:${id}`)
       if (raw !== null) {
@@ -283,6 +406,8 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   function dispose() {
     composer.restoreBases(() => {})
     definitions.value = []
+    parameterIds.value = []
+    freeParameters.value = []
     modelId.value = ''
     restSet.value = []
     manualActive.value = []
@@ -310,6 +435,18 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
         return resetEntry(command.id)
       case 'set-active':
         return command.active ? activate(command.id) : deactivate(command.id)
+      case 'create-combo':
+        return createCombo(command.combo)
+      case 'update-combo':
+        return updateCombo(command.id, command.patch)
+      case 'delete-combo':
+        return deleteCombo(command.id)
+      case 'create-custom':
+        return createCustom(command.custom)
+      case 'update-custom':
+        return updateCustom(command.id, command.patch)
+      case 'delete-custom':
+        return deleteCustom(command.id)
     }
   }
 

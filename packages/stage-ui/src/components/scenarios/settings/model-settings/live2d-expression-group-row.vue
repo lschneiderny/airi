@@ -9,7 +9,7 @@ import Live2dExpressionEntry from './live2d-expression-entry.vue'
 
 import { groupDisplayName } from './expression-group-name'
 
-type Entry = Live2DExpressionSettingsSnapshot['groups'][number]
+type Entry = Live2DExpressionSettingsSnapshot['entries'][number]
 
 const props = defineProps<{
   group: string

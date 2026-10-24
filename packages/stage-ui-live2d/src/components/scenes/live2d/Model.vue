@@ -18,6 +18,7 @@ import type { Live2DModelCanvasRect } from '../../../composables/live2d/head-anc
 import type { Live2DNaturalMotionAttention } from '../../../composables/live2d/natural-motion-adapter'
 import type { NaturalMotionObserver } from '../../../composables/live2d/natural-motion/frame-types'
 import type { NaturalEpisode } from '../../../composables/live2d/natural-motion/mood'
+import type { PhysicsRigLike } from '../../../composables/live2d/natural-motion/rig-profile'
 import type { Live2DTouchDebugOverlay, Live2DTouchDebugSource } from '../../../composables/live2d/touch-debug'
 import type { Live2DTouchEvent, Live2DTouchSample } from '../../../composables/live2d/touch-gestures'
 import type { NaturalCaptureRequest } from '../../../stores'
@@ -63,7 +64,7 @@ import { useFitModel } from '../../../composables/live2d/fit-model'
 import { live2DCanvasRectToViewport } from '../../../composables/live2d/head-anchor'
 import { Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-motion-adapter'
 import { scoreLiveliness } from '../../../composables/live2d/natural-motion/liveliness'
-import { readLive2DRigProfile } from '../../../composables/live2d/natural-motion/rig-profile'
+import { manualControlParameterIds, readLive2DRigProfile } from '../../../composables/live2d/natural-motion/rig-profile'
 import { NaturalTraceRecorder } from '../../../composables/live2d/natural-motion/trace'
 import { buildLive2DTouchDebug } from '../../../composables/live2d/touch-debug'
 import { Live2DTouchGestures } from '../../../composables/live2d/touch-gestures'
@@ -72,6 +73,8 @@ import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { ScreenAmbientLightFilter } from '../../../filters/screen-ambient-light'
 import { getLive2DMotionControlModelOffset, useL2dViewControl, useLive2DMotionControl, useLive2dParams, useNaturalMotionDiagnostics } from '../../../stores'
 import { useExpressionStore } from '../../../stores/expression-store'
+import { readParameterDisplayNames } from '../../../utils/expression-catalog/display-names'
+import { findFreeParameters } from '../../../utils/expression-catalog/free-parameters'
 import { naturalVoiceLevel } from './natural-voice-level'
 
 type CubismMotionCurve = NonNullable<NonNullable<Cubism4MotionManager['motionGroups'][string]>[number]>['_motionData']['curves'][number]
@@ -790,7 +793,7 @@ async function initExpressionController(internalModel?: PixiLive2DInternalModel,
     _expFiles?: ArchiveExpressionFile[]
     _vtubeData?: unknown
   }) | undefined
-  if (!settings)
+  if (!settings || !internalModel)
     return
 
   // model3.json stores expressions as { Name, File }[] under settings.expressions
@@ -813,7 +816,22 @@ async function initExpressionController(internalModel?: PixiLive2DInternalModel,
     const base = new URL(settings.url, 'https://archive.invalid/')
     return decodeURI(new URL(path, base).pathname.slice(1))
   }
-  await expressionController.initialise(modelId, expressionRefs, readExpFile, settings._expFiles, resolvePath, settings._vtubeData, (settings as { _cdiData?: unknown })._cdiData)
+  const displayInfo = (settings as { _cdiData?: unknown })._cdiData
+  const parameters = internalModel.coreModel.getModel().parameters
+  const physicsRig: PhysicsRigLike | undefined = internalModel.physics?._physicsRig
+  const profile = readLive2DRigProfile(parameters, physicsRig, displayInfo)
+  const freeParameters = findFreeParameters({
+    parameters,
+    // The controller excludes exp3 writes after it has loaded and parsed the files.
+    exp3Definitions: [],
+    drivenIds: new Set([
+      ...manualControlParameterIds,
+      ...[...profile.channels.values()].map(channel => channel.id),
+      ...physicsRig?.outputs.map(output => output.destination.id) ?? [],
+    ]),
+    displayNames: readParameterDisplayNames(displayInfo),
+  })
+  await expressionController.initialise(modelId, expressionRefs, readExpFile, settings._expFiles, resolvePath, settings._vtubeData, displayInfo, parameters.ids, freeParameters)
 }
 
 async function setMotion(motionName: string, index?: number) {

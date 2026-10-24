@@ -1,6 +1,7 @@
 import type { Ref } from 'vue'
 
 import type { NamedExpressionDefinition } from '../../stores/expression-store'
+import type { FreeParameter } from '../../utils/expression-catalog/free-parameters'
 import type { PixiLive2DInternalModel } from './motion-manager'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -36,6 +37,8 @@ export function useExpressionController(options: ExpressionControllerOptions) {
     resolvePath: (path: string) => string = path => path,
     vtube?: unknown,
     displayInfo?: unknown,
+    parameterIds: string[] = [],
+    freeParameters: FreeParameter[] = [],
   ) {
     const loadGeneration = ++generation
     const loadedModel = options.internalModel.value
@@ -73,8 +76,10 @@ export function useExpressionController(options: ExpressionControllerOptions) {
       }
     }
     // A completed load owns registration; a detached model must not publish stale state.
-    if (loadedModel && options.internalModel.value === loadedModel && loadGeneration === generation)
-      store.registerDefinitions(modelId ?? 'unknown', definitions, expressionRefs.map(ref => ({ ...ref, File: resolvePath(ref.File) })), vtube, displayInfo)
+    if (loadedModel && options.internalModel.value === loadedModel && loadGeneration === generation) {
+      const writtenIds = new Set(definitions.flatMap(definition => definition.parameters.map(parameter => parameter.id)))
+      store.registerDefinitions(modelId ?? 'unknown', definitions, expressionRefs.map(ref => ({ ...ref, File: resolvePath(ref.File) })), vtube, displayInfo, parameterIds, freeParameters.filter(parameter => !writtenIds.has(parameter.id)))
+    }
   }
 
   function restoreExpressionBases(coreModel: PixiLive2DInternalModel['coreModel']) {

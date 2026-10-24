@@ -23,7 +23,7 @@ function createTestI18n() {
 
 const { t } = createTestI18n().global
 
-type ExpressionEntry = Live2DExpressionSettingsSnapshot['groups'][number]
+type ExpressionEntry = Live2DExpressionSettingsSnapshot['entries'][number]
 
 function expressionEntry(overrides: Partial<ExpressionEntry>): ExpressionEntry {
   return {
@@ -41,6 +41,7 @@ function expressionEntry(overrides: Partial<ExpressionEntry>): ExpressionEntry {
     effective: overrides.active ?? false,
     overriddenBy: null,
     via: [],
+    usesOverwrite: false,
     isDefault: false,
     ...overrides,
   }

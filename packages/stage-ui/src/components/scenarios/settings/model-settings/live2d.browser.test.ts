@@ -30,7 +30,7 @@ function createTestI18n() {
 
 const { t } = createTestI18n().global
 
-type ExpressionEntry = Live2DExpressionSettingsSnapshot['groups'][number]
+type ExpressionEntry = Live2DExpressionSettingsSnapshot['entries'][number]
 
 function expressionEntry(overrides: Partial<ExpressionEntry>): ExpressionEntry {
   return {
@@ -48,6 +48,7 @@ function expressionEntry(overrides: Partial<ExpressionEntry>): ExpressionEntry {
     effective: overrides.active ?? false,
     overriddenBy: null,
     via: [],
+    usesOverwrite: false,
     isDefault: false,
     ...overrides,
   }
@@ -63,7 +64,7 @@ function remoteSnapshot(groups: ExpressionEntry[]): ModelSettingsRuntimeSnapshot
     previewAvailable: true,
     canCapturePreview: false,
     updatedAt: 1,
-    live2dExpressions: { groups },
+    live2dExpressions: { entries: groups, freeParameters: [] },
   }
 }
 
@@ -170,9 +171,10 @@ describe('live2D model settings', () => {
       canCapturePreview: false,
       updatedAt: 1,
       live2dExpressions: {
-        groups: [
-          { id: 'happy.exp3.json', name: 'happy', label: 'happy', kind: 'face', group: null, confirmed: false, exposedToLlm: false, mappings: [], fileName: 'happy.exp3.json', parameterIds: [], active: false, effective: false, overriddenBy: null, via: [], isDefault: false },
-          { id: 'surprised.exp3.json', name: 'surprised', label: 'surprised', kind: 'face', group: null, confirmed: false, exposedToLlm: false, mappings: [], fileName: 'surprised.exp3.json', parameterIds: [], active: true, effective: true, overriddenBy: null, via: [], isDefault: false },
+        freeParameters: [],
+        entries: [
+          { id: 'happy.exp3.json', name: 'happy', label: 'happy', kind: 'face', group: null, confirmed: false, exposedToLlm: false, mappings: [], fileName: 'happy.exp3.json', parameterIds: [], active: false, effective: false, overriddenBy: null, via: [], usesOverwrite: false, isDefault: false },
+          { id: 'surprised.exp3.json', name: 'surprised', label: 'surprised', kind: 'face', group: null, confirmed: false, exposedToLlm: false, mappings: [], fileName: 'surprised.exp3.json', parameterIds: [], active: true, effective: true, overriddenBy: null, via: [], usesOverwrite: false, isDefault: false },
         ],
       },
     } satisfies ModelSettingsRuntimeSnapshot
