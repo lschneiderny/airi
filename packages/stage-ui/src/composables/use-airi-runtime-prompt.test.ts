@@ -129,9 +129,9 @@ describe('useStageLiveStatePrompt', () => {
 
     const prompt = useStageLiveStatePrompt().value
 
-    expect(listedLabels(prompt)).toEqual(new Set(['anger', 'tear', 'game']))
-    expect(prompt).toContain('- face: anger\n- effect: tear\n- prop: game')
-    expect(prompt).not.toMatch(/hat|watermark|smile|pout|P-/)
+    expect(listedLabels(prompt)).toEqual(new Set(['anger', 'pout', 'tear', 'game']))
+    expect(prompt).toContain('- face: anger, pout\n- effect: tear\n- prop: game')
+    expect(prompt).not.toMatch(/hat|watermark|smile|P-/)
   })
 
   it('reports active expressions and mood only while state feedback is on', async () => {

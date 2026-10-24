@@ -36,8 +36,10 @@ export function createCatalogEntrySchema(weights: NumberRange) {
     label: string(),
     kind: ExpressionKindSchema,
     group: nullable(string()),
+    /** Persisted review marker set by the settings editor; eligibility ignores it. */
     confirmed: boolean(),
     exposedToLlm: boolean(),
+    inverted: optional(boolean()),
     mappings: array(pendingMappingSchema(weights)),
     fileName: string(),
     parameterIds: array(string()),
@@ -51,8 +53,10 @@ export const CuratedOverrideSchema = strictObject({
   label: optional(string()),
   kind: optional(ExpressionKindSchema),
   group: optional(nullable(string())),
+  /** Persisted review marker set by the settings editor; eligibility ignores it. */
   confirmed: optional(boolean()),
   exposedToLlm: optional(boolean()),
+  inverted: optional(boolean()),
   mappings: optional(array(persistedPendingMappingSchema)),
 })
 export type CuratedOverride = InferOutput<typeof CuratedOverrideSchema>
@@ -86,9 +90,9 @@ export function mergeCatalog(derived: CatalogEntry[], curated: CuratedCatalogDoc
 }
 
 export function isAutoEligible(entry: CatalogEntry): boolean {
-  return entry.confirmed && (entry.kind === 'face' || entry.kind === 'effect')
+  return entry.kind === 'face' || entry.kind === 'effect'
 }
 
 export function isLlmEligible(entry: CatalogEntry): boolean {
-  return entry.confirmed && entry.exposedToLlm && (llmAllowedKinds as readonly ExpressionKind[]).includes(entry.kind)
+  return entry.exposedToLlm && (llmAllowedKinds as readonly ExpressionKind[]).includes(entry.kind)
 }

@@ -56,7 +56,7 @@ export function resolveExpressionName(name: string, eligible: readonly CatalogEn
   return wanted ? eligible.find(entry => entry.label.trim().toLowerCase() === wanted) : undefined
 }
 
-/** The labels and kinds the LLM may see: confirmed, exposed face, effect, and prop entries only. */
+/** The labels and kinds the LLM may see: exposed face, effect, and prop entries only. */
 export function toExposedExpressions(catalog: readonly CatalogEntry[]): ExposedExpression[] {
   return catalog.flatMap((entry) => {
     const kind = slotOfKind[entry.kind]

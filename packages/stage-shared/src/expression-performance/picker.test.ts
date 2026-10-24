@@ -81,9 +81,11 @@ describe('picker', () => {
     }
   })
 
-  it('never automatically selects unconfirmed, outfit, prop, or system entries', () => {
-    const catalog = [entry('outfit', 'outfit'), entry('prop', 'prop'), entry('system', 'system'), { ...entry('unconfirmed'), confirmed: false }]
+  it('never automatically selects outfit, prop, or system entries but allows unconfirmed faces', () => {
+    const catalog = [entry('outfit', 'outfit'), entry('prop', 'prop'), entry('system', 'system')]
     expect(decider.decide(emotion(), { ...ctx, catalog }, decider.initial(1)).decision.slots).toEqual([])
+    const unconfirmed = [...catalog, { ...entry('unconfirmed'), confirmed: false }]
+    expect(decider.decide(emotion(), { ...ctx, catalog: unconfirmed }, decider.initial(1)).decision.slots.map(slot => slot.expressionId)).toContain(entry('unconfirmed').id)
   })
 
   it('ignores malformed weights and neutral mappings', () => {

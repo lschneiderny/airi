@@ -53,7 +53,7 @@ describe('curated expression catalog', () => {
     store.updateEntry('smile', { label: 'Other' })
     store.registerDefinitions('a', defs)
     expect(store.catalog[0].label).toBe('Joy')
-    expect(store.autoEligibleEntries.map(entry => entry.id)).toEqual(['smile'])
+    expect(store.autoEligibleEntries.map(entry => entry.id)).toEqual(['smile', 'frown'])
     expect(store.llmEligibleEntries.map(entry => entry.id)).toEqual(['smile'])
     store.resetEntry('smile')
     expect(store.catalog[0].label).toBe('smile')
