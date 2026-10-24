@@ -66,7 +66,11 @@ const props = withDefaults(defineProps<{
   paused: false,
 })
 
-const emit = defineEmits<{ error: [error: Error] }>()
+const emit = defineEmits<{
+  error: [error: Error]
+  /** The stage dropped a render error and starts a new load. */
+  reset: []
+}>()
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
 
 // NOTICE: disabled together with the DuckDB start on mount below.
@@ -203,15 +207,22 @@ function reportStageRenderError(error: unknown) {
   handleStageRenderError(new Error(errorMessageFrom(error) ?? 'Failed to render stage'))
 }
 
-async function retryStageRenderer() {
+// Any reset clears the error the parent mirrors, so the loading surface can return
+// while the new load runs. Every path that drops `stageRenderError` reports it here.
+function clearStageRenderError() {
   stageRenderError.value = undefined
+  emit('reset')
+}
+
+async function retryStageRenderer() {
+  clearStageRenderError()
   showStage.value = false
   await nextTick()
   showStage.value = true
 }
 
 watch([stageModelRenderer, stageModelSelected, stageModelSelectedUrl], () => {
-  stageRenderError.value = undefined
+  clearStageRenderError()
 })
 
 // Caption + Presentation broadcast channels
