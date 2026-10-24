@@ -36,6 +36,13 @@ const asideSideMemory = 2
 const cursorWeight = 0.8
 // Cursor attention looks most of the way toward the cursor, as in v1.
 const cursorGaze = 0.65
+// Pursuit speeds are in normalized eye units per second; time constants are seconds.
+const pursuitMaxSpeed = 1.5
+const pursuitVelocityTau = 0.1
+const pursuitPositionTau = 0.2
+const targetVelocityTau = 0.06
+const catchUpError = 0.1
+const catchUpRefractory = 0.12
 
 type Target = GazePoint | 'cursor'
 
@@ -68,10 +75,17 @@ export class NaturalGazeLayer {
   private time = 0
   private from: GazePoint = { x: 0, y: 0 }
   private target: Target = { x: 0, y: 0 }
+  private endpoint: GazePoint = { x: 0, y: 0 }
+  private pursuit: GazePoint = { x: 0, y: 0 }
+  private velocity: GazePoint = { x: 0, y: 0 }
+  private targetVelocity: GazePoint = { x: 0, y: 0 }
+  private previousCursor: GazePoint | null = null
   private saccadeStart = 0
   private saccadeDuration = 0
   private nextFixationAt: number
   private cursor: GazePoint | null = null
+  private weight = 0
+  private override: GazePoint | null = null
   /** The off-camera fixation of aside attention, with its side already drawn, or `null` when inactive. */
   private aside: GazePoint | null = null
   private asideSide = 1
@@ -90,9 +104,52 @@ export class NaturalGazeLayer {
     // Release starts from the cursor-based gaze, so the saccade begins before the cursor is cleared.
     if (previous !== null && cursor === null)
       this.saccadeTo(this.jittered(targets.camera), at)
-    this.cursor = cursor
+    this.setCursorTarget(cursor && { x: cursorGaze * cursor.x, y: cursorGaze * cursor.y }, cursor ? 1 : 0)
     if (previous === null && cursor !== null)
       this.saccadeTo('cursor', at)
+  }
+
+  /** Stores an already mapped eye target and its fixation weight without moving the gaze. */
+  setCursorTarget(target: GazePoint | null, weight: number) {
+    this.cursor = target
+    this.weight = weight
+  }
+
+  /** Starts the notice saccade toward the current cursor target. */
+  orient(at: number) {
+    if (this.cursor && !this.override)
+      this.saccadeTo('cursor', at)
+  }
+
+  /** Ends pursuit in place, letting the next autonomous fixation resume within 300 ms. */
+  disengage(at: number) {
+    if (!this.onCursor)
+      return
+    const point = this.gazeAt(at)
+    this.target = point
+    this.endpoint = point
+    this.saccadeDuration = 0
+    this.nextFixationAt = Math.min(this.nextFixationAt, at + 0.3)
+  }
+
+  /** Deliberately looks away from a cursor fixation, including an in-flight notice saccade. */
+  dismiss(at: number) {
+    if (!this.onCursor)
+      return
+    this.weight = 0
+    this.saccadeTo(this.drawTarget(), at)
+  }
+
+  /** Overrides autonomous fixations and pursuit; each change starts one saccade. */
+  setOverride(point: GazePoint | null, at: number) {
+    if (point?.x === this.override?.x && point?.y === this.override?.y)
+      return
+    this.override = point
+    this.saccadeTo(this.drawTarget(), at)
+  }
+
+  get onCursor(): boolean {
+    return this.target === 'cursor'
   }
 
   /**
@@ -134,9 +191,32 @@ export class NaturalGazeLayer {
 
   /** Advances by `dt` seconds and returns the gaze point before head compensation. */
   step(dt: number): GazePoint {
+    const previousTime = this.time
     this.time += dt
     while (this.time >= this.nextFixationAt)
       this.saccadeTo(this.drawTarget(), this.nextFixationAt)
+    if (this.onCursor && this.cursor && !this.override) {
+      const previous = this.previousCursor ?? this.cursor
+      const alpha = 1 - Math.exp(-dt / targetVelocityTau)
+      this.targetVelocity = {
+        x: this.targetVelocity.x + ((this.cursor.x - previous.x) / dt - this.targetVelocity.x) * alpha,
+        y: this.targetVelocity.y + ((this.cursor.y - previous.y) / dt - this.targetVelocity.y) * alpha,
+      }
+      const landedAt = this.saccadeStart + this.saccadeDuration
+      if (this.time >= landedAt) {
+        if (previousTime < landedAt) {
+          this.pursuit = { ...this.endpoint }
+          this.velocity = { x: 0, y: 0 }
+        }
+        const pursuitDt = this.time - Math.max(previousTime, landedAt)
+        this.pursue(pursuitDt)
+        if (Math.hypot(this.cursor.x - this.pursuit.x, this.cursor.y - this.pursuit.y) > catchUpError
+          && this.time - this.saccadeStart >= catchUpRefractory) {
+          this.saccadeTo('cursor', this.time)
+        }
+      }
+    }
+    this.previousCursor = this.cursor && { ...this.cursor }
     return this.gazeAt(this.time)
   }
 
@@ -148,16 +228,31 @@ export class NaturalGazeLayer {
   private resolve(target: Target): GazePoint {
     if (target !== 'cursor')
       return target
-    const cursor = this.cursor ?? { x: 0, y: 0 }
-    return { x: cursorGaze * cursor.x, y: cursorGaze * cursor.y }
+    return this.cursor ?? { x: 0, y: 0 }
   }
 
   private gazeAt(time: number): GazePoint {
-    const to = this.resolve(this.target)
+    const to = this.endpoint
     if (this.saccadeDuration === 0 || time >= this.saccadeStart + this.saccadeDuration)
-      return to
+      return this.onCursor ? this.pursuit : to
     const progress = minJerk((time - this.saccadeStart) / this.saccadeDuration)
     return { x: this.from.x + (to.x - this.from.x) * progress, y: this.from.y + (to.y - this.from.y) * progress }
+  }
+
+  private pursue(dt: number) {
+    const target = this.cursor!
+    let x = 0.9 * this.targetVelocity.x + (target.x - this.pursuit.x) / pursuitPositionTau
+    let y = 0.9 * this.targetVelocity.y + (target.y - this.pursuit.y) / pursuitPositionTau
+    const speed = Math.hypot(x, y)
+    if (speed > pursuitMaxSpeed) {
+      x *= pursuitMaxSpeed / speed
+      y *= pursuitMaxSpeed / speed
+    }
+    const alpha = 1 - Math.exp(-dt / pursuitVelocityTau)
+    // Velocity starts at zero after every saccade. Convex blends toward a bounded
+    // command keep its magnitude <= pursuitMaxSpeed, including after catch-up landings.
+    this.velocity = { x: this.velocity.x + (x - this.velocity.x) * alpha, y: this.velocity.y + (y - this.velocity.y) * alpha }
+    this.pursuit = { x: this.pursuit.x + this.velocity.x * dt, y: this.pursuit.y + this.velocity.y * dt }
   }
 
   private saccadeTo(target: Target, at: number, hold?: number) {
@@ -167,6 +262,9 @@ export class NaturalGazeLayer {
     const amplitude = 20 * Math.hypot(to.x - from.x, to.y - from.y)
     this.from = from
     this.target = target
+    this.endpoint = { ...to }
+    this.pursuit = { ...to }
+    this.velocity = { x: 0, y: 0 }
     this.saccadeStart = at
     this.saccadeDuration = Math.min(0.090, Math.max(0.035, 0.030 + 0.0025 * amplitude))
     this.nextFixationAt = at + this.saccadeDuration + (hold ?? this.drawHold())
@@ -175,10 +273,12 @@ export class NaturalGazeLayer {
   }
 
   private drawTarget(): Target {
+    if (this.override)
+      return this.jittered(this.override)
     // Aside attention outranks the camera-fixation probability, so a hold that raises it cannot pull the gaze back.
     if (this.aside)
       return this.jittered(this.aside)
-    if (this.cursor && this.random() < cursorWeight)
+    if (this.cursor && this.weight > 0 && this.random() < cursorWeight * this.weight)
       return 'cursor'
     const choice = this.random()
     if (choice < this.cameraFixationProbability)

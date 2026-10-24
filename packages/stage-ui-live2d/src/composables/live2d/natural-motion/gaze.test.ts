@@ -128,4 +128,183 @@ describe('natural gaze', () => {
 
     expect(Math.hypot(released.x, released.y)).toBeLessThan(0.1)
   })
+
+  it('limits pursuit speed during a 4 eye-units/s cursor sweep outside saccades', () => {
+    const gaze = new NaturalGazeLayer(silent)
+    gaze.setCursorTarget({ x: 0, y: 0 }, 1)
+    gaze.orient(0)
+    let previous = { x: 0, y: 0 }
+    let count = gaze.saccadeCount
+    let lastSaccadeAt = 0
+    let measured = 0
+    let maxSpeed = 0
+    for (let i = 1; i <= 2 / dt; i++) {
+      const at = i * dt
+      gaze.setCursorTarget({ x: 4 * at, y: 0 }, 1)
+      const point = gaze.step(dt)
+      if (gaze.saccadeCount !== count) {
+        lastSaccadeAt = at
+        count = gaze.saccadeCount
+      }
+      // Every saccade lasts <= 90 ms. Exclude the landing interval too.
+      if (at - lastSaccadeAt > 0.090 + dt) {
+        maxSpeed = Math.max(maxSpeed, Math.hypot(point.x - previous.x, point.y - previous.y) / dt)
+        measured++
+      }
+      previous = point
+    }
+    expect(measured).toBeGreaterThan(10)
+    expect(gaze.saccadeCount).toBeGreaterThan(5)
+    expect(maxSpeed).toBeLessThanOrEqual(1.5 + 1e-9)
+  })
+
+  it('makes exactly one catch-up saccade for a 0.5-unit target step', () => {
+    const gaze = new NaturalGazeLayer(silent)
+    gaze.setCursorTarget({ x: 0, y: 0 }, 1)
+    gaze.orient(0)
+    sample(gaze, 0, 0.1)
+    const count = gaze.saccadeCount
+    gaze.setCursorTarget({ x: 0.5, y: 0 }, 1)
+    const point = sample(gaze, 0.1, 0.9).at(-1)!
+
+    expect(gaze.saccadeCount).toBe(count + 1)
+    expect(gaze.saccadeSize).toBeGreaterThan(0.1)
+    expect(Math.hypot(point.x - 0.5, point.y)).toBeLessThan(0.01)
+  })
+
+  it('absorbs a 0.05-unit target step by pursuit within one second without a saccade', () => {
+    // This stream draws holds > 3 s, isolating pursuit from autonomous fixation timing.
+    const gaze = new NaturalGazeLayer(() => 0.9)
+    gaze.setCursorTarget({ x: 0, y: 0 }, 1)
+    gaze.orient(0)
+    sample(gaze, 0, 0.1)
+    const count = gaze.saccadeCount
+    gaze.setCursorTarget({ x: 0.05, y: 0 }, 1)
+    const point = sample(gaze, 0.1, 1.1).at(-1)!
+
+    expect(gaze.saccadeCount).toBe(count)
+    expect(Math.hypot(point.x - 0.05, point.y)).toBeLessThan(0.01)
+  })
+
+  it.each([{ weight: 1, share: 0.8 }, { weight: 0.3, share: 0.24 }])('scales cursor fixation draws by weight $weight', ({ weight, share }) => {
+    const gaze = new NaturalGazeLayer(createRandomStream(42))
+    gaze.setCursorTarget({ x: 0.6, y: 0.4 }, weight)
+    let cursorDraws = 0
+    for (let i = 0; i < 4000; i++) {
+      gaze.beginAttentionShift(i * 0.1)
+      cursorDraws += Number(gaze.onCursor)
+      gaze.step(0.1)
+    }
+    expect(cursorDraws / 4000).toBeGreaterThan(share - 0.04)
+    expect(cursorDraws / 4000).toBeLessThan(share + 0.04)
+  })
+
+  it('disengages in place without a camera saccade over the next 250 ms', () => {
+    const gaze = new NaturalGazeLayer(silent)
+    gaze.setCursorTarget({ x: 0.6, y: 0.3 }, 1)
+    gaze.orient(0)
+    const frozen = sample(gaze, 0, 0.1).at(-1)!
+    const count = gaze.saccadeCount
+    gaze.setCursorTarget({ x: 0.6, y: 0.3 }, 0)
+    gaze.disengage(0.1)
+
+    expect(gaze.onCursor).toBe(false)
+    gaze.setCursorTarget({ x: -0.6, y: -0.3 }, 0)
+    const held = sample(gaze, 0.1, 0.35)
+    expect(held.every(point => point.x === frozen.x && point.y === frozen.y)).toBe(true)
+    expect(held.every(point => Math.hypot(point.x, point.y) > 0.05)).toBe(true)
+    expect(gaze.saccadeCount).toBe(count)
+    sample(gaze, 0.35, 0.4 + dt)
+    expect(gaze.saccadeCount).toBe(count + 1)
+    expect(gaze.onCursor).toBe(false)
+  })
+
+  it.each([0.025, 0.1])('dismisses the cursor during a saccade or pursuit at %s seconds', (at) => {
+    const gaze = new NaturalGazeLayer(silent)
+    const cursor = { x: 0.6, y: 0.3 }
+    gaze.setCursorTarget(cursor, 1)
+    gaze.orient(0)
+    sample(gaze, 0, at)
+    const count = gaze.saccadeCount
+    gaze.dismiss(at)
+    expect(gaze.onCursor).toBe(false)
+    expect(gaze.saccadeCount).toBe(count + 1)
+    const point = sample(gaze, at, at + 0.15).at(-1)!
+    expect(Math.hypot(point.x - cursor.x, point.y - cursor.y)).toBeGreaterThan(0.1)
+    gaze.dismiss(at + 0.15)
+    expect(gaze.saccadeCount).toBe(count + 1)
+  })
+
+  it('never draws the cursor in 2000 fixations after its weight becomes zero', () => {
+    const gaze = new NaturalGazeLayer(createRandomStream(42))
+    gaze.setCursorTarget({ x: 0.6, y: 0.3 }, 1)
+    gaze.orient(0)
+    sample(gaze, 0, 0.1)
+    gaze.setCursorTarget({ x: 0.6, y: 0.3 }, 0)
+    for (let i = 0; i < 2000; i++) {
+      // Five seconds exceeds every hold plus the longest saccade.
+      gaze.step(5.1)
+      expect(gaze.onCursor).toBe(false)
+    }
+  })
+
+  it.each([null, { x: 0.6, y: 0.3 }])('keeps no-cursor outputs and random draws unchanged at zero weight with target %j', (target) => {
+    let draws = 0
+    const random = createRandomStream(91)
+    const gaze = new NaturalGazeLayer(() => {
+      draws++
+      return random()
+    })
+    let referenceDraws = 0
+    const referenceRandom = createRandomStream(91)
+    const reference = new NaturalGazeLayer(() => {
+      referenceDraws++
+      return referenceRandom()
+    })
+    gaze.setCursorTarget(target, 0)
+    for (let i = 0; i < 60 / dt; i++) {
+      expect(gaze.step(dt)).toEqual(reference.step(dt))
+      expect(gaze.saccadeCount).toBe(reference.saccadeCount)
+    }
+    expect(draws).toBe(referenceDraws)
+  })
+
+  it('holds fixed saccade endpoints even when the cursor moves mid-flight', () => {
+    const gaze = new NaturalGazeLayer(silent)
+    gaze.setCursorTarget({ x: 0.6, y: 0 }, 1)
+    gaze.orient(0)
+    const reference = new NaturalGazeLayer(silent)
+    reference.setCursorTarget({ x: 0.6, y: 0 }, 1)
+    reference.orient(0)
+    gaze.step(dt)
+    reference.step(dt)
+    gaze.setCursorTarget({ x: -0.6, y: 0.5 }, 1)
+    for (let i = 0; i < 4; i++)
+      expect(gaze.step(dt)).toEqual(reference.step(dt))
+  })
+
+  it('overrides cursor pursuit until cleared and saccades once per override change', () => {
+    const gaze = new NaturalGazeLayer(silent)
+    gaze.setCursorTarget({ x: 0.6, y: 0.3 }, 1)
+    gaze.orient(0)
+    sample(gaze, 0, 0.1)
+    const count = gaze.saccadeCount
+    const override = { x: -0.4, y: -0.3 }
+    gaze.setOverride(override, 0.1)
+    gaze.setOverride({ ...override }, 0.1)
+    expect(gaze.saccadeCount).toBe(count + 1)
+    expect(gaze.onCursor).toBe(false)
+    expect(sample(gaze, 0.1, 0.25).at(-1)!).toEqual(override)
+    for (let i = 0; i < 20; i++) {
+      gaze.beginAttentionShift(0.25 + i * 0.1)
+      expect(gaze.onCursor).toBe(false)
+      const point = gaze.step(0.1)
+      expect(point.x).toBeCloseTo(override.x, 12)
+      expect(point.y).toBeCloseTo(override.y, 12)
+    }
+    const beforeClear = gaze.saccadeCount
+    gaze.setOverride(null, 2.25)
+    expect(gaze.saccadeCount).toBe(beforeClear + 1)
+    expect(gaze.onCursor).toBe(true)
+  })
 })
