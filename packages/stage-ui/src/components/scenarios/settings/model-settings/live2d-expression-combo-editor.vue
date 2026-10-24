@@ -111,12 +111,18 @@ function save() {
         members,
         mappings,
         ...(canExposeToLlm.value ? { exposedToLlm: draftExposedToLlm.value } : {}),
-        ...(draftArea.value === noArea ? {} : { area: draftArea.value as ExpressionArea }),
+        // None on an existing combo clears a stored area; an unset area stays unset.
+        ...(draftArea.value === noArea
+          ? (props.combo.area ? { area: null } : {})
+          : { area: draftArea.value as ExpressionArea }),
       },
     })
   }
   else {
-    emit('command', { type: 'create-combo', combo: { label, members, mappings } })
+    emit('command', {
+      type: 'create-combo',
+      combo: { label, members, mappings, ...(draftArea.value === noArea ? {} : { area: draftArea.value as ExpressionArea }) },
+    })
   }
   emit('close')
 }
@@ -169,10 +175,10 @@ function remove() {
       />
     </div>
 
-    <div v-if="combo" :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
+    <label :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
       {{ t('settings.live2d.expressions.fields.area') }}
       <Select v-model="draftArea" :options="areaOptions" />
-    </div>
+    </label>
 
     <Live2dExpressionTriggerEditor
       ref="triggerEditor"

@@ -3,8 +3,9 @@ import type { Ref } from 'vue'
 
 import { entrySlots, parseCuratedCatalogDocument, resolveAlias, validateComboDocument } from '@proj-airi/stage-shared/expression-performance'
 
-export type CreateComboInput = Pick<ComboDocument, 'label' | 'members'> & Partial<Pick<ComboDocument, 'mappings'>> & { emotion?: ComboDocument['mappings'][number]['emotion'] }
-export type ComboPatch = Partial<Pick<ComboDocument, 'label' | 'members' | 'mappings' | 'exposedToLlm' | 'area'>>
+export type CreateComboInput = Pick<ComboDocument, 'label' | 'members'> & Partial<Pick<ComboDocument, 'mappings' | 'area'>> & { emotion?: ComboDocument['mappings'][number]['emotion'] }
+/** `area: null` clears a stored area so the combo falls back to the area derived from its members. */
+export type ComboPatch = Partial<Pick<ComboDocument, 'label' | 'members' | 'mappings' | 'exposedToLlm'>> & { area?: ComboDocument['area'] | null }
 export type CustomPatch = Partial<Omit<CustomExpressionDocument, 'id' | 'parameterId'>>
 
 export interface CatalogPersistenceContext {
@@ -80,6 +81,7 @@ export function createCatalogPersistence(context: CatalogPersistenceContext) {
       members: input.members,
       mappings: input.mappings ?? (input.emotion ? [{ emotion: input.emotion, weight: 1, minBand: 'clear' }] : []),
       exposedToLlm: false,
+      ...(input.area ? { area: input.area } : {}),
     })
     if (!document)
       return
@@ -92,7 +94,13 @@ export function createCatalogPersistence(context: CatalogPersistenceContext) {
     const previous = curated.value.combos?.find(combo => combo.id === id)
     if (!previous)
       return
-    const document = checkedCombo({ ...previous, ...patch, id })
+    const { area, ...rest } = patch
+    const merged = { ...previous, ...rest, id }
+    if (area === null)
+      delete merged.area
+    else if (area)
+      merged.area = area
+    const document = checkedCombo(merged)
     if (document)
       return write({ ...curated.value, combos: curated.value.combos!.map(combo => combo.id === id ? document : combo) })
   }

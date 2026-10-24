@@ -214,6 +214,30 @@ describe('live2D expression combos', () => {
     })
   })
 
+  it('offers Area for a new combo and sends it on create', async () => {
+    const { screen, onCommand } = await renderCombos(baseEntries)
+    await screen.getByRole('button', { name: k('new'), exact: true }).click()
+    await screen.getByRole('combobox', { name: k('add-member') }).click()
+    await screen.getByRole('option', { name: 'Blush', exact: true }).click()
+    await screen.getByRole('textbox', { name: t('settings.live2d.expressions.fields.label'), exact: true }).fill('Soft blush')
+    await screen.getByRole('combobox', { name: new RegExp(t('settings.live2d.expressions.fields.area')) }).click()
+    await screen.getByRole('option', { name: t('settings.live2d.expressions.areas.cheeks'), exact: true }).click()
+    await screen.getByRole('button', { name: k('save'), exact: true }).click()
+    expect(onCommand).toHaveBeenCalledWith({
+      type: 'create-combo',
+      combo: { label: 'Soft blush', members: [{ expressionId: 'blush.exp3.json', strength: 1 }], mappings: [], area: 'cheeks' },
+    })
+  })
+
+  it('sends area null when None is picked on a combo that has an area', async () => {
+    const { screen, onCommand } = await renderCombos([...baseEntries, { ...happyLook, area: 'cheeks' }])
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    await screen.getByRole('combobox', { name: new RegExp(t('settings.live2d.expressions.fields.area')) }).click()
+    await screen.getByRole('option', { name: t('settings.live2d.expressions.group-none'), exact: true }).click()
+    await screen.getByRole('button', { name: k('save'), exact: true }).click()
+    expect(onCommand).toHaveBeenCalledWith(expect.objectContaining({ type: 'update-combo', id: 'combo:happy', patch: expect.objectContaining({ area: null }) }))
+  })
+
   it('asks before deleting and sends delete-combo only when confirmed', async () => {
     const { screen, onCommand } = await renderCombos([...baseEntries, coatLook])
     await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()

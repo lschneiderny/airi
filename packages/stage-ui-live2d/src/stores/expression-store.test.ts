@@ -117,6 +117,20 @@ describe('curated expression catalog', () => {
     expect(JSON.parse(storage.get('expression-rest:a')!).active).toEqual([])
   })
 
+  it('persists an area given on combo creation and clears it with area null', () => {
+    const store = useExpressionStore()
+    store.registerDefinitions('a', defs)
+    const derivedArea = store.catalog.find(entry => entry.id === 'smile')!.area
+    store.applySettingsCommand({ type: 'create-combo', combo: { label: 'Eyes look', members: [{ expressionId: 'smile', strength: 1 }], area: derivedArea === 'eyes' ? 'mouth' : 'eyes' } })
+    const created = store.catalog.find(entry => entry.kind === 'combo')!
+    const stored = derivedArea === 'eyes' ? 'mouth' : 'eyes'
+    expect(created.area).toBe(stored)
+    expect(JSON.parse(storage.get('expression-catalog:a')!).combos[0].area).toBe(stored)
+    store.applySettingsCommand({ type: 'update-combo', id: created.id, patch: { area: null } })
+    expect(JSON.parse(storage.get('expression-catalog:a')!).combos[0]).not.toHaveProperty('area')
+    expect(store.catalog.find(entry => entry.id === created.id)!.area).toBe(derivedArea)
+  })
+
   it('loads an overrides-only version-1 document', () => {
     storage.set('expression-catalog:a', JSON.stringify({ version: 1, overrides: [{ id: 'smile', label: 'Old saved label' }] }))
     const store = useExpressionStore()
