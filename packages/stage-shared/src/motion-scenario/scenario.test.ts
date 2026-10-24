@@ -1,7 +1,7 @@
 import { safeParse } from 'valibot'
 import { describe, expect, it } from 'vitest'
 
-import { buildEmotionTrial, buildIdleWithPlacebos, buildLongHold, createScenarioPlayer, MotionScenarioSchema, stripEmotions } from '.'
+import { buildEmotionTrial, buildIdleWithPlacebos, buildLongHold, buildPointerApproach, buildPointerPoke, buildPointerStroke, createScenarioPlayer, MotionScenarioSchema, stripEmotions } from '.'
 import { ExpressionPerformanceSettingsSchema } from '../expression-performance'
 
 function scenario(overrides: Record<string, unknown> = {}) {
@@ -41,9 +41,17 @@ describe('motionScenarioSchema', () => {
   })
 
   it('rejects speech and cursor events in a t3 scenario', () => {
-    const events = [{ kind: 'speech', at: 1, turnId: 't', seconds: 2, envelopeSeed: 1 }, { kind: 'cursor', at: 2, clear: true }]
-    expect(issuePaths(scenario({ levels: ['t1', 't3'], events }))).toEqual(['events.0.kind', 'events.1.kind'])
+    const events = [
+      { kind: 'speech', at: 1, turnId: 't', seconds: 2, envelopeSeed: 1 },
+      { kind: 'cursor', at: 2, clear: true },
+      { kind: 'pointer', at: 3, phase: 'move', x: 0, y: 0 },
+    ]
+    expect(issuePaths(scenario({ levels: ['t1', 't3'], events }))).toEqual(['events.0.kind', 'events.1.kind', 'events.2.kind'])
     expect(safeParse(MotionScenarioSchema, scenario({ events }), {}).success).toBe(true)
+    const parsed = safeParse(MotionScenarioSchema, scenario({ levels: ['t1', 't3'], events: [events[2]] }))
+    expect(parsed.success).toBe(false)
+    if (!parsed.success)
+      expect(parsed.issues[0].message).toBe('Scenarios with level "t3" cannot contain "pointer" events')
   })
 
   it.each([
@@ -68,6 +76,13 @@ describe('motionScenarioSchema', () => {
   it('rejects a cursor event that is neither a position nor a clear', () => {
     expect(issuePaths(scenario({ events: [{ kind: 'cursor', at: 1, x: 1 }] }))).toContain('events.0.kind')
     expect(issuePaths(scenario({ events: [{ kind: 'cursor', at: 1, x: 1, y: 2, clear: true }] }))).toContain('events.0.kind')
+  })
+
+  it('accepts pointer events in a t1 scenario and rejects malformed coordinates', () => {
+    const events = [{ kind: 'pointer', at: 1, phase: 'move', x: 0.25, y: -0.5 }]
+    expect(safeParse(MotionScenarioSchema, scenario({ events })).success).toBe(true)
+    expect(issuePaths(scenario({ events: [{ kind: 'pointer', at: 1, x: 0, y: 0 }] }))).toContain('events.0.phase')
+    expect(issuePaths(scenario({ events: [{ kind: 'pointer', at: 1, phase: 'move', x: Number.NaN, y: 0 }] }))).toContain('events.0.x')
   })
 
   it('rejects an out-of-range seed', () => {
@@ -172,5 +187,30 @@ describe('builders', () => {
     const idle = buildIdleWithPlacebos({ seed: 5, placebos: 3, spacing: 2, warmup: 10 })
     expect(idle.events.map(event => event.at)).toEqual([10, 12, 14])
     expect(new Set(idle.events.map(event => event.kind === 'placebo' && event.trialId)).size).toBe(3)
+  })
+
+  it('builds a sorted 144 Hz pointer stroke including both endpoints', () => {
+    const events = buildPointerStroke({ at: 2, durationSeconds: 1, rateHz: 144, amplitude: 0.6, speed: 1.2, axis: 'x' })
+    expect(events).toHaveLength(145)
+    expect(events.every(event => event.kind === 'pointer' && event.phase === 'move')).toBe(true)
+    expect(events.map(event => event.at)).toEqual([...events].map(event => event.at).sort((a, b) => a - b))
+    expect(events.every(event => event.kind === 'pointer' && Math.abs(event.x) <= 0.6)).toBe(true)
+  })
+
+  it('builds a pointer poke with the requested hold duration', () => {
+    expect(buildPointerPoke({ at: 2, x: 0.25, y: -0.5, holdSeconds: 0.1 })).toEqual([
+      { kind: 'pointer', at: 2, phase: 'down', x: 0.25, y: -0.5 },
+      { kind: 'pointer', at: 2.1, phase: 'up', x: 0.25, y: -0.5 },
+    ])
+  })
+
+  it.each([
+    ['left', -0.6, 0],
+    ['right', 0.6, 0],
+    ['top', 0, -0.6],
+    ['bottom', 0, 0.6],
+  ] as const)('approaches from %s and ends at the requested distance', (from, x, y) => {
+    const events = buildPointerApproach({ at: 0, from, startDistance: 8, endDistance: 0.6, speed: 3, rateHz: 60 })
+    expect(events.at(-1)).toMatchObject({ kind: 'pointer', phase: 'move', x, y })
   })
 })

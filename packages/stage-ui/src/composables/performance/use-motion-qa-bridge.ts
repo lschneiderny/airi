@@ -168,6 +168,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       // The rendered app has no QA input that produces these; T1 and T2 simulate them.
       case 'speech':
       case 'cursor':
+      case 'pointer':
         return `The rendered app has no QA input for "${event.kind}" events`
     }
   }

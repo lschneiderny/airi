@@ -7,6 +7,79 @@ import { MotionScenarioSchema } from './schema'
 
 const allLevels: MotionScenario['levels'] = ['t1', 't2', 't3']
 
+export interface PointerStrokeOptions {
+  at: number
+  durationSeconds: number
+  rateHz: number
+  amplitude: number
+  speed: number
+  axis: 'x' | 'y'
+  center?: { x: number, y: number }
+}
+
+/** Build sampled pointer moves along a triangle-wave stroke, including both endpoints. */
+export function buildPointerStroke(options: PointerStrokeOptions): MotionScenario['events'] {
+  const { at, durationSeconds, rateHz, amplitude, speed, axis, center = { x: 0, y: 0 } } = options
+  const sampleCount = Math.ceil(durationSeconds * rateHz)
+  const period = 4 * amplitude / speed
+  return Array.from({ length: sampleCount + 1 }, (_, index) => {
+    const elapsed = Math.min(index / rateHz, durationSeconds)
+    const phase = ((elapsed % period) / period) * 4
+    const offset = phase <= 2 ? -amplitude + phase * amplitude : amplitude - (phase - 2) * amplitude
+    return {
+      kind: 'pointer' as const,
+      at: at + elapsed,
+      phase: 'move' as const,
+      x: center.x + (axis === 'x' ? offset : 0),
+      y: center.y + (axis === 'y' ? offset : 0),
+    }
+  })
+}
+
+export interface PointerApproachOptions {
+  at: number
+  from: 'left' | 'right' | 'top' | 'bottom'
+  startDistance: number
+  endDistance: number
+  speed: number
+  rateHz: number
+}
+
+/** Build sampled pointer moves on a straight path from a side toward the head center. */
+export function buildPointerApproach(options: PointerApproachOptions): MotionScenario['events'] {
+  const { at, from, startDistance, endDistance, speed, rateHz } = options
+  const duration = (startDistance - endDistance) / speed
+  const sampleCount = Math.ceil(duration * rateHz)
+  return Array.from({ length: sampleCount + 1 }, (_, index) => {
+    const elapsed = Math.min(index / rateHz, duration)
+    const distance = index === sampleCount ? endDistance : startDistance - speed * elapsed
+    const coordinate = from === 'left' || from === 'top' ? -distance : distance
+    return {
+      kind: 'pointer' as const,
+      at: at + elapsed,
+      phase: 'move' as const,
+      x: from === 'left' || from === 'right' ? coordinate : 0,
+      y: from === 'top' || from === 'bottom' ? coordinate : 0,
+    }
+  })
+}
+
+export interface PointerPokeOptions {
+  at: number
+  x: number
+  y: number
+  holdSeconds: number
+}
+
+/** Build a pointer press and release at one head-relative position. */
+export function buildPointerPoke(options: PointerPokeOptions): MotionScenario['events'] {
+  const { at, x, y, holdSeconds } = options
+  return [
+    { kind: 'pointer', at, phase: 'down', x, y },
+    { kind: 'pointer', at: at + holdSeconds, phase: 'up', x, y },
+  ]
+}
+
 /**
  * Settings that remove the pulse-driven recruitment while keeping the held emotion: no head recruitment, no body or
  * head gain, and no face hold or release hint. A `held-only` trial therefore shows the hold alone, so its release is
