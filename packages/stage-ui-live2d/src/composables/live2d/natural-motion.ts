@@ -291,7 +291,12 @@ export class Live2DNaturalMotion {
    */
   setPet(hand: number | null, nowSeconds: number) {
     this.advance(nowSeconds)
-    this.pet.set(hand)
+    // NOTICE:
+    // The layer takes a two-axis hand; the facade still receives only x.
+    // Todo 4 keeps the facade on one-axis inputs until the two-axis inputs land.
+    // Source: .omo/plans/live2d-cursor-touch-integration.md todo 4.
+    // Removal: todo 6 of .omo/plans/live2d-cursor-touch-integration.md (facade two-axis inputs).
+    this.pet.set(hand === null ? null : { x: hand, y: 0 })
   }
 
   /** Suspension freezes every layer; resume keeps all state, so output continues without a jump. */

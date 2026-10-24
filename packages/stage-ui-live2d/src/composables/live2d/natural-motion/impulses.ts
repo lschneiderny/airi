@@ -41,7 +41,7 @@ export interface Glance {
 const headGain = 0.12
 /** Direction and magnitude perturbation, so repeated impulses never look identical. */
 const perturbation = 0.2
-const tauRange = { min: 0.25, max: 0.5 }
+const defaultTauRange = { min: 0.25, max: 0.5 }
 // Retire after the overshoot tail has become negligible.
 const pulseLifetime = 15
 
@@ -192,8 +192,8 @@ export class NaturalImpulses {
   }
 
   /** Starts a head-only gesture along `direction` (length at most 1), used by desktop reactions. */
-  nudge(direction: Vec3, intensity: number, at: number) {
-    this.push(direction, intensity, at)
+  nudge(direction: Vec3, intensity: number, at: number, tauRange = defaultTauRange) {
+    this.push(direction, intensity, at, tauRange)
   }
 
   /** Head offset at `time`; the body follower excludes emotion pulses but retains desktop nudges. */
@@ -240,7 +240,7 @@ export class NaturalImpulses {
     return total
   }
 
-  private push(direction: Vec3, intensity: number, at: number) {
+  private push(direction: Vec3, intensity: number, at: number, tauRange: { min: number, max: number }) {
     const tau = tauRange.min + (tauRange.max - tauRange.min) * this.random()
     const magnitude = headGain * intensity ** 0.7 * (1 + perturbation * (2 * this.random() - 1))
     const perturbed = perturbDirection(this.random, direction)

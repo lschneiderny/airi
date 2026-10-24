@@ -10,7 +10,7 @@ import type { NaturalImpulses } from './impulses'
 import type { NaturalEpisode, NaturalMood } from './mood'
 import type { Vec3 } from './posture'
 
-import { pokeDirection, pokeGlanceHold, pokeStrength, pokeSurpriseDedupeSeconds } from './touch'
+import { pokeDirection, pokeGlanceHold, pokeNudgeTau, pokeStrength, pokeSurpriseDedupeSeconds } from './touch'
 
 // Desktop reactions. Wake lifts the head slightly and glances at the camera; a screen
 // change glances at the desk for 0.4 s. The wake nudge stays small: intensity 0.4 gives a
@@ -24,7 +24,12 @@ const glanceTargets = { camera: { x: 0, y: 0 }, desk: { x: 0, y: -0.18 } }
 export type PendingAction
   = | { kind: 'emotion', episode: NaturalEpisode }
     | { kind: 'react', reaction: 'wake' | 'screen-change' }
-    | { kind: 'poke', region: Live2DTouchRegion, x: number }
+    // NOTICE:
+    // The poke `y` is optional so the facade can keep queueing x-only pokes.
+    // Todo 4 keeps the facade on one-axis inputs until the two-axis inputs land.
+    // Source: .omo/plans/live2d-cursor-touch-integration.md todo 4.
+    // Removal: todo 6 of .omo/plans/live2d-cursor-touch-integration.md (facade two-axis inputs).
+    | { kind: 'poke', region: Live2DTouchRegion, x: number, y?: number }
 
 /** Poke surprise bookkeeping the owner carries between calls. */
 export interface PokeSurpriseState {
@@ -57,7 +62,7 @@ export function startPending(actions: PendingAction[], at: number, targets: Pend
   for (const action of actions) {
     if (action.kind === 'poke') {
       const strength = pokeStrength[action.region]
-      impulses.nudge(pokeDirection(action.region, action.x), strength.nudge, at)
+      impulses.nudge(pokeDirection(action.region, action.x, action.y), strength.nudge, at, pokeNudgeTau)
       // Surprise carries no glance of its own; a repeat within its 2 s dedupe only flinches.
       // A poke uses the `clear` band, which is how reactions run with band recruitment disabled.
       if (at - lastPokeSurprise >= pokeSurpriseDedupeSeconds) {

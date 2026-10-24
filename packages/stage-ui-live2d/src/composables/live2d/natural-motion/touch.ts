@@ -22,21 +22,34 @@ const handTau = 0.25
 // tuned on screen with the reference rigs.
 const petPitch = -0.12
 const petRoll = -0.22
+// Pitch change per unit of vertical hand position: stroking the lower head bows it further.
+const petStrokePitch = 0.06
 const petFace: PetFace = { eyeOpenMultiplier: 0.25, eyeSmile: 0.7, mouthForm: 0.4, cheek: 0.6, browY: 0.15 }
 // Posture drift calms to this share of its amplitude while fully petted.
 const petPostureAmplitude = 0.4
 
 /**
- * Head direction of a poke at `x` (-1 left of center, 1 right), as a nudge direction of
- * length at most 1: the head turns and rolls away from the poke and lifts as if startled.
- * A head poke moves more than a body poke.
+ * Head direction of a poke at `x` (-1 left of center, 1 right) and `y` (-1 top, 1 bottom), as a
+ * nudge direction of length at most 1: the head turns and rolls away from the poke and lifts as
+ * if startled. A poke on the top of the head bonks it down instead. A head poke moves more than
+ * a body poke.
  */
-export function pokeDirection(region: Live2DTouchRegion, x: number): Vec3 {
+export function pokeDirection(region: Live2DTouchRegion, x: number,
+  // NOTICE:
+  // `y` defaults to 0 so call sites that only know x keep compiling.
+  // Todo 4 keeps the facade on one-axis inputs until the two-axis inputs land.
+  // Source: .omo/plans/live2d-cursor-touch-integration.md todo 4.
+  // Removal: todo 6 of .omo/plans/live2d-cursor-touch-integration.md (facade two-axis inputs).
+  y = 0): Vec3 {
   const side = Math.max(-1, Math.min(1, x))
+  const top = Math.max(0, -Math.max(-1, Math.min(1, y)))
   return region === 'head'
-    ? [-0.45 * side, 0.6, 0.45 * side]
-    : [-0.3 * side, 0.35, 0.2 * side]
+    ? [-0.45 * side, 0.6 - 0.9 * top, 0.45 * side]
+    : [-0.3 * side, 0.35 - 0.5 * top, 0.2 * side]
 }
+
+/** Poke nudges rise faster than emotion impulses so the head reacts to the press itself. */
+export const pokeNudgeTau = { min: 0.12, max: 0.18 }
 
 /**
  * Poke intensities: the nudge and the surprise impulse it starts.
@@ -67,19 +80,19 @@ export const pokeSurpriseDedupeSeconds = 2
 export class NaturalPetLayer {
   level = 0
   private target = 0
-  private hand = 0
-  private handTarget = 0
+  private hand = { x: 0, y: 0 }
+  private handTarget = { x: 0, y: 0 }
 
   /** Whether a pet is in progress; the facade suppresses cursor attention while it is. */
   get active() {
     return this.target === 1
   }
 
-  /** Starts or continues a pet with the hand at `hand` (-1 left of the head center, 1 right), or ends it with `null`. */
-  set(hand: number | null) {
+  /** Starts or continues a pet with the hand at `hand` (x: -1 left to 1 right; y: -1 top to 1 bottom of the head box), or ends it with `null`. */
+  set(hand: { x: number, y: number } | null) {
     this.target = hand === null ? 0 : 1
     if (hand !== null)
-      this.handTarget = Math.max(-1, Math.min(1, hand))
+      this.handTarget = { x: Math.max(-1, Math.min(1, hand.x)), y: Math.max(-1, Math.min(1, hand.y)) }
   }
 
   step(dt: number) {
@@ -87,16 +100,18 @@ export class NaturalPetLayer {
       return
     const tau = this.target > this.level ? attackTau : releaseTau
     this.level += (this.target - this.level) * (1 - Math.exp(-dt / tau))
-    this.hand += (this.handTarget - this.hand) * (1 - Math.exp(-dt / handTau))
+    const follow = 1 - Math.exp(-dt / handTau)
+    this.hand.x += (this.handTarget.x - this.hand.x) * follow
+    this.hand.y += (this.handTarget.y - this.hand.y) * follow
     // Settle exactly at rest so the neutral guarantee holds after a pet.
     if (this.target === 0 && this.level < 1e-4) {
       this.level = 0
-      this.hand = 0
+      this.hand = { x: 0, y: 0 }
     }
   }
 
   headOffset(): Vec3 {
-    return [0, petPitch * this.level, petRoll * this.level * this.hand]
+    return [0, petPitch * this.level - petStrokePitch * this.level * this.hand.y, petRoll * this.level * this.hand.x]
   }
 
   get postureAmplitudeScale() {
