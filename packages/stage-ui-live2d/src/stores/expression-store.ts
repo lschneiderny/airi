@@ -219,17 +219,21 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
         }
       }
     }
-    manualSeq.value = { ...manualSeq.value, [id]: ++claimSeq }
+    // Slot precedence must not make a user's newly asserted switch invisible.
+    const claim = { expressionId: id, layer: 0, seq: ++claimSeq }
+    const members = expandEntry(entry, catalog.value)
+    while (true) {
+      const pending = resolve([...claims.value, claim], catalog.value)
+      if (pending.effective.has(id))
+        break
+      const maskingSlot = slotNames.find(slot => leases.value[slot] && members.some(member => pending.masked.get(member.expressionId) === leases.value[slot]!.expressionId))
+      if (!maskingSlot)
+        break
+      releaseSlot(maskingSlot, now, false)
+    }
+    manualSeq.value = { ...manualSeq.value, [id]: claim.seq }
     if (!manualActive.value.includes(id))
       manualActive.value = [...manualActive.value, id]
-    // Slot precedence must not make a user's newly asserted switch invisible.
-    for (const { expressionId } of expandEntry(entry, catalog.value)) {
-      const maskingId = resolved.value.masked.get(expressionId)
-      for (const slot of slotNames) {
-        if (maskingId && leases.value[slot]?.expressionId === maskingId)
-          releaseSlot(slot, now, false)
-      }
-    }
     restSuppressed.value = restSuppressed.value.filter(suppressedId => suppressedId !== id)
     reconcile(now)
   }

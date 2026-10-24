@@ -670,6 +670,25 @@ describe('expression claims', () => {
     expect(setTargets.mock.calls.length).toBe(calls + 1)
   })
 
+  it('switching on an entry releases every stacked masking slot combo', () => {
+    storage.set('expression-catalog:claims', JSON.stringify({
+      ...document,
+      combos: [...document.combos, combo('hair-effect', [member('hairB'), member('sparkle')])],
+    }))
+    const { store, row, targets, setTargets } = fixture()
+    store.applySlots([command('combo:hair'), command('combo:hair-effect', 'effect')], 0)
+    expect(store.leases.face?.expressionId).toBe('combo:hair')
+    expect(store.leases.effect?.expressionId).toBe('combo:hair-effect')
+    const calls = setTargets.mock.calls.length
+
+    store.applySettingsCommand({ type: 'set-active', id: 'hairA', active: true })
+
+    expect(row('hairA')).toMatchObject({ active: true, effective: true, overriddenBy: null })
+    expect(store.leases).toEqual({ face: null, effect: null, prop: null })
+    expect(targets()).toEqual([{ id: 'hairA', weight: 1 }])
+    expect(setTargets.mock.calls.length).toBe(calls + 1)
+  })
+
   it('toggling on a combo-only member adds an own claim that survives combo release', () => {
     const { store, targets, row } = fixture()
     store.activate('combo:face-effect', 0)
