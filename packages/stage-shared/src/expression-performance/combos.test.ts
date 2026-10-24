@@ -1,4 +1,4 @@
-import type { CatalogEntry, ComboDocument, ExpressionKind } from '.'
+import type { CatalogEntry, ComboDocument, CustomExpressionDocument, ExpressionKind } from '.'
 
 import { describe, expect, it } from 'vitest'
 
@@ -75,5 +75,19 @@ describe('combos', () => {
 
   it('accepts a usable member and resolves aliases for validation', () => {
     expect(validateComboDocument(document([{ expressionId: 'alias', strength: 0.7 }]), catalog)).toEqual({ success: true })
+  })
+
+  it('rejects member strength 1.5', () => {
+    expect(validateComboDocument(document([{ expressionId: 'face', strength: 1.5 }]), catalog)).toMatchObject({ success: false, error: expect.any(String) })
+  })
+
+  it('rejects an id without the combo prefix', () => {
+    expect(validateComboDocument({ ...document([{ expressionId: 'face', strength: 1 }]), id: 'foo' }, catalog)).toMatchObject({ success: false, error: expect.any(String) })
+  })
+
+  it('rejects a custom expression document without throwing', () => {
+    const custom: CustomExpressionDocument = { id: 'custom:test', label: 'Test', kind: 'face', parameterId: 'Face', delta: 1, mappings: [], exposedToLlm: true }
+    expect(() => validateComboDocument(custom, catalog)).not.toThrow()
+    expect(validateComboDocument(custom, catalog)).toMatchObject({ success: false, error: expect.any(String) })
   })
 })

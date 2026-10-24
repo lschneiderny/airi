@@ -1,4 +1,8 @@
-import type { CatalogEntry, ComboDocument, SlotName } from './catalog'
+import type { CatalogEntry, SlotName } from './catalog'
+
+import { safeParse } from 'valibot'
+
+import { ComboDocumentSchema } from './catalog'
 
 export function resolveAlias(id: string, catalog: readonly CatalogEntry[]): string {
   return catalog.find(entry => entry.aliases?.includes(id))?.id ?? id
@@ -29,13 +33,17 @@ export function expandEntry(entry: CatalogEntry, catalog: readonly CatalogEntry[
   return entry.kind === 'combo' ? usableMembers(entry, catalog) : [{ expressionId: entry.id, strength: 1 }]
 }
 
-export function validateComboDocument(document: ComboDocument, catalog: readonly CatalogEntry[]): { success: true } | { success: false, error: string } {
-  if (document.members.some(member => member.expressionId.startsWith('combo:')))
+export function validateComboDocument(document: unknown, catalog: readonly CatalogEntry[]): { success: true } | { success: false, error: string } {
+  const result = safeParse(ComboDocumentSchema, document)
+  if (!result.success)
+    return { success: false, error: result.issues.map(issue => issue.message).join('; ') }
+  const candidate = result.output
+  if (candidate.members.some(member => member.expressionId.startsWith('combo:')))
     return { success: false, error: 'Combos cannot contain combos' }
-  const ids = document.members.map(member => member.expressionId)
+  const ids = candidate.members.map(member => member.expressionId)
   if (new Set(ids).size !== ids.length)
     return { success: false, error: 'Combo member ids must be unique' }
-  if (usableMembers({ ...document, kind: 'combo', mappings: [], group: null, confirmed: true, fileName: '', parameterIds: [] }, catalog).length === 0)
+  if (usableMembers({ ...candidate, kind: 'combo', mappings: [], group: null, confirmed: true, fileName: '', parameterIds: [] }, catalog).length === 0)
     return { success: false, error: 'A combo needs at least one usable member' }
   return { success: true }
 }
