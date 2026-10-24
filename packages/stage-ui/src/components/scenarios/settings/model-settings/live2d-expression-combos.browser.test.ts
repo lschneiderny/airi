@@ -96,7 +96,7 @@ describe('live2D expression combos', () => {
       import('./live2d-expression-combos.vue'),
       import('virtual:uno.css'),
     ])
-    for (const key of ['title', 'description', 'empty', 'new', 'members', 'add-member', 'strength-hint', 'manual-only', 'save', 'cancel', 'delete', 'delete-confirm'])
+    for (const key of ['title', 'description', 'empty', 'new', 'members', 'add-member', 'strength-hint', 'manual-only', 'save', 'cancel', 'delete', 'delete-confirm', 'marker-ai', 'marker-default'])
       expect(k(key)).not.toBe(`settings.live2d.expressions.combos.${key}`)
   }, 60_000)
 
@@ -116,15 +116,15 @@ describe('live2D expression combos', () => {
     await expect.element(screen.getByText('Blush', { exact: true })).toBeVisible()
     await expect.element(screen.getByText('Sparkle 50%', { exact: true })).toBeVisible()
     await expect.element(screen.getByText(t('settings.live2d.expressions.emotions.happy'), { exact: true })).toBeVisible()
-    await expect.element(screen.getByText('AI', { exact: true })).toBeVisible()
-    await expect.element(screen.getByText('Default', { exact: true })).toBeVisible()
+    await expect.element(screen.getByText(k('marker-ai'), { exact: true })).toBeVisible()
+    await expect.element(screen.getByText(k('marker-default'), { exact: true })).toBeVisible()
     await expect.element(screen.getByText(k('manual-only'), { exact: true })).not.toBeInTheDocument()
   })
 
   it('shows the manual-only note and no AI marker for a combo with an outfit member', async () => {
     const { screen } = await renderCombos([...baseEntries, coatLook])
     await expect.element(screen.getByText(k('manual-only'), { exact: true })).toBeVisible()
-    await expect.element(screen.getByText('AI', { exact: true })).not.toBeInTheDocument()
+    await expect.element(screen.getByText(k('marker-ai'), { exact: true })).not.toBeInTheDocument()
   })
 
   it('emits set-active from the on/off switch', async () => {

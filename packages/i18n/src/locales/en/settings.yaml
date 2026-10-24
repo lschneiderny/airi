@@ -336,6 +336,8 @@ live2d:
       cancel: Cancel
       delete: Delete combo
       delete-confirm: 'Delete {label}? Saved defaults that use it stop using it.'
+      marker-ai: AI
+      marker-default: Default
     areas:
       title: Everything else
       whole-look: Whole looks

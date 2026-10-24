@@ -105,7 +105,7 @@ function toggleEditor(id: string) {
                   'text-[10px] font-medium uppercase tracking-wide',
                   'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-200',
                 ]"
-              >AI</span>
+              >{{ t('settings.live2d.expressions.combos.marker-ai') }}</span>
               <span
                 v-if="combo.isDefault"
                 :class="[
@@ -113,7 +113,7 @@ function toggleEditor(id: string) {
                   'text-[10px] font-medium uppercase tracking-wide',
                   'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
                 ]"
-              >Default</span>
+              >{{ t('settings.live2d.expressions.combos.marker-default') }}</span>
             </div>
             <div :class="['flex flex-wrap gap-1']">
               <span
