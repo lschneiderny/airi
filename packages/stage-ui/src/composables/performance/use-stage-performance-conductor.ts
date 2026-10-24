@@ -216,7 +216,7 @@ export class StagePerformanceConductor {
   }
 
   /**
-   * Shows an LLM-named expression. Only confirmed, LLM-exposed face, effect, and prop entries
+   * Shows an LLM-named expression. Only LLM-exposed face, effect, and prop entries
    * resolve (see {@link resolveExpressionName}); unknown names are dropped with a warning.
    *
    * Returns the resolved entry, or `undefined` when the request was dropped.
