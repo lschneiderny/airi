@@ -17,21 +17,21 @@ ZIP imports and OPFS-restored archives discover every `.exp3.json`, including fi
 Each expression keeps its own activation and composes in activation order with its file's blend modes and fade times. Missing or invalid fade times use one second.
 Save expression defaults stores the active expression ids as the model's rest set. Reset all expressions returns to that set.
 Rest sets use `expression-rest:${modelId}` with `{ version: 1, active: string[] }`. Previous parameter defaults are not loaded; save the desired defaults once again.
-The Expression system setting, stored as `settings/live2d/expression-enabled`, turns this runtime on. A fresh profile starts with it off. While it is off, the model keeps the SDK expression manager and eye blink, the catalog stays empty, and no expression fires automatically or reaches the LLM.
+The Expression system setting, stored as `settings/live2d/expression-enabled`, turns this runtime on. A fresh profile starts with the Expression system on. While it is off, the model keeps the SDK expression manager and eye blink, the catalog stays empty, and no expression fires automatically or reaches the LLM.
 
 The [expression performance ADR](../../docs/ai/adr/2026-10-18-expression-performance.md) records the contracts below.
 The [Natural emotion revamp ADR](../../docs/ai/adr/2026-10-19-natural-emotion-revamp.md) records held emotions, gestures, and the per-model emotion strength.
 
 ### Expression catalog
 
-Each discovered expression has a catalog entry with a label, a kind (`face`, `effect`, `outfit`, `prop`, or `system`), an optional pick-one group, a confirmed flag, an LLM-exposed flag, and emotion mappings.
+Each discovered expression has a catalog entry with a label, a kind (`face`, `effect`, `outfit`, `prop`, or `system`), an optional pick-one group, a reviewed flag, an optional inverted display flag, an LLM-exposed flag, and emotion mappings.
 The label comes from the model settings `Name`, else from the archive's first `.vtube.json` hotkey for that file, else from the file name.
 Kinds and groups are suggestions. Expressions of the same suggested kind that share a parameter form a pick-one group when at least one of them sets a non-zero value on it. Expressions that share only zero values form no group. Parameters of `system` expressions, such as a watermark hide, never form groups.
-Users confirm entries, edit labels, kinds, and groups, and map emotions in Settings > Models > Live2D. Each mapping has an emotion, a weight from 0.1 to 5, and a minimum band.
+The English and Chinese label lexicon suggests mappings for face and effect entries. It skips negated labels, assigns weight 1, and uses `clear` as the minimum band for faces and `strong` for effects. Default LLM access is chosen by kind. Review entries and edit labels, kinds, groups, mappings, and display inversion in Settings > Models > Live2D. Each mapping has an emotion, a weight from 0.1 to 5, and a minimum band.
 Edits are stored per model in `expression-catalog:${modelId}` as `{ version: 1, overrides: CuratedOverride[] }`.
 
-- Only confirmed `face` and `effect` entries fire automatically.
-- Only confirmed, LLM-exposed `face`, `effect`, and `prop` entries reach the LLM. Outfits and system expressions never do.
+- `face` and `effect` entries are eligible for automatic selection.
+- `face`, `effect`, and `prop` entries are eligible for LLM access when exposed. Outfits and system expressions never reach the LLM.
 - Activating a member of a pick-one group fades out the other members. An automatic or LLM activation never displaces a saved default, a manual toggle, or a member of a different kind; the activation is skipped instead.
 
 The stage window owns `useExpressionStore`. Other windows render its `settingsSnapshot` and send `Live2DExpressionSettingsCommand` values: `toggle`, `set-active`, `save-defaults`, `reset-all`, `update-entry`, and `reset-entry`.
