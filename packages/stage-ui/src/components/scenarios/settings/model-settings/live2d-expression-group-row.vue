@@ -17,6 +17,8 @@ const props = defineProps<{
   members: Entry[]
   /** Every group in the catalog, forwarded to each member's editor. */
   groups: { name: string, labels: string[] }[]
+  /** Forwarded to each member's row for duplicate and overridden-by labels. */
+  labelOf?: (id: string) => string
 }>()
 const emit = defineEmits<{
   (e: 'command', command: Live2DExpressionSettingsCommand): void
@@ -85,6 +87,7 @@ const membersOpen = ref(false)
         :key="member.id"
         :entry="member"
         :groups="groups"
+        :label-of="labelOf"
         @command="emit('command', $event)"
       />
     </div>
