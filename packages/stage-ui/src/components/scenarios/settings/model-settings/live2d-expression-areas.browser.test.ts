@@ -46,14 +46,17 @@ function expressionEntry(overrides: Partial<ExpressionEntry> & Pick<ExpressionEn
   }
 }
 
-/** ForBOOTH-shaped fixture: eyes, mouth, cheeks, outfit & hair, four unsorted entries, one duplicate folded into its primary. */
+/**
+ * ForBOOTH-shaped fixture: eyes, mouth, cheeks, outfit & hair, four unsorted entries, one duplicate folded into its primary.
+ * Like the store snapshot, `overriddenBy` carries the overriding entry's label, not its id.
+ */
 function boothEntries(): ExpressionEntry[] {
   return [
     expressionEntry({ id: 'eyes-closed', label: 'Eyes closed', area: 'eyes', active: true }),
     expressionEntry({ id: 'eyes-sparkle', label: 'Eyes sparkle', area: 'eyes', mappings: [{ emotion: 'love', weight: 1, minBand: 'clear' }] }),
     expressionEntry({ id: 'mouth-open', label: 'Mouth open', area: 'mouth', aliases: ['mouth-open-copy'], mappings: [{ emotion: 'surprised', weight: 1, minBand: 'clear' }] }),
     expressionEntry({ id: 'mouth-open-copy', label: 'Mouth open copy', area: 'mouth', duplicateOf: 'mouth-open' }),
-    expressionEntry({ id: 'blush', label: 'Blush', area: 'cheeks', mappings: [{ emotion: 'flustered', weight: 1, minBand: 'clear' }], overriddenBy: 'pale' }),
+    expressionEntry({ id: 'blush', label: 'Blush', area: 'cheeks', mappings: [{ emotion: 'flustered', weight: 1, minBand: 'clear' }], overriddenBy: 'Pale' }),
     expressionEntry({ id: 'pale', label: 'Pale', area: 'cheeks', active: true }),
     expressionEntry({ id: 'hair-black', label: 'Black braids', kind: 'outfit', area: 'outfit-hair', group: 'Hair', active: true }),
     expressionEntry({ id: 'hair-white', label: 'White ponytail', kind: 'outfit', area: 'outfit-hair', group: 'Hair' }),
@@ -162,7 +165,9 @@ describe('live2D expression areas', () => {
   })
 
   it('hides duplicates behind their primary, lists them as Also, and keeps one separate on request', async () => {
-    const { screen, onCommand } = await renderAreas(boothEntries())
+    // showAll keeps the in-use filter out of the way: only duplicate folding can hide the idle, unmapped copy.
+    const { screen, onCommand } = await renderAreas(boothEntries(), { showAll: true })
+    await expect.element(sectionOf(screen, 'mouth').getByText('Mouth open', { exact: true })).toBeVisible()
     await expect.element(screen.getByText('Mouth open copy', { exact: true })).not.toBeInTheDocument()
     await expect.element(screen.getByText(t('settings.live2d.expressions.duplicates.also', { labels: 'Mouth open copy' }), { exact: true })).toBeVisible()
     await screen.getByRole('button', { name: t('settings.live2d.expressions.duplicates.keep-separate', { label: 'Mouth open copy' }), exact: true }).click()
