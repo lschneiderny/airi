@@ -1,12 +1,14 @@
+import type { CatalogEntry } from './catalog'
 import type { PickerState } from './picker'
 import type { ScheduledPlan, SchedulerState } from './scheduler'
 import type { AutoSlot } from './selection'
 import type { Decider, DeciderContext, PerformanceDecision, SlotCommand } from './types'
 
+import { entrySlots } from './combos'
 import { createPickerDecider } from './picker'
 import { acceptReaction } from './reaction-strength'
 import { cancelTurn, createSchedulerState, earliestExpiry, expire, schedule, take } from './scheduler'
-import { autoPicks, clearCommands, drawEpisodeTickets, emotionHold, explicitExpressionCommand, explicitExpressionReaction, neutralCommands, releaseHold } from './selection'
+import { applySlotOccupants, autoPicks, clearCommands, drawEpisodeTickets, emotionHold, explicitExpressionCommand, explicitExpressionReaction, neutralCommands, releaseHold } from './selection'
 import { bandRank } from './types'
 
 /** An automatic pick waiting for its timing slot. */
@@ -33,18 +35,23 @@ export interface PlannerState extends PickerState {
  * decision share one moment, so a face and an effect change together: `minGap` is measured
  * between performance moments, not slot changes.
  */
-function admit(budget: PlannerState['budget'], at: number, settings: DeciderContext['settings']['planner'], sameMoment: boolean): PlannerState['budget'] | null {
+function admit(budget: PlannerState['budget'], at: number, settings: DeciderContext['settings']['planner'], sameMoment: boolean, count: number): PlannerState['budget'] | null {
   const changes = budget.changes.filter(change => at - change < settings.window)
-  if (changes.length >= settings.windowMax)
+  if (changes.length + count > settings.windowMax)
     return null
   if (!sameMoment && budget.lastAt !== null && at - budget.lastAt < settings.minGap)
     return null
-  return { changes: [...changes, at], lastAt: at }
+  return { changes: [...changes, ...Array.from({ length: count }).fill(at)], lastAt: at }
+}
+
+function pickSlots(pick: PlannedPick, catalog: readonly CatalogEntry[]) {
+  const entry = catalog.find(entry => entry.id === pick.expressionId)
+  return entry ? entrySlots(entry, catalog) : []
 }
 
 /** A newer immediate change for a slot makes its pending plans stale. */
-function withoutSlots(scheduler: SchedulerState<PlannedPick>, slots: readonly SlotCommand['slot'][]): SchedulerState<PlannedPick> {
-  const plans = scheduler.plans.filter(plan => !slots.includes(plan.payload.slot))
+function withoutSlots(scheduler: SchedulerState<PlannedPick>, slots: readonly SlotCommand['slot'][], catalog: readonly CatalogEntry[]): SchedulerState<PlannedPick> {
+  const plans = scheduler.plans.filter(plan => !pickSlots(plan.payload, catalog).some(slot => slots.includes(slot)))
   return plans.length === scheduler.plans.length ? scheduler : { ...scheduler, plans }
 }
 
@@ -80,31 +87,38 @@ export function createPlannerDecider(): Decider<PlannerState> {
       let admittedThisDecision = false
 
       function emitAuto(pick: PlannedPick, turnId: string | undefined) {
-        const budget = admit(next.budget, signal.at, ctx.settings.planner, admittedThisDecision)
+        const slots = pickSlots(pick, ctx.catalog)
+        if (slots.length === 0)
+          return false
+        const budget = admit(next.budget, signal.at, ctx.settings.planner, admittedThisDecision, slots.length)
         if (!budget)
           return false
         admittedThisDecision = true
-        decision.slots.push({ slot: pick.slot, expressionId: pick.expressionId, holdSeconds: pick.holdSeconds, until: 'speech', turnId })
-        next = { ...next, budget, occupants: { ...next.occupants, [pick.slot]: pick.expressionId }, recency: { ...next.recency, [pick.expressionId]: signal.at } }
+        const commands = slots.map(slot => ({ slot, expressionId: pick.expressionId, holdSeconds: pick.holdSeconds, until: 'speech' as const, turnId }))
+        decision.slots.push(...commands)
+        next = { ...next, budget, occupants: applySlotOccupants(next.occupants, commands, ctx.catalog), recency: { ...next.recency, [pick.expressionId]: signal.at }, scheduler: withoutSlots(next.scheduler, slots, ctx.catalog) }
         return true
       }
 
       function release(plans: ScheduledPlan<PlannedPick>[]) {
-        const arbitrated = new Set<AutoSlot>()
+        const arbitrated = new Set<SlotCommand['slot']>()
         for (const plan of plans) {
-          if (arbitrated.has(plan.payload.slot))
+          const slots = pickSlots(plan.payload, ctx.catalog)
+          if (slots.some(slot => arbitrated.has(slot)))
             continue
-          arbitrated.add(plan.payload.slot)
+          for (const slot of slots)
+            arbitrated.add(slot)
           emitAuto(plan.payload, plan.turnId)
         }
       }
 
       switch (signal.kind) {
         case 'expression': {
-          const command = explicitExpressionCommand(signal, ctx)
-          if (!command)
+          const commands = explicitExpressionCommand(signal, ctx)
+          if (!commands)
             return { decision, state }
-          decision.slots.push(command)
+          decision.slots.push(...commands)
+          const command = commands[0]
           const derived = explicitExpressionReaction(command, signal, ctx, state)
           decision.episodes.push(...derived.episodes)
           decision.holds.push(...derived.holds)
@@ -114,13 +128,11 @@ export function createPlannerDecider(): Decider<PlannerState> {
           const scheduler = derived.episodes.some(episode => !episode.escalation)
             ? { ...state.scheduler, plans: [] }
             : state.scheduler
-          if (command.slot === 'prop')
-            return { decision, state: { ...derived.state, recency, scheduler } }
           return { decision, state: {
             ...derived.state,
-            occupants: { ...derived.state.occupants, [command.slot]: command.expressionId },
+            occupants: applySlotOccupants(derived.state.occupants, commands, ctx.catalog),
             recency,
-            scheduler: withoutSlots(scheduler, [command.slot]),
+            scheduler: withoutSlots(scheduler, commands.map(command => command.slot), ctx.catalog),
           } }
         }
         case 'clear': {
@@ -129,11 +141,8 @@ export function createPlannerDecider(): Decider<PlannerState> {
           if (!signal.slot)
             decision.holds.push(releaseHold(signal.turnId))
           const cleared = decision.slots.map(command => command.slot)
-          const occupants = {
-            face: cleared.includes('face') ? null : state.occupants.face,
-            effect: cleared.includes('effect') ? null : state.occupants.effect,
-          }
-          return { decision, state: { ...state, occupants, scheduler: withoutSlots(state.scheduler, cleared) } }
+          const occupants = applySlotOccupants(state.occupants, decision.slots, ctx.catalog)
+          return { decision, state: { ...state, occupants, scheduler: withoutSlots(state.scheduler, cleared, ctx.catalog) } }
         }
         case 'timing': {
           if (signal.event.kind === 'utterance_end')
@@ -178,8 +187,7 @@ export function createPlannerDecider(): Decider<PlannerState> {
         const pick = { slot, expressionId, holdSeconds }
         // Without a turn no timing event can ever take the plan, so devtools pulses emit at once.
         if (immediate || turnId === undefined) {
-          if (emitAuto(pick, turnId))
-            next = { ...next, scheduler: withoutSlots(next.scheduler, [slot]) }
+          emitAuto(pick, turnId)
           continue
         }
         next = { ...next, scheduler: schedule(next.scheduler, {

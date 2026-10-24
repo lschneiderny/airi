@@ -4,6 +4,7 @@ import type { ExpressionPerformanceSettings } from './settings'
 import type { AffectSignal, DeciderContext, HoldCommand, ReactionEpisode, SlotCommand } from './types'
 
 import { isAutoEligible } from './catalog'
+import { entrySlots } from './combos'
 import { acceptReaction, drawRandom } from './reaction-strength'
 import { bandRank } from './types'
 
@@ -43,8 +44,13 @@ export function recencyWeight(weight: number, lastAt: number | undefined, at: nu
 }
 
 /** Stable code-point ordering makes a catalog's input order irrelevant to replay. */
-export function pickerCandidates(catalog: readonly CatalogEntry[], episode: ReactionEpisode, slot: AutoSlot): Candidate[] {
-  return catalog.filter(isAutoEligible).filter(entry => entry.kind === slot).flatMap((entry) => {
+export function pickerCandidates(catalog: readonly CatalogEntry[], episode: ReactionEpisode, slot: AutoSlot, occupants: Record<AutoSlot, string | null>): Candidate[] {
+  return catalog.filter(isAutoEligible).filter((entry) => {
+    if (entry.kind !== 'combo')
+      return entry.kind === slot
+    const slots = entrySlots(entry, catalog)
+    return slots[0] === slot && !slots.includes('prop') && slots.every(slot => slot === 'prop' || occupants[slot] === null)
+  }).flatMap((entry) => {
     const mapping = entry.mappings.find(mapping => mapping.emotion === episode.emotion && bandRank[mapping.minBand] <= bandRank[episode.band] && Number.isFinite(mapping.weight) && mapping.weight > 0)
     return mapping ? [{ id: entry.id, weight: mapping.weight }] : []
   }).sort((a, b) => {
@@ -84,28 +90,53 @@ export function autoPicks(episode: ReactionEpisode, ctx: DeciderContext, tickets
     ? Number(episode.intensity >= effectGateTo)
     : Math.max(0, Math.min(1, (episode.intensity - effectGateFrom) / (effectGateTo - effectGateFrom)))
   const picks: { slot: AutoSlot, expressionId: string }[] = []
+  const occupied = { ...occupants }
   let seen = recency
   for (const slot of ['face', 'effect'] as const) {
-    if (occupants[slot])
+    if (occupied[slot])
       continue
-    const id = pickExpression(pickerCandidates(ctx.catalog, episode, slot), tickets[slot], slot === 'face' ? 1 : effectGate, seen, at, ctx.settings.picker)
+    const id = pickExpression(pickerCandidates(ctx.catalog, episode, slot, occupied), tickets[slot], slot === 'face' ? 1 : effectGate, seen, at, ctx.settings.picker)
     if (id === null)
       continue
     picks.push({ slot, expressionId: id })
+    for (const spanned of entrySlots(ctx.catalog.find(entry => entry.id === id)!, ctx.catalog)) {
+      if (spanned !== 'prop')
+        occupied[spanned] = id
+    }
     seen = { ...seen, [id]: at }
   }
   return picks
 }
 
 /**
- * The slot command for an explicit LLM expression, or null when the entry is unknown or not a
- * slot kind. The conductor has already checked LLM eligibility.
+ * Commands for every slot of an explicit LLM expression, or null when it has no slots.
+ * The conductor has already checked LLM eligibility.
  */
-export function explicitExpressionCommand(signal: ExpressionSignal, ctx: DeciderContext): (SlotCommand & { expressionId: string }) | null {
+export function explicitExpressionCommand(signal: ExpressionSignal, ctx: DeciderContext): (SlotCommand & { expressionId: string })[] | null {
   const entry = ctx.catalog.find(entry => entry.id === signal.expressionId)
-  if (!entry || (entry.kind !== 'face' && entry.kind !== 'effect' && entry.kind !== 'prop'))
+  const slots = entry ? entrySlots(entry, ctx.catalog) : []
+  if (!entry || slots.length === 0)
     return null
-  return { slot: entry.kind, expressionId: entry.id, holdSeconds: signal.holdSeconds ?? ctx.settings.naturalBands.clear.faceHold, until: signal.holdSeconds ? 'hold' : 'speech', turnId: signal.turnId }
+  return slots.map(slot => ({ slot, expressionId: entry.id, holdSeconds: signal.holdSeconds ?? ctx.settings.naturalBands.clear.faceHold, until: signal.holdSeconds ? 'hold' : 'speech', turnId: signal.turnId }))
+}
+
+/** Vacate whole owners before installing a batch, so commands for one combo stay together. */
+export function applySlotOccupants(occupants: Record<AutoSlot, string | null>, commands: readonly SlotCommand[], catalog: readonly CatalogEntry[]): Record<AutoSlot, string | null> {
+  const vacated = new Set(commands.flatMap(command => command.slot === 'prop'
+    ? Object.values(occupants).filter((id) => {
+        const entry = catalog.find(entry => entry.id === id)
+        return entry && entrySlots(entry, catalog).includes('prop')
+      })
+    : [occupants[command.slot]]))
+  const next = {
+    face: vacated.has(occupants.face) ? null : occupants.face,
+    effect: vacated.has(occupants.effect) ? null : occupants.effect,
+  }
+  for (const command of commands) {
+    if (command.slot !== 'prop')
+      next[command.slot] = command.expressionId
+  }
+  return next
 }
 
 /** Releases the named slot now, or every LLM-fillable slot when none is named. */
@@ -155,7 +186,7 @@ interface ExpressionReactionState {
  * running episode's strength, so the held face keeps matching the refreshed slot lease.
  *
  * A new episode draws its tickets so a later stronger signal of the same emotion escalates without
- * a null ticket. Occupants are unchanged here: the caller records only the command's own occupant.
+ * a null ticket. Occupants are unchanged here: the caller records every spanned slot.
  * With `heldEmotions` off, or no mapping, the state is returned untouched,
  * which keeps the old slot-only behavior.
  */

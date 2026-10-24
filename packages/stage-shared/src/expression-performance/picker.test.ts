@@ -19,9 +19,40 @@ function emotion(nominal = 0.9, at = 0): AffectSignal {
 const ctx: DeciderContext = { settings, catalog: [entry('a'), entry('b'), entry('effect', 'effect')] }
 
 describe('picker', () => {
+  const combo: CatalogEntry = { ...entry('combo:look', 'combo'), slots: ['face', 'effect'], members: [{ expressionId: 'a', strength: 1 }, { expressionId: 'effect', strength: 1 }] }
+  const comboCtx = { ...ctx, catalog: [...ctx.catalog.map(entry => ({ ...entry, mappings: entry.kind === 'face' ? [] : entry.mappings })), combo] }
+
+  it('automatically emits every combo slot without a separate effect pick', () => {
+    const { decision, state } = decider.decide(emotion(), comboCtx, decider.initial(1))
+    expect(decision.slots.map(command => [command.slot, command.expressionId])).toEqual([['face', combo.id], ['effect', combo.id]])
+    expect(state.occupants).toEqual({ face: combo.id, effect: combo.id })
+  })
+
+  it('excludes combos with occupied spans or a prop and selects them only on their first slot', () => {
+    const episode = decider.decide(emotion(), ctx, decider.initial(1)).decision.episodes[0]
+    for (const occupants of [{ face: 'a', effect: null }, { face: null, effect: 'effect' }])
+      expect(pickerCandidates(comboCtx.catalog, episode, 'face', occupants)).toEqual([])
+    expect(pickerCandidates(comboCtx.catalog, episode, 'effect', { face: null, effect: null }).map(candidate => candidate.id)).toEqual(['effect'])
+    const propCombo: CatalogEntry = { ...combo, slots: ['face', 'prop'], members: [{ expressionId: 'a', strength: 1 }, { expressionId: 'prop', strength: 1 }] }
+    expect(pickerCandidates([...ctx.catalog, entry('prop', 'prop'), propCombo], episode, 'face', { face: null, effect: null }).map(candidate => candidate.id)).not.toContain(combo.id)
+  })
+
+  it.each(['picker', 'planner'] as const)('%s advances identical streams with and without combo candidates', (kind) => {
+    const policy = createDecider(kind)
+    let withCombo = policy.initial(123)
+    let withoutCombo = policy.initial(123)
+    for (let i = 0; i < 20; i++) {
+      const signal = emotion([0.25, 0.6, 0.9][i % 3], i * 3)
+      withCombo = policy.decide(signal, comboCtx, withCombo).state
+      withoutCombo = policy.decide(signal, ctx, withoutCombo).state
+      expect(withCombo.streams).toEqual(withoutCombo.streams)
+      expect(withCombo.tickets).toEqual(withoutCombo.tickets)
+    }
+  })
+
   it('sorts ids by Unicode code point rather than UTF-16 units', () => {
     const episode = decider.decide(emotion(), ctx, decider.initial(1)).decision.episodes[0]
-    expect(pickerCandidates([entry('\u{10000}'), entry('\uE000'), entry('aa'), entry('a')], episode, 'face').map(candidate => candidate.id)).toEqual(['a', 'aa', '\uE000', '\u{10000}'])
+    expect(pickerCandidates([entry('\u{10000}'), entry('\uE000'), entry('aa'), entry('a')], episode, 'face', { face: null, effect: null }).map(candidate => candidate.id)).toEqual(['a', 'aa', '\uE000', '\u{10000}'])
   })
 
   it.each([[0.5, 0], [0.65, 0.5], [0.8, 1]])('gates effects at intensity %s', (intensity, probability) => {

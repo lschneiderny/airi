@@ -69,6 +69,60 @@ function slotChangesPer5sMax(decisions: { at: number, decision: { slots: unknown
 }
 
 describe('planner', () => {
+  const combo: CatalogEntry = { ...entry('combo:look', 'happy', 'combo'), slots: ['face', 'effect'], members: [{ expressionId: 'smile', strength: 1 }, { expressionId: 'sparkle', strength: 1 }] }
+  const comboCtx: DeciderContext = { ...effectCtx, catalog: [...effectCtx.catalog.map(entry => ({ ...entry, mappings: [] })), combo] }
+
+  it('charges a spanning pick for both slots and rejects it atomically without enough budget', () => {
+    const first = run([emotion(0.9, 0)], comboCtx)
+    expect(changes(first.decisions)).toEqual([[['face', combo.id], ['effect', combo.id]]])
+    expect(first.state.budget.changes).toEqual([0, 0])
+    const full = { ...planner.initial(1), budget: { changes: [0, 0], lastAt: 0 } }
+    const rejected = run([emotion(0.9, 1)], comboCtx, full)
+    expect(changes(rejected.decisions)).toEqual([[]])
+    expect(rejected.state.budget.changes).toEqual([0, 0])
+  })
+
+  it('drops a pending effect plan when an emitted combo spans it', () => {
+    const pending = run([emotion(0.6, 0)], effectCtx).state
+    expect(pending.scheduler.plans.map(plan => plan.payload.slot)).toEqual(['face', 'effect'])
+    const explicit = run([{ kind: 'expression', source: 'tool', expressionId: combo.id, at: 0.2 }], { ...comboCtx, catalog: comboCtx.catalog.map(entry => ({ ...entry, mappings: [] })) }, pending)
+    expect(explicit.state.scheduler.plans).toEqual([])
+    expect(changes(run([timing('pause', 1)], comboCtx, explicit.state).decisions)).toEqual([[]])
+    // An automatic combo emitted at sentence_start also drops a still-pending pause plan.
+    const withPendingCombo = { ...pending, scheduler: { ...pending.scheduler, plans: pending.scheduler.plans.map(plan => plan.payload.slot === 'face' ? { ...plan, payload: { ...plan.payload, expressionId: combo.id } } : plan) } }
+    const released = run([timing('sentence_start', 1), timing('pause', 2)], comboCtx, withPendingCombo)
+    expect(changes(released.decisions)).toEqual([[['face', combo.id], ['effect', combo.id]], []])
+    expect(released.state.scheduler.plans).toEqual([])
+  })
+
+  it('arbitrates every combo slot against other plans released at the same deadline', () => {
+    const pending = run([emotion(0.6, 0)], effectCtx).state
+    const withCombo = { ...pending, scheduler: { ...pending.scheduler, plans: pending.scheduler.plans.map(plan => plan.payload.slot === 'face' ? { ...plan, payload: { ...plan.payload, expressionId: combo.id } } : plan) } }
+    const released = run([{ kind: 'deadline', at: settings.planner.scheduleExpiry }], comboCtx, withCombo)
+    expect(changes(released.decisions)).toEqual([[['face', combo.id], ['effect', combo.id]]])
+    expect(released.state.budget.changes).toEqual([settings.planner.scheduleExpiry, settings.planner.scheduleExpiry])
+    const effectFirst = { ...withCombo, scheduler: { ...withCombo.scheduler, plans: [...withCombo.scheduler.plans].reverse().map((plan, seq) => ({ ...plan, seq })) } }
+    expect(changes(run([{ kind: 'deadline', at: settings.planner.scheduleExpiry }], comboCtx, effectFirst).decisions)).toEqual([[['effect', 'sparkle']]])
+  })
+
+  it('drops a pending spanning plan when only its effect is explicitly replaced or cleared', () => {
+    const pending = run([emotion(0.6, 0)], comboCtx).state
+    expect(pending.scheduler.plans).toHaveLength(1)
+    for (const signal of [{ kind: 'expression', source: 'tool', expressionId: 'sparkle', at: 0.2 }, { kind: 'clear', source: 'tool', slot: 'effect', at: 0.2 }] as const) {
+      const changed = run([signal, timing('sentence_start', 1)], comboCtx, pending)
+      expect(changed.decisions[1].slots).toEqual([])
+      expect(changed.state.scheduler.plans).toEqual([])
+    }
+  })
+
+  it('computes the slots of a pending combo from the current catalog at emission', () => {
+    const pending = run([emotion(0.6, 0)], comboCtx).state
+    const edited = { ...comboCtx, catalog: comboCtx.catalog.map(entry => entry.id === combo.id ? { ...combo, members: [{ expressionId: 'smile', strength: 1 }], slots: ['face' as const] } : entry) }
+    const released = run([timing('sentence_start', 1)], edited, pending)
+    expect(changes(released.decisions)).toEqual([[['face', combo.id]]])
+    expect(released.state.budget.changes).toEqual([1])
+  })
+
   it('reacts at once but shows a clear face at the next sentence_start and its effect at the next pause', () => {
     const { decisions } = run([emotion(0.6, 0), timing('sentence_start', 1), timing('pause', 2)], effectCtx)
 

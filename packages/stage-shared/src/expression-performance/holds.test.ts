@@ -58,6 +58,58 @@ function holdsSuite<S>(name: 'picker' | 'planner', decider: Decider<S>) {
   })
 
   describe(`${name} explicit expression reactions`, () => {
+    const combo = { ...entry('combo:angry', 'combo', [{ emotion: 'angry', minBand: 'clear', weight: 1 }]), slots: ['face', 'effect'] as const, members: [{ expressionId: 'glare', strength: 1 }, { expressionId: 'steam', strength: 0.5 }] }
+    const comboCtx: DeciderContext = { ...ctx, catalog: [...catalog, entry('steam', 'effect', [{ emotion: 'angry', minBand: 'slight', weight: 1 }]), { ...combo, slots: [...combo.slots] }] }
+
+    it('emits a combo in face, effect order, holds both occupants, and derives one reaction', () => {
+      const first = decider.decide(expression(combo.id, 0, 'A', 5), comboCtx, decider.initial(17))
+      expect(first.decision.slots).toEqual(['face', 'effect'].map(slot => ({ slot, expressionId: combo.id, holdSeconds: 5, until: 'hold', turnId: 'A' })))
+      expect(first.decision.episodes).toHaveLength(1)
+      expect(first.decision.holds).toHaveLength(1)
+      expect(first.state).toMatchObject({ occupants: { face: combo.id, effect: combo.id } })
+      const escalated = decider.decide(emotion('angry', 0.9, 1, 'A'), comboCtx, first.state)
+      expect(escalated.decision.episodes).toMatchObject([{ escalation: true }])
+      expect(escalated.decision.slots).toEqual([])
+      expect(escalated.state).toMatchObject({ occupants: { face: combo.id, effect: combo.id } })
+    })
+
+    it('replacing face nulls the effect occupant of its previous combo', () => {
+      const first = decider.decide(expression(combo.id, 0), comboCtx, decider.initial(17))
+      const replaced = decider.decide(expression('other', 1), comboCtx, first.state)
+      expect(replaced.state).toMatchObject({ occupants: { face: 'other', effect: null } })
+      expect(first.state).toMatchObject({ occupants: { face: combo.id, effect: combo.id } })
+    })
+
+    it('clearing either slot vacates the entire combo', () => {
+      const first = decider.decide(expression(combo.id, 0), comboCtx, decider.initial(17))
+      for (const slot of ['face', 'effect'] as const) {
+        const cleared = decider.decide({ kind: 'clear', source: 'tool', slot, at: 1 }, comboCtx, first.state)
+        expect(cleared.state).toMatchObject({ occupants: { face: null, effect: null } })
+      }
+    })
+
+    it('a prop command or clear vacates a face+prop combo face occupant', () => {
+      const faceProp = { ...combo, id: 'combo:prop', slots: ['face', 'prop'] as const, members: [{ expressionId: 'glare', strength: 1 }, { expressionId: 'plain', strength: 1 }] }
+      const context: DeciderContext = { ...comboCtx, catalog: [...comboCtx.catalog, { ...faceProp, slots: [...faceProp.slots] }] }
+      const first = decider.decide(expression(faceProp.id, 0), context, decider.initial(17))
+      expect(first.decision.slots.map(command => command.slot)).toEqual(['face', 'prop'])
+      expect(first.state).toMatchObject({ occupants: { face: faceProp.id, effect: null } })
+      for (const signal of [expression('plain', 1), { kind: 'clear', source: 'tool', slot: 'prop', at: 1 } as const])
+        expect(decider.decide(signal, context, first.state).state).toMatchObject({ occupants: { face: null, effect: null } })
+    })
+
+    it('exactly replays a combo expression, escalation and face clear', () => {
+      const signals: AffectSignal[] = [expression(combo.id, 0, 'A'), emotion('angry', 0.9, 1, 'A'), { kind: 'clear', source: 'tool', slot: 'face', at: 2 }]
+      let state = decider.initial(17)
+      const live = signals.map((signal) => {
+        const result = decider.decide(signal, comboCtx, state)
+        state = result.state
+        return { at: signal.at, decision: result.decision }
+      })
+      const trace = parse(AffectTraceSchema, JSON.parse(JSON.stringify({ version: 1, decider: name, checkpoint: decider.initial(17), initialContext: comboCtx, entries: signals.map(signal => ({ type: 'signal', signal })), truncated: false, endAt: 2 })))
+      expect(replayAffectTrace(trace, withKind, { mode: 'exact' })).toEqual(live)
+    })
+
     it('derives the heaviest mapping as an episode and mirrors the slot lifetime in the hold', () => {
       const { decision, state } = decider.decide(expression('glare', 0, 'A'), ctx, decider.initial(17))
       expect(decision.episodes).toMatchObject([{ emotion: 'angry', band: 'strong', intensity: 0.9, escalation: false }])
