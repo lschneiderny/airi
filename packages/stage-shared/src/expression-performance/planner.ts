@@ -41,7 +41,7 @@ function admit(budget: PlannerState['budget'], at: number, settings: DeciderCont
     return null
   if (!sameMoment && budget.lastAt !== null && at - budget.lastAt < settings.minGap)
     return null
-  return { changes: [...changes, ...Array.from({ length: count }).fill(at)], lastAt: at }
+  return { changes: [...changes, ...Array.from<number>({ length: count }).fill(at)], lastAt: at }
 }
 
 function pickSlots(pick: PlannedPick, catalog: readonly CatalogEntry[]) {
