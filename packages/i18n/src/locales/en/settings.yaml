@@ -300,10 +300,6 @@ live2d:
     no-expression: No expressions available for this model.
     save-default: Save expression defaults
     reset: Reset all expressions
-    confirm-all: Confirm all suggested
-    confirmed: Confirmed
-    suggested: Suggested
-    preview: Preview
     llm-exposed: Let the AI use it
     edit: Edit
     close-editor: Close
@@ -318,7 +314,6 @@ live2d:
       label: Label
       kind: Kind
       group: Group
-      confirmed: Confirmed
       mappings: Emotion mappings
       inverted: Switch shows the opposite
       inverted-description: Use this when turning the expression on hides something, such as a coat.

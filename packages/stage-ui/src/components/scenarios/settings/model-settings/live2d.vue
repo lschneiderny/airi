@@ -2,6 +2,7 @@
 import type { ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type {
   Live2DExpressionSettingsCommand,
+  Live2DExpressionSettingsSnapshot,
   Live2DMotionDriver,
 } from '@proj-airi/stage-ui-live2d'
 import type { SelectTabOption } from '@proj-airi/ui'
@@ -10,7 +11,7 @@ import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
 import { defaultModelParameters, useExpressionStore, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { OPFSCache } from '@proj-airi/stage-ui-live2d/utils/opfs-loader'
-import { Button, Checkbox, Collapsible, FieldCheckbox, FieldCombobox, FieldRange, SelectTab } from '@proj-airi/ui'
+import { Button, Checkbox, Collapsible, FieldCheckbox, FieldCombobox, FieldRange, Input, SelectTab } from '@proj-airi/ui'
 import { omit } from 'es-toolkit'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -18,12 +19,14 @@ import { useI18n } from 'vue-i18n'
 
 import MagicMotionSettings from '../../../../features/motions/live2d/components/magic-settings.vue'
 import Live2dExpressionEntry from './live2d-expression-entry.vue'
+import Live2dExpressionGroupRow from './live2d-expression-group-row.vue'
 
 import { useExpressionPerformanceSettings } from '../../../../features/performance/settings'
 import { useSettingsStageModel } from '../../../../stores/settings/stage-model'
 import { PropertyPoint } from '../../../data-pane'
 import { Section } from '../../../layouts'
 import { ColorPalette } from '../../../widgets'
+import { groupDisplayName } from './expression-group-name'
 
 const props = withDefaults(defineProps<{
   palette: string[]
@@ -106,6 +109,57 @@ const expressionGroups = computed(() => {
       groups.set(entry.group, [...(groups.get(entry.group) ?? []), entry.label])
   }
   return [...groups].map(([name, labels]) => ({ name, labels }))
+})
+
+type ExpressionSnapshotEntry = Live2DExpressionSettingsSnapshot['groups'][number]
+type ExpressionRow
+  = | { type: 'group', group: string, members: ExpressionSnapshotEntry[] }
+    | { type: 'entry', entry: ExpressionSnapshotEntry }
+
+/** One row per group at its first member's position, and one row per ungrouped entry, in catalog order. */
+const expressionRows = computed<ExpressionRow[]>(() => {
+  const entries = expressionSettingsSnapshot.value.groups
+  const seen = new Set<string>()
+  const rows: ExpressionRow[] = []
+  for (const entry of entries) {
+    if (!entry.group) {
+      rows.push({ type: 'entry', entry })
+      continue
+    }
+    if (seen.has(entry.group))
+      continue
+    seen.add(entry.group)
+    rows.push({ type: 'group', group: entry.group, members: entries.filter(member => member.group === entry.group) })
+  }
+  return rows
+})
+
+function expressionRowInUse(row: ExpressionRow) {
+  if (row.type === 'group')
+    return true
+  if (row.entry.kind === 'system')
+    return row.entry.active
+  return row.entry.active || row.entry.mappings.length > 0
+}
+
+function expressionRowKey(row: ExpressionRow) {
+  return row.type === 'group' ? `group:${row.group}` : row.entry.id
+}
+
+const showAllExpressions = ref(false)
+const expressionSearch = ref('')
+const expressionSearchActive = computed(() => expressionSearch.value.trim() !== '')
+const inUseExpressionRows = computed(() => expressionRows.value.filter(expressionRowInUse))
+const hiddenExpressionRowCount = computed(() => expressionRows.value.length - inUseExpressionRows.value.length)
+const visibleExpressionRows = computed(() => {
+  if (expressionSearchActive.value) {
+    const query = expressionSearch.value.trim().toLowerCase()
+    const matches = (text: string) => text.toLowerCase().includes(query)
+    return expressionRows.value.filter(row => row.type === 'group'
+      ? matches(groupDisplayName(row.members.map(member => member.label))) || row.members.some(member => matches(member.label))
+      : matches(row.entry.label))
+  }
+  return showAllExpressions.value ? expressionRows.value : inUseExpressionRows.value
 })
 const performanceSettings = useExpressionPerformanceSettings()
 const deciderOptions = computed<SelectTabOption<ExpressionPerformanceSettings['decider']>[]>(() => [
@@ -933,14 +987,40 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       </div>
     </template>
     <template v-else>
-      <div :class="['flex flex-col gap-2']">
-        <Live2dExpressionEntry
-          v-for="entry in expressionSettingsSnapshot.groups"
-          :key="entry.id"
-          :entry="entry"
-          :groups="expressionGroups"
-          @command="applyExpressionSettingsCommand"
-        />
+      <Input
+        v-model="expressionSearch"
+        type="search"
+        :placeholder="t('settings.live2d.expressions.search')"
+        :aria-label="t('settings.live2d.expressions.search')"
+        :class="['mb-2']"
+      />
+      <div
+        v-if="visibleExpressionRows.length === 0"
+        :class="['py-2', 'text-sm text-neutral-500 dark:text-neutral-400']"
+      >
+        {{ expressionSearchActive ? t('settings.live2d.expressions.no-match') : t('settings.live2d.expressions.none-in-use') }}
+      </div>
+      <div v-else :class="['flex flex-col gap-2']">
+        <template v-for="row in visibleExpressionRows" :key="expressionRowKey(row)">
+          <Live2dExpressionGroupRow
+            v-if="row.type === 'group'"
+            :group="row.group"
+            :members="row.members"
+            :groups="expressionGroups"
+            @command="applyExpressionSettingsCommand"
+          />
+          <Live2dExpressionEntry
+            v-else
+            :entry="row.entry"
+            :groups="expressionGroups"
+            @command="applyExpressionSettingsCommand"
+          />
+        </template>
+      </div>
+      <div v-if="!expressionSearchActive && hiddenExpressionRowCount > 0" :class="['mt-2']">
+        <Button size="sm" :aria-expanded="showAllExpressions" @click="showAllExpressions = !showAllExpressions">
+          {{ showAllExpressions ? t('settings.live2d.expressions.show-fewer') : t('settings.live2d.expressions.show-all', { count: hiddenExpressionRowCount }) }}
+        </Button>
       </div>
 
       <!-- Action buttons -->

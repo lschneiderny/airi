@@ -63,7 +63,13 @@ function remoteSnapshot(groups: ExpressionEntry[]): ModelSettingsRuntimeSnapshot
   }
 }
 
-async function renderRemoteExpressions(groups: ExpressionEntry[]) {
+/** Rows the in-use filter hides for a fixture without groups: inactive entries that carry no mapping. */
+function hiddenEntryCount(groups: ExpressionEntry[]) {
+  return groups.filter(entry => entry.group === null && !(entry.kind === 'system' ? entry.active : entry.active || entry.mappings.length > 0)).length
+}
+
+/** Renders the panel over a remote snapshot and, when `showAll` is set, reveals the rows the in-use filter hides. */
+async function renderRemoteExpressions(groups: ExpressionEntry[], options: { showAll?: boolean } = {}) {
   Object.assign(window, { Live2DCubismCore: {} })
   const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
     import('@proj-airi/stage-ui-live2d'),
@@ -78,6 +84,8 @@ async function renderRemoteExpressions(groups: ExpressionEntry[]) {
     global: { plugins: [pinia, createTestI18n()] },
   })
   await screen.getByText(t('settings.live2d.expressions.title'), { exact: true }).click()
+  if (options.showAll)
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.show-all', { count: hiddenEntryCount(groups) }), exact: true }).click()
   return { screen, pinia, onLive2dExpressionCommand }
 }
 
@@ -179,6 +187,8 @@ describe('live2D model settings', () => {
     })
 
     await screen.getByText(t('settings.live2d.expressions.title'), { exact: true }).click()
+    // `happy` is inactive and unmapped, so the in-use filter hides it until Show all.
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.show-all', { count: 1 }), exact: true }).click()
     await expect.element(screen.getByText('happy', { exact: true })).toBeVisible()
     await expect.element(screen.getByText('surprised', { exact: true })).toBeVisible()
 
@@ -190,26 +200,97 @@ describe('live2D model settings', () => {
 
   it('renders slim rows with a mapping summary, and offers the AI toggle only for face, effect, and prop', async () => {
     const { screen } = await renderRemoteExpressions([
-      expressionEntry({ id: 'a', label: 'Blush', kind: 'face', group: 'Cheeks', confirmed: true, mappings: [{ emotion: 'angry', weight: 1, minBand: 'clear' }, { emotion: 'angry', weight: 2, minBand: 'strong' }, { emotion: 'flustered', weight: 1, minBand: 'clear' }] }),
+      expressionEntry({ id: 'a', label: 'Blush', kind: 'face', confirmed: true, mappings: [{ emotion: 'angry', weight: 1, minBand: 'clear' }, { emotion: 'angry', weight: 2, minBand: 'strong' }, { emotion: 'flustered', weight: 1, minBand: 'clear' }] }),
       expressionEntry({ id: 'b', label: 'Hat', kind: 'outfit' }),
-    ])
-    for (const key of ['kinds.face', 'kinds.outfit', 'confirmed', 'emotions.angry', 'emotions.flustered'])
+    ], { showAll: true })
+    for (const key of ['kinds.face', 'kinds.outfit', 'emotions.angry', 'emotions.flustered'])
       expect(t(`settings.live2d.expressions.${key}`)).not.toBe(`settings.live2d.expressions.${key}`)
     await expect.element(screen.getByText('Blush', { exact: true })).toBeVisible()
     await expect.element(screen.getByText('Hat', { exact: true })).toBeVisible()
     await expect.element(screen.getByText(`${t('settings.live2d.expressions.emotions.angry')}, ${t('settings.live2d.expressions.emotions.flustered')}`, { exact: true })).toBeVisible()
     await expect.element(screen.getByText(t('settings.live2d.expressions.kinds.face'), { exact: true })).not.toBeInTheDocument()
     await expect.element(screen.getByText(t('settings.live2d.expressions.kinds.outfit'), { exact: true })).not.toBeInTheDocument()
-    await expect.element(screen.getByText('Cheeks', { exact: true })).not.toBeInTheDocument()
-    await expect.element(screen.getByText(t('settings.live2d.expressions.confirmed'), { exact: true })).not.toBeInTheDocument()
     await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.llm-exposed')}: Blush` })).toBeVisible()
     await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.llm-exposed')}: Hat` })).not.toBeInTheDocument()
+  })
+
+  describe('relevance view', () => {
+    /** Bear-like fixture: anger mapped, coat unmapped, watermark system, hair group of two. */
+    function bearSnapshot(overrides: Partial<Record<'anger' | 'coat' | 'watermark', Partial<ExpressionEntry>>> = {}) {
+      return [
+        expressionEntry({ id: 'anger.exp3.json', label: 'anger', kind: 'face', mappings: [{ emotion: 'angry', weight: 1, minBand: 'clear' }], ...overrides.anger }),
+        expressionEntry({ id: 'coat.exp3.json', label: 'coat', kind: 'outfit', ...overrides.coat }),
+        expressionEntry({ id: 'watermark.exp3.json', label: 'watermark', kind: 'system', ...overrides.watermark }),
+        expressionEntry({ id: 'hair1.exp3.json', label: 'Hair 1', kind: 'outfit', group: 'group:hair1.exp3.json' }),
+        expressionEntry({ id: 'hair2.exp3.json', label: 'Hair 2', kind: 'outfit', group: 'group:hair1.exp3.json' }),
+      ]
+    }
+    // 5 entries produce 4 rows (the hair pair is one row); coat and watermark are the 2 the in-use filter hides.
+    const hiddenRowCount = 2
+
+    function expressionRowLabels(screen: Awaited<ReturnType<typeof renderRemoteExpressions>>['screen']) {
+      return screen.getByRole('switch').all().map(locator => locator.element().getAttribute('aria-label') ?? '').filter(name => name.startsWith(`${t('settings.live2d.expressions.switch')}: `))
+    }
+
+    it('shows only in-use rows by default and reveals the rest through Show all', async () => {
+      for (const key of ['show-all', 'show-fewer', 'none-in-use', 'no-match', 'search'])
+        expect(t(`settings.live2d.expressions.${key}`)).not.toBe(`settings.live2d.expressions.${key}`)
+      const { screen } = await renderRemoteExpressions(bearSnapshot())
+      await expect.element(screen.getByText('anger', { exact: true })).toBeVisible()
+      await expect.element(screen.getByText('Hair', { exact: true })).toBeVisible()
+      await expect.element(screen.getByText('coat', { exact: true })).not.toBeInTheDocument()
+      await expect.element(screen.getByText('watermark', { exact: true })).not.toBeInTheDocument()
+
+      const showAll = screen.getByRole('button', { name: t('settings.live2d.expressions.show-all', { count: hiddenRowCount }), exact: true })
+      await expect.element(showAll).toBeVisible()
+      await showAll.click()
+      await expect.element(screen.getByText('coat', { exact: true })).toBeVisible()
+      await expect.element(screen.getByText('watermark', { exact: true })).toBeVisible()
+      await expect.element(screen.getByRole('button', { name: t('settings.live2d.expressions.show-fewer'), exact: true })).toBeVisible()
+    })
+
+    it('searches every row regardless of the in-use filter and reports no match', async () => {
+      const { screen } = await renderRemoteExpressions(bearSnapshot())
+      const search = screen.getByRole('searchbox', { name: t('settings.live2d.expressions.search'), exact: true })
+      await search.fill('coat')
+      await expect.element(screen.getByText('coat', { exact: true })).toBeVisible()
+      await expect.element(screen.getByText('anger', { exact: true })).not.toBeInTheDocument()
+      await expect.element(screen.getByRole('button', { name: t('settings.live2d.expressions.show-all', { count: hiddenRowCount }), exact: true })).not.toBeInTheDocument()
+
+      await search.fill('zzzz')
+      await expect.element(screen.getByText(t('settings.live2d.expressions.no-match'), { exact: true })).toBeVisible()
+      await expect.element(screen.getByText('coat', { exact: true })).not.toBeInTheDocument()
+    })
+
+    it('shows an active system entry by default', async () => {
+      const { screen } = await renderRemoteExpressions(bearSnapshot({ watermark: { active: true } }))
+      await expect.element(screen.getByText('watermark', { exact: true })).toBeVisible()
+      await expect.element(screen.getByText('coat', { exact: true })).not.toBeInTheDocument()
+    })
+
+    it('keeps catalog order and a mapped entry visible when it is toggled off through the remote command', async () => {
+      const { screen, onLive2dExpressionCommand, pinia } = await renderRemoteExpressions(bearSnapshot({ anger: { active: true } }))
+      const { useExpressionStore } = await import('@proj-airi/stage-ui-live2d')
+      await screen.getByRole('button', { name: t('settings.live2d.expressions.show-all', { count: hiddenRowCount }), exact: true }).click()
+      await expect.element(screen.getByText('watermark', { exact: true })).toBeVisible()
+      const before = expressionRowLabels(screen)
+      expect(before).toEqual(['anger', 'coat', 'watermark'].map(label => `${t('settings.live2d.expressions.switch')}: ${label}`))
+
+      await screen.getByRole('switch', { name: `${t('settings.live2d.expressions.switch')}: anger` }).click()
+      expect(onLive2dExpressionCommand).toHaveBeenCalledWith({ type: 'set-active', id: 'anger.exp3.json', active: false })
+      expect(useExpressionStore(pinia).definitions).toEqual([])
+
+      // The owner answers with a new snapshot; anger stays visible because it is mapped.
+      await screen.rerender({ runtimeSnapshot: remoteSnapshot(bearSnapshot({ anger: { active: false } })) })
+      await expect.element(screen.getByText('anger', { exact: true })).toBeVisible()
+      expect(expressionRowLabels(screen)).toEqual(before)
+    })
   })
 
   it('shows an inverted entry as on while inactive and turns it on through set-active', async () => {
     const { screen, onLive2dExpressionCommand } = await renderRemoteExpressions([
       expressionEntry({ id: 'coat.exp3.json', label: 'coat', kind: 'outfit', inverted: true, active: false }),
-    ])
+    ], { showAll: true })
     const coat = screen.getByRole('switch', { name: `${t('settings.live2d.expressions.switch')}: coat` })
     await expect.element(coat).toBeChecked()
     await coat.click()
@@ -218,7 +299,7 @@ describe('live2D model settings', () => {
   })
 
   it('emits update-entry when a label is edited and applied', async () => {
-    const { screen, onLive2dExpressionCommand } = await renderRemoteExpressions([expressionEntry({ id: 'red.exp3.json', label: 'red' })])
+    const { screen, onLive2dExpressionCommand } = await renderRemoteExpressions([expressionEntry({ id: 'red.exp3.json', label: 'red' })], { showAll: true })
     await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
     await screen.getByRole('textbox', { name: t('settings.live2d.expressions.fields.label'), exact: true }).fill('Blush')
     await screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true }).click()
@@ -231,7 +312,7 @@ describe('live2D model settings', () => {
   })
 
   it('includes the inverted checkbox in the applied patch', async () => {
-    const { screen, onLive2dExpressionCommand } = await renderRemoteExpressions([expressionEntry({ id: 'coat.exp3.json', label: 'coat', kind: 'outfit' })])
+    const { screen, onLive2dExpressionCommand } = await renderRemoteExpressions([expressionEntry({ id: 'coat.exp3.json', label: 'coat', kind: 'outfit' })], { showAll: true })
     await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
     expect(t('settings.live2d.expressions.fields.inverted')).not.toBe('settings.live2d.expressions.fields.inverted')
     await expect.element(screen.getByText(t('settings.live2d.expressions.fields.inverted-description'), { exact: true })).toBeVisible()
@@ -246,7 +327,7 @@ describe('live2D model settings', () => {
   })
 
   it('rejects an empty label and a mapping weight of 0 without emitting a command', async () => {
-    const { screen, onLive2dExpressionCommand } = await renderRemoteExpressions([expressionEntry({ id: 'red.exp3.json', label: 'red' })])
+    const { screen, onLive2dExpressionCommand } = await renderRemoteExpressions([expressionEntry({ id: 'red.exp3.json', label: 'red' })], { showAll: true })
     await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
     const apply = screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true })
 
@@ -271,7 +352,7 @@ describe('live2D model settings', () => {
   })
 
   it('keeps an open draft when the snapshot changes and offers to reload it', async () => {
-    const { screen } = await renderRemoteExpressions([expressionEntry({ id: 'red.exp3.json', label: 'red' })])
+    const { screen } = await renderRemoteExpressions([expressionEntry({ id: 'red.exp3.json', label: 'red' })], { showAll: true })
     await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
     const label = screen.getByRole('textbox', { name: t('settings.live2d.expressions.fields.label'), exact: true })
     await label.fill('Draft')
