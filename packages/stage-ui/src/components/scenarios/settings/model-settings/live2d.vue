@@ -104,8 +104,9 @@ function applyExpressionSettingsCommand(command: Live2DExpressionSettingsCommand
 
 const expressionGroups = computed(() => {
   const groups = new Map<string, string[]>()
+  // A group name may be an empty string; only null means ungrouped.
   for (const entry of expressionSettingsSnapshot.value.groups) {
-    if (entry.group)
+    if (entry.group !== null)
       groups.set(entry.group, [...(groups.get(entry.group) ?? []), entry.label])
   }
   return [...groups].map(([name, labels]) => ({ name, labels }))
@@ -122,7 +123,7 @@ const expressionRows = computed<ExpressionRow[]>(() => {
   const seen = new Set<string>()
   const rows: ExpressionRow[] = []
   for (const entry of entries) {
-    if (!entry.group) {
+    if (entry.group === null) {
       rows.push({ type: 'entry', entry })
       continue
     }
@@ -1000,10 +1001,11 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       >
         {{ expressionSearchActive ? t('settings.live2d.expressions.no-match') : t('settings.live2d.expressions.none-in-use') }}
       </div>
-      <div v-else :class="['flex flex-col gap-2']">
+      <div v-else role="list" :class="['flex flex-col gap-2']">
         <template v-for="row in visibleExpressionRows" :key="expressionRowKey(row)">
           <Live2dExpressionGroupRow
             v-if="row.type === 'group'"
+            role="listitem"
             :group="row.group"
             :members="row.members"
             :groups="expressionGroups"
@@ -1011,6 +1013,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
           />
           <Live2dExpressionEntry
             v-else
+            role="listitem"
             :entry="row.entry"
             :groups="expressionGroups"
             @command="applyExpressionSettingsCommand"

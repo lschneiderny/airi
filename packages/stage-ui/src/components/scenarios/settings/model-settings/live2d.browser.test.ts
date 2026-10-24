@@ -199,19 +199,29 @@ describe('live2D model settings', () => {
   })
 
   it('renders slim rows with a mapping summary, and offers the AI toggle only for face, effect, and prop', async () => {
+    const group = 'group:cheeks-blush.exp3.json'
     const { screen } = await renderRemoteExpressions([
-      expressionEntry({ id: 'a', label: 'Blush', kind: 'face', confirmed: true, mappings: [{ emotion: 'angry', weight: 1, minBand: 'clear' }, { emotion: 'angry', weight: 2, minBand: 'strong' }, { emotion: 'flustered', weight: 1, minBand: 'clear' }] }),
+      expressionEntry({ id: 'a', label: 'Cheeks Blush', kind: 'face', group, confirmed: true, mappings: [{ emotion: 'angry', weight: 1, minBand: 'clear' }, { emotion: 'angry', weight: 2, minBand: 'strong' }, { emotion: 'flustered', weight: 1, minBand: 'clear' }] }),
+      expressionEntry({ id: 'c', label: 'Cheeks Pale', kind: 'face', group }),
       expressionEntry({ id: 'b', label: 'Hat', kind: 'outfit' }),
     ], { showAll: true })
-    for (const key of ['kinds.face', 'kinds.outfit', 'emotions.angry', 'emotions.flustered'])
+    for (const key of ['kinds.face', 'kinds.outfit', 'emotions.angry', 'emotions.flustered', 'group-members'])
       expect(t(`settings.live2d.expressions.${key}`)).not.toBe(`settings.live2d.expressions.${key}`)
-    await expect.element(screen.getByText('Blush', { exact: true })).toBeVisible()
+    // The group row carries the readable name, never the stored group id.
+    await expect.element(screen.getByText('Cheeks', { exact: true })).toBeVisible()
+    await expect.element(screen.getByText(group, { exact: true })).not.toBeInTheDocument()
+    await expect.element(screen.getByText('Cheeks Blush', { exact: true })).not.toBeInTheDocument()
     await expect.element(screen.getByText('Hat', { exact: true })).toBeVisible()
+    await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.llm-exposed')}: Hat` })).not.toBeInTheDocument()
+
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.group-members'), exact: true }).click()
+    await expect.element(screen.getByText('Cheeks Blush', { exact: true })).toBeVisible()
     await expect.element(screen.getByText(`${t('settings.live2d.expressions.emotions.angry')}, ${t('settings.live2d.expressions.emotions.flustered')}`, { exact: true })).toBeVisible()
     await expect.element(screen.getByText(t('settings.live2d.expressions.kinds.face'), { exact: true })).not.toBeInTheDocument()
     await expect.element(screen.getByText(t('settings.live2d.expressions.kinds.outfit'), { exact: true })).not.toBeInTheDocument()
-    await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.llm-exposed')}: Blush` })).toBeVisible()
-    await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.llm-exposed')}: Hat` })).not.toBeInTheDocument()
+    await expect.element(screen.getByText(group, { exact: true })).not.toBeInTheDocument()
+    await expect.element(screen.getByText('Confirmed', { exact: true })).not.toBeInTheDocument()
+    await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.llm-exposed')}: Cheeks Blush` })).toBeVisible()
   })
 
   describe('relevance view', () => {
@@ -228,8 +238,9 @@ describe('live2D model settings', () => {
     // 5 entries produce 4 rows (the hair pair is one row); coat and watermark are the 2 the in-use filter hides.
     const hiddenRowCount = 2
 
+    /** The leading label of every rendered row, group rows included, in document order. */
     function expressionRowLabels(screen: Awaited<ReturnType<typeof renderRemoteExpressions>>['screen']) {
-      return screen.getByRole('switch').all().map(locator => locator.element().getAttribute('aria-label') ?? '').filter(name => name.startsWith(`${t('settings.live2d.expressions.switch')}: `))
+      return screen.getByRole('listitem').all().map(locator => locator.element().querySelector('span')?.textContent?.trim() ?? '')
     }
 
     it('shows only in-use rows by default and reveals the rest through Show all', async () => {
@@ -268,13 +279,23 @@ describe('live2D model settings', () => {
       await expect.element(screen.getByText('coat', { exact: true })).not.toBeInTheDocument()
     })
 
-    it('keeps catalog order and a mapped entry visible when it is toggled off through the remote command', async () => {
+    it('renders an empty-named group as one group row', async () => {
+      const { screen } = await renderRemoteExpressions([
+        expressionEntry({ id: 'blank1.exp3.json', label: 'Blank 1', kind: 'outfit', group: '' }),
+        expressionEntry({ id: 'blank2.exp3.json', label: 'Blank 2', kind: 'outfit', group: '' }),
+      ])
+      await expect.element(screen.getByText('Blank', { exact: true })).toBeVisible()
+      await expect.element(screen.getByRole('combobox', { name: t('settings.live2d.expressions.group-select') })).toBeVisible()
+      await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.switch')}: Blank 1` })).not.toBeInTheDocument()
+      expect(expressionRowLabels(screen)).toEqual(['Blank'])
+    })
+
+    it('keeps catalog order and a mapped entry visible when it is toggled off in the in-use view', async () => {
       const { screen, onLive2dExpressionCommand, pinia } = await renderRemoteExpressions(bearSnapshot({ anger: { active: true } }))
       const { useExpressionStore } = await import('@proj-airi/stage-ui-live2d')
-      await screen.getByRole('button', { name: t('settings.live2d.expressions.show-all', { count: hiddenRowCount }), exact: true }).click()
-      await expect.element(screen.getByText('watermark', { exact: true })).toBeVisible()
+      await expect.element(screen.getByText('Hair', { exact: true })).toBeVisible()
       const before = expressionRowLabels(screen)
-      expect(before).toEqual(['anger', 'coat', 'watermark'].map(label => `${t('settings.live2d.expressions.switch')}: ${label}`))
+      expect(before).toEqual(['anger', 'Hair'])
 
       await screen.getByRole('switch', { name: `${t('settings.live2d.expressions.switch')}: anger` }).click()
       expect(onLive2dExpressionCommand).toHaveBeenCalledWith({ type: 'set-active', id: 'anger.exp3.json', active: false })
