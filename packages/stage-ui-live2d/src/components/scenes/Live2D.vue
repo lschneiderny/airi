@@ -20,6 +20,7 @@ import Live2DModel from './live2d/Model.vue'
 import Live2DPresenceBubble from './live2d/presence-bubble.vue'
 
 import { useLive2DEyeFocusFor, useSettingsLive2d } from '../../composables/live2d'
+import { createCursorExpiry } from './live2d/cursor-expiry'
 
 import '../../utils/live2d-zip-loader'
 import '../../utils/live2d-opfs-registration'
@@ -72,7 +73,9 @@ const componentStateModel = defineModel<'pending' | 'loading' | 'mounted'>('mode
 const live2dCanvasRef = ref<InstanceType<typeof Live2DCanvas>>()
 const live2dModelRef = ref<InstanceType<typeof Live2DModel>>()
 const activeCursorPosition = ref<Live2DEyeFocusSource | null>(null)
-let clearCursorFocusTimeout: ReturnType<typeof setTimeout> | undefined
+const cursorExpiry = createCursorExpiry(() => {
+  activeCursorPosition.value = null
+})
 
 const {
   live2dMotionDriver,
@@ -133,20 +136,16 @@ const mouseFocus = useLive2DEyeFocusFor({
 })
 watch(() => props.cursorPosition, (cursorPosition) => {
   activeCursorPosition.value = cursorPosition ? { ...cursorPosition } : null
-  if (clearCursorFocusTimeout)
-    clearTimeout(clearCursorFocusTimeout)
-  clearCursorFocusTimeout = undefined
   // Natural eases its own attention, so its cursor clears only when the host stops reporting one; an expiry would snap the gaze away.
-  if (live2dMotionDriver.value === 'natural')
-    return
-  clearCursorFocusTimeout = setTimeout(() => {
-    activeCursorPosition.value = null
-  }, 1000)
+  cursorExpiry.onCursor(live2dMotionDriver.value, activeCursorPosition.value !== null)
+})
+
+watch(live2dMotionDriver, (driver, previousDriver) => {
+  cursorExpiry.onDriverChange(previousDriver, driver, activeCursorPosition.value !== null)
 })
 
 onUnmounted(() => {
-  if (clearCursorFocusTimeout)
-    clearTimeout(clearCursorFocusTimeout)
+  cursorExpiry.dispose()
 })
 
 watch([componentStateModel, componentStateCanvas], () => {
