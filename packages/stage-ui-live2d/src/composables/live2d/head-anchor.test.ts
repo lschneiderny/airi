@@ -1,8 +1,37 @@
 import type { Live2DHeadSource } from './head-anchor'
 
+import { Matrix } from '@pixi/math'
 import { describe, expect, it, vi } from 'vitest'
 
-import { createLive2DHeadTracker } from './head-anchor'
+import { createLive2DHeadTracker, live2DCanvasRectToViewport } from './head-anchor'
+
+describe('head viewport conversion', () => {
+  it.each([1, 2, 3])('maps model layout, model pivot/scale, and %ix render scale to the same CSS rect', (resolution) => {
+    const rect = live2DCanvasRectToViewport(
+      { x: 1000, y: 400, width: 800, height: 600 },
+      new Matrix(0.5, 0, 0, 0.5, 10, 20),
+      new Matrix(0.2 * resolution, 0, 0, 0.2 * resolution, 100 * resolution, 40 * resolution),
+      { left: 20, top: 30, width: 450, height: 600 },
+      { width: 450 * resolution, height: 600 * resolution },
+    )
+    // Model canvas -> layout: (510,220)-(910,520); model -> stage: (202,84)-(282,144).
+    // The backing-store render scale cancels against backing/CSS size, then client origin adds (20,30).
+    expect(rect.x).toBeCloseTo(222, 12)
+    expect(rect.y).toBeCloseTo(114, 12)
+    expect(rect.width).toBeCloseTo(80, 12)
+    expect(rect.height).toBeCloseTo(60, 12)
+  })
+
+  it('keeps every transformed corner inside the CSS box when the model rotates', () => {
+    expect(live2DCanvasRectToViewport(
+      { x: 1000, y: 400, width: 800, height: 600 },
+      new Matrix(0.5, 0, 0, 0.5, 10, 20),
+      new Matrix(0, 0.4, -0.4, 0, 400, 80),
+      { left: 20, top: 30, width: 450, height: 600 },
+      { width: 900, height: 1200 },
+    )).toEqual({ x: 116, y: 172, width: 60, height: 80 })
+  })
+})
 
 interface RiggedModelOptions {
   /** Drawables the head carries, by index. */

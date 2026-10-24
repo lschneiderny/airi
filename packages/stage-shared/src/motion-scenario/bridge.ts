@@ -30,6 +30,10 @@ export const MotionQaStateSchema = strictObject({
   naturalActive: boolean(),
   hold: nullable(strictObject({ emotion, strength: pipe(number(), finite()) })),
   captureActive: boolean(),
+  /** Unscaled face-feature cursor unit in viewport CSS pixels, or null while unavailable. */
+  head: nullable(strictObject({ x: pipe(number(), finite()), y: pipe(number(), finite()), width: pipe(number(), finite(), minValue(Number.MIN_VALUE)), height: pipe(number(), finite(), minValue(Number.MIN_VALUE)) })),
+  /** DOM window origin in screen CSS pixels; the harness converts to physical pixels. */
+  screen: strictObject({ x: pipe(number(), finite()), y: pipe(number(), finite()), devicePixelRatio: pipe(number(), finite(), minValue(Number.MIN_VALUE)) }),
 })
 export type MotionQaState = InferOutput<typeof MotionQaStateSchema>
 

@@ -50,6 +50,48 @@ describe('compareScenarioEvents', () => {
 describe('verifyT3Run', () => {
   const run = { dispatched: 2, rejected: [] }
 
+  function touchTrace(): TraceEvents {
+    return trace({
+      t: [0, 1, 3, 4, 5],
+      channels: { ParamCheek: [0, 0, 0.3, 0.5, 0] },
+      events: [
+        ...trace().events,
+        { t: 1, source: 'natural', event: { kind: 'attention', phase: 'notice' } },
+        { t: 1.4, source: 'natural', event: { kind: 'attention', phase: 'engage' } },
+        { t: 2, source: 'natural', event: { kind: 'touch', touch: 'pet-start' } },
+        { t: 5, source: 'natural', event: { kind: 'touch', touch: 'pet-end' } },
+        { t: 6, source: 'natural', event: { kind: 'touch', touch: 'poke' } },
+        { t: 7, source: 'natural', event: { kind: 'touch', touch: 'poke' } },
+      ],
+    })
+  }
+
+  it('requires staged attention, one pet, two pokes, and a rising cheek in a touch run', () => {
+    const input = { scenario: { ...scenario, id: 't3-touch' }, run, trace: touchTrace(), screenshots: 1 }
+    expect(verifyT3Run(input)).toMatchObject({ ok: true, counts: { petStarts: 1, petEnds: 1, pokes: 2, dispatched: 2, rejected: 0 } })
+    const absent = verifyT3Run({ ...input, trace: trace() })
+    expect(absent.failures).toHaveLength(4)
+    const flat = verifyT3Run({ ...input, trace: { ...touchTrace(), channels: { ParamCheek: [0, 0, 0, 0, 0] } } })
+    expect(flat.failures).toEqual([expect.stringMatching(/cheek channel/)])
+    const reversed = touchTrace()
+    reversed.events = reversed.events.map(entry => entry.source === 'natural' && entry.event.phase === 'notice' ? { ...entry, t: 1.5 } : entry)
+    expect(verifyT3Run({ ...input, trace: reversed }).failures).toEqual([expect.stringMatching(/notice before engage/)])
+  })
+
+  it('fails duplicate pet events and missing pokes even when dispatch succeeded', () => {
+    const captured = touchTrace()
+    captured.events = captured.events.filter(entry => entry.source !== 'natural' || entry.event.touch !== 'poke')
+    captured.events.push({ t: 3, source: 'natural', event: { kind: 'touch', touch: 'pet-start' } })
+    const result = verifyT3Run({ scenario: { ...scenario, id: 't3-touch' }, run, trace: captured, screenshots: 1 })
+    expect(result.failures).toEqual([expect.stringMatching(/exactly one/), expect.stringMatching(/two pokes/)])
+  })
+
+  it('requires zero pet events in a passing-cursor run', () => {
+    const input = { scenario: { ...scenario, id: 't3-touch-pass' }, run, screenshots: 1 }
+    expect(verifyT3Run({ ...input, trace: trace() }).ok).toBe(true)
+    expect(verifyT3Run({ ...input, trace: touchTrace() }).failures).toEqual([expect.stringMatching(/passing cursor/)])
+  })
+
   it('passes a complete run', () => {
     expect(verifyT3Run({ scenario, run, trace: trace(), screenshots: 1 })).toMatchObject({ ok: true, failures: [], counts: { scenarioEvents: 2, naturalHolds: 1, screenshots: 1 } })
   })

@@ -67,6 +67,40 @@ describe('loadT3Scenario', () => {
     expect(loadT3Scenario('builtin:t3-smoke', { fixturesDir, cwd: dir }).scenario.id).toBe('t3-smoke')
   })
 
+  it('loads the near-band touch approach without changing the strokes, rest, or pokes', () => {
+    const scenario = loadT3Scenario('builtin:t3-touch', { fixturesDir, cwd: dir }).scenario
+    const pointer = scenario.events.filter(event => event.kind === 'pointer')
+    const approach = pointer.filter(event => event.at < 4.5)
+    expect(approach).toHaveLength(27)
+    expect(approach[0]).toEqual({ kind: 'pointer', at: 2, phase: 'move', x: 1.9, y: 0 })
+    expect(approach.at(-1)).toEqual({ kind: 'pointer', at: 2.433333, phase: 'move', x: 0.6, y: 0 })
+    for (let index = 1; index < approach.length; index++) {
+      const previous = approach[index - 1]
+      const current = approach[index]
+      expect((previous.x - current.x) / (current.at - previous.at)).toBeCloseTo(3, 3)
+    }
+    const strokes = pointer.filter(event => event.at >= 4.5 && event.at <= 8.5)
+    expect(strokes).toHaveLength(241)
+    expect(strokes[0].at).toBe(4.5)
+    expect(strokes.at(-1)?.at).toBe(8.5)
+    expect(Math.min(...strokes.map(event => event.x))).toBe(-0.4)
+    expect(Math.max(...strokes.map(event => event.x))).toBe(0.4)
+    expect(strokes.every(event => event.phase === 'move' && event.y === 0)).toBe(true)
+    for (let index = 1; index < strokes.length; index++)
+      expect(strokes[index].at - strokes[index - 1].at).toBeCloseTo(1 / 60, 5)
+    const pokes = pointer.filter(event => event.phase === 'down' || event.phase === 'up')
+    expect(pokes).toEqual([
+      { kind: 'pointer', at: 10, phase: 'down', x: 0, y: 1.1 },
+      { kind: 'pointer', at: 10.2, phase: 'up', x: 0, y: 1.1 },
+      { kind: 'pointer', at: 12, phase: 'down', x: 0, y: -0.35 },
+      { kind: 'pointer', at: 12.2, phase: 'up', x: 0, y: -0.35 },
+    ])
+    expect(pokes[0].at - strokes.at(-1)!.at).toBe(1.5)
+    expect(pointer.every(event => Math.abs(event.x) <= 1.9)).toBe(true)
+    expect(scenario.events.at(-1)).toEqual(pokes.at(-1))
+    expect(scenario.screenshotsAt).toEqual([6.5, 10.3, 12.3])
+  })
+
   it('rejects unknown builtins, invalid scenarios, missing t3, and scenarios longer than 599 s', () => {
     expect(() => loadT3Scenario('builtin:nope', { fixturesDir, cwd: dir })).toThrow(/No builtin scenario "nope"/)
     expect(() => loadT3Scenario(write('bad.json', { ...base, version: 2 }), { fixturesDir, cwd: dir })).toThrow(/is invalid/)

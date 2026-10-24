@@ -10,6 +10,7 @@ import type { TeardownReport } from './teardown'
 
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { platform } from 'node:process'
 
 import { errorMessageFrom } from '@moeru/std'
 import { CdpClient, waitFor } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
@@ -22,6 +23,7 @@ import { toRenderedExpressionIds } from './expression-ids'
 import { importRig, zipRig } from './import-rig'
 import { connectStage, failOnExit, launchStageTamagotchi } from './launch'
 import { completeOnboarding } from './onboarding'
+import { planPointerSteps, playPointer, readPointerDesktop } from './pointer'
 import { assertStageAnimating, captureStagePng, planScreenshots, untilDeadline } from './screenshot'
 import { findWorktreeAppProcesses, teardownRun, trackTree } from './teardown'
 import { captureMarkerPrefix, parseTraceEvents, verifyT3Run } from './verify-trace'
@@ -86,6 +88,9 @@ function writeJson(run: RunHandle, name: string, value: unknown) {
  */
 export async function runT3(options: RunT3Options): Promise<RunT3Result> {
   const { repoRoot, scenario, log, signal } = options
+  const cursorAttention = scenario.events.some(event => event.kind === 'pointer')
+  if (cursorAttention && platform !== 'win32')
+    return { exitCode: 2, summary: 'pointer-platform-unsupported: real pointer runs require Windows' }
   const conflicts = findWorktreeAppProcesses(await listLiveProcesses(), repoRoot, options.selfPids)
   if (conflicts.length > 0) {
     return {
@@ -119,6 +124,9 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
   let exitCode = 1
   let summary = 'not started'
   const bridgeLog: Record<string, unknown> = {}
+  const pointerAbort = new AbortController()
+  let pointerPlayback: ReturnType<typeof playPointer> | undefined
+  let cursorParked = false
 
   try {
     const zipped = await abortable(zipRig(options.rig.modelDir, zipPath))
@@ -147,14 +155,39 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
     log('qa-tools t3: bridge answered; importing the rig')
 
     bridgeLog.import = await abortable(failOnExit(launched, 'the rig import', importRig(stagePage, bridge, zipPath, bounds.importMs)))
-    bridgeLog.configured = await abortable(bridge.call('configure', { driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: scenario.settings?.heldEmotions ?? true }, bounds.commandMs))
+    bridgeLog.configured = await abortable(bridge.call('configure', { driver: 'natural', cursorAttention, expressionEnabled: true, heldEmotions: scenario.settings?.heldEmotions ?? true }, bounds.commandMs))
+    bridgeLog.cursorAttention = cursorAttention
+    bridgeLog.fadeOnHover = await abortable(stagePage.evaluate('JSON.parse(localStorage.getItem("controls-island/fade-on-hover-enabled") ?? "false")'))
+    if (cursorAttention)
+      bridgeLog.frames = await abortable(assertStageAnimating(stagePage))
+    const pointerState = cursorAttention ? await abortable(bridge.call('state', undefined, bounds.commandMs)) : undefined
+    if (pointerState && !pointerState.modelLoaded)
+      throw new Error('pointer-model-unavailable: model load has not committed')
+    bridgeLog.pointerState = pointerState
+    let steps: ReturnType<typeof planPointerSteps>['steps'] = []
+    if (pointerState) {
+      const windowCss = await abortable(stagePage.evaluate<{ width: number, height: number }>('({ width: innerWidth, height: innerHeight })'))
+      bridgeLog.pointerGeometry = { head: pointerState.head, windowCss, screen: pointerState.screen }
+      log(`qa-tools t3: pointer geometry headCss=${JSON.stringify(pointerState.head)} windowCss=${JSON.stringify(windowCss)}`)
+      if (pointerState.head && pointerState.head.width > windowCss.width / 2)
+        throw new Error(`pointer-head-implausible: head width ${pointerState.head.width} CSS px exceeds half window width ${windowCss.width / 2} CSS px`)
+      const desktop = await abortable(readPointerDesktop())
+      bridgeLog.virtualScreen = desktop
+      // Refuse before even parking: neither the declared nor a mirrored path may move outside the desktop.
+      const plan = planPointerSteps(scenario.events, pointerState, desktop)
+      steps = plan.steps
+      bridgeLog.pointerPlan = plan
+      log(`qa-tools t3: pointer plan ${steps.length} steps, mirrored=${plan.mirrored ?? 'none'}, virtualScreen=${JSON.stringify(desktop)}`)
+    }
     const parked = await abortable(parkCursor())
     bridgeLog.cursor = parked
     if (!parked.ok)
       throw new Error(`Cursor parking failed: ${parked.reason}`)
+    cursorParked = true
     tracked = [...tracked, ...trackTree(await listLiveProcesses(), launched.root)]
 
-    bridgeLog.frames = await abortable(assertStageAnimating(stagePage))
+    if (!cursorAttention)
+      bridgeLog.frames = await abortable(assertStageAnimating(stagePage))
 
     const captureSeconds = Math.min(600, scenario.durationSeconds + 1)
     const capture = await abortable(bridge.call('startCapture', { durationSeconds: captureSeconds, label: run.runId }, bounds.commandMs))
@@ -162,7 +195,13 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
     const rendered = toRenderedExpressionIds(scenario, options.catalog)
     bridgeLog.expressionIds = rendered.mapped
     const started = await abortable(bridge.start('runScenario', { scenario: rendered.scenario }, bounds.commandMs))
-    const hostOriginMs = Date.now()
+    const rendererNowMs = await abortable(bridge.rendererNowMs())
+    const hostOriginMs = Date.now() - (rendererNowMs - started.rendererStartMs)
+    if (cursorAttention) {
+      pointerPlayback = playPointer(steps, Math.round(hostOriginMs), pointerAbort.signal)
+      // The screenshot loop can still be running when playback rejects.
+      pointerPlayback.catch(() => {})
+    }
     bridgeLog.capture = { ...capture, durationSeconds: captureSeconds }
     log(`qa-tools t3: capture ${capture.captureId} (${captureSeconds} s) and scenario ${scenario.id} started`)
 
@@ -176,6 +215,8 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
 
     const scenarioResult: MotionQaRunScenarioResult = await abortable(started.settle((scenario.durationSeconds + 60) * 1000))
     bridgeLog.runScenario = scenarioResult
+    if (pointerPlayback)
+      bridgeLog.pointer = await abortable(pointerPlayback)
     const { trace } = await abortable(bridge.call('awaitCapture', { captureId: capture.captureId }, captureSeconds * 1000 + 120_000))
     writeJson(run, 'trace.json', trace)
     const traceEvents = parseTraceEvents(trace)
@@ -193,7 +234,7 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
     writeJson(run, 'verification.json', verification)
     exitCode = verification.ok ? 0 : 1
     summary = verification.ok
-      ? `T3 ${scenario.id}: verified ${verification.counts.scenarioEvents} scenario events, ${verification.counts.naturalHolds} Natural holds, ${verification.counts.screenshots} screenshots`
+      ? `T3 ${scenario.id}: PASS: verified ${verification.counts.scenarioEvents} scenario events, ${verification.counts.naturalHolds} Natural holds, ${verification.counts.screenshots} screenshots`
       : `T3 ${scenario.id}: verification failed: ${verification.failures.join('; ')}`
     log(`qa-tools t3: ${summary}`)
 
@@ -210,6 +251,27 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
     log(`qa-tools t3: ${summary}`)
   }
   finally {
+    pointerAbort.abort()
+    if (pointerPlayback) {
+      await pointerPlayback.catch(() => {})
+      // A killed PowerShell cannot execute its finally; release LEFTUP from a new owned command before parking.
+      try {
+        bridgeLog.pointerRelease = await playPointer([], Date.now())
+      }
+      catch (error) {
+        bridgeLog.pointerReleaseError = errorMessageFrom(error)
+        exitCode = exitCode === 0 ? 1 : exitCode
+        summary += `; pointer release failed: ${errorMessageFrom(error)}`
+      }
+    }
+    if (cursorParked) {
+      const parked = await parkCursor()
+      bridgeLog.cursorFinally = parked
+      if (!parked.ok) {
+        exitCode = exitCode === 0 ? 1 : exitCode
+        summary += `; final cursor parking failed: ${parked.reason}`
+      }
+    }
     if (abortListener)
       signal.removeEventListener('abort', abortListener)
   }

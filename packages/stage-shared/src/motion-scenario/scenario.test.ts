@@ -46,12 +46,10 @@ describe('motionScenarioSchema', () => {
       { kind: 'cursor', at: 2, clear: true },
       { kind: 'pointer', at: 3, phase: 'move', x: 0, y: 0 },
     ]
-    expect(issuePaths(scenario({ levels: ['t1', 't3'], events }))).toEqual(['events.0.kind', 'events.1.kind', 'events.2.kind'])
+    expect(issuePaths(scenario({ levels: ['t1', 't3'], events }))).toEqual(['events.0.kind', 'events.1.kind'])
     expect(safeParse(MotionScenarioSchema, scenario({ events }), {}).success).toBe(true)
     const parsed = safeParse(MotionScenarioSchema, scenario({ levels: ['t1', 't3'], events: [events[2]] }))
-    expect(parsed.success).toBe(false)
-    if (!parsed.success)
-      expect(parsed.issues[0].message).toBe('Scenarios with level "t3" cannot contain "pointer" events')
+    expect(parsed.success).toBe(true)
   })
 
   it.each([

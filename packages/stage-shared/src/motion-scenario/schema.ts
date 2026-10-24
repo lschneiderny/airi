@@ -39,6 +39,7 @@ export const ScenarioEventSchema = variant('kind', [
   /**
    * Pointer coordinates are head widths from the head-box center (x right, y down).
    * If a scenario has both `cursor` and `pointer` events, the latest event by `at` sets the cursor.
+   * The T3 harness performs these events with the real OS cursor, not synthetic DOM events.
    */
   strictObject({ kind: literal('pointer'), at: seconds, phase: picklist(['move', 'down', 'up', 'leave']), x: pipe(number(), finite()), y: pipe(number(), finite()) }),
   strictObject({ kind: literal('expression'), at: seconds, expressionId: nonEmpty, on: boolean() }),
@@ -71,8 +72,8 @@ const scenarioObject = strictObject({
 /**
  * A deterministic, replayable input script for motion QA.
  *
- * Events must be sorted by `at` and must not come after `durationSeconds`. A scenario that includes level `t3` cannot contain `speech`, `cursor`,
- * or `pointer` events, because the rendered app cannot produce real audio or pointer input through the QA bridge.
+ * Events must be sorted by `at` and must not come after `durationSeconds`. A scenario that includes level `t3` cannot contain `speech` or `cursor`
+ * events, because the rendered app cannot produce those inputs through the QA bridge.
  */
 export const MotionScenarioSchema = pipe(scenarioObject, rawCheck(({ dataset, addIssue }) => {
   if (!dataset.typed)
@@ -91,7 +92,7 @@ export const MotionScenarioSchema = pipe(scenarioObject, rawCheck(({ dataset, ad
     // A runner plays the scenario for `durationSeconds`, so a later event would silently never play.
     if (event.at > scenario.durationSeconds)
       addIssue({ message: `Event at ${event.at} s is after the scenario ends at ${scenario.durationSeconds} s`, path: [...at(index, 'at')] })
-    if (hasT3 && (event.kind === 'speech' || event.kind === 'cursor' || event.kind === 'pointer'))
+    if (hasT3 && (event.kind === 'speech' || event.kind === 'cursor'))
       addIssue({ message: `Scenarios with level "t3" cannot contain "${event.kind}" events`, path: [...at(index, 'kind')] })
     if (event.kind === 'cursor' && !(event.clear === true ? event.x === undefined && event.y === undefined : event.x !== undefined && event.y !== undefined))
       addIssue({ message: 'A cursor event needs both "x" and "y", or only "clear: true"', path: [...at(index, 'kind')] })

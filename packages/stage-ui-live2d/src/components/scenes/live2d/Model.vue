@@ -57,6 +57,7 @@ import {
 } from '../../../composables/live2d'
 import { EmotionHoldPerformer, selectManualHold } from '../../../composables/live2d/expression/hold'
 import { useFitModel } from '../../../composables/live2d/fit-model'
+import { live2DCanvasRectToViewport } from '../../../composables/live2d/head-anchor'
 import { Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-motion-adapter'
 import { scoreLiveliness } from '../../../composables/live2d/natural-motion/liveliness'
 import { readLive2DRigProfile } from '../../../composables/live2d/natural-motion/rig-profile'
@@ -1198,7 +1199,31 @@ function startNaturalCapture(request: NaturalCaptureRequest) {
 const releaseStageReader = naturalDiagnostics.registerStageReader(() => ({
   naturalActive: naturalMotion !== undefined && live2dMotionDriver.value === 'natural' && !paused.value,
   hold: holdPerformer.current(holdClock()),
+  head: headViewportRect(),
 }))
+
+/** Reports the cursor's unscaled face-feature unit in viewport CSS pixels. */
+function headViewportRect() {
+  const canvas = pixiApp.value?.view
+  const current = model.value
+  if (!(canvas instanceof HTMLCanvasElement) || !current || canvas.width <= 0 || canvas.height <= 0)
+    return null
+  const rect = canvas.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0)
+    return null
+  const head = readTouchRegions(performance.now())?.unscaledHead
+  if (!head)
+    return null
+  // Refresh the full ancestor chain, as toModelPosition does, including the stage's render scale.
+  current.toGlobal({ x: 0, y: 0 })
+  return live2DCanvasRectToViewport(
+    head,
+    current.internalModel.localTransform,
+    current.worldTransform,
+    rect,
+    canvas,
+  )
+}
 
 watch(naturalCaptureRequest, (request, previous) => {
   if (request && request.id !== previous?.id)

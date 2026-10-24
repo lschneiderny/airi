@@ -101,6 +101,8 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       naturalActive: snapshot?.naturalActive ?? false,
       hold: snapshot?.hold ? { emotion: snapshot.hold.emotion, strength: snapshot.hold.strength } : null,
       captureActive: diagnostics.pendingRequest !== null,
+      head: snapshot?.head ?? null,
+      screen: { x: window.screenX, y: window.screenY, devicePixelRatio: window.devicePixelRatio },
     }
   }
 
@@ -165,10 +167,12 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       case 'noop':
       case 'marker':
         return null
+      case 'pointer':
+        // The harness performs OS input; still stamp and count each pointer event.
+        return null
       // The rendered app has no QA input that produces these; T1 and T2 simulate them.
       case 'speech':
       case 'cursor':
-      case 'pointer':
         return `The rendered app has no QA input for "${event.kind}" events`
     }
   }

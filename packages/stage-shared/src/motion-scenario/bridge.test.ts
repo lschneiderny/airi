@@ -4,9 +4,16 @@ import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 
 import { buildEmotionTrial, claimMotionQaHandlers, createMotionQaContext, hasMotionQaHandlers, isMotionQaBridgeEnabled, MotionQaAwaitCaptureResultSchema, MotionQaCommandSchema, MotionQaConfigureInputSchema, MotionQaRunScenarioInputSchema, MotionQaRunScenarioResultSchema, MotionQaStartCaptureInputSchema, motionQaStateInvokeEventa, MotionQaStateSchema } from '.'
 
-const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false } as const
+const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 } } as const
 
 describe('motion QA bridge schemas', () => {
+  it('requires usable screen scale and positive head geometry, while accepting an unavailable head', () => {
+    expect(safeParse(MotionQaStateSchema, { ...state, head: null }).success).toBe(true)
+    expect(safeParse(MotionQaStateSchema, { ...state, head: { ...state.head, width: 0 } }).success).toBe(false)
+    expect(safeParse(MotionQaStateSchema, { ...state, screen: { ...state.screen, devicePixelRatio: 0 } }).success).toBe(false)
+    expect(safeParse(MotionQaStateSchema, { ...state, screen: { ...state.screen, x: Number.NaN } }).success).toBe(false)
+  })
+
   it('round-trips each payload through JSON', () => {
     const scenario = buildEmotionTrial({ emotion: 'angry', band: 'strong', variant: 'full', seed: 1 })
     const payloads = [

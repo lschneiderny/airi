@@ -30,6 +30,8 @@ export interface NaturalStageSnapshot {
   naturalActive: boolean
   /** The emotion the Natural layer holds, or `null` when none is held. */
   hold: EmotionHold | null
+  /** Unscaled face-feature cursor unit in viewport CSS pixels, when the canvas has geometry. */
+  head?: { x: number, y: number, width: number, height: number } | null
 }
 
 /** Compact capture outcome the lab renders. */

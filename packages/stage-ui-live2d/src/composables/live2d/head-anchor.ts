@@ -332,3 +332,33 @@ export function live2DCanvasRectToParent(
     height: Math.abs(bottomRight.y - topLeft.y),
   }
 }
+
+/**
+ * Maps model-canvas bounds to viewport CSS pixels, through the same forward transform pair
+ * that `toModelPosition` inverts. The model's world transform includes the stage render scale;
+ * backing-store pixels are converted to CSS pixels exactly once through the canvas client rect.
+ */
+export function live2DCanvasRectToViewport(
+  rect: Live2DModelCanvasRect,
+  internalModelLocalTransform: Matrix,
+  modelWorldTransform: Matrix,
+  canvasClient: { left: number, top: number, width: number, height: number },
+  canvasBacking: { width: number, height: number },
+): Live2DModelCanvasRect {
+  const corners = [
+    { x: rect.x, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y },
+    { x: rect.x, y: rect.y + rect.height },
+    { x: rect.x + rect.width, y: rect.y + rect.height },
+  ].map(point => live2DCanvasPointToParent(point, internalModelLocalTransform, modelWorldTransform))
+  const left = Math.min(...corners.map(point => point.x))
+  const right = Math.max(...corners.map(point => point.x))
+  const top = Math.min(...corners.map(point => point.y))
+  const bottom = Math.max(...corners.map(point => point.y))
+  return {
+    x: canvasClient.left + left * canvasClient.width / canvasBacking.width,
+    y: canvasClient.top + top * canvasClient.height / canvasBacking.height,
+    width: (right - left) * canvasClient.width / canvasBacking.width,
+    height: (bottom - top) * canvasClient.height / canvasBacking.height,
+  }
+}

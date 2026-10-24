@@ -9,7 +9,7 @@ import { createMotionQaContext, createMotionQaDispatcher, motionQaRunScenarioInv
 import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, watch } from 'vue'
 
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
@@ -81,6 +81,7 @@ describe('useMotionQaBridge', () => {
   }
 
   beforeEach(() => {
+    vi.stubGlobal('window', { screenX: -1200, screenY: 20, devicePixelRatio: 1.5 })
     pinia = createPinia()
     setActivePinia(pinia)
     log = []
@@ -109,6 +110,7 @@ describe('useMotionQaBridge', () => {
     scope.stop()
     useSettingsLive2d().resetState()
     disposePinia(pinia)
+    vi.unstubAllGlobals()
   })
 
   it('writes the settings that configure names and reports them back', async () => {
@@ -117,7 +119,14 @@ describe('useMotionQaBridge', () => {
     const live2d = useSettingsLive2d()
     expect([live2d.live2dMotionDriver, live2d.live2dNaturalCursorAttention, live2d.live2dExpressionEnabled]).toEqual(['natural', false, true])
     expect(useExpressionPerformanceSettings().document.heldEmotions).toBe(false)
-    expect(reply).toMatchObject({ ok: true, result: { driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: false, captureActive: false } })
+    expect(reply).toMatchObject({ ok: true, result: { driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: false, captureActive: false, head: null, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 } } })
+  })
+
+  it('reports the stage face-feature head unit without applying another scale', async () => {
+    const head = { x: 100, y: 50, width: 80, height: 100 }
+    const release = useNaturalMotionDiagnostics().registerStageReader(() => ({ naturalActive: true, hold: null, head }))
+    expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { head, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 } } })
+    release()
   })
 
   it('dispatches emotion, ACT and mode events in scenario order through the real paths', async () => {
