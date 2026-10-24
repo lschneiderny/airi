@@ -26,10 +26,10 @@ function execute(entry: { execute?: unknown } | undefined, input: unknown) {
   return (entry.execute as (value: unknown, options: unknown) => Promise<string>)(input, { messages: [], toolCallId: 'call-1' })
 }
 
-async function mount() {
+async function mount(curate = true) {
   const store = useExpressionStore()
   store.registerDefinitions('rig', Object.keys(rig).map(id => ({ id, name: id, fadeIn: 0, fadeOut: 0, parameters: [{ id: `P-${id}`, value: 1, blend: 'Add' as const }] })))
-  for (const [id, overrides] of Object.entries(rig))
+  for (const [id, overrides] of curate ? Object.entries(rig) : [])
     store.updateEntry(id, { confirmed: true, ...overrides })
   const conductor = new StagePerformanceConductor({
     scene: () => ({
@@ -71,6 +71,14 @@ describe('expression tools', () => {
     const parameters = tools.get('set_expression')!.function.parameters as { properties: { expression: { enum: string[] } } }
     expect(new Set(parameters.properties.expression.enum)).toEqual(new Set(['Anger', 'tear', 'game']))
     expect(JSON.stringify([...tools.values()].map(tool => tool.function))).not.toMatch(/hat|watermark|smile|P-/)
+  })
+
+  it('offers derived face, effect, and prop labels without any manual curation', async () => {
+    const { tools } = await mount(false)
+
+    const parameters = tools.get('set_expression')!.function.parameters as { properties: { expression: { enum: string[] } } }
+    // Labels fall back to the file basename; outfit (hat) and system (watermark) stay hidden.
+    expect(new Set(parameters.properties.expression.enum)).toEqual(new Set(['anger', 'tear', 'game', 'smile']))
   })
 
   it('shows an exposed face by label and reports it active', async () => {

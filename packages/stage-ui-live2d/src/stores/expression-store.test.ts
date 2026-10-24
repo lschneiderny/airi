@@ -54,13 +54,15 @@ describe('curated expression catalog', () => {
     store.registerDefinitions('a', defs)
     expect(store.catalog[0].label).toBe('Joy')
     expect(store.autoEligibleEntries.map(entry => entry.id)).toEqual(['smile', 'frown'])
-    expect(store.llmEligibleEntries.map(entry => entry.id)).toEqual(['smile'])
+    // Derived exposure follows the kind: both faces are exposed, the outfit is not.
+    expect(store.llmEligibleEntries.map(entry => entry.id)).toEqual(['smile', 'frown'])
     store.resetEntry('smile')
     expect(store.catalog[0].label).toBe('smile')
     store.confirmAllSuggested()
     expect(store.catalog.every(entry => entry.confirmed)).toBe(true)
     expect(store.autoEligibleEntries.map(entry => entry.id)).toEqual(['smile', 'frown'])
-    expect(store.llmEligibleEntries).toEqual([])
+    // Confirming does not gate AI access; derived exposure still applies.
+    expect(store.llmEligibleEntries.map(entry => entry.id)).toEqual(['smile', 'frown'])
   })
 
   it('fades other group members on manual activation and rest reset', () => {

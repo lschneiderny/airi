@@ -2,7 +2,7 @@ import type { ExpressionDefinition } from '../../composables/live2d/expression/c
 
 import { describe, expect, it } from 'vitest'
 
-import { deriveCatalog, readVtubeHotkeyLabels, suggestGroups, suggestKind } from './derive'
+import { deriveCatalog, readVtubeHotkeyLabels, suggestGroups, suggestKind, suggestMappings } from './derive'
 
 function definition(id: string, values: Record<string, number>): ExpressionDefinition {
   return { id, parameters: Object.entries(values).map(([id, value]) => ({ id, value, blend: 'Add' })) }
@@ -40,10 +40,44 @@ describe('catalog derivation', () => {
     expect(entries.map(entry => entry.label)).toEqual(['Model name', 'VTS name', 'three', 'VTS name'])
     for (const entry of entries) {
       expect(entry.confirmed).toBe(false)
-      expect(entry.exposedToLlm).toBe(false)
-      expect(entry.mappings).toEqual([])
+      expect(entry.exposedToLlm).toBe(['face', 'effect', 'prop'].includes(entry.kind))
+      expect(entry.mappings).toEqual(suggestMappings(entry.label, entry.fileName, entry.kind))
       expect(entry.parameterIds).toEqual(['switch'])
     }
+    // None of these labels is in the lexicon, so the derived faces carry no mappings but are exposed by kind.
+    expect(entries.every(entry => entry.kind === 'face' && entry.exposedToLlm && entry.mappings.length === 0)).toBe(true)
+  })
+
+  it.each([
+    ['anger', 'face', [{ emotion: 'angry', minBand: 'clear' }]],
+    ['cry', 'face', [{ emotion: 'sad', minBand: 'clear' }]],
+    ['love', 'effect', [{ emotion: 'love', minBand: 'strong' }]],
+    ['red', 'effect', [{ emotion: 'flustered', minBand: 'strong' }]],
+    ['Snot bubbles', 'effect', [{ emotion: 'sleepy', minBand: 'strong' }]],
+    ['coat', 'outfit', []],
+    ['Tear Mouth Cancel', 'effect', []],
+    ['Cat Mouth （no bread）', 'face', []],
+    ['Hearts 1', 'face', [{ emotion: 'love', minBand: 'clear' }]],
+    ['Grin', 'face', [{ emotion: 'happy', minBand: 'clear' }]],
+    ['Blush', 'face', [{ emotion: 'flustered', minBand: 'clear' }]],
+    ['Crying Eyes', 'face', [{ emotion: 'sad', minBand: 'clear' }]],
+    ['zzz', 'effect', [{ emotion: 'sleepy', minBand: 'strong' }]],
+    ['game', 'prop', []],
+    ['脸红2', 'face', [{ emotion: 'flustered', minBand: 'clear' }]],
+  ] as const)('derives %s as %s with lexicon mappings', (label, kind, mappings) => {
+    const defs = [definition(`${label}.exp3.json`, { switch: 1 })]
+    const [entry] = deriveCatalog(defs, [{ File: defs[0].id, Name: label }], {})
+    expect(entry.kind).toBe(kind)
+    expect(entry.mappings).toEqual(mappings.map(mapping => ({ ...mapping, weight: 1 })))
+    expect(entry.exposedToLlm).toBe(kind === 'face' || kind === 'effect' || kind === 'prop')
+    expect(entry.confirmed).toBe(false)
+  })
+
+  it('returns mappings in lexicon emotion order without duplicates and none for outfit or system kinds', () => {
+    expect(suggestMappings('Sad smile smile', '', 'face').map(mapping => mapping.emotion)).toEqual(['happy', 'sad'])
+    expect(suggestMappings('smile', '', 'outfit')).toEqual([])
+    expect(suggestMappings('smile', '', 'system')).toEqual([])
+    expect(suggestMappings('哭 取消', '', 'face')).toEqual([])
   })
 
   const tokens = {
