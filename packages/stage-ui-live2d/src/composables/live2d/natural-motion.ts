@@ -73,6 +73,8 @@ const petOverrideY = -0.12
 const longPetDurationSeconds = 3
 // Seconds: duration of the camera glance after a long pet.
 const petGlanceDurationSeconds = 1.2
+// Unitless pet level above which the pet owns the gaze override.
+const petOverrideLevel = 0.5
 // Seconds: smoothing time for the gaze-on-cursor pose response.
 const cursorFixationSmoothingSeconds = 0.3
 // Unitless: retained head-follow share when gaze is not fixed on the cursor.
@@ -389,7 +391,7 @@ export class Live2DNaturalMotion {
     if (stepStart >= this.petGlanceUntil) {
       // A dismissed release tail cannot reacquire gaze when permission returns;
       // only an active pet or its still-owned tail can keep the override.
-      const overriding = permission === 'full' && this.pet.level > 0.5 && (this.pet.active || this.petOverride)
+      const overriding = permission === 'full' && this.pet.level > petOverrideLevel && (this.pet.active || this.petOverride)
       if (overriding) {
         this.gaze.setOverride({ x: petOverrideXScale * this.petHand.x, y: petOverrideY }, stepStart)
       }

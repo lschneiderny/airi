@@ -32,6 +32,7 @@ export interface Live2DTouchGestureOptions {
 /** A press released within this time and distance is a poke. */
 const pokeMaxMs = 400
 const pokeMaxTravel = 0.05
+/** Milliseconds a press must hold over the model before a hover poke commits. */
 const pokeCommitMs = 90
 /** Movement over the head inside this window decides whether a pet starts. */
 const petWindowMs = 1500
@@ -39,7 +40,9 @@ const petWindowMs = 1500
 const petStartTravel = 0.35
 /** Accumulated movement that refreshes the idle clock, independent of sample rate. */
 const idleStep = 0.03
+/** Head-width margins added to the head bounds when deciding whether a pointer is over the head. */
 const headMargin = { side: 0.5, top: 0.5, bottom: 0.15 }
+/** Share of elapsed pet-window time the trail must lie over the head. */
 const minInHeadShare = 0.5
 /** Segments shorter than this neither count as a reversal nor reset one. */
 const reversalStep = 0.02
