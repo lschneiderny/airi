@@ -17,8 +17,11 @@ export interface ForegroundWindowSample {
   pid: number
   /** `true` when the window belongs to one of AIRI's own processes. */
   ownProcess: boolean
-  /** Windows shell notification state, or `null` when the host cannot read it. */
-  notificationState: 'not-present' | 'busy' | 'd3d-fullscreen' | 'presentation' | 'accepts' | 'quiet-time' | 'app' | null
+  /**
+   * What the host can say about whether a remark fits now.
+   * Each host maps its own OS states before they cross IPC; `null` means this host could not tell.
+   */
+  busy: 'accepts' | 'busy' | 'fullscreen' | 'presentation' | 'quiet' | null
   /** Host `Date.now()` at the time of the reading. */
   sampledAtMs: number
 }

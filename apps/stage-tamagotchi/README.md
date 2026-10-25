@@ -19,7 +19,7 @@ remote downloads. The Resource Status Island shows transfer progress and errors.
 
 Situational presence is supported only in the Electron desktop app on Windows. On Windows, the app tells the character which app is in front, so her situation block names it and the opportunity gate can stay quiet during calls, fullscreen apps, and quiet time.
 
-- The main process service `createForegroundWindowService` answers the Eventa invoke `electron.foregroundWindow.sample`. It calls `GetForegroundWindow`, `GetWindowTextW`, `GetWindowThreadProcessId`, `QueryFullProcessImageNameW`, and `SHQueryUserNotificationState` through koffi.
+- The main process service `createForegroundWindowService` answers the Eventa invoke `electron.foregroundWindow.sample`. It calls `GetForegroundWindow`, `GetWindowTextW`, `GetWindowThreadProcessId`, and `QueryFullProcessImageNameW` through koffi, and maps the host's notification state to the sample's host-neutral `busy` field before IPC.
 - koffi loads lazily on the first sample and is imported only under `src/main`. `electron.vite.config.ts` externalizes it, and electron-builder unpacks its `.node` binary from ASAR.
 - The sample marks AIRI's own windows, including the Godot stage sidecar, with `ownProcess: true`. The service never logs titles.
 - On other platforms, or when koffi fails to load, the invoke returns `null`. The situation then has no foreground app, and the gate holds with `stale-signal`, so other Electron hosts never speak unprompted. Web, Pocket and Kirie exclude presence.

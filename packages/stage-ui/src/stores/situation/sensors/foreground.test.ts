@@ -1,4 +1,4 @@
-import type { AppCategory, Observation } from '@proj-airi/stage-shared/situation'
+import type { AppCategory, BusyState, Observation } from '@proj-airi/stage-shared/situation'
 import type { ForegroundWindowSample } from '@proj-airi/stage-shared/stores/foreground-window'
 
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
@@ -21,7 +21,7 @@ function sample(overrides: Partial<ForegroundWindowSample> = {}): ForegroundWind
     title: 'notes.txt - Notepad',
     pid: 4242,
     ownProcess: false,
-    notificationState: 'accepts',
+    busy: 'accepts',
     sampledAtMs: Date.now(),
     ...overrides,
   }
@@ -119,8 +119,8 @@ describe('foreground situation sensor', () => {
   it('keeps reading the session-wide busy state from AIRI\'s own windows', () => {
     const { observations, publish } = run()
 
-    publish(T0, { exePath: AIRI, exeName: 'AIRI.exe', ownProcess: true, notificationState: 'accepts' })
-    publish(T0 + 1_000, { exePath: AIRI, exeName: 'AIRI.exe', ownProcess: true, notificationState: 'presentation' })
+    publish(T0, { exePath: AIRI, exeName: 'AIRI.exe', ownProcess: true, busy: 'accepts' })
+    publish(T0 + 1_000, { exePath: AIRI, exeName: 'AIRI.exe', ownProcess: true, busy: 'presentation' })
 
     expect(observations).toEqual([
       { kind: 'busy', state: 'accepts', atMs: T0 },
@@ -179,11 +179,48 @@ describe('foreground situation sensor', () => {
     expect(activities().map(observation => observation.kind === 'activity' && observation.appId)).toEqual(['notes', 'notes'])
   })
 
-  it('maps every shell notification state to busy, reporting only changes', () => {
+  it.each([
+    [1, null, 'unknown'],
+    [2, 'busy', 'busy'],
+    [3, 'fullscreen', 'fullscreen'],
+    [4, 'presentation', 'presentation'],
+    [5, 'accepts', 'accepts'],
+    [6, 'quiet', 'quiet'],
+    [7, 'busy', 'busy'],
+  ] satisfies Array<[number, ForegroundWindowSample['busy'], BusyState]>)('preserves QUNS %i through host busy %s as gate busy %s', (_quns, busy, expected) => {
     const { observations, publish } = run()
-    const states: Array<ForegroundWindowSample['notificationState']> = ['accepts', 'accepts', 'busy', 'd3d-fullscreen', 'presentation', 'quiet-time', 'app', 'not-present', null]
 
-    states.forEach((notificationState, index) => publish(T0 + index * 1_000, { notificationState }))
+    publish(T0, { busy })
+
+    expect(observations.filter(observation => observation.kind === 'busy')).toEqual([
+      { kind: 'busy', state: expected, atMs: T0 },
+    ])
+  })
+
+  it.each([
+    ['unrecognised string', '{"busy":"sideways"}'],
+    ['missing field', '{}'],
+    ['number', '{"busy":1}'],
+    ['boolean', '{"busy":false}'],
+    ['object', '{"busy":{}}'],
+    ['array', '{"busy":[]}'],
+    ['prototype key', '{"busy":"toString"}'],
+  ])('reports unknown for IPC busy input with %s', (_label, json) => {
+    const { observations } = run()
+    const input = JSON.parse(json)
+
+    useForegroundWindowStore().setSample({ ...sample(), busy: undefined, ...input })
+
+    expect(observations.filter(observation => observation.kind === 'busy')).toEqual([
+      { kind: 'busy', state: 'unknown', atMs: T0 },
+    ])
+  })
+
+  it('reports host busy only when it changes', () => {
+    const { observations, publish } = run()
+    const states: Array<ForegroundWindowSample['busy']> = ['accepts', 'accepts', 'busy', 'fullscreen', 'presentation', 'quiet', 'busy', null, null]
+
+    states.forEach((busy, index) => publish(T0 + index * 1_000, { busy }))
 
     expect(observations.filter(observation => observation.kind === 'busy')).toEqual([
       { kind: 'busy', state: 'accepts', atMs: T0 },
@@ -288,7 +325,7 @@ describe('foreground situation sensor', () => {
       { exePath: null, exeName: null },
       { exePath: '   ', exeName: '' },
       JSON.parse('{"title":42}'),
-      JSON.parse('{"notificationState":"sideways"}'),
+      JSON.parse('{"busy":"sideways"}'),
     ]
 
     malformed.forEach((overrides, index) => publish(T0 + index * 1_000, overrides))
@@ -317,7 +354,7 @@ describe('foreground situation sensor', () => {
     const { observations, categories, publish, sensor } = run()
 
     publish(T0)
-    publish(T0 + 1_000, { notificationState: 'presentation' })
+    publish(T0 + 1_000, { busy: 'presentation' })
     sensor.check(T0 + 2_000)
 
     expect(observations).toEqual([])
@@ -357,7 +394,7 @@ describe('foreground situation sensor', () => {
     publish(T0)
 
     sensor.stop()
-    publish(T0 + 1_000, { title: 'later.txt - Notepad', notificationState: 'busy' })
+    publish(T0 + 1_000, { title: 'later.txt - Notepad', busy: 'busy' })
 
     expect(observations).toHaveLength(2)
   })

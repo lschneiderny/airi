@@ -30,17 +30,6 @@ export const FOREGROUND_SAMPLE_STALE_VISIBLE_MS = 5_000
  */
 export const FOREGROUND_SAMPLE_STALE_HIDDEN_MS = 20_000
 
-const BUSY_BY_NOTIFICATION_STATE: Readonly<Record<NonNullable<ForegroundWindowSample['notificationState']>, BusyState>> = Object.freeze({
-  'busy': 'busy',
-  'd3d-fullscreen': 'fullscreen',
-  'presentation': 'presentation',
-  'quiet-time': 'quiet',
-  'app': 'busy',
-  'accepts': 'accepts',
-  // The session is locked, switched away, or showing the screen saver; the shell cannot say whether a remark fits.
-  'not-present': 'unknown',
-})
-
 function isTime(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
 }
@@ -56,8 +45,8 @@ function busyOf(sample: ForegroundWindowSample | null, nowMs: number, stageVisib
     return null
   if (!isFresh(sample, nowMs, stageVisible))
     return 'unknown'
-  const state = sample.notificationState
-  return state !== null && Object.hasOwn(BUSY_BY_NOTIFICATION_STATE, state) ? BUSY_BY_NOTIFICATION_STATE[state] : 'unknown'
+  const state = sample.busy
+  return state === 'accepts' || state === 'busy' || state === 'fullscreen' || state === 'presentation' || state === 'quiet' ? state : 'unknown'
 }
 
 function nonEmptyString(value: unknown): string | null {
@@ -91,8 +80,8 @@ export interface ForegroundSensor {
  * app id or the normalized title changes. An executable on the `titleDenylist` setting still reports its app,
  * label and category, but its title is dropped here and reaches no observation, log, or prompt.
  *
- * Busy comes from the shell notification state, which describes the whole session rather than one window, so own
- * samples count for it too. It is reported only when it changes. A sample older than
+ * Busy comes from the host's reading of whether a remark fits now, so own samples count for it too.
+ * It is reported only when it changes. A sample older than
  * {@link FOREGROUND_SAMPLE_STALE_VISIBLE_MS} while the stage is visible, or {@link FOREGROUND_SAMPLE_STALE_HIDDEN_MS}
  * while it is hidden, reads as busy `unknown` and reports no activity. The caller owns the clock through
  * {@link ForegroundSensor.check}. Hosts without a producer keep a `null` sample and send nothing.

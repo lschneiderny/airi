@@ -179,7 +179,7 @@ describe('widget spark reactions', () => {
     const foreground = useForegroundWindowStore()
     const keepFresh = () => {
       desktop.setSnapshot(desktopSample())
-      foreground.setSample({ exePath: 'C:\\Tools\\qa-board.exe', exeName: 'qa-board.exe', title: 'QA board', pid: 7, ownProcess: false, notificationState: 'accepts', sampledAtMs: Date.now() })
+      foreground.setSample({ exePath: 'C:\\Tools\\qa-board.exe', exeName: 'qa-board.exe', title: 'QA board', pid: 7, ownProcess: false, busy: 'accepts', sampledAtMs: Date.now() })
     }
     keepFresh()
     setInterval(keepFresh, 1_000)

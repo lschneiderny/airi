@@ -1,4 +1,4 @@
-import type { ForegroundNotificationState, ForegroundWindowSample } from '@proj-airi/electron-eventa'
+import type { ForegroundWindowSample } from '@proj-airi/electron-eventa'
 
 import { Buffer } from 'node:buffer'
 import { win32 } from 'node:path'
@@ -32,8 +32,12 @@ const TITLE_MAX_UNITS = 1024
 /** Longest Win32 path (`\\?\` long path form), in UTF-16 code units. */
 const PATH_MAX_UNITS = 32767
 
-/** QUERY_USER_NOTIFICATION_STATE values 1..7 (shellapi.h) in declaration order. */
-const NOTIFICATION_STATES: readonly ForegroundNotificationState[] = ['not-present', 'busy', 'd3d-fullscreen', 'presentation', 'accepts', 'quiet-time', 'app']
+/**
+ * QUERY_USER_NOTIFICATION_STATE values 1..7 (shellapi.h) in declaration order:
+ * not-present, busy, d3d-fullscreen, presentation, accepts, quiet-time, app.
+ * A missing user is unknown to the sensor; a Windows Store app counts as busy.
+ */
+const BUSY_BY_QUNS: readonly ForegroundWindowSample['busy'][] = [null, 'busy', 'fullscreen', 'presentation', 'accepts', 'quiet', 'busy']
 
 export async function loadWin32Binding(): Promise<Win32Binding> {
   const { load } = await import('koffi')
@@ -96,11 +100,11 @@ export function createWin32Sampler(binding: Win32Binding, isOwnProcess: (pid: nu
     }
   }
 
-  function readNotificationState(): ForegroundNotificationState | null {
+  function readBusy(): ForegroundWindowSample['busy'] {
     const state: [number] = [0]
     if (binding.SHQueryUserNotificationState(state) !== 0)
       return null
-    return NOTIFICATION_STATES[state[0] - 1] ?? null
+    return BUSY_BY_QUNS[state[0] - 1] ?? null
   }
 
   return function sample(): ForegroundWindowSample | null {
@@ -122,7 +126,7 @@ export function createWin32Sampler(binding: Win32Binding, isOwnProcess: (pid: nu
       title: readTitle(hwnd),
       pid,
       ownProcess: isOwnProcess(pid),
-      notificationState: readNotificationState(),
+      busy: readBusy(),
       sampledAtMs: Date.now(),
     }
   }

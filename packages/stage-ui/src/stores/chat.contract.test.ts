@@ -2328,7 +2328,7 @@ describe('chat store contract', () => {
       situation.setStageVisible(true)
       // Fresh desktop and foreground samples, so only the topic decides whether the gate fires.
       useDesktopActivityStore().setSnapshot({ idleSeconds: 0, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, systemAudioLevel: null, screenChange: null, sampledAtMs: Date.now() })
-      useForegroundWindowStore().setSample({ exePath: 'C:\\Windows\\notepad.exe', exeName: 'notepad.exe', title: 'notes.txt - Notepad', pid: 7, ownProcess: false, notificationState: 'accepts', sampledAtMs: Date.now() })
+      useForegroundWindowStore().setSample({ exePath: 'C:\\Windows\\notepad.exe', exeName: 'notepad.exe', title: 'notes.txt - Notepad', pid: 7, ownProcess: false, busy: 'accepts', sampledAtMs: Date.now() })
       // What the web extension sends for one video: a context update and a notify, from one module.
       const source = 'proj-airi:plugin-web-extension:module-a'
       situation.ingest({ kind: 'context', sourceKey: source, text: 'User is watching: Secret video Channel: QA channel. URL: https://example.test/watch?v=secret.', atMs: Date.now() })

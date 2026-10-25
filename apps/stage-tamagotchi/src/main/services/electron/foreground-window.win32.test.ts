@@ -13,7 +13,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-const notificationStates = ['not-present', 'busy', 'd3d-fullscreen', 'presentation', 'accepts', 'quiet-time', 'app', null]
+const busyStates = ['accepts', 'busy', 'fullscreen', 'presentation', 'quiet', null]
 
 describe.runIf(process.platform === 'win32')('createForegroundWindowService with the real Win32 binding', () => {
   it('returns a sample or null without throwing, across many reads', async () => {
@@ -29,7 +29,7 @@ describe.runIf(process.platform === 'win32')('createForegroundWindowService with
 
       expect(sample.pid).toBeGreaterThan(0)
       expect(typeof sample.title).toBe('string')
-      expect(notificationStates).toContain(sample.notificationState)
+      expect(busyStates).toContain(sample.busy)
       if (sample.exePath != null)
         expect(sample.exePath.endsWith(sample.exeName ?? '')).toBe(true)
     }

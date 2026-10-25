@@ -1,14 +1,6 @@
 import { defineInvokeEventa } from '@moeru/eventa'
 
 /**
- * Windows shell notification state (`SHQueryUserNotificationState`, QUNS values 1..7 in order).
- * `busy`, `d3d-fullscreen`, and `presentation` mean a fullscreen app or a presentation is in front.
- * `quiet-time` is the first hour after the user's first sign-in following a Windows install or upgrade.
- * `app` means a Windows Store app is in front.
- */
-export type ForegroundNotificationState = 'not-present' | 'busy' | 'd3d-fullscreen' | 'presentation' | 'accepts' | 'quiet-time' | 'app'
-
-/**
  * One reading of the desktop window that has keyboard focus.
  *
  * The title is raw (up to the main process read cap). Consumers own normalization
@@ -24,8 +16,11 @@ export interface ForegroundWindowSample {
   pid: number
   /** `true` when the window belongs to one of AIRI's own Electron processes. */
   ownProcess: boolean
-  /** `null` when the shell query fails. */
-  notificationState: ForegroundNotificationState | null
+  /**
+   * What the host can say about whether a remark fits now.
+   * Each host maps its own OS states before they cross IPC; `null` means this host could not tell.
+   */
+  busy: 'accepts' | 'busy' | 'fullscreen' | 'presentation' | 'quiet' | null
   /** Main process `Date.now()` at the time of the reading. */
   sampledAtMs: number
 }
@@ -33,7 +28,7 @@ export interface ForegroundWindowSample {
 /**
  * Reads the foreground window once. The main process never samples on its own; the caller sets the rate.
  * Resolves `null` when no window has focus (lock screen, desktop switch), the window closed during the read,
- * or the host cannot sample (not Windows, or the FFI binding failed to load).
+ * or the host cannot sample (no sampler for this host, or its binding failed to load).
  */
 const sample = defineInvokeEventa<ForegroundWindowSample | null>('eventa:invoke:electron:foreground-window:sample')
 

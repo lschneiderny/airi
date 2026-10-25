@@ -72,7 +72,7 @@ function desktopSample(overrides: Partial<DesktopActivitySnapshot> = {}): Deskto
 
 /** A fresh foreground sample at the current fake time. */
 function foregroundSample(overrides: Partial<ForegroundWindowSample> = {}): ForegroundWindowSample {
-  return { exePath: 'C:\\Windows\\notepad.exe', exeName: 'notepad.exe', title: 'notes.txt - Notepad', pid: 7, ownProcess: false, notificationState: 'accepts', sampledAtMs: Date.now(), ...overrides }
+  return { exePath: 'C:\\Windows\\notepad.exe', exeName: 'notepad.exe', title: 'notes.txt - Notepad', pid: 7, ownProcess: false, busy: 'accepts', sampledAtMs: Date.now(), ...overrides }
 }
 
 /** Fake chat controls: a quiet chat whose unprompted turns are spoken, unless a test replaces `submitUnprompted`. */

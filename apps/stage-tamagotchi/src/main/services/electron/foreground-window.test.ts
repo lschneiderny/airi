@@ -123,7 +123,7 @@ describe('createForegroundWindowService', () => {
     return defineInvoke(context, electron.foregroundWindow.sample)
   }
 
-  it('reads the title, the executable, and the notification state, and closes the process handle', async () => {
+  it('reads the title, the executable, and busy, and closes the process handle', async () => {
     const sample = await createReader()()
 
     expect(sample).toEqual({
@@ -132,7 +132,7 @@ describe('createForegroundWindowService', () => {
       title: 'notes.txt - Notepad',
       pid: 4321,
       ownProcess: false,
-      notificationState: 'accepts',
+      busy: 'accepts',
       sampledAtMs: expect.any(Number),
     })
     expect(win32.OpenProcess).toHaveBeenCalledWith(0x1000, 0, 4321)
@@ -201,25 +201,25 @@ describe('createForegroundWindowService', () => {
   })
 
   it.each([
-    [1, 'not-present'],
+    [1, null],
     [2, 'busy'],
-    [3, 'd3d-fullscreen'],
+    [3, 'fullscreen'],
     [4, 'presentation'],
     [5, 'accepts'],
-    [6, 'quiet-time'],
-    [7, 'app'],
+    [6, 'quiet'],
+    [7, 'busy'],
     [0, null],
     [8, null],
   ])('maps QUNS value %i to %s', async (quns, expected) => {
     desktop.quns = quns
 
-    await expect(createReader()()).resolves.toMatchObject({ notificationState: expected })
+    await expect(createReader()()).resolves.toMatchObject({ busy: expected })
   })
 
-  it('reports an unknown notification state when the shell query fails', async () => {
+  it('reports null busy when the shell query fails', async () => {
     desktop.qunsResult = -2147467259 // E_FAIL
 
-    await expect(createReader()()).resolves.toMatchObject({ notificationState: null })
+    await expect(createReader()()).resolves.toMatchObject({ busy: null })
   })
 
   it.each([
