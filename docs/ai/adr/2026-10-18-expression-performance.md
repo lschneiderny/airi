@@ -226,10 +226,14 @@ Eligibility:
 
 Superseded by [2026-10-24-expression-auto-setup](2026-10-24-expression-auto-setup.md).
 
+Superseded by [2026-10-24-expression-combos-and-reactions](2026-10-24-expression-combos-and-reactions.md).
+
 Pick-one groups at runtime:
 
 - A manual toggle or rest-set activation of a grouped entry fades out the other members of its group.
 - A slot activation may displace only group members of the same kind that are neither in the rest set nor manually active. Otherwise the slot activation is skipped and logged, so outfits, props, and saved defaults stay.
+
+Superseded by [2026-10-24-expression-combos-and-reactions](2026-10-24-expression-combos-and-reactions.md).
 
 Other windows never write the catalog. They render `Live2DExpressionSettingsSnapshot` and send `Live2DExpressionSettingsCommand` values to the stage window:
 
@@ -243,6 +247,8 @@ Other windows never write the catalog. They render `Live2DExpressionSettingsSnap
 | `confirm-all-suggested` | Confirms every entry with its suggested kind. |
 
 Superseded by [2026-10-24-expression-auto-setup](2026-10-24-expression-auto-setup.md).
+
+Superseded by [2026-10-24-expression-combos-and-reactions](2026-10-24-expression-combos-and-reactions.md).
 
 The Electron owner guard (owner instance id and model id) applies to every command.
 The catalog editor validates mapping weights from 0.1 to 5 before it sends a command.
@@ -263,6 +269,8 @@ An `expression` signal emits a command for the entry's kind slot. Its hold is th
 
 The expression store has three slots, `face`, `effect`, and `prop`. Each holds at most one transient lease.
 A lease composes on top of the rest set and manual toggles. Releasing a lease never deactivates an expression that the rest set or a manual toggle also owns.
+
+Superseded by [2026-10-24-expression-combos-and-reactions](2026-10-24-expression-combos-and-reactions.md).
 
 Lease rules, with times from the conductor's monotonic clock:
 

@@ -15,26 +15,35 @@ Natural generates continuous autonomous motion from layered random processes and
 
 ZIP imports and OPFS-restored archives discover every `.exp3.json`, including files absent from the model settings references. URL-loaded models discover only expressions referenced by their model settings; remote folders are not enumerated.
 Each expression keeps its own activation and composes in activation order with its file's blend modes and fade times. Missing or invalid fade times use one second.
-Save expression defaults stores the active expression ids as the model's rest set. Reset all expressions returns to that set.
+Save expression defaults stores the manually active expressions, including combos, as the model's rest set. Reset all expressions returns to that set.
 Rest sets use `expression-rest:${modelId}` with `{ version: 1, active: string[] }`. Previous parameter defaults are not loaded; save the desired defaults once again.
 The Expression system setting, stored as `settings/live2d/expression-enabled`, turns this runtime on. A fresh profile starts with the Expression system on. While it is off, the model keeps the SDK expression manager and eye blink, the catalog stays empty, and no expression fires automatically or reaches the LLM.
 
-The [expression performance ADR](../../docs/ai/adr/2026-10-18-expression-performance.md) records the contracts below.
+The [expression performance ADR](../../docs/ai/adr/2026-10-18-expression-performance.md) records the contracts below. The [expression combos and reactions ADR](../../docs/ai/adr/2026-10-24-expression-combos-and-reactions.md) records combos, areas, duplicates, masks, and the claims model, and it supersedes the passages that these sections replace.
 The [Natural emotion revamp ADR](../../docs/ai/adr/2026-10-19-natural-emotion-revamp.md) records held emotions, gestures, and the per-model emotion strength.
 
 ### Expression catalog
 
-Each discovered expression has a catalog entry with a label, a kind (`face`, `effect`, `outfit`, `prop`, or `system`), an optional pick-one group, a reviewed flag, an optional inverted display flag, an LLM-exposed flag, and emotion mappings.
+Each discovered expression has a catalog entry with a label, a kind (`face`, `effect`, `outfit`, `prop`, `system`, `unsorted`, or `combo`), an optional area, an optional pick-one group, a reviewed flag, an optional inverted display flag, an LLM-exposed flag, and emotion mappings.
 The label comes from the model settings `Name`, else from the archive's first `.vtube.json` hotkey for that file, else from the file name.
 Kinds and groups are suggestions. Expressions of the same suggested kind that share a parameter form a pick-one group when at least one of them sets a non-zero value on it. Expressions that share only zero values form no group. Parameters of `system` expressions, such as a watermark hide, never form groups.
 The English and Chinese label lexicon suggests mappings for face and effect entries. It skips negated labels, assigns weight 1, and uses `clear` as the minimum band for faces and `strong` for effects. Default LLM access is chosen by kind. Review entries and edit labels, kinds, groups, mappings, and display inversion in Settings > Models > Live2D. Each mapping has an emotion, a weight from 0.1 to 5, and a minimum band.
 Edits are stored per model in `expression-catalog:${modelId}` as `{ version: 1, overrides: CuratedOverride[] }`.
 
-- `face` and `effect` entries are eligible for automatic selection.
-- `face`, `effect`, and `prop` entries are eligible for LLM access when exposed. Outfits and system expressions never reach the LLM.
-- Activating a member of a pick-one group fades out the other members. An automatic or LLM activation never displaces a saved default, a manual toggle, or a member of a different kind; the activation is skipped instead.
+- `face` and `effect` entries are eligible for automatic selection. Duplicates and `unsorted` entries are never picked automatically.
+- `face`, `effect`, and `prop` entries are eligible for LLM access when exposed. Outfits, system expressions, duplicates, and `unsorted` entries never reach the LLM.
 
-The stage window owns `useExpressionStore`. Other windows render its `settingsSnapshot` and send `Live2DExpressionSettingsCommand` values: `toggle`, `set-active`, `save-defaults`, `reset-all`, `update-entry`, and `reset-entry`.
+An entry's `area` is one of whole looks, eyes, mouth, cheeks, effects, outfit and hair, props, hidden, or unsorted. The area is derived from parameter and display names, and an entry override can set it or clear it with `area: null`, which falls back to the derived area. The panel groups entries by area. The Reactions picker adds a face mapping for an eyes, mouth, or cheeks entry at weight 0.5 and marks every mapping below weight 1 with a ½ marker.
+
+When several expression files write identical parameters, they collapse into one primary entry. The primary lists the others as aliases, shown as "Also: ...", and each alias offers a "Show {label} separately" action that removes the collapse for that member.
+
+A combo is a catalog entry of kind `combo` with members whose strengths range from 0 to 1. Its slots are the distinct slot kinds of its usable members. A combo with an outfit, system, or unsorted member is manual-only: only the user and saved defaults can turn it on, and the Combos card shows a manual-only note without the AI marker. A combo's area is its stored area, else the shared area of its members, else whole looks.
+
+A custom expression drives one parameter that no other expression uses. It is stored in `expression-catalog:${modelId}` as a custom document with a label, kind, area, value, and mappings. The parameter list offers only free switches.
+
+Activations resolve through claims. A slot activation that conflicts with a pick-one member masks that member instead of skipping the activation, and releasing the claim restores the member. A switch hidden by another active expression shows a "Hidden by ... while it is active" line.
+
+The stage window owns `useExpressionStore`. Other windows render its `settingsSnapshot` and send `Live2DExpressionSettingsCommand` values, including `toggle`, `set-active`, `save-defaults`, `reset-all`, `update-entry`, `reset-entry`, `create-combo`, `update-combo`, `update-custom`, and `delete-custom`.
 
 ### Expression slots
 

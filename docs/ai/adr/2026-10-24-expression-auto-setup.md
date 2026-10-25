@@ -34,6 +34,8 @@ Kind-based eligibility keeps outfits and system expressions out of LLM access. P
 
 Group creation remains a separate UX pass.
 
+Superseded by [2026-10-24-expression-combos-and-reactions](2026-10-24-expression-combos-and-reactions.md).
+
 ## Limitations
 
 The lexicon and group naming cover English and Chinese labels only. Japanese VTS labels are common.
