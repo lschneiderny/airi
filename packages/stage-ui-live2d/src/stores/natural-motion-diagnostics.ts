@@ -5,7 +5,9 @@ import type { EmotionHold } from '../composables/live2d/expression/hold'
 import type { LivelinessReport } from '../composables/live2d/natural-motion/liveliness'
 import type { PostureHome } from '../composables/live2d/natural-motion/posture'
 import type { NaturalTrace } from '../composables/live2d/natural-motion/trace'
+import type { Live2DTouchDebugSnapshot } from '../composables/live2d/touch-debug'
 
+import { defineEventa } from '@moeru/eventa'
 import { errorMessageFrom } from '@moeru/std'
 import { affectTraceCompletedEvent, affectTraceFailedEvent, affectTraceRequestedEvent, createAffectTraceDiagnosticsContext } from '@proj-airi/stage-shared/expression-performance'
 import { defineStore } from 'pinia'
@@ -64,6 +66,11 @@ function isNaturalDiagnosticsEvent(data: unknown): data is NaturalDiagnosticsEve
   return typeof data === 'object' && data !== null && 'type' in data && naturalDiagnosticsEventTypes.has(data.type)
 }
 
+/** The lab turns the stage's touch-region overlay on or off. Not persisted: a reloaded stage starts with it off. */
+export const touchOverlaySetEvent = defineEventa<{ enabled: boolean }>('eventa:event:live2d:natural-motion-diagnostics:touch-overlay:set')
+/** The stage reports its touch regions and pet measurements about ten times a second while the overlay is on. */
+export const touchOverlaySnapshotEvent = defineEventa<Live2DTouchDebugSnapshot>('eventa:event:live2d:natural-motion-diagnostics:touch-overlay:snapshot')
+
 /** The lab offers 60, 300, and 600 s; the model refuses anything outside 1-600 s. */
 const maxCaptureSeconds = 600
 
@@ -117,6 +124,11 @@ export function affectTraceFileName(exportedAt: Date) {
  * conductor starts or exports its recording and answers. The window that requested an export
  * saves the exported trace through the affect-trace sink when the result arrives. Failures are
  * {@link AffectTraceFailureCode} values, which the lab translates.
+ *
+ * The touch-region overlay uses two more Eventa events on the channel. The lab sets
+ * `touchOverlayEnabled` for every window; the stage draws the overlay while it is on and
+ * publishes `touchOverlaySnapshot`. Snapshots arriving while this window has the overlay off
+ * are dropped, so one already in flight cannot show stale regions after the lab turns it off.
  */
 export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-diagnostics', () => {
   // Opened with the store, not through `useBroadcastChannel`, which waits for the mounted hook
@@ -151,6 +163,8 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
   const affectTraceResult = shallowRef<AffectTraceResult | null>(null)
   const affectTrace = shallowRef<AffectTrace | null>(null)
   const affectTraceFailure = shallowRef<AffectTraceFailureCode | null>(null)
+  const touchOverlayEnabled = shallowRef(false)
+  const touchOverlaySnapshot = shallowRef<Live2DTouchDebugSnapshot | null>(null)
   /** Export requests this window sent; only this window saves their traces. */
   const ownExports = new Set<string>()
   /** Set by the stage's model while its capture runs; never shared with other windows. */
@@ -217,6 +231,30 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
     affectTraceRequest.value = null
     affectTraceFailure.value = body.code
   })
+
+  context.on(touchOverlaySetEvent, ({ body }) => {
+    if (!body)
+      return
+    touchOverlayEnabled.value = body.enabled
+    if (!body.enabled)
+      touchOverlaySnapshot.value = null
+  })
+
+  context.on(touchOverlaySnapshotEvent, ({ body }) => {
+    if (!body || !touchOverlayEnabled.value)
+      return
+    touchOverlaySnapshot.value = body
+  })
+
+  /** Turns the stage's touch-region overlay on or off in every window. */
+  function setTouchOverlay(enabled: boolean) {
+    void context.emit(touchOverlaySetEvent, { enabled })
+  }
+
+  /** The stage publishes its current touch regions; other windows show them in the lab. */
+  function publishTouchOverlaySnapshot(snapshot: Live2DTouchDebugSnapshot) {
+    void context.emit(touchOverlaySnapshotEvent, snapshot)
+  }
 
   function applyEvent(event: NaturalDiagnosticsEvent) {
     if (event.type === 'natural-capture-request') {
@@ -368,5 +406,9 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
     requestAffectTrace,
     completeAffectTrace,
     failAffectTrace,
+    touchOverlayEnabled,
+    touchOverlaySnapshot,
+    setTouchOverlay,
+    publishTouchOverlaySnapshot,
   }
 })

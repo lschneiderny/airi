@@ -2,6 +2,7 @@ import type { GazeTargetWeights } from './energy'
 import type { NaturalPostureLayers } from './posture'
 import type { RandomStream } from './random'
 
+import { cursorGaze } from './cursor-attention'
 import { minJerk } from './processes'
 import { gaussian, truncatedLognormal } from './random'
 
@@ -41,6 +42,13 @@ const pursuitPositionTau = 0.2
 const targetVelocityTau = 0.06
 const catchUpError = 0.1
 const catchUpRefractory = 0.12
+// A catch-up saccade aims where the cursor will be when it lands, at most this far ahead.
+const catchUpMaxLead = 0.1
+// Seconds of one-way cursor motion before the catch-up lead and carried pursuit reach full strength,
+// so a jump or a reversal never extrapolates.
+const motionConfidenceSeconds = 0.1
+// Seconds without cursor movement that end a motion run; covers cursor feeds down to about 33 Hz.
+const motionStillGap = 0.03
 
 type Target = GazePoint | 'cursor'
 
@@ -55,6 +63,9 @@ const attentionLead = { min: 0.03, max: 0.08 }
  * Fixations hold for a truncated lognormal duration (median 1 s, logSD 0.7, 0.18-5 s),
  * then move to camera, desk, or a peripheral side. Saccades last
  * `clip(0.030 + 0.0025 A, 0.035, 0.090)` s with amplitude `A = 20 ||delta eye||`.
+ * Catch-up saccades during cursor pursuit aim ahead by the cursor's sustained velocity over
+ * their flight and land still pursuing at that velocity, both bounded, so a fast sweep is not
+ * chased by stale endpoints that restart pursuit from rest.
  * The eye command is `gaze - K h` for the applied head pose `h`, with `K = (0.31, 0.40)`.
  *
  * Time is seconds of active motion; callers step on a fixed grid. Both eyes share
@@ -78,6 +89,10 @@ export class NaturalGazeLayer {
   private velocity: GazePoint = { x: 0, y: 0 }
   private targetVelocity: GazePoint = { x: 0, y: 0 }
   private previousCursor: GazePoint | null = null
+  /** Seconds the cursor has kept moving one way, bridging still gaps up to `motionStillGap`. */
+  private motionSeconds = 0
+  private stillSeconds = 0
+  private catchingUp = false
   private saccadeStart = 0
   private saccadeDuration = 0
   private nextFixationAt: number
@@ -183,6 +198,7 @@ export class NaturalGazeLayer {
       this.saccadeTo(this.drawTarget(), this.nextFixationAt)
     if (this.onCursor && this.cursor && !this.override) {
       const previous = this.previousCursor ?? this.cursor
+      this.trackMotion(this.cursor.x - previous.x, this.cursor.y - previous.y, dt)
       const alpha = 1 - Math.exp(-dt / targetVelocityTau)
       this.targetVelocity = {
         x: this.targetVelocity.x + ((this.cursor.x - previous.x) / dt - this.targetVelocity.x) * alpha,
@@ -192,13 +208,13 @@ export class NaturalGazeLayer {
       if (this.time >= landedAt) {
         if (previousTime < landedAt) {
           this.pursuit = { ...this.endpoint }
-          this.velocity = { x: 0, y: 0 }
+          this.velocity = this.catchingUp ? this.carriedVelocity() : { x: 0, y: 0 }
         }
         const pursuitDt = this.time - Math.max(previousTime, landedAt)
         this.pursue(pursuitDt)
         if (Math.hypot(this.cursor.x - this.pursuit.x, this.cursor.y - this.pursuit.y) > catchUpError
           && this.time - this.saccadeStart >= catchUpRefractory) {
-          this.saccadeTo('cursor', this.time)
+          this.saccadeTo('cursor', this.time, undefined, true)
         }
       }
     }
@@ -235,15 +251,55 @@ export class NaturalGazeLayer {
       y *= pursuitMaxSpeed / speed
     }
     const alpha = 1 - Math.exp(-dt / pursuitVelocityTau)
-    // Velocity starts at zero after every saccade. Convex blends toward a bounded
-    // command keep its magnitude <= pursuitMaxSpeed, including after catch-up landings.
+    // Velocity starts at zero after a saccade, or at the bounded carried velocity after a
+    // catch-up. Convex blends toward a bounded command keep its magnitude <= pursuitMaxSpeed.
     this.velocity = { x: this.velocity.x + (x - this.velocity.x) * alpha, y: this.velocity.y + (y - this.velocity.y) * alpha }
     this.pursuit = { x: this.pursuit.x + this.velocity.x * dt, y: this.pursuit.y + this.velocity.y * dt }
   }
 
-  private saccadeTo(target: Target, at: number, hold?: number) {
+  /** Accumulates how long the cursor has kept moving one way; a reversal or a long stop resets it. */
+  private trackMotion(dx: number, dy: number, dt: number) {
+    if (dx === 0 && dy === 0) {
+      this.stillSeconds += dt
+      if (this.stillSeconds > motionStillGap)
+        this.motionSeconds = 0
+      return
+    }
+    const onward = dx * this.targetVelocity.x + dy * this.targetVelocity.y > 0
+    this.motionSeconds = onward ? this.motionSeconds + this.stillSeconds + dt : 0
+    this.stillSeconds = 0
+  }
+
+  private get motionConfidence() {
+    return Math.min(1, this.motionSeconds / motionConfidenceSeconds)
+  }
+
+  /** The cursor's sustained velocity, weighted by motion confidence and limited to pursuit speed. */
+  private carriedVelocity(): GazePoint {
+    const speed = Math.hypot(this.targetVelocity.x, this.targetVelocity.y)
+    const scale = this.motionConfidence * (speed > pursuitMaxSpeed ? pursuitMaxSpeed / speed : 1)
+    return { x: this.targetVelocity.x * scale, y: this.targetVelocity.y * scale }
+  }
+
+  /** Where a catch-up saccade from `from` meets the cursor, kept inside the cursor mapping's range. */
+  private catchUpTarget(from: GazePoint): GazePoint {
+    const now = this.resolve('cursor')
+    const flight = saccadeSeconds(20 * Math.hypot(now.x - from.x, now.y - from.y)) * this.motionConfidence
+    let dx = this.targetVelocity.x * flight
+    let dy = this.targetVelocity.y * flight
+    const lead = Math.hypot(dx, dy)
+    if (lead > catchUpMaxLead) {
+      dx *= catchUpMaxLead / lead
+      dy *= catchUpMaxLead / lead
+    }
+    const ahead = { x: now.x + dx, y: now.y + dy }
+    const magnitude = Math.hypot(ahead.x, ahead.y)
+    return magnitude > cursorGaze ? { x: ahead.x * cursorGaze / magnitude, y: ahead.y * cursorGaze / magnitude } : ahead
+  }
+
+  private saccadeTo(target: Target, at: number, hold?: number, catchUp = false) {
     const from = this.gazeAt(at)
-    const to = this.resolve(target)
+    const to = catchUp ? this.catchUpTarget(from) : this.resolve(target)
     // Amplitude in approximate degrees: 20 per normalized eye unit.
     const amplitude = 20 * Math.hypot(to.x - from.x, to.y - from.y)
     this.from = from
@@ -251,8 +307,9 @@ export class NaturalGazeLayer {
     this.endpoint = { ...to }
     this.pursuit = { ...to }
     this.velocity = { x: 0, y: 0 }
+    this.catchingUp = catchUp
     this.saccadeStart = at
-    this.saccadeDuration = Math.min(0.090, Math.max(0.035, 0.030 + 0.0025 * amplitude))
+    this.saccadeDuration = saccadeSeconds(amplitude)
     this.nextFixationAt = at + this.saccadeDuration + (hold ?? this.drawHold())
     this.saccadeSize = amplitude / 20
     this.saccadeCount++
@@ -290,6 +347,11 @@ export class NaturalGazeLayer {
   private drawHold() {
     return truncatedLognormal(this.random, 1, 0.7, 0.18, 5)
   }
+}
+
+/** Saccade duration in seconds for an amplitude in approximate degrees. */
+function saccadeSeconds(amplitude: number) {
+  return Math.min(0.090, Math.max(0.035, 0.030 + 0.0025 * amplitude))
 }
 
 /**

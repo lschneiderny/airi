@@ -28,6 +28,7 @@
     "./composables/live2d/natural-motion": "./src/composables/live2d/natural-motion.ts",
     "./composables/live2d/natural-motion/*": "./src/composables/live2d/natural-motion/*.ts",
     "./composables/live2d/natural-motion-adapter": "./src/composables/live2d/natural-motion-adapter.ts",
+    "./composables/live2d/touch-debug": "./src/composables/live2d/touch-debug.ts",
     "./composables/live2d/touch-gestures": "./src/composables/live2d/touch-gestures.ts",
     "./composables/live2d/touch-regions": "./src/composables/live2d/touch-regions.ts",
     "./constants/emotions": "./src/constants/emotions.ts",
@@ -48,6 +49,7 @@
   },
   "dependencies": {
     "@lemonneko/crop-empty-pixels": "catalog:",
+    "@moeru/eventa": "catalog:",
     "@moeru/std": "catalog:",
     "@pixi/app": "catalog:",
     "@pixi/constants": "catalog:",

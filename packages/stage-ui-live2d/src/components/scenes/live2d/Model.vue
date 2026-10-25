@@ -18,6 +18,7 @@ import type { Live2DModelCanvasRect } from '../../../composables/live2d/head-anc
 import type { Live2DNaturalMotionAttention } from '../../../composables/live2d/natural-motion-adapter'
 import type { NaturalMotionObserver } from '../../../composables/live2d/natural-motion/frame-types'
 import type { NaturalEpisode } from '../../../composables/live2d/natural-motion/mood'
+import type { Live2DTouchDebugOverlay, Live2DTouchDebugSource } from '../../../composables/live2d/touch-debug'
 import type { Live2DTouchEvent, Live2DTouchSample } from '../../../composables/live2d/touch-gestures'
 import type { NaturalCaptureRequest } from '../../../stores'
 
@@ -27,7 +28,7 @@ import { listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { ambientLightDefaults, ambientLightNeutralEnvironment, ambientLightPerceptualLevel, wholeWindowRectangle } from '@proj-airi/stage-shared/screen-ambient-light'
 import { useTheme } from '@proj-airi/ui'
-import { until } from '@vueuse/core'
+import { until, useRafFn } from '@vueuse/core'
 import { animate } from 'animejs'
 import { formatHex } from 'culori'
 import { Mutex } from 'es-toolkit'
@@ -35,6 +36,8 @@ import { storeToRefs } from 'pinia'
 import { DropShadowFilter } from 'pixi-filters'
 import { Live2DFactory, Live2DModel, MotionPriority } from 'pixi-live2d-display/cubism4'
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, toRef, watch } from 'vue'
+
+import TouchDebugOverlay from './touch-debug-overlay.vue'
 
 import {
   createBeatSyncController,
@@ -62,6 +65,7 @@ import { Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-
 import { scoreLiveliness } from '../../../composables/live2d/natural-motion/liveliness'
 import { readLive2DRigProfile } from '../../../composables/live2d/natural-motion/rig-profile'
 import { NaturalTraceRecorder } from '../../../composables/live2d/natural-motion/trace'
+import { buildLive2DTouchDebug } from '../../../composables/live2d/touch-debug'
 import { Live2DTouchGestures } from '../../../composables/live2d/touch-gestures'
 import { live2DTouchRegionAt, live2DVisibleBounds, scaleLive2DRect } from '../../../composables/live2d/touch-regions'
 import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
@@ -177,7 +181,7 @@ let naturalPetHand: { x: number, y: number } | null = null
 const touchGestures = new Live2DTouchGestures({ requireHold: live2dNaturalTouchPetRequiresHold.value })
 const touchPoint = new Point()
 /** Head and body boxes in model canvas space, re-measured at most every 100 ms while the pointer moves. */
-let touchRegions: { head: Live2DModelCanvasRect | undefined, unscaledHead: Live2DModelCanvasRect | undefined, eyeAnchor: { x: number, y: number } | undefined, body: Live2DModelCanvasRect | undefined, measuredAtMs: number } | undefined
+let touchRegions: { head: Live2DModelCanvasRect | undefined, unscaledHead: Live2DModelCanvasRect | undefined, eyeAnchor: { x: number, y: number } | undefined, body: Live2DModelCanvasRect | undefined, source: Live2DTouchDebugSource, measuredAtMs: number } | undefined
 const touchRegionsMaxAgeMs = 100
 /** Latest primary pointermove over the canvas in model canvas space, stamped with `performance.now()`. */
 let latestPointer: { x: number, y: number, atMs: number } | undefined
@@ -1228,6 +1232,65 @@ function headViewportRect() {
   )
 }
 
+const { touchOverlayEnabled } = storeToRefs(naturalDiagnostics)
+/** What the touch-region overlay draws this frame, or `null` while it is off or no model is loaded. */
+const touchOverlay = shallowRef<Live2DTouchDebugOverlay | null>(null)
+/** The lab's readout refreshes at this interval; the overlay itself redraws every frame. */
+const touchOverlaySnapshotIntervalMs = 100
+let touchOverlayPublishedAtMs = Number.NEGATIVE_INFINITY
+
+/** Builds the overlay and readout from the current frame, or `undefined` while nothing can be measured. */
+function readTouchDebug(nowMs: number) {
+  const current = model.value
+  const canvas = pixiApp.value?.view
+  if (!current || !(canvas instanceof HTMLCanvasElement) || canvas.width <= 0 || canvas.height <= 0)
+    return undefined
+  const rect = canvas.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0)
+    return undefined
+  const regions = readTouchRegions(nowMs)
+  // Refresh the full ancestor chain, as toModelPosition does, including the stage's render scale.
+  current.toGlobal({ x: 0, y: 0 })
+  return buildLive2DTouchDebug({
+    modelId: props.modelId ?? null,
+    capturedAt: new Date(),
+    nowMs,
+    source: regions?.source ?? null,
+    drawables: headTracker.selectionCounts(),
+    headScale: live2dNaturalTouchHeadScale.value[props.modelId ?? ''] ?? 1,
+    touch: regions?.head,
+    cursorUnit: regions?.unscaledHead,
+    body: regions?.body,
+    eyeAnchor: regions?.eyeAnchor,
+    pointer: latestPointer,
+    hostCursorGlobal: props.eyeFocusSourceActive ? props.focusAt : null,
+    gesture: touchGestures.inspect(nowMs),
+    internalModelLocalTransform: current.internalModel.localTransform,
+    modelWorldTransform: current.worldTransform,
+    canvasClient: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+    canvasBacking: { width: canvas.width, height: canvas.height },
+  })
+}
+
+const touchOverlayLoop = useRafFn(() => {
+  const nowMs = performance.now()
+  const debug = readTouchDebug(nowMs)
+  touchOverlay.value = debug?.overlay ?? null
+  if (debug && nowMs - touchOverlayPublishedAtMs >= touchOverlaySnapshotIntervalMs) {
+    touchOverlayPublishedAtMs = nowMs
+    naturalDiagnostics.publishTouchOverlaySnapshot(debug.snapshot)
+  }
+}, { immediate: false })
+
+watch(touchOverlayEnabled, (enabled) => {
+  if (enabled) {
+    touchOverlayLoop.resume()
+    return
+  }
+  touchOverlayLoop.pause()
+  touchOverlay.value = null
+}, { immediate: true })
+
 watch(naturalCaptureRequest, (request, previous) => {
   if (request && request.id !== previous?.id)
     startNaturalCapture(request)
@@ -1295,9 +1358,9 @@ function readTouchRegions(timeMs: number) {
     return touchRegions
   const internalModel = current.internalModel
   const interaction = headTracker.interactionBounds(internalModel)
-  const head = interaction?.head
+  const touch = interaction?.touch
   const headScale = live2dNaturalTouchHeadScale.value[props.modelId ?? ''] ?? 1
-  touchRegions = { head: head && scaleLive2DRect(head, headScale), unscaledHead: head, eyeAnchor: interaction?.eyeAnchor, body: live2DVisibleBounds(internalModel), measuredAtMs: timeMs }
+  touchRegions = { head: touch && scaleLive2DRect(touch, headScale), unscaledHead: interaction?.head, eyeAnchor: interaction?.eyeAnchor, body: live2DVisibleBounds(internalModel), source: interaction?.source ?? null, measuredAtMs: timeMs }
   return touchRegions
 }
 
@@ -1529,5 +1592,6 @@ import.meta.hot?.dispose(() => {
 
 <template>
   <div ref="dropShadowColorComputer" hidden bg="primary-400 dark:primary-500" />
+  <TouchDebugOverlay v-if="touchOverlay" :overlay="touchOverlay" />
   <slot />
 </template>

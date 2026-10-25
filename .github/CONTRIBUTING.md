@@ -1,28 +1,26 @@
-# Start contributing to [Project AIRI](https://github.com/moeru-ai/airi)
+# Developing this fork
 
-Hello! Thank you for your interest in contributing to this project. This guide will help you get started.
+This guide covers setting up, running, and checking this personal fork of [Project AIRI](https://github.com/moeru-ai/airi). Read [`AGENTS.md`](../AGENTS.md) for the repository conventions. Each app and package also has its own `README.md`, and many have a nested `AGENTS.md`.
 
 ## Prerequisites
 
 - [Git](https://git-scm.com/downloads)
 - [mise](https://mise.jdx.dev/installing-mise.html), or another version manager that reads `.tool-versions`
 
-The repository pins tool versions in [`.tool-versions`](../.tool-versions), including Node.js and pnpm.
-The `packageManager` field in [`package.json`](../package.json) also specifies the pnpm version.
-After you clone the repository, install these versions with mise.
+[`.tool-versions`](../.tool-versions) pins Node.js, pnpm, and .NET. The `packageManager` field in [`package.json`](../package.json) pins the same pnpm version.
 
 <details>
 <summary>Windows setup</summary>
 
 1. Open PowerShell.
-2. Install [`scoop`](https://scoop.sh/).
+2. Install [Scoop](https://scoop.sh/).
 
    ```powershell
    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
    Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
    ```
 
-3. Install Git and mise with Scoop.
+3. Install Git and mise.
 
    ```powershell
    scoop install git mise
@@ -33,320 +31,134 @@ After you clone the repository, install these versions with mise.
 <details>
 <summary>macOS setup</summary>
 
-1. Open Terminal, iTerm2, Ghostty, Kitty, or another terminal.
-2. Install Git and mise with Homebrew.
-
-   ```shell
-   brew install git mise
-   ```
+```shell
+brew install git mise
+```
 
 </details>
 
 <details>
 <summary>Linux setup</summary>
 
-1. Open a terminal.
-2. Use the [Git installation instructions for Linux](https://git-scm.com/downloads/linux).
-3. Install mise using the [package or installation method for your distribution](https://mise.jdx.dev/installing-mise.html).
+Install Git with the [Linux instructions](https://git-scm.com/downloads/linux), then install mise with the [method for your distribution](https://mise.jdx.dev/installing-mise.html).
 
 </details>
 
-## If you have already contributed to this project before
-
-> [!WARNING]
->
-> If you haven't cloned this repository, skip this section.
-
-If the `upstream` remote is not configured, add the Project AIRI repository before you fetch changes:
+## Install
 
 ```shell
-git remote add upstream https://github.com/moeru-ai/airi.git
-```
-
-Fetch upstream changes and rebase your local `main` branch:
-
-```shell
-git fetch --all
-git checkout main
-git pull upstream main --rebase
-```
-
-If you have a working branch, to make your branch up to date with the upstream repository:
-
-```shell
-git checkout <your-branch-name>
-git rebase main
-```
-
-## Fork this project
-
-Click on the **Fork** button on the top right corner of the [moeru-ai/airi](https://github.com/moeru-ai/airi) page.
-
-## Clone
-
-```shell
-git clone https://github.com/<your-github-username>/airi.git
+git clone https://github.com/lschneiderny/airi.git
 cd airi
-```
-
-## Create your working branch
-
-```shell
-git checkout -b <your-branch-name>
-```
-
-## Install dependencies
-
-From the repository root, install the tools recorded in `.tool-versions`:
-
-```shell
+git remote add upstream https://github.com/moeru-ai/airi.git
 mise install
+pnpm install
 ```
 
-Make sure that the Node.js and pnpm versions match `.tool-versions`:
+If mise is not [activated in your shell](https://mise.jdx.dev/dev-tools/shims.html), prefix commands with `mise exec --`, for example `mise exec -- pnpm install`.
 
-```shell
-mise exec -- node --version
-mise exec -- pnpm --version
-```
+The workspace sets `verifyDepsBeforeRun: error`. If `pnpm run` or `pnpm exec` reports that dependencies are out of date, run `pnpm install` once.
 
-The pnpm version must also match the `packageManager` field in `package.json`.
+## Run an app
 
-mise installs pnpm directly, so this setup does not require Corepack.
-
-Install the project dependencies:
-
-```shell
-mise exec -- pnpm install
-```
-
-The remaining examples assume that [mise is activated for your shell](https://mise.jdx.dev/dev-tools/shims.html).
-Otherwise, run package-manager commands through `mise exec --`, for example `mise exec -- pnpm typecheck`.
-
-### Optional package-manager shortcuts
-
-[@antfu/ni](https://github.com/antfu-collective/ni) detects the package manager used by the repository.
-
-To use these shortcuts, install `@antfu/ni`:
-
-```shell
-mise exec -- npm install --global @antfu/ni
-```
-
-- Use `ni` instead of `pnpm install`, `npm install`, or `yarn install`.
-- Use `nr` instead of `pnpm run`, `npm run`, or `yarn run`.
-
-## Choose the application you want to develop on
-
-### Stage Tamagotchi (Desktop version)
+### Desktop (Stage Tamagotchi)
 
 ```shell
 pnpm dev:tamagotchi
 ```
 
 > [!NOTE]
->
-> For [@antfu/ni](https://github.com/antfu-collective/ni) users, you can
->
-> ```shell
-> nr dev:tamagotchi
-> ```
+> The `dev` and `start` scripts run `install-electron` before `electron-vite`. Electron 42 downloads its binary on first use of its `bin` entry, but `electron-vite` reads `node_modules/electron/path.txt` directly and never triggers that download. Without this step, a fresh install fails with `Error: Electron uninstall`.
 
-> [!NOTE]
->
-> The `dev` and `start` scripts run `install-electron` before `electron-vite`.
->
-> Electron 42 removed the `postinstall` script. The `electron` package now downloads its binary
-> when you first run its `bin` entry. `electron-vite` reads `node_modules/electron/path.txt`
-> directly, so it never starts that download. A fresh install therefore fails with
-> `Error: Electron uninstall`.
->
-> `install-electron` runs the same code as the removed `postinstall` script. It returns
-> immediately when the binary is already present.
->
-> Remove this step after `electron-vite` supports the lazy download.
+On NixOS, Electron needs shared libraries outside the standard paths. Use the FHS shell from `flake.nix`:
 
-### Stage Web (Browser version for [airi.moeru.ai](https://airi.moeru.ai))
+```shell
+nix develop .#fhs
+pnpm dev:tamagotchi
+```
+
+### Web (Stage Web)
 
 ```shell
 pnpm dev
 ```
 
-> [!NOTE]
->
-> For [@antfu/ni](https://github.com/antfu-collective/ni) users, you can
->
-> ```shell
-> nr dev
-> ```
+### Mobile (Stage Pocket)
 
-### UI Storyboard
-
-Browse the live UI component storyboard at [airi.moeru.ai/ui](https://airi.moeru.ai/ui/).
-
-### Documentation site
-
-The documentation site lives in [moeru-ai/airi-docs](https://github.com/moeru-ai/airi-docs), see its README for development.
-
-### Telegram bot integration
-
-A Postgres database is required.
+The mobile app is inherited from upstream and is not tested in this fork.
 
 ```shell
-cd integrations/telegram-bot
-docker compose up -d
+pnpm dev:pocket:ios --target "<DEVICE_ID_OR_SIMULATOR_NAME>"
+pnpm dev:pocket:android
 ```
 
-Configure `.env`
+Quote the target, because simulator names such as `iPhone 16 Pro` contain spaces. To list devices, run `pnpm -F @proj-airi/stage-pocket exec cap run ios --list`. See [`apps/stage-pocket/README.md`](../apps/stage-pocket/README.md) for more.
+
+### Integrations
+
+The Discord, Telegram, Minecraft, and other integrations in `integrations/` are inherited from upstream. Their setup is in each directory's `README.md`.
+
+## Check your changes
+
+Run this after each change:
 
 ```shell
-cp .env .env.local
+pnpm verify
 ```
 
-Edit the credentials in `.env.local`.
+`pnpm verify` typechecks the changed packages and their dependents, lints the changed files, and runs the related tests. It skips any step that already passed on the same working tree. If a root config file changed, it typechecks every package.
 
-Migrate the database
+Narrower and broader commands:
 
 ```shell
-pnpm -F @proj-airi/telegram-bot db:generate
-pnpm -F @proj-airi/telegram-bot db:push
+pnpm -F <package-name> typecheck
+pnpm -F <package-name> exec vitest run <path>
+pnpm lint:fix        # ESLint also formats
+pnpm typecheck       # whole repository
+pnpm test:run        # whole repository
 ```
 
-Run the bot
+Build, typecheck, and QA scripts draw from a shared CPU slot budget. If a command waits, run `pnpm slots status` to see which jobs hold the budget.
+
+### Motion QA
+
+Live2D motion and emotion changes have their own gates:
 
 ```shell
-pnpm -F @proj-airi/telegram-bot start
+pnpm qa:doctor   # preflight
+pnpm qa:test     # tests, reporting only new failures
+pnpm qa:motion   # motion gates
+pnpm qa:report   # HTML review report
 ```
 
-> [!NOTE]
->
-> For [@antfu/ni](https://github.com/antfu-collective/ni) users, you can
->
-> ```shell
-> nr -F @proj-airi/telegram-bot dev
-> ```
+The levels and gates are described in [`docs/ai/adr/2026-10-20-motion-qa-levels.md`](../docs/ai/adr/2026-10-20-motion-qa-levels.md).
 
-### Discord bot integration
+## Parallel work in worktrees
 
 ```shell
-cd integrations/discord-bot
+pnpm wt new <name>   # create a worktree
+pnpm wt ls           # idle time, uncommitted files, live processes
+pnpm dev:top         # memory and CPU of dev processes per worktree
+pnpm wt rm <name>    # remove a worktree
 ```
 
-Configure `.env`
+To stop the processes of a worktree, run `pnpm dev:top kill <name> --yes`.
+
+## Commits and branches
+
+- Use [Conventional Commits](https://www.conventionalcommits.org/) with the package name as the scope, for example `feat(stage-ui-live2d): add touch debug overlay`.
+- Name branches `<username>/feat/<short-name>`.
+- Pull with rebase.
+- Keep documentation in the same commit as the code it describes. Put agent configuration changes (`AGENTS.md`, `.agents/`, `.github/copilot-instructions.md`) in a separate commit.
+- Add user-visible strings in English under `packages/i18n/src/locales/en/`. Do not add placeholder translations for other locales.
+
+## Bring in upstream changes
+
+The fork has diverged heavily from upstream, so upstream fixes are brought in by cherry-pick instead of merge:
 
 ```shell
-cp .env .env.local
+git fetch upstream
+git log --oneline main..upstream/main
+git cherry-pick <commit>
 ```
 
-Edit the credentials in `.env.local`.
-
-Run the bot
-
-```shell
-pnpm -F @proj-airi/discord-bot start
-```
-
-> [!NOTE]
->
-> For [@antfu/ni](https://github.com/antfu-collective/ni) users, you can
->
-> ```shell
-> nr -F @proj-airi/discord-bot dev
-> ```
-
-### Minecraft agent
-
-```shell
-cd integrations/minecraft
-```
-
-Start a Minecraft client, export your world with desired port, and fill-in the port number in `.env.local`.
-
-Configure `.env`
-
-```shell
-cp .env .env.local
-```
-
-Edit the credentials in `.env.local`.
-
-Run the bot
-
-```shell
-pnpm -F @proj-airi/minecraft-bot start
-```
-
-> [!NOTE]
->
-> For [@antfu/ni](https://github.com/antfu-collective/ni) users, you can
->
-> ```shell
-> nr -F @proj-airi/minecraft-bot dev
-> ```
-
-## Commit
-
-### Before commit
-
-Please make sure lint (static checkers) and TypeScript compilers are satisfied:
-
-```shell
-pnpm lint && pnpm typecheck
-```
-
-If you are committing images, consider using AVIF format instead of PNG, JPG etc. You can convert existing images to AVIF by running:
-
-```shell
-pnpm to-avif <PATH_TO_IMAGE_OR_DIRECTORY1> <PATH_2> <PATH_3> ...
-```
-
-> [!NOTE]
->
-> If you have [@antfu/ni](https://github.com/antfu-collective/ni) installed, you can use `nr` to run the commands:
->
-> ```shell
-> nr lint && nr typecheck
-> ```
-
-### Commit
-
-```shell
-git add .
-git commit -m "<your-commit-message>"
-```
-
-### Push to your fork repository
-
-```shell
-git push origin <your-branch-name> -u
-```
-
-You should be able to browse the branch on your fork repository.
-
-## Creating Pull Request
-
-Navigate to [moeru-ai/airi](https://github.com/moeru-ai/airi) page, click on the **Pull requests** tab, and click on the **New pull request** button, click on the **Compare across forks** link, and select your fork repository.
-
-Review the changes, and click on the **Create pull request** button.
-
-## Unit Test merge requirement
-
-The `Unit Test` check must pass before a pull request merges into `main`.
-Organization member `luoling8192` described failed unit tests as a CI blocker in
-[PR #2290](https://github.com/moeru-ai/airi/pull/2290#issuecomment-5802515112) and
-[PR #2214](https://github.com/moeru-ai/airi/pull/2214#issuecomment-5802515813).
-
-The proposed [Require Unit Test ruleset](rulesets/require-unit-test.json) adds this requirement alongside the existing `Protect main` ruleset.
-It requires the `Unit Test` check from GitHub Actions and has no bypass actors.
-Existing required checks remain in effect.
-
-A repository administrator must import the JSON file under **Settings → Rules → Rulesets → New ruleset → Import a ruleset**.
-Do not create a duplicate if `Require Unit Test` already exists. Update that ruleset instead.
-Merging this document does not apply the GitHub configuration.
-
-Auto-merge is already enabled for the repository.
-With this ruleset active, auto-merge waits for `Unit Test` and the other required checks before a merge.
-
-## Whooo-ya! You made it!
-
-Congratulations! You made your first contribution to this project. You can now wait for the maintainers to review your pull request.
+Run long verification for a sync in a dedicated worktree.

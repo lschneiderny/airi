@@ -1,0 +1,11 @@
+Closing briefing
+- Sources: 72 from 40 distinct domain(s), counted from the sources ledger.
+- Elapsed: 327 minute(s) since 2026-10-24T18:13:57.000Z.
+- Deliverables:
+  | format | status | detail |
+  |---|---|---|
+  | md | delivered | C:\Users\Luke\projects\dtuber\.omo\ulw-research\20261024-181357\report.md |
+  | post | delivered | C:\Users\Luke\projects\dtuber\.omo\ulw-research\20261024-181357\post.md |
+- Gates: static pass, layout not_run, visual pass, proofread not_run.
+- Residual defects: 0.
+- Repair: not run.

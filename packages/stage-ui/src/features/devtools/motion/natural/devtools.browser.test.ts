@@ -1,3 +1,4 @@
+import type { Live2DTouchDebugSnapshot } from '@proj-airi/stage-ui-live2d/composables/live2d/touch-debug'
 import type { AffectTraceSink, NaturalCaptureResult } from '@proj-airi/stage-ui-live2d/stores'
 
 import en from '@proj-airi/i18n/locales/en'
@@ -285,5 +286,48 @@ describe('natural motion lab', () => {
 
     await expect.element(screen.getByTestId('natural-capture-saved-path')).toHaveTextContent('C:/evidence/natural-trace.json')
     expect(sink).toHaveBeenCalledWith(trace, 'natural-trace-2026-10-17T12-00-00.000Z-fixture.json')
+  })
+  it('turns the touch overlay on for the stage, shows its readout, copies it, and clears it when turned off', async () => {
+    const { screen, diagnostics } = await renderLab({ en })
+    const { t } = createTestI18n({ en }).global
+    const label = (key: string) => t(`tamagotchi.settings.devtools.pages.live2d-natural-motion.touch-regions.${key}`)
+    expect(label('source.face')).toBe('Face features')
+    const snapshot: Live2DTouchDebugSnapshot = {
+      modelId: 'fixture-model',
+      capturedAt: '2026-10-24T12:00:00.000Z',
+      source: 'face',
+      drawables: { face: 47, eyes: 35, physics: 210 },
+      headScale: 1,
+      model: { touch: { x: 100, y: 100, width: 200, height: 300 }, zone: { x: 0, y: 0, width: 400, height: 430 }, cursorUnit: null, body: null, eyeAnchor: null },
+      viewport: { touch: { x: 60, y: 67, width: 100, height: 150 }, zone: { x: 10, y: 17, width: 200, height: 215 }, cursorUnit: null, body: null, eyeAnchor: null },
+      pointer: { model: { x: 150, y: 150 }, viewport: { x: 85, y: 92 }, region: 'head', ageMs: 40 },
+      hostCursor: null,
+      gesture: { petting: false, requireHold: false, inZone: true, trail: [], inHeadShare: 0.75, travel: 0.4, reversals: 0, idleMs: null, offHeadMs: null },
+      thresholds: { travel: 0.35, inHeadShare: 0.5, reversals: 1, windowMs: 1500, idleMs: 600, leaveMs: 250 },
+      transforms: { internalModelLocal: [1, 0, 0, 1, 0, 0], modelWorld: [1, 0, 0, 1, 0, 0], canvasClient: { left: 0, top: 0, width: 400, height: 300 }, canvasBacking: { width: 400, height: 300 } },
+    }
+
+    diagnostics.publishTouchOverlaySnapshot(snapshot)
+    expect(diagnostics.touchOverlaySnapshot).toBeNull()
+
+    await screen.getByTestId('touch-overlay-enabled').getByRole('switch').click()
+    await until(() => diagnostics.touchOverlayEnabled).toBe(true, { timeout: 5000, throwOnTimeout: true })
+    await expect.element(screen.getByTestId('touch-overlay-waiting')).toBeVisible()
+
+    diagnostics.publishTouchOverlaySnapshot(snapshot)
+
+    await expect.element(screen.getByTestId('touch-overlay-source')).toHaveTextContent(label('source.face'))
+    await expect.element(screen.getByTestId('touch-overlay-pointer-region')).toHaveTextContent(label('pointer.regions.head'))
+    await expect.element(screen.getByTestId('touch-overlay-pet-state')).toHaveTextContent(label('pet.in-zone'))
+    await expect.element(screen.getByText('60, 67 (100 x 150)')).toBeVisible()
+    await expect.element(screen.getByText(`${label('pet.reversals')} 0 / 1`)).toBeVisible()
+
+    await screen.getByTestId('touch-overlay-copy').click()
+    await expect.element(screen.getByTestId('touch-overlay-copy')).toHaveTextContent(label('copied'))
+
+    await screen.getByTestId('touch-overlay-enabled').getByRole('switch').click()
+    await until(() => diagnostics.touchOverlayEnabled).toBe(false, { timeout: 5000, throwOnTimeout: true })
+    expect(diagnostics.touchOverlaySnapshot).toBeNull()
+    expect(screen.getByTestId('touch-overlay-readout').query()).toBeNull()
   })
 })

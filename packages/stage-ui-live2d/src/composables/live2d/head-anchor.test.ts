@@ -171,7 +171,9 @@ describe('live2D head tracker', () => {
     expect(tracker.bounds(model)).toEqual({ x: 0, y: 0, width: 8, height: 8 })
     expect(tracker.interactionBounds(model)).toEqual({
       head: { x: 0, y: 0, width: 8, height: 8 },
+      touch: { x: 0, y: 0, width: 8, height: 8 },
       eyeAnchor: { x: 4, y: 4.4 },
+      source: 'hit-area',
     })
     expect(update).not.toHaveBeenCalled()
   })
@@ -243,10 +245,13 @@ describe('live2D head tracker', () => {
     'ParamMouthForm',
   ])('measures %s movers without evaluating physics and restores their pose', (id) => {
     const model = riggedModel({ drawables: 4, head: [], physicsDriven: [3], features: { [id]: [1] } })
+    const tracker = createLive2DHeadTracker()
+    // The touch box reads the cached physics box for its crown; only the face probe must skip physics.
+    tracker.bounds(model)
     const evaluate = vi.spyOn(model.physics!, 'evaluate')
     model.coreModel.setParameterValueById(id, 30)
 
-    const interaction = createLive2DHeadTracker().interactionBounds(model)!
+    const interaction = tracker.interactionBounds(model)!
     expect(interaction.head.x).toBeCloseTo(27.6)
     expect(interaction.head.width).toBeCloseTo(12.8)
     expect(model.coreModel.getParameterValueById(id)).toBe(30)
@@ -261,6 +266,9 @@ describe('live2D head tracker', () => {
 
     const interaction = tracker.interactionBounds(model)!
     expect(interaction.head).toEqual(tracker.bounds(model))
+    expect(interaction.touch).toEqual(interaction.head)
+    expect(interaction.source).toBe('physics')
+    expect(tracker.selectionCounts()).toEqual({ physics: 1 })
     expect(interaction.head.height).toBe(8)
     expect(interaction.eyeAnchor.y).toBe(24.4)
     update.mockClear()
@@ -322,6 +330,42 @@ describe('live2D head tracker', () => {
     mouthOpacity = 1
     expect(tracker.interactionBounds(model)?.eyeAnchor).toEqual({ x: 4, y: 14 })
     expect(tracker.interactionBounds(model)?.head.height).toBeCloseTo(28.8)
+  })
+
+  it('reaches the touch box up to the physics-carried crown while keeping the face-based head box', () => {
+    // ROOT CAUSE:
+    //
+    // Touch used the face-feature box grown 1.6x around its center. Face features
+    // stop near the brows, so its top excluded the hair: on ForBOOTH it started at
+    // y 1179 while the hair began at 633, and stroking the crown never petted.
+    const model = riggedModel({
+      drawables: 4,
+      head: [0],
+      physicsDriven: [3],
+      features: { ParamEyeLOpen: [1], ParamMouthOpenY: [2] },
+    })
+
+    const interaction = createLive2DHeadTracker().interactionBounds(model)!
+
+    // Drawable 0 is the crown at y 0; the face spans drawables 1 and 2 (y 10-28).
+    expect(interaction.source).toBe('face')
+    expect(interaction.head.y).toBeCloseTo(4.6)
+    expect(interaction.touch.x).toBeCloseTo(interaction.head.x)
+    expect(interaction.touch.width).toBeCloseTo(interaction.head.width)
+    expect(interaction.touch.y).toBe(0)
+    expect(interaction.touch.y + interaction.touch.height).toBeCloseTo(interaction.head.y + interaction.head.height)
+  })
+
+  it('keeps the touch top at the face box when the physics box starts lower', () => {
+    const model = riggedModel({
+      drawables: 4,
+      head: [3],
+      features: { ParamEyeLOpen: [0], ParamMouthOpenY: [1] },
+    })
+
+    const interaction = createLive2DHeadTracker().interactionBounds(model)!
+
+    expect(interaction.touch).toEqual(interaction.head)
   })
 
   it('drops what follows the body as much as the head', () => {

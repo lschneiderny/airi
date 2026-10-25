@@ -258,15 +258,21 @@ export function createLive2DHeadTracker() {
     },
 
     /**
-     * The interaction head box (whose width is the cursor unit) and eye anchor.
+     * The interaction head box (whose width is the cursor unit), the touch box, and eye anchor.
      * An authored hit area wins unchanged, then face features expanded by
      * `faceToHeadScale`, then the physics-inclusive box. Visible eye-feature
      * drawables locate the eye anchor when the face measure is used; without them,
      * hit areas and fallback boxes keep the existing proportional eye anchor.
+     * Face features stop near the brows, so with the face measure the touch box
+     * keeps the head box's width and bottom but reaches up to the top of the
+     * physics-inclusive box, where the hair or hood ends, so the crown can be petted.
+     * Otherwise the touch box is the head box.
      * Selections are measured once and visibility every time. Reset on model swap.
      */
     interactionBounds(internalModel: Live2DHeadSource) {
-      const face = selectByHitArea(internalModel) ? undefined : readBounds(internalModel, 'face')
+      const hitArea = !!selectByHitArea(internalModel)
+      const face = hitArea ? undefined : readBounds(internalModel, 'face')
+      const source: 'hit-area' | 'face' | 'physics' = hitArea ? 'hit-area' : face ? 'face' : 'physics'
       const head = face ? scaleLive2DRect(face, faceToHeadScale) : readBounds(internalModel, 'physics')
       if (!head)
         return undefined
@@ -274,7 +280,24 @@ export function createLive2DHeadTracker() {
       const eyeAnchor = eyes
         ? { x: eyes.x + eyes.width / 2, y: eyes.y + eyes.height / 2 }
         : { x: head.x + head.width / 2, y: head.y + head.height * eyeAnchorShare }
-      return { head, eyeAnchor }
+      const crown = face && readBounds(internalModel, 'physics')
+      const touch = crown && crown.y < head.y
+        ? { x: head.x, y: crown.y, width: head.width, height: head.y + head.height - crown.y }
+        : head
+      return { head, touch, eyeAnchor, source }
+    },
+
+    /**
+     * How many drawables each cached measurement selected, for the touch-region debug overlay.
+     * A measure that has not run or found nothing is absent.
+     */
+    selectionCounts() {
+      const counts: Partial<Record<'physics' | 'face' | 'eyes', number>> = {}
+      for (const [measure, selected] of selections) {
+        if (selected)
+          counts[measure] = selected.length
+      }
+      return counts
     },
 
     /** Drops every selection so the next model answers for itself. */

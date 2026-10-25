@@ -158,6 +158,30 @@ describe('natural gaze', () => {
     expect(maxSpeed).toBeLessThanOrEqual(1.5 + 1e-9)
   })
 
+  it('keeps up with a steady 2 eye-units/s cursor sweep through catch-ups', () => {
+    // ROOT CAUSE:
+    //
+    // Catch-up saccades aimed where the cursor was at launch and landed with zero
+    // pursuit velocity, so the eyes stalled behind a fast sweep (mean error 0.148).
+    const gaze = new NaturalGazeLayer(silent)
+    gaze.setCursorTarget({ x: -0.6, y: 0 }, 1)
+    gaze.orient(0)
+    sample(gaze, 0, 0.2)
+    let error = 0
+    let measured = 0
+    for (let i = 1; i <= 0.6 / dt; i++) {
+      const x = -0.6 + 2 * i * dt
+      gaze.setCursorTarget({ x, y: 0 }, 1)
+      const point = gaze.step(dt)
+      if (i * dt > 0.15) {
+        error += Math.abs(point.x - x)
+        measured++
+      }
+    }
+
+    expect(error / measured).toBeLessThan(0.08)
+  })
+
   it('makes exactly one catch-up saccade for a 0.5-unit target step', () => {
     const gaze = new NaturalGazeLayer(silent)
     gaze.setCursorTarget({ x: 0, y: 0 }, 1)

@@ -1,1 +1,1 @@
-Please refer to [README.md](https://github.com/moeru-ai/airi) for the main documentation.
+See the [main README](../README.md). Design records for this fork are in [`ai/adr/`](./ai/adr/).

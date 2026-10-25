@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "sessionDir": "C:\\Users\\Luke\\projects\\dtuber\\.omo\\ulw-research\\20261024-181357",
+  "startedAt": "2026-10-24T18:13:57.000Z",
+  "finishedAt": "2026-10-24T23:40:51.029Z",
+  "elapsedMinutes": 327,
+  "lane": "no-format",
+  "interview": null,
+  "deliverables": [
+    {
+      "format": "md",
+      "status": "delivered",
+      "promised": true,
+      "updatedAt": "2026-10-24T23:40:50.780Z",
+      "path": "C:\\Users\\Luke\\projects\\dtuber\\.omo\\ulw-research\\20261024-181357\\report.md",
+      "bytes": 23956
+    },
+    {
+      "format": "post",
+      "status": "delivered",
+      "promised": true,
+      "updatedAt": "2026-10-24T23:40:50.851Z",
+      "path": "C:\\Users\\Luke\\projects\\dtuber\\.omo\\ulw-research\\20261024-181357\\post.md",
+      "bytes": 1342
+    }
+  ],
+  "renders": [
+    {
+      "path": "C:\\Users\\Luke\\projects\\dtuber\\.omo\\ulw-research\\20261024-181357\\renders\\page-01-desktop.png",
+      "page": 1
+    },
+    {
+      "path": "C:\\Users\\Luke\\projects\\dtuber\\.omo\\ulw-research\\20261024-181357\\renders\\page-01-phone.png",
+      "page": 1
+    },
+    {
+      "path": "C:\\Users\\Luke\\projects\\dtuber\\.omo\\ulw-research\\20261024-181357\\renders\\page-03-desktop-fig.png",
+      "page": 1
+    },
+    {
+      "path": "C:\\Users\\Luke\\projects\\dtuber\\.omo\\ulw-research\\20261024-181357\\renders\\page-03-phone-retune.png",
+      "page": 1
+    }
+  ],
+  "gates": {
+    "static": "pass",
+    "layout": "not_run",
+    "visual": "pass",
+    "proofread": "not_run"
+  },
+  "residualDefects": [],
+  "repair": null,
+  "sources": {
+    "total": 72,
+    "domains": 40
+  }
+}

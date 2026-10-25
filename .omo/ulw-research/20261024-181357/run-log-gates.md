@@ -1,0 +1,1 @@
+- 2026-10-24T23:29:10.164Z: static check PASS 0/0/0 after repair (chart added, citations, lineage tags); visual PASS (desktop 1280 + phone 390; fixed clipped axis label and phone table word breaks); layout + proofread not_run (light tier, lane no-format). Gate reviewer dispatched for claim-evidence fidelity.

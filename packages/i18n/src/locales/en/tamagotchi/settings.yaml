@@ -308,6 +308,64 @@ devtools:
           value: Value
           band: Reference band
           pass: Result
+      touch-regions:
+        title: Touch regions
+        enabled:
+          title: Show touch regions
+          description: Draw the poke and pet boxes, the pointer, and the stroke trail over the character in the main window.
+        legend:
+          touch: Head (pet and head poke)
+          zone: Pet margin
+          cursor-unit: Cursor unit
+          body: Body (body poke)
+          eye-anchor: Eye anchor
+          pointer: Pointer
+          host-cursor: Host cursor
+          trail-in-head: Trail in head
+          trail-in-zone: Trail in margin
+        waiting: Waiting for the main window. A Live2D model must be loaded.
+        source:
+          title: Head source
+          hit-area: Authored hit area
+          face: Face features
+          physics: Head with hair
+          none: None
+        drawables: Drawables
+        measures:
+          face: face
+          eyes: eyes
+          physics: head with hair
+        head-scale: Head scale
+        boxes:
+          touch: Head
+          zone: Pet margin
+          cursorUnit: Cursor unit
+          body: Body
+          columns:
+            box: Box
+            model: Model units (x, y, size)
+            viewport: Screen pixels (x, y, size)
+        pointer:
+          title: Pointer over
+          none: No pointer sample
+          age: '{ms} ms ago'
+          regions:
+            head: Head
+            body: Body
+            outside: Outside
+        pet:
+          title: Pet
+          petting: Petting
+          in-zone: Stroke counting
+          idle: Not petting
+          in-head: Time in head
+          travel: Travel
+          reversals: Reversals
+          hold-only: Reversals are not needed while a held button is required.
+          idle-timer: 'Still for {ms} of {limit} ms'
+          leave-timer: 'Off the head for {ms} of {limit} ms'
+        copy: Copy snapshot
+        copied: Copied
     live2d-motion:
       title: Live2D Motion Control
       description: Control Live2D eye, head, and body motion.

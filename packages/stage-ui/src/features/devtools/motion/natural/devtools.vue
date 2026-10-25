@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import AffectTrace from './components/affect-trace.vue'
 import EmotionPulses from './components/emotion-pulses.vue'
 import PerformanceControls from './components/performance-controls.vue'
+import TouchRegions from './components/touch-regions.vue'
 import TraceCapture from './components/trace-capture.vue'
 
 const { t } = useI18n()
@@ -18,5 +19,6 @@ const { t } = useI18n()
     <EmotionPulses />
     <AffectTrace />
     <TraceCapture />
+    <TouchRegions />
   </div>
 </template>

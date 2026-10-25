@@ -1,3 +1,5 @@
+import type { Live2DModelCanvasRect } from './head-anchor'
+
 /** Where a pointer sample lands on the model; `null` is outside the measured model. */
 export type Live2DTouchRegion = 'head' | 'body'
 
@@ -23,6 +25,25 @@ export type Live2DTouchEvent
   = | { kind: 'poke', region: Live2DTouchRegion, x: number, y: number }
     | { kind: 'pet-start' }
     | { kind: 'pet-end', durationMs: number }
+
+/** What the classifier measures now; the touch-region debug overlay shows it beside {@link live2DPetThresholds}. */
+export interface Live2DTouchGestureInspection {
+  petting: boolean
+  requireHold: boolean
+  /** Whether the latest moved sample lay in the margin zone and counted toward a pet. */
+  inZone: boolean
+  /** The pet-window trail in model canvas space; `inHead` marks points inside the true head box. */
+  trail: { x: number, y: number, inHead: boolean }[]
+  /** Share of trail time inside the true head box, or `null` before the trail spans any time. */
+  inHeadShare: number | null
+  /** Trail path length in head widths. */
+  travel: number
+  reversals: number
+  /** Milliseconds since the last movement over the head while petting, otherwise `null`. */
+  idleMs: number | null
+  /** Milliseconds since the pointer left the margin zone while petting, otherwise `null`. */
+  offHeadMs: number | null
+}
 
 export interface Live2DTouchGestureOptions {
   /** Pets count only while the primary button is held. @default false */
@@ -50,6 +71,27 @@ const reversalStep = 0.02
 const petIdleMs = 600
 /** A pet ends after the pointer has been off the head this long. */
 const petLeaveMs = 250
+
+/** The limits a pet must reach to start, and the timeouts that end it. Reversals apply only to hover pets. */
+export const live2DPetThresholds = {
+  travel: petStartTravel,
+  inHeadShare: minInHeadShare,
+  reversals: 1,
+  windowMs: petWindowMs,
+  idleMs: petIdleMs,
+  leaveMs: petLeaveMs,
+} as const
+
+/** The margin zone around `head` where pet strokes may overshoot, in the same space as `head`. */
+export function live2DPetZoneRect(head: Live2DModelCanvasRect): Live2DModelCanvasRect {
+  const unit = head.width
+  return {
+    x: head.x - headMargin.side * unit,
+    y: head.y - headMargin.top * unit,
+    width: unit * (1 + 2 * headMargin.side),
+    height: head.height + (headMargin.top + headMargin.bottom) * unit,
+  }
+}
 
 interface Point {
   timeMs: number
@@ -88,6 +130,9 @@ export class Live2DTouchGestures {
   private petStartedAtMs: number | undefined
   private lastHeadMoveAtMs = 0
   private leftHeadAtMs: number | undefined
+  /** The latest moved sample's scale and zone, kept for {@link Live2DTouchGestures.inspect}. */
+  private lastScale = 1
+  private lastInZone = false
 
   constructor(options: Live2DTouchGestureOptions = {}) {
     this.requireHold = options.requireHold ?? false
@@ -121,6 +166,8 @@ export class Live2DTouchGestures {
       ? Math.abs(head.x) <= 0.5 + headMargin.side
       && head.y >= -head.halfHeight - headMargin.top && head.y <= head.halfHeight + headMargin.bottom
       : sample.region === 'head'
+    this.lastScale = sample.scale
+    this.lastInZone = inZone && counts
     if (!inZone || !counts) {
       this.trail = []
       this.moveAnchor = undefined
@@ -171,6 +218,22 @@ export class Live2DTouchGestures {
     return this.petting ? [this.endPet(timeMs)] : []
   }
 
+  /** Reports the trail measurements and pet timers at `timeMs` without changing any state. */
+  inspect(timeMs: number): Live2DTouchGestureInspection {
+    const measured = this.trail.length > 1 ? this.measureTrail(this.lastScale) : undefined
+    return {
+      petting: this.petting,
+      requireHold: this.requireHold,
+      inZone: this.lastInZone,
+      trail: this.trail.map(({ x, y, inHead }) => ({ x, y, inHead })),
+      inHeadShare: measured && measured.durationMs > 0 ? measured.inHeadMs / measured.durationMs : null,
+      travel: measured?.travel ?? 0,
+      reversals: measured?.reversals ?? 0,
+      idleMs: this.petting ? timeMs - this.lastHeadMoveAtMs : null,
+      offHeadMs: this.petting && this.leftHeadAtMs !== undefined ? timeMs - this.leftHeadAtMs : null,
+    }
+  }
+
   /** Ends a pet whose pointer stopped moving or left the head. */
   update(timeMs: number): Live2DTouchEvent[] {
     const press = this.press
@@ -199,6 +262,13 @@ export class Live2DTouchGestures {
   }
 
   private qualifies(scale: number) {
+    const { inHeadMs, durationMs, travel, reversals } = this.measureTrail(scale)
+    return travel >= petStartTravel && (this.requireHold || reversals >= 1)
+      && durationMs > 0 && inHeadMs / durationMs >= minInHeadShare
+  }
+
+  /** Time inside the true head, duration, path length in head widths, and reversals of the trail. */
+  private measureTrail(scale: number) {
     let inHeadMs = 0
     for (let index = 1; index < this.trail.length; index++) {
       if (this.trail[index - 1].inHead)
@@ -224,7 +294,6 @@ export class Live2DTouchGestures {
       direction = sign
       anchor = point
     }
-    return travel >= petStartTravel && (this.requireHold || reversals >= 1)
-      && durationMs > 0 && inHeadMs / durationMs >= minInHeadShare
+    return { inHeadMs, durationMs, travel, reversals }
   }
 }

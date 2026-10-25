@@ -1,0 +1,9 @@
+arm,dist,q25_yaw,q25_ratio,cv60,cv10,speed,still05,still2,fails
+HUMAN,0,.436,1,.775,1.093,6.7,band .02-.10,band .22-.447,
+A_baseline,1.11,1.679,3.85,.10-.17,,,pass,pass,none
+W7,.738,.777,1.78,.105,.260,5.5,.065,.436,jitter SPLA
+S7,.580,.627,1.44,.117,.279,6.6,.077,.424,jitter speedPeakP90P50 SPLA
+S6,.690,.521,1.20,.119,.285,6.5,.107,.477,still05 still2 jitter P90P50 SPLA
+R1X,.379,.554,1.27,.583,.831,9.4,.246,.499,sdZ still05 still2 angleXp95 jitter SPLA
+R2X,.559,.522,1.20,.716,.918,6.0,.222,.554,still05 still2 jitter SPLA
+R4,.539,.635,1.46,.450,.550,6.8,.084,.439,jitter SPLA
