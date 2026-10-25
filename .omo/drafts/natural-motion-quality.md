@@ -1,24 +1,25 @@
 ---
 slug: natural-motion-quality
-status: awaiting-approval
+status: reviewed-approved
 intent: clear
 review_required: true
 plan_path: .omo/plans/natural-motion-quality.md
-plan_sha256: e8e45c4ff33be9e36f5ab954d58349b4f6b1d978e2b5f124b74d6b8500de0918
-review_round_id: nmq-r1-1792888482820
+plan_sha256: 34a0f6a2f81401f2de8322bb43ca4c987f7bcf14f047d88a9c8b76ad4d985b8a
+review_round_id: nmq-r2-1792890997177
 review_round_limit: 5
-pending-action: write and review .omo/plans/natural-motion-quality.md
+pending-action: execute via /ulw-execute natural-motion-quality
 review:
   plan_reviewer:
-    status: approved-round-1
+    status: approved
     workspace_root: C:/Users/Luke/projects/dtuber
     runtime_home: null
     target: .omo/plans/natural-motion-quality.md
-    round_id: nmq-r1-1792888482820
-    plan_sha256: e8e45c4ff33be9e36f5ab954d58349b4f6b1d978e2b5f124b74d6b8500de0918
-    launch_id: nmq-r1-1792888482820
-    session: st_01a1707b
-    result: OKAY (round 1, sha e8e45c4ff33be9e36f5ab954d58349b4f6b1d978e2b5f124b74d6b8500de0918, session st_01a1707b); notes: (1) todo 4 posture test must stay within softLimit identity (|x|<=0.8) or compare pre-limit; (2) todo 13 disabled regime must mean rate=amp=1 exactly via exp(s x - s^2/2) with s=0; (3) todo 14 rebase: per-commit hash pins conflict and are stale until the final re-pin; (4) option (b)/timeout can leave IS-1/IS-2/A-B undelivered by Luke's choice
+    round_id: nmq-r2-1792890997177
+    plan_sha256: 34a0f6a2f81401f2de8322bb43ca4c987f7bcf14f047d88a9c8b76ad4d985b8a
+    launch_id: nmq-r2-1792890997177
+    session: st_01a170a1
+    round1_result: OKAY (round 1, sha e8e45c4ff33be9e36f5ab954d58349b4f6b1d978e2b5f124b74d6b8500de0918, session st_01a1707b); notes: (1) todo 4 posture test must stay within softLimit identity (|x|<=0.8) or compare pre-limit; (2) todo 13 disabled regime must mean rate=amp=1 exactly via exp(s x - s^2/2) with s=0; (3) todo 14 rebase: per-commit hash pins conflict and are stale until the final re-pin; (4) option (b)/timeout can leave IS-1/IS-2/A-B undelivered by Luke's choice
+    result: OKAY (round 2, sha 34a0f6a2f81401f2de8322bb43ca4c987f7bcf14f047d88a9c8b76ad4d985b8a, session st_01a170a1); notes: (1) emotion-score.ts naturalEmotionLifetime/naturalFaceResidue edits in todos 3-5 are allowed (motion-derived bounds, not gates.ts definitions); (2) todo 13 test (d) compares raw continuous OU n, not gain*n; test (a) needs a way to set sRate/sAmp = 0; (3) laugh face pulses may move happy's T1 size ratio - a FAIL is a finding for Luke at todo 5/7
 approach: two parallel tracks - Track E (emotion quick wins: idle ducking during emotion clips, face OU low-pass + lid kink, laugh clip redesign, eye counter-rotation limit) and Track I (idle reshape: slower smoother continuous OU, human-fitted holds, shifts-only activity regime on top of the hold-latched gain); gate band re-derivation is an owner decision deferred by Luke
 ---
 
@@ -108,6 +109,7 @@ Users:
 - no new random draws on existing streams (new processes get appended streams)
 
 ## Open questions
+- B1 RESOLVED by away-default 2026-10-25 (question timed out): strip old keys on read with NOTICE (recommended option); veto possible at execution start. Original: B1 (advisory review, lead-verified): removing the 3 energy settings resets ALL stored expression-performance settings (strictObject schema, reader returns defaults on parse failure). Asked Luke: strip old keys on read with NOTICE (recommended) / accept reset / keep dead settings.
 
 ## Approval gate
 status: approved 2026-10-25 (Luke: Approve). Plan written to .omo/plans/natural-motion-quality.md.

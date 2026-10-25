@@ -774,7 +774,7 @@ Secondary users:
   QA scenarios: Happy: screenshots of Everything else with ForBOOTH-shaped fixture data (eyes, mouth, cheeks, outfit & hair, unsorted with four entries, one duplicate primary) at 1280px and 390px, light and dark: `task-11-*.png`. Failure: the "no Group text" assertion fails when `group-select` is temporarily reverted to "Group"; record and restore. Evidence `task-11-expression-reactions-and-combos.txt`.
   Commit: Y | feat(stage-ui): sort Live2D expressions by area with unsorted, duplicates and custom switches
 
-- [ ] 12. Reactions section and the final panel order
+- [x] 12. Reactions section and the final panel order
   Recommended task executor category: visual-engineering - emotion-first section composing the combo editor from todo 10.
   What to do:
   - New `live2d-expression-reactions.vue`, rendered first in `live2d-expressions-section.vue`. The final order is Reactions, Combos (todo 10), Everything else (todo 11).
@@ -808,7 +808,7 @@ Secondary users:
   QA scenarios: Happy: screenshots of the full Expressions tab with ForBOOTH-shaped fixture data, showing the Angry row with Angry, Disdain, Puff Cheeks ½ and Black Face, at 1280px and 390px, light and dark: `task-12-*.png`. Failure: Make combo stays disabled with nothing selected (test case output). Evidence `task-12-expression-reactions-and-combos.txt`.
   Commit: Y | feat(stage-ui): open the Live2D expressions tab on per-emotion reactions
 
-- [ ] 13. ADR, README and unused English keys
+- [x] 13. ADR, README and unused English keys
   Recommended task executor category: writing - docs that describe delivered behavior plus a key cleanup.
   What to do:
   - Write a new ADR, `docs/ai/adr/<execution-date>-expression-combos-and-reactions.md`, following the shape of `docs/ai/adr/2026-10-24-expression-auto-setup.md`. It covers:
@@ -858,7 +858,7 @@ Secondary users:
   QA scenarios: Happy: store + browser cases pass. Failure: a mutation that drops `area: null` handling makes the clear case fail. Evidence `.omo/evidence/expression-reactions-and-combos/task-15-expression-reactions-and-combos.txt`.
   Commit: Y | fix(stage-ui): let combos take an area on creation and clear it later
 
-- [ ] 16. Follow-up: clear an entry's area and stop pinning derived areas on save
+- [x] 16. Follow-up: clear an entry's area and stop pinning derived areas on save
   Recommended task executor category: unspecified-low - one store patch field plus change-tracking in two editors.
   What to do:
   - `update-entry` accepts `area: null` to clear a stored area override; the override document then omits area and the merged entry falls back to the derived area. A patch without an `area` key leaves the stored override unchanged.
@@ -873,7 +873,7 @@ Secondary users:
 
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
-- [ ] F1. Plan compliance audit
+- [x] F1. Plan compliance audit
   Recommended task executor category: deep-low
   Check every Must have and Must NOT have item against `git diff main...HEAD`. Each of these must return nothing:
   - `git grep -n "literal(2)" packages/stage-shared/src/expression-performance`;
@@ -882,7 +882,7 @@ Secondary users:
   - `git diff main...HEAD --stat -- engines package.json pnpm-lock.yaml` lists anything.
 
   The rendered Expressions panel contains no visible "group" text, as proven by todo 11's test and F3's screenshots. Evidence `.omo/evidence/expression-reactions-and-combos/F1-expression-reactions-and-combos.md`.
-- [ ] F2. Code quality review
+- [x] F2. Code quality review
   Recommended task executor category: deep-low
   These commands must all exit 0:
   - `pnpm verify`;
@@ -891,7 +891,7 @@ Secondary users:
   - `pnpm -F @proj-airi/qa-tools exec vitest run src/t3 src/motion`.
 
   If one of the known load-flaky tests fails, rerun that file alone and report both runs. Review the diff against `.agents/skills/enforce-rules-for-typescript/SKILL.md`, `enforce-rules-for-vitest` and `enforce-rules-for-unocss`, and check for `any`, unused exports and dead code (for example, `setActiveSet` left without callers). Evidence `F2-expression-reactions-and-combos.txt`.
-- [ ] F3. Real manual QA
+- [x] F3. Real manual QA
   Recommended task executor category: deep-low
   **Setup.**
   - From the execution worktree, run `pnpm dev:tamagotchi` with `APP_MOTION_QA_BRIDGE=true` and a fresh `APP_USER_DATA_PATH` under `RUN_TMP`, per `.agents/skills/motion-qa/SKILL.md` and `packages/qa-tools/src/t3/launch.ts:24`.
@@ -940,7 +940,7 @@ Secondary users:
   - `Test-Path <RUN_TMP>` returns False after its removal.
 
   Evidence `.omo/evidence/expression-reactions-and-combos/F3-expression-reactions-and-combos/*.png` plus `notes.md`, which records each step's evaluate output.
-- [ ] F4. Ideal-state fidelity
+- [x] F4. Ideal-state fidelity
   Recommended task executor category: deep-low
   Check IS-1 through IS-15 one by one against the delivered behavior and the evidence. Each shortfall becomes a new `- [ ] N.` row, not a note. Evidence `F4-expression-reactions-and-combos.md`.
 
