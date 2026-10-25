@@ -155,6 +155,30 @@ describe('foreground situation sensor', () => {
     expect(activities().map(observation => observation.kind === 'activity' && observation.title)).toEqual(['notes.txt', null])
   })
 
+  it('reports a default-denylisted macOS bundle with its app id and category but a null title', () => {
+    const { activities, publish } = run()
+
+    publish(T0, { exePath: '/Applications/1Password 7.app', exeName: '1Password 7.app', title: 'Vault - secret-bank-login' })
+
+    expect(activities()).toEqual([
+      { kind: 'activity', appId: '1password 7', label: '1Password 7', category: 'other', title: null, atMs: T0 },
+    ])
+    expect(JSON.stringify(activities())).not.toMatch(/secret/u)
+  })
+
+  it('drops the title of a macOS bundle whose denylist entry differs only in case', async () => {
+    const { activities, publish } = run()
+    const settings = useSituationSettings()
+    const macSample = { exePath: '/Applications/Notes.app', exeName: 'Notes.app', title: 'Groceries' }
+
+    publish(T0, macSample)
+    await settings.update({ titleDenylist: ['NOTES.APP'] })
+    publish(T0 + 1_000, macSample)
+
+    expect(activities().map(observation => observation.kind === 'activity' && observation.title)).toEqual(['Groceries', null])
+    expect(activities().map(observation => observation.kind === 'activity' && observation.appId)).toEqual(['notes', 'notes'])
+  })
+
   it('maps every shell notification state to busy, reporting only changes', () => {
     const { observations, publish } = run()
     const states: Array<ForegroundWindowSample['notificationState']> = ['accepts', 'accepts', 'busy', 'd3d-fullscreen', 'presentation', 'quiet-time', 'app', 'not-present', null]

@@ -1,5 +1,6 @@
 import type { LeadershipMode, SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
+import { isDenylisted, withoutAppExtension } from '@proj-airi/stage-shared/situation'
 import { createPinia, disposePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -58,8 +59,8 @@ describe('situation settings', () => {
       dontDisturb: false,
       shareForegroundWindow: true,
       shareBrowserActivity: true,
-      quietApps: ['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe'],
-      titleDenylist: ['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe'],
+      quietApps: ['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'zoom.us.app', 'Microsoft Teams.app', 'FaceTime.app', 'Webex*.app'],
+      titleDenylist: ['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe', '1Password*.app', 'Bitwarden.app', 'KeePassXC.app'],
       showUnpromptedCue: true,
       speakDuringGames: true,
     })
@@ -71,6 +72,29 @@ describe('situation settings', () => {
     await store.reset()
     expect(store.document).toEqual(defaultSituationSettings())
     expect(JSON.parse(localStorage.getItem(key)!)).toEqual(defaultSituationSettings())
+  })
+
+  it.each([
+    { entry: 'zoom.us.app', appId: 'zoom.us' },
+    { entry: 'Microsoft Teams.app', appId: 'microsoft teams' },
+    { entry: 'FaceTime.app', appId: 'facetime' },
+    { entry: 'Webex*.app', appId: 'webex meetings' },
+    { entry: 'zoom.exe', appId: 'zoom' },
+  ])('matches the app id $appId with the default quiet app $entry after the extension strip', ({ entry, appId }) => {
+    const stripped = defaultSituationSettings().quietApps.map(pattern => withoutAppExtension(pattern.trim()))
+    expect(defaultSituationSettings().quietApps).toContain(entry)
+    expect(isDenylisted(appId, stripped)).toBe(true)
+  })
+
+  it.each(['1Password 7.app', '1password 7.APP', 'Bitwarden.app', 'KeePassXC.app', '/Applications/1Password 7.app'])('denylists the macOS title of %s by default', (name) => {
+    expect(isDenylisted(name, defaultSituationSettings().titleDenylist)).toBe(true)
+  })
+
+  it('keeps a stored quiet list untouched by the macOS defaults', () => {
+    localStorage.setItem(key, JSON.stringify({ quietApps: ['only-mine.exe'] }))
+    const { store } = createContext()
+    expect(store.document.quietApps).toEqual(['only-mine.exe'])
+    expect(store.document.titleDenylist).toEqual(defaultSituationSettings().titleDenylist)
   })
 
   it('falls back per field when a stored field is invalid', () => {

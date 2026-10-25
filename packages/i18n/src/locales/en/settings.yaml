@@ -816,10 +816,10 @@ pages:
       description: Let the character see the page titles, links, video details, and subtitles that the AIRI browser extension sends. AIRI passes them to your chat provider, which can be a cloud service. When off, AIRI ignores the extension and forgets what it already sent.
     quiet-apps:
       title: Quiet apps
-      description: The character stays quiet while one of these apps is in the foreground. Enter one app file name per line, such as zoom.exe. Use * to match any characters.
+      description: The character stays quiet while one of these apps is in the foreground. Enter one app file name per line, such as zoom.exe or zoom.us.app. Use * to match any characters.
     title-denylist:
       title: Private window titles
-      description: The character never reads window titles from these apps. Enter one app file name per line, such as bitwarden.exe. Use * to match any characters.
+      description: The character never reads window titles from these apps. Enter one app file name per line, such as bitwarden.exe or 1Password 7.app. Use * to match any characters.
   models:
     description: Live2D, VRM, Spine, MMD, etc.
     title: Models

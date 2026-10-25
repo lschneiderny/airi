@@ -34,10 +34,10 @@ const situationSettingsEntries = {
    * `shareForegroundWindow`. @default true
    */
   shareBrowserActivity: optional(boolean(), true),
-  /** Foreground exe-name globs during which the character stays quiet. */
-  quietApps: exePatterns(['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe']),
-  /** Foreground exe-name globs whose window titles are never recorded. */
-  titleDenylist: exePatterns(['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe']),
+  /** Foreground app-name globs (Windows `.exe`, macOS `.app`) during which the character stays quiet. */
+  quietApps: exePatterns(['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'zoom.us.app', 'Microsoft Teams.app', 'FaceTime.app', 'Webex*.app']),
+  /** Foreground app-name globs (Windows `.exe`, macOS `.app`) whose window titles are never recorded. */
+  titleDenylist: exePatterns(['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe', '1Password*.app', 'Bitwarden.app', 'KeePassXC.app']),
   /** False hides the chat cue that marks an unprompted turn. @default true */
   showUnpromptedCue: optional(boolean(), true),
   /** False keeps the character quiet while a game is in the foreground, except for urgent notifications. @default true */
