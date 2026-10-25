@@ -2,7 +2,7 @@ import type { GestureKind } from './emotions'
 
 import { describe, expect, it } from 'vitest'
 
-import { createClip, gestureLifetimes, NaturalGestures } from './gestures'
+import { gestureLifetimes, NaturalGestures } from './gestures'
 import { minJerk } from './processes'
 import { createRandomStream } from './random'
 
@@ -406,23 +406,25 @@ describe('gesture duck', () => {
     const played = ['laugh', 'recoil', 'shake', 'drop', 'sway', 'tilt-in', 'look-away', 'nod-off'] as const
     for (const kind of played) {
       for (let seed = 1; seed <= 40; seed++) {
-        const random = createRandomStream(seed)
-        const side = seed % 2 === 0 ? 1 : -1
-        const clip = createClip(kind, side, 0.8, random)
-        const norm = (age: number) => Math.hypot(...clip.shape(age))
-        let peakAge = 0
-        let peakNorm = 0
-        for (let i = 0; i <= Math.floor(clip.lifetime * 120); i++) {
-          if (norm(i * duckStep) > peakNorm) {
-            peakNorm = norm(i * duckStep)
-            peakAge = i * duckStep
-          }
-        }
-        expect(clip.activeSpan).toBeGreaterThan(peakAge)
-        expect(clip.activeSpan).toBeLessThanOrEqual(2)
+        const gestures = new NaturalGestures(createRandomStream(seed))
+        expect(gestures.trigger(kind, 0.8, 'strong', 0)).toBe(true)
+        // Sample once, in time order: both getters retire expired clips as time advances.
+        const samples = Math.floor(gestureLifetimes[kind] * 120)
+        const norms = Array.from({ length: samples + 1 }, (_, i) => Math.hypot(...gestures.headOffset(i * duckStep)))
+        const scales = Array.from({ length: samples + 120 }, (_, i) => gestures.continuousScale(i * duckStep))
+        const peakNorm = Math.max(...norms)
+        const peakAge = norms.indexOf(peakNorm) * duckStep
+        // The duck holds its depth until the active span ends: the last grid time within float noise of the deepest scale.
+        const deepest = Math.min(...scales)
+        let last = Math.round(0.15 / duckStep)
+        while (scales[last + 1] <= deepest + 1e-9)
+          last++
+        const activeSpan = last * duckStep
+        expect(activeSpan).toBeGreaterThan(peakAge)
+        expect(activeSpan).toBeLessThanOrEqual(2 + duckStep)
         // Only the 2 s cap may leave more than 10% of the peak: nod-off's catch-up tail outlasts it.
-        if (clip.activeSpan < 2)
-          expect(norm(clip.activeSpan)).toBeLessThanOrEqual(0.1 * peakNorm)
+        if (activeSpan < 2 - duckStep)
+          expect(norms[last]).toBeLessThanOrEqual(0.1 * peakNorm)
         else
           expect(kind).toBe('nod-off')
       }

@@ -132,7 +132,7 @@ The face envelope is `(1 - exp(-s/faceOnsetTau)) * exp(-max(0, s - faceHold)/fac
 An escalation adds only the missing head and body amplitude and moves the face hints from their current values to the new targets over 0.08 s.
 
 An episode does not change the posture amplitude or shift rate scales. An earlier version raised them for a strong episode through `naturalBands.energySeconds`, `energyAmplitude`, and `energyRate`; those settings were removed.
-Desktop `wake` and `screen-change` reactions and pokes call `energy.react(at, 1)`, a fixed overlay of x1.3 amplitude and x1.5 shift rate for 2 s. Contributions do not stack; the largest unexpired one applies.
+Desktop `wake` and `screen-change` reactions and pokes call `energy.react(at)`, a fixed overlay of x1.3 amplitude and x1.5 shift rate for 2 s. Overlapping reactions do not stack; a later one extends the overlay.
 
 ## Mood
 

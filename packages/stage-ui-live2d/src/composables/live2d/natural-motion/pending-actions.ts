@@ -66,7 +66,7 @@ export function startPending(actions: PendingAction[], at: number, targets: Pend
       }
       gaze.glance(glanceTargets.camera, pokeGlanceHold, at)
       // The fixed reacting overlay, like a desktop reaction.
-      energy.react(at, 1)
+      energy.react(at)
       continue
     }
     if (action.kind === 'emotion') {
@@ -93,7 +93,7 @@ export function startPending(actions: PendingAction[], at: number, targets: Pend
     else {
       gaze.glance(glanceTargets.desk, screenChangeGlanceHold, at)
     }
-    energy.react(at, 1)
+    energy.react(at)
   }
   return { pokes, lastPokeSurprise }
 }

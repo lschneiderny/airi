@@ -98,14 +98,14 @@ it.each([
   expect(moodBodyPeak).toBeGreaterThan(0)
 })
 
-it.each(['wake', 'screen-change'] as const)('keeps desktop %s on the fixed full-strength overlay', (reactKind) => {
+it.each(['wake', 'screen-change'] as const)('starts the fixed reacting overlay for desktop %s', (reactKind) => {
   const react = vi.spyOn(NaturalPerformanceEnergy.prototype, 'react')
   try {
     const motion = new Live2DNaturalMotion({ seed: 41 })
     motion.setPerformance(idle, 0.5, 0)
     motion.setPerformance({ ...idle, reactKind, reactSeq: 1 }, 0.5, 0)
     motion.advance(2 / 120)
-    expect(react).toHaveBeenCalledWith(expect.any(Number), 1)
+    expect(react).toHaveBeenCalledWith(expect.any(Number))
   }
   finally {
     react.mockRestore()

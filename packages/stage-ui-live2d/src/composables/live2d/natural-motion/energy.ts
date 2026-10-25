@@ -87,7 +87,8 @@ export class NaturalPerformanceEnergy {
   private away = false
   private energy = 0.5
   private time = 0
-  private readonly reactions: { until: number, intensity: number, amplitude: number, rate: number }[] = []
+  /** Active time at which the reacting overlay ends; later reactions extend it and never stack. */
+  private reactingUntil = Number.NEGATIVE_INFINITY
 
   /** Sets the target state; the filter moves toward it from the next step. */
   setState(state: Pick<PerformanceState, 'mode' | 'attention' | 'away'>, energy: number) {
@@ -115,16 +116,9 @@ export class NaturalPerformanceEnergy {
     this.applyAttention(state)
   }
 
-  /** Starts the reacting overlay at `at` (active seconds) for 2 s. */
-  react(at: number, intensity: number) {
-    if (!Number.isFinite(intensity))
-      return
-    this.reactions.push({
-      until: at + reacting.seconds,
-      intensity: clamp01(intensity),
-      amplitude: reacting.amplitude - 1,
-      rate: reacting.shiftRate - 1,
-    })
+  /** Starts the reacting overlay at `at` (active seconds) for 2 s; overlapping reactions extend it and do not stack. */
+  react(at: number) {
+    this.reactingUntil = Math.max(this.reactingUntil, at + reacting.seconds)
   }
 
   /** Advances the cross-fade by `dt` seconds. */
@@ -136,17 +130,9 @@ export class NaturalPerformanceEnergy {
       this.applyAttention(state)
     }
     const preset = presets[this.mode]
-    let reactionAmplitude = 0
-    let reactionRate = 0
-    for (let i = this.reactions.length - 1; i >= 0; i--) {
-      const reaction = this.reactions[i]
-      if (this.time >= reaction.until) {
-        this.reactions.splice(i, 1)
-        continue
-      }
-      reactionAmplitude = Math.max(reactionAmplitude, reaction.amplitude * reaction.intensity)
-      reactionRate = Math.max(reactionRate, reaction.rate * reaction.intensity)
-    }
+    const isReacting = this.time < this.reactingUntil
+    const reactionAmplitude = isReacting ? reacting.amplitude - 1 : 0
+    const reactionRate = isReacting ? reacting.shiftRate - 1 : 0
     const amplitude = preset.amplitude
       * (1 + reactionAmplitude)
       * (this.away ? away.amplitude : 1)

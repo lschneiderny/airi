@@ -14,12 +14,12 @@ function state(mode: 'idle' | 'watching' | 'listening' | 'thinking' | 'talking',
 }
 
 describe('natural performance energy', () => {
-  it('takes the maximum unexpired intensity rather than stacking contributions', () => {
+  it('does not stack overlapping reactions', () => {
     const stacked = new NaturalPerformanceEnergy()
     const single = new NaturalPerformanceEnergy()
-    stacked.react(0, 0.9)
-    stacked.react(0, 0.4)
-    single.react(0, 0.9)
+    stacked.react(0)
+    stacked.react(0)
+    single.react(0)
     settle(stacked, 1)
     settle(single, 1)
     expect(stacked.amplitudeScale).toBe(single.amplitudeScale)
@@ -28,7 +28,7 @@ describe('natural performance energy', () => {
 
   it('preserves desktop x1.3/x1.5 targets for two seconds', () => {
     const energy = new NaturalPerformanceEnergy()
-    energy.react(0, 1)
+    energy.react(0)
     energy.step(1)
     expect(energy.amplitudeScale).toBeCloseTo(1.3 - 0.3 * Math.exp(-1), 12)
     expect(energy.shiftRateScale).toBeCloseTo(1.5 - 0.5 * Math.exp(-1), 12)
@@ -101,7 +101,7 @@ describe('natural performance energy', () => {
     expect(away.shiftRateScale).toBeCloseTo(0.6, 6)
 
     const reacting = new NaturalPerformanceEnergy()
-    reacting.react(0, 1)
+    reacting.react(0)
     settle(reacting, 1.9)
     expect(reacting.amplitudeScale).toBeGreaterThan(1.2)
     expect(reacting.shiftRateScale).toBeGreaterThan(1.3)

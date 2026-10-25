@@ -88,7 +88,7 @@ function raisedCosine(u: number) {
  * Draw order, after the side and angry choice that `trigger` draws: laugh cycles, frequency,
  * amplitude; shake cycles. All other clips need only the side. `scale` is strength x band amplitude.
  */
-export function createClip(kind: PlayedGesture, side: -1 | 1, scale: number, random: RandomStream): ClipShape {
+function createClip(kind: PlayedGesture, side: -1 | 1, scale: number, random: RandomStream): ClipShape {
   const clip = createClipShape(kind, side, scale, random)
   return { ...clip, activeSpan: activeSpanOf(clip) }
 }
