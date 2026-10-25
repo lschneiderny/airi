@@ -133,6 +133,26 @@ export interface DarwinBinding {
   }
 }
 
+const FULLSCREEN_TOLERANCE_PT = 1
+
+function coversDisplay(
+  windows: NonNullable<ReturnType<DarwinBinding['readWindows']>>,
+  frontPid: number,
+  displays: ReturnType<DarwinBinding['readDisplays']>['displays'],
+): boolean {
+  return windows.some((window) => {
+    const bounds = window.bounds
+    if (window.pid !== frontPid || window.layer !== 0 || window.alpha === null || !(window.alpha > 0) || !bounds)
+      return false
+    return displays.some(({ bounds: display }) =>
+      Math.abs(bounds.origin.x - display.origin.x) <= FULLSCREEN_TOLERANCE_PT
+      && Math.abs(bounds.origin.y - display.origin.y) <= FULLSCREEN_TOLERANCE_PT
+      && Math.abs(bounds.origin.x + bounds.size.width - display.origin.x - display.size.width) <= FULLSCREEN_TOLERANCE_PT
+      && Math.abs(bounds.origin.y + bounds.size.height - display.origin.y - display.size.height) <= FULLSCREEN_TOLERANCE_PT,
+    )
+  })
+}
+
 let bindingPromise: Promise<DarwinBinding> | undefined
 
 /** Loads lazily once; framework handles and constant CFStrings live until process exit. */
@@ -368,13 +388,34 @@ export function createDarwinSampler(binding: DarwinBinding, isOwnProcess: (pid: 
       if (application.terminated)
         return null
 
+      let busy: ForegroundWindowSample['busy'] = 'accepts'
+      if (!ownProcess) {
+        const windows = binding.readWindows()
+        if (windows === null) {
+          busy = null
+        }
+        else {
+          // NOTICE:
+          // Notched fullscreen can report accepts: windows may exclude the camera band.
+          // Source: task-5-binding.txt measured exact 1680x1050 cover without a notch.
+          // AXFullScreen is unverified (trust 0, -25211).
+          // Removal: measure trusted AXFullScreen CFBoolean and notched coverage,
+          // then integrate the secondary signal under the shared AX deadline.
+          const displays = binding.readDisplays()
+          if (displays.status !== 0)
+            busy = null
+          else if (coversDisplay(windows, pid, displays.displays))
+            busy = application.bundleIdentifier === 'com.apple.iWork.Keynote' || application.bundleIdentifier === 'com.microsoft.Powerpoint' ? 'presentation' : 'fullscreen'
+        }
+      }
+
       return {
         exePath,
         exeName: exePath === null ? null : posix.basename(exePath),
         pid,
         ownProcess,
         title: '',
-        busy: 'accepts',
+        busy,
         sampledAtMs: Date.now(),
       }
     })

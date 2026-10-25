@@ -415,15 +415,16 @@ describe('darwin foreground sampler', () => {
   })
 
   it('balances copied references and autorelease pools across 200 reads', () => {
+    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
     const read = createDarwinSampler(binding, () => false)
 
     const samples = Array.from({ length: 200 }, () => read())
 
-    expect(samples.every(sample => sample?.pid === 4321 && sample.busy === 'accepts')).toBe(true)
+    expect(samples.every(sample => sample?.pid === 4321 && sample.busy === 'fullscreen')).toBe(true)
     expect(native.CGSessionCopyCurrentDictionary).toHaveBeenCalledTimes(200)
     expect(native.CFRelease.mock.calls).toEqual(desktop.copies.map(ref => [ref]))
-    expect(native.CGWindowListCopyWindowInfo).not.toHaveBeenCalled()
-    expect(native.CFRelease).toHaveBeenCalledTimes(200)
+    expect(native.CGWindowListCopyWindowInfo).toHaveBeenCalledTimes(200)
+    expect(native.CFRelease).toHaveBeenCalledTimes(400)
     expect(desktop.owned.size).toBe(0)
     expect(native.objc_autoreleasePoolPush).toHaveBeenCalledTimes(200)
     expect(native.objc_autoreleasePoolPop.mock.calls).toEqual(native.objc_autoreleasePoolPush.mock.results.map(result => [result.value]))
@@ -469,5 +470,143 @@ describe('darwin foreground sampler', () => {
     expect(next).toMatchObject({ pid: 77, ownProcess: true, exeName: 'Other.app' })
     expect(desktop.owned.size).toBe(0)
     expect(desktop.pools.size).toBe(0)
+  })
+
+  it.each([
+    ['exact cover', 0, 'fullscreen'],
+    ['1 pt short', 1, 'fullscreen'],
+    ['2 pt short', 2, 'accepts'],
+  ] as const)('classifies %s with the one-point tolerance', (_name, short, busy) => {
+    desktop.windows = [{
+      pid: 4321,
+      layer: 0,
+      alpha: 1,
+      bounds: { origin: { x: 0, y: 0 }, size: { width: 1680 - short, height: 1050 } },
+    }]
+
+    const sample = createDarwinSampler(binding, () => false)()
+
+    expect(sample?.busy).toBe(busy)
+  })
+
+  it.each([
+    ['layer 25', { layer: 25 }],
+    ['transparent alpha 0', { alpha: 0 }],
+    ['negative alpha', { alpha: -1 }],
+    ['non-finite alpha', { alpha: Number.NaN }],
+    ['another owner pid', { pid: 99 }],
+    ['missing owner pid', { pid: null }],
+    ['missing layer', { layer: null }],
+    ['missing alpha', { alpha: null }],
+    ['missing bounds', { bounds: null }],
+    ['non-finite bounds', { bounds: { origin: { x: Number.NaN, y: 0 }, size: { width: 1680, height: 1050 } } }],
+    ['Split View half', { bounds: { origin: { x: 0, y: 0 }, size: { width: 840, height: 1050 } } }],
+    ['width-only zoom', { bounds: { origin: { x: 0, y: 24 }, size: { width: 1680, height: 1026 } } }],
+    ['Stage Manager tile', { bounds: { origin: { x: 100, y: 100 }, size: { width: 1480, height: 850 } } }],
+    ['left edge 2 pt short', { bounds: { origin: { x: 2, y: 0 }, size: { width: 1678, height: 1050 } } }],
+    ['top edge 2 pt short', { bounds: { origin: { x: 0, y: 2 }, size: { width: 1680, height: 1048 } } }],
+    ['bottom edge 2 pt short', { bounds: { origin: { x: 0, y: 0 }, size: { width: 1680, height: 1048 } } }],
+    ['oversized by 2 pt', { bounds: { origin: { x: -2, y: 0 }, size: { width: 1684, height: 1050 } } }],
+  ] satisfies readonly (readonly [string, Partial<WindowRow>])[])('ignores %s geometry', (_name, fields) => {
+    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null, ...fields }]
+
+    const sample = createDarwinSampler(binding, () => false)()
+
+    expect(sample?.busy).toBe('accepts')
+  })
+
+  it.each([
+    ['com.apple.iWork.Keynote', 'presentation'],
+    ['com.microsoft.Powerpoint', 'presentation'],
+    ['com.apple.Safari', 'fullscreen'],
+  ] as const)('classifies covering %s as %s', (bundleId, busy) => {
+    desktop.bundleId = bundleId
+    desktop.windows = [{ pid: 4321, layer: 0, alpha: 0.5, bounds: desktop.displays[0] ?? null }]
+
+    const sample = createDarwinSampler(binding, () => false)()
+
+    expect(sample?.busy).toBe(busy)
+    expect(native.forbidden).not.toHaveBeenCalled()
+  })
+
+  it('covers the second display at a negative origin', () => {
+    const bounds = { origin: { x: -1920, y: -200 }, size: { width: 1920, height: 1080 } }
+    desktop.displays.push(bounds)
+    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds }]
+
+    const sample = createDarwinSampler(binding, () => false)()
+
+    expect(sample?.busy).toBe('fullscreen')
+  })
+
+  it('accepts own-process covering windows without enumerating geometry', () => {
+    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
+
+    const sample = createDarwinSampler(binding, () => true)()
+
+    expect(sample?.busy).toBe('accepts')
+    expect(native.CGWindowListCopyWindowInfo).not.toHaveBeenCalled()
+    expect(native.CGGetActiveDisplayList).not.toHaveBeenCalled()
+    expect(native.forbidden).not.toHaveBeenCalled()
+  })
+
+  it('reports unknown busy for a null window list without reading displays', () => {
+    desktop.windows = null
+
+    const sample = createDarwinSampler(binding, () => false)()
+
+    expect(sample).toMatchObject({ busy: null, pid: 4321 })
+    expect(native.CGGetActiveDisplayList).not.toHaveBeenCalled()
+    expect(desktop.owned.size).toBe(0)
+  })
+
+  it.each([
+    ['count', { displayCountStatus: 1000 }, 1],
+    ['list', { displayListStatus: 1000 }, 2],
+  ] as const)('reports unknown busy when the display %s query fails despite a covering window', (_pass, fields, calls) => {
+    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
+    Object.assign(desktop, fields)
+
+    const sample = createDarwinSampler(binding, () => false)()
+
+    expect(sample).toMatchObject({ busy: null, pid: 4321 })
+    expect(native.CGGetActiveDisplayList).toHaveBeenCalledTimes(calls)
+    expect(native.CGDisplayBounds).not.toHaveBeenCalled()
+  })
+
+  it('accepts when display enumeration succeeds with no active displays', () => {
+    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
+    desktop.displays = []
+
+    const sample = createDarwinSampler(binding, () => false)()
+
+    expect(sample).toMatchObject({ busy: 'accepts', pid: 4321 })
+    expect(native.CGGetActiveDisplayList).toHaveBeenCalledTimes(2)
+    expect(native.CGDisplayBounds).not.toHaveBeenCalled()
+  })
+
+  it('releases the window list and pool when bounds decoding throws', () => {
+    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
+    desktop.failAt = 'bounds'
+
+    expect(createDarwinSampler(binding, () => false)).toThrow('bounds read failed')
+
+    expect(native.CFRelease.mock.calls).toEqual(desktop.copies.map(ref => [ref]))
+    expect(desktop.owned.size).toBe(0)
+    expect(desktop.pools.size).toBe(0)
+  })
+
+  it('rechecks window geometry and presentation identity without stale state', () => {
+    const read = createDarwinSampler(binding, () => false)
+    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
+    expect(read()?.busy).toBe('fullscreen')
+    desktop.bundleId = 'com.apple.iWork.Keynote'
+    expect(read()?.busy).toBe('presentation')
+    desktop.windows = []
+    expect(read()?.busy).toBe('accepts')
+    desktop.windows = null
+    expect(read()?.busy).toBeNull()
+    desktop.windows = []
+    expect(read()?.busy).toBe('accepts')
   })
 })
