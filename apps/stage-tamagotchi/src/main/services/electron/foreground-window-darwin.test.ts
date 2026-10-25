@@ -319,6 +319,305 @@ describe('darwin foreground sampler', () => {
     vi.useRealTimers()
   })
 
+  it('backs off a PID for ten seconds after focused-window timeout', () => {
+    desktop.trusted = true
+    desktop.focusedStatus = -25204
+    const read = createDarwinSampler(binding, () => false)
+
+    const first = read()
+    const callsAfterTimeout = desktop.axCalls.length
+    vi.advanceTimersByTime(1000)
+    const backedOff = read()
+    const callsDuringBackoff = desktop.axCalls.length
+    vi.advanceTimersByTime(10000)
+    desktop.focusedStatus = 0
+    const recovered = read()
+
+    expect(first).toMatchObject({ title: '', busy: 'accepts' })
+    expect(callsAfterTimeout).toBeGreaterThan(0)
+    expect(backedOff?.title).toBe('')
+    expect(callsDuringBackoff).toBe(callsAfterTimeout)
+    expect(recovered?.title).toBe('Synthetic document')
+    expect(native.AXUIElementCreateApplication).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads a trusted CFString title without logging or changing geometry busy', () => {
+    desktop.trusted = true
+    desktop.axTitle = 'Synthetic \u65E5\u672C\u8A9E \u{1F600}'
+    desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
+    const logs = [vi.spyOn(console, 'log'), vi.spyOn(console, 'info'), vi.spyOn(console, 'warn'), vi.spyOn(console, 'error')]
+
+    const sample = createDarwinSampler(binding, () => false)()
+
+    expect(sample).toMatchObject({ title: desktop.axTitle, busy: 'fullscreen', pid: 4321 })
+    for (const log of logs) {
+      expect(log).not.toHaveBeenCalled()
+      log.mockRestore()
+    }
+    expect(desktop.axCalls).not.toContain('copy:AXFullScreen')
+    expect(native.forbidden).not.toHaveBeenCalled()
+  })
+
+  it('returns an empty title with zero AX element calls when untrusted', () => {
+    const sample = createDarwinSampler(binding, () => false)()
+
+    expect(sample?.title).toBe('')
+    expect(native.AXIsProcessTrusted).toHaveBeenCalledExactlyOnceWith()
+    expect(desktop.axCalls).toEqual([])
+    expect(native.forbidden).not.toHaveBeenCalled()
+  })
+
+  it('backs off when timeout occurs during AXTitle after a successful focused-window lookup', () => {
+    desktop.trusted = true
+    desktop.titleStatus = -25204
+    const read = createDarwinSampler(binding, () => false)
+
+    const first = read()
+    vi.advanceTimersByTime(1000)
+    const backedOff = read()
+
+    expect(first).toMatchObject({ title: '', busy: 'accepts' })
+    expect(backedOff?.title).toBe('')
+    expect(desktop.axCalls).toEqual(['createApplication', 'timeout:application', 'copy:AXFocusedWindow', 'timeout:window', 'copy:AXTitle'])
+    expect(native.AXUIElementCreateApplication).toHaveBeenCalledTimes(1)
+  })
+
+  it('backs off without AXTitle when the budget is exhausted inside AXFocusedWindow', () => {
+    desktop.trusted = true
+    desktop.focusedMs = 250
+    const read = createDarwinSampler(binding, () => false)
+
+    const first = read()
+    vi.advanceTimersByTime(1000)
+    const backedOff = read()
+
+    expect(first).toMatchObject({ title: '', busy: 'accepts' })
+    expect(backedOff?.title).toBe('')
+    expect(desktop.axCalls).toEqual(['createApplication', 'timeout:application', 'copy:AXFocusedWindow'])
+    expect(native.AXUIElementCreateApplication).toHaveBeenCalledTimes(1)
+  })
+
+  it('discards a late AXTitle result and backs off the exhausted shared budget', () => {
+    desktop.trusted = true
+    desktop.focusedMs = 150
+    desktop.titleMs = 100
+    const read = createDarwinSampler(binding, () => false)
+
+    const first = read()
+    vi.advanceTimersByTime(1000)
+    const backedOff = read()
+
+    expect(first?.title).toBe('')
+    expect(backedOff?.title).toBe('')
+    expect(native.AXUIElementCreateApplication).toHaveBeenCalledTimes(1)
+    expect(native.AXUIElementSetMessagingTimeout.mock.calls.map(([, seconds]) => seconds)).toEqual([0.25, 0.1])
+  })
+
+  it('clears backoff immediately when the front PID changes and returns', () => {
+    desktop.trusted = true
+    desktop.focusedStatus = -25204
+    const read = createDarwinSampler(binding, () => false)
+    expect(read()?.title).toBe('')
+    desktop.focusedStatus = 0
+    desktop.pid = 77
+    desktop.axTitle = 'Synthetic second app'
+    expect(read()?.title).toBe('Synthetic second app')
+    desktop.pid = 4321
+    desktop.axTitle = 'Synthetic original app'
+
+    const returned = read()
+
+    expect(returned?.title).toBe('Synthetic original app')
+    expect(native.AXUIElementCreateApplication).toHaveBeenCalledTimes(3)
+  })
+
+  it('clears backoff across an own-process switch without querying that process', () => {
+    desktop.trusted = true
+    desktop.focusedStatus = -25204
+    const read = createDarwinSampler(binding, pid => pid === 77)
+    expect(read()?.title).toBe('')
+    desktop.pid = 77
+    expect(read()?.title).toBe('')
+    desktop.pid = 4321
+    desktop.focusedStatus = 0
+
+    const returned = read()
+
+    expect(returned?.title).toBe('Synthetic document')
+    expect(native.AXUIElementCreateApplication).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([-25202, -25205, -25211, -25212])('does not back off focused-window AXError %s', (status) => {
+    desktop.trusted = true
+    desktop.focusedStatus = status
+    const read = createDarwinSampler(binding, () => false)
+    expect(read()).toMatchObject({ title: '', busy: 'accepts' })
+    desktop.focusedStatus = 0
+
+    const recovered = read()
+
+    expect(recovered?.title).toBe('Synthetic document')
+    expect(native.AXUIElementCreateApplication).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([-25202, -25205, -25211, -25212])('does not back off AXTitle AXError %s', (status) => {
+    desktop.trusted = true
+    desktop.titleStatus = status
+    const read = createDarwinSampler(binding, () => false)
+    expect(read()).toMatchObject({ title: '', busy: 'accepts' })
+    desktop.titleStatus = 0
+
+    const recovered = read()
+
+    expect(recovered?.title).toBe('Synthetic document')
+    expect(native.AXUIElementCreateApplication).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    ['number', { number: 42 }],
+    ['boolean', { value: true }],
+    ['dictionary', { dictionary: 'not a CFString' }],
+    ['array', []],
+  ])('rejects a nonstring AXTitle CF%s before calling CFString functions', (_name, title) => {
+    desktop.trusted = true
+    desktop.axTitle = title
+
+    const sample = createDarwinSampler(binding, () => false)()
+
+    expect(sample).toMatchObject({ title: '', busy: 'accepts' })
+    expect(native.CFStringGetLength).not.toHaveBeenCalledWith(title)
+    expect(native.CFStringGetCharacters).not.toHaveBeenCalledWith(title, expect.anything(), expect.anything())
+  })
+
+  it('caps a 2000-unit title at 1024 UTF-16 units retaining a complete surrogate pair', () => {
+    desktop.trusted = true
+    desktop.axTitle = `${'a'.repeat(1022)}\u{1F600}${'b'.repeat(976)}`
+
+    const sample = createDarwinSampler(binding, () => false)()
+
+    expect(sample?.title).toBe(`${'a'.repeat(1022)}\u{1F600}`)
+    expect(sample?.title.length).toBe(1024)
+  })
+
+  it('drops a high surrogate at the title cap and reuses the sampler buffer', () => {
+    desktop.trusted = true
+    desktop.axTitle = `${'a'.repeat(1023)}\u{1F600}${'b'.repeat(975)}`
+    const read = createDarwinSampler(binding, () => false)
+    expect(read()?.title).toBe('a'.repeat(1023))
+    desktop.axTitle = 'Short'
+
+    const sample = read()
+
+    expect(sample?.title).toBe('Short')
+    const titleBuffers = native.CFStringGetCharacters.mock.calls.filter(([value]) => typeof value === 'object').map(([, , buffer]) => buffer)
+    expect(titleBuffers).toHaveLength(2)
+    expect(titleBuffers[0]).toBe(titleBuffers[1])
+    expect(titleBuffers[0]?.length).toBe(2048)
+  })
+
+  it('sets the remaining timeout on both elements before their attribute reads', () => {
+    desktop.trusted = true
+    desktop.focusedMs = 100
+    desktop.titleMs = 20
+
+    const sample = createDarwinSampler(binding, () => false)()
+
+    expect(sample?.title).toBe('Synthetic document')
+    expect(desktop.axCalls).toEqual(['createApplication', 'timeout:application', 'copy:AXFocusedWindow', 'timeout:window', 'copy:AXTitle'])
+    expect(native.AXUIElementSetMessagingTimeout.mock.calls.map(([element, seconds]) => [element.element, seconds])).toEqual([
+      ['application', 0.25],
+      ['window', 0.15],
+    ])
+    expect(performance.now()).toBe(120)
+  })
+
+  it('releases every AX Copy and Create reference exactly once across 200 trusted reads', () => {
+    desktop.trusted = true
+    const read = createDarwinSampler(binding, () => false)
+
+    const samples = Array.from({ length: 200 }, () => read())
+
+    expect(samples.every(sample => sample?.title === 'Synthetic document')).toBe(true)
+    expect(native.CFRelease).toHaveBeenCalledTimes(1000)
+    const released = native.CFRelease.mock.calls.map(([ref]) => ref)
+    expect(new Set(released)).toEqual(new Set(desktop.copies))
+    expect(new Set(released).size).toBe(1000)
+    expect(native.objc_autoreleasePoolPop).toHaveBeenCalledTimes(200)
+  })
+
+  it.each([
+    ['application', { axApplication: false }],
+    ['window', { axWindow: false }],
+    ['title', { axTitle: null }],
+    ['empty title', { axTitle: '' }],
+  ])('handles a nil or empty AX %s without retaining the previous title', (_name, fields) => {
+    desktop.trusted = true
+    const read = createDarwinSampler(binding, () => false)
+    expect(read()?.title).toBe('Synthetic document')
+    Object.assign(desktop, fields)
+
+    const sample = read()
+
+    expect(sample).toMatchObject({ title: '', busy: 'accepts' })
+  })
+
+  it('rechecks Accessibility trust without retaining a previous title', () => {
+    desktop.trusted = true
+    const read = createDarwinSampler(binding, () => false)
+    expect(read()?.title).toBe('Synthetic document')
+    desktop.trusted = false
+    desktop.axCalls.length = 0
+
+    const sample = read()
+
+    expect(sample?.title).toBe('')
+    expect(desktop.axCalls).toEqual([])
+  })
+
+  it.each(['AXFocusedWindow', 'AXTitle'])('cleans owned resources if %s throws', (attribute) => {
+    desktop.trusted = true
+    desktop.failAt = attribute
+
+    expect(createDarwinSampler(binding, () => false)).toThrow('AX read failed')
+
+    expect(desktop.owned.size).toBe(0)
+    expect(desktop.pools.size).toBe(0)
+  })
+
+  it('backs off a hung external lookup using its configured element timeout', () => {
+    desktop.trusted = true
+    native.AXUIElementCopyAttributeValue.mockImplementationOnce(() => {
+      const seconds = native.AXUIElementSetMessagingTimeout.mock.calls.at(-1)?.[1]
+      expect(seconds).toBe(0.25)
+      vi.advanceTimersByTime((seconds ?? 0) * 1000)
+      return -25204
+    })
+    const read = createDarwinSampler(binding, () => false)
+
+    const sample = read()
+    vi.advanceTimersByTime(1000)
+    const backedOff = read()
+
+    expect(sample).toMatchObject({ title: '', busy: 'accepts' })
+    expect(backedOff?.title).toBe('')
+    expect(native.AXUIElementCopyAttributeValue).toHaveBeenCalledTimes(1)
+    expect(native.AXUIElementCreateApplication).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops before attributes and backs off when setting the element timeout fails', () => {
+    desktop.trusted = true
+    desktop.timeoutStatus = -25204
+    const read = createDarwinSampler(binding, () => false)
+
+    const sample = read()
+    const backedOff = read()
+
+    expect(sample?.title).toBe('')
+    expect(backedOff?.title).toBe('')
+    expect(native.AXUIElementCopyAttributeValue).not.toHaveBeenCalled()
+    expect(native.AXUIElementCreateApplication).toHaveBeenCalledTimes(1)
+  })
+
   it('returns null for a locked session before touching Objective-C', () => {
     desktop.locked = true
 

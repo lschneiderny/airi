@@ -50,10 +50,18 @@ const kCFNumberDoubleType = 13
 const kCGWindowListOptionOnScreenOnly = 1
 const kCGWindowListExcludeDesktopElements = 16
 const kCGNullWindowID = 0
+// Bound title allocation and IPC payload, independently of the app's reported length.
+const TITLE_MAX_UNITS = 1024
+const AX_BUDGET_MS = 250
+const AX_BACKOFF_MS = 10_000
 
+// ApplicationServices AXError.h. Attribute support is app-specific.
 const AX_ERROR = {
   success: 0,
   invalidElement: -25202,
+  cannotComplete: -25204,
+  attributeUnsupported: -25205,
+  apiDisabled: -25211,
   noValue: -25212,
 } as const
 
@@ -125,6 +133,8 @@ export interface DarwinBinding {
     readonly alpha: number | null
     readonly bounds: Rect | null
   }[] | null
+  /** Owns one reusable title buffer per sampler; deadline is monotonic milliseconds. */
+  readonly createTitleReader: () => (pid: number, deadline: number) => { readonly title: string, readonly timedOut: boolean }
   readonly probeFullscreen: (pid: number) => {
     readonly trusted: number
     readonly status: number
@@ -332,6 +342,51 @@ export async function loadDarwinBinding(): Promise<DarwinBinding> {
           native.CFRelease(windows)
         }
       },
+      createTitleReader() {
+        const buffer = Buffer.alloc(TITLE_MAX_UNITS * 2)
+        return (pid, deadline) => {
+          let status: number = AX_ERROR.success
+          const expired = () => performance.now() >= deadline
+          const failed = () => status !== AX_ERROR.success || expired()
+          const empty = () => ({ title: '', timedOut: status === AX_ERROR.cannotComplete || expired() })
+          if (expired())
+            return empty()
+          const app = native.AXUIElementCreateApplication(pid)
+          const window: [NativeRef] = [null]
+          const title: [NativeRef] = [null]
+          try {
+            if (!app || failed())
+              return empty()
+            status = native.AXUIElementSetMessagingTimeout(app, (deadline - performance.now()) / 1000)
+            if (failed())
+              return empty()
+            status = native.AXUIElementCopyAttributeValue(app, keys.AXFocusedWindow, window)
+            if (failed() || !window[0])
+              return empty()
+            // AX messaging timeouts bind to this element, not to its application.
+            status = native.AXUIElementSetMessagingTimeout(window[0], (deadline - performance.now()) / 1000)
+            if (failed())
+              return empty()
+            status = native.AXUIElementCopyAttributeValue(window[0], keys.AXTitle, title)
+            if (failed() || !title[0])
+              return empty()
+            if (native.CFGetTypeID(title[0]) !== native.CFStringGetTypeID())
+              return empty()
+            const units = Math.min(native.CFStringGetLength(title[0]), TITLE_MAX_UNITS)
+            if (units > 0)
+              native.CFStringGetCharacters(title[0], { location: 0, length: units }, buffer)
+            return expired() ? empty() : { title: decodeUtf16(buffer, units), timedOut: false }
+          }
+          finally {
+            if (title[0])
+              native.CFRelease(title[0])
+            if (window[0])
+              native.CFRelease(window[0])
+            if (app)
+              native.CFRelease(app)
+          }
+        }
+      },
       probeFullscreen(pid: number) {
         if (!Number.isInteger(pid) || pid <= 0 || pid > 0x7FFFFFFF)
           throw new RangeError('Accessibility PID must be a positive int32')
@@ -371,16 +426,27 @@ export async function loadDarwinBinding(): Promise<DarwinBinding> {
 
 /** Synchronous reads keep each native lifetime wholly inside one sample. */
 export function createDarwinSampler(binding: DarwinBinding, isOwnProcess: (pid: number) => boolean): () => ForegroundWindowSample | null {
+  const readTitle = binding.createTitleReader()
+  let frontPid: number | null = null
+  let backoffUntil = 0
   return function sample(): ForegroundWindowSample | null {
     const session = binding.readSession()
-    if (!session || session.onConsole === false || session.locked === true)
+    if (!session || session.onConsole === false || session.locked === true) {
+      frontPid = null
+      backoffUntil = 0
       return null
+    }
 
-    return binding.withFrontApplication((application) => {
+    const result = binding.withFrontApplication((application) => {
       const pid = application.pid
+      if (pid !== frontPid) {
+        frontPid = pid
+        backoffUntil = 0
+      }
       if (pid <= 0)
         return null
-      if (application.bundleIdentifier === 'com.apple.loginwindow' || application.bundleIdentifier === 'com.apple.ScreenSaver.Engine')
+      const bundleIdentifier = application.bundleIdentifier
+      if (bundleIdentifier === 'com.apple.loginwindow' || bundleIdentifier === 'com.apple.ScreenSaver.Engine')
         return null
 
       const exePath = application.exePath
@@ -405,8 +471,16 @@ export function createDarwinSampler(binding: DarwinBinding, isOwnProcess: (pid: 
           if (displays.status !== 0)
             busy = null
           else if (coversDisplay(windows, pid, displays.displays))
-            busy = application.bundleIdentifier === 'com.apple.iWork.Keynote' || application.bundleIdentifier === 'com.microsoft.Powerpoint' ? 'presentation' : 'fullscreen'
+            busy = bundleIdentifier === 'com.apple.iWork.Keynote' || bundleIdentifier === 'com.microsoft.Powerpoint' ? 'presentation' : 'fullscreen'
         }
+      }
+
+      let title = ''
+      if (!ownProcess && performance.now() >= backoffUntil && binding.isProcessTrusted()) {
+        const value = readTitle(pid, performance.now() + AX_BUDGET_MS)
+        title = value.title
+        if (value.timedOut)
+          backoffUntil = performance.now() + AX_BACKOFF_MS
       }
 
       return {
@@ -414,10 +488,15 @@ export function createDarwinSampler(binding: DarwinBinding, isOwnProcess: (pid: 
         exeName: exePath === null ? null : posix.basename(exePath),
         pid,
         ownProcess,
-        title: '',
+        title,
         busy,
         sampledAtMs: Date.now(),
       }
     })
+    if (result === null) {
+      frontPid = null
+      backoffUntil = 0
+    }
+    return result
   }
 }
