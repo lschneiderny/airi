@@ -209,6 +209,24 @@ describe('curated expression catalog', () => {
     expect(store.definitions.at(-1)?.parameters[0].value).toBe(-1.5)
   })
 
+  it('places a custom without a stored area in the section its kind belongs to, and lets a stored area win', () => {
+    storage.set('expression-catalog:a', JSON.stringify({
+      version: 1,
+      overrides: [],
+      customs: [
+        { id: 'custom:Param7', label: 'Earphones', kind: 'outfit', parameterId: 'Param7', delta: 0.7, mappings: [], exposedToLlm: false },
+        { id: 'custom:Param8', label: 'Visor', kind: 'outfit', area: 'props', parameterId: 'Param8', delta: 0.7, mappings: [], exposedToLlm: false },
+      ],
+    }))
+    const store = useExpressionStore()
+    const params = [{ id: 'Param7', min: -1, max: 1, default: 0 }, { id: 'Param8', min: -1, max: 1, default: 0 }]
+    store.registerDefinitions('a', defs, [], undefined, undefined, params, [])
+    const areaOf = (id: string) => store.settingsSnapshot.entries.find(entry => entry.id === id)?.area
+    expect(areaOf('custom:Param7')).toBe('outfit-hair')
+    expect(areaOf('custom:Param8')).toBe('props')
+    expect(store.curated.customs?.[0].area).toBeUndefined()
+  })
+
   it('applies a valid persisted custom on a non-free model parameter but skips unknown parameter ids', () => {
     storage.set('expression-catalog:a', JSON.stringify({
       version: 1,

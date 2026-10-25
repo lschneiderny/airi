@@ -1,4 +1,4 @@
-import type { CatalogEntry, CuratedCatalogDocument } from '@proj-airi/stage-shared/expression-performance'
+import type { CatalogEntry, CuratedCatalogDocument, CustomExpressionDocument } from '@proj-airi/stage-shared/expression-performance'
 
 import type { ExpressionDefinition } from '../composables/live2d/expression/compose'
 import type { SlotLeaseSettings } from '../composables/live2d/expression/slots'
@@ -13,6 +13,7 @@ import { computed, markRaw, ref } from 'vue'
 
 import { ExpressionComposer } from '../composables/live2d/expression/compose'
 import { slotNames } from '../composables/live2d/expression/slots'
+import { suggestArea } from '../utils/expression-catalog/area'
 import { deriveCatalog, suggestKind } from '../utils/expression-catalog/derive'
 import { createCatalogPersistence } from './expression-catalog-persistence'
 import { createSlotLeases, emptyLeases } from './expression-slot-leases'
@@ -106,7 +107,14 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
   const freeParameters = ref<FreeParameter[]>([])
   let deriveInputs: { defs: NamedExpressionDefinition[], model3Refs: { File: string, Name?: unknown }[], vtube?: unknown, displayInfo?: unknown } | undefined
   const validCustoms = computed(() => (curated.value.customs ?? []).filter(custom => parameters.value.some(parameter => parameter.id === custom.parameterId)))
-  const catalog = computed(() => mergeCatalog(derived.value, curated.value, validCustoms.value.map(customEntryFromDocument)))
+  /** A custom without a stored area lands where a derived entry of its kind would; the area is never saved. */
+  function withKindArea(custom: CustomExpressionDocument): CatalogEntry {
+    const entry = customEntryFromDocument(custom)
+    if (entry.area === undefined)
+      entry.area = entry.kind === 'unsorted' ? 'hidden' : suggestArea(entry.kind, entry.parameterIds, entry.label)
+    return entry
+  }
+  const catalog = computed(() => mergeCatalog(derived.value, curated.value, validCustoms.value.map(withKindArea)))
   const llmEligibleEntries = computed(() => catalog.value.filter(isLlmEligible))
   const autoEligibleEntries = computed(() => catalog.value.filter(isAutoEligible))
   // Rest-set members the user toggled off this session; cleared by resetAll and saveDefaults.

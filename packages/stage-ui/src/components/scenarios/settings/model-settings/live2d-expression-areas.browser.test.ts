@@ -2,6 +2,7 @@ import type { Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2
 
 import en from '@proj-airi/i18n/locales/en'
 
+import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { createPinia } from 'pinia'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
@@ -125,6 +126,25 @@ describe('live2D expression areas', () => {
     await expect.element(screen.getByText('Festival look', { exact: true })).not.toBeInTheDocument()
     for (const key of ['whole-look', 'effects', 'props', 'hidden'])
       await expect.element(screen.getByRole('button', { name: new RegExp(`^${area(key)}\\b`) })).not.toBeInTheDocument()
+  })
+
+  it('renders a custom outfit from the real store inside Outfit & hair, not Whole looks', async () => {
+    const pinia = createPinia()
+    const store = useExpressionStore(pinia)
+    localStorage.removeItem('expression-catalog:custom-area')
+    const params = [{ id: 'Param7', name: 'Earphones', min: -1, max: 2, default: 0.5 }]
+    store.registerDefinitions('custom-area', [], [], undefined, undefined, params, params)
+    store.applySettingsCommand({ type: 'create-custom', custom: { label: 'Earphones', parameterId: 'Param7', target: 1 } })
+    store.applySettingsCommand({ type: 'update-custom', id: store.catalog.at(-1)!.id, patch: { kind: 'outfit', exposedToLlm: false } })
+    const { default: Areas } = await import('./live2d-expression-areas.vue')
+    await import('virtual:uno.css')
+    const screen = await render(Areas, {
+      props: { snapshot: store.settingsSnapshot, search: '', showAll: true, onCommand: vi.fn() },
+      global: { plugins: [pinia, createTestI18n()] },
+    })
+    await expect.element(sectionOf(screen, 'outfit-hair').getByText('Earphones', { exact: true })).toBeVisible()
+    await expect.element(screen.getByRole('button', { name: new RegExp(`^${area('whole-look')}\\b`) })).not.toBeInTheDocument()
+    localStorage.removeItem('expression-catalog:custom-area')
   })
 
   it('renders a choose-one row inside its area', async () => {

@@ -75,7 +75,7 @@ describe('expression tools', () => {
     expect(JSON.stringify([...tools.values()].map(tool => tool.function))).not.toMatch(/hat|watermark|smile|P-/)
   })
 
-  it('lists a combo label in the schema enum and describes combos in the tool description', async () => {
+  it('lists a combo label in the schema enum and validates it', async () => {
     const port: ExpressionToolPort = {
       list: () => [{ label: 'smile', kind: 'face', active: false }, { label: 'Pair', kind: 'combo', active: false }],
       set: () => ({ success: true }),
