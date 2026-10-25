@@ -22,7 +22,7 @@ Production packaging remains deferred. Windows CEF shutdown still fails.
 Install [mise](https://mise.jdx.dev/getting-started.html).
 The root [.tool-versions](../../.tool-versions) selects Node.js, pnpm, and .NET.
 The local [mise.toml](mise.toml) selects Godot Mono.
-[StageTamagotchiKirie.csproj](StageTamagotchiKirie.csproj) requires .NET 10 and Godot.NET.Sdk 4.7.2.
+[StageTamagotchiKirie.csproj](StageTamagotchiKirie.csproj) requires .NET 10 and takes Godot.NET.Sdk from the root [global.json](../../global.json), which pins the Godot version for the whole repository.
 
 From the repository root, install the workspace tools and dependencies:
 

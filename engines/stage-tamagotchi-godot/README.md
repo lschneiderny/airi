@@ -307,10 +307,12 @@ pnpm -F @proj-airi/stage-tamagotchi run build:unpack
 
 Recommended to use [GodotEnv](https://github.com/chickensoft-games/GodotEnv) to manage Godot versions.
 
+The root `global.json` pins the Godot version as `Godot.NET.Sdk`. Do not put a version in the `Sdk` attribute of the `.csproj` file, even when the Godot editor writes one back.
+
 You can use the command below to set current Godot version for this project:
 
 ```bash
-godotenv godot use 4.7.1
+godotenv godot use 4.7.2
 ```
 
 Then run the Godot editor with the current project:
