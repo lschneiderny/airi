@@ -68,7 +68,7 @@ pnpm dev:top kill <worktree> --yes
 pnpm dev:top kill <worktree> --orphans --yes
 ```
 
-A process belongs to the worktree whose path appears in its command line, or else to its nearest ancestor's worktree. An orphan is a Node.js, Electron, or Godot process whose parent has exited. `kill` stops each process tree once, from its top-most member. Right before each kill it re-reads the live command line, because Windows reuses PIDs. It never stops the tree it runs in.
+A process belongs to the worktree whose path appears in its command line, or else to its nearest ancestor's worktree. An orphan is a Node.js, Electron, or Godot process whose parent has exited. macOS and Linux reparent an orphan to PID 1, so a parent of PID 1 counts as exited there. A subreaper such as `systemd --user` adopts orphans under its own PID, and those are not flagged. `kill` stops each process tree once, from its top-most member. Windows stops the tree with `taskkill /T`. macOS and Linux have no tree kill, so `kill` signals the top member and every descendant in the snapshot, parents first. Right before each kill it re-reads the live command line, because Windows reuses PIDs. It never stops the tree it runs in.
 
 ## CPU slots and the verify cache
 

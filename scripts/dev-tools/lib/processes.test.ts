@@ -2,7 +2,7 @@ import type { ProcessInfo } from './processes'
 
 import { describe, expect, it } from 'vitest'
 
-import { ancestry, attribute, classifyTool, cpuPercentFromRaw, isOrphan, normalizePath, rollup } from './processes'
+import { ancestry, attribute, classifyTool, cpuPercentFromRaw, descendants, isOrphan, normalizePath, rollup } from './processes'
 
 const proc = (pid: number, ppid: number, name: string, command: string, memoryMb = 100, cpuPercent = 0): ProcessInfo => ({ pid, ppid, name, command, memoryMb, cpuPercent, startedAt: null })
 
@@ -38,7 +38,7 @@ describe('attribute', () => {
     proc(13, 12, 'conhost.exe', '\\??\\C:\\WINDOWS\\system32\\conhost.exe'),
     proc(20, 999, 'node.exe', `node ${main}\\node_modules\\vitest\\vitest.mjs run`, 200, 0),
   ]
-  const result = attribute(processes, [main, t13])
+  const result = attribute(processes, [main, t13], 'win32')
   const byPid = new Map(result.map(info => [info.pid, info]))
 
   it('prefers the longest worktree path and stops at path boundaries', () => {
@@ -62,6 +62,34 @@ describe('attribute', () => {
     expect(t13Group?.cpuPercent).toBe(450)
     expect(t13Group?.tools.map(tool => tool.tool)).toEqual(['qa-tools', 'vitest', 'conhost'])
     expect(rollup(result).find(group => group.worktree === normalizePath(main))?.orphans).toBe(1)
+  })
+})
+
+describe('orphans on macOS and Linux', () => {
+  const repo = '/Users/luke/projects/airi'
+  const processes = [
+    proc(1, 0, 'launchd', '/sbin/launchd'),
+    proc(30, 1, 'node', `node ${repo}/node_modules/vite/bin/vite.js`),
+    proc(31, 30, 'esbuild', `${repo}/node_modules/@esbuild/darwin-arm64/bin/esbuild --service`),
+  ]
+
+  it('treats a parent of PID 1 as gone, because the OS reparents orphans there', () => {
+    const byPid = new Map(attribute(processes, [repo], 'darwin').map(info => [info.pid, info]))
+    expect(isOrphan(byPid.get(30)!)).toBe(true)
+    expect(isOrphan(byPid.get(31)!)).toBe(false)
+  })
+
+  it('keeps PID 1 a live parent on Windows', () => {
+    expect(attribute(processes, [repo], 'win32').some(isOrphan)).toBe(false)
+  })
+})
+
+describe('descendants', () => {
+  it('lists the process and its descendants, parents first, and survives a parent cycle', () => {
+    const tree = [proc(1, 0, 'a', ''), proc(2, 1, 'b', ''), proc(3, 2, 'c', ''), proc(4, 1, 'd', ''), proc(5, 9, 'e', '')]
+    expect(descendants(tree, 1)).toEqual([1, 2, 4, 3])
+    expect(descendants(tree, 3)).toEqual([3])
+    expect(descendants([proc(1, 2, 'a', ''), proc(2, 1, 'b', '')], 1)).toEqual([1, 2])
   })
 })
 

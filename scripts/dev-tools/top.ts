@@ -10,7 +10,7 @@ import { readStatus } from '@proj-airi/cpu-slots'
 
 import { cpuSlotsJson, readCpuSlots, renderCpuSlots } from './lib/cpu-slots'
 import { listWorktrees, repoRoot } from './lib/git'
-import { ancestry, attribute, isOrphan, normalizePath, rollup, snapshotProcesses } from './lib/processes'
+import { ancestry, attribute, descendants, isOrphan, normalizePath, rollup, snapshotProcesses } from './lib/processes'
 
 const usage = `Usage: pnpm dev:top [--processes] [--json]
        pnpm dev:top kill <worktree-name> [--orphans] [--yes]
@@ -58,11 +58,24 @@ function stillMatches(pid: number, worktree: string): boolean {
   }
 }
 
-function killTree(pid: number): void {
-  if (process.platform === 'win32')
+function killTree(pid: number, processes: AttributedProcess[]): void {
+  if (process.platform === 'win32') {
     execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' })
-  else
-    process.kill(pid, 'SIGKILL')
+    return
+  }
+  // POSIX has no tree kill, and the top member is often not a process-group leader (pnpm or turbo started it),
+  // so a group kill could miss it or hit its launcher. Signal each descendant from the snapshot instead.
+  for (const member of descendants(processes, pid)) {
+    try {
+      process.kill(member, 'SIGKILL')
+    }
+    catch (error) {
+      // A descendant that exited after the snapshot is already stopped.
+      const code = error instanceof Error && 'code' in error ? error.code : undefined
+      if (code !== 'ESRCH')
+        throw error
+    }
+  }
 }
 
 function kill(processes: AttributedProcess[], names: Map<string, string>, target: string, orphansOnly: boolean, confirmed: boolean): number {
@@ -74,7 +87,7 @@ function kill(processes: AttributedProcess[], names: Map<string, string>, target
   const self = ancestry(processes, process.pid)
   const members = processes.filter(info => info.worktree === worktree && !self.has(info.pid) && (orphansOnly ? isOrphan(info) : /^(?:node|electron|godot\w*|esbuild)(?:\.exe)?$/i.test(info.name)))
   const memberPids = new Set(members.map(info => info.pid))
-  // Kill each tree once, from its top-most member; taskkill /T takes the descendants with it.
+  // Kill each tree once, from its top-most member; killTree takes the descendants with it.
   const roots = members.filter(info => !memberPids.has(info.ppid))
   if (!roots.length) {
     console.info(`Nothing to stop in ${target}.`)
@@ -91,7 +104,7 @@ function kill(processes: AttributedProcess[], names: Map<string, string>, target
       continue
     }
     try {
-      killTree(info.pid)
+      killTree(info.pid, processes)
       console.info(`stopped ${line}`)
     }
     catch (error) {

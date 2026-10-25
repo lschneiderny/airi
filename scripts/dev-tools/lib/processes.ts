@@ -138,7 +138,16 @@ export interface AttributedProcess extends ProcessInfo {
   parentAlive: boolean
 }
 
-export function attribute(processes: ProcessInfo[], worktreePaths: string[]): AttributedProcess[] {
+/**
+ * Whether `info`'s parent still runs. Windows never reparents, so an orphan's parent PID points at nothing.
+ * macOS and Linux reparent an orphan to PID 1 (launchd or init), so that parent counts as gone.
+ * A subreaper such as `systemd --user` adopts orphans under its own PID, which this does not detect.
+ */
+function hasLiveParent(info: ProcessInfo, byPid: ReadonlyMap<number, ProcessInfo>, platform: NodeJS.Platform): boolean {
+  return byPid.has(info.ppid) && (platform === 'win32' || info.ppid !== 1)
+}
+
+export function attribute(processes: ProcessInfo[], worktreePaths: string[], platform: NodeJS.Platform = process.platform): AttributedProcess[] {
   const worktrees = worktreePaths.map(normalizePath).sort((a, b) => b.length - a.length)
   const byPid = new Map(processes.map(info => [info.pid, info]))
   const memo = new Map<number, string | null>()
@@ -154,10 +163,10 @@ export function attribute(processes: ProcessInfo[], worktreePaths: string[]): At
     memo.set(pid, result)
     return result
   }
-  return processes.map(info => ({ ...info, tool: classifyTool(info), worktree: worktreeOf(info.pid, new Set()), parentAlive: byPid.has(info.ppid) }))
+  return processes.map(info => ({ ...info, tool: classifyTool(info), worktree: worktreeOf(info.pid, new Set()), parentAlive: hasLiveParent(info, byPid, platform) }))
 }
 
-/** A dev runtime whose parent has exited. Windows never reparents, so the parent PID points at nothing. */
+/** A dev runtime whose parent has exited. */
 export function isOrphan(info: AttributedProcess): boolean {
   return !info.parentAlive && info.worktree !== null && devRuntime.test(info.name)
 }
@@ -197,6 +206,24 @@ export function rollup(processes: AttributedProcess[]): Rollup[] {
       orphans: members.filter(isOrphan).length,
     }
   }).sort((a, b) => b.memoryMb - a.memoryMb)
+}
+
+/** `pid` and every descendant in the snapshot, parents before children, so a caller can stop a parent before it starts a replacement child. */
+export function descendants(processes: ProcessInfo[], pid: number): number[] {
+  const children = new Map<number, number[]>()
+  for (const info of processes) {
+    if (info.ppid !== info.pid)
+      children.set(info.ppid, [...(children.get(info.ppid) ?? []), info.pid])
+  }
+  const order: number[] = []
+  const queue = [pid]
+  for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+    if (order.includes(next))
+      continue
+    order.push(next)
+    queue.push(...(children.get(next) ?? []))
+  }
+  return order
 }
 
 /** PIDs of `pid` and every ancestor still alive, so a caller never kills the process tree it runs in. */
