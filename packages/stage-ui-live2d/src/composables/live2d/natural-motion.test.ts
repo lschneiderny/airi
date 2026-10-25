@@ -12,6 +12,7 @@ import { lostTau, mapCursor, releaseAt } from './natural-motion/cursor-attention
 import { NaturalPerformanceEnergy } from './natural-motion/energy'
 import { NaturalGazeLayer } from './natural-motion/gaze'
 import { NaturalHoldLayer } from './natural-motion/hold'
+import { NaturalPostureLayers } from './natural-motion/posture'
 import { NaturalSpeechEmphasis } from './natural-motion/speech-emphasis'
 
 import * as random from './natural-motion/random'
@@ -1128,6 +1129,32 @@ describe('held Natural composition', () => {
 
     for (let frame = 0; frame <= 1200; frame++)
       expect(motion.advance(frame / 120)).toEqual(control.advance(frame / 120))
+  })
+
+  it.each([true, false])('ducks posture continuous motion under gesture clips only with held emotions on (%s)', (heldEmotions) => {
+    const motion = new Live2DNaturalMotion({ seed: 41 })
+    motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions })
+    const scales: number[] = []
+    const original = NaturalPostureLayers.prototype.step
+    const spy = vi.spyOn(NaturalPostureLayers.prototype, 'step').mockImplementation(function (this: NaturalPostureLayers, ...args) {
+      scales.push(this.continuousScale)
+      return original.apply(this, args)
+    })
+    try {
+      motion.advance(0)
+      motion.impulse({ id: 'duck', emotion: 'happy', band: 'strong', nominal: 0.9, intensity: 0.9, escalation: false }, 0)
+      for (let frame = 1; frame <= 600; frame++)
+        motion.advance(frame / 120)
+    }
+    finally {
+      spy.mockRestore()
+    }
+    expect(scales.length).toBeGreaterThan(0)
+    if (heldEmotions)
+      expect(Math.min(...scales)).toBeLessThan(1)
+    else
+      expect(Math.min(...scales)).toBe(1)
+    expect(Math.max(...scales)).toBe(1)
   })
 
   it('applies the held breathing period to the actual controller waveform', () => {

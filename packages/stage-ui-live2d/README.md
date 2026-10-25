@@ -183,6 +183,7 @@ The `naturalEmotions` table in `natural-motion/emotions.ts` holds every per-emot
 Gestures are short head clips: a laugh for happy, a recoil for surprised, a head shake or drop for angry, a sway for awkward, a tilt-in for love, a look-away for flustered, and a nod-off for sleepy. Sad, think, question, and curious have none.
 A gesture plays only at the clear and strong bands, and each kind has a cooldown. The body follows a gesture only at strong.
 Gestures draw from their own random stream, so idle motion and the other layers keep their sequences.
+While a gesture clip is active, Natural ducks the idle continuous head motion (not drift or posture shifts) by up to 0.45 at strong with full strength, 0.27 at clear. The duck eases in over 0.15 s, holds until the clip's head offset has fallen under 10% of its peak (at most 2 s), and eases out over 0.3 s. It applies only with held emotions on, so the clip stays visible above the idle jitter.
 
 Turn the switch off to compare with the earlier behavior: Natural then shows only the short band reaction.
 

@@ -56,6 +56,11 @@ export class NaturalPostureLayers {
   amplitudeScale = 1
   /** Divides shift hold durations; state presets drive it in a later layer. @default 1 */
   shiftRateScale = 1
+  /**
+   * Multiplies the continuous motion term only, not drift or shifts. The facade ducks it under emotion
+   * gesture clips so a clip is not masked by idle jitter. @default 1
+   */
+  continuousScale = 1
   /** Increments when a posture shift begins, so coordinated layers can react. */
   shiftCount = 0
 
@@ -130,7 +135,7 @@ export class NaturalPostureLayers {
     return [0, 1, 2].map((axis) => {
       const drift = this.drift[axis].step(dt)
       const continuous = this.continuous[axis].step(dt)
-      return softLimit(this.home[axis] + drift + this.amplitudeScale * (gain * continuous + shift[axis]) + bias[axis])
+      return softLimit(this.home[axis] + drift + this.amplitudeScale * (this.continuousScale * gain * continuous + shift[axis]) + bias[axis])
     }) as Vec3
   }
 

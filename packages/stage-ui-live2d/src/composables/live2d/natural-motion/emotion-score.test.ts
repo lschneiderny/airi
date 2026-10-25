@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
 import { fitExponential, holmAdjust, measureEmotionTrial, measurePlacebos, naturalEmotionLifetime, naturalFaceResidue, scoreEmotionGate, signFlipPValue, stratifiedUnpairedPValue, unpairedPValue } from './emotion-score'
 import { naturalEmotions } from './emotions'
 import { buildEmotionChecks, emotionGate } from './gates'
-import { gestureLifetimes, NaturalGestures } from './gestures'
+import { gestureDuckRelease, gestureLifetimes, NaturalGestures } from './gestures'
 import { createRandomStream, gaussian } from './random'
 
 const pulseAt = emotionGate.scenario.warmup
@@ -511,7 +511,7 @@ describe('emotion lifetimes', () => {
       expect(naturalFaceResidue(defaultExpressionPerformanceSettings, band)).toBeGreaterThan(emotionGate.release.window[0])
     }
     // Held-only still plays gesture clips: the full lifetime outlives the hold, so posture is never release-scored.
-    expect(naturalEmotionLifetime(heldOnly, 'strong')).toBe(Math.max(...Object.values(gestureLifetimes)))
+    expect(naturalEmotionLifetime(heldOnly, 'strong')).toBe(Math.max(...Object.values(gestureLifetimes)) + gestureDuckRelease)
     expect(naturalEmotionLifetime(heldOnly, 'strong')).toBeGreaterThan(emotionGate.scenario.hold)
   })
 })

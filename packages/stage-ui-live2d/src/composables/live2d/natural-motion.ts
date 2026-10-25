@@ -469,6 +469,7 @@ export class Live2DNaturalMotion {
       cursorX: headShare * mapped.head.x,
       cursorY: headShare * (above ? mapped.head.y * (1 - this.approach) - approachHeadTuck * this.approach : mapped.head.y),
     })
+    this.posture.continuousScale = this.performanceSettings.heldEmotions ? this.gestures.continuousScale(stepStart + step) : 1
     const posture = this.posture.step(step, [this.x.cursorX, this.x.cursorY, 0])
     // Eye compensation sees the complete head pose.
     const impulse = this.impulses.headOffset(stepStart + step)

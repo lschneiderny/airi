@@ -2,7 +2,7 @@ import type { GestureKind } from './emotions'
 
 import { describe, expect, it } from 'vitest'
 
-import { NaturalGestures } from './gestures'
+import { createClip, NaturalGestures } from './gestures'
 import { createRandomStream } from './random'
 
 const step = 1 / 120
@@ -222,5 +222,103 @@ describe('natural gestures', () => {
     expect(peak(sampleTrack(gestures, 60).head)).toBe(0)
     expect(peak(sampleTrack(gestures, 60).body)).toBe(0)
     expect(random()).toBe(untouched())
+  })
+})
+
+describe('gesture duck', () => {
+  const duckStep = 1 / 120
+  const scaleTrack = (gestures: NaturalGestures, seconds: number) => Array.from({ length: Math.round(seconds / duckStep) + 1 }, (_, i) => gestures.continuousScale(i * duckStep))
+
+  it('is exactly 1 before any trigger, after refused triggers, and from activeUntil() + 0.3 on', () => {
+    const idle = new NaturalGestures(createRandomStream(7))
+    expect(scaleTrack(idle, 3).every(value => value === 1)).toBe(true)
+
+    const slight = new NaturalGestures(createRandomStream(7))
+    expect(slight.trigger('sway', 1, 'slight', 0)).toBe(false)
+    expect(scaleTrack(slight, 3).every(value => value === 1)).toBe(true)
+
+    const refused = new NaturalGestures(createRandomStream(7))
+    const twin = new NaturalGestures(createRandomStream(7))
+    refused.trigger('sway', 1, 'strong', 0)
+    twin.trigger('sway', 1, 'strong', 0)
+    expect(refused.trigger('sway', 1, 'strong', 1)).toBe(false)
+    expect(scaleTrack(refused, 6)).toEqual(scaleTrack(twin, 6))
+
+    for (const kind of kinds) {
+      const gestures = new NaturalGestures(createRandomStream(9))
+      expect(gestures.trigger(kind, 1, 'strong', 2)).toBe(true)
+      const from = gestures.activeUntil() + 0.3
+      for (let t = from; t < from + 2; t += duckStep)
+        expect(gestures.continuousScale(t)).toBe(1)
+    }
+  })
+
+  it('holds 1 - 0.45 for a strong strength-1 clip and 1 - 0.27 for a clear one between attack end and clip end', () => {
+    for (const [band, depth] of [['strong', 0.45], ['clear', 0.27]] as const) {
+      const gestures = new NaturalGestures(createRandomStream(11))
+      expect(gestures.trigger('sway', 1, band, 0)).toBe(true)
+      for (let t = 0.15; t <= 1.4; t += duckStep)
+        expect(gestures.continuousScale(t)).toBeCloseTo(1 - depth, 12)
+      expect(gestures.continuousScale(0)).toBe(1)
+    }
+  })
+
+  it('changes by at most the min-jerk slope bound per 1/120 s step', () => {
+    const bound = 0.45 * 1.875 / (0.15 * 120) + 1e-12
+    for (const kind of kinds) {
+      const gestures = new NaturalGestures(createRandomStream(13))
+      gestures.trigger(kind, 1, 'strong', 0)
+      const track = scaleTrack(gestures, 12)
+      for (let i = 1; i < track.length; i++)
+        expect(Math.abs(track[i] - track[i - 1])).toBeLessThanOrEqual(bound)
+    }
+  })
+
+  it('takes the deepest of overlapping windows, not their sum', () => {
+    const gestures = new NaturalGestures(createRandomStream(17))
+    expect(gestures.trigger('sway', 1, 'strong', 0)).toBe(true)
+    expect(gestures.trigger('tilt-in', 1, 'strong', 0.1)).toBe(true)
+    expect(gestures.continuousScale(0.5)).toBeCloseTo(1 - 0.45, 12)
+  })
+
+  it('draws a fixed number of random values per trigger, whatever the duck state', () => {
+    for (const [kind, draws] of [['sway', 1], ['recoil', 1], ['laugh', 4], ['tilt-in', 1]] as const) {
+      let count = 0
+      const stream = createRandomStream(21)
+      const gestures = new NaturalGestures(() => {
+        count++
+        return stream()
+      })
+      gestures.trigger(kind, 1, 'strong', 0)
+      gestures.continuousScale(0.5)
+      expect(count).toBe(draws)
+    }
+  })
+
+  it('ends every clip window after its peak, once its head offset stays under 10% of the peak', () => {
+    const played = ['laugh', 'recoil', 'shake', 'drop', 'sway', 'tilt-in', 'look-away', 'nod-off'] as const
+    for (const kind of played) {
+      for (let seed = 1; seed <= 40; seed++) {
+        const random = createRandomStream(seed)
+        const side = seed % 2 === 0 ? 1 : -1
+        const clip = createClip(kind, side, 0.8, random)
+        const norm = (age: number) => Math.hypot(...clip.shape(age))
+        let peakAge = 0
+        let peakNorm = 0
+        for (let i = 0; i <= Math.floor(clip.lifetime * 120); i++) {
+          if (norm(i * duckStep) > peakNorm) {
+            peakNorm = norm(i * duckStep)
+            peakAge = i * duckStep
+          }
+        }
+        expect(clip.activeSpan).toBeGreaterThan(peakAge)
+        expect(clip.activeSpan).toBeLessThanOrEqual(2)
+        // Only the 2 s cap may leave more than 10% of the peak: nod-off's catch-up tail outlasts it.
+        if (clip.activeSpan < 2)
+          expect(norm(clip.activeSpan)).toBeLessThanOrEqual(0.1 * peakNorm)
+        else
+          expect(kind).toBe('nod-off')
+      }
+    }
   })
 })

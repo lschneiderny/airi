@@ -8,6 +8,11 @@ import { impulseEnvelope } from './impulses'
 import { minJerk } from './processes'
 
 interface ClipShape {
+  /**
+   * Seconds after `start` at which the head offset has stayed below 10% of its peak (capped at 2 s).
+   * The idle-motion duck holds until then; unlike `lifetime` it ignores quiet exponential tails.
+   */
+  readonly activeSpan: number
   /** Seconds after `start` at which the clip contributes exactly 0 and is retired. */
   readonly lifetime: number
   /** Head offset at `age` seconds since `start`, in normalized head units. */
@@ -27,6 +32,12 @@ const bandAmplitude: Record<Band, number> = { slight: 0, clear: 0.6, strong: 1 }
 const bodyGain = 0.5
 /** Seconds before the same gesture can retrigger. Shake, drop, and shake-or-drop share the angry cooldown. */
 const cooldowns = { 'laugh': 4, 'recoil': 3, 'angry': 5, 'sway': 4, 'tilt-in': 5, 'look-away': 4, 'nod-off': 8 } as const
+/** Idle continuous motion dips by `depth` x strength x band amplitude over `attack`, and returns over `release`. */
+const duck = { depth: 0.45, attack: 0.15, release: 0.3 }
+/** Seconds the duck takes to release after a clip's active span; QA waits this long after a clip. */
+export const gestureDuckRelease = duck.release
+/** Longest active span, in seconds. */
+const activeSpanCap = 2
 // Retire exponential tails once they have become negligible.
 const tailTaus = 15
 
@@ -69,7 +80,28 @@ function taper(age: number, lifetime: number) {
  * Draw order, after the side and angry choice that `trigger` draws: laugh cycles, frequency,
  * amplitude; shake cycles. All other clips need only the side. `scale` is strength x band amplitude.
  */
-function createClip(kind: PlayedGesture, side: -1 | 1, scale: number, random: RandomStream): ClipShape {
+export function createClip(kind: PlayedGesture, side: -1 | 1, scale: number, random: RandomStream): ClipShape {
+  const clip = createClipShape(kind, side, scale, random)
+  return { ...clip, activeSpan: activeSpanOf(clip) }
+}
+
+/** First age after the peak from which the head-offset norm stays below 10% of the peak, sampled at 1/120 s. */
+function activeSpanOf(clip: Pick<ClipShape, 'lifetime' | 'shape'>) {
+  const samples = Math.floor(clip.lifetime * 120)
+  const norms = Array.from({ length: samples + 1 }, (_, i) => Math.hypot(...clip.shape(i / 120)))
+  const peak = Math.max(...norms)
+  const threshold = 0.1 * peak
+  let lastAbove = norms.indexOf(peak)
+  for (let i = norms.length - 1; i > lastAbove; i--) {
+    if (norms[i] > threshold) {
+      lastAbove = i
+      break
+    }
+  }
+  return Math.min(activeSpanCap, (lastAbove + 1) / 120)
+}
+
+function createClipShape(kind: PlayedGesture, side: -1 | 1, scale: number, random: RandomStream): Pick<ClipShape, 'lifetime' | 'shape'> {
   switch (kind) {
     case 'laugh': {
       const cycles = 2 + Math.floor(random() * 3)
@@ -124,6 +156,13 @@ function createClip(kind: PlayedGesture, side: -1 | 1, scale: number, random: Ra
   }
 }
 
+/** One idle-motion duck window: `depth` over `attack` from `start`, held to `end`, released over `duck.release`. */
+interface DuckWindow {
+  readonly start: number
+  readonly end: number
+  readonly depth: number
+}
+
 /** Sums active clips at `time`; clips that reached their lifetime are dropped in place. */
 function clipOffset(clips: Clip[], time: number): Vec3 {
   const offset: Vec3 = [0, 0, 0]
@@ -154,6 +193,7 @@ function clipOffset(clips: Clip[], time: number): Vec3 {
 export class NaturalGestures {
   private readonly heads: Clip[] = []
   private readonly bodies: Clip[] = []
+  private readonly ducks: DuckWindow[] = []
   private readonly lastTrigger = new Map<string, number>()
 
   constructor(private readonly random: RandomStream) {}
@@ -176,6 +216,7 @@ export class NaturalGestures {
     const played = kind === 'shake-or-drop' ? (this.random() < 0.5 ? 'shake' : 'drop') : kind
     const clip: Clip = { ...createClip(played, side, Math.min(1, strength) * amplitude, this.random), start: at }
     this.heads.push(clip)
+    this.ducks.push({ start: at, end: at + clip.activeSpan, depth: duck.depth * Math.min(1, strength) * amplitude })
     started?.(played, side)
     if (band === 'strong') {
       this.bodies.push({
@@ -195,6 +236,23 @@ export class NaturalGestures {
 
   bodyOffset(time: number): Vec3 {
     return clipOffset(this.bodies, time)
+  }
+
+  /**
+   * Multiplier for idle continuous posture motion at `time`: 1 outside clips, `1 - depth` while the deepest live
+   * clip is active, with min-jerk edges. Overlapping clips take the deepest window, not the sum. It draws nothing.
+   */
+  continuousScale(time: number): number {
+    let depth = 0
+    for (let i = this.ducks.length - 1; i >= 0; i--) {
+      const window = this.ducks[i]
+      if (time >= window.end + duck.release) {
+        this.ducks.splice(i, 1)
+        continue
+      }
+      depth = Math.max(depth, window.depth * Math.min(minJerk((time - window.start) / duck.attack), 1 - minJerk((time - window.end) / duck.release)))
+    }
+    return 1 - depth
   }
 
   /** Time at which the last started clip ends, or 0 when none has started; the facade postpones posture shifts until then. */

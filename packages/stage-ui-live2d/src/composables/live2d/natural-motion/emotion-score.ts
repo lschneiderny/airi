@@ -8,7 +8,7 @@ import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/ex
 
 import { naturalEmotions } from './emotions'
 import { NaturalGazeLayer } from './gaze'
-import { gestureLifetimes } from './gestures'
+import { gestureDuckRelease, gestureLifetimes } from './gestures'
 import { impulseFaceLifetime, impulseLifetime } from './impulses'
 import { createRandomStream } from './random'
 
@@ -243,14 +243,14 @@ function performedBand(settings: ExpressionPerformanceSettings, band: Band): Ban
 
 /**
  * Seconds after an emotion pulse until everything the pulse started has retired: the head and body pulses and
- * face hints (`impulseLifetime`), the longest gesture clip (`gestureLifetimes`; clips play only above `slight`
+ * face hints (`impulseLifetime`), the longest gesture clip plus the idle-motion duck release (`gestureLifetimes` + `gestureDuckRelease`; clips play only above `slight`
  * with held emotions on), and the glance (`faceHold` plus two saccades, above `slight`). The held emotion itself
  * is excluded: its release is what the scorer measures.
  */
 export function naturalEmotionLifetime(settings: ExpressionPerformanceSettings, band: Band): number {
   const performed = performedBand(settings, band)
   const bandSettings = settings.naturalBands[performed]
-  const gesture = performed !== 'slight' && settings.heldEmotions ? Math.max(...Object.values(gestureLifetimes)) : 0
+  const gesture = performed !== 'slight' && settings.heldEmotions ? Math.max(...Object.values(gestureLifetimes)) + gestureDuckRelease : 0
   const glance = performed !== 'slight' ? bandSettings.faceHold + 2 * maxSaccadeSeconds : 0
   return Math.max(impulseLifetime(bandSettings), gesture, glance)
 }
