@@ -55,7 +55,7 @@ Duplicate detection runs before choose-one sets are derived, so duplicates do no
 
 ### Detail weight 0.5
 
-Face entries whose area is eyes, mouth, or cheeks get mapping weight 0.5. Whole-look faces keep weight 1. Effects are unchanged. The reactions row shows a "½" marker on every mapping whose weight is below 1, and the user can change the weight in the entry editor.
+Face entries whose area is eyes, mouth, or cheeks get mapping weight 0.5. Whole-look faces keep weight 1. Derived effect mappings keep weight 1, while the Reactions picker chooses its default weight by area alone, so an entry whose area the user overrode to eyes, mouth, or cheeks gets 0.5 even when it is an effect. The reactions row shows a "½" marker on every mapping whose weight is below 1, and the user can change the weight in the entry editor.
 
 ### Custom single-parameter expressions over free switches
 

@@ -329,7 +329,6 @@ live2d:
       members: Members
       add-member: Add member
       remove-member: Remove {label}
-      strength: Strength
       strength-hint: Strength blends smoothly only for expressions that add to their parameters.
       manual-only: Contains an outfit, system, or unsorted expression, so only you and saved defaults can turn it on.
       save: Save combo
