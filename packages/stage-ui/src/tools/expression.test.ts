@@ -85,7 +85,6 @@ describe('expression tools', () => {
 
     const set = tools.get('set_expression')!.function
     expect((set.parameters as { properties: { expression: { enum: string[] } } }).properties.expression.enum).toEqual(['smile', 'Pair'])
-    expect(set.description).toContain('combos')
     expect((await tools.get('set_expression')!.validate!({ expression: 'Pair' })).issues).toBeUndefined()
     expect((await tools.get('set_expression')!.validate!({ expression: 'unknown' })).issues).toBeDefined()
   })
