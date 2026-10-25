@@ -122,6 +122,20 @@ function fieldOf(slider: Locator) {
   return page.elementLocator(field)
 }
 
+/** The Everything-else section element, so row text can be asserted apart from the Reactions chips that repeat the same labels. */
+function everythingElseOf(screen: { getByRole: typeof page.getByRole }) {
+  const section = screen.getByRole('heading', { name: t('settings.live2d.expressions.areas.title'), exact: true }).element().closest('section')
+  if (!section)
+    throw new Error('the Everything else heading is not inside a section')
+  return section
+}
+
+/** How many visible exact-text matches sit inside Everything else. A generated element locator goes stale when the section re-renders, so this re-resolves on every poll. */
+function visibleInEverythingElse(screen: { getByRole: typeof page.getByRole, getByText: typeof page.getByText }, text: string) {
+  const section = everythingElseOf(screen)
+  return screen.getByText(text, { exact: true }).all().filter(locator => section.contains(locator.element()) && locator.element().checkVisibility()).length
+}
+
 describe('live2D model settings', () => {
   // The first import of the settings module graph transforms it cold: 6-8 s alone, over 15 s under load.
   // Loading it here keeps that one-time cost out of the first test's timeout; later imports hit the module cache.
@@ -214,17 +228,17 @@ describe('live2D model settings', () => {
     for (const key of ['kinds.face', 'kinds.outfit', 'emotions.angry', 'emotions.flustered', 'group-members'])
       expect(t(`settings.live2d.expressions.${key}`)).not.toBe(`settings.live2d.expressions.${key}`)
     // The group row carries the readable name, never the stored group id.
-    await expect.element(screen.getByText('Cheeks', { exact: true })).toBeVisible()
-    await expect.element(screen.getByText(group, { exact: true })).not.toBeInTheDocument()
-    await expect.element(screen.getByText('Cheeks Blush', { exact: true })).not.toBeInTheDocument()
-    await expect.element(screen.getByText('Hat', { exact: true })).toBeVisible()
+    await expect.poll(() => visibleInEverythingElse(screen, 'Cheeks')).toBe(1)
+    await expect.poll(() => visibleInEverythingElse(screen, group)).toBe(0)
+    await expect.poll(() => visibleInEverythingElse(screen, 'Cheeks Blush')).toBe(0)
+    await expect.poll(() => visibleInEverythingElse(screen, 'Hat')).toBe(1)
     await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.llm-exposed')}: Hat` })).not.toBeInTheDocument()
 
     await screen.getByRole('button', { name: t('settings.live2d.expressions.group-members'), exact: true }).click()
-    await expect.element(screen.getByText('Cheeks Blush', { exact: true })).toBeVisible()
-    await expect.element(screen.getByText(`${t('settings.live2d.expressions.emotions.angry')}, ${t('settings.live2d.expressions.emotions.flustered')}`, { exact: true })).toBeVisible()
-    await expect.element(screen.getByText(t('settings.live2d.expressions.kinds.face'), { exact: true })).not.toBeInTheDocument()
-    await expect.element(screen.getByText(t('settings.live2d.expressions.kinds.outfit'), { exact: true })).not.toBeInTheDocument()
+    await expect.poll(() => visibleInEverythingElse(screen, 'Cheeks Blush')).toBe(1)
+    await expect.poll(() => visibleInEverythingElse(screen, `${t('settings.live2d.expressions.emotions.angry')}, ${t('settings.live2d.expressions.emotions.flustered')}`)).toBe(1)
+    await expect.poll(() => visibleInEverythingElse(screen, t('settings.live2d.expressions.kinds.face'))).toBe(0)
+    await expect.poll(() => visibleInEverythingElse(screen, t('settings.live2d.expressions.kinds.outfit'))).toBe(0)
     await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.llm-exposed')}: Cheeks Blush` })).toBeVisible()
 
     // The expanded member row shows neither the stored group id nor its former prefix-stripped chip text, nor a review chip.
@@ -252,25 +266,25 @@ describe('live2D model settings', () => {
     // 5 entries produce 4 rows (the hair pair is one row); coat and watermark are the 2 the in-use filter hides.
     const hiddenRowCount = 2
 
-    /** The leading label of every rendered row, group rows included, in document order. */
+    /** The leading label of every rendered Everything-else row, group rows included, in document order. */
     function expressionRowLabels(screen: Awaited<ReturnType<typeof renderRemoteExpressions>>['screen']) {
-      return screen.getByRole('listitem').all().map(locator => locator.element().querySelector('span')?.textContent?.trim() ?? '')
+      return [...everythingElseOf(screen).querySelectorAll('[role="listitem"]')].map(row => row.querySelector('span')?.textContent?.trim() ?? '')
     }
 
     it('shows only in-use rows by default and reveals the rest through Show all', async () => {
       for (const key of ['show-all', 'show-fewer', 'none-in-use', 'no-match', 'search'])
         expect(t(`settings.live2d.expressions.${key}`)).not.toBe(`settings.live2d.expressions.${key}`)
       const { screen } = await renderRemoteExpressions(bearSnapshot())
-      await expect.element(screen.getByText('anger', { exact: true })).toBeVisible()
-      await expect.element(screen.getByText('Hair', { exact: true })).toBeVisible()
-      await expect.element(screen.getByText('coat', { exact: true })).not.toBeInTheDocument()
-      await expect.element(screen.getByText('watermark', { exact: true })).not.toBeInTheDocument()
+      await expect.poll(() => visibleInEverythingElse(screen, 'anger')).toBe(1)
+      await expect.poll(() => visibleInEverythingElse(screen, 'Hair')).toBe(1)
+      await expect.poll(() => visibleInEverythingElse(screen, 'coat')).toBe(0)
+      await expect.poll(() => visibleInEverythingElse(screen, 'watermark')).toBe(0)
 
       const showAll = screen.getByRole('button', { name: t('settings.live2d.expressions.show-all', { count: hiddenRowCount }), exact: true })
       await expect.element(showAll).toBeVisible()
       await showAll.click()
-      await expect.element(screen.getByText('coat', { exact: true })).toBeVisible()
-      await expect.element(screen.getByText('watermark', { exact: true })).toBeVisible()
+      await expect.poll(() => visibleInEverythingElse(screen, 'coat')).toBe(1)
+      await expect.poll(() => visibleInEverythingElse(screen, 'watermark')).toBe(1)
       await expect.element(screen.getByRole('button', { name: t('settings.live2d.expressions.show-fewer'), exact: true })).toBeVisible()
     })
 
@@ -278,13 +292,13 @@ describe('live2D model settings', () => {
       const { screen } = await renderRemoteExpressions(bearSnapshot())
       const search = screen.getByRole('searchbox', { name: t('settings.live2d.expressions.search'), exact: true })
       await search.fill('coat')
-      await expect.element(screen.getByText('coat', { exact: true })).toBeVisible()
-      await expect.element(screen.getByText('anger', { exact: true })).not.toBeInTheDocument()
+      await expect.poll(() => visibleInEverythingElse(screen, 'coat')).toBe(1)
+      await expect.poll(() => visibleInEverythingElse(screen, 'anger')).toBe(0)
       await expect.element(screen.getByRole('button', { name: t('settings.live2d.expressions.show-all', { count: hiddenRowCount }), exact: true })).not.toBeInTheDocument()
 
       await search.fill('zzzz')
-      await expect.element(screen.getByText(t('settings.live2d.expressions.no-match'), { exact: true })).toBeVisible()
-      await expect.element(screen.getByText('coat', { exact: true })).not.toBeInTheDocument()
+      await expect.poll(() => visibleInEverythingElse(screen, t('settings.live2d.expressions.no-match'))).toBe(1)
+      await expect.poll(() => visibleInEverythingElse(screen, 'coat')).toBe(0)
     })
 
     it('keeps the search text and Show all after collapsing and reopening the Expressions section', async () => {
@@ -323,7 +337,7 @@ describe('live2D model settings', () => {
     it('keeps catalog order and a mapped entry visible when it is toggled off in the in-use view', async () => {
       const { screen, onLive2dExpressionCommand, pinia } = await renderRemoteExpressions(bearSnapshot({ anger: { active: true } }))
       const { useExpressionStore } = await import('@proj-airi/stage-ui-live2d')
-      await expect.element(screen.getByText('Hair', { exact: true })).toBeVisible()
+      await expect.poll(() => visibleInEverythingElse(screen, 'Hair')).toBe(1)
       const before = expressionRowLabels(screen)
       expect(before).toEqual(['anger', 'Hair'])
 
@@ -333,7 +347,7 @@ describe('live2D model settings', () => {
 
       // The owner answers with a new snapshot; anger stays visible because it is mapped.
       await screen.rerender({ runtimeSnapshot: remoteSnapshot(bearSnapshot({ anger: { active: false } })) })
-      await expect.element(screen.getByText('anger', { exact: true })).toBeVisible()
+      await expect.poll(() => visibleInEverythingElse(screen, 'anger')).toBe(1)
       expect(expressionRowLabels(screen)).toEqual(before)
     })
   })

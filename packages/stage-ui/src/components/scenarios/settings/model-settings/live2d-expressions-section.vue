@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 
 import Live2dExpressionAreas from './live2d-expression-areas.vue'
 import Live2dExpressionCombos from './live2d-expression-combos.vue'
+import Live2dExpressionReactions from './live2d-expression-reactions.vue'
 
 const props = defineProps<{
   snapshot: Live2DExpressionSettingsSnapshot
@@ -36,14 +37,18 @@ const showAllExpressions = defineModel<boolean>('showAll', { required: true })
     </div>
   </template>
   <template v-else>
+    <!-- Emotion first: what the character shows, then the combos behind it, then every single expression. -->
+    <Live2dExpressionReactions :entries="props.snapshot.entries" @command="applyExpressionSettingsCommand" />
+
+    <Live2dExpressionCombos :entries="props.snapshot.entries" :class="['mt-4']" @command="applyExpressionSettingsCommand" />
+
     <Live2dExpressionAreas
       v-model:search="expressionSearch"
       v-model:show-all="showAllExpressions"
       :snapshot="props.snapshot"
+      :class="['mt-4']"
       @command="applyExpressionSettingsCommand"
     />
-
-    <Live2dExpressionCombos :entries="props.snapshot.entries" :class="['mt-4']" @command="applyExpressionSettingsCommand" />
 
     <!-- Action buttons -->
     <div :class="['mt-4', 'flex flex-wrap gap-2']">
