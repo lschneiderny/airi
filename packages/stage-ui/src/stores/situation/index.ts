@@ -25,6 +25,7 @@ import {
   reduceSituation,
   renderSituation,
   visibilityRegainGateMemory,
+  withoutAppExtension,
 } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
@@ -486,8 +487,8 @@ export const useSituationStore = defineStore('situation', () => {
         enabled: document.unpromptedEnabled,
         chattiness: document.chattiness,
         dontDisturb: document.dontDisturb,
-        // Settings list executable names (`zoom.exe`); the gate matches app ids, which drop the `.exe` extension.
-        quietApps: document.quietApps.map(pattern => pattern.trim().replace(/\.exe$/i, '')),
+        // Settings list executable or bundle names; the gate matches app ids without their extension.
+        quietApps: document.quietApps.map(pattern => withoutAppExtension(pattern.trim())),
         speakDuringGames: document.speakDuringGames,
       },
       forceTiming,

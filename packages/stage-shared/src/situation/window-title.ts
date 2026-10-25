@@ -78,24 +78,26 @@ function basenameOf(exePath: string): string {
   return parts[parts.length - 1] ?? ''
 }
 
-function withoutExeExtension(fileName: string): string {
-  return fileName.replace(/\.exe$/iu, '')
+/** Removes a Windows executable or macOS bundle extension, including from a settings glob. */
+export function withoutAppExtension(fileName: string): string {
+  return fileName.replace(/\.(?:exe|app)$/iu, '')
 }
 
 /**
- * Stable app id: the lowercased file name without `.exe`, for example
+ * Stable app id: the lowercased file name without `.exe` or `.app`, for example
  * `C:\Program Files\Zoom\bin\Zoom.exe` => `zoom`. Returns `''` for an empty path.
  */
 export function appIdFromExe(exePath: string): string {
-  return withoutExeExtension(basenameOf(exePath)).toLowerCase()
+  return withoutAppExtension(basenameOf(exePath)).toLowerCase()
 }
 
 /**
- * Display name: the file name without `.exe`, with the first letter of each
+ * Display name: the file name without `.exe` or `.app`, with the first letter of each
  * word (split on spaces, `-`, `_`, `.`) upper-cased, for example `ms-teams` => `Ms-Teams`.
+ * Dotted bundle names keep this casing too: `zoom.us.app` becomes `Zoom.Us`.
  */
 export function labelFromExe(exePath: string): string {
-  return withoutExeExtension(basenameOf(exePath))
+  return withoutAppExtension(basenameOf(exePath))
     .replace(/(^|[\s\-_.])(\p{Ll})/gu, (_, separator: string, letter: string) => `${separator}${letter.toUpperCase()}`)
 }
 
@@ -142,23 +144,37 @@ const CATEGORY_BY_APP_ID: Readonly<Record<string, AppCategory>> = Object.freeze(
   'brave': 'browser',
   'opera': 'browser',
   'vivaldi': 'browser',
+  'safari': 'browser',
+  'google chrome': 'browser',
+  'arc': 'browser',
+  'microsoft edge': 'browser',
   'code': 'editor',
   'cursor': 'editor',
   'idea64': 'editor',
   'devenv': 'editor',
   'sublime_text': 'editor',
   'notepad++': 'editor',
+  'visual studio code': 'editor',
+  'xcode': 'editor',
+  'zed': 'editor',
   'vlc': 'media',
   'mpc-hc64': 'media',
   'spotify': 'media',
+  'music': 'media',
+  'quicktime player': 'media',
+  'iina': 'media',
   'discord': 'chat',
   'slack': 'chat',
   'telegram': 'chat',
   'whatsapp': 'chat',
+  'messages': 'chat',
   'zoom': 'call',
   'ms-teams': 'call',
   'teams': 'call',
   'webex': 'call',
+  'zoom.us': 'call',
+  'microsoft teams': 'call',
+  'facetime': 'call',
 })
 
 /**

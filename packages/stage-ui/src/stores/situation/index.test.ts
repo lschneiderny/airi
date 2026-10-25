@@ -1046,6 +1046,27 @@ describe('situation gate loop', () => {
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['notepad.exe', 'notepad.exe', 'notepad'],
+    ['Mystery Notes.app', '  mystery notes.app  ', 'mystery notes'],
+    ['Mystery Notes.APP', 'MYSTERY*.APP', 'mystery notes'],
+    ['Mystery Notes.app', 'mystery notes', 'mystery notes'],
+  ])('matches quiet-app glob %s through the foreground sample and gate', async (exeName, pattern, appId) => {
+    const { store, chat, observability } = startQuietLeader({
+      foreground: () => foregroundSample({ exePath: `/Applications/${exeName}`, exeName, title: 'Draft' }),
+    })
+    await useSituationSettings().update({ quietApps: [pattern] })
+    offerTopic()
+
+    const evaluation = await observability.evaluateGate()
+
+    expect(store.state.activity).toMatchObject({ appId, category: 'other' })
+    expect(evaluation).toMatchObject({ status: 'evaluated', decision: { fire: false, reason: 'quiet-app' } })
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+    await useSituationSettings().update({ quietApps: [] })
+    expect(await observability.evaluateGate()).toMatchObject({ status: 'evaluated', decision: { fire: true } })
+  })
+
   it('stops suppressing for a game once its foreground samples go stale', async () => {
     const game = { exePath: 'D:\\SteamLibrary\\steamapps\\common\\Hades\\Hades.exe', exeName: 'Hades.exe', title: 'Hades' }
     let producing = true

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { appIdFromExe, categorizeApp, isDenylisted, labelFromExe, normalizeWindowTitle, WINDOW_TITLE_MAX_CHARS } from '.'
+import { appIdFromExe, categorizeApp, isDenylisted, labelFromExe, normalizeWindowTitle, WINDOW_TITLE_MAX_CHARS, withoutAppExtension } from '.'
 
 describe('normalizeWindowTitle', () => {
   it.each([
@@ -67,10 +67,28 @@ describe('appIdFromExe and labelFromExe', () => {
     ['sublime_text.exe', 'sublime_text', 'Sublime_Text'],
     ['notepad++.exe', 'notepad++', 'Notepad++'],
     ['1Password.exe', '1password', '1Password'],
+    ['/Applications/zoom.us.app', 'zoom.us', 'Zoom.Us'],
+    ['/Applications/Visual Studio Code.app', 'visual studio code', 'Visual Studio Code'],
+    ['Google Chrome.app', 'google chrome', 'Google Chrome'],
+    ['FaceTime.APP', 'facetime', 'FaceTime'],
     ['', '', ''],
   ])('%s', (exePath, appId, label) => {
     expect(appIdFromExe(exePath)).toBe(appId)
     expect(labelFromExe(exePath)).toBe(label)
+  })
+})
+
+describe('withoutAppExtension', () => {
+  it.each([
+    ['Zoom.EXE', 'Zoom'],
+    ['zoom.us.app', 'zoom.us'],
+    ['Webex*.APP', 'Webex*'],
+    ['1password*.exe', '1password*'],
+    ['notes.app.backup', 'notes.app.backup'],
+    ['myapp', 'myapp'],
+    ['', ''],
+  ])('%s => %s', (fileName, expected) => {
+    expect(withoutAppExtension(fileName)).toBe(expected)
   })
 })
 
@@ -109,6 +127,30 @@ describe('categorizeApp', () => {
     ['C:\\Tools\\mystery.exe', 'mystery.exe', 'other'],
     ['', '', 'other'],
     ['C:\\Tools\\constructor', 'constructor', 'other'],
+    ['/Users/x/Library/Application Support/Steam/steamapps/common/Hades/Hades.app', 'Hades.app', 'game'],
+    ['/Applications/zoom.us.app', 'zoom.us.app', 'call'],
+    ['/Applications/Microsoft Teams.app', 'Microsoft Teams.app', 'call'],
+    ['/System/Applications/FaceTime.app', 'FaceTime.app', 'call'],
+    ['/Applications/Webex.app', 'Webex.app', 'call'],
+    ['/Applications/Safari.app', '', 'browser'],
+    ['/Applications/Google Chrome.app', 'Google Chrome.app', 'browser'],
+    ['/Applications/Arc.app', 'Arc.app', 'browser'],
+    ['/Applications/Microsoft Edge.app', 'Microsoft Edge.app', 'browser'],
+    ['/Applications/Visual Studio Code.app', 'Visual Studio Code.app', 'editor'],
+    ['/Applications/Xcode.app', 'Xcode.app', 'editor'],
+    ['/Applications/Zed.app', 'Zed.app', 'editor'],
+    ['/System/Applications/Music.app', 'Music.app', 'media'],
+    ['/System/Applications/QuickTime Player.app', 'QuickTime Player.app', 'media'],
+    ['/Applications/IINA.app', 'IINA.app', 'media'],
+    ['/System/Applications/Messages.app', 'Messages.app', 'chat'],
+    ['/Applications/Discord.app', 'Discord.app', 'chat'],
+    ['/Applications/Slack.app', 'Slack.app', 'chat'],
+    ['/Applications/Telegram.app', 'Telegram.app', 'chat'],
+    ['/Applications/WhatsApp.app', 'WhatsApp.app', 'chat'],
+    ['/Applications/Spotify.app', 'Spotify.app', 'media'],
+    ['/Applications/VLC.app', 'VLC.app', 'media'],
+    ['/Applications/Firefox.app', 'Firefox.app', 'browser'],
+    ['/Applications/Cursor.app', 'Cursor.app', 'editor'],
   ])('%s => %s', (exePath, exeName, expected) => {
     expect(categorizeApp(exePath, exeName)).toBe(expected)
   })
