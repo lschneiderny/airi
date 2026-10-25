@@ -1529,3 +1529,72 @@ describe('reacting overlay', () => {
     expect(woke.shiftRate).toBeGreaterThan(rest.shiftRate + 0.3)
   })
 })
+
+describe('eye compensation for the slow head only', () => {
+  const frameDts = [1 / 120, 1 / 97] as const
+
+  /** Zeroes the posture's continuous motion without touching its random draws, so seeded runs stay comparable. */
+  function silenceContinuous(motion: Live2DNaturalMotion) {
+    const posture = Reflect.get(motion, 'posture') as { continuous: { sd: number, value: number }[] }
+    for (const process of posture.continuous) {
+      process.sd = 0
+      // The constructor already integrated one step; drop its residual so later steps see no wobble.
+      process.value = 0
+    }
+  }
+
+  function run(options: { silent: boolean, cursor: boolean, dt: number }) {
+    const motion = new Live2DNaturalMotion({ seed: 7 })
+    if (options.silent)
+      silenceContinuous(motion)
+    const frames: ReturnType<Live2DNaturalMotion['advance']>[] = []
+    for (let i = 0; i <= 60 / options.dt; i++) {
+      const time = i * options.dt
+      if (options.cursor)
+        motion.setCursor({ x: 0.6 * Math.sin(time / 7), y: 0.3 }, time)
+      frames.push(motion.advance(time))
+    }
+    return frames
+  }
+
+  it.each(frameDts)('matches gaze minus K times the applied head when the continuous motion is zero (dt %f)', (dt) => {
+    for (const cursor of [false, true]) {
+      let headTravel = 0
+      for (const [i, frame] of run({ silent: true, cursor, dt }).entries()) {
+        // The first grid snapshot was integrated by the constructor before the wobble was silenced.
+        if (i * dt < 0.05)
+          continue
+        const expected = NaturalGazeLayer.eye(frame.fixation, { x: frame.pose.headX, y: frame.pose.headY })
+        expect(Math.abs(frame.pose.eyeX - Math.max(-0.95, Math.min(0.95, expected.x)))).toBeLessThanOrEqual(1e-12)
+        expect(Math.abs(frame.pose.eyeY - Math.max(-0.95, Math.min(0.95, expected.y)))).toBeLessThanOrEqual(1e-12)
+        headTravel = Math.max(headTravel, Math.abs(frame.pose.headX))
+      }
+      // The cursor run must move the head through the bias path, not leave it at rest.
+      if (cursor)
+        expect(headTravel).toBeGreaterThan(0.02)
+    }
+  })
+
+  it.each(frameDts)('leaves the eyes untouched by head wobble and counter-rotates shifts by K times the slow head delta (dt %f)', (dt) => {
+    const wobbly = run({ silent: false, cursor: false, dt })
+    const quiet = run({ silent: true, cursor: false, dt })
+    let wobble = 0
+    let shiftPairs = 0
+    for (const [i, frame] of wobbly.entries()) {
+      wobble = Math.max(wobble, Math.abs(frame.pose.headX - quiet[i].pose.headX))
+      expect(Math.abs(frame.pose.eyeX - quiet[i].pose.eyeX)).toBeLessThanOrEqual(1e-12)
+      expect(Math.abs(frame.pose.eyeY - quiet[i].pose.eyeY)).toBeLessThanOrEqual(1e-12)
+      if (i === 0)
+        continue
+      const held = frame.fixation.x === wobbly[i - 1].fixation.x && frame.fixation.y === wobbly[i - 1].fixation.y
+      const slowDelta = quiet[i].pose.headX - quiet[i - 1].pose.headX
+      if (held && Math.abs(slowDelta) > 1e-4 && Math.abs(frame.pose.eyeX) < 0.9) {
+        shiftPairs++
+        expect(Math.abs(frame.pose.eyeX - wobbly[i - 1].pose.eyeX + 0.31 * slowDelta)).toBeLessThanOrEqual(1e-12)
+      }
+    }
+    // The wobble must exist in the head and the shifts must move the slow pose, or the checks above are vacuous.
+    expect(wobble).toBeGreaterThan(1e-3)
+    expect(shiftPairs).toBeGreaterThan(50)
+  })
+})

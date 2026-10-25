@@ -90,6 +90,8 @@ type Axis = keyof typeof followers
 
 interface Snapshot {
   head: Vec3
+  /** The head pose without the continuous wobble; the eyes counter-rotate for this one only. */
+  compensationHead: Vec3
   body: Vec3
   gaze: GazePoint
   face: NaturalFaceOutput
@@ -190,7 +192,7 @@ export class Live2DNaturalMotion {
     this.emphasis = new NaturalSpeechEmphasis(stream('emphasis'))
     this.impulses = new NaturalImpulses(stream('impulses'), this.emotions)
     this.gestures = new NaturalGestures(stream('gestures'))
-    this.previous = { head: [...home], body: this.body.pose, gaze: { x: 0, y: 0 }, face: NaturalFaceLayer.rest(), blinkFactor: 1, breath: this.breath.output }
+    this.previous = { head: [...home], compensationHead: [...home], body: this.body.pose, gaze: { x: 0, y: 0 }, face: NaturalFaceLayer.rest(), blinkFactor: 1, breath: this.breath.output }
     this.next = this.integrate()
   }
 
@@ -211,9 +213,11 @@ export class Live2DNaturalMotion {
     const [headX, postureY, headZ] = a.head.map((value, axis) => lerp(value, b.head[axis], weight))
     // Breath coupling (0.001, see breath.ts) rides on the applied pitch, so eye compensation sees it too.
     const headY = clamp(postureY + breath.headY, 1)
+    // Same snapshot pair and weight as the head, so a wobble-free head gives exactly the old eye command.
+    const [compX, compPostureY] = a.compensationHead.map((value, axis) => lerp(value, b.compensationHead[axis], weight))
     const [bodyX, bodyY, bodyZ] = a.body.map((value, axis) => lerp(value, b.body[axis], weight))
     const fixation = { x: lerp(a.gaze.x, b.gaze.x, weight), y: lerp(a.gaze.y, b.gaze.y, weight) }
-    const eye = NaturalGazeLayer.eye(fixation, { x: headX, y: headY })
+    const eye = NaturalGazeLayer.eye(fixation, { x: compX, y: clamp(compPostureY + breath.headY, 1) })
     const physics = this.bodyFromHeadPhysics
     return {
       pose: {
@@ -471,12 +475,14 @@ export class Live2DNaturalMotion {
     })
     this.posture.continuousScale = this.performanceSettings.heldEmotions ? this.gestures.continuousScale(stepStart + step) : 1
     const posture = this.posture.step(step, [this.x.cursorX, this.x.cursorY, 0])
-    // Eye compensation sees the complete head pose.
+    // Read after this step's posture.step: the slow pose is the posture without the continuous wobble.
+    const slowPose = this.posture.slowPose
     const impulse = this.impulses.headOffset(stepStart + step)
     const petHead = this.pet.headOffset()
     const heldPosture = this.performanceSettings.heldEmotions ? this.hold.posture() : [0, 0, 0]
     const gestureHead = this.performanceSettings.heldEmotions ? this.gestures.headOffset(stepStart + step) : [0, 0, 0]
-    const head = posture.map((value, axis) => {
+    // The eyes counter-rotate for the head without the continuous wobble: the same terms, minus that one.
+    const compose = (base: Readonly<Vec3>) => base.map((value, axis) => {
       let total = value + emphasis[axis] + impulse[axis] + petHead[axis]
       if (heldPosture[axis] !== 0)
         total += heldPosture[axis]
@@ -484,6 +490,8 @@ export class Live2DNaturalMotion {
         total += gestureHead[axis]
       return clamp(total, 1)
     }) as Vec3
+    const head = compose(posture)
+    const compensationHead = compose(slowPose)
     // Emotion recruitment owns its body lean; following its head pulse would leak clear into body.
     // Physics-owned body axes still follow the full head through rig physics, outside Natural's control.
     // The pet tilt is a whole-head gesture like a desktop nudge, so the body follows it.
@@ -523,6 +531,7 @@ export class Live2DNaturalMotion {
     face.eyeOpenMultiplier *= 1 - approachEyeSoftening * this.approach
     return {
       head,
+      compensationHead,
       body: this.body.step(step, followerHead).map((value, axis) => clamp(value + lean[axis], 1)) as Vec3,
       gaze,
       face,

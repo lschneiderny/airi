@@ -80,6 +80,7 @@ export class NaturalPostureLayers {
   private gain = activityGain(0)
   /** `gain` when the current shift began, the start of its ease toward the live gain. */
   private shiftStartGain = this.gain
+  private slow: Vec3
 
   constructor(private readonly home: Vec3, streams: PostureStreams) {
     this.drift = [0.08, 0.12, 0.025].map(sd => new FilteredOu(streams.drift, sd, 90, 5))
@@ -92,12 +93,22 @@ export class NaturalPostureLayers {
     ]
     this.energy = new FilteredOu(streams.gain, 1, 6, 0.6)
     this.shiftRandom = streams.shift
+    this.slow = [...home]
     this.nextShiftAt = this.drawHold()
   }
 
   /** Destination of the latest posture shift, relative to the drifting home. */
   get shiftTarget(): Readonly<Vec3> {
     return this.shiftTo
+  }
+
+  /**
+   * The pose of the latest `step`, with only the continuous term removed: `softLimit(mu + b + amplitude * r + bias)`
+   * per axis. The eyes counter-rotate for this pose, not for the sub-second wobble, which they ignore.
+   * Read it after `step` for the same grid step; before the first `step` it is the home pose.
+   */
+  get slowPose(): Readonly<Vec3> {
+    return this.slow
   }
 
   /** Active seconds until the next posture shift begins. */
@@ -132,11 +143,15 @@ export class NaturalPostureLayers {
       this.gain = this.shiftStartGain + (liveGain - this.shiftStartGain) * minJerk((this.time - this.shiftStart) / this.shiftDuration)
     const gain = this.gain
     const shift = this.shiftAt(this.time)
-    return [0, 1, 2].map((axis) => {
+    const slow: Vec3 = [0, 0, 0]
+    const pose = [0, 1, 2].map((axis) => {
       const drift = this.drift[axis].step(dt)
       const continuous = this.continuous[axis].step(dt)
+      slow[axis] = softLimit(this.home[axis] + drift + this.amplitudeScale * shift[axis] + bias[axis])
       return softLimit(this.home[axis] + drift + this.amplitudeScale * (this.continuousScale * gain * continuous + shift[axis]) + bias[axis])
     }) as Vec3
+    this.slow = slow
+    return pose
   }
 
   private shiftAt(time: number): Vec3 {

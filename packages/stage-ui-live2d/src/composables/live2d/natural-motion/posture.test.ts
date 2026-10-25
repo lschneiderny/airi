@@ -37,3 +37,22 @@ describe('posture continuous scale', () => {
     expect(compared).toBeGreaterThan(120 * 30)
   })
 })
+
+describe('posture slow pose', () => {
+  it('is the step output with only the continuous term removed, for the same step', () => {
+    const wobbly = layers(1)
+    const still = layers(0)
+    wobbly.amplitudeScale = still.amplitudeScale = 1.3
+    let spread = 0
+    for (let i = 0; i < 120 * 60; i++) {
+      const bias: [number, number, number] = [0.1 * Math.sin(i / 50), 0.05, 0]
+      const pose = wobbly.step(1 / 120, bias)
+      const quiet = still.step(1 / 120, bias)
+      // Read after the same step: a pose cached from the previous step would differ from the quiet output.
+      expect(wobbly.slowPose).toEqual(quiet)
+      expect(still.slowPose).toEqual(quiet)
+      spread = Math.max(spread, ...pose.map((value, axis) => Math.abs(value - wobbly.slowPose[axis])))
+    }
+    expect(spread).toBeGreaterThan(1e-3)
+  })
+})

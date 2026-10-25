@@ -66,7 +66,8 @@ const attentionLead = { min: 0.03, max: 0.08 }
  * Catch-up saccades during cursor pursuit aim ahead by the cursor's sustained velocity over
  * their flight and land still pursuing at that velocity, both bounded, so a fast sweep is not
  * chased by stale endpoints that restart pursuit from rest.
- * The eye command is `gaze - K h` for the applied head pose `h`, with `K = (0.31, 0.40)`.
+ * The eye command is `gaze - K h` for the slow head pose `h` (the applied head without its sub-second
+ * continuous wobble, which the eyes ignore), with `K = (0.31, 0.40)`.
  *
  * Time is seconds of active motion; callers step on a fixed grid. Both eyes share
  * the output, so pupils stay conjugate.
@@ -222,7 +223,7 @@ export class NaturalGazeLayer {
     return this.gazeAt(this.time)
   }
 
-  /** Eye command for gaze `gaze` under applied head pose `head` (normalized units). */
+  /** Eye command for gaze `gaze` under head pose `head` (the facade passes the slow pose) (normalized units). */
   static eye(gaze: GazePoint, head: GazePoint): GazePoint {
     return { x: gaze.x - compensation.x * head.x, y: gaze.y - compensation.y * head.y }
   }
