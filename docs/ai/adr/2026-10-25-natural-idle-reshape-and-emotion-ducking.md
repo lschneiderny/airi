@@ -11,7 +11,7 @@ GAP-1: The continuous head wander is an Ornstein-Uhlenbeck process with a short 
 
 GAP-2: No activity regime produces tens of seconds of higher or lower activity. The 60 second speed coefficient of variation (CV60) sits at 0.10 to 0.17. The recordings reach 0.78.
 
-GAP-3: A strong emotion calls the energy path. That path raises amplitude by 30 percent and shift rate by 50 percent for 2 seconds, and it does not duck the idle motion under the gesture clip.
+GAP-3: A strong emotion calls the energy path. That path raises amplitude by up to 30 percent and shift rate by up to 50 percent for 2 seconds, and it does not duck the idle motion under the gesture clip.
 
 GAP-4: The laugh was a symmetric head pitch sine. It did not touch the face.
 
@@ -29,25 +29,25 @@ The following changes are delivered on the combined branch `luke/feat/natural-id
 
 - The hold-latched activity gain (`bcdfd23cb`) was already on the base.
 - The face low-pass and the soft-absolute lid (`a2ab060da`) remove the unfiltered face noise and the lid kink.
-- The emotion energy boost and its three settings (`energyAmplitude`, `energyRate`, `energySeconds`) are removed in `b29b05961`.
+- The emotion energy boost and its three settings (`energyAmplitude`, `energyRate`, `energySeconds`) are removed in `b29b05961`. On load, `settings.ts` deletes these three keys from a stored `naturalBands` once, under a `NOTICE` block. Without that step, the strict schema would reject the stored document and reset every performance setting. The strict context schema in `trace.ts` rejects affect traces recorded before this change, because their recorded settings still carry the removed keys.
 - The idle motion ducks under gesture clips (`50f12ec84`). The duck depth is 0.45 times the clip strength times the band amplitude. The attack lasts 0.15 seconds and the release lasts 0.3 seconds. Each clip keeps its own active span.
 - The chuckle laugh now moves the eyes and mouth with synced pulses (`6d373f18b`). This replaces the earlier contract that gestures never touch the face.
 - The eyes counter-rotate against the slow head pose only (`7bc5156c7`). The continuous wobble no longer reaches them.
 - Todo 17 (`73e2c3611`, `f6747f655`) removes the unused intensity parameter from `energy.react`. The desktop reaction and poke overlay is now a fixed x1.3 amplitude and x1.5 shift rate for 2 seconds, and overlapping reactions do not stack. `createClip` is no longer exported. Motion output is bit-identical to `7bc5156c7`. `f6747f655` also corrects the 2026-10-17 line that said impulses raise posture amplitude.
 
-The idle reshape is held, not decided. It covers the continuous Ornstein-Uhlenbeck retune, human-measured hold durations, and a shifts-only activity regime. Todos 9 to 13 wait on Luke's answer to the todo 9 gate question. That answer was requested three times through the question tool and has not arrived.
+The idle reshape is held, not decided. It covers the continuous Ornstein-Uhlenbeck retune, human-measured hold durations, and a shifts-only activity regime. Todos 9 to 13 wait on Luke's answer to the todo 9 gate question. That answer was requested four times through the question tool, the fourth as a last call that offered a defer option, and has not arrived.
 
 Two options remain for the gate band.
 
 Option (a) reports jitter and speedPeakLogAsymmetry without gating them, under gate version 2. This lets the reshape be measured.
 
-Option (b) keeps the gate as it is. In that case the reshape does not land.
+Option (b) keeps the gate as it is. Under this option, only idle steps (todos 11 to 13) whose metric packet passes every gated liveliness metric land. R4 as measured fails jitter and speedPeakLogAsymmetry, so the full reshape is unlikely to land under option (b).
 
-The evidence for the reshape is arm R4. Its yaw reversals at 0.25 degrees per second or more come to 1.447 times the recordings. Today's code sits at 3.88 times. The recordings measure 0.436 reversals per second, R4 measures 0.631, and the current code measures 1.691. R4 raises CV60 to 0.451, against 0.147 today and 0.775 in the recordings. At the median of seeds 1 to 3, R4 fails jitter and speedPeakLogAsymmetry.
+The evidence for the reshape is arm R4. Its quick yaw reversals, counted per second for swings of at least 0.25 degrees of amplitude, come to 1.447 times the recordings. Today's code sits at 3.88 times. The recordings measure 0.436 reversals per second, R4 measures 0.631, and the current code measures 1.691. R4 raises CV60 to 0.451, against 0.147 today and 0.775 in the recordings. At the median of seeds 1 to 3, R4 fails jitter and speedPeakLogAsymmetry.
 
 ## Consequences
 
-Gate results were measured at `7bc5156c7`, the last commit that changed motion output before todo 17.
+Gate results were measured at `7bc5156c7`, the last commit that changed motion output before todo 17. The evidence files for this ADR live in the git-ignored `.omo/evidence/natural-motion-quality` folder of the main checkout.
 
 - Liveliness T1 passes 23 of 23 gated metrics, with 0 failures and 0 not applicable.
 - Emotion T1 passes 295 checks and fails 42 of 337. This is the documented accepted set. The baseline at `bcdfd23cb` was 297 passing and 40 failing. The net change is three new failures and one fix. The new failures are `sad:slight:eyelid`, which comes from the face low-pass, and `surprised:strong` on `blinkRate` and `mouthForm`, which come from seed churn after the boost removal. The fix is `awkward:strong:browMean`, which passes through the same seed churn.

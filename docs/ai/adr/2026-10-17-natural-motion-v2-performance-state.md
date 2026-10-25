@@ -115,7 +115,7 @@ The controller runs on a fixed 120 Hz grid in active seconds. The active clock f
 `readLive2DRigProfile` discovers which Natural channels a model has and which parameters its physics outputs. It also detects body axes that physics derives from the head.
 The adapter applies these rules:
 
-- Natural writes head XYZ, body XYZ, and eye XY posture. It skips a body axis that physics derives from the head.
+- Natural writes head XYZ, body XYZ, and eye XY posture. It skips a body axis that physics derives from the head. Superseded in part by [2026-10-25 ADR](2026-10-25-natural-idle-reshape-and-emotion-ducking.md): the eyes counter-rotate against the slow head pose only, so the continuous wobble no longer reaches them.
 - Natural composes face micro-offsets on brows, eye smile, and mouth form, and composes the eyelids.
 - Natural composes cheek offsets from pet and held-emotion hints; otherwise it leaves the channel at its base value.
 - Natural blink replaces the SDK blink plugin while Natural is selected, and it blinks only while the user's auto-blink setting is on.
@@ -143,7 +143,7 @@ The stage emotion queue routes each emotion by renderer and Live2D motion driver
 A Natural impulse is a short head gesture plus decaying face hints, and some emotions add a glance.
 Impulses add to every other layer, so they never reset the pose. Neutral does nothing. The earlier local two-second emotion dedupe described here was superseded by conductor-managed episodes; see [2026-10-18-expression-performance](2026-10-18-expression-performance.md) and [2026-10-19-natural-emotion-revamp](2026-10-19-natural-emotion-revamp.md).
 The adapter drops emotions queued while Natural is inactive, because they are stale by the time it resumes.
-Only a desktop reaction or a poke raises posture amplitude and shift rate for 2 s; an emotion impulse no longer does (see [2026-10-18-expression-performance](2026-10-18-expression-performance.md)).
+Only a desktop reaction or a poke raises posture amplitude and shift rate for 2 s; an emotion impulse no longer does (see [2026-10-18-expression-performance](2026-10-18-expression-performance.md)). The reaction overlay is now a fixed x1.3 amplitude and x1.5 shift rate for 2 s, with no intensity argument, as recorded in [the 2026-10-25 ADR](2026-10-25-natural-idle-reshape-and-emotion-ducking.md).
 
 ## Linux and Wayland degradation
 

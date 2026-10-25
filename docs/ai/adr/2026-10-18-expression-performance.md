@@ -133,7 +133,7 @@ An escalation adds only the missing head and body amplitude and moves the face h
 
 An episode does not change the posture amplitude or shift rate scales. An earlier version raised them for a strong episode through `naturalBands.energySeconds`, `energyAmplitude`, and `energyRate`; those settings were removed.
 Desktop `wake` and `screen-change` reactions and pokes call `energy.react(at)`, a fixed overlay of x1.3 amplitude and x1.5 shift rate for 2 s. Overlapping reactions do not stack; a later one extends the overlay.
-Superseded in part by [2026-10-25-natural-idle-reshape-and-emotion-ducking](2026-10-25-natural-idle-reshape-and-emotion-ducking.md): `energy.react` takes no intensity argument, and the strong-band energy overlay in the table above was removed.
+Superseded in part by [2026-10-25-natural-idle-reshape-and-emotion-ducking](2026-10-25-natural-idle-reshape-and-emotion-ducking.md): `energy.react` takes no intensity argument, and the strong-band energy overlay named in the Natural band table earlier in this ADR was removed.
 
 ## Mood
 
