@@ -227,12 +227,60 @@ describe('live2D expression areas', () => {
     await expect.element(screen.getByText(t('settings.live2d.expressions.fields.group'), { exact: true })).not.toBeInTheDocument()
     await screen.getByRole('textbox', { name: t('settings.live2d.expressions.fields.label'), exact: true }).fill('Tail wag')
     await screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true }).click()
-    expect(onCommand).toHaveBeenCalledWith({ type: 'update-custom', id: 'custom:ParamTail', patch: { label: 'Tail wag', kind: 'prop', mappings: [], area: 'props' } })
+    expect(onCommand).toHaveBeenCalledWith({ type: 'update-custom', id: 'custom:ParamTail', patch: { label: 'Tail wag', kind: 'prop', mappings: [] } })
 
     await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
     await screen.getByRole('button', { name: t('settings.live2d.expressions.custom.delete'), exact: true }).click()
     expect(onCommand).toHaveBeenCalledWith({ type: 'delete-custom', id: 'custom:ParamTail' })
     expect(onCommand).toHaveBeenCalledTimes(3)
+  })
+
+  it('sends no area when a custom is edited with the Area select untouched', async () => {
+    const { screen, onCommand } = await renderAreas([expressionEntry({ id: 'custom:ParamTail', label: 'Tail', kind: 'outfit', area: 'outfit-hair', active: true })])
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    await screen.getByRole('textbox', { name: t('settings.live2d.expressions.fields.label'), exact: true }).fill('Tail wag')
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true }).click()
+    expect(onCommand.mock.calls).toEqual([[{ type: 'update-custom', id: 'custom:ParamTail', patch: { label: 'Tail wag', kind: 'outfit', mappings: [] } }]])
+  })
+
+  it('moves a custom to its new kind section when Kind changes with the Area untouched', async () => {
+    const pinia = createPinia()
+    const store = useExpressionStore(pinia)
+    localStorage.removeItem('expression-catalog:custom-kind-move')
+    const params = [{ id: 'Param7', name: 'Earphones', min: -1, max: 2, default: 0.5 }]
+    store.registerDefinitions('custom-kind-move', [], [], undefined, undefined, params, params)
+    store.applySettingsCommand({ type: 'create-custom', custom: { label: 'Earphones face', parameterId: 'Param7', target: 1 } })
+    const id = store.catalog.at(-1)!.id
+    store.applySettingsCommand({ type: 'update-custom', id, patch: { kind: 'face' } })
+    const onCommand = vi.fn((command: Parameters<typeof store.applySettingsCommand>[0]) => store.applySettingsCommand(command))
+    const { default: Areas } = await import('./live2d-expression-areas.vue')
+    await import('virtual:uno.css')
+    const screen = await render(Areas, {
+      props: { snapshot: store.settingsSnapshot, search: '', showAll: true, onCommand },
+      global: { plugins: [pinia, createTestI18n()] },
+    })
+    await expect.element(sectionOf(screen, 'hidden').getByText('Earphones face', { exact: true })).toBeVisible()
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    await screen.getByRole('combobox').first().click()
+    await page.getByRole('option', { name: t('settings.live2d.expressions.kinds.outfit'), exact: true }).click()
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true }).click()
+    expect(onCommand).toHaveBeenCalledTimes(1)
+    expect(onCommand.mock.calls[0][0]).toEqual({ type: 'update-custom', id, patch: { label: 'Earphones face', kind: 'outfit', mappings: [] } })
+    expect(store.curated.customs?.[0].area).toBeUndefined()
+    expect(store.settingsSnapshot.entries.find(entry => entry.id === id)).toMatchObject({ kind: 'outfit', area: 'outfit-hair' })
+    localStorage.removeItem('expression-catalog:custom-kind-move')
+  })
+
+  it('sends area null when None is picked on a custom with a stored area', async () => {
+    const { screen, onCommand } = await renderAreas([expressionEntry({ id: 'custom:ParamTail', label: 'Tail', kind: 'prop', area: 'props', active: true })])
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    const areaField = screen.getByText(t('settings.live2d.expressions.fields.area'), { exact: true }).element().parentElement
+    if (!areaField)
+      throw new Error('the area label has no field container')
+    await page.elementLocator(areaField).getByRole('combobox').click()
+    await page.getByRole('option', { name: t('settings.live2d.expressions.areas.none'), exact: true }).click()
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true }).click()
+    expect(onCommand.mock.calls).toEqual([[{ type: 'update-custom', id: 'custom:ParamTail', patch: { label: 'Tail', kind: 'prop', mappings: [], area: null } }]])
   })
 
   it('creates a custom switch from a free parameter only', async () => {

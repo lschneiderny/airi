@@ -227,6 +227,25 @@ describe('curated expression catalog', () => {
     expect(store.curated.customs?.[0].area).toBeUndefined()
   })
 
+  it('clears a stored custom area with area null and keeps it when the patch has no area key', () => {
+    storage.set('expression-catalog:a', JSON.stringify({
+      version: 1,
+      overrides: [],
+      customs: [{ id: 'custom:Param7', label: 'Earphones', kind: 'outfit', area: 'props', parameterId: 'Param7', delta: 0.7, mappings: [], exposedToLlm: false }],
+    }))
+    const store = useExpressionStore()
+    const params = [{ id: 'Param7', min: -1, max: 1, default: 0 }]
+    const register = () => store.registerDefinitions('a', defs, [], undefined, undefined, params, [])
+    const areaOf = () => store.settingsSnapshot.entries.find(entry => entry.id === 'custom:Param7')?.area
+    register()
+    store.applySettingsCommand({ type: 'update-custom', id: 'custom:Param7', patch: { label: 'Earphones big' } })
+    expect(JSON.parse(storage.get('expression-catalog:a')!).customs[0].area).toBe('props')
+    store.applySettingsCommand({ type: 'update-custom', id: 'custom:Param7', patch: { area: null } })
+    expect(JSON.parse(storage.get('expression-catalog:a')!).customs[0]).not.toHaveProperty('area')
+    register()
+    expect(areaOf()).toBe('outfit-hair')
+  })
+
   it('applies a valid persisted custom on a non-free model parameter but skips unknown parameter ids', () => {
     storage.set('expression-catalog:a', JSON.stringify({
       version: 1,

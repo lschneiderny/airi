@@ -119,12 +119,12 @@ function apply() {
     return
   const label = draftLabel.value.trim()
   const mappings = draftMappings.value.map(mapping => ({ emotion: mapping.emotion, weight: mapping.weight as number, minBand: mapping.minBand }))
-  // A custom switch always stores its own area. A catalog entry sends only a changed Area select, so saving never pins a derived area.
-  const areaChanged = isCustom.value || draftArea.value !== initialArea.value
+  // Only a changed Area select is sent, so saving never pins an area the entry merely derived.
+  const areaChanged = draftArea.value !== initialArea.value
   const area = areaChanged && draftArea.value !== noArea ? { area: draftArea.value as ExpressionArea } : {}
-  const clearArea = areaChanged && draftArea.value === noArea && !isCustom.value ? { area: null } : {}
+  const clearArea = areaChanged && draftArea.value === noArea ? { area: null } : {}
   if (isCustom.value) {
-    emit('command', { type: 'update-custom', id: props.entry.id, patch: { label, kind: draftKind.value, mappings, ...area } })
+    emit('command', { type: 'update-custom', id: props.entry.id, patch: { label, kind: draftKind.value, mappings, ...area, ...clearArea } })
   }
   else {
     emit('command', {

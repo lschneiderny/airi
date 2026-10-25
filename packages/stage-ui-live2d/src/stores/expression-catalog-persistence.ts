@@ -8,7 +8,8 @@ export type CreateComboInput = Pick<ComboDocument, 'label' | 'members'> & Partia
 export type ComboPatch = Partial<Pick<ComboDocument, 'label' | 'members' | 'mappings' | 'exposedToLlm'>> & { area?: ComboDocument['area'] | null }
 /** `area: null` clears a stored area override so the entry falls back to its derived area; an absent key leaves it unchanged. */
 export type EntryPatch = Omit<CuratedOverride, 'id' | 'area'> & { area?: CuratedOverride['area'] | null }
-export type CustomPatch = Partial<Omit<CustomExpressionDocument, 'id' | 'parameterId'>>
+/** `area: null` clears a stored custom area so the custom falls back to the area derived from its kind; an absent key leaves it unchanged. */
+export type CustomPatch = Partial<Omit<CustomExpressionDocument, 'id' | 'parameterId' | 'area'>> & { area?: CustomExpressionDocument['area'] | null }
 
 export interface CatalogPersistenceContext {
   modelId: Ref<string>
@@ -126,7 +127,20 @@ export function createCatalogPersistence(context: CatalogPersistenceContext) {
   function updateCustom(id: string, patch: CustomPatch) {
     if (!curated.value.customs?.some(custom => custom.id === id))
       return
-    return write({ ...curated.value, customs: curated.value.customs.map(custom => custom.id === id ? { ...custom, ...patch, id } : custom) })
+    const { area, ...rest } = patch
+    return write({
+      ...curated.value,
+      customs: curated.value.customs.map((custom) => {
+        if (custom.id !== id)
+          return custom
+        const merged = { ...custom, ...rest, id }
+        if (area === null)
+          delete merged.area
+        else if (area)
+          merged.area = area
+        return merged
+      }),
+    })
   }
 
   function deleteCustom(id: string) {
