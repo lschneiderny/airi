@@ -653,6 +653,22 @@ describe('natural motion adapter', () => {
     expect(Math.abs(shown.at(-1) ?? 0)).toBeGreaterThan(0.05)
   })
 
+  it('(h3b) clamps the smile to its parameter range when hold, impulse, and laugh hints stack', () => {
+    const f = fixture()
+    f.state.eligible = true
+    f.frame(0)
+    f.state.pendingEmotions.push({ id: 'happy', emotion: Emotion.Happy, nominal: 1, intensity: 1, band: 'strong' as const, escalation: false })
+    const smile = Array.from({ length: 4 * 120 }, (_, index) => {
+      f.state.heldEmotion = { emotion: Emotion.Happy, strength: 1 }
+      const { commanded } = f.frame(0.01 + index / 120)
+      return commanded[f.at('ParamEyeLSmile')]
+    })
+    f.adapter.dispose()
+    // The stacked hints exceed the half-range gain, so the written value sits on the maximum.
+    expect(Math.max(...smile)).toBe(1)
+    expect(Math.min(...smile)).toBeGreaterThanOrEqual(0)
+  })
+
   it('(h4) drops an emotion queued on one frame when its model strength turns to zero before the next', () => {
     const episode = { id: 'happy', emotion: Emotion.Happy, nominal: 1, intensity: 1, band: 'strong' as const, escalation: false }
     const times = Array.from({ length: 60 }, (_, index) => index * 0.1)

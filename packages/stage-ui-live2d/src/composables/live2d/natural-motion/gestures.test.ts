@@ -2,7 +2,8 @@ import type { GestureKind } from './emotions'
 
 import { describe, expect, it } from 'vitest'
 
-import { createClip, NaturalGestures } from './gestures'
+import { createClip, gestureLifetimes, NaturalGestures } from './gestures'
+import { minJerk } from './processes'
 import { createRandomStream } from './random'
 
 const step = 1 / 120
@@ -151,20 +152,126 @@ describe('natural gestures', () => {
     expect(gestures.trigger(kind, 1, 'strong', seconds)).toBe(true)
   })
 
-  it('draws laugh cycles, frequency, and amplitude after the side and keeps its lifetime in range', () => {
-    const draws = [0.1, 0.9, 0.2, 0.5]
+  it('draws laugh cycles, frequency, and amplitude after the side and plays the closed-form chuckle', () => {
+    const draws = [0.1, 0.9, 0.5, 0.5]
     let next = 0
     const gestures = new NaturalGestures(() => draws[next++])
     gestures.trigger('laugh', 1, 'strong', 0)
-    const frequency = 4.2
-    const end = 4 / frequency
-    const envelope = (0.1 / 0.15) ** 2 * Math.exp(2 * (1 - 0.1 / 0.15))
-    expect(gestures.headOffset(0.1)[1]).toBeCloseTo(0.05 * envelope * Math.exp(-3 * 0.1 / end) * Math.sin(2 * Math.PI * frequency * 0.1), 12)
+    expect(next).toBe(4)
+    // Side -1, 3 cycles, 2.9 Hz, amplitude 0.06.
+    const frequency = 2.9
+    const bounceEnd = 0.15 + 3 / frequency
+    for (const age of [0.05, 0.1, 0.15, 0.3, 0.42, 0.77, 1.0, bounceEnd - 0.05, bounceEnd + 0.1, bounceEnd + 0.3]) {
+      const lift = age < bounceEnd ? minJerk(age / 0.15) : 1 - minJerk((age - bounceEnd) / 0.35)
+      const bounce = age <= 0.15 || age >= bounceEnd ? 0 : 0.5 - 0.5 * Math.cos(2 * Math.PI * frequency * (age - 0.15))
+      const head = gestures.headOffset(age)
+      expect(head[0]).toBe(0)
+      expect(Math.abs(head[1] - 0.06 * (lift - 0.8 * bounce))).toBeLessThan(1e-12)
+      expect(Math.abs(head[2] - -1 * 0.5 * 0.06 * lift)).toBeLessThan(1e-12)
+    }
+  })
+
+  it('bounces the laugh pitch upward only: one strict minimum per drawn cycle, never below rest', () => {
+    for (const band of ['clear', 'strong'] as const) {
+      const scale = band === 'clear' ? 0.6 : 1
+      for (let seed = 1; seed <= 40; seed++) {
+        const draw = createRandomStream(seed)
+        draw()
+        const cycles = 2 + Math.floor(draw() * 2)
+        const frequency = 2.6 + 0.6 * draw()
+        const bounceEnd = 0.15 + cycles / frequency
+        const gestures = new NaturalGestures(createRandomStream(seed))
+        expect(gestures.trigger('laugh', 1, band, 0)).toBe(true)
+        const lifetime = gestures.activeUntil()
+        expect(lifetime).toBeCloseTo(bounceEnd + 0.35, 12)
+        const { head } = sampleTrack(gestures, lifetime + 0.5)
+        const pitch = head.map(offset => offset[1])
+        expect(Math.min(...pitch)).toBeGreaterThanOrEqual(0)
+        expect(Math.max(...pitch)).toBeGreaterThanOrEqual(0.05 * scale)
+        expect(peak(head)).toBeLessThanOrEqual(0.12)
+        for (let i = 1; i < head.length; i++)
+          expect(Math.max(...head[i].map((value, axis) => Math.abs(value - head[i - 1][axis])))).toBeLessThanOrEqual(0.02)
+        // No zero crossing: pitch stays above rest from the first frame until the settle.
+        for (let i = 1; i * step < lifetime - 0.01; i++)
+          expect(pitch[i]).toBeGreaterThan(0)
+        let minima = 0
+        for (let i = 1; i < pitch.length - 1; i++) {
+          if (i * step > 0.15 && i * step < bounceEnd && pitch[i] < pitch[i - 1] && pitch[i] < pitch[i + 1])
+            minima++
+        }
+        expect(minima).toBe(cycles)
+      }
+    }
+  })
+
+  it('keeps the laugh lifetime inside its documented bound', () => {
+    expect(gestureLifetimes.laugh).toBe(0.15 + 3 / 2.6 + 0.35)
     for (let seed = 1; seed <= 40; seed++) {
-      const clip = new NaturalGestures(createRandomStream(seed))
-      clip.trigger('laugh', 1, 'strong', 0)
-      expect(clip.activeUntil()).toBeGreaterThanOrEqual(0.6)
-      expect(clip.activeUntil()).toBeLessThanOrEqual(1)
+      const gestures = new NaturalGestures(createRandomStream(seed))
+      gestures.trigger('laugh', 1, 'strong', 0)
+      expect(gestures.activeUntil()).toBeGreaterThanOrEqual(0.15 + 2 / 3.2 + 0.35)
+      expect(gestures.activeUntil()).toBeLessThanOrEqual(gestureLifetimes.laugh)
+    }
+  })
+
+  it('rolls the strong laugh body at half the head roll and never pitches it', () => {
+    for (let seed = 1; seed <= 10; seed++) {
+      const strong = new NaturalGestures(createRandomStream(seed))
+      strong.trigger('laugh', 1, 'strong', 0)
+      const { head, body } = sampleTrack(strong, 2)
+      expect(Math.max(...body.map(offset => Math.abs(offset[2])))).toBeGreaterThan(0)
+      body.forEach((offset, i) => {
+        expect(offset[0]).toBe(0)
+        expect(offset[1]).toBe(0)
+        expect(offset[2]).toBeCloseTo(0.5 * head[i][2], 12)
+      })
+    }
+  })
+
+  it('pulses the laugh face with the head in both bands: a smile that follows the lift and one mouth opening per cycle', () => {
+    const draws = [0.1, 0.9, 0.5, 0.5]
+    let next = 0
+    const closed = new NaturalGestures(() => draws[next++])
+    closed.trigger('laugh', 1, 'strong', 0)
+    const bounceEnd = 0.15 + 3 / 2.9
+    for (const age of [0.05, 0.3, 0.6, bounceEnd - 0.05, bounceEnd + 0.1]) {
+      const lift = age < bounceEnd ? minJerk(age / 0.15) : 1 - minJerk((age - bounceEnd) / 0.35)
+      const bounce = age <= 0.15 || age >= bounceEnd ? 0 : 0.5 - 0.5 * Math.cos(2 * Math.PI * 2.9 * (age - 0.15))
+      const face = closed.faceOffset(age)
+      expect(Math.abs(face.eyeSmile - 0.35 * lift)).toBeLessThan(1e-12)
+      expect(Math.abs(face.mouthOpen - 0.12 * bounce)).toBeLessThan(1e-12)
+    }
+    for (const band of ['clear', 'strong'] as const) {
+      for (let seed = 1; seed <= 40; seed++) {
+        const draw = createRandomStream(seed)
+        draw()
+        const cycles = 2 + Math.floor(draw() * 2)
+        const gestures = new NaturalGestures(createRandomStream(seed))
+        gestures.trigger('laugh', 1, band, 0)
+        const lifetime = gestures.activeUntil()
+        const mouth = Array.from({ length: Math.ceil((lifetime + 0.5) / step) }, (_, i) => gestures.faceOffset(i * step).mouthOpen)
+        let peaks = 0
+        for (let i = 1; i < mouth.length - 1; i++) {
+          if (mouth[i] > mouth[i - 1] && mouth[i] > mouth[i + 1])
+            peaks++
+        }
+        expect(peaks).toBe(cycles)
+        for (const time of [lifetime, lifetime + step, lifetime + 3])
+          expect(gestures.faceOffset(time)).toEqual({ eyeSmile: 0, mouthOpen: 0 })
+      }
+    }
+  })
+
+  it('gives no face term before a laugh, after a refused one, or for any other clip', () => {
+    const idle = new NaturalGestures(createRandomStream(7))
+    expect(idle.faceOffset(0)).toEqual({ eyeSmile: 0, mouthOpen: 0 })
+    expect(idle.trigger('laugh', 1, 'slight', 0)).toBe(false)
+    expect(idle.faceOffset(0.5)).toEqual({ eyeSmile: 0, mouthOpen: 0 })
+    for (const kind of kinds.filter(kind => kind !== 'laugh')) {
+      const gestures = new NaturalGestures(createRandomStream(7))
+      gestures.trigger(kind, 1, 'strong', 0)
+      for (let i = 0; i < 120; i++)
+        expect(gestures.faceOffset(i * step)).toEqual({ eyeSmile: 0, mouthOpen: 0 })
     }
   })
 

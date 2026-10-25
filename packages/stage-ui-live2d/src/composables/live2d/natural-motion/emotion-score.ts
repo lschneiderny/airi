@@ -256,16 +256,18 @@ export function naturalEmotionLifetime(settings: ExpressionPerformanceSettings, 
 }
 
 /**
- * Seconds after an emotion pulse until no impulse residue reaches the face and eyelid channels. Gesture clips
- * and head pulses write head and body only; glances reach the face only through gaze-evoked lid
- * narrowing and blinks, which end `gazeResponseSeconds` after the last shift they cause.
- * The held-only variant zeroes the face hints, so its residue is the glance part alone.
+ * Seconds after an emotion pulse until no impulse residue reaches the face and eyelid channels. Head pulses and
+ * every gesture clip but the laugh write head and body only; the laugh also adds a smile and a mouth opening
+ * for its whole lifetime (`gestureLifetimes.laugh`, clear and strong with held emotions on). Glances reach the
+ * face only through gaze-evoked lid narrowing and blinks, which end `gazeResponseSeconds` after the last shift
+ * they cause. The held-only variant zeroes the face hints, so its residue is the glance and laugh parts.
  */
 export function naturalFaceResidue(settings: ExpressionPerformanceSettings, band: Band): number {
   const performed = performedBand(settings, band)
   const bandSettings = settings.naturalBands[performed]
   const glance = performed !== 'slight' ? bandSettings.faceHold + 2 * maxSaccadeSeconds + gazeResponseSeconds : 0
-  return Math.max(impulseFaceLifetime(bandSettings), glance)
+  const laugh = performed !== 'slight' && settings.heldEmotions ? gestureLifetimes.laugh : 0
+  return Math.max(impulseFaceLifetime(bandSettings), glance, laugh)
 }
 
 // --- Statistics --------------------------------------------------------------------------------

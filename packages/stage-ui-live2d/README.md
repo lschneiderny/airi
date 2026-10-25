@@ -66,7 +66,7 @@ The `Live2DNaturalMotion` controller advances every layer on a fixed 120 Hz grid
 - Speech emphasis turns onsets in the lipsync mouth level into occasional small head beats while the character speaks: 80% are pitch-down nods and 20% are roll tilts to a random side.
 - Impulses add short head gestures and decaying face hints for emotions and desktop reactions.
 - The hold layer keeps the face, posture, and pacing of the current held emotion; see Held emotions below.
-- Gestures play short emotion-specific head clips, such as a laugh bounce or a sleepy nod-off.
+- Gestures play short emotion-specific head clips, such as a laugh chuckle or a sleepy nod-off. The laugh also pulses the smile and, while the character is silent, the mouth.
 - Mood keeps a decaying afterglow of recent emotions that tints posture, gaze, speech emphasis, and mouth form.
 - Touch reacts when the user pokes the model or pets its head with the cursor; see Touch below.
 - Energy scales posture amplitude, posture shift rate, and gaze target choice from the performance state and the user's Energy setting.
@@ -182,6 +182,7 @@ The `naturalEmotions` table in `natural-motion/emotions.ts` holds every per-emot
 
 Gestures are short head clips: a laugh for happy, a recoil for surprised, a head shake or drop for angry, a sway for awkward, a tilt-in for love, a look-away for flustered, and a nod-off for sleepy. Sad, think, question, and curious have none.
 A gesture plays only at the clear and strong bands, and each kind has a cooldown. The body follows a gesture only at strong.
+The laugh is a chuckle of 2 or 3 head bounces at 2.6 to 3.2 Hz, with a smile that follows its lift and a mouth opening on each bounce. Its smile applies with held emotions on and the mouth only while no speech is active or recent; both stay inside the rig's parameter range. The other gestures move only the head and body.
 Gestures draw from their own random stream, so idle motion and the other layers keep their sequences.
 While a gesture clip is active, Natural ducks the idle continuous head motion (not drift or posture shifts) by up to 0.45 at strong with full strength, 0.27 at clear. The duck eases in over 0.15 s, holds until the clip's head offset has fallen under 10% of its peak (at most 2 s), and eases out over 0.3 s. It applies only with held emotions on, so the clip stays visible above the idle jitter.
 

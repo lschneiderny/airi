@@ -510,6 +510,14 @@ describe('emotion lifetimes', () => {
       expect(naturalFaceResidue(heldOnly, band)).toBeLessThanOrEqual(emotionGate.release.window[0])
       expect(naturalFaceResidue(defaultExpressionPerformanceSettings, band)).toBeGreaterThan(emotionGate.release.window[0])
     }
+    // The laugh also writes a smile and a mouth opening, so it counts as face residue with held emotions on.
+    for (const band of ['clear', 'strong'] as const) {
+      const shortGlance = structuredClone(heldOnly)
+      shortGlance.naturalBands[band].faceHold = 0
+      expect(naturalFaceResidue(shortGlance, band)).toBe(gestureLifetimes.laugh)
+      expect(naturalFaceResidue({ ...shortGlance, heldEmotions: false }, band)).toBeLessThan(gestureLifetimes.laugh)
+    }
+    expect(naturalFaceResidue({ ...heldOnly, heldEmotions: true }, 'slight')).toBeLessThan(gestureLifetimes.laugh)
     // Held-only still plays gesture clips: the full lifetime outlives the hold, so posture is never release-scored.
     expect(naturalEmotionLifetime(heldOnly, 'strong')).toBe(Math.max(...Object.values(gestureLifetimes)) + gestureDuckRelease)
     expect(naturalEmotionLifetime(heldOnly, 'strong')).toBeGreaterThan(emotionGate.scenario.hold)

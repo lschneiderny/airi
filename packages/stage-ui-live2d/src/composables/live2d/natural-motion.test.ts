@@ -1131,6 +1131,39 @@ describe('held Natural composition', () => {
       expect(motion.advance(frame / 120)).toEqual(control.advance(frame / 120))
   })
 
+  it('adds the laugh face only with held emotions on, and opens the mouth only in silence', () => {
+    const episode = { id: 'laugh', emotion: 'happy', band: 'strong', nominal: 0.9, intensity: 0.9, escalation: false } as const
+    const facePeaks = (heldEmotions: boolean, speaking: boolean, withEpisode: boolean) => {
+      const motion = new Live2DNaturalMotion({ seed: 41 })
+      motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions })
+      motion.setVoice({ speaking, speechActiveOrRecent: speaking, level: 0 })
+      motion.advance(0)
+      if (withEpisode)
+        motion.impulse(episode, 0)
+      const frames = Array.from({ length: 6 * 120 }, (_, i) => motion.advance((i + 1) / 120).face)
+      return { smile: frames.map(face => face.eyeSmile), mouth: frames.map(face => face.silentMouthOpen) }
+    }
+    const peakDifference = (a: number[], b: number[]) => Math.max(...a.map((value, i) => value - b[i]))
+    const scale = 0.9
+
+    const silentOn = facePeaks(true, false, true)
+    const silentOff = facePeaks(false, false, true)
+    const control = facePeaks(true, false, false)
+    // The impulse hints are the same either way; the gesture adds its own smile on top, bounded by 0.35 x scale.
+    const smile = peakDifference(silentOn.smile, silentOff.smile)
+    expect(smile).toBeGreaterThan(0.25)
+    expect(smile).toBeLessThanOrEqual(0.35 * scale + 1e-9)
+    const mouth = peakDifference(silentOn.mouth, control.mouth)
+    expect(mouth).toBeGreaterThan(0.05)
+    expect(mouth).toBeLessThanOrEqual(0.12 * scale + 1e-9)
+    expect(peakDifference(silentOff.mouth, control.mouth)).toBeLessThanOrEqual(0)
+
+    // While speech is active or recent, the gesture mouth term is exactly 0.
+    const speech = facePeaks(true, true, true)
+    expect(Math.max(...speech.mouth)).toBe(0)
+    expect(peakDifference(speech.smile, facePeaks(false, true, true).smile)).toBeGreaterThan(0.25)
+  })
+
   it.each([true, false])('ducks posture continuous motion under gesture clips only with held emotions on (%s)', (heldEmotions) => {
     const motion = new Live2DNaturalMotion({ seed: 41 })
     motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions })
@@ -1374,9 +1407,16 @@ describe('held Natural composition', () => {
     const actual = accented.advance(4.5).face.eyeSmile
     const base = held.advance(4.5).face.eyeSmile
     const fullAccent = accentOnly.advance(4.5).face.eyeSmile
-    expect(fullAccent).toBeGreaterThan(0.3)
-    expect(actual - base).toBeCloseTo(fullAccent * 0.5, 6)
-    expect(actual).toBeLessThan(2)
+    // The laugh smile is a gesture term, not an accent hint, so the attenuation does not touch it.
+    const hintsOnly = new Live2DNaturalMotion({ seed: 41 })
+    hintsOnly.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, mood: false, heldEmotions: false })
+    hintsOnly.advance(0)
+    hintsOnly.impulse(episode, 4)
+    const laughSmile = fullAccent - hintsOnly.advance(4.5).face.eyeSmile
+    expect(laughSmile).toBeGreaterThan(0.1)
+    expect(fullAccent - laughSmile).toBeGreaterThan(0.3)
+    expect(actual - base).toBeCloseTo((fullAccent - laughSmile) * 0.5 + laughSmile, 6)
+    expect(actual - laughSmile).toBeLessThan(2)
   })
 
   it('leaves a different-emotion accent unattenuated', () => {

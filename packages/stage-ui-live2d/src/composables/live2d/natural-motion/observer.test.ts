@@ -9,17 +9,17 @@ import { Live2DNaturalMotion } from '../natural-motion'
 import { naturalEmotions } from './emotions'
 
 // sha256 per seed (1, 2, 3) over `${JSON.stringify({ pose, fixation, face, blink, breath })}\n` of every frame.
-// Emotion values were re-pinned when gesture clips began ducking idle posture motion; idle values are the
-// qa-tooling golden idle hash and did not change.
+// Emotion pins come from Node Vitest (never Bun); they changed with the idle duck and the chuckle laugh.
+// Idle pins are the qa-tooling golden hash and never changed.
 const idleHashes = [
   '271ed8f4b89ff30c62ebc970c6f82a2a6fd9dff3810734d3a16b0d921a8d21c0',
   '8410d296a2ebdb0034a3e96d78f07e3c5551bd1c6877f34b1cd79b821384a7c4',
   '8265e97b67c03b83747d1339ece468ca8eb563ed849c4f02eac9000a5cf1179a',
 ]
 const emotionHashes = [
-  '97b8b918c1b1cc0fe1df2b25b9aa8bb8d3f29f8f9c048db63be998dd46e95b43',
-  'eace468fb6acfd282b9383ce99165a554b50339e031953b2d2152cec121fb5f5',
-  'a8203be081cdf98809ad645d521babe0d753791bc77ac555286ea17d1bca6a4f',
+  '8142dd08fa1bb79dc585e1b012da342f8f1fed5e876ad36d8c8b5b71b5125dcc',
+  'f62fa44a3e7ce23521b94e4009bbef62f59268431c7616ca6f41abd54cf026cb',
+  '2b1ebbbf06d883c9754653865ac2bc146b5d5e32ed5e20607a7f3a9969eaac08',
 ]
 
 const rate = 120

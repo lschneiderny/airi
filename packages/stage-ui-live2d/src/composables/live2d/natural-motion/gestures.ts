@@ -17,10 +17,24 @@ interface ClipShape {
   readonly lifetime: number
   /** Head offset at `age` seconds since `start`, in normalized head units. */
   readonly shape: (age: number) => Vec3
+  /** Face offset at `age` seconds since `start`; only the laugh has one. */
+  readonly face?: (age: number) => FaceTerm
+}
+
+/** Smile and mouth opening a clip adds to the face, in the face layer's units. */
+export interface FaceTerm {
+  readonly eyeSmile: number
+  readonly mouthOpen: number
 }
 
 interface Clip extends ClipShape {
   readonly start: number
+}
+
+interface FaceClip {
+  readonly start: number
+  readonly lifetime: number
+  readonly face: (age: number) => FaceTerm
 }
 
 /** A gesture that plays as one clip; `shake-or-drop` resolves to `shake` or `drop` when it triggers. */
@@ -42,12 +56,12 @@ const activeSpanCap = 2
 const tailTaus = 15
 
 /**
- * The longest lifetime `createClip` can draw per clip, in seconds after the start. Laugh ends by its fourth
- * cycle at 4 Hz or faster (1 s); shake plays at most 3 cycles at 3 Hz (1 s). QA reads these bounds to keep
- * scored windows clear of clip residue.
+ * The longest lifetime `createClip` can draw per clip, in seconds after the start. Laugh ends after its
+ * third cycle at 2.6 Hz (0.15 s attack + 3 / 2.6 s + 0.35 s release); shake plays at most 3 cycles at 3 Hz (1 s).
+ * QA reads these bounds to keep scored windows clear of clip residue.
  */
 export const gestureLifetimes: Readonly<Record<PlayedGesture, number>> = {
-  'laugh': 1,
+  'laugh': 0.15 + 3 / 2.6 + 0.35,
   'recoil': 0.72,
   'shake': 1,
   'drop': tailTaus * 0.15,
@@ -70,12 +84,6 @@ function raisedCosine(u: number) {
   return u <= 0 || u >= 1 ? 0 : 0.5 - 0.5 * Math.cos(2 * Math.PI * u)
 }
 
-/** Fades the last fifth of a clip to 0 so oscillations never end on a step. */
-function taper(age: number, lifetime: number) {
-  const fadeStart = 0.8 * lifetime
-  return age <= fadeStart ? 1 : 1 - minJerk((age - fadeStart) / (lifetime - fadeStart))
-}
-
 /**
  * Draw order, after the side and angry choice that `trigger` draws: laugh cycles, frequency,
  * amplitude; shake cycles. All other clips need only the side. `scale` is strength x band amplitude.
@@ -85,8 +93,10 @@ export function createClip(kind: PlayedGesture, side: -1 | 1, scale: number, ran
   return { ...clip, activeSpan: activeSpanOf(clip) }
 }
 
+type ClipBody = Pick<ClipShape, 'lifetime' | 'shape' | 'face'>
+
 /** First age after the peak from which the head-offset norm stays below 10% of the peak, sampled at 1/120 s. */
-function activeSpanOf(clip: Pick<ClipShape, 'lifetime' | 'shape'>) {
+function activeSpanOf(clip: ClipBody) {
   const samples = Math.floor(clip.lifetime * 120)
   const norms = Array.from({ length: samples + 1 }, (_, i) => Math.hypot(...clip.shape(i / 120)))
   const peak = Math.max(...norms)
@@ -101,16 +111,23 @@ function activeSpanOf(clip: Pick<ClipShape, 'lifetime' | 'shape'>) {
   return Math.min(activeSpanCap, (lastAbove + 1) / 120)
 }
 
-function createClipShape(kind: PlayedGesture, side: -1 | 1, scale: number, random: RandomStream): Pick<ClipShape, 'lifetime' | 'shape'> {
+function createClipShape(kind: PlayedGesture, side: -1 | 1, scale: number, random: RandomStream): ClipBody {
   switch (kind) {
     case 'laugh': {
-      const cycles = 2 + Math.floor(random() * 3)
-      const frequency = between(random, Math.max(3.5, cycles), 5)
-      const amplitude = between(random, 0.04, 0.06) * scale
-      const oscillationEnd = cycles / frequency
-      // Two fast cycles finish before 0.6 s; retain the quiet remainder of the clip.
-      const lifetime = Math.max(0.6, oscillationEnd)
-      return { lifetime, shape: age => [0, age >= oscillationEnd ? 0 : amplitude * impulseEnvelope(age, 0.15) * Math.exp(-3 * age / lifetime) * Math.sin(2 * Math.PI * frequency * age) * taper(age, oscillationEnd), 0] }
+      // A chuckle: the head lifts over 0.15 s, bounces on its pitch once per cycle (never below the lifted pose),
+      // then settles over 0.35 s. The smile follows the lift and the mouth opens with each bounce.
+      const cycles = 2 + Math.floor(random() * 2)
+      const frequency = between(random, 2.6, 3.2)
+      const amplitude = between(random, 0.05, 0.07) * scale
+      const bounceEnd = 0.15 + cycles / frequency
+      const lifetime = bounceEnd + 0.35
+      const lift = (age: number) => age < bounceEnd ? minJerk(age / 0.15) : 1 - minJerk((age - bounceEnd) / 0.35)
+      const bounce = (age: number) => age <= 0.15 || age >= bounceEnd ? 0 : 0.5 - 0.5 * Math.cos(2 * Math.PI * frequency * (age - 0.15))
+      return {
+        lifetime,
+        shape: age => [0, amplitude * (lift(age) - 0.8 * bounce(age)), side * 0.5 * amplitude * lift(age)],
+        face: age => ({ eyeSmile: 0.35 * scale * lift(age), mouthOpen: 0.12 * scale * bounce(age) }),
+      }
     }
     case 'recoil': {
       // Settle (1 - j)(1 - k j) dips to -overshoot and returns to 0; its minimum is -(k - 1)^2 / 4k.
@@ -181,9 +198,29 @@ function clipOffset(clips: Clip[], time: number): Vec3 {
   return offset
 }
 
+/** Sums the face terms of active face clips at `time`; clips that reached their lifetime are dropped in place. */
+function faceTerm(clips: FaceClip[], time: number): FaceTerm {
+  let eyeSmile = 0
+  let mouthOpen = 0
+  for (let i = clips.length - 1; i >= 0; i--) {
+    const age = time - clips[i].start
+    if (age >= clips[i].lifetime) {
+      clips.splice(i, 1)
+      continue
+    }
+    if (age < 0)
+      continue
+    const value = clips[i].face(age)
+    eyeSmile += value.eyeSmile
+    mouthOpen += value.mouthOpen
+  }
+  return { eyeSmile, mouthOpen }
+}
+
 /**
- * Short emotion-triggered head clips (laugh, recoil, shake, ...). Clips add to the head
- * and body offsets and always return to exactly 0; they never touch posture or face.
+ * Short emotion-triggered clips (laugh, recoil, shake, ...). Clips add to the head and body offsets and
+ * always return to exactly 0. The head and body offsets never touch posture; only the laugh also adds a face
+ * term (`faceOffset`), in both the clear and strong bands.
  *
  * All clip parameters are drawn from the given stream once, at trigger time (side first),
  * so two instances with equal seeds and triggers stay bit-identical. A refused trigger
@@ -193,6 +230,7 @@ function clipOffset(clips: Clip[], time: number): Vec3 {
 export class NaturalGestures {
   private readonly heads: Clip[] = []
   private readonly bodies: Clip[] = []
+  private readonly faces: FaceClip[] = []
   private readonly ducks: DuckWindow[] = []
   private readonly lastTrigger = new Map<string, number>()
 
@@ -216,6 +254,8 @@ export class NaturalGestures {
     const played = kind === 'shake-or-drop' ? (this.random() < 0.5 ? 'shake' : 'drop') : kind
     const clip: Clip = { ...createClip(played, side, Math.min(1, strength) * amplitude, this.random), start: at }
     this.heads.push(clip)
+    if (clip.face)
+      this.faces.push({ start: at, lifetime: clip.lifetime, face: clip.face })
     this.ducks.push({ start: at, end: at + clip.activeSpan, depth: duck.depth * Math.min(1, strength) * amplitude })
     started?.(played, side)
     if (band === 'strong') {
@@ -236,6 +276,14 @@ export class NaturalGestures {
 
   bodyOffset(time: number): Vec3 {
     return clipOffset(this.bodies, time)
+  }
+
+  /**
+   * Smile and mouth opening of the live laughs at `time`, exactly 0 once they end and for every other clip.
+   * The facade adds the smile with held emotions on and the mouth only while no speech is active or recent.
+   */
+  faceOffset(time: number): FaceTerm {
+    return faceTerm(this.faces, time)
   }
 
   /**

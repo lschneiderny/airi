@@ -512,6 +512,14 @@ export class Live2DNaturalMotion {
       }
     }
     const face = withHints(this.face.step(step), stepStart + step, this.impulses, this.pet, moodMouthForm(this.mood, this.performanceSettings), this.performanceSettings.heldEmotions && this.hold.level > 0 ? { hold: this.hold, accentScale: this.performanceSettings.held.accentScale } : undefined)
+    if (this.performanceSettings.heldEmotions) {
+      // The laugh pulses ride on the composed face; the adapter clamps the smile and mouth to the rig range.
+      // The mouth stays shut while speech is active or recent, like the idle mouth opening.
+      const laugh = this.gestures.faceOffset(stepStart + step)
+      face.eyeSmile += laugh.eyeSmile
+      if (!this.face.speechActiveOrRecent)
+        face.silentMouthOpen += laugh.mouthOpen
+    }
     face.eyeOpenMultiplier *= 1 - approachEyeSoftening * this.approach
     return {
       head,
