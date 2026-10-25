@@ -48,7 +48,7 @@ A speech-bound lease lasts while its own speech turn plays. It releases after th
 Natural is composed of independent layers. Each layer draws from its own seeded random stream, so retuning one layer does not reshuffle another.
 The `Live2DNaturalMotion` controller advances every layer on a fixed 120 Hz grid and interpolates between grid states, so the frame rate does not change the motion.
 
-- Posture moves the head through a slow home drift, continuous sub-second motion whose activity waxes and wanes, and occasional heavy-tailed posture shifts along min-jerk paths.
+- Posture moves the head through a slow home drift, continuous sub-second motion whose activity waxes and wanes, and occasional heavy-tailed posture shifts along min-jerk paths. Activity changes only while a shift moves, so a held pose never starts shivering mid-hold.
 - Gaze picks fixation targets (camera, desk, and peripheral points) independently of the head and compensates the eyes for head rotation.
 - Body follows the head with a lag of 150 to 300 milliseconds, drawn again at each posture shift.
 - Face adds slow brow, mouth-form, and eyelid micro-activity, plus occasional silent mouth openings.

@@ -32,12 +32,19 @@ const shiftAxisGain: Vec3 = [1.15, 0.7, 0.3]
 /** Largest normalized `|home + shift target|` per axis; drift and continuous motion still add on top. */
 const shiftTargetLimit = 0.75
 
+/** Continuous-motion gain for activity `e`. Floor tuned from 0.3: quiet spells reach true stillness (still05 at least 0.02) as in the recordings. */
+function activityGain(e: number) {
+  return 0.2 + 1.3 / (1 + Math.exp(-2 * e))
+}
+
 /**
  * Head posture as `h = softLimit(mu + b + amplitude * (g * n + r) + bias)` per axis.
  *
  * - `b`: slow home drift (OU, tau 90 s, 5 s filter).
  * - `n`: continuous sub-second motion (filtered OU) scaled by gain `g = 0.2 + 1.3 sigmoid(2e)`,
- *   where `e` is a unit OU (6 s) filtered over 0.6 s, so activity waxes and wanes.
+ *   where `e` is a unit OU (6 s) filtered over 0.6 s, so activity waxes and wanes. `g` moves only
+ *   while a shift moves, easing from its held value to the live value along the shift's min-jerk
+ *   progress, and holds between shifts, so a held pose never starts shivering mid-hold.
  * - `r`: heavy-tailed posture shifts. Each shift moves `r` to `0.7 r + A diag(1.15, 0.7, 0.3) d`,
  *   clamped so `|mu + r|` stays within 0.75, along a min-jerk path, then holds; there is no overshoot.
  *
@@ -64,6 +71,10 @@ export class NaturalPostureLayers {
   private nextShiftAt: number
   /** Seconds taken from the pending hold by `advanceShift`, returned to the hold after the advanced shift. */
   private holdCarry = 0
+  /** Continuous-motion gain applied now; it changes only while a shift moves. Starts at the gain of `e = 0`. */
+  private gain = activityGain(0)
+  /** `gain` when the current shift began, the start of its ease toward the live gain. */
+  private shiftStartGain = this.gain
 
   constructor(private readonly home: Vec3, streams: PostureStreams) {
     this.drift = [0.08, 0.12, 0.025].map(sd => new FilteredOu(streams.drift, sd, 90, 5))
@@ -110,8 +121,11 @@ export class NaturalPostureLayers {
     this.time += dt
     while (this.time >= this.nextShiftAt)
       this.beginShift(this.nextShiftAt)
-    // Gain floor tuned from 0.3: quiet spells reach true stillness (still05 at least 0.02) as in the recordings.
-    const gain = 0.2 + 1.3 / (1 + Math.exp(-2 * this.energy.step(dt)))
+    // The activity process steps every frame so its random stream never depends on shift timing.
+    const liveGain = activityGain(this.energy.step(dt))
+    if (this.shiftDuration > 0 && this.time < this.shiftStart + this.shiftDuration)
+      this.gain = this.shiftStartGain + (liveGain - this.shiftStartGain) * minJerk((this.time - this.shiftStart) / this.shiftDuration)
+    const gain = this.gain
     const shift = this.shiftAt(this.time)
     return [0, 1, 2].map((axis) => {
       const drift = this.drift[axis].step(dt)
@@ -143,6 +157,7 @@ export class NaturalPostureLayers {
     const distance = Math.hypot(...to.map((value, axis) => value - from[axis]))
     this.shiftFrom = from
     this.shiftTo = to
+    this.shiftStartGain = this.gain
     this.shiftStart = at
     this.shiftDuration = 0.35 + 0.25 * Math.sqrt(distance / 0.35)
     this.nextShiftAt = at + this.shiftDuration + this.drawHold() + this.holdCarry
