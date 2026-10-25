@@ -143,7 +143,7 @@ The stage emotion queue routes each emotion by renderer and Live2D motion driver
 A Natural impulse is a short head gesture plus decaying face hints, and some emotions add a glance.
 Impulses add to every other layer, so they never reset the pose. Neutral does nothing. The earlier local two-second emotion dedupe described here was superseded by conductor-managed episodes; see [2026-10-18-expression-performance](2026-10-18-expression-performance.md) and [2026-10-19-natural-emotion-revamp](2026-10-19-natural-emotion-revamp.md).
 The adapter drops emotions queued while Natural is inactive, because they are stale by the time it resumes.
-An impulse or a desktop reaction also raises posture amplitude and shift rate for 2 s.
+Only a desktop reaction or a poke raises posture amplitude and shift rate for 2 s; an emotion impulse no longer does (see [2026-10-18-expression-performance](2026-10-18-expression-performance.md)).
 
 ## Linux and Wayland degradation
 

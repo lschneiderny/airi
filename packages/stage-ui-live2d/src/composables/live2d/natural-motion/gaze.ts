@@ -13,7 +13,7 @@ export interface GazePoint {
 }
 
 /**
- * Eye counter-rotation per unit of applied head pose. Partial compensation keeps the
+ * Eye counter-rotation per unit of slow head pose. Partial compensation keeps the
  * eyes negatively correlated with the head (reference corr(eyeX, headX) about -0.8)
  * instead of the v1 full world-locked fixation.
  */

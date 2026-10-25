@@ -9,8 +9,8 @@ import { Live2DNaturalMotion } from '../natural-motion'
 import { naturalEmotions } from './emotions'
 
 // sha256 per seed (1, 2, 3) over `${JSON.stringify({ pose, fixation, face, blink, breath })}\n` of every frame.
-// Pins come from Node Vitest (never Bun). Emotion pins changed with the idle duck and the chuckle laugh.
-// Both sets changed when the eyes began counter-rotating for the slow head only.
+// Pins come from Node Vitest (never Bun). Motion changes that moved them: face low-pass, boost removal,
+// duck, laugh, and eye compensation for the slow head only.
 const idleHashes = [
   '2dbac2b1fb9f26c9e8124eaa604f993e1c9cb2b750bdb8cd1251543cdae18918',
   '787f42a7888a341a0517e1ed9683479f61b992d5f164eb75eb63cfe58f7983e5',
