@@ -16,7 +16,7 @@ server/        Hosted API, independent identity, backend-only packages, local ed
 services/      Computer-use execution and orchestration
 integrations/  Minecraft, messaging bots, X browser automation, and VS Code
 plugins/       AIRI plugins and browser context extension
-.github/       CI and locale automation
+.github/       Developer guide, Copilot instructions, and the locale check script
 ```
 
 ## WHERE TO LOOK
@@ -61,7 +61,7 @@ Digest evidence confirms these declarations. Repository-wide symbol totals and r
 - Put project/client ADRs in `docs/ai/adr/`, hosted backend ADRs in `server/docs/ai/adr/`. Follow [server ADR rules](server/AGENTS.md).
 - Keep documentation with its code in the same commit/PR. Keep agent configuration changes in a separate commit/PR.
 - Keep structured `README.md` files in each `packages/` and `apps/` entry: purpose, usage, when to use, and when not to use.
-- Put translations in `packages/i18n`. Edit only English source and your own locale unless asked. Crowdin owns other locales.
+- Put translations in `packages/i18n`. Edit only English source and your own locale unless asked. The other locales are frozen copies of upstream's Crowdin exports; this fork does not sync them.
 - Add only implemented locales. Do not insert English placeholders into other locales.
 - When adding nested `AGENTS.md`, add adjacent `CLAUDE.md` containing only `@AGENTS.md`. Root Claude guidance otherwise blocks nested discovery.
 
@@ -92,7 +92,7 @@ Digest evidence confirms these declarations. Repository-wide symbol totals and r
 - Distinguish requirements, recommendations, and uncertainty. Preserve code, identifiers, commands, and quoted errors.
 - Put conditions before commands. Use Conventional Commits without gitmoji, for example `feat(<package name>): add runner reconnect backoff`.
 - Name branches `username/feat/short-name`. Rebase when pulling.
-- This personal fork has no required PR, release-note, attachment-upload, or Crowdin maintenance workflow.
+- This personal fork has no required PR, release-note, attachment-upload, or Crowdin maintenance workflow, and no GitHub Actions workflows. `pnpm verify` and the pre-commit hook are the only checks.
 
 ## COMMANDS
 Use workspace `package.json` names with pnpm filters, for example `@proj-airi/stage-tamagotchi`.
