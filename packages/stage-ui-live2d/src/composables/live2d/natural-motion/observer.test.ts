@@ -9,16 +9,17 @@ import { Live2DNaturalMotion } from '../natural-motion'
 import { naturalEmotions } from './emotions'
 
 // sha256 per seed (1, 2, 3) over `${JSON.stringify({ pose, fixation, face, blink, breath })}\n` of every frame,
-// recomputed when the face low-passed mouth-form and eyelid noise and smoothed the lid multiplier. The idle values are the qa-tooling golden idle hash.
+// recomputed when the face low-passed mouth-form and eyelid noise and smoothed the lid multiplier.
+// The emotion values changed when the emotion energy boost went. The idle values are the qa-tooling golden idle hash.
 const idleHashes = [
   '271ed8f4b89ff30c62ebc970c6f82a2a6fd9dff3810734d3a16b0d921a8d21c0',
   '8410d296a2ebdb0034a3e96d78f07e3c5551bd1c6877f34b1cd79b821384a7c4',
   '8265e97b67c03b83747d1339ece468ca8eb563ed849c4f02eac9000a5cf1179a',
 ]
 const emotionHashes = [
-  '74693045f0c6f427f867fc484c211c3c8aff0fde4f77d6a39cd75d0226d608ae',
-  '3b2bd758f96d8578194d8f3768924288b045d0a91fbbbf55aedaf7789402a7a9',
-  'cee84c40946a9b742a916666c9ea795ea4057c41add25993f762cf9432c419b8',
+  '3645c27ff673095e5d4a6abea93494dbc086c784a807f06fc07b2346dd5282c4',
+  '7efc709ad7d3cced382e17f5f776af7523fd40c95cc4dcaf0a235937f3c96018',
+  '270acfd373363d4dfc2484b84fe8126498d058ff76fb1bff159dd4fe1fed8477',
 ]
 
 const rate = 120

@@ -55,10 +55,7 @@ describe('band-driven Natural episodes', () => {
     const strong = sample('strong', 0.9)
     expect(slight.face).toBeGreaterThan(0)
     expect(slight.result?.glance).toBeNull()
-    expect(slight.result?.energy).toBe(false)
     expect(clear.result?.glance?.hold).toBe(1.2)
-    expect(clear.result?.energy).toBe(false)
-    expect(strong.result?.energy).toBe(true)
     expect(Math.max(slight.jump, clear.jump, strong.jump)).toBeLessThan(0.02)
   })
 

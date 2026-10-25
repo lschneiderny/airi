@@ -85,12 +85,6 @@ const naturalBandsSchema = settingsObject({
   headGain: optional(unit(), 0.12),
   /** Body amplitude; 0 disables it. @default 0.06 */
   bodyGain: optional(unit(), 0.06),
-  /** Energy amplitude addition; 0 preserves idle amplitude. @default 0.3 */
-  energyAmplitude: optional(unit(), 0.3),
-  /** Energy rate addition; 0 preserves idle rate. @default 0.5 */
-  energyRate: optional(unit(), 0.5),
-  /** Energy duration seconds; 0 disables the overlay. @default 2 */
-  energySeconds: optional(seconds(), 2),
 })
 function moodDynamicsSchema(bounds: MoodBounds) {
   const gain = () => within(bounds.gain)

@@ -153,7 +153,7 @@ The episode's band decides which body parts react:
 
 - `slight`: face hints only;
 - `clear`: face hints, a head pulse, and a glance;
-- `strong`: face hints, a head pulse, a glance, a body lean, and a short energy overlay that raises posture amplitude and shift rate.
+- `strong`: face hints, a head pulse, a glance, and a body lean. No band raises the posture amplitude or shift rate scales; only desktop reactions and pokes do, through a fixed x1.3 / x1.5 overlay for 2 s.
 
 With held emotions on, the held posture also moves the body at clear, and emotions with a gesture play the gesture instead of the head pulse and body lean. While that gesture is cooling down, such an episode adds no gesture, head pulse, or body lean.
 ACT markers name the band with `slight`, `clear`, or `strong`. A marker without an intensity means clear.
@@ -313,8 +313,8 @@ The emotion scorer in `natural-motion/emotion-score.ts` is pure and reads Natura
 Each result reports significance (a sign-flip permutation test with Holm correction across the run), sign, size relative to the recipe on held-only trials, visibility above the placebo null, and release. A criterion without data is `n/a`, never a pass.
 Every resampling stream is seeded from the gate id and the check key, so results are byte-identical across runs and do not depend on input order.
 A trial is rejected when another emotion event falls within `naturalEmotionLifetime` of its window.
-The face and eyelid release fit uses only held-only trials whose face residue has ended when the fit window starts. The residue is `naturalFaceResidue`: impulse face hints, the glance, and the strong energy overlay, each followed by gaze-evoked lid responses.
-Posture has no release check. It decays with `held.postureTau`, and in held-only runs gesture clips (up to 7.5 s) and the energy overlay still write the head and body during the release window.
+The face and eyelid release fit uses only held-only trials whose face residue has ended when the fit window starts. The residue is `naturalFaceResidue`: impulse face hints and the glance, each followed by gaze-evoked lid responses.
+Posture has no release check. It decays with `held.postureTau`, and in held-only runs gesture clips (up to 7.5 s) still write the head and body during the release window.
 
 To compare Natural's frame cost before and after a runtime change, run the micro-benchmark from this package on the same machine. It prints the median of 5 runs, each of 10,000 idle adapter compositions on a stub rig:
 

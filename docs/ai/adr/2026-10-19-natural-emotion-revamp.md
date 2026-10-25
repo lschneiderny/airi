@@ -132,7 +132,7 @@ The decided layer priority is pet, then hold, then accent, then mood. The facade
 - The body follows a clip only at strong, at half the head amplitude on yaw and roll.
 - When a posture shift falls due while a clip has more than 0.5 s left, the shift is postponed by the clip's remaining time.
 
-For an emotion with a gesture, the impulse keeps its random draws, face hints, glance, energy overlay, and mood dose, but adds no head pulse or body lean. The gesture clip takes their place.
+For an emotion with a gesture, the impulse keeps its random draws, face hints, glance, and mood dose, but adds no head pulse or body lean. The gesture clip takes their place.
 The impulse drops them even when the gesture does not start. While that gesture is cooling down, for example on a repeat or an escalation soon after the last clip, the episode adds no head clip, head pulse, or body lean.
 Emotions without a gesture keep the impulse head pulse and the strong-band body lean.
 

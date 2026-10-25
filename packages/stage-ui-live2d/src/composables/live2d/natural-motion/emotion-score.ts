@@ -141,7 +141,7 @@ export interface EmotionTrialRecord {
   rejected: string | null
   /** Seconds after the pulse at which the hold releases. */
   releaseStart: number
-  /** Seconds after the pulse at which impulse, glance, and energy residue on face and eyelid channels has ended. */
+  /** Seconds after the pulse at which impulse and glance residue on face and eyelid channels has ended. */
   faceResidue: number
   channels: Partial<Record<ScoredChannel, ChannelMeasure>>
   /** Channels the trace cannot measure, with the reason. */
@@ -244,30 +244,28 @@ function performedBand(settings: ExpressionPerformanceSettings, band: Band): Ban
 /**
  * Seconds after an emotion pulse until everything the pulse started has retired: the head and body pulses and
  * face hints (`impulseLifetime`), the longest gesture clip (`gestureLifetimes`; clips play only above `slight`
- * with held emotions on), the glance (`faceHold` plus two saccades, above `slight`), and the strong-band energy
- * overlay (`energySeconds`). The held emotion itself is excluded: its release is what the scorer measures.
+ * with held emotions on), and the glance (`faceHold` plus two saccades, above `slight`). The held emotion itself
+ * is excluded: its release is what the scorer measures.
  */
 export function naturalEmotionLifetime(settings: ExpressionPerformanceSettings, band: Band): number {
   const performed = performedBand(settings, band)
   const bandSettings = settings.naturalBands[performed]
   const gesture = performed !== 'slight' && settings.heldEmotions ? Math.max(...Object.values(gestureLifetimes)) : 0
   const glance = performed !== 'slight' ? bandSettings.faceHold + 2 * maxSaccadeSeconds : 0
-  const energy = performed === 'strong' ? settings.naturalBands.energySeconds : 0
-  return Math.max(impulseLifetime(bandSettings), gesture, glance, energy)
+  return Math.max(impulseLifetime(bandSettings), gesture, glance)
 }
 
 /**
  * Seconds after an emotion pulse until no impulse residue reaches the face and eyelid channels. Gesture clips
- * and head pulses write head and body only; glances and the energy overlay reach the face only through
- * gaze-evoked lid narrowing and blinks, which end `gazeResponseSeconds` after the last shift they cause.
- * The held-only variant zeroes the face hints, so its residue is the glance and energy part alone.
+ * and head pulses write head and body only; glances reach the face only through gaze-evoked lid
+ * narrowing and blinks, which end `gazeResponseSeconds` after the last shift they cause.
+ * The held-only variant zeroes the face hints, so its residue is the glance part alone.
  */
 export function naturalFaceResidue(settings: ExpressionPerformanceSettings, band: Band): number {
   const performed = performedBand(settings, band)
   const bandSettings = settings.naturalBands[performed]
   const glance = performed !== 'slight' ? bandSettings.faceHold + 2 * maxSaccadeSeconds + gazeResponseSeconds : 0
-  const energy = performed === 'strong' ? settings.naturalBands.energySeconds + gazeResponseSeconds : 0
-  return Math.max(impulseFaceLifetime(bandSettings), glance, energy)
+  return Math.max(impulseFaceLifetime(bandSettings), glance)
 }
 
 // --- Statistics --------------------------------------------------------------------------------
@@ -1632,9 +1630,9 @@ function scoreModulationRelease(check: ChannelCheck, result: CheckResult, trials
 
 /**
  * Face and eyelid release on the held-only variant. A trial counts only when its face residue (impulse hints,
- * glance, energy overlay; `naturalFaceResidue`) has ended by the start of the fit window, so the trajectory shows
+ * glance; `naturalFaceResidue`) has ended by the start of the fit window, so the trajectory shows
  * the hold's release alone. Posture is not released here: it decays with `held.postureTau`, and gesture clips
- * (up to 7.5 s) and the energy overlay write head and body during the window.
+ * (up to 7.5 s) write head and body during the window.
  */
 function scoreFaceRelease(
   check: ChannelCheck,

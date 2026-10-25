@@ -65,8 +65,8 @@ export function startPending(actions: PendingAction[], at: number, targets: Pend
         impulses.trigger({ id: `poke-${++pokes}`, emotion: 'surprised', nominal: strength.surprise, intensity: strength.surprise, band: 'clear', escalation: false }, at)
       }
       gaze.glance(glanceTargets.camera, pokeGlanceHold, at)
-      // The fixed reacting overlay, like a desktop reaction, not the emotion energy settings.
-      energy.react(at, 1, true)
+      // The fixed reacting overlay, like a desktop reaction.
+      energy.react(at, 1)
       continue
     }
     if (action.kind === 'emotion') {
@@ -84,8 +84,6 @@ export function startPending(actions: PendingAction[], at: number, targets: Pend
         mood.add(action.episode)
       if (started.glance)
         gaze.glance(started.glance.point, started.glance.hold, at)
-      if (started.energy)
-        energy.react(at, action.episode.intensity)
       continue
     }
     if (action.reaction === 'wake') {
@@ -95,7 +93,7 @@ export function startPending(actions: PendingAction[], at: number, targets: Pend
     else {
       gaze.glance(glanceTargets.desk, screenChangeGlanceHold, at)
     }
-    energy.react(at, 1, true)
+    energy.react(at, 1)
   }
   return { pokes, lastPokeSurprise }
 }

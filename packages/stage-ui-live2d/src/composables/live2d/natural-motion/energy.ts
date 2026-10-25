@@ -1,7 +1,4 @@
-import type { ExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceMode, PerformanceState } from '@proj-airi/stage-shared/performance-state'
-
-import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 
 /** Preset values that the posture and gaze layers read each grid step. */
 interface Preset {
@@ -22,7 +19,7 @@ const presets: Record<PerformanceMode, Preset> = {
   talking: { amplitude: 1.15, shiftRate: 1.3, cameraFixation: 0.65 },
 }
 
-/** Overlay for the seconds after an emotion impulse or desktop reaction. */
+/** Fixed overlay for the seconds after a desktop reaction or a poke. Emotion episodes do not use it: their weight comes from the band tables. */
 const reacting = { amplitude: 1.3, shiftRate: 1.5, seconds: 2 }
 /** The user has left the desktop, so the character settles. */
 const away = { amplitude: 0.7, shiftRate: 0.6 }
@@ -90,12 +87,7 @@ export class NaturalPerformanceEnergy {
   private away = false
   private energy = 0.5
   private time = 0
-  private settings = defaultExpressionPerformanceSettings.naturalBands
   private readonly reactions: { until: number, intensity: number, amplitude: number, rate: number }[] = []
-
-  setPerformanceSettings(settings: ExpressionPerformanceSettings['naturalBands']) {
-    this.settings = { ...settings }
-  }
 
   /** Sets the target state; the filter moves toward it from the next step. */
   setState(state: Pick<PerformanceState, 'mode' | 'attention' | 'away'>, energy: number) {
@@ -124,14 +116,14 @@ export class NaturalPerformanceEnergy {
   }
 
   /** Starts the reacting overlay at `at` (active seconds) for 2 s. */
-  react(at: number, intensity: number, desktop = false) {
+  react(at: number, intensity: number) {
     if (!Number.isFinite(intensity))
       return
     this.reactions.push({
-      until: at + (desktop ? reacting.seconds : this.settings.energySeconds),
+      until: at + reacting.seconds,
       intensity: clamp01(intensity),
-      amplitude: desktop ? reacting.amplitude - 1 : this.settings.energyAmplitude,
-      rate: desktop ? reacting.shiftRate - 1 : this.settings.energyRate,
+      amplitude: reacting.amplitude - 1,
+      rate: reacting.shiftRate - 1,
     })
   }
 

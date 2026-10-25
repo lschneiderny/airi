@@ -104,7 +104,7 @@ it.each(['wake', 'screen-change'] as const)('keeps desktop %s on the fixed full-
     motion.setPerformance(idle, 0.5, 0)
     motion.setPerformance({ ...idle, reactKind, reactSeq: 1 }, 0.5, 0)
     motion.advance(2 / 120)
-    expect(react).toHaveBeenCalledWith(expect.any(Number), 1, true)
+    expect(react).toHaveBeenCalledWith(expect.any(Number), 1)
   }
   finally {
     react.mockRestore()
@@ -1420,5 +1420,45 @@ describe('held Natural composition', () => {
         expect(value).toBeCloseTo(Object.values(expected.face)[index], 10)
       expect(maximumDelta(actual, expected)).toBeLessThan(1e-10)
     }
+  })
+})
+
+describe('reacting overlay', () => {
+  const energyOf = (motion: Live2DNaturalMotion): NaturalPerformanceEnergy => Reflect.get(motion, 'energy')
+
+  /** Peak posture scales over 4 s after `act`, sampled on the 60 Hz grid. */
+  function peaks(act: (motion: Live2DNaturalMotion) => void) {
+    const motion = new Live2DNaturalMotion({ seed: 77 })
+    motion.setPerformance(idle, 0.5, 0)
+    act(motion)
+    let amplitude = 0
+    let shiftRate = 0
+    for (let frame = 1; frame <= 4 * 60; frame++) {
+      motion.advance(frame / 60)
+      amplitude = Math.max(amplitude, energyOf(motion).amplitudeScale)
+      shiftRate = Math.max(shiftRate, energyOf(motion).shiftRateScale)
+    }
+    return { amplitude, shiftRate }
+  }
+
+  const rest = peaks(() => {})
+
+  it('leaves the preset scales alone for a strong emotion episode', () => {
+    const strong = peaks(motion => motion.impulse({ id: 'strong', emotion: Emotion.Happy, nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false }, 0))
+    expect(strong).toEqual(rest)
+  })
+
+  it('still applies the fixed x1.3 / x1.5 overlay for a poke', () => {
+    const poked = peaks(motion => motion.poke('head', 0, 0, 0))
+    expect(poked.amplitude).toBeGreaterThan(rest.amplitude + 0.2)
+    expect(poked.amplitude).toBeLessThanOrEqual(rest.amplitude * 1.3)
+    expect(poked.shiftRate).toBeGreaterThan(rest.shiftRate + 0.3)
+    expect(poked.shiftRate).toBeLessThanOrEqual(rest.shiftRate * 1.5)
+  })
+
+  it('still applies the fixed overlay for a desktop reaction', () => {
+    const woke = peaks(motion => motion.setPerformance({ ...idle, reactSeq: 1, reactKind: 'wake' }, 0.5, 0))
+    expect(woke.amplitude).toBeGreaterThan(rest.amplitude + 0.2)
+    expect(woke.shiftRate).toBeGreaterThan(rest.shiftRate + 0.3)
   })
 })

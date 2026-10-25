@@ -313,7 +313,6 @@ export class Live2DNaturalMotion {
   setPerformanceSettings(settings: ExpressionPerformanceSettings) {
     this.performanceSettings = structuredClone(settings)
     this.impulses.setPerformanceSettings(settings.naturalBands, settings.bands)
-    this.energy.setPerformanceSettings(settings.naturalBands)
     this.mood.setPerformanceSettings(settings.moodDynamics)
     this.hold.setSettings(settings.held)
     if (!settings.heldEmotions) {

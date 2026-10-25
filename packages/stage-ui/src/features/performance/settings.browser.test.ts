@@ -77,6 +77,48 @@ describe('expression performance settings', () => {
     console.warn('PASS corrupt storage recovered:', JSON.stringify(store.document))
   })
 
+  const removedEnergyKeys = { energyAmplitude: 0.3, energyRate: 0.5, energySeconds: 2 }
+  const withBands = (extra: Record<string, unknown>, rest: Record<string, unknown> = {}) => JSON.stringify({
+    ...rest,
+    naturalBands: { ...defaultExpressionPerformanceSettings.naturalBands, ...extra },
+  })
+
+  it('drops the removed energy keys from a stored document and keeps every other field', () => {
+    const { energyAmplitude: _a, energyRate: _r, energySeconds: _s, ...kept } = { ...defaultExpressionPerformanceSettings.naturalBands, ...removedEnergyKeys }
+    localStorage.setItem(key, withBands({ ...removedEnergyKeys, headGain: 0.2 }, { bands: false, intensity: { ...defaultExpressionPerformanceSettings.intensity, clear: 0.7 }, mood: false }))
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { store } = createContext()
+    expect(warning).not.toHaveBeenCalled()
+    expect(store.document).toEqual({
+      ...defaultExpressionPerformanceSettings,
+      bands: false,
+      mood: false,
+      intensity: { ...defaultExpressionPerformanceSettings.intensity, clear: 0.7 },
+      naturalBands: { ...kept, headGain: 0.2 },
+    })
+    expect(store.document.naturalBands).not.toHaveProperty('energySeconds')
+  })
+
+  it.each([
+    ['the three keys with wrong types are still dropped', withBands({ energyAmplitude: 'x', energyRate: null, energySeconds: [] }), false],
+    ['another unknown naturalBands key', withBands({ energyBogus: 1 }), true],
+    ['another unknown key beside the removed keys', withBands({ ...removedEnergyKeys, energyBogus: 1 }), true],
+    ['an unknown top-level key beside the removed keys', withBands(removedEnergyKeys, { extra: true }), true],
+    ['an invalid field beside the removed keys', withBands(removedEnergyKeys, { intensity: { clear: 2 } }), true],
+    ['a non-object naturalBands', '{"naturalBands":5}', true],
+    ['a null naturalBands', '{"naturalBands":null}', true],
+    ['an array naturalBands', '{"naturalBands":[]}', true],
+    ['a non-object document', '[]', true],
+    ['a null document', 'null', true],
+    ['invalid JSON', '{"naturalBands":', true],
+  ])('handles %s', (_name, stored, fallsBack) => {
+    localStorage.setItem(key, stored)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { store } = createContext()
+    expect(store.document).toEqual(defaultExpressionPerformanceSettings)
+    expect(warning).toHaveBeenCalledTimes(fallsBack ? 1 : 0)
+  })
+
   it('fills missing persisted fields from defaults', () => {
     localStorage.setItem(key, '{"bands":false,"intensity":{"clear":0.7}}')
     const { store } = createContext()

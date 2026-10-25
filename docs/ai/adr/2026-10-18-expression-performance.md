@@ -108,11 +108,11 @@ When the `bands` switch is off, both deciders use a nominal of 0.6 for every emo
 
 Natural receives each episode through `setEmotion(episode)` as a `NaturalEpisode`: a `ReactionEpisode` with an optional `moodGain` (see Character profiles). Natural no longer deduplicates emotions; the reaction tracker owns episode identity.
 
-| Band | Face hints | Head pulse | Glance | Body lean | Energy overlay |
-| --- | --- | --- | --- | --- | --- |
-| slight | yes | no | no | no | no |
-| clear | yes | yes | yes | no | no |
-| strong | yes | yes | yes | yes | yes |
+| Band | Face hints | Head pulse | Glance | Body lean |
+| --- | --- | --- | --- | --- |
+| slight | yes | no | no | no |
+| clear | yes | yes | yes | no |
+| strong | yes | yes | yes | yes |
 
 With `heldEmotions` on, this table describes only the episode impulse. The held posture from [2026-10-19-natural-emotion-revamp](2026-10-19-natural-emotion-revamp.md) also biases the head and the body follower at every band, so the body moves at clear too. For an emotion with a gesture, a gesture clip replaces the head pulse and the body lean, and the clip moves the body only at strong. While that gesture is cooling down, the episode gets no clip and no head pulse or body lean.
 
@@ -131,8 +131,8 @@ The body lean is `naturalBands.bodyGain * I` along the normalized emotion direct
 The face envelope is `(1 - exp(-s/faceOnsetTau)) * exp(-max(0, s - faceHold)/faceReleaseTau)`.
 An escalation adds only the missing head and body amplitude and moves the face hints from their current values to the new targets over 0.08 s.
 
-A strong episode calls `energy.react(at, intensity)`. Each contribution lasts `naturalBands.energySeconds` and raises posture amplitude by `naturalBands.energyAmplitude * R` and shift rate by `naturalBands.energyRate * R`, where `R` is the largest unexpired contribution. Contributions do not stack.
-Desktop `wake` and `screen-change` reactions keep their previous overlay: x1.3 amplitude and x1.5 shift rate for 2 s.
+An episode does not change the posture amplitude or shift rate scales. An earlier version raised them for a strong episode through `naturalBands.energySeconds`, `energyAmplitude`, and `energyRate`; those settings were removed.
+Desktop `wake` and `screen-change` reactions and pokes call `energy.react(at, 1)`, a fixed overlay of x1.3 amplitude and x1.5 shift rate for 2 s. Contributions do not stack; the largest unexpired one applies.
 
 ## Mood
 
@@ -412,7 +412,7 @@ Switches:
 Sections:
 
 - `intensity`: `slight` 0.25, `clear` 0.6, `strong` 0.9, `clearFrom` 0.5, `strongFrom` 0.8, `jitter` 0.04, `habituationWindow` 15, `habituationBase` 0.8, `habituationFloor` 0.35, `escalationWindow` 2. The ACT parser uses fixed word values equal to the `slight`, `clear`, and `strong` defaults, and the Natural lab pulses use the configured document values for the selected band.
-- `naturalBands`: the `slight`, `clear`, and `strong` band tables above, plus `headGain` 0.12, `bodyGain` 0.06, `energyAmplitude` 0.3, `energyRate` 0.5, `energySeconds` 2.
+- `naturalBands`: the `slight`, `clear`, and `strong` band tables above, plus `headGain` 0.12 and `bodyGain` 0.06.
 - `moodDynamics`: `valenceTau` 45, `arousalTau` 20, `tensionTau` 30, `slightGain` 0.15, `clearGain` 0.25, `strongGain` 0.4, `amplitude` 0.2, `shiftRate` 0.3, `cameraValence` 0.1, `cameraTension` 0.15, `emphasis` 0.1, `mouthForm` 0.08.
 - `picker`: `recencyDepth` 0.8, `recencyTau` 8, `effectGateFrom` 0.5, `effectGateTo` 0.8.
 - `slots`: `defaultFadeSeconds` 1, `speechGrace` 0.25, `unstartedExpiry` 10, `holdCap` 15. Fades come from the exp3 file; `defaultFadeSeconds` replaces a missing or invalid file fade.

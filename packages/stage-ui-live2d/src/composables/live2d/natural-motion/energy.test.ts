@@ -28,7 +28,7 @@ describe('natural performance energy', () => {
 
   it('preserves desktop x1.3/x1.5 targets for two seconds', () => {
     const energy = new NaturalPerformanceEnergy()
-    energy.react(0, 1, true)
+    energy.react(0, 1)
     energy.step(1)
     expect(energy.amplitudeScale).toBeCloseTo(1.3 - 0.3 * Math.exp(-1), 12)
     expect(energy.shiftRateScale).toBeCloseTo(1.5 - 0.5 * Math.exp(-1), 12)

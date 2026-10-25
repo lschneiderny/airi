@@ -25,7 +25,18 @@ export const useExpressionPerformanceSettings = defineStore('expression-performa
       serializer: {
         read(value) {
           try {
-            const result = parseExpressionPerformanceSettings(JSON.parse(value))
+            const stored: unknown = JSON.parse(value)
+            // NOTICE:
+            // Stored documents still carry the removed energy keys.
+            // Root cause: a strict schema plus whole-document persistence, so one unknown key resets every setting.
+            // Source: packages/stage-shared/src/expression-performance/settings.ts.
+            // Removal condition: one release after stored documents are rewritten without the keys.
+            if (isPlainObject(stored) && isPlainObject(stored.naturalBands)) {
+              delete stored.naturalBands.energyAmplitude
+              delete stored.naturalBands.energyRate
+              delete stored.naturalBands.energySeconds
+            }
+            const result = parseExpressionPerformanceSettings(stored)
             if (!result.success)
               throw new ValiError(result.issues)
             return result.value

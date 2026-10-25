@@ -143,7 +143,7 @@ export class NaturalImpulses {
    * `head: false` leaves face hints, recruitment signals, and random draws intact while a gesture owns head/body offsets.
    * A started reaction also reports the band it performed, its clamped intensity, and its side.
    */
-  trigger(episode: ReactionEpisode, at: number, options: { readonly head: boolean } = { head: true }): { glance: Glance | null, energy: boolean, band: Band, intensity: number, side: -1 | 1 } | null {
+  trigger(episode: ReactionEpisode, at: number, options: { readonly head: boolean } = { head: true }): { glance: Glance | null, band: Band, intensity: number, side: -1 | 1 } | null {
     const spec = this.emotions[episode.emotion].impulse
     const strength = Math.max(0, Math.min(1, Number.isFinite(episode.intensity) ? episode.intensity : 0))
     if (!spec || strength === 0)
@@ -188,7 +188,7 @@ export class NaturalImpulses {
       side,
     })
     const point = spec.glance ?? { x: 0, y: 0 }
-    return { glance: band === 'slight' ? null : { point: { x: side * point.x, y: point.y }, hold: settings.faceHold }, energy: band === 'strong', band, intensity: strength, side }
+    return { glance: band === 'slight' ? null : { point: { x: side * point.x, y: point.y }, hold: settings.faceHold }, band, intensity: strength, side }
   }
 
   /** Starts a head-only gesture along `direction` (length at most 1), used by desktop reactions. */
