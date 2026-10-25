@@ -131,6 +131,24 @@ describe('curated expression catalog', () => {
     expect(store.catalog.find(entry => entry.id === created.id)!.area).toBe(derivedArea)
   })
 
+  it('clears an entry area override with area null and keeps it when a patch has no area', () => {
+    const store = useExpressionStore()
+    const register = () => store.registerDefinitions('a', defs)
+    register()
+    const derivedArea = store.catalog.find(entry => entry.id === 'smile')!.area
+    const stored = derivedArea === 'eyes' ? 'mouth' : 'eyes'
+    store.applySettingsCommand({ type: 'update-entry', id: 'smile', patch: { area: stored } })
+    store.applySettingsCommand({ type: 'update-entry', id: 'smile', patch: { label: 'Grin' } })
+    expect(JSON.parse(storage.get('expression-catalog:a')!).overrides[0]).toMatchObject({ label: 'Grin', area: stored })
+    register()
+    expect(store.catalog.find(entry => entry.id === 'smile')!.area).toBe(stored)
+    store.applySettingsCommand({ type: 'update-entry', id: 'smile', patch: { area: null } })
+    expect(JSON.parse(storage.get('expression-catalog:a')!).overrides[0]).not.toHaveProperty('area')
+    expect(JSON.parse(storage.get('expression-catalog:a')!).overrides[0].label).toBe('Grin')
+    register()
+    expect(store.catalog.find(entry => entry.id === 'smile')!.area).toBe(derivedArea)
+  })
+
   it('loads an overrides-only version-1 document', () => {
     storage.set('expression-catalog:a', JSON.stringify({ version: 1, overrides: [{ id: 'smile', label: 'Old saved label' }] }))
     const store = useExpressionStore()

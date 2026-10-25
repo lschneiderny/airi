@@ -383,6 +383,40 @@ describe('live2D model settings', () => {
     })
   })
 
+  it('sends no area key when the Area select is untouched', async () => {
+    const { screen, onLive2dExpressionCommand } = await renderRemoteExpressions([expressionEntry({ id: 'red.exp3.json', label: 'red', area: 'cheeks' })], { showAll: true })
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true }).click()
+    const patch = onLive2dExpressionCommand.mock.calls[0][0].patch
+    expect(patch).not.toHaveProperty('area')
+  })
+
+  it('sends the chosen area, and area null when None is picked', async () => {
+    const area = new RegExp(t('settings.live2d.expressions.fields.area'))
+    const first = await renderRemoteExpressions([expressionEntry({ id: 'red.exp3.json', label: 'red' })], { showAll: true })
+    await first.screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    await first.screen.getByRole('combobox', { name: area }).click()
+    await first.screen.getByRole('option', { name: t('settings.live2d.expressions.areas.eyes'), exact: true }).click()
+    await first.screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true }).click()
+    expect(first.onLive2dExpressionCommand.mock.calls[0][0].patch).toMatchObject({ area: 'eyes' })
+    cleanup()
+
+    const second = await renderRemoteExpressions([expressionEntry({ id: 'red.exp3.json', label: 'red', area: 'cheeks' })], { showAll: true })
+    await second.screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    await second.screen.getByRole('combobox', { name: area }).click()
+    await second.screen.getByRole('option', { name: t('settings.live2d.expressions.areas.none'), exact: true }).click()
+    await second.screen.getByRole('button', { name: t('settings.live2d.expressions.apply'), exact: true }).click()
+    expect(second.onLive2dExpressionCommand.mock.calls[0][0].patch).toMatchObject({ area: null })
+  })
+
+  it('shows the overriding entry label even when it equals another entry id', async () => {
+    const { screen } = await renderRemoteExpressions([
+      expressionEntry({ id: 'hairA.exp3.json', label: 'Hair A', active: true, overriddenBy: 'Hair B' }),
+      expressionEntry({ id: 'Hair B', label: 'Wrong label' }),
+    ], { showAll: true })
+    await expect.element(screen.getByText(t('settings.live2d.expressions.overridden-by', { label: 'Hair B' }), { exact: true })).toBeVisible()
+  })
+
   it('includes the inverted checkbox in the applied patch', async () => {
     const { screen, onLive2dExpressionCommand } = await renderRemoteExpressions([expressionEntry({ id: 'coat.exp3.json', label: 'coat', kind: 'outfit' })], { showAll: true })
     await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()

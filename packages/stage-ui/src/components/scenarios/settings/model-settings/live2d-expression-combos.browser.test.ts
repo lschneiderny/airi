@@ -238,6 +238,13 @@ describe('live2D expression combos', () => {
     expect(onCommand).toHaveBeenCalledWith(expect.objectContaining({ type: 'update-combo', id: 'combo:happy', patch: expect.objectContaining({ area: null }) }))
   })
 
+  it('sends no area key when a combo is re-saved with the Area select untouched', async () => {
+    const { screen, onCommand } = await renderCombos([...baseEntries, { ...happyLook, area: 'cheeks' }])
+    await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()
+    await screen.getByRole('button', { name: k('save'), exact: true }).click()
+    expect(onCommand.mock.calls[0][0].patch).not.toHaveProperty('area')
+  })
+
   it('asks before deleting and sends delete-combo only when confirmed', async () => {
     const { screen, onCommand } = await renderCombos([...baseEntries, coatLook])
     await screen.getByRole('button', { name: t('settings.live2d.expressions.edit'), exact: true }).click()

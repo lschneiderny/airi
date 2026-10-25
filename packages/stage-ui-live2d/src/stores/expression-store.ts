@@ -1,9 +1,9 @@
-import type { CatalogEntry, CuratedCatalogDocument, CuratedOverride } from '@proj-airi/stage-shared/expression-performance'
+import type { CatalogEntry, CuratedCatalogDocument } from '@proj-airi/stage-shared/expression-performance'
 
 import type { ExpressionDefinition } from '../composables/live2d/expression/compose'
 import type { SlotLeaseSettings } from '../composables/live2d/expression/slots'
 import type { FreeParameter } from '../utils/expression-catalog/free-parameters'
-import type { ComboPatch, CreateComboInput, CustomPatch } from './expression-catalog-persistence'
+import type { ComboPatch, CreateComboInput, CustomPatch, EntryPatch } from './expression-catalog-persistence'
 import type { SlotLeases } from './expression-slot-leases'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -80,7 +80,7 @@ export type Live2DExpressionSettingsCommand
   = | { type: 'toggle', id: string }
     | { type: 'save-defaults' }
     | { type: 'reset-all' }
-    | { type: 'update-entry', id: string, patch: Omit<CuratedOverride, 'id'> }
+    | { type: 'update-entry', id: string, patch: EntryPatch }
     | { type: 'reset-entry', id: string }
     | { type: 'set-active', id: string, active: boolean }
     | { type: 'create-combo', combo: CreateComboInput }
@@ -150,7 +150,7 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     nextClaimSequence: () => ++claimSeq,
   })
   const persistence = createCatalogPersistence({ modelId, derived, curated, catalog })
-  function updateEntry(id: string, patch: Omit<CuratedOverride, 'id'>) {
+  function updateEntry(id: string, patch: EntryPatch) {
     persistence.updateEntry(id, patch)
     if (patch.keepSeparate !== undefined)
       rederive()

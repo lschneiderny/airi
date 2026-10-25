@@ -6,6 +6,8 @@ import { entrySlots, parseCuratedCatalogDocument, resolveAlias, validateComboDoc
 export type CreateComboInput = Pick<ComboDocument, 'label' | 'members'> & Partial<Pick<ComboDocument, 'mappings' | 'area'>> & { emotion?: ComboDocument['mappings'][number]['emotion'] }
 /** `area: null` clears a stored area so the combo falls back to the area derived from its members. */
 export type ComboPatch = Partial<Pick<ComboDocument, 'label' | 'members' | 'mappings' | 'exposedToLlm'>> & { area?: ComboDocument['area'] | null }
+/** `area: null` clears a stored area override so the entry falls back to its derived area; an absent key leaves it unchanged. */
+export type EntryPatch = Omit<CuratedOverride, 'id' | 'area'> & { area?: CuratedOverride['area'] | null }
 export type CustomPatch = Partial<Omit<CustomExpressionDocument, 'id' | 'parameterId'>>
 
 export interface CatalogPersistenceContext {
@@ -28,7 +30,7 @@ export function createCatalogPersistence(context: CatalogPersistenceContext) {
     curated.value = parsed.value
   }
 
-  function updateEntry(id: string, patch: Omit<CuratedOverride, 'id'>) {
+  function updateEntry(id: string, patch: EntryPatch) {
     if (id.startsWith('combo:') || id.startsWith('custom:')) {
       console.warn('[expression-store] Use the combo or custom command:', id)
       return
@@ -36,9 +38,15 @@ export function createCatalogPersistence(context: CatalogPersistenceContext) {
     if (!derived.value.some(entry => entry.id === id))
       throw new Error(`Unknown expression: ${id}`)
     const previous = curated.value.overrides.find(entry => entry.id === id)
+    const { area, ...rest } = patch
+    const merged: CuratedOverride = { ...previous, ...rest, id }
+    if (area === null)
+      delete merged.area
+    else if (area)
+      merged.area = area
     persistCurated({ ...curated.value, overrides: [
       ...curated.value.overrides.filter(entry => entry.id !== id),
-      { ...previous, ...patch, id },
+      merged,
     ] })
   }
 

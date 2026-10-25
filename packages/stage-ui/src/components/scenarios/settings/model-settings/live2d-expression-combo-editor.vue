@@ -58,7 +58,8 @@ function initialMappings(): DraftMapping[] {
 
 const draftLabel = ref(initialLabel())
 const draftMembers = ref<ComboMember[]>((props.combo?.members ?? props.initialMembers ?? []).map(member => ({ ...member })))
-const draftArea = ref<string>(props.combo?.area ?? noArea)
+const initialArea = props.combo?.area ?? noArea
+const draftArea = ref<string>(initialArea)
 const draftMappings = ref<DraftMapping[]>(initialMappings())
 const draftExposedToLlm = ref(props.combo?.exposedToLlm ?? false)
 // Only the store knows a combo's slots; a new combo gets its AI eligibility on creation.
@@ -111,10 +112,10 @@ function save() {
         members,
         mappings,
         ...(canExposeToLlm.value ? { exposedToLlm: draftExposedToLlm.value } : {}),
-        // None on an existing combo clears a stored area; an unset area stays unset.
-        ...(draftArea.value === noArea
-          ? (props.combo.area ? { area: null } : {})
-          : { area: draftArea.value as ExpressionArea }),
+        // Only a changed Area select is sent, so saving never pins a derived area; None clears a stored one.
+        ...(draftArea.value === initialArea
+          ? {}
+          : { area: draftArea.value === noArea ? null : draftArea.value as ExpressionArea }),
       },
     })
   }

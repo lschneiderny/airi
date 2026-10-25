@@ -348,6 +348,7 @@ live2d:
       outfit-hair: 'Outfit & hair'
       props: Props
       hidden: Hidden
+      none: None
       unsorted: Unsorted
       unsorted-description: The app couldn't tell what these are. They stay out of the AI's list and automatic picks until you give them a kind.
     duplicates:

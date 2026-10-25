@@ -41,7 +41,7 @@ const aliasLabels = computed(() => (props.entry.aliases ?? []).map(alias => ({ i
 
 const kindOptions = computed(() => kinds.map(kind => ({ value: kind, label: t(`settings.live2d.expressions.kinds.${kind}`) })))
 const areaOptions = computed(() => [
-  { value: noArea, label: t('settings.live2d.expressions.group-none') },
+  { value: noArea, label: t('settings.live2d.expressions.areas.none') },
   ...areas.map(area => ({ value: area, label: t(`settings.live2d.expressions.areas.${area}`) })),
 ])
 const groupOptions = computed(() => [
@@ -63,6 +63,7 @@ const draftLabel = ref('')
 const draftKind = ref<ExpressionKind>('face')
 const draftGroup = ref(noGroup)
 const draftArea = ref<string>(noArea)
+const initialArea = ref<string>(noArea)
 const draftInverted = ref(false)
 const draftMappings = ref<DraftMapping[]>([])
 
@@ -71,6 +72,7 @@ function loadDraft() {
   draftKind.value = props.entry.kind
   draftGroup.value = props.entry.group ?? noGroup
   draftArea.value = props.entry.area ?? noArea
+  initialArea.value = draftArea.value
   draftInverted.value = props.entry.inverted ?? false
   draftMappings.value = props.entry.mappings.map(mapping => ({ emotion: mapping.emotion, weight: mapping.weight, minBand: mapping.minBand }))
   baseline.value = JSON.stringify(props.entry)
@@ -117,7 +119,10 @@ function apply() {
     return
   const label = draftLabel.value.trim()
   const mappings = draftMappings.value.map(mapping => ({ emotion: mapping.emotion, weight: mapping.weight as number, minBand: mapping.minBand }))
-  const area = draftArea.value === noArea ? {} : { area: draftArea.value as ExpressionArea }
+  // A custom switch always stores its own area. A catalog entry sends only a changed Area select, so saving never pins a derived area.
+  const areaChanged = isCustom.value || draftArea.value !== initialArea.value
+  const area = areaChanged && draftArea.value !== noArea ? { area: draftArea.value as ExpressionArea } : {}
+  const clearArea = areaChanged && draftArea.value === noArea && !isCustom.value ? { area: null } : {}
   if (isCustom.value) {
     emit('command', { type: 'update-custom', id: props.entry.id, patch: { label, kind: draftKind.value, mappings, ...area } })
   }
@@ -133,6 +138,7 @@ function apply() {
         inverted: draftInverted.value,
         mappings,
         ...area,
+        ...clearArea,
       },
     })
   }
@@ -174,7 +180,7 @@ function resetEntry() {
           v-if="entry.overriddenBy !== null"
           :class="['break-words', 'text-xs text-amber-700 dark:text-amber-300']"
           role="status"
-        >{{ t('settings.live2d.expressions.overridden-by', { label: labelOf(entry.overriddenBy) }) }}</span>
+        >{{ t('settings.live2d.expressions.overridden-by', { label: entry.overriddenBy }) }}</span>
         <div
           v-if="aliasLabels.length > 0"
           :class="['flex flex-wrap items-center gap-1.5', 'text-xs text-neutral-500 dark:text-neutral-400']"
@@ -267,10 +273,10 @@ function resetEntry() {
           <span>{{ t('settings.live2d.expressions.fields.group') }}</span>
           <Select v-model="draftGroup" :options="groupOptions" />
         </div>
-        <div :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
+        <label :class="['flex flex-col gap-1', 'text-xs text-neutral-500 dark:text-neutral-400']">
           <span>{{ t('settings.live2d.expressions.fields.area') }}</span>
           <Select v-model="draftArea" :options="areaOptions" />
-        </div>
+        </label>
       </div>
 
       <label v-if="!isCustom" :class="['flex items-center justify-between gap-2', 'text-sm text-neutral-700 dark:text-neutral-300']">
