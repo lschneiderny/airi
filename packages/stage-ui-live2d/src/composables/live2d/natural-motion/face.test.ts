@@ -2,7 +2,7 @@ import type { NaturalFaceOutput } from './face'
 
 import { describe, expect, it } from 'vitest'
 
-import { NaturalFaceLayer } from './face'
+import { lidSoftAbs, lidSoftness, NaturalFaceLayer } from './face'
 import { createRandomStream } from './random'
 
 const dt = 1 / 120
@@ -10,6 +10,13 @@ const dt = 1 / 120
 function standardDeviation(values: number[]) {
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length
   return Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length)
+}
+
+function diffRms(values: number[]) {
+  let sum = 0
+  for (let i = 1; i < values.length; i++)
+    sum += (values[i] - values[i - 1]) ** 2
+  return Math.sqrt(sum / (values.length - 1))
 }
 
 function record(face: NaturalFaceLayer, seconds: number, beforeStep?: (time: number) => void) {
@@ -72,6 +79,42 @@ describe('natural face', () => {
     const lids = frames.map(frame => frame.eyeOpenMultiplier)
     expect(lids.reduce((a, b) => Math.max(a, b))).toBeLessThanOrEqual(1)
     expect(lids.reduce((a, b) => Math.min(a, b))).toBeGreaterThan(0.8)
+  })
+
+  it('low-passes the mouth form so per-frame steps stay far below the unfiltered OU steps', () => {
+    const frames = record(new NaturalFaceLayer(createRandomStream(5)), 30 * 60)
+    // An unfiltered OU (SD 0.04, tau 4 s) has a per-frame diff RMS of 0.04 * sqrt(1 - exp(-2 dt / 4)).
+    const unfiltered = 0.04 * Math.sqrt(1 - Math.exp(-2 * dt / 4))
+    expect(diffRms(frames.map(frame => frame.mouthForm))).toBeLessThan(0.25 * unfiltered)
+  })
+
+  it('low-passes the lid micro term so per-frame steps stay far below the unfiltered OU steps', () => {
+    // No gaze shifts are reported, so no narrowing pulse is present.
+    const frames = record(new NaturalFaceLayer(createRandomStream(6)), 30 * 60)
+    const unfiltered = 0.04 * Math.sqrt(1 - Math.exp(-2 * dt / 2))
+    expect(diffRms(frames.map(frame => frame.eyeOpenMultiplier))).toBeLessThan(0.25 * unfiltered)
+  })
+
+  it('keeps the lid multiplier at or below 1 across seeds', () => {
+    for (const seed of [7, 8, 9]) {
+      const frames = record(new NaturalFaceLayer(createRandomStream(seed)), 10 * 60)
+      expect(frames.every(frame => frame.eyeOpenMultiplier <= 1)).toBe(true)
+    }
+  })
+
+  it('matches the soft-abs lid constants to the mean and SD of abs(q) for unit-normal q', () => {
+    // Trapezoid quadrature over [-10, 10]; the integrand is smooth, so the error is far below 1e-6.
+    const h = 1e-3
+    const density = (q: number) => Math.exp(-q * q / 2) / Math.sqrt(2 * Math.PI)
+    let mean = 0
+    let second = 0
+    for (let q = -10; q <= 10 + h / 2; q += h) {
+      const value = lidSoftAbs.a * Math.hypot(q, lidSoftness) + lidSoftAbs.b
+      mean += value * density(q) * h
+      second += value * value * density(q) * h
+    }
+    expect(Math.abs(mean - Math.sqrt(2 / Math.PI))).toBeLessThan(1e-6)
+    expect(Math.abs(Math.sqrt(second - mean * mean) - Math.sqrt(1 - 2 / Math.PI))).toBeLessThan(1e-6)
   })
 
   it('narrows the lids only on gaze shifts above 0.15 normalized', () => {

@@ -46,6 +46,14 @@ const narrowingShare = 0.2
 const narrowingDepth = 0.06
 const narrowingDuration = 0.25
 
+/** Softening width of the lid multiplier's smooth abs; see `lidSoftAbs`. */
+export const lidSoftness = 0.3
+/**
+ * Smooth stand-in for abs(q): `a * hypot(q, lidSoftness) + b`. For a unit-normal q it has the
+ * same mean (sqrt(2/pi)) and SD (sqrt(1 - 2/pi)) as abs(q) but no kink at q = 0.
+ */
+export const lidSoftAbs = { a: 1.0944891587143082, b: -0.1728563303774483 }
+
 interface Pulse {
   start: number
   duration: number
@@ -64,10 +72,11 @@ function pulseAt(pulse: Pulse | null, time: number) {
  *
  * - Brow Y and brow angle: filtered OU (SD 0.043, tau 3 s, 0.5 s filter), plus a
  *   per-side OU (SD 0.005) for L/R asymmetry.
- * - Mouth form: OU (SD 0.04, tau 4 s).
+ * - Mouth form: filtered OU (SD 0.04, tau 4 s, 0.3 s filter), so no frame-rate flicker.
  * - Silent mouth opening: Poisson events at 1 per 40 s, raised-cosine envelope of
  *   0.6-1.4 s, peak at most 0.06. Suppressed while `speechActiveOrRecent`.
- * - Eyelid micro: multiplier `1 - 0.04 |q|` for a unit OU `q` (tau 2 s), and a
+ * - Eyelid micro: multiplier `1 - 0.04 s(q)` for a unit filtered OU `q` (tau 2 s, 0.3 s filter)
+ *   with the smooth abs `s` (`lidSoftAbs`), and a
  *   -0.06 narrowing over 250 ms on 20% of gaze shifts above 0.15 normalized.
  *
  * Time is seconds of active motion; callers step on a fixed grid.
@@ -92,8 +101,8 @@ export class NaturalFaceLayer {
     this.browAngle = new FilteredOu(random, browSd, 3, 0.5)
     // Order: left Y, right Y, left angle, right angle.
     this.browSide = [0, 1, 2, 3].map(() => new FilteredOu(random, browSideSd, 3, 0.5))
-    this.mouthForm = new FilteredOu(random, 0.04, 4)
-    this.lid = new FilteredOu(random, 1, 2)
+    this.mouthForm = new FilteredOu(random, 0.04, 4, 0.3)
+    this.lid = new FilteredOu(random, 1, 2, 0.3)
     this.nextSilentOpenAt = this.drawWait()
   }
 
@@ -131,7 +140,7 @@ export class NaturalFaceLayer {
     const browAngle = this.browAngle.step(dt)
     const [leftY, rightY, leftAngle, rightAngle] = this.browSide.map(side => side.step(dt))
     this.current = {
-      eyeOpenMultiplier: (1 - 0.04 * Math.abs(this.lid.step(dt))) * (1 - pulseAt(this.narrowing, this.time)),
+      eyeOpenMultiplier: (1 - 0.04 * (lidSoftAbs.a * Math.hypot(this.lid.step(dt), lidSoftness) + lidSoftAbs.b)) * (1 - pulseAt(this.narrowing, this.time)),
       eyeOpenHint: 0,
       browY,
       browAngle,
