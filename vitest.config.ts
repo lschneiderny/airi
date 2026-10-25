@@ -28,7 +28,6 @@ export default withCpuSlots(defineConfig({
       'packages/stage-ui-tachie',
       'integrations/minecraft',
       'services/computer-use-mcp',
-      'scripts/sponsorkit',
       'apps/stage-tamagotchi-kirie/vitest.node.config.ts',
       'packages/plugin-sdk',
       'packages/plugin-sdk-tamagotchi',
@@ -57,7 +56,7 @@ export default withCpuSlots(defineConfig({
           include: ['plugins/airi-plugin-web-extension/src/**/*.test.ts'],
         },
       },
-      // Scripts that GitHub Actions run. They belong to no package.
+      // Repository scripts under .github. They belong to no package.
       {
         test: {
           name: 'github-scripts',

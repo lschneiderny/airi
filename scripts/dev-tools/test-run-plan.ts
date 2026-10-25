@@ -90,7 +90,6 @@ export const vitestConfigCoverage: Readonly<Record<string, VitestConfigCoverage>
   'packages/testing-audio/vitest.config.ts': { runBy: ['root'], note: 'only the unit project, as an inline root project. The fakemic projects need the built stage-web and Electron apps and a microphone runtime, so they run only on demand through the package script.' },
   'packages/vite-plugin-sherpaw/vitest.config.ts': { runBy: ['root'] },
   'packages/vitest-plugin-fakemic/vitest.config.ts': { runBy: ['root'] },
-  'scripts/sponsorkit/vitest.config.ts': { runBy: ['root'] },
   'server/apps/api/vitest.config.ts': { runBy: ['root'] },
   'server/apps/auth/vitest.config.ts': { runBy: ['root'] },
   'services/computer-use-mcp/vitest.config.ts': { runBy: ['root'] },
