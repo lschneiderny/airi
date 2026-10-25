@@ -25,15 +25,15 @@ GAP-8: Nothing packaged an A/B comparison for Luke's visual acceptance.
 
 ## Decision
 
-The following changes are delivered on the combined branch `luke/feat/natural-idle-reshape`, whose tip is `f6747f655`.
+The following changes are delivered on the combined branch `luke/feat/natural-idle-reshape`, whose tip is `c3c81f84c`.
 
 - The hold-latched activity gain (`bcdfd23cb`) was already on the base.
-- The face low-pass and the soft-absolute lid (`a2ab060da`) remove the unfiltered face noise and the lid kink.
-- The emotion energy boost and its three settings (`energyAmplitude`, `energyRate`, `energySeconds`) are removed in `b29b05961`. On load, `settings.ts` deletes these three keys from a stored `naturalBands` once, under a `NOTICE` block. Without that step, the strict schema would reject the stored document and reset every performance setting. The strict context schema in `trace.ts` rejects affect traces recorded before this change, because their recorded settings still carry the removed keys.
-- The idle motion ducks under gesture clips (`50f12ec84`). The duck depth is 0.45 times the clip strength times the band amplitude. The attack lasts 0.15 seconds and the release lasts 0.3 seconds. Each clip keeps its own active span.
-- The chuckle laugh now moves the eyes and mouth with synced pulses (`6d373f18b`). This replaces the earlier contract that gestures never touch the face.
-- The eyes counter-rotate against the slow head pose only (`7bc5156c7`). The continuous wobble no longer reaches them.
-- Todo 17 (`73e2c3611`, `f6747f655`) removes the unused intensity parameter from `energy.react`. The desktop reaction and poke overlay is now a fixed x1.3 amplitude and x1.5 shift rate for 2 seconds, and overlapping reactions do not stack. `createClip` is no longer exported. Motion output is bit-identical to `7bc5156c7`. `f6747f655` also corrects the 2026-10-17 line that said impulses raise posture amplitude.
+- The face low-pass and the soft-absolute lid (`bb9405726`) remove the unfiltered face noise and the lid kink.
+- The emotion energy boost and its three settings (`energyAmplitude`, `energyRate`, `energySeconds`) are removed in `34c6b1373`. On load, `settings.ts` deletes these three keys from a stored `naturalBands` once, under a `NOTICE` block. Without that step, the strict schema would reject the stored document and reset every performance setting. The strict context schema in `trace.ts` rejects affect traces recorded before this change, because their recorded settings still carry the removed keys.
+- The idle motion ducks under gesture clips (`4bd1df081`). The duck depth is 0.45 times the clip strength times the band amplitude. The attack lasts 0.15 seconds and the release lasts 0.3 seconds. Each clip keeps its own active span.
+- The chuckle laugh now moves the eyes and mouth with synced pulses (`160158688`). This replaces the earlier contract that gestures never touch the face.
+- The eyes counter-rotate against the slow head pose only (`491a4b687`). The continuous wobble no longer reaches them.
+- Todo 17 (`19f6d68bb`, `c3c81f84c`) removes the unused intensity parameter from `energy.react`. The desktop reaction and poke overlay is now a fixed x1.3 amplitude and x1.5 shift rate for 2 seconds, and overlapping reactions do not stack. `createClip` is no longer exported. Motion output is bit-identical to `7bc5156c7` (rebased as `491a4b687`). `c3c81f84c` also corrects the 2026-10-17 line that said impulses raise posture amplitude.
 
 The idle reshape is held, not decided. It covers the continuous Ornstein-Uhlenbeck retune, human-measured hold durations, and a shifts-only activity regime. Todos 9 to 13 wait on Luke's answer to the todo 9 gate question. That answer was requested four times through the question tool, the fourth as a last call that offered a defer option, and has not arrived.
 
@@ -47,7 +47,7 @@ The evidence for the reshape is arm R4. Its quick yaw reversals, counted per sec
 
 ## Consequences
 
-Gate results were measured at `7bc5156c7`, the last commit that changed motion output before todo 17. The evidence files for this ADR live in the git-ignored `.omo/evidence/natural-motion-quality` folder of the main checkout.
+Gate results were measured at `7bc5156c7` (rebased as `491a4b687`), the last commit that changed motion output before todo 17. The evidence files for this ADR live in the git-ignored `.omo/evidence/natural-motion-quality` folder of the main checkout.
 
 - Liveliness T1 passes 23 of 23 gated metrics, with 0 failures and 0 not applicable.
 - Emotion T1 passes 295 checks and fails 42 of 337. This is the documented accepted set. The baseline at `bcdfd23cb` was 297 passing and 40 failing. The net change is three new failures and one fix. The new failures are `sad:slight:eyelid`, which comes from the face low-pass, and `surprised:strong` on `blinkRate` and `mouthForm`, which come from seed churn after the boost removal. The fix is `awkward:strong:browMean`, which passes through the same seed churn.
@@ -63,9 +63,9 @@ Scores prove direction, size relative to the recipe, release, and detectability 
 
 ## Rendered QA (todo 15)
 
-Liveliness T1 run `20261025-022043` at `7bc5156c7` passes 23 of 23 gated metrics.
+Liveliness T1 run `20261025-022043` at `7bc5156c7` (rebased as `491a4b687`) passes 23 of 23 gated metrics.
 
-Emotion T1 run `20261025-022104` at `7bc5156c7` passes 295 and fails 42 of 337. Emotion T2 reused run `20261025-014444` (291 pass, 46 fail, gitSha `7bc5156c7`).
+Emotion T1 run `20261025-022104` at `7bc5156c7` (rebased as `491a4b687`) passes 295 and fails 42 of 337. Emotion T2 reused run `20261025-014444` (291 pass, 46 fail, gitSha `7bc5156c7` (rebased as `491a4b687`)).
 
 Liveliness T3, run `20261025-025017`, fails with 18 pass, 5 fail, and 0 not applicable. The failing metrics are:
 
@@ -75,7 +75,7 @@ Liveliness T3, run `20261025-025017`, fails with 18 pass, 5 fail, and 0 not appl
 - `minuteAngleYRange` 7.82, against a band of 8 to 29.52.
 - `angleXp5` -15.21, against a band of -34.18 to -16.1.
 
-The five failing values are bit-identical at `bcdfd23cb` and `7bc5156c7` on the T1 run. Attribution in `task-15-verified-r1.json` classifies them as pre-existing rig and render transfer, not Track E.
+The five failing values are bit-identical at `bcdfd23cb` and `7bc5156c7` (rebased as `491a4b687`) on the T1 run. Attribution in `task-15-verified-r1.json` classifies them as pre-existing rig and render transfer, not Track E.
 
 Emotion T3 run `20261025-032245` passes, with 16 gated checks passing and 14 posture rows not applicable. Its transfer ratios run from 0.894 to 1.094 against T1 run `20261025-022104`.
 
