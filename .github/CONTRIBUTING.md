@@ -69,13 +69,6 @@ pnpm dev:tamagotchi
 > [!NOTE]
 > The `dev` and `start` scripts run `install-electron` before `electron-vite`. Electron 42 downloads its binary on first use of its `bin` entry, but `electron-vite` reads `node_modules/electron/path.txt` directly and never triggers that download. Without this step, a fresh install fails with `Error: Electron uninstall`.
 
-On NixOS, Electron needs shared libraries outside the standard paths. Use the FHS shell from `flake.nix`:
-
-```shell
-nix develop .#fhs
-pnpm dev:tamagotchi
-```
-
 ### Web (Stage Web)
 
 ```shell
