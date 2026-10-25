@@ -86,7 +86,8 @@ describe('resolveCommand', () => {
     const command = resolveCommand('vite', { packageDir, rootDir: root, platform: 'win32', execPath })
 
     expect(command.file).toBe(execPath)
-    expect(command.args).toEqual([join(binDir, '..', 'vite', 'bin', 'vite.js')])
+    // The shim target keeps its Windows separators, and the host `join` resolves them only on Windows.
+    expect(command.args).toEqual([join(binDir, '..\\vite\\bin\\vite.js')])
     expect(command.nodePath).toContain('vite@8.2.2')
   })
 
