@@ -1,6 +1,7 @@
 import type { ForegroundWindowSample } from '@proj-airi/electron-eventa'
 
 import { Buffer } from 'node:buffer'
+import { posix } from 'node:path'
 
 // Native references, prototypes, and output buffers stay in this module.
 type NativeRef = unknown
@@ -111,6 +112,12 @@ export interface DarwinBinding {
   readonly isProcessTrusted: () => number
   readonly createString: (value: string) => Pick<DarwinString, 'length' | 'read' | 'release'>
   readonly readSession: () => { readonly onConsole: boolean | null, readonly locked: boolean | null } | null
+  readonly withFrontApplication: (read: (application: {
+    readonly pid: number
+    readonly bundleIdentifier: string | null
+    readonly exePath: string | null
+    readonly terminated: boolean
+  }) => ForegroundWindowSample | null) => ForegroundWindowSample | null
   readonly readDisplays: () => { readonly status: number, readonly displays: readonly { readonly id: number, readonly bounds: Rect }[] }
   readonly readWindows: () => readonly {
     readonly pid: number | null
@@ -231,6 +238,42 @@ export async function loadDarwinBinding(): Promise<DarwinBinding> {
           native.CFRelease(session)
         }
       },
+      withFrontApplication(read) {
+        const pool = native.objc_autoreleasePoolPush()
+        try {
+          const send = (self: NativeRef, selector: string) => native.msgSendPointer(self, native.sel_registerName(selector))
+          const workspace = send(native.objc_getClass('NSWorkspace'), 'sharedWorkspace')
+          const application = send(workspace, 'frontmostApplication')
+          if (!application)
+            return null
+
+          function readPath(selector: string): string | null {
+            const url = send(application, selector)
+            const path = url ? send(url, 'path') : null
+            return path ? readString(native, path) || null : null
+          }
+
+          // Get-rule objects belong to AppKit/the pool, never to CFRelease.
+          return read({
+            get pid() {
+              return native.msgSendInt32(application, native.sel_registerName('processIdentifier'))
+            },
+            get bundleIdentifier() {
+              const identifier = send(application, 'bundleIdentifier')
+              return identifier ? readString(native, identifier) : null
+            },
+            get exePath() {
+              return readPath('bundleURL') ?? readPath('executableURL')
+            },
+            get terminated() {
+              return native.msgSendUint8(application, native.sel_registerName('isTerminated')) !== 0
+            },
+          })
+        }
+        finally {
+          native.objc_autoreleasePoolPop(pool)
+        }
+      },
       readDisplays() {
         const count: [number] = [0]
         const status = native.CGGetActiveDisplayList(0, null, count)
@@ -306,7 +349,34 @@ export async function loadDarwinBinding(): Promise<DarwinBinding> {
   })()
 }
 
-/** Explicit stub until the native binding is connected to the dispatcher. */
-export function createDarwinSampler(_binding: DarwinBinding, _isOwnProcess: (pid: number) => boolean): () => ForegroundWindowSample | null {
-  throw new Error('Darwin foreground sampler is not implemented yet')
+/** Synchronous reads keep each native lifetime wholly inside one sample. */
+export function createDarwinSampler(binding: DarwinBinding, isOwnProcess: (pid: number) => boolean): () => ForegroundWindowSample | null {
+  return function sample(): ForegroundWindowSample | null {
+    const session = binding.readSession()
+    if (!session || session.onConsole === false || session.locked === true)
+      return null
+
+    return binding.withFrontApplication((application) => {
+      const pid = application.pid
+      if (pid <= 0)
+        return null
+      if (application.bundleIdentifier === 'com.apple.loginwindow' || application.bundleIdentifier === 'com.apple.ScreenSaver.Engine')
+        return null
+
+      const exePath = application.exePath
+      const ownProcess = isOwnProcess(pid)
+      if (application.terminated)
+        return null
+
+      return {
+        exePath,
+        exeName: exePath === null ? null : posix.basename(exePath),
+        pid,
+        ownProcess,
+        title: '',
+        busy: 'accepts',
+        sampledAtMs: Date.now(),
+      }
+    })
+  }
 }
