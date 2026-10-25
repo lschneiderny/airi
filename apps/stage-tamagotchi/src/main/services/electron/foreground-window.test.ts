@@ -60,6 +60,21 @@ const koffiMock = vi.hoisted(() => ({
   load: vi.fn(),
 }))
 
+const logMock = vi.hoisted(() => {
+  const logger = {
+    withError: vi.fn(),
+    warn: vi.fn(),
+    useGlobalConfig: vi.fn(),
+  }
+  logger.withError.mockReturnValue(logger)
+  logger.useGlobalConfig.mockReturnValue(logger)
+  return logger
+})
+
+vi.mock('@guiiai/logg', () => ({
+  useLogg: () => logMock,
+}))
+
 vi.mock('koffi', () => ({
   load: koffiMock.load,
 }))
@@ -263,6 +278,20 @@ describe('createForegroundWindowService', () => {
     await expect(read()).resolves.toBeNull()
     expect(koffiMock.load).toHaveBeenCalledOnce()
     expect(win32.GetForegroundWindow).not.toHaveBeenCalled()
+  })
+
+  it('resolves null and logs exactly one warning when koffi.load throws', async () => {
+    const failure = new Error('user32.dll failed to load')
+    koffiMock.load.mockImplementation(() => {
+      throw failure
+    })
+    const read = createReader()
+
+    await expect(read()).resolves.toBeNull()
+    await expect(read()).resolves.toBeNull()
+
+    expect(logMock.withError).toHaveBeenCalledExactlyOnceWith(failure)
+    expect(logMock.warn).toHaveBeenCalledExactlyOnceWith('foreground window sampling is unavailable: user32.dll failed to load')
   })
 
   it('loads koffi only on the first read, once for overlapping reads', async () => {
