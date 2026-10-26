@@ -58,7 +58,7 @@ What each kind of work needs beyond that:
 
 macOS version limits:
 
-- Xcode 26 requires macOS Sequoia 15.6 or later. Release builds use Xcode 26.2.
+- Xcode 26 requires macOS Sequoia 15.6 or later.
 - Apple Speech transcription requires macOS 26.
 
 In development, macOS asks for Accessibility (global shortcuts) and Screen Recording (screen capture) on behalf of the app that launched Electron, which is usually your terminal. Grant them to the terminal, then restart it.
