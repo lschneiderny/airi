@@ -7,6 +7,8 @@ description: Read and analyze AIRI IO traces that Tamagotchi saved to local file
 
 Tamagotchi saves each ended IO span as one JSON line when **Record IO traces automatically** is on. The setting is under Settings > System > Developer.
 
+Every window sends its spans to the IO trace hub in the main process, and the recording reads them from the hub. One file therefore holds the spans of all windows, such as the stage, the settings window, and the chat window.
+
 ## Find the files
 
 Files are named `<start time>.jsonl`. A new file starts each time recording starts. Files older than seven days are deleted.
