@@ -110,6 +110,8 @@ export class NaturalGazeLayer {
   private screenPointActive = false
   private chatPoint: GazePoint | null = null
   private chatTyping = false
+  /** An explicit sent/unfold read owns the current fixation independently of the typing branch. */
+  private chatRead = false
 
   constructor(
     private readonly random: RandomStream,
@@ -123,7 +125,7 @@ export class NaturalGazeLayer {
   setChatTarget(point: GazePoint | null, typing: boolean, at = this.time) {
     this.chatPoint = point
     this.chatTyping = typing
-    if (point === null && this.onChat)
+    if (point === null && (this.onChat || this.chatRead))
       this.fixateNext(at)
   }
 
@@ -218,9 +220,11 @@ export class NaturalGazeLayer {
    * Saccades to `point` at `at` and holds it for `hold` seconds before autonomous
    * fixations resume. Used by emotion impulses and desktop reactions.
    * Returns the active-time end of the hold, including the approach saccade.
+   * A chat source relinquishes its hold when the chat target is cleared, including while talking.
    */
-  glance(point: GazePoint, hold: number, at: number) {
+  glance(point: GazePoint, hold: number, at: number, source?: 'chat') {
     this.saccadeTo(point, at, hold)
+    this.chatRead = source === 'chat'
     return this.nextFixationAt
   }
 
@@ -333,6 +337,7 @@ export class NaturalGazeLayer {
 
   private saccadeTo(target: Target, at: number, hold?: number, catchUp = false) {
     this.onChat = false
+    this.chatRead = false
     const from = this.gazeAt(at)
     const to = catchUp ? this.catchUpTarget(from) : this.resolve(target)
     // Amplitude in approximate degrees: 20 per normalized eye unit.

@@ -528,7 +528,7 @@ export class Live2DNaturalMotion {
       const glance = this.chatGlance
       this.chatGlance = null
       if (chatTarget != null && !this.energy.talking && !this.petOverride && stepStart >= this.petGlanceUntil) {
-        this.chatGlanceUntil = this.gaze.glance(glance.point, glance.hold, stepStart)
+        this.chatGlanceUntil = this.gaze.glance(glance.point, glance.hold, stepStart, 'chat')
         if (this.observer)
           this.notify({ kind: 'glance', at: stepStart, cause: glance.cause, point: glance.point, hold: glance.hold })
       }

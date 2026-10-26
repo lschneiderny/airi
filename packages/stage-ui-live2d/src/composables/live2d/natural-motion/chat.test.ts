@@ -128,6 +128,56 @@ describe('natural chat attention', () => {
     expect(events.filter(event => event.kind === 'glance' && event.cause === 'chat-typing')).toEqual([])
   })
 
+  it.each(['sent', 'unfold'] as const)('leaves an active %s read by the next grid step when talking starts', (cue) => {
+    const { motion, events } = fixture()
+    motion.setChat(input, 0)
+    motion.setChat({ ...input, sentSeq: Number(cue === 'sent'), unfoldSeq: Number(cue === 'unfold') }, 1)
+    const point = mapCursor(target).eye
+    expect(motion.advance(1.5).fixation).toEqual(point)
+    motion.setPerformance({ mode: 'talking', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }, 0.5, 1.5)
+    expect(motion.advance(181 * dt).fixation).not.toEqual(point)
+    let heldChatFrames = 0
+    for (let frame = 182; frame <= 420; frame++) {
+      const fixation = motion.advance(frame * dt).fixation
+      heldChatFrames += Number(fixation.x === point.x && fixation.y === point.y)
+    }
+    expect(heldChatFrames).toBe(0)
+    expect(events.filter(event => event.kind === 'glance' && event.cause.startsWith('chat-') && event.at >= 1.5)).toEqual([])
+  })
+
+  it('leaves a settled typing-branch fixation by the next grid step when talking starts', () => {
+    const { motion, events } = fixture()
+    motion.setChat({ ...input, typing: true }, 0)
+    let frame = 0
+    while (!motion.onChat && frame < 30 / dt)
+      motion.advance(++frame * dt)
+    expect(motion.onChat).toBe(true)
+    advance(motion, frame * dt, (frame + 12) * dt)
+    frame += 12
+    expect(motion.onChat).toBe(true)
+    const before = motion.advance(frame * dt).fixation
+    const at = frame * dt
+    motion.setPerformance({ mode: 'talking', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }, 0.5, at)
+    expect(motion.advance((++frame) * dt).fixation).not.toEqual(before)
+    expect(motion.onChat).toBe(false)
+    expect(motion.chatHeadFollow).toEqual({ x: 0, y: 0 })
+    const endFrame = frame + 240
+    for (; frame <= endFrame; frame++) {
+      motion.advance(frame * dt)
+      expect(motion.onChat).toBe(false)
+    }
+    expect(events.filter(event => event.kind === 'glance' && event.cause.startsWith('chat-') && event.at >= at)).toEqual([])
+  })
+
+  it('cancels a pending read when talking starts before its deadline', () => {
+    const { motion, events } = fixture()
+    motion.setChat(input, 0)
+    motion.setChat({ ...input, sentSeq: 1 }, 1)
+    motion.setPerformance({ mode: 'talking', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }, 0.5, 1.1)
+    advance(motion, 1.1, 6)
+    expect(events.filter(event => event.kind === 'glance' && event.cause === 'chat-sent')).toEqual([])
+  })
+
   it('moves mean head X toward the chat by at least 0.03 during typing fixations', () => {
     const { motion } = fixture()
     const baseline = fixture().motion
