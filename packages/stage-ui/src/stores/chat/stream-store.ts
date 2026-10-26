@@ -3,7 +3,7 @@ import type { ChatOrchestratorRuntimeState } from '@proj-airi/core-agent'
 import type { StreamingAssistantMessage } from '../../types/chat'
 
 import { defineStore } from 'pinia'
-import { computed, ref, shallowRef, toRaw } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 
 import { useChatSessionStore } from './session-store'
 
@@ -42,15 +42,6 @@ export const useChatStreamStore = defineStore('chat-stream', () => {
     })
   }
 
-  function finalizeStream(fullText?: string) {
-    const sessionId = chatSession.activeSessionId
-    if (streamingMessage.value.slices.length > 0)
-      chatSession.appendSessionMessage(sessionId, toRaw(streamingMessage.value))
-    streamingMessage.value = { role: 'assistant', content: '', slices: [], tool_results: [] }
-    if (fullText)
-      streamingMessage.value.content = fullText
-  }
-
   function resetStream() {
     streamingMessage.value = { role: 'assistant', content: '', slices: [], tool_results: [] }
   }
@@ -61,7 +52,6 @@ export const useChatStreamStore = defineStore('chat-stream', () => {
     updateActiveTurns,
     beginStream,
     appendStreamLiteral,
-    finalizeStream,
     resetStream,
   }
 })

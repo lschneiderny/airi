@@ -33,7 +33,6 @@ const { characterWindows } = vi.hoisted(() => ({
 }))
 const beginStreamMock = vi.fn()
 const appendStreamLiteralMock = vi.fn()
-const finalizeStreamMock = vi.fn()
 const resetStreamMock = vi.fn()
 const refreshSessionMock = vi.fn()
 const serverSendMock = vi.fn()
@@ -280,7 +279,6 @@ vi.mock('../../chat/stream-store', () => ({
   useChatStreamStore: () => ({
     beginStream: beginStreamMock,
     appendStreamLiteral: appendStreamLiteralMock,
-    finalizeStream: finalizeStreamMock,
     resetStream: resetStreamMock,
   }),
 }))
@@ -322,7 +320,6 @@ describe('context bridge contract', () => {
     situationIngestMock.mockClear()
     beginStreamMock.mockReset()
     appendStreamLiteralMock.mockReset()
-    finalizeStreamMock.mockReset()
     resetStreamMock.mockReset()
     refreshSessionMock.mockReset().mockResolvedValue(true)
     serverSendMock.mockReset()
@@ -768,9 +765,6 @@ describe('context bridge contract', () => {
       expect(resetStreamMock).toHaveBeenCalledTimes(1)
     })
 
-    // The bridge should call resetStream on follower tabs, not finalizeStream,
-    // to avoid corrupting history by persisting a duplicate assistant message.
-    expect(finalizeStreamMock).not.toHaveBeenCalled()
     expect(chatOrchestratorMock.sending).toBe(false)
     expect(store.isReceivingRemoteStream).toBe(false)
 
@@ -1222,7 +1216,6 @@ describe('context bridge contract', () => {
     await waitForBroadcastDelivery()
 
     expect(appendStreamLiteralMock).not.toHaveBeenCalledWith('stale-literal')
-    expect(finalizeStreamMock).not.toHaveBeenCalled()
     expect(chatOrchestratorMock.sending).toBe(false)
     expect(store.isReceivingRemoteStream).toBe(false)
 
