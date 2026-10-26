@@ -154,7 +154,7 @@ The [situational presence ADR](../../docs/ai/adr/2026-10-19-situational-presence
 
 ### Foreground window store
 
-The `stores/foreground-window` entrypoint owns `useForegroundWindowStore`, which holds the latest `ForegroundWindowSample`: the foreground app's executable, its window title, whether the window belongs to AIRI, the Windows notification state, and `sampledAtMs`.
+The `stores/foreground-window` entrypoint owns `useForegroundWindowStore`, which holds the latest `ForegroundWindowSample`: the foreground app's executable, its window title, whether the window belongs to AIRI, the host-neutral `busy` state, and `sampledAtMs`.
 A host writes it with `setSample` and clears it with `reset`. The Electron app writes it once per second using the Windows or macOS foreground sensor. Hosts without a foreground sampler leave `sample` as `null`.
 A failed reading keeps the previous sample, so consumers judge freshness from `sampledAtMs`.
 

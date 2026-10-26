@@ -10,7 +10,7 @@ import { shallowRef } from 'vue'
 export interface ForegroundWindowSample {
   /** Full image path of the owning process, or `null` when the host cannot read it. */
   exePath: string | null
-  /** File name of `exePath` with its original casing, for example `Notepad.exe`. */
+  /** File name of `exePath` with its original casing, for example `Notepad.exe` or `TextEdit.app`. */
   exeName: string | null
   /** Raw window title; empty when the window has none. Never persist or log it. */
   title: string

@@ -7,9 +7,9 @@ import { defineInvokeEventa } from '@moeru/eventa'
  * and the title denylist before a title reaches a prompt, and must not persist it.
  */
 export interface ForegroundWindowSample {
-  /** Full image path of the owning process, or `null` when Windows denies the query. */
+  /** Full image path of the owning process, or `null` when the host cannot read it. */
   exePath: string | null
-  /** File name of `exePath` with its original casing, for example `Notepad.exe`. */
+  /** File name of `exePath` with its original casing, for example `Notepad.exe` or `TextEdit.app`. */
   exeName: string | null
   /** Window title; empty when the window has none. */
   title: string
