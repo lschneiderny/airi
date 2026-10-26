@@ -11,6 +11,8 @@ export type Live2DNaturalEmotionStrengths = Record<string, Partial<Record<Perfor
 const live2dMotionDriver = useLocalStorageManualReset<Live2DMotionDriver>('settings/live2d/motion-driver', 'universal')
 const live2dEyeTracking = useLocalStorageManualReset<boolean>('settings/live2d/eye-tracking', true)
 const live2dNaturalCursorAttention = useLocalStorageManualReset<boolean>('settings/live2d/natural-cursor-attention', true)
+/** Let Natural lean toward the middle of the screens and glance at the chat. */
+const live2dNaturalScreenAwareness = useLocalStorageManualReset<boolean>('settings/live2d/natural-screen-awareness', true)
 /** Let the user poke the model and pet its head with the cursor while Natural drives it. */
 const live2dNaturalTouch = useLocalStorageManualReset<boolean>('settings/live2d/natural-touch', true)
 /** Count only strokes made with the primary button held as pets, so passing the cursor over the head never pets it. */
@@ -110,6 +112,7 @@ function resetState() {
   live2dMotionDriver.reset()
   live2dEyeTracking.reset()
   live2dNaturalCursorAttention.reset()
+  live2dNaturalScreenAwareness.reset()
   live2dNaturalTouch.reset()
   live2dNaturalTouchPetRequiresHold.reset()
   live2dNaturalTouchHeadScale.reset()
@@ -131,6 +134,7 @@ export const useSettingsLive2d = defineStore('settings-live2d', () => {
     live2dMotionDriver,
     live2dEyeTracking,
     live2dNaturalCursorAttention,
+    live2dNaturalScreenAwareness,
     live2dNaturalTouch,
     live2dNaturalTouchPetRequiresHold,
     live2dNaturalTouchHeadScale,

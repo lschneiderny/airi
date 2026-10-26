@@ -44,6 +44,7 @@ const {
   live2dMotionDriver,
   live2dEyeTracking,
   live2dNaturalCursorAttention,
+  live2dNaturalScreenAwareness,
   live2dNaturalTouch,
   live2dNaturalTouchPetRequiresHold,
   live2dNaturalTouchHeadScale,
@@ -461,6 +462,13 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       v-model="live2dNaturalCursorAttention"
       :label="t('settings.live2d.animation.natural-cursor-attention.title')"
       :description="t('settings.live2d.animation.natural-cursor-attention.description')"
+      placement="right"
+    />
+    <FieldCheckbox
+      v-if="live2dMotionDriver === 'natural'"
+      v-model="live2dNaturalScreenAwareness"
+      :label="t('settings.live2d.animation.natural-screen-awareness.title')"
+      :description="t('settings.live2d.animation.natural-screen-awareness.description')"
       placement="right"
     />
     <FieldCheckbox

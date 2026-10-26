@@ -232,6 +232,9 @@ live2d:
     natural-cursor-attention:
       title: Cursor attention
       description: Let Natural follow the moving cursor. Turn this off for autonomous movement only.
+    natural-screen-awareness:
+      title: Screen-aware attention
+      description: Turn slightly toward the middle of your screens when the model sits off to one side, look into the screen, and glance at the chat while you type.
     natural-touch:
       title: Poke and pet
       description: React when you click the model or stroke its head with the cursor.

@@ -657,6 +657,54 @@ describe('live2D model settings', () => {
     expect(settings.live2dEyeTracking).toBe(true)
   })
 
+  it('shows the screen-aware attention setting only for Natural and restores it on reset', async () => {
+    Object.assign(window, { Live2DCubismCore: {} })
+    const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
+      import('@proj-airi/stage-ui-live2d'),
+      import('./live2d.vue'),
+    ])
+    await import('virtual:uno.css')
+    const pinia = createPinia()
+    const settings = useSettingsLive2d(pinia)
+    settings.resetState()
+    const screen = await render(Live2DSettings, {
+      props: {
+        palette: [],
+        runtimeSnapshot: {
+          ownerInstanceId: 'stage-owner',
+          modelId: 'test-model',
+          renderer: 'live2d',
+          phase: 'mounted',
+          controlsLocked: false,
+          previewAvailable: true,
+          canCapturePreview: false,
+          updatedAt: 1,
+        },
+      },
+      global: { plugins: [pinia, createTestI18n()] },
+    })
+    const name = t('settings.live2d.animation.natural-screen-awareness.title')
+    await screen.getByText(t('settings.live2d.animation.title'), { exact: true }).click()
+    await expect.element(screen.getByRole('radio', { name: 'Universal', exact: true })).toBeChecked()
+    await expect.element(screen.getByRole('switch', { name })).not.toBeInTheDocument()
+
+    await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
+    const awareness = screen.getByRole('switch', { name })
+    await expect.element(awareness).toBeChecked()
+    expect(settings.live2dNaturalScreenAwareness).toBe(true)
+    await awareness.click()
+    await nextTick()
+    expect(settings.live2dNaturalScreenAwareness).toBe(false)
+    expect(localStorage.getItem('settings/live2d/natural-screen-awareness')).toBe('false')
+
+    settings.resetState()
+    await nextTick()
+    expect(settings.live2dNaturalScreenAwareness).toBe(true)
+    expect(localStorage.getItem('settings/live2d/natural-screen-awareness')).toBe('true')
+    await expect.element(screen.getByRole('radio', { name: 'Universal', exact: true })).toBeChecked()
+    await expect.element(screen.getByRole('switch', { name })).not.toBeInTheDocument()
+  })
+
   it('hides eye tracking under Natural whether touch is on or off', async () => {
     Object.assign(window, { Live2DCubismCore: {} })
     const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
