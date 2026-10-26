@@ -10,8 +10,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { createForegroundWindowService } from './foreground-window'
 import { createDarwinSampler, loadDarwinBinding } from './foreground-window-darwin'
 
-// Opt-in diagnostic, not a default green regression gate: the cold service RSS
-// bound remains unmet (worst batch +43,319,296 bytes). Keep the assertion and
+// Opt-in diagnostic, not a default green regression gate: 20 batches exceeded
+// the 20 MiB bound across task 12 (18 service, 2 native). The global maximum was
+// +44,138,496 bytes (service, pid 10244, epoch 2 batch 4). Keep the assertion and
 // historical failures visible; do not treat the default skipped run as a pass.
 
 // Match the real-binding service suite: only Electron's process inventory is mocked.
