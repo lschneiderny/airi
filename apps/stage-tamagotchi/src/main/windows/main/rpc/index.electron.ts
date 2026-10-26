@@ -19,7 +19,9 @@ import { ipcMain } from 'electron'
 
 import {
   electronCenterMainWindow,
+  electronChatAttentionTargetChanged,
   electronChatButtonStateChanged,
+  electronGetChatAttentionTarget,
   electronGetChatButtonState,
   electronOpenChat,
   electronOpenEditor,
@@ -95,5 +97,8 @@ export async function setupMainWindowElectronInvokes(params: {
   defineInvokeHandler(context, electronGetChatButtonState, () => params.chatWindow.getButtonState())
   const stopChatButtonState = params.chatWindow.onButtonStateChange(state => context.emit(electronChatButtonStateChanged, state))
   params.window.once('closed', stopChatButtonState)
+  defineInvokeHandler(context, electronGetChatAttentionTarget, () => params.chatWindow.getAttentionTarget())
+  const stopChatAttentionTarget = params.chatWindow.onAttentionTargetChange(target => context.emit(electronChatAttentionTargetChanged, target))
+  params.window.once('closed', stopChatAttentionTarget)
   defineInvokeHandler(context, noticeWindowEventa.openWindow, payload => params.noticeWindow.open(payload))
 }

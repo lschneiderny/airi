@@ -1,7 +1,7 @@
 import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import type { InferOutput } from 'valibot'
 
-import type { ChatButtonState, ChatDraftHandover, ChatWindowMode, ChatWindowPreferences } from '../../../shared/eventa'
+import type { ChatAttentionTarget, ChatButtonState, ChatDraftHandover, ChatWindowMode, ChatWindowPreferences } from '../../../shared/eventa'
 import type { I18n } from '../../libs/i18n'
 import type { ServerChannel } from '../../services/airi/channel-server'
 import type { McpManager } from '../../services/airi/mcp-servers'
@@ -29,6 +29,7 @@ import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { protectPrivilegedWindowNavigation } from '../shared'
+import { chatAttentionTargetOf, createChatAttentionTargetFeed } from './attention-target'
 import { setupFloatingChatWindow } from './floating'
 import { createChatModeSwitch } from './mode-switch'
 import { setupChatWindowElectronInvokes } from './rpc/index.electron'
@@ -81,6 +82,13 @@ export interface ChatWindowManager {
   getButtonState: () => ChatButtonState
   /** Calls `listener` whenever the button state changes. Returns the function that stops it. */
   onButtonStateChange: (listener: (state: ChatButtonState) => void) => () => void
+  /** Where the chat of the saved mode is on screen, for the character to look at. */
+  getAttentionTarget: () => ChatAttentionTarget
+  /**
+   * Calls `listener` whenever the attention target changes, compared deeply
+   * with the last target sent. Returns the function that stops it.
+   */
+  onAttentionTargetChange: (listener: (target: ChatAttentionTarget) => void) => () => void
 }
 
 /**
@@ -150,6 +158,8 @@ export function setupChatWindowManager(params: {
     setupDraftHandover(window, context, mode)
   }
 
+  const attentionTarget = createChatAttentionTargetFeed(() => getAttentionTarget())
+
   const legacy = createReusableWindow(async () => {
     const window = new BrowserWindow({
       title: 'Chat',
@@ -165,6 +175,13 @@ export function setupChatWindowManager(params: {
 
     window.on('ready-to-show', () => window.show())
     protectPrivilegedWindowNavigation(window)
+    window.on('show', attentionTarget.update)
+    window.on('hide', attentionTarget.update)
+    window.on('minimize', attentionTarget.update)
+    window.on('restore', attentionTarget.update)
+    window.on('move', attentionTarget.update)
+    window.on('resize', attentionTarget.update)
+    window.on('closed', attentionTarget.update)
 
     // TODO: once we refactored eventa to support window-namespaced contexts,
     // we can remove the setMaxListeners call below since eventa will be able to dispatch and
@@ -200,8 +217,23 @@ export function setupChatWindowManager(params: {
     getBounds: () => getConfig().floating,
     saveBounds: bounds => updateConfig({ ...getConfig(), floating: bounds }),
     setupChatInvokes: (window, context) => setupChatInvokes(window, context, 'floating'),
-    onFoldedChange: () => emitButtonState(),
+    onFoldedChange: () => {
+      emitButtonState()
+      attentionTarget.update()
+    },
+    onWindowChange: () => attentionTarget.update(),
   })
+
+  function getAttentionTarget(): ChatAttentionTarget {
+    if (getConfig().mode === 'floating')
+      return chatAttentionTargetOf(floating.attentionSnapshot())
+
+    const window = legacy.getOpenWindow()
+    return chatAttentionTargetOf({
+      mode: 'legacy',
+      window: window ? { shown: window.isVisible(), minimized: window.isMinimized(), bounds: window.getBounds() } : undefined,
+    })
+  }
 
   function getButtonState(): ChatButtonState {
     const mode = getConfig().mode
@@ -225,7 +257,12 @@ export function setupChatWindowManager(params: {
 
   const modeSwitch = createChatModeSwitch({
     getMode: () => getConfig().mode,
-    setMode: mode => updateConfig({ ...getConfig(), mode }),
+    setMode: (mode) => {
+      updateConfig({ ...getConfig(), mode })
+      // The target follows the saved mode, so the window of the other mode
+      // stops counting before it closes.
+      attentionTarget.update()
+    },
     legacy: { open: openLegacy, close: legacy.close, collectDraft: async () => collectDraft(legacy.getOpenWindow()) },
     floating: { open: floating.open, close: floating.close, collectDraft: async () => collectDraft(floating.getOpenWindow()) },
   })
@@ -276,5 +313,7 @@ export function setupChatWindowManager(params: {
       buttonStateListeners.add(listener)
       return () => buttonStateListeners.delete(listener)
     },
+    getAttentionTarget,
+    onAttentionTargetChange: attentionTarget.subscribe,
   }
 }

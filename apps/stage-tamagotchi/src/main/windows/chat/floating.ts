@@ -3,6 +3,7 @@ import type { ResizeDirection } from '@proj-airi/electron-eventa'
 import type { Point, Rectangle } from 'electron'
 
 import type { ChatFloatingPlacement, ChatFloatingState } from '../../../shared/eventa'
+import type { ChatWindowSnapshot } from './attention-target'
 import type { AttachedChatLayout } from './floating-placement'
 
 import { join, resolve } from 'node:path'
@@ -59,6 +60,8 @@ interface FloatingChatWindow {
   applyPlacement: () => void
   /** Whether the chat is unfolded, which the chat button shows as pressed. */
   isUnfolded: () => boolean
+  /** What the character's attention on the chat depends on. */
+  attentionSnapshot: () => Extract<ChatWindowSnapshot, { mode: 'floating' }>
 }
 
 /**
@@ -102,6 +105,12 @@ export function setupFloatingChatWindow(params: {
   setupChatInvokes: (window: BrowserWindow, context: EventaContext) => Promise<void>
   /** Called when the chat folds or unfolds. */
   onFoldedChange: () => void
+  /**
+   * Called when the chat window may have moved, resized, shown, hidden, or
+   * closed, or started or finished moving to the other side of the main
+   * window. The caller compares the result itself, so extra calls are cheap.
+   */
+  onWindowChange: () => void
 }): FloatingChatWindow {
   let context: EventaContext | undefined
   let folded = true
@@ -149,6 +158,8 @@ export function setupFloatingChatWindow(params: {
 
   function emitState() {
     context?.emit(electronChatFloatingStateChanged, currentState())
+    // Every change of `relocating` is reported here.
+    params.onWindowChange()
   }
 
   function setFolded(value: boolean) {
@@ -281,7 +292,10 @@ export function setupFloatingChatWindow(params: {
     if (!main || main.isDestroyed())
       return
 
-    const follow = () => followMain(main, target)
+    const follow = () => {
+      followMain(main, target)
+      params.onWindowChange()
+    }
     const hideWithMain = () => target.hide()
     const showWithMain = () => {
       if (!folded)
@@ -440,6 +454,10 @@ export function setupFloatingChatWindow(params: {
         persistBounds(target)
     }, 300)
     target.on('move', persistMove)
+    target.on('move', params.onWindowChange)
+    target.on('resize', params.onWindowChange)
+    target.on('show', params.onWindowChange)
+    target.on('hide', params.onWindowChange)
     target.on('always-on-top-changed', (_, isAlwaysOnTop) => {
       pinned = isAlwaysOnTop
       emitState()
@@ -456,6 +474,7 @@ export function setupFloatingChatWindow(params: {
         relocating = false
         pinned = false
       }
+      params.onWindowChange()
     })
 
     defineInvokeHandler(targetContext, electronChatFloatingGetState, () => currentState())
@@ -546,5 +565,14 @@ export function setupFloatingChatWindow(params: {
         applyPlacementTo(window)
     },
     isUnfolded: () => !folded,
+    attentionSnapshot() {
+      const window = reusable.getOpenWindow()
+      return {
+        mode: 'floating',
+        window: window ? { shown: window.isVisible(), bounds: boundsOf(window) } : undefined,
+        folded,
+        relocating,
+      }
+    },
   }
 }

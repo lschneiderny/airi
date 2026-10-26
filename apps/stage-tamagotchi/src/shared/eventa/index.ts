@@ -149,6 +149,27 @@ export interface ChatButtonState {
 export const electronGetChatButtonState = defineInvokeEventa<ChatButtonState>('eventa:invoke:electron:windows:chat:get-button-state')
 export const electronChatButtonStateChanged = defineEventa<ChatButtonState>('eventa:event:electron:windows:chat:button-state-changed')
 
+/**
+ * Where the chat window is on screen, so the character can look at it.
+ *
+ * `bounds` is the chat window rectangle in Electron DIP screen coordinates,
+ * the same space as `BrowserWindow.getBounds()`. It is `null` whenever
+ * `visible` is `false`. The payload carries only this rectangle and never any
+ * chat content.
+ *
+ * `visible` is `true` only while the chat of the saved mode is on screen: a
+ * floating chat that is shown, unfolded, and not moving to the other side of
+ * the main window, or a legacy chat window that is shown and not minimized.
+ */
+export interface ChatAttentionTarget {
+  visible: boolean
+  bounds: { x: number, y: number, width: number, height: number } | null
+}
+
+export const electronGetChatAttentionTarget = defineInvokeEventa<ChatAttentionTarget>('eventa:invoke:electron:windows:chat:attention-target:get')
+/** Sent to the main window only when the target differs from the last one sent. */
+export const electronChatAttentionTargetChanged = defineEventa<ChatAttentionTarget>('eventa:event:electron:windows:chat:attention-target-changed')
+
 export const electronChatWindowGetPreferences = defineInvokeEventa<ChatWindowPreferences>('eventa:invoke:electron:windows:chat:get-preferences')
 /**
  * Persists the preferences and swaps the open chat window when the mode
