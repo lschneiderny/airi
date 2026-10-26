@@ -160,6 +160,8 @@ export default defineConfig({
       alias: {
         '@proj-airi/server-sdk': resolve(join(import.meta.dirname, '..', '..', 'packages', 'server-sdk', 'src')),
         '@proj-airi/i18n': resolve(join(import.meta.dirname, '..', '..', 'packages', 'i18n', 'src')),
+        // Serve core-agent from source so a package rebuild, which empties dist, cannot break the renderer reload.
+        '@proj-airi/core-agent': resolve(join(import.meta.dirname, '..', '..', 'packages', 'core-agent', 'src')),
         // NOTICE: the @proj-airi/stage-ui alias resolves to a directory; rolldown
         // concatenates sub-paths without a file extension, so bare .ts files at the
         // stores/ root (e.g. mcp-tool-bridge.ts) are not found.  Add explicit aliases
