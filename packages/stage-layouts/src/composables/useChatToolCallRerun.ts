@@ -1,50 +1,44 @@
 import type { ChatToolCallRerunEvent } from '@proj-airi/stage-ui/stores/tool-call-rerun'
 
 import { errorMessageFrom } from '@moeru/std'
-import { useChatVision } from '@proj-airi/stage-ui/composables/vision/use-chat-vision'
-import { resolveLlmTools } from '@proj-airi/stage-ui/stores/ai/chat-llm/tool-resolver'
+import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
-import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
-import { executeToolCallRerun } from '@proj-airi/stage-ui/stores/tool-call-rerun'
+import { nanoid } from 'nanoid'
 
+/**
+ * Runs a stored tool call again from the chat history of the web and mobile layouts.
+ *
+ * The chat store action runs in the synchronization leader and stores the new result there, so a follower tab never
+ * writes the history itself. A failed rerun leaves an error item in the chat.
+ */
 export function useChatToolCallRerun() {
+  const chatStore = useChatStore()
   const chatSession = useChatSessionStore()
-  const consciousnessStore = useConsciousnessStore()
-  const chatVision = useChatVision()
 
   /**
    * Triggering workflow: ChatHistory `toolCallRerun` -> rerunToolCall
-   * -> {@link executeToolCallRerun} -> chatSession.setSessionMessages.
+   * -> chatStore.rerunToolCall, which stores the new result in the leader.
    */
   async function rerunToolCall(payload: ChatToolCallRerunEvent) {
     const sessionId = chatSession.activeSessionId
-    const currentMessages = chatSession.getSessionMessages(sessionId)
-
     try {
-      const nextMessages = await executeToolCallRerun({
-        messages: currentMessages,
-        payload: {
-          sessionId,
-          messageId: payload.message.id,
-          index: payload.index,
-          toolCallId: payload.toolCallId,
-          invocationId: payload.invocationId,
-          toolName: payload.toolName,
-          args: payload.args,
-        },
-        // A rerun stores its result in history, so it reads images like a send.
-        resolveTools: () => resolveLlmTools({ describeImage: chatVision.toolImageReader(consciousnessStore.activeModel) }),
+      await chatStore.rerunToolCall({
+        sessionId,
+        messageId: payload.message.id,
+        index: payload.index,
+        toolCallId: payload.toolCallId,
+        invocationId: payload.invocationId,
+        toolName: payload.toolName,
+        args: payload.args,
       })
-      chatSession.setSessionMessages(sessionId, nextMessages)
     }
     catch (error) {
-      chatSession.setSessionMessages(sessionId, [
-        ...currentMessages,
-        {
-          role: 'error',
-          content: errorMessageFrom(error) ?? 'Failed to rerun tool call.',
-        },
-      ])
+      await chatSession.storeMessage(sessionId, {
+        role: 'error',
+        content: errorMessageFrom(error) ?? 'Failed to rerun tool call.',
+        id: nanoid(),
+        createdAt: Date.now(),
+      })
     }
   }
 
