@@ -5,6 +5,7 @@ import { createContext } from '@moeru/eventa/adapters/electron/renderer'
 import { chatMessagesToTurns, streamFrom } from '@proj-airi/core-agent'
 import { artistryGenerateHeadless } from '@proj-airi/stage-shared'
 import { cloneDeep } from 'es-toolkit'
+import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { ref, toRaw } from 'vue'
 import { toast } from 'vue-sonner'
@@ -297,12 +298,14 @@ LATEST ${target === 'assistant' ? 'COMPANION RESPONSE' : 'USER INPUT'}:
             case 'inline': {
               const imageUrl = result.imageUrl || result.base64
               const content = `![${analysis.title || 'Generated Image'}](${imageUrl})`
-              chatSessionStore.appendSessionMessage(targetSessionId, {
+              // Store through the session action, which persists before it resolves, as chat replies do.
+              await chatSessionStore.storeMessage(targetSessionId, {
                 role: 'assistant',
                 content,
                 slices: [{ type: 'text', text: content }],
                 tool_results: [],
                 createdAt: Date.now(),
+                id: nanoid(),
               })
               break
             }
