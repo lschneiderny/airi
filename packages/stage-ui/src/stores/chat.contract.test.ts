@@ -3,6 +3,7 @@ import type { GenerationProvider } from '@proj-airi/provider-inference'
 import type { Tool } from '@xsai/shared-chat'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
+import type { ChatHistoryItem } from '../types/chat'
 import type { LlmStreamOptions } from './ai/chat-llm/llm'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -14,7 +15,7 @@ import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foregro
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
-import { computed, createApp, nextTick, reactive, ref } from 'vue'
+import { computed, createApp, nextTick, reactive, ref, toRaw } from 'vue'
 
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
@@ -91,7 +92,6 @@ const getContextsSnapshotMock = vi.fn()
 const createUserAccountContextMock = vi.fn()
 const persistSessionMessagesMock = vi.fn()
 const forkSessionMock = vi.fn()
-const ensureSessionMock = vi.fn()
 const loadSessionMock = vi.fn()
 const deleteSessionMock = vi.fn()
 const initializeSessionMock = vi.fn()
@@ -212,13 +212,16 @@ vi.mock('./chat/session-store', () => ({
   useChatSessionStore: () => ({
     activeSessionId: activeSessionIdRef,
     sessionMessages,
-    ensureSession: (sessionId: string) => {
-      ensureSessionMock(sessionId)
-      sessionMessages[sessionId] ??= [{ role: 'system', content: 'system prompt', createdAt: 1, id: 'system' }]
+    storeMessage: async (sessionId: string, message: ChatHistoryItem & { id: string }) => {
+      const messages = sessionMessages[sessionId] ?? []
+      const index = messages.findIndex(item => item.id === message.id)
+      sessionMessages[sessionId] = index < 0 ? [...messages, message] : messages.with(index, message)
     },
-    appendSessionMessage: (sessionId: string, message: any) => {
-      sessionMessages[sessionId] ??= []
-      sessionMessages[sessionId].push(message)
+    updateUserMessage: async (sessionId: string, messageId: string, fields: Partial<ChatHistoryItem>) => {
+      sessionMessages[sessionId] = (sessionMessages[sessionId] ?? []).map(message => message.id === messageId ? { ...toRaw(message), ...fields } as ChatHistoryItem : message)
+    },
+    replaceSessionHistory: async (sessionId: string, messages: ChatHistoryItem[]) => {
+      sessionMessages[sessionId] = messages
     },
     commitUserMessage: (async (sessionId, message) => {
       sessionMessages[sessionId] ??= []
@@ -228,7 +231,7 @@ vi.mock('./chat/session-store', () => ({
       await persistSessionMessagesMock(sessionId)
       return { status: existing ? 'existing' : 'inserted', messageId: message.id }
     }) satisfies ChatOrchestratorSessionPort['commitUserMessage'],
-    cleanupMessages: (sessionId: string) => {
+    clearSessionMessages: async (sessionId: string) => {
       sessionMessages[sessionId] = []
     },
     sessionMetas: { 'session-1': { characterId: 'alice' }, 'session-2': { characterId: 'bob' }, 'session-b': { characterId: 'bob' }, 'session-forked': { characterId: 'alice' } },
@@ -246,9 +249,6 @@ vi.mock('./chat/session-store', () => ({
     ensureCurrentSession: ensureCurrentSessionMock,
     persistSessionMessages: persistSessionMessagesMock,
     getSessionGeneration: () => currentGeneration,
-    setSessionMessages: (sessionId: string, messages: any[]) => {
-      sessionMessages[sessionId] = messages
-    },
     forkSession: forkSessionMock,
     deleteMessage: async ({ sessionId, messageId }: { sessionId: string, messageId: string }) => {
       sessionMessages[sessionId] = (sessionMessages[sessionId] ?? []).filter(message => message.id !== messageId)
@@ -401,7 +401,6 @@ describe('chat store contract', () => {
     createUserAccountContextMock.mockReset().mockReturnValue(null)
     persistSessionMessagesMock.mockReset()
     forkSessionMock.mockReset()
-    ensureSessionMock.mockReset()
     loadSessionMock.mockReset().mockResolvedValue(true)
     deleteSessionMock.mockReset().mockResolvedValue(undefined)
     initializeSessionMock.mockReset().mockResolvedValue(undefined)
@@ -689,7 +688,7 @@ describe('chat store contract', () => {
   // A retry that failed before storage lost its source turn and recording.
   // Retry cut the history, then only appended an error:
   //
-  // setSessionMessages(sessionId, currentMessages.slice(0, sourceIndex))
+  // replaceSessionHistory(sessionId, currentMessages.slice(0, sourceIndex))
   //
   // We fixed this by restoring the history when the storage receipt rejects.
   it('keeps the source turn when a retry fails before its new turn is stored', async () => {
@@ -1368,7 +1367,8 @@ describe('chat store contract', () => {
     await store.send({ sessionId: 'session-2', text: 'continue persisted chat' })
 
     expect(loadSessionMock).toHaveBeenCalledWith('session-2')
-    expect(loadSessionMock.mock.invocationCallOrder[0]).toBeLessThan(ensureSessionMock.mock.invocationCallOrder[0])
+    // The user message commits after the history loads, so the commit never writes a history that did not load.
+    expect(loadSessionMock.mock.invocationCallOrder[0]).toBeLessThan(persistSessionMessagesMock.mock.invocationCallOrder[0])
     expect(sessionMessages['session-2']?.[0]).toMatchObject({
       content: 'persisted system prompt',
       id: 'system-2',
@@ -1387,7 +1387,6 @@ describe('chat store contract', () => {
       .rejects
       .toThrow('Failed to load the target chat session')
 
-    expect(ensureSessionMock).not.toHaveBeenCalledWith('session-2')
     expect(sessionMessages['session-2']).toBeUndefined()
   })
 
@@ -2270,7 +2269,8 @@ describe('chat store contract', () => {
       reason: 'retry',
       hidden: true,
     })
-    expect(ensureSessionMock).toHaveBeenCalledWith('session-forked')
+    // The send commits its user message to the forked session.
+    expect(persistSessionMessagesMock).toHaveBeenCalledWith('session-forked')
   })
 
   describe('unprompted turns', () => {

@@ -128,6 +128,48 @@ afterEach(() => {
 })
 
 describe('chat session synchronization', () => {
+  it('keeps a message that the leader commits while a follower reads the session', async () => {
+    // ROOT CAUSE:
+    //
+    // Reading an empty session wrote it. The follower then proposed its session state without the committed message,
+    // and the leader applied that proposal after the commit.
+    //
+    // The fix makes reads pure. Source: upstream moeru-ai/airi#3097.
+    const namespace = `chat-read:${crypto.randomUUID()}`
+    const leaderContext = createSyncedContext(namespace, 'leader-only')
+    await vi.waitFor(() => expect(leaderContext.runtime.isLeader()).toBe(true))
+    setActivePinia(leaderContext.pinia)
+    const leader = useChatSessionStore()
+    await leader.initialize()
+
+    const followerContext = createSyncedContext(namespace, 'follower-only')
+    setActivePinia(followerContext.pinia)
+    const follower = useChatSessionStore()
+    await vi.waitFor(() => expect(followerContext.runtime.getLeaderId()).toBe(leaderContext.runtime.participantId))
+    await follower.initialize()
+    const sessionId = await follower.createSession('default')
+    // A session whose history is still empty, such as one known from the index before its first stored message.
+    leader.sessionMessages[sessionId] = []
+    await vi.waitFor(() => expect(follower.sessionMessages[sessionId]).toEqual([]))
+
+    expect(follower.getSessionMessages(sessionId)).toEqual([])
+    expect(follower.getSessionGeneration(sessionId)).toBe(leader.getSessionGeneration(sessionId))
+    await follower.commitUserMessage(sessionId, { id: 'user-1', role: 'user', content: 'hello', createdAt: 1 })
+    await follower.storeMessage(sessionId, { id: 'assistant-1', role: 'assistant', content: 'hi', slices: [], tool_results: [], createdAt: 2 })
+    // A retried store replaces the message, so the history keeps one copy.
+    await follower.storeMessage(sessionId, { id: 'assistant-1', role: 'assistant', content: 'hi there', slices: [], tool_results: [], createdAt: 2 })
+
+    const expected = [
+      { id: 'user-1', role: 'user', content: 'hello', createdAt: 1 },
+      { id: 'assistant-1', role: 'assistant', content: 'hi there', slices: [], tool_results: [], createdAt: 2 },
+    ]
+    // A leader-routed call from the follower arrives after any proposal that the follower sent before it,
+    // so a stale proposal would already have reached the leader when this call resolves.
+    await follower.loadSession(sessionId)
+    await vi.waitFor(() => expect(follower.sessionMessages[sessionId]).toEqual(expected))
+    expect(leader.sessionMessages[sessionId]).toEqual(expected)
+  })
+
   it('routes concurrent follower wake requests to one character session without navigating either window', async () => {
     const namespace = `chat-session:${crypto.randomUUID()}`
     const leader = createSyncedContext(namespace, 'leader-only')

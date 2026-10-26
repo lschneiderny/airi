@@ -236,17 +236,21 @@ export interface QueuedSendSnapshot {
 
 /**
  * Session operations required by the core chat orchestrator runtime.
+ *
+ * The session owner can run in another context than the runtime. So the runtime writes a session only through the
+ * commit operations, and the read operations must not write.
  */
 export interface ChatOrchestratorSessionPort {
   /** Resolves after durable storage. A repeated identity does not append or change an existing user message. */
   commitUserMessage: (sessionId: string, message: Extract<ChatHistoryItem, { role: 'user' }> & { id: string }) => Promise<{ status: 'inserted' | 'existing', messageId: string }>
-  /** Ensures a session exists before messages are appended. */
-  ensureSession: (sessionId: string) => void
-  /** Returns chronological chat history for a session. */
+  /**
+   * Stores a finalized assistant message. Resolves after the session owner stores it.
+   * A repeated identity replaces the stored message, so a retried commit does not append it twice.
+   */
+  commitAssistantMessage: (sessionId: string, message: Extract<ChatHistoryItem, { role: 'assistant' }> & { id: string }) => Promise<void>
+  /** Returns chronological chat history for a session. It does not create or change the session. */
   getSessionMessages: (sessionId: string) => ChatHistoryItem[]
-  /** Appends a finalized user/assistant/tool history item. */
-  appendSessionMessage: (sessionId: string, message: ChatHistoryItem) => void
-  /** Returns a monotonic generation used to reject stale queued sends. */
+  /** Returns a monotonic generation used to reject stale queued sends. It does not change the session. */
   getSessionGeneration: (sessionId: string) => number
 }
 
@@ -649,8 +653,6 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     if (!sendingMessage && !options.attachments?.length)
       return
 
-    deps.session.ensureSession(sessionId)
-
     // An unprompted turn is undecided ('holding') until its first visible speech. Until then it commits nothing,
     // publishes no assistant message, and buffers special hooks. It then becomes 'spoken' or 'declined'.
     const unprompted = options.origin === 'unprompted'
@@ -721,6 +723,10 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       createdAt: now(),
       id: assistantMessageId,
     }
+    // A failed store must not replace the error or the abort that interrupted the turn.
+    const storeInterruptedAssistant = () => deps.session
+      .commitAssistantMessage(sessionId, { ...cloneStreamingMessage(buildingMessage), id: assistantMessageId, interrupted: true, completedAt: now() })
+      .catch(error => console.error('Failed to store an interrupted assistant message:', error))
     // Received calls stay here until their slices join the reply. Interrupted turns preserve them without waiting for token hooks.
     const pendingToolCalls = new Set<ChatSlicesToolCall>()
 
@@ -1333,7 +1339,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       if (!shouldAbort() && (buildingMessage.slices.length > 0 || generatedTurn?.rounds.length)) {
         const finalAssistant = buildingMessage
         finalAssistant.completedAt = now()
-        deps.session.appendSessionMessage(sessionId, finalAssistant)
+        await deps.session.commitAssistantMessage(sessionId, { ...finalAssistant, id: assistantMessageId })
         assistantStored = true
         deps.onAssistantMessageAppended?.({
           sessionId,
@@ -1404,7 +1410,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       if (!assistantStored && !generationCompleted && userTurnCommitted && hasAssistantOutput(buildingMessage)) {
         // Keep received output local, but do not run completion hooks or cloud
         // sync for an assistant turn that never reached a terminal event.
-        deps.session.appendSessionMessage(sessionId, { ...cloneStreamingMessage(buildingMessage), interrupted: true, completedAt: now() })
+        await storeInterruptedAssistant()
       }
       resetForegroundStream(sessionId)
 
@@ -1442,7 +1448,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         && abortSignal.aborted
         && !isStaleGeneration()
         && hasAssistantOutput(buildingMessage)) {
-        deps.session.appendSessionMessage(sessionId, { ...cloneStreamingMessage(buildingMessage), interrupted: true, completedAt: now() })
+        await storeInterruptedAssistant()
         resetForegroundStream(sessionId)
       }
       activeSends.delete(sessionId)

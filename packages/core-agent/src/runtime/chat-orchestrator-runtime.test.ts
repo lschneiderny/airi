@@ -95,12 +95,9 @@ function createHarness(getActiveProvider = () => 'mock-provider') {
   const runtime = createChatOrchestratorRuntime({
     session: {
       commitUserMessage,
-      ensureSession: (sessionId) => {
-        sessionMessages[sessionId] ??= []
-      },
       getSessionMessages: sessionId => sessionMessages[sessionId] ?? [],
-      appendSessionMessage: (sessionId, message) => {
-        log(`appendSessionMessage:${message.role}${message.role === 'assistant' && message.interrupted ? ':interrupted' : ''}`)
+      commitAssistantMessage: async (sessionId, message) => {
+        log(`commitAssistantMessage:${message.role}${message.interrupted ? ':interrupted' : ''}`)
         sessionMessages[sessionId] ??= []
         sessionMessages[sessionId].push(message)
       },
@@ -2136,7 +2133,7 @@ describe('user-origin hook sequence', () => {
           "foreground:patch",
           "foreground:patch",
           "assistantResponseRendered",
-          "appendSessionMessage:assistant",
+          "commitAssistantMessage:assistant",
           "assistantMessageAppended",
           "hook:stream-end",
           "hook:assistant-end:<|ACT {"emotion":"happy"}|> Hello there",
@@ -2287,7 +2284,7 @@ describe('user-origin hook sequence', () => {
           "llmFirstToken",
           "hook:token-literal:partial ",
           "foreground:patch",
-          "appendSessionMessage:assistant:interrupted",
+          "commitAssistantMessage:assistant:interrupted",
           "foreground:reset",
           "settled:cancelled",
         ],
@@ -2455,7 +2452,7 @@ describe('unprompted turns', () => {
       'foreground:patch',
       'foreground:patch',
       'assistantResponseRendered',
-      'appendSessionMessage:assistant',
+      'commitAssistantMessage:assistant',
       'assistantMessageAppended',
       'hook:stream-end',
       'hook:assistant-end:<|ACT happy|> Oh, a QA topic!',
