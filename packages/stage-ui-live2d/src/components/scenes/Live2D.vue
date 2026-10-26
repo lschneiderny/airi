@@ -6,6 +6,7 @@ import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 
 import type { Live2DEyeFocusSource } from '../../composables/live2d'
 import type { SpeechEvent } from '../../composables/live2d/expression/slots'
+import type { NaturalChatActivity, NaturalChatTarget } from '../../composables/live2d/natural-chat-input'
 import type { NaturalEpisode } from '../../composables/live2d/natural-motion/mood'
 import type { Live2DTouchEvent } from '../../composables/live2d/touch-gestures'
 
@@ -51,6 +52,10 @@ const props = withDefaults(defineProps<{
   performanceSettings?: ExpressionPerformanceSettings
   /** Displays and window content bounds in Electron DIP screen coordinates; Natural reads them for screen placement. */
   screenPlacement?: { displays: PlacementRect[], windowBounds: PlacementRect }
+  /** The host's chat window, visible or not, in the same DIP space; hosts without one leave it undefined. */
+  chatTarget?: NaturalChatTarget
+  /** Typing timing and typed-send counters from the host's composers; never text. */
+  chatActivity?: NaturalChatActivity
 }>(), {
   presence: () => presenceBubbleIdle,
   performance: () => ({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }),
@@ -213,6 +218,8 @@ defineExpose({
         :natural-emotion-strength="live2dNaturalEmotionStrength[props.modelId ?? '']"
         :performance-settings="props.performanceSettings"
         :screen-placement="props.screenPlacement"
+        :chat-target="props.chatTarget"
+        :chat-activity="props.chatActivity"
         :live2d-expression-enabled="live2dExpressionEnabled"
         :live2d-shadow-enabled="live2dShadowEnabled"
         :screen-ambient-light-active="screenAmbientLightEnabled && screenAmbientLightActive"

@@ -106,6 +106,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       screenAwareness: live2d.live2dNaturalScreenAwareness,
       placement: diagnostics.lastPlacement,
       placementYawBias: diagnostics.lastPlacementYawBias,
+      chat: diagnostics.lastChat && { ...diagnostics.lastChat },
     }
   }
 

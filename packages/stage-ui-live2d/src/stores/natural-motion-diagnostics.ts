@@ -2,6 +2,7 @@ import type { AffectTrace, AffectTraceFailureCode, AffectTraceRequest, AffectTra
 import type { ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 
 import type { EmotionHold } from '../composables/live2d/expression/hold'
+import type { NaturalChatInput } from '../composables/live2d/natural-motion'
 import type { LivelinessReport } from '../composables/live2d/natural-motion/liveliness'
 import type { PostureHome } from '../composables/live2d/natural-motion/posture'
 import type { NaturalTrace } from '../composables/live2d/natural-motion/trace'
@@ -34,6 +35,15 @@ export interface NaturalStageSnapshot {
   hold: EmotionHold | null
   /** Unscaled face-feature cursor unit in viewport CSS pixels, when the canvas has geometry. */
   head?: { x: number, y: number, width: number, height: number } | null
+}
+
+/** What the stage's model last handed to Natural as chat input, reduced to flags and counters for QA readout. */
+export interface NaturalChatSummary {
+  /** The chat is visible and placed, so Natural has a point to look at. */
+  hasTarget: boolean
+  typing: boolean
+  sentSeq: number
+  unfoldSeq: number
 }
 
 /** Compact capture outcome the lab renders. */
@@ -184,6 +194,28 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
   const lastPlacement = shallowRef<number | null>(null)
   /** Normalized head-X placement term the Natural controller applied in its latest step. */
   const lastPlacementYawBias = shallowRef(0)
+
+  /**
+   * In-window QA override of the Natural chat input. `undefined` keeps the host signal, an object replaces it, and
+   * `null` forces no chat signal. Not persisted or broadcast.
+   */
+  const chatOverride = shallowRef<NaturalChatInput | null | undefined>(undefined)
+  /** Summary of the chat input the stage's model handed to Natural on its latest composition; never chat text. */
+  const lastChat = shallowRef<NaturalChatSummary | null>(null)
+
+  /** The stage's model reports the chat input it handed to Natural. */
+  function reportChat(chat: NaturalChatInput | null) {
+    const current = lastChat.value
+    // Reported every composition; a new object only when a field changes keeps watchers quiet.
+    if (chat === null) {
+      lastChat.value = null
+      return
+    }
+    const hasTarget = chat.target !== null
+    if (current && current.hasTarget === hasTarget && current.typing === chat.typing && current.sentSeq === chat.sentSeq && current.unfoldSeq === chat.unfoldSeq)
+      return
+    lastChat.value = { hasTarget, typing: chat.typing, sentSeq: chat.sentSeq, unfoldSeq: chat.unfoldSeq }
+  }
 
   /** The stage's model reports what it handed to Natural and the yaw bias the controller applied. */
   function reportPlacement(placement: number | null, yawBias: number) {
@@ -411,6 +443,9 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
     lastPlacement: readonly(lastPlacement),
     lastPlacementYawBias: readonly(lastPlacementYawBias),
     reportPlacement,
+    chatOverride,
+    lastChat: readonly(lastChat),
+    reportChat,
     setLoadedModelId,
     registerStageReader,
     stageSnapshot,

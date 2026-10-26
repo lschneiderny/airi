@@ -144,6 +144,23 @@ describe('useMotionQaBridge', () => {
     expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { placement: null, placementYawBias: 0 } })
   })
 
+  it('reports the chat input the stage last handed to Natural as flags and counters', async () => {
+    expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { chat: null } })
+
+    const diagnostics = useNaturalMotionDiagnostics()
+    diagnostics.reportChat({ target: { x: -3, y: -1 }, typing: true, sentSeq: 2, sentWords: 5, unfoldSeq: 1 })
+    const reply = await dispatch({ name: 'state' })
+    // `sentWords` and the target point stay inside the stage; the bridge only says whether a target exists.
+    expect(reply).toMatchObject({ ok: true, result: { chat: { hasTarget: true, typing: true, sentSeq: 2, unfoldSeq: 1 } } })
+    expect(Object.keys((reply as { result: { chat: object } }).result.chat).sort()).toEqual(['hasTarget', 'sentSeq', 'typing', 'unfoldSeq'])
+
+    diagnostics.reportChat({ target: null, typing: false, sentSeq: 2, sentWords: 5, unfoldSeq: 1 })
+    expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { chat: { hasTarget: false, typing: false, sentSeq: 2, unfoldSeq: 1 } } })
+
+    diagnostics.reportChat(null)
+    expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { chat: null } })
+  })
+
   it('reports the stage face-feature head unit without applying another scale', async () => {
     const head = { x: 100, y: 50, width: 80, height: 100 }
     const release = useNaturalMotionDiagnostics().registerStageReader(() => ({ naturalActive: true, hold: null, head }))

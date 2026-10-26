@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 
 import { buildEmotionTrial, claimMotionQaHandlers, createMotionQaContext, hasMotionQaHandlers, isMotionQaBridgeEnabled, MotionQaAwaitCaptureResultSchema, MotionQaCommandSchema, MotionQaConfigureInputSchema, MotionQaRunScenarioInputSchema, MotionQaRunScenarioResultSchema, MotionQaStartCaptureInputSchema, motionQaStateInvokeEventa, MotionQaStateSchema } from '.'
 
-const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 }, screenAwareness: true, placement: -0.75, placementYawBias: -0.08 } as const
+const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 }, screenAwareness: true, placement: -0.75, placementYawBias: -0.08, chat: { hasTarget: true, typing: false, sentSeq: 2, unfoldSeq: 1 } } as const
 
 describe('motion QA bridge schemas', () => {
   it('requires usable screen scale and positive head geometry, while accepting an unavailable head', () => {
@@ -25,6 +25,14 @@ describe('motion QA bridge schemas', () => {
     expect(safeParse(MotionQaStateSchema, withoutSetting).success).toBe(false)
   })
 
+  it('accepts a missing chat signal and rejects chat fields beyond flags and counters', () => {
+    expect(safeParse(MotionQaStateSchema, { ...state, chat: null }).success).toBe(true)
+    expect(safeParse(MotionQaStateSchema, { ...state, chat: { ...state.chat, text: 'hello' } }).success).toBe(false)
+    expect(safeParse(MotionQaStateSchema, { ...state, chat: { ...state.chat, typing: 'yes' } }).success).toBe(false)
+    const { chat: _, ...withoutChat } = state
+    expect(safeParse(MotionQaStateSchema, withoutChat).success).toBe(false)
+  })
+
   it('round-trips each payload through JSON', () => {
     const scenario = buildEmotionTrial({ emotion: 'angry', band: 'strong', variant: 'full', seed: 1 })
     const payloads = [
@@ -32,6 +40,7 @@ describe('motion QA bridge schemas', () => {
       [MotionQaConfigureInputSchema, { driver: 'natural', heldEmotions: false }],
       [MotionQaConfigureInputSchema, { screenAwareness: false }],
       [MotionQaStateSchema, { ...state, placement: null, placementYawBias: 0 }],
+      [MotionQaStateSchema, { ...state, chat: null }],
       [MotionQaStartCaptureInputSchema, { durationSeconds: 30, extraParameterIds: ['Param60'], label: 'angry' }],
       [MotionQaRunScenarioInputSchema, { scenario }],
       [MotionQaRunScenarioResultSchema, { dispatched: 1, rejected: [{ at: 2, kind: 'speech', reason: 'unsupported' }] }],

@@ -10,6 +10,7 @@ import type { TachieEmotion } from '@proj-airi/stage-ui-tachie'
 import type { VrmInteractionTarget } from '@proj-airi/stage-ui-three'
 
 import type { EmotionPayload } from '../../constants/emotions'
+import type { ChatActivity, ChatComposerReport } from './chat-activity'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { errorMessageFrom, sleep } from '@moeru/std'
@@ -42,7 +43,7 @@ import { useStagePerformanceConductor } from '../../composables/performance/use-
 // import { useDuckDb } from '../../composables/use-duck-db'
 import { Emotion, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { live2dMotionMagicProfiles, useLive2DMotionMagic, useLive2DMotionMagicSettings } from '../../features/motions/live2d'
-import { getSpeechBusContext, speechInputUserSpeakingChangedEvent, speechOutputGetPlaybackState, speechOutputPlaybackStateChangedEvent, voiceGenerationEnded } from '../../services/speech/bus'
+import { chatComposerActivityChangedEvent, chatComposerSentEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, speechOutputGetPlaybackState, speechOutputPlaybackStateChangedEvent, voiceGenerationEnded } from '../../services/speech/bus'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useAudioContext, useSpeakingStore } from '../../stores/audio'
 import { useBackgroundStore } from '../../stores/background'
@@ -57,6 +58,7 @@ import { useSettings } from '../../stores/settings'
 import { useSituationStore } from '../../stores/situation'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
 import { useVoiceStore } from '../../stores/voice'
+import { chatActivityFrom } from './chat-activity'
 
 const props = withDefaults(defineProps<{
   cursorPosition?: { x: number, y: number }
@@ -65,6 +67,12 @@ const props = withDefaults(defineProps<{
    * for Natural screen placement; hosts without window bounds (web, pocket) leave it undefined.
    */
   screenPlacement?: { displays: PlacementRect[], windowBounds: PlacementRect }
+  /**
+   * The host's chat window: shown or not, and its bounds in the same DIP space as `screenPlacement`. Only the Live2D
+   * scene reads it, for Natural chat attention; hosts without a chat window target (web, pocket) leave it undefined,
+   * which also keeps the chat activity inert there.
+   */
+  chatTarget?: { visible: boolean, bounds: PlacementRect | null }
   enableOrbitControls?: boolean
   paused?: boolean
 }>(), {
@@ -526,7 +534,48 @@ function updatePerformance() {
   }
 }
 
-useIntervalFn(updatePerformance, 250)
+// --- Chat activity for the Natural motion driver: typing timing and typed-send counters, never text.
+
+// The speech bus is one BroadcastChannel per page, which never delivers to its own poster: only composers in OTHER
+// windows (Tamagotchi floating and legacy chat) reach this stage. Web and pocket composers share the stage page and
+// are not heard; those hosts pass no `chatTarget`, so these counters stay inert.
+
+/** Latest report per composer that holds a draft; a composer that reports no draft is dropped. */
+const chatComposerReports = new Map<string, ChatComposerReport>()
+let chatSentSeq = 0
+let chatSentWords = 0
+const chatActivity = shallowRef<ChatActivity>({ typing: false, sentSeq: 0, sentWords: 0 })
+
+function updateChatActivity() {
+  const next = chatActivityFrom(chatComposerReports.values(), Date.now(), { sentSeq: chatSentSeq, sentWords: chatSentWords })
+  const current = chatActivity.value
+  if (next.typing !== current.typing || next.sentSeq !== current.sentSeq || next.sentWords !== current.sentWords)
+    chatActivity.value = next
+}
+
+const disposeChatComposerActivityListener = getSpeechBusContext().on(chatComposerActivityChangedEvent, ({ body }) => {
+  if (!body)
+    return
+  if (body.hasDraft)
+    chatComposerReports.set(body.sourceId, { hasDraft: true, lastInputAtMs: body.lastInputAtMs })
+  else
+    chatComposerReports.delete(body.sourceId)
+  updateChatActivity()
+})
+// Voice sends never emit this event, so only typed sends trigger the read glance.
+const disposeChatComposerSentListener = getSpeechBusContext().on(chatComposerSentEvent, ({ body }) => {
+  if (!body)
+    return
+  chatSentSeq++
+  chatSentWords = body.words
+  updateChatActivity()
+})
+
+// The typing window closes without a new report, so the same tick re-evaluates it.
+useIntervalFn(() => {
+  updatePerformance()
+  updateChatActivity()
+}, 250)
 watch([nowSpeaking, userSpeaking, chatSending, cursorMovedAtMs, desktopActivity, visibility, performanceOverride, cueLook, foregroundCategory], updatePerformance)
 
 // The devtools Natural lab fires emotions through the same queue the chat uses.
@@ -844,6 +893,8 @@ async function captureCharacterFrame() {
 onUnmounted(() => {
   disposePlaybackStateHandler()
   disposeUserSpeakingListener()
+  disposeChatComposerActivityListener()
+  disposeChatComposerSentListener()
   resetLive2dLipSync()
   chatHookCleanups.forEach(dispose => dispose?.())
   viewUpdateCleanups.forEach(dispose => dispose?.())
@@ -885,6 +936,8 @@ defineExpose({
         :background-url="activeBackgroundUrl"
         :cursor-position="cursorPosition"
         :screen-placement="screenPlacement"
+        :chat-target="chatTarget"
+        :chat-activity="chatActivity"
         :mouth-open-size="mouthOpenSize"
         :now-speaking="nowSpeaking"
         :paused="paused"

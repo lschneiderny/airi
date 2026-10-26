@@ -95,6 +95,7 @@ function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore
     cursor: null as { x: number, y: number } | null,
     cursorDismissed: false,
     placement: null as number | null,
+    chat: null as Live2DNaturalMotionAttention['chat'],
     pendingPokes: [] as Live2DNaturalMotionAttention['pendingPokes'],
     pet: null as { x: number, y: number } | null,
   }
@@ -731,6 +732,42 @@ describe('natural motion adapter', () => {
       setCursor.mockRestore()
       setPlacement.mockRestore()
       advance.mockRestore()
+    }
+  })
+
+  it('(k) forwards a changed chat input right after the placement, and an equal rebuilt input never', () => {
+    const setPlacement = vi.spyOn(Live2DNaturalMotion.prototype, 'setPlacement')
+    const setChat = vi.spyOn(Live2DNaturalMotion.prototype, 'setChat')
+    try {
+      const f = fixture()
+      f.state.eligible = true
+      // A fresh controller already has no chat signal, so a null input is never forwarded.
+      f.frame(0)
+      expect(setChat).not.toHaveBeenCalled()
+      f.state.placement = 0.4
+      f.state.chat = { target: { x: -3, y: -1 }, typing: true, sentSeq: 0, sentWords: 0, unfoldSeq: 0 }
+      f.frame(0.5)
+      expect(setChat).toHaveBeenLastCalledWith(f.state.chat, 0.5)
+      expect(setChat.mock.invocationCallOrder.at(-1)).toBeGreaterThan(setPlacement.mock.invocationCallOrder.at(-1)!)
+      // The host builds a new object every composition; equal values are not a change.
+      f.state.chat = { target: { x: -3, y: -1 }, typing: true, sentSeq: 0, sentWords: 0, unfoldSeq: 0 }
+      f.frame(0.6)
+      expect(setChat).toHaveBeenCalledTimes(1)
+      f.state.chat = { ...f.state.chat, sentSeq: 1, sentWords: 3 }
+      f.frame(0.7)
+      expect(setChat).toHaveBeenLastCalledWith({ target: { x: -3, y: -1 }, typing: true, sentSeq: 1, sentWords: 3, unfoldSeq: 0 }, 0.7)
+      f.state.chat = { ...f.state.chat, target: null }
+      f.frame(0.8)
+      expect(setChat).toHaveBeenCalledTimes(3)
+      f.state.chat = null
+      f.frame(0.9)
+      expect(setChat).toHaveBeenLastCalledWith(null, 0.9)
+      expect(setChat).toHaveBeenCalledTimes(4)
+      f.adapter.dispose()
+    }
+    finally {
+      setPlacement.mockRestore()
+      setChat.mockRestore()
     }
   })
 

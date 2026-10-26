@@ -16,6 +16,8 @@ import type { PixiLive2DInternalModel } from '../../../composables/live2d'
 import type { ArchiveExpressionFile, Model3ExpressionRef } from '../../../composables/live2d/expression-controller'
 import type { SpeechEvent } from '../../../composables/live2d/expression/slots'
 import type { Live2DModelCanvasRect } from '../../../composables/live2d/head-anchor'
+import type { NaturalChatActivity, NaturalChatTarget } from '../../../composables/live2d/natural-chat-input'
+import type { NaturalChatInput } from '../../../composables/live2d/natural-motion'
 import type { Live2DNaturalMotionAttention } from '../../../composables/live2d/natural-motion-adapter'
 import type { NaturalMotionObserver } from '../../../composables/live2d/natural-motion/frame-types'
 import type { NaturalEpisode } from '../../../composables/live2d/natural-motion/mood'
@@ -64,11 +66,12 @@ import {
 import { EmotionHoldPerformer, selectManualHold } from '../../../composables/live2d/expression/hold'
 import { useFitModel } from '../../../composables/live2d/fit-model'
 import { live2DCanvasRectToViewport } from '../../../composables/live2d/head-anchor'
+import { createUnfoldCounter, naturalChatInput } from '../../../composables/live2d/natural-chat-input'
 import { Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-motion-adapter'
 import { scoreLiveliness } from '../../../composables/live2d/natural-motion/liveliness'
 import { manualControlParameterIds, readLive2DRigProfile } from '../../../composables/live2d/natural-motion/rig-profile'
 import { NaturalTraceRecorder } from '../../../composables/live2d/natural-motion/trace'
-import { headScreenX } from '../../../composables/live2d/screen-placement'
+import { chatTargetOffset, headScreenX } from '../../../composables/live2d/screen-placement'
 import { buildLive2DTouchDebug } from '../../../composables/live2d/touch-debug'
 import { Live2DTouchGestures } from '../../../composables/live2d/touch-gestures'
 import { live2DTouchRegionAt, live2DVisibleBounds, scaleLive2DRect } from '../../../composables/live2d/touch-regions'
@@ -128,6 +131,13 @@ const props = withDefaults(defineProps<{
    * the screen interior while the screen-aware setting is on; hosts without window bounds leave it undefined.
    */
   screenPlacement?: { displays: PlacementRect[], windowBounds: PlacementRect }
+  /**
+   * The host's chat window: shown or not, and its bounds in the same DIP space as `screenPlacement`. Natural looks at
+   * it while the screen-aware setting is on; hosts without a chat window target (web, pocket) leave it undefined.
+   */
+  chatTarget?: NaturalChatTarget
+  /** Typing timing and typed-send counters from the host's composers; never text. */
+  chatActivity?: NaturalChatActivity
 }>(), {
   mouthOpenSize: 0,
   nowSpeaking: false,
@@ -176,6 +186,8 @@ const { live2dMotionDriver, live2dNaturalCursorAttention, live2dNaturalScreenAwa
 const naturalDiagnostics = useNaturalMotionDiagnostics()
 const { pendingRequest: naturalCaptureRequest } = storeToRefs(naturalDiagnostics)
 let naturalMotion: Live2DNaturalMotionAdapter | undefined
+/** The chat input the latest composition handed to Natural; published to diagnostics after the adapter step. */
+let composedChat: NaturalChatInput | null = null
 /** Owned by the loaded model; replaced on load and cleared before destruction. */
 let rebuildNaturalMotion: (() => void) | undefined
 /** A capture can span an adapter rebuild; reattach its observer without restarting the recorder. */
@@ -183,6 +195,13 @@ let naturalCaptureObserver: NaturalMotionObserver | null = null
 /** Detaches the running trace capture without answering it; set only while a capture runs. */
 let stopNaturalCapture: (() => void) | undefined
 const localFocus = new Point()
+/** Hidden -> visible transitions of the host's chat; the first observation only records visibility. */
+const chatUnfolds = createUnfoldCounter()
+watch(() => props.chatTarget?.visible, (visible) => {
+  if (visible !== undefined)
+    chatUnfolds.observe(visible)
+}, { immediate: true })
+
 /** Emotions for the Natural driver; the adapter drains the queue on its next composition. */
 const pendingNaturalEmotions: NaturalEpisode[] = []
 /** Pokes for the Natural driver; the adapter drains the queue like the emotion queue. */
@@ -615,6 +634,16 @@ async function performModelLoad() {
     pendingNaturalEmotions.length = 0
     pendingNaturalPokes.length = 0
     releaseHeldEmotion()
+    /** Measured eye anchor and unscaled head width in model canvas px: the cursor unit, which the chat target shares. */
+    const eyeUnit = () => {
+      const regions = readTouchRegions(performance.now())
+      const head = regions?.unscaledHead
+      return {
+        anchorX: regions?.eyeAnchor?.x ?? 0.5 * internalModel.originalWidth,
+        anchorY: regions?.eyeAnchor?.y ?? 0.3 * internalModel.originalHeight,
+        unit: head && head.width > 0 ? head.width : 0.3 * internalModel.originalWidth,
+      }
+    }
     const createNaturalAdapter = () => new Live2DNaturalMotionAdapter(
       internalModel,
       readRigProfile(),
@@ -632,14 +661,22 @@ async function performModelLoad() {
             live2DModel.toModelPosition(localFocus, localFocus)
           }
           // Offset from the measured eye anchor in head widths, y up; the user's touch scale never changes the cursor unit.
-          const regions = readTouchRegions(performance.now())
-          const head = regions?.unscaledHead
-          const anchorX = regions?.eyeAnchor?.x ?? 0.5 * internalModel.originalWidth
-          const anchorY = regions?.eyeAnchor?.y ?? 0.3 * internalModel.originalHeight
-          const unit = head && head.width > 0 ? head.width : 0.3 * internalModel.originalWidth
-          cursor = { x: (localFocus.x - anchorX) / unit, y: (anchorY - localFocus.y) / unit }
+          const eye = eyeUnit()
+          cursor = { x: (localFocus.x - eye.anchorX) / eye.unit, y: (eye.anchorY - localFocus.y) / eye.unit }
         }
         const placement = naturalPlacement()
+        // A QA override other than `undefined` wins over the host's chat signal.
+        const chatOverride = naturalDiagnostics.chatOverride
+        const chat = chatOverride !== undefined
+          ? chatOverride
+          : naturalChatInput({
+              enabled: live2dNaturalScreenAwareness.value,
+              chatTarget: props.chatTarget,
+              activity: props.chatActivity,
+              unfoldSeq: chatUnfolds.seq,
+              locate: bounds => locateChat(bounds, live2DModel, eyeUnit()),
+            })
+        composedChat = chat
         return {
           driver: live2dMotionDriver.value,
           exclusive: !!exclusiveOwnerId.value,
@@ -657,6 +694,7 @@ async function performModelLoad() {
           cursor,
           cursorDismissed: !live2dNaturalCursorAttention.value || props.performance.attention === 'aside',
           placement,
+          chat,
           pendingPokes: pendingNaturalPokes,
           pet: naturalPetHand,
         }
@@ -689,6 +727,7 @@ async function performModelLoad() {
       if (touchGestures.petting || touchGestures.pressPending)
         handleTouchEvents(touchGestures.update(performance.now()))
       naturalAdapter.frame(ctx.now)
+      naturalDiagnostics.reportChat(composedChat)
     }, 'final')
 
     const hookedUpdate = motionManager.update as (model: PixiLive2DInternalModel['coreModel'], now: number) => boolean
@@ -1264,6 +1303,28 @@ function naturalPlacement(): number | null {
   // The main window is frameless, so its bounds are the content bounds and the viewport origin.
   const x = headScreenX(screen.windowBounds, document.documentElement.clientWidth, head)
   return x === null ? null : screenInwardness(screen.displays, x)
+}
+
+const chatFocus = new Point()
+
+/**
+ * Converts the chat window bounds into Natural's cursor unit, or `null` while the host has no screen placement or the
+ * canvas has no geometry. The window bounds come from `screenPlacement`, the same source the placement signal reads.
+ */
+function locateChat(bounds: PlacementRect, live2DModel: Live2DModel<PixiLive2DInternalModel>, eye: { anchorX: number, anchorY: number, unit: number }) {
+  const screen = props.screenPlacement
+  const canvas = pixiApp.value?.view
+  if (!screen || !(canvas instanceof HTMLCanvasElement) || canvas.width <= 0 || canvas.height <= 0)
+    return null
+  const rect = canvas.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0)
+    return null
+  return chatTargetOffset(bounds, screen.windowBounds, document.documentElement.clientWidth, (client) => {
+    // Viewport CSS px to canvas backing px (the inverse of the last step of `headViewportRect`), then into model canvas px.
+    chatFocus.set((client.x - rect.left) * canvas.width / rect.width, (client.y - rect.top) * canvas.height / rect.height)
+    live2DModel.toModelPosition(chatFocus, chatFocus)
+    return { x: chatFocus.x, y: chatFocus.y }
+  }, eye)
 }
 
 /** Reports the cursor's unscaled face-feature unit in viewport CSS pixels. */

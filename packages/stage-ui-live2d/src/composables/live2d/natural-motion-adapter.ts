@@ -4,7 +4,7 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 import type { EmotionHold } from './expression/hold'
 import type { Live2DMotionDriver } from './live2d'
 import type { PixiLive2DInternalModel } from './motion-manager'
-import type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionPose } from './natural-motion'
+import type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionPose, NaturalChatInput } from './natural-motion'
 import type { NaturalFaceOutput } from './natural-motion/face'
 import type { NaturalEpisode } from './natural-motion/mood'
 import type { PostureHome } from './natural-motion/posture'
@@ -52,6 +52,11 @@ export interface Live2DNaturalMotionAttention {
   cursorDismissed: boolean
   /** Screen inwardness of the head (-1..1, positive toward screen +x), or `null` when there is no placement signal. */
   placement: number | null
+  /**
+   * Chat target, typing, and typed-send counters, or `null` when the setting is off or the host has no chat.
+   * Hidden chat is an object with a `null` target, so the controller keeps its sequence baselines.
+   */
+  chat: NaturalChatInput | null
   /** Host poke queue, `x` and `y` relative to the touched region's center (-1..1, y down); emptied like `pendingEmotions`. */
   pendingPokes: { region: Live2DTouchRegion, x: number, y: number }[]
   /** Hand position relative to the head center (-1..1, y down) while the user pets the head, otherwise `null`. */
@@ -128,6 +133,14 @@ function composeEyelid(base: number, multiplier: number, hint: number, blinkFact
  * written. Posture fades out under manual, spring, or exclusive control; clip-owned
  * posture keeps a 10% residual and clip-owned face channels are skipped.
  */
+/** Value equality of two chat inputs, so an unchanged input rebuilt every composition is not forwarded again. */
+function sameChat(a: NaturalChatInput | null, b: NaturalChatInput | null) {
+  if (a === null || b === null)
+    return a === b
+  return a.typing === b.typing && a.sentSeq === b.sentSeq && a.sentWords === b.sentWords && a.unfoldSeq === b.unfoldSeq
+    && (a.target === null || b.target === null ? a.target === b.target : a.target.x === b.target.x && a.target.y === b.target.y)
+}
+
 export class Live2DNaturalMotionAdapter {
   private readonly controller: Live2DNaturalMotion
   private readonly originalFocus: () => void
@@ -164,6 +177,8 @@ export class Live2DNaturalMotionAdapter {
   private placement: number | null = null
   /** Called after every controller step with that step's placement input and applied yaw bias, for QA diagnostics. */
   onPlacementStep: ((placement: number | null, yawBias: number) => void) | null = null
+  /** Last chat input handed to the controller; a fresh controller starts without a chat signal. */
+  private chat: NaturalChatInput | null = null
   private readonly visibilityChanged = () => {
     this.hidden = this.visibility?.hidden ?? false
     this.frameTime = undefined
@@ -332,6 +347,11 @@ export class Live2DNaturalMotionAdapter {
     if (attention.placement !== this.placement) {
       this.placement = attention.placement
       this.controller.setPlacement(attention.placement, this.time)
+    }
+    // Forwarded on change only, like placement: the host rebuilds the input object every composition.
+    if (!sameChat(attention.chat, this.chat)) {
+      this.chat = attention.chat && { ...attention.chat, target: attention.chat.target && { ...attention.chat.target } }
+      this.controller.setChat(attention.chat, this.time)
     }
     const frame = this.controller.advance(this.time)
     this.onPlacementStep?.(this.placement, this.controller.placementYawBias)

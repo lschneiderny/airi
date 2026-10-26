@@ -40,6 +40,8 @@ export const MotionQaStateSchema = strictObject({
   placement: nullable(pipe(number(), finite())),
   /** Normalized head-X placement term the Natural controller last applied. */
   placementYawBias: pipe(number(), finite()),
+  /** The chat input the stage last handed to Natural as flags and counters, or null when it had no chat signal. Never text. */
+  chat: nullable(strictObject({ hasTarget: boolean(), typing: boolean(), sentSeq: number(), unfoldSeq: number() })),
 })
 export type MotionQaState = InferOutput<typeof MotionQaStateSchema>
 

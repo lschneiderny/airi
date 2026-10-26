@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import type { ModelSettingsRuntimeSnapshot } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 
+import type { ChatAttentionTarget } from '../../shared/eventa'
+
 import { errorMessageFrom } from '@moeru/std'
 import { electron } from '@proj-airi/electron-eventa'
 import {
   useElectronAllDisplays,
+  useElectronEventaContext,
   useElectronEventaInvoke,
   useElectronMouseAroundWindowBorder,
   useElectronMouseInElement,
@@ -35,7 +38,7 @@ import ControlsIslandRoot from '../components/stage-islands/controls-island/cont
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
 
-import { electronAppIsWayland, electronOpenInlay, electronOpenOnboarding } from '../../shared/eventa'
+import { electronAppIsWayland, electronChatAttentionTargetChanged, electronGetChatAttentionTarget, electronOpenInlay, electronOpenOnboarding } from '../../shared/eventa'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
 import { usePushToTalkShortcut } from '../composables/use-push-to-talk-shortcut'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
@@ -431,6 +434,25 @@ const screenPlacement = computed(() => ({
   displays: allDisplays.value.map(display => display.bounds),
   windowBounds: { x: windowX.value, y: windowY.value, width: windowWidth.value, height: windowHeight.value },
 }))
+
+// Natural looks at the chat window. The main process sends only the rectangle and visibility, never chat content.
+// `null` until the first answer, which Natural reads as a hidden chat rather than a missing host feature.
+const chatTarget = shallowRef<ChatAttentionTarget | null>(null)
+// The main process can emit before the snapshot answers, so subscribe first and let a later event win over it.
+let chatTargetChanged = false
+onScopeDispose(useElectronEventaContext().value.on(electronChatAttentionTargetChanged, (event) => {
+  if (!event?.body)
+    return
+  chatTargetChanged = true
+  chatTarget.value = event.body
+}))
+useElectronEventaInvoke(electronGetChatAttentionTarget)()
+  .then((target) => {
+    if (!chatTargetChanged)
+      chatTarget.value = target
+  })
+  .catch(error => console.warn('[Main Page] Failed to read the chat attention target; Natural treats the chat as hidden:', errorMessageFrom(error)))
+const stageChatTarget = computed(() => chatTarget.value ?? { visible: false, bounds: null })
 </script>
 
 <template>
@@ -477,6 +499,7 @@ const screenPlacement = computed(() => ({
           flex-1
           :cursor-position="cursorPosition"
           :screen-placement="screenPlacement"
+          :chat-target="stageChatTarget"
           :paused="stagePaused"
           @error="handleStageRenderError"
           @reset="handleStageReset"
