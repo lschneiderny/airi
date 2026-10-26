@@ -211,6 +211,30 @@ describe('card inheritance with real module stores', () => {
     expect(speech.activeSpeechVoiceId).toBe('global-voice')
   })
 
+  it('keeps inherited defaults in step when a module store changes an inherited selection later', async () => {
+    // ROOT CAUSE:
+    //
+    // Inherited defaults were remembered only when a card applied. A module store that changed an inherited selection
+    // afterwards, such as a voice catalog that picks a voice once it loads, left the defaults stale, so replies
+    // resolved speech from the old selection.
+    //
+    // The fix keeps inherited defaults in step with the runtime modules. Source: upstream moeru-ai/airi#3103.
+    const speech = useSpeechStore()
+    speech.activeSpeechProvider = 'speech-provider'
+    speech.activeSpeechModel = 'global-model'
+    speech.activeSpeechVoiceId = 'global-voice'
+    const cards = useAiriCardStore()
+    await cards.initialize()
+
+    speech.activeSpeechVoiceId = 'voice-picked-later'
+
+    await vi.waitFor(() => expect(cards.getModules(cards.activeCardId).speech).toMatchObject({
+      provider: 'speech-provider',
+      model: 'global-model',
+      voice_id: 'voice-picked-later',
+    }))
+  })
+
   it('keeps artistry models and options within their provider', async () => {
     const artistry = useArtistryStore()
     artistry.globalProvider = 'comfyui'
