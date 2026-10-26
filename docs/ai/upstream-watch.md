@@ -41,3 +41,12 @@ The upstream review of 2026-10-26 created this list. Commits that the fork took 
 - **Fork conflicts (2026-10-26):** 8 files. The change overlaps the fork's presence work: the `user-speaking` gate suppressor and the voice interruption control records.
 - **Revisit when:** Upstream's voice input pipeline stops changing, with no follow-up rewrites of the same modules for a few weeks. Also wait until speaker gates land, because they decide which voice inputs start at all. Before importing, check the fork's `user-speaking` and interruption behavior against the new decision rules.
 - **Search terms:** `voice input`, `speculat`, `rewrite`, `turn detection`, `stream-kit`.
+
+## Chat actions in the tab that has the Stage
+
+- **Upstream:** `599336d03` ([#3101](https://github.com/moeru-ai/airi/pull/3101)), 2026-10-24. 7 files, and a `pinia-plugin-synced` bump from 0.1.5 to 0.1.6 for synced roles.
+- **What it adds:** A context that mounts a Stage claims a speech-player role, and every chat action runs in a speech player. Without one, the leader runs them silently.
+- **Why it matters here:** On stage-web with several tabs, a tab without a Stage can win the leader election. Replies then generate in that tab, and nothing speaks them. The desktop app is not affected: only the main window mounts a Stage, and it is the only window that can lead. Pocket runs one webview.
+- **Fork conflicts (2026-10-26):** 2 files, `Stage.vue` and `chat.ts`. The change also moves chat actions away from the leader, while the fork's presence turns rely on the leader running them.
+- **Revisit when:** Stage-web is used in several tabs, or upstream settles which Stage tab speaks. Upstream's own review note says that with several Stage tabs, an arbitrary one speaks and a cancel can miss its turn.
+- **Search terms:** `speech player`, `syncedRoles`, `pinia-plugin-synced`, `Stage tab`.
