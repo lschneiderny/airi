@@ -8,7 +8,7 @@ import { tryOnScopeDispose } from '@vueuse/core'
 import { nanoid } from 'nanoid'
 import { shallowReadonly, shallowRef, watch } from 'vue'
 
-import { chatComposerActivityChangedEvent, getSpeechBusContext } from '../../../../services/speech/bus'
+import { chatComposerActivityChangedEvent, chatComposerSentEvent, getSpeechBusContext } from '../../../../services/speech/bus'
 import { isChatReplyTargetMessage } from '../reply'
 
 /** Shortest time between two composer activity reports caused by typing. */
@@ -172,6 +172,10 @@ export function useChatComposer<TAttachment = never>(options: UseChatComposerOpt
       await submitOptions?.beforeSend?.(submission)
       const sendPromise = options.send(submission)
       submitOptions?.afterSendStarted?.(submission)
+      const words = Array.from(new Intl.Segmenter(undefined, { granularity: 'word' }).segment(submittedDraft))
+        .filter(segment => segment.isWordLike)
+        .length
+      getSpeechBusContext().emit(chatComposerSentEvent, { sourceId: activitySourceId, words })
       await sendPromise
       return 'sent'
     }

@@ -3,7 +3,7 @@ import type { ChatHistoryReplyPayload } from '../reply'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, shallowRef } from 'vue'
 
-import { chatComposerActivityChangedEvent, getSpeechBusContext } from '../../../../services/speech/bus'
+import { chatComposerActivityChangedEvent, chatComposerSentEvent, getSpeechBusContext } from '../../../../services/speech/bus'
 import { useChatComposer } from './use-chat-composer'
 
 describe('useChatComposer', () => {
@@ -177,6 +177,57 @@ describe('useChatComposer activity reports', () => {
     await vi.advanceTimersByTimeAsync(10_000)
     expect(reports.at(-1)?.hasDraft).toBe(false)
     expect(vi.getTimerCount()).toBe(0)
+    stop()
+  })
+})
+
+describe('useChatComposer sent events', () => {
+  /** Collect the typed-send events this window sends on the speech bus. */
+  function recordSentEvents() {
+    const events: { sourceId: string, words: number }[] = []
+    const stop = getSpeechBusContext().on(chatComposerSentEvent, ({ body }) => {
+      if (body)
+        events.push(body)
+    })
+    return { events, stop }
+  }
+
+  it('reports the word count and only the allowed payload keys once for a typed send', async () => {
+    const { events, stop } = recordSentEvents()
+    const composer = useChatComposer({ activeSessionId: shallowRef('session-1'), send: vi.fn().mockResolvedValue(undefined) })
+    composer.draft.value = 'hello there world'
+
+    await expect(composer.submit()).resolves.toBe('sent')
+
+    expect(events).toHaveLength(1)
+    expect(events[0]?.words).toBe(3)
+    expect(typeof events[0]?.sourceId).toBe('string')
+    expect(Object.keys(events[0] ?? {}).sort()).toEqual(['sourceId', 'words'])
+    stop()
+  })
+
+  it('reports zero words for an attachments-only send', async () => {
+    const { events, stop } = recordSentEvents()
+    const composer = useChatComposer<string>({ activeSessionId: shallowRef('session-1'), send: vi.fn().mockResolvedValue(undefined) })
+    composer.addAttachments('attachment')
+
+    await expect(composer.submit()).resolves.toBe('sent')
+
+    expect(events).toHaveLength(1)
+    expect(events[0]?.words).toBe(0)
+    stop()
+  })
+
+  it('does not report ignored whitespace-only submissions', async () => {
+    const { events, stop } = recordSentEvents()
+    const send = vi.fn().mockResolvedValue(undefined)
+    const composer = useChatComposer({ activeSessionId: shallowRef('session-1'), send })
+    composer.draft.value = ' \n\t '
+
+    await expect(composer.submit()).resolves.toBe('ignored')
+
+    expect(send).not.toHaveBeenCalled()
+    expect(events).toEqual([])
     stop()
   })
 })

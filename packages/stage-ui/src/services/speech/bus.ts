@@ -42,6 +42,9 @@ export const speechInputUserSpeakingChangedEvent = defineEventa<{ speaking: bool
  */
 export const chatComposerActivityChangedEvent = defineEventa<{ sourceId: string, hasDraft: boolean, lastInputAtMs: number }>('eventa:chat:composer-activity-changed')
 
+/** A typed message started sending; this carries no text, only the message's word count. */
+export const chatComposerSentEvent = defineEventa<{ sourceId: string, words: number }>('eventa:chat:composer-sent')
+
 /**
  * A `spark:notify` observation that a follower window received, for example from the devtools context-flow simulator.
  * Only the leader folds notifies into the situation, so followers forward theirs here. A server notify reaches every
