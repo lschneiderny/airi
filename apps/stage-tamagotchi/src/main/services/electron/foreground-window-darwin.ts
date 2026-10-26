@@ -79,51 +79,12 @@ function readString(native: NativeBinding, value: NativeRef, maxUnits = native.C
   return decodeUtf16(buffer, units)
 }
 
-/** An owned CFString. Its pointer never crosses the native boundary. */
-class DarwinString {
-  #released = false
-  readonly #native: NativeBinding
-  readonly #value: NativeRef
-
-  constructor(native: NativeBinding, value: NativeRef) {
-    this.#native = native
-    this.#value = value
-  }
-
-  get length(): number {
-    this.assertOwned()
-    return this.#native.CFStringGetLength(this.#value)
-  }
-
-  read(maxUnits = this.length): string {
-    this.assertOwned()
-    if (!Number.isSafeInteger(maxUnits) || maxUnits < 0)
-      throw new RangeError('CFString read length must be a nonnegative safe integer')
-    return readString(this.#native, this.#value, maxUnits)
-  }
-
-  release(): void {
-    this.assertOwned()
-    this.#native.CFRelease(this.#value)
-    this.#released = true
-  }
-
-  private assertOwned(): void {
-    if (this.#released)
-      throw new ReferenceError('CFString has already been released')
-  }
-}
-
 /**
  * Decoded native primitives for the sampler. Copy/Create results are released
- * before returning, except createString, whose caller must release its ownership.
- * No native address, koffi object, or Buffer is exposed.
+ * before returning. No native address, koffi object, or Buffer is exposed.
  */
 export interface DarwinBinding {
-  readonly axFrameworkPath: string
-  readonly resolvedSymbols: readonly string[]
   readonly isProcessTrusted: () => number
-  readonly createString: (value: string) => Pick<DarwinString, 'length' | 'read' | 'release'>
   readonly readSession: () => { readonly onConsole: boolean | null, readonly locked: boolean | null } | null
   /** The synchronous callback may read decoded getters only while the pool is alive. */
   readonly withFrontApplication: (read: (application: {
@@ -141,12 +102,6 @@ export interface DarwinBinding {
   }[] | null
   /** Owns one reusable title buffer per sampler; deadline is monotonic milliseconds. */
   readonly createTitleReader: () => (pid: number, deadline: number) => { readonly title: string, readonly timedOut: boolean }
-  readonly probeFullscreen: (pid: number) => {
-    readonly trusted: number
-    readonly status: number
-    readonly stage: 'application' | 'window' | 'fullscreen' | 'type'
-    readonly value: boolean | null
-  }
 }
 
 const FULLSCREEN_TOLERANCE_PT = 1
@@ -175,8 +130,7 @@ export async function loadDarwinBinding(): Promise<DarwinBinding> {
     // Loading AppKit registers NSWorkspace and NSRunningApplication with Objective-C.
     load('/System/Library/Frameworks/AppKit.framework/AppKit')
     const cf = load('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation')
-    const axFrameworkPath = '/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices'
-    const ax = load(axFrameworkPath)
+    const ax = load('/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices')
     const cg = load('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics')
     const CFRange = struct({ location: 'long', length: 'long' })
     const CGRect = struct({
@@ -216,18 +170,10 @@ export async function loadDarwinBinding(): Promise<DarwinBinding> {
       CGDisplayBounds: cg.func('CGDisplayBounds', CGRect, ['uint32_t']),
     }
 
-    function createString(value: string): DarwinString {
-      const ref = native.CFStringCreateWithCString(null, value, kCFStringEncodingUTF8)
-      if (!ref)
-        throw new Error('CFStringCreateWithCString returned null')
-      return new DarwinString(native, ref)
-    }
-
-    // These nine +1 references intentionally live for the process lifetime.
+    // These eight +1 references intentionally live for the process lifetime.
     const keys = {
       AXFocusedWindow: native.CFStringCreateWithCString(null, 'AXFocusedWindow', kCFStringEncodingUTF8),
       AXTitle: native.CFStringCreateWithCString(null, 'AXTitle', kCFStringEncodingUTF8),
-      AXFullScreen: native.CFStringCreateWithCString(null, 'AXFullScreen', kCFStringEncodingUTF8),
       kCGWindowLayer: native.CFStringCreateWithCString(null, 'kCGWindowLayer', kCFStringEncodingUTF8),
       kCGWindowOwnerPID: native.CFStringCreateWithCString(null, 'kCGWindowOwnerPID', kCFStringEncodingUTF8),
       kCGWindowBounds: native.CFStringCreateWithCString(null, 'kCGWindowBounds', kCFStringEncodingUTF8),
@@ -252,10 +198,7 @@ export async function loadDarwinBinding(): Promise<DarwinBinding> {
     }
 
     return {
-      axFrameworkPath,
-      resolvedSymbols: Object.keys(native),
       isProcessTrusted: () => native.AXIsProcessTrusted(),
-      createString,
       readSession() {
         const session = native.CGSessionCopyCurrentDictionary()
         if (!session)
@@ -389,39 +332,6 @@ export async function loadDarwinBinding(): Promise<DarwinBinding> {
           }
         }
       },
-      probeFullscreen(pid) {
-        if (!Number.isInteger(pid) || pid <= 0 || pid > 0x7FFFFFFF)
-          throw new RangeError('Accessibility PID must be a positive int32')
-        const trusted = native.AXIsProcessTrusted()
-        const app = native.AXUIElementCreateApplication(pid)
-        if (!app)
-          return { trusted, status: AX_ERROR.invalidElement, stage: 'application', value: null }
-        const window: [NativeRef] = [null]
-        const fullscreen: [NativeRef] = [null]
-        try {
-          let status = native.AXUIElementSetMessagingTimeout(app, 0.125)
-          if (status !== AX_ERROR.success)
-            return { trusted, status, stage: 'application', value: null }
-          status = native.AXUIElementCopyAttributeValue(app, keys.AXFocusedWindow, window)
-          if (status !== AX_ERROR.success || !window[0])
-            return { trusted, status: status || AX_ERROR.noValue, stage: 'window', value: null }
-          status = native.AXUIElementSetMessagingTimeout(window[0], 0.125)
-          if (status !== AX_ERROR.success)
-            return { trusted, status, stage: 'window', value: null }
-          status = native.AXUIElementCopyAttributeValue(window[0], keys.AXFullScreen, fullscreen)
-          if (status !== AX_ERROR.success || !fullscreen[0])
-            return { trusted, status: status || AX_ERROR.noValue, stage: 'fullscreen', value: null }
-          const value = readBoolean(fullscreen[0])
-          return { trusted, status, stage: value === null ? 'type' : 'fullscreen', value }
-        }
-        finally {
-          if (fullscreen[0])
-            native.CFRelease(fullscreen[0])
-          if (window[0])
-            native.CFRelease(window[0])
-          native.CFRelease(app)
-        }
-      },
     }
   })()
 }
@@ -464,11 +374,11 @@ export function createDarwinSampler(binding: DarwinBinding, isOwnProcess: (pid: 
         }
         else {
           // NOTICE:
-          // Notched fullscreen can report accepts: windows may exclude the camera band.
-          // Source: task-5-binding.txt measured exact 1680x1050 cover without a notch.
-          // AXFullScreen is unverified (trust 0, -25211).
-          // Removal: measure trusted AXFullScreen CFBoolean and notched coverage,
-          // then integrate the secondary signal under the shared AX deadline.
+          // Native full screen on a notched display may stop below the camera band, so this can report accepts.
+          // Window geometry is the only full-screen signal: AXFullScreen was never read successfully while trusted.
+          // Source: docs/ai/adr/2026-10-25-macos-foreground-sensor.md (exact cover measured on a display without a notch).
+          // Removal: once trusted AXFullScreen and notched coverage are measured, add AXFullScreen as a
+          // secondary signal under the shared AX deadline.
           const displays = binding.readDisplays()
           if (displays.status !== 0)
             busy = null
