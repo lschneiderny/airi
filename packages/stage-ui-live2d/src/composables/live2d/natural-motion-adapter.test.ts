@@ -4,9 +4,11 @@ import type { Live2DMotionDriver } from './live2d'
 import type { Live2DNaturalMotionAttention } from './natural-motion-adapter'
 import type { Live2DRigProfile, PhysicsRigLike } from './natural-motion/rig-profile'
 
+import { createPinia, setActivePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 
 import { Emotion } from '../../constants/emotions'
+import { useNaturalMotionDiagnostics } from '../../stores/natural-motion-diagnostics'
 import { Live2DNaturalMotion } from './natural-motion'
 import { Live2DNaturalMotionAdapter } from './natural-motion-adapter'
 import { mapCursor } from './natural-motion/cursor-attention'
@@ -750,6 +752,30 @@ describe('natural motion adapter', () => {
     expect(placed.adapter.natural.placementYawBias).toBeLessThan(-0.09)
     expect(headX).toBeLessThan(command(natural(10).pose.headX) - 1)
     placed.adapter.dispose()
+  })
+
+  it('(j3) reports the placement and yaw bias of the step that just ran, including the disabling step', () => {
+    setActivePinia(createPinia())
+    const diagnostics = useNaturalMotionDiagnostics()
+    const f = fixture()
+    f.adapter.onPlacementStep = diagnostics.reportPlacement
+    f.state.eligible = true
+    f.frame(0)
+    f.frame(1)
+    expect([diagnostics.lastPlacement, diagnostics.lastPlacementYawBias]).toEqual([null, 0])
+    f.state.placement = 1
+    f.frame(2)
+    f.frame(3)
+    const enabledYaw = f.adapter.natural.placementYawBias
+    expect(enabledYaw).toBeGreaterThan(0.03)
+    expect(diagnostics.lastPlacement).toBe(1)
+    expect(diagnostics.lastPlacementYawBias).toBe(enabledYaw)
+    f.state.placement = null
+    f.frame(4)
+    expect(f.adapter.natural.placementYawBias).toBe(0)
+    expect(diagnostics.lastPlacement).toBeNull()
+    expect(diagnostics.lastPlacementYawBias).toBe(0)
+    f.adapter.dispose()
   })
 
   it('(i) drains pokes exactly once and forwards a pet only while Natural is active', () => {

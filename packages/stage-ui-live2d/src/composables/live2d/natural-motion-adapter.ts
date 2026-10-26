@@ -162,6 +162,8 @@ export class Live2DNaturalMotionAdapter {
   private physicsOutputSkips = 0
   /** Last placement handed to the controller; a fresh controller starts without a placement signal. */
   private placement: number | null = null
+  /** Called after every controller step with that step's placement input and applied yaw bias, for QA diagnostics. */
+  onPlacementStep: ((placement: number | null, yawBias: number) => void) | null = null
   private readonly visibilityChanged = () => {
     this.hidden = this.visibility?.hidden ?? false
     this.frameTime = undefined
@@ -332,6 +334,7 @@ export class Live2DNaturalMotionAdapter {
       this.controller.setPlacement(attention.placement, this.time)
     }
     const frame = this.controller.advance(this.time)
+    this.onPlacementStep?.(this.placement, this.controller.placementYawBias)
     this.diagnosticFrames++
     this.weightSum += this.weight
     this.physicsOutputSkips += this.physicsOwnedChannels

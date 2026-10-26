@@ -640,7 +640,6 @@ async function performModelLoad() {
           cursor = { x: (localFocus.x - anchorX) / unit, y: (anchorY - localFocus.y) / unit }
         }
         const placement = naturalPlacement()
-        naturalDiagnostics.reportPlacement(placement, naturalMotion?.natural.placementYawBias ?? 0)
         return {
           driver: live2dMotionDriver.value,
           exclusive: !!exclusiveOwnerId.value,
@@ -668,6 +667,8 @@ async function performModelLoad() {
     )
     let naturalAdapter = createNaturalAdapter()
     naturalMotion = naturalAdapter
+    // QA reads the yaw bias of the step that just ran, not the one before it.
+    naturalAdapter.onPlacementStep = naturalDiagnostics.reportPlacement
     naturalAdapter.setPaused(paused.value)
     naturalAdapter.setPerformanceSettings(props.performanceSettings)
     rebuildNaturalMotion = () => {
@@ -675,6 +676,7 @@ async function performModelLoad() {
       naturalAdapter.dispose()
       naturalAdapter = createNaturalAdapter()
       naturalMotion = naturalAdapter
+      naturalAdapter.onPlacementStep = naturalDiagnostics.reportPlacement
       naturalAdapter.setPaused(paused.value)
       naturalAdapter.setPerformanceSettings(props.performanceSettings)
       naturalAdapter.natural.setObserver(naturalCaptureObserver)
