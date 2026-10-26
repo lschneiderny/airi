@@ -7,6 +7,7 @@ import type { SituationGateEvaluation } from '../devtools/situation-observabilit
 import type { ConversationHookSource } from './sensors/conversation'
 
 import { errorMessageFrom } from '@moeru/std'
+import { isElectronWindow } from '@proj-airi/stage-shared'
 import {
   advanceSituation,
   evaluateGate,
@@ -488,7 +489,10 @@ export const useSituationStore = defineStore('situation', () => {
         chattiness: document.chattiness,
         dontDisturb: document.dontDisturb,
         // Settings list executable or bundle names; the gate matches app ids without their extension.
-        quietApps: document.quietApps.map(pattern => withoutAppExtension(pattern.trim())),
+        quietApps: document.quietApps.map(pattern => withoutAppExtension(
+          pattern.trim(),
+          typeof window !== 'undefined' && isElectronWindow(window) ? window.platform : undefined,
+        )),
         speakDuringGames: document.speakDuringGames,
       },
       forceTiming,

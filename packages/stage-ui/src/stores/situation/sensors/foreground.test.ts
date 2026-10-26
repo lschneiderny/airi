@@ -62,6 +62,8 @@ describe('foreground situation sensor', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
   })
 
   it('sends nothing for a host without samples, now or on later checks', () => {
@@ -156,6 +158,8 @@ describe('foreground situation sensor', () => {
   })
 
   it('reports a default-denylisted macOS bundle with its app id and category but a null title', () => {
+    vi.stubEnv('RUNTIME_ENVIRONMENT', 'electron')
+    vi.stubGlobal('window', { electron: {}, platform: 'darwin' })
     const { activities, publish } = run()
 
     publish(T0, { exePath: '/Applications/1Password 7.app', exeName: '1Password 7.app', title: 'Vault - secret-bank-login' })
@@ -167,6 +171,8 @@ describe('foreground situation sensor', () => {
   })
 
   it('drops the title of a macOS bundle whose denylist entry differs only in case', async () => {
+    vi.stubEnv('RUNTIME_ENVIRONMENT', 'electron')
+    vi.stubGlobal('window', { electron: {}, platform: 'darwin' })
     const { activities, publish } = run()
     const settings = useSituationSettings()
     const macSample = { exePath: '/Applications/Notes.app', exeName: 'Notes.app', title: 'Groceries' }

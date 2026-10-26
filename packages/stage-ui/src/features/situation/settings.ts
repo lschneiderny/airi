@@ -1,7 +1,9 @@
 import type {} from 'pinia-plugin-synced'
 import type { InferOutput } from 'valibot'
 
+import { isElectronWindow } from '@proj-airi/stage-shared'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
+import { withoutAppExtension } from '@proj-airi/stage-shared/situation'
 import { clamp, isPlainObject, uniq } from 'es-toolkit'
 import { defineStore } from 'pinia'
 import { array, boolean, check, number, optional, parse, pipe, safeParse, strictObject, string, transform, unknown } from 'valibot'
@@ -11,7 +13,11 @@ import { shallowRef, toRaw } from 'vue'
 function exePatterns(defaults: readonly string[]) {
   return optional(
     pipe(array(string()), transform(entries => uniq(entries.map(entry => entry.trim()).filter(entry => entry !== '')))),
-    () => [...defaults],
+    () => {
+      const platform = typeof window !== 'undefined' && isElectronWindow(window) ? window.platform : undefined
+      // Defaults have explicit suffixes. Keep only host-supported entries, without changing user lists.
+      return defaults.filter(pattern => withoutAppExtension(pattern, platform) !== pattern)
+    },
   )
 }
 

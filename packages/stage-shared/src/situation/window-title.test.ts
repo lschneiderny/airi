@@ -67,14 +67,20 @@ describe('appIdFromExe and labelFromExe', () => {
     ['sublime_text.exe', 'sublime_text', 'Sublime_Text'],
     ['notepad++.exe', 'notepad++', 'Notepad++'],
     ['1Password.exe', '1password', '1Password'],
-    ['/Applications/zoom.us.app', 'zoom.us', 'Zoom.Us'],
-    ['/Applications/Visual Studio Code.app', 'visual studio code', 'Visual Studio Code'],
-    ['Google Chrome.app', 'google chrome', 'Google Chrome'],
-    ['FaceTime.APP', 'facetime', 'FaceTime'],
     ['', '', ''],
   ])('%s', (exePath, appId, label) => {
     expect(appIdFromExe(exePath)).toBe(appId)
     expect(labelFromExe(exePath)).toBe(label)
+  })
+
+  it.each([
+    ['/Applications/zoom.us.app', 'zoom.us', 'Zoom.Us'],
+    ['/Applications/Visual Studio Code.app', 'visual studio code', 'Visual Studio Code'],
+    ['Google Chrome.app', 'google chrome', 'Google Chrome'],
+    ['FaceTime.APP', 'facetime', 'FaceTime'],
+  ])('%s on Darwin', (exePath, appId, label) => {
+    expect(appIdFromExe(exePath, 'darwin')).toBe(appId)
+    expect(labelFromExe(exePath, 'darwin')).toBe(label)
   })
 })
 
@@ -88,7 +94,13 @@ describe('withoutAppExtension', () => {
     ['myapp', 'myapp'],
     ['', ''],
   ])('%s => %s', (fileName, expected) => {
-    expect(withoutAppExtension(fileName)).toBe(expected)
+    expect(withoutAppExtension(fileName, 'darwin')).toBe(expected)
+  })
+
+  it.each(['win32', undefined])('keeps .app patterns literal on host %s', (platform) => {
+    expect(withoutAppExtension('zed.app', platform)).toBe('zed.app')
+    expect(withoutAppExtension('z*.APP', platform)).toBe('z*.APP')
+    expect(withoutAppExtension('zed.app.exe', platform)).toBe('zed.app')
   })
 })
 
@@ -111,6 +123,91 @@ describe('isDenylisted', () => {
 
 describe('categorizeApp', () => {
   it.each([
+    ['zed.app', 'zed.app', 'Zed.App'],
+    ['chrome.app', 'chrome.app', 'Chrome.App'],
+    ['mystery.APP', 'mystery.app', 'Mystery.APP'],
+    ['zed.app.app', 'zed.app.app', 'Zed.App.App'],
+  ])('preserves literal Windows executable %s', (exeName, appId, label) => {
+    const exePath = `C:\\Tools\\${exeName}`
+
+    expect(appIdFromExe(exePath)).toBe(appId)
+    expect(labelFromExe(exePath)).toBe(label)
+    expect(categorizeApp(exePath, exeName)).toBe('other')
+  })
+
+  describe.each([
+    ['safari', 'browser'],
+    ['google chrome', 'browser'],
+    ['arc', 'browser'],
+    ['microsoft edge', 'browser'],
+    ['visual studio code', 'editor'],
+    ['xcode', 'editor'],
+    ['zed', 'editor'],
+    ['music', 'media'],
+    ['quicktime player', 'media'],
+    ['iina', 'media'],
+    ['messages', 'chat'],
+    ['zoom.us', 'call'],
+    ['microsoft teams', 'call'],
+    ['facetime', 'call'],
+  ])('bundle-only category for %s', (name, category) => {
+    it(`keeps Windows ${name}.exe in the pre-plan other category`, () => {
+      const exeName = `${name}.exe`
+      const exePath = `C:\\Program Files\\X\\${exeName}`
+
+      expect(categorizeApp(exePath, exeName)).toBe('other')
+      expect(categorizeApp(exePath, '')).toBe('other')
+      expect(appIdFromExe(exePath)).toBe(name)
+    })
+
+    it(`keeps Windows ${name}.app.exe in the pre-plan other category`, () => {
+      const exeName = `${name}.app.exe`
+      const exePath = `C:\\X\\${exeName}`
+
+      expect(categorizeApp(exePath, exeName)).toBe('other')
+      expect(categorizeApp(exePath, '')).toBe('other')
+      expect(appIdFromExe(exePath)).toBe(`${name}.app`)
+    })
+
+    it(`classifies the macOS ${name}.app bundle as ${category}`, () => {
+      const exeName = `${name}.app`
+      const exePath = `/Applications/${exeName}`
+
+      expect(categorizeApp(exePath, exeName, 'darwin')).toBe(category)
+      expect(categorizeApp(exePath, '', 'darwin')).toBe(category)
+    })
+  })
+
+  it.each([
+    ['chrome', 'browser'],
+    ['msedge', 'browser'],
+    ['firefox', 'browser'],
+    ['brave', 'browser'],
+    ['opera', 'browser'],
+    ['vivaldi', 'browser'],
+    ['code', 'editor'],
+    ['cursor', 'editor'],
+    ['idea64', 'editor'],
+    ['devenv', 'editor'],
+    ['sublime_text', 'editor'],
+    ['notepad++', 'editor'],
+    ['vlc', 'media'],
+    ['mpc-hc64', 'media'],
+    ['spotify', 'media'],
+    ['discord', 'chat'],
+    ['slack', 'chat'],
+    ['telegram', 'chat'],
+    ['whatsapp', 'chat'],
+    ['zoom', 'call'],
+    ['ms-teams', 'call'],
+    ['teams', 'call'],
+    ['webex', 'call'],
+  ])('preserves the original Windows category for %s', (name, category) => {
+    expect(categorizeApp(`C:\\Tools\\${name}.exe`, `${name}.exe`)).toBe(category)
+    expect(categorizeApp(`C:\\Tools\\${name}`, name)).toBe(category)
+  })
+
+  it.each([
     ['C:\\Program Files (x86)\\Steam\\steamapps\\common\\Hades\\Hades.exe', 'Hades.exe', 'game'],
     ['D:/SteamLibrary/steamapps/common/Celeste/Celeste.exe', 'Celeste.exe', 'game'],
     ['C:\\Program Files\\Epic Games\\Fortnite\\FortniteClient.exe', 'FortniteClient.exe', 'game'],
@@ -127,6 +224,11 @@ describe('categorizeApp', () => {
     ['C:\\Tools\\mystery.exe', 'mystery.exe', 'other'],
     ['', '', 'other'],
     ['C:\\Tools\\constructor', 'constructor', 'other'],
+  ])('%s => %s', (exePath, exeName, expected) => {
+    expect(categorizeApp(exePath, exeName)).toBe(expected)
+  })
+
+  it.each([
     ['/Users/x/Library/Application Support/Steam/steamapps/common/Hades/Hades.app', 'Hades.app', 'game'],
     ['/Applications/zoom.us.app', 'zoom.us.app', 'call'],
     ['/Applications/Microsoft Teams.app', 'Microsoft Teams.app', 'call'],
@@ -152,6 +254,6 @@ describe('categorizeApp', () => {
     ['/Applications/Firefox.app', 'Firefox.app', 'browser'],
     ['/Applications/Cursor.app', 'Cursor.app', 'editor'],
   ])('%s => %s', (exePath, exeName, expected) => {
-    expect(categorizeApp(exePath, exeName)).toBe(expected)
+    expect(categorizeApp(exePath, exeName, 'darwin')).toBe(expected)
   })
 })

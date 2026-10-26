@@ -598,6 +598,8 @@ describe('situation gate loop', () => {
   afterEach(() => {
     useSituationStore().dispose()
     vi.useRealTimers()
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
   })
 
   /**
@@ -1047,11 +1049,47 @@ describe('situation gate loop', () => {
   })
 
   it.each([
+    ['zed.exe', 'zed.app', 'zed', false],
+    ['zed.app.exe', 'zed.app', 'zed.app', true],
+    ['zed.app', 'zed.app.exe', 'zed.app', true],
+    ['mystery.app', 'mystery', 'mystery.app', false],
+    ['zed.exe', 'z*.APP', 'zed', false],
+  ])('preserves Windows quiet matching for %s against %s', async (exeName, pattern, appId, quiet) => {
+    const { store, observability } = startQuietLeader({
+      foreground: () => foregroundSample({ exePath: `C:\\Tools\\${exeName}`, exeName, title: 'Draft' }),
+    })
+    await useSituationSettings().update({ quietApps: [pattern] })
+    offerTopic()
+
+    const evaluation = await observability.evaluateGate()
+
+    expect(store.state.activity).toMatchObject({ appId, category: 'other' })
+    expect(evaluation).toMatchObject({
+      status: 'evaluated',
+      decision: quiet ? { fire: false, reason: 'quiet-app' } : { fire: true },
+    })
+  })
+
+  it.each(['zoom.us.exe', 'Microsoft Teams.exe', 'FaceTime.exe', 'zoom.us.app.exe', 'FaceTime.app'])(
+    'does not add a default Windows quiet match for %s',
+    async (exeName) => {
+      const { observability } = startQuietLeader({
+        foreground: () => foregroundSample({ exePath: `C:\\Tools\\${exeName}`, exeName, title: 'Draft' }),
+      })
+      offerTopic()
+
+      expect(await observability.evaluateGate()).toMatchObject({ status: 'evaluated', decision: { fire: true } })
+    },
+  )
+
+  it.each([
     ['notepad.exe', 'notepad.exe', 'notepad'],
     ['Mystery Notes.app', '  mystery notes.app  ', 'mystery notes'],
     ['Mystery Notes.APP', 'MYSTERY*.APP', 'mystery notes'],
     ['Mystery Notes.app', 'mystery notes', 'mystery notes'],
   ])('matches quiet-app glob %s through the foreground sample and gate', async (exeName, pattern, appId) => {
+    vi.stubEnv('RUNTIME_ENVIRONMENT', 'electron')
+    vi.stubGlobal('window', { electron: {}, platform: 'darwin' })
     const { store, chat, observability } = startQuietLeader({
       foreground: () => foregroundSample({ exePath: `/Applications/${exeName}`, exeName, title: 'Draft' }),
     })

@@ -78,26 +78,26 @@ function basenameOf(exePath: string): string {
   return parts[parts.length - 1] ?? ''
 }
 
-/** Removes a Windows executable or macOS bundle extension, including from a settings glob. */
-export function withoutAppExtension(fileName: string): string {
-  return fileName.replace(/\.(?:exe|app)$/iu, '')
+/** Removes `.exe` on every host and `.app` only on Darwin, including from a settings glob. */
+export function withoutAppExtension(fileName: string, platform?: string): string {
+  return fileName.replace(/\.(?:exe|app)$/iu, extension => extension.toLowerCase() === '.app' && platform !== 'darwin' ? extension : '')
 }
 
 /**
- * Stable app id: the lowercased file name without `.exe` or `.app`, for example
+ * Stable app id: the lowercased file name without `.exe` (or `.app` on Darwin), for example
  * `C:\Program Files\Zoom\bin\Zoom.exe` => `zoom`. Returns `''` for an empty path.
  */
-export function appIdFromExe(exePath: string): string {
-  return withoutAppExtension(basenameOf(exePath)).toLowerCase()
+export function appIdFromExe(exePath: string, platform?: string): string {
+  return withoutAppExtension(basenameOf(exePath), platform).toLowerCase()
 }
 
 /**
- * Display name: the file name without `.exe` or `.app`, with the first letter of each
+ * Display name: the file name without `.exe` (or `.app` on Darwin), with the first letter of each
  * word (split on spaces, `-`, `_`, `.`) upper-cased, for example `ms-teams` => `Ms-Teams`.
  * Dotted bundle names keep this casing too: `zoom.us.app` becomes `Zoom.Us`.
  */
-export function labelFromExe(exePath: string): string {
-  return withoutAppExtension(basenameOf(exePath))
+export function labelFromExe(exePath: string, platform?: string): string {
+  return withoutAppExtension(basenameOf(exePath), platform)
     .replace(/(^|[\s\-_.])(\p{Ll})/gu, (_, separator: string, letter: string) => `${separator}${letter.toUpperCase()}`)
 }
 
@@ -136,7 +136,7 @@ const GAME_PATH_MARKERS = [
   'battle.net',
 ]
 
-/** App ids (see {@link appIdFromExe}) per category. Tuning: add executables users report as `other`. */
+/** Shared app ids and macOS-only bundle file names per category. Tuning: add apps users report as `other`. */
 const CATEGORY_BY_APP_ID: Readonly<Record<string, AppCategory>> = Object.freeze({
   'chrome': 'browser',
   'msedge': 'browser',
@@ -144,37 +144,37 @@ const CATEGORY_BY_APP_ID: Readonly<Record<string, AppCategory>> = Object.freeze(
   'brave': 'browser',
   'opera': 'browser',
   'vivaldi': 'browser',
-  'safari': 'browser',
-  'google chrome': 'browser',
-  'arc': 'browser',
-  'microsoft edge': 'browser',
+  'safari.app': 'browser',
+  'google chrome.app': 'browser',
+  'arc.app': 'browser',
+  'microsoft edge.app': 'browser',
   'code': 'editor',
   'cursor': 'editor',
   'idea64': 'editor',
   'devenv': 'editor',
   'sublime_text': 'editor',
   'notepad++': 'editor',
-  'visual studio code': 'editor',
-  'xcode': 'editor',
-  'zed': 'editor',
+  'visual studio code.app': 'editor',
+  'xcode.app': 'editor',
+  'zed.app': 'editor',
   'vlc': 'media',
   'mpc-hc64': 'media',
   'spotify': 'media',
-  'music': 'media',
-  'quicktime player': 'media',
-  'iina': 'media',
+  'music.app': 'media',
+  'quicktime player.app': 'media',
+  'iina.app': 'media',
   'discord': 'chat',
   'slack': 'chat',
   'telegram': 'chat',
   'whatsapp': 'chat',
-  'messages': 'chat',
+  'messages.app': 'chat',
   'zoom': 'call',
   'ms-teams': 'call',
   'teams': 'call',
   'webex': 'call',
-  'zoom.us': 'call',
-  'microsoft teams': 'call',
-  'facetime': 'call',
+  'zoom.us.app': 'call',
+  'microsoft teams.app': 'call',
+  'facetime.app': 'call',
 })
 
 /**
@@ -182,11 +182,16 @@ const CATEGORY_BY_APP_ID: Readonly<Record<string, AppCategory>> = Object.freeze(
  * `game`; otherwise the executable name decides; anything unknown is `other`.
  * `exeName` falls back to the file name of `exePath` when empty.
  */
-export function categorizeApp(exePath: string, exeName: string): AppCategory {
+export function categorizeApp(exePath: string, exeName: string, platform?: string): AppCategory {
   const path = exePath.replace(/\//gu, '\\').toLowerCase()
   if (GAME_PATH_MARKERS.some(marker => path.includes(marker)))
     return 'game'
 
-  const appId = appIdFromExe(exeName.trim() || exePath)
-  return Object.hasOwn(CATEGORY_BY_APP_ID, appId) ? CATEGORY_BY_APP_ID[appId] : 'other'
+  // Only a stripped bundle reaches a .app row; an executable's suffix-bearing stem must not.
+  const fileName = basenameOf(exeName.trim() || exePath).toLowerCase()
+  const appId = withoutAppExtension(fileName, platform)
+  const key = fileName !== appId && Object.hasOwn(CATEGORY_BY_APP_ID, fileName)
+    ? fileName
+    : withoutAppExtension(appId, 'darwin') === appId ? appId : ''
+  return Object.hasOwn(CATEGORY_BY_APP_ID, key) ? CATEGORY_BY_APP_ID[key] : 'other'
 }

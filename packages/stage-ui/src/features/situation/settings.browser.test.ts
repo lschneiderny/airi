@@ -41,7 +41,12 @@ function coordinated(runtime: SyncedPiniaRuntime, predicate: () => boolean) {
 }
 
 describe('situation settings', () => {
-  beforeEach(() => localStorage.clear())
+  beforeEach(() => {
+    localStorage.clear()
+    vi.stubEnv('RUNTIME_ENVIRONMENT', 'electron')
+    vi.stubGlobal('electron', {})
+    vi.stubGlobal('platform', 'darwin')
+  })
   afterEach(() => {
     for (const { pinia, runtime } of contexts.splice(0)) {
       runtime?.dispose()
@@ -49,6 +54,8 @@ describe('situation settings', () => {
     }
     localStorage.clear()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
   })
 
   it('loads defaults and persists updates and resets as one document', async () => {
@@ -81,7 +88,7 @@ describe('situation settings', () => {
     { entry: 'Webex*.app', appId: 'webex meetings' },
     { entry: 'zoom.exe', appId: 'zoom' },
   ])('matches the app id $appId with the default quiet app $entry after the extension strip', ({ entry, appId }) => {
-    const stripped = defaultSituationSettings().quietApps.map(pattern => withoutAppExtension(pattern.trim()))
+    const stripped = defaultSituationSettings().quietApps.map(pattern => withoutAppExtension(pattern.trim(), 'darwin'))
     expect(defaultSituationSettings().quietApps).toContain(entry)
     expect(isDenylisted(appId, stripped)).toBe(true)
   })
@@ -95,6 +102,18 @@ describe('situation settings', () => {
     const { store } = createContext()
     expect(store.document.quietApps).toEqual(['only-mine.exe'])
     expect(store.document.titleDenylist).toEqual(defaultSituationSettings().titleDenylist)
+  })
+
+  it('retains the exact Windows quiet and title defaults without rewriting custom .app globs', () => {
+    vi.stubGlobal('platform', 'win32')
+    expect(defaultSituationSettings().quietApps).toEqual(['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe'])
+    expect(defaultSituationSettings().titleDenylist).toEqual(['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe'])
+    localStorage.setItem(key, JSON.stringify({ quietApps: ['zed.app', 'z*.APP'], titleDenylist: ['custom.app'] }))
+
+    const { store } = createContext()
+
+    expect(store.document.quietApps).toEqual(['zed.app', 'z*.APP'])
+    expect(store.document.titleDenylist).toEqual(['custom.app'])
   })
 
   it('falls back per field when a stored field is invalid', () => {

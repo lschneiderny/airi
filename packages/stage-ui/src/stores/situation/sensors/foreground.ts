@@ -1,6 +1,7 @@
 import type { AppCategory, BusyState, Observation } from '@proj-airi/stage-shared/situation'
 import type { ForegroundWindowSample } from '@proj-airi/stage-shared/stores/foreground-window'
 
+import { isElectronWindow } from '@proj-airi/stage-shared'
 import {
   appIdFromExe,
   categorizeApp,
@@ -93,6 +94,7 @@ export interface ForegroundSensor {
 export function startForegroundSensor(ingest: (observation: Observation) => void, options: ForegroundSensorOptions): ForegroundSensor {
   const foreground = useForegroundWindowStore()
   const settings = useSituationSettings()
+  const platform = typeof window !== 'undefined' && isElectronWindow(window) ? window.platform : undefined
   let busy: BusyState | null = null
   let lastAppId: string | null = null
   let lastTitle: string | null = null
@@ -134,7 +136,7 @@ export function startForegroundSensor(ingest: (observation: Observation) => void
     const exe = nonEmptyString(sample.exePath) ?? nonEmptyString(sample.exeName)
     if (!exe)
       return
-    const appId = appIdFromExe(exe)
+    const appId = appIdFromExe(exe, platform)
     if (!appId)
       return
     if (sample.ownProcess === true) {
@@ -144,13 +146,13 @@ export function startForegroundSensor(ingest: (observation: Observation) => void
     }
 
     const exeName = nonEmptyString(sample.exeName) ?? exe
-    const label = labelFromExe(exeName)
+    const label = labelFromExe(exeName, platform)
     const title = isDenylisted(exeName, settings.document.titleDenylist) ? null : normalizeWindowTitle(sample.title, label)
     if (appId === lastAppId && title === lastTitle)
       return
     lastAppId = appId
     lastTitle = title
-    const category = categorizeApp(nonEmptyString(sample.exePath) ?? '', exeName)
+    const category = categorizeApp(nonEmptyString(sample.exePath) ?? '', exeName, platform)
     lastCategory = category
     ingest({
       kind: 'activity',

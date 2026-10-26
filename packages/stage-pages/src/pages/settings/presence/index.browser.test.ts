@@ -91,7 +91,7 @@ describe('presence settings page', () => {
   it('commits a quiet app list on change and shows the normalized entries', async () => {
     const { screen, settings } = await renderPage()
     const quietApps = screen.getByRole('textbox', { name: t('settings.pages.presence.quiet-apps.title') })
-    await expect.element(quietApps).toHaveValue('zoom.exe\nms-teams.exe\nteams.exe\nwebex*.exe\nzoom.us.app\nMicrosoft Teams.app\nFaceTime.app\nWebex*.app')
+    await expect.element(quietApps).toHaveValue('zoom.exe\nms-teams.exe\nteams.exe\nwebex*.exe')
 
     await quietApps.click()
     // Ctrl+End does not move a textarea caret to the end on macOS, so place it explicitly.
@@ -102,8 +102,8 @@ describe('presence settings page', () => {
     expect(settings.document.quietApps).not.toContain('notepad.exe')
     await userEvent.tab()
 
-    await expect.element(quietApps).toHaveValue('zoom.exe\nms-teams.exe\nteams.exe\nwebex*.exe\nzoom.us.app\nMicrosoft Teams.app\nFaceTime.app\nWebex*.app\nnotepad.exe')
-    expect(settings.document.quietApps).toEqual(['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'zoom.us.app', 'Microsoft Teams.app', 'FaceTime.app', 'Webex*.app', 'notepad.exe'])
+    await expect.element(quietApps).toHaveValue('zoom.exe\nms-teams.exe\nteams.exe\nwebex*.exe\nnotepad.exe')
+    expect(settings.document.quietApps).toEqual(['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'notepad.exe'])
     expect(JSON.parse(localStorage.getItem(key)!).quietApps).toEqual(settings.document.quietApps)
   })
 
