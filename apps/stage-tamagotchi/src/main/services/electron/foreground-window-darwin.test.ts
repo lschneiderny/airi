@@ -713,7 +713,7 @@ describe('darwin foreground sampler', () => {
     expect(native.CGGetActiveDisplayList).not.toHaveBeenCalled()
   })
 
-  it('balances copied references and autorelease pools across 200 reads', () => {
+  it('balances every copied reference and autorelease pool across 200 reads', () => {
     desktop.windows = [{ pid: 4321, layer: 0, alpha: 1, bounds: desktop.displays[0] ?? null }]
     const read = createDarwinSampler(binding, () => false)
 

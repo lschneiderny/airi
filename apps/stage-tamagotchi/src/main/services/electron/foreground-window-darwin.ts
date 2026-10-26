@@ -66,6 +66,7 @@ const AX_ERROR = {
 } as const
 
 function decodeUtf16(buffer: Buffer, units: number): string {
+  // Same capped UTF-16 decoder as Windows: do not emit half a pair.
   return buffer.toString('utf16le', 0, units * 2).replace(/[\uD800-\uDBFF]$/u, '')
 }
 
@@ -113,13 +114,18 @@ class DarwinString {
   }
 }
 
-/** Decoded native values; no native address, koffi object, or Buffer is exposed. */
+/**
+ * Decoded native primitives for the sampler. Copy/Create results are released
+ * before returning, except createString, whose caller must release its ownership.
+ * No native address, koffi object, or Buffer is exposed.
+ */
 export interface DarwinBinding {
   readonly axFrameworkPath: string
   readonly resolvedSymbols: readonly string[]
   readonly isProcessTrusted: () => number
   readonly createString: (value: string) => Pick<DarwinString, 'length' | 'read' | 'release'>
   readonly readSession: () => { readonly onConsole: boolean | null, readonly locked: boolean | null } | null
+  /** The synchronous callback may read decoded getters only while the pool is alive. */
   readonly withFrontApplication: (read: (application: {
     readonly pid: number
     readonly bundleIdentifier: string | null
@@ -145,11 +151,7 @@ export interface DarwinBinding {
 
 const FULLSCREEN_TOLERANCE_PT = 1
 
-function coversDisplay(
-  windows: NonNullable<ReturnType<DarwinBinding['readWindows']>>,
-  frontPid: number,
-  displays: ReturnType<DarwinBinding['readDisplays']>['displays'],
-): boolean {
+function coversDisplay(windows: NonNullable<ReturnType<DarwinBinding['readWindows']>>, frontPid: number, displays: ReturnType<DarwinBinding['readDisplays']>['displays']): boolean {
   return windows.some((window) => {
     const bounds = window.bounds
     if (window.pid !== frontPid || window.layer !== 0 || window.alpha === null || !(window.alpha > 0) || !bounds)
@@ -387,7 +389,7 @@ export async function loadDarwinBinding(): Promise<DarwinBinding> {
           }
         }
       },
-      probeFullscreen(pid: number) {
+      probeFullscreen(pid) {
         if (!Number.isInteger(pid) || pid <= 0 || pid > 0x7FFFFFFF)
           throw new RangeError('Accessibility PID must be a positive int32')
         const trusted = native.AXIsProcessTrusted()
@@ -448,12 +450,12 @@ export function createDarwinSampler(binding: DarwinBinding, isOwnProcess: (pid: 
       const bundleIdentifier = application.bundleIdentifier
       if (bundleIdentifier === 'com.apple.loginwindow' || bundleIdentifier === 'com.apple.ScreenSaver.Engine')
         return null
-
       const exePath = application.exePath
       const ownProcess = isOwnProcess(pid)
       if (application.terminated)
         return null
 
+      // Own windows must never block AIRI or make AX call back into this thread.
       let busy: ForegroundWindowSample['busy'] = 'accepts'
       if (!ownProcess) {
         const windows = binding.readWindows()
