@@ -78,7 +78,9 @@ measured p50 1.0 ms, p95 3.2 ms and a 59 ms maximum, and a 33-minute run at
 1 Hz measured p50 4.0 ms, p95 4.4 ms and a 97 ms maximum. A sample taken while
 the front app was frozen finished in 255 ms. A frozen front app therefore
 costs about a quarter-second main-thread stall every 10 seconds while it stays
-in front.
+in front. Moving the Accessibility title read off the main thread, for example
+through koffi's asynchronous calls, is deferred: it cannot be exercised without
+a Mac, and the measured cost with a responsive front app is a few milliseconds.
 
 Memory evidence is partial:
 
