@@ -74,7 +74,8 @@ describe('appIdFromExe and labelFromExe', () => {
   })
 
   it.each([
-    ['/Applications/zoom.us.app', 'zoom.us', 'Zoom.Us'],
+    ['/Applications/zoom.us.app', 'zoom.us', 'zoom.us'],
+    ['/opt/homebrew/bin/ollama', 'ollama', 'Ollama'],
     ['/Applications/Visual Studio Code.app', 'visual studio code', 'Visual Studio Code'],
     ['Google Chrome.app', 'google chrome', 'Google Chrome'],
     ['FaceTime.APP', 'facetime', 'FaceTime'],
@@ -238,6 +239,7 @@ describe('categorizeApp', () => {
     ['/Applications/Google Chrome.app', 'Google Chrome.app', 'browser'],
     ['/Applications/Arc.app', 'Arc.app', 'browser'],
     ['/Applications/Microsoft Edge.app', 'Microsoft Edge.app', 'browser'],
+    ['/Applications/Brave Browser.app', 'Brave Browser.app', 'browser'],
     ['/Applications/Visual Studio Code.app', 'Visual Studio Code.app', 'editor'],
     ['/Applications/Xcode.app', 'Xcode.app', 'editor'],
     ['/Applications/Zed.app', 'Zed.app', 'editor'],

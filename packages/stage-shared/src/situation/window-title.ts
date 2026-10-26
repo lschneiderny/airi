@@ -94,10 +94,14 @@ export function appIdFromExe(exePath: string, platform?: string): string {
 /**
  * Display name: the file name without `.exe` (or `.app` on Darwin), with the first letter of each
  * word (split on spaces, `-`, `_`, `.`) upper-cased, for example `ms-teams` => `Ms-Teams`.
- * Dotted bundle names keep this casing too: `zoom.us.app` becomes `Zoom.Us`.
+ * A Darwin `.app` bundle name is already a display name and keeps its casing: `zoom.us.app` becomes `zoom.us`.
  */
 export function labelFromExe(exePath: string, platform?: string): string {
-  return withoutAppExtension(basenameOf(exePath), platform)
+  const fileName = basenameOf(exePath)
+  const name = withoutAppExtension(fileName, platform)
+  if (platform === 'darwin' && /\.app$/iu.test(fileName))
+    return name
+  return name
     .replace(/(^|[\s\-_.])(\p{Ll})/gu, (_, separator: string, letter: string) => `${separator}${letter.toUpperCase()}`)
 }
 
@@ -148,6 +152,7 @@ const CATEGORY_BY_APP_ID: Readonly<Record<string, AppCategory>> = Object.freeze(
   'google chrome.app': 'browser',
   'arc.app': 'browser',
   'microsoft edge.app': 'browser',
+  'brave browser.app': 'browser',
   'code': 'editor',
   'cursor': 'editor',
   'idea64': 'editor',

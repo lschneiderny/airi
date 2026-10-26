@@ -29,7 +29,9 @@ MacOS-only category rows are keyed by bundle file name. The same forwarded
 platform metadata lets app-id, label, category, quiet-pattern and default-list
 handling use those bundle names on macOS. Non-Electron hosts keep `.exe`-only
 normalization, so Windows app ids, labels, categories, quiet-pattern matching
-and default lists keep their previous behavior.
+and default lists keep their previous behavior. On macOS, a label keeps the
+bundle name's own casing, so `zoom.us.app` is labelled `zoom.us`; Windows file
+names are still title-cased.
 
 The macOS sampler identifies the front app through `NSWorkspace`. It uses
 `CGWindowListCopyWindowInfo` geometry as the full-screen signal, comparing
