@@ -104,9 +104,26 @@ export class NaturalGazeLayer {
   private aside: GazePoint | null = null
   private asideSide = 1
   private asideReleasedAt = Number.NEGATIVE_INFINITY
+  private inward = 0
+  private screenPointActive = false
 
   constructor(private readonly random: RandomStream) {
     this.nextFixationAt = this.drawHold()
+  }
+
+  /** Eased placement inwardness; positive means toward screen +x. Does not draw or change the current fixation. */
+  setInward(w: number) {
+    this.inward = w
+  }
+
+  /** Only watching and screen attention move autonomous desk fixations inward. */
+  setScreenPointActive(active: boolean) {
+    this.screenPointActive = active
+  }
+
+  /** Inward screen-content point in normalized eye space, independent of the current attention mode. */
+  screenPoint(): GazePoint {
+    return { x: 0.30 * this.inward, y: targets.desk.y }
   }
 
   /** Stores an already mapped eye target and its fixation weight without moving the gaze. */
@@ -163,7 +180,7 @@ export class NaturalGazeLayer {
       return
     if (active) {
       if (at - this.asideReleasedAt > asideSideMemory)
-        this.asideSide = this.random() < 0.5 ? -1 : 1
+        this.asideSide = this.random() < 0.5 - 0.15 * this.inward ? -1 : 1
       this.aside = { x: this.asideSide * targets.aside.x, y: targets.aside.y }
       this.saccadeTo(this.jittered(this.aside), at)
       return
@@ -333,8 +350,8 @@ export class NaturalGazeLayer {
     const rest = 1 - this.cameraFixationProbability
     const total = desk + peripheral + peripheralUp
     if (choice < this.cameraFixationProbability + rest * desk / total)
-      return this.jittered(targets.desk)
-    const side = this.random() < 0.5 ? -1 : 1
+      return this.jittered(this.screenPointActive ? this.screenPoint() : targets.desk)
+    const side = this.random() < 0.5 - 0.15 * this.inward ? -1 : 1
     const sideTarget = peripheralUp > 0 && choice >= this.cameraFixationProbability + rest * (desk + peripheral) / total
       ? targets.peripheralUp
       : targets.peripheral

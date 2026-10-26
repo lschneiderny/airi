@@ -14,6 +14,18 @@ function state(mode: 'idle' | 'watching' | 'listening' | 'thinking' | 'talking',
 }
 
 describe('natural performance energy', () => {
+  it('updates watching immediately even while screen attention holds through a cue gap', () => {
+    const energy = new NaturalPerformanceEnergy()
+    expect(energy.watching).toBe(false)
+    energy.setState(state('talking', { attention: 'screen' }), 0.5)
+    energy.setState(state('watching'), 0.5)
+    expect(energy.watching).toBe(true)
+    expect(energy.screen).toBe(true)
+    energy.setState(state('idle'), 0.5)
+    expect(energy.watching).toBe(false)
+    expect(energy.screen).toBe(true)
+  })
+
   it('does not stack overlapping reactions', () => {
     const stacked = new NaturalPerformanceEnergy()
     const single = new NaturalPerformanceEnergy()

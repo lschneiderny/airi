@@ -76,6 +76,8 @@ export class NaturalPerformanceEnergy {
   aside = false
   /** Whether attention is `screen`; the facade then drops the cursor, so the desk-weighted fixations watch the screen. */
   screen = false
+  /** Watching mode is independent of the attention cue gap. */
+  watching = false
 
   /** Attention an ACT cue set while talking or thinking, or `null`; `camera` cannot be told apart from the default. */
   private cueAttention: 'aside' | 'screen' | null = null
@@ -92,6 +94,7 @@ export class NaturalPerformanceEnergy {
 
   /** Sets the target state; the filter moves toward it from the next step. */
   setState(state: Pick<PerformanceState, 'mode' | 'attention' | 'away'>, energy: number) {
+    this.watching = state.mode === 'watching'
     if (state.mode !== this.mode) {
       // Leaving talking wins over the default, so talking -> listening also fades slowly.
       if (state.mode === 'talking')

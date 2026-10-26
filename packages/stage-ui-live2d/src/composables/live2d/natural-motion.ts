@@ -31,12 +31,13 @@ import { clamp, lerp, lerpRecord } from './natural-motion/interpolation'
 import { NaturalMood } from './natural-motion/mood'
 import { modulateByMood, moodMouthForm } from './natural-motion/mood-modulation'
 import { startPending } from './natural-motion/pending-actions'
+import { NaturalPlacement } from './natural-motion/placement'
 import { NaturalPostureLayers, postureHomes } from './natural-motion/posture'
 import { createRandomStream, deriveSeed } from './natural-motion/random'
 import { NaturalSpeechEmphasis, SpeechOnsetShifts } from './natural-motion/speech-emphasis'
 import { NaturalPetLayer } from './natural-motion/touch'
 
-export type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionPose, Live2DNaturalMotionVoice, NaturalAttentionEvent, NaturalGestureEvent, NaturalHoldEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionObserver, NaturalTouchEvent } from './natural-motion/frame-types'
+export type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionPose, Live2DNaturalMotionVoice, NaturalAttentionEvent, NaturalGestureEvent, NaturalHoldEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionObserver, NaturalPlacementEvent, NaturalTouchEvent } from './natural-motion/frame-types'
 
 // Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
 // Index 4 belonged to the v1 fixation rule and now seeds the gaze layer that replaces it.
@@ -115,6 +116,9 @@ export class Live2DNaturalMotion {
   private readonly blink: NaturalBlinkScheduler
   private readonly breath: NaturalBreathLayer
   private readonly energy = new NaturalPerformanceEnergy()
+  private readonly placement = new NaturalPlacement()
+  private yawBias = 0
+  private lastEmittedYawBias = 0
   private readonly emotions: typeof naturalEmotions
   private readonly mood: NaturalMood
   private readonly hold: NaturalHoldLayer
@@ -269,6 +273,24 @@ export class Live2DNaturalMotion {
       this.mappedCursor = mapCursor(this.cursor)
   }
 
+  /** Screen inwardness (-1..1), positive toward screen +x; null disables placement without an easing tail. */
+  setPlacement(u: number | null, nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.placement.set(u)
+    if (u === null) {
+      this.yawBias = 0
+      this.gaze.setInward(0)
+      this.lastEmittedYawBias = 0
+      if (this.observer)
+        this.notify({ kind: 'placement', at: this.activeTime, inward: 0, yawBias: 0 })
+    }
+  }
+
+  /** The normalized head-X placement term applied in the latest grid step. */
+  get placementYawBias(): number {
+    return this.yawBias
+  }
+
   /**
    * Applies the performance state and user energy (0..1, 0.5 neutral) after advancing to this
    * timestamp. Presets cross-fade from the next grid step and no process restarts.
@@ -365,6 +387,9 @@ export class Live2DNaturalMotion {
   private integrate(): Snapshot {
     const stepStart = this.stepIndex * step
     this.stepIndex++
+    this.placement.step(step)
+    this.gaze.setInward(this.placement.value)
+    this.gaze.setScreenPointActive(this.energy.screen || this.energy.watching)
     const permission = this.cursorMode === 'dismissed' || this.energy.aside || this.energy.screen ? 'dismiss' : 'full'
     if (permission === 'dismiss')
       this.petGlanceUntil = 0
@@ -474,7 +499,14 @@ export class Live2DNaturalMotion {
       cursorY: headShare * (above ? mapped.head.y * (1 - this.approach) - approachHeadTuck * this.approach : mapped.head.y),
     })
     this.posture.continuousScale = this.performanceSettings.heldEmotions ? this.gestures.continuousScale(stepStart + step) : 1
-    const posture = this.posture.step(step, [this.x.cursorX, this.x.cursorY, 0])
+    this.yawBias = 0.10 * this.placement.value * (1 - this.onCursor)
+    if (this.observer && Math.abs(this.yawBias - this.lastEmittedYawBias) >= 0.005) {
+      this.lastEmittedYawBias = this.yawBias
+      this.notify({ kind: 'placement', at: stepStart, inward: this.placement.value, yawBias: this.yawBias })
+    }
+    const posture = this.posture.step(step, this.yawBias !== 0
+      ? [this.x.cursorX + this.yawBias, this.x.cursorY, 0]
+      : [this.x.cursorX, this.x.cursorY, 0])
     // Read after this step's posture.step: the slow pose is the posture without the continuous wobble.
     const slowPose = this.posture.slowPose
     const impulse = this.impulses.headOffset(stepStart + step)

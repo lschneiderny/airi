@@ -25,6 +25,39 @@ function onsets(path: number[][], threshold: number) {
 }
 
 describe('natural gaze', () => {
+  it.each([-1, 0, 1])('keeps seeded placement peripheral side-share inward at %s', (inward) => {
+    const gaze = new NaturalGazeLayer(createRandomStream(42))
+    gaze.setInward(inward)
+    gaze.cameraFixationProbability = 0
+    gaze.targetWeights = { desk: 0, peripheral: 1, peripheralUp: 0 }
+    let preferred = 0
+    for (let i = 0; i < 20_000; i++) {
+      gaze.beginAttentionShift(i * 0.1)
+      const point = gaze.step(0.1)
+      preferred += Number(inward < 0 ? point.x < 0 : point.x > 0)
+    }
+    const share = preferred / 20_000
+    expect(share).toBeGreaterThanOrEqual(inward === 0 ? 0.48 : 0.63)
+    expect(share).toBeLessThanOrEqual(inward === 0 ? 0.52 : 0.67)
+  })
+
+  it.each([false, true])('centers seeded desk fixations at the placement screen point only when active=%s', (active) => {
+    const gaze = new NaturalGazeLayer(createRandomStream(42))
+    gaze.setInward(1)
+    gaze.setScreenPointActive(active)
+    gaze.cameraFixationProbability = 0
+    gaze.targetWeights = { desk: 1, peripheral: 0, peripheralUp: 0 }
+    let sum = 0
+    for (let i = 0; i < 20_000; i++) {
+      gaze.beginAttentionShift(i * 0.1)
+      sum += gaze.step(0.1).x
+    }
+    expect(Math.abs(sum / 20_000 - (active ? 0.3 : 0))).toBeLessThanOrEqual(0.01)
+    expect(gaze.screenPoint()).toEqual({ x: 0.3, y: -0.18 })
+    gaze.setInward(0)
+    expect(gaze.screenPoint()).toEqual({ x: 0, y: -0.18 })
+  })
+
   it('leads about 30% of posture shifts by 30-80 ms', () => {
     const posture = new NaturalPostureLayers([0, 0, 0], { drift: silent, continuous: silent, gain: silent, shift: createRandomStream(1) })
     const gaze = new NaturalGazeLayer(createRandomStream(2))

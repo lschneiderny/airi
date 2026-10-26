@@ -18,7 +18,7 @@ import { pokeDirection, pokeGlanceHold, pokeNudgeTau, pokeStrength, pokeSurprise
 const wakeNudge = { direction: [0, 1, 0] as Vec3, intensity: 0.4 }
 const wakeGlanceHold = 1
 const screenChangeGlanceHold = 0.4
-const glanceTargets = { camera: { x: 0, y: 0 }, desk: { x: 0, y: -0.18 } }
+const glanceTargets = { camera: { x: 0, y: 0 } }
 
 /** Work requested between grid steps; it starts at the next step so grid states stay consistent. */
 export type PendingAction
@@ -91,7 +91,7 @@ export function startPending(actions: PendingAction[], at: number, targets: Pend
       gaze.glance(glanceTargets.camera, wakeGlanceHold, at)
     }
     else {
-      gaze.glance(glanceTargets.desk, screenChangeGlanceHold, at)
+      gaze.glance(gaze.screenPoint(), screenChangeGlanceHold, at)
     }
     energy.react(at)
   }

@@ -82,6 +82,33 @@ function browAsymmetry(seed: number, at: number, from: number, to: number, input
 }
 
 describe('natural motion observer', () => {
+  it.each([1, 2, 3])('keeps interleaved null and centered placement bit-identical to idleHashes for seed %i', (seed) => {
+    const timeline: Timeline = {}
+    for (let second = 0; second <= 600; second++)
+      timeline[second * rate] = (motion, t) => motion.setPlacement(second % 2 === 0 ? null : 0, t)
+    expect(run(seed, 600, timeline)).toBe(idleHashes[seed - 1])
+  }, 30_000)
+
+  it('reports eased placement yaw and exactly one zero event when disabled', () => {
+    const { events, observer } = recorder()
+    const motion = new Live2DNaturalMotion({ seed: 1, home: 'desk' })
+    motion.setObserver(observer)
+    motion.advance(0)
+    motion.setPlacement(1, 1)
+    for (let frame = rate + 1; frame < 30 * rate; frame++)
+      motion.advance(frame / rate)
+    const placement = events.filter(event => event.kind === 'placement')
+    expect(placement.length).toBeGreaterThan(0)
+    const last = placement.at(-1)!
+    expect(last.yawBias).toBeGreaterThanOrEqual(0.095)
+    expect(last.yawBias).toBeLessThanOrEqual(0.105)
+    expect(last.inward).toBeCloseTo(last.yawBias / 0.1, 12)
+    motion.setPlacement(null, 30)
+    motion.advance(30 + step)
+    const disabled = events.filter(event => event.kind === 'placement' && event.yawBias === 0)
+    expect(disabled).toEqual([{ kind: 'placement', at: 30, inward: 0, yawBias: 0 }])
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
   })

@@ -31,7 +31,15 @@ export interface Live2DNaturalMotionOptions {
  * - `hold`: side 1 raises the left brow; `null` while nothing is held;
  * - `gesture`: the clip's sided axes; drawn even for clips without sided axes.
  */
-export type NaturalMotionEvent = NaturalImpulseEvent | NaturalHoldEvent | NaturalGestureEvent | NaturalAttentionEvent | NaturalTouchEvent
+export type NaturalMotionEvent = NaturalImpulseEvent | NaturalHoldEvent | NaturalGestureEvent | NaturalAttentionEvent | NaturalTouchEvent | NaturalPlacementEvent
+
+/** The eased placement yaw changed by at least 0.005, or placement was disabled. No motion or RNG effect. */
+export interface NaturalPlacementEvent {
+  kind: 'placement'
+  at: number
+  inward: number
+  yawBias: number
+}
 
 /** A cursor episode changed phase; distance is measured in head widths from the eye anchor. */
 export interface NaturalAttentionEvent {
