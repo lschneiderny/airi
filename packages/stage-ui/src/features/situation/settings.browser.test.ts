@@ -67,7 +67,7 @@ describe('situation settings', () => {
       shareForegroundWindow: true,
       shareBrowserActivity: true,
       quietApps: ['zoom.exe', 'ms-teams.exe', 'teams.exe', 'webex*.exe', 'zoom.us.app', 'Microsoft Teams.app', 'FaceTime.app', 'Webex*.app'],
-      titleDenylist: ['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe', '1Password*.app', 'Bitwarden.app', 'KeePassXC.app'],
+      titleDenylist: ['1password*.exe', 'keepass*.exe', 'bitwarden.exe', 'keepassxc.exe', '1Password*.app', 'Bitwarden.app', 'KeePassXC.app', 'Passwords.app', 'Keychain Access.app'],
       showUnpromptedCue: true,
       speakDuringGames: true,
     })
@@ -93,7 +93,7 @@ describe('situation settings', () => {
     expect(isDenylisted(appId, stripped)).toBe(true)
   })
 
-  it.each(['1Password 7.app', '1password 7.APP', 'Bitwarden.app', 'KeePassXC.app', '/Applications/1Password 7.app'])('denylists the macOS title of %s by default', (name) => {
+  it.each(['1Password 7.app', '1password 7.APP', 'Bitwarden.app', 'KeePassXC.app', '/System/Applications/Passwords.app', '/System/Applications/Utilities/Keychain Access.app', '/Applications/1Password 7.app'])('denylists the macOS title of %s by default', (name) => {
     expect(isDenylisted(name, defaultSituationSettings().titleDenylist)).toBe(true)
   })
 
