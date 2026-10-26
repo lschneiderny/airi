@@ -14,6 +14,7 @@ Follow the [root guide](../AGENTS.md) and its task skills.
 | Chat wire contracts | `packages/server-sdk-shared/src/` | Eventa events and Valibot parsers |
 | Local backend | `docker-compose.yaml`, `dev/caddy/Caddyfile` | PostgreSQL, Redis, both apps, private-route blocking |
 | Architecture decisions | `docs/ai/adr/` | Server ADRs, separate from client ADRs |
+| API images | `apps/api/Dockerfile`, `apps/api/production/railway/Dockerfile` | Read `README.md` before deployment operations |
 
 ## Conventions
 - Use Valibot for HTTP data, Pub/Sub messages, queue jobs, WebSocket events, database JSON, and provider responses.

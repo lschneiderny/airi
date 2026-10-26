@@ -15,6 +15,9 @@ Locale catalogs and the product glossary. Score: 6. Existing domain guidance rem
 | TBX export | `glossary/build-tbx.ts` | `pnpm -F @proj-airi/i18n glossary:build` |
 | Runtime locale selection | `src/index.ts` | Remapping and startup fallback serialization |
 | Locale namespaces | `src/locales/` | YAML catalogs assembled by TypeScript indexes |
+| Locale map | `src/locales/index.ts` | Default export of every implemented locale |
+| Fallback behavior | `src/fallback.ts` | English fallback; warns only when English lacks a key |
+| Bundle entries | `tsdown.config.ts` | Unbundled build that copies locale catalogs |
 
 ## Glossary
 
@@ -48,3 +51,9 @@ the pull request.
 **Write a definition in one sentence.** Describe the thing, not the word, and put a negative rule in
 the `note`. Keep each sentence short and active: translators read them, and most do not read English
 as a first language.
+
+## CHECKS
+
+- Typecheck: `pnpm -F @proj-airi/i18n typecheck`.
+- Tests: `pnpm -F @proj-airi/i18n test`. Vitest includes only `glossary/**/*.test.ts`, so locale catalogs have no unit tests here.
+- Build: `pnpm -F @proj-airi/i18n build`. The `dev` script only runs the build.

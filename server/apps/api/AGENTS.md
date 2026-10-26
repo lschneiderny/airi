@@ -27,7 +27,8 @@ Follow the [server guide](../../AGENTS.md) for validation and ADR rules.
 | Chat transport | `routes/chat-ws/` | Local connection registry and Redis fanout |
 | Field revisions | `services/domain/field-sync/`, `character-cards.ts` | Shared algorithm, feature-owned schemas and limits |
 | Payments | `services/domain/payment/`, `routes/{stripe,apple-iap,revenuecat}/` | Signed receipts, idempotent grants, entitlements |
-| Diagnostics | `services/domain/request-log.ts`, `request-content.ts` | Bounded content capture, separate from accounting |
+| Diagnostics | `services/domain/request-log.ts`, `request-content.ts` | Strips inline media, caps content at 8 MiB, five-second error-body deadline |
+| Product analytics | `services/domain/product-events.ts` | Best-effort writer; capture errors never change business flow; no PII or raw prompts |
 | Account cleanup | `services/domain/user-deletion/`, `routes/internal-auth.ts` | Idempotent handlers and private Auth calls |
 
 ## Conventions

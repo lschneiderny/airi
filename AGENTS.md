@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE - AIRI
 
-**Generated:** 2026-10-15T06:21:17Z | **Commit:** f3e6a244e1c0738a8181d9377d3b851e0b355d19 | **Branch:** main
+**Generated:** 2026-10-25T21:49:57Z | **Commit:** fc620aaf6fa71c5aa4b2abcc69e80d1975911cbf | **Branch:** main
 
 ## OVERVIEW
 AIRI is the `moeru-ai/airi` pnpm monorepo for character interaction across web, Electron, mobile, and Godot hosts.
@@ -16,6 +16,7 @@ server/        Hosted API, independent identity, backend-only packages, local ed
 services/      Computer-use execution and orchestration
 integrations/  Minecraft, messaging bots, X browser automation, and VS Code
 plugins/       AIRI plugins and browser context extension
+scripts/       Root dev launcher and dev-tools CLIs behind dev*, verify, wt, dev:top, test:run
 .github/       Developer guide, Copilot instructions, and the locale check script
 ```
 
@@ -29,21 +30,29 @@ Before working in a directory, read its nested `AGENTS.md`. Read the matching ta
 | Shared business UI | [stage-ui](packages/stage-ui/AGENTS.md) | Definitions: `src/libs/providers/providers/`. Provider records/instances: `src/stores/providers/`. Orchestration: `src/stores/modules/`. |
 | UI composition | `packages/stage-ui/src/{composables,components}` | Single-use business UI: `components/scenarios/`. Stories: `packages/stage-ui/stories`, `histoire.config.ts`, `src/components/misc/Button.story.vue`. |
 | Shared boundaries | [core-agent](packages/core-agent/AGENTS.md), [providers](packages/provider-inference/AGENTS.md), [shared](packages/stage-shared/AGENTS.md), [pages](packages/stage-pages/AGENTS.md), [layouts](packages/stage-layouts/AGENTS.md), [primitives](packages/ui/AGENTS.md) | Pure orchestration stays outside Vue/store integration. |
-| Models / capture | [Three/VRM](packages/stage-ui-three/AGENTS.md), [Live2D](packages/stage-ui-live2d/AGENTS.md), [MMD](packages/stage-ui-mmd/AGENTS.md), [MediaPipe](packages/model-driver-mediapipe/AGENTS.md) | Read renderer and capture guidance before visual acceptance. |
+| Host adapters | [electron-vueuse](packages/electron-vueuse/AGENTS.md), [cap-vite](packages/cap-vite/AGENTS.md), [Electron scenarios](packages/scenarios-stage-tamagotchi-electron/AGENTS.md) | Electron composables, Capacitor Vite CLI, Vishot flows. |
+| Models / capture | [Three/VRM](packages/stage-ui-three/AGENTS.md), [Live2D](packages/stage-ui-live2d/AGENTS.md), [MMD](packages/stage-ui-mmd/AGENTS.md), [Spine](packages/stage-ui-spine/AGENTS.md), [MediaPipe](packages/model-driver-mediapipe/AGENTS.md), [MAGIC](packages/motion-driver-magic/AGENTS.md) | Read renderer and capture guidance before visual acceptance. |
+| Audio / extensions | [pipelines-audio](packages/pipelines-audio/AGENTS.md), [audio](packages/audio/AGENTS.md), [testing-audio](packages/testing-audio/AGENTS.md), [plugin-sdk](packages/plugin-sdk/AGENTS.md), [plugin-protocol](packages/plugin-protocol/src/AGENTS.md), [better-ws](packages/better-ws/AGENTS.md) | Wire contracts live in `@proj-airi/plugin-protocol/types`. |
 | Hosted backend | [server](server/AGENTS.md), [API](server/apps/api/AGENTS.md), [identity](server/apps/auth/AGENTS.md) | API owns migrations. Local stack: `server/docker-compose.yaml`. Edge: `server/dev/caddy/Caddyfile`. |
 | Server channel | [runtime](packages/server-runtime/AGENTS.md), `packages/server-sdk`, `packages/server-shared` | Separate from hosted `server/packages`. Public plugin types: `@proj-airi/plugin-protocol/types`. |
 | Computer use | [service](services/computer-use-mcp/AGENTS.md), [runtime](services/computer-use-mcp/src/AGENTS.md) | AIRI owns planning/providers/chat/approval UX. Service owns execution. Start terminal work at `terminal-lane-status.md`. |
+| Integrations | [Minecraft](integrations/minecraft/AGENTS.md), [Satori](integrations/satori-bot/AGENTS.md), [Telegram](integrations/telegram-bot/AGENTS.md), [X](integrations/twitter-services/AGENTS.md), [web extension](plugins/airi-plugin-web-extension/AGENTS.md) | Telegram, X, and the extension test through root Vitest projects. |
+| Tooling / QA | [scripts](scripts/AGENTS.md), [qa-tools](packages/qa-tools/AGENTS.md), [cpu-slots](packages/cpu-slots/AGENTS.md) | Command reference: `scripts/dev-tools/README.md`. Product packages must not depend on `@proj-airi/qa-tools`. |
 | Automation / styles | [.github](.github/AGENTS.md), `uno.config.ts`, `eslint.config.ts` | Existing animations: `apps/stage-web/src/styles`. |
 
 ## CODE MAP
-Digest evidence confirms these declarations. Repository-wide symbol totals and reference measurements are unavailable.
+Refs are selected LSP counts including the declaration. Repository-wide centrality is unmeasured.
 | Symbol | Type | Location | Refs | Role |
 | --- | --- | --- | --- | --- |
-| `createChatOrchestratorRuntime` | Function | `packages/core-agent/src/runtime/` | unavailable | Pure chat coordination |
-| `useChatStore` | Store factory | `packages/stage-ui/src/stores/chat.ts` | unavailable | Vue chat integration |
-| `createApp`, `buildApp` | Functions | `server/apps/api/src/app.ts` | unavailable | Dependency composition and resolved app construction |
-| `createAuth` | Function | `server/apps/auth/src/auth.ts` | unavailable | Better Auth/OIDC ownership |
-| `setupApp`, `createServer` | Functions | `packages/server-runtime/src/index.ts`, `src/server/index.ts` | unavailable | Authenticated WebSocket channel |
+| `createChatOrchestratorRuntime` | Function | `packages/core-agent/src/runtime/chat-orchestrator-runtime.ts` | 3 | Pure chat coordination |
+| `useChatStore` | Store factory | `packages/stage-ui/src/stores/chat.ts` | unmeasured | Vue chat integration |
+| `useLLM`, `useChatSessionStore` | Stores | `packages/stage-ui/src/stores/ai/chat-llm/llm.ts`, `src/stores/chat/session-store.ts` | 50, 45 | LLM calls, chat sessions |
+| `createApp`, `buildApp` | Functions | `server/apps/api/src/app.ts` | unmeasured | Dependency composition and resolved app construction |
+| `createAuth` | Function | `server/apps/auth/src/auth.ts` | unmeasured | Better Auth/OIDC ownership |
+| `setupApp`, `createServer` | Functions | `packages/server-runtime/src/index.ts`, `src/server/index.ts` | unmeasured | Authenticated WebSocket channel |
+| `registerComputerUseTools`, `evaluateActionPolicy` | Functions | `services/computer-use-mcp/src/server/register-tools.ts`, `src/policy.ts` | 14, 15 | MCP tool registration, action policy |
+| `acquire`, `withCpuSlots` | Functions | `packages/cpu-slots/src/index.ts`, `src/vitest.ts` | 10, unmeasured | CPU slot leases, Vitest wrapper |
+| `Brain` | Class | `integrations/minecraft/src/cognitive/conscious/brain.ts` | 41 | Minecraft cognition |
 
 ## CONVENTIONS
 - Keep changes in scope. Correct rule violations in touched functions/components/tests, not unrelated code. Refactor small changes step by step.
@@ -51,8 +60,7 @@ Digest evidence confirms these declarations. Repository-wide symbol totals and r
 - Use kebab-case filenames. Do not use `any`. Prefer generics. Use `as unknown as <Type>` only when safe type fixes fail.
 - Omit TS/JS extensions from relative imports, dynamic imports, and re-exports. Retain extensions required by runtimes or asset formats.
 - Use `@moeru/eventa` for all IPC, RPC, and cross-process events. Centralize contracts, for example in Electron `src/shared/eventa/`.
-- Use `injeca` dependency injection only at external boundaries: databases, model runtimes, queues, caches, filesystems, networks, clocks, environments, feature gates.
-- Do not add dependency objects for internal sibling calls or parameter forwarding.
+- Use `injeca` dependency injection only at external boundaries: databases, model runtimes, queues, caches, filesystems, networks, clocks, environments, feature gates. Do not add dependency objects for internal sibling calls or parameter forwarding.
 - Prefer classes for runtime/browser APIs and substantial stateful business modules with lifecycle or domain ownership. Prefer functions for pure transformations/local helpers.
 - Use Valibot schemas near consumers. Use `errorMessageFrom(error)` from `@moeru/std`, with `?? 'fallback'` when needed. Prefer other `@moeru/std` error patterns.
 - Settings/devtools pages need `<route lang="yaml"> meta: layout: settings </route>`. Register routes and icons in the settings layout.
@@ -61,16 +69,14 @@ Digest evidence confirms these declarations. Repository-wide symbol totals and r
 - Put project/client ADRs in `docs/ai/adr/`, hosted backend ADRs in `server/docs/ai/adr/`. Follow [server ADR rules](server/AGENTS.md).
 - Keep documentation with its code in the same commit/PR. Keep agent configuration changes in a separate commit/PR.
 - Keep structured `README.md` files in each `packages/` and `apps/` entry: purpose, usage, when to use, and when not to use.
-- Put translations in `packages/i18n`. Edit only English source and your own locale unless asked. The other locales are frozen copies of upstream's Crowdin exports; this fork does not sync them.
-- Add only implemented locales. Do not insert English placeholders into other locales.
+- Put translations in `packages/i18n`. Edit only English source and your own locale unless asked. The other locales are frozen copies of upstream's Crowdin exports; this fork does not sync them. Add only implemented locales. Do not insert English placeholders into other locales.
 - When adding nested `AGENTS.md`, add adjacent `CLAUDE.md` containing only `@AGENTS.md`. Root Claude guidance otherwise blocks nested discovery.
 
 ### Dependencies
 - Prefer `es-toolkit` for general utilities. Ask before adding another general utility library, including `unjs` or `tinylib` packages.
 - For node builtins, DOM, Vue composables, React hooks, Vite plugins, and GitHub workflows, research existing libraries first.
 - Before choosing a library, ask the user to choose and compare options. For spec-driven work, provide a Markdown comparison table.
-- For requested tools/dependencies, read Context7 documentation first, then repository usage. Ask when returned names lack clear differences.
-- If documentation conflicts with typecheck, inspect dependency source in `node_modules`.
+- For requested tools/dependencies, read Context7 documentation first, then repository usage. Ask when returned names lack clear differences. If documentation conflicts with typecheck, inspect dependency source in `node_modules`.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 - Do not hide import/type errors in `tsconfig.json`. Reconsider ownership for circular imports. Ask if the cycle cannot be resolved confidently.
@@ -97,37 +103,26 @@ Digest evidence confirms these declarations. Repository-wide symbol totals and r
 ## COMMANDS
 Use workspace `package.json` names with pnpm filters, for example `@proj-airi/stage-tamagotchi`.
 ```bash
-pnpm dev                           # Web
-pnpm dev:tamagotchi                 # Electron
-pnpm dev:pocket:ios                 # Mobile iOS
-pnpm dev:pocket:android             # Mobile Android
-pnpm dev:backend                    # Local backend stack
-pnpm dev:ui                         # UI development
-pnpm -F <package-name> typecheck
-pnpm exec vitest run <path>
-pnpm -F <package-name> exec vitest run
-pnpm test:run
-pnpm -F <package-name> build
-pnpm qa:doctor
-pnpm qa:test
-pnpm qa:motion
-pnpm qa:report
-pnpm typecheck
-pnpm lint                          # ESLint also formats
-pnpm lint:fix
-pnpm verify                        # Changed-file typecheck, lint, and related tests
-pnpm wt ls                         # Worktrees: idle time, uncommitted files, live processes
-pnpm dev:top                       # Dev process memory and CPU per worktree
-pnpm slots status                  # CPU slot budget: store path, held leases, queued work
+pnpm dev | dev:tamagotchi | dev:ui            # Web, Electron, UI development
+pnpm dev:pocket:ios | dev:pocket:android      # Mobile
+pnpm dev:backend                              # Local backend stack (server/docker-compose.yaml)
+pnpm -F <package-name> typecheck | build | exec vitest run
+pnpm exec vitest run <path>; pnpm test:run
+pnpm qa:doctor | qa:test | qa:motion | qa:report
+pnpm typecheck; pnpm lint | lint:fix          # ESLint also formats
+pnpm verify                                   # Changed-file typecheck, lint, and related tests
+pnpm wt ls; pnpm dev:top; pnpm slots status   # Worktrees, per-worktree CPU/memory, CPU slot budget
 ```
 After each task, run `pnpm verify` before finishing. It typechecks the changed packages and their dependents through Turbo, lints the changed files, and runs the tests related to them. It typechecks every package when a root config file changes. It skips a step that already passed on the same working tree.
 Use `pnpm lint` or root `pnpm typecheck` only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
 When `pnpm run` or `pnpm exec` fails because dependencies are out of date, run `pnpm install` once explicitly. The workspace sets `verifyDepsBeforeRun: error` so installs never start silently.
 Create and remove worktrees with `pnpm wt new <name>` and `pnpm wt rm <name>`. Stop a worktree's processes with `pnpm dev:top kill <name> --yes`, never by PID alone.
+Root `vitest.config.ts` also owns the `dev-tools`, `root-scripts`, `github-scripts`, `web-extension`, `telegram-bot`, and `twitter-services` projects: `pnpm exec vitest run --project <name> <path>`.
+The `pnpm verify` typecheck covers Turbo workspace packages (`packages/*`, `apps/*`, `server/**`, `services/*`) only. Root scripts get lint and tests only. Engines use `pnpm typecheck:engines` and `pnpm build:engines`.
 If Vitest finds no tests, inspect `vitest.config.ts` includes. Source-only packages can lack build scripts. Use their nested guidance.
 Electron build runs `electron-vite build`, not typecheck. Its typecheck runs `vue-tsc --noEmit`. Stage UI uses `test:run` and has no compilation build.
 
-Build, typecheck, and QA scripts take CPU slots from a shared budget through `pnpm slots run --class <class>`. If a command waits, run `pnpm slots status` to see who holds the budget and what is queued. `AIRI_CPU_SLOTS=off` is a supported opt-out only for one-off diagnosis of the broker itself; never use it for routine runs. If a command prints `cpu-slots: dist/vitest.mjs is stale`, run `pnpm -F @proj-airi/cpu-slots build`. Never bypass the stale-build guard.
+Build, typecheck, and QA scripts take CPU slots ([cpu-slots](packages/cpu-slots/AGENTS.md)) from a shared budget through `pnpm slots run --class <class>`. If a command waits, run `pnpm slots status` to see who holds the budget and what is queued. `AIRI_CPU_SLOTS=off` is a supported opt-out only for one-off diagnosis of the broker itself; never use it for routine runs. If a command prints `cpu-slots: dist/vitest.mjs is stale`, run `pnpm -F @proj-airi/cpu-slots build`. Never bypass the stale-build guard.
 
 ## TASK ROUTING
 Read the listed file before starting. Skill paths below are under `.agents/skills/`.
@@ -150,3 +145,5 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 ## NOTES
 Nested guides own local exceptions and package-specific checks. Historical ADRs/audits and scanner observations are not current runtime acceptance.
 Kirie is separate from Electron and the Godot sidecar. Its deferred features and native approvals remain governed by its migration guidance.
+Root `pnpm dev*` scripts run through `node scripts/dev.mjs`, which bypasses Windows `.cmd` shims and supports only `&&` chains of plain words.
+Guidance is in local mode: `.git/info/exclude` ignores most nested `AGENTS.md` files, so links resolve locally but those guides do not appear in commits.

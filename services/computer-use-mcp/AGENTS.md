@@ -23,6 +23,7 @@ AIRI's deterministic execution substrate. Score: 15. Follow the [root guide](../
 - Read `terminal-lane-status.md` before terminal work. Update it with terminal behavior changes.
 - Use `pnpm -F @proj-airi/computer-use-mcp test`, `typecheck`, or `build` for package checks.
 - Release gates live in `src/support-matrix.ts`. Only `product-supported` entries establish external support claims.
+- `strictReleaseGateCommands` lists the strict gates: `e2e:developer-workflow`, `e2e:terminal-exec`, `e2e:terminal-pty`, `e2e:terminal-self-acquire`, and `e2e:airi-chat-terminal-self-acquire`. Other `e2e:*` and `smoke:*` scripts are probes, not gates.
 
 ## LOCAL COLLABORATION
 - This policy applies only here. Do not promote it into the root guide.
