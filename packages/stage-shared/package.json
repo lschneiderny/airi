@@ -31,6 +31,7 @@
     "./screen-ambient-light": "./src/screen-ambient-light/index.ts",
     "./server-channel-qr": "./src/server-channel-qr.ts",
     "./situation": "./src/situation/index.ts",
+    "./stage-placement": "./src/stage-placement/index.ts",
     "./stores/desktop-activity": "./src/stores/desktop-activity.ts",
     "./stores/foreground-window": "./src/stores/foreground-window.ts",
     "./stores/screen-ambient-light": "./src/stores/screen-ambient-light.ts",
