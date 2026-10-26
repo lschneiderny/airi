@@ -8,6 +8,7 @@ import type { GazePoint } from './natural-motion/gaze'
 import type { NaturalEpisode } from './natural-motion/mood'
 import type { PendingAction } from './natural-motion/pending-actions'
 import type { Vec3 } from './natural-motion/posture'
+import type { RandomStream } from './natural-motion/random'
 import type { Live2DRigProfile } from './natural-motion/rig-profile'
 import type { Live2DTouchRegion } from './touch-gestures'
 
@@ -37,11 +38,20 @@ import { createRandomStream, deriveSeed } from './natural-motion/random'
 import { NaturalSpeechEmphasis, SpeechOnsetShifts } from './natural-motion/speech-emphasis'
 import { NaturalPetLayer } from './natural-motion/touch'
 
-export type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionPose, Live2DNaturalMotionVoice, NaturalAttentionEvent, NaturalGestureEvent, NaturalHoldEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionObserver, NaturalPlacementEvent, NaturalTouchEvent } from './natural-motion/frame-types'
+export type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionPose, Live2DNaturalMotionVoice, NaturalAttentionEvent, NaturalGestureEvent, NaturalGlanceEvent, NaturalHoldEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionObserver, NaturalPlacementEvent, NaturalTouchEvent } from './natural-motion/frame-types'
+
+/** Chat timing and geometry only, never text. Target is an eye-anchored offset in head widths, Y up. */
+export interface NaturalChatInput {
+  target: GazePoint | null
+  typing: boolean
+  sentSeq: number
+  sentWords: number
+  unfoldSeq: number
+}
 
 // Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
 // Index 4 belonged to the v1 fixation rule and now seeds the gaze layer that replaces it.
-const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12, cursorAttention: 13 }
+const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12, cursorAttention: 13, chat: 14 }
 
 // Fixed integration grid. Processes advance only in whole steps and the output is
 // interpolated between the two grid states around the current time, so frame
@@ -109,6 +119,14 @@ interface Snapshot {
 export class Live2DNaturalMotion {
   private readonly posture: NaturalPostureLayers
   private readonly gaze: NaturalGazeLayer
+  private readonly chatRandom: RandomStream
+  private chat: NaturalChatInput | null = null
+  private seenSentSeq: number | undefined
+  private seenUnfoldSeq: number | undefined
+  private onChatLevel = 0
+  private chatGlance: { at: number, point: GazePoint, hold: number, cause: 'chat-sent' | 'chat-unfold' } | null = null
+  /** A reading glance keeps its drawn hold instead of being interrupted by a posture-led fixation. */
+  private chatGlanceUntil = 0
   private readonly cursorAttention: NaturalCursorAttention
   private readonly body: NaturalBodyLayer
   private readonly attention: NaturalAttentionShifts
@@ -186,7 +204,11 @@ export class Live2DNaturalMotion {
       gain: stream('gain'),
       shift: stream('shift'),
     })
-    this.gaze = new NaturalGazeLayer(stream('gaze'))
+    this.chatRandom = stream('chat')
+    this.gaze = new NaturalGazeLayer(stream('gaze'), this.chatRandom, (point, hold, at) => {
+      if (this.observer)
+        this.notify({ kind: 'glance', at, cause: 'chat-typing', point, hold })
+    })
     this.cursorAttention = new NaturalCursorAttention(stream('cursorAttention'))
     this.body = new NaturalBodyLayer(stream('body'), home)
     this.attention = new NaturalAttentionShifts(stream('attention'))
@@ -271,6 +293,46 @@ export class Live2DNaturalMotion {
     this.cursorMode = mode
     if (this.cursor !== null)
       this.mappedCursor = mapCursor(this.cursor)
+  }
+
+  /**
+   * Null disables chat and cancels pending glances; a null target means hidden chat.
+   * The first non-null input baselines sequences, which survive disabling and hiding.
+   */
+  setChat(chat: NaturalChatInput | null, nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.chat = chat === null ? null : { ...chat, target: chat.target && { ...chat.target } }
+    if (chat !== null) {
+      if (this.seenSentSeq !== undefined && chat.sentSeq !== this.seenSentSeq)
+        this.pending.push({ kind: 'chat', cue: 'sent', words: chat.sentWords })
+      if (this.seenUnfoldSeq !== undefined && chat.unfoldSeq !== this.seenUnfoldSeq)
+        this.pending.push({ kind: 'chat', cue: 'unfold', words: 0 })
+      this.seenSentSeq = chat.sentSeq
+      this.seenUnfoldSeq = chat.unfoldSeq
+    }
+    if (chat?.target == null) {
+      this.onChatLevel = 0
+      this.chatGlance = null
+      this.chatGlanceUntil = 0
+      for (let i = this.pending.length - 1; i >= 0; i--) {
+        if (this.pending[i].kind === 'chat')
+          this.pending.splice(i, 1)
+      }
+      this.gaze.setChatTarget(null, false, this.activeTime)
+    }
+  }
+
+  /** Whether gaze is currently in an autonomous typing fixation. */
+  get onChat(): boolean {
+    return this.gaze.onChat
+  }
+
+  /** The current normalized head-follow target contribution, zero immediately when chat is hidden or disabled. */
+  get chatHeadFollow(): GazePoint {
+    if (this.onChatLevel === 0 || this.chat?.target == null)
+      return { x: 0, y: 0 }
+    const head = mapCursor(this.chat.target).head
+    return { x: 0.6 * this.onChatLevel * head.x, y: 0.6 * this.onChatLevel * head.y }
   }
 
   /** Screen inwardness (-1..1), positive toward screen +x; null disables placement without an easing tail. */
@@ -390,6 +452,13 @@ export class Live2DNaturalMotion {
     this.placement.step(step)
     this.gaze.setInward(this.placement.value)
     this.gaze.setScreenPointActive(this.energy.screen || this.energy.watching)
+    const chatTarget = this.chat?.target
+    this.gaze.setChatTarget(chatTarget && !this.energy.talking ? mapCursor(chatTarget).eye : null, this.chat?.typing === true && !this.energy.talking, stepStart)
+    if (this.energy.talking) {
+      this.onChatLevel = 0
+      this.chatGlance = null
+      this.chatGlanceUntil = 0
+    }
     const permission = this.cursorMode === 'dismissed' || this.energy.aside || this.energy.screen ? 'dismiss' : 'full'
     if (permission === 'dismiss')
       this.petGlanceUntil = 0
@@ -443,13 +512,34 @@ export class Live2DNaturalMotion {
         this.notify({ kind: 'touch', at: stepStart, touch: 'pet-end', region: 'head' })
     }
     const pending = this.pending.splice(0)
+    for (const action of pending) {
+      if (action.kind !== 'chat')
+        continue
+      if (chatTarget == null || this.energy.talking || this.petOverride || stepStart < this.petGlanceUntil)
+        continue
+      this.chatGlance = {
+        at: stepStart + (action.cue === 'sent' ? 0.18 + 0.12 * this.chatRandom() : 0.25),
+        point: mapCursor(chatTarget).eye,
+        hold: action.cue === 'sent' ? Math.max(0.6, Math.min(3, 0.5 + 0.25 * action.words)) : 0.8,
+        cause: action.cue === 'sent' ? 'chat-sent' : 'chat-unfold',
+      }
+    }
+    if (this.chatGlance !== null && stepStart >= this.chatGlance.at) {
+      const glance = this.chatGlance
+      this.chatGlance = null
+      if (chatTarget != null && !this.energy.talking && !this.petOverride && stepStart >= this.petGlanceUntil) {
+        this.chatGlanceUntil = this.gaze.glance(glance.point, glance.hold, stepStart)
+        if (this.observer)
+          this.notify({ kind: 'glance', at: stepStart, cause: glance.cause, point: glance.point, hold: glance.hold })
+      }
+    }
     if (this.observer) {
       for (const action of pending) {
         if (action.kind === 'poke')
           this.notify({ kind: 'touch', at: stepStart, touch: 'poke', region: action.region })
       }
     }
-    const pokeState = startPending(pending, stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings, emotions: this.emotions, notify: this.observer ? this.notify : undefined }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })
+    const pokeState = startPending(pending.filter(action => action.kind !== 'chat'), stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings, emotions: this.emotions, notify: this.observer ? this.notify : undefined }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })
     this.pokes = pokeState.pokes
     this.lastPokeSurprise = pokeState.lastPokeSurprise
     this.energy.step(step)
@@ -490,14 +580,22 @@ export class Live2DNaturalMotion {
       if (remaining > 0.5 && this.posture.secondsUntilShift <= step)
         this.posture.postponeShift(remaining)
     }
-    if (stepStart >= this.petGlanceUntil)
+    if (stepStart >= this.petGlanceUntil && stepStart >= this.chatGlanceUntil)
       this.attention.update(this.posture, this.gaze, stepStart, step)
     this.onCursor += (Number(this.gaze.onCursor) - this.onCursor) * (1 - Math.exp(-step / cursorFixationSmoothingSeconds))
+    if (this.gaze.onChat || this.onChatLevel !== 0)
+      this.onChatLevel += (Number(this.gaze.onChat) - this.onChatLevel) * (1 - Math.exp(-step / cursorFixationSmoothingSeconds))
     const headShare = cursorShare * (headFollowBaseShare + headFollowCursorShare * this.onCursor)
-    this.follow({
+    const followTarget = {
       cursorX: headShare * mapped.head.x,
       cursorY: headShare * (above ? mapped.head.y * (1 - this.approach) - approachHeadTuck * this.approach : mapped.head.y),
-    })
+    }
+    if (this.onChatLevel !== 0) {
+      const chatHead = this.chatHeadFollow
+      followTarget.cursorX += chatHead.x
+      followTarget.cursorY += chatHead.y
+    }
+    this.follow(followTarget)
     this.posture.continuousScale = this.performanceSettings.heldEmotions ? this.gestures.continuousScale(stepStart + step) : 1
     this.yawBias = 0.10 * this.placement.value * (1 - this.onCursor)
     if (this.observer && Math.abs(this.yawBias - this.lastEmittedYawBias) >= 0.005) {

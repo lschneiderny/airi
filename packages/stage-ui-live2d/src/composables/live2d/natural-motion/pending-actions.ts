@@ -25,6 +25,7 @@ export type PendingAction
   = | { kind: 'emotion', episode: NaturalEpisode }
     | { kind: 'react', reaction: 'wake' | 'screen-change' }
     | { kind: 'poke', region: Live2DTouchRegion, x: number, y: number }
+    | { kind: 'chat', cue: 'sent' | 'unfold', words: number }
 
 /** Poke surprise bookkeeping the owner carries between calls. */
 export interface PokeSurpriseState {
@@ -51,7 +52,7 @@ export interface PendingActionTargets {
 }
 
 /** Starts emotion impulses and desktop reactions requested since the previous step; returns the updated poke surprise state. */
-export function startPending(actions: PendingAction[], at: number, targets: PendingActionTargets, pokeState: PokeSurpriseState): PokeSurpriseState {
+export function startPending(actions: Exclude<PendingAction, { kind: 'chat' }>[], at: number, targets: PendingActionTargets, pokeState: PokeSurpriseState): PokeSurpriseState {
   const { impulses, gaze, energy, mood, gestures, emotionStrengths, settings, emotions, notify } = targets
   let { pokes, lastPokeSurprise } = pokeState
   for (const action of actions) {
@@ -91,7 +92,9 @@ export function startPending(actions: PendingAction[], at: number, targets: Pend
       gaze.glance(glanceTargets.camera, wakeGlanceHold, at)
     }
     else {
-      gaze.glance(gaze.screenPoint(), screenChangeGlanceHold, at)
+      const point = gaze.screenPoint()
+      gaze.glance(point, screenChangeGlanceHold, at)
+      notify?.({ kind: 'glance', at, cause: 'screen-change', point, hold: screenChangeGlanceHold })
     }
     energy.react(at)
   }

@@ -4,7 +4,7 @@ import type { RandomStream } from './random'
 
 import { cursorGaze } from './cursor-attention'
 import { minJerk } from './processes'
-import { gaussian, truncatedLognormal } from './random'
+import { createRandomStream, gaussian, truncatedLognormal } from './random'
 
 /** Normalized eye-space point; X right, Y up, matching ParamEyeBallX/Y. */
 export interface GazePoint {
@@ -81,6 +81,8 @@ export class NaturalGazeLayer {
   saccadeCount = 0
   /** Normalized eye-space distance of the latest saccade. */
   saccadeSize = 0
+  /** The current autonomous fixation was selected from the typing chat branch. */
+  onChat = false
 
   private time = 0
   private from: GazePoint = { x: 0, y: 0 }
@@ -106,9 +108,23 @@ export class NaturalGazeLayer {
   private asideReleasedAt = Number.NEGATIVE_INFINITY
   private inward = 0
   private screenPointActive = false
+  private chatPoint: GazePoint | null = null
+  private chatTyping = false
 
-  constructor(private readonly random: RandomStream) {
+  constructor(
+    private readonly random: RandomStream,
+    private readonly chatRandom: RandomStream = createRandomStream(14),
+    private readonly chatFixation?: (point: GazePoint, hold: number, at: number) => void,
+  ) {
     this.nextFixationAt = this.drawHold()
+  }
+
+  /** Stores an eye-space chat target; hiding chat immediately replaces an active chat fixation. */
+  setChatTarget(point: GazePoint | null, typing: boolean, at = this.time) {
+    this.chatPoint = point
+    this.chatTyping = typing
+    if (point === null && this.onChat)
+      this.fixateNext(at)
   }
 
   /** Eased placement inwardness; positive means toward screen +x. Does not draw or change the current fixation. */
@@ -154,7 +170,7 @@ export class NaturalGazeLayer {
     if (!this.onCursor)
       return
     this.weight = 0
-    this.saccadeTo(this.drawTarget(), at)
+    this.fixateNext(at)
   }
 
   /** Overrides autonomous fixations and pursuit; each change starts one saccade. */
@@ -162,7 +178,7 @@ export class NaturalGazeLayer {
     if (point?.x === this.override?.x && point?.y === this.override?.y)
       return
     this.override = point
-    this.saccadeTo(this.drawTarget(), at)
+    this.fixateNext(at)
   }
 
   get onCursor(): boolean {
@@ -195,7 +211,7 @@ export class NaturalGazeLayer {
    * and the caller starts the matching posture shift slightly later.
    */
   beginAttentionShift(at: number) {
-    this.saccadeTo(this.drawTarget(), at)
+    this.fixateNext(at)
   }
 
   /**
@@ -213,7 +229,7 @@ export class NaturalGazeLayer {
     const previousTime = this.time
     this.time += dt
     while (this.time >= this.nextFixationAt)
-      this.saccadeTo(this.drawTarget(), this.nextFixationAt)
+      this.fixateNext(this.nextFixationAt)
     if (this.onCursor && this.cursor && !this.override) {
       const previous = this.previousCursor ?? this.cursor
       this.trackMotion(this.cursor.x - previous.x, this.cursor.y - previous.y, dt)
@@ -316,6 +332,7 @@ export class NaturalGazeLayer {
   }
 
   private saccadeTo(target: Target, at: number, hold?: number, catchUp = false) {
+    this.onChat = false
     const from = this.gazeAt(at)
     const to = catchUp ? this.catchUpTarget(from) : this.resolve(target)
     // Amplitude in approximate degrees: 20 per normalized eye unit.
@@ -334,11 +351,16 @@ export class NaturalGazeLayer {
   }
 
   private drawTarget(): Target {
+    this.onChat = false
     if (this.override)
       return this.jittered(this.override)
     // Aside attention outranks the camera-fixation probability, so a hold that raises it cannot pull the gaze back.
     if (this.aside)
       return this.jittered(this.aside)
+    if (this.chatPoint && this.chatTyping && this.chatRandom() < 0.35) {
+      this.onChat = true
+      return this.jitteredWith(this.chatPoint, this.chatRandom)
+    }
     if (this.cursor && this.weight > 0 && this.random() < cursorWeight * this.weight)
       return 'cursor'
     const choice = this.random()
@@ -362,8 +384,22 @@ export class NaturalGazeLayer {
     return { x: point.x + targetJitter * gaussian(this.random), y: point.y + targetJitter * gaussian(this.random) }
   }
 
-  private drawHold() {
-    return truncatedLognormal(this.random, 1, 0.7, 0.18, 5)
+  private jitteredWith(point: GazePoint, random: RandomStream): GazePoint {
+    return { x: point.x + targetJitter * gaussian(random), y: point.y + targetJitter * gaussian(random) }
+  }
+
+  private fixateNext(at: number) {
+    const target = this.drawTarget()
+    const onChat = this.onChat
+    const hold = onChat ? this.drawHold(this.chatRandom) : undefined
+    this.saccadeTo(target, at, hold)
+    this.onChat = onChat
+    if (onChat && target !== 'cursor' && hold !== undefined)
+      this.chatFixation?.(target, hold, at)
+  }
+
+  private drawHold(random = this.random) {
+    return truncatedLognormal(random, 1, 0.7, 0.18, 5)
   }
 }
 

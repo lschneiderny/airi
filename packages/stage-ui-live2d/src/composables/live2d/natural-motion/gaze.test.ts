@@ -1,6 +1,6 @@
 import type { RandomStream } from './random'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { NaturalAttentionShifts, NaturalGazeLayer } from './gaze'
 import { NaturalPostureLayers } from './posture'
@@ -25,6 +25,47 @@ function onsets(path: number[][], threshold: number) {
 }
 
 describe('natural gaze', () => {
+  it.each(['absent', 'not-typing', 'typing'] as const)('isolates chat-stream selections when %s', (signal) => {
+    const chatRandom = vi.fn(createRandomStream(14))
+    const gaze = new NaturalGazeLayer(createRandomStream(4), chatRandom)
+    if (signal !== 'absent')
+      gaze.setChatTarget({ x: -0.6, y: -0.2 }, signal === 'typing')
+    for (let i = 0; i < 10_000; i++)
+      gaze.beginAttentionShift(0)
+    if (signal === 'typing')
+      expect(chatRandom).toHaveBeenCalled()
+    else
+      expect(chatRandom).not.toHaveBeenCalled()
+  })
+
+  it('uses zero gaze-stream draws for chat branch, jitter, and fixation hold', () => {
+    const random = vi.fn(createRandomStream(4))
+    const gaze = new NaturalGazeLayer(random, createRandomStream(14))
+    gaze.setChatTarget({ x: -0.6, y: -0.2 }, true)
+    let chatFixations = 0
+    for (let i = 0; i < 10_000; i++) {
+      random.mockClear()
+      gaze.beginAttentionShift(0)
+      if (gaze.onChat) {
+        expect(random).not.toHaveBeenCalled()
+        chatFixations++
+      }
+    }
+    expect(chatFixations).toBeGreaterThan(3000)
+    expect(chatFixations).toBeLessThan(4000)
+  })
+
+  it('abandons an active chat fixation immediately when the chat target disappears', () => {
+    const gaze = new NaturalGazeLayer(createRandomStream(4), createRandomStream(14))
+    gaze.setChatTarget({ x: -0.6, y: -0.2 }, true)
+    for (let i = 0; i < 100 && !gaze.onChat; i++)
+      gaze.beginAttentionShift(0)
+    expect(gaze.onChat).toBe(true)
+    gaze.setChatTarget(null, false)
+    expect(gaze.onChat).toBe(false)
+    expect(gaze.step(0.1).x).toBeGreaterThan(-0.3)
+  })
+
   it.each([-1, 0, 1])('keeps seeded placement peripheral side-share inward at %s', (inward) => {
     const gaze = new NaturalGazeLayer(createRandomStream(42))
     gaze.setInward(inward)

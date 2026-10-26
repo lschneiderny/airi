@@ -31,7 +31,16 @@ export interface Live2DNaturalMotionOptions {
  * - `hold`: side 1 raises the left brow; `null` while nothing is held;
  * - `gesture`: the clip's sided axes; drawn even for clips without sided axes.
  */
-export type NaturalMotionEvent = NaturalImpulseEvent | NaturalHoldEvent | NaturalGestureEvent | NaturalAttentionEvent | NaturalTouchEvent | NaturalPlacementEvent
+export type NaturalMotionEvent = NaturalImpulseEvent | NaturalHoldEvent | NaturalGestureEvent | NaturalAttentionEvent | NaturalTouchEvent | NaturalPlacementEvent | NaturalGlanceEvent
+
+/** A chat fixation or screen-change glance actually started. Point is normalized eye space; hold is seconds. */
+export interface NaturalGlanceEvent {
+  kind: 'glance'
+  at: number
+  cause: 'chat-sent' | 'chat-unfold' | 'chat-typing' | 'screen-change'
+  point: GazePoint
+  hold: number
+}
 
 /** The eased placement yaw changed by at least 0.005, or placement was disabled. No motion or RNG effect. */
 export interface NaturalPlacementEvent {

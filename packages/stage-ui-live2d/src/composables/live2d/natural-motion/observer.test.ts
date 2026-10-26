@@ -82,6 +82,13 @@ function browAsymmetry(seed: number, at: number, from: number, to: number, input
 }
 
 describe('natural motion observer', () => {
+  it.each([1, 2, 3])('keeps interleaved null chat bit-identical to idleHashes for seed %i', (seed) => {
+    const timeline: Timeline = {}
+    for (let second = 0; second <= 600; second++)
+      timeline[second * rate] = (motion, t) => motion.setChat(null, t)
+    expect(run(seed, 600, timeline)).toBe(idleHashes[seed - 1])
+  }, 30_000)
+
   it.each([1, 2, 3])('keeps interleaved null and centered placement bit-identical to idleHashes for seed %i', (seed) => {
     const timeline: Timeline = {}
     for (let second = 0; second <= 600; second++)

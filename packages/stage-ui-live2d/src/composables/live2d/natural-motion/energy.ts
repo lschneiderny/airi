@@ -92,6 +92,11 @@ export class NaturalPerformanceEnergy {
   /** Active time at which the reacting overlay ends; later reactions extend it and never stack. */
   private reactingUntil = Number.NEGATIVE_INFINITY
 
+  /** Talking suppresses chat attention immediately, independently of the preset cross-fade. */
+  get talking(): boolean {
+    return this.mode === 'talking'
+  }
+
   /** Sets the target state; the filter moves toward it from the next step. */
   setState(state: Pick<PerformanceState, 'mode' | 'attention' | 'away'>, energy: number) {
     this.watching = state.mode === 'watching'
