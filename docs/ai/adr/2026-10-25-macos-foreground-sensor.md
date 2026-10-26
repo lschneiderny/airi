@@ -96,7 +96,9 @@ Memory evidence is partial:
 All memory runs used plain Node or Vitest rather than Electron's renderer and
 main IPC, and none ran for hours of elapsed time. The 20 MiB per-batch target
 is not met in cold runs, and the absence of a long-running leak is supported
-only at the measurement resolution above.
+only at the measurement resolution above. The opt-in
+`foreground-window.memory.darwin.test.ts` reruns the 2,000-sample batch check.
+The cadence and accelerated measurement scripts are not kept in the repository.
 
 On a notched display, native full screen may stop below the camera band, so the
 geometry check may miss it and the sample may report `accepts`. This applies
