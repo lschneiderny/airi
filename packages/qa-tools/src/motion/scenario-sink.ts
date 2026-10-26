@@ -13,7 +13,7 @@ import type { StagePerformanceScene } from '@proj-airi/stage-ui/composables/perf
 
 import { normalizeActPayload, tokenAct } from '@proj-airi/pipelines-audio'
 import { parseExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
-import { createScenarioPlayer, MotionScenarioSchema } from '@proj-airi/stage-shared/motion-scenario'
+import { createScenarioPlayer, MotionScenarioSchema, nextScenarioChatInput } from '@proj-airi/stage-shared/motion-scenario'
 import { EmotionHoldPerformer } from '@proj-airi/stage-ui-live2d/composables/live2d/expression/hold'
 import { Live2DNaturalMotionAdapter } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
 import { syllableFixture } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/speech-fixture'
@@ -175,6 +175,9 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
     let energy = 0.5
     let cursor: { x: number, y: number } | null = null
     const cursorAttention = scenario.settings?.cursorAttention ?? true
+    // No placement or chat signal until the scenario's own events supply one, as the T3 bridge pins them.
+    let placement: Live2DNaturalMotionAttention['placement'] = null
+    let chat: Live2DNaturalMotionAttention['chat'] = null
     const speeches = new Map<string, { start: number, end: number, level: Float64Array }>()
     let speechEndedAt: number | null = null
     const emotionStrengths = {}
@@ -207,10 +210,8 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
       emotionStrengths,
       cursor: cursorAttention ? cursor : null,
       cursorDismissed: !cursorAttention,
-      // T1 has no window placement yet; scenario placement events come later.
-      placement: null,
-      // T1 has no chat window; scenario chat events come later.
-      chat: null,
+      placement,
+      chat,
       pendingPokes,
       pet,
     }), undefined, undefined, { seed: scenario.seed, home, emotionTable: options.emotionTable })
@@ -303,6 +304,15 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
               else {
                 throw new Error(`[qa-tools] Expression ${event.expressionId} is not in the catalog`)
               }
+              break
+            case 'placement':
+              placement = event.inward
+              break
+            case 'chat-target':
+            case 'chat-typing':
+            case 'chat-sent':
+            case 'chat-unfold':
+              chat = nextScenarioChatInput(chat, event)
               break
             case 'placebo':
             case 'noop':

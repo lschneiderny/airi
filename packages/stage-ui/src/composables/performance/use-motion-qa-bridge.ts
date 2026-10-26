@@ -14,6 +14,7 @@ import {
   motionQaRunScenarioInvokeEventa,
   motionQaStartCaptureInvokeEventa,
   motionQaStateInvokeEventa,
+  nextScenarioChatInput,
 } from '@proj-airi/stage-shared/motion-scenario'
 import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useExpressionStore, useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
@@ -167,6 +168,16 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
           expressions.applySettingsCommand({ type: 'toggle', id: event.expressionId })
         return null
       }
+      case 'placement':
+        diagnostics.placementOverride = event.inward
+        return null
+      case 'chat-target':
+      case 'chat-typing':
+      case 'chat-sent':
+      case 'chat-unfold':
+        // `runScenario` pinned the override to `null`, so it is never `undefined` while a scenario runs.
+        diagnostics.chatOverride = nextScenarioChatInput(diagnostics.chatOverride ?? null, event)
+        return null
       case 'placebo':
       case 'noop':
       case 'marker':
@@ -192,6 +203,10 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
     // Keep the home through capture completion, which can follow the last scenario event.
     // The next scenario replaces it; disposing this bridge restores the product home.
     diagnostics.setPostureHome(scenario.home ?? 'desk')
+    // A scenario never sees the real window placement or chat activity: only its own events drive these inputs.
+    // Like the home, the overrides persist after the scenario until the next one or bridge disposal.
+    diagnostics.placementOverride = null
+    diagnostics.chatOverride = null
 
     const player = createScenarioPlayer(scenario)
     const lastAt = scenario.events.at(-1)?.at ?? 0
@@ -317,6 +332,9 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
     for (const reject of abandon)
       reject(new Error('The stage that answered the motion QA bridge was disposed'))
     diagnostics.setPostureHome('product')
+    // `undefined` hands placement and chat back to the host signals.
+    diagnostics.placementOverride = undefined
+    diagnostics.chatOverride = undefined
     release()
   })
 }

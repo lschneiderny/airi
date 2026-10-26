@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "id": "t3-screen-attention",
+  "seed": 1,
+  "durationSeconds": 130,
+  "home": "desk",
+  "levels": [
+    "t1",
+    "t3"
+  ],
+  "settings": {
+    "heldEmotions": true,
+    "cursorAttention": false,
+    "expressionEnabled": true
+  },
+  "screenshotsAt": [
+    45,
+    75
+  ],
+  "events": [
+    {
+      "kind": "placement",
+      "at": 0,
+      "inward": 0
+    },
+    {
+      "kind": "placement",
+      "at": 20,
+      "inward": 1
+    },
+    {
+      "kind": "placement",
+      "at": 50,
+      "inward": -1
+    },
+    {
+      "kind": "chat-target",
+      "at": 80,
+      "x": -3,
+      "y": -1
+    },
+    {
+      "kind": "chat-typing",
+      "at": 80,
+      "active": true
+    },
+    {
+      "kind": "chat-sent",
+      "at": 100,
+      "words": 8
+    },
+    {
+      "kind": "chat-typing",
+      "at": 100,
+      "active": false
+    },
+    {
+      "kind": "chat-unfold",
+      "at": 110
+    }
+  ]
+}

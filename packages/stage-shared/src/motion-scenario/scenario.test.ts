@@ -1,7 +1,7 @@
 import { safeParse } from 'valibot'
 import { describe, expect, it } from 'vitest'
 
-import { buildEmotionTrial, buildIdleWithPlacebos, buildLongHold, buildPointerApproach, buildPointerPoke, buildPointerStroke, createScenarioPlayer, MotionScenarioSchema, stripEmotions } from '.'
+import { buildEmotionTrial, buildIdleWithPlacebos, buildLongHold, buildPointerApproach, buildPointerPoke, buildPointerStroke, createScenarioPlayer, MotionScenarioSchema, nextScenarioChatInput, stripEmotions } from '.'
 import { ExpressionPerformanceSettingsSchema } from '../expression-performance'
 
 function scenario(overrides: Record<string, unknown> = {}) {
@@ -83,9 +83,67 @@ describe('motionScenarioSchema', () => {
     expect(issuePaths(scenario({ events: [{ kind: 'pointer', at: 1, phase: 'move', x: Number.NaN, y: 0 }] }))).toContain('events.0.x')
   })
 
+  it('accepts placement and chat events at t1, t2 and t3', () => {
+    const events = [
+      { kind: 'placement', at: 0, inward: 0 },
+      { kind: 'placement', at: 1, inward: -1 },
+      { kind: 'placement', at: 2, inward: null },
+      { kind: 'chat-target', at: 3, x: -3, y: -1 },
+      { kind: 'chat-target', at: 3, clear: true },
+      { kind: 'chat-typing', at: 4, active: true },
+      { kind: 'chat-sent', at: 5, words: 0 },
+      { kind: 'chat-sent', at: 5, words: 8 },
+      { kind: 'chat-unfold', at: 6 },
+    ]
+    expect(safeParse(MotionScenarioSchema, scenario({ levels: ['t1', 't2', 't3'], events })).success).toBe(true)
+  })
+
+  it.each([
+    ['inward 1.5', { kind: 'placement', at: 1, inward: 1.5 }, 'events.0.inward'],
+    ['inward 2', { kind: 'placement', at: 1, inward: 2 }, 'events.0.inward'],
+    ['inward -1.5', { kind: 'placement', at: 1, inward: -1.5 }, 'events.0.inward'],
+    ['a missing inward', { kind: 'placement', at: 1 }, 'events.0.inward'],
+    ['negative words', { kind: 'chat-sent', at: 1, words: -1 }, 'events.0.words'],
+    ['fractional words', { kind: 'chat-sent', at: 1, words: 1.5 }, 'events.0.words'],
+    ['a non-boolean typing flag', { kind: 'chat-typing', at: 1, active: 1 }, 'events.0.active'],
+    ['chat text on a sent event', { kind: 'chat-sent', at: 1, words: 2, text: 'hi there' }, 'events.0.text'],
+    ['an unknown placement key', { kind: 'placement', at: 1, inward: 0, side: 'left' }, 'events.0.side'],
+    ['an unknown unfold key', { kind: 'chat-unfold', at: 1, visible: true }, 'events.0.visible'],
+  ])('rejects a scenario event with %s', (_, event, path) => {
+    expect(issuePaths(scenario({ events: [event] }))).toContain(path)
+  })
+
+  it('rejects a chat-target event that is neither a position nor a clear', () => {
+    expect(issuePaths(scenario({ events: [{ kind: 'chat-target', at: 1, x: 1 }] }))).toContain('events.0.kind')
+    expect(issuePaths(scenario({ events: [{ kind: 'chat-target', at: 1, y: 1 }] }))).toContain('events.0.kind')
+    expect(issuePaths(scenario({ events: [{ kind: 'chat-target', at: 1 }] }))).toContain('events.0.kind')
+    expect(issuePaths(scenario({ events: [{ kind: 'chat-target', at: 1, x: 1, y: 2, clear: true }] }))).toContain('events.0.kind')
+  })
+
   it('rejects an out-of-range seed', () => {
     expect(issuePaths(scenario({ seed: 2 ** 32 }))).toContain('seed')
     expect(issuePaths(scenario({ seed: 1.5 }))).toContain('seed')
+  })
+})
+
+describe('nextScenarioChatInput', () => {
+  it('creates a hidden chat with zero counters on the first chat event, then keeps fields the event does not set', () => {
+    const typing = nextScenarioChatInput(null, { kind: 'chat-typing', at: 1, active: true })
+    expect(typing).toEqual({ target: null, typing: true, sentSeq: 0, sentWords: 0, unfoldSeq: 0 })
+    const shown = nextScenarioChatInput(typing, { kind: 'chat-target', at: 2, x: -3, y: -1 })
+    expect(shown).toEqual({ target: { x: -3, y: -1 }, typing: true, sentSeq: 0, sentWords: 0, unfoldSeq: 0 })
+    const sent = nextScenarioChatInput(nextScenarioChatInput(shown, { kind: 'chat-sent', at: 3, words: 8 }), { kind: 'chat-sent', at: 4, words: 2 })
+    expect(sent).toEqual({ target: { x: -3, y: -1 }, typing: true, sentSeq: 2, sentWords: 2, unfoldSeq: 0 })
+    const hidden = nextScenarioChatInput(sent, { kind: 'chat-target', at: 5, clear: true })
+    expect(hidden).toEqual({ target: null, typing: true, sentSeq: 2, sentWords: 2, unfoldSeq: 0 })
+    expect(nextScenarioChatInput(hidden, { kind: 'chat-unfold', at: 6 })).toEqual({ ...hidden, unfoldSeq: 1 })
+  })
+
+  it('returns a new object and leaves the previous input unchanged', () => {
+    const previous = nextScenarioChatInput(null, { kind: 'chat-unfold', at: 1 })
+    const next = nextScenarioChatInput(previous, { kind: 'chat-unfold', at: 2 })
+    expect(next).not.toBe(previous)
+    expect([previous.unfoldSeq, next.unfoldSeq]).toEqual([1, 2])
   })
 })
 

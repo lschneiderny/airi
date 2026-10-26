@@ -356,7 +356,7 @@ export interface T3SessionHeader {
   manifest: { label?: unknown, gitSha?: unknown }
   trace: { version?: unknown, meta?: { driver?: unknown, durationSeconds?: unknown, model?: unknown } }
   /** The session's `bridge.json`. */
-  bridge: { rig?: { name?: unknown, model3?: unknown, files?: unknown, bytes?: unknown }, configured?: { modelId?: unknown, driver?: unknown, cursorAttention?: unknown, expressionEnabled?: unknown, heldEmotions?: unknown }, capture?: { durationSeconds?: unknown } }
+  bridge: { rig?: { name?: unknown, model3?: unknown, files?: unknown, bytes?: unknown }, configured?: { modelId?: unknown, driver?: unknown, cursorAttention?: unknown, expressionEnabled?: unknown, screenAwareness?: unknown, heldEmotions?: unknown }, capture?: { durationSeconds?: unknown } }
 }
 
 /**
@@ -364,7 +364,7 @@ export interface T3SessionHeader {
  * that exact scenario (`scenario.json` equal, run label `t3-<scenario id>`) from the gate run's commit (`gitSha`), on the
  * expected rig (`rigName`, and `rig` when given: the same model file, file count and zipped byte count as the first session;
  * the zip's sha256 differs per session because the archive stores timestamps), with the Natural driver,
- * cursor attention off, expressions on and the scenario's held-emotion setting, and its capture must be the scenario's
+ * cursor attention off, screen-aware attention off, expressions on and the scenario's held-emotion setting, and its capture must be the scenario's
  * length plus one second (at most 600 s) of the configured model. The reason names the first header field that differs.
  */
 export function t3SessionHeaderMismatch(scenario: MotionScenario, header: T3SessionHeader, expected: { gitSha: string, rigName: string, rig?: { model3: unknown, files: unknown, bytes: unknown } }): string | null {
@@ -383,6 +383,7 @@ export function t3SessionHeaderMismatch(scenario: MotionScenario, header: T3Sess
     ['bridge.configured.driver', header.bridge.configured?.driver, 'natural'],
     ['bridge.configured.cursorAttention', header.bridge.configured?.cursorAttention, false],
     ['bridge.configured.expressionEnabled', header.bridge.configured?.expressionEnabled, true],
+    ['bridge.configured.screenAwareness', header.bridge.configured?.screenAwareness, false],
     ['bridge.configured.heldEmotions', header.bridge.configured?.heldEmotions, scenario.settings?.heldEmotions ?? true],
     ['bridge.configured.modelId', header.bridge.configured?.modelId, header.trace.meta?.model],
   ]

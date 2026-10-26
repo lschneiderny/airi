@@ -7,6 +7,7 @@ import { hashSeed, naturalEmotionLifetime } from '@proj-airi/stage-ui-live2d/com
 import { emotionGate, naturalEmotionT3Gate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 import { describe, expect, it } from 'vitest'
 
+import { t3ScreenAwareness } from '../../t3/run-t3'
 import { buildT3EmotionPlan, buildT3IdleScenario, t3PlanFromScenarios, t3PulseOrder, t3SessionHeaderMismatch, t3TraceMismatch } from './t3-scenario'
 
 const settings = defaultExpressionPerformanceSettings
@@ -203,7 +204,7 @@ describe('t3SessionHeaderMismatch', () => {
     sessionScenario: structuredClone(scenario),
     manifest: { label: `t3-${scenario.id}`, gitSha: 'b18f0044e' },
     trace: { version: 2, meta: { driver: 'natural', durationSeconds: capture, model: 'display-model-1' } },
-    bridge: { rig: { name: 'forbooth', ...rig }, configured: { modelId: 'display-model-1', driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true }, capture: { durationSeconds: capture } },
+    bridge: { rig: { name: 'forbooth', ...rig }, configured: { modelId: 'display-model-1', driver: 'natural', cursorAttention: false, expressionEnabled: true, screenAwareness: false, heldEmotions: true }, capture: { durationSeconds: capture } },
   })
   const check = (value: T3SessionHeader) => t3SessionHeaderMismatch(scenario, value, { gitSha: 'b18f0044e', rigName: 'forbooth', rig })
 
@@ -225,12 +226,22 @@ describe('t3SessionHeaderMismatch', () => {
     ['bridge.configured.driver', (value: T3SessionHeader) => { value.bridge.configured!.driver = 'universal' }],
     ['bridge.configured.cursorAttention', (value: T3SessionHeader) => { value.bridge.configured!.cursorAttention = true }],
     ['bridge.configured.expressionEnabled', (value: T3SessionHeader) => { value.bridge.configured!.expressionEnabled = false }],
+    ['bridge.configured.screenAwareness', (value: T3SessionHeader) => { value.bridge.configured!.screenAwareness = true }],
+    // A header without the field is refused too: the persisted setting defaults to on, so only an explicit `false` proves it was off.
+    ['bridge.configured.screenAwareness', (value: T3SessionHeader) => { delete value.bridge.configured!.screenAwareness }],
     ['bridge.configured.heldEmotions', (value: T3SessionHeader) => { value.bridge.configured!.heldEmotions = false }],
     ['bridge.configured.modelId', (value: T3SessionHeader) => { value.bridge.configured!.modelId = 'display-model-2' }],
   ])('names header "%s"', (field, tamper) => {
     const value = header()
     tamper(value)
     expect(check(value)).toContain(`header "${field}"`)
+  })
+})
+
+describe('t3 gate scenarios', () => {
+  it('configure screen-aware attention off, because they have no placement or chat events', () => {
+    const scenarios = [...buildT3EmotionPlan(naturalEmotionT3Gate, emotionGate, settings).sessions.map(session => session.scenario), buildT3IdleScenario(1, 599)]
+    expect(scenarios.map(scenario => t3ScreenAwareness(scenario))).toEqual(scenarios.map(() => false))
   })
 })
 

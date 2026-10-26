@@ -1,5 +1,6 @@
 export * from './bridge'
 export * from './builders'
+export * from './chat-input'
 export * from './dispatch'
 export * from './player'
 export * from './schema'

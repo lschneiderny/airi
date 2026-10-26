@@ -3,7 +3,7 @@ import type { InferOutput } from 'valibot'
 import type { Band, PerformanceEmotion } from '../expression-performance/types'
 import type { PerformanceMode } from '../performance-state'
 
-import { array, boolean, check, finite, integer, literal, maxValue, minLength, minValue, number, optional, picklist, pipe, rawCheck, strictObject, string, unknown, variant } from 'valibot'
+import { array, boolean, check, finite, integer, literal, maxValue, minLength, minValue, nullable, number, optional, picklist, pipe, rawCheck, strictObject, string, unknown, variant } from 'valibot'
 
 /** The QA levels a scenario can run at: T1 simulated pipeline, T2 headless rig, T3 rendered app. */
 export const motionScenarioLevels = ['t1', 't2', 't3'] as const
@@ -46,6 +46,22 @@ export const ScenarioEventSchema = variant('kind', [
   strictObject({ kind: literal('placebo'), at: seconds, trialId: nonEmpty }),
   strictObject({ kind: literal('noop'), at: seconds, replaced: picklist(['emotion', 'act']), trialId }),
   strictObject({ kind: literal('marker'), at: seconds, label: nonEmpty }),
+  /**
+   * Screen inwardness of the head that Natural's placement input receives: -1..1, positive toward screen +x,
+   * or `null` for no placement signal. Allowed at T1, T2 and T3.
+   */
+  strictObject({ kind: literal('placement'), at: seconds, inward: nullable(pipe(number(), finite(), minValue(-1), maxValue(1))) }),
+  /**
+   * The chat window Natural attends to: head widths from the eye anchor, x right and y up, like `cursor`.
+   * Either `x` and `y` (both) or `clear: true` (chat hidden); the scenario check enforces the pairing. Allowed at T1, T2 and T3.
+   */
+  strictObject({ kind: literal('chat-target'), at: seconds, x: optional(pipe(number(), finite())), y: optional(pipe(number(), finite())), clear: optional(literal(true)) }),
+  /** Whether the user is typing a draft in the chat composer. Allowed at T1, T2 and T3. */
+  strictObject({ kind: literal('chat-typing'), at: seconds, active: boolean() }),
+  /** A typed message was sent; only its word count travels, never its text. Allowed at T1, T2 and T3. */
+  strictObject({ kind: literal('chat-sent'), at: seconds, words: pipe(number(), integer(), minValue(0)) }),
+  /** The chat window was unfolded (hidden to visible). Allowed at T1, T2 and T3. */
+  strictObject({ kind: literal('chat-unfold'), at: seconds }),
 ])
 export type ScenarioEvent = InferOutput<typeof ScenarioEventSchema>
 
@@ -94,8 +110,8 @@ export const MotionScenarioSchema = pipe(scenarioObject, rawCheck(({ dataset, ad
       addIssue({ message: `Event at ${event.at} s is after the scenario ends at ${scenario.durationSeconds} s`, path: [...at(index, 'at')] })
     if (hasT3 && (event.kind === 'speech' || event.kind === 'cursor'))
       addIssue({ message: `Scenarios with level "t3" cannot contain "${event.kind}" events`, path: [...at(index, 'kind')] })
-    if (event.kind === 'cursor' && !(event.clear === true ? event.x === undefined && event.y === undefined : event.x !== undefined && event.y !== undefined))
-      addIssue({ message: 'A cursor event needs both "x" and "y", or only "clear: true"', path: [...at(index, 'kind')] })
+    if ((event.kind === 'cursor' || event.kind === 'chat-target') && !(event.clear === true ? event.x === undefined && event.y === undefined : event.x !== undefined && event.y !== undefined))
+      addIssue({ message: `A ${event.kind} event needs both "x" and "y", or only "clear: true"`, path: [...at(index, 'kind')] })
   })
 }))
 export type MotionScenario = InferOutput<typeof scenarioObject>

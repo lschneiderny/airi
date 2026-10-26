@@ -210,6 +210,54 @@ describe('useMotionQaBridge', () => {
     expect(diagnostics.postureHome).toBe('product')
   })
 
+  it('pins the placement and chat overrides to no signal for a scenario without those events, and hands them back on disposal', async () => {
+    const diagnostics = useNaturalMotionDiagnostics()
+    expect([diagnostics.placementOverride, diagnostics.chatOverride]).toEqual([undefined, undefined])
+
+    expect(await drive(clock, dispatch({ name: 'runScenario', input: { scenario: scenario([{ kind: 'marker', at: 1, label: 'only' }]) } }))).toMatchObject({ ok: true })
+    // `null`, not `undefined`: the real window placement and chat activity never reach a scenario.
+    expect(diagnostics.placementOverride).toBeNull()
+    expect(diagnostics.chatOverride).toBeNull()
+
+    scope.stop()
+    expect(diagnostics.placementOverride).toBeUndefined()
+    expect(diagnostics.chatOverride).toBeUndefined()
+  })
+
+  it('drives the placement and chat overrides from scenario events, keeping the chat counters', async () => {
+    const diagnostics = useNaturalMotionDiagnostics()
+    // Stale values from an earlier run must not leak into the next scenario.
+    diagnostics.placementOverride = 0.5
+    diagnostics.chatOverride = { target: { x: 1, y: 1 }, typing: true, sentSeq: 7, sentWords: 3, unfoldSeq: 4 }
+    scope.run(() => {
+      watch(() => diagnostics.placementOverride, value => log.push(`placement:${value}`), { flush: 'sync' })
+      watch(() => diagnostics.chatOverride, value => log.push(`chat:${JSON.stringify(value)}`), { flush: 'sync' })
+    })
+
+    const reply = await drive(clock, dispatch({ name: 'runScenario', input: { scenario: scenario([
+      { kind: 'placement', at: 1, inward: 1 },
+      { kind: 'chat-target', at: 2, x: -3, y: -1 },
+      { kind: 'chat-typing', at: 2, active: true },
+      { kind: 'chat-sent', at: 3, words: 8 },
+      { kind: 'chat-target', at: 4, clear: true },
+      { kind: 'chat-unfold', at: 5 },
+      { kind: 'placement', at: 6, inward: null },
+    ]) } }))
+
+    expect(reply).toEqual({ ok: true, result: { dispatched: 7, rejected: [] } })
+    expect(log).toEqual([
+      'placement:null',
+      'chat:null',
+      'placement:1',
+      'chat:{"target":{"x":-3,"y":-1},"typing":false,"sentSeq":0,"sentWords":0,"unfoldSeq":0}',
+      'chat:{"target":{"x":-3,"y":-1},"typing":true,"sentSeq":0,"sentWords":0,"unfoldSeq":0}',
+      'chat:{"target":{"x":-3,"y":-1},"typing":true,"sentSeq":1,"sentWords":8,"unfoldSeq":0}',
+      'chat:{"target":null,"typing":true,"sentSeq":1,"sentWords":8,"unfoldSeq":0}',
+      'chat:{"target":null,"typing":true,"sentSeq":1,"sentWords":8,"unfoldSeq":1}',
+      'placement:null',
+    ])
+  })
+
   it('returns schema errors as replies with their paths', async () => {
     const reply = await dispatch({ name: 'configure', input: { driver: 'magic' } })
     expect(reply.ok).toBe(false)

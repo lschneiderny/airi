@@ -58,6 +58,14 @@ const bounds = {
   commandMs: 30_000,
 }
 
+/**
+ * The Natural screen-aware attention setting a T3 run configures: on iff the scenario has a `placement` or `chat-*` event.
+ * Runs always pass it explicitly, because the T3 profile persists localStorage and the setting defaults to on.
+ */
+export function t3ScreenAwareness(scenario: MotionScenario): boolean {
+  return scenario.events.some(event => event.kind === 'placement' || event.kind.startsWith('chat-'))
+}
+
 function sleep(ms: number) {
   return new Promise<void>(resolveSleep => setTimeout(resolveSleep, ms))
 }
@@ -155,7 +163,7 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
     log('qa-tools t3: bridge answered; importing the rig')
 
     bridgeLog.import = await abortable(failOnExit(launched, 'the rig import', importRig(stagePage, bridge, zipPath, bounds.importMs)))
-    bridgeLog.configured = await abortable(bridge.call('configure', { driver: 'natural', cursorAttention, expressionEnabled: true, heldEmotions: scenario.settings?.heldEmotions ?? true }, bounds.commandMs))
+    bridgeLog.configured = await abortable(bridge.call('configure', { driver: 'natural', cursorAttention, expressionEnabled: true, screenAwareness: t3ScreenAwareness(scenario), heldEmotions: scenario.settings?.heldEmotions ?? true }, bounds.commandMs))
     bridgeLog.cursorAttention = cursorAttention
     bridgeLog.fadeOnHover = await abortable(stagePage.evaluate('JSON.parse(localStorage.getItem("controls-island/fade-on-hover-enabled") ?? "false")'))
     if (cursorAttention)
