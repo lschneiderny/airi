@@ -10,6 +10,18 @@ import { createForegroundWindowService } from './foreground-window'
 
 const host = vi.hoisted(() => ({
   isWindows: true,
+  isMacOS: false,
+}))
+
+const darwin = vi.hoisted(() => ({
+  load: vi.fn(async () => ({})),
+  createSampler: vi.fn(),
+  sample: vi.fn(),
+}))
+
+vi.mock('./foreground-window-darwin', () => ({
+  loadDarwinBinding: darwin.load,
+  createDarwinSampler: darwin.createSampler,
 }))
 
 const appMock = vi.hoisted(() => ({
@@ -87,12 +99,27 @@ vi.mock('std-env', () => ({
   get isWindows() {
     return host.isWindows
   },
+  get isMacOS() {
+    return host.isMacOS
+  },
 }))
 
 describe('createForegroundWindowService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     host.isWindows = true
+    host.isMacOS = false
+    darwin.load.mockResolvedValue({})
+    darwin.createSampler.mockReturnValue(darwin.sample)
+    darwin.sample.mockReturnValue({
+      exePath: '/Applications/Safari.app',
+      exeName: 'Safari.app',
+      pid: 4321,
+      ownProcess: false,
+      busy: 'accepts',
+      title: '',
+      sampledAtMs: 123,
+    })
     koffiMock.loadError = null
     koffiMock.load.mockImplementation(() => {
       if (koffiMock.loadError)
@@ -268,6 +295,48 @@ describe('createForegroundWindowService', () => {
 
     await expect(createReader()()).resolves.toBeNull()
     expect(koffiMock.load).not.toHaveBeenCalled()
+    expect(darwin.load).not.toHaveBeenCalled()
+  })
+
+  it('selects the macOS loader lazily and shares overlapping first reads', async () => {
+    host.isWindows = false
+    host.isMacOS = true
+    const read = createReader()
+    expect(darwin.load).not.toHaveBeenCalled()
+
+    const samples = await Promise.all([read(), read(), read()])
+
+    for (const sample of samples)
+      expect(sample).toMatchObject({ exeName: 'Safari.app', busy: 'accepts', pid: 4321 })
+    expect(darwin.load).toHaveBeenCalledOnce()
+    expect(darwin.createSampler).toHaveBeenCalledOnce()
+    expect(darwin.sample).toHaveBeenCalledTimes(3)
+    expect(koffiMock.load).not.toHaveBeenCalled()
+
+    darwin.sample.mockReturnValueOnce(null)
+    await expect(read()).resolves.toBeNull()
+    expect(darwin.load).toHaveBeenCalledOnce()
+  })
+
+  it('resolves null and warns once after a macOS loader failure without retrying', async () => {
+    host.isWindows = false
+    host.isMacOS = true
+    const failure = new Error('AppKit failed to load')
+    darwin.load.mockRejectedValue(failure)
+    const read = createReader()
+
+    await expect(read()).resolves.toBeNull()
+    await expect(read()).resolves.toBeNull()
+
+    expect(darwin.load).toHaveBeenCalledOnce()
+    expect(darwin.sample).not.toHaveBeenCalled()
+    expect(logMock.withError).toHaveBeenCalledExactlyOnceWith(failure)
+    expect(logMock.warn).toHaveBeenCalledExactlyOnceWith('foreground window sampling is unavailable: AppKit failed to load')
+
+    darwin.load.mockResolvedValue({})
+    await expect(createReader()()).resolves.toMatchObject({ exeName: 'Safari.app' })
+    expect(darwin.load).toHaveBeenCalledTimes(2)
+    expect(logMock.warn).toHaveBeenCalledOnce()
   })
 
   it('resolves null when koffi fails to load, and does not retry the load', async () => {

@@ -8,14 +8,15 @@ import { useLogg } from '@guiiai/logg'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { errorMessageFrom } from '@moeru/std'
 import { app } from 'electron'
-import { isWindows } from 'std-env'
+import { isMacOS, isWindows } from 'std-env'
 
 import { electron } from '../../../shared/eventa'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
+import { createDarwinSampler, loadDarwinBinding } from './foreground-window-darwin'
 import { createWin32Sampler, loadWin32Binding } from './foreground-window-win32'
 
 /**
- * Answers the renderer's foreground window reads through Win32 calls over koffi.
+ * Answers the renderer's foreground window reads through native calls over koffi.
  *
  * Use when:
  * - A window composes the shared base invokes and its renderer samples what the user has in front
@@ -28,7 +29,7 @@ import { createWin32Sampler, loadWin32Binding } from './foreground-window-win32'
  *
  * Returns:
  * - Nothing; the handler goes with the window, or with the app if it quits first.
- *   Reads resolve `null` off Windows and after a failed koffi load, instead of rejecting.
+ *   Reads resolve `null` off Windows/macOS and after a failed koffi load, instead of rejecting.
  */
 export function createForegroundWindowService(params: {
   context: ReturnType<typeof createContext>['context']
@@ -48,12 +49,14 @@ export function createForegroundWindowService(params: {
   }
 
   function getSampler() {
-    sampler ??= isWindows
-      ? loadWin32Binding().then(binding => createWin32Sampler(binding, isOwnProcess), (error) => {
-          log.withError(error).warn(`foreground window sampling is unavailable: ${errorMessageFrom(error) ?? 'koffi failed to load'}`)
-          return null
-        })
-      : Promise.resolve(null)
+    sampler ??= (isWindows
+      ? loadWin32Binding().then(binding => createWin32Sampler(binding, isOwnProcess))
+      : isMacOS
+        ? loadDarwinBinding().then(binding => createDarwinSampler(binding, isOwnProcess))
+        : Promise.resolve(null)).catch((error) => {
+      log.withError(error).warn(`foreground window sampling is unavailable: ${errorMessageFrom(error) ?? 'koffi failed to load'}`)
+      return null
+    })
     return sampler
   }
 
