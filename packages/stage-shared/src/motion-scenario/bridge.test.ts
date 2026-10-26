@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 
 import { buildEmotionTrial, claimMotionQaHandlers, createMotionQaContext, hasMotionQaHandlers, isMotionQaBridgeEnabled, MotionQaAwaitCaptureResultSchema, MotionQaCommandSchema, MotionQaConfigureInputSchema, MotionQaRunScenarioInputSchema, MotionQaRunScenarioResultSchema, MotionQaStartCaptureInputSchema, motionQaStateInvokeEventa, MotionQaStateSchema } from '.'
 
-const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 } } as const
+const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 }, screenAwareness: true, placement: -0.75, placementYawBias: -0.08 } as const
 
 describe('motion QA bridge schemas', () => {
   it('requires usable screen scale and positive head geometry, while accepting an unavailable head', () => {
@@ -14,11 +14,24 @@ describe('motion QA bridge schemas', () => {
     expect(safeParse(MotionQaStateSchema, { ...state, screen: { ...state.screen, x: Number.NaN } }).success).toBe(false)
   })
 
+  it('accepts a missing placement signal and rejects non-finite placement numbers', () => {
+    expect(safeParse(MotionQaStateSchema, { ...state, placement: null }).success).toBe(true)
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(safeParse(MotionQaStateSchema, { ...state, placement: value }).success).toBe(false)
+      expect(safeParse(MotionQaStateSchema, { ...state, placementYawBias: value }).success).toBe(false)
+    }
+    expect(safeParse(MotionQaStateSchema, { ...state, placementYawBias: null }).success).toBe(false)
+    const { screenAwareness: _, ...withoutSetting } = state
+    expect(safeParse(MotionQaStateSchema, withoutSetting).success).toBe(false)
+  })
+
   it('round-trips each payload through JSON', () => {
     const scenario = buildEmotionTrial({ emotion: 'angry', band: 'strong', variant: 'full', seed: 1 })
     const payloads = [
       [MotionQaStateSchema, state],
       [MotionQaConfigureInputSchema, { driver: 'natural', heldEmotions: false }],
+      [MotionQaConfigureInputSchema, { screenAwareness: false }],
+      [MotionQaStateSchema, { ...state, placement: null, placementYawBias: 0 }],
       [MotionQaStartCaptureInputSchema, { durationSeconds: 30, extraParameterIds: ['Param60'], label: 'angry' }],
       [MotionQaRunScenarioInputSchema, { scenario }],
       [MotionQaRunScenarioResultSchema, { dispatched: 1, rejected: [{ at: 2, kind: 'speech', reason: 'unsupported' }] }],
@@ -36,6 +49,7 @@ describe('motion QA bridge schemas', () => {
     expect(safeParse(MotionQaStartCaptureInputSchema, { durationSeconds: 601, label: 'x' }).success).toBe(false)
     expect(safeParse(MotionQaConfigureInputSchema, { driver: 'sdk' }).success).toBe(false)
     expect(safeParse(MotionQaConfigureInputSchema, { extra: true }).success).toBe(false)
+    expect(safeParse(MotionQaConfigureInputSchema, { screenAwareness: 'true' }).success).toBe(false)
     expect(safeParse(MotionQaAwaitCaptureResultSchema, { trace: { version: 1 } }).success).toBe(false)
   })
 

@@ -2,6 +2,7 @@
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { ExpressionPerformanceSettings, HoldCommand, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
+import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 
 import type { Live2DEyeFocusSource } from '../../composables/live2d'
 import type { SpeechEvent } from '../../composables/live2d/expression/slots'
@@ -48,6 +49,8 @@ const props = withDefaults(defineProps<{
   naturalEnergy?: number
   /** Effective expression-performance settings from the stage; Natural and the expression slots read them. */
   performanceSettings?: ExpressionPerformanceSettings
+  /** Displays and window content bounds in Electron DIP screen coordinates; Natural reads them for screen placement. */
+  screenPlacement?: { displays: PlacementRect[], windowBounds: PlacementRect }
 }>(), {
   presence: () => presenceBubbleIdle,
   performance: () => ({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }),
@@ -209,6 +212,7 @@ defineExpose({
         :natural-energy="props.naturalEnergy ?? live2dNaturalEnergy"
         :natural-emotion-strength="live2dNaturalEmotionStrength[props.modelId ?? '']"
         :performance-settings="props.performanceSettings"
+        :screen-placement="props.screenPlacement"
         :live2d-expression-enabled="live2dExpressionEnabled"
         :live2d-shadow-enabled="live2dShadowEnabled"
         :screen-ambient-light-active="screenAmbientLightEnabled && screenAmbientLightActive"

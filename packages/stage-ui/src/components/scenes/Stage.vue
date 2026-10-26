@@ -5,6 +5,7 @@ import type { Profile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import type { StreamingControlLook } from '@proj-airi/pipelines-audio'
 import type { CaptionChannelEvent, PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { PerformanceCueAttention, PerformanceState, ResolverMemory } from '@proj-airi/stage-shared/performance-state'
+import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { TachieEmotion } from '@proj-airi/stage-ui-tachie'
 import type { VrmInteractionTarget } from '@proj-airi/stage-ui-three'
 
@@ -59,6 +60,11 @@ import { useVoiceStore } from '../../stores/voice'
 
 const props = withDefaults(defineProps<{
   cursorPosition?: { x: number, y: number }
+  /**
+   * Displays and this window's content bounds in Electron DIP screen coordinates. Only the Live2D scene reads them,
+   * for Natural screen placement; hosts without window bounds (web, pocket) leave it undefined.
+   */
+  screenPlacement?: { displays: PlacementRect[], windowBounds: PlacementRect }
   enableOrbitControls?: boolean
   paused?: boolean
 }>(), {
@@ -878,6 +884,7 @@ defineExpose({
         :model-id="stageModelSelected"
         :background-url="activeBackgroundUrl"
         :cursor-position="cursorPosition"
+        :screen-placement="screenPlacement"
         :mouth-open-size="mouthOpenSize"
         :now-speaking="nowSpeaking"
         :paused="paused"

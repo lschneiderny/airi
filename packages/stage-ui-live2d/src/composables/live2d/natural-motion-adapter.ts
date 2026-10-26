@@ -50,6 +50,8 @@ export interface Live2DNaturalMotionAttention {
   cursor: { x: number, y: number } | null
   /** Cursor attention is switched off or an ACT aside cue looks away from it. */
   cursorDismissed: boolean
+  /** Screen inwardness of the head (-1..1, positive toward screen +x), or `null` when there is no placement signal. */
+  placement: number | null
   /** Host poke queue, `x` and `y` relative to the touched region's center (-1..1, y down); emptied like `pendingEmotions`. */
   pendingPokes: { region: Live2DTouchRegion, x: number, y: number }[]
   /** Hand position relative to the head center (-1..1, y down) while the user pets the head, otherwise `null`. */
@@ -158,6 +160,8 @@ export class Live2DNaturalMotionAdapter {
   private weightSum = 0
   private bodyWrites = 0
   private physicsOutputSkips = 0
+  /** Last placement handed to the controller; a fresh controller starts without a placement signal. */
+  private placement: number | null = null
   private readonly visibilityChanged = () => {
     this.hidden = this.visibility?.hidden ?? false
     this.frameTime = undefined
@@ -321,6 +325,12 @@ export class Live2DNaturalMotionAdapter {
     this.controller.setPet(active ? attention.pet : null, this.time)
     this.controller.setHeldEmotion(active ? attention.heldEmotion : null, this.time)
     this.controller.setCursor(attention.cursor, this.time, attention.cursorDismissed ? 'dismissed' : 'live')
+    // Forwarded on change only: the controller treats a repeated value as a no-op, but every `null`
+    // would stamp a placement event into an observed capture.
+    if (attention.placement !== this.placement) {
+      this.placement = attention.placement
+      this.controller.setPlacement(attention.placement, this.time)
+    }
     const frame = this.controller.advance(this.time)
     this.diagnosticFrames++
     this.weightSum += this.weight

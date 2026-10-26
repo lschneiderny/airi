@@ -103,6 +103,9 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       captureActive: diagnostics.pendingRequest !== null,
       head: snapshot?.head ?? null,
       screen: { x: window.screenX, y: window.screenY, devicePixelRatio: window.devicePixelRatio },
+      screenAwareness: live2d.live2dNaturalScreenAwareness,
+      placement: diagnostics.lastPlacement,
+      placementYawBias: diagnostics.lastPlacementYawBias,
     }
   }
 
@@ -248,6 +251,8 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
         live2d.live2dNaturalCursorAttention = input.cursorAttention
       if (input.expressionEnabled !== undefined)
         live2d.live2dExpressionEnabled = input.expressionEnabled
+      if (input.screenAwareness !== undefined)
+        live2d.live2dNaturalScreenAwareness = input.screenAwareness
       if (input.heldEmotions !== undefined) {
         const updated = await performanceSettings.update({ heldEmotions: input.heldEmotions })
         if (!updated.success)

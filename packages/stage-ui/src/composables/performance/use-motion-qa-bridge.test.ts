@@ -122,6 +122,28 @@ describe('useMotionQaBridge', () => {
     expect(reply).toMatchObject({ ok: true, result: { driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: false, captureActive: false, head: null, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 } } })
   })
 
+  it('writes the screen-aware setting and reports it back', async () => {
+    const live2d = useSettingsLive2d()
+    expect(live2d.live2dNaturalScreenAwareness).toBe(true)
+
+    expect(await dispatch({ name: 'configure', input: { screenAwareness: false } })).toMatchObject({ ok: true, result: { screenAwareness: false } })
+    expect(live2d.live2dNaturalScreenAwareness).toBe(false)
+    // Omitting the field leaves the setting as it is.
+    expect(await dispatch({ name: 'configure', input: {} })).toMatchObject({ ok: true, result: { screenAwareness: false } })
+    expect(await dispatch({ name: 'configure', input: { screenAwareness: true } })).toMatchObject({ ok: true, result: { screenAwareness: true } })
+    expect(live2d.live2dNaturalScreenAwareness).toBe(true)
+  })
+
+  it('reports the placement the stage last handed to Natural and the applied yaw bias', async () => {
+    expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { placement: null, placementYawBias: 0 } })
+
+    useNaturalMotionDiagnostics().reportPlacement(-0.8, -0.0973)
+    expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { placement: -0.8, placementYawBias: -0.0973 } })
+
+    useNaturalMotionDiagnostics().reportPlacement(null, 0)
+    expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { placement: null, placementYawBias: 0 } })
+  })
+
   it('reports the stage face-feature head unit without applying another scale', async () => {
     const head = { x: 100, y: 50, width: 80, height: 100 }
     const release = useNaturalMotionDiagnostics().registerStageReader(() => ({ naturalActive: true, hold: null, head }))

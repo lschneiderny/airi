@@ -9,6 +9,7 @@ import type {
   NormalizedRectangle,
   ScreenAmbientLightMode,
 } from '@proj-airi/stage-shared/screen-ambient-light'
+import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { Cubism4MotionManager } from 'pixi-live2d-display/cubism4'
 
 import type { PixiLive2DInternalModel } from '../../../composables/live2d'
@@ -28,6 +29,7 @@ import { Point } from '@pixi/math'
 import { listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { ambientLightDefaults, ambientLightNeutralEnvironment, ambientLightPerceptualLevel, wholeWindowRectangle } from '@proj-airi/stage-shared/screen-ambient-light'
+import { screenInwardness } from '@proj-airi/stage-shared/stage-placement'
 import { useTheme } from '@proj-airi/ui'
 import { until, useRafFn } from '@vueuse/core'
 import { animate } from 'animejs'
@@ -66,6 +68,7 @@ import { Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-
 import { scoreLiveliness } from '../../../composables/live2d/natural-motion/liveliness'
 import { manualControlParameterIds, readLive2DRigProfile } from '../../../composables/live2d/natural-motion/rig-profile'
 import { NaturalTraceRecorder } from '../../../composables/live2d/natural-motion/trace'
+import { headScreenX } from '../../../composables/live2d/screen-placement'
 import { buildLive2DTouchDebug } from '../../../composables/live2d/touch-debug'
 import { Live2DTouchGestures } from '../../../composables/live2d/touch-gestures'
 import { live2DTouchRegionAt, live2DVisibleBounds, scaleLive2DRect } from '../../../composables/live2d/touch-regions'
@@ -120,6 +123,11 @@ const props = withDefaults(defineProps<{
   performanceSettings?: ExpressionPerformanceSettings
   /** This model's per-emotion strength multipliers from the user's settings; absent means 1 for every emotion. */
   naturalEmotionStrength?: Partial<Record<PerformanceEmotion, number>>
+  /**
+   * Displays and this window's content bounds in Electron DIP screen coordinates. Natural turns the head toward
+   * the screen interior while the screen-aware setting is on; hosts without window bounds leave it undefined.
+   */
+  screenPlacement?: { displays: PlacementRect[], windowBounds: PlacementRect }
 }>(), {
   mouthOpenSize: 0,
   nowSpeaking: false,
@@ -164,7 +172,7 @@ const {
   control: manualMotionControl,
   exclusiveOwnerId,
 } = storeToRefs(useLive2DMotionControl())
-const { live2dMotionDriver, live2dNaturalCursorAttention, live2dNaturalTouch, live2dNaturalTouchPetRequiresHold, live2dNaturalTouchHeadScale } = storeToRefs(useSettingsLive2d())
+const { live2dMotionDriver, live2dNaturalCursorAttention, live2dNaturalScreenAwareness, live2dNaturalTouch, live2dNaturalTouchPetRequiresHold, live2dNaturalTouchHeadScale } = storeToRefs(useSettingsLive2d())
 const naturalDiagnostics = useNaturalMotionDiagnostics()
 const { pendingRequest: naturalCaptureRequest } = storeToRefs(naturalDiagnostics)
 let naturalMotion: Live2DNaturalMotionAdapter | undefined
@@ -631,6 +639,8 @@ async function performModelLoad() {
           const unit = head && head.width > 0 ? head.width : 0.3 * internalModel.originalWidth
           cursor = { x: (localFocus.x - anchorX) / unit, y: (anchorY - localFocus.y) / unit }
         }
+        const placement = naturalPlacement()
+        naturalDiagnostics.reportPlacement(placement, naturalMotion?.natural.placementYawBias ?? 0)
         return {
           driver: live2dMotionDriver.value,
           exclusive: !!exclusiveOwnerId.value,
@@ -647,6 +657,7 @@ async function performModelLoad() {
           emotionStrengths: props.naturalEmotionStrength ?? defaultEmotionStrengths,
           cursor,
           cursorDismissed: !live2dNaturalCursorAttention.value || props.performance.attention === 'aside',
+          placement,
           pendingPokes: pendingNaturalPokes,
           pet: naturalPetHand,
         }
@@ -1232,6 +1243,26 @@ const releaseStageReader = naturalDiagnostics.registerStageReader(() => ({
   hold: holdPerformer.current(holdClock()),
   head: headViewportRect(),
 }))
+
+/**
+ * Screen inwardness of the head for Natural, or `null` without a signal. A QA override other than `undefined` wins;
+ * otherwise the Natural driver, the setting, and the host's screen placement must all be present.
+ */
+function naturalPlacement(): number | null {
+  const override = naturalDiagnostics.placementOverride
+  if (override !== undefined)
+    return override
+  const screen = props.screenPlacement
+  // Only the Natural driver reads placement, so other drivers skip the per-frame head measurement.
+  if (live2dMotionDriver.value !== 'natural' || !live2dNaturalScreenAwareness.value || !screen)
+    return null
+  const head = headViewportRect()
+  if (!head)
+    return null
+  // The main window is frameless, so its bounds are the content bounds and the viewport origin.
+  const x = headScreenX(screen.windowBounds, document.documentElement.clientWidth, head)
+  return x === null ? null : screenInwardness(screen.displays, x)
+}
 
 /** Reports the cursor's unscaled face-feature unit in viewport CSS pixels. */
 function headViewportRect() {

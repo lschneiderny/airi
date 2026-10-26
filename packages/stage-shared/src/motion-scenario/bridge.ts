@@ -34,6 +34,12 @@ export const MotionQaStateSchema = strictObject({
   head: nullable(strictObject({ x: pipe(number(), finite()), y: pipe(number(), finite()), width: pipe(number(), finite(), minValue(Number.MIN_VALUE)), height: pipe(number(), finite(), minValue(Number.MIN_VALUE)) })),
   /** DOM window origin in screen CSS pixels; the harness converts to physical pixels. */
   screen: strictObject({ x: pipe(number(), finite()), y: pipe(number(), finite()), devicePixelRatio: pipe(number(), finite(), minValue(Number.MIN_VALUE)) }),
+  /** The persisted Natural screen-aware attention setting. */
+  screenAwareness: boolean(),
+  /** Screen inwardness (-1..1, positive toward screen +x) the stage last handed to Natural, or null without a signal. */
+  placement: nullable(pipe(number(), finite())),
+  /** Normalized head-X placement term the Natural controller last applied. */
+  placementYawBias: pipe(number(), finite()),
 })
 export type MotionQaState = InferOutput<typeof MotionQaStateSchema>
 
@@ -42,6 +48,7 @@ export const MotionQaConfigureInputSchema = strictObject({
   cursorAttention: optional(boolean()),
   expressionEnabled: optional(boolean()),
   heldEmotions: optional(boolean()),
+  screenAwareness: optional(boolean()),
 })
 
 export const MotionQaImportModelInputSchema = strictObject({ inputId: nonEmpty })

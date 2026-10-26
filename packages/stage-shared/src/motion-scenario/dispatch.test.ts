@@ -3,7 +3,7 @@ import { describe, expect, it, onTestFinished } from 'vitest'
 
 import { buildEmotionTrial, claimMotionQaHandlers, createMotionQaContext, createMotionQaDispatcher, motionQaRunScenarioInvokeEventa, motionQaStateInvokeEventa } from '.'
 
-const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: null, captureActive: false, head: null, screen: { x: 0, y: 0, devicePixelRatio: 1 } }
+const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: null, captureActive: false, head: null, screen: { x: 0, y: 0, devicePixelRatio: 1 }, screenAwareness: true, placement: null, placementYawBias: 0 }
 
 function claim() {
   const release = claimMotionQaHandlers()

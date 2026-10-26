@@ -92,6 +92,7 @@ function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore
     emotionStrengths: {} as Live2DNaturalMotionAttention['emotionStrengths'],
     cursor: null as { x: number, y: number } | null,
     cursorDismissed: false,
+    placement: null as number | null,
     pendingPokes: [] as Live2DNaturalMotionAttention['pendingPokes'],
     pet: null as { x: number, y: number } | null,
   }
@@ -696,6 +697,59 @@ describe('natural motion adapter', () => {
     const performed = run(true, 1)
     expect(performed.frames).not.toEqual(control.frames)
     expect(performed.mood).not.toEqual(control.mood)
+  })
+
+  it('(j) forwards a changed placement to the controller right after the cursor', () => {
+    const setCursor = vi.spyOn(Live2DNaturalMotion.prototype, 'setCursor')
+    const setPlacement = vi.spyOn(Live2DNaturalMotion.prototype, 'setPlacement')
+    const advance = vi.spyOn(Live2DNaturalMotion.prototype, 'advance')
+    try {
+      const f = fixture()
+      f.state.eligible = true
+      // A fresh controller already has no placement signal, so a null placement is never forwarded.
+      f.frame(0)
+      expect(setPlacement).not.toHaveBeenCalled()
+      f.state.placement = -0.9
+      f.frame(0.5)
+      expect(setPlacement).toHaveBeenLastCalledWith(-0.9, 0.5)
+      const placed = setPlacement.mock.invocationCallOrder.at(-1)!
+      const cursorBefore = setCursor.mock.invocationCallOrder.filter(order => order < placed).at(-1)!
+      // Only setCursor's own internal advance sits between the two calls; the frame's advance follows the placement.
+      expect(placed - cursorBefore).toBe(2)
+      expect(advance.mock.invocationCallOrder.at(-1)).toBeGreaterThan(placed)
+      f.frame(0.6)
+      expect(setPlacement).toHaveBeenCalledTimes(1)
+      f.state.placement = null
+      f.frame(0.7)
+      expect(setPlacement).toHaveBeenLastCalledWith(null, 0.7)
+      expect(setPlacement).toHaveBeenCalledTimes(2)
+      f.adapter.dispose()
+    }
+    finally {
+      setCursor.mockRestore()
+      setPlacement.mockRestore()
+      advance.mockRestore()
+    }
+  })
+
+  it('(j2) composes exactly the pre-placement output while placement stays null', () => {
+    const f = fixture()
+    f.state.eligible = true
+    f.frame(0)
+    for (const time of [0.45, 1, 3, 10])
+      expectNatural(f.frame(time).commanded, natural(time))
+    expect(f.adapter.natural.placementYawBias).toBe(0)
+    f.adapter.dispose()
+
+    // The same timeline with a placement signal does turn the head, so the comparison above can fail.
+    const placed = fixture()
+    placed.state.eligible = true
+    placed.state.placement = -1
+    placed.frame(0)
+    const headX = placed.frame(10).commanded[0]
+    expect(placed.adapter.natural.placementYawBias).toBeLessThan(-0.09)
+    expect(headX).toBeLessThan(command(natural(10).pose.headX) - 1)
+    placed.adapter.dispose()
   })
 
   it('(i) drains pokes exactly once and forwards a pet only while Natural is active', () => {

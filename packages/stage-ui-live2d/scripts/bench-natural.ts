@@ -76,6 +76,7 @@ const attention: Live2DNaturalMotionAttention = {
   emotionStrengths: {},
   cursor: null,
   cursorDismissed: false,
+  placement: null,
   pendingPokes: [],
   pet: null,
 }

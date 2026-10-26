@@ -11,7 +11,7 @@ const steps = [
 ]
 const desktop = { x: -1920, y: 0, width: 3840, height: 1080 }
 const receipt = { played: 3, maxTimingErrorMs: 3.2, x: -200, y: 100, foregroundPid: 42, foregroundName: 'electron', foregroundElevated: false, desktop }
-const state: MotionQaState = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: true, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: null, captureActive: false, head: { x: 100, y: 50, width: 80, height: 100 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 } }
+const state: MotionQaState = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: true, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: null, captureActive: false, head: { x: 100, y: 50, width: 80, height: 100 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 }, screenAwareness: true, placement: null, placementYawBias: 0 }
 
 describe('real pointer playback', () => {
   it('uses physical pixels with a negative monitor origin and head-width Y units', () => {

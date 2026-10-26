@@ -11,7 +11,7 @@ import { defineEventa } from '@moeru/eventa'
 import { errorMessageFrom } from '@moeru/std'
 import { affectTraceCompletedEvent, affectTraceFailedEvent, affectTraceRequestedEvent, createAffectTraceDiagnosticsContext } from '@proj-airi/stage-shared/expression-performance'
 import { defineStore } from 'pinia'
-import { onScopeDispose, shallowRef } from 'vue'
+import { onScopeDispose, readonly, shallowRef } from 'vue'
 
 import { naturalTraceFileName } from '../composables/live2d/natural-motion/trace'
 
@@ -175,6 +175,21 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
   const loadedModelId = shallowRef<string | null>(null)
   /** In-window posture selection. Not persisted or broadcast; normal stages retain the product home. */
   const postureHome = shallowRef<PostureHome>('product')
+  /**
+   * In-window QA override of the Natural screen placement. `undefined` keeps the host signal, a number replaces it,
+   * and `null` forces no placement signal. Not persisted or broadcast.
+   */
+  const placementOverride = shallowRef<number | null | undefined>(undefined)
+  /** Placement the stage's model handed to Natural on its latest composition, `null` without a signal. */
+  const lastPlacement = shallowRef<number | null>(null)
+  /** Normalized head-X placement term the Natural controller applied in its latest step. */
+  const lastPlacementYawBias = shallowRef(0)
+
+  /** The stage's model reports what it handed to Natural and the yaw bias the controller applied. */
+  function reportPlacement(placement: number | null, yawBias: number) {
+    lastPlacement.value = placement
+    lastPlacementYawBias.value = yawBias
+  }
 
   function setPostureHome(home: PostureHome) {
     postureHome.value = home
@@ -392,6 +407,10 @@ export const useNaturalMotionDiagnostics = defineStore('live2d-natural-motion-di
     loadedModelId,
     postureHome,
     setPostureHome,
+    placementOverride,
+    lastPlacement: readonly(lastPlacement),
+    lastPlacementYawBias: readonly(lastPlacementYawBias),
+    reportPlacement,
     setLoadedModelId,
     registerStageReader,
     stageSnapshot,

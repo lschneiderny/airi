@@ -207,6 +207,8 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
       emotionStrengths,
       cursor: cursorAttention ? cursor : null,
       cursorDismissed: !cursorAttention,
+      // T1 has no window placement yet; scenario placement events come later.
+      placement: null,
       pendingPokes,
       pet,
     }), undefined, undefined, { seed: scenario.seed, home, emotionTable: options.emotionTable })

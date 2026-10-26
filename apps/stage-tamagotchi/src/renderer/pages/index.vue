@@ -4,11 +4,13 @@ import type { ModelSettingsRuntimeSnapshot } from '@proj-airi/stage-ui/component
 import { errorMessageFrom } from '@moeru/std'
 import { electron } from '@proj-airi/electron-eventa'
 import {
+  useElectronAllDisplays,
   useElectronEventaInvoke,
   useElectronMouseAroundWindowBorder,
   useElectronMouseInElement,
   useElectronMouseInWindow,
   useElectronRelativeMouse,
+  useElectronWindowBounds,
 } from '@proj-airi/electron-vueuse'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { useModelStore, useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three'
@@ -421,6 +423,14 @@ const cursorPosition = computed(() => ({
   x: relativeMouseX.value,
   y: relativeMouseY.value,
 }))
+
+const allDisplays = useElectronAllDisplays()
+const { x: windowX, y: windowY, width: windowWidth, height: windowHeight } = useElectronWindowBounds()
+// Natural turns the character toward the screen interior from where this window sits among the displays.
+const screenPlacement = computed(() => ({
+  displays: allDisplays.value.map(display => display.bounds),
+  windowBounds: { x: windowX.value, y: windowY.value, width: windowWidth.value, height: windowHeight.value },
+}))
 </script>
 
 <template>
@@ -466,6 +476,7 @@ const cursorPosition = computed(() => ({
           h-full w-full
           flex-1
           :cursor-position="cursorPosition"
+          :screen-placement="screenPlacement"
           :paused="stagePaused"
           @error="handleStageRenderError"
           @reset="handleStageReset"
