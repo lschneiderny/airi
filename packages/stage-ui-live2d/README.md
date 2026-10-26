@@ -70,6 +70,10 @@ The `Live2DNaturalMotion` controller advances every layer on a fixed 120 Hz grid
 - Mood keeps a decaying afterglow of recent emotions that tints posture, gaze, speech emphasis, and mouth form.
 - Touch reacts when the user pokes the model or pets its head with the cursor; see Touch below.
 - Energy scales posture amplitude, posture shift rate, and gaze target choice from the performance state and the user's Energy setting.
+- Screen-aware attention uses the horizontal center of the bottom layer of displays as its placement reference. It eases a small resting head turn toward that reference and fades the turn while cursor attention is engaged. Peripheral and aside glances favor the screen side near an edge. During screen attention and watching mode, desk fixations and screen-change glances use an inward screen point. The web and pocket hosts remain inert because their Live2D model instances provide no chat target; same-page speech-bus events can otherwise reach listeners in the shared Eventa context.
+- While the chat is visible, typing can draw periodic chat fixations with a partial head follow. A typed send triggers a delayed reading glance sized by word count, and opening the chat triggers a brief glance. When talking starts, active and pending chat attention ends at once, so replies keep gaze on the camera. The first chat input records send and unfold counters as a baseline, so its prior events don't trigger glances. Chat text is not sent to Natural.
+
+Screen-aware attention is controlled by `settings/live2d/natural-screen-awareness`, enabled by default. The setting appears only for Natural and gates both placement and chat attention. Turning it off restores the no-signal behavior. The screen point currently applies to both screen attention and watching mode; Luke may revisit that choice.
 
 ### What Natural owns and what it never writes
 
@@ -145,6 +149,10 @@ The settings page shows it as a slider only while Natural is selected.
 Energy `E` scales posture amplitude by `0.7 + 0.6E` and posture shift rate by `0.6 + 0.8E`. It also sets the probability that a speech onset becomes an emphasis to `0.15 + 0.2E`.
 At the default of 0.5, Energy leaves every layer at its unscaled behavior.
 Resetting Live2D settings restores the default Energy.
+
+### Screen-aware attention
+
+The Screen-aware attention setting is stored as `settings/live2d/natural-screen-awareness` and is enabled by default. It is available only while Natural is selected. The placement reference is the horizontal center of the bottom-layer displays; the turn eases toward it and fades while the cursor is engaged. Side glances favor the inward screen direction, and screen attention and watching mode use a screen point for desk fixations. Typing, typed sends, and chat opening can produce chat glances, while replies stay on camera. Disabling the setting removes these placement and chat signals.
 
 ### Emotions by intensity band
 

@@ -140,6 +140,7 @@ AIRI_QA_RIG_FORBOOTH="<rig dir>" node --import tsx packages/qa-tools/bin/motion.
 - Exit codes: 0 verified, 1 run, verification or teardown failure, 2 usage or environment error before launch (for example `AIRI_QA_RIG_FORBOOTH` unset, a scenario without level `t3` or longer than 599 s), 3 no exclusive CPU lease within 30 min (`T3_LEASE_TIMEOUT_EXIT`), 130 interrupted. `pnpm qa:motion` and the `node --import tsx` form preserve these codes; `pnpm -F @proj-airi/qa-tools exec tsx bin/motion.ts` reports every failure as 1.
 - A hard kill of the CLI itself (for example `taskkill /F` on its PID) skips teardown. Check for leftovers with `pnpm qa:doctor` (`stray-electron`) and stop them by hand after confirming their command lines contain your worktree path.
 - `builtin:t3-smoke` (`fixtures/scenarios/t3-smoke.json`, levels `t1` and `t3`, 140 s): clear pulses of happy, sad, angry, surprised, think, love, flustered and sleepy 14 s apart (longer than `naturalEmotionLifetime` for clear, 8.7 s, and strong, 12.3 s), one `<|ACT {"emotion":"angry"}|>` marker, `expression1` on and off, and screenshots 1 s and 3 s after each pulse. The same file runs unchanged through `runT1`, and both traces stamp the same scenario events.
+- Screen-aware Natural scenarios accept `placement`, `chat-target`, `chat-typing`, `chat-sent`, and `chat-unfold` events. `builtin:t3-screen-attention` exercises placement and chat attention in T1 and T3.
 
 ## Result cache
 
