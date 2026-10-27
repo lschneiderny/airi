@@ -129,7 +129,10 @@ export interface StreamOptions {
   origin?: 'user' | 'unprompted'
   supportsTools?: boolean
   waitForTools?: boolean
-  /** Provider tool-selection directive for one request. */
+  /**
+   * The tool choice of the first model request. Later requests of the tool loop let the model choose, so a forced
+   * tool call does not repeat and the model can answer.
+   */
   toolChoice?: ToolChoice
   tools?: Tool[] | (() => Promise<Tool[] | undefined>)
   /**
