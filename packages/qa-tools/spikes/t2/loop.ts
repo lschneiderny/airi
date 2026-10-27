@@ -108,6 +108,7 @@ function idleAttention(): Live2DNaturalMotionAttention {
     cursor: null,
     cursorDismissed: false,
     placement: null,
+    chat: null,
     pendingPokes: [],
     pet: null,
   }

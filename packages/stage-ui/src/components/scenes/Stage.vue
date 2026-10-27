@@ -536,9 +536,8 @@ function updatePerformance() {
 
 // --- Chat activity for the Natural motion driver: typing timing and typed-send counters, never text.
 
-// The speech bus is one BroadcastChannel per page, which never delivers to its own poster: only composers in OTHER
-// windows (Tamagotchi floating and legacy chat) reach this stage. Web and pocket composers share the stage page and
-// are not heard; those hosts pass no `chatTarget`, so these counters stay inert.
+// Same-page composers also reach this listener. Web and pocket stay inert because they pass no `chatTarget`,
+// so Natural's chat input is null there.
 
 /** Latest report per composer that holds a draft; a composer that reports no draft is dropped. */
 const chatComposerReports = new Map<string, ChatComposerReport>()
