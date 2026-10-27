@@ -14,6 +14,7 @@ export default withCpuSlots(defineConfig({
       'packages/ccc',
       'packages/core-agent',
       'packages/cpu-slots',
+      'packages/electron-vueuse',
       'packages/i18n',
       'packages/pipelines-audio',
       'packages/input-gamepad',

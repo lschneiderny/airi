@@ -57,6 +57,7 @@ export const vitestConfigCoverage: Readonly<Record<string, VitestConfigCoverage>
   'packages/ccc/vitest.config.ts': { runBy: ['root'] },
   'packages/core-agent/vitest.config.ts': { runBy: ['root'] },
   'packages/cpu-slots/test/fixtures/vitest-wrapper/vitest.bundled-project.config.ts': { runBy: [], note: 'A fixture that the cpu-slots tests feed to Vitest. It holds no suite.' },
+  'packages/electron-vueuse/vitest.config.ts': { runBy: ['root'] },
   'packages/i18n/vitest.config.ts': { runBy: ['root'] },
   'packages/input-gamepad-vueuse/vitest.config.ts': { runBy: ['root'] },
   'packages/input-gamepad/vitest.config.ts': { runBy: ['root'] },
