@@ -152,6 +152,9 @@ Resetting Live2D settings restores the default Energy.
 
 ### Screen-aware attention
 
+While enabled, missing head or screen measurements retain the last valid placement rather than resetting the eased turn.
+Turning the setting off, removing the host placement prop, changing drivers, or replacing the model clears that cached measurement.
+
 The Screen-aware attention setting is stored as `settings/live2d/natural-screen-awareness` and is enabled by default. It is available only while Natural is selected. The placement reference is the horizontal center of the bottom-layer displays; the turn eases toward it and fades while the cursor is engaged. Side glances favor the inward screen direction, and screen attention and watching mode use a screen point for desk fixations. Typing, typed sends, and chat opening can produce chat glances, while replies stay on camera. Disabling the setting removes these placement and chat signals.
 
 ### Emotions by intensity band

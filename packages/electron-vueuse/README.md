@@ -11,6 +11,9 @@ VueUse-like composables and helpers shared across AIRI Electron apps.
 
 For IPC contract definitions, use `@proj-airi/electron-eventa`.
 
+`useElectronAllDisplays` starts empty and refreshes every 5 seconds. It keeps the last completed display snapshot while
+the next IPC response is pending, so a refresh never appears to consumers as a temporary display removal.
+
 ## Usage
 
 ```ts

@@ -7,7 +7,8 @@ import { useElectronEventaContext } from './use-electron-eventa-context'
 export function useElectronAllDisplays() {
   const context = useElectronEventaContext()
   const getAllDisplays = defineInvoke(context.value, electron.screen.getAllDisplays)
-  const { state: allDisplays, execute } = useAsyncState(() => getAllDisplays(), [])
+  // A refresh is not a display removal: keep the completed snapshot until IPC answers.
+  const { state: allDisplays, execute } = useAsyncState(() => getAllDisplays(), [], { resetOnExecute: false })
 
   useIntervalFn(() => {
     void execute()

@@ -71,7 +71,7 @@ import { Live2DNaturalMotionAdapter } from '../../../composables/live2d/natural-
 import { scoreLiveliness } from '../../../composables/live2d/natural-motion/liveliness'
 import { manualControlParameterIds, readLive2DRigProfile } from '../../../composables/live2d/natural-motion/rig-profile'
 import { NaturalTraceRecorder } from '../../../composables/live2d/natural-motion/trace'
-import { chatTargetOffset, headScreenX } from '../../../composables/live2d/screen-placement'
+import { chatTargetOffset, headScreenX, ScreenPlacement } from '../../../composables/live2d/screen-placement'
 import { buildLive2DTouchDebug } from '../../../composables/live2d/touch-debug'
 import { Live2DTouchGestures } from '../../../composables/live2d/touch-gestures'
 import { live2DTouchRegionAt, live2DVisibleBounds, scaleLive2DRect } from '../../../composables/live2d/touch-regions'
@@ -1285,24 +1285,34 @@ const releaseStageReader = naturalDiagnostics.registerStageReader(() => ({
   head: headViewportRect(),
 }))
 
+const measuredPlacement = new ScreenPlacement()
+watch(model, () => measuredPlacement.update(false, null), { flush: 'sync' })
+watch([live2dMotionDriver, live2dNaturalScreenAwareness, () => props.screenPlacement], ([driver, enabled, screen]) => {
+  if (driver !== 'natural' || !enabled || !screen)
+    measuredPlacement.update(false, null)
+}, { flush: 'sync' })
+
 /**
  * Screen inwardness of the head for Natural, or `null` without a signal. A QA override other than `undefined` wins;
  * otherwise the Natural driver, the setting, and the host's screen placement must all be present.
+ * Missing measurements keep the last valid placement; only disabling the host signal clears it.
  */
 function naturalPlacement(): number | null {
   const override = naturalDiagnostics.placementOverride
-  if (override !== undefined)
+  if (override !== undefined) {
+    measuredPlacement.update(false, null)
     return override
+  }
   const screen = props.screenPlacement
   // Only the Natural driver reads placement, so other drivers skip the per-frame head measurement.
   if (live2dMotionDriver.value !== 'natural' || !live2dNaturalScreenAwareness.value || !screen)
-    return null
+    return measuredPlacement.update(false, null)
   const head = headViewportRect()
   if (!head)
-    return null
+    return measuredPlacement.update(true, null)
   // The main window is frameless, so its bounds are the content bounds and the viewport origin.
   const x = headScreenX(screen.windowBounds, document.documentElement.clientWidth, head)
-  return x === null ? null : screenInwardness(screen.displays, x)
+  return measuredPlacement.update(true, x === null ? null : screenInwardness(screen.displays, x))
 }
 
 const chatFocus = new Point()

@@ -1,5 +1,18 @@
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 
+/** Holds valid host measurements across gaps; disabling clears them immediately, including before re-enabling. */
+export class ScreenPlacement {
+  private value: number | null = null
+
+  update(enabled: boolean, measurement: number | null): number | null {
+    if (!enabled)
+      this.value = null
+    else if (measurement !== null && Number.isFinite(measurement))
+      this.value = measurement
+    return this.value
+  }
+}
+
 /**
  * Converts the head center from viewport CSS pixels to Electron DIP screen x.
  *

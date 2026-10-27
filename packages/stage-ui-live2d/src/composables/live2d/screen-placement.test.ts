@@ -1,6 +1,46 @@
 import { describe, expect, it } from 'vitest'
 
-import { chatTargetOffset, headScreenX } from './screen-placement'
+import { chatTargetOffset, headScreenX, ScreenPlacement } from './screen-placement'
+
+describe('screen placement', () => {
+  it('holds the last placement through a one-frame missing measurement', () => {
+    const placement = new ScreenPlacement()
+    expect(placement.update(true, -0.8)).toBe(-0.8)
+    expect(placement.update(true, null)).toBe(-0.8)
+    expect(placement.update(true, 0.6)).toBe(0.6)
+  })
+
+  it.each(['setting off', 'prop removed', 'non-Natural driver'])('clears immediately for %s and does not revive stale state', () => {
+    const placement = new ScreenPlacement()
+    placement.update(true, -0.8)
+    expect(placement.update(false, null)).toBeNull()
+    expect(placement.update(true, null)).toBeNull()
+    expect(placement.update(true, 0.6)).toBe(0.6)
+  })
+
+  it('has no signal before the first valid measurement', () => {
+    const placement = new ScreenPlacement()
+    expect(placement.update(true, null)).toBeNull()
+    expect(placement.update(true, Number.NaN)).toBeNull()
+  })
+
+  it('accepts centered zero and ignores non-finite measurements', () => {
+    const placement = new ScreenPlacement()
+    expect(placement.update(true, 0)).toBe(0)
+    expect(placement.update(true, Number.NaN)).toBe(0)
+    expect(placement.update(true, Number.POSITIVE_INFINITY)).toBe(0)
+    expect(placement.update(false, 0.7)).toBeNull()
+  })
+
+  it.each([0, Number.NaN])('holds placement when client width becomes %s for one frame', (width) => {
+    const placement = new ScreenPlacement()
+    placement.update(true, -0.8)
+    const missing = headScreenX({ x: 1470, y: 432, width: 450, height: 600 }, width, { x: 150, width: 150 })
+    expect(missing).toBeNull()
+    expect(placement.update(true, missing)).toBe(-0.8)
+    expect(placement.update(false, missing)).toBeNull()
+  })
+})
 
 describe('headScreenX', () => {
   const windowBounds = { x: 1000, y: 200, width: 600, height: 800 }
