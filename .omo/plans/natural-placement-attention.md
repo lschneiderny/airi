@@ -121,7 +121,7 @@ Your next move: run `/ulw-execute natural-placement-attention` in this session o
 ## Todos
 > Implementation + Test = ONE todo. Never separate.
 <!-- APPEND TASK BATCHES BELOW THIS LINE WITH edit/apply_patch - never rewrite the headers above. -->
-- [ ] 1. stage-shared: pure bottom-layer placement geometry (TDD)
+- [x] 1. stage-shared: pure bottom-layer placement geometry (TDD)
   **What to do.** Create `packages/stage-shared/src/stage-placement/index.ts` and `index.test.ts`, and add the export `"./stage-placement": "./src/stage-placement/index.ts"` to `packages/stage-shared/package.json`, keeping the existing order style. The module is pure: no Electron, no DOM, no Vue. Export:
   - `interface PlacementRect { x: number, y: number, width: number, height: number }`
   - `bottomLayerDisplays(displays: readonly PlacementRect[]): PlacementRect[]`. A display D is excluded iff some other display E has `E.y + E.height / 2 > D.y + D.height / 2` and the x-overlap of D and E is at least `0.2 * min(D.width, E.width)`. The x-overlap is `max(0, min(D.x + D.width, E.x + E.width) - max(D.x, E.x))`.
@@ -150,7 +150,7 @@ Your next move: run `/ulw-execute natural-placement-attention` in this session o
   **Commit.** Y | `feat(stage-shared): add bottom-layer display placement geometry`
   **Recommended task executor category:** `deep-low` (pure algorithm with clear spec and edge-case tests)
 
-- [ ] 2. stage-ui-live2d Natural: placement input, eased yaw bias, inward side draws, inward screen point (TDD)
+- [x] 2. stage-ui-live2d Natural: placement input, eased yaw bias, inward side draws, inward screen point (TDD)
   **What to do.**
   - **(a) New pure module `natural-motion/placement.ts`.**
     - `shapeInwardness(u: number): number` begins with `if (!(Math.abs(u) > 0.15)) return 0`, an explicit early return so the dead zone and `NaN` yield `+0`, never `-0`. Otherwise it returns `Math.sign(u) * smoothstep(Math.min(1, (Math.abs(u) - 0.15) / (0.80 - 0.15)))` with `smoothstep(t) = t*t*(3-2t)`. Its JSDoc states the handedness: positive = inward toward screen +x = positive gaze x = positive head X (`ParamAngleX`).
@@ -219,7 +219,7 @@ Your next move: run `/ulw-execute natural-placement-attention` in this session o
   **Commit.** Y | `feat(stage-ui-live2d): bias Natural resting yaw, glance sides, and screen point toward screen placement`
   **Recommended task executor category:** `deep-low` (determinism-sensitive controller change with exact spec and hash proofs)
 
-- [ ] 3. Settings: "Screen-aware attention" toggle, English i18n, settings UI
+- [x] 3. Settings: "Screen-aware attention" toggle, English i18n, settings UI
   **What to do.**
   - In `packages/stage-ui-live2d/src/composables/live2d/live2d.ts`, add `live2dNaturalScreenAwareness = useLocalStorageManualReset<boolean>('settings/live2d/natural-screen-awareness', true)`. Mirror `live2dNaturalCursorAttention` (`:13`): include it in the reset list (`:109-137`) and in the returned store.
   - In `packages/stage-ui/src/components/scenarios/settings/model-settings/live2d.vue`, add a `FieldCheckbox` directly after the cursor-attention checkbox (`:459-465`), with the same `v-if="live2dMotionDriver === 'natural'"`. Keys: `settings.live2d.animation.natural-screen-awareness.title` and `.description`.
@@ -240,7 +240,7 @@ Your next move: run `/ulw-execute natural-placement-attention` in this session o
   **Commit.** Y | `feat(stage-ui,stage-ui-live2d,i18n): add Natural screen-aware attention setting`
   **Recommended task executor category:** `unspecified-low` (follows an existing setting pattern exactly)
 
-- [ ] 4. stage-tamagotchi main: chat attention target pushed to the main window
+- [x] 4. stage-tamagotchi main: chat attention target pushed to the main window
   **What to do.**
   - **Contracts** in `apps/stage-tamagotchi/src/shared/eventa/index.ts`, next to the chat contracts:
     - `interface ChatAttentionTarget { visible: boolean, bounds: { x: number, y: number, width: number, height: number } | null }`, with a JSDoc noting Electron DIP screen coordinates and that the payload carries only the chat window rectangle.
@@ -275,7 +275,7 @@ Your next move: run `/ulw-execute natural-placement-attention` in this session o
   **Commit.** Y | `feat(stage-tamagotchi): push the chat attention target to the main window`
   **Recommended task executor category:** `unspecified-high` (Electron main-process window lifecycle across two window modes)
 
-- [ ] 5. stage-ui: typed-send speech-bus event with word count
+- [x] 5. stage-ui: typed-send speech-bus event with word count
   **What to do.**
   - In `packages/stage-ui/src/services/speech/bus.ts`, add `chatComposerSentEvent = defineEventa<{ sourceId: string, words: number }>('eventa:chat:composer-sent')`. Its JSDoc says it carries no text, only the word count of a typed message that started sending.
   - In `packages/stage-ui/src/components/scenarios/chat/composables/use-chat-composer.ts` `submit()` (`:154-195`), right after `submitOptions?.afterSendStarted?.(submission)` (`:174`), emit `chatComposerSentEvent` with the composer's existing `activitySourceId` and `words`.
@@ -299,7 +299,7 @@ Your next move: run `/ulw-execute natural-placement-attention` in this session o
   **Commit.** Y | `feat(stage-ui): announce typed chat sends with a word count on the speech bus`
   **Recommended task executor category:** `quick` (one event plus one emit with tests)
 
-- [ ] 6. stage-ui-live2d Natural: chat attention (TDD)
+- [x] 6. stage-ui-live2d Natural: chat attention (TDD)
   **What to do.**
   - **(a) Stream.** Append `chat: 14` to `streamIndex` (`natural-motion.ts:43`) and create the chat stream like the others (`:177`).
   - **(b) Controller input.** Add a public `setChat(chat: NaturalChatInput | null, nowSeconds: number)` with `interface NaturalChatInput { target: GazePoint | null, typing: boolean, sentSeq: number, sentWords: number, unfoldSeq: number }`.
@@ -365,7 +365,7 @@ Your next move: run `/ulw-execute natural-placement-attention` in this session o
   **Commit.** Y | `feat(stage-ui-live2d): add Natural chat attention with typing fixations and read glances`
   **Recommended task executor category:** `deep-low` (behavior spec is fixed; determinism proofs are tests)
 
-- [ ] 7. Placement host plumbing: Tamagotchi -> Stage -> Live2D -> Model.vue -> adapter
+- [x] 7. Placement host plumbing: Tamagotchi -> Stage -> Live2D -> Model.vue -> adapter
   **What to do.**
   - **(a) Tamagotchi page.** In `apps/stage-tamagotchi/src/renderer/pages/index.vue`, build `screenPlacement = computed(() => ({ displays: allDisplays.value.map(d => d.bounds), windowBounds: { x, y, width, height } }))` from `useElectronAllDisplays()` and `useElectronWindowBounds()` (`packages/electron-vueuse`). Pass `:screen-placement` to `WidgetStage` next to `:cursor-position` (`:463-469`). Web and pocket are untouched, so their prop stays undefined.
   - **(b) Stage.** `packages/stage-ui/src/components/scenes/Stage.vue` adds the optional prop `screenPlacement?: { displays: PlacementRect[], windowBounds: PlacementRect }`, using the type from `@proj-airi/stage-shared/stage-placement`. It forwards the prop only on the Live2D branch (`:898-902`).
@@ -412,7 +412,7 @@ Your next move: run `/ulw-execute natural-placement-attention` in this session o
   **Commit.** Y | `feat(stage-tamagotchi,stage-ui,stage-ui-live2d): feed screen placement into Natural`
   **Recommended task executor category:** `unspecified-high` (cross-package Vue/Electron plumbing with live verification)
 
-- [ ] 8. Chat host plumbing: chat target, typing, send, and unfold into Natural
+- [x] 8. Chat host plumbing: chat target, typing, send, and unfold into Natural
   **What to do.**
   - **(a) Tamagotchi page.** In `apps/stage-tamagotchi/src/renderer/pages/index.vue`, subscribe with the app's eventa renderer context: `useElectronEventaContext` / `useElectronEventaInvoke`, as `App.vue:5,86` does. Subscribe to `electronChatAttentionTargetChanged` before invoking `electronGetChatAttentionTarget` for the snapshot, the same order as `chat-floating.vue:32-51`. Pass `:chat-target="chatTarget"` (type `ChatAttentionTarget | null`) to `WidgetStage`.
   - **(b) Stage.**
@@ -464,7 +464,7 @@ Your next move: run `/ulw-execute natural-placement-attention` in this session o
   **Commit.** Y | `feat(stage-tamagotchi,stage-ui,stage-ui-live2d): feed chat target, typing, and sends into Natural`
   **Recommended task executor category:** `unspecified-high` (cross-window signals with live Electron verification)
 
-- [ ] 9. QA hooks: scenario events, T1 sink, T3 bridge pin and overrides
+- [x] 9. QA hooks: scenario events, T1 sink, T3 bridge pin and overrides
   **What to do.**
   - **(a) Scenario events** in `packages/stage-shared/src/motion-scenario/schema.ts` (`:29-48`). Add:
     - `strictObject({ kind: literal('placement'), at, inward: nullable(pipe(number(), finite(), minValue(-1), maxValue(1))) })`
@@ -515,7 +515,7 @@ Your next move: run `/ulw-execute natural-placement-attention` in this session o
   **Commit.** Y | `feat(stage-shared,qa-tools,stage-ui): drive Natural placement and chat attention from motion scenarios`
   **Recommended task executor category:** `unspecified-high` (spans the shared contract, QA harness, and bridge)
 
-- [ ] 10. Docs: README Natural section and ADR
+- [x] 10. Docs: README Natural section and ADR
   **What to do.**
   - Update the `packages/stage-ui-live2d/README.md` Natural section (around line 50) and its settings section. Describe:
     - the placement inwardness and its bottom-layer reference;
@@ -545,7 +545,7 @@ Your next move: run `/ulw-execute natural-placement-attention` in this session o
   **Commit.** Y | `docs(stage-ui-live2d): document Natural screen-aware attention`
   **Recommended task executor category:** `writing` (prose documentation)
 
-- [ ] 11. Rendered end-to-end QA on ForBOOTH (T3) plus live chat check
+- [x] 11. Rendered end-to-end QA on ForBOOTH (T3) plus live chat check
   **What to do.**
   - Run `pnpm qa:motion t3 --rig forbooth --scenario builtin:t3-screen-attention` with `AIRI_QA_RIG_FORBOOTH` set. Warn Luke before starting, since T3 parks the cursor; see `.agents/skills/motion-qa/SKILL.md`.
   - Score from the captured `trace.json`:
@@ -576,20 +576,38 @@ Your next move: run `/ulw-execute natural-placement-attention` in this session o
   **Commit.** N (evidence only) | -
   **Recommended task executor category:** `unspecified-high` (rendered QA run and trace scoring)
 
+- [x] 12. Follow-up (F1-B1): pass the no-chat signal from the Natural bench and the T2 spike
+  **What to do.** `packages/stage-ui-live2d/scripts/bench-natural.ts:63` and `packages/qa-tools/spikes/t2/loop.ts:92` build a `Live2DNaturalMotionAttention` without `chat`, so `setChat(undefined)` throws a TypeError in `natural-motion.ts:304`. Add `chat: null` to both callers, the same way `placement: null` was added in todo 7.
+  **Must NOT do.** No controller or adapter changes. No other files.
+  **Closes.** F1-B1 (IS-8 no-signal preservation for existing QA callers).
+  **Acceptance criteria.** The bench script runs to completion with exit 0. The spike file typechecks or loads without the TypeError. `pnpm verify` is green.
+  **QA scenarios.** Happy path: run the bench and capture the output to `task-12-bench.txt`. Failure path: the reproduction from `final-f1-compliance.md` no longer throws.
+  **Commit.** Y | `fix(stage-ui-live2d,qa-tools): pass no chat signal from the Natural bench and T2 spike`
+  **Recommended task executor category:** `quick`
+
+- [x] 13. Follow-up (F3 IS-2): a transient missing placement must not snap the eased head turn
+  **What to do.** F3 (`final-f3-manual-qa.md`, `final-f3-repro.json`) shows that with the setting on and the window at rest, `Model.vue` sometimes builds `placement: null` for one frame (3 frames in 5 000, 5 s and 15 s apart). The adapter forwards that as the disabled path, and `NaturalPlacement.set(null)` zeroes the eased yaw, so the head snaps from about ±0.1 to 0. Find the source of the transient null (for example the head measurement, the display list refresh, or the window-bounds polling). Then make the host hold the last valid placement while the setting is on, the driver is Natural, and `screenPlacement` is present. `null` stays reserved for: setting off, prop absent, non-Natural driver, or no valid measurement since start.
+  **Must NOT do.** No change to the controller disabled-path semantics from todo 2 (`setPlacement(null)` still hard-resets). No change to geometry math. No new RNG.
+  **Closes.** IS-2 ("never snaps"), F3 blocker.
+  **Acceptance criteria.** A pure helper or unit test proves that a one-frame missing measurement holds the last placement, and that setting off still yields null at once. Rerunning the F3 rest repro (`final-f3-repro.ts`) gives 0 null-placement frames and no yaw jump above the easing bound in 30 s at rest, plus one drag. Typechecks and `pnpm verify` are green, and T1 gate hashes are unchanged.
+  **QA scenarios.** Happy path: the repro rerun gives `task-13-repro.json`. Failure path: setting off still clears placement at once (F3 scenario 6 rerun).
+  **Commit.** Y | `fix(stage-ui-live2d): hold the last screen placement through transient measurement gaps`
+  **Recommended task executor category:** `deep-low`
+
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
-- [ ] F1. Plan compliance audit
+- [x] F1. Plan compliance audit
   Check every todo's acceptance criteria and Must-NOT against the diff (`git diff <base>..HEAD`). Confirm that no existing hash expectations, gate bands, other locales, or pre-existing dirty files were touched. Recommended task executor category: `unspecified-high`.
-- [ ] F2. Code quality review
+- [x] F2. Code quality review
   Review against `.agents/skills/enforce-rules-for-typescript` and `enforce-rules-for-vitest`: no `any`, Valibot at the edges, eventa contracts centralized, no defensive checks inside trusted code, deterministic tests with no sleeps. Recommended task executor category: `unspecified-high`.
-- [ ] F3. Real manual QA
+- [x] F3. Real manual QA
   Run the live Electron scenarios from todos 7, 8, and 11 again on the final HEAD:
   - Window at the right edge, then the left edge.
   - Typing and send in the floating chat in attached placement and in free placement.
   - The legacy chat window opened.
   - The setting toggled off, which must restore today's behavior: placement and chat inputs `null`.
   Capture screenshots and trace excerpts, and verify the ParamAngleX sign on ForBOOTH (mirrored-rig risk). Recommended task executor category: `unspecified-high`.
-- [ ] F4. Ideal-state fidelity
+- [x] F4. Ideal-state fidelity
   Check the delivered behavior against IS-1..IS-11 one to one, using the Success criteria table. Any shortfall becomes new `- [ ] N.` todos. Recommended task executor category: `unspecified-high`.
 
 ## Commit strategy
