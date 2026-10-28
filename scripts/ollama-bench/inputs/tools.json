@@ -1,0 +1,916 @@
+[
+  {
+    "function": {
+      "description": "Generate a random number between 0 and 1",
+      "name": "builtIn_debugRandomNumber",
+      "parameters": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    "type": "function"
+  },
+  {
+    "function": {
+      "description": "Send a spark:command to one or more frontend-connected modules or sub-agents.",
+      "name": "builtIn_emitSparkCommand",
+      "parameters": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "destinations": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "One or more target module or agent IDs for this command."
+          },
+          "interrupt": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "force"
+                  },
+                  {
+                    "type": "string",
+                    "const": "soft"
+                  },
+                  {
+                    "type": "boolean",
+                    "const": false
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the command should preempt current work."
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "critical",
+                  "high",
+                  "normal",
+                  "low"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Priority of the command."
+          },
+          "intent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "plan",
+                  "proposal",
+                  "action",
+                  "pause",
+                  "resume",
+                  "reroute",
+                  "context"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Intent of the command."
+          },
+          "ack": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Short acknowledgement or instruction summary for the receiver."
+          },
+          "parentEventId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional parent event ID when this command is a response to another event."
+          },
+          "guidance": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "proposal",
+                      "instruction",
+                      "memory-recall"
+                    ]
+                  },
+                  "persona": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "traits": {
+                              "type": "string",
+                              "description": "Trait name to adjust behavior. For example, \"bravery\", \"cautiousness\", \"friendliness\"."
+                            },
+                            "strength": {
+                              "type": "string",
+                              "enum": [
+                                "very-high",
+                                "high",
+                                "medium",
+                                "low",
+                                "very-low"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "traits",
+                            "strength"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Personas can be used to adjust the behavior of sub-agents. For example, when using as NPC in games, or player in Minecraft, the persona can help define the character's traits and decision-making style."
+                  },
+                  "options": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "description": "Short label for the option."
+                        },
+                        "steps": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Step-by-step actions the target should follow."
+                        },
+                        "rationale": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Why this option makes sense."
+                        },
+                        "possibleOutcome": {
+                          "anyOf": [
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Expected outcomes if this option is followed."
+                        },
+                        "risk": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "high",
+                                "medium",
+                                "low",
+                                "none"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Risk level of this option."
+                        },
+                        "fallback": {
+                          "anyOf": [
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Fallback steps if the main plan fails."
+                        },
+                        "triggers": {
+                          "anyOf": [
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Conditions that should trigger this option."
+                        }
+                      },
+                      "required": [
+                        "label",
+                        "steps",
+                        "rationale",
+                        "possibleOutcome",
+                        "risk",
+                        "fallback",
+                        "triggers"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "description": "Concrete execution options for the target."
+                  }
+                },
+                "required": [
+                  "type",
+                  "persona",
+                  "options"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Structured guidance for how the target should interpret and execute the command."
+          },
+          "contexts": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "lane": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Logical context lane, for example \"game\" or \"memory\"."
+                    },
+                    "ideas": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Loose ideas to attach to the target context."
+                    },
+                    "hints": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Hints to attach to the target context."
+                    },
+                    "strategy": {
+                      "type": "string",
+                      "enum": [
+                        "replace-self",
+                        "append-self"
+                      ],
+                      "description": "How the target should merge this context update."
+                    },
+                    "text": {
+                      "type": "string",
+                      "description": "Primary text of the context update."
+                    },
+                    "destinations": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "all": {
+                              "type": "boolean",
+                              "const": true
+                            }
+                          },
+                          "required": [
+                            "all"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "include": {
+                              "anyOf": [
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "description": "Included destinations."
+                            },
+                            "exclude": {
+                              "anyOf": [
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "description": "Excluded destinations."
+                            }
+                          },
+                          "required": [
+                            "include",
+                            "exclude"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Optional routing for the attached context update."
+                    },
+                    "metadata": {
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "description": "Metadata key."
+                              },
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "description": "Metadata value."
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "value"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "JSON-like metadata for the context update, expressed as key-value pairs for schema compatibility."
+                    }
+                  },
+                  "required": [
+                    "lane",
+                    "ideas",
+                    "hints",
+                    "strategy",
+                    "text",
+                    "destinations",
+                    "metadata"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional context updates to attach to the command."
+          }
+        },
+        "required": [
+          "destinations",
+          "interrupt",
+          "priority",
+          "intent",
+          "ack",
+          "parentEventId",
+          "guidance",
+          "contexts"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    "type": "function"
+  },
+  {
+    "type": "function",
+    "function": {
+      "description": "Manage AI-generated images. Use \"create\" to generate and display images. An optional \"mode\" (inline, widget, bg, bg_widget) can override the default character routing preference. Use \"apply\" to switch to an existing image from the journal.",
+      "name": "image_journal",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "apply"
+            ],
+            "description": "Choose \"create\" to generate a new image, or \"apply\" to use an existing one."
+          },
+          "prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Description for the image (required for \"create\")."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Label for the entry (optional)."
+          },
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Search term for existing images (required for \"apply\")."
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "inline",
+              "widget",
+              "bg",
+              "bg_widget",
+              null
+            ],
+            "description": "Display mode: \"inline\" (in chat), \"widget\" (overlay), \"bg\" (environment), or \"bg_widget\" (both). Defaults to character preference."
+          }
+        },
+        "required": [
+          "action",
+          "prompt",
+          "title",
+          "query",
+          "mode"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "description": "Manage overlay widgets in the Stage desktop app (spawn, update, remove, clear, or open the widgets window).",
+      "name": "stage_widgets",
+      "parameters": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "spawn",
+              "update",
+              "remove",
+              "clear",
+              "open"
+            ],
+            "description": "Choose one: spawn, update, remove, clear, open"
+          },
+          "id": {
+            "type": "string",
+            "description": "Widget id; required for update/remove, optional for spawn/open"
+          },
+          "componentName": {
+            "type": "string",
+            "description": "Widget component to render, e.g. weather (required for spawn)"
+          },
+          "componentProps": {
+            "type": "string",
+            "description": "Widget props as JSON string (e.g. {\"city\":\"Tokyo\"})"
+          },
+          "alwaysOnTop": {
+            "type": "boolean",
+            "description": "Whether the widget window should stay above other windows. Defaults to false when omitted by internal callers."
+          },
+          "size": {
+            "type": "string",
+            "enum": [
+              "s",
+              "m",
+              "l"
+            ]
+          },
+          "windowSize": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "width": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "height": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "minWidth": {
+                    "exclusiveMinimum": 0,
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "minHeight": {
+                    "exclusiveMinimum": 0,
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "maxWidth": {
+                    "exclusiveMinimum": 0,
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "maxHeight": {
+                    "exclusiveMinimum": 0,
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "width",
+                  "height",
+                  "minWidth",
+                  "minHeight",
+                  "maxWidth",
+                  "maxHeight"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional pixel window size and constraints, e.g. {\"width\":620,\"height\":760,\"minWidth\":480}"
+          },
+          "ttlSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Automatic destruction delay in seconds. Use 0 to keep the widget until manual close."
+          }
+        },
+        "required": [
+          "action",
+          "id",
+          "componentName",
+          "componentProps",
+          "alwaysOnTop",
+          "size",
+          "windowSize",
+          "ttlSeconds"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "description": "Get the current weather and a daily forecast for a city. Returns JSON with `location`, `current`, and `daily`. `daily[0]` is today in the time zone of the city. `precipitation` is the chance of precipitation. To show the weather to the user, you can call `stage_widgets` with action `spawn`, componentName `weather`, and componentProps set to `current` or one `daily` entry, plus `city` from `location`.",
+      "name": "get_weather",
+      "parameters": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string",
+            "description": "English name of the city, for example \"Shanghai\", \"Tokyo\", or \"New York\". Translate a city name in another language to English."
+          },
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7,
+            "description": "Number of forecast days from today. Use 1 for today only, 2 to include tomorrow."
+          }
+        },
+        "required": [
+          "city",
+          "days"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "description": "Control native desktop apps, inspect windows, capture screenshots, and use keyboard or mouse input. On macOS, call app.probePermissions before visual tasks. If screen_recording is missing, ask the user to grant permission; captures can contain only a blank background. Start with argv [\"invoke\", \"--help\"], then inspect command help. Pass each CLI argument separately. Use explicit window targets when available. Preserve failure_details and verified metadata: exitCode 0 does not prove the intended UI effect. Use computer_use_read_image to view screenshot artifact paths. This tool acts on the local computer.",
+      "name": "computer_use",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "argv": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "AUV arguments beginning with invoke, excluding the executable name."
+          }
+        },
+        "required": [
+          "argv"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "description": "View a PNG or JPEG screenshot artifact produced by computer_use. Only files inside AIRI computer-use storage can be read. Select this tool together with computer_use for visual tasks.",
+      "name": "computer_use_read_image",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Absolute screenshot artifact path returned by computer_use."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  },
+  {
+    "function": {
+      "description": "Replace the wake words that let the user call you by voice. This tool edits only your own character card. Each word needs its written text and one or more pronunciations. A pronunciation is a complete list of model tokens, not plain text or whole pinyin syllables. English uses ARPAbet phones with stress digits, as in the CMU pronouncing dictionary. Write every consonant: \"hey\" is HH EY1, not EY1. Chinese uses the pinyin initial and the toned final of each syllable as separate tokens: 嘿一噜 is h ēi y ī l ū, and 爱 is ài. Write one tone for each syllable. Detection also accepts the other tones of each final, because people change tones when they call a name. Detection is more reliable for Chinese tokens. When a name can be said as Chinese syllables, also add a pinyin pronunciation. Add a separate pronunciation for each way the user can say the same word. For a short English name, also try L for R, for example IY1 L UW0 and IY1 R UW1. Use only these tokens: AA0 AA1 AA2 AE0 AE1 AE2 AH0 AH1 AH2 AO0 AO1 AO2 AW0 AW1 AW2 AY0 AY1 AY2 B CH D DH EH0 EH1 EH2 ER0 ER1 ER2 EY0 EY1 EY2 F G HH IH0 IH1 IH2 IY0 IY1 IY2 JH K L M N NG OW0 OW1 OW2 OY0 OY1 OY2 P R S SH T TH UH0 UH1 UH2 UW0 UW1 UW2 V W Y Z ZH a ai an ang ao b c ch d e ei en eng er f g h hm i ia ian iang iao ie in ing iu ià iàn iàng iào iá ián iáng iáo iè ié iòng ióng iù iú iā iān iāng iāo iē iě iōng iū iǎ iǎn iǎng iǎo iǒng iǔ j k l m n o ong ou p q r s sh t u ua uai uan uang ue ui un uo uà uài uàn uàng uá uái uán uáng uè ué uì uí uò uó uā uāi uān uāng uē uě uī uō uǎ uǎi uǎn uǎng uǐ uǒ w x y z zh à ài àn àng ào á ái án áng áo è èi èn èng èr é éi én éng ér ì ìn ìng í ín íng ò òng òu ó óng óu ù ùn ú ún üè üě ā āi ān āng āo ē ēi ēn ēng ě ěi ěn ěng ěr ī īn īng ń ň ō ōng ōu ū ūn ǎ ǎi ǎn ǎng ǎo ǐ ǐn ǐng ǒ ǒng ǒu ǔ ǔn ǘ ǚ ǜ ǹ ḿ. If the result reports conflicts, explain in your own words that another character uses the same pronunciation, and ask the user which character must answer to it.",
+      "name": "configure_wake_words",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "words": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The written wake word, for example the character name."
+                },
+                "pronunciations": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  "minItems": 1,
+                  "description": "Each item is the complete token sequence of one pronunciation."
+                }
+              },
+              "required": [
+                "text",
+                "pronunciations"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The complete replacement list. Use an empty list to remove all wake words."
+          }
+        },
+        "required": [
+          "words"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "strict": true
+    },
+    "type": "function"
+  },
+  {
+    "type": "function",
+    "function": {
+      "description": "List all available MCP tools. Call this first to discover tool names before calling builtIn_mcpCallTool.",
+      "name": "builtIn_mcpListTools",
+      "parameters": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "description": "Call an MCP tool by name. Use builtIn_mcpListTools first to get available tool names.",
+      "name": "builtIn_mcpCallTool",
+      "parameters": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Tool name in \"<serverName>::<toolName>\" format"
+          },
+          "arguments": {
+            "type": "string",
+            "description": "JSON object of tool arguments, for example {\"query\":\"hello\",\"limit\":10}"
+          }
+        },
+        "required": [
+          "name",
+          "arguments"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "description": "Show one of the character's exposed expressions (faces, effects, props, or combos, which show several expressions together) by label. Without hold_seconds it lasts while the current reply is spoken.",
+      "name": "set_expression",
+      "parameters": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "expression": {
+            "type": "string",
+            "enum": [
+              "anger",
+              "box",
+              "cry",
+              "Drum mouth",
+              "eat eat",
+              "eat",
+              "game",
+              "love",
+              "mouse",
+              "no mouse",
+              "Pen fingers",
+              "pillow",
+              "red",
+              "Snot bubbles",
+              "Sticky note",
+              "background"
+            ],
+            "description": "Label of an exposed expression."
+          },
+          "hold_seconds": {
+            "description": "Seconds to keep it shown, from 1 to 30. Omit to follow speech.",
+            "type": "number",
+            "minimum": 1,
+            "maximum": 30
+          }
+        },
+        "required": [
+          "expression"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "description": "Remove expressions you or the stage showed. Pass a slot to clear only faces, effects, or props; omit it to clear all three.",
+      "name": "clear_expression",
+      "parameters": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "slot": {
+            "description": "Slot to clear: face, effect, or prop.",
+            "type": "string",
+            "enum": [
+              "face",
+              "effect",
+              "prop"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "description": "List the exposed expression labels with their kind and whether each is shown now.",
+      "name": "list_expressions",
+      "parameters": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  }
+]
