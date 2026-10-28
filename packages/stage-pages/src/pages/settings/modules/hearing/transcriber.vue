@@ -23,6 +23,14 @@ import HearingPlaygroundTranscripts from '../components/hearing-playground-trans
 const { t } = useI18n()
 
 const hearingStore = useHearingStore()
+const selectedProvider = computed({
+  get: () => hearingStore.enabled ? hearingStore.activeTranscriptionProvider : '',
+  set: (provider: string) => {
+    hearingStore.enabled = !!provider
+    if (provider)
+      hearingStore.activeTranscriptionProvider = provider
+  },
+})
 const {
   activeTranscriptionProvider,
   activeTranscriptionModel,
@@ -128,6 +136,8 @@ const isSpeech = computed(() => inputState.value?.phase === 'capturing')
 const isSpeechVolume = isSpeech
 
 async function setupAudioMonitoring() {
+  if (!hearingStore.enabled)
+    return
   const stopped = stopAudioMonitoring()
   const startup = new AbortController()
   monitoringStartup = startup
@@ -285,7 +295,7 @@ provide(hearingProviderViewContextKey, {
 
 // Sync OpenAI Compatible model from provider config
 function syncOpenAICompatibleSettings() {
-  if (activeTranscriptionProvider.value !== 'openai-compatible-audio-transcription')
+  if (!hearingStore.enabled || activeTranscriptionProvider.value !== 'openai-compatible-audio-transcription')
     return
 
   const providerConfig = providerStore.getProviderConfig(activeTranscriptionProvider.value)
@@ -309,7 +319,9 @@ watch([selectedAudioInput, useVADModel], async () => {
   await setupAudioMonitoring()
 })
 
-watch(activeTranscriptionProvider, async (provider) => {
+watch(selectedProvider, async (provider, _previous, onCleanup) => {
+  let cancelled = false
+  onCleanup(() => cancelled = true)
   const shouldRestartMonitoring = isMonitoring.value
 
   if (shouldRestartMonitoring) {
@@ -318,11 +330,15 @@ watch(activeTranscriptionProvider, async (provider) => {
   }
 
   clearPlaygroundSegments()
+  error.value = ''
+  vadModelError.value = ''
 
   if (!provider)
     return
 
   await hearingStore.loadModelsForProvider(provider)
+  if (cancelled)
+    return
   syncOpenAICompatibleSettings()
 
   const models = providerModels.value
@@ -346,6 +362,7 @@ onUnmounted(() => {
 <template>
   <div :class="['flex flex-col gap-6 md:flex-row']">
     <SettingsCard :class="['md:w-[40%]']">
+      <FieldCheckbox v-model="hearingStore.enabled" :label="t('settings.pages.modules.hearing.title')" />
       <div :class="['flex flex-col gap-4']">
         <FieldCombobox
           v-model="selectedAudioInput"
@@ -372,15 +389,21 @@ onUnmounted(() => {
             See also: https://stackoverflow.com/a/33737340
           -->
             <fieldset
-              v-if="moduleTranscriptionProvidersMetadata.length > 0"
               :class="['flex flex-row gap-4 min-w-0 overflow-x-auto scroll-smooth']"
               role="radiogroup"
             >
               <RadioCardSimple
+                id="hearing-none"
+                v-model="selectedProvider"
+                name="provider"
+                value=""
+                :title="t('settings.pages.modules.availability.none')"
+              />
+              <RadioCardSimple
                 v-for="metadata in moduleTranscriptionProvidersMetadata"
                 :id="metadata.id"
                 :key="metadata.id"
-                v-model="activeTranscriptionProvider"
+                v-model="selectedProvider"
                 name="provider"
                 :value="metadata.id"
                 :title="metadata.localizedName || 'Unknown'"
@@ -403,7 +426,7 @@ onUnmounted(() => {
                 />
               </RouterLink>
             </fieldset>
-            <div v-else>
+            <div v-if="moduleTranscriptionProvidersMetadata.length === 0">
               <RouterLink
                 to="/settings/providers"
                 :class="[
@@ -426,11 +449,11 @@ onUnmounted(() => {
 
         <component
           :is="activeProviderHearingView"
-          v-if="activeProviderHearingView"
+          v-if="hearingStore.enabled && activeProviderHearingView"
         />
 
         <!-- Model selection section -->
-        <div v-if="activeTranscriptionProvider">
+        <div v-if="selectedProvider">
           <div :class="['flex flex-col gap-4']">
             <div>
               <h2 :class="['text-lg md:text-2xl']">
@@ -509,7 +532,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Confidence threshold (only for non-streaming providers) -->
-        <div v-if="!supportsStreamInput" :class="['border-t border-neutral-200 pt-4 dark:border-neutral-700']">
+        <div v-if="hearingStore.enabled && !supportsStreamInput" :class="['border-t border-neutral-200 pt-4 dark:border-neutral-700']">
           <div :class="['mb-4']">
             <h2 :class="['text-lg text-neutral-500 md:text-2xl dark:text-neutral-500']">
               {{ t('settings.pages.modules.hearing.sections.section.confidence-threshold.title') }}
@@ -553,7 +576,7 @@ onUnmounted(() => {
         </p>
 
         <ErrorContainer
-          v-if="error || transcriptionPipelineError"
+          v-if="hearingStore.enabled && (error || transcriptionPipelineError)"
           :title="t('settings.pages.modules.hearing.sections.section.playground.error-title')"
           :error="error || transcriptionPipelineError"
           :class="['mb-4']"
@@ -563,7 +586,7 @@ onUnmounted(() => {
         <Button
           :class="['mb-4', 'w-full']"
           data-testid="hearing-playground-monitor-toggle"
-          :disabled="!activeTranscriptionProvider"
+          :disabled="!selectedProvider"
           @click="toggleMonitoring"
         >
           {{ isMonitoring

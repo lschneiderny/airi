@@ -19,6 +19,8 @@ mobile-tools:
   close-view: Save and close view controls
   hearing: Hearing
 chat:
+  audio:
+    hearing-disabled: '[Audio recording: transcription is disabled.]'
   provider-configuration:
     title: Chat provider isn't configured
     description: Choose and validate a provider in Settings before sending a message.

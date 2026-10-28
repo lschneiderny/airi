@@ -29,6 +29,7 @@ import { useAudioContext, useSpeakingStore } from './audio'
 import { useChatStore } from './chat'
 import { useChatSessionStore } from './chat/session-store'
 import { startsInputOnSpeech, useHearingStore } from './modules/hearing'
+import { useSpeechStore } from './modules/speech'
 import { useSettingsAudioDevice } from './settings/audio-device'
 import { useVoiceMessagesStore } from './voice-messages'
 import { useWakeWordDetectionStore } from './wake-word-detection'
@@ -49,6 +50,7 @@ const VOICE_END_SILENCE = { pauseMs: 1200, graceMs: 3000 } as const
 export const useVoiceStore = defineStore('voice', () => {
   const devices = useSettingsAudioDevice()
   const hearing = useHearingStore()
+  const speechSettings = useSpeechStore()
   const chat = useChatStore()
   const sessions = useChatSessionStore()
   const voiceMessages = useVoiceMessagesStore()
@@ -178,13 +180,23 @@ export const useVoiceStore = defineStore('voice', () => {
   const userSpeaking = computed(() => state.value?.phase === 'capturing')
   watch(userSpeaking, speaking => getSpeechBusContext().emit(speechInputUserSpeakingChangedEvent, { speaking }))
 
+  // The host cancels dictation as well as continuous input. Remote snapshots trigger only local runtime cleanup.
+  watch(() => hearing.enabled, (enabled) => {
+    error.value = undefined
+    if (enabled)
+      return
+    void stopListening()
+    presentedInput = undefined
+    publishSnapshot()
+  }, { flush: 'sync' })
+
   function beginInput(options: BeginSpeechInput) {
     error.value = undefined
     return controller.beginInput(options)
   }
 
   function beginManual(sessionId: string) {
-    if (devices.off)
+    if (!hearing.enabled || devices.off)
       return undefined
     beginCause = 'control'
     try {
@@ -357,6 +369,17 @@ export const useVoiceStore = defineStore('voice', () => {
     const producers = new Map<string, SpeechStream>()
     const opened = new Set<string>()
     const stops = [
+      // Disabling speech stops local and remote producers. The response stays open for text generation and tools.
+      watch(() => speechSettings.enabled, (enabled) => {
+        if (enabled)
+          return
+        for (const { response, speech } of responses.values()) {
+          void response.playback.stop({ fadeMs: 0 }).catch(report)
+          speech?.cancel('Speech is disabled')
+        }
+        for (const speech of producers.values())
+          speech.cancel('Speech is disabled')
+      }, { flush: 'sync' }),
       voiceMessages.connect(),
       // The microphone switch ends every input, also dictation in a composer. The input is cancelled, not submitted,
       // because the user turned the microphone off and did not finish speaking.
