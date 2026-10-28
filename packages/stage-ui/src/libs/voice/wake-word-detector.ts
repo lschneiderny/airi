@@ -167,7 +167,8 @@ export class WakeWordDetector {
     const keywords = this.keywordsOf([...next.values()])
     const update = this.updates.then(async () => {
       // A newer list or a stop replaced this one while an earlier update ran.
-      if (generation !== this.generation || next !== this.pronunciations)
+      // An equal list replaces `pronunciations` without a new generation, so only the generation tells a newer list.
+      if (generation !== this.generation)
         return
 
       if (keywords.length === 0) {
@@ -199,7 +200,7 @@ export class WakeWordDetector {
       // A keyword update starts a new stream in the Worker.
       this.streamSampleRate = undefined
       this.resetStream = false
-      if (generation !== this.generation || next !== this.pronunciations)
+      if (generation !== this.generation)
         return
       this.keywordsReady = true
       this.options.onPreparationChange?.('ready')
