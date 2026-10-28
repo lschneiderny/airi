@@ -18,7 +18,7 @@ export function useVoiceListening() {
   const devices = useSettingsAudioDevice()
   const hearing = useHearingStore()
 
-  watch(() => devices.listening && listensContinuously(hearing.inputMode), (listen) => {
+  watch(() => hearing.enabled && devices.listening && listensContinuously(hearing.inputMode), (listen) => {
     if (listen)
       voice.startListening()
     else
@@ -48,7 +48,7 @@ export function useVoicePushToTalk(options: VoicePushToTalkOptions = {}) {
   const sessions = useChatSessionStore()
 
   return useVoiceHold({
-    enabled: () => devices.listening && hearing.inputMode === 'push-to-talk',
+    enabled: () => hearing.enabled && devices.listening && hearing.inputMode === 'push-to-talk',
     sessionId: () => sessions.activeSessionId,
     begin: (sessionId) => {
       if (!hearing.configured) {

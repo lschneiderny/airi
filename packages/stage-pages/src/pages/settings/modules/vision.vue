@@ -54,8 +54,14 @@ watch(activeProvider, async (provider) => {
 }, { immediate: true })
 
 async function selectProvider(provider: string) {
+  if (!provider) {
+    visionStore.enabled = false
+    return
+  }
   await airiCardStore.selectActiveCardVisionProvider(provider)
 }
+
+const selectedProvider = computed(() => visionStore.enabled ? activeProvider.value : '')
 
 async function persistSelection() {
   await airiCardStore.updateActiveCardVision({ provider: activeProvider.value, model: activeModel.value })
@@ -104,6 +110,7 @@ function formatRelativeTime(timestamp: number | null) {
 <template>
   <div :class="['flex', 'flex-col', 'gap-6']">
     <SettingsCard>
+      <FieldCheckbox v-model="visionStore.enabled" :label="t('settings.pages.modules.vision.title')" />
       <FieldCheckbox
         v-model="useForChat"
         :label="t('stage.chat.images.use-vision')"
@@ -128,15 +135,22 @@ function formatRelativeTime(timestamp: number | null) {
         </div>
         <div :class="['max-w-full']">
           <fieldset
-            v-if="moduleVisionProvidersMetadata.length > 0"
             :class="['flex', 'min-w-0', 'flex-row', 'gap-4', 'overflow-x-auto', 'scroll-smooth']"
             role="radiogroup"
           >
             <RadioCardSimple
+              id="vision-none"
+              :model-value="selectedProvider"
+              name="provider"
+              value=""
+              :title="t('settings.pages.modules.availability.none')"
+              @update:model-value="selectProvider"
+            />
+            <RadioCardSimple
               v-for="metadata in moduleVisionProvidersMetadata"
               :id="metadata.id"
               :key="metadata.id"
-              :model-value="activeProvider"
+              :model-value="selectedProvider"
               name="provider"
               :value="metadata.id"
               :title="metadata.localizedName || 'Unknown'"
@@ -212,7 +226,7 @@ function formatRelativeTime(timestamp: number | null) {
               />
             </RouterLink>
           </fieldset>
-          <div v-else>
+          <div v-if="moduleVisionProvidersMetadata.length === 0">
             <RouterLink
               to="/settings/providers#vision"
               :class="[
@@ -248,7 +262,7 @@ function formatRelativeTime(timestamp: number | null) {
       </div>
     </SettingsCard>
 
-    <SettingsCard v-if="activeProvider && supportsModelListing">
+    <SettingsCard v-if="selectedProvider && supportsModelListing">
       <div :class="['flex', 'flex-col', 'gap-4']">
         <div>
           <h2 :class="['text-lg', 'md:text-2xl']">
@@ -305,7 +319,7 @@ function formatRelativeTime(timestamp: number | null) {
       </div>
     </SettingsCard>
 
-    <SettingsCard v-else-if="activeProvider && !supportsModelListing">
+    <SettingsCard v-else-if="selectedProvider && !supportsModelListing">
       <div :class="['flex', 'flex-col', 'gap-4']">
         <div>
           <h2 :class="['text-lg', 'text-neutral-500', 'md:text-2xl', 'dark:text-neutral-400']">

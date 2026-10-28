@@ -1,12 +1,16 @@
+import type { SpeechOutput } from '@proj-airi/core-agent'
+
 import type { VoiceHostSnapshot } from '../services/speech/bus'
 
+import { Playback } from '@proj-airi/pipelines-audio'
 import { createPinia, disposePinia } from 'pinia'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import { getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceInputLevel, voiceLevelMonitor, voiceSnapshotChanged } from '../services/speech/bus'
 import { useHearingStore } from './modules/hearing'
+import { useSpeechStore } from './modules/speech'
 import { useSettingsAudioDevice } from './settings/audio-device'
 import { useVoiceStore } from './voice'
 
@@ -166,5 +170,48 @@ describe('voice store microphone switch', () => {
     expect(devices.heldOpen).toBe(false)
 
     await expect.poll(() => track.readyState).toBe('ended')
+  })
+})
+
+describe('voice store optional modules', () => {
+  it('refuses a manual input while Hearing is off', () => {
+    const { voice } = mountVoice()
+    useHearingStore().enabled = false
+
+    expect(voice.beginManual('alice')).toBeUndefined()
+  })
+
+  // https://github.com/moeru-ai/airi/issues/3153
+  // Disabling Speech stops its synthesis and playback. The response stays open, so the chat turn can finish.
+  it('stops speech playback and keeps the turn open when Speech is disabled', async () => {
+    const { voice } = mountVoice()
+    const settings = useSpeechStore()
+    settings.enabled = true
+    const turn = { sessionId: 'alice', turnId: 'speech-disabled' }
+    const stopped = vi.fn(async () => ({ throughMs: 10 }))
+    const played = vi.fn(() => ({ done: new Promise<{ throughMs: number }>(() => {}), stop: stopped }))
+    let synthesisSignal: AbortSignal | undefined
+    const output: SpeechOutput = {
+      playback: new Playback({ nowMs: () => 0, play: played }),
+      stream: async (_text, signal) => {
+        synthesisSignal = signal
+        return new ReadableStream({ start(controller) {
+          controller.enqueue({ audio: new Blob(['speech']), text: 'Hello.' })
+        } })
+      },
+    }
+    cleanups.push(voice.connectOutput(() => output))
+    voice.startResponse(turn)
+    await voice.getSpeech(turn)!.write('Hello.')
+    await expect.poll(() => played.mock.calls.length).toBe(1)
+
+    settings.enabled = false
+
+    expect(voice.activeTurns).toEqual([turn])
+    await expect.poll(() => synthesisSignal?.aborted).toBe(true)
+    await expect.poll(() => stopped.mock.calls.length).toBe(1)
+    expect(await voice.getSpeech(turn)!.write('Later text.')).toEqual({ status: 'closed' })
+    expect(await voice.finishResponse(turn)).toBe('finished')
+    expect(voice.activeTurns).toEqual([])
   })
 })
