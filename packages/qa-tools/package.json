@@ -13,6 +13,7 @@
   "scripts": {
     "doctor": "tsx bin/doctor.ts",
     "evidence": "tsx bin/evidence.ts",
+    "model": "tsx bin/model.ts",
     "motion": "tsx bin/motion.ts",
     "report": "tsx bin/report.ts",
     "t2:probe": "tsx bin/t2-probe.ts",
@@ -21,7 +22,9 @@
   },
   "dependencies": {
     "@moeru/std": "catalog:",
+    "@proj-airi/core-agent": "workspace:^",
     "@proj-airi/cpu-slots": "workspace:^",
+    "@proj-airi/i18n": "workspace:^",
     "@proj-airi/pipelines-audio": "workspace:^",
     "@proj-airi/scenarios-stage-tamagotchi-electron": "workspace:^",
     "@proj-airi/stage-shared": "workspace:^",
@@ -31,7 +34,8 @@
     "pinia": "catalog:",
     "pixi-live2d-display": "catalog:",
     "valibot": "catalog:",
-    "vue": "catalog:"
+    "vue": "catalog:",
+    "vue-i18n": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
