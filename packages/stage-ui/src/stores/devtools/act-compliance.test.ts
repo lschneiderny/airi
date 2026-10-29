@@ -50,7 +50,7 @@ describe('act compliance store', () => {
     store.recordStreamEnd({ turnId: 'muted', cueStats: cueStats({ act: 1, recovered: 1 }) }, T0)
     store.recordStreamEnd({ turnId: 'next', cueStats: cueStats({ act: 1 }) }, T0 + 1)
 
-    // A recovered cue that the stage rejects (prose such as `[Act 2]`) is not a successful recovery.
+    // A recovered marker-shaped cue that the stage rejects is rejected; bracketed prose such as `[Act 2]` is never recovered.
     expect(store.records[1]).toMatchObject({ turnId: 'muted', recovered: 1, rejected: 1, rejectedTokens: ['<|ACT 2|>'] })
     expect(actComplianceOutcome(store.records[1])).toBe('rejected')
     // The early rejection belongs to its turn only.
