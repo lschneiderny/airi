@@ -1,3 +1,5 @@
+import { stageContractEmotions } from '@proj-airi/stage-shared/stage-contract'
+
 export enum Emotion {
   Happy = 'happy',
   Sad = 'sad',
@@ -47,20 +49,9 @@ export const EMOTION_EmotionMotionName_value = {
  * stay identical; the newer emotions have prompt names of their own because their motion
  * groups fall back to another emotion's group.
  */
-export const EMOTION_PromptName_value = {
-  [Emotion.Happy]: EmotionHappyMotionName,
-  [Emotion.Sad]: EmotionSadMotionName,
-  [Emotion.Angry]: EmotionAngryMotionName,
-  [Emotion.Think]: EmotionThinkMotionName,
-  [Emotion.Surprise]: EmotionSurpriseMotionName,
-  [Emotion.Awkward]: EmotionAwkwardMotionName,
-  [Emotion.Question]: EmotionQuestionMotionName,
-  [Emotion.Neutral]: EmotionNeutralMotionName,
-  [Emotion.Curious]: EmotionCuriousMotionName,
-  [Emotion.Love]: 'Love',
-  [Emotion.Flustered]: 'Flustered',
-  [Emotion.Sleepy]: 'Sleepy',
-} satisfies Record<Emotion, string>
+export const EMOTION_PromptName_value = Object.fromEntries(
+  stageContractEmotions.map(emotion => [emotion.value, emotion.promptName]),
+) as Record<(typeof stageContractEmotions)[number]['value'], string> satisfies Record<Emotion, string>
 
 export const EMOTION_VRMExpressionName_value = {
   [Emotion.Happy]: 'happy',

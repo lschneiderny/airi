@@ -1,9 +1,9 @@
 import type { PerformanceRuntimeSnapshot } from '../features/performance/runtime-state'
 
+import { renderStageContract } from '@proj-airi/stage-shared/stage-contract'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { EMOTION_PromptName_value, EMOTION_VALUES } from '../constants/emotions'
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 
@@ -39,13 +39,7 @@ function formatMood(mood: PerformanceRuntimeSnapshot['mood']) {
 export function useStageContractPrompt() {
   const { t } = useI18n()
 
-  return computed(() => [
-    t('base.prompt.emotion'),
-    EMOTION_VALUES
-      .map(emotion => `- ${emotion} (Emotion for feeling ${EMOTION_PromptName_value[emotion]})`)
-      .join('\n'),
-    t('base.prompt.emoji'),
-  ].join('\n\n'))
+  return computed(() => renderStageContract(t))
 }
 
 /**

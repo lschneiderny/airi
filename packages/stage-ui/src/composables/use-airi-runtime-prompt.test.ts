@@ -1,5 +1,11 @@
 import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
 
+import { createHash } from 'node:crypto'
+
+import messages from '@proj-airi/i18n/locales'
+
+import { createFallbackOptions } from '@proj-airi/i18n'
+import { STAGE_CONTRACT_EN_SHA256 } from '@proj-airi/stage-shared/stage-contract'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -52,6 +58,22 @@ beforeEach(() => {
 })
 
 describe('useStageContractPrompt', () => {
+  it('renders the English contract byte-for-byte', async () => {
+    const { createI18n } = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
+    const i18n = createI18n({
+      legacy: false,
+      locale: 'en',
+      messages,
+      ...createFallbackOptions(() => {}),
+    })
+    i18nMock.t = (key, params) => i18n.global.t(key, params ?? {})
+
+    const prompt = useStageContractPrompt().value
+
+    expect(prompt).toContain('<|ACT happy|>')
+    expect(createHash('sha256').update(prompt).digest('hex')).toBe(STAGE_CONTRACT_EN_SHA256)
+  })
+
   it('assembles the emotion and emoji rules without the shared closing', () => {
     const prompt = useStageContractPrompt().value
 
