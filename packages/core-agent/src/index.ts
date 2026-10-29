@@ -29,6 +29,8 @@ export type {
 export { createChatOrchestratorRuntime } from './runtime/chat-orchestrator-runtime'
 export type { ContextHistoryEntry, ContextIngestResult, ContextRegistry } from './runtime/context-registry'
 export { createContextRegistry } from './runtime/context-registry'
+export { cueComplianceOutcome, cueComplianceRates } from './runtime/cue-compliance'
+export type { CueComplianceCounts, CueComplianceOutcome, CueComplianceRates } from './runtime/cue-compliance'
 export { useLlmmarkerParser } from './runtime/llm-marker-parser'
 export {
   isContentArrayRelatedError,
