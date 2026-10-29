@@ -5,7 +5,7 @@ import type { VoiceMessageCommand } from '../services/speech/bus'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { encodeBase64 } from '@moeru/std/base64'
 import { defineStore } from 'pinia'
-import { onScopeDispose, shallowRef } from 'vue'
+import { onScopeDispose, shallowRef, watch } from 'vue'
 
 import { VoiceMessage } from '../libs/voice/voice-message'
 import { getSpeechBusContext, voiceMessageCommand, voiceMessageDropped, voiceMessagesChanged, voiceRequestMessages } from '../services/speech/bus'
@@ -61,8 +61,9 @@ export const useVoiceMessagesStore = defineStore('voice-messages', () => {
     return completed ? text.trim() : (text.trim() || undefined)
   }
 
+  /** Returns false for a used ID, and while the microphone is off. */
   function record(command: Extract<VoiceMessageCommand, { type: 'record' }>) {
-    if (opened.has(command.id))
+    if (opened.has(command.id) || devices.off)
       return false
     opened.add(command.id)
     const message = new VoiceMessage(command.id, command.sessionId, devices.input, async (draft) => {
@@ -126,6 +127,16 @@ export const useVoiceMessagesStore = defineStore('voice-messages', () => {
         }
         return { status: 'accepted' }
       }),
+      // The microphone switch closes the microphone for everyone. Keep what the user recorded as a draft that they can send or discard.
+      // The watcher is synchronous, so the recording stops before the device store closes the input.
+      watch(() => devices.off, (off) => {
+        if (!off)
+          return
+        for (const message of messages.values()) {
+          if (['pending', 'capturing'].includes(message.snapshot.phase))
+            void message.finish()
+        }
+      }, { flush: 'sync' }),
     ]
     publish()
     return () => {

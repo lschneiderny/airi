@@ -7,10 +7,11 @@ import { errorMessageFrom } from '@moeru/std'
 import { encodeWav } from '@proj-airi/audio/encoding'
 import { capture as captureAudio, observe } from '@proj-airi/pipelines-audio'
 import { Button, FieldCombobox, FieldRange } from '@proj-airi/ui'
-import { computed, onScopeDispose, ref, watch } from 'vue'
+import { computed, onScopeDispose, ref, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useAudioDevice } from '../../../composables/audio/audio-device'
+import { useSettingsAudioDevice } from '../../../stores/settings/audio-device'
 import { LevelMeter, TestDummyMarker, ThresholdMeter } from '../../gadgets'
 
 const props = defineProps<{
@@ -19,7 +20,8 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
-const devices = useAudioDevice()
+// The playground picks its own device, but the microphone switch of AIRI still applies to it.
+const devices = useAudioDevice(ref(''), { off: toRef(useSettingsAudioDevice(), 'off') })
 const { audioInputOptions, selectedAudioInput } = devices
 const speakingThreshold = ref(25)
 const isMonitoring = ref(false)

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
-import { getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceSnapshotChanged } from '../services/speech/bus'
+import { getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceInputLevel, voiceLevelMonitor, voiceSnapshotChanged } from '../services/speech/bus'
 import { useHearingStore } from './modules/hearing'
 import { useSettingsAudioDevice } from './settings/audio-device'
 import { useVoiceStore } from './voice'
@@ -62,6 +62,8 @@ describe('voice store user speech', () => {
     await expect.poll(() => devices.selectedAudioInput).not.toBe('')
 
     const attempt = voice.beginManual('alice')
+    if (!attempt)
+      throw new Error('The voice store refused a manual input while the microphone is on')
     await expect.poll(() => attempt.state.phase, { timeout: 10_000 }).toBe('capturing')
     expect(voice.userSpeaking).toBe(true)
 
@@ -111,5 +113,58 @@ describe('voice store output host', () => {
     cleanups.push(voice.connectOutput(failOutput))
     expect(snapshots.at(-1)).toMatchObject({ connected: true, hostId: expect.any(String) })
     expect(snapshots.at(-1)?.hostId).not.toBe(first?.hostId)
+  })
+})
+
+describe('voice store microphone switch', () => {
+  // The microphone switch ends every input, also dictation in a composer, and the input is cancelled, not submitted.
+  it('cancels a capturing input and refuses a new one while the microphone is off', async () => {
+    const { voice, devices } = mountVoice()
+    // The output host owns the watchers that end inputs and publish levels, as the Stage connects it in the app.
+    cleanups.push(voice.connectOutput(() => {
+      throw new Error('This test opens no response')
+    }))
+    expect(await devices.askPermission()).toBe(true)
+    await expect.poll(() => devices.selectedAudioInput).not.toBe('')
+    const attempt = voice.beginManual('alice')
+    if (!attempt)
+      throw new Error('The voice store refused a manual input while the microphone is on')
+    await expect.poll(() => attempt.state.phase, { timeout: 10_000 }).toBe('capturing')
+
+    devices.off = true
+
+    expect((await attempt.done).status).toBe('cancelled')
+    expect(voice.beginManual('alice')).toBeUndefined()
+    // Browser test files run in parallel and share storage. Turn the persisted switch back at once.
+    devices.off = false
+  })
+
+  // A level meter in a menu asks for the level when a hover opens the menu. The host must read it only from the input
+  // that the listening preference already holds open, and turning listening off closes the microphone.
+  it('publishes a requested level while listening holds the microphone open, and closes it when listening turns off', async () => {
+    const { voice, devices } = mountVoice()
+    // The output host owns the watchers that end inputs and publish levels, as the Stage connects it in the app.
+    cleanups.push(voice.connectOutput(() => {
+      throw new Error('This test opens no response')
+    }))
+    devices.initialize()
+    expect(await devices.askPermission()).toBe(true)
+    await expect.poll(() => devices.selectedAudioInput).not.toBe('')
+    const context = getSpeechBusContext()
+    const levels: number[] = []
+    cleanups.push(context.on(voiceInputLevel, ({ body }) => body && levels.push(body.level)))
+
+    devices.enabled = true
+    expect(devices.heldOpen).toBe(true)
+    context.emit(voiceLevelMonitor, { until: Date.now() + 10_000 })
+
+    // The first level waits for the device and the capture worklet, which is slow while other test files run.
+    await expect.poll(() => levels.length, { timeout: 10_000 }).toBeGreaterThan(0)
+    const track = devices.stream!.getAudioTracks()[0]
+
+    devices.enabled = false
+    expect(devices.heldOpen).toBe(false)
+
+    await expect.poll(() => track.readyState).toBe('ended')
   })
 })
