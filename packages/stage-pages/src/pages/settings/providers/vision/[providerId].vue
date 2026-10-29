@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { RemovableRef } from '@vueuse/core'
-
 import {
   ProviderAdvancedSettings,
   ProviderApiKeyInput,
@@ -14,10 +12,8 @@ import {
 import { useProviderValidation } from '@proj-airi/stage-ui/composables/use-provider-validation'
 import { getDefinedProvider } from '@proj-airi/stage-ui/libs'
 import { useVisionStore } from '@proj-airi/stage-ui/stores/modules/vision'
-import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { computedAsync } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute('/settings/providers/vision/[providerId]')
@@ -26,35 +22,16 @@ if (typeof routeProviderId !== 'string')
   throw new Error('Expected a provider id in the settings route')
 const sourceProviderId = routeProviderId
 const providerId = `vision-${sourceProviderId}`
-const providerStore = useProviderConfigStore()
 const visionStore = useVisionStore()
-const { configs: providers } = storeToRefs(providerStore) as { configs: RemovableRef<Record<string, any>> }
 const { activeProvider } = storeToRefs(visionStore)
-
-// Define computed properties for credentials
-const apiKey = computed({
-  get: () => providers.value[providerId]?.apiKey || '',
-  set: (value) => {
-    if (!providers.value[providerId])
-      providers.value[providerId] = {}
-    providers.value[providerId].apiKey = value
-  },
-})
-
-const baseUrl = computed({
-  get: () => providers.value[providerId]?.baseUrl || '',
-  set: (value) => {
-    if (!providers.value[providerId])
-      providers.value[providerId] = {}
-    providers.value[providerId].baseUrl = value
-  },
-})
 
 // Use the composable to get validation logic and state
 const {
   t,
   router,
   providerMetadata,
+  apiKey,
+  baseUrl,
   isValidating,
   isValid,
   validationMessage,

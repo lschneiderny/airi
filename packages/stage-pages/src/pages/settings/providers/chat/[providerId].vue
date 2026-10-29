@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { RemovableRef } from '@vueuse/core'
-
 import {
   ProviderAdvancedSettings,
   ProviderApiKeyInput,
@@ -14,7 +12,6 @@ import {
 import { useProviderValidation } from '@proj-airi/stage-ui/composables/use-provider-validation'
 import { getDefinedProvider } from '@proj-airi/stage-ui/libs'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
-import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 import { FieldCombobox } from '@proj-airi/ui'
 import { computedAsync } from '@vueuse/core'
@@ -27,40 +24,10 @@ const routeProviderId = route.params.providerId
 if (typeof routeProviderId !== 'string')
   throw new Error('Expected a provider id in the settings route')
 const providerId = routeProviderId
-const providerConfigStore = useProviderConfigStore()
 const providersStore = useProviderStore()
 const consciousnessStore = useConsciousnessStore()
-const { configs: providers } = storeToRefs(providerConfigStore) as { configs: RemovableRef<Record<string, any>> }
 const { activeProvider } = storeToRefs(consciousnessStore)
 const providerDefinition = computed(() => providersStore.findProviderDefinition(providerId))
-
-// Define computed properties for credentials
-const apiKey = computed({
-  get: () => providers.value[providerId]?.apiKey || '',
-  set: (value) => {
-    if (!providers.value[providerId])
-      providers.value[providerId] = {}
-    providers.value[providerId].apiKey = value
-  },
-})
-
-const baseUrl = computed({
-  get: () => providers.value[providerId]?.baseUrl || '',
-  set: (value) => {
-    if (!providers.value[providerId])
-      providers.value[providerId] = {}
-    providers.value[providerId].baseUrl = value
-  },
-})
-
-const thinkingMode = computed({
-  get: () => providers.value[providerId]?.thinkingMode || 'auto',
-  set: (value) => {
-    if (!providers.value[providerId])
-      providers.value[providerId] = {}
-    providers.value[providerId].thinkingMode = value
-  },
-})
 
 const supportsDeepSeekThinkingMode = computed(() => providerDefinition.value?.id === 'deepseek')
 
@@ -69,6 +36,9 @@ const {
   t,
   router,
   providerMetadata,
+  apiKey,
+  baseUrl,
+  configField,
   isValidating,
   isValid,
   validationMessage,
@@ -80,6 +50,8 @@ const {
   manualTestMessage,
   runManualTest,
 } = useProviderValidation(providerId)
+
+const thinkingMode = configField('thinkingMode', 'auto')
 
 const apiKeyPlaceholder = computedAsync(async () => {
   const definition = providerDefinition.value ?? getDefinedProvider(providerId)

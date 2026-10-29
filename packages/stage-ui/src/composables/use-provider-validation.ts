@@ -46,41 +46,58 @@ export function useProviderValidation(providerId: string) {
     })
   }, undefined)
 
-  // --- Internal Computed Properties for Credentials ---
   const credentials = computed(() => providers.value[providerId] || {})
-
-  const apiKey = computed({
-    get: () => credentials.value.apiKey || '',
-    set: (value) => {
-      if (!providers.value[providerId])
-        providers.value[providerId] = {}
-      providers.value[providerId].apiKey = value
-    },
-  })
-
-  const baseUrl = computed({
-    get: () => credentials.value.baseUrl || '',
-    set: (value) => {
-      if (!providers.value[providerId])
-        providers.value[providerId] = {}
-      providers.value[providerId].baseUrl = value
-    },
-  })
-
-  const accountId = computed({
-    get: () => credentials.value.accountId || '',
-    set: (value) => {
-      if (!providers.value[providerId])
-        providers.value[providerId] = {}
-      providers.value[providerId].accountId = value
-    },
-  })
-  // --- End of Internal Computed Properties ---
 
   const debounceTime = 500
   const isValidating = ref(0)
   const isValid = ref(false)
   const validationMessage = ref('')
+
+  // ROOT CAUSE:
+  //
+  // Fields wrote through the `configs` projection, which never reaches the
+  // leader from a follower window such as Electron settings. Keys vanished and
+  // validation never ran. Edits now use `patchProviderConfig`; drafts keep the
+  // input stable until the leader snapshot arrives.
+  const drafts = ref<Record<string, unknown>>({})
+  let saveQueue = Promise.resolve()
+
+  watch(credentials, (stored) => {
+    for (const [key, value] of Object.entries(drafts.value)) {
+      if (stored[key] === value)
+        delete drafts.value[key]
+    }
+  })
+
+  function saveField(key: string) {
+    saveQueue = saveQueue.then(async () => {
+      if (!Object.hasOwn(drafts.value, key))
+        return
+      try {
+        await providersStore.initializeProvider(providerId)
+        if (!await providerStore.patchProviderConfig(providerId, { [key]: drafts.value[key] }))
+          throw new Error(`Provider ${providerId} no longer exists.`)
+      }
+      catch (error) {
+        validationMessage.value = errorMessageFrom(error) ?? 'Failed to save provider settings.'
+      }
+    })
+  }
+
+  /** Binds one provider configuration field to an input through the leader-owned store. */
+  function configField<T>(key: string, fallback: T) {
+    return computed<T>({
+      get: () => (Object.hasOwn(drafts.value, key) ? drafts.value[key] : credentials.value[key] || fallback) as T,
+      set: (value) => {
+        drafts.value[key] = value
+        saveField(key)
+      },
+    })
+  }
+
+  const apiKey = configField('apiKey', '')
+  const baseUrl = configField('baseUrl', '')
+  const accountId = configField('accountId', '')
 
   // Manual chat ping check state (settings pages only)
   const hasManualValidators = computedAsync(
@@ -242,9 +259,11 @@ export function useProviderValidation(providerId: string) {
     manualTestMessage.value = ''
   })
 
-  function handleResetSettings() {
+  async function handleResetSettings() {
     const defaultOptions = providerMetadata.value?.defaultConfig ?? {}
-    providers.value[providerId] = { ...defaultOptions }
+    drafts.value = {}
+    await saveQueue
+    await providerStore.updateProviderConfig(providerId, { ...defaultOptions }, 'unconfigured')
     isValid.value = false
     validationMessage.value = ''
     isValidating.value = 0
@@ -267,6 +286,7 @@ export function useProviderValidation(providerId: string) {
     apiKey,
     baseUrl,
     accountId,
+    configField,
     isValidating,
     isValid,
     validationMessage,
