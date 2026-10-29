@@ -1,6 +1,7 @@
-import type { ChatStreamEventContext } from '@proj-airi/core-agent'
+import type { ChatStreamEventContext, CueComplianceOutcome } from '@proj-airi/core-agent'
 
 import { defineInvoke, defineInvokeEventa } from '@moeru/eventa'
+import { cueComplianceRates } from '@proj-airi/core-agent'
 import { defineStore } from 'pinia'
 import { computed, shallowRef } from 'vue'
 
@@ -34,12 +35,10 @@ export interface ActComplianceRecord {
   noAct: boolean
 }
 
-/**
- * Which bucket a turn counts in. A rejection wins over recovery: prose such as `[Act 2]` is recovered as a cue,
- * then rejected by the stage, and must not read as a successful recovery. A turn whose only cues the runtime
- * stripped also counts as rejected, but a native or recovered cue of the same turn wins over the stripped ones.
- */
-export type ActComplianceOutcome = 'rejected' | 'recovered' | 'parsed' | 'none'
+/** Which bucket a turn counts in. The rules live in core-agent so the QA scorer shares them. */
+export type ActComplianceOutcome = CueComplianceOutcome
+
+export { cueComplianceOutcome as actComplianceOutcome } from '@proj-airi/core-agent'
 
 export interface ActComplianceRates {
   /** Spoken turns counted, newest first, at most {@link ACT_COMPLIANCE_RATE_WINDOW}. */
@@ -63,30 +62,9 @@ export interface ActComplianceInspection {
  */
 export const actComplianceInspectInvoke = defineInvokeEventa<ActComplianceInspection>('eventa:devtools:act-compliance:inspect')
 
-export function actComplianceOutcome(record: Pick<ActComplianceRecord, 'act' | 'recovered' | 'rejected' | 'stripped'>): ActComplianceOutcome {
-  if (record.rejected > 0)
-    return 'rejected'
-  if (record.recovered > 0)
-    return 'recovered'
-  if (record.act > 0)
-    return 'parsed'
-  if (record.stripped > 0)
-    return 'rejected'
-  return 'none'
-}
-
 /** Counts outcomes over the newest {@link ACT_COMPLIANCE_RATE_WINDOW} records. Records are newest first. */
 export function actComplianceRates(records: readonly ActComplianceRecord[]): ActComplianceRates {
-  const rates: ActComplianceRates = { turns: 0, declined: 0, parsed: 0, recovered: 0, rejected: 0, none: 0 }
-  for (const record of records.slice(0, ACT_COMPLIANCE_RATE_WINDOW)) {
-    if (record.declined) {
-      rates.declined++
-      continue
-    }
-    rates.turns++
-    rates[actComplianceOutcome(record)]++
-  }
-  return rates
+  return cueComplianceRates(records, ACT_COMPLIANCE_RATE_WINDOW)
 }
 
 /**
