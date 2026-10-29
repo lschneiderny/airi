@@ -52,7 +52,8 @@ describe('anthropic provider', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(String(fetch.mock.calls[0]?.[0])).toBe('https://api.anthropic.com/v1/models?limit=1000')
     const headers = new Headers(fetch.mock.calls[0]?.[1]?.headers)
-    expect(headers.get('authorization')).toBe('Bearer sk-ant-test')
+    expect(headers.get('x-api-key')).toBe('sk-ant-test')
+    expect(headers.get('anthropic-version')).toBe('2023-06-01')
     expect(headers.get('anthropic-dangerous-direct-browser-access')).toBe('true')
   })
 

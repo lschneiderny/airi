@@ -96,8 +96,13 @@ export const providerAnthropic = defineProvider<AnthropicConfig, 'anthropic'>({
       const { apiKey, baseURL, fetch = globalThis.fetch } = provider.model()
       const url = new URL('models', String(baseURL).endsWith('/') ? String(baseURL) : `${baseURL}/`)
       url.searchParams.set('limit', '1000')
+      // The native models endpoint requires its own version and key headers,
+      // unlike the OpenAI-compatible chat endpoint.
       const response = await fetch(url, {
-        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+        headers: {
+          'anthropic-version': '2023-06-01',
+          ...(apiKey ? { 'x-api-key': apiKey } : {}),
+        },
       })
       if (!response.ok)
         throw new Error(`Failed to list Anthropic models: HTTP ${response.status} ${await response.text()}`)
