@@ -31,6 +31,7 @@ export type { ContextHistoryEntry, ContextIngestResult, ContextRegistry } from '
 export { createContextRegistry } from './runtime/context-registry'
 export { cueComplianceOutcome, cueComplianceRates } from './runtime/cue-compliance'
 export type { CueComplianceCounts, CueComplianceOutcome, CueComplianceRates } from './runtime/cue-compliance'
+export { CUE_CONTRACT_FIXTURES, cueContractFixtures } from './runtime/cue-contract-fixtures'
 export { useLlmmarkerParser } from './runtime/llm-marker-parser'
 export {
   isContentArrayRelatedError,
@@ -38,6 +39,8 @@ export {
   modelKey,
   streamFrom,
 } from './runtime/llm-service'
+export { ChunkInvariantError, replayReply, replayReplyAtEveryChunking } from './runtime/reply-replay'
+export type { ReplyReplay } from './runtime/reply-replay'
 export {
   categorizeResponse,
   createStreamingCategorizer,
