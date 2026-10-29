@@ -62,6 +62,21 @@ describe('transcript jsonl', () => {
     expect(await collect(path)).toEqual(records)
   })
 
+  it('appends onto an existing file, keeping the existing record and adding one \n-terminated line', async () => {
+    const first = createTranscriptWriter(path)
+    await first.write(createRecord(0))
+    await first.close()
+
+    const second = createTranscriptWriter(path)
+    await second.write(createRecord(1))
+    await second.close()
+
+    const text = readFileSync(path, 'utf8')
+    expect(text.endsWith('\n')).toBe(true)
+    expect(text.split('\n')).toEqual([JSON.stringify(createRecord(0)), JSON.stringify(createRecord(1)), ''])
+    expect(await collect(path)).toEqual([createRecord(0), createRecord(1)])
+  })
+
   it('does not see leftovers from a previous run when writing to a fresh path twice', async () => {
     for (const fileName of ['first.jsonl', 'second.jsonl']) {
       const target = join(dir, fileName)

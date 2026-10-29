@@ -5,7 +5,6 @@ import type { ReplyTranscriptRecord } from './schema'
 import { createReadStream } from 'node:fs'
 import { mkdir, open } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { createInterface } from 'node:readline'
 
 import { errorMessageFrom } from '@moeru/std'
 
@@ -24,35 +23,43 @@ function describeIssues(issues: [v.BaseIssue<unknown>, ...v.BaseIssue<unknown>[]
  */
 export async function* readTranscript(path: string): AsyncGenerator<ReplyTranscriptRecord, void, undefined> {
   const input = createReadStream(path, { encoding: 'utf8' })
-  const lines = createInterface({ input, crlfDelay: Infinity })
-  // The readline iterator does not forward errors of its input stream, so a missing file would hang without this.
-  const inputFailed = new Promise<never>((_, reject) => input.once('error', reject))
-  inputFailed.catch(() => {})
-  const iterator = lines[Symbol.asyncIterator]()
   let lineNumber = 0
-  try {
-    while (true) {
-      const next = await Promise.race([iterator.next(), inputFailed])
-      if (next.done)
-        return
-      lineNumber++
-      if (next.value.trim() === '')
-        continue
-      let json: unknown
-      try {
-        json = JSON.parse(next.value)
-      }
-      catch (error) {
-        throw new Error(`${path}: line ${lineNumber} is not valid JSON (${errorMessageFrom(error) ?? 'parse error'})`)
-      }
-      const parsed = v.safeParse(ReplyTranscriptRecordSchema, json)
-      if (!parsed.success)
-        throw new Error(`${path}: line ${lineNumber} is not a reply transcript record (${describeIssues(parsed.issues)})`)
-      yield parsed.output
+  let pending = ''
+
+  // Splits on `\n` only and drops a trailing `\r`, so CRLF files read the same as LF files.
+  function* parseLine(line: string): Generator<ReplyTranscriptRecord, void, undefined> {
+    lineNumber++
+    if (line.trim() === '')
+      return
+    let json: unknown
+    try {
+      json = JSON.parse(line)
     }
+    catch (error) {
+      throw new Error(`${path}: line ${lineNumber} is not valid JSON (${errorMessageFrom(error) ?? 'parse error'})`)
+    }
+    const parsed = v.safeParse(ReplyTranscriptRecordSchema, json)
+    if (!parsed.success)
+      throw new Error(`${path}: line ${lineNumber} is not a reply transcript record (${describeIssues(parsed.issues)})`)
+    yield parsed.output
+  }
+
+  try {
+    // The stream's own async iterator rejects on a stream error (missing file, directory), so nothing can hang
+    // and no per-line promise is attached to a long-lived one.
+    for await (const chunk of input) {
+      pending += chunk
+      let newline = pending.indexOf('\n')
+      while (newline !== -1) {
+        const line = pending.slice(0, newline).replace(/\r$/, '')
+        pending = pending.slice(newline + 1)
+        yield* parseLine(line)
+        newline = pending.indexOf('\n')
+      }
+    }
+    yield* parseLine(pending.replace(/\r$/, ''))
   }
   finally {
-    lines.close()
     input.destroy()
   }
 }
