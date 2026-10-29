@@ -9,7 +9,9 @@ The dTuber planning vault is a separate git repository at `Z:/Obsidian/dTuber` (
 
 ## 1. Read
 
-Read every note in `00 Inbox` with `status: inbox`. For each one, look for an owning note elsewhere in the vault: a design note in `02 Design`, a feature in `03 Development/Features`, a bug in `04 Testing/Bugs`, or a question in `01 Product/Open Questions.md`.
+Read every note in `00 Inbox` with `status: inbox`. Also read notes the Home view "Gone quiet" would show: inbox notes created more than 14 days ago anywhere in the vault, and `doing` notes not modified for 7 days.
+
+Every idea, bug, feature, and decision has an `area` property. The allowed values and their main notes are in the table in the vault's `Home.md`. For each note, look for an owning note elsewhere in the vault: a design note in `02 Design`, a feature in `03 Development/Features`, a bug in `04 Testing/Bugs`, or a question in `01 Product/Open Questions.md`.
 
 When a note asks how existing code behaves, or whether something already exists, check this repository and answer it with source paths. Read the relevant `AGENTS.md` first.
 
@@ -30,6 +32,8 @@ Use one of these outcomes:
 - **Pick:** set `status: next`. Only propose this when the user has asked for work to pick.
 - **Drop:** set `status: dropped` and add a one-line reason.
 
+Also propose an area for every note with `area: unsure` or no area, and flag an area that looks wrong. When most captures in an area share a theme that its main note does not cover, propose adding a short open question or section to that main note.
+
 Group related captures when they describe the same behavior. Do not invent requirements, priorities, or acceptance criteria. Mark guesses as guesses.
 
 ## 3. Apply
@@ -37,6 +41,7 @@ Group related captures when they describe the same behavior. Do not invent requi
 Apply only the outcomes the user approves, including edits they make to the table.
 
 - When moving a note, keep its filename so wiki links still resolve.
+- Keep or set `area` on every promoted note, so it stays on its area's main note.
 - Archive merged captures to `06 Archive/Captures` with `status: done` and a `Merged into [[Note]]` line.
 - Never delete the only copy of a capture's content.
 - Do not commit. The vault's obsidian-git plugin commits and pushes every 10 minutes while Obsidian is open.
