@@ -6,6 +6,10 @@ Shared contracts and runtime-neutral helpers for AIRI stage applications and UI 
 
 Use this package when a type or behavior must cross stage application boundaries without depending on Electron, browser-only code, or a feature UI package.
 
+| Entrypoint | Use | Do not use |
+| --- | --- | --- |
+| `stage-contract` | Render the stable cue contract with a supplied translator and compose the system prompt. The English SHA-256 pins its version; update it in the commit that changes the contract. | Read locale state, collect live stage state, or parse model replies. |
+
 The `plugin-host` entrypoint owns the serializable Plugin Host snapshots exchanged between the Electron main process and shared renderer code:
 
 ```ts

@@ -31,6 +31,7 @@
     "./screen-ambient-light": "./src/screen-ambient-light/index.ts",
     "./server-channel-qr": "./src/server-channel-qr.ts",
     "./situation": "./src/situation/index.ts",
+    "./stage-contract": "./src/stage-contract/index.ts",
     "./stage-placement": "./src/stage-placement/index.ts",
     "./stores/desktop-activity": "./src/stores/desktop-activity.ts",
     "./stores/foreground-window": "./src/stores/foreground-window.ts",
@@ -58,6 +59,8 @@
     "@nekopaw/tempora": "catalog:",
     "@proj-airi/cpu-slots": "workspace:^",
     "@proj-airi/electron-screen-capture": "workspace:^",
-    "@types/audioworklet": "catalog:"
+    "@proj-airi/i18n": "workspace:^",
+    "@types/audioworklet": "catalog:",
+    "vue-i18n": "catalog:"
   }
 }

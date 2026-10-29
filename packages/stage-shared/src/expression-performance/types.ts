@@ -1,7 +1,8 @@
 import type { CatalogEntry } from './catalog'
 import type { ExpressionPerformanceSettings } from './settings'
 
-export type PerformanceEmotion = 'happy' | 'sad' | 'angry' | 'think' | 'surprised' | 'awkward' | 'question' | 'curious' | 'neutral' | 'love' | 'flustered' | 'sleepy'
+export const PERFORMANCE_EMOTIONS = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral', 'love', 'flustered', 'sleepy'] as const
+export type PerformanceEmotion = typeof PERFORMANCE_EMOTIONS[number]
 export type Band = 'slight' | 'clear' | 'strong'
 export const bandRank = { slight: 1, clear: 2, strong: 3 } as const
 
