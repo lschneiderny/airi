@@ -147,7 +147,7 @@ export const useVoiceStore = defineStore('voice', () => {
       connected: true,
       hostId,
       ...(hostLock ? { lock: hostLock } : {}),
-      microphone: { enabled: devices.enabled, ready: !!devices.stream, error: devices.error },
+      microphone: { enabled: devices.listening, ready: !!devices.stream, error: devices.error },
       wakeWords: { preparation: wakeWordDetection.preparation, ...(wakeWordDetection.error ? { error: wakeWordDetection.error } : {}) },
       drafts: drafts.value.map(draft => ({ ...draft })),
       frontDraftId: frontDraftId.value,
@@ -184,6 +184,8 @@ export const useVoiceStore = defineStore('voice', () => {
   }
 
   function beginManual(sessionId: string) {
+    if (devices.off)
+      return undefined
     beginCause = 'control'
     try {
       return beginInput({ sessionId, interruptTurns: activeTurns.value.filter(turn => turn.sessionId === sessionId), start: { kind: 'after-silence' } })
@@ -271,7 +273,11 @@ export const useVoiceStore = defineStore('voice', () => {
    */
   function publishInputLevel() {
     let observation: AbortController | undefined
-    /** A control shows a level meter. It turns off when the newest request expires. */
+    /**
+     * A control shows a level meter. It turns off when the newest request expires.
+     * The meter reads the level only while the microphone preference holds the input open. A user can hover the meter
+     * without intent to speak, so the meter alone must not open the microphone. While the input is closed, no level arrives.
+     */
     const monitoring = shallowRef(false)
     let monitorTimer: ReturnType<typeof setTimeout> | undefined
     const stopMonitor = getSpeechBusContext().on(voiceLevelMonitor, ({ body }) => {
@@ -284,7 +290,7 @@ export const useVoiceStore = defineStore('voice', () => {
         monitorTimer = setTimeout(() => monitoring.value = false, remaining)
     })
     const stop = watch(
-      [() => voiceMessages.isRecording || state.value?.phase === 'capturing' || monitoring.value, () => devices.input],
+      [() => voiceMessages.isRecording || state.value?.phase === 'capturing' || (monitoring.value && devices.heldOpen), () => devices.input],
       ([capturing, input]) => {
         observation?.abort('Voice capture changed')
         observation = undefined
@@ -352,6 +358,13 @@ export const useVoiceStore = defineStore('voice', () => {
     const opened = new Set<string>()
     const stops = [
       voiceMessages.connect(),
+      // The microphone switch ends every input, also dictation in a composer. The input is cancelled, not submitted,
+      // because the user turned the microphone off and did not finish speaking.
+      // The watcher is synchronous, so the input ends before the device store closes the microphone.
+      watch(() => devices.off, (off) => {
+        if (off)
+          controller.activeInput?.cancel('The microphone is turned off')
+      }, { flush: 'sync' }),
       publishInputLevel(),
       context.on(voiceGenerationEnded, ({ body }) => {
         if (!body)
@@ -370,6 +383,8 @@ export const useVoiceStore = defineStore('voice', () => {
               return { status: 'closed' }
 
             const attempt = beginManual(command.sessionId)
+            if (!attempt)
+              return { status: 'closed' }
             inputRequests.set(command.requestId, attempt)
             if (command.target === 'composer')
               composerInputs.set(attempt.id, undefined)

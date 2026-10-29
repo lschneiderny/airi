@@ -1,5 +1,5 @@
 import { createPinia, disposePinia } from 'pinia'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h } from 'vue'
 import { createI18n } from 'vue-i18n'
 
@@ -30,6 +30,7 @@ function mountDevices() {
 
 afterEach(() => {
   cleanups.splice(0).forEach(cleanup => cleanup())
+  vi.restoreAllMocks()
   localStorage.clear()
 })
 
@@ -127,6 +128,29 @@ describe('microphone settings through the browser adapter', () => {
 
     hearing.inputMode = 'push-to-talk'
     await expect.poll(() => track.readyState).toBe('ended')
+  })
+
+  // The microphone switch must close a microphone that the listening preference holds open, and keep it closed.
+  it('closes the held microphone and refuses new captures while the microphone is off', async () => {
+    const devices = mountDevices()
+    const hearing = useHearingStore()
+    expect(await devices.askPermission()).toBe(true)
+    await expect.poll(() => devices.selectedAudioInput).not.toBe('')
+    hearing.inputMode = 'always-on'
+    devices.enabled = true
+    devices.initialize()
+    await expect.poll(() => devices.stream?.getAudioTracks()[0].readyState).toBe('live')
+    const track = devices.stream!.getAudioTracks()[0]
+
+    devices.off = true
+
+    expect(devices.listening).toBe(false)
+    expect(devices.heldOpen).toBe(false)
+    await expect.poll(() => track.readyState).toBe('ended')
+    const reader = devices.input.subscribe({ signal: new AbortController().signal }).getReader()
+    await expect(reader.read()).rejects.toThrow('The microphone is turned off in AIRI')
+    // Browser test files run in parallel and share storage. Turn the persisted switch back at once.
+    devices.off = false
   })
 
   it('keeps the selected device and exposes unavailable-device failures', async () => {
