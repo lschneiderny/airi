@@ -4,7 +4,7 @@ import type { Live2DModelCanvasRect } from './head-anchor'
 import type { Live2DTouchGestureInspection, Live2DTouchRegion } from './touch-gestures'
 
 import { live2DCanvasRectToViewport } from './head-anchor'
-import { live2DPetThresholds, live2DPetZoneRect } from './touch-gestures'
+import { live2DPetExitZoneRect, live2DPetThresholds, live2DPetZoneRect } from './touch-gestures'
 import { live2DTouchRegionAt } from './touch-regions'
 
 interface Live2DTouchDebugPoint {
@@ -18,6 +18,8 @@ export interface Live2DTouchDebugRegions {
   touch: Live2DModelCanvasRect | null
   /** The margin zone around `touch` where pet strokes may overshoot. */
   zone: Live2DModelCanvasRect | null
+  /** The wider zone that keeps a started pet alive. */
+  exitZone: Live2DModelCanvasRect | null
   /** The unscaled interaction head box; its width is the cursor-attention unit. */
   cursorUnit: Live2DModelCanvasRect | null
   /** The box around every drawn drawable; body pokes use it. */
@@ -96,6 +98,7 @@ export interface Live2DTouchDebugInput {
 export const live2DTouchDebugColors = {
   touch: '#22c55e',
   zone: '#22c55e',
+  exitZone: '#84cc16',
   cursorUnit: '#3b82f6',
   body: '#f97316',
   eyeAnchor: '#3b82f6',
@@ -126,6 +129,7 @@ export function buildLive2DTouchDebug(input: Live2DTouchDebugInput): { snapshot:
   const model: Live2DTouchDebugRegions = {
     touch: input.touch ?? null,
     zone: input.touch ? live2DPetZoneRect(input.touch) : null,
+    exitZone: input.touch ? live2DPetExitZoneRect(input.touch) : null,
     cursorUnit: input.cursorUnit ?? null,
     body: input.body ?? null,
     eyeAnchor: input.eyeAnchor ?? null,
@@ -133,6 +137,7 @@ export function buildLive2DTouchDebug(input: Live2DTouchDebugInput): { snapshot:
   const viewport: Live2DTouchDebugRegions = {
     touch: model.touch && toViewport(model.touch),
     zone: model.zone && toViewport(model.zone),
+    exitZone: model.exitZone && toViewport(model.exitZone),
     cursorUnit: model.cursorUnit && toViewport(model.cursorUnit),
     body: model.body && toViewport(model.body),
     eyeAnchor: model.eyeAnchor && pointToViewport(model.eyeAnchor),

@@ -39,6 +39,16 @@ function box(rect: Live2DModelCanvasRect) {
         stroke-width="1.5"
       />
       <rect
+        v-if="overlay.regions.exitZone"
+        data-region="exit-zone"
+        v-bind="box(overlay.regions.exitZone)"
+        :stroke="colors.exitZone"
+        fill="none"
+        stroke-width="1"
+        stroke-dasharray="3 5"
+        :stroke-opacity="overlay.petting ? 1 : 0.5"
+      />
+      <rect
         v-if="overlay.regions.zone"
         data-region="zone"
         v-bind="box(overlay.regions.zone)"

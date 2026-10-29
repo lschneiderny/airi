@@ -316,6 +316,7 @@ devtools:
         legend:
           touch: Head (pet and head poke)
           zone: Pet margin
+          exit-zone: Pet exit margin
           cursor-unit: Cursor unit
           body: Body (body poke)
           eye-anchor: Eye anchor
@@ -339,6 +340,7 @@ devtools:
         boxes:
           touch: Head
           zone: Pet margin
+          exitZone: Pet exit margin
           cursorUnit: Cursor unit
           body: Body
           columns:

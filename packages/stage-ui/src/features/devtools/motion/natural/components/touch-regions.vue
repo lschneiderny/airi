@@ -26,6 +26,7 @@ const enabled = computed({
 const legend = computed(() => ([
   ['touch', live2DTouchDebugColors.touch, 'solid'],
   ['zone', live2DTouchDebugColors.zone, 'dashed'],
+  ['exit-zone', live2DTouchDebugColors.exitZone, 'dotted'],
   ['cursor-unit', live2DTouchDebugColors.cursorUnit, 'dotted'],
   ['body', live2DTouchDebugColors.body, 'solid'],
   ['eye-anchor', live2DTouchDebugColors.eyeAnchor, 'solid'],
@@ -39,7 +40,7 @@ const boxRows = computed(() => {
   const current = snapshot.value
   if (!current)
     return []
-  return (['touch', 'zone', 'cursorUnit', 'body'] as const).map(id => ({
+  return (['touch', 'zone', 'exitZone', 'cursorUnit', 'body'] as const).map(id => ({
     id,
     label: t(`${prefix}.boxes.${id}`),
     model: current.model[id],

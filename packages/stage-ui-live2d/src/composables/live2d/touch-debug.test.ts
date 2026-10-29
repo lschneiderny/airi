@@ -4,7 +4,7 @@ import { Matrix } from '@pixi/math'
 import { describe, expect, it } from 'vitest'
 
 import { buildLive2DTouchDebug } from './touch-debug'
-import { live2DPetThresholds, live2DPetZoneRect, Live2DTouchGestures } from './touch-gestures'
+import { live2DPetExitZoneRect, live2DPetThresholds, live2DPetZoneRect, Live2DTouchGestures } from './touch-gestures'
 
 function input(overrides: Partial<Live2DTouchDebugInput> = {}): Live2DTouchDebugInput {
   return {
@@ -40,6 +40,8 @@ describe('live2d touch debug', () => {
     expect(snapshot.viewport.eyeAnchor).toEqual({ x: 110, y: 147 })
     expect(snapshot.model.zone).toEqual(live2DPetZoneRect({ x: 100, y: 100, width: 200, height: 300 }))
     expect(snapshot.viewport.zone).toEqual({ x: 10, y: 17, width: 200, height: 215 })
+    expect(snapshot.model.exitZone).toEqual(live2DPetExitZoneRect({ x: 100, y: 100, width: 200, height: 300 }))
+    expect(snapshot.viewport.exitZone).toEqual({ x: -40, y: -33, width: 300, height: 310 })
     expect(overlay.regions).toEqual(snapshot.viewport)
   })
 
@@ -59,7 +61,7 @@ describe('live2d touch debug', () => {
   it('reports absent regions as null instead of inventing boxes', () => {
     const { snapshot } = buildLive2DTouchDebug(input({ touch: undefined, cursorUnit: undefined, eyeAnchor: undefined, source: null, pointer: undefined }))
 
-    expect(snapshot.model).toMatchObject({ touch: null, zone: null, cursorUnit: null, eyeAnchor: null })
+    expect(snapshot.model).toMatchObject({ touch: null, zone: null, exitZone: null, cursorUnit: null, eyeAnchor: null })
     expect(snapshot.viewport.touch).toBeNull()
     expect(snapshot.pointer).toBeNull()
     expect(snapshot.source).toBeNull()
