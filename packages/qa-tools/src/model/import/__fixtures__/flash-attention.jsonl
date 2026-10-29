@@ -1,0 +1,1 @@
+{"model":"reason:14b","caps":["tools","thinking"],"withTools":true,"thinking":true,"turns":[{"turn":1,"user":"hey","text":"flash","thinkingText":"","toolCalls":[],"finish":null,"error":"timeout","totalMs":8}],"probes":[]}
