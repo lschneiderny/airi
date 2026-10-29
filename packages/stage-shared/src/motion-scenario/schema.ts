@@ -1,9 +1,11 @@
 import type { InferOutput } from 'valibot'
 
-import type { Band, PerformanceEmotion } from '../expression-performance/types'
+import type { Band } from '../expression-performance/types'
 import type { PerformanceMode } from '../performance-state'
 
 import { array, boolean, check, finite, integer, literal, maxValue, minLength, minValue, nullable, number, optional, picklist, pipe, rawCheck, strictObject, string, unknown, variant } from 'valibot'
+
+import { PERFORMANCE_EMOTIONS } from '../expression-performance/types'
 
 /** The QA levels a scenario can run at: T1 simulated pipeline, T2 headless rig, T3 rendered app. */
 export const motionScenarioLevels = ['t1', 't2', 't3'] as const
@@ -12,9 +14,8 @@ export type MotionScenarioLevel = typeof motionScenarioLevels[number]
 // NOTICE:
 // These picklists duplicate unions that stage-shared owns elsewhere (or, for `PostureHome`, that stage-ui-live2d owns,
 // which stage-shared must not import). The `satisfies` clauses make the compiler reject drift on the stage-shared side.
-// Source: expression-performance/types.ts, performance-state/index.ts, stage-ui-live2d natural-motion/posture.ts.
+// Source: performance-state/index.ts, stage-ui-live2d natural-motion/posture.ts.
 // Removal condition: the unions become exported value arrays in their owning modules.
-const emotions = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral', 'love', 'flustered', 'sleepy'] as const satisfies readonly PerformanceEmotion[]
 const bands = ['slight', 'clear', 'strong'] as const satisfies readonly Band[]
 const modes = ['idle', 'watching', 'listening', 'thinking', 'talking'] as const satisfies readonly PerformanceMode[]
 const postureHomes = ['product', 'desk'] as const
@@ -26,7 +27,7 @@ const trialId = optional(nonEmpty)
 
 /** One scheduled input of a motion scenario. `at` is seconds from the scenario start. */
 export const ScenarioEventSchema = variant('kind', [
-  strictObject({ kind: literal('emotion'), at: seconds, emotion: picklist(emotions), band: picklist(bands), source: picklist(['devtools', 'act']), trialId }),
+  strictObject({ kind: literal('emotion'), at: seconds, emotion: picklist(PERFORMANCE_EMOTIONS), band: picklist(bands), source: picklist(['devtools', 'act']), trialId }),
   /** `marker` is the raw `<|ACT {...}|>` text. */
   strictObject({ kind: literal('act'), at: seconds, marker: nonEmpty, trialId }),
   strictObject({ kind: literal('mode'), at: seconds, mode: picklist(modes), energy: optional(pipe(number(), finite(), minValue(0), maxValue(1))) }),

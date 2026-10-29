@@ -4944,9 +4944,15 @@ importers:
       '@proj-airi/electron-screen-capture':
         specifier: workspace:^
         version: link:../electron-screen-capture
+      '@proj-airi/i18n':
+        specifier: workspace:^
+        version: link:../i18n
       '@types/audioworklet':
         specifier: 'catalog:'
         version: 0.0.100
+      vue-i18n:
+        specifier: 'catalog:'
+        version: 11.4.9(vue@3.5.41(typescript@6.0.3))
 
   packages/stage-ui:
     dependencies:
