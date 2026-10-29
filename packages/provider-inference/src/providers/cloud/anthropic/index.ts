@@ -3,7 +3,7 @@ import type { ModelInfo } from '../../../types'
 import { createChatProvider, createModelProvider, merge } from '@xsai-ext/providers/utils'
 import { z } from 'zod'
 
-import { ProviderValidationCheck } from '../../../types'
+import { isModelProvider, ProviderValidationCheck } from '../../../types'
 import { createOpenAICompatibleValidators } from '../../../validators'
 import { defineProvider } from '../../registry'
 
@@ -17,6 +17,27 @@ const anthropicConfigSchema = z.object({
 })
 
 type AnthropicConfig = z.input<typeof anthropicConfigSchema>
+
+/** The fields AIRI reads from an Anthropic `GET /v1/models` entry. */
+interface AnthropicModel {
+  id: string
+  display_name?: string
+  lifecycle?: 'active' | 'deprecated' | 'retired'
+  max_input_tokens?: number | null
+  capabilities?: { image_input?: { supported: boolean } } | null
+}
+
+function toModelInfo(model: AnthropicModel): ModelInfo {
+  const vision = model.capabilities?.image_input?.supported
+  return {
+    id: model.id,
+    name: model.display_name ?? model.id,
+    provider: 'anthropic',
+    ...(vision === undefined ? {} : { metadata: { abilities: { vision } } }),
+    ...(model.max_input_tokens ? { contextLength: model.max_input_tokens } : {}),
+    deprecated: model.lifecycle === 'deprecated',
+  }
+}
 
 function createAnthropic(apiKey: string, baseURL: string = 'https://api.anthropic.com/v1/') {
   const anthropicFetch = async (input: any, init: any) => {
@@ -66,26 +87,24 @@ export const providerAnthropic = defineProvider<AnthropicConfig, 'anthropic'>({
   },
 
   extraMethods: {
-    listModels: async () => ([
-      {
-        id: 'claude-haiku-4-5-20251001',
-        name: 'Claude Haiku 4.5',
-        provider: 'anthropic',
-        description: 'Anthropic fastest model with near-frontier intelligence',
-      },
-      {
-        id: 'claude-sonnet-4-5-20250929',
-        name: 'Claude Sonnet 4.5',
-        provider: 'anthropic',
-        description: 'Anthropic smartest model for complex agents and coding',
-      },
-      {
-        id: 'claude-opus-4-1-20250805',
-        name: 'Claude Opus 4.1',
-        provider: 'anthropic',
-        description: 'Exceptional model for specialized reasoning tasks',
-      },
-    ] satisfies ModelInfo[]),
+    // The endpoint lists active and deprecated models by default and pages at
+    // 20, so request the largest page to get the whole catalog in one call.
+    listModels: async (_config, provider) => {
+      if (!isModelProvider(provider))
+        throw new Error('Anthropic provider must support model listing')
+
+      const { apiKey, baseURL, fetch = globalThis.fetch } = provider.model()
+      const url = new URL('models', String(baseURL).endsWith('/') ? String(baseURL) : `${baseURL}/`)
+      url.searchParams.set('limit', '1000')
+      const response = await fetch(url, {
+        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+      })
+      if (!response.ok)
+        throw new Error(`Failed to list Anthropic models: HTTP ${response.status} ${await response.text()}`)
+
+      const { data } = await response.json() as { data: AnthropicModel[] }
+      return data.filter(model => model.lifecycle !== 'retired').map(toModelInfo)
+    },
   },
   validationRequiredWhen(config) {
     return !!config.apiKey?.trim()
