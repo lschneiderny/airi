@@ -6,6 +6,14 @@ import { createFallbackOptions } from '@proj-airi/i18n'
 import { composeSystemPrompt, renderStageContract } from '@proj-airi/stage-shared/stage-contract'
 import { createI18n } from 'vue-i18n'
 
+/** Extracts spoken examples using the same rule as the rendered contract. */
+export function extractExampleLines(text: string): string[] {
+  return text.split('\n').flatMap((line) => {
+    const match = /^<\|ACT[^|]*\|>(.+)$/.exec(line)
+    return match ? [match[1].trim()] : []
+  }).filter(Boolean)
+}
+
 /** Renders the app's contract from installed locale messages, collecting missing-English warnings. */
 export function buildStageContract(locale = 'en') {
   const warnings: string[] = []
@@ -19,10 +27,7 @@ export function buildStageContract(locale = 'en') {
   })
   const text = renderStageContract(i18n.global.t)
   const sha256 = createHash('sha256').update(text).digest('hex')
-  const exampleLines = text.split('\n').flatMap((line) => {
-    const match = /^<\|ACT[^|]*\|>(.+)$/.exec(line)
-    return match ? [match[1].trim()] : []
-  }).filter(Boolean)
+  const exampleLines = extractExampleLines(text)
 
   return { text, sha256, version: sha256.slice(0, 12), warnings, exampleLines }
 }
