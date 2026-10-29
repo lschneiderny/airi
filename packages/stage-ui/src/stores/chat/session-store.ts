@@ -7,6 +7,7 @@ import type { ChatHistoryItem } from '../../types/chat'
 import type { ChatSessionMeta, ChatSessionRecord, ChatSessionsExport, ChatSessionsIndex, StoredUnpromptedDecline, StoredVoiceInterruption } from '../../types/chat-session'
 
 import { errorMessageFrom } from '@moeru/std'
+import { composeSystemPrompt } from '@proj-airi/stage-shared/stage-contract'
 import { cloneDeep } from 'es-toolkit'
 import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
@@ -134,16 +135,6 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   // `pushMessageToCloud post-enqueue` triggers don't double-send.
   let outboxDrainTask: Promise<void> | undefined
 
-  // I know this nu uh, better than loading all language on rehypeShiki
-  const codeBlockSystemPrompt = '- For any programming code block, always specify the programming language that supported on @shikijs/rehype on the rendered markdown, eg. ```python ... ```\n'
-  const mathSyntaxSystemPrompt = `${[
-    '- Use $$...$$ for inline math.',
-    '- Use a separate multiline $$ block for each display equation.',
-    '- Use a latex fence for a list of independent one-line equations.',
-    '- Use a math fence for one multiline equation or LaTeX environment.',
-    '- Do not use single dollar signs as math delimiters.',
-  ].join('\n')}\n`
-
   function getCurrentUserId() {
     return userId.value || 'local'
   }
@@ -208,8 +199,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
 
   /** Composes a system prompt from the fixed formatting rules, the character prompt, and the stage contract. */
   function systemPromptFrom(characterPrompt: string, contract: string) {
-    const prompt = codeBlockSystemPrompt + mathSyntaxSystemPrompt + characterPrompt
-    return contract ? `${prompt}\n\n${contract}` : prompt
+    return composeSystemPrompt(characterPrompt, contract)
   }
 
   /**

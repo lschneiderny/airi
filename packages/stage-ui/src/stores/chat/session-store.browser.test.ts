@@ -2,6 +2,7 @@ import type { LeadershipMode, SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { ChatSessionMeta } from '../../types/chat-session'
 
+import { CODE_BLOCK_SYSTEM_PROMPT, MATH_SYNTAX_SYSTEM_PROMPT } from '@proj-airi/stage-shared/stage-contract'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -229,6 +230,7 @@ describe('chat session synchronization', () => {
 
     expect(store.getSessionMessages(active)[0]?.content).toBe(store.getSessionSystemPrompt(active))
     expect(store.getSessionSystemPrompt(active).endsWith('\n\nStage contract A')).toBe(true)
+    expect(String(store.getSessionMessages(active)[0]?.content).startsWith(CODE_BLOCK_SYSTEM_PROMPT + MATH_SYNTAX_SYSTEM_PROMPT)).toBe(true)
 
     store.setStageContract('Stage contract B')
     await nextTick()
