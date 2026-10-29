@@ -1472,7 +1472,7 @@ watch(live2dNaturalTouchHeadScale, () => {
 
 /** Ends any gesture in progress and drops queued pokes, for a model swap or disabled touch. */
 function resetTouch(timeMs: number) {
-  handleTouchEvents(touchGestures.cancelled(timeMs))
+  handleTouchEvents(touchGestures.reset(timeMs))
   pendingNaturalPokes.length = 0
   naturalPetHand = null
   touchRegions = undefined

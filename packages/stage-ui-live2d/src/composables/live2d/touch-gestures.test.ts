@@ -2,7 +2,7 @@ import type { Live2DTouchEvent, Live2DTouchRegion, Live2DTouchSample } from './t
 
 import { describe, expect, it } from 'vitest'
 
-import { live2DPetThresholds, live2DPetZoneRect, Live2DTouchGestures } from './touch-gestures'
+import { live2DPetExitZoneRect, live2DPetThresholds, live2DPetZoneRect, Live2DTouchGestures } from './touch-gestures'
 
 const headWidth = 100
 
@@ -90,11 +90,44 @@ describe('live2d touch gestures', () => {
     expect(gestures.petting).toBe(false)
   })
 
-  it('ends any pet when the pointer is cancelled', () => {
+  it('gives a cancelled pointer the leave grace before its pet ends', () => {
     const gestures = new Live2DTouchGestures()
     stroke(gestures, 0, 1000)
-    expect(gestures.cancelled(1010)).toEqual([{ kind: 'pet-end', durationMs: expect.any(Number) }])
-    expect(gestures.cancelled(1020)).toEqual([])
+    expect(gestures.cancelled(1010)).toEqual([])
+    expect(gestures.update(1010 + live2DPetThresholds.leaveMs)).toEqual([])
+    expect(gestures.update(1011 + live2DPetThresholds.leaveMs)).toEqual([{ kind: 'pet-end', durationMs: expect.any(Number) }])
+    expect(gestures.cancelled(1300)).toEqual([])
+  })
+
+  it('keeps a pet whose pointer returns within the leave grace after a cancel', () => {
+    const gestures = new Live2DTouchGestures()
+    stroke(gestures, 0, 1000)
+    expect(gestures.cancelled(1010)).toEqual([])
+    expect(stroke(gestures, 1100, 1500)).toEqual([])
+    expect(gestures.inspect(1500)).toMatchObject({ petting: true, offHeadMs: null })
+  })
+
+  it('ends any pet at once on reset', () => {
+    const gestures = new Live2DTouchGestures()
+    stroke(gestures, 0, 1000)
+    expect(gestures.reset(1010)).toEqual([{ kind: 'pet-end', durationMs: expect.any(Number) }])
+    expect(gestures.reset(1020)).toEqual([])
+  })
+
+  it.each([
+    ['sideways', 1.3, 0],
+    ['below the chin', 0, 0.95],
+  ])('keeps petting through a stroke that overshoots %s past the start margin', (_, x, y) => {
+    const gestures = new Live2DTouchGestures()
+    expect(headStrokes(gestures, 60, 0.3, 1.2, 2000).map(entry => entry.event)).toEqual([{ kind: 'pet-start' }])
+    // A second of small movement outside the start margin but inside the exit margin.
+    const events: Live2DTouchEvent[] = []
+    for (let frame = 1; frame <= 60; frame++) {
+      const wiggle = 0.1 * Math.sin(frame / 3)
+      events.push(...gestures.moved(headAt(2000 + frame * 1000 / 60, x + (y === 0 ? wiggle : 0), y + (y === 0 ? 0 : wiggle))))
+    }
+    expect(events).toEqual([])
+    expect(gestures.inspect(3000)).toMatchObject({ petting: true, inZone: true, offHeadMs: null })
   })
 
   it.each([30, 60, 144, 240])('holds one continuous pet at %i Hz and ends after resting', (hz) => {
@@ -124,8 +157,8 @@ describe('live2d touch gestures', () => {
     expect(events).toEqual([])
   })
 
-  it('does not pet a wiggle confined to the margin', () => {
-    expect(headStrokes(new Live2DTouchGestures(), 144, 0.2, 1.2, 4000, 0.75)).toEqual([])
+  it.each([0.75, 1.25])('does not pet a wiggle confined to the margin around %f', (center) => {
+    expect(headStrokes(new Live2DTouchGestures(), 144, 0.2, 1.2, 4000, center)).toEqual([])
   })
 
   it.each(['update', 'moved'] as const)('commits a still hover press once at 90 ms through %s', (method) => {
@@ -259,6 +292,25 @@ describe('live2d touch gesture inspection', () => {
         head: { x: x / head.width, y: y / head.width, halfHeight: head.height / 2 / head.width },
       })
       return gestures.inspect(0).inZone
+    }
+
+    for (const [x, y] of [[zone.x, 0], [zone.x + zone.width, 0], [0, zone.y], [0, zone.y + zone.height]])
+      expect(inZone(x, y)).toBe(true)
+    for (const [x, y] of [[zone.x - 1, 0], [zone.x + zone.width + 1, 0], [0, zone.y - 1], [0, zone.y + zone.height + 1]])
+      expect(inZone(x, y)).toBe(false)
+  })
+
+  it('draws the exit zone exactly where a started pet keeps counting', () => {
+    const head = { x: -50, y: -50, width: 100, height: 100 }
+    const zone = live2DPetExitZoneRect(head)
+    const inZone = (x: number, y: number) => {
+      const gestures = new Live2DTouchGestures()
+      expect(headStrokes(gestures, 60, 0.3, 1.2, 2000).map(entry => entry.event)).toEqual([{ kind: 'pet-start' }])
+      gestures.moved({
+        ...at(2016, x, y, null),
+        head: { x: x / head.width, y: y / head.width, halfHeight: head.height / 2 / head.width },
+      })
+      return gestures.inspect(2016).inZone
     }
 
     for (const [x, y] of [[zone.x, 0], [zone.x + zone.width, 0], [0, zone.y], [0, zone.y + zone.height]])

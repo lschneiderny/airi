@@ -30,7 +30,7 @@ export type Live2DTouchEvent
 export interface Live2DTouchGestureInspection {
   petting: boolean
   requireHold: boolean
-  /** Whether the latest moved sample lay in the margin zone and counted toward a pet. */
+  /** Whether the latest moved sample lay in the zone that counts toward a pet: the start margin, or the wider exit margin once petting. */
   inZone: boolean
   /** The pet-window trail in model canvas space; `inHead` marks points inside the true head box. */
   trail: { x: number, y: number, inHead: boolean }[]
@@ -63,6 +63,12 @@ const petStartTravel = 0.35
 const idleStep = 0.03
 /** Head-width margins added to the head bounds when deciding whether a pointer is over the head. */
 const headMargin = { side: 0.5, top: 0.5, bottom: 0.15 }
+/**
+ * Wider margins that keep a started pet alive, so a stroke that overshoots the start zone does
+ * not end the pet and restart it a moment later. The bottom gains the most because strokes
+ * down the face run off the chin.
+ */
+const headExitMargin = { side: 1, top: 1, bottom: 0.6 }
 /** Share of elapsed pet-window time the trail must lie over the head. */
 const minInHeadShare = 0.5
 /** Segments shorter than this neither count as a reversal nor reset one. */
@@ -82,15 +88,24 @@ export const live2DPetThresholds = {
   leaveMs: petLeaveMs,
 } as const
 
-/** The margin zone around `head` where pet strokes may overshoot, in the same space as `head`. */
-export function live2DPetZoneRect(head: Live2DModelCanvasRect): Live2DModelCanvasRect {
+function marginRect(head: Live2DModelCanvasRect, margin: typeof headMargin): Live2DModelCanvasRect {
   const unit = head.width
   return {
-    x: head.x - headMargin.side * unit,
-    y: head.y - headMargin.top * unit,
-    width: unit * (1 + 2 * headMargin.side),
-    height: head.height + (headMargin.top + headMargin.bottom) * unit,
+    x: head.x - margin.side * unit,
+    y: head.y - margin.top * unit,
+    width: unit * (1 + 2 * margin.side),
+    height: head.height + (margin.top + margin.bottom) * unit,
   }
+}
+
+/** The margin zone around `head` where pet strokes may overshoot, in the same space as `head`. */
+export function live2DPetZoneRect(head: Live2DModelCanvasRect): Live2DModelCanvasRect {
+  return marginRect(head, headMargin)
+}
+
+/** The wider zone that keeps a started pet alive, in the same space as `head`. */
+export function live2DPetExitZoneRect(head: Live2DModelCanvasRect): Live2DModelCanvasRect {
+  return marginRect(head, headExitMargin)
 }
 
 interface Point {
@@ -114,7 +129,9 @@ interface Point {
  * Hover pokes commit after 90 ms of a still press, or on an earlier release. A drag
  * permanently resolves the pending press without a poke. Held-only mode commits on release.
  * Pets need 0.35 head widths of travel in 1.5 seconds, with at least half the trail time
- * inside the true head. Optional head geometry allows overshoots into a margin zone.
+ * inside the true head. Optional head geometry allows overshoots into a margin zone, and a
+ * started pet keeps counting in a wider exit zone so an overshoot does not end it. Beyond
+ * that zone, or off the canvas, a pet survives a short leave grace before it ends.
  * Hover travel must reverse once to reject passing cursors. An accumulated movement
  * anchor refreshes the idle clock at any pointer rate. With `requireHold`, only held
  * movement counts, and a press that becomes a pet never also becomes a poke.
@@ -162,17 +179,22 @@ export class Live2DTouchGestures {
       this.press = undefined
     const counts = !this.requireHold || this.held
     const head = sample.head
+    const margin = this.petting ? headExitMargin : headMargin
     const inZone = head
-      ? Math.abs(head.x) <= 0.5 + headMargin.side
-      && head.y >= -head.halfHeight - headMargin.top && head.y <= head.halfHeight + headMargin.bottom
+      ? Math.abs(head.x) <= 0.5 + margin.side
+      && head.y >= -head.halfHeight - margin.top && head.y <= head.halfHeight + margin.bottom
       : sample.region === 'head'
     this.lastScale = sample.scale
     this.lastInZone = inZone && counts
     if (!inZone || !counts) {
-      this.trail = []
-      this.moveAnchor = undefined
-      if (this.petting)
+      // A pet keeps its trail through an excursion; the leave timer decides whether it ends.
+      if (this.petting) {
         this.leftHeadAtMs ??= sample.timeMs
+      }
+      else {
+        this.trail = []
+        this.moveAnchor = undefined
+      }
       return this.update(sample.timeMs)
     }
 
@@ -209,10 +231,29 @@ export class Live2DTouchGestures {
     return [...events, ...this.expire(sample.timeMs)]
   }
 
-  /** The pointer left the canvas or the browser cancelled it; any pet ends now. */
+  /**
+   * The pointer left the canvas or the browser cancelled it. A pet gets the same leave grace as
+   * a pointer off the head, so a brush past the canvas edge does not end it; `update` ends it
+   * once the grace runs out.
+   */
   cancelled(timeMs: number): Live2DTouchEvent[] {
     this.press = undefined
     this.held = false
+    this.lastInZone = false
+    if (this.petting) {
+      this.leftHeadAtMs ??= timeMs
+      return this.expire(timeMs)
+    }
+    this.trail = []
+    this.moveAnchor = undefined
+    return []
+  }
+
+  /** Ends any gesture at once, for a model swap or disabled touch. */
+  reset(timeMs: number): Live2DTouchEvent[] {
+    this.press = undefined
+    this.held = false
+    this.lastInZone = false
     this.trail = []
     this.moveAnchor = undefined
     return this.petting ? [this.endPet(timeMs)] : []
