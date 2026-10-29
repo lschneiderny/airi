@@ -16,6 +16,13 @@ This personal fork keeps local development workflows, not upstream publishing or
 | `analyze-io-traces` | Saved chat, voice, and audio trace analysis. |
 | `motion-qa` | Motion, emotion, and idle QA levels, gates, and evidence workflow. |
 
+## Planning vault
+
+| Skill | Use |
+| --- | --- |
+| `idea` | Save an idea or bug to the Obsidian vault inbox at `Z:/Obsidian/dTuber/00 Inbox`. |
+| `triage` | Propose and apply outcomes for vault inbox notes after the user approves them. |
+
 ## Tools and integration references
 
 | Skill | Use |
