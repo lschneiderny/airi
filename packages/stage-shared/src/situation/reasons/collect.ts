@@ -53,9 +53,8 @@ function screenReasons(situation: SituationState, nowMs: number): Reason[] {
       if (event.tier < LONG_SESSION_MIN_TIER)
         continue
       // A `long-session` event that matured before the latest `returned` event
-      // is skipped: the reducer keeps counting tiers while the user is away
-      // (task-8 review N7), so such a tier describes time the user did not
-      // spend in the app.
+      // is skipped: the reducer keeps counting tiers while the user is away,
+      // so such a tier describes time the user did not spend in the app.
       if (returnedAtMs !== null && event.atMs < returnedAtMs)
         continue
     }

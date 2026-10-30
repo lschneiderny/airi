@@ -32,7 +32,6 @@ import {
   isSourceInNamespace,
   isTopicFromSource,
   LOGICAL_DAY_ROLLOVER_HOUR,
-  logicalDayKey,
   markShown,
   markAddressed as markSituationAddressed,
   notifyTopicKey,
@@ -54,7 +53,7 @@ import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { computed, shallowRef, watch } from 'vue'
 
-import { useSituationInnerState } from '../../features/situation/inner-state'
+import { localLogicalDayKey, useSituationInnerState } from '../../features/situation/inner-state'
 import { useSituationSettings } from '../../features/situation/settings'
 import { createThreadExtractor } from '../../features/situation/thread-extraction'
 import { chatComposerActivityChangedEvent, getSpeechBusContext, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
@@ -124,7 +123,7 @@ function randomSeed(): number {
 function localTimeFor(nowMs: number): GateLocalTime {
   const date = new Date(nowMs)
   return {
-    dayKey: logicalDayKey({ year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate(), hour: date.getHours() }),
+    dayKey: localLogicalDayKey(nowMs),
     minuteOfDay: date.getHours() * 60 + date.getMinutes(),
   }
 }

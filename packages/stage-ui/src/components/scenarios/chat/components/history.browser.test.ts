@@ -793,8 +793,14 @@ describe('chat history', () => {
         return { screen, text: line.textContent?.trim() }
       }
 
+      const { t } = createEnglishI18n().global
+      const expected = t('stage.chat.unprompted.cue', { label: t('stage.chat.unprompted.labels.thread-question') })
+      // A missing locale entry renders the key, and the topic text is the fallback; neither may pass as the label.
+      expect(expected).not.toContain('stage.chat.unprompted')
+      expect(expected).not.toBe(t('stage.chat.unprompted.cue', { label: 'QA topic' }))
+
       const known = await cueLabel('thread-question')
-      expect(known.text).toBe('Reached out: to follow up on something they said')
+      expect(known.text).toBe(expected)
       known.screen.unmount()
 
       const bogus = await cueLabel('bogus')

@@ -108,7 +108,7 @@ function readStoredInnerState(raw: string): SavedInnerState {
 }
 
 /** The logical day (04:00 rollover) of `nowMs` in the host's local time zone. */
-function localLogicalDayKey(nowMs: number): string {
+export function localLogicalDayKey(nowMs: number): string {
   const date = new Date(nowMs)
   return logicalDayKey({ year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate(), hour: date.getHours() })
 }

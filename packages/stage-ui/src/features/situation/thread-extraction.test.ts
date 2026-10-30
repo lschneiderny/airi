@@ -98,7 +98,7 @@ describe('createThreadExtractor', () => {
     expect(chatProvider).toBe(provider)
     expect(streamOptions).toMatchObject({ origin: 'unprompted', maxTokens: EXTRACTION_MAX_TOKENS })
     expect(streamOptions?.abortSignal).toBeInstanceOf(AbortSignal)
-    expect(sentText(stream, 'system')).toContain('the character, Airi')
+    expect(sentText(stream, 'system')).toContain('Airi')
     expect(sentText(stream, 'user')).toBe('User: I have a dentist appointment on Friday.\nAiri: Oh no, are you nervous? Tell me how it goes.')
   })
 

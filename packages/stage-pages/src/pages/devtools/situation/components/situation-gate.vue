@@ -32,10 +32,10 @@ const RITUAL_KINDS = ['greeting', 'sign-off', 'welcome-back'] as const satisfies
 /** Which group a decision belongs to, so a hard suppressor reads differently from a timing hold. */
 function reasonKind(decision: Pick<SituationUrgeDecisionRecord, 'fire' | 'reason'>): string {
   if (decision.fire)
-    return decision.reason === 'forced' ? 'fired, timing skipped' : 'fired'
+    return t(decision.reason === 'forced' ? 'tamagotchi.settings.devtools.pages.situation.gate.reason-kinds.forced' : 'tamagotchi.settings.devtools.pages.situation.gate.reason-kinds.fired')
   if (decision.reason === 'no-topic')
-    return 'no reason to pick'
-  return TIMING_REASONS.has(decision.reason) ? 'timing hold' : 'hard suppressor'
+    return t('tamagotchi.settings.devtools.pages.situation.gate.reason-kinds.no-topic')
+  return t(TIMING_REASONS.has(decision.reason) ? 'tamagotchi.settings.devtools.pages.situation.gate.reason-kinds.timing' : 'tamagotchi.settings.devtools.pages.situation.gate.reason-kinds.suppressor')
 }
 
 function decisionText(decision: Pick<SituationUrgeDecisionRecord, 'fire' | 'topicKey'>): string {
@@ -81,9 +81,17 @@ const ritualsText = computed(() => {
 const pendingText = computed(() => {
   const pending = props.urge.memory?.pending
   if (!pending)
-    return 'none'
-  const outcome = pending.spokenAtMs === null ? 'waiting for its outcome' : `spoken ${formatAgo(pending.spokenAtMs, props.nowMs)}`
-  return `${pending.topicKey} (${pending.category}, ${pending.reasonKind}; fired ${formatAgo(pending.firedAtMs, props.nowMs)}, ${outcome})`
+    return t('tamagotchi.settings.devtools.pages.situation.gate.pending-none')
+  const outcome = pending.spokenAtMs === null
+    ? t('tamagotchi.settings.devtools.pages.situation.gate.pending-waiting')
+    : t('tamagotchi.settings.devtools.pages.situation.gate.pending-spoken', { ago: formatAgo(pending.spokenAtMs, props.nowMs) })
+  return t('tamagotchi.settings.devtools.pages.situation.gate.pending-value', {
+    topic: pending.topicKey,
+    category: pending.category,
+    kind: pending.reasonKind,
+    ago: formatAgo(pending.firedAtMs, props.nowMs),
+    outcome,
+  })
 })
 
 const pickText = computed(() => {
@@ -130,14 +138,12 @@ const evaluationText = computed(() => {
   const { result, atMs } = evaluation
   const at = formatClock(atMs)
   if (result.status === 'skipped') {
-    return result.reason === 'unprompted-pending'
-      ? `${at}: not evaluated, an unprompted turn is still pending.`
-      : `${at}: not evaluated, the leader window runs no gate.`
+    return t(result.reason === 'unprompted-pending' ? 'tamagotchi.settings.devtools.pages.situation.gate.evaluation.skipped-pending' : 'tamagotchi.settings.devtools.pages.situation.gate.evaluation.skipped-leader', { at })
   }
   const { decision } = result
   return decision.fire
-    ? `${at}: fired on ${decision.topicKey} (${decision.reason}, ${decision.category}: ${decision.picked.kind}). The unprompted turn was started.`
-    : `${at}: held (${decision.reason}; ${reasonKind(decision)}). Nothing was sent.`
+    ? t('tamagotchi.settings.devtools.pages.situation.gate.evaluation.fired', { at, topic: decision.topicKey, reason: decision.reason, category: decision.category, kind: decision.picked.kind })
+    : t('tamagotchi.settings.devtools.pages.situation.gate.evaluation.held', { at, reason: decision.reason, group: reasonKind(decision) })
 })
 
 function historyTime(entry: SituationUrgeDecisionHistoryEntry): string {

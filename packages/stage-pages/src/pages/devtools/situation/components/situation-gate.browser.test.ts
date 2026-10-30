@@ -10,11 +10,22 @@ import { createI18n } from 'vue-i18n'
 
 import SituationGate from './situation-gate.vue'
 
+import { formatClock } from '../situation-format'
+
 import 'virtual:uno.css'
 
 const T0 = Date.UTC(2026, 9, 20, 9, 0, 0)
 const i18n = () => createI18n({ legacy: false, locale: 'en', fallbackLocale: 'en', messages: { en } })
 const { t } = i18n().global
+
+const GATE = 'tamagotchi.settings.devtools.pages.situation.gate'
+
+/** Shipped English copy for a gate key; a missing locale entry renders the key, which would match nothing real. */
+function gateText(key: string, params: Record<string, string> = {}): string {
+  const text = t(`${GATE}.${key}`, params)
+  expect(text).not.toContain(GATE)
+  return text
+}
 
 function trace(overrides: Partial<UrgeGateTrace> = {}): UrgeGateTrace {
   return {
@@ -71,7 +82,10 @@ describe('situation gate panel', () => {
     expect(rows.element().querySelector('[data-row="expected-wait"]')?.textContent).toMatch(/~12 min/)
     expect(rows.element().querySelector('[data-row="reopen-at"]')?.textContent).toMatch(/in 30m 00s/)
     expect(rows.element().querySelector('[data-row="pick"]')?.textContent).toMatch(/due: thread:abc \(rolls 0\.123 \/ 0\.568\)/)
-    expect(rows.element().querySelector('[data-row="decision"]')?.textContent).toMatch(/hold \(awaiting-reply; timing hold\)/)
+    const decisionRow = rows.element().querySelector('[data-row="decision"]')?.textContent
+    expect(decisionRow).toContain('awaiting-reply')
+    expect(decisionRow).toContain(gateText('reason-kinds.timing'))
+    expect(decisionRow).not.toContain(gateText('reason-kinds.suppressor'))
     expect(screen.getByTestId('situation-gate-hazards').element().querySelector('[data-hazard="total"]')?.textContent).toMatch(/total\s*0\.375/)
     expect(screen.getByTestId('situation-gate-multipliers').element().querySelector('[data-multiplier="damping"]')?.textContent).toMatch(/damping\s*0\.500/)
     await expect.element(screen.getByTestId('situation-gate-history').getByRole('row').nth(1)).toHaveTextContent(/hold\s*-\s*awaiting-reply/)
@@ -92,10 +106,13 @@ describe('situation gate panel', () => {
     })
 
     const forced = await evaluate({ fire: true, reason: 'forced', category: 'open', topicKey: picked.key, topicText: picked.text, picked, trace: trace({ forceTiming: true }) })
-    await expect.element(forced.getByTestId('situation-gate-evaluation')).toHaveTextContent(/fired on thread:abc \(forced, open: thread-question\)\. The unprompted turn was started\./)
+    const at = formatClock(T0)
+    await expect.element(forced.getByTestId('situation-gate-evaluation'))
+      .toHaveTextContent(gateText('evaluation.fired', { at, topic: 'thread:abc', reason: 'forced', category: 'open', kind: 'thread-question' }))
     cleanup()
 
     const held = await evaluate({ fire: false, reason: 'dont-disturb', trace: trace({ forceTiming: true }) })
-    await expect.element(held.getByTestId('situation-gate-evaluation')).toHaveTextContent(/held \(dont-disturb; hard suppressor\)\. Nothing was sent\./)
+    await expect.element(held.getByTestId('situation-gate-evaluation'))
+      .toHaveTextContent(gateText('evaluation.held', { at, reason: 'dont-disturb', group: gateText('reason-kinds.suppressor') }))
   })
 })

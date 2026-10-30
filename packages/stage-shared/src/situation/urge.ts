@@ -7,9 +7,9 @@ export const FLOOR_MS = 120_000
 /**
  * Tuning: single cadence calibration coefficient at Chattiness 0.5 (design
  * value 0.6). 1.3 is the smallest 0.1 step giving a 200-day mean of at least
- * 3.2 openings per desk day on six seeds (`gate.simulation.test.ts`).
- * 2026-10-30: Luke's question timed out, recommended adopted: cap lifted,
- * calibrated on the 200-day mean.
+ * 3.2 openings per desk day on six seeds (`gate.simulation.test.ts`). The
+ * design cap is lifted so the value is calibrated on the 200-day mean; see
+ * `docs/ai/adr/2026-10-29-unprompted-reach-out-cadence.md`.
  */
 export const BASE_RATE_AT_HALF_PER_HOUR = 1.3
 /** Tuning: rate ratio between the lowest and highest Chattiness. */
