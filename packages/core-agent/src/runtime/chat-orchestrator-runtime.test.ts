@@ -1,5 +1,5 @@
 import type { GenerationProvider } from '@proj-airi/provider-inference'
-import type { Message } from '@xsai/shared-chat'
+import type { Message, Tool } from '@xsai/shared-chat'
 
 import type { Conversation } from '../messages/types'
 import type { ChatHistoryItem, ChatTurnCueStats, ContextMessage, StreamingAssistantMessage } from '../types/chat'
@@ -2395,6 +2395,55 @@ describe('unprompted turns', () => {
     expect(streamOptions?.tools).toBeUndefined()
     expect(tools).not.toHaveBeenCalled()
     expect(harness.commitUserMessage).not.toHaveBeenCalled()
+  })
+
+  it('passes only explicit read-only tools to the stream port for an unprompted turn', async () => {
+    const harness = createHarness()
+    const readTool: Tool = {
+      type: 'function',
+      function: { name: 'read_memory', parameters: { type: 'object', properties: {} } },
+      execute: vi.fn(() => 'remembered fact'),
+    }
+    const writeTool: Tool = {
+      type: 'function',
+      function: { name: 'write_memory', parameters: { type: 'object', properties: {} } },
+      execute: vi.fn(() => 'saved'),
+    }
+    replyWith(harness, ['<|SILENT|>'])
+
+    const request = harness.runtime.submit(triggerText, {
+      ...unpromptedOptions,
+      tools: [readTool, writeTool],
+      unpromptedTools: [readTool],
+    }, 'session-1')
+    await request.done
+
+    expect(harness.stream.mock.calls[0]?.[3]?.tools).toEqual([readTool])
+  })
+
+  it('passes user tools instead of unprompted tools to the stream port for a user turn', async () => {
+    const harness = createHarness()
+    const readTool: Tool = {
+      type: 'function',
+      function: { name: 'read_memory', parameters: { type: 'object', properties: {} } },
+      execute: vi.fn(() => 'remembered fact'),
+    }
+    const writeTool: Tool = {
+      type: 'function',
+      function: { name: 'write_memory', parameters: { type: 'object', properties: {} } },
+      execute: vi.fn(() => 'saved'),
+    }
+
+    const request = harness.runtime.submit('Remember this fact', {
+      model: 'gpt-test',
+      chatProvider: provider,
+      origin: 'user',
+      tools: [readTool, writeTool],
+      unpromptedTools: [readTool],
+    }, 'session-1')
+    await request.done
+
+    expect(harness.stream.mock.calls[0]?.[3]?.tools).toEqual([readTool, writeTool])
   })
 
   // (2)

@@ -169,6 +169,11 @@ export interface ChatOrchestratorSendOptions {
   /** Tool definitions passed through to the LLM stream port. */
   tools?: StreamOptions['tools']
   /**
+   * Tools an unprompted turn may call before it is decided. Only tools without effects belong here,
+   * for example reading memory. A user turn ignores it.
+   */
+  unpromptedTools?: StreamOptions['tools']
+  /**
    * Reads the current settings of the request owner before each model request.
    * The runtime appends this request's system prompt supplement to the returned prompt.
    * Omission keeps `model`, `chatProvider`, and the composed system prompt for every step.
@@ -187,7 +192,7 @@ export interface ChatOrchestratorSendOptions {
   /**
    * Who started the turn. The host starts an `unprompted` turn without user input. Its trigger message reaches the
    * provider but is committed only when the reply is decided as spoken, the model can decline it with
-   * `declineMarker`, and it carries no tools.
+   * `declineMarker`, and it carries only `unpromptedTools`.
    * @default 'user'
    */
   origin?: 'user' | 'unprompted'
@@ -1185,8 +1190,9 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           conversationId: correlation.conversationId,
           turnId: correlation.roundId,
         },
-        // An unprompted turn may only speak or decline. Tool effects would run before the turn is decided.
-        tools: unprompted ? undefined : options.tools,
+        // An unprompted turn may only speak or decline, so it carries only the read-only `unpromptedTools`.
+        // Tool effects would run before the turn is decided.
+        tools: unprompted ? options.unpromptedTools : options.tools,
         origin: unprompted ? 'unprompted' : 'user',
         temperature: options.temperature,
         topP: options.topP,
