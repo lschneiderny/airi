@@ -1,6 +1,7 @@
 import type { LeadershipMode } from 'pinia-plugin-synced'
 
 import en from '@proj-airi/i18n/locales/en'
+import localforage from 'localforage'
 
 import { PiniaColada } from '@pinia/colada'
 import { createPinia, disposePinia } from 'pinia'
@@ -10,6 +11,7 @@ import { createApp } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import { injectKeyPiniaSynced } from '../libs/pinia/synced-context'
+import { useMemoryStore } from '../stores/memory'
 import { useModsServerChannelStore } from '../stores/mods/api/channel-server'
 import { useConsciousnessStore } from '../stores/modules/consciousness'
 import { useConsciousnessSettingsStore } from '../stores/modules/consciousness-settings'
@@ -134,4 +136,18 @@ it('removes downloaded speech models when all data is deleted', async () => {
   await maintenance.deleteAllData()
 
   await expect(origin.getDirectoryHandle('airi-model-assets')).rejects.toThrow()
+})
+
+it('forgets what the character learned when modules reset', async () => {
+  const { pinia, runtime, maintenance } = mountMaintenance(`maintenance:${crypto.randomUUID()}`, 'leader-only')
+  await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
+  const memory = useMemoryStore(pinia)
+  await memory.write({ description: 'What the owner likes to be called.', body: 'Yumeka.' }, 'default')
+  memory.enabled = false
+
+  await maintenance.resetModulesSettings()
+
+  expect(memory.entries).toEqual([])
+  expect(memory.enabled).toBe(true)
+  await expect(localforage.createInstance({ name: 'airi-memory', storeName: 'entries' }).length()).resolves.toBe(0)
 })
