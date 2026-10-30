@@ -339,7 +339,7 @@ describe('createThreadExtractor', () => {
       const entry = await extractor.extract(EXCHANGE)
 
       expect(entry.status).toBe('failed')
-      expect(entry.error).toContain(`${EXTRACTION_MAX_TOKENS} tokens`)
+      expect(entry.error).toContain(String(EXTRACTION_MAX_TOKENS))
       expect(entry.answer).toEqual({ chars: truncated.length, finishReason: 'length', excerpt: truncated.replace('\n', ' ') })
       expect(onThreads).not.toHaveBeenCalled()
     })

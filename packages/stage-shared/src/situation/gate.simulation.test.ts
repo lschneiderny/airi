@@ -204,8 +204,8 @@ function simulate(chattiness: Chattiness, days: number): RunResult {
     const signOffDay = random() < SIGN_OFF_DAY_PROBABILITY
     const arriveMs = dayStartMs + (signOffDay ? LATE_ARRIVAL_HOUR : EARLY_ARRIVAL_HOUR) * HOUR_MS
     const leaveMs = arriveMs + DESK_MS
-    /** The next 04:00 rollover; threads never outlive their logical day. */
-    const dayEndsAtMs = dayStartMs + 28 * HOUR_MS
+    /** The end of the next logical day (the second 04:00 rollover), as the store caps new threads. */
+    const dayEndsAtMs = dayStartMs + 52 * HOUR_MS
     const row: DayRow = { chattiness, day, attempts: 0, spokenOpenings: 0, declined: 0, continuations: 0, doubleTexts: 0, rituals: 0, gapsMin: [] }
     rows.push(row)
     let lastOpeningAtMs: number | null = null
