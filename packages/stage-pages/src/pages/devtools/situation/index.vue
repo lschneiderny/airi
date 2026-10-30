@@ -12,6 +12,7 @@ import SituationActCompliance from './components/situation-act-compliance.vue'
 import SituationBlock from './components/situation-block.vue'
 import SituationEvents from './components/situation-events.vue'
 import SituationGate from './components/situation-gate.vue'
+import SituationReasons from './components/situation-reasons.vue'
 import SituationSource from './components/situation-source.vue'
 import SituationSpend from './components/situation-spend.vue'
 import SituationSummary from './components/situation-summary.vue'
@@ -119,14 +120,19 @@ onMounted(refresh)
 
     <template v-if="inspection">
       <SituationGate
-        :gate="inspection.gate"
-        :memory="inspection.gateMemory"
-        :history="inspection.gateHistory"
+        :urge="inspection.urge"
         :now-ms="inspection.nowMs"
         :evaluation="evaluation"
         :evaluating="evaluating"
         :evaluate-error="evaluateError"
         @evaluate="evaluateNow"
+      />
+      <SituationReasons
+        :reasons="inspection.reasons"
+        :threads="inspection.threads"
+        :extraction="inspection.extraction"
+        :outcomes="inspection.outcomes"
+        :now-ms="inspection.nowMs"
       />
       <SituationSpend :spend="inspection.spend" :now-ms="inspection.nowMs" />
     </template>
