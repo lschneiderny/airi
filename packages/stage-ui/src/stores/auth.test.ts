@@ -1,6 +1,6 @@
 import type { Session, User } from 'better-auth'
 
-import { createPinia, setActivePinia } from 'pinia'
+import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
@@ -71,13 +71,15 @@ const session: Session = {
 
 describe('auth store sign-in requests', () => {
   let storage: MemoryStorage
+  let pinia: ReturnType<typeof createPinia>
 
   beforeEach(() => {
     storage = new MemoryStorage()
     vi.stubGlobal('localStorage', storage)
     // Authentication also requests credits. Keep that HTTP boundary inside the test.
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ flux: 0 })))
-    setActivePinia(createPinia())
+    pinia = createPinia()
+    setActivePinia(pinia)
     vi.mocked(triggerSignIn).mockReset()
     vi.mocked(triggerSignIn).mockResolvedValue()
     vi.mocked(requestAuthSession).mockReset()
@@ -85,6 +87,8 @@ describe('auth store sign-in requests', () => {
   })
 
   afterEach(() => {
+    disposePinia(pinia)
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
@@ -166,6 +170,30 @@ describe('auth store sign-in requests', () => {
     expect(authStore.capacitorRechargesAt).toBe('2026-10-11T06:00:00.000Z')
     expect(authStore.fallbackToFlux).toBe(true)
   })
+
+  it('handles a failed background credit refresh without delaying authentication hooks', async () => {
+    const request = Promise.withResolvers<Response>()
+    const reported = Promise.withResolvers<unknown[]>()
+    vi.stubGlobal('fetch', vi.fn(() => request.promise))
+    vi.spyOn(console, 'error').mockImplementation((...args) => reported.resolve(args))
+    const authStore = useAuthStore()
+    const authenticated = vi.fn()
+    authStore.onAuthenticated(authenticated)
+    authStore.needsLogin = true
+    authStore.$patch({ user, session, credits: 5 })
+
+    await nextTick()
+
+    expect(authenticated).toHaveBeenCalledOnce()
+    expect(authStore.needsLogin).toBe(false)
+    expect(fetch).toHaveBeenCalledOnce()
+
+    const failure = new TypeError('Failed to fetch')
+    request.reject(failure)
+    expect(await reported.promise).toContain(failure.message)
+    expect(authStore.isAuthenticated).toBe(true)
+    expect(authStore.credits).toBe(5)
+  }, 5_000)
 
   it('does not persist state patches received from another window', async () => {
     const authStore = useAuthStore()

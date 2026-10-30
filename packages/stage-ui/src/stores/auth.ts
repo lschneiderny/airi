@@ -374,7 +374,9 @@ export const useAuthStore = defineStore('auth', () => {
   // the auth commands above.
   watch(isAuthenticated, async (authenticated, wasAuthenticated) => {
     if (authenticated) {
-      void updateCredits()
+      void updateCredits().catch((error) => {
+        console.error('Credit refresh failed', errorMessageFrom(error))
+      })
       needsLogin.value = false
 
       if (!wasAuthenticated)
