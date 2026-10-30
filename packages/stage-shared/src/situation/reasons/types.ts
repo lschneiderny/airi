@@ -103,8 +103,8 @@ export const OWN_DAY_SALIENCE = 0.35
  * Tuning: maximum own-day selection weight after recovery. 0.2 keeps a ripe
  * high-weight thread (an `event` at peak, about 71%) at or above 70% of picks
  * against a fully recovered own-day plus a tier-2 long-session; a peak
- * `question` thread gets about 58% (decision 2026-10-30: follow-ups are her
- * most common reason, per IS-4). Todo 8 rechecks the mix.
+ * `question` thread gets about 58%, so follow-ups stay her most common
+ * reason; see `docs/ai/adr/2026-10-29-unprompted-reach-out-cadence.md`.
  */
 export const OWN_DAY_WEIGHT_MAX = 0.2
 /** Tuning: recovery half-life for own-day selection weight. */

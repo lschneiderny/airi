@@ -7,7 +7,7 @@ import { nextRandom, seedRng } from '../rng'
 import { initialSituationState } from '../types'
 import { collectReasons, pickCategory, pickReason } from './collect'
 import { threadMinAgeMs } from './threads'
-import { THREAD_TUNING } from './types'
+import { REASON_TEXT, THREAD_TUNING } from './types'
 
 const T0 = 1_700_000_000_000
 const MIN = 60_000
@@ -214,7 +214,7 @@ describe('collectReasons', () => {
       ['ritual:greeting', 'ritual-greeting', 12],
       ['ritual:welcome-back', 'ritual-welcome-back', 6],
     ])
-    expect(reasons[0].text).toBe('saying good morning now that they are here')
+    expect(reasons[0].text).toBe(REASON_TEXT['ritual-greeting'])
 
     const closed = collect({ rituals: ritualDay({ states: { 'greeting': 'done', 'sign-off': 'open', 'welcome-back': 'expired' } }) })
     expect(closed.some(reason => reason.category === 'ritual')).toBe(false)

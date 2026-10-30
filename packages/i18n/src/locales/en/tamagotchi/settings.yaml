@@ -104,6 +104,21 @@ devtools:
         evaluate-action: Evaluate now (ignore timing)
         evaluate-note: Asks the leader's gate for one decision that skips the floor, the reply wait, and the urge threshold. Hard suppressors, such as don't-disturb, still apply. A fire starts a real unprompted turn.
         evaluate-failed: 'Evaluation failed: {error}'
+        reason-kinds:
+          forced: fired, timing skipped
+          fired: fired
+          no-topic: no reason to pick
+          timing: timing hold
+          suppressor: hard suppressor
+        pending-none: none
+        pending-waiting: waiting for its outcome
+        pending-spoken: 'spoken {ago}'
+        pending-value: '{topic} ({category}, {kind}; fired {ago}, {outcome})'
+        evaluation:
+          skipped-pending: '{at}: not evaluated, an unprompted turn is still pending.'
+          skipped-leader: '{at}: not evaluated, the leader window runs no gate.'
+          fired: '{at}: fired on {topic} ({reason}, {category}: {kind}). The unprompted turn was started.'
+          held: '{at}: held ({reason}; {group}). Nothing was sent.'
         history: Decision history
         history-note: '{count} of the last {max} entries kept. Consecutive decisions with the same outcome share one entry.'
         columns:
