@@ -347,7 +347,7 @@ function pickCandidate(situation: SituationState, nowMs: number, threshold: numb
   return candidate
 }
 
-function hardReason(input: GateInput, candidate: GateCandidate | null): GateHardReason | null {
+export function hardReason(input: GateInput, candidate: GateCandidate | null): GateHardReason | null {
   const { signals, settings, situation } = input
   if (settings.enabled !== true)
     return 'disabled'
