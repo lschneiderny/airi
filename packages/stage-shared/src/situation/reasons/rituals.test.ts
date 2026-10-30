@@ -107,6 +107,34 @@ describe('advanceRituals', () => {
     expect(advanceRituals(expired, facts(21 * 60, { awayEndedAtMs: T0 + 21 * 60 * MIN, awayDurationMs: 180 * MIN })).states['welcome-back']).toBe('expired')
   })
 
+  it('opens only the greeting after an overnight absence across the rollover', () => {
+    // Away 23:00 -> 09:00.
+    const returnedAt = T0 + 9 * 60 * MIN
+    const day = advanceRituals(null, facts(9 * 60, { awayEndedAtMs: returnedAt, awayDurationMs: 10 * 60 * MIN }))
+    expect(openRituals(day, returnedAt)).toEqual(['greeting'])
+    expect(day.windowOpenedAtMs['welcome-back']).toBeNull()
+    expect(day.states['welcome-back']).toBe('open')
+  })
+
+  it('still opens welcome-back after a same-day absence of 3.5 hours', () => {
+    // Away 10:00 -> 13:30.
+    const returnedAt = T0 + (13 * 60 + 30) * MIN
+    const present = markRitualDone(advanceRituals(null, facts(9 * 60)), 'greeting')
+    const day = advanceRituals(present, facts(13 * 60 + 30, { awayEndedAtMs: returnedAt, awayDurationMs: 210 * MIN }))
+    expect(day.windowOpenedAtMs['welcome-back']).toBe(returnedAt)
+    expect(openRituals(day, returnedAt)).toEqual(['welcome-back'])
+  })
+
+  it('skips welcome-back for an absence that starts before 04:00 and ends after it', () => {
+    // Away 03:30 -> 07:30 crosses the rollover; the same return after leaving at 04:00 does not.
+    const returnedAt = T0 + (7 * 60 + 30) * MIN
+    const crossed = advanceRituals(null, facts(7 * 60 + 30, { awayEndedAtMs: returnedAt, awayDurationMs: 240 * MIN }))
+    expect(crossed.windowOpenedAtMs['welcome-back']).toBeNull()
+    expect(openRituals(crossed, returnedAt)).not.toContain('welcome-back')
+    const sameDay = advanceRituals(null, facts(7 * 60 + 30, { awayEndedAtMs: returnedAt, awayDurationMs: 210 * MIN }))
+    expect(sameDay.windowOpenedAtMs['welcome-back']).toBe(returnedAt)
+  })
+
   it('does not open welcome-back while away or restart it on repeated or older returns', () => {
     const returnFacts = facts(16 * 60, { awayEndedAtMs: T0 + 16 * 60 * MIN, awayDurationMs: 180 * MIN })
     const away = advanceRituals(null, { ...returnFacts, presence: 'away' })

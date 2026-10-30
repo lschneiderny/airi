@@ -5,13 +5,13 @@ export const ACCRUAL_DT_MAX_MS = 10_000
 /** Tuning: minimum spacing between non-urgent openings. */
 export const FLOOR_MS = 120_000
 /**
- * Tuning: single cadence calibration coefficient at Chattiness 0.5; design
- * value 0.6. Calibrated to 1.0 by the seeded cadence simulation
- * (`gate.simulation.test.ts`): 0.6 gave 2.64 spoken openings per desk day at
- * Chattiness 0.5, and 1.0 (the plan's ceiling) is the first 0.1 step that keeps
- * every Chattiness band and the gap-shape checks.
+ * Tuning: single cadence calibration coefficient at Chattiness 0.5 (design
+ * value 0.6). 1.3 is the smallest 0.1 step giving a 200-day mean of at least
+ * 3.2 openings per desk day on six seeds (`gate.simulation.test.ts`).
+ * 2026-10-30: Luke's question timed out, recommended adopted: cap lifted,
+ * calibrated on the 200-day mean.
  */
-export const BASE_RATE_AT_HALF_PER_HOUR = 1.0
+export const BASE_RATE_AT_HALF_PER_HOUR = 1.3
 /** Tuning: rate ratio between the lowest and highest Chattiness. */
 export const BASE_RATE_SPAN = 26
 /** Tuning: no new topic while the latest user turn is this recent. */

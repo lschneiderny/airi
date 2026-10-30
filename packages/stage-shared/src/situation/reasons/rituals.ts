@@ -5,6 +5,12 @@ import { LOGICAL_DAY_ROLLOVER_HOUR, RITUAL_TUNING } from './types'
 
 /** Tuning: welcome-back is reserved for an absence of at least three hours. */
 const WELCOME_BACK_MIN_AWAY_MS = 3 * 60 * 60_000
+const DAY_MINUTES = 24 * 60
+
+/** Minutes from the latest logical-day rollover to the local `minuteOfDay`. */
+function minutesSinceRollover(minuteOfDay: number): number {
+  return ((minuteOfDay - LOGICAL_DAY_ROLLOVER_HOUR * 60) % DAY_MINUTES + DAY_MINUTES) % DAY_MINUTES
+}
 
 export function logicalDayKey(local: { year: number, month: number, day: number, hour: number }): string {
   // UTC calendar arithmetic avoids depending on the host's time zone or DST.
@@ -65,8 +71,12 @@ export function advanceRituals(day: RitualDay | null, facts: {
   let lastAwayEndedAtMs = current.lastAwayEndedAtMs
   if (present && facts.awayEndedAtMs !== null && (lastAwayEndedAtMs === null || facts.awayEndedAtMs > lastAwayEndedAtMs)) {
     lastAwayEndedAtMs = facts.awayEndedAtMs
+    // An absence that began before the latest rollover (overnight) ends on a new
+    // logical day whose greeting already covers the return, so only an absence
+    // that began within the current logical day opens welcome-back.
     if (states['welcome-back'] === 'open' && windowOpenedAtMs['welcome-back'] === null
-      && facts.awayDurationMs !== null && facts.awayDurationMs >= WELCOME_BACK_MIN_AWAY_MS) {
+      && facts.awayDurationMs !== null && facts.awayDurationMs >= WELCOME_BACK_MIN_AWAY_MS
+      && minutesSinceRollover(minute) >= facts.awayDurationMs / 60_000) {
       windowOpenedAtMs['welcome-back'] = facts.awayEndedAtMs
     }
   }
