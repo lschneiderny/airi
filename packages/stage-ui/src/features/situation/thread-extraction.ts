@@ -43,8 +43,10 @@ const extractedThreadsSchema = v.pipe(
  */
 const INJECTION_PATTERNS = [/<\|/, /\|>/, /SILENT/, /^\s*(?:system|user|assistant)\s*:/im]
 
-/** C0 and C1 control characters, newlines and tabs included. */
+/** C0 and C1 control characters, newlines and tabs included. They become spaces, so words stay apart. */
 const CONTROL_CHARACTERS = /\p{Cc}+/gu
+/** Format characters (zero-width and bidi controls). They are removed outright, so they cannot split a marker. */
+const FORMAT_CHARACTERS = /\p{Cf}+/gu
 
 export type LlmStream = ReturnType<typeof useLLM>['stream']
 
@@ -128,12 +130,18 @@ function unfenced(text: string): string {
   return text.slice(start + 3, end).replace(/^json\b/i, '').trim()
 }
 
-/** Returns the text safe to store, or `null` when the text tries to inject markers or roles. */
+/**
+ * Returns the text safe to store, or `null` when the text tries to inject markers or roles. The patterns run on the
+ * raw text, where a role line still starts a line, and again on the cleaned text, where a marker split by a control
+ * or format character (`assistant\u0007:`, `SI\u200BLENT`) is whole again.
+ */
 function threadText(text: string): string | null {
   if (INJECTION_PATTERNS.some(pattern => pattern.test(text)))
     return null
-  const cleaned = situationContextText(text.replace(CONTROL_CHARACTERS, ' ').replace(/\s+/g, ' '))
-  return cleaned || null
+  const normalized = text.replace(FORMAT_CHARACTERS, '').replace(CONTROL_CHARACTERS, ' ').replace(/\s+/g, ' ').trim()
+  if (INJECTION_PATTERNS.some(pattern => pattern.test(normalized)))
+    return null
+  return situationContextText(normalized) || null
 }
 
 /**

@@ -872,6 +872,43 @@ describe('situation gate loop', () => {
     })])
   })
 
+  it('drops the threads of an extraction that finishes after its gate run stopped', async () => {
+    const { store, hooks, chat, observability } = startQuietLeader()
+    chat.state.messages = [{ role: 'user', content: 'I have a job interview tomorrow at nine.', createdAt: Date.now(), id: 'user-1' }]
+    await userTurn(hooks, 'turn-1')
+    let release = () => {}
+    const released = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let streamStarted = () => {}
+    const started = new Promise<void>((resolve) => {
+      streamStarted = resolve
+    })
+    chat.stream.mockImplementation(async (_model, _provider, _conversation, options) => {
+      streamStarted()
+      await released
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '[{"kind":"event","summary":"He has a job interview tomorrow at nine.","cue":"how the interview went","dueInMinutes":null}]' })
+    })
+    const recorded = new Promise<ThreadExtractionLedgerEntry>((resolve) => {
+      const record = observability.recordExtraction
+      vi.spyOn(observability, 'recordExtraction').mockImplementation((entry) => {
+        record(entry)
+        resolve(entry)
+      })
+    })
+
+    await vi.advanceTimersByTimeAsync(EXCHANGE_QUIET_MS + 1_000)
+    await started
+    // The gate stops and starts again (a capability flip) while the old run's extraction is still in flight.
+    store.setHostCapabilities({ unprompted: false })
+    store.setHostCapabilities({ unprompted: true })
+    release()
+    const entry = await recorded
+
+    expect(entry.status).toBe('ok')
+    expect(useSituationInnerState().read().threads).toEqual([])
+  })
+
   it('names a web extension page topic by its kind in the unprompted trigger, never by its title or link', async () => {
     const { store, chat, observability } = startQuietLeader()
     store.ingest({ kind: 'notify', sourceKey: 'proj-airi:plugin-web-extension:module-a', eventId: 'video-1', headline: 'User is watching: Secret page', note: 'https://example.test/secret', urgency: 'immediate', reminder: false, critical: false, atMs: Date.now() })
