@@ -1152,6 +1152,18 @@ pages:
               filtering had no effect on the last transcription.
     memory-long-term:
       description: Long-term memory specific settings and management
+      enable: Use long-term memory
+      enable-description: The character remembers lasting facts you tell her and recalls them in later conversations. When this is off, no memory reaches a prompt.
+      memories:
+        description: Each character keeps its own memories. A memory you share reaches every character, and you cannot make it private again. You can forget any memory, but you cannot rewrite one.
+        empty: No memories yet.
+        entry:
+          description: What each character remembers, and what they all share.
+          title: Memories
+        forget: 'Forget {name}'
+        general: Shared memories
+        make_general: 'Share {name} with every character'
+        title: Memories
       title: Long-Term Memory
     memory-short-term:
       description: Short-term memory specific settings and management
