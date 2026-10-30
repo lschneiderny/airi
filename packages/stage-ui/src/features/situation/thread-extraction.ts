@@ -14,7 +14,7 @@ import * as v from 'valibot'
 import { extractMessageText } from '../../libs/chat-sync/wire-message'
 import { situationContextText } from '../../stores/situation/sensors/context-text'
 
-/** The newest chat messages, user and assistant, that one extraction reads. */
+/** The newest unread chat messages, user and assistant, that one extraction reads. */
 export const EXTRACTION_MESSAGES_MAX = 12
 /** Longest text, in code points, kept from one message. */
 export const EXTRACTION_MESSAGE_CHARS_MAX = 400
@@ -73,6 +73,13 @@ export interface ThreadExtractorDeps {
   selection: (sessionId: string) => Promise<ThreadExtractionSelection | null>
   /** The messages of a session, oldest first; empty when the session is not loaded. */
   messages: (sessionId: string) => readonly ChatHistoryItem[]
+  /** The id of the newest message that an earlier extraction of the session read, or `undefined` before the first. */
+  extractedThrough: (sessionId: string) => string | undefined
+  /**
+   * Receives the id of the newest message an extraction read, once its answer was read (`ok` or `empty`). A failed or
+   * invalid extraction moves nothing, so the next one reads its messages again.
+   */
+  onExtractedThrough: (sessionId: string, messageId: string) => void
   /** Receives the validated, sanitized threads of one extraction; never called with an empty list. */
   onThreads: (drafts: readonly ThreadDraft[], sessionId: string) => void
   /** Receives one ledger entry per {@link ThreadExtractor.extract} call, `skipped` included. */
@@ -101,6 +108,16 @@ function extractionPrompt(characterName: string): string {
 
 function capped(text: string, maxChars: number): string {
   return Array.from(text).slice(0, maxChars).join('')
+}
+
+/**
+ * The messages after the one with id `extractedThrough`, oldest first. When that message is no longer in the session
+ * (it was deleted) or there is none, every message is unread; the caps of {@link conversationLines} still apply.
+ */
+function unreadMessages(items: readonly ChatHistoryItem[], extractedThrough: string | undefined): readonly ChatHistoryItem[] {
+  if (extractedThrough === undefined)
+    return items
+  return items.slice(items.findLastIndex(item => item.id === extractedThrough) + 1)
 }
 
 /**
@@ -162,7 +179,8 @@ function answerRecord(answer: string, finishReason: string | null): Required<Thr
 
 /**
  * Creates the leader's thread extractor: after an exchange ended, it asks the chat model what is still open in the
- * last messages and hands the validated threads to `onThreads`.
+ * messages of its session that no earlier extraction read, and hands the validated threads to `onThreads`. Reading
+ * only unread messages keeps a later extraction from finding the threads of an earlier exchange again.
  *
  * The call goes straight to the LLM store below the chat runtime with an `unprompted` origin, so it carries no tools,
  * fires no chat hook, and adds nothing to chat history. One extraction runs at a time; a call while one is in flight
@@ -181,11 +199,20 @@ export function createThreadExtractor(deps: ThreadExtractorDeps): ThreadExtracto
       if (!selection)
         return { requestChars, messageCount, status: 'failed', threads: [], error: 'No chat provider or model is selected' }
 
-      const { lines, chars } = conversationLines(deps.messages(exchange.sessionId), selection.characterName)
+      const items = deps.messages(exchange.sessionId)
+      // A message without an id cannot mark a read position, so the newest message with an id marks it.
+      const newestId = items.findLast(item => item.id !== undefined)?.id
+      const markRead = () => {
+        if (newestId !== undefined)
+          deps.onExtractedThrough(exchange.sessionId, newestId)
+      }
+      const { lines, chars } = conversationLines(unreadMessages(items, deps.extractedThrough(exchange.sessionId)), selection.characterName)
       requestChars = chars
       messageCount = lines.length
-      if (lines.length === 0)
+      if (lines.length === 0) {
+        markRead()
         return { requestChars, messageCount, status: 'empty', threads: [], error: null }
+      }
 
       const conversation: Conversation = { turns: [
         { type: 'system', id: 'thread-extraction-instruction', authority: 'system', content: [{ type: 'text', text: extractionPrompt(selection.characterName) }] },
@@ -233,6 +260,7 @@ export function createThreadExtractor(deps: ThreadExtractorDeps): ThreadExtracto
           continue
         drafts.push({ kind: entry.kind, summary, cue, ...(entry.dueInMinutes === null ? {} : { dueInMinutes: entry.dueInMinutes }) })
       }
+      markRead()
       if (drafts.length === 0)
         return { requestChars, messageCount, status: 'empty', threads: [], error: null, answer: parsedAnswer }
       deps.onThreads(drafts, exchange.sessionId)

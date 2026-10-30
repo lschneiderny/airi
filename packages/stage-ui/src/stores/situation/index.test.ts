@@ -154,12 +154,37 @@ function createChatControls() {
 }
 
 /** Emits the hooks of one finished user turn, as the chat runtime does. */
-async function userTurn(hooks: ChatHookRegistry, turnId: string) {
-  const context: ChatStreamEventContext = { sessionId: 'session-1', turnId, message: { role: 'user', content: 'hi', createdAt: Date.now(), id: turnId }, contexts: {}, composedMessage: [] }
+async function userTurn(hooks: ChatHookRegistry, turnId: string, sessionId = 'session-1') {
+  const context: ChatStreamEventContext = { sessionId, turnId, message: { role: 'user', content: 'hi', createdAt: Date.now(), id: turnId }, contexts: {}, composedMessage: [] }
   const output = { role: 'assistant' as const, content: 'Hi!', slices: [], tool_results: [] }
   await hooks.emitBeforeSendHooks('hi', context)
   await hooks.emitAssistantMessageHooks(output, 'Hi!', context)
   await hooks.emitChatTurnCompleteHooks({ output, outputText: 'Hi!', toolCalls: [] }, context)
+}
+
+/** One stored chat message with an id, as the session store keeps them. */
+function said(role: 'user' | 'assistant', id: string, content: string): ChatHistoryItem {
+  return role === 'user'
+    ? { role, content, createdAt: Date.now(), id }
+    : { role, content, slices: [], tool_results: [], createdAt: Date.now(), id }
+}
+
+/** A thread extraction stream whose model answers `text`. */
+function answers(text: string): LlmStream {
+  return async (_model, _provider, _conversation, options) => {
+    await options?.onStreamEvent?.({ type: 'text-delta', text })
+  }
+}
+
+/** The conversation text that extraction call `index` sent to the model. */
+function extractionInput(stream: ReturnType<typeof createChatControls>['stream'], index: number): string {
+  for (const turn of stream.mock.calls[index]?.[2].turns ?? []) {
+    if (turn.type !== 'user')
+      continue
+    const segment = turn.content[0]
+    return segment && 'text' in segment && typeof segment.text === 'string' ? segment.text : ''
+  }
+  return ''
 }
 
 describe('situation store', () => {
@@ -944,6 +969,111 @@ describe('situation gate loop', () => {
     expect(event.expiresAtMs).toBeGreaterThan(event.bornAtMs + threadMinAgeMs(event))
     // The event ripens the next night and is capped where the next logical day ends.
     expect(event.expiresAtMs).toBe(new Date(2026, 9, 22, 4, 0, 0).getTime())
+  })
+
+  /** Resolves with the ledger entry of each extraction that settles after `next()` was called, in order. */
+  function watchExtractions(observability: ReturnType<typeof useSituationObservabilityStore>) {
+    const waiting: ((entry: ThreadExtractionLedgerEntry) => void)[] = []
+    const record = observability.recordExtraction
+    vi.spyOn(observability, 'recordExtraction').mockImplementation((entry) => {
+      record(entry)
+      waiting.shift()?.(entry)
+    })
+    return { next: () => new Promise<ThreadExtractionLedgerEntry>(resolve => waiting.push(resolve)) }
+  }
+
+  /** Lets the chat stay quiet until the open exchanges end, and resolves with the next extraction's entry. */
+  async function endExchange(extractions: ReturnType<typeof watchExtractions>) {
+    const entry = extractions.next()
+    await vi.advanceTimersByTimeAsync(EXCHANGE_QUIET_MS + 1_000)
+    return await entry
+  }
+
+  const INTERVIEW = [said('user', 'user-1', 'I have a job interview tomorrow at nine.'), said('assistant', 'assistant-1', 'Good luck! Tell me how it goes.')]
+  const INTERVIEW_TEXT = 'User: I have a job interview tomorrow at nine.\nAiri: Good luck! Tell me how it goes.'
+  const SISTER = [said('user', 'user-2', 'My sister visits on Sunday.'), said('assistant', 'assistant-2', 'How fun, what will you do?')]
+  const SISTER_TEXT = 'User: My sister visits on Sunday.\nAiri: How fun, what will you do?'
+
+  // ROOT CAUSE:
+  // Every extraction read the newest 12 messages of the session, so the extraction after a second exchange read the
+  // first one again and stored near-duplicates of its threads (F4 IS-4 gap, F3 manual QA).
+  it('reads only the messages after the previous extraction of the same chat session', async () => {
+    const { hooks, chat, observability } = startQuietLeader()
+    const extractions = watchExtractions(observability)
+    chat.stream.mockImplementation(answers('[{"kind":"event","summary":"He has a job interview tomorrow at nine.","cue":"how the interview went","dueInMinutes":780}]'))
+    chat.state.messages = [...INTERVIEW]
+    await userTurn(hooks, 'turn-1')
+
+    // The first extraction of a session reads all of it.
+    expect(await endExchange(extractions)).toMatchObject({ status: 'ok', messageCount: 2 })
+    expect(extractionInput(chat.stream, 0)).toBe(INTERVIEW_TEXT)
+
+    chat.stream.mockImplementation(answers('[]'))
+    chat.state.messages.push(...SISTER)
+    await userTurn(hooks, 'turn-2')
+
+    expect(await endExchange(extractions)).toMatchObject({ status: 'empty', messageCount: 2 })
+    expect(extractionInput(chat.stream, 1)).toBe(SISTER_TEXT)
+    expect(useSituationInnerState().read().threads).toHaveLength(1)
+  })
+
+  it('keeps the read position of each chat session apart', async () => {
+    const { hooks, chat, observability } = startQuietLeader()
+    const extractions = watchExtractions(observability)
+    chat.stream.mockImplementation(answers('[]'))
+    const otherSession = [said('user', 'other-1', 'Can you recommend a book?'), said('assistant', 'other-2', 'Try The Left Hand of Darkness.')]
+    chat.controls.sessionMessages = sessionId => sessionId === 'session-2' ? otherSession : chat.state.messages
+    chat.state.messages = [...INTERVIEW]
+    await userTurn(hooks, 'turn-1')
+    await endExchange(extractions)
+
+    // The other session has never been extracted, so its first extraction reads all of it.
+    await userTurn(hooks, 'turn-2', 'session-2')
+    expect(await endExchange(extractions)).toMatchObject({ sessionId: 'session-2', messageCount: 2 })
+    expect(extractionInput(chat.stream, 1)).toBe('User: Can you recommend a book?\nAiri: Try The Left Hand of Darkness.')
+
+    // Back in the first session, only its new messages are read.
+    chat.state.messages.push(...SISTER)
+    await userTurn(hooks, 'turn-3')
+    expect(await endExchange(extractions)).toMatchObject({ sessionId: 'session-1', messageCount: 2 })
+    expect(extractionInput(chat.stream, 2)).toBe(SISTER_TEXT)
+  })
+
+  it('reads the messages of a failed extraction again with the next one', async () => {
+    const { hooks, chat, observability } = startQuietLeader()
+    const extractions = watchExtractions(observability)
+    chat.stream.mockRejectedValueOnce(new Error('503 Service Unavailable'))
+    chat.state.messages = [...INTERVIEW]
+    await userTurn(hooks, 'turn-1')
+    expect(await endExchange(extractions)).toMatchObject({ status: 'failed' })
+
+    chat.stream.mockImplementation(answers('[]'))
+    chat.state.messages.push(...SISTER)
+    await userTurn(hooks, 'turn-2')
+
+    expect(await endExchange(extractions)).toMatchObject({ status: 'empty', messageCount: 4 })
+    expect(extractionInput(chat.stream, 1)).toBe(`${INTERVIEW_TEXT}\n${SISTER_TEXT}`)
+  })
+
+  it('continues after the messages read before a reload of the leader window', async () => {
+    const first = startQuietLeader()
+    const firstExtractions = watchExtractions(first.observability)
+    first.chat.stream.mockImplementation(answers('[]'))
+    first.chat.state.messages = [...INTERVIEW]
+    await userTurn(first.hooks, 'turn-1')
+    await endExchange(firstExtractions)
+    first.leadership.set(false)
+
+    // The reloaded window has its own Pinia but the same localStorage.
+    setActivePinia(createPinia())
+    const reloaded = startQuietLeader()
+    const reloadedExtractions = watchExtractions(reloaded.observability)
+    reloaded.chat.stream.mockImplementation(answers('[]'))
+    reloaded.chat.state.messages = [...INTERVIEW, ...SISTER]
+    await userTurn(reloaded.hooks, 'turn-2')
+
+    expect(await endExchange(reloadedExtractions)).toMatchObject({ status: 'empty', messageCount: 2 })
+    expect(extractionInput(reloaded.chat.stream, 0)).toBe(SISTER_TEXT)
   })
 
   it('names a web extension page topic by its kind in the unprompted trigger, never by its title or link', async () => {

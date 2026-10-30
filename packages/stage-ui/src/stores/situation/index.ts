@@ -13,6 +13,7 @@ import type {
 } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
+import type { ExtractionReadPosition } from '../../features/situation/inner-state'
 import type { LlmStream, ThreadExtractionSelection } from '../../features/situation/thread-extraction'
 import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
 import type { SituationGateEvaluation } from '../devtools/situation-observability'
@@ -114,6 +115,12 @@ const UNPROMPTED_BUSY_ERROR = 'Another unprompted turn is still pending'
 
 const NO_THREADS: ThreadState = Object.freeze({ threads: Object.freeze([]) })
 
+/**
+ * How many chat sessions keep their thread extraction read position; the least recently extracted one is dropped
+ * first. A dropped session's next extraction reads its newest messages again, within the extraction caps.
+ */
+const EXTRACTION_READ_POSITIONS_MAX = 64
+
 /** A fresh uint32 for the gate's first urge threshold of a leadership. */
 function randomSeed(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0] ?? 0
@@ -208,7 +215,8 @@ interface RunningSensors {
  * one has a result. The gate's social memory (with the ritual day) and the open threads are restored from
  * `useSituationInnerState` when the gate starts and saved whenever a durable field changes, so a leader reload does
  * not start her from day one. Its randomness comes only from the seed that {@link initialize} takes. While the gate
- * runs, every exchange that ends is sent to the thread extractor, which asks the chat model what is still open; the
+ * runs, every exchange that ends is sent to the thread extractor, which asks the chat model what is still open in the
+ * messages of that chat session that no earlier extraction read (the read positions are saved with the threads); the
  * threads it returns join the gate's reasons for that chat session, and each attempt shows in the inspector's
  * extraction ledger, never in chat history.
  */
@@ -239,6 +247,8 @@ export const useSituationStore = defineStore('situation', () => {
   let gateMemory: UrgeGateMemory = initialUrgeMemory
   /** Open threads of every chat session; the gate filters them by the active session. Rituals live in `gateMemory.day`. */
   let threads: ThreadState = NO_THREADS
+  /** How far thread extraction read each chat session, least recently extracted first. */
+  let extractedThrough: readonly ExtractionReadPosition[] = []
   /** The durable state last saved, serialized, so an evaluation that changed nothing durable writes nothing. */
   let savedSnapshot: string | undefined
   let seedSource: () => number = randomSeed
@@ -556,12 +566,13 @@ export const useSituationStore = defineStore('situation', () => {
   }
 
   function innerStateSnapshot(): string {
-    return JSON.stringify([savedGateMemory(gateMemory), threads.threads])
+    return JSON.stringify([savedGateMemory(gateMemory), threads.threads, extractedThrough])
   }
 
   /**
-   * Saves the social memory and the threads while the gate runs, only when one of their fields changed (a fire, an
-   * outcome, a user turn, a day roll, a thread raised or expired, a ritual done). The leadership token keeps a demoted
+   * Saves the social memory, the threads, and the extraction read positions while the gate runs, only when one of
+   * their fields changed (a fire, an outcome, a user turn, a day roll, a thread raised or expired, a ritual done, an
+   * extraction read). The leadership token keeps a demoted
    * window from overwriting its successor's save. A refused write is retried at the next change.
    */
   function saveInnerState() {
@@ -570,7 +581,7 @@ export const useSituationStore = defineStore('situation', () => {
     const snapshot = innerStateSnapshot()
     if (snapshot === savedSnapshot)
       return
-    if (innerState.write({ gate: savedGateMemory(gateMemory), threads: threads.threads }, leadership))
+    if (innerState.write({ gate: savedGateMemory(gateMemory), threads: threads.threads, extractedThrough }, leadership))
       savedSnapshot = snapshot
   }
 
@@ -746,6 +757,14 @@ export const useSituationStore = defineStore('situation', () => {
         : Promise.reject(new Error('The chat store has not handed over its controls')),
       selection: async sessionId => await chat?.extractionSelection(sessionId) ?? null,
       messages: sessionId => chat?.sessionMessages(sessionId) ?? [],
+      extractedThrough: sessionId => extractedThrough.find(position => position.sessionId === sessionId)?.messageId,
+      onExtractedThrough(sessionId, messageId) {
+        if (!active)
+          return
+        const others = extractedThrough.filter(position => position.sessionId !== sessionId)
+        extractedThrough = [...others.slice(-(EXTRACTION_READ_POSITIONS_MAX - 1)), { sessionId, messageId }]
+        saveInnerState()
+      },
       onThreads(drafts, sessionId) {
         if (!active)
           return
@@ -778,6 +797,7 @@ export const useSituationStore = defineStore('situation', () => {
       const promoted = promotionUrgeMemory(nowMs, seedSource())
       gateMemory = saved.gate === null ? promoted : restoreSocialMemory(promoted, saved.gate, nowMs)
       threads = { threads: saved.threads }
+      extractedThrough = saved.extractedThrough
       savedSnapshot = innerStateSnapshot()
       wasStageShown = false
       stopVoiceTurnListener = startVoiceTurnListener()
@@ -798,6 +818,7 @@ export const useSituationStore = defineStore('situation', () => {
       stopVoiceTurnListener?.()
       stopVoiceTurnListener = undefined
       threads = NO_THREADS
+      extractedThrough = []
       savedSnapshot = undefined
       setGateMemory(initialUrgeMemory)
     }
