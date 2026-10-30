@@ -1,4 +1,4 @@
-/** Mirrored source identities for scorer comparability; captureClosure sorts their raw-byte hashes. */
+/** Mirrored source identities for scorer comparability; captureClosure sorts their hashes, computed after CRLF-to-LF normalization (since 13F). */
 export const SCORE_CLOSURE_FILES = [
   'packages/core-agent/src/runtime/llm-marker-parser.ts',
   'packages/core-agent/src/runtime/recovered-cue.ts',
