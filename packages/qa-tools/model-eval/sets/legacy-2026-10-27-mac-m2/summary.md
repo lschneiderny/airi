@@ -1,7 +1,7 @@
 # Model evaluation summary
 
 Scorer: cue-contract-score v1
-Closure digest: e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d
+Closure digest: dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392
 Contract version: unknown
 Fixtures passed/total: 25/25
 
