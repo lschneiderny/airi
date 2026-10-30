@@ -11,7 +11,7 @@ import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
 import type { ThreadExtractionLedgerEntry } from '../devtools/situation-observability'
 
 import { createChatHooks } from '@proj-airi/core-agent'
-import { evaluateUrgeGate, FLOOR_MS, HOUR_MS, initialSituationState, notifyTopicKey, SETTLE_MS } from '@proj-airi/stage-shared/situation'
+import { evaluateUrgeGate, FLOOR_MS, HOUR_MS, initialSituationState, notifyTopicKey, SETTLE_MS, threadMinAgeMs } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { createPinia, setActivePinia } from 'pinia'
@@ -908,6 +908,42 @@ describe('situation gate loop', () => {
 
     expect(entry.status).toBe('ok')
     expect(useSituationInnerState().read().threads).toEqual([])
+  })
+
+  it('keeps the threads of a late-night exchange past the rollover, until the next logical day ends', async () => {
+    // 02:25 on Oct 21 still belongs to the logical day of Oct 20, which rolls over at 04:00 the same morning.
+    vi.setSystemTime(new Date(2026, 9, 21, 2, 25, 0))
+    const { hooks, chat, observability } = startQuietLeader()
+    chat.state.messages = [{ role: 'user', content: 'Still deciding on the green paint, and I move house tomorrow night.', createdAt: Date.now(), id: 'user-1' }]
+    await userTurn(hooks, 'turn-1')
+    chat.stream.mockImplementation(async (_model, _provider, _conversation, options) => {
+      await options?.onStreamEvent?.({ type: 'text-delta', text: JSON.stringify([
+        { kind: 'question', summary: 'He is deciding whether to paint his room green.', cue: 'whether he picked the green', dueInMinutes: null },
+        { kind: 'event', summary: 'He moves house tomorrow night.', cue: 'how the move went', dueInMinutes: 1320 },
+      ]) })
+    })
+    const recorded = new Promise<ThreadExtractionLedgerEntry>((resolve) => {
+      const record = observability.recordExtraction
+      vi.spyOn(observability, 'recordExtraction').mockImplementation((entry) => {
+        record(entry)
+        resolve(entry)
+      })
+    })
+
+    // The exchange ends at about 02:40, and its threads are extracted then.
+    await vi.advanceTimersByTimeAsync(EXCHANGE_QUIET_MS + 1_000)
+    const entry = await recorded
+
+    expect(entry.status).toBe('ok')
+    const threads = useSituationInnerState().read().threads
+    expect(threads.map(thread => thread.kind)).toEqual(['question', 'event'])
+    const [question, event] = threads
+    // Neither thread expires at this morning's rollover, before it can ripen and be raised.
+    expect(question.expiresAtMs).toBeGreaterThan(new Date(2026, 9, 21, 4, 0, 0).getTime())
+    expect(question.expiresAtMs).toBeGreaterThan(question.bornAtMs + threadMinAgeMs(question))
+    expect(event.expiresAtMs).toBeGreaterThan(event.bornAtMs + threadMinAgeMs(event))
+    // The event ripens the next night and is capped where the next logical day ends.
+    expect(event.expiresAtMs).toBe(new Date(2026, 9, 22, 4, 0, 0).getTime())
   })
 
   it('names a web extension page topic by its kind in the unprompted trigger, never by its title or link', async () => {

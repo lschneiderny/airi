@@ -128,13 +128,14 @@ function localTimeFor(nowMs: number): GateLocalTime {
   }
 }
 
-/** The end of the logical day of `nowMs`: the next rollover hour in this host's time zone. Threads expire there. */
-function logicalDayEndsAtMs(nowMs: number): number {
-  const end = new Date(nowMs)
-  end.setHours(LOGICAL_DAY_ROLLOVER_HOUR, 0, 0, 0)
-  if (end.getTime() <= nowMs)
-    end.setDate(end.getDate() + 1)
-  return end.getTime()
+/**
+ * The end of the logical day after the one of `nowMs`, in this host's time zone: the latest a new thread may expire.
+ * The current day's own end would cut off the follow-ups of a late-night chat, which ripen after its rollover.
+ */
+function nextLogicalDayEndsAtMs(nowMs: number): number {
+  const [year, month, day] = localLogicalDayKey(nowMs).split('-').map(Number)
+  // Logical day `day` ends at the rollover on calendar day `day + 1`, so the next logical day ends on `day + 2`.
+  return new Date(year, month - 1, day + 2, LOGICAL_DAY_ROLLOVER_HOUR).getTime()
 }
 
 /** Thread topics are consumed only when a gate turn about them is observed speaking, never when addressed. */
@@ -749,7 +750,7 @@ export const useSituationStore = defineStore('situation', () => {
         if (!active)
           return
         const nowMs = Date.now()
-        threads = addThreads(threads, drafts, sessionId, nowMs, { dayEndsAtMs: logicalDayEndsAtMs(nowMs) })
+        threads = addThreads(threads, drafts, sessionId, nowMs, { dayEndsAtMs: nextLogicalDayEndsAtMs(nowMs) })
         // Publishes the new threads to the inspector and saves them with the social memory.
         setGateMemory(gateMemory)
       },
