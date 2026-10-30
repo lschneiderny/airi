@@ -4,7 +4,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -62,7 +62,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -70,10 +70,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -185,7 +185,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -243,7 +243,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -251,10 +251,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -361,7 +361,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -419,7 +419,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -427,10 +427,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -537,7 +537,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -595,7 +595,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -603,10 +603,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -718,7 +718,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -776,7 +776,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -784,10 +784,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -894,7 +894,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -952,7 +952,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -960,10 +960,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -1070,7 +1070,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -1128,7 +1128,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -1136,10 +1136,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -1246,7 +1246,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -1304,7 +1304,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -1312,10 +1312,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -1422,7 +1422,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -1480,7 +1480,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -1488,10 +1488,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -1598,7 +1598,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -1656,7 +1656,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -1664,10 +1664,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -1774,7 +1774,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -1832,7 +1832,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -1840,10 +1840,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -1968,7 +1968,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -2026,7 +2026,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -2034,10 +2034,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -2153,7 +2153,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -2211,7 +2211,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -2219,10 +2219,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -2347,7 +2347,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -2405,7 +2405,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -2413,10 +2413,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -2533,7 +2533,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -2591,7 +2591,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -2599,10 +2599,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -2718,7 +2718,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -2776,7 +2776,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -2784,10 +2784,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -2899,7 +2899,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -2957,7 +2957,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -2965,10 +2965,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -3075,7 +3075,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -3133,7 +3133,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -3141,10 +3141,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -3256,7 +3256,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -3314,7 +3314,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -3322,10 +3322,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -3437,7 +3437,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -3495,7 +3495,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -3503,10 +3503,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -3618,7 +3618,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -3676,7 +3676,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -3684,10 +3684,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -3811,7 +3811,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -3869,7 +3869,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -3877,10 +3877,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -3996,7 +3996,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -4054,7 +4054,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -4062,10 +4062,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -4177,7 +4177,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -4235,7 +4235,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -4243,10 +4243,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -4358,7 +4358,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -4416,7 +4416,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -4424,10 +4424,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -4539,7 +4539,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -4597,7 +4597,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -4605,10 +4605,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -4728,7 +4728,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -4786,7 +4786,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -4794,10 +4794,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -4904,7 +4904,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -4962,7 +4962,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -4970,10 +4970,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -5089,7 +5089,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -5147,7 +5147,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -5155,10 +5155,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -5265,7 +5265,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -5323,7 +5323,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -5331,10 +5331,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -5450,7 +5450,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -5508,7 +5508,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -5516,10 +5516,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -5635,7 +5635,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -5693,7 +5693,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -5701,10 +5701,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -5816,7 +5816,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -5874,7 +5874,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -5882,10 +5882,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -5992,7 +5992,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -6050,7 +6050,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -6058,10 +6058,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -6168,7 +6168,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -6226,7 +6226,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -6234,10 +6234,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -6344,7 +6344,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -6402,7 +6402,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -6410,10 +6410,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -6520,7 +6520,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -6578,7 +6578,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -6586,10 +6586,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -6696,7 +6696,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -6754,7 +6754,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -6762,10 +6762,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -6872,7 +6872,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -6930,7 +6930,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -6938,10 +6938,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -7048,7 +7048,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -7106,7 +7106,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -7114,10 +7114,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -7224,7 +7224,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -7282,7 +7282,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -7290,10 +7290,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -7400,7 +7400,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -7458,7 +7458,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -7466,10 +7466,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -7576,7 +7576,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -7634,7 +7634,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -7642,10 +7642,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -7762,7 +7762,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -7820,7 +7820,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -7828,10 +7828,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -7947,7 +7947,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -8005,7 +8005,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -8013,10 +8013,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -8128,7 +8128,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -8186,7 +8186,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -8194,10 +8194,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -8321,7 +8321,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -8379,7 +8379,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -8387,10 +8387,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -8510,7 +8510,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -8568,7 +8568,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -8576,10 +8576,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -8695,7 +8695,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -8753,7 +8753,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -8761,10 +8761,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -8871,7 +8871,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -8929,7 +8929,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -8937,10 +8937,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -9047,7 +9047,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -9105,7 +9105,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -9113,10 +9113,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -9223,7 +9223,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -9281,7 +9281,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -9289,10 +9289,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -9399,7 +9399,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -9457,7 +9457,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -9465,10 +9465,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -9575,7 +9575,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -9633,7 +9633,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -9641,10 +9641,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -9756,7 +9756,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -9814,7 +9814,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -9822,10 +9822,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -9937,7 +9937,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -9995,7 +9995,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -10003,10 +10003,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -10118,7 +10118,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -10176,7 +10176,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -10184,10 +10184,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -10303,7 +10303,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -10361,7 +10361,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -10369,10 +10369,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -10484,7 +10484,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -10542,7 +10542,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -10550,10 +10550,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -10669,7 +10669,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -10727,7 +10727,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -10735,10 +10735,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -10850,7 +10850,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -10908,7 +10908,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -10916,10 +10916,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -11031,7 +11031,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -11089,7 +11089,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -11097,10 +11097,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -11216,7 +11216,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -11274,7 +11274,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -11282,10 +11282,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -11397,7 +11397,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -11455,7 +11455,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -11463,10 +11463,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -11578,7 +11578,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -11636,7 +11636,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -11644,10 +11644,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -11763,7 +11763,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -11821,7 +11821,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -11829,10 +11829,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -11957,7 +11957,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -12015,7 +12015,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -12023,10 +12023,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -12138,7 +12138,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -12196,7 +12196,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -12204,10 +12204,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -12359,7 +12359,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -12417,7 +12417,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -12425,10 +12425,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -12535,7 +12535,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -12593,7 +12593,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -12601,10 +12601,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -12711,7 +12711,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -12769,7 +12769,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -12777,10 +12777,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -12887,7 +12887,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -12945,7 +12945,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -12953,10 +12953,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -13063,7 +13063,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -13121,7 +13121,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -13129,10 +13129,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -13239,7 +13239,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -13297,7 +13297,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -13305,10 +13305,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -13415,7 +13415,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -13473,7 +13473,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -13481,10 +13481,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -13591,7 +13591,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -13649,7 +13649,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -13657,10 +13657,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -13767,7 +13767,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -13825,7 +13825,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -13833,10 +13833,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -13943,7 +13943,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -14001,7 +14001,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -14009,10 +14009,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -14119,7 +14119,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -14177,7 +14177,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -14185,10 +14185,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -14295,7 +14295,7 @@
     "scorer": {
       "id": "cue-contract-score",
       "version": 1,
-      "fileSha": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+      "fileSha": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
     },
     "sources": {
       "files": [
@@ -14353,7 +14353,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "9a97435cc82f05d51889e23fab1c70ba15cec1b45e108ac8f70b307bb0c34805"
+          "sha256": "eed49cff7a3dab79f954d450d18db71189c128c1e899a05f434774be3b84e277"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -14361,10 +14361,10 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/style.ts",
-          "sha256": "a1e975c29036678815ce75be0659ead0b92d303c9836a57cecfd1b97c7e8f8b1"
+          "sha256": "dad9c927848390a40766434eda18defafa7582d69dcad1ecad6b5f9978dd067c"
         }
       ],
-      "closureDigest": "dc34eccbd59c3036796d1cff1891180d471ff942712cf61ef78e79d2dd158392",
+      "closureDigest": "12ae585bdf58a7d380c50c7245ad5d6dfcfa155ce298cae5b1cfa62645d19043",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {

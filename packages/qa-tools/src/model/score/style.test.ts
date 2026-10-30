@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { scoreStyle, STYLE_HEURISTICS } from './style'
+import { scoreStyle } from './style'
 
 const context = { contract: { text: 'contract', exampleLines: ['Hello there, friend!'] } }
 const noContract = { contract: null }
 
 describe('scoreStyle', () => {
   it('identifies itself', () => {
-    expect(STYLE_HEURISTICS).toEqual({ id: 'style-heuristics', version: 1 })
     expect(scoreStyle('hi', context).schema).toBe('airi.style-score.reply/v1')
   })
 

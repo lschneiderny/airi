@@ -8,8 +8,6 @@ import type { ScoreContext } from './scorer'
 
 const HEARTS = /[\u2665\u2764\u{1F49C}\u{1F497}\u{1F496}\u{1F495}\u{1F493}\u{1F49E}\u{1F498}\u{1F49D}\u{1F9E1}\u{1F49B}\u{1F49A}\u{1F499}\u{1F90D}\u{1F5A4}\uFE0F]/gu
 
-export const STYLE_HEURISTICS = { id: 'style-heuristics', version: 1 } as const
-
 /**
  * Style heuristics of one reply. These are heuristics, never a persona judgment, and are
  * deliberately not combined into one score.

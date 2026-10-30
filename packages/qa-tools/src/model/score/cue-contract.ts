@@ -88,7 +88,7 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
       },
       onSpecial: async (value, recovery) => {
         if (recovery) {
-          // Match runtime literal/categorizer ordering while pass D still accepts all recoveries.
+          // Match runtime literal/categorizer ordering while this direct `useLlmmarkerParser` diagnostic parse (mirroring the runtime's options, used for `residualChars`) accepts all recoveries.
           // The isolated replay decides whether this parser-provided raw cue is emitted, stripped, or prose.
           if (!categorizer.filterToSpeech(recovery.raw, categorizer.getCurrentPosition())) {
             consumeLiteral(recovery.raw)
