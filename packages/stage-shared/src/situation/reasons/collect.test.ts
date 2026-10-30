@@ -199,9 +199,9 @@ describe('collectReasons', () => {
 
   it('recovers the own-day weight over its half-life', () => {
     const ownDay = (lastOwnDayAtMs: number | null) => collect({ lastOwnDayAtMs }).find(reason => reason.key === 'own-day')
-    expect(ownDay(null)).toMatchObject({ kind: 'own-day', ripeness: 0.35, weight: 0.6 })
+    expect(ownDay(null)).toMatchObject({ kind: 'own-day', ripeness: 0.35, weight: 0.2 })
     expect(ownDay(T0)?.weight).toBe(0)
-    expect(ownDay(T0 - 90 * MIN)?.weight).toBeCloseTo(0.3, 9)
+    expect(ownDay(T0 - 90 * MIN)?.weight).toBeCloseTo(0.1, 9)
     expect(ownDay(T0 + HOUR)?.weight).toBe(0)
   })
 
@@ -230,11 +230,12 @@ describe('collectReasons', () => {
 
 describe('pickReason', () => {
   it('picks a thread at peak ripeness in at least 70% of seeded rolls against own-day and a tier-2 long-session', () => {
-    // An event thread at peak (weight 1.2 * 0.85^2 = 0.867) against own-day
-    // raised 30 min ago (weight 0.124) and a fresh tier-2 long-session (0.15).
+    // An event thread at peak (weight 1.2 * 0.85^2 = 0.867) against a fully
+    // recovered own-day (never raised, weight 0.2) and a fresh tier-2
+    // long-session (0.15): expected share 0.867 / 1.217, about 71%.
     const thread = makeThread('event')
     const nowMs = peakAt(thread)
-    const reasons = collect({ events: [worldEvent({ atMs: nowMs })], threads: [thread], nowMs, lastOwnDayAtMs: nowMs - 30 * MIN })
+    const reasons = collect({ events: [worldEvent({ atMs: nowMs })], threads: [thread], nowMs, lastOwnDayAtMs: null })
     expect(keys(reasons)).toEqual(['long-session:code', 'own-day', thread.topicKey])
 
     let state = seedRng(20261029)
