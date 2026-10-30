@@ -3,6 +3,7 @@ import type { AiriCard } from './airi-card'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { memoryRepo } from '../../database/repos/memory.repo'
 import { splitCard } from '../../libs/character-card-sync'
 import { useProviderStore } from '../providers/provider'
 import { useSettingsStageModel } from '../settings/stage-model'
@@ -29,6 +30,8 @@ vi.mock('localforage', () => ({
     setItem: vi.fn(async <T>(_: string, value: T) => value),
   },
 }))
+
+vi.mock('../../database/repos/memory.repo')
 
 vi.mock('./artistry', async () => {
   const { defineStore } = await import('pinia')
@@ -97,7 +100,8 @@ vi.mock('vue-i18n', () => ({
  * describe('airi-card store', () => {})
  */
 describe('airi-card store', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await memoryRepo.clear()
     setActivePinia(createPinia())
     resetArtistryToGlobal.mockClear()
     useSpeechStore().$patch({
@@ -588,6 +592,36 @@ describe('airi-card store', () => {
     expect(await cardStore.removeCard('default')).toBe(false)
     expect(cardStore.cards.has('default')).toBe(true)
     expect(cardStore.activeCardId).toBe('default')
+  })
+
+  // The memory store of a fresh window starts empty. The repo is seeded before the
+  // store exists, so only the readiness wait in removeCard makes the entry known.
+  it('forgets the memories of a deleted card and keeps the general ones', async () => {
+    await memoryRepo.add([
+      { id: 'own', persona: 'x', description: 'Own', body: 'Belongs to x.', updatedAt: 1 },
+      { id: 'general', description: 'General', body: 'Belongs to everyone.', updatedAt: 2 },
+    ])
+    const cardStore = useAiriCardStore()
+    await cardStore.initialize()
+    cardStore.cards.set('x', { ...cardStore.builtInCard, name: 'X' })
+
+    expect(await cardStore.removeCard('x')).toBe(true)
+
+    expect((await memoryRepo.list()).map(entry => entry.id)).toEqual(['general'])
+  })
+
+  it('keeps every memory when the built-in card deletion is refused', async () => {
+    await memoryRepo.add([
+      { id: 'own', persona: 'default', description: 'Own', body: 'Belongs to default.', updatedAt: 1 },
+      { id: 'general', description: 'General', body: 'Belongs to everyone.', updatedAt: 2 },
+    ])
+    const before = await memoryRepo.list()
+    const cardStore = useAiriCardStore()
+    await cardStore.initialize()
+
+    expect(await cardStore.removeCard('default')).toBe(false)
+
+    expect(await memoryRepo.list()).toEqual(before)
   })
 
   it('preserves a valid persisted active card during initialization', async () => {

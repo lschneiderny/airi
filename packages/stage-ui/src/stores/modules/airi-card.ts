@@ -30,6 +30,7 @@ import { wakeWordSchema } from '../../libs/voice/wake-words'
 import { resolveModuleSelection } from '../../services/airi-card-modules'
 import { useAuthStore } from '../auth'
 import { useFeatureFlagsStore } from '../feature-flags'
+import { useMemoryStore } from '../memory'
 import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
 import { useSettingsStageModel } from '../settings/stage-model'
@@ -277,6 +278,13 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     // The built-in card is the guaranteed fallback for every runtime profile.
     if (id === 'default')
       return false
+
+    // The memory store starts empty and reads IndexedDB asynchronously. Wait for
+    // that read so a fresh window cannot delete the card before its memories are
+    // known. General entries have no persona and stay.
+    const memory = useMemoryStore()
+    await memory.ready()
+    await Promise.all(memory.entries.filter(entry => entry.persona === id).map(entry => memory.remove(entry)))
 
     const removed = cards.value.delete(id)
     if (!removed)
