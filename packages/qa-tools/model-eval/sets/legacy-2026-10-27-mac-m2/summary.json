@@ -14,7 +14,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -73,7 +73,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -195,7 +195,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -254,7 +254,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -371,7 +371,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -430,7 +430,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -547,7 +547,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -606,7 +606,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -728,7 +728,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -787,7 +787,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -904,7 +904,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -963,7 +963,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -1080,7 +1080,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -1139,7 +1139,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -1256,7 +1256,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -1315,7 +1315,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -1432,7 +1432,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -1491,7 +1491,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -1563,7 +1563,7 @@
       "firstLetterLower": 0,
       "personaFace": 0,
       "aiBreak": 0,
-      "exampleEcho": 0,
+      "exampleEcho": 4,
       "meanWords": 9.571428571428571
     },
     "timing": {
@@ -1608,7 +1608,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -1667,7 +1667,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -1784,7 +1784,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -1843,7 +1843,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -1978,7 +1978,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -2037,7 +2037,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -2163,7 +2163,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -2222,7 +2222,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -2357,7 +2357,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -2416,7 +2416,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -2543,7 +2543,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -2602,7 +2602,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -2728,7 +2728,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -2787,7 +2787,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -2909,7 +2909,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -2968,7 +2968,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -3085,7 +3085,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -3144,7 +3144,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -3266,7 +3266,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -3325,7 +3325,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -3447,7 +3447,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -3506,7 +3506,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -3628,7 +3628,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -3687,7 +3687,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -3821,7 +3821,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -3880,7 +3880,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -4006,7 +4006,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -4065,7 +4065,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -4187,7 +4187,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -4246,7 +4246,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -4368,7 +4368,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -4427,7 +4427,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -4549,7 +4549,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -4608,7 +4608,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -4738,7 +4738,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -4797,7 +4797,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -4914,7 +4914,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -4973,7 +4973,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -5099,7 +5099,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -5158,7 +5158,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -5275,7 +5275,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -5334,7 +5334,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -5460,7 +5460,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -5519,7 +5519,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -5645,7 +5645,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -5704,7 +5704,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -5826,7 +5826,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -5885,7 +5885,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -6002,7 +6002,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -6061,7 +6061,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -6178,7 +6178,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -6237,7 +6237,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -6354,7 +6354,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -6413,7 +6413,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -6530,7 +6530,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -6589,7 +6589,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -6706,7 +6706,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -6765,7 +6765,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -6882,7 +6882,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -6941,7 +6941,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -7058,7 +7058,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -7117,7 +7117,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -7234,7 +7234,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -7293,7 +7293,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -7410,7 +7410,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -7469,7 +7469,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -7586,7 +7586,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -7645,7 +7645,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -7772,7 +7772,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -7831,7 +7831,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -7957,7 +7957,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -8016,7 +8016,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -8138,7 +8138,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -8197,7 +8197,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -8331,7 +8331,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -8390,7 +8390,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -8520,7 +8520,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -8579,7 +8579,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -8705,7 +8705,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -8764,7 +8764,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -8836,7 +8836,7 @@
       "firstLetterLower": 3,
       "personaFace": 1,
       "aiBreak": 0,
-      "exampleEcho": 0,
+      "exampleEcho": 1,
       "meanWords": 37
     },
     "timing": {
@@ -8881,7 +8881,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -8940,7 +8940,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -9057,7 +9057,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -9116,7 +9116,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -9233,7 +9233,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -9292,7 +9292,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -9409,7 +9409,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -9468,7 +9468,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -9585,7 +9585,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -9644,7 +9644,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -9766,7 +9766,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -9825,7 +9825,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -9947,7 +9947,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -10006,7 +10006,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -10128,7 +10128,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -10187,7 +10187,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -10313,7 +10313,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -10372,7 +10372,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -10494,7 +10494,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -10553,7 +10553,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -10679,7 +10679,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -10738,7 +10738,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -10860,7 +10860,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -10919,7 +10919,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -11041,7 +11041,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -11100,7 +11100,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -11226,7 +11226,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -11285,7 +11285,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -11407,7 +11407,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -11466,7 +11466,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -11588,7 +11588,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -11647,7 +11647,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -11773,7 +11773,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -11832,7 +11832,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -11967,7 +11967,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -12026,7 +12026,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -12148,7 +12148,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -12207,7 +12207,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -12369,7 +12369,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -12428,7 +12428,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -12545,7 +12545,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -12604,7 +12604,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -12721,7 +12721,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -12780,7 +12780,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -12897,7 +12897,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -12956,7 +12956,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -13073,7 +13073,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -13132,7 +13132,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -13249,7 +13249,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -13308,7 +13308,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -13425,7 +13425,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -13484,7 +13484,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -13556,7 +13556,7 @@
       "firstLetterLower": 0,
       "personaFace": 0,
       "aiBreak": 0,
-      "exampleEcho": 0,
+      "exampleEcho": 1,
       "meanWords": 13.8
     },
     "timing": {
@@ -13601,7 +13601,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -13660,7 +13660,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -13777,7 +13777,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -13836,7 +13836,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -13953,7 +13953,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -14012,7 +14012,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -14129,7 +14129,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -14188,7 +14188,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {
@@ -14305,7 +14305,7 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
-          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+          "sha256": "efa40126a3dbf9027b27c9cd31ac79333e091754a2ab93e45b713ec59947adb2"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
@@ -14364,7 +14364,7 @@
           "sha256": "3f146197c1a3ae77246cbdd1ae6ec60c37a2ece6c1c01ca9ff9e646f96136638"
         }
       ],
-      "closureDigest": "fca274fad1559fb9fe9e347286d7bcd7e02c0dc5daca14c9e57dcdebf20c2783",
+      "closureDigest": "e07cbfce7416b2118cf7d514381587ef1ddbd0b5f75da592d80715e0a0e64f6d",
       "coreAgentDistSha256": "fa8766a6b67b99e5d8153647bf728161bcdd3e8542f4f5f8c493930bdad10aa8"
     },
     "fixtures": {

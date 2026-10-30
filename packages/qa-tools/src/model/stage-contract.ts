@@ -8,7 +8,7 @@ import { createI18n } from 'vue-i18n'
 
 /** Extracts spoken examples using the same rule as the rendered contract. */
 export function extractExampleLines(text: string): string[] {
-  return text.split('\n').flatMap((line) => {
+  return text.split(/\r?\n/).flatMap((line) => {
     const match = /^<\|ACT[^|]*\|>(.+)$/.exec(line)
     return match ? [match[1].trim()] : []
   }).filter(Boolean)
