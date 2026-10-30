@@ -539,3 +539,133 @@ describe('evaluateGate purity and malformed input', () => {
     expect(memory.fires).toEqual([T0 + 24 * HOUR])
   })
 })
+
+describe('evaluateGate hard contract (pinned before the urge rewrite)', () => {
+  // Pinned independently of timing: every case below holds or fires the same with an empty memory and with a blocked one.
+  // Covered elsewhere and not repeated: the self-origin/addressed exclusion and urgent bypass of timing guards
+  // ('evaluateGate topics'), and the single-fault hold reasons ('evaluateGate hard suppressors').
+  const urgentNotify = worldEvent({ id: 'n', kind: 'notify', topicKey: 'notify:plugin:widget:evt-1', text: 'Doorbell', salience: 1, halfLifeMs: 10 * MIN })
+  const gameActivity = activityOf({ appId: 'eldenring', category: 'game' })
+
+  /** One hold reason per case, each the only fault, built so the urgent notify can be swapped in. */
+  const faults: { reason: GateHoldReason, input: (events: SituationEvent[]) => GateInput }[] = [
+    { reason: 'disabled', input: events => gateInput({ settings: { enabled: false }, situation: quietSituation({ events }) }) },
+    { reason: 'dont-disturb', input: events => gateInput({ settings: { dontDisturb: true }, situation: quietSituation({ events }) }) },
+    { reason: 'stage-hidden', input: events => gateInput({ signals: { stageVisible: false }, situation: quietSituation({ events }) }) },
+    { reason: 'presence-away', input: events => gateInput({ situation: quietSituation({ events, presence: { state: 'away', reason: 'locked', sinceMs: T0 } }) }) },
+    { reason: 'presence-unknown', input: events => gateInput({ situation: quietSituation({ events, presence: { state: 'unknown', reason: 'stale', sinceMs: T0 } }) }) },
+    { reason: 'stale-signal', input: events => gateInput({ signals: { desktopFresh: false }, situation: quietSituation({ events }) }) },
+    { reason: 'user-speaking', input: events => gateInput({ signals: { userSpeaking: true }, situation: quietSituation({ events }) }) },
+    { reason: 'user-typing', input: events => gateInput({ signals: { userTyping: true }, situation: quietSituation({ events }) }) },
+    { reason: 'character-speaking', input: events => gateInput({ signals: { characterSpeaking: true }, situation: quietSituation({ events }) }) },
+    { reason: 'generating', input: events => gateInput({ signals: { generating: true }, situation: quietSituation({ events }) }) },
+    { reason: 'queued', input: events => gateInput({ signals: { queued: 1 }, situation: quietSituation({ events }) }) },
+    { reason: 'busy-busy', input: events => gateInput({ situation: quietSituation({ events, busy: { state: 'busy', atMs: T0 } }) }) },
+    { reason: 'busy-fullscreen', input: events => gateInput({ situation: quietSituation({ events, busy: { state: 'fullscreen', atMs: T0 } }) }) },
+    { reason: 'busy-presentation', input: events => gateInput({ situation: quietSituation({ events, busy: { state: 'presentation', atMs: T0 } }) }) },
+    { reason: 'busy-quiet', input: events => gateInput({ situation: quietSituation({ events, busy: { state: 'quiet', atMs: T0 } }) }) },
+    { reason: 'busy-unknown', input: events => gateInput({ situation: quietSituation({ events, busy: { state: 'unknown', atMs: null } }) }) },
+    { reason: 'quiet-app', input: events => gateInput({ situation: quietSituation({ events, activity: activityOf({ appId: 'zoom', category: 'call' }) }) }) },
+    { reason: 'busy-game', input: events => gateInput({ settings: { speakDuringGames: false }, situation: quietSituation({ events, activity: gameActivity }) }) },
+  ]
+
+  it('returns the hard reasons in the pinned order of precedence when several hold', () => {
+    // Every fault at once; each step repairs the reason just reported, and the next one in the list must surface.
+    const state = {
+      enabled: false,
+      dontDisturb: true,
+      stageVisible: false,
+      presence: 'away' as 'away' | 'unknown' | 'here',
+      fresh: false,
+      userSpeaking: true,
+      userTyping: true,
+      characterSpeaking: true,
+      generating: true,
+      queued: 1,
+      busy: 'quiet' as 'quiet' | 'accepts',
+      quietApps: ['eldenring'],
+      speakDuringGames: false,
+    }
+    const decide = (): GateDecision => evaluateGate(gateInput({
+      settings: { enabled: state.enabled, dontDisturb: state.dontDisturb, quietApps: state.quietApps, speakDuringGames: state.speakDuringGames },
+      signals: {
+        stageVisible: state.stageVisible,
+        desktopFresh: state.fresh,
+        foregroundFresh: state.fresh,
+        userSpeaking: state.userSpeaking,
+        userTyping: state.userTyping,
+        characterSpeaking: state.characterSpeaking,
+        generating: state.generating,
+        queued: state.queued,
+      },
+      situation: quietSituation({
+        presence: { state: state.presence, reason: null, sinceMs: T0 - HOUR },
+        busy: { state: state.busy, atMs: T0 },
+        activity: gameActivity,
+      }),
+    }), initialGateMemory).decision
+
+    const order: { reason: GateHoldReason, repair: () => void }[] = [
+      { reason: 'disabled', repair: () => { state.enabled = true } },
+      { reason: 'dont-disturb', repair: () => { state.dontDisturb = false } },
+      { reason: 'stage-hidden', repair: () => { state.stageVisible = true } },
+      { reason: 'presence-away', repair: () => { state.presence = 'unknown' } },
+      { reason: 'presence-unknown', repair: () => { state.presence = 'here' } },
+      { reason: 'stale-signal', repair: () => { state.fresh = true } },
+      { reason: 'user-speaking', repair: () => { state.userSpeaking = false } },
+      { reason: 'user-typing', repair: () => { state.userTyping = false } },
+      { reason: 'character-speaking', repair: () => { state.characterSpeaking = false } },
+      { reason: 'generating', repair: () => { state.generating = false } },
+      { reason: 'queued', repair: () => { state.queued = 0 } },
+      { reason: 'busy-quiet', repair: () => { state.busy = 'accepts' } },
+      { reason: 'quiet-app', repair: () => { state.quietApps = [] } },
+      { reason: 'busy-game', repair: () => { state.speakDuringGames = true } },
+    ]
+    const seen: GateHoldReason[] = []
+    for (const step of order) {
+      const decision = decide()
+      expect(decision).toMatchObject({ fire: false })
+      seen.push(decision.fire ? 'invalid-time' : decision.reason)
+      step.repair()
+    }
+
+    expect(seen).toEqual(order.map(step => step.reason))
+    expect(decide()).toMatchObject({ fire: true, reason: 'ready' })
+  })
+
+  it.each(faults.map(fault => [fault.reason, fault] as const))('treats an urgent notify under %s as pinned: fires only for busy-game, holds otherwise', (reason, fault) => {
+    const { decision } = evaluateGate(fault.input([urgentNotify]), initialGateMemory)
+
+    if (reason === 'busy-game')
+      expect(decision).toMatchObject({ fire: true, reason: 'urgent', topicKey: urgentNotify.topicKey })
+    else
+      expect(decision).toMatchObject({ fire: false, reason })
+  })
+
+  it('still holds a game for an urgent notify when games are quiet but the app is also denylisted', () => {
+    const input = gateInput({ settings: { speakDuringGames: false, quietApps: ['eldenring'] }, situation: quietSituation({ events: [urgentNotify], activity: gameActivity }) })
+
+    expect(evaluateGate(input, initialGateMemory).decision).toMatchObject({ fire: false, reason: 'quiet-app' })
+  })
+
+  it('never makes a self-origin event a candidate, urgent or not, even when forced', () => {
+    const own = [
+      worldEvent({ id: 'self-notify', kind: 'notify', topicKey: 'notify:self:1', origin: 'self', salience: 1, halfLifeMs: 10 * MIN }),
+      worldEvent({ id: 'self-context', topicKey: 'context:self', origin: 'self', salience: 1 }),
+    ]
+    const input = gateInput({ forceTiming: true, situation: quietSituation({ events: own }) })
+
+    const { decision, memory } = evaluateGate(input, initialGateMemory)
+    expect(decision).toMatchObject({ fire: false, reason: 'no-topic' })
+    expect(decision.trace.candidate).toBeNull()
+    expect(memory.pending).toBeNull()
+  })
+
+  it.each(faults.map(fault => [fault.reason, fault] as const))('keeps %s a hold when timing is forced', (reason, fault) => {
+    const events = [worldEvent()]
+    const blocked = memoryWith({ lastFireAtMs: T0 - MIN, fires: [T0 - MIN] })
+
+    for (const memory of [initialGateMemory, blocked])
+      expect(evaluateGate({ ...fault.input(events), forceTiming: true }, memory).decision).toMatchObject({ fire: false, reason })
+  })
+})
