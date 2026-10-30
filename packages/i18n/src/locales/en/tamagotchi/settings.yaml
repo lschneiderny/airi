@@ -137,6 +137,7 @@ devtools:
         extraction-empty: No exchange has ended since the leader window started.
         extraction-in-flight: An extraction is running.
         extraction-note: '{count} of the last {max} attempts kept. Thread text appears only here, never in chat history.'
+        extraction-answer: 'Answer: {chars} chars, finish reason {finishReason}: {excerpt}'
         outcomes: Outcomes per reason kind
         outcomes-note: Counted since the leader window started. Engaged means a user turn followed a spoken turn within 10 minutes.
         columns:

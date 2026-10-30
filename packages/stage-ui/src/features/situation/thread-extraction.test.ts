@@ -5,9 +5,11 @@ import type { ThreadDraft } from '@proj-airi/stage-shared/situation'
 import type { ThreadExtractionLedgerEntry } from '../../stores/devtools/situation-observability'
 import type { LlmStream } from './thread-extraction'
 
+import { createPinia, setActivePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 
-import { createThreadExtractor, EXTRACTION_INPUT_CHARS_MAX, EXTRACTION_MAX_TOKENS, EXTRACTION_MESSAGE_CHARS_MAX, EXTRACTION_MESSAGES_MAX } from './thread-extraction'
+import { useLLM } from '../../stores/ai/chat-llm/llm'
+import { createThreadExtractor, EXTRACTION_ANSWER_EXCERPT_CHARS, EXTRACTION_INPUT_CHARS_MAX, EXTRACTION_MAX_TOKENS, EXTRACTION_MESSAGE_CHARS_MAX, EXTRACTION_MESSAGES_MAX } from './thread-extraction'
 
 const NOW = 1_700_000_000_000
 const EXCHANGE = { sessionId: 'session-1', startedAtMs: NOW - 10 * 60_000, endedAtMs: NOW, userTurns: 2 }
@@ -90,6 +92,8 @@ describe('createThreadExtractor', () => {
         { kind: 'later', summary: 'She promised to send him the recipe later.' },
       ],
       error: null,
+      // The fake stream reports no finish reason, and a parsed answer keeps no excerpt.
+      answer: { chars: answer.length, finishReason: null },
     })
     expect(ledger).toEqual([entry])
     expect(onInFlight.mock.calls).toEqual([[true], [false]])
@@ -153,6 +157,33 @@ describe('createThreadExtractor', () => {
     expect(entry).toMatchObject({ status: 'failed', error: '503 Service Unavailable', threads: [] })
     expect(onThreads).not.toHaveBeenCalled()
     expect(onInFlight.mock.calls).toEqual([[true], [false]])
+  })
+
+  it('records an answer aborted by the timeout as failed, with the text that arrived', async () => {
+    const partial = '[{"kind": "event", "summ'
+    const { extractor, onThreads } = createHarness({
+      stream: async (_model, _provider, _conversation, streamOptions) => {
+        await streamOptions?.onStreamEvent?.({ type: 'text-delta', text: partial })
+        throw new DOMException('The operation timed out.', 'TimeoutError')
+      },
+    })
+
+    const entry = await extractor.extract(EXCHANGE)
+
+    expect(entry).toMatchObject({ status: 'failed', error: 'The operation timed out.', answer: { chars: partial.length, finishReason: null, excerpt: partial } })
+    expect(onThreads).not.toHaveBeenCalled()
+  })
+
+  it('keeps a capped, sanitized start of an invalid answer in the ledger', async () => {
+    const answer = `<|ACT|>\u0007nothing\u200B open\n${'x'.repeat(500)}`
+    const { extractor } = createHarness({ answer })
+
+    const entry = await extractor.extract(EXCHANGE)
+
+    expect(entry.status).toBe('invalid')
+    expect(entry.answer?.chars).toBe(Array.from(answer).length)
+    // The cap counts the 21 code points of `<|ACT|> nothing open ` before the markers become parentheses.
+    expect(entry.answer?.excerpt).toBe(`(ACT) nothing open ${'x'.repeat(EXTRACTION_ANSWER_EXCERPT_CHARS - 21)}`)
   })
 
   it('records a call while another extraction is in flight as skipped', async () => {
@@ -245,6 +276,91 @@ describe('createThreadExtractor', () => {
     const entry = await extractor.extract(EXCHANGE)
 
     expect(entry).toMatchObject({ status: 'ok', threads: [{ kind: 'event', summary: 'He has a dentist appointment on Friday.' }] })
+  })
+
+  describe('through the LLM store and a streaming provider', () => {
+    /**
+     * A chat-completions provider whose `fetch` streams `answer` the way the Anthropic compatibility endpoint does: an
+     * opening event, one event per few characters, the finish reason in its own event, then the usage. Claude 5 models
+     * think by default and that endpoint does not return the thinking, so hidden thinking can spend the output cap and
+     * the visible answer stops with `finish_reason: 'length'`.
+     */
+    function streamingProvider(answer: string, finishReason: 'stop' | 'length') {
+      const requests: Record<string, unknown>[] = []
+      const fetch: typeof globalThis.fetch = async (_url, init) => {
+        requests.push(JSON.parse(String(init?.body)))
+        const events = [
+          { choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] },
+          ...(answer.match(/[\s\S]{1,5}/g) ?? []).map(content => ({ choices: [{ index: 0, delta: { content }, finish_reason: null }] })),
+          { choices: [{ index: 0, delta: {}, finish_reason: finishReason }] },
+          { choices: [], usage: { prompt_tokens: 900, completion_tokens: 380, total_tokens: 1280 } },
+        ]
+        const encoder = new TextEncoder()
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (const event of events)
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+            controller.close()
+          },
+        })
+        return new Response(body, { headers: { 'content-type': 'text/event-stream' } })
+      }
+      const streaming: GenerationProvider = {
+        generation: model => ({ protocol: 'chat-completions', config: { model, baseURL: 'https://api.anthropic.test/v1/', apiKey: 'test-key', fetch } }),
+      }
+      return { provider: streaming, requests }
+    }
+
+    function createStreamingExtractor(streaming: GenerationProvider) {
+      setActivePinia(createPinia())
+      const onThreads = vi.fn<(drafts: readonly ThreadDraft[], sessionId: string) => void>()
+      const extractor = createThreadExtractor({
+        stream: useLLM().stream,
+        selection: async () => ({ provider: streaming, model: 'claude-haiku-5-5', characterName: 'Airi' }),
+        messages: () => CONVERSATION,
+        onThreads,
+        onLedger: () => {},
+        onInFlight: () => {},
+        now: () => NOW,
+      })
+      return { extractor, onThreads }
+    }
+
+    // ROOT CAUSE:
+    // Live extraction with anthropic/claude-haiku-5-5 recorded every attempt as `invalid` with "Unterminated string in
+    // JSON" (todo 20 scenario 5). The provider ended the answer at the output cap with `finish_reason: 'length'`, and the
+    // extractor parsed the cut-off text as if it were complete.
+    it('records an answer cut off at the output cap as failed, with its length and finish reason', async () => {
+      const truncated = '[\n  {"kind": "question", "summary": "The user asked what Airi is thinking ab'
+      const { provider: streaming } = streamingProvider(truncated, 'length')
+      const { extractor, onThreads } = createStreamingExtractor(streaming)
+
+      const entry = await extractor.extract(EXCHANGE)
+
+      expect(entry.status).toBe('failed')
+      expect(entry.error).toContain(`${EXTRACTION_MAX_TOKENS} tokens`)
+      expect(entry.answer).toEqual({ chars: truncated.length, finishReason: 'length', excerpt: truncated.replace('\n', ' ') })
+      expect(onThreads).not.toHaveBeenCalled()
+    })
+
+    it('parses a complete answer streamed in many small deltas', async () => {
+      const answer = JSON.stringify([thread(), thread({ kind: 'question', summary: 'He asked which movie to watch.', cue: 'the movie he asked about' })], null, 2)
+      const { provider: streaming, requests } = streamingProvider(answer, 'stop')
+      const { extractor, onThreads } = createStreamingExtractor(streaming)
+
+      const entry = await extractor.extract(EXCHANGE)
+
+      expect(entry).toMatchObject({
+        status: 'ok',
+        threads: [{ kind: 'event', summary: 'He has a dentist appointment on Friday.' }, { kind: 'question', summary: 'He asked which movie to watch.' }],
+        error: null,
+        answer: { chars: answer.length, finishReason: 'stop' },
+      })
+      expect(onThreads).toHaveBeenCalledOnce()
+      expect(requests).toHaveLength(1)
+      expect(requests[0]).toMatchObject({ model: 'claude-haiku-5-5', max_tokens: EXTRACTION_MAX_TOKENS, stream: true })
+    })
   })
 
   it('strips control characters and newlines from a summary', async () => {

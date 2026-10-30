@@ -102,7 +102,7 @@ function longThread(index: number): Thread {
 }
 
 function ledgerEntry(atMs: number, status: ThreadExtractionLedgerEntry['status'] = 'ok'): ThreadExtractionLedgerEntry {
-  return { atMs, sessionId: 'session-a', requestChars: 4_000, messageCount: 12, status, threads: [], error: null }
+  return { atMs, sessionId: 'session-a', requestChars: 4_000, messageCount: 12, status, threads: [], error: null, answer: { chars: 1_200, finishReason: 'stop' } }
 }
 
 describe('situation observability store', () => {
@@ -397,7 +397,7 @@ describe('situation observability store', () => {
 
     const { bytes } = await fillHour(threads)
 
-    // Measured 42,657 bytes at the current caps. The 60 KB target leaves room below the 64 KB budget.
+    // Measured 43,577 bytes at the current caps. The 60 KB target leaves room below the 64 KB budget.
     expect(bytes).toBeLessThanOrEqual(60 * 1024)
   })
 
@@ -406,7 +406,7 @@ describe('situation observability store', () => {
 
     const { bytes } = await fillHour(threads)
 
-    // Known bound, not the budget: 72,473 bytes at the current caps. The threads, and the reasons that repeat
+    // Known bound, not the budget: 73,393 bytes at the current caps. The threads, and the reasons that repeat
     // them, are data the inspector must show, so this case may exceed 64 KB; it must not grow past this bound.
     expect(bytes).toBeLessThanOrEqual(76 * 1024)
   })

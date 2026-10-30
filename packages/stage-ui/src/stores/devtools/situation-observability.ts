@@ -138,6 +138,20 @@ export interface SituationUrgeInspection {
   memory: UrgeGateMemory | null
 }
 
+/** The model answer of one thread extraction, kept so that a failed or invalid attempt can be diagnosed. */
+export interface ThreadExtractionAnswer {
+  /** Code points of the whole answer, cut-off text included. */
+  chars: number
+  /** The provider's finish reason, for example `stop` or `length` (output cap reached); `null` when none arrived. */
+  finishReason: string | null
+  /**
+   * The start of the answer, capped and sanitized like thread text, with control characters as spaces. Present only
+   * for `invalid` and `failed` attempts: a parsed answer is already shown as threads, and leaving it out keeps a full
+   * ledger of `ok` entries the largest ledger the inspector carries.
+   */
+  excerpt?: string
+}
+
 /** One thread extraction attempt at the end of an exchange. */
 export interface ThreadExtractionLedgerEntry {
   atMs: number
@@ -146,12 +160,15 @@ export interface ThreadExtractionLedgerEntry {
   requestChars: number
   messageCount: number
   /**
-   * `ok` stored at least one thread, `empty` found none, `invalid` got output that failed validation, `failed` got no
-   * answer, `skipped` did not run because another extraction was in flight.
+   * `ok` stored at least one thread, `empty` found none, `invalid` got a complete answer that failed validation,
+   * `failed` got no complete answer (provider error, timeout, or output cap), `skipped` did not run because another
+   * extraction was in flight.
    */
   status: 'ok' | 'empty' | 'invalid' | 'failed' | 'skipped'
   threads: readonly { kind: ThreadKind, summary: string }[]
   error: string | null
+  /** Absent when no request was sent: `skipped`, no chat selection, or no conversation text. */
+  answer?: ThreadExtractionAnswer
 }
 
 export interface SituationExtraction {
