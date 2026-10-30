@@ -5,7 +5,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useSituationSettings } from '../../../../features/situation/settings'
-import { getChatHistoryItemCopyText } from '../utils'
+import { getChatHistoryItemCopyText, getUnpromptedCueKind } from '../utils'
 
 const props = withDefaults(defineProps<{
   /** The trigger message of a turn the character started without user input. */
@@ -15,10 +15,16 @@ const props = withDefaults(defineProps<{
   variant: 'desktop',
 })
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const settings = useSituationSettings()
 /** A trigger without topic text shows no cue, never the prompt that was sent to the model. */
 const topic = computed(() => getChatHistoryItemCopyText(props.message).trim())
+/** A kind without a label key (unknown or missing) falls back to the topic text. */
+const label = computed(() => {
+  const kind = getUnpromptedCueKind(props.message)
+  const key = `stage.chat.unprompted.labels.${kind}`
+  return kind && te(key) ? t(key) : topic.value
+})
 </script>
 
 <template>
@@ -31,6 +37,6 @@ const topic = computed(() => getChatHistoryItemCopyText(props.message).trim())
       variant === 'mobile' ? 'mr-0' : 'mr-12',
     ]"
   >
-    {{ t('stage.chat.unprompted.cue', { label: topic }) }}
+    {{ t('stage.chat.unprompted.cue', { label }) }}
   </p>
 </template>

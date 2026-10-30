@@ -782,6 +782,26 @@ describe('chat history', () => {
       expect(screen.container.querySelectorAll('[data-chat-unprompted-cue]')).toHaveLength(1)
     })
 
+    it('labels the cue with the reason she reached out, and falls back to the topic text for an unknown kind', async () => {
+      const cueLabel = async (kind: string) => {
+        const screen = await renderHistory([{ ...cue, trigger: { topicKey: 'qa', text: 'QA topic', kind } } as ChatHistoryItem, reply])
+        const line = await vi.waitFor(() => {
+          const element = screen.container.querySelector<HTMLElement>('[data-chat-unprompted-cue]')
+          expect(element).not.toBeNull()
+          return element!
+        })
+        return { screen, text: line.textContent?.trim() }
+      }
+
+      const known = await cueLabel('thread-question')
+      expect(known.text).toBe('Reached out: to follow up on something they said')
+      known.screen.unmount()
+
+      const bogus = await cueLabel('bogus')
+      expect(bogus.text).toBe('Reached out: QA topic')
+      expect(bogus.screen.container.textContent).not.toContain('labels.bogus')
+    })
+
     it('does not offer a reply to the cue', async () => {
       const screen = await renderHistory([cue, reply])
 

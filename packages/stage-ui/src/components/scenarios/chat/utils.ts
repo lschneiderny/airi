@@ -26,6 +26,11 @@ export function isUnpromptedCue(message: ChatHistoryItem | undefined): message i
   return message?.role === 'user' && message.origin === 'unprompted'
 }
 
+/** The reason the character reached out, when the host recorded one on the trigger. */
+export function getUnpromptedCueKind(message: ChatHistoryItem | undefined): string | undefined {
+  return isUnpromptedCue(message) ? message.trigger?.kind : undefined
+}
+
 export function getChatHistoryItemCopyText(message: ChatHistoryItem): string {
   // The trigger content is the instruction sent to the model; the cue stands for its topic.
   if (isUnpromptedCue(message))

@@ -2,7 +2,7 @@ import type { ChatHistoryItem } from '../../../types/chat'
 
 import { describe, expect, it } from 'vitest'
 
-import { getChatHistoryItemCopyText, getChatHistoryItemKey } from './utils'
+import { getChatHistoryItemCopyText, getChatHistoryItemKey, getUnpromptedCueKind } from './utils'
 
 describe('getChatHistoryItemCopyText', () => {
   it('maps an unprompted trigger to its topic text instead of the prompt sent to the model', () => {
@@ -24,6 +24,25 @@ describe('getChatHistoryItemCopyText', () => {
 
   it('keeps the content of a written user message', () => {
     expect(getChatHistoryItemCopyText({ role: 'user', content: 'hi' })).toBe('hi')
+  })
+})
+
+describe('getUnpromptedCueKind', () => {
+  it('carries the trigger kind of an unprompted cue', () => {
+    const cue: ChatHistoryItem = {
+      role: 'user',
+      content: '(A quiet moment.)',
+      origin: 'unprompted',
+      trigger: { topicKey: 'qa', text: 'QA topic', kind: 'ritual-greeting' },
+    }
+
+    expect(getUnpromptedCueKind(cue)).toBe('ritual-greeting')
+  })
+
+  it('returns no kind without a trigger kind or for a written message', () => {
+    expect(getUnpromptedCueKind({ role: 'user', content: 'x', origin: 'unprompted', trigger: { topicKey: 'qa', text: 'QA topic' } })).toBeUndefined()
+    expect(getUnpromptedCueKind({ role: 'user', content: 'hi' })).toBeUndefined()
+    expect(getUnpromptedCueKind(undefined)).toBeUndefined()
   })
 })
 
