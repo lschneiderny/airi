@@ -1,13 +1,13 @@
 import type { ChatHookRegistry, ChatStreamEventContext } from '@proj-airi/core-agent'
 import type { WebSocketEventOf } from '@proj-airi/server-sdk'
 import type { DesktopActivitySnapshot } from '@proj-airi/stage-shared/performance-state'
-import type { GateInput } from '@proj-airi/stage-shared/situation'
+import type { UrgeGateEvaluation, UrgeGateInput } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../../chat'
 
 import { createChatHooks } from '@proj-airi/core-agent'
-import { evaluateGate, initialGateMemory, notifyTopicKey } from '@proj-airi/stage-shared/situation'
+import { evaluateUrgeGate, initialUrgeMemory, notifyTopicKey } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { createPinia, setActivePinia } from 'pinia'
@@ -134,15 +134,27 @@ function desktopSample(): DesktopActivitySnapshot {
   return { idleSeconds: 0, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, systemAudioLevel: null, screenChange: null, sampledAtMs: Date.now() }
 }
 
-/** A gate input in which only the situation decides: the user is present and quiet, and timing is skipped. */
-function quietGateInput(situation: GateInput['situation']): GateInput {
-  return {
+/**
+ * One gate evaluation in which only the situation decides: the user is present and quiet, no thread or ritual is open
+ * (4 pm local), and timing is skipped.
+ */
+function evaluateQuietGate(situation: UrgeGateInput['situation']): UrgeGateEvaluation {
+  return evaluateUrgeGate({
     nowMs: Date.now(),
     situation,
+    reasons: { threads: { threads: [] } },
+    local: { dayKey: '2026-10-20', minuteOfDay: 16 * 60 },
+    sessionId: 'session-1',
+    heldTopics: new Set(),
     signals: { userSpeaking: false, userTyping: false, characterSpeaking: false, generating: false, queued: 0, desktopFresh: true, foregroundFresh: true, stageVisible: true },
     settings: { enabled: true, chattiness: 1, dontDisturb: false, quietApps: [], speakDuringGames: true },
     forceTiming: true,
-  }
+  }, initialUrgeMemory)
+}
+
+/** The topic keys of the reasons the gate could pick from. */
+function reasonKeys(evaluation: UrgeGateEvaluation): string[] {
+  return evaluation.decision.trace.reasons.map(reason => reason.key)
 }
 
 /** The hook context of the unprompted turn that `payload` starts, as the chat runtime builds it. */
@@ -279,8 +291,9 @@ describe('widget spark reactions', () => {
     expect(addressedAtSubmit).toBeNull()
     expect(notifies[0].addressedAtMs).toEqual(expect.any(Number))
     expect(situation.state.conversation.lastUnpromptedTopic).toBe('QA widget: from the chess board')
-    const { decision } = evaluateGate(quietGateInput(situation.state), initialGateMemory)
-    expect(decision).toMatchObject({ fire: false, reason: 'no-topic', trace: { candidate: null } })
+    const evaluation = evaluateQuietGate(situation.state)
+    expect(reasonKeys(evaluation)).not.toContain(payload.topicKey)
+    expect(evaluation.decision).not.toMatchObject({ topicKey: payload.topicKey })
     expect(recordSparkNotifyReaction.mock.calls).toEqual([[event.data.id, 'Oh, a QA widget!']])
   })
 
@@ -336,7 +349,7 @@ describe('widget spark reactions', () => {
     expect(reaction).toBe('fallback')
     const [notify] = notifyEvents(situation)
     expect(notify.addressedAtMs).toBeNull()
-    expect(evaluateGate(quietGateInput(situation.state), initialGateMemory).decision.trace.candidate?.topicKey).toBe(notify.topicKey)
+    expect(reasonKeys(evaluateQuietGate(situation.state))).toContain(notify.topicKey)
     expect(recordSparkNotifyReaction).not.toHaveBeenCalled()
   })
 

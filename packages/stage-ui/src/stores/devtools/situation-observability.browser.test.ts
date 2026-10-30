@@ -1,9 +1,9 @@
-import type { GateDecision, Reason, Thread, UrgeGateDecision } from '@proj-airi/stage-shared/situation'
+import type { Reason, Thread, UrgeGateDecision } from '@proj-airi/stage-shared/situation'
 import type { LeadershipMode, SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import { defineInvoke } from '@moeru/eventa'
 import { createContext as createBroadcastChannelContext } from '@moeru/eventa/adapters/broadcast-channel'
-import { initialGateMemory, initialSituationState, initialUrgeMemory, reduceSituation } from '@proj-airi/stage-shared/situation'
+import { initialSituationState, initialUrgeMemory, reduceSituation } from '@proj-airi/stage-shared/situation'
 import { createPinia, disposePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -63,14 +63,32 @@ function watchCommittedStates(namespace: string) {
 /** Whether an operation retains an inspection or a gate evaluation answer. */
 function holdsRenders(operation: DomainOperation) {
   const result = operation.result
-  return typeof result === 'object' && result !== null && ('renders' in result || 'gateHistory' in result || 'decision' in result)
+  return typeof result === 'object' && result !== null && ('renders' in result || 'urge' in result || 'decision' in result)
 }
 
-function dontDisturb(nowMs: number): GateDecision {
+function dontDisturb(nowMs: number): UrgeGateDecision {
   return {
     fire: false,
     reason: 'dont-disturb',
-    trace: { nowMs, chattiness: 1, threshold: 0.15, candidate: null, gapMs: 180_000, hourlyCap: 7, firesLastHour: 0, backoffLevel: 0, ignoreStreak: 0, pendingTopicKey: null, nextEligibleAtMs: nowMs, forceTiming: true },
+    trace: {
+      nowMs,
+      chattiness: 1,
+      hazardPerHour: { open: 0, continuation: 0, ritual: 0, due: 0, total: 0 },
+      multipliers: { base: 3.06, pressure: 1, exchange: 1, clear: 1, damping: 1, floor: 1, game: 1 },
+      urge: 0,
+      urgeThreshold: 1,
+      expectedWaitMs: null,
+      phase: 'open',
+      unanswered: 0,
+      reopenAtMs: null,
+      doubleTextDueAtMs: null,
+      rituals: null,
+      reasons: [],
+      pick: null,
+      firesLastHour: 0,
+      pendingTopicKey: null,
+      forceTiming: true,
+    },
   }
 }
 
@@ -171,10 +189,10 @@ describe('situation observability across windows', () => {
     for (let index = 0; index < 20; index++)
       stage.store.recordRender(now + index, { text: `[Situation ${index}]`, shownEventIds: [] })
 
-    stage.store.serveGateEvaluation(() => ({ status: 'evaluated', decision: dontDisturb(now), memory: initialGateMemory }))
+    stage.store.serveGateEvaluation(() => ({ status: 'evaluated', decision: dontDisturb(now), memory: initialUrgeMemory }))
     const inspections = []
     for (let index = 0; index < 50; index++) {
-      stage.store.recordGateDecision(dontDisturb(now + index), initialGateMemory)
+      stage.store.recordUrgeDecision(dontDisturb(now + index), initialUrgeMemory)
       inspections.push(await settings.store.inspectLeader())
       await settings.store.evaluateGateLeader()
     }
@@ -193,19 +211,19 @@ describe('situation observability across windows', () => {
     const now = Date.now()
     stage.store.publishLiveState(true, initialSituationState)
     for (let index = 0; index < 3; index++)
-      stage.store.recordGateDecision(dontDisturb(now + index * 2_000), initialGateMemory)
+      stage.store.recordUrgeDecision(dontDisturb(now + index * 2_000), initialUrgeMemory)
     const calls: unknown[][] = []
     const stop = stage.store.serveGateEvaluation((...args: unknown[]) => {
       calls.push(args)
-      return { status: 'evaluated', decision: dontDisturb(now + 6_000), memory: initialGateMemory }
+      return { status: 'evaluated', decision: dontDisturb(now + 6_000), memory: initialUrgeMemory }
     })
 
     expect(await settings.store.evaluateGateLeader()).toMatchObject({ status: 'evaluated', decision: { fire: false, reason: 'dont-disturb', trace: { forceTiming: true } } })
     // The bus request has no payload, so the follower cannot pass anything to the gate.
     expect(calls).toEqual([[]])
     const inspection = await settings.store.inspectLeader()
-    expect(inspection.gateHistory).toEqual([expect.objectContaining({ reason: 'dont-disturb', count: 3, firstAtMs: now, lastAtMs: now + 4_000 })])
-    expect(settings.store.gateHistory).toEqual([])
+    expect(inspection.urge.history).toEqual([expect.objectContaining({ reason: 'dont-disturb', count: 3, fromMs: now, toMs: now + 4_000 })])
+    expect((await settings.store.inspect()).urge.history).toEqual([])
 
     stop()
     expect(await settings.store.evaluateGateLeader()).toEqual({ status: 'skipped', reason: 'gate-not-running' })

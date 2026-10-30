@@ -1,6 +1,4 @@
 import type {
-  GateDecision,
-  GateMemory,
   Reason,
   ReasonCategory,
   ReasonKind,
@@ -19,7 +17,7 @@ import type { Message } from '@xsai/shared-chat'
 import type { ChatUnpromptedResult } from '../chat'
 
 import { defineInvoke, defineInvokeEventa, defineInvokeHandler } from '@moeru/eventa'
-import { advanceSituation, initialGateMemory, initialSituationState, renderSituation } from '@proj-airi/stage-shared/situation'
+import { advanceSituation, initialSituationState, renderSituation } from '@proj-airi/stage-shared/situation'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { computed, shallowRef, watch } from 'vue'
@@ -30,14 +28,6 @@ import { useContextObservabilityStore } from './context-observability'
 
 /** Length cap of the render history: older renders are dropped first. */
 export const SITUATION_RENDER_HISTORY_MAX = 100
-
-/**
- * Length cap of the gate history, counted in entries after collapsing: older entries are dropped first.
- *
- * Tuning: kept small because it shares the inspection's 64 KB budget with the urge histories, and the urge decision
- * history now carries the same decisions.
- */
-export const SITUATION_GATE_HISTORY_MAX = 50
 
 /**
  * Length cap of the urge decision history and the urge history, counted in entries after collapsing.
@@ -74,30 +64,6 @@ export interface SituationLiveState {
   /** Whether that window folds observations. Only the leader does; a host that never initialized the store does not. */
   leading: boolean
   state: SituationState
-}
-
-/** The newest decision of the leader's opportunity gate and the memory it left. */
-export interface SituationGateRecord {
-  decision: GateDecision
-  memory: GateMemory
-}
-
-/**
- * A run of consecutive gate decisions with the same outcome. Decisions collapse while `fire`, `reason`, `topicKey`
- * and `forced` stay equal, so a gate that holds for an hour with one reason takes one entry.
- */
-export interface SituationGateHistoryEntry {
-  id: string
-  fire: boolean
-  reason: GateDecision['reason']
-  /** The topic a fire started; `null` for holds. */
-  topicKey: string | null
-  /** Whether "Evaluate now" asked for the decision, which skips the timing guards only. */
-  forced: boolean
-  /** `nowMs` of the first and the newest decision of the run. */
-  firstAtMs: number
-  lastAtMs: number
-  count: number
 }
 
 /** Unprompted turns of one chat session since this window started, by outcome. */
@@ -213,15 +179,6 @@ export interface SituationInspection extends SituationLiveState {
   nowMs: number
   /** Newest first, at most {@link SITUATION_RENDER_HISTORY_MAX}. */
   renders: SituationRenderRecord[]
-  /** `null` until the gate of the answering window evaluated once. */
-  gate: SituationGateRecord | null
-  /** Newest first, at most {@link SITUATION_GATE_HISTORY_MAX} entries. */
-  gateHistory: SituationGateHistoryEntry[]
-  /**
-   * The gate memory now. It differs from `gate.memory` when a turn outcome or a user turn changed it after the
-   * newest decision, for example while an unprompted turn is pending and the gate does not evaluate.
-   */
-  gateMemory: GateMemory
   spend: SituationSpend
   urge: SituationUrgeInspection
   /** Newest first, at most {@link SITUATION_URGE_HISTORY_MAX} entries. */
@@ -246,7 +203,7 @@ export interface SituationPreview extends RenderedSituation {
  * has no result yet, `gate-not-running` when the answering window runs no gate (no unprompted capability).
  */
 export type SituationGateEvaluation
-  = | { status: 'evaluated', decision: GateDecision, memory: GateMemory }
+  = | { status: 'evaluated', decision: UrgeGateDecision, memory: UrgeGateMemory }
     | { status: 'skipped', reason: 'unprompted-pending' | 'gate-not-running' }
 
 /** Runs one gate evaluation that skips the timing guards. It takes no options, so no caller can relax anything else. */
@@ -313,9 +270,6 @@ function messageTextLength(message: Message): number {
 export const useSituationObservabilityStore = defineStore('devtools:situation-observability', () => {
   const live = shallowRef<SituationLiveState>({ leading: false, state: initialSituationState })
   const renders = shallowRef<readonly SituationRenderRecord[]>([])
-  const gate = shallowRef<SituationGateRecord | null>(null)
-  const gateHistory = shallowRef<readonly SituationGateHistoryEntry[]>([])
-  const gateMemory = shallowRef<GateMemory>(initialGateMemory)
   const sessionSpend = shallowRef<ReadonlyMap<string, SituationSessionSpend>>(new Map())
   const lastUnpromptedRequest = shallowRef<SituationUnpromptedRequest | null>(null)
   const urgeTrace = shallowRef<UrgeGateTrace | null>(null)
@@ -368,28 +322,6 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
       shownEventIds: [...rendered.shownEventIds],
     }
     renders.value = [record, ...renders.value].slice(0, SITUATION_RENDER_HISTORY_MAX)
-  }
-
-  /** Called by the situation store of this window after every gate evaluation, with the memory it left. */
-  function recordGateDecision(decision: GateDecision, memory: GateMemory) {
-    gate.value = { decision, memory }
-    gateMemory.value = memory
-
-    const atMs = decision.trace.nowMs
-    const topicKey = decision.fire ? decision.topicKey : null
-    const forced = decision.trace.forceTiming
-    const [newest, ...older] = gateHistory.value
-    if (newest && newest.fire === decision.fire && newest.reason === decision.reason && newest.topicKey === topicKey && newest.forced === forced) {
-      gateHistory.value = [{ ...newest, lastAtMs: atMs, count: newest.count + 1 }, ...older]
-      return
-    }
-    const entry: SituationGateHistoryEntry = { id: nanoid(), fire: decision.fire, reason: decision.reason, topicKey, forced, firstAtMs: atMs, lastAtMs: atMs, count: 1 }
-    gateHistory.value = [entry, ...gateHistory.value].slice(0, SITUATION_GATE_HISTORY_MAX)
-  }
-
-  /** Called by the situation store of this window whenever its gate memory changes outside a decision. */
-  function publishGateMemory(memory: GateMemory) {
-    gateMemory.value = memory
   }
 
   /** Called by the situation store of this window after every urge gate evaluation, with the memory it left. */
@@ -520,9 +452,6 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
       state: live.value.state,
       nowMs: Date.now(),
       renders: [...renders.value],
-      gate: gate.value,
-      gateHistory: [...gateHistory.value],
-      gateMemory: gateMemory.value,
       spend: { sessions: [...sessionSpend.value.values()], lastUnpromptedRequest: lastUnpromptedRequest.value },
       urge: { trace: urgeTrace.value, decision: urgeDecision.value, history: [...urgeDecisionHistory.value], memory: urgeMemory.value },
       urgeHistory: [...urgeHistory.value],
@@ -562,12 +491,7 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
   return {
     liveState: computed(() => live.value),
     renders: computed(() => renders.value),
-    gate: computed(() => gate.value),
-    gateHistory: computed(() => gateHistory.value),
-    gateMemory: computed(() => gateMemory.value),
     recordRender,
-    recordGateDecision,
-    publishGateMemory,
     recordUrgeDecision,
     publishUrgeState,
     recordReasonOutcome,

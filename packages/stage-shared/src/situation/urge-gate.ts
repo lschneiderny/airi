@@ -1,4 +1,4 @@
-import type { GateCandidate, GateHardReason, GateOutcome, GateSettings, GateSignals } from './gate'
+import type { GateHardReason, GateOutcome, GateSettings, GateSignals } from './gate'
 import type { HazardCategory } from './reasons/collect'
 import type { GateLocalTime, Reason, ReasonCategory, ReasonKind, ReasonState, RitualDay, RitualKind } from './reasons/types'
 import type { SituationState } from './types'
@@ -443,7 +443,7 @@ function zeroMultipliers(chattiness: number): UrgeGateMultipliers {
  * only from `input.nowMs`, randomness only from `memory.rngState`, and neither
  * argument is mutated.
  *
- * Order: hard suppressors (shared with the legacy gate; `busy-game` lets
+ * Order: hard suppressors ({@link hardReason}; `busy-game` lets
  * urgent notifies through) -> urgent notify -> due double text -> the urge
  * path, whose holds are checked in the order `floor`, `quiet-unanswered`,
  * `safety-cap`, `awaiting-reply`, `urge`, then `no-topic`.
@@ -520,10 +520,7 @@ export function evaluateUrgeGate(input: UrgeGateInput, memory: UrgeGateMemory): 
     forceTiming,
   })
 
-  const urgentCandidate: GateCandidate | null = urgent === null
-    ? null
-    : { eventId: urgent.reason.sourceEventId ?? urgent.reason.key, topicKey: urgent.reason.key, text: urgent.reason.text, kind: 'notify', salience: urgent.salience, urgent: true }
-  const hard = hardReason(input, urgentCandidate)
+  const hard = hardReason(input, urgent !== null)
   if (hard !== null) {
     const held = isLongHardReason(hard) ? { ...base, lastHardHoldAtMs: nowMs } : base
     return { decision: { fire: false, reason: hard, trace: traceFor(base.urge, null) }, memory: held }

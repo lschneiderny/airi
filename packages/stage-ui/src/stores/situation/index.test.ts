@@ -24,7 +24,7 @@ import { DESKTOP_SAMPLE_STALE_MS } from './sensors/desktop'
 import { EXCHANGE_QUIET_MS } from './sensors/exchange'
 import { FOREGROUND_SAMPLE_STALE_HIDDEN_MS, FOREGROUND_SAMPLE_STALE_VISIBLE_MS } from './sensors/foreground'
 
-// The real urge gate, wrapped so tests can read its decisions; the inspector still receives the legacy shape.
+// The real urge gate, wrapped so tests can read its decisions and the memory each one left.
 vi.mock(import('@proj-airi/stage-shared/situation'), async (importOriginal) => {
   const actual = await importOriginal()
   return { ...actual, evaluateUrgeGate: vi.fn(actual.evaluateUrgeGate) }
@@ -814,7 +814,7 @@ describe('situation gate loop', () => {
     await nextGateTick()
 
     const topicKey = notifyTopicKey('proj-airi:plugin-web-extension:module-a', 'video-1')
-    expect(observability.gate?.decision).toMatchObject({ fire: true, topicKey })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: true, topicKey })
     expect(chat.submitUnprompted).toHaveBeenCalledOnce()
     const payload = chat.submitUnprompted.mock.calls[0][0]
     expect(payload.topicKey).toBe(topicKey)
@@ -833,7 +833,8 @@ describe('situation gate loop', () => {
 
     await nextGateTick()
 
-    expect(observability.gate?.decision).toMatchObject({ fire: true, reason: 'urgent', topicKey, topicText: 'Doorbell' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: true, reason: 'urgent', topicKey })
+    expect(lastEvaluation().decision).toMatchObject({ fire: true, topicText: 'Doorbell' })
     expect(chat.submitUnprompted).toHaveBeenCalledOnce()
     expect(chat.submitUnprompted.mock.calls[0][0]).toMatchObject({ topicKey, topicText: 'Doorbell', reason: { kind: 'notify', category: 'urgent' }, messageId: expect.any(String) })
     expect(addressedBeforeSubmit).toEqual(expect.any(Number))
@@ -853,7 +854,7 @@ describe('situation gate loop', () => {
 
     await nextGateTick()
 
-    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'generating' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'generating' })
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
   })
 
@@ -861,7 +862,7 @@ describe('situation gate loop', () => {
     const { chat, observability } = startQuietLeader({ capable: false })
     offerUrgentTopic()
     await vi.advanceTimersByTimeAsync(10 * GATE_INTERVAL_MS)
-    expect(observability.gate).toBeNull()
+    expect((await observability.inspect()).urge.decision).toBeNull()
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
 
     useSituationStore().dispose()
@@ -869,7 +870,7 @@ describe('situation gate loop', () => {
     const follower = startQuietLeader({ leader: false })
     useSituationStore().ingest({ kind: 'notify', sourceKey: 'plugin:qa', eventId: 'follower-1', headline: 'Doorbell', urgency: 'immediate', reminder: false, critical: false, atMs: Date.now() })
     await vi.advanceTimersByTimeAsync(10 * GATE_INTERVAL_MS)
-    expect(follower.observability.gate).toBeNull()
+    expect((await follower.observability.inspect()).urge.decision).toBeNull()
     expect(follower.chat.submitUnprompted).not.toHaveBeenCalled()
   })
 
@@ -891,7 +892,7 @@ describe('situation gate loop', () => {
     offerUrgentTopic()
     await nextGateTick()
     expect(chat.submitUnprompted).toHaveBeenCalledOnce()
-    const firstDecision = observability.gate
+    const firstDecision = (await observability.inspect()).urge.decision
 
     // New urgent topics for half an hour: nothing is evaluated while the turn is pending.
     for (let minute = 0; minute < 30; minute++) {
@@ -899,7 +900,7 @@ describe('situation gate loop', () => {
       await vi.advanceTimersByTimeAsync(60 * 1_000)
     }
     expect(chat.submitUnprompted).toHaveBeenCalledOnce()
-    expect(observability.gate).toBe(firstDecision)
+    expect((await observability.inspect()).urge.decision).toBe(firstDecision)
   })
 
   it('evaluates nothing while another caller\'s unprompted turn is pending', async () => {
@@ -909,7 +910,7 @@ describe('situation gate loop', () => {
 
     await nextGateTick()
 
-    expect(observability.gate).toBeNull()
+    expect((await observability.inspect()).urge.decision).toBeNull()
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
   })
 
@@ -919,12 +920,12 @@ describe('situation gate loop', () => {
     offerUrgentTopic()
     await nextGateTick()
     expect(chat.submitUnprompted).toHaveBeenCalledOnce()
-    expect(observability.gateMemory).toMatchObject({ lastFireAtMs: null, pending: null })
+    expect((await observability.inspect()).urge.memory).toMatchObject({ lastFireAtMs: null, pending: null })
 
     const next = offerUrgentTopic('Kettle')
     await nextGateTick()
 
-    expect(observability.gate?.decision).toMatchObject({ fire: true, reason: 'urgent', topicKey: next })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: true, reason: 'urgent', topicKey: next })
     expect(chat.submitUnprompted).toHaveBeenCalledTimes(2)
   })
 
@@ -1040,23 +1041,23 @@ describe('situation gate loop', () => {
 
     bus.emit(speechInputUserSpeakingChangedEvent, { speaking: true })
     await nextGateTick()
-    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'user-speaking' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'user-speaking' })
     bus.emit(speechInputUserSpeakingChangedEvent, { speaking: false })
 
     // Speech-to-text still finishes the message that the user just spoke.
     bus.emit(voiceSnapshotChanged, { connected: true, drafts: [], input: { requestId: 'mic', sessionId: 'session-1', phase: 'finalizing', text: 'hello', segments: [] } })
     await nextGateTick()
-    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'user-speaking' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'user-speaking' })
     bus.emit(voiceSnapshotChanged, { connected: true, drafts: [], input: { requestId: 'mic', sessionId: 'session-1', phase: 'settled', text: 'hello', segments: [] } })
 
     bus.emit(voiceTurnsChanged, [{ sessionId: 'session-1', turnId: 'reply-1' }])
     await nextGateTick()
-    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'character-speaking' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'character-speaking' })
     bus.emit(voiceTurnsChanged, [])
 
     bus.emit(chatComposerActivityChangedEvent, { sourceId: 'chat-window', hasDraft: true, lastInputAtMs: Date.now() })
     await nextGateTick()
-    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'user-typing' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'user-typing' })
 
     // A composer that stops reporting (its window closed) expires after 15 s.
     await vi.advanceTimersByTimeAsync(16_000)
@@ -1080,7 +1081,7 @@ describe('situation gate loop', () => {
     bus.emit(voiceSnapshotChanged, { connected: true, hostId: 'host-1', lock, drafts: [], input: { requestId: 'mic', sessionId: 'session-1', phase: 'capturing', text: '', segments: [] } })
     bus.emit(speechInputUserSpeakingChangedEvent, { speaking: true })
     await nextGateTick()
-    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'user-speaking' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'user-speaking' })
 
     // The host's renderer crashes mid-capture: no snapshot and no speaking change arrives, only the lock is released.
     crashed.resolve()
@@ -1088,7 +1089,7 @@ describe('situation gate loop', () => {
     await navigator.locks.request(lock, () => {})
     expect(store.userMidInput()).toBe(false)
     await nextGateTick()
-    expect(observability.gate?.decision).toMatchObject({ fire: true, reason: 'urgent' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: true, reason: 'urgent' })
     expect(chat.submitUnprompted).toHaveBeenCalledOnce()
   })
 
@@ -1111,14 +1112,14 @@ describe('situation gate loop', () => {
       const { chat, observability } = startQuietLeader()
       offerUrgentTopic()
       await nextGateTick()
-      expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'character-speaking' })
+      expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'character-speaking' })
 
       // The host's renderer crashes mid-speech: no turns change arrives, only the lock is released.
       crashed.resolve()
       // Lock requests are granted in order, so this one runs after every window that waited for the host to end.
       await navigator.locks.request(lock, () => {})
       await nextGateTick()
-      expect(observability.gate?.decision).toMatchObject({ fire: true, reason: 'urgent' })
+      expect((await observability.inspect()).urge.decision).toMatchObject({ fire: true, reason: 'urgent' })
       expect(chat.submitUnprompted).toHaveBeenCalledOnce()
     }
     finally {
@@ -1133,7 +1134,7 @@ describe('situation gate loop', () => {
     store.setStageVisible(false)
     offerTopic()
     await nextGateTick()
-    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'stage-hidden' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'stage-hidden' })
 
     store.setStageVisible(true)
     await nextGateTick()
@@ -1150,15 +1151,15 @@ describe('situation gate loop', () => {
 
     settings.update({ unpromptedEnabled: false })
     await nextGateTick()
-    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'disabled' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'disabled' })
 
     settings.update({ unpromptedEnabled: true, dontDisturb: true })
     await nextGateTick()
-    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'dont-disturb' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'dont-disturb' })
 
     settings.update({ dontDisturb: false, quietApps: ['notepad.exe'] })
     await nextGateTick()
-    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'quiet-app' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'quiet-app' })
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
   })
 
@@ -1226,7 +1227,7 @@ describe('situation gate loop', () => {
     useSituationSettings().update({ speakDuringGames: false })
     offerTopic()
     await nextGateTick()
-    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'busy-game' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'busy-game' })
 
     producing = false
     await vi.advanceTimersByTimeAsync(FOREGROUND_SAMPLE_STALE_VISIBLE_MS + GATE_INTERVAL_MS)
@@ -1235,7 +1236,7 @@ describe('situation gate loop', () => {
     // holds the gate as stale, before any check of the activity, so the old game never suppresses on its own.
     expect(store.state.activity?.category).toBe('game')
     expect(store.foregroundCategory).toBeNull()
-    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'stale-signal' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'stale-signal' })
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
   })
 
@@ -1247,13 +1248,13 @@ describe('situation gate loop', () => {
     await settings.update({ shareForegroundWindow: false })
     await nextGateTick()
 
-    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'stale-signal' })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false, reason: 'stale-signal' })
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
 
     await settings.update({ shareForegroundWindow: true })
     await nextGateTick()
 
-    expect(observability.gate?.decision).toMatchObject({ fire: true })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: true })
     expect(chat.submitUnprompted).toHaveBeenCalledTimes(1)
   })
 
@@ -1274,7 +1275,7 @@ describe('situation gate loop', () => {
     // The new leadership starts from promotion memory with the saved social slice; the old spoken result is in neither.
     expect(lastEvaluation().memoryBefore).toMatchObject({ pending: null, fires: [], unanswered: 0, lastSpokenAtMs: null })
     expect(await observability.evaluateGate()).toMatchObject({ status: 'evaluated', decision: { fire: true } })
-    expect(observability.gate?.memory.fires).toHaveLength(1)
+    expect(lastEvaluation().memory.fires).toHaveLength(1)
   })
 
   it('evaluates now through the leader, skipping only the timing guards', async () => {
@@ -1288,7 +1289,7 @@ describe('situation gate loop', () => {
     expect(evaluation).toMatchObject({ status: 'evaluated', decision: { fire: true, reason: 'forced', topicKey, trace: { forceTiming: true } } })
     expect(chat.submitUnprompted).toHaveBeenCalledOnce()
     expect(chat.submitUnprompted.mock.calls[0][0]).toMatchObject({ topicKey, reason: { kind: 'notify', category: 'open' } })
-    expect(observability.gateHistory[0]).toMatchObject({ fire: true, reason: 'forced', forced: true, count: 1 })
+    expect((await observability.inspect()).urge.history[0]).toMatchObject({ fire: true, reason: 'forced', topicKey, count: 1 })
   })
 
   it('keeps every hard suppressor when evaluating now', async () => {
@@ -1318,8 +1319,8 @@ describe('situation gate loop', () => {
 
     expect(await observability.evaluateGate()).toEqual({ status: 'skipped', reason: 'unprompted-pending' })
     // The fire was spoken after the decision was recorded; the current memory says so, the decision's does not.
-    expect(observability.gate?.memory.pending?.spokenAtMs).toBeNull()
-    expect(observability.gateMemory.pending?.spokenAtMs).toEqual(expect.any(Number))
+    expect(lastEvaluation().memory.pending?.spokenAtMs).toBeNull()
+    expect((await observability.inspect()).urge.memory?.pending?.spokenAtMs).toEqual(expect.any(Number))
     finish({ status: 'spoken', text: 'Still at it?' })
   })
 
@@ -1341,7 +1342,7 @@ describe('situation gate loop', () => {
     await nextGateTick()
     await nextGateTick()
 
-    expect(observability.gate?.decision).toMatchObject({ fire: false })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false })
     expect(lastEvaluation().decision.trace.reasons.map(reason => reason.key)).not.toContain(topicKey)
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
     expect(store.state.events.find(event => event.topicKey === topicKey)?.addressedAtMs).toBeNull()
@@ -1349,7 +1350,7 @@ describe('situation gate loop', () => {
     release()
     await nextGateTick()
 
-    expect(observability.gate?.decision).toMatchObject({ fire: true, reason: 'urgent', topicKey })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: true, reason: 'urgent', topicKey })
     expect(chat.submitUnprompted).toHaveBeenCalledOnce()
   })
 
@@ -1360,29 +1361,28 @@ describe('situation gate loop', () => {
     const release = store.holdTopic(topicKey)
 
     await nextGateTick()
-    expect(observability.gate?.decision).toMatchObject({ fire: false })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: false })
     expect(chat.submitUnprompted).not.toHaveBeenCalled()
 
     release()
     await nextGateTick()
-    expect(observability.gate?.decision).toMatchObject({ fire: true, reason: 'urgent', topicKey })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: true, reason: 'urgent', topicKey })
   })
 
   it('restores the memory from before the fire when the unprompted turn loses the busy race', async () => {
     const { chat, observability } = startQuietLeader()
     chat.submitUnprompted.mockResolvedValueOnce({ status: 'failed', error: 'Another unprompted turn is still pending' })
     offerTopic()
-    const before = observability.gateMemory
+    const before = (await observability.inspect()).urge.memory
 
     expect(await observability.evaluateGate()).toMatchObject({ status: 'evaluated', decision: { fire: true } })
     await vi.advanceTimersByTimeAsync(0)
 
     expect(chat.submitUnprompted).toHaveBeenCalledOnce()
-    expect(observability.gate?.decision).toMatchObject({ fire: true })
+    expect((await observability.inspect()).urge.decision).toMatchObject({ fire: true })
     // The decision recorded the fire; the rollback took back its floor slot, its cap slot, and its pending entry.
-    expect(observability.gateMemory).toEqual(before)
-    expect(observability.gateMemory.lastFireAtMs).toBe(before.lastFireAtMs)
-    expect(observability.gateMemory.pending).toBeNull()
+    expect(before).not.toBeNull()
+    expect((await observability.inspect()).urge.memory).toMatchObject({ lastFireAtMs: before?.lastFireAtMs, fires: before?.fires, pending: null })
   })
 
   it('restores the urge, its threshold, and the random state when the turn loses the busy race', async () => {
