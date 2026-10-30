@@ -20,6 +20,7 @@ import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
 import type { SituationGateEvaluation } from '../devtools/situation-observability'
 import type { ConversationHookSource } from './sensors/conversation'
+import type { ChatExchange, ExchangeSensor } from './sensors/exchange'
 
 import { errorMessageFrom } from '@moeru/std'
 import { isElectronWindow } from '@proj-airi/stage-shared'
@@ -62,6 +63,7 @@ import { chatComposerActivityChangedEvent, getSpeechBusContext, situationNotifyO
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { startConversationSensor } from './sensors/conversation'
 import { DESKTOP_SAMPLE_STALE_MS, startDesktopSensor } from './sensors/desktop'
+import { EXCHANGE_QUIET_MS, startExchangeSensor } from './sensors/exchange'
 import { FOREGROUND_SAMPLE_STALE_VISIBLE_MS, startForegroundSensor } from './sensors/foreground'
 import { startStageSensor } from './sensors/stage'
 
@@ -237,7 +239,8 @@ interface RunningSensors {
  * conversation turns, stage state),
  * and a demoted or disposed window stops the sensors and the ticker and drops its state. Follower windows never
  * register sensors, so their chat hooks and desktop samples produce no observations. The conversation sensor runs
- * on the hooks that the chat store hands over through {@link observeChat}. Only the user input listeners run in
+ * on the hooks that the chat store hands over through {@link observeChat}, and so does the exchange sensor, which the
+ * advance ticker checks and which reports finished exchanges through {@link onExchangeEnd}. Only the user input listeners run in
  * every initialized window, so {@link untilUserIdle} answers wherever a widget reaction is served.
  *
  * In a host that declared the `unprompted` capability ({@link setHostCapabilities}), the leader also runs the urge
@@ -259,6 +262,9 @@ export const useSituationStore = defineStore('situation', () => {
   let chatHooks: SituationChatHooks | undefined
   let chat: SituationChatControls | undefined
   let stopConversation: (() => void) | undefined
+  /** Runs with the conversation sensor; the advance ticker checks it for exchanges that went quiet. */
+  let exchangeSensor: ExchangeSensor | undefined
+  const exchangeEndListeners = new Set<(exchange: ChatExchange) => void>()
   let stopNotifyListener: (() => void) | undefined
   let stopLeadershipListener: (() => void) | undefined
   const observability = useSituationObservabilityStore()
@@ -367,6 +373,15 @@ export const useSituationStore = defineStore('situation', () => {
         setGateMemory(recordUrgeUserTurn(gateMemory, observation.atMs))
       }
     })
+    exchangeSensor = startExchangeSensor(chatHooks, {
+      quietMs: EXCHANGE_QUIET_MS,
+      isSending: () => chat?.sending() ?? false,
+      now: Date.now,
+      onExchangeEnd(exchange) {
+        for (const listener of exchangeEndListeners)
+          listener(exchange)
+      },
+    })
     const stopSpokenListener = chatHooks.onTokenLiteral(async (_literal, context) => {
       // The runtime holds an unprompted reply until it decides to speak, so its first literal means spoken.
       if (context.origin !== 'unprompted' || context.turnId === lastSpokenUnpromptedTurnId)
@@ -406,6 +421,8 @@ export const useSituationStore = defineStore('situation', () => {
     })
     stopConversation = () => {
       stopSensor()
+      exchangeSensor?.stop()
+      exchangeSensor = undefined
       stopSpokenListener()
       stopDeclinedListener()
     }
@@ -743,6 +760,17 @@ export const useSituationStore = defineStore('situation', () => {
     return () => notifySpokenListeners.delete(listener)
   }
 
+  /**
+   * Calls `listener` once for every chat exchange that ended: at least one user turn, then
+   * {@link EXCHANGE_QUIET_MS} without a turn while nothing generates. Only the leader runs the exchange sensor, so only
+   * its listeners are called; an exchange still open on demotion is dropped. Returns a function that removes the
+   * listener.
+   */
+  function onExchangeEnd(listener: (exchange: ChatExchange) => void): () => void {
+    exchangeEndListeners.add(listener)
+    return () => exchangeEndListeners.delete(listener)
+  }
+
   /** Runs the gate loop only while this window leads in a host that supports unprompted turns. */
   function syncGateLoop() {
     const shouldRun = leading.value && hostSupportsUnprompted.value
@@ -794,6 +822,7 @@ export const useSituationStore = defineStore('situation', () => {
     ticker = setInterval(() => {
       const nowMs = Date.now()
       sensors?.check(nowMs)
+      exchangeSensor?.check(nowMs)
       advance(nowMs)
     }, ADVANCE_INTERVAL_MS)
     syncGateLoop()
@@ -958,6 +987,7 @@ export const useSituationStore = defineStore('situation', () => {
     markAddressed,
     holdTopic,
     onNotifySpoken,
+    onExchangeEnd,
     userMidInput,
     untilUserIdle,
     observeChat,
