@@ -1,7 +1,7 @@
 # Situational presence
 
 Date: 2026-10-19
-Status: accepted
+Status: accepted; the opportunity gate section is superseded by [Unprompted reach-out cadence](2026-10-29-unprompted-reach-out-cadence.md).
 
 ## Context
 
