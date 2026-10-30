@@ -62,6 +62,8 @@ export interface ChatTurnTrigger {
   topicKey: string
   /** Topic text that hosts show in place of the trigger message. */
   text: string
+  /** Why the host started the turn. Hosts use it to label the cue in history. */
+  kind?: string
 }
 
 /** User-role message. Only user messages can carry an unprompted origin. */

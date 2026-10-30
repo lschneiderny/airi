@@ -772,7 +772,7 @@ describe('chat history', () => {
         expect(element).not.toBeNull()
         return element!
       })
-      expect(cueLine.textContent?.trim()).toBe('Spoke up about QA topic')
+      expect(cueLine.textContent?.trim()).toBe('Reached out: QA topic')
       expect(cueLine.querySelector('button')).toBeNull()
       expect(screen.container.textContent).not.toContain('No one spoke to you')
       expect(screen.container.textContent).toContain('Oh, a QA topic!')
@@ -804,11 +804,11 @@ describe('chat history', () => {
 
       await vi.waitFor(() => expect(screen.container.textContent).toContain('Oh, a QA topic!'))
       expect(screen.container.querySelector('[data-chat-unprompted-cue]')).toBeNull()
-      expect(screen.container.textContent).not.toContain('Spoke up about')
+      expect(screen.container.textContent).not.toContain('Reached out')
       expect(screen.container.textContent).not.toContain('No one spoke to you')
 
       await settings.update({ showUnpromptedCue: true })
-      await vi.waitFor(() => expect(screen.container.querySelector('[data-chat-unprompted-cue]')?.textContent?.trim()).toBe('Spoke up about QA topic'))
+      await vi.waitFor(() => expect(screen.container.querySelector('[data-chat-unprompted-cue]')?.textContent?.trim()).toBe('Reached out: QA topic'))
 
       await settings.update({ showUnpromptedCue: false })
       await vi.waitFor(() => expect(screen.container.querySelector('[data-chat-unprompted-cue]')).toBeNull())

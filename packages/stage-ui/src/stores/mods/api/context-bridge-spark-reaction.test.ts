@@ -119,7 +119,7 @@ function unpromptedContext(payload: ChatUnpromptedPayload): ChatStreamEventConte
     sessionId: 'session-1',
     turnId,
     origin: 'unprompted',
-    message: { role: 'user', content: `(No one spoke to you. You may speak up about: ${payload.topicText})`, createdAt: Date.now(), id: turnId, origin: 'unprompted', trigger: { topicKey: payload.topicKey, text: payload.topicText } },
+    message: { role: 'user', content: `(A quiet moment. Nobody said anything. What is on your mind right now: ${payload.topicText})`, createdAt: Date.now(), id: turnId, origin: 'unprompted', trigger: { topicKey: payload.topicKey, text: payload.topicText, kind: payload.reason?.kind ?? 'notify' } },
     contexts: {},
     composedMessage: [],
   }

@@ -1,6 +1,7 @@
 import type { ChatAttachment, ChatOrchestratorRuntimeState, ChatOrchestratorSendOptions, Conversation, StreamEvent, StreamOptions } from '@proj-airi/core-agent'
 import type { GenerationProvider, GenerationRequest } from '@proj-airi/provider-inference'
 import type { WebSocketEventInputs } from '@proj-airi/server-sdk'
+import type { ReasonCategory, ReasonKind } from '@proj-airi/stage-shared/situation'
 import type { Message } from '@xsai/shared-chat'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
@@ -104,8 +105,13 @@ export interface ChatSendPayload {
 export interface ChatUnpromptedPayload {
   /** Situation topic that the turn is about. A declined turn records it. */
   topicKey: string
-  /** Model-facing description of the topic. */
+  /** Model-facing description of the reason that the character reaches out. It is the only data in the trigger. */
   topicText: string
+  /**
+   * Why the character reaches out. Its category picks the instruction and its kind labels the cue in history.
+   * A missing reason counts as an urgent notify.
+   */
+  reason?: { kind: ReasonKind, category: ReasonCategory }
   /** Requires a reply: the model is not offered the decline marker. */
   force?: boolean
   /** Stable identity of the turn. A repeated call with the same ID joins the pending turn. */
@@ -119,6 +125,16 @@ export type ChatUnpromptedResult
   = | { status: 'spoken', text: string }
     | { status: 'declined' | 'cancelled' }
     | { status: 'failed', error: string }
+
+/** The instruction of an unprompted turn, by the category of its reason. Urgent reasons are open invitations. */
+const unpromptedInstructionKeys: Record<ReasonCategory, string> = {
+  'open': 'base.prompt.unprompted',
+  'due': 'base.prompt.unprompted',
+  'urgent': 'base.prompt.unprompted',
+  'continuation': 'base.prompt.unprompted-continuation',
+  'ritual': 'base.prompt.unprompted-ritual',
+  'double-text': 'base.prompt.unprompted-double-text',
+}
 
 /** Settings of an unprompted send that `prepareSend` adds to the request. */
 interface UnpromptedSend {
@@ -1120,14 +1136,16 @@ export const useChatStore = defineStore('chat', () => {
     if (unpromptedResults.size > 0)
       return Promise.resolve({ status: 'failed', error: 'Another unprompted turn is still pending' })
 
+    const reason = payload.reason ?? { kind: 'notify', category: 'urgent' } satisfies NonNullable<ChatUnpromptedPayload['reason']>
+
     unpromptedTurns.add(key)
     const request = startSend({
       sessionId,
       messageId,
-      text: `(No one spoke to you. You may speak up about: ${payload.topicText})`,
+      text: t('base.prompt.unprompted-trigger', { reason: payload.topicText }),
     }, false, {
-      trigger: { topicKey: payload.topicKey, text: payload.topicText },
-      instruction: t(payload.force ? 'base.prompt.unprompted-forced' : 'base.prompt.unprompted'),
+      trigger: { topicKey: payload.topicKey, text: payload.topicText, kind: reason.kind },
+      instruction: t(payload.force ? 'base.prompt.unprompted-forced' : unpromptedInstructionKeys[reason.category]),
       supplement: payload.supplement,
     })
     const signal = requests.get(key)!.abort.signal

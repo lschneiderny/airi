@@ -31,6 +31,6 @@ const topic = computed(() => getChatHistoryItemCopyText(props.message).trim())
       variant === 'mobile' ? 'mr-0' : 'mr-12',
     ]"
   >
-    {{ t('stage.chat.unprompted.cue', { topic }) }}
+    {{ t('stage.chat.unprompted.cue', { label: topic }) }}
   </p>
 </template>

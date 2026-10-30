@@ -117,7 +117,21 @@ chat:
     message: Message
     replying-to: Replying to {name}
   unprompted:
-    cue: Spoke up about {topic}
+    cue: 'Reached out: {label}'
+    labels:
+      thread-question: to follow up on something they said
+      thread-event: to ask how it went
+      thread-later: about the thing they said they would get to
+      thread-topic: to pick a topic back up
+      ritual-greeting: to say good morning
+      ritual-sign-off: to say good night
+      ritual-welcome-back: to welcome them back
+      own-day: about her own day
+      continuation: a follow-up
+      double-text: one more line
+      long-session: about how long they have been at it
+      returned: because they came back
+      notify: about a reminder
   reasoning: Reasoning
   swipe-demo:
     show-label: Show labels

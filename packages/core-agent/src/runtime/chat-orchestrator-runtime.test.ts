@@ -2295,8 +2295,8 @@ describe('user-origin hook sequence', () => {
 })
 
 describe('unprompted turns', () => {
-  const trigger = { topicKey: 'qa', text: 'QA topic' }
-  const triggerText = '(No one spoke to you. You may speak up about: QA topic)'
+  const trigger = { topicKey: 'qa', text: 'QA topic', kind: 'continuation' }
+  const triggerText = '(A quiet moment. Nobody said anything. What is on your mind right now: QA topic)'
   const unpromptedOptions = {
     model: 'gpt-test',
     chatProvider: provider,
