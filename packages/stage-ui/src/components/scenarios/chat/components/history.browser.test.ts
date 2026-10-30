@@ -721,7 +721,7 @@ describe('chat history', () => {
   })
 
   describe('unprompted cue', () => {
-    const triggerPrompt = '(No one spoke to you. You may speak up about: QA topic)'
+    const triggerPrompt = '(A quiet moment. Nobody said anything. What is on your mind right now: QA topic)'
     const cue: ChatHistoryItem = {
       id: 'cue-1',
       role: 'user',
@@ -774,7 +774,7 @@ describe('chat history', () => {
       })
       expect(cueLine.textContent?.trim()).toBe('Reached out: QA topic')
       expect(cueLine.querySelector('button')).toBeNull()
-      expect(screen.container.textContent).not.toContain('No one spoke to you')
+      expect(screen.container.textContent).not.toContain('A quiet moment')
       expect(screen.container.textContent).toContain('Oh, a QA topic!')
 
       const bubbles = Array.from(screen.container.querySelectorAll<HTMLElement>('.chat-message-item-container'))
@@ -825,7 +825,7 @@ describe('chat history', () => {
       await vi.waitFor(() => expect(screen.container.textContent).toContain('Oh, a QA topic!'))
       expect(screen.container.querySelector('[data-chat-unprompted-cue]')).toBeNull()
       expect(screen.container.textContent).not.toContain('Reached out')
-      expect(screen.container.textContent).not.toContain('No one spoke to you')
+      expect(screen.container.textContent).not.toContain('A quiet moment')
 
       await settings.update({ showUnpromptedCue: true })
       await vi.waitFor(() => expect(screen.container.querySelector('[data-chat-unprompted-cue]')?.textContent?.trim()).toBe('Reached out: QA topic'))
@@ -866,7 +866,7 @@ describe('chat history', () => {
 
       await vi.waitFor(() => expect(screen.container.textContent).toContain('Oh, a QA topic!'))
       expect(screen.container.querySelector('[data-chat-unprompted-cue]')).toBeNull()
-      expect(screen.container.textContent).not.toContain('No one spoke to you')
+      expect(screen.container.textContent).not.toContain('A quiet moment')
       expect(screen.container.querySelector('button[aria-label="Retry"]')).toBeNull()
     })
   })

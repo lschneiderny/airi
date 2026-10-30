@@ -8,7 +8,7 @@ describe('getChatHistoryItemCopyText', () => {
   it('maps an unprompted trigger to its topic text instead of the prompt sent to the model', () => {
     const cue: ChatHistoryItem = {
       role: 'user',
-      content: '(No one spoke to you. You may speak up about: QA topic)',
+      content: '(A quiet moment. Nobody said anything. What is on your mind right now: QA topic)',
       origin: 'unprompted',
       trigger: { topicKey: 'qa', text: 'QA topic' },
     }
@@ -17,7 +17,7 @@ describe('getChatHistoryItemCopyText', () => {
   })
 
   it('returns no text for an unprompted message without a trigger', () => {
-    const cue: ChatHistoryItem = { role: 'user', content: '(No one spoke to you.)', origin: 'unprompted' }
+    const cue: ChatHistoryItem = { role: 'user', content: '(A quiet moment.)', origin: 'unprompted' }
 
     expect(getChatHistoryItemCopyText(cue)).toBe('')
   })

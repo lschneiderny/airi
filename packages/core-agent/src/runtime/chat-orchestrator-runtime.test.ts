@@ -3104,7 +3104,7 @@ describe('cue stats of a turn', () => {
     const seen = recordCueStats(harness)
     replyWith(harness, ['[ACT happy]', '<|SILENT|>'])
 
-    await harness.runtime.ingest('(No one spoke to you.)', { model: 'test', chatProvider: provider, origin: 'unprompted', messageId: 'trigger-1' }, 'session-1')
+    await harness.runtime.ingest('(A quiet moment.)', { model: 'test', chatProvider: provider, origin: 'unprompted', messageId: 'trigger-1' }, 'session-1')
 
     expect(harness.settled).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', status: 'declined' }])
     expect(seen).toEqual([
@@ -3117,7 +3117,7 @@ describe('cue stats of a turn', () => {
     const seen = recordCueStats(harness)
     replyWith(harness, ['<|ACT happy|>', ' Oh, hi!'])
 
-    await harness.runtime.ingest('(No one spoke to you.)', { model: 'test', chatProvider: provider, origin: 'unprompted', messageId: 'trigger-1' }, 'session-1')
+    await harness.runtime.ingest('(A quiet moment.)', { model: 'test', chatProvider: provider, origin: 'unprompted', messageId: 'trigger-1' }, 'session-1')
 
     expect(seen.filter(entry => entry.hook === 'stream-end')).toEqual([
       { hook: 'stream-end', cueStats: { act: 1, recovered: 0, rejected: 0, origin: 'unprompted', declined: false } },

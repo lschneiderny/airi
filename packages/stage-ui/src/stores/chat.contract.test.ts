@@ -2507,7 +2507,8 @@ describe('chat store contract', () => {
       situation.setHostCapabilities({ unprompted: true })
       situation.setStageVisible(true)
       const observability = useSituationObservabilityStore()
-      const before = observability.gateMemory
+      const before = (await observability.inspect()).urge.memory
+      expect(before).not.toBeNull()
 
       const result = await store.submitUnprompted({ topicKey: 'notify:widget:e-1', topicText: 'QA widget', force: true, messageId: 'spark:widget-1' })
 
@@ -2518,11 +2519,13 @@ describe('chat store contract', () => {
         { role: 'assistant', content: expect.stringContaining('Nice move.') },
       ])
       // The situation store saw her unprompted turn through the chat hooks, yet recorded no gate fire for it. The turn
-      // starts the gate's floor, so only the time of the last fire moved.
+      // starts the gate's floor and counts as her last spoken turn, so only those two times moved.
       expect(situation.state.conversation.lastUnpromptedAtMs).toEqual(expect.any(Number))
-      expect(observability.gateMemory).toEqual({ ...before, lastFireAtMs: expect.any(Number) })
-      expect(observability.gateMemory.pending).toBeNull()
-      expect(observability.gateMemory.fires).toEqual([])
+      const after = (await observability.inspect()).urge.memory
+      expect(after).toEqual({ ...before, lastFireAtMs: expect.any(Number), lastSpokenAtMs: expect.any(Number) })
+      expect(after?.pending).toBeNull()
+      expect(after?.fires).toEqual([])
+      expect(after?.unanswered).toBe(0)
       // Nothing is pending in the chat store either: the next unprompted turn starts instead of failing as busy.
       llmStreamMock.mockImplementation(replyWith(['Again.']))
       expect(await store.submitUnprompted({ topicKey: 'notify:widget:e-2', topicText: 'QA widget 2', force: true, messageId: 'spark:widget-2' })).toMatchObject({ status: 'spoken' })
@@ -2659,7 +2662,7 @@ describe('chat store contract', () => {
     })
 
     it('marks unprompted trigger messages as not cloud-syncable', () => {
-      expect(isCloudSyncableMessage({ role: 'user', content: '(No one spoke to you.)', origin: 'unprompted', trigger: { topicKey: 'qa', text: 'QA topic' } })).toBe(false)
+      expect(isCloudSyncableMessage({ role: 'user', content: '(A quiet moment.)', origin: 'unprompted', trigger: { topicKey: 'qa', text: 'QA topic' } })).toBe(false)
       expect(isCloudSyncableMessage({ role: 'user', content: 'hello' })).toBe(true)
     })
 

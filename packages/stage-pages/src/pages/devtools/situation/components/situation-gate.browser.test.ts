@@ -1,4 +1,4 @@
-import type { UrgeGateTrace } from '@proj-airi/stage-shared/situation'
+import type { Reason, UrgeGateDecision, UrgeGateTrace } from '@proj-airi/stage-shared/situation'
 import type { SituationUrgeInspection } from '@proj-airi/stage-ui/stores/devtools/situation-observability'
 
 import en from '@proj-airi/i18n/locales/en'
@@ -82,5 +82,20 @@ describe('situation gate panel', () => {
 
     await expect.element(screen.getByTestId('situation-gate-urge-percent')).toHaveTextContent('--')
     expect(screen.getByTestId('situation-gate-urge').element().textContent).not.toMatch(/Infinity|NaN/)
+  })
+
+  it('reports an "Evaluate now" result with the urge gate reason, its group, and the picked reason', async () => {
+    const picked: Reason = { key: 'thread:abc', kind: 'thread-question', category: 'open', text: 'how his interview went', sourceEventId: null, ripeness: 1, weight: 1, urgent: false, dueAtMs: null, dueNow: false }
+    const evaluate = (decision: UrgeGateDecision) => render(SituationGate, {
+      props: { urge: urge(), nowMs: T0, evaluating: false, evaluation: { atMs: T0, result: { status: 'evaluated', decision, memory: initialUrgeMemory } } },
+      global: { plugins: [i18n()] },
+    })
+
+    const forced = await evaluate({ fire: true, reason: 'forced', category: 'open', topicKey: picked.key, topicText: picked.text, picked, trace: trace({ forceTiming: true }) })
+    await expect.element(forced.getByTestId('situation-gate-evaluation')).toHaveTextContent(/fired on thread:abc \(forced, open: thread-question\)\. The unprompted turn was started\./)
+    cleanup()
+
+    const held = await evaluate({ fire: false, reason: 'dont-disturb', trace: trace({ forceTiming: true }) })
+    await expect.element(held.getByTestId('situation-gate-evaluation')).toHaveTextContent(/held \(dont-disturb; hard suppressor\)\. Nothing was sent\./)
   })
 })

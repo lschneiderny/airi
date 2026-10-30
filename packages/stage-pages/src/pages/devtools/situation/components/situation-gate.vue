@@ -134,11 +134,10 @@ const evaluationText = computed(() => {
       ? `${at}: not evaluated, an unprompted turn is still pending.`
       : `${at}: not evaluated, the leader window runs no gate.`
   }
-  // The evaluation result still carries the legacy gate decision, whose hold reasons are the old timing names. The
-  // current decision row shows the urge gate's own reason once the page refreshes after the evaluation.
-  return result.decision.fire
-    ? `${at}: fired on ${result.decision.topicKey}. The unprompted turn was started.`
-    : `${at}: held. Nothing was sent. The current decision shows why.`
+  const { decision } = result
+  return decision.fire
+    ? `${at}: fired on ${decision.topicKey} (${decision.reason}, ${decision.category}: ${decision.picked.kind}). The unprompted turn was started.`
+    : `${at}: held (${decision.reason}; ${reasonKind(decision)}). Nothing was sent.`
 })
 
 function historyTime(entry: SituationUrgeDecisionHistoryEntry): string {

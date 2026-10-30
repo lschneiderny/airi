@@ -1,11 +1,8 @@
 import type { ChatHookRegistry, TurnRef } from '@proj-airi/core-agent'
 import type {
   AppCategory,
-  GateDecision,
   GateLocalTime,
-  GateMemory,
   GateSignals,
-  GateTimingReason,
   Observation,
   ReasonKind,
   SavedGateMemory,
@@ -13,7 +10,6 @@ import type {
   ThreadState,
   UrgeGateDecision,
   UrgeGateMemory,
-  UrgeGateTimingReason,
 } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
@@ -27,7 +23,6 @@ import { isElectronWindow } from '@proj-airi/stage-shared'
 import {
   advanceSituation,
   evaluateUrgeGate,
-  FLOOR_MS,
   forgetForeground,
   forgetSource,
   initialSituationState,
@@ -47,7 +42,6 @@ import {
   reduceSituation,
   renderSituation,
   restoreSocialMemory,
-  SAFETY_CAP_PER_HOUR,
   visibilityRegainUrgeMemory,
   withoutAppExtension,
 } from '@proj-airi/stage-shared/situation'
@@ -148,60 +142,6 @@ function savedGateMemory(memory: UrgeGateMemory): SavedGateMemory {
     lastOwnDayAtMs: memory.lastOwnDayAtMs,
     rngState: memory.rngState,
   }
-}
-
-// NOTICE:
-// The inspector's legacy `gate`, `gateMemory`, and `gateHistory` fields still need urge decisions translated.
-// Root cause: `situation-gate.vue` reads them until it moves to the `urge` fields, which get the trace directly.
-// Source: `.omo/plans/unprompted-reach-out-redesign.md`, todos 15, 16, and 22.
-// Removal condition: todo 22 removes the legacy inspection fields.
-const LEGACY_TIMING_REASON: Readonly<Record<UrgeGateTimingReason, GateTimingReason>> = {
-  'floor': 'gap',
-  'quiet-unanswered': 'gap',
-  'urge': 'gap',
-  'awaiting-reply': 'in-exchange',
-  'safety-cap': 'hourly-cap',
-}
-
-function isUrgeTimingReason(reason: string): reason is UrgeGateTimingReason {
-  return Object.hasOwn(LEGACY_TIMING_REASON, reason)
-}
-
-function legacyGateMemory(memory: UrgeGateMemory): GateMemory {
-  const { pending } = memory
-  return {
-    lastFireAtMs: memory.lastFireAtMs,
-    fires: memory.fires,
-    pending: pending === null ? null : { topicKey: pending.topicKey, firedAtMs: pending.firedAtMs, spokenAtMs: pending.spokenAtMs },
-    ignoreStreak: memory.unanswered,
-    backoffLevel: 0,
-  }
-}
-
-function legacyGateDecision(decision: UrgeGateDecision, memory: UrgeGateMemory): GateDecision {
-  const { trace } = decision
-  const legacyTrace = {
-    nowMs: trace.nowMs,
-    chattiness: trace.chattiness,
-    threshold: trace.urgeThreshold,
-    candidate: null,
-    gapMs: FLOOR_MS,
-    hourlyCap: SAFETY_CAP_PER_HOUR,
-    firesLastHour: trace.firesLastHour,
-    backoffLevel: 0,
-    ignoreStreak: trace.unanswered,
-    pendingTopicKey: trace.pendingTopicKey,
-    nextEligibleAtMs: !Number.isFinite(trace.nowMs)
-      ? null
-      : memory.lastFireAtMs === null ? trace.nowMs : Math.max(trace.nowMs, memory.lastFireAtMs + FLOOR_MS),
-    forceTiming: trace.forceTiming,
-  }
-  if (decision.fire) {
-    const reason = decision.reason === 'urgent' || decision.reason === 'forced' ? decision.reason : 'ready'
-    return { fire: true, reason, topicKey: decision.topicKey, topicText: decision.topicText, trace: legacyTrace }
-  }
-  const reason = isUrgeTimingReason(decision.reason) ? LEGACY_TIMING_REASON[decision.reason] : decision.reason
-  return { fire: false, reason, trace: legacyTrace }
 }
 
 /** The parts of the leader's chat store the gate needs. The chat store hands them over through `observeChat`. */
@@ -587,7 +527,6 @@ export const useSituationStore = defineStore('situation', () => {
   /** Changes the gate memory, shows the change in the devtools Situation inspector at once, and saves it if durable. */
   function setGateMemory(memory: UrgeGateMemory) {
     gateMemory = memory
-    observability.publishGateMemory(legacyGateMemory(memory))
     observability.publishUrgeState(memory, threads.threads)
     saveInnerState()
   }
@@ -684,13 +623,10 @@ export const useSituationStore = defineStore('situation', () => {
     gateMemory = memory
     observability.recordUrgeDecision(decision, memory)
     observability.publishUrgeState(memory, threads.threads)
-    const legacyDecision = legacyGateDecision(decision, memory)
-    const legacyMemory = legacyGateMemory(memory)
-    observability.recordGateDecision(legacyDecision, legacyMemory)
     saveInnerState()
     if (decision.fire)
       void fire(controls, decision, before)
-    return { status: 'evaluated', decision: legacyDecision, memory: legacyMemory }
+    return { status: 'evaluated', decision, memory }
   }
 
   /**
