@@ -1448,6 +1448,40 @@ describe('situation gate loop', () => {
     expect(chat.submitUnprompted).toHaveBeenCalledTimes(2)
   })
 
+  it('records the urge decision, the open threads, and the outcome per reason kind in the inspector', async () => {
+    const thread = saveRipeQuestion()
+    const { store, hooks, chat, observability } = startQuietLeader()
+    store.holdTopic('own-day')
+    chat.submitUnprompted.mockImplementationOnce(async (payload) => {
+      await unpromptedTurnIsDeclined(hooks, payload)
+      return { status: 'declined' }
+    })
+
+    await observability.evaluateGate()
+    await vi.advanceTimersByTimeAsync(0)
+
+    const declined = await observability.inspect()
+    expect(declined.urge.decision).toMatchObject({ fire: true, reason: 'forced', topicKey: thread.topicKey })
+    expect(declined.urge.trace?.pick).toMatchObject({ reasonKey: thread.topicKey })
+    expect(declined.reasons.map(reason => reason.key)).toContain(thread.topicKey)
+    expect(declined.threads).toEqual([thread])
+    expect(declined.outcomes['thread-question']).toMatchObject({ spoken: 0, declined: 1 })
+
+    chat.submitUnprompted.mockImplementationOnce(async (payload) => {
+      await unpromptedTurnIsSpoken(hooks, payload)
+      return { status: 'spoken', text: 'How did it go?' }
+    })
+    await observability.evaluateGate()
+    await vi.advanceTimersByTimeAsync(0)
+    await userTurn(hooks, 'user-reply')
+
+    const spoken = await observability.inspect()
+    // Spoken once, counted when her first literal arrived, and engaged by his reply.
+    expect(spoken.outcomes['thread-question']).toEqual({ spoken: 1, declined: 1, cancelled: 0, failed: 0, engaged: 1, ignored: 0 })
+    expect(spoken.threads).toEqual([])
+    expect(spoken.urge.memory).toMatchObject({ unanswered: 0 })
+  })
+
   it('restores the unanswered count, the ritual day, and the threads after a reload of the leader window', async () => {
     vi.setSystemTime(MORNING)
     const thread = saveRipeQuestion()

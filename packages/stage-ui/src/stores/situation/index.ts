@@ -7,6 +7,7 @@ import type {
   GateSignals,
   GateTimingReason,
   Observation,
+  ReasonKind,
   SavedGateMemory,
   SituationState,
   ThreadState,
@@ -148,8 +149,8 @@ function savedGateMemory(memory: UrgeGateMemory): SavedGateMemory {
 }
 
 // NOTICE:
-// The devtools inspector still reads the legacy `GateDecision` and `GateMemory`, so urge decisions are translated.
-// Root cause: `situation-observability.ts` and `situation-gate.vue` move to the urge trace later.
+// The inspector's legacy `gate`, `gateMemory`, and `gateHistory` fields still need urge decisions translated.
+// Root cause: `situation-gate.vue` reads them until it moves to the `urge` fields, which get the trace directly.
 // Source: `.omo/plans/unprompted-reach-out-redesign.md`, todos 15, 16, and 22.
 // Removal condition: todo 22 removes the legacy inspection fields.
 const LEGACY_TIMING_REASON: Readonly<Record<UrgeGateTimingReason, GateTimingReason>> = {
@@ -278,7 +279,7 @@ export const useSituationStore = defineStore('situation', () => {
   /** Whether the stage was on screen with a fresh desktop sample at the previous gate tick. */
   let wasStageShown = false
   /** The unprompted turn the gate started, from the fire until its result is recorded. */
-  let firing: { turnId: string, spoken: boolean } | undefined
+  let firing: { turnId: string, kind: ReasonKind, spoken: boolean } | undefined
   /** Advances on every promotion and demotion, so a result from an earlier leadership is dropped. */
   let leadership = 0
   let stopVoiceTurnListener: (() => void) | undefined
@@ -361,8 +362,10 @@ export const useSituationStore = defineStore('situation', () => {
     const stopSensor = startConversationSensor(chatHooks, (observation) => {
       ingest(observation)
       // The sensor reports user turns only for user-origin sends, so the character's own turns earn no engagement.
-      if (observation.kind === 'conversation' && observation.who === 'user' && observation.origin === 'user')
+      if (observation.kind === 'conversation' && observation.who === 'user' && observation.origin === 'user') {
+        observability.recordUserTurn(observation.atMs)
         setGateMemory(recordUrgeUserTurn(gateMemory, observation.atMs))
+      }
     })
     const stopSpokenListener = chatHooks.onTokenLiteral(async (_literal, context) => {
       // The runtime holds an unprompted reply until it decides to speak, so its first literal means spoken.
@@ -382,6 +385,7 @@ export const useSituationStore = defineStore('situation', () => {
         // A thread is consumed here and only here, so a declined, cancelled, or failed attempt leaves it eligible.
         if (trigger && isThreadTopic(trigger.topicKey))
           raiseThreadTopic(trigger.topicKey, nowMs)
+        observability.recordReasonOutcome(firing.kind, 'spoken', nowMs)
         setGateMemory(recordUrgeFireOutcome(gateMemory, 'spoken', nowMs))
       }
       else if (gateTicker !== undefined && context.turnId !== firing?.turnId) {
@@ -567,6 +571,7 @@ export const useSituationStore = defineStore('situation', () => {
   function setGateMemory(memory: UrgeGateMemory) {
     gateMemory = memory
     observability.publishGateMemory(legacyGateMemory(memory))
+    observability.publishUrgeState(memory, threads.threads)
     saveInnerState()
   }
 
@@ -660,6 +665,8 @@ export const useSituationStore = defineStore('situation', () => {
     }, gateMemory)
     // Recording the decision publishes this memory to the inspector too.
     gateMemory = memory
+    observability.recordUrgeDecision(decision, memory)
+    observability.publishUrgeState(memory, threads.threads)
     const legacyDecision = legacyGateDecision(decision, memory)
     const legacyMemory = legacyGateMemory(memory)
     observability.recordGateDecision(legacyDecision, legacyMemory)
@@ -674,9 +681,9 @@ export const useSituationStore = defineStore('situation', () => {
    * except a thread topic, which only a spoken turn consumes.
    */
   async function fire(controls: SituationChatControls, decision: Extract<UrgeGateDecision, { fire: true }>, before: UrgeGateMemory) {
-    const turn = { turnId: nanoid(), spoken: false }
-    const startedIn = leadership
     const { picked } = decision
+    const turn = { turnId: nanoid(), kind: picked.kind, spoken: false }
+    const startedIn = leadership
     const aboutNotify = picked.kind === 'notify'
     firing = turn
     if (!isThreadTopic(picked.key))
@@ -713,8 +720,12 @@ export const useSituationStore = defineStore('situation', () => {
       })
       return
     }
-    if (!turn.spoken)
-      setGateMemory(recordUrgeFireOutcome(gateMemory, result.status, Date.now()))
+    if (!turn.spoken) {
+      const nowMs = Date.now()
+      // A spoken turn whose first literal was seen is counted there, with the time she started speaking.
+      observability.recordReasonOutcome(picked.kind, result.status, nowMs)
+      setGateMemory(recordUrgeFireOutcome(gateMemory, result.status, nowMs))
+    }
     const text = result.status === 'spoken' ? result.text.trim() : ''
     if (aboutNotify && text) {
       for (const listener of notifySpokenListeners)
