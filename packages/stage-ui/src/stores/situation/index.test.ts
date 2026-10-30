@@ -1,11 +1,14 @@
-import type { ChatHookRegistry, ChatStreamEventContext } from '@proj-airi/core-agent'
+import type { ChatHistoryItem, ChatHookRegistry, ChatStreamEventContext } from '@proj-airi/core-agent'
+import type { GenerationProvider } from '@proj-airi/provider-inference'
 import type { DesktopActivitySnapshot } from '@proj-airi/stage-shared/performance-state'
 import type { ActivityObservation, ContextObservation, NotifyObservation, Thread, WakeObservation } from '@proj-airi/stage-shared/situation'
 import type { ForegroundWindowSample } from '@proj-airi/stage-shared/stores/foreground-window'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { SituationChatControls } from '.'
+import type { LlmStream } from '../../features/situation/thread-extraction'
 import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
+import type { ThreadExtractionLedgerEntry } from '../devtools/situation-observability'
 
 import { createChatHooks } from '@proj-airi/core-agent'
 import { evaluateUrgeGate, FLOOR_MS, HOUR_MS, initialSituationState, notifyTopicKey, SETTLE_MS } from '@proj-airi/stage-shared/situation'
@@ -121,18 +124,32 @@ function foregroundSample(overrides: Partial<ForegroundWindowSample> = {}): Fore
   return { exePath: 'C:\\Windows\\notepad.exe', exeName: 'notepad.exe', title: 'notes.txt - Notepad', pid: 7, ownProcess: false, busy: 'accepts', sampledAtMs: Date.now(), ...overrides }
 }
 
-/** Fake chat controls: a quiet chat whose unprompted turns are spoken, unless a test replaces `submitUnprompted`. */
+/** The provider of the fake chat selection. The fake `stream` never reaches it. */
+const extractionProvider: GenerationProvider = {
+  generation() {
+    throw new Error('The fake stream sends no request')
+  },
+}
+
+/**
+ * Fake chat controls: a quiet chat whose unprompted turns are spoken, unless a test replaces `submitUnprompted`. Its
+ * session holds `state.messages`, and its thread extraction stream answers with no text unless a test replaces it.
+ */
 function createChatControls() {
-  const state = { sending: false, queued: 0, unpromptedPending: false }
+  const state: { sending: boolean, queued: number, unpromptedPending: boolean, messages: ChatHistoryItem[] } = { sending: false, queued: 0, unpromptedPending: false, messages: [] }
   const submitUnprompted = vi.fn(async (_payload: ChatUnpromptedPayload): Promise<ChatUnpromptedResult> => ({ status: 'spoken', text: 'Still at it?' }))
+  const stream = vi.fn<LlmStream>(async () => {})
   const controls: SituationChatControls = {
     sending: () => state.sending,
     pendingQueuedSendCount: () => state.queued,
     unpromptedPending: () => state.unpromptedPending,
     activeSessionId: () => 'session-1',
     submitUnprompted: payload => submitUnprompted(payload),
+    sessionMessages: () => state.messages,
+    extractionSelection: async () => ({ provider: extractionProvider, model: 'chat-model', characterName: 'Airi' }),
+    stream: (...args) => stream(...args),
   }
-  return { state, controls, submitUnprompted }
+  return { state, controls, submitUnprompted, stream }
 }
 
 /** Emits the hooks of one finished user turn, as the chat runtime does. */
@@ -806,6 +823,54 @@ describe('situation gate loop', () => {
     inner.write({ threads: [thread] }, -1)
     return thread
   }
+
+  it('extracts the threads of an ended exchange without a chat hook or a chat message, and saves them for the gate', async () => {
+    const { hooks, chat, observability } = startQuietLeader()
+    chat.state.messages = [
+      { role: 'user', content: 'I have a job interview tomorrow at nine.', createdAt: Date.now(), id: 'user-1' },
+      { role: 'assistant', content: 'Good luck! Tell me how it goes.', slices: [], tool_results: [], createdAt: Date.now(), id: 'assistant-1' },
+    ]
+    await userTurn(hooks, 'turn-1')
+    const beforeSend = vi.fn()
+    const turnComplete = vi.fn()
+    hooks.onBeforeSend(beforeSend)
+    hooks.onChatTurnComplete(turnComplete)
+    const inFlight = vi.spyOn(observability, 'publishExtractionInFlight')
+    const messageCountsDuringExtraction: number[] = []
+    chat.stream.mockImplementation(async (_model, _provider, _conversation, options) => {
+      messageCountsDuringExtraction.push(chat.state.messages.length)
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '[{"kind":"event","summary":"He has a job interview tomorrow at nine.","cue":"how the interview went","dueInMinutes":780}]' })
+    })
+    const recorded = new Promise<ThreadExtractionLedgerEntry>((resolve) => {
+      const record = observability.recordExtraction
+      vi.spyOn(observability, 'recordExtraction').mockImplementation((entry) => {
+        record(entry)
+        resolve(entry)
+      })
+    })
+
+    await vi.advanceTimersByTimeAsync(EXCHANGE_QUIET_MS + 1_000)
+    const entry = await recorded
+
+    expect(entry).toMatchObject({ sessionId: 'session-1', status: 'ok', messageCount: 2, threads: [{ kind: 'event', summary: 'He has a job interview tomorrow at nine.' }] })
+    expect(chat.stream).toHaveBeenCalledOnce()
+    expect(chat.stream.mock.calls[0][0]).toBe('chat-model')
+    expect(chat.stream.mock.calls[0][3]).toMatchObject({ origin: 'unprompted', maxTokens: 400 })
+    expect(inFlight.mock.calls).toEqual([[true], [false]])
+    // IS-11: the extraction runs below the chat runtime, so no chat hook fires and the session gains no message.
+    expect(beforeSend).not.toHaveBeenCalled()
+    expect(turnComplete).not.toHaveBeenCalled()
+    expect(messageCountsDuringExtraction).toEqual([2])
+    expect(chat.state.messages).toHaveLength(2)
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+    expect(useSituationInnerState().read().threads).toEqual([expect.objectContaining({
+      sessionId: 'session-1',
+      kind: 'event',
+      summary: 'He has a job interview tomorrow at nine.',
+      cue: 'how the interview went',
+      dueAtMs: entry.atMs + 780 * 60_000,
+    })])
+  })
 
   it('names a web extension page topic by its kind in the unprompted trigger, never by its title or link', async () => {
     const { store, chat, observability } = startQuietLeader()

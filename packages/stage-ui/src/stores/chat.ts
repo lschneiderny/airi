@@ -838,6 +838,21 @@ export const useChatStore = defineStore('chat', () => {
     unpromptedPending: () => unpromptedResults.size > 0,
     activeSessionId: () => activeSessionId.value,
     submitUnprompted: payload => submitUnprompted(payload),
+    sessionMessages: sessionId => chatSession.getSessionMessagesIfLoaded(sessionId) ?? [],
+    // Thread extraction runs on the active chat selection, like the chat itself, with the session character's name.
+    extractionSelection: async (sessionId) => {
+      const providerId = activeProvider.value
+      const model = activeModel.value
+      if (!isChatSelectionReady(providerId, model))
+        return null
+      const provider = await consciousnessStore.getChatProviderInstance(providerId)
+      if (!provider)
+        return null
+      const characterId = chatSession.sessionMetas[sessionId]?.characterId
+      const characterName = (characterId ? cardStore.cards.get(characterId)?.name : undefined) ?? cardStore.activeCard?.name ?? 'the character'
+      return { provider, model, characterName }
+    },
+    stream: llmStore.stream,
   })
 
   // One request owns preparation and generation. Cancellation cannot miss asynchronous startup.

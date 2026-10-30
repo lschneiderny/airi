@@ -1,4 +1,4 @@
-import type { ChatHookRegistry, TurnRef } from '@proj-airi/core-agent'
+import type { ChatHistoryItem, ChatHookRegistry, TurnRef } from '@proj-airi/core-agent'
 import type {
   AppCategory,
   GateLocalTime,
@@ -13,6 +13,7 @@ import type {
 } from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
+import type { LlmStream, ThreadExtractionSelection } from '../../features/situation/thread-extraction'
 import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
 import type { SituationGateEvaluation } from '../devtools/situation-observability'
 import type { ConversationHookSource } from './sensors/conversation'
@@ -21,6 +22,7 @@ import type { ChatExchange, ExchangeSensor } from './sensors/exchange'
 import { errorMessageFrom } from '@moeru/std'
 import { isElectronWindow } from '@proj-airi/stage-shared'
 import {
+  addThreads,
   advanceSituation,
   evaluateUrgeGate,
   forgetForeground,
@@ -29,6 +31,7 @@ import {
   initialUrgeMemory,
   isSourceInNamespace,
   isTopicFromSource,
+  LOGICAL_DAY_ROLLOVER_HOUR,
   logicalDayKey,
   markShown,
   markAddressed as markSituationAddressed,
@@ -53,6 +56,7 @@ import { computed, shallowRef, watch } from 'vue'
 
 import { useSituationInnerState } from '../../features/situation/inner-state'
 import { useSituationSettings } from '../../features/situation/settings'
+import { createThreadExtractor } from '../../features/situation/thread-extraction'
 import { chatComposerActivityChangedEvent, getSpeechBusContext, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { startConversationSensor } from './sensors/conversation'
@@ -125,6 +129,15 @@ function localTimeFor(nowMs: number): GateLocalTime {
   }
 }
 
+/** The end of the logical day of `nowMs`: the next rollover hour in this host's time zone. Threads expire there. */
+function logicalDayEndsAtMs(nowMs: number): number {
+  const end = new Date(nowMs)
+  end.setHours(LOGICAL_DAY_ROLLOVER_HOUR, 0, 0, 0)
+  if (end.getTime() <= nowMs)
+    end.setDate(end.getDate() + 1)
+  return end.getTime()
+}
+
 /** Thread topics are consumed only when a gate turn about them is observed speaking, never when addressed. */
 function isThreadTopic(topicKey: string): boolean {
   return topicKey.startsWith('thread:')
@@ -154,6 +167,12 @@ export interface SituationChatControls {
   /** The chat session of this window. Only its open threads may give the gate a reason to reach out. */
   activeSessionId: () => string
   submitUnprompted: (payload: ChatUnpromptedPayload) => Promise<ChatUnpromptedResult>
+  /** The loaded messages of a session, oldest first, for thread extraction; empty when it is not loaded. */
+  sessionMessages: (sessionId: string) => readonly ChatHistoryItem[]
+  /** The active chat provider and model that extract threads, or `null` when none is configured. */
+  extractionSelection: (sessionId: string) => Promise<ThreadExtractionSelection | null>
+  /** The LLM store's stream, below the chat runtime, so an extraction fires no chat hook and stores no message. */
+  stream: LlmStream
 }
 
 /**
@@ -188,7 +207,10 @@ interface RunningSensors {
  * it speaks), then starts one unprompted turn through the chat controls, and the gate starts no other turn until that
  * one has a result. The gate's social memory (with the ritual day) and the open threads are restored from
  * `useSituationInnerState` when the gate starts and saved whenever a durable field changes, so a leader reload does
- * not start her from day one. Its randomness comes only from the seed that {@link initialize} takes.
+ * not start her from day one. Its randomness comes only from the seed that {@link initialize} takes. While the gate
+ * runs, every exchange that ends is sent to the thread extractor, which asks the chat model what is still open; the
+ * threads it returns join the gate's reasons for that chat session, and each attempt shows in the inspector's
+ * extraction ledger, never in chat history.
  */
 export const useSituationStore = defineStore('situation', () => {
   const current = shallowRef<SituationState>(initialSituationState)
@@ -222,6 +244,8 @@ export const useSituationStore = defineStore('situation', () => {
   let seedSource: () => number = randomSeed
   const innerState = useSituationInnerState()
   let stopGateEvaluation: (() => void) | undefined
+  /** Stops thread extraction of the running gate; a late result of an earlier gate run is dropped. */
+  let stopThreadExtraction: (() => void) | undefined
   /** Whether the stage was on screen with a fresh desktop sample at the previous gate tick. */
   let wasStageShown = false
   /** The unprompted turn the gate started, from the fire until its result is recorded. */
@@ -707,6 +731,42 @@ export const useSituationStore = defineStore('situation', () => {
     return () => exchangeEndListeners.delete(listener)
   }
 
+  /**
+   * Extracts the open threads of every exchange that ends while the gate runs, and stores and saves them for the gate.
+   * Threads feed only the gate, and only a running gate saves them, so a host without unprompted turns spends no
+   * extraction call. The chat controls are read per call: the gate may start before the chat store hands them over,
+   * and the exchange sensor that ends exchanges runs only once it did. Returns a function that stops listening and
+   * drops the result of an extraction still in flight.
+   */
+  function startThreadExtraction(): () => void {
+    let active = true
+    const extractor = createThreadExtractor({
+      stream: (model, provider, conversation, options) => chat
+        ? chat.stream(model, provider, conversation, options)
+        : Promise.reject(new Error('The chat store has not handed over its controls')),
+      selection: async sessionId => await chat?.extractionSelection(sessionId) ?? null,
+      messages: sessionId => chat?.sessionMessages(sessionId) ?? [],
+      onThreads(drafts, sessionId) {
+        if (!active)
+          return
+        const nowMs = Date.now()
+        threads = addThreads(threads, drafts, sessionId, nowMs, { dayEndsAtMs: logicalDayEndsAtMs(nowMs) })
+        // Publishes the new threads to the inspector and saves them with the social memory.
+        setGateMemory(gateMemory)
+      },
+      onLedger: entry => observability.recordExtraction(entry),
+      onInFlight: inFlight => observability.publishExtractionInFlight(inFlight),
+      now: Date.now,
+    })
+    const stopListening = onExchangeEnd((exchange) => {
+      void extractor.extract(exchange)
+    })
+    return () => {
+      active = false
+      stopListening()
+    }
+  }
+
   /** Runs the gate loop only while this window leads in a host that supports unprompted turns. */
   function syncGateLoop() {
     const shouldRun = leading.value && hostSupportsUnprompted.value
@@ -723,6 +783,7 @@ export const useSituationStore = defineStore('situation', () => {
       stopVoiceTurnListener = startVoiceTurnListener()
       gateTicker = setInterval(gateTick, GATE_INTERVAL_MS)
       stopGateEvaluation = observability.serveGateEvaluation(() => gateTick(true))
+      stopThreadExtraction = startThreadExtraction()
       setGateMemory(gateMemory)
     }
     else if (!shouldRun && gateTicker !== undefined) {
@@ -732,6 +793,8 @@ export const useSituationStore = defineStore('situation', () => {
       gateTicker = undefined
       stopGateEvaluation?.()
       stopGateEvaluation = undefined
+      stopThreadExtraction?.()
+      stopThreadExtraction = undefined
       stopVoiceTurnListener?.()
       stopVoiceTurnListener = undefined
       threads = NO_THREADS

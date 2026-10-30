@@ -380,6 +380,12 @@ Every chat request carries the block from `renderForRequest` as its only runtime
 Use this store to give the model awareness of the user's situation and to run unprompted remarks.
 Do not read it in follower windows, and do not store its block or window titles in chat history.
 
+### Thread extraction
+
+While the gate runs, the leader sends every ended exchange to `createThreadExtractor` (`features/situation/thread-extraction`). It asks the active chat provider and model which questions, events, promises to come back "later", or dropped topics are still open, and the store adds them with `addThreads` as reasons for that chat session, then saves them with the gate memory.
+The call reads the last 12 user and assistant messages (400 code points each, 4000 in total, without unprompted trigger messages), caps output at 400 tokens, times out after 20 seconds, and runs once at a time. It goes straight to `useLLM().stream` with an `unprompted` origin, so it carries no tools, fires no chat hook, and adds nothing to chat history.
+The answer is untrusted: Valibot accepts at most 3 threads with a known kind, a summary of at most 160 characters, and a cue of at most 200. Each text loses control characters and goes through `situationContextText`, and an entry whose text contains `<|`, `|>`, `SILENT`, or a line starting with a chat role is dropped. Every attempt, failures included, appears only in the devtools Situation inspector's extraction ledger.
+
 ### Sensors
 
 `stores/situation/sensors/` turns host signals into observations: desktop presence and wakes, the foreground app and busy state, conversation turns and the end of each exchange, the stage expression and mood, plugin and vision context, Minecraft context, and `spark:notify` events.
