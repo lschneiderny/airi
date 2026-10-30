@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
 import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged } from '../../../services/speech/bus'
+import { useSituationObservabilityStore } from '../../devtools/situation-observability'
 import { COMPOSER_INPUT_RECENT_MS, GATE_INTERVAL_MS, useSituationStore } from '../../situation'
 import { ingestSparkNotify, notifyObservationFrom } from '../../situation/sensors/notify'
 import { useContextBridgeStore } from './context-bridge'
@@ -80,6 +81,38 @@ vi.mock('./channel-server', () => ({
 
 const T0 = Date.UTC(2026, 9, 20, 9, 0, 0)
 const BUSY = 'Another unprompted turn is still pending'
+
+/** A fixed gate seed with high first urge thresholds, so only urgent notifies and forced evaluations fire. */
+const SEED = 497396
+
+/** The leader's inner state lives in localStorage, which the Node project does not provide. */
+class MemoryStorage implements Storage {
+  readonly values = new Map<string, string>()
+
+  get length() {
+    return this.values.size
+  }
+
+  clear() {
+    this.values.clear()
+  }
+
+  getItem(key: string) {
+    return this.values.get(key) ?? null
+  }
+
+  key(index: number) {
+    return [...this.values.keys()][index] ?? null
+  }
+
+  removeItem(key: string) {
+    this.values.delete(key)
+  }
+
+  setItem(key: string, value: string) {
+    this.values.set(key, value)
+  }
+}
 
 function syncedRuntime(isLeader: boolean): SyncedPiniaRuntime {
   return {
@@ -153,6 +186,7 @@ describe('widget spark reactions', () => {
     vi.useFakeTimers()
     vi.setSystemTime(T0)
     setActivePinia(createPinia())
+    vi.stubGlobal('localStorage', new MemoryStorage())
     handleSparkNotify.mockClear()
     sparkNotifyIds.clear()
     recordSparkNotifyReaction.mockClear()
@@ -167,6 +201,7 @@ describe('widget spark reactions', () => {
     stopVoiceHost()
     useSituationStore().dispose()
     vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 
   /**
@@ -191,9 +226,10 @@ describe('widget spark reactions', () => {
       sending: () => false,
       pendingQueuedSendCount: () => 0,
       unpromptedPending: () => unpromptedPending,
+      activeSessionId: () => 'session-1',
       submitUnprompted: payload => submitUnprompted(payload),
     })
-    situation.initialize(syncedRuntime(true))
+    situation.initialize(syncedRuntime(true), { seedSource: () => SEED })
     const bridge = useContextBridgeStore()
     bridge.setSparkNotifyHostRole('main')
     return { situation, bridge }
@@ -605,15 +641,15 @@ describe('widget spark reactions', () => {
   })
 
   it('records no reaction when a gate-fired turn speaks about a topic that is not a notify', async () => {
-    const { situation } = startLeader({ gate: true })
+    startLeader({ gate: true })
     chatSpeaks('Welcome back.')
-    // Promotion holds an ordinary topic for the minimum gap, 10 minutes at the default Chattiness.
-    await vi.advanceTimersByTimeAsync(10 * 60 * 1_000)
 
-    situation.ingest({ kind: 'wake', cause: 'unlock', atMs: Date.now() })
+    // "Evaluate now" fires on a reason of her own (her day or a ritual), since no notify is in the situation.
+    await useSituationObservabilityStore().evaluateGate()
     await vi.advanceTimersByTimeAsync(3 * GATE_INTERVAL_MS)
 
     expect(submitUnprompted).toHaveBeenCalledOnce()
+    expect(submitUnprompted.mock.calls[0]![0].reason?.kind).not.toBe('notify')
     expect(recordSparkNotifyReaction).not.toHaveBeenCalled()
   })
 
