@@ -359,30 +359,36 @@ The four development-only Fluent Emoji images are removed. No old-ID migration i
 
 ## Situational presence
 
-The character knows what the user is doing and can speak up on her own at sensible moments. The pure rules live in `@proj-airi/stage-shared/situation`; this package owns their state, sensors, settings, and delivery.
-The [situational presence ADR](../../docs/ai/adr/2026-10-19-situational-presence.md) records the design.
+The character can reach out a few times a day for her own reasons, with long quiet stretches between messages. The pure urge gate and reason rules live in `@proj-airi/stage-shared/situation`; this package owns their state, sensors, settings, persistence, and delivery. The [cadence ADR](../../docs/ai/adr/2026-10-29-unprompted-reach-out-cadence.md) records the current design.
 
 ### Situation store
 
-`useSituationStore` in `stores/situation` holds the situation of the leader window. It is neither synced nor persisted.
+`useSituationStore` in `stores/situation` holds the situation of the leader window. Situation observations are neither synced nor persisted.
 Each host calls `initialize(syncedPinia)` next to the chat store. The leader starts the sensors and a 1-second advance ticker. A follower ignores every other call, but it tracks the user's voice and composer activity for `untilUserIdle`.
 Every chat request carries the block from `renderForRequest` as its only runtime context. Outside the leader, `renderForRequest` returns `undefined`, so a host that never initializes the store sends no block.
 
-- `setHostCapabilities({ unprompted: true })` runs the opportunity gate every 2 seconds in the leader. Only the Electron app sets it.
+- `setHostCapabilities({ unprompted: true })` evaluates the urge gate every 2 seconds in the leader. Only the Electron app sets it.
 - `setStageVisible(visible)` reports whether the stage is on screen. A host that never calls it counts as hidden, so the gate stays quiet.
 - `ingest(observation)` folds one observation. Sensors call it; other code rarely needs it.
-- `markAddressed(topicKey)` keeps a topic from being raised again, for example when a caller speaks about that topic itself.
+- `markAddressed(topicKey)` keeps an eligible screen topic from being raised again. A thread reason is used up only when she speaks about it.
 - `holdTopic(topicKey)` keeps a topic away from the gate until the returned function releases it, without addressing it. Use it while a forced turn about that topic is on its way.
 - `userMidInput()` and `untilUserIdle(timeoutMs)` report whether the user is speaking into the microphone, waiting for speech-to-text to finish what they said, or writing in a chat composer in any window. They work in every initialized window.
 - `onNotifySpoken(listener)` reports each spoken gate fire about a notify, with its topic key and reply text.
-- `onExchangeEnd(listener)` reports each finished chat exchange in the leader: at least one user turn, then 15 minutes without a turn while nothing generates. An unprompted turn alone never opens an exchange.
+- `onExchangeEnd(listener)` reports each finished chat exchange in the leader: at least one user turn, then a quiet stretch with no generation. An unprompted turn alone never opens an exchange.
 
-Use this store to give the model awareness of the user's situation and to run unprompted remarks.
+The gate integrates an urge against a changing hazard instead of firing as soon as a cooldown expires. This gives her a long-tailed cadence: another opening can come soon, but long quiet stretches are normal. Chattiness controls only the mean rate; its calibrated rate at the default setting is `BASE_RATE_AT_HALF_PER_HOUR = 1.3`. A short floor separates non-urgent openings, and a small hourly safety cap bounds them. While an exchange is active, no new topic can open at first, and the exchange factor eases toward normal over about half an hour. After one unanswered opening, only a continuation can open for a while; when that window ends, openings can resume at a reduced rate. Only after a second unanswered message, including a continuation, does she go quiet for hours unless the message is urgent. A reply gradually restores the rate. One double text may follow shortly after her message. The cadence ADR documents the exact timings.
+
+Most openings come from ripe threads in the current chat session, daily rituals, or an improvised thought from her own day. Only an eligible long session, a return, or a notification can open a turn from screen context. App switches, bursts, wakes, and ordinary context cannot.
+
+The logical day rolls over in the early morning. A greeting can open on his first appearance in its morning window, a sign-off while he is present late at night, and a welcome-back after a long absence that began within the same logical day. Each ritual runs at most once per logical day; an absence across the rollover can prompt the greeting, not welcome-back. The cadence ADR documents the windows.
+
+Gate memory, threads, and ritual completion are written directly to non-synced local storage. They survive reloads without entering synchronized Pinia state. Use this store to give the model situation awareness and to run unprompted remarks.
+The existing hard suppressors, including Do Not Disturb, hidden stage, active calls, typing, and games, still hold unprompted turns; urgent notifications bypass timing, forced turns speak, only the leader fires, and one request can be pending at a time. A forced widget or plugin turn that speaks starts the same short floor and never counts as unanswered.
 Do not read it in follower windows, and do not store its block or window titles in chat history.
 
 ### Thread extraction
 
-While the gate runs, the leader sends every ended exchange to `createThreadExtractor` (`features/situation/thread-extraction`). It asks the active chat provider and model which questions, events, promises to come back "later", or dropped topics are still open, and the store adds them with `addThreads` as reasons for that chat session, then saves them with the gate memory.
+While the gate runs, the leader makes one `createThreadExtractor` attempt (`features/situation/thread-extraction`) for each ended exchange. It asks the active chat provider and model which questions, events, promises to come back "later", or dropped topics are still open, and the store adds them with `addThreads` as reasons for that chat session, then saves them with the gate memory.
 The call reads the last 12 user and assistant messages (400 code points each, 4000 in total, without unprompted trigger messages), caps output at 400 tokens, times out after 20 seconds, and runs once at a time. It goes straight to `useLLM().stream` with an `unprompted` origin, so it carries no tools, fires no chat hook, and adds nothing to chat history.
 The answer is untrusted: Valibot accepts at most 3 threads with a known kind, a summary of at most 160 characters, and a cue of at most 200. Each text loses control characters and goes through `situationContextText`, and an entry whose text contains `<|`, `|>`, `SILENT`, or a line starting with a chat role is dropped. Every attempt, failures included, appears only in the devtools Situation inspector's extraction ledger.
 
@@ -404,7 +410,7 @@ Do not send ambient context to the model in any other way: the situation block i
 An invalid field falls back to its default. The leader routes `update` and `reset`.
 **Settings > Presence** edits it in the Electron app. Web and Pocket exclude the page, because they run no unprompted turns.
 
-Use these settings to control how often and when the character speaks up, and whether and which window titles the model may see.
+Use these settings to control the mean rate of unprompted turns and which foreground details the model may see.
 Turning `shareForegroundWindow` off also stops unprompted speech, because the gate needs a fresh foreground sample. Replies to the user still work.
 Turning `shareBrowserActivity` off removes the web extension's page and video titles, links, subtitles, and video notifications from the situation. It does not affect foreground sharing or the gate. Web and Pocket have no control for it, so the extension always reaches the situation there.
 Do not read them in the Electron main process.
@@ -414,9 +420,9 @@ Do not read them in the Electron main process.
 `useChatStore().submitUnprompted({ topicKey, topicText, force?, messageId?, supplement? })` starts one turn without user input in the leader's active session. It resolves to `spoken` with the text, `declined`, `cancelled`, or `failed`.
 `force` changes only the instruction: without it, the instruction invites the model to decline with `<|SILENT|>`, and with it, the instruction asks her to speak. A forced turn still declines when the reply starts with the decline marker or has no visible speech. A decline writes an `unprompted-declined` control record and nothing else.
 At most one unprompted turn is pending at a time. A user send in the same session cancels it.
-The trigger message keeps `topicText` in chat history, so the gate never passes a window title or a web extension title or link as `topicText`. For a web extension topic it passes only the kind of topic, and the situation block of the request carries the details.
+The trigger message keeps `topicText` in chat history, so the gate never passes a window title or a web extension title or link as `topicText`. Its trigger kind identifies the reason source. Thread text reaches the model only as labelled data in the trigger, never in the instruction. For a web extension topic it passes only the kind of topic, and the situation block of the request carries the details.
 `userSending` ignores unprompted turns, so the presence bubble and the streaming placeholder follow user turns only.
-Chat history shows a muted "Spoke up about X" cue above the reply unless **Show unprompted cue** is off. Unprompted turns are excluded from cloud sync.
+Chat history shows a muted "Reached out: ..." cue above the reply unless **Show unprompted cue** is off. The trigger kind identifies whether the reason is a thread, ritual, own-day thought, or eligible screen event. Unprompted turns are excluded from cloud sync.
 
 Widget reaction requests (`dispatchSparkNotifyReaction` and `dispatchSparkNotifyPerformance`) use `submitUnprompted` with `force: true` and the message id `spark:<id>`.
 The context bridge holds the notify topic with `holdTopic`, so the gate cannot raise it meanwhile. It first waits up to 20 seconds until the character has no open voice response and `untilUserIdle` reports that the user is neither speaking nor writing.
@@ -428,9 +434,9 @@ Do not pass a raw window title in `topicText`, because the trigger message is st
 
 ### Situation inspector
 
-**Settings > System > Developer > Situation** shows the live situation, the event table, the last rendered block, the gate trace and memory, a spend panel, and ACT compliance.
+**Settings > System > Developer > Situation** shows the live situation, event table, last rendered block, urge and hazard trace, phase and expected wait, ripe reasons and their weights, thread ripeness and expiry, pick trace, ritual state, per-reason outcomes, extraction ledger, spend, and ACT compliance.
 `useSituationObservabilityStore` serves the page from the leader through Eventa invokes on a BroadcastChannel context, not through synced actions, so polling leaves nothing in the shared synced state.
-**Evaluate now** runs the gate once without its timing guards; hard suppressors still apply.
+**Evaluate now** forces one gate evaluation past timing guards and the short floor; hard suppressors still apply.
 
 Use the inspector to tune the gate and to see why the character spoke or stayed quiet.
 Do not use it as a user-facing settings page.

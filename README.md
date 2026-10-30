@@ -12,7 +12,7 @@ This is my personal fork of [Project AIRI](https://github.com/moeru-ai/airi). I 
 - **Natural motion driver for Live2D.** This driver is an alternative to the upstream Universal and MAGIC drivers. It generates layered procedural motion for posture, gaze, blinking, breathing, and the face. Performance state, mood, and held emotions drive that motion, so the character still looks inhabited while idle.
 - **Expression performance.** Each model's `.exp3.json` files are loaded into a per-model catalog with derived labels and suggested emotion mappings. The language model can use the curated expressions through ACT cues and tools.
 - **Touch and cursor attention.** You can poke and pet the model. With the Natural driver, the character's attention follows the cursor.
-- **Situational presence.** On Windows, the desktop app can sample the foreground window. A situation gate then decides when the character may speak without being prompted. Settings > Presence controls what is shared.
+- **Situational presence.** The desktop character reaches out a few times a day for her own reasons, with long quiet stretches between messages. Settings > Presence controls what foreground information she can see.
 - **Development tooling.** The fork adds motion QA gates (`pnpm qa:*`), changed-file verification (`pnpm verify`), worktree helpers (`pnpm wt`, `pnpm dev:top`), and a shared CPU budget for builds and tests (`pnpm slots`).
 
 The design records for these features are in [`docs/ai/adr/`](./docs/ai/adr/).

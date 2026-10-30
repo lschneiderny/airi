@@ -128,14 +128,14 @@ Do not use it to run a scenario or to read clocks or randomness: the runners in 
 
 ### Situation
 
-The `situation` entrypoint owns the pure core of situational presence: the observation and state types, the reducer, the situation block renderer, the opportunity gate, and the window-title helpers.
+The `situation` entrypoint owns the pure core of situational presence: observation and state types, the reducer, situation block renderer, urge gate, reason sources, and window-title helpers.
 
 - `reduceSituation` folds one `Observation` into a `SituationState`. `advanceSituation` derives the events that need no observation, such as settled app switches, long-session tiers, and expiry.
 - `renderSituation` renders the bounded `[Situation HH:MM]` block and returns the ids of the events that it showed as new. Pass them to `markShown`, so the next block does not repeat them.
-- `evaluateUrgeGate` decides whether the character reaches out on her own and returns the next `UrgeGateMemory`. The hard suppressors (`hardReason`) hold first, in a fixed order; an urgent notify then fires at once. Otherwise her urge accrues at a hazard rate set by Chattiness, open threads, rituals, and how recently he answered, and she fires when it crosses a randomly drawn threshold, picking one reason (a thread, a ritual, her own day, or a rare screen reaction) by weight. A 2-minute floor follows every fire, and unanswered openings quiet her. `recordUrgeFireOutcome`, `recordUrgeUserTurn`, and `recordExternalSpeech` feed the outcome back. `collectReasons`, `advanceRituals`, and the thread helpers build the reasons.
+- `evaluateUrgeGate` integrates a seeded urge against the current hazard, selects an eligible screen event or inner reason, and returns the next gate memory. `recordUrgeFireOutcome`, `recordUrgeUserTurn`, and `recordExternalSpeech` update social state. Only the urge gate exists; `hardReason` in `gate.ts` holds the hard contract that it checks first.
 - `normalizeWindowTitle`, `appIdFromExe`, `labelFromExe`, `categorizeApp`, and `isDenylisted` turn a foreground sample into an app id, label, category, and model-facing title.
 
-No function reads a clock or global randomness. Pass epoch milliseconds and the host's local time, and keep the returned state and memory for the next call. The gate draws its randomness from the seeded `rngState` in its memory, so the same memory and input give the same decision.
+The pure rules read no clock, store, or global randomness. Pass explicit time and retain returned state and memory for the next call; the urge gate checkpoints its random state in gate memory.
 
 ```ts
 import { initialSituationState, markShown, reduceSituation, renderSituation } from '@proj-airi/stage-shared/situation'
@@ -147,10 +147,10 @@ state = markShown(state, rendered.shownEventIds, nowMs)
 // rendered.text is the block for the next chat request.
 ```
 
-Use this entrypoint to describe the user's situation to the model, or to decide when an unprompted remark is welcome, in a way that tests can replay.
+Use this entrypoint to describe the user's situation to the model, or to decide when an unprompted remark is welcome and which reason to use, in a way that tests can replay.
 Do not use it to collect signals or to hold state for a window. `useSituationStore` in `@proj-airi/stage-ui` owns the leader's state, the sensors, and the gate loop.
 Do not persist or sync a `SituationState`, because it can hold window titles.
-The [situational presence ADR](../../docs/ai/adr/2026-10-19-situational-presence.md) records the situation rules, and the [unprompted reach-out cadence ADR](../../docs/ai/adr/2026-10-29-unprompted-reach-out-cadence.md) records the urge gate and its starting constants.
+The [situational presence ADR](../../docs/ai/adr/2026-10-19-situational-presence.md) records the situation rules, and the [unprompted reach-out cadence ADR](../../docs/ai/adr/2026-10-29-unprompted-reach-out-cadence.md) records the gate and reason design.
 
 ### Foreground window store
 

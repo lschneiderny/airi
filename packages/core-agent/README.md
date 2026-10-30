@@ -125,7 +125,8 @@ await done
 
 Use unprompted turns when the host has decided that a moment exists and wants the model to decide whether to speak.
 Do not use them for messages that the user wrote. Do not add a plugin-protocol input event for them: `origin` is a local runtime field.
-The [situational presence ADR](../../docs/ai/adr/2026-10-19-situational-presence.md) records the design.
+The optional `trigger.kind` lets a host identify why it reached out, such as a thread, ritual, or eligible screen event.
+The [unprompted reach-out cadence ADR](../../docs/ai/adr/2026-10-29-unprompted-reach-out-cadence.md) records the stage design.
 
 ## VoiceController
 
