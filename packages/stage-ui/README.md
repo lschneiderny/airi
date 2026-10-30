@@ -440,3 +440,15 @@ Do not pass a raw window title in `topicText`, because the trigger message is st
 
 Use the inspector to tune the gate and to see why the character spoke or stayed quiet.
 Do not use it as a user-facing settings page.
+
+## Long-term memory
+
+`useMemoryStore` in `stores/memory.ts` keeps entries in IndexedDB through the localforage instance `airi-memory/entries`. It uses the `airi:memory` BroadcastChannel to reload changes in other windows and stores the toggle at `memory/enabled`.
+
+`tools/memory.ts` defines `builtIn_readMemory`, `builtIn_writeMemory`, and `builtIn_forgetMemory`. `composeMemoryPrompt` adds the memory rules and the chat session character's index to a model step. Card selection does not change the character bound to a queued turn. Spark Notify instead uses the active card's index.
+
+The index joins each step prompt in `stores/chat.ts` during `prepareSend`, after the identity and stage contract and before the request supplement. It stays out of `session-store.ts`, so the stage-contract prompt hash does not change.
+
+Unprompted turns receive only `builtIn_readMemory` through the core-agent runtime's `unpromptedTools` option. In `stores/ai/chat-llm/llm.ts`, unprompted requests resolve only the supplied custom tools and no built-in tools.
+
+The [adoption ADR](../../docs/ai/adr/2026-10-30-long-term-memory-adoption.md) records the design and its consequences.
