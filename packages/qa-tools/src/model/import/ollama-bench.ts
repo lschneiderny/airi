@@ -58,6 +58,8 @@ const sources = [
   { file: 'flash-attention.jsonl', kind: 'ollama-flash-attention' },
 ] as const
 
+class LegacyInputError extends Error {}
+
 async function hashFile(path: string): Promise<string> {
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(path))
@@ -93,7 +95,7 @@ function parseRow<T extends v.GenericSchema>(schema: T, text: string, path: stri
     return v.parse(schema, JSON.parse(text))
   }
   catch (error) {
-    throw new Error(`${path}: line ${line}: ${errorMessageFrom(error) ?? 'invalid legacy row'}`)
+    throw new LegacyInputError(`${path}: line ${line}: ${errorMessageFrom(error) ?? 'invalid legacy row'}`)
   }
 }
 
@@ -127,36 +129,45 @@ export const runImportOllamaBenchCli: ModelCommandHandler = async (argv, repoRoo
   }
 
   const out = resolve(repoRoot, args.values.out ?? `packages/qa-tools/model-eval/sets/${args.values.set}/transcripts.jsonl`)
-  const entries = await readdir(resultsDir)
-  const unknown = entries.find(name => name !== 'notes.md' && !sources.some(source => source.file === name) && resolve(resultsDir, name) !== out)
-  if (unknown)
-    throw new Error(`${resolve(resultsDir, unknown)}: line 1: unknown legacy source`)
-  const files = sources.filter(source => entries.includes(source.file))
-  if (!files.length)
-    throw new Error(`${resultsDir}: line 1: empty legacy results directory`)
-  if (files.some(source => resolve(resultsDir, source.file) === out))
-    throw new Error(`${out}: line 1: output must not overwrite a source`)
-
-  // Inspect the whole sweep before emitting defaults: think-on may appear later in the file.
+  let files: typeof sources[number][]
   const thinkingModels = new Set<string>()
   let rows = 0
-  for (const source of files) {
-    const path = resolve(resultsDir, source.file)
-    let fileRows = 0
-    for await (const { text, line } of readRows(path)) {
-      if (source.kind === 'ollama-sweep') {
-        const row = parseRow(sweepSchema, text, path, line)
-        if (row.config === 'think-on')
-          thinkingModels.add(row.model)
+  try {
+    const entries = await readdir(resultsDir)
+    const unknown = entries.find(name => name !== 'notes.md' && !sources.some(source => source.file === name) && resolve(resultsDir, name) !== out)
+    if (unknown)
+      throw new LegacyInputError(`${resolve(resultsDir, unknown)}: line 1: unknown legacy source`)
+    files = sources.filter(source => entries.includes(source.file))
+    if (!files.length)
+      throw new LegacyInputError(`${resultsDir}: line 1: empty legacy results directory`)
+    if (files.some(source => resolve(resultsDir, source.file) === out))
+      throw new LegacyInputError(`${out}: line 1: output must not overwrite a source`)
+
+    // Inspect the whole sweep before emitting defaults: think-on may appear later in the file.
+    for (const source of files) {
+      const path = resolve(resultsDir, source.file)
+      let fileRows = 0
+      for await (const { text, line } of readRows(path)) {
+        if (source.kind === 'ollama-sweep') {
+          const row = parseRow(sweepSchema, text, path, line)
+          if (row.config === 'think-on')
+            thinkingModels.add(row.model)
+        }
+        else {
+          parseRow(benchSchema, text, path, line)
+        }
+        fileRows++
       }
-      else {
-        parseRow(benchSchema, text, path, line)
-      }
-      fileRows++
+      if (!fileRows)
+        throw new LegacyInputError(`${path}: line 1: empty legacy source`)
+      rows += fileRows
     }
-    if (!fileRows)
-      throw new Error(`${path}: line 1: empty legacy source`)
-    rows += fileRows
+  }
+  catch (error) {
+    if (!(error instanceof LegacyInputError))
+      throw error
+    process.stderr.write(`import-ollama-bench: ${error.message}\n`)
+    return 2
   }
 
   const prompt = {

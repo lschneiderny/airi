@@ -34,7 +34,6 @@ function record(runKey = 'model/defaults'): ReplyTranscriptRecord {
 function score(overrides: Partial<ReplyScore> = {}): ReplyScore {
   return {
     schema: 'airi.cue-contract-score.reply/v1',
-    passes: { whole: true, perChar: true },
     chunkInvariant: true,
     cueStats: { act: 0, recovered: 0, stripped: 0 },
     stageRejected: 0,
