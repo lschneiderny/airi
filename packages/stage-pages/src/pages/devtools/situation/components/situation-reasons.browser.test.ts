@@ -78,6 +78,10 @@ describe('situation reasons panel', () => {
   })
 
   it('lists reasons, threads, extraction attempts, and outcomes per reason kind', async () => {
+    const answerText = t('tamagotchi.settings.devtools.pages.situation.reasons.extraction-answer', { chars: 71, finishReason: 'length', excerpt: '[ {"kind": "question"' })
+    // A missing locale entry renders the key, which the text match would still accept.
+    expect(answerText).not.toBe('tamagotchi.settings.devtools.pages.situation.reasons.extraction-answer')
+
     const screen = await render(SituationReasons, {
       props: { reasons: [reason], threads: [thread], extraction, outcomes: outcomes({ 'thread-event': { ...NONE, spoken: 2, declined: 1, engaged: 1, ignored: 1 } }), nowMs: T0 },
       global: { plugins: [i18n()] },
@@ -87,7 +91,8 @@ describe('situation reasons panel', () => {
     // An event thread without a due time starts ripening 90 minutes after its birth, 30 minutes from now.
     await expect.element(screen.getByTestId('situation-threads').getByRole('row').nth(1)).toHaveTextContent(/event\s*He has a dentist appointment this afternoon\s*1h 00m ago.*in 30m 00s.*in 24h 00m\)\s*0$/)
     await expect.element(screen.getByTestId('situation-extraction').getByRole('row').nth(1)).toHaveTextContent(/ok\s*1234\s*event: He has a dentist appointment this afternoon\s*-/)
-    await expect.element(screen.getByTestId('situation-extraction').getByRole('row').nth(2)).toHaveTextContent(/failed\s*980\s*-\s*The answer reached the output cap\s*Answer: 71 chars, finish reason length: \[ \{"kind": "question"/)
+    await expect.element(screen.getByTestId('situation-extraction').getByRole('row').nth(2)).toHaveTextContent(/failed\s*980\s*-\s*The answer reached the output cap/)
+    await expect.element(screen.getByTestId('situation-extraction').getByRole('row').nth(2).getByTestId('situation-extraction-answer')).toHaveTextContent(answerText)
     expect(screen.getByTestId('situation-outcomes').element().querySelector('[data-outcome-kind="thread-event"]')?.textContent).toMatch(/thread-event\s*2\s*1\s*1\s*1/)
     expect(screen.getByTestId('situation-outcomes').element().querySelectorAll('tbody tr')).toHaveLength(KINDS.length)
   })
