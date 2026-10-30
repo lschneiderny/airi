@@ -19,8 +19,32 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 | `pnpm qa:motion t3 --rig forbooth --scenario <builtin:name\|file.json> [--keep-open]` | Drive a scenario in the rendered Electron app and collect a Natural trace and screenshots. |
 | `pnpm qa:motion validate-scorer --level t1 [--sections aa,zero,mutations,unmutated,determinism] [--seeds N] [--workers N] [--timeout-minutes N]` | Evaluate scorer false positives, mutation detection, unmutated gate power, and determinism. A missed validation threshold exits 1 by design. |
 | `pnpm qa:report <runDir> [<runDir>...] [--out <file>]` | Combine gate, T3, and test-run evidence into a self-contained HTML review page. |
+| `pnpm qa:model prompt [--locale en] [--card <file>] [--json]` | Print the application's system prompt; JSON mode includes the prompt and contract hashes and contract version. |
+| `pnpm qa:model score <transcripts.jsonl> [--set <id>] [--label <l>] [--example-lines-from <file>] [--json]` | Score saved replies through the real chat runtime and stage controller, then write reply, JSON summary, and Markdown summary artifacts. |
+| `pnpm qa:model import-ollama-bench <dir> --set <id> [--out <file>] [--machine-label <label>] [--server-version <version>] [--mem-gb <number>]` | Convert saved Ollama bench, sweep, and flash-attention results into transcript JSONL. |
+| `pnpm qa:model help` | Print the model-evaluation command usage. |
 
 `--seeds N` reduces a run and the report records that selection. It does not change the committed gate. Exit code 0 means the requested check passed, 1 means a check failed or a run broke, and 2 means invalid arguments or setup; T3 also uses 130 for interruption.
+
+## Model evaluation
+
+Model evaluation separates deterministic fixtures, offline replay, future live runs, future persona judging, and Luke's own reading. Contract metrics and style heuristics stay separate; heuristic columns are not a model score.
+
+| Level | What it covers | Status |
+| --- | --- | --- |
+| M0 | Committed cue-contract fixtures replayed through the real runtime at every chunk boundary. | Available |
+| M1 | Offline replay of saved transcripts through the real runtime and stage controller. | Available |
+| M2 | Live model runs with recorded request options and transcript provenance. | Planned |
+| M3 | Judged persona review using an explicit rubric. | Planned |
+| M4 | Luke reads the replies and evidence for character quality. | Human review |
+
+The runtime replay is the oracle for cue behavior. Prompt output comes from the shared contract renderer used by the app. Build `@proj-airi/core-agent` and `@proj-airi/i18n` before tests that import their dist-backed exports and before scoring. Scoring refuses when the core-agent dist is missing or older than its runtime source; rebuild it with `pnpm -F @proj-airi/core-agent build`. Build i18n with `pnpm -F @proj-airi/i18n build`.
+
+Each committed dataset lives in `packages/qa-tools/model-eval/sets/<set-id>/`. The Mac M2 benchmark is a separate legacy set: use it to reproduce findings on fixed replies, not to mix with canonical-contract runs or rank models against the current prompt.
+
+When any scorer definition changes, bump `CUE_CONTRACT_SCORER.version` in the same commit. Compare runs using `closureDigest`, scorer version, and `coreAgentDistSha256` together. Closure file hashes normalize CRLF to LF so identical source across checkout line endings has the same provenance.
+
+Use `pnpm --silent qa:model prompt --json` when stderr must remain empty. pnpm's lifecycle banner otherwise goes to stderr; on pnpm 11.24.0, the `-s` script option alone does not suppress the outer pnpm lifecycle banner.
 
 ## Levels
 
