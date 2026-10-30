@@ -20,8 +20,8 @@ describe('airi card package import/export', () => {
     card.extensions.airi.wakeWords = [{ text: 'AIRI', modelId: 'kws-vocabulary', pronunciations: [['a', 'ri'], ['ai', 'li']] }]
     const exported = await exportAiriCardPackage({ card, displayModelsStore })
     const imported = await importAiriCardPackage({ file: new File([exported], 'voice-card.zip'), displayModelsStore })
-    expect(airiFrom(imported).wakeWords).toEqual(card.extensions.airi.wakeWords)
-    expect(airiFrom(imported)).not.toHaveProperty('pronunciationOwners')
+    expect(airiFrom(imported.card).wakeWords).toEqual(card.extensions.airi.wakeWords)
+    expect(airiFrom(imported.card)).not.toHaveProperty('pronunciationOwners')
   })
 
   beforeEach(() => {
@@ -58,7 +58,7 @@ describe('airi card package import/export', () => {
     expect(airi.modules.artistry).not.toHaveProperty('workflowId')
     expect(airi.agents).toEqual({})
     expect(displayModelsStore.addDisplayModel).toHaveBeenCalledWith(DisplayModelFormat.VRM, expect.objectContaining({ name: 'AvatarSample_A.vrm' }))
-    expect(airiFrom(imported).modules.displayModelId).toBe('display-model-imported')
+    expect(airiFrom(imported.card).modules.displayModelId).toBe('display-model-imported')
   })
 
   it('applies the share-field whitelist to externally edited package JSON', async () => {
@@ -70,9 +70,9 @@ describe('airi card package import/export', () => {
       file: await packageFile(source),
       displayModelsStore,
     })
-    const airi = airiFrom(imported)
+    const airi = airiFrom(imported.card)
 
-    expect(imported.data).toMatchObject({
+    expect(imported.card.data).toMatchObject({
       name: 'AIRI / Test Card',
       nickname: 'Tester',
       character_version: '1.2.3',
@@ -81,7 +81,7 @@ describe('airi card package import/export', () => {
       tags: [],
       mes_example: '',
     })
-    expect(imported.data.extensions).not.toHaveProperty('third_party')
+    expect(imported.card.data.extensions).not.toHaveProperty('third_party')
     expect(airi.modules).not.toHaveProperty('activeBackgroundId')
     expect(airi.modules.artistry).not.toHaveProperty('workflowId')
     expect(airi.agents).toEqual({})
@@ -139,7 +139,56 @@ describe('airi card package import/export', () => {
       DisplayModelFormat.TachieZip,
       expect.objectContaining({ name: 'character.tachie.zip' }),
     )
-    expect(airiFrom(imported).modules.displayModelId).toBe('imported-tachie')
+    expect(airiFrom(imported.card).modules.displayModelId).toBe('imported-tachie')
+  })
+
+  it('round trips two memories without their original ownership', async () => {
+    const displayModelsStore = useDisplayModelsStore()
+    const card = createCard()
+    card.extensions.airi.modules.displayModelId = undefined
+    const memories = [
+      { description: 'Favorite game', body: 'Minecraft.' },
+      { description: 'Favorite drink', body: 'Tea.' },
+    ]
+    const exported = await exportAiriCardPackage({ card, displayModelsStore, memories })
+    const zip = await JSZip.loadAsync(await exported.arrayBuffer())
+    expect(await readJson(zip, 'manifest.json')).toMatchObject({ resources: { memories: { path: 'memories.json' } } })
+    const imported = await importAiriCardPackage({ file: new File([exported], 'memories.zip'), displayModelsStore })
+    expect(imported.memories).toEqual(memories)
+  })
+
+  it('imports a package without a memories resource with no memories', async () => {
+    const imported = await importAiriCardPackage({
+      file: await packageFile(exportToJSON(createCard()), { resources: {} }),
+      displayModelsStore: useDisplayModelsStore(),
+    })
+    expect(imported.memories).toEqual([])
+  })
+
+  it('imports a package with only a display model resource', async () => {
+    const displayModelsStore = useDisplayModelsStore()
+    mockAddDisplayModel(displayModelsStore, 'model-only')
+    const zip = await JSZip.loadAsync(await (await packageFile(exportToJSON(createCard()), {
+      resources: { displayModel: { path: 'model.vrm', format: DisplayModelFormat.VRM, name: 'model.vrm' } },
+    })).arrayBuffer())
+    zip.file('model.vrm', 'model')
+    const imported = await importAiriCardPackage({
+      file: new File([await zip.generateAsync({ type: 'arraybuffer' })], 'model.zip'),
+      displayModelsStore,
+    })
+    expect(imported.memories).toEqual([])
+    expect(airiFrom(imported.card).modules.displayModelId).toBe('model-only')
+  })
+
+  it('rejects malformed memories rather than importing unvalidated entries', async () => {
+    const zip = await JSZip.loadAsync(await (await packageFile(exportToJSON(createCard()), {
+      resources: { memories: { path: 'memories.json' } },
+    })).arrayBuffer())
+    zip.file('memories.json', JSON.stringify([{ description: 'Invalid', body: 42 }]))
+    await expect(importAiriCardPackage({
+      file: new File([await zip.generateAsync({ type: 'arraybuffer' })], 'invalid-memories.zip'),
+      displayModelsStore: useDisplayModelsStore(),
+    })).rejects.toMatchObject({ code: 'invalid-file', message: 'Invalid memories.json' })
   })
 })
 
