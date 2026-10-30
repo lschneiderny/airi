@@ -69,6 +69,12 @@ const menu = computed(() => [
     to: '/devtools/context-flow',
   },
   {
+    title: t('tamagotchi.settings.devtools.pages.memory.title'),
+    description: t('tamagotchi.settings.devtools.pages.memory.description'),
+    icon: 'i-solar:notebook-bookmark-bold-duotone',
+    to: '/devtools/memory',
+  },
+  {
     title: 'WebSocket Inspector',
     description: 'Inspect raw WebSocket traffic',
     icon: 'i-solar:transfer-horizontal-bold-duotone',
