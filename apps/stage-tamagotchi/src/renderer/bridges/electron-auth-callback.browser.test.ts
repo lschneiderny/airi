@@ -4,6 +4,7 @@ import { createContext, defineInvokeHandler } from '@moeru/eventa'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { watch } from 'vue'
 
 import { electronAuthCallback, electronAuthComplete, electronAuthGetStatus, electronAuthStatus } from '../../shared/eventa'
 import { useAuthStatusStore } from '../stores/auth-status'
@@ -20,20 +21,22 @@ vi.mock('@proj-airi/stage-ui/libs/auth-client', async importOriginal => ({
 }))
 
 let pinia: ReturnType<typeof createPinia>
-let reports: Array<Pick<ElectronAuthStatus, 'attemptId' | 'error'>>
+let completion: ReturnType<typeof Promise.withResolvers<Pick<ElectronAuthStatus, 'attemptId' | 'error'>>>
 beforeEach(() => {
   pinia = createPinia()
   setActivePinia(pinia)
-  reports = []
+  completion = Promise.withResolvers()
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ flux: 7 })))
   boundary.context = createContext<unknown, { raw?: unknown }>()
   boundary.session.mockReset()
   defineInvokeHandler(boundary.context, electronAuthGetStatus, () => undefined)
   defineInvokeHandler(boundary.context, electronAuthComplete, (report) => {
-    reports.push(report)
+    completion.resolve(report)
   })
 })
 afterEach(() => {
   disposePinia(pinia)
+  vi.unstubAllGlobals()
   localStorage.clear()
 })
 
@@ -47,10 +50,16 @@ describe('electron auth callback bridge', () => {
       session: { id: 'session-1', userId: 'user-1', token: 'session-token', expiresAt: date, createdAt: date, updatedAt: date },
     })
     initializeElectronAuthCallbackBridge()
+    const authStore = useAuthStore()
+    const creditsUpdated = new Promise<void>((resolve) => {
+      watch(() => authStore.credits, () => resolve(), { once: true })
+    })
     boundary.context!.emit(electronAuthCallback, tokens)
-    await expect.poll(() => reports).toEqual([{ attemptId: 'attempt-1', error: undefined }])
+    expect(await completion.promise).toEqual({ attemptId: 'attempt-1', error: undefined })
+    await creditsUpdated
     expect(boundary.session).toHaveBeenCalledWith('test-token')
-    expect(useAuthStore().isAuthenticated).toBe(true)
+    expect(authStore.isAuthenticated).toBe(true)
+    expect(authStore.credits).toBe(7)
   })
 
   it('reports an error when token exchange succeeds but session confirmation returns false', async () => {
@@ -60,7 +69,7 @@ describe('electron auth callback bridge', () => {
     boundary.session.mockResolvedValue(null)
     initializeElectronAuthCallbackBridge()
     boundary.context!.emit(electronAuthCallback, tokens)
-    await expect.poll(() => reports[0]?.error).toContain('Could not confirm')
+    expect((await completion.promise).error).toContain('Could not confirm')
     expect(useAuthStore().isAuthenticated).toBe(false)
   })
 
