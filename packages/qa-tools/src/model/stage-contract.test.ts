@@ -5,7 +5,7 @@ import messages from '@proj-airi/i18n/locales'
 import { composeSystemPrompt, STAGE_CONTRACT_EN_SHA256 } from '@proj-airi/stage-shared/stage-contract'
 import { describe, expect, it } from 'vitest'
 
-import { buildStageContract, buildSystemPrompt } from './stage-contract'
+import { buildStageContract, buildSystemPrompt, extractExampleLines } from './stage-contract'
 
 function englishPrompt() {
   const prompt = messages.en.base.prompt
@@ -73,6 +73,23 @@ describe('buildStageContract', () => {
     finally {
       prompt.emotion = original
     }
+  })
+})
+
+describe('extractExampleLines', () => {
+  const lines = ['<|ACT happy|> Oh, hi! I missed you.', '<|ACT happy strong|> Wait, really?', '<|ACT:{"emotion":{"name":"happy","intensity":1}}|>']
+
+  it('reads spoken examples from CRLF and LF text alike', () => {
+    expect(extractExampleLines(lines.join('\r\n'))).toEqual(['Oh, hi! I missed you.', 'Wait, really?'])
+    expect(extractExampleLines(lines.join('\n'))).toEqual(['Oh, hi! I missed you.', 'Wait, really?'])
+    expect(extractExampleLines(`${lines.join('\r\n')}\r\n`)).toEqual(['Oh, hi! I missed you.', 'Wait, really?'])
+    expect(extractExampleLines([lines[0], lines[1]].join('\r\n').replace('\r\n', '\n'))).toEqual(['Oh, hi! I missed you.', 'Wait, really?'])
+  })
+
+  it('returns nothing for empty text and keeps the committed contract free of examples', () => {
+    expect(extractExampleLines('')).toEqual([])
+    expect(extractExampleLines(buildStageContract().text.replace(/\n/g, '\r\n'))).toEqual([])
+    expect(buildStageContract().exampleLines).toEqual([])
   })
 })
 
