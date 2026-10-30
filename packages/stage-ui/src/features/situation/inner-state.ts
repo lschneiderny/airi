@@ -54,6 +54,8 @@ const innerStateEntries = {
   rituals: optional(nullable(RitualDaySchema), null),
   /** The gate's social memory; everything else in the gate memory restarts at promotion. */
   gate: optional(nullable(SavedGateMemorySchema), null),
+  /** Per chat session, the newest message that thread extraction read, so the next extraction starts after it. */
+  extractedThrough: optional(array(strictObject({ sessionId: string(), messageId: string() })), () => []),
   /** Epoch milliseconds of the last write; 0 when nothing was saved. */
   savedAtMs: optional(time, 0),
 }
@@ -67,10 +69,17 @@ export interface SavedInnerState {
   readonly threads: readonly Thread[]
   readonly rituals: RitualDay | null
   readonly gate: SavedGateMemory | null
+  readonly extractedThrough: readonly ExtractionReadPosition[]
   readonly savedAtMs: number
 }
 
-export type SavedInnerStatePatch = Partial<Pick<SavedInnerState, 'threads' | 'rituals' | 'gate'>>
+/** The id of the newest message of one chat session that thread extraction read. */
+export interface ExtractionReadPosition {
+  readonly sessionId: string
+  readonly messageId: string
+}
+
+export type SavedInnerStatePatch = Partial<Pick<SavedInnerState, 'threads' | 'rituals' | 'gate' | 'extractedThrough'>>
 
 export function defaultSavedInnerState(): SavedInnerState {
   return parse(SavedInnerStateSchema, {})
@@ -128,8 +137,9 @@ function storedSavedAtMs(): number {
 }
 
 /**
- * Persists the unprompted gate's durable inner state (open threads, the ritual day, and the gate's social memory) so
- * a leader reload or a promoted window does not start her from day one.
+ * Persists the unprompted gate's durable inner state (open threads, the ritual day, the gate's social memory, and how
+ * far thread extraction read each chat session) so a leader reload or a promoted window does not start her from day
+ * one or extract a conversation twice.
  *
  * The store is deliberately not replicated across windows: only the leader's situation store reads and writes it,
  * and replicated state would grow with every save (see `stores/devtools/situation-observability.ts`). Every Electron
@@ -187,6 +197,7 @@ export const useSituationInnerState = defineStore('situation-inner-state', () =>
       threads: patch.threads ?? base.threads,
       rituals: patch.rituals === undefined ? base.rituals : patch.rituals,
       gate: patch.gate === undefined ? base.gate : patch.gate,
+      extractedThrough: patch.extractedThrough ?? base.extractedThrough,
       savedAtMs: Date.now(),
     }
     try {

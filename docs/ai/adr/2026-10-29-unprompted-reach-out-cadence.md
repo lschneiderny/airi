@@ -61,13 +61,17 @@ checkpointed.
 The logical day rolls over at 04:00. Greeting, late sign-off, and welcome-back
 rituals are tracked once per logical day. The sign-off can fire while he is
 present late at night; it is not triggered by idle or lock state. Gate memory,
-threads, and ritual completion persist in local storage, outside synced state.
+threads, ritual completion, and extraction read positions persist in local
+storage, outside synced state.
 Expired state is pruned when read.
 
 The inspector exposes urge, hazard, phase, ripe reasons, picks, outcomes, and
 the extraction ledger so constants can be tuned against real sessions.
 At exchange end, thread extraction uses the active chat provider and model.
-It reads at most the last 12 user and assistant text items, skips unprompted
+It reads only the messages after the newest message that the previous
+extraction of that chat session read; the read position is saved with the
+threads and moves only after an `ok` or `empty` answer. Of those messages it
+reads at most the last 12 user and assistant text items, skips unprompted
 user items, truncates each item to 400 characters, and caps the input at 4000
 characters. The request caps output at 2000 tokens
 (`EXTRACTION_MAX_TOKENS`); an answer that stops at the cap is recorded as
@@ -81,7 +85,9 @@ session message count. It adds no extraction cue or record to chat history;
 the extraction outcome is recorded in the inspector ledger. Failures are
 recorded without throwing.
 A new thread expires at the end of the logical day after the one it was
-extracted on (04:00 two calendar days later), or earlier, two ripening
+extracted on (04:00 two calendar days after a chat before midnight, and
+04:00 the next calendar day after a chat between 00:00 and 04:00, which still
+belongs to the previous logical day), or earlier, two ripening
 half-lives of its kind after its minimum age. The later bound lets a
 follow-up to a late-night chat still ripen after the rollover.
 Unprompted requests use four instructions: `base.prompt.unprompted`,

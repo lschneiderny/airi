@@ -77,11 +77,11 @@ describe('situation inner state', () => {
     vi.restoreAllMocks()
   })
 
-  it('round-trips threads, rituals, and the gate memory across store instances', () => {
+  it('round-trips threads, rituals, the gate memory, and the extraction read positions across store instances', () => {
     const leader = createStore()
     expect(leader.read(noonMs)).toEqual(defaultSavedInnerState())
     leader.claim(7)
-    const saved = { threads: [thread(1)], rituals: ritualDay('2026-10-29'), gate: gateMemory() }
+    const saved = { threads: [thread(1)], rituals: ritualDay('2026-10-29'), gate: gateMemory(), extractedThrough: [{ sessionId: 'session-1', messageId: 'message-4' }] }
     expect(leader.write(saved, 7)).toBe(true)
 
     const reloaded = createStore()
