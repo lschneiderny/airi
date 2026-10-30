@@ -16,12 +16,12 @@ import { parseArgs } from 'node:util'
 import { errorMessageFrom } from '@moeru/std'
 
 import { createRun } from '../../evidence/run'
-import { captureClosure } from '../../motion/cache/closure'
 import { sha256Bytes } from '../../motion/cache/key'
 import { renderSummaryMarkdown } from '../report/markdown'
 import { buildStageContract, extractExampleLines } from '../stage-contract'
 import { readTranscript } from '../transcript/jsonl'
 import { aggregateRun } from './aggregate'
+import { captureScoreClosure } from './closure'
 import { SCORE_CLOSURE_FILES } from './closure-files'
 import { scoreStyle } from './style'
 
@@ -121,11 +121,11 @@ export async function runScoreCli(
       if (!(await stat(path)).isFile())
         throw new Error(`closure source is not a file: ${path}`)
     }
-    const files = captureClosure(absolutePaths, repoRoot)
+    const files = captureScoreClosure(absolutePaths, repoRoot)
     if (files.length !== SCORE_CLOSURE_FILES.length)
       throw new Error('scorer closure is incomplete')
     provenance = {
-      scorer: { ...scoring.CUE_CONTRACT_SCORER, fileSha: sha256Bytes(await readFile(resolve(repoRoot, 'packages/qa-tools/src/model/score/cue-contract.ts'))) },
+      scorer: { ...scoring.CUE_CONTRACT_SCORER, fileSha: captureScoreClosure([resolve(repoRoot, 'packages/qa-tools/src/model/score/cue-contract.ts')], repoRoot)[0].sha256 },
       sources: {
         files,
         closureDigest: sha256Bytes(Buffer.from(JSON.stringify(files))),

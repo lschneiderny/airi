@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { sha256Bytes } from '../../motion/cache/key'
 import { extractExampleLines } from '../stage-contract'
+import { captureScoreClosure } from './closure'
 import { SCORE_CLOSURE_FILES } from './closure-files'
 import { runScoreCli } from './command'
 import { cueContractScorer } from './cue-contract'
@@ -103,6 +104,52 @@ describe('score command', () => {
       expect(await readFile(join(JSON.parse(b.stdout).runDir, name), 'utf8')).toBe(first)
       expect(first).not.toMatch(/"startedAt"|"endedAt"|"gitSha"/)
     }
+  })
+
+  it('ignores checkout line endings in provenance but detects changed content', async () => {
+    await mkdir(join(repoRoot, '.temp'), { recursive: true })
+    const dir = await mkdtemp(join(repoRoot, '.temp', 'score-eol-'))
+    owned.push(dir)
+    for (const path of [...SCORE_CLOSURE_FILES, 'packages/core-agent/dist/index.mjs']) {
+      const target = join(dir, path)
+      await mkdir(resolve(target, '..'), { recursive: true })
+      await writeFile(target, await readFile(join(repoRoot, path)))
+    }
+    const summaries: RunScore[] = []
+    for (const ending of ['lf', 'crlf', 'changed']) {
+      for (const path of SCORE_CLOSURE_FILES) {
+        const lf = (await readFile(join(repoRoot, path), 'utf8')).replaceAll('\r\n', '\n')
+        const text = ending === 'crlf' ? lf.replaceAll('\n', '\r\n') : lf
+        await writeFile(join(dir, path), ending === 'changed' && path === SCORE_CLOSURE_FILES[0] ? `${text}\n// changed content\n` : text)
+      }
+      const c = cli()
+      expect(await runScoreCli([fixture, '--label', `eol-${summaries.length}`, '--json'], dir, {}, { ...c.io, newestMtime: () => 1 }), c.stderr).toBe(0)
+      const { runDir } = JSON.parse(c.stdout)
+      owned.push(runDir)
+      summaries.push(JSON.parse(await readFile(join(runDir, 'summary.json'), 'utf8'))[0])
+    }
+    expect(summaries[1].sources.files).toEqual(summaries[0].sources.files)
+    expect(summaries[1].sources.closureDigest).toBe(summaries[0].sources.closureDigest)
+    expect(summaries[1]).toEqual(summaries[0])
+    expect(summaries[2].sources.files).not.toEqual(summaries[0].sources.files)
+    expect(summaries[2].sources.closureDigest).not.toBe(summaries[0].sources.closureDigest)
+  })
+
+  it.each([
+    { name: 'lone CR', bytes: [97, 13, 98], normalized: [97, 13, 98] },
+    { name: 'mixed endings', bytes: [97, 13, 10, 98, 10, 99, 13], normalized: [97, 10, 98, 10, 99, 13] },
+    { name: 'binary-looking bytes', bytes: [0, 255, 13, 10, 128, 13, 254], normalized: [0, 255, 10, 128, 13, 254] },
+  ])('normalizes only CRLF pairs in $name', async ({ bytes, normalized }) => {
+    const dir = await mkdtemp(join(tmpdir(), 'score-eol-bytes-'))
+    owned.push(dir)
+    const path = join(dir, 'source.ts')
+    await writeFile(path, Buffer.from(bytes))
+    const files = captureScoreClosure([path, `${path}?alias`], dir)
+    expect(files).toEqual([{ repoPath: 'source.ts', sha256: sha256Bytes(Buffer.from(normalized)) }])
+    await writeFile(path, Buffer.from(normalized))
+    const canonical = captureScoreClosure([path], dir)
+    expect(canonical).toEqual(files)
+    expect(sha256Bytes(Buffer.from(JSON.stringify(canonical)))).toBe(sha256Bytes(Buffer.from(JSON.stringify(files))))
   })
 
   it.each([
