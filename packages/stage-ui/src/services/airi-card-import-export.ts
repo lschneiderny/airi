@@ -3,6 +3,7 @@ import type { GenericSchema, InferOutput } from 'valibot'
 
 import type { DisplayModel, useDisplayModelsStore } from '../stores/display-models'
 import type { AiriCard, AiriExtension } from '../types/airiCard'
+import type { MemoryWrite } from '../types/memory'
 
 import JSZip from 'jszip'
 
@@ -16,6 +17,7 @@ const FORMAT = 'airi-character-card'
 const VERSION = 1
 const CARD_PATH = 'card.json'
 const MANIFEST_PATH = 'manifest.json'
+const MEMORIES_PATH = 'memories.json'
 const MODEL_EXT: Partial<Record<DisplayModelFormat, string>> = {
   [DisplayModelFormat.Live2dZip]: 'zip',
   [DisplayModelFormat.SpineZip]: 'zip',
@@ -31,13 +33,16 @@ const manifestSchema = object({
   version: literal(VERSION),
   card: object({ path: literal(CARD_PATH), spec: literal('chara_card_v3') }),
   resources: optional(object({
-    displayModel: object({
+    displayModel: optional(object({
       path: string(),
       format: picklist([DisplayModelFormat.Live2dZip, DisplayModelFormat.SpineZip, DisplayModelFormat.TachieZip, DisplayModelFormat.VRM]),
       name: string(),
-    }),
+    })),
+    memories: optional(object({ path: literal(MEMORIES_PATH) })),
   })),
 })
+
+const memoriesFileSchema = array(object({ description: string(), body: string() }))
 
 const characterCardV3Schema = object({
   spec: literal('chara_card_v3'),
@@ -75,10 +80,11 @@ export class AiriCardPackageError extends Error {
  *
  * This format is intentionally not a lossless backup. It includes fields the
  * creation editor lets the sender review, a sanitized AIRI module subset, and
- * the selected display model. Unreviewed CCv3 metadata, custom extensions,
+ * the selected display model, and the card's own memories, never shared ones.
+ * Unreviewed CCv3 metadata, custom extensions,
  * agent prompts, and machine-local runtime references are omitted.
  */
-export async function exportAiriCardPackage({ card, displayModelsStore }: { card: AiriCard, displayModelsStore: DisplayModelsStore }): Promise<Blob> {
+export async function exportAiriCardPackage({ card, displayModelsStore, memories }: { card: AiriCard, displayModelsStore: DisplayModelsStore, memories?: MemoryWrite[] }): Promise<Blob> {
   const exportableCard = cardFromAiriCard(card)
   const displayModel = await exportDisplayModel(exportableCard, displayModelsStore)
   const manifest = {
@@ -86,12 +92,17 @@ export async function exportAiriCardPackage({ card, displayModelsStore }: { card
     version: VERSION,
     createdAt: new Date().toISOString(),
     card: { path: CARD_PATH, spec: 'chara_card_v3' },
-    ...(displayModel ? { resources: { displayModel: displayModel.manifest } } : {}),
+    resources: {
+      ...(displayModel ? { displayModel: displayModel.manifest } : {}),
+      ...(memories?.length ? { memories: { path: MEMORIES_PATH } } : {}),
+    },
   }
   const zip = new JSZip()
 
   zip.file(MANIFEST_PATH, JSON.stringify(manifest, null, 2))
   zip.file(CARD_PATH, JSON.stringify(exportToJSON(exportableCard), null, 2))
+  if (memories?.length)
+    zip.file(MEMORIES_PATH, JSON.stringify(memories, null, 2))
   if (displayModel)
     zip.file(displayModel.manifest.path, displayModel.data)
 
@@ -105,13 +116,16 @@ export async function exportAiriCardPackage({ card, displayModelsStore }: { card
  * path: package authors cannot smuggle custom extensions, agent prompts, or
  * machine-local references into persisted AIRI state.
  */
-export async function importAiriCardPackage({ file, displayModelsStore }: { file: File, displayModelsStore: DisplayModelsStore }): Promise<ccv3.CharacterCardV3> {
+export async function importAiriCardPackage({ file, displayModelsStore }: { file: File, displayModelsStore: DisplayModelsStore }): Promise<{ card: ccv3.CharacterCardV3, memories: MemoryWrite[] }> {
   const zip = await loadZip(file)
   const manifest = await readJsonFile(zip, MANIFEST_PATH, manifestSchema)
   const cardJson = await readJsonFile(zip, manifest.card.path, characterCardV3Schema)
+  const memories = manifest.resources?.memories
+    ? await readJsonFile(zip, manifest.resources.memories.path, memoriesFileSchema)
+    : []
   const displayModelId = await importDisplayModel(zip, manifest, displayModelsStore)
 
-  return exportToJSON(cardFromCharacterCard(cardJson, displayModelId))
+  return { card: exportToJSON(cardFromCharacterCard(cardJson, displayModelId)), memories }
 }
 
 async function exportDisplayModel(card: ShareableAiriCard, store: DisplayModelsStore) {

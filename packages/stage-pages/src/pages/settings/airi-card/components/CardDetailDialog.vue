@@ -9,6 +9,7 @@ import { exportAiriCardPackage } from '@proj-airi/stage-ui/services/airi-card-im
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
+import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { Button, GhostButton, Select } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
@@ -44,6 +45,7 @@ const { trackSceneBackgroundSet } = useAnalytics()
 const cardStore = useAiriCardStore()
 const backgroundStore = useBackgroundStore()
 const displayModelsStore = useDisplayModelsStore()
+const memory = useMemoryStore()
 
 const { removeCard } = cardStore
 const { activeCardId, cloudSyncEnabled } = storeToRefs(cardStore)
@@ -123,8 +125,15 @@ async function handleExportCard() {
 
   isExportingCard.value = true
   try {
+    await memory.ready()
     useDownload(
-      await exportAiriCardPackage({ card: selectedCard.value, displayModelsStore }),
+      await exportAiriCardPackage({
+        card: selectedCard.value,
+        displayModelsStore,
+        memories: memory.entries
+          .filter(entry => entry.persona === props.cardId)
+          .map(({ description, body }) => ({ description, body })),
+      }),
       `${selectedCard.value.name.trim()}.zip`,
     ).download()
     toast(t('settings.pages.card.exported'))

@@ -3,6 +3,7 @@ import { Alert } from '@proj-airi/stage-ui/components'
 import { AiriCardPackageError, importAiriCardPackage } from '@proj-airi/stage-ui/services/airi-card-import-export'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
+import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { Button, InputFileCard } from '@proj-airi/ui'
 import { ComboboxSelect } from '@proj-airi/ui/components/form'
@@ -23,6 +24,7 @@ import { formatRelativeTime } from './composables/relative-time'
 const { t, locale } = useI18n()
 const cardStore = useAiriCardStore()
 const displayModelsStore = useDisplayModelsStore()
+const memory = useMemoryStore()
 const { addCard, removeCard } = cardStore
 const { cards, activeCardId, cardSyncStates, cloudSyncEnabled } = storeToRefs(cardStore)
 const { isAuthenticated } = storeToRefs(useAuthStore())
@@ -60,7 +62,10 @@ watch(inputFiles, async (newFiles) => {
     return
 
   try {
-    await addCard(await importAiriCardPackage({ file, displayModelsStore }), 'import')
+    const { card, memories } = await importAiriCardPackage({ file, displayModelsStore })
+    const newCardId = await addCard(card, 'import')
+    for (const entry of memories)
+      await memory.write(entry, newCardId)
     toast(t('settings.pages.card.imported'))
   }
   catch (error) {
