@@ -74,17 +74,26 @@ const HOUR_MS = 60 * MINUTE_MS
 
 export type ThreadTuning = Readonly<{
   salience: number
-  minAgeMs: number | Readonly<{ defaultMs: number, dueAtMsOffsetMs: number }> | 'dueAtMs'
+  minAgeMs: number | ThreadDueTuning
   riseMs: number
   halfLifeMs: number
   selectionWeight: number
+}>
+
+/**
+ * For a known due time, use `dueAtMs + dueAtMsOffsetMs`; otherwise use
+ * `defaultMs` relative to the thread's `bornAtMs`.
+ */
+export type ThreadDueTuning = Readonly<{
+  defaultMs: number
+  dueAtMsOffsetMs: number
 }>
 
 /** Tuning: shape when a conversation thread becomes ripe and how often it is selected. */
 export const THREAD_TUNING: Readonly<Record<ThreadKind, ThreadTuning>> = Object.freeze({
   question: Object.freeze({ salience: 0.7, minAgeMs: 45 * MINUTE_MS, riseMs: 30 * MINUTE_MS, halfLifeMs: 4 * HOUR_MS, selectionWeight: 1.0 }),
   event: Object.freeze({ salience: 0.85, minAgeMs: Object.freeze({ defaultMs: 90 * MINUTE_MS, dueAtMsOffsetMs: 15 * MINUTE_MS }), riseMs: 20 * MINUTE_MS, halfLifeMs: 6 * HOUR_MS, selectionWeight: 1.2 }),
-  later: Object.freeze({ salience: 0.8, minAgeMs: 'dueAtMs', riseMs: 10 * MINUTE_MS, halfLifeMs: 6 * HOUR_MS, selectionWeight: 1.2 }),
+  later: Object.freeze({ salience: 0.8, minAgeMs: Object.freeze({ defaultMs: 2 * HOUR_MS, dueAtMsOffsetMs: 0 }), riseMs: 10 * MINUTE_MS, halfLifeMs: 6 * HOUR_MS, selectionWeight: 1.2 }),
   topic: Object.freeze({ salience: 0.5, minAgeMs: 2 * HOUR_MS, riseMs: 60 * MINUTE_MS, halfLifeMs: 12 * HOUR_MS, selectionWeight: 0.8 }),
 })
 
