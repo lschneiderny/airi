@@ -12,6 +12,7 @@ import { useChatStore } from '../stores/chat'
 import { useChatSessionStore } from '../stores/chat/session-store'
 import { useDisplayModelsStore } from '../stores/display-models'
 import { useMcpStore } from '../stores/mcp'
+import { useMemoryStore } from '../stores/memory'
 import { useAiriCardStore } from '../stores/modules/airi-card'
 import { useConsciousnessStore } from '../stores/modules/consciousness'
 import { useConsciousnessSettingsStore } from '../stores/modules/consciousness-settings'
@@ -41,6 +42,7 @@ export function useDataMaintenance() {
   const threeStore = useModelStore()
   const hearingStore = useHearingStore()
   const homeAssistantStore = useHomeAssistantStore()
+  const memoryStore = useMemoryStore()
   const speechStore = useSpeechStore()
   const consciousnessStore = useConsciousnessStore()
   const consciousnessSettingsStore = useConsciousnessSettingsStore()
@@ -71,6 +73,8 @@ export function useDataMaintenance() {
       () => hearingStore.resetState(),
       () => homeAssistantStore.resetState(),
       () => speechStore.resetState(),
+      // Memories hold what the character learned about the owner.
+      () => memoryStore.resetState(),
       () => consciousnessStore.resetState(),
       () => consciousnessSettingsStore.resetState(),
       () => twitterStore.resetState(),
