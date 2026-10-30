@@ -220,6 +220,9 @@ const noteClass = ['text-xs', 'text-neutral-500 dark:text-neutral-400']
               </td>
               <td :class="[...cellClass, 'break-words']">
                 {{ entry.error ?? '-' }}
+                <div v-if="entry.answer" data-testid="situation-extraction-answer" :class="['font-mono', 'op-70']">
+                  {{ t('tamagotchi.settings.devtools.pages.situation.reasons.extraction-answer', { chars: entry.answer.chars, finishReason: entry.answer.finishReason ?? '-', excerpt: entry.answer.excerpt ?? '-' }) }}
+                </div>
               </td>
             </tr>
           </tbody>

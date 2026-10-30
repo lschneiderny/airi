@@ -3,7 +3,7 @@ import type { GenerationProvider } from '@proj-airi/provider-inference'
 import type { ThreadDraft, ThreadKind } from '@proj-airi/stage-shared/situation'
 
 import type { useLLM } from '../../stores/ai/chat-llm/llm'
-import type { ThreadExtractionLedgerEntry } from '../../stores/devtools/situation-observability'
+import type { ThreadExtractionAnswer, ThreadExtractionLedgerEntry } from '../../stores/devtools/situation-observability'
 import type { ChatExchange } from '../../stores/situation/sensors/exchange'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -22,8 +22,17 @@ export const EXTRACTION_MESSAGE_CHARS_MAX = 400
 export const EXTRACTION_INPUT_CHARS_MAX = 4000
 /** An extraction that has not finished by then is aborted and recorded as `failed`. */
 export const EXTRACTION_TIMEOUT_MS = 20_000
-/** Output token cap of the extraction request (`StreamOptions.maxTokens`, sent as `max_tokens`/`max_output_tokens`). */
-export const EXTRACTION_MAX_TOKENS = 400
+/**
+ * Output token cap of the extraction request (`StreamOptions.maxTokens`, sent as `max_tokens`/`max_output_tokens`).
+ * A full answer of three threads takes about 300 tokens, but the cap also covers reasoning the provider does not
+ * return: Claude 5 models think by default, and the Anthropic OpenAI-compatible endpoint drops the thinking from the
+ * stream (https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk). At 400 tokens the thinking
+ * used most of the cap and every live answer stopped inside the JSON. An answer that still reaches the cap is
+ * recorded as `failed`.
+ */
+export const EXTRACTION_MAX_TOKENS = 2000
+/** Longest start of the answer, in code points, that the ledger keeps for diagnosis. */
+export const EXTRACTION_ANSWER_EXCERPT_CHARS = 200
 
 const THREAD_KINDS = ['question', 'event', 'later', 'topic'] as const satisfies readonly ThreadKind[]
 
@@ -145,6 +154,12 @@ function threadText(text: string): string | null {
   return situationContextText(normalized) || null
 }
 
+/** The ledger record of a model answer that was not parsed: its length, finish reason, and a capped, sanitized start. */
+function answerRecord(answer: string, finishReason: string | null): Required<ThreadExtractionAnswer> {
+  const flattened = answer.replace(FORMAT_CHARACTERS, '').replace(CONTROL_CHARACTERS, ' ')
+  return { chars: Array.from(answer).length, finishReason, excerpt: situationContextText(capped(flattened, EXTRACTION_ANSWER_EXCERPT_CHARS)) }
+}
+
 /**
  * Creates the leader's thread extractor: after an exchange ended, it asks the chat model what is still open in the
  * last messages and hands the validated threads to `onThreads`.
@@ -159,6 +174,8 @@ export function createThreadExtractor(deps: ThreadExtractorDeps): ThreadExtracto
   async function run(exchange: ChatExchange): Promise<Omit<ThreadExtractionLedgerEntry, 'atMs' | 'sessionId'>> {
     let requestChars = 0
     let messageCount = 0
+    // Set once the request is sent, so every later outcome, failures included, records what the model answered.
+    let answered: (() => ThreadExtractionAnswer) | undefined
     try {
       const selection = await deps.selection(exchange.sessionId)
       if (!selection)
@@ -175,6 +192,8 @@ export function createThreadExtractor(deps: ThreadExtractorDeps): ThreadExtracto
         { type: 'user', id: 'thread-extraction-conversation', content: [{ type: 'text', text: lines.join('\n') }] },
       ] }
       let answer = ''
+      let finishReason: string | null = null
+      answered = () => answerRecord(answer, finishReason)
       await deps.stream(selection.model, selection.provider, conversation, {
         // An unprompted origin resolves no tools in the LLM store, so the request can only answer in text.
         origin: 'unprompted',
@@ -184,18 +203,27 @@ export function createThreadExtractor(deps: ThreadExtractorDeps): ThreadExtracto
           if (event.type === 'text-delta')
             answer += event.text
         },
+        // The finish reason of the last model call tells a complete answer from one cut off at the output cap.
+        onGeneratedTurn: (turn) => {
+          finishReason = turn.rounds.at(-1)?.modelCall?.finishReason ?? null
+        },
       })
+      const answerEntry = answered()
+      if (answerEntry.finishReason === 'length')
+        return { requestChars, messageCount, status: 'failed', threads: [], error: `The answer reached the output cap of ${EXTRACTION_MAX_TOKENS} tokens before it ended`, answer: answerEntry }
+      // A parsed answer is shown as threads, so its entry keeps only the length and finish reason.
+      const parsedAnswer = { chars: answerEntry.chars, finishReason: answerEntry.finishReason }
 
       let parsed: unknown
       try {
         parsed = JSON.parse(unfenced(answer))
       }
       catch (error) {
-        return { requestChars, messageCount, status: 'invalid', threads: [], error: errorMessageFrom(error) ?? 'The answer is not JSON' }
+        return { requestChars, messageCount, status: 'invalid', threads: [], error: errorMessageFrom(error) ?? 'The answer is not JSON', answer: answerEntry }
       }
       const result = v.safeParse(extractedThreadsSchema, parsed)
       if (!result.success)
-        return { requestChars, messageCount, status: 'invalid', threads: [], error: v.summarize(result.issues) }
+        return { requestChars, messageCount, status: 'invalid', threads: [], error: v.summarize(result.issues), answer: answerEntry }
 
       const drafts: ThreadDraft[] = []
       for (const entry of result.output) {
@@ -206,12 +234,12 @@ export function createThreadExtractor(deps: ThreadExtractorDeps): ThreadExtracto
         drafts.push({ kind: entry.kind, summary, cue, ...(entry.dueInMinutes === null ? {} : { dueInMinutes: entry.dueInMinutes }) })
       }
       if (drafts.length === 0)
-        return { requestChars, messageCount, status: 'empty', threads: [], error: null }
+        return { requestChars, messageCount, status: 'empty', threads: [], error: null, answer: parsedAnswer }
       deps.onThreads(drafts, exchange.sessionId)
-      return { requestChars, messageCount, status: 'ok', threads: drafts.map(({ kind, summary }) => ({ kind, summary })), error: null }
+      return { requestChars, messageCount, status: 'ok', threads: drafts.map(({ kind, summary }) => ({ kind, summary })), error: null, answer: parsedAnswer }
     }
     catch (error) {
-      return { requestChars, messageCount, status: 'failed', threads: [], error: errorMessageFrom(error) ?? 'Unknown extraction failure' }
+      return { requestChars, messageCount, status: 'failed', threads: [], error: errorMessageFrom(error) ?? 'Unknown extraction failure', ...(answered ? { answer: answered() } : {}) }
     }
   }
 

@@ -66,7 +66,10 @@ const reason: Reason = {
 
 const extraction: SituationExtraction = {
   inFlight: false,
-  ledger: [{ atMs: T0 - HOUR_MS, sessionId: 'session-1', requestChars: 1234, messageCount: 6, status: 'ok', threads: [{ kind: 'event', summary: thread.summary }], error: null }],
+  ledger: [
+    { atMs: T0 - HOUR_MS, sessionId: 'session-1', requestChars: 1234, messageCount: 6, status: 'ok', threads: [{ kind: 'event', summary: thread.summary }], error: null },
+    { atMs: T0 - 2 * HOUR_MS, sessionId: 'session-1', requestChars: 980, messageCount: 4, status: 'failed', threads: [], error: 'The answer reached the output cap', answer: { chars: 71, finishReason: 'length', excerpt: '[ {"kind": "question"' } },
+  ],
 }
 
 describe('situation reasons panel', () => {
@@ -84,6 +87,7 @@ describe('situation reasons panel', () => {
     // An event thread without a due time starts ripening 90 minutes after its birth, 30 minutes from now.
     await expect.element(screen.getByTestId('situation-threads').getByRole('row').nth(1)).toHaveTextContent(/event\s*He has a dentist appointment this afternoon\s*1h 00m ago.*in 30m 00s.*in 24h 00m\)\s*0$/)
     await expect.element(screen.getByTestId('situation-extraction').getByRole('row').nth(1)).toHaveTextContent(/ok\s*1234\s*event: He has a dentist appointment this afternoon\s*-/)
+    await expect.element(screen.getByTestId('situation-extraction').getByRole('row').nth(2)).toHaveTextContent(/failed\s*980\s*-\s*The answer reached the output cap\s*Answer: 71 chars, finish reason length: \[ \{"kind": "question"/)
     expect(screen.getByTestId('situation-outcomes').element().querySelector('[data-outcome-kind="thread-event"]')?.textContent).toMatch(/thread-event\s*2\s*1\s*1\s*1/)
     expect(screen.getByTestId('situation-outcomes').element().querySelectorAll('tbody tr')).toHaveLength(KINDS.length)
   })

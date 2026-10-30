@@ -21,6 +21,7 @@ import { GATE_INTERVAL_MS, useSituationStore } from '.'
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useSituationInnerState } from '../../features/situation/inner-state'
 import { useSituationSettings } from '../../features/situation/settings'
+import { EXTRACTION_MAX_TOKENS } from '../../features/situation/thread-extraction'
 import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged } from '../../services/speech/bus'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { DESKTOP_SAMPLE_STALE_MS } from './sensors/desktop'
@@ -855,7 +856,7 @@ describe('situation gate loop', () => {
     expect(entry).toMatchObject({ sessionId: 'session-1', status: 'ok', messageCount: 2, threads: [{ kind: 'event', summary: 'He has a job interview tomorrow at nine.' }] })
     expect(chat.stream).toHaveBeenCalledOnce()
     expect(chat.stream.mock.calls[0][0]).toBe('chat-model')
-    expect(chat.stream.mock.calls[0][3]).toMatchObject({ origin: 'unprompted', maxTokens: 400 })
+    expect(chat.stream.mock.calls[0][3]).toMatchObject({ origin: 'unprompted', maxTokens: EXTRACTION_MAX_TOKENS })
     expect(inFlight.mock.calls).toEqual([[true], [false]])
     // IS-11: the extraction runs below the chat runtime, so no chat hook fires and the session gains no message.
     expect(beforeSend).not.toHaveBeenCalled()
