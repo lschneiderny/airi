@@ -26,6 +26,14 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 
 `--seeds N` reduces a run and the report records that selection. It does not change the committed gate. Exit code 0 means the requested check passed, 1 means a check failed or a run broke, and 2 means invalid arguments or setup; T3 also uses 130 for interruption.
 
+## Fresh worktree Cubism setup
+
+Cubism Core is an ignored local asset, not an installed workspace dependency. A new worktree can therefore fail the `cubism-core` doctor check even when the main checkout passes. Doctor prints the exact `pnpm -F <app> dev` command for each missing app; run those commands from the worktree being checked, stop the apps after the downloads finish, then rerun `pnpm qa:doctor`.
+
+Both app Vite configs register `DownloadLive2DSDK()` from `@proj-airi/unplugin-live2d-sdk`. Its `configResolved` hook downloads `CubismSdkForWeb-5-r.3` into the app's `.cache/` and copies `Core/live2dcubismcore.min.js` into that app's `public/assets/js/` tree. The existing download hook also runs during an app build; `pnpm install` alone does not invoke it. Doctor remains read-only.
+
+Cubism Core has its own Live2D license; see the root [license note](../../README.md#license-and-credits) and the [local QA license decision](../../docs/ai/adr/2026-10-20-motion-qa-levels.md#t2-license-decision). Do not commit the SDK or rig assets.
+
 ## Model evaluation
 
 Model evaluation separates deterministic fixtures, offline replay, future live runs, future persona judging, and Luke's own reading. Contract metrics and style heuristics stay separate; heuristic columns are not a model score.
