@@ -8,7 +8,7 @@ import { listModels } from '@xsai/model'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-import { resolveLlmTools } from './tool-resolver'
+import { resolveCustomTools, resolveLlmTools } from './tool-resolver'
 
 export type { StreamEvent, StreamOptions } from '@proj-airi/core-agent'
 export { isContentArrayRelatedError, isToolRelatedError } from '@proj-airi/core-agent'
@@ -29,9 +29,9 @@ export const useLLM = defineStore('llm', () => {
     let key = modelKey(model, chatProvider.generation(model))
     let toolExecutionStarted = false
     const { tools: customTools, describeToolImage, ...streamOptions } = options ?? {}
-    // An unprompted turn may only speak or decline, so it carries no tools, built-in or custom.
+    // An unprompted turn may only speak or decline, so it carries only the host's read-only tools and no built-in tool.
     const resolveTools = () => streamOptions.origin === 'unprompted'
-      ? Promise.resolve([])
+      ? resolveCustomTools(customTools)
       : resolveLlmTools({ customTools, describeImage: describeToolImage })
     const resolveStep = streamOptions.resolveStep
 

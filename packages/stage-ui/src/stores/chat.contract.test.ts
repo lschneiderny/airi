@@ -1,6 +1,7 @@
 import type { ChatOrchestratorSessionPort, Conversation, StreamOptions, Turn } from '@proj-airi/core-agent'
 import type { GenerationProvider } from '@proj-airi/provider-inference'
 import type { Tool } from '@xsai/shared-chat'
+import type { streamText } from '@xsai/stream-text'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { ChatHistoryItem } from '../types/chat'
@@ -17,6 +18,9 @@ import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { computed, createApp, nextTick, reactive, ref, toRaw } from 'vue'
 
+import * as coreAgent from '@proj-airi/core-agent'
+
+import { memoryRepo } from '../database/repos/memory.repo'
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 import { isCloudSyncableMessage } from '../libs/chat-sync'
@@ -26,9 +30,12 @@ import {
   AIRI_CHAT_SESSION_ID_HEADER,
 } from '../libs/product-signals/headers'
 import { getSpeechBusContext, voiceGenerationEnded } from '../services/speech/bus'
+import { composeMemoryPrompt } from '../tools/memory'
+import { resolveCustomTools } from './ai/chat-llm/tool-resolver'
 import { useChatStore } from './chat'
 import { useContextObservabilityStore } from './devtools/context-observability'
 import { useSituationObservabilityStore } from './devtools/situation-observability'
+import { useMemoryStore } from './memory'
 import { useConsciousnessSettingsStore } from './modules/consciousness-settings'
 import { useProviderConfigStore } from './providers/config'
 import { useSituationStore } from './situation'
@@ -75,6 +82,8 @@ const ioTracerMocks = vi.hoisted(() => {
 })
 
 const llmStreamMock = vi.fn()
+const streamTextMock = vi.hoisted(() => vi.fn())
+vi.mock('@xsai/stream-text', () => ({ streamText: streamTextMock }))
 const trackFirstMessageMock = vi.fn()
 const chatAnalyticsMocks = vi.hoisted(() => ({
   trackMessageRound: vi.fn(),
@@ -183,6 +192,7 @@ vi.mock('./chat/context-store', () => ({
 
 // IndexedDB is a browser boundary. Browser tests exercise the real sticker repository.
 vi.mock('../database/repos/chat-assets.repo')
+vi.mock('../database/repos/memory.repo')
 
 vi.mock('../database/repos/stickers.repo', () => ({
   stickersRepo: { read: async () => ({ records: [], images: [] }) },
@@ -424,8 +434,10 @@ function createLeaderRuntime(): SyncedPiniaRuntime {
 }
 
 describe('chat store contract', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
+    await memoryRepo.clear()
+    useMemoryStore().enabled = false
     llmStreamMock.mockReset()
     trackFirstMessageMock.mockReset()
     for (const analyticsMock of Object.values(chatAnalyticsMocks))
@@ -492,6 +504,103 @@ describe('chat store contract', () => {
     await rejected
     expect(llmStreamMock).not.toHaveBeenCalled()
     expect(sessionMessages['session-1'].some(message => message.id === 'pending-input')).toBe(false)
+  })
+
+  it('gives an owner send its character and general memory index and all three memory tools', async () => {
+    const memory = useMemoryStore()
+    memory.enabled = true
+    const own = await memory.write({ description: 'Alice fact', body: 'Alice memory body' }, 'alice')
+    const shared = await memory.write({ description: 'General fact', body: 'General memory body' }, 'alice')
+    await memory.makeGeneral(shared!)
+    const other = await memory.write({ description: 'Bob fact', body: 'Bob memory body' }, 'bob')
+    const index = memory.indexFor('alice')
+    const runtimeFactory = vi.spyOn(coreAgent, 'createChatOrchestratorRuntime')
+    onTestFinished(() => runtimeFactory.mockRestore())
+    const store = useChatStore()
+    const runtime: ReturnType<typeof coreAgent.createChatOrchestratorRuntime> = runtimeFactory.mock.results[0].value
+    const submit = vi.spyOn(runtime, 'submit')
+    const resolvedToolNames: string[][] = []
+    const prompts: string[] = []
+    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {
+      resolvedToolNames.push((await resolveCustomTools(options.tools)).map(tool => tool.function.name))
+      prompts.push((await options.resolveStep!()).systemPrompt)
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await store.send({ sessionId: 'session-1', text: 'Recall what you know' })
+
+    const prepared = submit.mock.calls[0][1]
+    expect((await prepared.resolveStep!()).systemPrompt.endsWith(composeMemoryPrompt(index))).toBe(true)
+    expect(resolvedToolNames).toEqual([[
+      'configure_wake_words',
+      'builtIn_readMemory',
+      'builtIn_writeMemory',
+      'builtIn_forgetMemory',
+    ]])
+    expect(prompts[0]).toContain(composeMemoryPrompt(index))
+    expect(prompts[0]).toContain(`- ${own!.id}: Alice fact`)
+    expect(prompts[0]).toContain(`- ${shared!.id}: General fact`)
+    expect(prompts[0]).not.toContain(other!.id)
+    expect(prompts[0]).not.toContain('Bob fact')
+    expect(prepared.toolReferences).toBeUndefined()
+  })
+
+  it('omits memory tools and the memory prompt when memory is disabled', async () => {
+    const memory = useMemoryStore()
+    memory.enabled = true
+    const entry = await memory.write({ description: 'Remembered fact', body: 'Memory body' }, 'alice')
+    memory.enabled = false
+    const resolvedToolNames: string[][] = []
+    const prompts: string[] = []
+    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {
+      resolvedToolNames.push((await resolveCustomTools(options.tools)).map(tool => tool.function.name))
+      prompts.push((await options.resolveStep!()).systemPrompt)
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await useChatStore().send({ sessionId: 'session-1', text: 'Hello' })
+
+    expect(resolvedToolNames).toEqual([['configure_wake_words']])
+    expect(prompts).toHaveLength(1)
+    expect(prompts[0]).not.toContain('Long-term memory.')
+    expect(prompts[0]).not.toContain(entry!.id)
+  })
+
+  it('passes only read memory through both unprompted tool gates with the memory index', async () => {
+    const memory = useMemoryStore()
+    memory.enabled = true
+    await memory.write({ description: 'Alice fact', body: 'Alice memory body' }, 'alice')
+    const index = memory.indexFor('alice')
+    const runtimeFactory = vi.spyOn(coreAgent, 'createChatOrchestratorRuntime')
+    onTestFinished(() => runtimeFactory.mockRestore())
+    const store = useChatStore()
+    const runtime: ReturnType<typeof coreAgent.createChatOrchestratorRuntime> = runtimeFactory.mock.results[0].value
+    const submit = vi.spyOn(runtime, 'submit')
+    // Keep both production tool gates; only the provider transport is mocked in this case.
+    const { useLLM } = await vi.importActual<typeof import('./ai/chat-llm/llm')>('./ai/chat-llm/llm')
+    llmStreamMock.mockImplementation(useLLM().stream)
+    streamTextMock.mockReset().mockImplementation((options: Parameters<typeof streamText>[0]) => {
+      const prepared = Promise.resolve(options.prepareStep!({ input: options.messages, model: options.model, stepNumber: 0, steps: [] }))
+      return {
+        steps: prepared.then(() => []),
+        messages: prepared.then(() => []),
+        usage: Promise.resolve({}),
+        totalUsage: Promise.resolve({}),
+      }
+    })
+
+    const result = await store.submitUnprompted({ topicKey: 'memory', topicText: 'Recall Alice fact' })
+
+    expect(result.status).toBe('declined')
+    const prepared = submit.mock.calls[0][1]
+    expect((await resolveCustomTools(prepared.unpromptedTools)).map(tool => tool.function.name)).toEqual(['builtIn_readMemory'])
+    expect(llmStreamMock).toHaveBeenCalledOnce()
+    const options: StreamOptions = llmStreamMock.mock.calls[0][3]
+    expect((await resolveCustomTools(options.tools)).map(tool => tool.function.name)).toEqual(['builtIn_readMemory'])
+    expect((await options.resolveStep!()).systemPrompt).toContain(composeMemoryPrompt(index))
+    expect(streamTextMock).toHaveBeenCalledOnce()
+    expect(streamTextMock.mock.calls[0][0].tools?.map((tool: Tool) => tool.function.name)).toEqual(['builtIn_readMemory'])
+    expect(JSON.stringify(streamTextMock.mock.calls[0][0].messages)).toContain(index.replaceAll('\n', '\\n'))
   })
 
   it('waits for the transcript of a submitted voice message instead of transcribing the file', async () => {
