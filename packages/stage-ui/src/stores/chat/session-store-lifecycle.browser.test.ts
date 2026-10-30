@@ -581,7 +581,7 @@ describe('chat-session-store · cloud backfill', () => {
       messages: [
         { id: 'user-1', role: 'user', content: 'hello' },
         { id: 'reply-1', role: 'assistant', content: 'Hi there.', slices: [{ type: 'text', text: 'Hi there.' }], tool_results: [] },
-        { id: 'trigger-1', role: 'user', content: '(No one spoke to you. You may speak up about: QA topic)', origin: 'unprompted', trigger: { topicKey: 'qa', text: 'QA topic' } },
+        { id: 'trigger-1', role: 'user', content: '(A quiet moment. Nobody said anything. What is on your mind right now: QA topic)', origin: 'unprompted', trigger: { topicKey: 'qa', text: 'QA topic', kind: 'continuation' } },
         { id: 'reply-2', role: 'assistant', content: 'Oh, a QA topic!', slices: [{ type: 'text', text: 'Oh, a QA topic!' }], tool_results: [] },
         { id: 'user-2', role: 'user', content: 'and now?' },
         { id: 'reply-3', role: 'assistant', content: 'Still here.', slices: [{ type: 'text', text: 'Still here.' }], tool_results: [] },
@@ -591,6 +591,8 @@ describe('chat-session-store · cloud backfill', () => {
     const store = useChatSessionStore()
     await store.initialize()
     expect(store.getSessionMessagesIfLoaded(localMeta.sessionId)?.some(message => message.id === 'reply-2')).toBe(true)
+    // The kind of the reason survives persistence, so history can label the cue.
+    expect(store.getSessionMessagesIfLoaded(localMeta.sessionId)?.find(message => message.id === 'trigger-1')).toMatchObject({ trigger: { topicKey: 'qa', text: 'QA topic', kind: 'continuation' } })
 
     cloudWsStatus = 'open'
     cloudStatusListener?.('open')

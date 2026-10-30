@@ -169,7 +169,7 @@ vi.mock('./chat/context-providers', () => ({
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
     locale: ref('en'),
-    t: (key: string) => key,
+    t: (key: string, params?: Record<string, unknown>) => params ? `${key} ${JSON.stringify(params)}` : key,
     te: () => true,
   }),
 }))
@@ -2306,7 +2306,8 @@ describe('chat store contract', () => {
       expect(result).toEqual({ status: 'spoken', text: expect.stringContaining('Oh, a QA topic!') })
       expect(result.status === 'spoken' && result.text).not.toContain('ACT')
       expect(prompts).toHaveLength(1)
-      expect(prompts[0]).toContain('(No one spoke to you. You may speak up about: QA topic)')
+      expect(prompts[0]).toContain('base.prompt.unprompted-trigger')
+      expect(prompts[0]).toContain(JSON.stringify({ reason: 'QA topic' }).replaceAll('"', '\\"'))
       expect(prompts[0]).toContain('base.prompt.unprompted')
       expect(prompts[0]).not.toContain('base.prompt.unprompted-forced')
       expect(sessionMessages['session-1'].slice(1)).toMatchObject([
@@ -2316,6 +2317,61 @@ describe('chat store contract', () => {
       // Neither the trigger nor its reply is mirrored to the cloud.
       expect(pushMessageToCloudMock).not.toHaveBeenCalled()
       expect(controlRecords).toEqual([])
+    })
+
+    // The mocked `t` returns the key, so the request holds the key of the instruction that was chosen.
+    function instructionKeysOf(request: string): string[] {
+      return (request.match(/base\.prompt\.unprompted[\w-]*/g) ?? []).filter(key => key !== 'base.prompt.unprompted-trigger')
+    }
+
+    it.each([
+      { category: 'open', kind: 'own-day', key: 'base.prompt.unprompted' },
+      { category: 'due', kind: 'thread-question', key: 'base.prompt.unprompted' },
+      { category: 'urgent', kind: 'notify', key: 'base.prompt.unprompted' },
+      { category: 'continuation', kind: 'continuation', key: 'base.prompt.unprompted-continuation' },
+      { category: 'ritual', kind: 'ritual-greeting', key: 'base.prompt.unprompted-ritual' },
+      { category: 'double-text', kind: 'double-text', key: 'base.prompt.unprompted-double-text' },
+    ] as const)('sends the $key instruction for a $category reason and stores its kind on the trigger', async ({ category, kind, key }) => {
+      const prompts: string[] = []
+      llmStreamMock.mockImplementation(replyWith(['Hi.'], prompts))
+      const store = useChatStore()
+
+      await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-reason', reason: { kind, category } })
+
+      expect(prompts).toHaveLength(1)
+      expect(instructionKeysOf(prompts[0])).toEqual([key])
+      expect(sessionMessages['session-1'].slice(1)[0]).toMatchObject({ role: 'user', origin: 'unprompted', trigger: { topicKey: 'qa', text: 'QA topic', kind } })
+    })
+
+    it('defaults a missing reason to an urgent notify', async () => {
+      llmStreamMock.mockImplementation(replyWith(['Hi.']))
+      const store = useChatStore()
+
+      await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-default' })
+
+      expect(sessionMessages['session-1'].slice(1)[0]).toMatchObject({ trigger: { kind: 'notify' } })
+    })
+
+    it('keeps the forced instruction for a forced turn whatever the category of its reason', async () => {
+      const prompts: string[] = []
+      llmStreamMock.mockImplementation(replyWith(['Hi.'], prompts))
+      const store = useChatStore()
+
+      await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', force: true, reason: { kind: 'continuation', category: 'continuation' } })
+
+      expect(instructionKeysOf(prompts[0])).toEqual(['base.prompt.unprompted-forced'])
+    })
+
+    it('declines a ritual turn on SILENT and stores only the decline record', async () => {
+      llmStreamMock.mockImplementation(replyWith(['<|SILENT|>']))
+      const store = useChatStore()
+      const messageCount = sessionMessages['session-1'].length
+
+      const result = await store.submitUnprompted({ topicKey: 'ritual:greeting', topicText: 'Good morning', messageId: 'unprompted-ritual', reason: { kind: 'ritual-greeting', category: 'ritual' } })
+
+      expect(result).toEqual({ status: 'declined' })
+      expect(sessionMessages['session-1']).toHaveLength(messageCount)
+      expect(controlRecords).toEqual([{ eventId: expect.any(String), turn: { sessionId: 'session-1', turnId: 'unprompted-ritual' }, topicKey: 'ritual:greeting', atMs: expect.any(Number) }])
     })
 
     it('keeps the title and link of a web extension topic out of the stored trigger, while its request still carries them', async () => {
@@ -2368,7 +2424,7 @@ describe('chat store contract', () => {
       const { spend } = await useSituationObservabilityStore().inspect()
       expect(spend.sessions).toEqual([{ sessionId: 'session-1', spoken: 1, declined: 1 }])
       expect(spend.lastUnpromptedRequest).toMatchObject({ sessionId: 'session-1', turnId: 'unprompted-tag-2', chars: expect.any(Number) })
-      expect(spend.lastUnpromptedRequest?.chars).toBeGreaterThan('(No one spoke to you. You may speak up about: QA topic)'.length)
+      expect(spend.lastUnpromptedRequest?.chars).toBeGreaterThan('base.prompt.unprompted-trigger'.length)
     })
 
     it('asks for a reply without the silence allowance when forced, and appends the supplement after it', async () => {

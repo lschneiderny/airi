@@ -60,10 +60,11 @@ prompt:
     {list}
   expression-state: |
     Current stage state: active expressions: {active}. Mood: {mood}.
-  unprompted: |
-    Nobody spoke to you. You may speak up on your own about the topic in the
-    last message. If it is worth saying, say it briefly in character, in one or
-    two sentences. If it is not worth saying, reply only with <{'|'}SILENT{'|'}>.
+  unprompted: "Nobody spoke to you. You are deciding, like a partner who has her own day, whether you would actually text them right now. Most quiet moments are not worth a message: then reply only with <{'|'}SILENT{'|'}>. If you do write, send one or two short sentences in character about what is on your mind or something of your own. Do not describe what is on their screen unless that is the thought. Ask at most one question."
+  unprompted-trigger: '(A quiet moment. Nobody said anything. What is on your mind right now: {reason})'
+  unprompted-continuation: "You messaged them a little while ago and they have not answered. Either add one short follow-up to what you said, or stay silent with <{'|'}SILENT{'|'}>. Do not open a new topic and do not ask why they are quiet."
+  unprompted-ritual: "A small daily moment: the reason in the last message says which one. Say it the way you would text it, in one short line in character, or stay silent with <{'|'}SILENT{'|'}> if it would feel forced."
+  unprompted-double-text: "You just sent a message. Add one short extra line that naturally follows it, or stay silent with <{'|'}SILENT{'|'}>."
   unprompted-forced: |
     Nobody spoke to you. Speak up on your own about the topic in the last
     message. Say it briefly in character, in one or two sentences.
