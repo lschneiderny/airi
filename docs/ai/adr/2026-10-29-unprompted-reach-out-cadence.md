@@ -42,9 +42,11 @@ Luke chose the product direction on 2026-10-29:
 The implementation uses a pure urge gate beside the bounded situation event
 ring. The gate integrates a hazard over elapsed time and fires after crossing
 an exponentially distributed threshold, `Exp(1)`. Social phases shape which
-categories can accrue hazard: an active exchange suppresses new openings,
-unanswered messages allow a limited continuation and then quiet the gate, and
-a user's reply gradually restores its rate. A two-minute floor prevents
+categories can accrue hazard: an active exchange suppresses new openings.
+After one unanswered opening, only a continuation can open during the
+continuation window; when that window ends, openings resume at a reduced rate.
+Only a second unanswered message quiets the gate for hours, except for urgent
+notifications. A user's reply gradually restores the rate. A two-minute floor prevents
 closely spaced non-urgent openings, with a bounded double-text exception.
 Four non-urgent fires per hour remain as a safety rail.
 
@@ -67,7 +69,10 @@ the extraction ledger so constants can be tuned against real sessions.
 At exchange end, thread extraction uses the active chat provider and model.
 It reads at most the last 12 user and assistant text items, skips unprompted
 user items, truncates each item to 400 characters, and caps the input at 4000
-characters. The model returns at most three validated thread drafts, with a
+characters. The request caps output at 2000 tokens
+(`EXTRACTION_MAX_TOKENS`); an answer that stops at the cap is recorded as
+`failed` and is never parsed. The model returns at most three validated
+thread drafts, with a
 kind, summary of at most 160 characters, cue of at most 200 characters, and
 optional due time. Summary and cue text is sanitized and rejected when it
 contains control markers or role-prefixed lines. Extraction uses the
@@ -75,10 +80,44 @@ unprompted origin without tools, does not fire chat hooks or change the
 session message count. It adds no extraction cue or record to chat history;
 the extraction outcome is recorded in the inspector ledger. Failures are
 recorded without throwing.
+A new thread expires at the end of the logical day after the one it was
+extracted on (04:00 two calendar days later), or earlier, two ripening
+half-lives of its kind after its minimum age. The later bound lets a
+follow-up to a late-night chat still ripen after the rollover.
 Unprompted requests use four instructions: `base.prompt.unprompted`,
 `base.prompt.unprompted-continuation`, `base.prompt.unprompted-ritual`, and
 `base.prompt.unprompted-double-text`. Forced turns retain
 `base.prompt.unprompted-forced`.
+
+### Timings
+
+These are the delivered values. Each is a `Tuning:` constant in
+`packages/stage-shared/src/situation/urge.ts`,
+`packages/stage-shared/src/situation/reasons/types.ts`, or
+`packages/stage-shared/src/situation/reasons/rituals.ts`.
+
+- Floor: 2 minutes between non-urgent openings (`FLOOR_MS`).
+- Safety rail: four non-urgent fires per hour (`SAFETY_CAP_PER_HOUR`).
+- Exchange: no new topic for 2 minutes after his latest turn
+  (`EXCHANGE_ZERO_MS`); the exchange factor then recovers on a 15-minute
+  scale and is about 98% recovered after 30 minutes (`EXCHANGE_SCALE_MS`).
+- One unanswered opening: only a continuation can open for 90 minutes
+  (`CONTINUATION_WINDOW_MS`); openings then resume at half rate
+  (`UNANSWERED_PHASES`).
+- Two unanswered messages: only urgent notifications for 4 hours, then
+  openings resume at 0.3 of the rate. Three or more: 8 hours, then 0.2.
+- Recovery: after a reply, the remaining damping halves each hour
+  (`RECOVERY_HALF_LIFE_MS`).
+- Double text: a 15% chance of one extra line 10 to 50 seconds after a spoken
+  opening, discarded if unsent after 60 seconds (`DOUBLE_TEXT_*`).
+- Logical day: rolls over at 04:00 (`LOGICAL_DAY_ROLLOVER_HOUR`).
+- Greeting: opens on his first appearance of the logical day between 05:00
+  and 15:00 and stays open for 45 minutes. It expires if he speaks first or
+  first appears outside that window (`RITUAL_TUNING`).
+- Sign-off: open from 22:30 to 01:30 while he is present.
+- Welcome-back: opens for 20 minutes when he returns from an absence of at
+  least 3 hours that began within the same logical day
+  (`WELCOME_BACK_MIN_AWAY_MS`).
 
 This supersedes the opportunity-gate section of
 [Situational presence](2026-10-19-situational-presence.md). Other decisions
@@ -132,8 +171,8 @@ settle after 10 minutes.
   turn, preserving the existing hard-suppressor contract.
 - A gate fire is a full chat call. The redesigned cadence makes fewer such
   calls than the old event-driven gate.
-- At `c = 0`, rituals and the remaining baseline still yield about two
-  messages a day.
+- At `c = 0`, rituals and the remaining baseline still yield about 1.6
+  spoken openings a day (1.62 in the seeded 50-day cadence simulation).
 - Tune constants against real sessions by reviewing the inspector. The
   simulation models assumed behavior and is not a substitute for live tuning.
 - Cross-day callbacks (D1) and stored daily beats (D2) remain deferred.
