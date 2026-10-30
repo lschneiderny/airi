@@ -17,7 +17,7 @@ remote downloads. The Resource Status Island shows transfer progress and errors.
 
 ## Foreground window sensor
 
-Situational presence runs in the Electron desktop app on Windows and macOS. The foreground sample tells the character which app is in front, so her situation block can name it and the opportunity gate can stay quiet during calls, games, presentations, and full-screen apps.
+Situational presence runs in the Electron desktop app on Windows and macOS. The character reaches out a few times a day for her own reasons, with long quiet stretches between messages. She stays quiet during calls, games, presentations, and full-screen apps. Eligible long sessions, returns, and notifications can also prompt a turn; app switches alone cannot.
 
 - The main process service `createForegroundWindowService` answers the Eventa invoke `electron.foregroundWindow.sample`. On Windows it reads the foreground window and maps the shell notification state to the sample's host-neutral `busy` field. On macOS it reads the front app from `NSWorkspace`, checks CoreGraphics window geometry for full-screen coverage, and reads the focused window title through the Accessibility API.
 - On macOS, window-title reading requires the launching app to have Accessibility permission. The sampler checks `AXIsProcessTrusted` and never requests permission. Without trust, the app name and category still reach the model, but the title is empty. A user who already granted Accessibility to the launching app for push-to-talk can also use that permission for window-title reading. No new consent screen appears.
