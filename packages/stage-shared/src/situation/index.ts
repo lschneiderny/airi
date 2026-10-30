@@ -1,5 +1,6 @@
 export * from './gate'
 export * from './reasons/rituals'
+export * from './reasons/threads'
 export * from './reasons/types'
 export * from './reducer'
 export * from './render'
