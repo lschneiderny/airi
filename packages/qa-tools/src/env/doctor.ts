@@ -78,8 +78,6 @@ const cubismCorePaths = [
 
 const rigEnvNames = ['AIRI_QA_RIG_FORBOOTH', 'AIRI_QA_RIG_BEAR'] as const
 
-const cubismFix = 'Start the app once so the DownloadLive2DSDK() Vite plugin (@proj-airi/unplugin-live2d-sdk, configResolved hook, registered in apps/stage-web/vite.config.ts and apps/stage-tamagotchi/electron.vite.config.ts) downloads CubismSdkForWeb-5-r.3 into public/: `pnpm -F @proj-airi/stage-tamagotchi dev` and `pnpm -F @proj-airi/stage-web dev` (or their `build`).'
-
 function ok(detail: string): Omit<DoctorRow, 'id'> {
   return { status: 'ok', detail, fix: '' }
 }
@@ -162,9 +160,14 @@ function createDoctorChecks(probes: DoctorProbes): DoctorCheck[] {
       id: 'cubism-core',
       run: () => {
         const missing = cubismCorePaths.filter(path => !probes.exists(path))
-        return missing.length === 0
-          ? ok('Cubism core exists for stage-tamagotchi and stage-web')
-          : { status: 'fail', detail: `missing ${missing.join(', ')}`, fix: cubismFix }
+        if (missing.length === 0)
+          return ok('Cubism core exists for stage-tamagotchi and stage-web')
+        const commands = missing.map(path => `\`pnpm -F @proj-airi/${path.split('/')[1]} dev\``)
+        return {
+          status: 'fail',
+          detail: `missing ${missing.join(', ')}`,
+          fix: `From this worktree's root, run ${commands.join(' and ')}. The DownloadLive2DSDK() Vite configResolved hook downloads CubismSdkForWeb-5-r.3 into each app's public/. Stop each app after the download completes, then rerun pnpm qa:doctor. Installing dependencies alone does not download Cubism Core.`,
+        }
       },
     },
     {

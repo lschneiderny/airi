@@ -113,6 +113,10 @@ describe('runDoctor', () => {
       expect(row.status).toBe('fail')
       expect(row.detail).toContain(absent)
       expect(row.fix).toContain('DownloadLive2DSDK')
+      const app = absent.split('/')[1]
+      const otherApp = app === 'stage-web' ? 'stage-tamagotchi' : 'stage-web'
+      expect(row.fix).toContain(`pnpm -F @proj-airi/${app} dev`)
+      expect(row.fix).not.toContain(`pnpm -F @proj-airi/${otherApp} dev`)
     }
   })
 
