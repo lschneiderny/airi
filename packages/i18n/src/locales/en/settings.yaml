@@ -795,13 +795,13 @@ pages:
       desktop_reset: Desktop data reset.
   presence:
     title: Presence
-    description: Decide when the character speaks up without being asked
+    description: Decide how and when the character reaches out on its own
     unprompted-enabled:
       title: Speak up unprompted
-      description: Let the character start a conversation when something happens on your desktop.
+      description: Let the character message you on its own, a few times a day, like someone who has their own day going on.
     chattiness:
       title: Chattiness
-      description: How often the character speaks up on its own.
+      description: How often the character reaches out on average. Timing stays natural; this only moves the average.
     dont-disturb:
       title: Do not disturb
       description: Keep the character quiet until you turn this off.
