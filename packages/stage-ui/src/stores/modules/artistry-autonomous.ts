@@ -11,8 +11,10 @@ import { ref, toRaw } from 'vue'
 import { toast } from 'vue-sonner'
 
 import { useAnalytics } from '../../composables/use-analytics'
+import { composeMemoryPrompt } from '../../tools/memory'
 import { useBackgroundStore } from '../background'
 import { useChatSessionStore } from '../chat/session-store'
+import { useMemoryStore } from '../memory'
 import { useProviderStore } from '../providers/provider'
 import { useAiriCardStore } from './airi-card'
 import { useArtistryStore } from './artistry'
@@ -25,6 +27,7 @@ export const useAutonomousArtistryStore = defineStore('artistry-autonomous', () 
   const artistryStore = useArtistryStore()
   const providersStore = useProviderStore()
   const chatSessionStore = useChatSessionStore()
+  const memory = useMemoryStore()
 
   const isProcessing = ref(false)
 
@@ -90,6 +93,7 @@ export const useAutonomousArtistryStore = defineStore('artistry-autonomous', () 
       }
 
       // 1. Compose the "Director" prompt based on target
+      const memoryPrompt = memory.enabled ? composeMemoryPrompt(memory.indexFor(cardId)) : ''
       const systemPrompt = target === 'assistant'
         ? `You are the Cinematic Director for AIRI. 
 Your job is to analyze the character's response and reaction to the user, and decide if it warrants a visual manifestation (a generative image).
@@ -108,7 +112,7 @@ Output EXACTLY this JSON format and nothing else:
   "intensity": 0-100,
   "prompt": "Highly detailed, illustrative prompt for the image generator capturing the character's reaction and scene. Use Mori's style (masterpiece, high quality, manga style, intricate details)",
   "title": "Short descriptive title for the scene"
-}`
+}${memoryPrompt}`
         : `You are the Cinematic Director for AIRI. 
 Your job is to analyze the user's input and decide if it warrants a visual manifestation (a generative image).
 Manifestation is warranted for:
@@ -125,7 +129,7 @@ Output EXACTLY this JSON format and nothing else:
   "intensity": 0-100,
   "prompt": "Highly detailed, illustrative prompt for the image generator. Use Mori's style (masterpiece, high quality, manga style, intricate details)",
   "title": "Short descriptive title for the scene"
-}`
+}${memoryPrompt}`
 
       // 2. Rollup history and text into a single prompt to help the LLM "see" the full context
       const recentHistory = history.slice(-3)

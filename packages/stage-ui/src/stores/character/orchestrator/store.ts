@@ -9,9 +9,12 @@ import { ref } from 'vue'
 
 import { useCharacterNotebookStore, useCharacterStore } from '../'
 import { useStageContractPrompt, useStageLiveStatePrompt } from '../../../composables/use-airi-runtime-prompt'
+import { composeMemoryPrompt } from '../../../tools/memory'
 import { getEventSourceKey } from '../../../utils/event-source'
 import { useLLM } from '../../ai/chat-llm/llm'
+import { useMemoryStore } from '../../memory'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
+import { useAiriCardStore } from '../../modules/airi-card'
 import { useConsciousnessStore } from '../../modules/consciousness'
 import { useSituationStore } from '../../situation'
 import { ingestSparkNotify } from '../../situation/sensors/notify'
@@ -33,6 +36,8 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
   const characterStore = useCharacterStore()
   const notebookStore = useCharacterNotebookStore()
   const { systemPrompt } = storeToRefs(characterStore)
+  const cardStore = useAiriCardStore()
+  const memory = useMemoryStore()
   const stageContractPrompt = useStageContractPrompt()
   const liveStatePrompt = useStageLiveStatePrompt()
   const modsServerChannelStore = useModsServerChannelStore()
@@ -177,7 +182,11 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
           provider,
         },
         // The stable stage contract belongs to the system prompt. Only the live state rides with the notify.
-        systemPrompt: [systemPrompt.value, stageContractPrompt.value].filter(Boolean).join('\n\n'),
+        systemPrompt: [
+          systemPrompt.value,
+          stageContractPrompt.value,
+          memory.enabled ? composeMemoryPrompt(memory.indexFor(cardStore.activeCardId ?? 'default')) : '',
+        ].filter(Boolean).join('\n\n'),
         runtimePrompt: liveStatePrompt.value,
         control: { ...control, commandsOnly: true },
       })

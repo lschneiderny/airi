@@ -21,13 +21,17 @@ import { ref } from 'vue'
 
 import { sparkNotifyCommandSchema, useCharacterOrchestratorStore } from '.'
 import { useCharacterNotebookStore } from '..'
+import { memoryRepo } from '../../../database/repos/memory.repo'
 import { useSituationSettings } from '../../../features/situation/settings'
 import { useLLM } from '../../ai/chat-llm/llm'
+import { useMemoryStore } from '../../memory'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
 import { useAiriCardStore, useConsciousnessStore } from '../../modules'
 import { useProviderStore } from '../../providers/provider'
 import { useSituationStore } from '../../situation'
 import { TASK_SCHEDULER_SOURCE } from '../../situation/sensors/notify'
+
+vi.mock('../../../database/repos/memory.repo')
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
@@ -181,9 +185,11 @@ describe('store character-orchestrator', () => {
     } satisfies AiriCard
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     useSituationStore(pinia).dispose()
     vi.useRealTimers()
+    useMemoryStore(pinia).enabled = true
+    await memoryRepo.clear()
   })
 
   it('turns a character-only spark:notify into one situation observation without an agent run', async () => {
@@ -473,6 +479,55 @@ describe('store character-orchestrator', () => {
     expect(mockStream).toHaveBeenCalledOnce()
     expect(mockStream.mock.calls[0][3]).toMatchObject({ toolChoice: { type: 'function', function: { name: 'builtIn_sparkCommand' } } })
     expect(notifyEvents(situation).map(item => item.topicKey)).toEqual([notifyTopicKey('plugin-module-host', event.data.eventId)])
+  })
+
+  describe('memory index', () => {
+    function moduleNotify(): WebSocketEventOf<'spark:notify'> {
+      return {
+        type: 'spark:notify',
+        source: 'minecraft',
+        data: { id: nanoid(), eventId: nanoid(), kind: 'alarm', urgency: 'immediate', headline: 'Hit by zombie', destinations: ['minecraft'] },
+      }
+    }
+
+    function systemMessageOf(mockStream: Mock) {
+      const context = mockStream.mock.lastCall?.[2]
+      if (!context)
+        throw new Error('The commands-only agent did not run')
+      return String(renderConversationPreview(context)[0].content)
+    }
+
+    it('gives the commands-only agent the index of the active card after the identity and stage contract', async () => {
+      const mockStream = vi.fn()
+      mockedStore(useLLM, pinia).stream = mockStream
+      const memory = useMemoryStore(pinia)
+      const entry = (await memory.write({ description: 'What the owner likes to be called.', body: 'Captain.' }, 'default'))!
+      await memory.write({ description: 'Another card only.', body: 'Secret.' }, 'other-card')
+
+      await useCharacterOrchestratorStore(pinia).handleSparkNotify(moduleNotify())
+
+      const system = systemMessageOf(mockStream)
+      expect(system).toContain(`Memory index:\nYour own:\n- ${entry.id}: What the owner likes to be called.`)
+      expect(system).not.toContain('Another card only.')
+      // The test card has no identity text of its own, so the stage contract is the part that the memory prompt must follow.
+      const stageContractAt = system.indexOf('base.prompt.emotion')
+      const memoryAt = system.indexOf('Long-term memory.')
+      expect(stageContractAt).toBeGreaterThanOrEqual(0)
+      expect(memoryAt).toBeGreaterThanOrEqual(0)
+      expect(stageContractAt).toBeLessThan(memoryAt)
+    })
+
+    it('leaves the memory prompt out when memory is off', async () => {
+      const mockStream = vi.fn()
+      mockedStore(useLLM, pinia).stream = mockStream
+      const memory = useMemoryStore(pinia)
+      await memory.write({ description: 'What the owner likes to be called.', body: 'Captain.' }, 'default')
+      memory.enabled = false
+
+      await useCharacterOrchestratorStore(pinia).handleSparkNotify(moduleNotify())
+
+      expect(systemMessageOf(mockStream)).not.toContain('Long-term memory.')
+    })
   })
 
   // https://github.com/moeru-ai/airi/pull/2464#discussion_r3933609456
