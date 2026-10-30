@@ -83,6 +83,67 @@ devtools:
       act-compliance:
         stripped: Stripped
         stripped-note: Stripped cues looked like ACT or DELAY markers but had no valid payload, so speech dropped them. A turn whose only cues were stripped counts as rejected.
+      gate:
+        title: Urge gate
+        not-evaluated: The gate has not evaluated in the leader window yet. It runs only in a host that supports unprompted turns.
+        urge: Urge
+        urge-note: Urge gathered since the last fire, against the threshold it must reach before she reaches out.
+        phase: Phase
+        unanswered: Unanswered
+        reopen-at: Reopens
+        expected-wait: Expected wait
+        double-text-due: Double text due
+        fires-last-hour: Fires in the last hour
+        rituals: Rituals
+        decision: Current decision
+        pending: Pending topic
+        pick: Pick
+        hazards: Hazard per hour
+        multipliers: Multipliers
+        evaluate: Evaluate now
+        evaluate-action: Evaluate now (ignore timing)
+        evaluate-note: Asks the leader's gate for one decision that skips the floor, the reply wait, and the urge threshold. Hard suppressors, such as don't-disturb, still apply. A fire starts a real unprompted turn.
+        evaluate-failed: 'Evaluation failed: {error}'
+        history: Decision history
+        history-note: '{count} of the last {max} entries kept. Consecutive decisions with the same outcome share one entry.'
+        columns:
+          time: Time
+          decision: Decision
+          category: Category
+          reason: Reason
+          count: Count
+      reasons:
+        title: Reasons
+        current: Current reasons
+        current-empty: No reason to reach out right now. Threads, rituals, her own day, and some screen events add reasons.
+        threads: Open threads
+        threads-empty: No open thread. Threads come from the conversation after an exchange ends.
+        extraction: Thread extraction
+        extraction-empty: No exchange has ended since the leader window started.
+        extraction-in-flight: An extraction is running.
+        extraction-note: '{count} of the last {max} attempts kept. Thread text appears only here, never in chat history.'
+        outcomes: Outcomes per reason kind
+        outcomes-note: Counted since the leader window started. Engaged means a user turn followed a spoken turn within 10 minutes.
+        columns:
+          kind: Kind
+          category: Category
+          text: Text
+          ripeness: Ripeness
+          weight: Weight
+          urgent: Urgent
+          summary: Summary
+          born: Born
+          ripe-at: Ripe at
+          expires: Expires
+          raised: Raised
+          time: Time
+          status: Status
+          request-chars: Request chars
+          error: Error
+          spoken: Spoken
+          declined: Declined
+          engaged: Engaged
+          ignored: Ignored
     presence-bubble:
       title: Presence Bubble
       description: Drive the bubble above the character and watch it in the main window
