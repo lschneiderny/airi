@@ -37,7 +37,7 @@ export const useMemoryStore = defineStore('memory', () => {
   }
 
   /**
-   * Resolves after every read that started before the call, the first read and the move from localStorage included.
+   * Resolves after every read that started before the call, the first read included.
    * Until then, `entries` is empty because nothing is read yet, not because nothing is remembered.
    */
   function ready() {
