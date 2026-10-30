@@ -89,7 +89,7 @@ async function resolveToolSource(source: ToolSource): Promise<Tool[]> {
   return typeof source === 'function' ? await source() : source
 }
 
-async function resolveCustomTools(customTools: StreamOptions['tools']): Promise<Tool[]> {
+export async function resolveCustomTools(customTools: StreamOptions['tools']): Promise<Tool[]> {
   if (typeof customTools === 'function')
     return await customTools() ?? []
 

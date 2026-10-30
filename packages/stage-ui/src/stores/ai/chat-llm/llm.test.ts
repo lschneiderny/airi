@@ -400,7 +400,38 @@ describe('isToolRelatedError', () => {
     expect(streamTextMock.mock.calls[0]?.[0]?.tools?.map(toolNameFrom)).toContain('builtIn_emitSparkCommand')
   })
 
-  it('sends no tools on an unprompted turn', async () => {
+  const readTool = {
+    ...customTool,
+    function: { ...customTool.function, name: 'builtIn_readMemory' },
+  } satisfies Tool
+
+  it('sends only the custom tools on an unprompted turn', async () => {
+    streamTextMock.mockImplementation(() => createMockStreamResult())
+
+    await useLLM().stream('model-a', provider, helloTurns, { origin: 'unprompted', tools: [readTool] })
+
+    expect(streamTextMock.mock.calls[0]?.[0]?.tools?.map(toolNameFrom)).toEqual(['builtIn_readMemory'])
+    expect(mcpMock).not.toHaveBeenCalled()
+    expect(debugMock).not.toHaveBeenCalled()
+    expect(createSparkCommandToolMock).not.toHaveBeenCalled()
+  })
+
+  it('sends only the custom tools with a resolved step on an unprompted turn', async () => {
+    streamTextMock.mockImplementation(() => createMockStreamResult())
+
+    await useLLM().stream('model-a', provider, helloTurns, {
+      origin: 'unprompted',
+      tools: [readTool],
+      resolveStep: async () => ({ model: 'model-b', chatProvider: provider, providerId: 'test', systemPrompt: '' }),
+    })
+
+    expect(streamTextMock.mock.calls[0]?.[0]?.tools?.map(toolNameFrom)).toEqual(['builtIn_readMemory'])
+    expect(mcpMock).not.toHaveBeenCalled()
+    expect(debugMock).not.toHaveBeenCalled()
+    expect(createSparkCommandToolMock).not.toHaveBeenCalled()
+  })
+
+  it('sends no tools on an unprompted turn without custom tools', async () => {
     streamTextMock.mockImplementation(() => createMockStreamResult())
 
     await useLLM().stream('model-a', provider, helloTurns, { origin: 'unprompted' })
@@ -409,16 +440,5 @@ describe('isToolRelatedError', () => {
     expect(mcpMock).not.toHaveBeenCalled()
     expect(debugMock).not.toHaveBeenCalled()
     expect(createSparkCommandToolMock).not.toHaveBeenCalled()
-  })
-
-  it('sends no tools with a resolved step on an unprompted turn', async () => {
-    streamTextMock.mockImplementation(() => createMockStreamResult())
-
-    await useLLM().stream('model-a', provider, helloTurns, {
-      origin: 'unprompted',
-      resolveStep: async () => ({ model: 'model-b', chatProvider: provider, providerId: 'test', systemPrompt: '' }),
-    })
-
-    expect(streamTextMock.mock.calls[0]?.[0]?.tools).toBeUndefined()
   })
 })

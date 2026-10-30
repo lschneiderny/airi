@@ -36,6 +36,7 @@ import {
   AIRI_CHAT_SESSION_ID_HEADER,
 } from '../libs/product-signals/headers'
 import { getSpeechBusContext, voiceGenerationEnded } from '../services/speech/bus'
+import { composeMemoryPrompt, createMemoryTools, READ_MEMORY_TOOL_NAME } from '../tools/memory'
 import { createWakeWordTool } from '../tools/wake-words'
 import { useLLM } from './ai/chat-llm/llm'
 import { resolveLlmTools } from './ai/chat-llm/tool-resolver'
@@ -49,6 +50,7 @@ import { useChatSessionStore } from './chat/session-store'
 import { useChatStreamStore } from './chat/stream-store'
 import { useContextObservabilityStore } from './devtools/context-observability'
 import { useSituationObservabilityStore } from './devtools/situation-observability'
+import { useMemoryStore } from './memory'
 import { useAiriCardStore } from './modules/airi-card'
 import { useAutonomousArtistryStore } from './modules/artistry-autonomous'
 import { useConsciousnessStore } from './modules/consciousness'
@@ -298,6 +300,7 @@ export const useChatStore = defineStore('chat', () => {
   const chatStream = useChatStreamStore()
   const chatContext = useChatContextStore()
   const cardStore = useAiriCardStore()
+  const memory = useMemoryStore()
   const wakeWords = useWakeWordsStore()
   const stickersStore = useStickersStore()
   const contextObservability = useContextObservabilityStore()
@@ -972,6 +975,7 @@ export const useChatStore = defineStore('chat', () => {
 
   /**
    * Freeze request settings before asynchronous provider and session startup.
+   * The session character's memory index joins each step's prompt, and its memory tools join the run.
    * An `unprompted` send adds its instruction to the system prompt supplement and marks the request with its trigger.
    */
   async function prepareSend(payload: ChatSendPayload, signal: AbortSignal, voice: boolean, unprompted?: UnpromptedSend): Promise<ChatOrchestratorSendOptions> {
@@ -986,6 +990,13 @@ export const useChatStore = defineStore('chat', () => {
     if (!characterId)
       throw new Error('The target session has no character')
 
+    const memoryTools = memory.enabled
+      ? await createMemoryTools({
+          read: id => memory.read(id, characterId),
+          write: entry => memory.write(entry, characterId),
+          forget: id => memory.forget(id, characterId),
+        })
+      : []
     const { provider: providerId, model: modelId } = cardStore.getModules(characterId).consciousness
 
     const temperature = payload.temperature ?? consciousnessStore.activeTemperature
@@ -1036,7 +1047,7 @@ export const useChatStore = defineStore('chat', () => {
         model: selection.model,
         chatProvider: stepProvider,
         providerId: selection.provider,
-        systemPrompt: chatSession.getSessionSystemPrompt(payload.sessionId),
+        systemPrompt: chatSession.getSessionSystemPrompt(payload.sessionId) + (memory.enabled ? composeMemoryPrompt(memory.indexFor(characterId)) : ''),
         temperature,
         topP,
       }
@@ -1059,11 +1070,17 @@ export const useChatStore = defineStore('chat', () => {
       topP,
       systemPromptSupplement,
       stickers,
-      ...(unprompted ? { origin: 'unprompted' as const, trigger: unprompted.trigger } : {}),
+      ...(unprompted
+        ? {
+            origin: 'unprompted' as const,
+            trigger: unprompted.trigger,
+            unpromptedTools: memoryTools.filter(tool => tool.function.name === READ_MEMORY_TOOL_NAME),
+          }
+        : {}),
       tools: async () => {
         const references = collectToolReferences(payload.sessionId, payload.tools)
         const tools = llmToolsStore.getToolsByNames(...references.map(tool => tool.name))
-        return [...tools, await createWakeWordTool({ characterId, setWords: wakeWords.setWords })]
+        return [...tools, await createWakeWordTool({ characterId, setWords: wakeWords.setWords }), ...memoryTools]
       },
     }
   }
@@ -1085,7 +1102,8 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     const abort = new AbortController()
-    const prepared = prepareSend({ ...payload, messageId }, abort.signal, voice, unprompted)
+    const prepared = memory.ready()
+      .then(() => prepareSend({ ...payload, messageId }, abort.signal, voice, unprompted))
       .then(options => runtime.submit(payload.text, options, payload.sessionId))
     const request = {
       accepted: prepared.then(value => value.accepted),
