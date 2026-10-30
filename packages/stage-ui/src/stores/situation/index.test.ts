@@ -21,6 +21,7 @@ import { useSituationSettings } from '../../features/situation/settings'
 import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged } from '../../services/speech/bus'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { DESKTOP_SAMPLE_STALE_MS } from './sensors/desktop'
+import { EXCHANGE_QUIET_MS } from './sensors/exchange'
 import { FOREGROUND_SAMPLE_STALE_HIDDEN_MS, FOREGROUND_SAMPLE_STALE_VISIBLE_MS } from './sensors/foreground'
 
 // The real urge gate, wrapped so tests can read its decisions; the inspector still receives the legacy shape.
@@ -449,6 +450,48 @@ describe('situation store', () => {
     await userTurn(first, 'turn-1')
 
     expect(store.state.conversation.lastUserAtMs).toBe(T0)
+  })
+
+  it('reports the end of an exchange from its 1 s ticker once the chat has been quiet for 15 min', async () => {
+    const leadership = createLeadership(true)
+    const store = useSituationStore()
+    const hooks = createChatHooks()
+    const chat = createChatControls()
+    store.observeChat(hooks, chat.controls)
+    store.initialize(leadership.runtime)
+    const ended = vi.fn()
+    store.onExchangeEnd(ended)
+
+    await userTurn(hooks, 'turn-1')
+    vi.advanceTimersByTime(EXCHANGE_QUIET_MS - 1_000)
+    expect(ended).not.toHaveBeenCalled()
+    chat.state.sending = true
+    vi.advanceTimersByTime(1_000)
+    expect(ended).not.toHaveBeenCalled()
+    chat.state.sending = false
+    vi.advanceTimersByTime(EXCHANGE_QUIET_MS)
+
+    expect(ended).toHaveBeenCalledTimes(1)
+    expect(ended).toHaveBeenCalledWith({ sessionId: 'session-1', startedAtMs: T0, endedAtMs: T0, userTurns: 1 })
+  })
+
+  it('reports no exchange end in a follower, nor for an exchange left open at demotion', async () => {
+    const leadership = createLeadership(false)
+    const store = useSituationStore()
+    const hooks = createChatHooks()
+    store.observeChat(hooks, createChatControls().controls)
+    store.initialize(leadership.runtime)
+    const ended = vi.fn()
+    store.onExchangeEnd(ended)
+
+    await userTurn(hooks, 'turn-1')
+    leadership.set(true)
+    await userTurn(hooks, 'turn-2')
+    leadership.set(false)
+    leadership.set(true)
+    vi.advanceTimersByTime(2 * EXCHANGE_QUIET_MS)
+
+    expect(ended).not.toHaveBeenCalled()
   })
 
   it('turns foreground samples into activity and keeps AIRI\'s own app out of it', () => {

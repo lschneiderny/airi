@@ -375,13 +375,14 @@ Every chat request carries the block from `renderForRequest` as its only runtime
 - `holdTopic(topicKey)` keeps a topic away from the gate until the returned function releases it, without addressing it. Use it while a forced turn about that topic is on its way.
 - `userMidInput()` and `untilUserIdle(timeoutMs)` report whether the user is speaking into the microphone, waiting for speech-to-text to finish what they said, or writing in a chat composer in any window. They work in every initialized window.
 - `onNotifySpoken(listener)` reports each spoken gate fire about a notify, with its topic key and reply text.
+- `onExchangeEnd(listener)` reports each finished chat exchange in the leader: at least one user turn, then 15 minutes without a turn while nothing generates. An unprompted turn alone never opens an exchange.
 
 Use this store to give the model awareness of the user's situation and to run unprompted remarks.
 Do not read it in follower windows, and do not store its block or window titles in chat history.
 
 ### Sensors
 
-`stores/situation/sensors/` turns host signals into observations: desktop presence and wakes, the foreground app and busy state, conversation turns, the stage expression and mood, plugin and vision context, Minecraft context, and `spark:notify` events.
+`stores/situation/sensors/` turns host signals into observations: desktop presence and wakes, the foreground app and busy state, conversation turns and the end of each exchange, the stage expression and mood, plugin and vision context, Minecraft context, and `spark:notify` events.
 Only the leader runs them. Context messages from the context bridge reach the situation through `ingestContextMessage`, and notifications through `notifyObservationFrom`.
 A follower window forwards its notify observations to the leader over the speech bus with `situationNotifyObservedEvent`.
 The foreground sensor skips AIRI's own windows, drops titles of apps on the title denylist, and treats a sample older than 5 seconds (20 seconds while the stage is hidden) as stale.
