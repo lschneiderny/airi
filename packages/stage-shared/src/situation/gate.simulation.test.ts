@@ -23,7 +23,6 @@ import {
   advanceSituation,
   BASE_RATE_AT_HALF_PER_HOUR,
   evaluateUrgeGate,
-  FLOOR_MS,
   HOUR_MS,
   initialSituationState,
   logicalDayKey,
@@ -49,6 +48,12 @@ const MIN = 60_000
 const DAY_MS = 24 * HOUR_MS
 const STEP_MS = 10_000
 const DAYS = 50
+/** Chattiness 0.5 run that judges the IS-1 band and gap spread (Luke, 2026-10-30: lengthen until seed-independent; 200 days varied by +-0.15, 1000 days gives 2.23 and 2.34 on two seeds). */
+const LONG_RUN_DAYS = 1000
+/** The 1000-day run takes about 17 s; a margin over vitest's 10 s default hook timeout. */
+const SIMULATION_TIMEOUT_MS = 60_000
+/** IS-1: never two non-urgent openings within two minutes. */
+const OPENING_FLOOR_MS = 120_000
 const SEED = 20_261_030
 /** Monday 2026-01-05 00:00, read as local time through UTC getters. */
 const DAY0_MS = Date.UTC(2026, 0, 5)
@@ -176,7 +181,7 @@ type ScriptItem
   = | { readonly atMs: number, readonly kind: 'user-turn' }
     | { readonly atMs: number, readonly kind: 'thread', readonly summary: string }
 
-function simulate(chattiness: Chattiness): RunResult {
+function simulate(chattiness: Chattiness, days: number): RunResult {
   const random = scriptRandom(SEED)
   const settings: GateSettings = { enabled: true, chattiness, dontDisturb: false, quietApps: [], speakDuringGames: true }
   let memory: UrgeGateMemory = promotionUrgeMemory(DAY0_MS, SEED)
@@ -194,7 +199,7 @@ function simulate(chattiness: Chattiness): RunResult {
   }
   observe({ kind: 'busy', state: 'accepts', atMs: DAY0_MS }, DAY0_MS)
 
-  for (let day = 0; day < DAYS; day++) {
+  for (let day = 0; day < days; day++) {
     const dayStartMs = DAY0_MS + day * DAY_MS
     const signOffDay = random() < SIGN_OFF_DAY_PROBABILITY
     const arriveMs = dayStartMs + (signOffDay ? LATE_ARRIVAL_HOUR : EARLY_ARRIVAL_HOUR) * HOUR_MS
@@ -335,10 +340,20 @@ function formatMinutes(value: number | null): string {
   return value === null ? '' : value.toFixed(1)
 }
 
-function writeEvidence(dir: string, results: ReadonlyMap<Chattiness, RunResult>) {
+function gapStats(result: RunResult) {
+  const gaps = result.rows.flatMap(row => row.gapsMin).sort((a, b) => a - b)
+  return {
+    meanSpokenOpenings: mean(result.rows.map(row => row.spokenOpenings)),
+    medianGapMin: percentile(gaps, 0.5),
+    p90GapMin: percentile(gaps, 0.9),
+    shareGapsUnder20Min: gaps.filter(gap => gap < 20).length / gaps.length,
+  }
+}
+
+function writeEvidence(dir: string, results: ReadonlyMap<Chattiness, RunResult>, longRun: RunResult) {
   mkdirSync(dir, { recursive: true })
   const lines = ['chattiness,day,attempts,spokenOpenings,declined,continuations,doubleTexts,rituals,medianGapMin,p90GapMin']
-  const summary: Record<string, unknown> = { baseRateAtHalfPerHour: BASE_RATE_AT_HALF_PER_HOUR, days: DAYS, stepMs: STEP_MS, seed: SEED }
+  const summary: Record<string, unknown> = { baseRateAtHalfPerHour: BASE_RATE_AT_HALF_PER_HOUR, days: DAYS, longRunDays: LONG_RUN_DAYS, stepMs: STEP_MS, seed: SEED }
   for (const [chattiness, result] of results) {
     for (const row of result.rows) {
       const gaps = [...row.gapsMin].sort((a, b) => a - b)
@@ -371,6 +386,7 @@ function writeEvidence(dir: string, results: ReadonlyMap<Chattiness, RunResult>)
       threadPicks: result.threadPicks,
     }
   }
+  summary['c=0.5 long run'] = gapStats(longRun)
   writeFileSync(join(dir, 'task-8-cadence.csv'), `${lines.join('\n')}\n`)
   writeFileSync(join(dir, 'task-8-cadence-summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
   console.info(JSON.stringify(summary, null, 2))
@@ -378,31 +394,40 @@ function writeEvidence(dir: string, results: ReadonlyMap<Chattiness, RunResult>)
 
 describe('urge gate cadence simulation', () => {
   const results = new Map<Chattiness, RunResult>()
+  let longRun: RunResult
 
   beforeAll(() => {
     for (const chattiness of CHATTINESS)
-      results.set(chattiness, simulate(chattiness))
+      results.set(chattiness, simulate(chattiness, DAYS))
+    longRun = simulate(0.5, LONG_RUN_DAYS)
     const dir = process.env.ULW_EVIDENCE_DIR
     if (dir !== undefined && dir !== '')
-      writeEvidence(dir, results)
-  })
+      writeEvidence(dir, results, longRun)
+  }, SIMULATION_TIMEOUT_MS)
 
-  it.each(CHATTINESS)('keeps the mean spoken openings per desk day in band at chattiness %s', (chattiness) => {
+  it.each(CHATTINESS.filter(chattiness => chattiness !== 0.5))('keeps the mean spoken openings per desk day in band at chattiness %s', (chattiness) => {
     const [low, high] = OPENING_BANDS[chattiness]
     const openings = mean(results.get(chattiness)!.rows.map(row => row.spokenOpenings))
     expect(openings).toBeGreaterThanOrEqual(low)
     expect(openings).toBeLessThanOrEqual(high)
   })
 
-  it('never speaks two openings within the floor', () => {
-    for (const result of results.values()) {
+  it('keeps the mean spoken openings per desk day in band at chattiness 0.5 over the long run', () => {
+    const [low, high] = OPENING_BANDS[0.5]
+    const openings = mean(longRun.rows.map(row => row.spokenOpenings))
+    expect(openings).toBeGreaterThanOrEqual(low)
+    expect(openings).toBeLessThanOrEqual(high)
+  })
+
+  it('never speaks two openings within two minutes', () => {
+    for (const result of [...results.values(), longRun]) {
       for (let index = 1; index < result.openingTimes.length; index++)
-        expect(result.openingTimes[index] - result.openingTimes[index - 1]).toBeGreaterThanOrEqual(FLOOR_MS)
+        expect(result.openingTimes[index] - result.openingTimes[index - 1]).toBeGreaterThanOrEqual(OPENING_FLOOR_MS)
     }
   })
 
-  it('spaces openings with a long tail at the default chattiness', () => {
-    const gaps = results.get(0.5)!.rows.flatMap(row => row.gapsMin).sort((a, b) => a - b)
+  it('spaces openings with a long tail at the default chattiness over the long run', () => {
+    const gaps = longRun.rows.flatMap(row => row.gapsMin).sort((a, b) => a - b)
     expect(gaps.filter(gap => gap < 20).length / gaps.length).toBeLessThan(0.25)
     expect(percentile(gaps, 0.9)!).toBeGreaterThanOrEqual(2 * percentile(gaps, 0.5)!)
   })
