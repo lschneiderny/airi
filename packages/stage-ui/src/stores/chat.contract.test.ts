@@ -359,12 +359,51 @@ function storedToolImageMessage() {
   }
 }
 
+/** The leader's inner state lives in localStorage, which the Node project does not provide. */
+class MemoryStorage implements Storage {
+  readonly values = new Map<string, string>()
+
+  get length() {
+    return this.values.size
+  }
+
+  clear() {
+    this.values.clear()
+  }
+
+  getItem(key: string) {
+    return this.values.get(key) ?? null
+  }
+
+  key(index: number) {
+    return [...this.values.keys()][index] ?? null
+  }
+
+  removeItem(key: string) {
+    this.values.delete(key)
+  }
+
+  setItem(key: string, value: string) {
+    this.values.set(key, value)
+  }
+}
+
+/**
+ * A fixed gate seed: its first urge threshold is high, so the gate fires only when a test evaluates it now, and the
+ * reason roll of that first fire picks the first reason by key.
+ */
+const SITUATION_GATE_SEED = 497396
+
 /** Makes this window the situation leader for one test, so requests carry the situation block. */
 function leadSituation() {
+  vi.stubGlobal('localStorage', new MemoryStorage())
   const store = useSituationStore()
-  store.initialize(createLeaderRuntime())
+  store.initialize(createLeaderRuntime(), { seedSource: () => SITUATION_GATE_SEED })
   // The leader owns a 1 s ticker; stop it even when an assertion fails.
-  onTestFinished(() => store.dispose())
+  onTestFinished(() => {
+    store.dispose()
+    vi.unstubAllGlobals()
+  })
 }
 
 /** A synced runtime in which this window leads. */
@@ -2377,6 +2416,12 @@ describe('chat store contract', () => {
     it('keeps the title and link of a web extension topic out of the stored trigger, while its request still carries them', async () => {
       const prompts: string[] = []
       llmStreamMock.mockImplementation(replyWith(['Enjoying the video?'], prompts))
+      // 8 pm local time: no greeting or sign-off window is open, so the notify is the first reason she can pick.
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date(2026, 9, 20, 20, 0, 0))
+      onTestFinished(() => {
+        vi.useRealTimers()
+      })
       const store = useChatStore()
       leadSituation()
       const situation = useSituationStore()
@@ -2472,9 +2517,10 @@ describe('chat store contract', () => {
         { role: 'user', id: 'spark:widget-1', origin: 'unprompted', trigger: { topicKey: 'notify:widget:e-1' } },
         { role: 'assistant', content: expect.stringContaining('Nice move.') },
       ])
-      // The situation store saw her unprompted turn through the chat hooks, yet recorded no gate fire for it.
+      // The situation store saw her unprompted turn through the chat hooks, yet recorded no gate fire for it. The turn
+      // starts the gate's floor, so only the time of the last fire moved.
       expect(situation.state.conversation.lastUnpromptedAtMs).toEqual(expect.any(Number))
-      expect(observability.gateMemory).toEqual(before)
+      expect(observability.gateMemory).toEqual({ ...before, lastFireAtMs: expect.any(Number) })
       expect(observability.gateMemory.pending).toBeNull()
       expect(observability.gateMemory.fires).toEqual([])
       // Nothing is pending in the chat store either: the next unprompted turn starts instead of failing as busy.

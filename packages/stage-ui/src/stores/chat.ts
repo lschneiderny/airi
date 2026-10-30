@@ -836,6 +836,7 @@ export const useChatStore = defineStore('chat', () => {
     sending: () => sending.value,
     pendingQueuedSendCount: () => pendingQueuedSendCount.value,
     unpromptedPending: () => unpromptedResults.size > 0,
+    activeSessionId: () => activeSessionId.value,
     submitUnprompted: payload => submitUnprompted(payload),
   })
 

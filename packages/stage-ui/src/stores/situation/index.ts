@@ -1,5 +1,19 @@
 import type { ChatHookRegistry, TurnRef } from '@proj-airi/core-agent'
-import type { AppCategory, GateDecision, GateMemory, GateSignals, Observation, SituationState } from '@proj-airi/stage-shared/situation'
+import type {
+  AppCategory,
+  GateDecision,
+  GateLocalTime,
+  GateMemory,
+  GateSignals,
+  GateTimingReason,
+  Observation,
+  SavedGateMemory,
+  SituationState,
+  ThreadState,
+  UrgeGateDecision,
+  UrgeGateMemory,
+  UrgeGateTimingReason,
+} from '@proj-airi/stage-shared/situation'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
@@ -10,22 +24,29 @@ import { errorMessageFrom } from '@moeru/std'
 import { isElectronWindow } from '@proj-airi/stage-shared'
 import {
   advanceSituation,
-  evaluateGate,
+  evaluateUrgeGate,
+  FLOOR_MS,
   forgetForeground,
   forgetSource,
-  initialGateMemory,
   initialSituationState,
+  initialUrgeMemory,
   isSourceInNamespace,
   isTopicFromSource,
+  logicalDayKey,
   markShown,
   markAddressed as markSituationAddressed,
   notifyTopicKey,
-  promotionGateMemory,
-  recordFireOutcome,
-  recordUserTurn,
+  promotionUrgeMemory,
+  pruneThreads,
+  raiseThread,
+  recordExternalSpeech,
+  recordUrgeFireOutcome,
+  recordUrgeUserTurn,
   reduceSituation,
   renderSituation,
-  visibilityRegainGateMemory,
+  restoreSocialMemory,
+  SAFETY_CAP_PER_HOUR,
+  visibilityRegainUrgeMemory,
   withoutAppExtension,
 } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
@@ -34,6 +55,7 @@ import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { computed, shallowRef, watch } from 'vue'
 
+import { useSituationInnerState } from '../../features/situation/inner-state'
 import { useSituationSettings } from '../../features/situation/settings'
 import { chatComposerActivityChangedEvent, getSpeechBusContext, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
@@ -90,6 +112,95 @@ function unpromptedTopicText(topicKey: string, text: string, aboutNotify: boolea
 /** `submitUnprompted` returns this error when another unprompted turn is still pending: busy, not a failure. */
 const UNPROMPTED_BUSY_ERROR = 'Another unprompted turn is still pending'
 
+const NO_THREADS: ThreadState = Object.freeze({ threads: Object.freeze([]) })
+
+/** A fresh uint32 for the gate's first urge threshold of a leadership. */
+function randomSeed(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0] ?? 0
+}
+
+/** The local calendar position of `nowMs` in this host's time zone, for rituals and the logical day. */
+function localTimeFor(nowMs: number): GateLocalTime {
+  const date = new Date(nowMs)
+  return {
+    dayKey: logicalDayKey({ year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate(), hour: date.getHours() }),
+    minuteOfDay: date.getHours() * 60 + date.getMinutes(),
+  }
+}
+
+/** Thread topics are consumed only when a gate turn about them is observed speaking, never when addressed. */
+function isThreadTopic(topicKey: string): boolean {
+  return topicKey.startsWith('thread:')
+}
+
+/** The slice of the gate memory that survives a leader reload. */
+function savedGateMemory(memory: UrgeGateMemory): SavedGateMemory {
+  return {
+    lastFireAtMs: memory.lastFireAtMs,
+    lastSpokenAtMs: memory.lastSpokenAtMs,
+    unanswered: memory.unanswered,
+    awaitingSinceMs: memory.awaitingSinceMs,
+    damp: memory.damp,
+    day: memory.day,
+    lastOwnDayAtMs: memory.lastOwnDayAtMs,
+    rngState: memory.rngState,
+  }
+}
+
+// NOTICE:
+// The devtools inspector still reads the legacy `GateDecision` and `GateMemory`, so urge decisions are translated.
+// Root cause: `situation-observability.ts` and `situation-gate.vue` move to the urge trace later.
+// Source: `.omo/plans/unprompted-reach-out-redesign.md`, todos 15, 16, and 22.
+// Removal condition: todo 22 removes the legacy inspection fields.
+const LEGACY_TIMING_REASON: Readonly<Record<UrgeGateTimingReason, GateTimingReason>> = {
+  'floor': 'gap',
+  'quiet-unanswered': 'gap',
+  'urge': 'gap',
+  'awaiting-reply': 'in-exchange',
+  'safety-cap': 'hourly-cap',
+}
+
+function isUrgeTimingReason(reason: string): reason is UrgeGateTimingReason {
+  return Object.hasOwn(LEGACY_TIMING_REASON, reason)
+}
+
+function legacyGateMemory(memory: UrgeGateMemory): GateMemory {
+  const { pending } = memory
+  return {
+    lastFireAtMs: memory.lastFireAtMs,
+    fires: memory.fires,
+    pending: pending === null ? null : { topicKey: pending.topicKey, firedAtMs: pending.firedAtMs, spokenAtMs: pending.spokenAtMs },
+    ignoreStreak: memory.unanswered,
+    backoffLevel: 0,
+  }
+}
+
+function legacyGateDecision(decision: UrgeGateDecision, memory: UrgeGateMemory): GateDecision {
+  const { trace } = decision
+  const legacyTrace = {
+    nowMs: trace.nowMs,
+    chattiness: trace.chattiness,
+    threshold: trace.urgeThreshold,
+    candidate: null,
+    gapMs: FLOOR_MS,
+    hourlyCap: SAFETY_CAP_PER_HOUR,
+    firesLastHour: trace.firesLastHour,
+    backoffLevel: 0,
+    ignoreStreak: trace.unanswered,
+    pendingTopicKey: trace.pendingTopicKey,
+    nextEligibleAtMs: !Number.isFinite(trace.nowMs)
+      ? null
+      : memory.lastFireAtMs === null ? trace.nowMs : Math.max(trace.nowMs, memory.lastFireAtMs + FLOOR_MS),
+    forceTiming: trace.forceTiming,
+  }
+  if (decision.fire) {
+    const reason = decision.reason === 'urgent' || decision.reason === 'forced' ? decision.reason : 'ready'
+    return { fire: true, reason, topicKey: decision.topicKey, topicText: decision.topicText, trace: legacyTrace }
+  }
+  const reason = isUrgeTimingReason(decision.reason) ? LEGACY_TIMING_REASON[decision.reason] : decision.reason
+  return { fire: false, reason, trace: legacyTrace }
+}
+
 /** The parts of the leader's chat store the gate needs. The chat store hands them over through `observeChat`. */
 export interface SituationChatControls {
   /** Raw `sending`: any turn generates, unprompted turns included. */
@@ -97,6 +208,8 @@ export interface SituationChatControls {
   pendingQueuedSendCount: () => number
   /** Whether an unprompted turn was submitted and its result is not read yet. */
   unpromptedPending: () => boolean
+  /** The chat session of this window. Only its open threads may give the gate a reason to reach out. */
+  activeSessionId: () => string
   submitUnprompted: (payload: ChatUnpromptedPayload) => Promise<ChatUnpromptedResult>
 }
 
@@ -126,9 +239,12 @@ interface RunningSensors {
  * on the hooks that the chat store hands over through {@link observeChat}. Only the user input listeners run in
  * every initialized window, so {@link untilUserIdle} answers wherever a widget reaction is served.
  *
- * In a host that declared the `unprompted` capability ({@link setHostCapabilities}), the leader also runs the
- * opportunity gate every {@link GATE_INTERVAL_MS}. A fire addresses its topic, then starts one unprompted turn through
- * the chat controls, and the gate starts no other turn until that one has a result.
+ * In a host that declared the `unprompted` capability ({@link setHostCapabilities}), the leader also runs the urge
+ * gate every {@link GATE_INTERVAL_MS}. A fire addresses its topic (a thread topic is consumed only once her turn about
+ * it speaks), then starts one unprompted turn through the chat controls, and the gate starts no other turn until that
+ * one has a result. The gate's social memory (with the ritual day) and the open threads are restored from
+ * `useSituationInnerState` when the gate starts and saved whenever a durable field changes, so a leader reload does
+ * not start her from day one. Its randomness comes only from the seed that {@link initialize} takes.
  */
 export const useSituationStore = defineStore('situation', () => {
   const current = shallowRef<SituationState>(initialSituationState)
@@ -151,7 +267,13 @@ export const useSituationStore = defineStore('situation', () => {
 
   const hostSupportsUnprompted = shallowRef(false)
   let gateTicker: ReturnType<typeof setInterval> | undefined
-  let gateMemory: GateMemory = initialGateMemory
+  let gateMemory: UrgeGateMemory = initialUrgeMemory
+  /** Open threads of every chat session; the gate filters them by the active session. Rituals live in `gateMemory.day`. */
+  let threads: ThreadState = NO_THREADS
+  /** The durable state last saved, serialized, so an evaluation that changed nothing durable writes nothing. */
+  let savedSnapshot: string | undefined
+  let seedSource: () => number = randomSeed
+  const innerState = useSituationInnerState()
   let stopGateEvaluation: (() => void) | undefined
   /** Whether the stage was on screen with a fresh desktop sample at the previous gate tick. */
   let wasStageShown = false
@@ -240,7 +362,7 @@ export const useSituationStore = defineStore('situation', () => {
       ingest(observation)
       // The sensor reports user turns only for user-origin sends, so the character's own turns earn no engagement.
       if (observation.kind === 'conversation' && observation.who === 'user' && observation.origin === 'user')
-        setGateMemory(recordUserTurn(gateMemory, observation.atMs))
+        setGateMemory(recordUrgeUserTurn(gateMemory, observation.atMs))
     })
     const stopSpokenListener = chatHooks.onTokenLiteral(async (_literal, context) => {
       // The runtime holds an unprompted reply until it decides to speak, so its first literal means spoken.
@@ -253,10 +375,19 @@ export const useSituationStore = defineStore('situation', () => {
       const trigger = context.message.role === 'user' ? context.message.trigger : undefined
       if (trigger)
         markAddressed(trigger.topicKey)
+      const nowMs = Date.now()
       // Recording a gate fire as spoken now, not when the reply ends, lets a user reply mid-reply count as engagement.
       if (firing && !firing.spoken && context.turnId === firing.turnId) {
         firing.spoken = true
-        setGateMemory(recordFireOutcome(gateMemory, 'spoken', Date.now()))
+        // A thread is consumed here and only here, so a declined, cancelled, or failed attempt leaves it eligible.
+        if (trigger && isThreadTopic(trigger.topicKey))
+          raiseThreadTopic(trigger.topicKey, nowMs)
+        setGateMemory(recordUrgeFireOutcome(gateMemory, 'spoken', nowMs))
+      }
+      else if (gateTicker !== undefined && context.turnId !== firing?.turnId) {
+        // A forced widget or plugin turn spoke outside the gate. It starts the floor, so she does not open a new topic
+        // right after it, but it never counts as an unanswered opening.
+        setGateMemory(recordExternalSpeech(gateMemory, nowMs))
       }
     })
     const stopDeclinedListener = chatHooks.onStreamEnd(async (context) => {
@@ -432,10 +563,36 @@ export const useSituationStore = defineStore('situation', () => {
     })
   }
 
-  /** Changes the gate memory and shows the change in the devtools Situation inspector at once. */
-  function setGateMemory(memory: GateMemory) {
+  /** Changes the gate memory, shows the change in the devtools Situation inspector at once, and saves it if durable. */
+  function setGateMemory(memory: UrgeGateMemory) {
     gateMemory = memory
-    observability.publishGateMemory(memory)
+    observability.publishGateMemory(legacyGateMemory(memory))
+    saveInnerState()
+  }
+
+  function innerStateSnapshot(): string {
+    return JSON.stringify([savedGateMemory(gateMemory), threads.threads])
+  }
+
+  /**
+   * Saves the social memory and the threads while the gate runs, only when one of their fields changed (a fire, an
+   * outcome, a user turn, a day roll, a thread raised or expired, a ritual done). The leadership token keeps a demoted
+   * window from overwriting its successor's save. A refused write is retried at the next change.
+   */
+  function saveInnerState() {
+    if (gateTicker === undefined)
+      return
+    const snapshot = innerStateSnapshot()
+    if (snapshot === savedSnapshot)
+      return
+    if (innerState.write({ gate: savedGateMemory(gateMemory), threads: threads.threads }, leadership))
+      savedSnapshot = snapshot
+  }
+
+  function raiseThreadTopic(topicKey: string, nowMs: number) {
+    const thread = threads.threads.find(candidate => candidate.topicKey === topicKey)
+    if (thread)
+      threads = pruneThreads(raiseThread(threads, thread.id, nowMs), nowMs)
   }
 
   function isRecent(sampledAtMs: number | null | undefined, nowMs: number, limitMs: number): boolean {
@@ -470,19 +627,23 @@ export const useSituationStore = defineStore('situation', () => {
 
     const nowMs = Date.now()
     const signals = gateSignals(controls, nowMs)
-    // A stage that comes back on screen waits a full gap, like a new leader, instead of speaking at once.
+    // A stage that comes back on screen eases in again, like a new leader, instead of speaking at once.
     const stageShown = signals.stageVisible && signals.desktopFresh
     if (stageShown && !wasStageShown)
-      setGateMemory(visibilityRegainGateMemory(gateMemory, nowMs))
+      setGateMemory(visibilityRegainUrgeMemory(gateMemory, nowMs))
     wasStageShown = stageShown
+    threads = pruneThreads(threads, nowMs)
 
     const document = settings.document
     const before = gateMemory
-    const { decision, memory } = evaluateGate({
+    const { decision, memory } = evaluateUrgeGate({
       nowMs,
-      situation: heldTopics.size > 0
-        ? { ...current.value, events: current.value.events.filter(event => !heldTopics.has(event.topicKey)) }
-        : current.value,
+      situation: current.value,
+      reasons: { threads },
+      local: localTimeFor(nowMs),
+      sessionId: controls.activeSessionId(),
+      // The collector drops held keys for every reason kind, thread and urgent notify topics included.
+      heldTopics,
       signals,
       settings: {
         enabled: document.unpromptedEnabled,
@@ -499,22 +660,35 @@ export const useSituationStore = defineStore('situation', () => {
     }, gateMemory)
     // Recording the decision publishes this memory to the inspector too.
     gateMemory = memory
-    observability.recordGateDecision(decision, memory)
+    const legacyDecision = legacyGateDecision(decision, memory)
+    const legacyMemory = legacyGateMemory(memory)
+    observability.recordGateDecision(legacyDecision, legacyMemory)
+    saveInnerState()
     if (decision.fire)
       void fire(controls, decision, before)
-    return { status: 'evaluated', decision, memory }
+    return { status: 'evaluated', decision: legacyDecision, memory: legacyMemory }
   }
 
-  /** Starts the unprompted turn of a fire and records its outcome. The topic is addressed before the turn starts. */
-  async function fire(controls: SituationChatControls, decision: Extract<GateDecision, { fire: true }>, before: GateMemory) {
+  /**
+   * Starts the unprompted turn of a fire and records its outcome. The topic is addressed before the turn starts,
+   * except a thread topic, which only a spoken turn consumes.
+   */
+  async function fire(controls: SituationChatControls, decision: Extract<UrgeGateDecision, { fire: true }>, before: UrgeGateMemory) {
     const turn = { turnId: nanoid(), spoken: false }
     const startedIn = leadership
-    const aboutNotify = current.value.events.some(event => event.topicKey === decision.topicKey && event.kind === 'notify')
+    const { picked } = decision
+    const aboutNotify = picked.kind === 'notify'
     firing = turn
-    markAddressed(decision.topicKey)
+    if (!isThreadTopic(picked.key))
+      markAddressed(picked.key)
     let result: ChatUnpromptedResult
     try {
-      result = await controls.submitUnprompted({ topicKey: decision.topicKey, topicText: unpromptedTopicText(decision.topicKey, decision.topicText, aboutNotify), messageId: turn.turnId })
+      result = await controls.submitUnprompted({
+        topicKey: picked.key,
+        topicText: unpromptedTopicText(picked.key, picked.text, aboutNotify),
+        reason: { kind: picked.kind, category: decision.category },
+        messageId: turn.turnId,
+      })
     }
     catch (error) {
       result = { status: 'failed', error: errorMessageFrom(error) ?? 'Unknown unprompted turn failure' }
@@ -525,16 +699,26 @@ export const useSituationStore = defineStore('situation', () => {
     if (startedIn !== leadership)
       return
     if (result.status === 'failed' && result.error === UNPROMPTED_BUSY_ERROR) {
-      // Another caller's unprompted turn won the race. This fire never happened, so it takes no gap or cap slot.
-      setGateMemory({ ...gateMemory, lastFireAtMs: before.lastFireAtMs, fires: gateMemory.fires.filter(atMs => atMs !== decision.trace.nowMs), pending: before.pending })
+      // Another caller's unprompted turn won the race. This fire never happened, so it takes no floor or cap slot and
+      // spends no urge or random draw. A user turn may have landed meanwhile, so the social fields stay current.
+      setGateMemory({
+        ...gateMemory,
+        lastFireAtMs: before.lastFireAtMs,
+        fires: before.fires,
+        pending: before.pending,
+        urge: before.urge,
+        urgeThreshold: before.urgeThreshold,
+        rngState: before.rngState,
+        doubleText: before.doubleText,
+      })
       return
     }
     if (!turn.spoken)
-      setGateMemory(recordFireOutcome(gateMemory, result.status, Date.now()))
+      setGateMemory(recordUrgeFireOutcome(gateMemory, result.status, Date.now()))
     const text = result.status === 'spoken' ? result.text.trim() : ''
     if (aboutNotify && text) {
       for (const listener of notifySpokenListeners)
-        listener({ topicKey: decision.topicKey, text })
+        listener({ topicKey: picked.key, text })
     }
   }
 
@@ -552,20 +736,32 @@ export const useSituationStore = defineStore('situation', () => {
   function syncGateLoop() {
     const shouldRun = leading.value && hostSupportsUnprompted.value
     if (shouldRun && gateTicker === undefined) {
-      setGateMemory(promotionGateMemory(Date.now()))
+      // A new leader starts with no urge and eases in, but keeps the social memory, the ritual day, and the threads of
+      // the leader before it, so a reload neither greets twice nor forgets an unanswered opening.
+      const nowMs = Date.now()
+      const saved = innerState.read(nowMs)
+      const promoted = promotionUrgeMemory(nowMs, seedSource())
+      gateMemory = saved.gate === null ? promoted : restoreSocialMemory(promoted, saved.gate, nowMs)
+      threads = { threads: saved.threads }
+      savedSnapshot = innerStateSnapshot()
       wasStageShown = false
       stopVoiceTurnListener = startVoiceTurnListener()
       gateTicker = setInterval(gateTick, GATE_INTERVAL_MS)
       stopGateEvaluation = observability.serveGateEvaluation(() => gateTick(true))
+      setGateMemory(gateMemory)
     }
     else if (!shouldRun && gateTicker !== undefined) {
+      // The final save runs while the leadership token is still this window's.
+      saveInnerState()
       clearInterval(gateTicker)
       gateTicker = undefined
       stopGateEvaluation?.()
       stopGateEvaluation = undefined
       stopVoiceTurnListener?.()
       stopVoiceTurnListener = undefined
-      setGateMemory(initialGateMemory)
+      threads = NO_THREADS
+      savedSnapshot = undefined
+      setGateMemory(initialUrgeMemory)
     }
   }
 
@@ -575,6 +771,7 @@ export const useSituationStore = defineStore('situation', () => {
     current.value = initialSituationState
     leading.value = true
     leadership += 1
+    innerState.claim(leadership)
     // Sensors report their current readings at once, so they start after `leading` lets `ingest` through.
     sensors = startSensors()
     startConversation()
@@ -602,10 +799,12 @@ export const useSituationStore = defineStore('situation', () => {
     if (ticker !== undefined)
       clearInterval(ticker)
     ticker = undefined
-    if (leading.value)
-      leadership += 1
+    const wasLeading = leading.value
     leading.value = false
+    // The gate stops (and saves) before the leadership advances, so its final save still carries this window's token.
     syncGateLoop()
+    if (wasLeading)
+      leadership += 1
     current.value = initialSituationState
     seenNotifyTopics.clear()
     heldTopics.clear()
@@ -712,9 +911,15 @@ export const useSituationStore = defineStore('situation', () => {
 
   /**
    * Binds the store to synchronized leadership and starts the user input listeners. Repeated calls keep the first
-   * subscription. The leadership listener runs immediately with the current role, so an initial leader starts at once.
+   * subscription and its options. The leadership listener runs immediately with the current role, so an initial leader
+   * starts at once.
+   *
+   * `seedSource` gives the seed of the gate's first urge threshold on every promotion; it defaults to a random uint32.
+   * Tests pass a fixed seed so no assertion depends on luck.
    */
-  function initialize(syncedPinia: SyncedPiniaRuntime) {
+  function initialize(syncedPinia: SyncedPiniaRuntime, options: { seedSource?: () => number } = {}) {
+    if (!stopLeadershipListener)
+      seedSource = options.seedSource ?? randomSeed
     stopUserInputListeners ??= startUserInputListeners()
     stopLeadershipListener ??= syncedPinia.onLeadershipChange(isLeader => isLeader ? startLeading() : stopLeading())
   }
