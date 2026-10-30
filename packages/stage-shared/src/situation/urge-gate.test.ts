@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   ACCRUAL_DT_MAX_MS,
+  BASE_RATE_AT_HALF_PER_HOUR,
   DOUBLE_TEXT_OFFSET_MAX_MS,
   DOUBLE_TEXT_OFFSET_MIN_MS,
   evaluateUrgeGate,
@@ -156,11 +157,12 @@ function drawState(memory: UrgeGateMemory) {
 
 describe('evaluateUrgeGate rate', () => {
   it('maps Chattiness to the base rate and to nothing else', () => {
-    const expected = [[0, 0.118], [0.25, 0.266], [0.5, 0.6], [0.75, 1.355], [1, 3.06]] as const
+    // Ratios to the calibration constant (26^(c - 0.5)), so calibrating it in todo 8 keeps this pin.
+    const expected = [[0, 0.1961], [0.25, 0.4429], [0.5, 1], [0.75, 2.2581], [1, 5.099]] as const
     const opens: number[] = []
-    for (const [chattiness, base] of expected) {
+    for (const [chattiness, ratio] of expected) {
       const { trace } = evaluateUrgeGate(gateInput({ settings: { chattiness } }), initialUrgeMemory).decision
-      expect(trace.multipliers.base).toBeCloseTo(base, 2)
+      expect(trace.multipliers.base / BASE_RATE_AT_HALF_PER_HOUR).toBeCloseTo(ratio, 3)
       expect({ ...trace.multipliers, base: 0 }).toEqual({ base: 0, pressure: 0.6, exchange: 1, clear: 1, damping: 1, floor: 1, game: 1 })
       opens.push(trace.hazardPerHour.open)
     }
