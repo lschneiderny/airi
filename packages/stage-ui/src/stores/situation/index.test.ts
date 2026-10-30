@@ -1219,4 +1219,59 @@ describe('situation gate loop', () => {
 
     expect(await observability.evaluateGate()).toEqual({ status: 'skipped', reason: 'gate-not-running' })
   })
+  // Pinned before the urge rewrite. Covered by name elsewhere: the leader-only loop ("never runs in a host without
+  // the unprompted capability, nor in a follower"), one pending turn ("starts no second turn while one is pending"),
+  // and the forced widget turn, driven through the real chat store in chat.contract.test.ts.
+
+  it('keeps a held topic away from the gate until it is released, leaving it unaddressed', async () => {
+    const { store, chat, observability } = startQuietLeader()
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    const release = store.holdTopic('wake')
+
+    await nextGateTick()
+    await nextGateTick()
+
+    expect(observability.gate?.decision).toMatchObject({ fire: false, reason: 'no-topic' })
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+    expect(store.state.events.find(event => event.topicKey === 'wake')?.addressedAtMs).toBeNull()
+
+    release()
+    await nextGateTick()
+
+    expect(observability.gate?.decision).toMatchObject({ fire: true, reason: 'ready', topicKey: 'wake' })
+    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+  })
+
+  it('holds back even an urgent notify while its topic is held', async () => {
+    const { store, chat, observability } = startQuietLeader()
+    store.ingest({ kind: 'notify', sourceKey: 'plugin:widget', eventId: 'evt-1', headline: 'Doorbell', urgency: 'immediate', reminder: false, critical: true, atMs: Date.now() })
+    const topicKey = 'notify:plugin:widget:evt-1'
+    const release = store.holdTopic(topicKey)
+
+    await nextGateTick()
+    expect(observability.gate?.decision).toMatchObject({ fire: false })
+    expect(chat.submitUnprompted).not.toHaveBeenCalled()
+
+    release()
+    await nextGateTick()
+    expect(observability.gate?.decision).toMatchObject({ fire: true, reason: 'urgent', topicKey })
+  })
+
+  it('restores the memory from before the fire when the unprompted turn loses the busy race', async () => {
+    const { chat, observability } = startQuietLeader()
+    chat.submitUnprompted.mockResolvedValueOnce({ status: 'failed', error: 'Another unprompted turn is still pending' })
+    await vi.advanceTimersByTimeAsync(GAP_MS)
+    offerTopic()
+    const before = observability.gateMemory
+
+    await nextGateTick()
+
+    expect(chat.submitUnprompted).toHaveBeenCalledOnce()
+    expect(observability.gate?.decision).toMatchObject({ fire: true })
+    // The decision recorded the fire; the rollback took back its gap slot, its cap slot, and its pending entry.
+    expect(observability.gateMemory).toEqual(before)
+    expect(observability.gateMemory.lastFireAtMs).toBe(before.lastFireAtMs)
+    expect(observability.gateMemory.pending).toBeNull()
+  })
 })
