@@ -20,6 +20,8 @@ vi.mock('vue-i18n', () => ({
   useI18n: () => ({ locale: { value: 'en' }, t: (key: string) => key }),
 }))
 
+vi.mock('../../database/repos/memory.repo')
+
 vi.mock('localforage', () => ({
   default: {
     getItem: vi.fn(async () => undefined),
