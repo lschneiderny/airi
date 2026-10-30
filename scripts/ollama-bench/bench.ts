@@ -8,16 +8,26 @@ const model = Bun.argv[2]
 if (!model)
   throw new Error('usage: bun bench.ts <model>')
 
-const system = await Bun.file(`${import.meta.dir}/inputs/shuka-system-prompt.txt`).text()
-const tools = JSON.parse(await Bun.file(`${import.meta.dir}/inputs/tools.json`).text())
+const memoryIndex = await Bun.file(`${import.meta.dir}/inputs/memory-index.txt`).text()
+const system = `${await Bun.file(`${import.meta.dir}/inputs/shuka-system-prompt.txt`).text()}\n\n${memoryIndex}`
+const tools = [
+  ...JSON.parse(await Bun.file(`${import.meta.dir}/inputs/tools.json`).text()),
+  ...JSON.parse(await Bun.file(`${import.meta.dir}/inputs/memory-tools.json`).text()),
+]
+const toolResults: Record<string, string> = {
+  builtIn_readMemory: '01932b4e-mem-presentation (yours): The owner\'s presentation is on Friday at 3pm.',
+  builtIn_writeMemory: 'Saved memory "01932b4e-mem-presentation".',
+}
 const situation = '[Situation 23:40]\n- The user is at the desk and active\n- Now: Discord (chat), for about 10 min'
 const script = [
   'hey',
   'i\'m kinda nervous about my presentation tomorrow',
+  'remember that my presentation is on friday at 3pm',
   'tell me a joke to cheer me up',
   'what\'s the difference between a planet and a dwarf planet?',
   'brb gotta take a call',
   'ok i\'m back, did you miss me?',
+  'when was my presentation again?',
 ]
 const PROBES = 4
 const TURN_TIMEOUT_MS = 300_000
@@ -116,7 +126,7 @@ async function turnWithTools(messages: unknown[]) {
   let steps = 1
   while (!last.error && last.toolCalls.length && !last.text.replace(/<\|[^|]*\|>/g, '').trim() && steps < 3) {
     messages.push({ role: 'assistant', content: last.text, tool_calls: last.toolCalls })
-    for (const c of last.toolCalls as { function: { name: string } }[]) messages.push({ role: 'tool', tool_name: c.function.name, content: JSON.stringify({ success: true }) })
+    for (const c of last.toolCalls as { function: { name: string } }[]) messages.push({ role: 'tool', tool_name: c.function.name, content: toolResults[c.function.name] ?? JSON.stringify({ success: true }) })
     last = await chat(messages)
     allTools.push(...last.toolCalls)
     steps++
