@@ -466,35 +466,57 @@ describe('situation observability store', () => {
     expect((await store.inspect()).extraction.inFlight).toBe(false)
   })
 
-  it('keeps the inspection under 64 KB after an hour of gate ticks', async () => {
+  /**
+   * One hour of 2 s gate ticks that fills every history to its cap: the hazard changes at every tick, and the hold
+   * reason changes every third tick, the way it does while he chats (typing, urge, generating, speaking). The open
+   * threads are also listed as reasons. Four fires each record a spoken outcome, and the extraction ledger is full.
+   * Returns the inspection and its size as the inspector bus would carry it, measured as JSON bytes.
+   */
+  async function fillHour(threads: readonly Thread[]) {
     const store = useSituationObservabilityStore()
-    // A heavy hour: the most threads at the stored text limits, each also a reason; a hazard that changes at every tick,
-    // so the urge history reaches its cap; a hold by typing every ten minutes; four fires and four extractions.
-    const threads = Array.from({ length: THREADS_MAX }, (_, index) => longThread(index))
     const reasons = [...threads.map(thread => reason(thread.topicKey, 'thread-question', 'open', thread.cue)), reason('own-day', 'own-day', 'open', 'something from your own day')]
+    const holds = [['user-typing', 'user-typing'], ['urge', 'gap'], ['generating', 'generating'], ['character-speaking', 'character-speaking']] as const
     const ticks = 60 * 60 / 2
     for (let index = 0; index < ticks; index++) {
       const nowMs = T0 + index * 2_000
       const total = 0.6 + (index % 500) / 1_000
       const patch = { reasons, hazardPerHour: { open: total, continuation: 0, ritual: 0, due: 0, total }, firesLastHour: Math.floor(index / 450) }
       const fires = index % 450 === 449
-      const typing = index % 300 < 3
-      const decision = fires ? urgeFire(reasons[index % reasons.length], nowMs, patch) : urgeHold(typing ? 'user-typing' : 'urge', nowMs, patch)
-      store.recordUrgeDecision(decision, initialUrgeMemory)
-      store.recordGateDecision(fires ? fire(reasons[index % reasons.length].key, nowMs) : hold(typing ? 'user-typing' : 'gap', nowMs), initialGateMemory)
-      if (fires) {
+      const [urgeReason, legacyReason] = holds[Math.floor(index / 3) % holds.length]
+      const picked = reasons[index % reasons.length]
+      store.recordUrgeDecision(fires ? urgeFire(picked, nowMs, patch) : urgeHold(urgeReason, nowMs, patch), initialUrgeMemory)
+      store.recordGateDecision(fires ? fire(picked.key, nowMs) : hold(legacyReason, nowMs), initialGateMemory)
+      if (fires)
         store.recordReasonOutcome('thread-question', 'spoken', nowMs)
-        store.recordExtraction({ ...ledgerEntry(nowMs), threads: threads.slice(0, 3).map(thread => ({ kind: thread.kind, summary: thread.summary })) })
-      }
     }
+    for (let index = 0; index < SITUATION_EXTRACTION_LEDGER_MAX; index++)
+      store.recordExtraction({ ...ledgerEntry(T0 + index * MINUTE_MS), threads: threads.slice(0, 3).map(thread => ({ kind: thread.kind, summary: thread.summary })) })
     store.publishUrgeState(initialUrgeMemory, threads)
 
     const inspection = await store.inspect()
-    const bytes = new TextEncoder().encode(JSON.stringify(inspection)).length
-    // Printed for the evidence of the inspection size budget.
-    console.info(`[situation-observability] inspection payload after 1 h of 2 s ticks: ${bytes} bytes`)
+    expect(inspection.gateHistory).toHaveLength(SITUATION_GATE_HISTORY_MAX)
+    expect(inspection.urge.history).toHaveLength(SITUATION_URGE_HISTORY_MAX)
     expect(inspection.urgeHistory).toHaveLength(SITUATION_URGE_HISTORY_MAX)
-    expect(bytes).toBeLessThan(64 * 1024)
+    return { inspection, bytes: new TextEncoder().encode(JSON.stringify(inspection)).length }
+  }
+
+  it('keeps the inspection under 64 KB after a chat-active hour that fills every history', async () => {
+    const threads = Array.from({ length: 8 }, (_, index) => ({ ...longThread(index), summary: 's'.repeat(100), cue: 'c'.repeat(80) }))
+
+    const { bytes } = await fillHour(threads)
+
+    // Measured 51,123 bytes at the current caps (95,366 with both caps at 200). The 60 KB target leaves room below the 64 KB budget.
+    expect(bytes).toBeLessThanOrEqual(60 * 1024)
+  })
+
+  it('bounds the inspection with every history full and the most threads at the stored text limits', async () => {
+    const threads = Array.from({ length: THREADS_MAX }, (_, index) => longThread(index))
+
+    const { bytes } = await fillHour(threads)
+
+    // Known bound, not the budget: 80,939 bytes at the current caps. The threads, and the reasons that repeat
+    // them, are data the inspector must show, so this case may exceed 64 KB; it must not grow past this bound.
+    expect(bytes).toBeLessThanOrEqual(84 * 1024)
   })
 
   it('counts block lines and characters the way the renderer budgets them', () => {

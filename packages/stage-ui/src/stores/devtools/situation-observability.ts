@@ -31,11 +31,21 @@ import { useContextObservabilityStore } from './context-observability'
 /** Length cap of the render history: older renders are dropped first. */
 export const SITUATION_RENDER_HISTORY_MAX = 100
 
-/** Length cap of the gate history, counted in entries after collapsing: older entries are dropped first. */
-export const SITUATION_GATE_HISTORY_MAX = 200
+/**
+ * Length cap of the gate history, counted in entries after collapsing: older entries are dropped first.
+ *
+ * Tuning: kept small because it shares the inspection's 64 KB budget with the urge histories, and the urge decision
+ * history now carries the same decisions.
+ */
+export const SITUATION_GATE_HISTORY_MAX = 50
 
-/** Length cap of the urge decision history and the urge history, counted in entries after collapsing. */
-export const SITUATION_URGE_HISTORY_MAX = 200
+/**
+ * Length cap of the urge decision history and the urge history, counted in entries after collapsing.
+ *
+ * Tuning: a chat-active hour changes the hold reason every few seconds, so both histories reach their cap. 100 entries
+ * each keep a full inspection under 60 KB; raise it only with the size test in `situation-observability.test.ts`.
+ */
+export const SITUATION_URGE_HISTORY_MAX = 100
 
 /** Length cap of the thread extraction ledger: older entries are dropped first. */
 export const SITUATION_EXTRACTION_LEDGER_MAX = 20
