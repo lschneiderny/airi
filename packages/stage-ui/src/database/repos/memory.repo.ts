@@ -40,7 +40,7 @@ export const memoryRepo = {
     })
     return entries.sort((left, right) => left.updatedAt - right.updatedAt)
   },
-  /** Adds entries as they are, with their ids. Card import uses it. */
+  /** Adds entries as they are, with their ids. */
   async add(entries: MemoryEntry[]) {
     await write(() => Promise.all(entries.map(entry => records.setItem<MemoryEntry>(entry.id, entry))))
   },
