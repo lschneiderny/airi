@@ -7,22 +7,7 @@ import { BASE_SALIENCE } from '@proj-airi/stage-shared/situation'
 
 import { getEventSourceKey } from '../../../utils/event-source'
 import { useSituationStore } from '../index'
-
-/** Longest context text, in code points, that one source keeps. The rendered bullet is shorter still. */
-const CONTEXT_TEXT_MAX_CHARS = 400
-
-/** A bracketed `[Situation ...]` header inside source text, which would imitate the block's own header. */
-const SITUATION_HEADER_PATTERN = /\[(situation\b[^\]]*)\]/gi
-
-/**
- * Prepares untrusted source text for the situation: trims it, caps it at 400 code points, and neutralizes marker
- * delimiters (`<|`, `|>`) and `[Situation ...]` headers. The model must never see cue syntax inside its situation
- * block, where it could copy it into a spoken reply, nor a second block header.
- */
-export function situationContextText(text: string): string {
-  const capped = Array.from(text.trim()).slice(0, CONTEXT_TEXT_MAX_CHARS).join('')
-  return capped.replaceAll('<|', '(').replaceAll('|>', ')').replace(SITUATION_HEADER_PATTERN, '($1)')
-}
+import { situationContextText } from './context-text'
 
 /**
  * Maps one context message (plugin `context:update`, vision, `input:text` context updates) to a situation

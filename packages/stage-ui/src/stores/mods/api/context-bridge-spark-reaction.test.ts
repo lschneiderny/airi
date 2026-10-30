@@ -240,6 +240,9 @@ describe('widget spark reactions', () => {
       unpromptedPending: () => unpromptedPending,
       activeSessionId: () => 'session-1',
       submitUnprompted: payload => submitUnprompted(payload),
+      sessionMessages: () => [],
+      extractionSelection: async () => null,
+      stream: async () => {},
     })
     situation.initialize(syncedRuntime(true), { seedSource: () => SEED })
     const bridge = useContextBridgeStore()

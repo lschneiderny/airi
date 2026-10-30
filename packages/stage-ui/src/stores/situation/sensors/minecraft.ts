@@ -2,7 +2,7 @@ import { watch } from 'vue'
 
 import { useMinecraftStore } from '../../modules/gaming-minecraft'
 import { useSituationStore } from '../index'
-import { situationContextText } from './context'
+import { situationContextText } from './context-text'
 
 /** Situation source key of the Minecraft integration status. */
 export const MINECRAFT_CONTEXT_SOURCE_KEY = 'system:minecraft-integration'

@@ -4,7 +4,7 @@ import type { NotifyObservation, NotifyUrgency } from '@proj-airi/stage-shared/s
 import { getSpeechBusContext, situationNotifyObservedEvent } from '../../../services/speech/bus'
 import { getEventSourceKey } from '../../../utils/event-source'
 import { useSituationStore } from '../index'
-import { situationContextText } from './context'
+import { situationContextText } from './context-text'
 
 /** Longest notify note, in code points, that the situation keeps. */
 export const NOTIFY_NOTE_MAX_CHARS = 200
