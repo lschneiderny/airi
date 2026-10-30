@@ -6,12 +6,11 @@ import type { ReplyScorer } from './scorer'
 import { createStreamingCategorizer, cueComplianceOutcome, replayReply, useLlmmarkerParser } from '@proj-airi/core-agent'
 import { createStreamingControlParser, normalizeActPayload, tokenAct } from '@proj-airi/pipelines-audio'
 
-export const CUE_CONTRACT_SCORER = { id: 'cue-contract-score', version: 1 } as const
+export const CUE_CONTRACT_SCORER = { id: 'cue-contract-score', version: 2 } as const
 const REJECTED_TOKENS_MAX = 5
 
 export interface ReplyScore {
   schema: 'airi.cue-contract-score.reply/v1'
-  passes: { whole: true, perChar: boolean }
   chunkInvariant: boolean
   cueStats: { act: number, recovered: number, stripped: number }
   stageRejected: number
@@ -190,8 +189,9 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
         // Probe with a known emotion so an invented emotion cannot hide the intensity's syntax.
         const probe = actParser.parse(`<|ACT neutral ${intensity.trim()}|>`)?.payload.emotion
         const parsedIntensity = typeof probe === 'object' && probe !== null && 'intensity' in probe ? probe.intensity : undefined
-        if (typeof parsedIntensity === 'string') {
-          intensityScore = { kind: 'band', band: parsedIntensity.toLowerCase() as 'slight' | 'clear' | 'strong' }
+        const band = typeof parsedIntensity === 'string' ? parsedIntensity.toLowerCase() : undefined
+        if (band === 'slight' || band === 'clear' || band === 'strong') {
+          intensityScore = { kind: 'band', band }
         }
         else {
           // JSON intensity strings use numeric coercion, not the bare ACT grammar. Pass the
@@ -223,7 +223,6 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
     const noSpeech = spokenText.trim() === ''
     return {
       schema: 'airi.cue-contract-score.reply/v1',
-      passes: { whole: true, perChar: true },
       chunkInvariant: projection(whole) === projection(perChar),
       cueStats,
       stageRejected,

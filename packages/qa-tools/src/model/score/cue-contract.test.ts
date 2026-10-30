@@ -34,7 +34,6 @@ describe('cue contract scorer', () => {
     expect(score.outcome).toBe(row.expect.outcome)
     expect(score.leadCue).toBe(row.expect.leadCue)
     expect(score.chunkInvariant).toBe(row.expect.chunkInvariant ?? true)
-    expect(score.passes).toEqual({ whole: true, perChar: true })
     expect(score.acts.filter(act => act.recoveredFrom !== null)).toHaveLength(score.cueStats.recovered)
     expect(score.unknownMarkers).toEqual(row.expect.unknownMarkers ?? [])
     if (row.expect.residualChars !== undefined)
@@ -158,6 +157,16 @@ describe('cue contract scorer', () => {
     const score = await cueContractScorer.score(record('<|ACT happy 1e-1|>'), context)
     expect(score.stageRejected).toBe(1)
     expect(score.acts[0].intensity).toEqual({ kind: 'unrecognized-string' })
+  })
+
+  it.each([
+    ['SLIGHT', { kind: 'band', band: 'slight' }],
+    ['Clear', { kind: 'band', band: 'clear' }],
+    ['strong', { kind: 'band', band: 'strong' }],
+    ['slightly', { kind: 'unrecognized-string' }],
+  ])('narrows bare intensity using the parser result: %s', async (intensity, expected) => {
+    const score = await cueContractScorer.score(record(`<|ACT happy ${intensity}|>`), context)
+    expect(score.acts[0].intensity).toEqual(expected)
   })
 
   it('does not reject row 19 when its unknown LOOK marker is removed', async () => {

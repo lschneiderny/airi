@@ -173,7 +173,6 @@ export async function runScoreCli(
         && score.outcome === expected.outcome
         && score.leadCue === expected.leadCue
         && score.chunkInvariant === (expected.chunkInvariant ?? true)
-        && score.passes.whole && score.passes.perChar
         && JSON.stringify(score.unknownMarkers) === JSON.stringify(expected.unknownMarkers ?? [])
         && (expected.spoken === undefined || score.spokenText === expected.spoken)
         && (expected.residualChars === undefined || score.residualChars === expected.residualChars)

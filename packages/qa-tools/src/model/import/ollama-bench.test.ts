@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { runModelCli } from '../cli'
 import { readTranscript } from '../transcript/jsonl'
 import { runImportOllamaBenchCli } from './ollama-bench'
 
@@ -75,20 +76,33 @@ describe('ollama-bench import', () => {
     ['corrupt', 'bench.jsonl', '{\n'],
     ['missing turns', 'bench.jsonl', '{"model":"x","caps":[],"withTools":false,"probes":[]}\n'],
     ['missing replies', 'sweep.jsonl', '{"model":"x","config":"defaults","options":{},"think":false,"withTools":false,"details":{}}\n'],
+    ['empty source', 'bench.jsonl', ''],
   ])('rejects %s with source and physical line', async (_, file, content) => {
     const { results, out } = await setup()
     await writeFile(resolve(results, file), content)
-    await expect(runImportOllamaBenchCli([results, '--set', 'x', '--out', out], repoRoot, {})).rejects.toThrow(new RegExp(`${file}.*line 1`))
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    expect(await runImportOllamaBenchCli([results, '--set', 'x', '--out', out], repoRoot, {})).toBe(2)
+    expect(String(stderr.mock.calls.at(-1)?.[0])).toMatch(new RegExp(`${file}.*line 1`))
   })
 
   it.each(['unknown.jsonl', 'unknown.txt'])('rejects unknown file %s and empty directories loudly', async (file) => {
     const { results, dir, out } = await setup()
     await writeFile(resolve(results, file), '{}\n')
-    await expect(runImportOllamaBenchCli([results, '--set', 'x', '--out', out], repoRoot, {})).rejects.toThrow(new RegExp(`${file}.*line 1`))
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    expect(await runImportOllamaBenchCli([results, '--set', 'x', '--out', out], repoRoot, {})).toBe(2)
+    expect(String(stderr.mock.calls.at(-1)?.[0])).toMatch(new RegExp(`${file}.*line 1`))
     await rm(results, { recursive: true })
     // A newly created directory is empty, not a missing-directory argument error.
     const empty = await mkdtemp(resolve(dir, 'empty-'))
-    await expect(runImportOllamaBenchCli([empty, '--set', 'x', '--out', out], repoRoot, {})).rejects.toThrow(/line 1.*empty/)
+    expect(await runImportOllamaBenchCli([empty, '--set', 'x', '--out', out], repoRoot, {})).toBe(2)
+    expect(String(stderr.mock.calls.at(-1)?.[0])).toMatch(/line 1.*empty/)
+  })
+
+  it('returns 1 from the CLI for output failures', async () => {
+    const { results } = await setup()
+    const stderr = vi.fn()
+    expect(await runModelCli(['import-ollama-bench', results, '--set', 'x', '--out', results], repoRoot, {}, { stderr })).toBe(1)
+    expect(stderr).toHaveBeenCalledOnce()
   })
 
   it('creates the default dataset path and omits unrecorded machine fields', async () => {
