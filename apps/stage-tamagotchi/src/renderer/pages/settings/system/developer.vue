@@ -90,6 +90,12 @@ const menu = computed(() => [
     to: '/devtools/situation',
   },
   {
+    title: t('tamagotchi.settings.devtools.pages.memory.title'),
+    description: t('tamagotchi.settings.devtools.pages.memory.description'),
+    icon: 'i-solar:notebook-bookmark-bold-duotone',
+    to: '/devtools/memory',
+  },
+  {
     title: 'Relative Mouse',
     description: 'Get mouse position relative to the window',
     icon: 'i-solar:sledgehammer-bold-duotone',

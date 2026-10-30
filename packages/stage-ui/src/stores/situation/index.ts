@@ -58,6 +58,7 @@ import { localLogicalDayKey, useSituationInnerState } from '../../features/situa
 import { useSituationSettings } from '../../features/situation/settings'
 import { createThreadExtractor } from '../../features/situation/thread-extraction'
 import { chatComposerActivityChangedEvent, getSpeechBusContext, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
+import { useMemoryObservabilityStore } from '../devtools/memory-observability'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { startConversationSensor } from './sensors/conversation'
 import { DESKTOP_SAMPLE_STALE_MS, startDesktopSensor } from './sensors/desktop'
@@ -238,6 +239,7 @@ export const useSituationStore = defineStore('situation', () => {
   let stopNotifyListener: (() => void) | undefined
   let stopLeadershipListener: (() => void) | undefined
   const observability = useSituationObservabilityStore()
+  const memoryObservability = useMemoryObservabilityStore()
   const settings = useSituationSettings()
   const desktopActivity = useDesktopActivityStore()
   const foregroundWindow = useForegroundWindowStore()
@@ -285,6 +287,8 @@ export const useSituationStore = defineStore('situation', () => {
 
   // Feeds the devtools Situation inspector of this window. Sync flush keeps it equal to the state after every call.
   watch([leading, current], ([isLeading, state]) => observability.publishLiveState(isLeading, state), { flush: 'sync', immediate: true })
+  // The leader window runs chat, so it serves the devtools Memory inspector too.
+  watch(leading, isLeading => memoryObservability.setLeading(isLeading), { flush: 'sync', immediate: true })
 
   // The foreground sensor stops reporting by itself; what it reported earlier must leave the state too, so the next
   // prompt carries no app or title. Followers hold the initial state, and the situation is neither synced nor

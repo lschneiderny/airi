@@ -49,6 +49,7 @@ import { describeChatImages, replaceToolResultImages } from './chat/image-projec
 import { useChatSessionStore } from './chat/session-store'
 import { useChatStreamStore } from './chat/stream-store'
 import { useContextObservabilityStore } from './devtools/context-observability'
+import { useMemoryObservabilityStore } from './devtools/memory-observability'
 import { useSituationObservabilityStore } from './devtools/situation-observability'
 import { useMemoryStore } from './memory'
 import { useAiriCardStore } from './modules/airi-card'
@@ -304,6 +305,7 @@ export const useChatStore = defineStore('chat', () => {
   const wakeWords = useWakeWordsStore()
   const stickersStore = useStickersStore()
   const contextObservability = useContextObservabilityStore()
+  const memoryObservability = useMemoryObservabilityStore()
   const situationObservability = useSituationObservabilityStore()
   const { activeSessionId } = storeToRefs(chatSession)
   const { streamingMessage } = storeToRefs(chatStream)
@@ -990,13 +992,15 @@ export const useChatStore = defineStore('chat', () => {
     if (!characterId)
       throw new Error('The target session has no character')
 
-    const memoryTools = memory.enabled
+    const rawMemoryTools = memory.enabled
       ? await createMemoryTools({
           read: id => memory.read(id, characterId),
           write: entry => memory.write(entry, characterId),
           forget: id => memory.forget(id, characterId),
         })
       : []
+    // The devtools Memory inspector lists every memory tool call of this run.
+    const memoryTools = memoryObservability.observeMemoryTools(rawMemoryTools, { sessionId: payload.sessionId, origin: unprompted ? 'unprompted' : 'user' })
     const { provider: providerId, model: modelId } = cardStore.getModules(characterId).consciousness
 
     const temperature = payload.temperature ?? consciousnessStore.activeTemperature
