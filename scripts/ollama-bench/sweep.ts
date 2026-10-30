@@ -8,8 +8,16 @@ const model = Bun.argv[2]
 if (!model)
   throw new Error('usage: bun sweep.ts <model>')
 
-const system = await Bun.file(`${import.meta.dir}/inputs/shuka-system-prompt.txt`).text()
-const tools = JSON.parse(await Bun.file(`${import.meta.dir}/inputs/tools.json`).text())
+const memoryIndex = await Bun.file(`${import.meta.dir}/inputs/memory-index.txt`).text()
+const system = `${await Bun.file(`${import.meta.dir}/inputs/shuka-system-prompt.txt`).text()}\n\n${memoryIndex}`
+const tools = [
+  ...JSON.parse(await Bun.file(`${import.meta.dir}/inputs/tools.json`).text()),
+  ...JSON.parse(await Bun.file(`${import.meta.dir}/inputs/memory-tools.json`).text()),
+]
+const toolResults: Record<string, string> = {
+  builtIn_readMemory: '01932b4e-mem-presentation (yours): The owner\'s presentation is on Friday at 3pm.',
+  builtIn_writeMemory: 'Saved memory "01932b4e-mem-presentation".',
+}
 const situation = '[Situation 23:40]\n- The user is at the desk and active\n- Now: Discord (chat), for about 10 min'
 const script = [
   'hey',
@@ -100,7 +108,7 @@ async function turnWithTools(messages: unknown[], options: Record<string, number
   let steps = 1
   while (!last.error && last.toolCalls.length && !last.text.replace(/<\|[^|]*\|>/g, '').trim() && steps < 3) {
     messages.push({ role: 'assistant', content: last.text, tool_calls: last.toolCalls })
-    for (const c of last.toolCalls as { function: { name: string } }[]) messages.push({ role: 'tool', tool_name: c.function.name, content: JSON.stringify({ success: true }) })
+    for (const c of last.toolCalls as { function: { name: string } }[]) messages.push({ role: 'tool', tool_name: c.function.name, content: toolResults[c.function.name] ?? JSON.stringify({ success: true }) })
     last = await chat(messages, options, think)
     allTools.push(...last.toolCalls)
     steps++

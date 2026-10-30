@@ -1,0 +1,109 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "description": "Read long-term memory entries by their index ids.",
+      "name": "builtIn_readMemory",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The entry id, as the memory index shows it."
+            },
+            "minItems": 1,
+            "description": "Every entry that the reply needs, so one call reads them all."
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "strict": true
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "description": "Save or update lasting facts in long-term memory, one entry per fact.",
+      "name": "builtIn_writeMemory",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The id of the entry to change, as the memory index shows it. Null for a new entry."
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 150,
+                  "description": "One line for the index. When the fact fits in one line, write the fact itself. Otherwise write when the fact matters."
+                },
+                "body": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "The fact itself, with what makes it true or when it was said."
+                }
+              },
+              "required": [
+                "id",
+                "description",
+                "body"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "description": "Every fact to save in this turn, one entry per fact."
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "strict": true
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "description": "Forget one long-term memory entry.",
+      "name": "builtIn_forgetMemory",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The entry id, as the memory index shows it."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "strict": true
+    }
+  }
+]
