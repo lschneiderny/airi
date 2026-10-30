@@ -17,7 +17,7 @@ pnpm qa:model import-ollama-bench scripts/ollama-bench/results/2026-10-27-mac-m2
 pnpm qa:model score packages/qa-tools/model-eval/sets/legacy-2026-10-27-mac-m2/transcripts.jsonl --set legacy-2026-10-27-mac-m2 --label legacy --example-lines-from scripts/ollama-bench/inputs/shuka-system-prompt.txt
 ```
 
-The producing run is `.temp/qa/20261029-194854-model-score-legacy/`. Its `run.json` records `dirty: true`: the CRLF example-line fix, its regression test, and the regenerated `summary.json` and `summary.md` were not yet committed when scoring ran. The known VS Code package line-ending artifact was not present. The command copied `summary.json` and `summary.md` into this directory. A second run without `--set` (label `legacy-check`) produced a byte-identical `summary.json` (SHA-256 `5bde58fcf6f3d0e74e4b2d84521080a1db01dc82b47b28cb23543738e0757a0a`). The scorer is `cue-contract-score` version 1, and its fixtures passed 25/25.
+The producing run is `.temp/qa/20261029-210232-model-score-legacy/`, at commit `af261c501fd90d812935e1584300cf5790c3f36c`. Its `run.json` records `dirty: true`: the known VS Code package line-ending artifact was present before scoring and remains excluded from this dataset commit. The command copied `summary.json` and `summary.md` into this directory. A second run without `--set` (label `legacy-check`) produced a byte-identical `summary.json` (SHA-256 `bf2391fcaaa876f6c83207383c523b5938c6a6dc9fe05c29c734f501e69caedc`). The scorer is `cue-contract-score` version 1, and its fixtures passed 25/25. This regeneration normalizes CRLF to LF for source provenance: only `sources.files[].sha256`, `sources.closureDigest`, and `scorer.fileSha` changed; the raw `coreAgentDistSha256` and all metrics are unchanged.
 
 ## Comparison
 
