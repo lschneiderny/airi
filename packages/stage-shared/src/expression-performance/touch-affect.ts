@@ -31,6 +31,8 @@ export interface TouchAffectMemory {
   counter: number
   /** Latest accepted touch; earlier and non-finite times are ignored. */
   lastAt: number | null
+  /** Latest pet-start dose; the pet-start cooldown runs from it. */
+  lastPetStartAt: number | null
   /** The pet in progress: its start, its habituation, and the dose scale it has already given. */
   pet: { startedAt: number, h: number, given: number } | null
   /** Dose times per key inside the habituation window, oldest first. */
@@ -45,6 +47,7 @@ export interface TouchAffectMemory {
 export const initialTouchAffectMemory: TouchAffectMemory = {
   counter: 0,
   lastAt: null,
+  lastPetStartAt: null,
   pet: null,
   doses: { 'pet': [], 'poke': [], 'poke-burst': [] },
   pokes: [],
@@ -94,7 +97,9 @@ function last(times: readonly number[]) {
  *   when a poke finds fewer than 3 pokes in the last 10 s.
  * - Every dose is scaled by `h = max(habituationFloor, habituationBase^n)`, where `n` counts the
  *   doses of the same key (pet, poke, or burst) in the last 60 s. A pet escalation keeps the `h`
- *   of its start and is not counted again.
+ *   of its start but counts as a pet dose of its own.
+ * - Pet doses habituate without the floor, `h = habituationBase^n`, so continuous petting saturates
+ *   instead of pumping mood by a floor-sized dose every pet.
  *
  * Zero-sized doses, such as under a zero mood gain scale, are not returned.
  */
@@ -120,15 +125,14 @@ export function touchAffect(memory: TouchAffectMemory, input: TouchAffectInput, 
   }
 
   if (input.touch === 'pet-start') {
-    const lastPet = last(doses.pet)
-    const h = habituation(doses.pet, settings)
-    if (lastPet !== null && at - lastPet < PET_COOLDOWN_SECONDS) {
+    const h = settings.intensity.habituationBase ** doses.pet.length
+    if (memory.lastPetStartAt !== null && at - memory.lastPetStartAt < PET_COOLDOWN_SECONDS) {
       // A pet still open keeps its dose bookkeeping; a new pet in the cooldown starts from nothing.
       next = { ...next, pet: next.pet ?? { startedAt: at, h, given: 0 } }
       return { dose: null, memory: next }
     }
     const scale = unit('slight', settings) * h
-    next = { ...next, pet: { startedAt: at, h, given: scale } }
+    next = { ...next, lastPetStartAt: at, pet: { startedAt: at, h, given: scale } }
     return emit('pet', 'pet', PET_VECTOR, scale)
   }
 
@@ -140,7 +144,7 @@ export function touchAffect(memory: TouchAffectMemory, input: TouchAffectInput, 
     const duration = input.durationSeconds !== undefined && Number.isFinite(input.durationSeconds) ? input.durationSeconds : at - pet.startedAt
     if (duration < PET_LONG_SECONDS)
       return { dose: null, memory: next }
-    return emit(null, 'pet-long', PET_VECTOR, unit('clear', settings) * pet.h - pet.given)
+    return emit('pet', 'pet-long', PET_VECTOR, unit('clear', settings) * pet.h - pet.given)
   }
 
   const pokes = [...memory.pokes.filter(time => at - time < POKE_BURST_WINDOW_SECONDS), at].slice(-POKE_BURST_COUNT)
