@@ -1,3 +1,4 @@
+import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { PerformanceMode, PerformanceOverride } from '@proj-airi/stage-shared/performance-state'
 
 import { defineStore } from 'pinia'
@@ -8,6 +9,14 @@ export interface EmotionPulse {
   name: string
   nominal: number
   /** Increments per pulse. The stage enqueues a pulse when `seq` changes, so equal pulses still fire. */
+  seq: number
+}
+
+/** One gesture fired from the devtools Natural lab. */
+export interface GestureRequest {
+  kind: CueGestureKind
+  count: number
+  /** Increments per request. The stage plays a gesture when `seq` changes, so equal requests still fire. */
   seq: number
 }
 
@@ -28,6 +37,7 @@ export const useNaturalPerformanceOverride = defineStore('natural-performance-ov
   /** Energy forced on the Natural driver, 0..1, or `null` to keep the user's Energy setting. */
   const overrideEnergy = ref<number | null>(null)
   const emotionPulse = ref<EmotionPulse | null>(null)
+  const gestureRequest = ref<GestureRequest | null>(null)
 
   /**
    * What the lab is forcing, or `null` when it is off and the stage should
@@ -47,11 +57,16 @@ export const useNaturalPerformanceOverride = defineStore('natural-performance-ov
     emotionPulse.value = { name, nominal, seq: (emotionPulse.value?.seq ?? 0) + 1 }
   }
 
+  function requestGesture(kind: CueGestureKind, count: number) {
+    gestureRequest.value = { kind, count, seq: (gestureRequest.value?.seq ?? 0) + 1 }
+  }
+
   function resetState() {
     overrideEnabled.value = false
     overrideMode.value = 'idle'
     overrideEnergy.value = null
     emotionPulse.value = null
+    gestureRequest.value = null
   }
 
   return {
@@ -59,8 +74,10 @@ export const useNaturalPerformanceOverride = defineStore('natural-performance-ov
     overrideMode,
     overrideEnergy,
     emotionPulse,
+    gestureRequest,
     performanceOverride,
     pulseEmotion,
+    requestGesture,
     resetState,
   }
 }, {

@@ -531,7 +531,7 @@ watch(() => props.cursorPosition, () => {
 })
 const { snapshot: desktopActivity } = storeToRefs(useDesktopActivityStore())
 const visibility = useDocumentVisibility()
-const { performanceOverride, emotionPulse } = storeToRefs(useNaturalPerformanceOverride())
+const { performanceOverride, emotionPulse, gestureRequest } = storeToRefs(useNaturalPerformanceOverride())
 // Only the leader window folds foreground samples; AIRI's own windows never become activity, and followers read null.
 const situation = useSituationStore()
 const foregroundCategory = computed(() => situation.foregroundCategory)
@@ -616,6 +616,13 @@ watch(() => emotionPulse.value?.seq, () => {
   const emotion = toStageEmotionPayload({ name: pulse.name, intensity: pulse.nominal })
   if (emotion)
     emotionsQueue.enqueue({ emotion, source: 'devtools' })
+})
+
+// The lab's gesture buttons play through the conductor, which ignores them outside Natural.
+watch(() => gestureRequest.value?.seq, () => {
+  const request = gestureRequest.value
+  if (request && stageModelRenderer.value === 'live2d')
+    performanceConductor.gesture(request.kind, request.count)
 })
 
 // The dev-only motion QA bridge answers remote-debug commands through this stage's real input paths. The
