@@ -67,10 +67,14 @@ class RecordingMMD extends MMD {
     }
   }
 
-  override updateWithMixer(delta: number, mixer: AnimationMixer, options: MMDUpdateOptions = {}): void {
+  override updateAnimation(mixer: AnimationMixer): void {
     this.mixer = mixer
+    super.updateAnimation(mixer)
+  }
+
+  override beforePhysics(options: MMDUpdateOptions = {}): void {
     this.updates.push({ ...options })
-    mixer.update(delta)
+    super.beforePhysics(options)
   }
 
   override dispose(): void {
@@ -118,7 +122,9 @@ describe('createMMDAnimationManager', () => {
     await manager.init()
     manager.setIdleMotion('idle', 0)
     manager.playAction('gesture', { crossfade: 0 })
-    manager.update(0.2)
+    // Four simulation frames cover the one-shot and the queued idle transition.
+    for (let frame = 0; frame < 4; frame++)
+      manager.update(0.05)
 
     const idleAction = mmd.mixer?.existingAction(idle)
     const gestureAction = mmd.mixer?.existingAction(gesture)

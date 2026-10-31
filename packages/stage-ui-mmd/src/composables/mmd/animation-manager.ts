@@ -4,6 +4,7 @@ import type { AnimationAction, AnimationClip } from 'three'
 import { AnimationMixer, LoopOnce, LoopRepeat, Vector3 } from 'three'
 
 import { ensureAmmo } from '../../utils/ammo'
+import { MMDFramePipeline } from './frame-pipeline'
 
 const DEFAULT_CROSSFADE = 0.4
 
@@ -36,12 +37,13 @@ export interface PlayActionOptions {
  * Owns a model's animation mixer, imported VMD catalog, solver feature gates,
  * and lazily installed Ammo runtime.
  *
- * `update(delta)` must run once per frame before AIRI-owned expression,
- * lip-sync, blink, and gaze overrides. Disposal stops actions before ending
+ * `update(delta)` runs the pipeline's registered pose and surface stages.
+ * Disposal stops actions before ending
  * the MMD runtime so no frame can observe a partially torn-down model.
  */
 export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManagerOptions = {}) {
   const mixer = new AnimationMixer(mmd.mesh)
+  const pipeline = new MMDFramePipeline({ mmd, mixer })
   const registry = new Map<string, AnimationClip>()
   const finishListeners = new Map<AnimationAction, (event: { action: AnimationAction }) => void>()
 
@@ -50,10 +52,9 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
   let initialized = false
   let disposed = false
   let initialization: Promise<void> | undefined
-  let physicsEnabled = options.physicsEnabled ?? true
-  let ikEnabled = true
-  let grantEnabled = true
+  pipeline.options.physics = options.physicsEnabled ?? true
   let gravity: number | undefined
+  let actionsStarted = 0
 
   function removeFinishListener(action: AnimationAction): void {
     const listener = finishListeners.get(action)
@@ -96,10 +97,9 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
         mmd.physics?.setGravity?.(new Vector3(0, -gravity, 0))
 
       if (idle) {
-        idleAction = mixer.clipAction(idle)
-        idleAction.setLoop(LoopRepeat, Number.POSITIVE_INFINITY).play()
+        registerClip(idle.name, idle)
+        setIdleMotion(idle.name, 0)
       }
-      currentAction = idleAction
       initialized = true
     })()
 
@@ -109,6 +109,7 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
   /** Registers a VMD-derived clip under a name for later playback. */
   function registerClip(name: string, clip: AnimationClip): void {
     registry.set(name, clip)
+    pipeline.registerClip(name, clip)
   }
 
   /** Names of all registered motions, for settings UIs and action mapping. */
@@ -118,6 +119,10 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
 
   /** Cross-fades back to the persistent idle loop. */
   function playIdle(crossfade = DEFAULT_CROSSFADE): void {
+    pipeline.enqueue(() => applyIdle(crossfade))
+  }
+
+  function applyIdle(crossfade: number): void {
     if (currentAction)
       removeFinishListener(currentAction)
 
@@ -149,25 +154,28 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
       return false
     }
 
-    const loop = actionOptions.loop ?? false
-    const crossfade = actionOptions.crossfade ?? DEFAULT_CROSSFADE
-    const action = mixer.clipAction(clip)
-    action.reset()
-    action.setLoop(loop ? LoopRepeat : LoopOnce, loop ? Number.POSITIVE_INFINITY : 1)
-    action.clampWhenFinished = !loop
-    action.setEffectiveWeight(1)
-    action.fadeIn(crossfade).play()
+    pipeline.enqueue(() => {
+      const loop = actionOptions.loop ?? false
+      const crossfade = actionOptions.crossfade ?? DEFAULT_CROSSFADE
+      const action = mixer.clipAction(clip)
+      action.reset()
+      action.setLoop(loop ? LoopRepeat : LoopOnce, loop ? Number.POSITIVE_INFINITY : 1)
+      action.clampWhenFinished = !loop
+      action.setEffectiveWeight(1)
+      action.fadeIn(crossfade).play()
 
-    if (currentAction && currentAction !== action) {
-      removeFinishListener(currentAction)
-      currentAction.fadeOut(crossfade)
-    }
-    currentAction = action
+      if (currentAction && currentAction !== action) {
+        removeFinishListener(currentAction)
+        currentAction.fadeOut(crossfade)
+      }
+      currentAction = action
+      actionsStarted++
 
-    if (loop)
-      removeFinishListener(action)
-    else
-      revertToIdleOnFinish(action)
+      if (loop)
+        removeFinishListener(action)
+      else
+        revertToIdleOnFinish(action)
+    })
 
     return true
   }
@@ -184,28 +192,30 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
       return false
     }
 
-    const action = mixer.clipAction(clip)
-    action.reset()
-    action.setLoop(LoopRepeat, Number.POSITIVE_INFINITY)
-    action.clampWhenFinished = false
-    action.setEffectiveWeight(1)
-    action.fadeIn(crossfade).play()
+    pipeline.enqueue(() => {
+      const action = mixer.clipAction(clip)
+      action.reset()
+      action.setLoop(LoopRepeat, Number.POSITIVE_INFINITY)
+      action.clampWhenFinished = false
+      action.setEffectiveWeight(1)
+      action.fadeIn(crossfade).play()
 
-    const previousIdle = idleAction
-    idleAction = action
-    if (currentAction && currentAction !== action) {
-      removeFinishListener(currentAction)
-      currentAction.fadeOut(crossfade)
-    }
-    else if (previousIdle && previousIdle !== action) {
-      previousIdle.fadeOut(crossfade)
-    }
-    currentAction = action
+      const previousIdle = idleAction
+      idleAction = action
+      if (currentAction && currentAction !== action) {
+        removeFinishListener(currentAction)
+        currentAction.fadeOut(crossfade)
+      }
+      else if (previousIdle && previousIdle !== action) {
+        previousIdle.fadeOut(crossfade)
+      }
+      currentAction = action
+    })
     return true
   }
 
   function setPhysicsEnabled(enabled: boolean): void {
-    physicsEnabled = enabled
+    pipeline.options.physics = enabled
   }
 
   /** Sets physics gravity to `(0, -magnitude, 0)`, including during init. */
@@ -215,21 +225,17 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
   }
 
   function setIKEnabled(enabled: boolean): void {
-    ikEnabled = enabled
+    pipeline.options.ik = enabled
   }
 
   function setGrantEnabled(enabled: boolean): void {
-    grantEnabled = enabled
+    pipeline.options.grant = enabled
   }
 
   function update(delta: number): void {
     if (!initialized || disposed)
       return
-    mmd.updateWithMixer(delta, mixer, {
-      grant: grantEnabled,
-      ik: ikEnabled,
-      physics: physicsEnabled,
-    })
+    pipeline.step(delta)
   }
 
   function dispose(): void {
@@ -240,6 +246,7 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
     for (const listener of finishListeners.values())
       mixer.removeEventListener('finished', listener)
     finishListeners.clear()
+    pipeline.dispose()
     mixer.stopAllAction()
     mixer.uncacheRoot(mmd.mesh)
     mmd.dispose()
@@ -250,6 +257,12 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
   }
 
   return {
+    pipeline,
+    snapshot: () => ({
+      idle: idleAction ? [...registry].find(([, clip]) => clip === idleAction?.getClip())?.[0] ?? null : null,
+      currentAction: currentAction ? [...registry].find(([, clip]) => clip === currentAction?.getClip())?.[0] ?? null : null,
+      actionsStarted,
+    }),
     init,
     registerClip,
     availableClips,

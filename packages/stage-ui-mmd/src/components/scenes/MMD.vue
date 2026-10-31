@@ -21,7 +21,6 @@ import { storeToRefs } from 'pinia'
 import {
   AmbientLight,
   Box3,
-  Clock,
   Color,
   DirectionalLight,
   Group,
@@ -45,12 +44,14 @@ import {
   EYE_PITCH_LIMIT,
   EYE_YAW_LIMIT,
   loadMMDAnimationClip,
+  MMDFrameMetrics,
   useMMDBlink,
   useMMDEmote,
   useMMDLipSync,
 } from '../../composables/mmd'
 import { Emotion, EMOTION_VALUES } from '../../constants/emotions'
 import { useMMD } from '../../stores/mmd'
+import { useMMDMotionDiagnostics } from '../../stores/motion-diagnostics'
 import { loadMMDModelFromSource } from '../../utils/mmd-loader'
 import {
   applyMMDMaterialOpacity,
@@ -85,6 +86,7 @@ const emit = defineEmits<{
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
 
 const mmdStore = useMMD()
+const diagnostics = useMMDMotionDiagnostics()
 const {
   physicsEnabled,
   ikEnabled,
@@ -127,8 +129,10 @@ let animation: MMDAnimationManager | undefined
 let emote: ReturnType<typeof useMMDEmote> | undefined
 // Motion names already bound to the current model runtime.
 const registeredMotions = new Set<string>()
-const clock = new Clock()
 let rafHandle = 0
+let previousFrameTime: number | undefined
+let lastDiagnosticsTime = 0
+let loadedModelKey: string | null = null
 
 // Lip-sync owns Vue lifecycle hooks, so it must be created during setup.
 const lipSync = useMMDLipSync(
@@ -196,6 +200,7 @@ function applyTransform() {
   modelGroup.scale.setScalar(scale.value)
   modelGroup.rotation.y = rotationY.value
   modelGroup.position.set(position.value.x, position.value.y, 0)
+  animation?.pipeline.requestPhysicsReset()
 }
 
 /**
@@ -352,27 +357,29 @@ function resize() {
   layoutBackground()
 }
 
-function renderLoop() {
+function renderLoop(now = performance.now()) {
   rafHandle = requestAnimationFrame(renderLoop)
-  const delta = clock.getDelta()
+  const delta = previousFrameTime === undefined ? 0 : (now - previousFrameTime) / 1000
+  previousFrameTime = now
 
   if (props.paused || !renderer || !scene || !camera)
     return
 
-  if (animation) {
-    // three-mmd preserves the required mixer → IK → grant → physics order.
-    animation.update(delta)
-    // Apply AIRI-owned morphs after the runtime so lip-sync/expression win
-    // over any VMD mouth/expression keyframes.
-    emote?.update(delta)
-    blink.update(morphs, delta)
-    lipSync.update(morphs, delta)
-    // Gaze rotates eye/head bones, also after the helper.
-    gaze?.update(resolveGazeOffset(), delta)
-  }
+  animation?.update(delta)
 
   controls?.update()
-  renderer.render(scene, camera)
+  const activeRenderer = renderer
+  const activeScene = scene
+  const activeCamera = camera
+  diagnostics.measure('render', () => activeRenderer.render(activeScene, activeCamera))
+  diagnostics.recordFrame(delta)
+  if (now - lastDiagnosticsTime >= 100) {
+    lastDiagnosticsTime = now
+    diagnostics.publish({
+      loadedModelKey,
+      animation: animation?.snapshot() ?? { idle: null, currentAction: null, actionsStarted: 0 },
+    })
+  }
 }
 
 function disposeModel() {
@@ -396,6 +403,9 @@ function disposeModel() {
   emote = undefined
   gaze = undefined
   resolved = undefined
+  loadedModelKey = null
+  diagnostics.setMetrics(new MMDFrameMetrics())
+  diagnostics.publish({ loadedModelKey: null, animation: { idle: null, currentAction: null, actionsStarted: 0 } })
   mmdStore.isModelLoaded = false
 }
 
@@ -475,6 +485,13 @@ async function loadModel(src: string) {
     gaze = createGazeController(mesh)
 
     animation = createMMDAnimationManager(resolved.mmd, { physicsEnabled: physicsEnabled.value })
+    diagnostics.setMetrics(animation.pipeline.metrics)
+    animation.pipeline.surfaceStages.push(
+      { id: 'expression', run: ({ dt }) => emote?.update(dt) },
+      { id: 'blink', run: ({ dt }) => blink.update(morphs, dt) },
+      { id: 'lip-sync', run: ({ dt }) => lipSync.update(morphs, dt) },
+      { id: 'classic-gaze', run: ({ dt }) => gaze?.update(resolveGazeOffset(), dt) },
+    )
     // No preset idle VMD ships yet; the runtime still advances solvers and
     // physics without an animation action.
     await animation.init()
@@ -490,6 +507,7 @@ async function loadModel(src: string) {
     applyMMDMaterialOpacity(modelGroup, materialOpacity.value)
 
     mmdStore.isModelLoaded = true
+    loadedModelKey = props.modelId ?? src
     componentState.value = 'mounted'
 
     // Bind any motions imported before this model mounted.
@@ -521,7 +539,6 @@ onMounted(() => {
   if (canvasRef.value)
     resizeObserver.observe(canvasRef.value)
   resize()
-  clock.start()
   renderLoop()
 
   if (props.modelSrc)
