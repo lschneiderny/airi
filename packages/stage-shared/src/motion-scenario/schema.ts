@@ -14,11 +14,13 @@ export type MotionScenarioLevel = typeof motionScenarioLevels[number]
 // NOTICE:
 // These picklists duplicate unions that stage-shared owns elsewhere (or, for `PostureHome`, that stage-ui-live2d owns,
 // which stage-shared must not import). The `satisfies` clauses make the compiler reject drift on the stage-shared side.
-// Source: performance-state/index.ts, stage-ui-live2d natural-motion/posture.ts.
+// Source: performance-state/index.ts, stage-ui-live2d natural-motion/posture.ts and natural-motion/cue-gestures.ts.
 // Removal condition: the unions become exported value arrays in their owning modules.
 const bands = ['slight', 'clear', 'strong'] as const satisfies readonly Band[]
 const modes = ['idle', 'watching', 'listening', 'thinking', 'talking'] as const satisfies readonly PerformanceMode[]
 const postureHomes = ['product', 'desk'] as const
+/** `CueGestureKind` of stage-ui-live2d; the qa-tools sink passes the value to the scene's `gesture` API, which type-checks the pairing. */
+const cueGestures = ['nod', 'shake', 'shrug', 'lean', 'glance'] as const
 
 const seconds = pipe(number(), finite(), minValue(0))
 const uint32 = pipe(number(), integer(), minValue(0), maxValue(0xFFFFFFFF))
@@ -63,6 +65,11 @@ export const ScenarioEventSchema = variant('kind', [
   strictObject({ kind: literal('chat-sent'), at: seconds, words: pipe(number(), integer(), minValue(0)) }),
   /** The chat window was unfolded (hidden to visible). Allowed at T1, T2 and T3. */
   strictObject({ kind: literal('chat-unfold'), at: seconds }),
+  /**
+   * An ACT cue gesture sent to the Natural scene. `count` (1-3) repeats a nod or shake; it defaults to 2 for those and
+   * 1 for the others, as the ACT normalizer does. Allowed at T1 and T2.
+   */
+  strictObject({ kind: literal('gesture'), at: seconds, gesture: picklist(cueGestures), count: optional(pipe(number(), integer(), minValue(1), maxValue(3))) }),
 ])
 export type ScenarioEvent = InferOutput<typeof ScenarioEventSchema>
 
@@ -89,8 +96,8 @@ const scenarioObject = strictObject({
 /**
  * A deterministic, replayable input script for motion QA.
  *
- * Events must be sorted by `at` and must not come after `durationSeconds`. A scenario that includes level `t3` cannot contain `speech` or `cursor`
- * events, because the rendered app cannot produce those inputs through the QA bridge.
+ * Events must be sorted by `at` and must not come after `durationSeconds`. A scenario that includes level `t3` cannot contain `speech`, `cursor`,
+ * or `gesture` events, because the rendered app cannot produce those inputs through the QA bridge.
  */
 export const MotionScenarioSchema = pipe(scenarioObject, rawCheck(({ dataset, addIssue }) => {
   if (!dataset.typed)
@@ -109,7 +116,7 @@ export const MotionScenarioSchema = pipe(scenarioObject, rawCheck(({ dataset, ad
     // A runner plays the scenario for `durationSeconds`, so a later event would silently never play.
     if (event.at > scenario.durationSeconds)
       addIssue({ message: `Event at ${event.at} s is after the scenario ends at ${scenario.durationSeconds} s`, path: [...at(index, 'at')] })
-    if (hasT3 && (event.kind === 'speech' || event.kind === 'cursor'))
+    if (hasT3 && (event.kind === 'speech' || event.kind === 'cursor' || event.kind === 'gesture'))
       addIssue({ message: `Scenarios with level "t3" cannot contain "${event.kind}" events`, path: [...at(index, 'kind')] })
     if ((event.kind === 'cursor' || event.kind === 'chat-target') && !(event.clear === true ? event.x === undefined && event.y === undefined : event.x !== undefined && event.y !== undefined))
       addIssue({ message: `A ${event.kind} event needs both "x" and "y", or only "clear: true"`, path: [...at(index, 'kind')] })

@@ -1,13 +1,24 @@
 import type { CueComplianceOutcome, ReplyReplay } from '@proj-airi/core-agent'
-import type { StreamingControlEmotion, StreamingControlLook } from '@proj-airi/pipelines-audio'
+import type { StreamingControlEmotion, StreamingControlGestureKind, StreamingControlLook } from '@proj-airi/pipelines-audio'
 
 import type { ReplyScorer } from './scorer'
 
 import { createStreamingCategorizer, cueComplianceOutcome, replayReply, useLlmmarkerParser } from '@proj-airi/core-agent'
 import { createStreamingControlParser, normalizeActPayload, tokenAct } from '@proj-airi/pipelines-audio'
+import { ASCII_FACES } from '@proj-airi/stage-shared/conversation-register'
 
-export const CUE_CONTRACT_SCORER = { id: 'cue-contract-score', version: 2 } as const
+export const CUE_CONTRACT_SCORER = { id: 'cue-contract-score', version: 3 } as const
 const REJECTED_TOKENS_MAX = 5
+// Longest first, so `^_^` is not counted as the shorter `^^`.
+const facesLongestFirst = [...ASCII_FACES].sort((a, b) => b.length - a.length)
+
+/**
+ * Counts the faces the TTS face stripper would remove from `text`: a listed face that starts a
+ * whitespace-separated word and is followed by the word end or one of `.,!?`.
+ */
+function countAsciiFaces(text: string): number {
+  return text.split(/\s+/).filter(word => facesLongestFirst.some(face => word.startsWith(face) && (word.length === face.length || '.,!?'.includes(word[face.length])))).length
+}
 
 export interface ReplyScore {
   schema: 'airi.cue-contract-score.reply/v1'
@@ -28,9 +39,24 @@ export interface ReplyScore {
     motion: string | null
     look: StreamingControlLook | null
     lookDropped: boolean
+    /** The normalized gesture; `dropped` marks a written `gesture` the normalizer refused, with `kind` null. */
+    gesture: { kind: StreamingControlGestureKind | null, count: number | null, dropped: boolean }
     inert: boolean
     placeholderEcho: string[]
   }[]
+  /** Non-JSON ACT markers whose first word is a gesture kind (`<|ACT nod|>`). The stage rejects them, so they are not in `acts`. */
+  bareGestureAttempts: number
+  /** BREAK slices the runtime kept, and well-formed BREAK markers that split nothing. */
+  breaks: number
+  breaksIgnored: number
+  /** SILENT markers in visible speech, and whether one came before any spoken text. */
+  silent: { count: number, beforeSpeech: boolean }
+  /** The runtime answered a user turn without words but with at least one ACT. */
+  wordless: boolean
+  /** The runtime answered a user turn with SILENT alone: no ACT and no words. */
+  silentNoCue: boolean
+  /** ASCII faces in the spoken text that speech output strips. */
+  asciiFaces: number
   delay: { count: number, valid: number }
   call: { count: number, valid: number }
   stickerMarkers: number
@@ -38,6 +64,7 @@ export interface ReplyScore {
   residualChars: number
   spokenText: string
   storedSpeech: string | null
+  /** No speech, no SILENT before speech, and no tool call: the reply said nothing and did not decline. */
   blank: boolean
   toolCallsWithoutSpeech: boolean
 }
@@ -69,6 +96,8 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
     let diagnosticLiterals = 0
     let diagnosticSpecials = 0
     let stickerMarkers = 0
+    const silent = { count: 0, beforeSpeech: false }
+    let speechSeen = false
     const controller = createStreamingControlParser()
     const runtimeOnlyMarkers = new Set<string>()
     const recoveries = new Map<string, Array<'<' | '[' | null>>()
@@ -76,7 +105,8 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
     const consumeLiteral = (value: string) => {
       const position = categorizer.getCurrentPosition()
       categorizer.consume(value)
-      categorizer.filterToSpeech(value, position)
+      if (categorizer.filterToSpeech(value, position).trim() !== '')
+        speechSeen = true
     }
     const diagnostic = useLlmmarkerParser({
       minLiteralEmitLength: 1,
@@ -108,8 +138,13 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
             const user = await replayReply({ text: value })
             if (user.specials.length === 0) {
               runtimeOnlyMarkers.add(value)
-              if (!user.cueStats.silent)
+              if (!user.cueStats.silent) {
                 stickerMarkers++
+              }
+              else if (categorizer.filterToSpeech(value, categorizer.getCurrentPosition())) {
+                silent.count++
+                silent.beforeSpeech ||= !speechSeen
+              }
             }
           }
         }
@@ -131,6 +166,7 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
     const unknownMarkers: string[] = []
     const parsedActs = new Set<string>()
     let stageRejected = 0
+    let bareGestureAttempts = 0
     for (const special of whole.specials) {
       let stageParsed = false
       await controller.dispatchWith(special.value, {
@@ -167,6 +203,12 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
       const form = special.value.startsWith('<|ACT:') ? 'colon' : body.startsWith('{') ? 'json' : 'bare'
       // Written values describe syntax, not validity; only the real parser and normalizer decide validity.
       const [bareEmotion, bareIntensity] = body.split(/\s+/)
+      // Gestures are JSON-only. Probe the first word through the public JSON parser, so the scorer keeps no kind list.
+      if (form !== 'json' && !stageParsed && bareEmotion
+        && normalizeActPayload(actParser.parse(`<|ACT {"gesture":${JSON.stringify(bareEmotion)}}|>`)?.payload ?? {}).gesture) {
+        bareGestureAttempts++
+        continue
+      }
       const writtenEmotion = payload.emotion
       const nestedEmotion = typeof writtenEmotion === 'object' && writtenEmotion !== null ? writtenEmotion : null
       const emotionWritten = typeof writtenEmotion === 'string'
@@ -209,6 +251,11 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
         motion: normalized.motion ?? null,
         look: normalized.look ?? null,
         lookDropped: payload.look !== undefined && normalized.look === undefined,
+        gesture: {
+          kind: normalized.gesture?.kind ?? null,
+          count: normalized.gesture?.count ?? null,
+          dropped: payload.gesture !== undefined && normalized.gesture === undefined,
+        },
         inert: stageParsed && Object.keys(normalized).length === 0,
         placeholderEcho: Object.entries(payload).filter(([, value]) => typeof value === 'string' && /^<[^<>]+>$/.test(value)).map(([field]) => field),
       })
@@ -226,6 +273,13 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
       outcome: cueComplianceOutcome({ ...cueStats, rejected: stageRejected }),
       leadCue: first?.kind === 'special' && parsedActs.has(first.value),
       acts,
+      bareGestureAttempts,
+      breaks: whole.cueStats.breaks,
+      breaksIgnored: whole.cueStats.breaksIgnored,
+      silent,
+      wordless: whole.cueStats.wordless,
+      silentNoCue: whole.cueStats.silent,
+      asciiFaces: countAsciiFaces(spokenText),
       delay,
       call,
       stickerMarkers,
@@ -233,7 +287,7 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
       residualChars: diagnosticText.length - diagnosticLiterals - diagnosticSpecials,
       spokenText,
       storedSpeech: whole.speech ?? null,
-      blank: noSpeech && record.reply.toolCalls.length === 0,
+      blank: noSpeech && !silent.beforeSpeech && record.reply.toolCalls.length === 0,
       toolCallsWithoutSpeech: noSpeech && record.reply.toolCalls.length > 0,
     }
   },

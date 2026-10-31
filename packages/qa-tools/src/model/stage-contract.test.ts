@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 import messages from '@proj-airi/i18n/locales'
 
+import { ASCII_FACES } from '@proj-airi/stage-shared/conversation-register'
 import { composeSystemPrompt, STAGE_CONTRACT_EN_SHA256 } from '@proj-airi/stage-shared/stage-contract'
 import { describe, expect, it } from 'vitest'
 
@@ -101,5 +102,28 @@ describe('buildSystemPrompt', () => {
     expect(prompt.text).toBe(composeSystemPrompt(cardPrompt, prompt.contract.text))
     expect(prompt.sha256).toBe(createHash('sha256').update(prompt.text).digest('hex'))
     expect(prompt.contract.sha256).toBe(STAGE_CONTRACT_EN_SHA256)
+  })
+
+  it('inserts the register section between the card and an unchanged contract', () => {
+    const cardPrompt = 'You are Alice.'
+    const talking = buildSystemPrompt({ cardPrompt, register: 'talking' })
+    const texting = buildSystemPrompt({ cardPrompt, register: 'texting' })
+    const discord = buildSystemPrompt({ cardPrompt, register: 'texting', textingFlavor: 'discord' })
+    const sectionOf = (text: string, contract: string) => {
+      const head = composeSystemPrompt(`${cardPrompt}\n\n`, '')
+      expect(text.startsWith(head)).toBe(true)
+      expect(text.endsWith(`\n\n${contract}`)).toBe(true)
+      return text.slice(head.length, -contract.length - 2)
+    }
+
+    expect(sectionOf(talking.text, talking.contract.text)).not.toMatch(/^$|<\|BREAK\|>/)
+    expect(sectionOf(texting.text, texting.contract.text)).toContain('<|BREAK|>')
+    expect(sectionOf(discord.text, discord.contract.text)).toContain(ASCII_FACES.join(' '))
+    expect(discord.text.indexOf(ASCII_FACES.join(' '))).toBeLessThan(discord.text.indexOf(discord.contract.text))
+    for (const prompt of [talking, texting, discord]) {
+      expect(prompt.contract.sha256).toBe(STAGE_CONTRACT_EN_SHA256)
+      expect(prompt.contract.warnings).toEqual([])
+    }
+    expect(new Set([talking.sha256, texting.sha256, discord.sha256, buildSystemPrompt({ cardPrompt }).sha256]).size).toBe(4)
   })
 })

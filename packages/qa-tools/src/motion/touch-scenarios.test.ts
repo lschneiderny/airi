@@ -1,9 +1,11 @@
 import type { NaturalMotionFrame } from '@proj-airi/motion-driver-natural/frame-types'
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
+import type { GateSignals, ReactionDecision, ReactionMemory, SituationState, TouchObservation } from '@proj-airi/stage-shared/situation'
 import type { NaturalTrace } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
 
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { buildPointerApproach, buildPointerPoke, buildPointerStroke } from '@proj-airi/stage-shared/motion-scenario'
+import { initialReactionMemory, initialSituationState, reactionPolicy, reduceSituation } from '@proj-airi/stage-shared/situation'
 import { describe, expect, it, vi } from 'vitest'
 
 import { runT1 } from './t1/runner'
@@ -118,6 +120,36 @@ describe('t1 touch scenarios', () => {
     expect(pokes).toHaveLength(1)
     expect(pokes[0].t).toBeGreaterThanOrEqual(from - 1e-9)
     expect(pokes[0].t).toBeLessThanOrEqual(from + tolerance)
+  })
+
+  it('(g) turns a 3-poke burst into exactly one reaction decision', () => {
+    const t0 = 1_700_000_000_000
+    const signals: GateSignals = { userSpeaking: false, userTyping: false, characterSpeaking: false, generating: false, queued: 0, desktopFresh: true, foregroundFresh: true, stageVisible: true }
+    const settings = { enabled: true, dontDisturb: false, quietApps: [] }
+    let situation: SituationState = initialSituationState
+    let memory: ReactionMemory = initialReactionMemory(seed)
+    const decisions: ReactionDecision[] = []
+    const events = [1, 3, 5].flatMap(at => buildPointerPoke({ at, x: 0.1, y: 0, holdSeconds: 0.05 }))
+
+    // The stage's touch store reduces each classified poke into the situation, then asks the reaction policy.
+    runT1(pointerScenario('poke-burst', events, 6), {
+      onTouch: (touch, simTime) => {
+        if (touch.kind !== 'poke')
+          return
+        const observation: TouchObservation = { kind: 'touch', gesture: 'poke', region: touch.region, atMs: t0 + Math.round(simTime * 1000) }
+        situation = reduceSituation(situation, observation, observation.atMs)
+        const evaluation = reactionPolicy({ nowMs: observation.atMs, touch: observation, eventId: situation.events.at(-1)?.id ?? '', situation, sessionId: 'session', signals, settings }, memory)
+        memory = evaluation.memory
+        decisions.push(evaluation.decision)
+      },
+    })
+
+    expect(decisions).toHaveLength(3)
+    expect(decisions.slice(0, 2)).toEqual([0, 1].map(() => ({ speak: false, reason: 'poke-count', kind: 'poke-protest', roll: null })))
+    // Reaching the roll is the one decision: the burst speaks, or holds on its draw.
+    const rolled = decisions.filter(decision => decision.speak || decision.reason === 'roll')
+    expect(rolled).toHaveLength(1)
+    expect(rolled[0]).toMatchObject({ kind: 'poke-protest' })
   })
 
   it('(f) moves the head by at most 0.02 per frame across pet start and pet end', () => {

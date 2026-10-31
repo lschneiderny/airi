@@ -50,6 +50,22 @@ The runtime replay is the oracle for cue behavior. Prompt output comes from the 
 
 Each committed dataset lives in `packages/qa-tools/model-eval/sets/<set-id>/`. The Mac M2 benchmark is a separate legacy set: use it to reproduce findings on fixed replies, not to mix with canonical-contract runs or rank models against the current prompt.
 
+Scorer version 3 adds the nonverbal channels to each reply score. The runtime replay stays the oracle for each field:
+
+| Field | Meaning |
+| --- | --- |
+| `acts[].gesture` | `{ kind, count, dropped }`: the normalized ACT `gesture`. `kind` and `count` are `null` without one; `dropped` marks a written gesture the normalizer refused, such as `"wave"`. A gesture-only ACT is not inert. |
+| `bareGestureAttempts` | Non-JSON ACT markers whose first word is a gesture kind, such as `<\|ACT nod\|>`. Gestures are JSON-only, so the stage rejects these; they count in `stageRejected` but not in `acts`. |
+| `breaks`, `breaksIgnored` | BREAK slices the runtime kept, and well-formed BREAK markers that split nothing (before the first text, over the limit of two, or trailing). |
+| `silent` | `{ count, beforeSpeech }`: SILENT markers in visible speech, and whether one came before any spoken text. |
+| `wordless` | The runtime answered a user turn with SILENT, at least one ACT, and no words. |
+| `silentNoCue` | The runtime answered a user turn with SILENT alone: no ACT and no words. |
+| `asciiFaces` | Faces from the shared ASCII face list in the spoken text that speech output strips. Bubbles keep them. |
+
+Version 3 also redefines `blank` as no speech, no SILENT before speech, and no tool call (`noSpeech && !silent.beforeSpeech && toolCalls.length === 0`), so a wordless or silent reply is not blank. The legacy scorer (`legacy-score.ts`) keeps its own definition.
+
+`buildSystemPrompt` accepts `register` (`talking` or `texting`) and `textingFlavor` (`plain` or `discord`). With a register, it inserts the same register section the app renders after the card and before the stage contract, so a model run can elicit BREAK markers and faces. The contract hash does not change with the register.
+
 When any scorer definition changes, bump `CUE_CONTRACT_SCORER.version` in the same commit. Compare runs using `closureDigest`, scorer version, and `coreAgentDistSha256` together. Closure file hashes normalize CRLF to LF so identical source across checkout line endings has the same provenance.
 
 Use `pnpm --silent qa:model prompt --json` when stderr must remain empty. pnpm's lifecycle banner otherwise goes to stderr; on pnpm 11.24.0, the `-s` script option alone does not suppress the outer pnpm lifecycle banner.
@@ -68,7 +84,9 @@ Statistical scores prove direction, size relative to the recipe, release, and de
 
 ## Scenarios
 
-Scenario files use the shared `@proj-airi/stage-shared/motion-scenario` contract. The same scenario can run at T1, T2, and T3 when its events are supported at those levels. T3 scenarios cannot contain speech or cursor events. `builtin:t3-smoke` is a rendered smoke scenario; scenario events and Natural events are timestamped in the captured trace.
+Scenario files use the shared `@proj-airi/stage-shared/motion-scenario` contract. The same scenario can run at T1, T2, and T3 when its events are supported at those levels. T3 scenarios cannot contain speech, cursor, or gesture events.
+
+A `gesture` event (`{ kind: 'gesture', at, gesture, count? }`) sends an ACT cue gesture (`nod`, `shake`, `shrug`, `lean`, or `glance`) to the Natural scene through the adapter's `gesture` API, as the stage's ACT handler does. `count` (1-3) defaults to 2 for nod and shake and 1 otherwise. `src/motion/gesture-scenarios.test.ts` checks each gesture's trajectory against an idle twin run and the queue rules (a conflicting gesture waits for the channel, a newer one replaces it, and one that would wait more than 1.5 s is dropped). `runT1` takes an `onTouch` observer that receives each touch the stage's classifier reports; `touch-scenarios.test.ts` feeds it through the situation reducer and the reaction policy to check that a 3-poke burst makes exactly one reaction decision. `builtin:t3-smoke` is a rendered smoke scenario; scenario events and Natural events are timestamped in the captured trace.
 
 `builtin:t3-touch` declares a near-band right-side approach from 1.9 to 0.6 head widths at 3 head widths per second, four seconds of horizontal strokes, a 1.5-second rest, and body/head pokes. It ends after the head poke without an off-desktop escape target. Far and medium approaches remain covered at T1. `builtin:t3-touch-pass` declares one straight pass. T3 performs pointer events with real Windows input. The head rectangle uses the cursor's unscaled face-feature interaction unit, not the physics-inclusive presence bubble or the user's touch scale. It is measured in viewport CSS pixels through the model's layout and world transforms, then converted to physical screen pixels with the DOM window origin and device pixel ratio. `bridge.json` records that head rectangle beside the stage window's CSS size.
 
