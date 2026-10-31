@@ -10,9 +10,11 @@ import { MMDBody } from './index'
 
 /**
  * Both legs, positive post-parse knees, and a nonidentity IK parent. No model assets. `hair` adds a physics pendulum
- * behind the head: a follow-bone body on the head and a dynamic body on `髪`, joined by a spring joint.
+ * behind the head: a follow-bone body on the head and a dynamic body on `髪`, joined by a spring joint. `arms` adds A-pose
+ * arms at 36 degrees below horizontal with thumb and index finger chains (the index has a Carlotta-style `０` metacarpal),
+ * and `bodies` adds a torso capsule, a hip box and a physics skirt sphere for the arm penetration check.
  */
-export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean } = {}) {
+export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean, arms?: boolean, bodies?: boolean } = {}) {
   const mesh = new SkinnedMesh(new BufferGeometry(), new MeshBasicMaterial())
   const definitions: Array<{ name: string, parent: number, position: [number, number, number] }> = [
     { name: 'センター', parent: -1, position: [0, 10, 0] },
@@ -35,6 +37,14 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
     { name: '右足ＩＫ', parent: 15, position: [-4, 1, -2] },
     ...options.hair ? [{ name: '髪', parent: 6, position: [0, -2, -1] as [number, number, number] }] : [],
   ]
+  if (options.arms) {
+    for (const entry of armDefinitions()) {
+      const parent = definitions.findIndex(({ name }) => name === entry.parent)
+      definitions.push({ name: entry.name, parent, position: entry.position })
+    }
+  }
+  if (options.bodies)
+    definitions.push({ name: 'スカート', parent: 2, position: [0, -1, 0] })
   const bones = definitions.map(({ name, position }) => {
     const bone = new Bone()
     bone.name = name
@@ -73,6 +83,9 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
         : undefined,
     })),
     ...options.hair ? hairPhysics() : {},
+    ...options.bodies
+      ? { rigidBodies: [...options.hair ? hairPhysics().rigidBodies : [], ...bodyColliders(name => definitions.findIndex(definition => definition.name === name))] }
+      : {},
   }
   shell.dispose()
   const mmd = new MMD(pmx, mesh)
@@ -125,6 +138,47 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
     return found
   }
   return { mmd, mesh, bones, bone, mixer, pipeline, body, rig, input, setInput, setRootX, identity: new Quaternion() }
+}
+
+/** Bind offsets of the A-pose arms: 3-unit segments 36 degrees below horizontal on both sides. */
+function armDefinitions(): Array<{ name: string, parent: string, position: [number, number, number] }> {
+  const segment: [number, number, number] = [3 * Math.cos(0.2 * Math.PI), -3 * Math.sin(0.2 * Math.PI), 0]
+  return (['左', '右'] as const).flatMap((prefix) => {
+    const sign = prefix === '左' ? 1 : -1
+    const mirror = ([x, y, z]: [number, number, number]): [number, number, number] => [sign * x, y, z]
+    return [
+      { name: `${prefix}肩`, parent: '上半身2', position: mirror([0.5, 1, 0]) },
+      { name: `${prefix}腕`, parent: `${prefix}肩`, position: mirror([1, 0, 0]) },
+      { name: `${prefix}ひじ`, parent: `${prefix}腕`, position: mirror(segment) },
+      { name: `${prefix}手首`, parent: `${prefix}ひじ`, position: mirror(segment) },
+      { name: `${prefix}親指０`, parent: `${prefix}手首`, position: mirror([0.2, -0.1, 0.2]) },
+      { name: `${prefix}親指１`, parent: `${prefix}親指０`, position: mirror([0.3, -0.1, 0.3]) },
+      { name: `${prefix}親指２`, parent: `${prefix}親指１`, position: mirror([0.2, -0.1, 0.3]) },
+      { name: `${prefix}人指０`, parent: `${prefix}手首`, position: mirror([0.4, -0.1, 0]) },
+      { name: `${prefix}人指１`, parent: `${prefix}人指０`, position: mirror([0.3, -0.1, 0]) },
+      { name: `${prefix}人指２`, parent: `${prefix}人指１`, position: mirror([0.3, -0.1, 0]) },
+      { name: `${prefix}人指３`, parent: `${prefix}人指２`, position: mirror([0.2, -0.1, 0]) },
+    ]
+  })
+}
+
+function bodyColliders(boneIndex: (name: string) => number): PmxObject['rigidBodies'] {
+  const body: Omit<PmxObject.RigidBody, 'name' | 'boneIndex' | 'shapeType' | 'shapeSize' | 'shapePosition' | 'physicsMode'> = {
+    englishName: '',
+    collisionGroup: 0,
+    collisionMask: 0,
+    shapeRotation: [0, 0, 0],
+    mass: 1,
+    linearDamping: 0.5,
+    angularDamping: 0.5,
+    repulsion: 0,
+    friction: 0.5,
+  }
+  return [
+    { ...body, name: 'torso', boneIndex: boneIndex('上半身'), shapeType: PmxObject.RigidBody.ShapeType.Capsule, shapeSize: [1.2, 3, 0], shapePosition: [0, 13.5, 0], physicsMode: PmxObject.RigidBody.PhysicsMode.FollowBone },
+    { ...body, name: 'hip', boneIndex: boneIndex('下半身'), shapeType: PmxObject.RigidBody.ShapeType.Box, shapeSize: [1.5, 1.2, 1.2], shapePosition: [0, 11, 0], physicsMode: PmxObject.RigidBody.PhysicsMode.FollowBone },
+    { ...body, name: 'skirt', boneIndex: boneIndex('スカート'), shapeType: PmxObject.RigidBody.ShapeType.Sphere, shapeSize: [1.8, 0, 0], shapePosition: [0, 9.5, 0], physicsMode: PmxObject.RigidBody.PhysicsMode.Physics },
+  ]
 }
 
 function hairPhysics(): Pick<PmxObject, 'rigidBodies' | 'joints'> {

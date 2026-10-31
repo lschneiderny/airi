@@ -1,4 +1,4 @@
-import type { HumanoidBoneName } from '@proj-airi/motion-driver-humanoid/types'
+import type { HumanoidBoneName, HumanoidFingerBoneName } from '@proj-airi/motion-driver-humanoid/types'
 
 /**
  * Ordered MMD bone-name candidates for each canonical humanoid bone. The rig profile maps
@@ -34,6 +34,65 @@ export const HUMANOID_BONE_CANDIDATES: Readonly<Record<HumanoidBoneName, readonl
   rightLowerArm: ['右ひじ'],
   rightHand: ['右手首'],
 }
+
+const FINGER_STEMS = { Thumb: '親指', Index: '人指', Middle: '中指', Ring: '薬指', Little: '小指' } as const
+
+// Thumbs: 親指０/１/２ are Metacarpal/Proximal/Distal. Other fingers: １/２/３ are Proximal/Intermediate/Distal, and a
+// leading ０ (such as Carlotta's 人指０) is their metacarpal when the model has one.
+const FINGER_JOINT_DIGITS = {
+  Thumb: { Metacarpal: '０', Proximal: '１', Intermediate: null, Distal: '２' },
+  other: { Metacarpal: '０', Proximal: '１', Intermediate: '２', Distal: '３' },
+} as const
+
+function fingerCandidates(): Record<HumanoidFingerBoneName, readonly string[]> {
+  const candidates: Partial<Record<HumanoidFingerBoneName, readonly string[]>> = {}
+  for (const [side, prefix] of [['left', '左'], ['right', '右']] as const) {
+    for (const [kind, stem] of Object.entries(FINGER_STEMS) as [keyof typeof FINGER_STEMS, string][]) {
+      const digits = FINGER_JOINT_DIGITS[kind === 'Thumb' ? 'Thumb' : 'other']
+      for (const joint of ['Metacarpal', 'Proximal', 'Intermediate', 'Distal'] as const) {
+        const digit = digits[joint]
+        if (digit !== null)
+          candidates[`${side}${kind}${joint}`] = [`${prefix}${stem}${digit}`]
+      }
+    }
+  }
+  return candidates as Record<HumanoidFingerBoneName, readonly string[]>
+}
+
+/**
+ * Ordered MMD bone-name candidates for each finger bone. A finger bone the model lacks is simply absent: thumbs have no
+ * intermediate joint, and most models have no metacarpal on the other four fingers.
+ */
+export const HUMANOID_FINGER_CANDIDATES: Readonly<Partial<Record<HumanoidFingerBoneName, readonly string[]>>> = fingerCandidates()
+
+/**
+ * Twist and shoulder-helper bones that move with an arm. They are used only to group clip tracks into the arm mask,
+ * never to pose.
+ */
+export const MMD_ARM_HELPER_CANDIDATES = {
+  left: ['左腕捩', '左手捩', '左肩P', '左肩C'],
+  right: ['右腕捩', '右手捩', '右肩P', '右肩C'],
+} as const satisfies Record<'left' | 'right', readonly string[]>
+
+/**
+ * FK leg bones, including the D (deform) variants some models animate instead. They are used only to group clip tracks
+ * into the lower-body mask, never to pose.
+ */
+export const MMD_LOWER_BODY_CANDIDATES = [
+  '下半身',
+  '左足',
+  '右足',
+  '左ひざ',
+  '右ひざ',
+  '左足首',
+  '右足首',
+  '左足D',
+  '右足D',
+  '左ひざD',
+  '右ひざD',
+  '左足首D',
+  '右足首D',
+] as const satisfies readonly string[]
 
 /**
  * MMD control bones without a humanoid counterpart. IK names list the full-width ＩＫ

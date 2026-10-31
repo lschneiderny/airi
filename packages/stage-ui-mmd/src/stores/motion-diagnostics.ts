@@ -55,11 +55,22 @@ export interface MMDMotionSnapshot {
     leashClamps: number
     enabled: boolean
   } | null
+  /**
+   * The arm rest layer. `weight` is one minus the larger arm ownership, `owned` the clip ownership per group (0-1),
+   * `penetration` the deepest arm capsule entry into a torso, hip or skirt body in model units, and `handBelowHip`
+   * whether both hand bones sit below the hips bone.
+   */
+  arms: {
+    weight: number
+    owned: { leftArm: number, rightArm: number, leftFingers: number, rightFingers: number }
+    penetration: { left: number, right: number }
+    handBelowHip: boolean
+  } | null
 }
 
 export type MMDMotionCommand
   = | { type: 'command', name: 'startMeasurement' | 'stopMeasurement', value?: undefined }
-    | { type: 'command', name: 'setDebugFlag', value: { flag: 'disableFootContact' | 'disableLookAt', on: boolean } }
+    | { type: 'command', name: 'setDebugFlag', value: { flag: 'disableFootContact' | 'disableLookAt', on: boolean } | { flag: 'armRestHangDeg', value: number | null } }
     | { type: 'command', name: 'advanceDirectorClock', value: number }
     | { type: 'command', name: 'setOverlay', value: Partial<MMDOverlayFlags> }
     | { type: 'command', name: 'requestGoal', value: { x: number, pace: LocomotionPace } }
@@ -88,7 +99,8 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     : new BroadcastChannel('airi-stores-stage-ui-mmd-motion-diagnostics')
   let metrics = new MMDFrameMetrics()
   let warned = false
-  const debugFlags = ref({ disableFootContact: false, disableLookAt: false })
+  /** `armRestHangDeg` is the rest upper-arm angle below horizontal for QA, 0-90; null keeps the default. */
+  const debugFlags = ref<{ disableFootContact: boolean, disableLookAt: boolean, armRestHangDeg: number | null }>({ disableFootContact: false, disableLookAt: false, armRestHangDeg: null })
   const directorClockOffsetMs = ref(0)
   const overlays = shallowRef<MMDOverlayFlags>({ ...mmdOverlaysOff })
   /** The latest walk goal from the lab; a new `seq` marks a new request, even to the same x. */
@@ -113,6 +125,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     stageModel: null,
     measurement: null,
     locomotion: null,
+    arms: null,
   })
 
   function warn() {
@@ -139,6 +152,15 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
         metrics.stopMeasurement()
         break
       case 'setDebugFlag':
+        if (typeof value === 'object' && value !== null && 'flag' in value && value.flag === 'armRestHangDeg' && 'value' in value) {
+          const degrees = value.value
+          if (degrees !== null && (typeof degrees !== 'number' || !(degrees >= 0) || !(degrees <= 90))) {
+            warn()
+            return
+          }
+          debugFlags.value.armRestHangDeg = degrees
+          break
+        }
         if (typeof value !== 'object' || value === null || !('flag' in value) || !('on' in value)
           || (value.flag !== 'disableFootContact' && value.flag !== 'disableLookAt') || typeof value.on !== 'boolean') {
           warn()

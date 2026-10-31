@@ -1,8 +1,8 @@
 import type { PmxObject } from '@moeru/three-mmd'
-import type { HumanoidBoneName, RigTraits } from '@proj-airi/motion-driver-humanoid/types'
+import type { HumanoidBoneName, HumanoidFingerBoneName, RigTraits } from '@proj-airi/motion-driver-humanoid/types'
 
 import { EYE_PITCH_LIMIT, EYE_YAW_LIMIT } from '../gaze'
-import { HUMANOID_BONE_CANDIDATES, MMD_CONTROL_BONE_CANDIDATES } from './bone-map'
+import { HUMANOID_BONE_CANDIDATES, HUMANOID_FINGER_CANDIDATES, MMD_ARM_HELPER_CANDIDATES, MMD_CONTROL_BONE_CANDIDATES } from './bone-map'
 
 /**
  * The PMX fields the rig profile reads. `mmd.pmx` satisfies it directly. Positions and IK
@@ -61,6 +61,19 @@ export interface MMDRigProfile {
   footBaselineY: number | null
   /** Mean rest angle of the upper arms below horizontal, in radians; null without arms. */
   restArmAngle: number | null
+  /** Per-side upper-arm bind angle below horizontal, in radians; null when the side lacks an upper arm or elbow. */
+  restArmAngles: Record<'left' | 'right', number | null>
+  /** Per-side forearm bind angle below horizontal, in radians; null when the side lacks an elbow or wrist. */
+  restForearmAngles: Record<'left' | 'right', number | null>
+  /**
+   * Per-side thumb curl axis, `normalize(thumbDir_bind x palmNormal)` in model axes with the palm facing down; null
+   * without thumb bones.
+   */
+  thumbAxis: Record<'left' | 'right', MMDVec3 | null>
+  /** Finger bones present and not physics-owned. */
+  fingerBones: Partial<Record<HumanoidFingerBoneName, string>>
+  /** Twist and shoulder-helper bones present per side. They group clip tracks for ownership and are never posed. */
+  armHelpers: Record<'left' | 'right', string[]>
   eyeSource: MMDEyeSource
   /** Bones bound by a mode 1 (physics) or mode 2 (physics with bone) rigid body, in PMX order. */
   physicsOwned: string[]
@@ -85,6 +98,11 @@ function mean(values: number[]): number | null {
 
 function distance(a: MMDVec3, b: MMDVec3): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+}
+
+/** Angle of the segment `from` to `to` below horizontal, in radians. */
+function angleBelowHorizontal(from: MMDVec3, to: MMDVec3): number {
+  return Math.atan2(from[1] - to[1], Math.hypot(to[0] - from[0], to[2] - from[2]))
 }
 
 /** Reads the rig profile from post-parse PMX data, usually `mmd.pmx`. */
@@ -125,6 +143,24 @@ export function readMMDRigProfile(pmx: MMDRigSource): MMDRigProfile {
     missingBones.push(humanoid)
     if (existing.length > 0)
       physicsOwnedHumanoid.push(humanoid)
+  }
+
+  const fingerBones: MMDRigProfile['fingerBones'] = {}
+  for (const [finger, candidates] of Object.entries(HUMANOID_FINGER_CANDIDATES) as [HumanoidFingerBoneName, readonly string[]][]) {
+    const writable = candidates.find(name => indexByName.has(name) && !physicsOwnedIndices.has(indexByName.get(name)!))
+    if (writable)
+      fingerBones[finger] = writable
+  }
+  const fingerPositionOf = (finger: HumanoidFingerBoneName): MMDVec3 | null => {
+    const name = fingerBones[finger]
+    if (!name)
+      return null
+    const [x, y, z] = pmx.bones[indexByName.get(name)!].position
+    return [x, y, z]
+  }
+  const armHelpers: MMDRigProfile['armHelpers'] = {
+    left: MMD_ARM_HELPER_CANDIDATES.left.filter(name => indexByName.has(name)),
+    right: MMD_ARM_HELPER_CANDIDATES.right.filter(name => indexByName.has(name)),
   }
 
   const positionOf = (humanoid: HumanoidBoneName): MMDVec3 | null => {
@@ -187,6 +223,9 @@ export function readMMDRigProfile(pmx: MMDRigSource): MMDRigProfile {
   const legLengths: number[] = []
   const ankleHeights: number[] = []
   const armAngles: number[] = []
+  const restArmAngles: MMDRigProfile['restArmAngles'] = { left: null, right: null }
+  const restForearmAngles: MMDRigProfile['restForearmAngles'] = { left: null, right: null }
+  const thumbAxis: MMDRigProfile['thumbAxis'] = { left: null, right: null }
   for (const side of ['left', 'right'] as const) {
     const hip = positionOf(`${side}UpperLeg`)
     const knee = positionOf(`${side}LowerLeg`)
@@ -198,8 +237,25 @@ export function readMMDRigProfile(pmx: MMDRigSource): MMDRigProfile {
 
     const shoulder = positionOf(`${side}UpperArm`)
     const elbow = positionOf(`${side}LowerArm`)
-    if (shoulder && elbow)
-      armAngles.push(Math.atan2(shoulder[1] - elbow[1], Math.hypot(elbow[0] - shoulder[0], elbow[2] - shoulder[2])))
+    const wrist = positionOf(`${side}Hand`)
+    if (shoulder && elbow) {
+      const angle = angleBelowHorizontal(shoulder, elbow)
+      restArmAngles[side] = angle
+      armAngles.push(angle)
+    }
+    if (elbow && wrist)
+      restForearmAngles[side] = angleBelowHorizontal(elbow, wrist)
+
+    const thumbStart = fingerPositionOf(`${side}ThumbProximal`)
+    const thumbEnd = fingerPositionOf(`${side}ThumbDistal`)
+    if (thumbStart && thumbEnd) {
+      // Palms face down at bind, so the curl axis is thumbDir x (0, -1, 0) = (thumbDir.z, 0, -thumbDir.x).
+      const x = thumbEnd[2] - thumbStart[2]
+      const z = thumbStart[0] - thumbEnd[0]
+      const length = Math.hypot(x, z)
+      if (length > 0)
+        thumbAxis[side] = [x / length, 0, z / length]
+    }
   }
 
   let eyeSource: MMDEyeSource = 'none'
@@ -227,6 +283,11 @@ export function readMMDRigProfile(pmx: MMDRigSource): MMDRigProfile {
     legLength: mean(legLengths),
     footBaselineY: mean(ankleHeights),
     restArmAngle: mean(armAngles),
+    restArmAngles,
+    restForearmAngles,
+    thumbAxis,
+    fingerBones,
+    armHelpers,
     eyeSource,
     physicsOwned: namesInPmxOrder(physicsOwnedIndices),
     physicsWithBoneOwned: namesInPmxOrder(physicsWithBoneIndices),
