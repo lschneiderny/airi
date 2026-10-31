@@ -40,6 +40,14 @@ The session list displays and sorts by the latest valid user or assistant messag
 Sessions without dated conversation messages use their creation time. Loading messages updates the list from the stored history.
 Saving or synchronizing a session does not change its displayed activity time unless its messages change.
 
+## Chat bursts and wordless replies
+
+An assistant message with break slices renders one bubble per run of slices between breaks; a leading, repeated, or trailing break adds no empty bubble. While the message streams, a bubble after a break appears `seconds` after that break slice arrived. The schedule keeps running after generation ends, so later bubbles of a short reply still appear on time. A message that is already complete when the history mounts, for example after a reload or a session switch, shows every bubble at once. Copy still joins the text with blank lines.
+
+A wordless or silent reply (an assistant message with `wordless`) renders as a small chip outside any bubble, such as "reacted - nodded" or "stayed quiet". It has no copy text and no reply action.
+
+Cloud sync carries content only. A burst syncs as its content, so another device shows one bubble. A wordless reply stays local like an unprompted trigger. Both are supported policy; cloud sync is inactive in this fork.
+
 ## Startup progress
 
 `useStartupResourcesStore` records each resource as queued, loading, ready, failed, or skipped.
@@ -66,7 +74,7 @@ Consumers subscribe to the microphone input with their own abort signal. The las
 - `VoiceComposer` is the touch voice control of mobile composers. Hold it to record, slide left to cancel, and slide up to lock. A voice message is sent on release.
 - `useVoiceMessagesStore` owns voice message recordings and their attachment submission.
 - Hearing selects providers and converts captured PCM to each provider's upload format. It does not open the microphone.
-- Speech preserves existing chunked synthesis and bidirectional provider output.
+- Speech preserves existing chunked synthesis and bidirectional provider output. Chunked synthesis never speaks the ASCII faces of the texting register and pauses the speech track at each `<|BREAK|>`; the speech pipeline in `@proj-airi/pipelines-audio` owns both. Bidirectional providers stream through `streamSpeech` in `libs/speech/streaming-pipeline`, which bypasses the chunker, so they get neither.
 - `createVoiceRephrasePlugin` rewrites final transcripts with a chat model through a checked transcript patch. The raw text stays in the transcript history. Each segment gets its own rewrite, so segment boundaries stay for later speaker labels. A reply with another segment count leaves the text unchanged.
 - `createVoiceEndJudgePlugin` ends a paused input early when a chat model reads its transcript as a finished message. The model is the rephrase model, or the chat model when no rephrase provider is set.
 
@@ -383,7 +391,7 @@ Most openings come from ripe threads in the current chat session, daily rituals,
 The logical day rolls over in the early morning. A greeting can open on his first appearance in its morning window, a sign-off while he is present late at night, and a welcome-back after a long absence that began within the same logical day. Each ritual runs at most once per logical day; an absence across the rollover can prompt the greeting, not welcome-back. The Timings section of the cadence ADR lists the ritual windows.
 
 Gate memory, threads, ritual completion, and the thread extraction read positions are written directly to non-synced local storage. They survive reloads without entering synchronized Pinia state. Use this store to give the model situation awareness and to run unprompted remarks.
-The existing hard suppressors, including Do Not Disturb, hidden stage, active calls, typing, and games, still hold unprompted turns; urgent notifications bypass timing, forced turns speak, only the leader fires, and one request can be pending at a time. A forced widget or plugin turn that speaks starts the same short floor and never counts as unanswered.
+The existing hard suppressors, including Do Not Disturb, hidden stage, active calls, typing, and games, still hold unprompted turns; urgent notifications bypass timing, forced turns speak, only the leader fires, and one request can be pending at a time. A forced widget or plugin turn that speaks starts the same short floor and never counts as unanswered, and so does a spoken touch reaction.
 Do not read it in follower windows, and do not store its block or window titles in chat history.
 
 ### Thread extraction
@@ -429,7 +437,7 @@ The chat store renders the register section with `renderRegisterSection(register
 At most one unprompted turn is pending at a time. A user send in the same session cancels it.
 The trigger message keeps `topicText` in chat history, so the gate never passes a window title or a web extension title or link as `topicText`. Its trigger kind identifies the reason source. Thread text reaches the model only as labelled data in the trigger, never in the instruction. For a web extension topic it passes only the kind of topic, and the situation block of the request carries the details.
 `userSending` ignores unprompted turns, so the presence bubble and the streaming placeholder follow user turns only.
-Chat history shows a muted "Reached out: ..." cue above the reply unless **Show unprompted cue** is off. The trigger kind identifies whether the reason is a thread, ritual, own-day thought, or eligible screen event. Unprompted turns are excluded from cloud sync.
+Chat history shows a muted "Reached out: ..." cue above the reply unless **Show unprompted cue** is off. The trigger kind identifies whether the reason is a thread, ritual, own-day thought, eligible screen event, or touch. Unprompted turns are excluded from cloud sync.
 
 Widget reaction requests (`dispatchSparkNotifyReaction` and `dispatchSparkNotifyPerformance`) use `submitUnprompted` with `force: true` and the message id `spark:<id>`.
 The context bridge holds the notify topic with `holdTopic`, so the gate cannot raise it meanwhile. It first waits up to 20 seconds until the character has no open voice response and `untilUserIdle` reports that the user is neither speaking nor writing.
@@ -446,6 +454,20 @@ A reaction is an unprompted turn with the turn ID `reaction:<eventId>`, so it sh
 The trigger message is `base.prompt.reaction-trigger` with `topicText`, and its trigger is `{ topicKey: 'touch', text: topicText, kind }` with kind `touch-pet` or `touch-poke`. The instruction is `base.prompt.reaction`, or `base.prompt.reaction-protest` for a poke protest. A reaction has no reason category and is never forced: it gets only `builtIn_readMemory`, and a `<|SILENT|>` reply declines it with one control record.
 
 Use `submitReaction` only for the touch reaction policy of the situation leader. Do not use it for notify or widget reactions; they use `submitUnprompted`.
+
+### Stage touch
+
+`Stage.vue` hands each Live2D `touch` event to `useStageTouchStore`, together with its own performance conductor. Only the Natural driver classifies touches.
+
+- Every pet start, pet end, and poke becomes a `touch` affect signal on that conductor. Its decider owns cooldowns and habituation, and the conductor sends the resulting mood doses to the scene's `addMood` under Natural only.
+- A finished pet and a poke are also sent to the situation leader as a `TouchObservation` over `situationTouchObservedEvent` (`stores/situation/touch-bus`) on the speech bus. A pet start is not sent.
+- Each rendered stage owns its own conductor, so two stages that render at once dose mood twice for touches on both. No guard prevents it.
+
+The leader folds each observation into the situation and, while its urge gate runs, evaluates the touch reaction policy of `@proj-airi/stage-shared/situation`. A speak decision marks the touch event shown and calls `submitReaction`. A spoken reaction settles at its first literal: it starts the policy's 45 s refractory and the gate's short floor (`recordExternalSpeech`). A declined, cancelled, or failed reaction only clears the pending entry, and a send refused by another pending unprompted turn is rolled back, random draw included. Reaction outcomes never reach `recordUrgeFireOutcome`. The reaction memory is saved with the gate's inner state.
+
+A reaction turn's own cues dose no mood, because the touch already did. When a turn's trigger has the `touch` topic key, `Stage.vue` calls `markMoodless(turnId)` on the conductor, and every episode of that turn carries a mood gain of 0.
+The conductor's `gesture(kind, count)` plays an ACT `gesture` field on the scene under Natural only; Universal and MAGIC ignore it.
+The [nonverbal channels ADR](../../docs/ai/adr/2026-10-31-nonverbal-channels.md) records the design and its consequences.
 
 ### Situation inspector
 

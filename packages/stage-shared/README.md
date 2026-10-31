@@ -9,6 +9,7 @@ Use this package when a type or behavior must cross stage application boundaries
 | Entrypoint | Use | Do not use |
 | --- | --- | --- |
 | `stage-contract` | Render the stable cue contract with a supplied translator and compose the system prompt. The English SHA-256 pins its version; update it in the commit that changes the contract. | Read locale state, collect live stage state, or parse model replies. |
+| `conversation-register` | Read the conversation registers (`talking`, `texting`) and texting flavors (`plain`, `discord`), parse a stored register, render the register section of the character prompt with `renderRegisterSection`, and share the `ASCII_FACES` list that speech strips. | Change the stage contract per register: the register section stays outside the contract, so the contract hash is the same in both registers. |
 
 The `plugin-host` entrypoint owns the serializable Plugin Host snapshots exchanged between the Electron main process and shared renderer code:
 
@@ -73,7 +74,8 @@ The `expression-performance` entrypoint owns the pure decision layer for charact
 - the picker and planner deciders, selected by `createDecider`, and the timing-slot scheduler;
 - affect traces and their replay (`withAffectTrace`, `parseAffectTrace`, `replayAffectTrace`);
 - the Eventa contracts that carry lab affect-trace requests, results, and failure codes between windows (`affectTraceRequestedEvent`, `affectTraceCompletedEvent`, `affectTraceFailedEvent`, `createAffectTraceDiagnosticsContext`);
-- character performance profiles (`resolveEffectiveSettings`, `applyMappingWeights`).
+- character performance profiles (`resolveEffectiveSettings`, `applyMappingWeights`);
+- touch affect (`touchAffect`, `initialTouchAffectMemory`, `MoodDose`), which turns one classified pet or poke into at most one mood dose with cooldowns and habituation. A `touch` affect signal returns its dose in the decision's `moods`, and every other signal returns an empty list. Touch never creates an emotion episode.
 
 A decider never reads a clock, global randomness, or a store. Pass every time in the signal as monotonic seconds, and keep the returned state for the next call. The state is plain JSON, so it can be checkpointed and replayed.
 
@@ -137,6 +139,7 @@ The `situation` entrypoint owns the pure core of situational presence: observati
 - `reduceSituation` folds one `Observation` into a `SituationState`. `advanceSituation` derives the events that need no observation, such as settled app switches, long-session tiers, and expiry.
 - `renderSituation` renders the bounded `[Situation HH:MM]` block and returns the ids of the events that it showed as new. Pass them to `markShown`, so the next block does not repeat them.
 - `evaluateUrgeGate` integrates a seeded urge against the current hazard, selects an eligible screen event or inner reason, and returns the next gate memory. `recordUrgeFireOutcome`, `recordUrgeUserTurn`, and `recordExternalSpeech` update social state. Only the urge gate exists; `hardReason` in `gate.ts` holds the hard contract that it checks first.
+- A `TouchObservation` (a finished pet or a poke) becomes one situation event under `TOUCH_TOPIC_KEY`, which each new touch replaces. Its `New:` line tells the model about the touch, and the urge gate never picks it as a topic.
 - `reactionPolicy` decides whether a touch (a long enough pet, or a burst of pokes) gets a short line, and `settleReaction` records the outcome. It never goes through the urge gate: it has its own pacing, its own random checkpoint, and a subset of the hard suppressors that skips presence, stale signals, and busy states.
 - `normalizeWindowTitle`, `appIdFromExe`, `labelFromExe`, `categorizeApp`, and `isDenylisted` turn a foreground sample into an app id, label, category, and model-facing title.
 
@@ -155,7 +158,7 @@ state = markShown(state, rendered.shownEventIds, nowMs)
 Use this entrypoint to describe the user's situation to the model, or to decide when an unprompted remark is welcome and which reason to use, in a way that tests can replay.
 Do not use it to collect signals or to hold state for a window. `useSituationStore` in `@proj-airi/stage-ui` owns the leader's state, the sensors, and the gate loop.
 Do not persist or sync a `SituationState`, because it can hold window titles.
-The [situational presence ADR](../../docs/ai/adr/2026-10-19-situational-presence.md) records the situation rules, and the [unprompted reach-out cadence ADR](../../docs/ai/adr/2026-10-29-unprompted-reach-out-cadence.md) records the gate and reason design.
+The [situational presence ADR](../../docs/ai/adr/2026-10-19-situational-presence.md) records the situation rules, the [unprompted reach-out cadence ADR](../../docs/ai/adr/2026-10-29-unprompted-reach-out-cadence.md) records the gate and reason design, and the [nonverbal channels ADR](../../docs/ai/adr/2026-10-31-nonverbal-channels.md) records touch, touch affect, the reaction policy, and the conversation register.
 
 ### Foreground window store
 
