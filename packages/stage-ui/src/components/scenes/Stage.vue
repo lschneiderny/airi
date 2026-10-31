@@ -22,6 +22,7 @@ import { normalizeActPayload, Playback } from '@proj-airi/pipelines-audio'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
 import { isMotionQaBridgeEnabled } from '@proj-airi/stage-shared/motion-scenario/flag'
 import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
+import { TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { MMDScene } from '@proj-airi/stage-ui-mmd'
@@ -796,6 +797,9 @@ watch(speechMuted, (muted) => {
 const deferredSurfaceResets = new Set<string>()
 
 chatHookCleanups.push(onBeforeMessageComposed(async (_message, context) => {
+  // A touch reaction turn doses no mood from its own cues: the touch that started it already dosed mood.
+  if (context.message.role === 'user' && context.message.trigger?.topicKey === TOUCH_TOPIC_KEY)
+    performanceConductor.markMoodless(context.turnId)
   voice.startResponse(context)
   if (context.sessionId === chatSession.activeSessionId) {
     if (context.origin === 'unprompted')
