@@ -7,6 +7,7 @@ import type { SparkNotifyPerformanceResult, SparkNotifyReactionOptions } from '.
 
 import { errorMessageFrom } from '@moeru/std'
 import { encodeBase64 } from '@moeru/std/base64'
+import { tokenBreak } from '@proj-airi/pipelines-audio'
 import { isStageTamagotchi, isStageWeb } from '@proj-airi/stage-shared'
 import { notifyTopicKey } from '@proj-airi/stage-shared/situation'
 import { useBroadcastChannel } from '@vueuse/core'
@@ -134,8 +135,11 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
     started: boolean
     completed: boolean
     refreshing: boolean
-    pendingLiterals: string[]
+    /** Stream parts that arrived before this window presented the stream, in arrival order. */
+    pendingSlices: Array<{ type: 'text', text: string } | { type: 'break', seconds: number }>
   }
+  /** Reads the pause of a break special that another renderer forwards with its stream. */
+  const breakParser = tokenBreak()
   const remoteStreams = shallowReactive(new Map<string, RemoteStream>())
   const isReceivingRemoteStream = computed(() => remoteStreams.has(chatSession.activeSessionId))
   const remoteStreamSessionId = computed(() => remoteStreams.get(chatSession.activeSessionId)?.sessionId)
@@ -186,8 +190,12 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
       guard.started = true
       chatStream.beginStream(guard.turnId)
     }
-    for (const literal of guard.pendingLiterals.splice(0))
-      chatStream.appendStreamLiteral(literal)
+    for (const slice of guard.pendingSlices.splice(0)) {
+      if (slice.type === 'break')
+        chatStream.appendStreamBreak(slice.seconds)
+      else
+        chatStream.appendStreamLiteral(slice.text)
+    }
     if (guard.completed && !guard.refreshing)
       void refreshCompletedRemoteStream(guard)
     return true
@@ -666,7 +674,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
               started: false,
               completed: false,
               refreshing: false,
-              pendingLiterals: [],
+              pendingSlices: [],
             })
             presentRemoteStreamIfActive()
             if (options.emitHooks)
@@ -679,13 +687,24 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
           case 'token-literal':
             if (!current || guard.completed)
               return
-            guard.pendingLiterals.push(event.literal)
+            guard.pendingSlices.push({ type: 'text', text: event.literal })
             presentRemoteStreamIfActive()
             if (options.emitHooks)
               await chatOrchestrator.emitTokenLiteralHooks(event.literal, event.context)
             break
           case 'token-special':
-            if (options.emitHooks && current && !guard.completed)
+            if (!current || guard.completed)
+              return
+            {
+              // The runtime forwards a break it accepts right before the text after it, so the text opens a new
+              // bubble here as it does in the producing renderer. A BREAK whose body is no duration is no break.
+              const breakToken = breakParser.match(event.special) ? breakParser.parse(event.special) : undefined
+              if (breakToken) {
+                guard.pendingSlices.push({ type: 'break', seconds: breakToken.seconds })
+                presentRemoteStreamIfActive()
+              }
+            }
+            if (options.emitHooks)
               await chatOrchestrator.emitTokenSpecialHooks(event.special, event.context)
             break
           case 'stream-end':

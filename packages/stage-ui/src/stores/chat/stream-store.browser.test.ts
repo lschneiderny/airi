@@ -36,8 +36,7 @@ it('opens a new text slice after a break instead of merging into the text before
   stream.beginStream('turn-1')
   stream.appendStreamLiteral('One')
   stream.appendStreamLiteral(' line')
-  stream.streamingMessage.slices.push({ type: 'break', seconds: 1 })
-  stream.streamingMessage.content += '\n\n'
+  stream.appendStreamBreak(1)
   stream.appendStreamLiteral('Two')
   stream.appendStreamLiteral('!')
 
@@ -47,4 +46,14 @@ it('opens a new text slice after a break instead of merging into the text before
     { type: 'text', text: 'Two!' },
   ])
   expect(stream.streamingMessage.content).toBe('One line\n\nTwo!')
+})
+
+it('ignores a break before the first text, which has nothing to split', () => {
+  const stream = setupStream()
+  stream.beginStream('turn-1')
+  stream.appendStreamBreak(2)
+  stream.appendStreamLiteral('Only line')
+
+  expect(stream.streamingMessage.slices).toEqual([{ type: 'text', text: 'Only line' }])
+  expect(stream.streamingMessage.content).toBe('Only line')
 })
