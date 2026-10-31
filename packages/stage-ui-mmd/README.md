@@ -86,6 +86,15 @@ from the 600-sample rolling FPS and timing readouts. `setDebugFlag`,
 `advanceDirectorClock`, and `setOverlay` carry transient controls for the
 body, director, and overlay consumers.
 
+### Rig profile
+
+For motion layers, `readMMDRigProfile(mmd.pmx)` (exported from
+`@proj-airi/stage-ui-mmd/composables/mmd`) maps the PMX skeleton to the canonical
+humanoid bones of `@proj-airi/motion-driver-humanoid` and reports leg IK chains,
+the knee bend sign, leg length, foot baseline, eye bone source, physics-owned
+bones and the waist-cancel flag. `toRigTraits(profile)` converts it to the
+renderer-neutral `RigTraits`. Pose stages must not write physics-owned bones.
+
 ## When to use it
 
 - Displaying MMD/MikuMikuDance characters (`.pmx`/`.pmd`) on the AIRI stage.
