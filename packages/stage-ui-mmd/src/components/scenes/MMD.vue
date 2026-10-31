@@ -17,6 +17,7 @@ import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { SkinnedMesh, Texture } from 'three'
 
 import type { GazeOffset, MMDAnimationManager, MorphController } from '../../composables/mmd'
+import type { MMDTouchEvent } from '../../composables/mmd/touch'
 import type { SpeechEvent } from '../../stores/expression-slots'
 import type { ResolvedMMDModel } from '../../utils/mmd-loader'
 
@@ -25,6 +26,7 @@ import { coverRect } from '@proj-airi/stage-shared'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { screenInwardness } from '@proj-airi/stage-shared/stage-placement'
 import { Screen } from '@proj-airi/ui'
+import { useEventListener } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import {
   AmbientLight,
@@ -43,7 +45,7 @@ import {
   WebGLRenderer,
 } from 'three'
 import { OrbitControls } from 'three-stdlib'
-import { onMounted, onUnmounted, ref, toRaw, toRef, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, toRaw, toRef, watch } from 'vue'
 
 import {
   createGazeController,
@@ -63,6 +65,7 @@ import { resolveFrameBounds } from '../../composables/mmd/camera-bounds'
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
 import { readMMDRigProfile } from '../../composables/mmd/rig'
+import { MMDTouch } from '../../composables/mmd/touch'
 import { Emotion, EMOTION_VALUES } from '../../constants/emotions'
 import { useMMDExpressionStore } from '../../stores/expression-store'
 import { useMMD } from '../../stores/mmd'
@@ -109,6 +112,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (e: 'error', err: unknown): void
+  (e: 'touch', event: MMDTouchEvent): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -130,6 +134,8 @@ const {
   physicsGravity,
   gazeMode,
   motionDriver,
+  naturalTouch,
+  naturalTouchPetRequiresHold,
   position,
   scale,
   rotationY,
@@ -169,6 +175,7 @@ let natural: MMDNaturalAdapter | undefined
 let body: MMDBody | undefined
 let rig: ReturnType<typeof readMMDRigProfile> | undefined
 let stopMorphOverrides: (() => void) | undefined
+let touch: MMDTouch | undefined
 // Motion names already bound to the current model runtime.
 const registeredMotions = new Set<string>()
 let rafHandle = 0
@@ -424,6 +431,8 @@ function renderLoop(now = performance.now()) {
   expressions.setSlotSettings(props.performanceSettings.slots)
   expressions.update(now / 1000)
   animation?.update(delta)
+  if (touch)
+    handleTouchEvents(touch.update(now))
 
   controls?.update()
   const activeRenderer = renderer
@@ -440,6 +449,7 @@ function renderLoop(now = performance.now()) {
       natural: natural?.diagnostics ?? null,
       feet: motionDriver.value === 'natural' ? body?.diagnostics.feet ?? null : null,
       lookAt: motionDriver.value === 'natural' ? body?.diagnostics.lookAt ?? null : null,
+      touch: touch && canvasRef.value ? touch.diagnostics(activeCamera, canvasRef.value.getBoundingClientRect()) : null,
       animation: animation?.snapshot() ?? { idle: null, currentAction: null, actionsStarted: 0 },
     })
   }
@@ -776,6 +786,52 @@ watch(() => props.modelSrc, (src) => {
     loadModel(src)
   else
     disposeModel()
+})
+
+// --- Touch
+// Pokes and pets are a Natural reaction, so touch runs only while Natural drives the model.
+const touchActive = computed(() => naturalTouch.value && motionDriver.value === 'natural' && !props.paused)
+
+function handleTouchEvents(events: MMDTouchEvent[]) {
+  if (!touch)
+    return
+  for (const poke of touch.takePokes())
+    natural?.poke(poke.region, poke)
+  natural?.setPet(touch.petHand)
+  for (const event of events)
+    emit('touch', event)
+}
+
+function resetTouch() {
+  if (touch)
+    handleTouchEvents(touch.reset(performance.now()))
+}
+
+// The model is ready once the scene reports it mounted; any other state means it is gone or loading.
+watch(componentState, (state) => {
+  resetTouch()
+  touch = state === 'mounted' && mesh && resolved && rig
+    ? new MMDTouch(mesh, resolved.mmd.pmx, rig, { requireHold: naturalTouchPetRequiresHold.value })
+    : undefined
+  if (!touch)
+    diagnostics.publish({ touch: null })
+}, { flush: 'sync' })
+
+watch(touchActive, (active) => {
+  if (!active)
+    resetTouch()
+})
+
+watch(naturalTouchPetRequiresHold, (requireHold) => {
+  resetTouch()
+  if (touch)
+    touch.gestures.requireHold = requireHold
+})
+
+useEventListener(canvasRef, ['pointerdown', 'pointermove', 'pointerup', 'pointerleave', 'pointercancel'], (event: PointerEvent) => {
+  if (!event.isPrimary || !touch || !mesh || !camera || !canvasRef.value || !touchActive.value)
+    return
+  handleTouchEvents(touch.pointer(event, camera, canvasRef.value.getBoundingClientRect()))
 })
 
 watch(() => props.enableOrbitControls, (enabled) => {
