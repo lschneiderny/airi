@@ -10,9 +10,11 @@ import { createI18n } from 'vue-i18n'
 
 import ChatHistory from './history.vue'
 
-// virtua binds `setTimeout` at module evaluation, and its imperative scroll re-applies its target on item
-// resize until a 150 ms timer on that binding disarms it. Faking the clock before the imports puts that timer
-// on the fake clock. A per-test fake clock, as in history.browser.test.ts, would replace the captured one.
+// NOTICE:
+// virtua's 150 ms scroll-to disarm timer must run on the fake clock.
+// virtua 0.50.4 binds `setTimeout` at module load.
+// Source: node_modules/virtua/lib/vue/index.js (`g = setTimeout`, `g(o, 150)`).
+// Remove once virtua reads timers at call time; then use a per-test fake clock as in history.browser.test.ts.
 vi.hoisted(() => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
 })
