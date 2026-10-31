@@ -144,6 +144,11 @@ export interface ChatStreamEventContext {
   sessionId: string
   /** Stable correlation id shared by every hook emitted for one user turn. */
   turnId: string
+  /**
+   * ID of the assistant message that stores the turn's reply. The runtime sets it on every turn, so a window that
+   * shows another renderer's reply keys it like the stored one. A context built outside the runtime may omit it.
+   */
+  assistantMessageId?: string
   message: ChatHistoryItem
   contexts: Record<string, ContextMessage[]>
   composedMessage: Array<Message>

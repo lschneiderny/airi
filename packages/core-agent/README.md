@@ -106,7 +106,7 @@ The model declines with the decline marker, `<|SILENT|>` by default (`declineMar
 
 A decline marker that arrives after speech started is removed from the content and the hooks.
 An unprompted turn carries only the host's `unpromptedTools`, which must have no effects. The Responses adapter adds no hosted `web_search`, and `origin` in `StreamOptions` tells the host to send no built-in tools.
-The stream context reports `origin` and the turn's `cueStats` (`act`, `recovered`, `rejected`, `origin`, `declined`, `silent`, `wordless`, `breaks`, and `breaksIgnored`) before the stream-end hooks.
+The stream context names the stored reply in `assistantMessageId` from the first hook, so another window can key its view of the stream like the stored reply. It reports `origin` and the turn's `cueStats` (`act`, `recovered`, `rejected`, `origin`, `declined`, `silent`, `wordless`, `breaks`, and `breaksIgnored`) before the stream-end hooks.
 For an unprompted turn, `accepted` resolves when the trigger is committed or when the turn is declined, so it does not prove persistence.
 A user turn treats the decline marker as described in [Wordless and silent user turns](#wordless-and-silent-user-turns).
 

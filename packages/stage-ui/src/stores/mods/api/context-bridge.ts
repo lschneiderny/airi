@@ -132,6 +132,11 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
     sessionId: string
     generation: number
     turnId: string
+    /**
+     * ID of the streamed reply. It is the stored reply's ID, so the stored reply keeps the history item, and its break
+     * schedule, when the session refresh replaces the stream. A context without one keys the stream by its turn.
+     */
+    messageId: string
     started: boolean
     completed: boolean
     refreshing: boolean
@@ -188,7 +193,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
       return false
     if (!guard.started) {
       guard.started = true
-      chatStream.beginStream(guard.turnId)
+      chatStream.beginStream(guard.messageId)
     }
     for (const slice of guard.pendingSlices.splice(0)) {
       if (slice.type === 'break')
@@ -671,6 +676,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
               sessionId: event.sessionId,
               generation: chatSession.getSessionGenerationValue(event.sessionId),
               turnId: event.context.turnId,
+              messageId: event.context.assistantMessageId ?? event.context.turnId,
               started: false,
               completed: false,
               refreshing: false,

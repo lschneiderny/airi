@@ -1,3 +1,4 @@
+import type { ChatStreamEventContext } from '@proj-airi/stage-ui/types/chat'
 import type { ChatSessionMeta } from '@proj-airi/stage-ui/types/chat-session'
 import type { Component } from 'vue'
 
@@ -10,6 +11,8 @@ import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useChatStreamStore } from '@proj-airi/stage-ui/stores/chat/stream-store'
 import { useL2dViewControl } from '@proj-airi/stage-ui/stores/live2d'
+import { useContextBridgeStore } from '@proj-airi/stage-ui/stores/mods/api/context-bridge'
+import { createContextChannel } from '@proj-airi/stage-ui/stores/mods/api/context-channel'
 import { useSettingsStageModel } from '@proj-airi/stage-ui/stores/settings/stage-model'
 import { createPinia, disposePinia } from 'pinia'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -102,6 +105,7 @@ async function renderArea(component: Component = InteractiveArea, options: { pro
     chatSession: useChatSessionStore(pinia),
     chatStream: useChatStreamStore(pinia),
     stageModel: useSettingsStageModel(pinia),
+    pinia,
     router,
     screen,
   }
@@ -260,6 +264,45 @@ describe('interactive area synchronized state', () => {
       expect(screen.container.querySelector('[class*="trash-bin-2-bold-duotone"]')).toBeNull()
       screen.unmount()
     }
+  })
+
+  it('shows a reply that another window streams while this window runs no turn of its own', async () => {
+    // ROOT CAUSE:
+    //
+    // The chat window showed a remote reply only while the synchronized store listed its turn. The turn ends before
+    // this window loads the stored reply, so the reply left the history and returned complete.
+    //
+    // We fixed this by also showing it while the context bridge holds the stream.
+    const { pinia, screen } = await renderArea()
+    // The bridge reads i18n when it starts, so it starts inside a component, as in the app.
+    let startedBridge: ReturnType<typeof useContextBridgeStore> | undefined
+    const bridgeHost = render(defineComponent({
+      setup() {
+        startedBridge = useContextBridgeStore()
+        return () => h('div')
+      },
+    }), { global: { plugins: [pinia, createTestI18n()] } })
+    onTestFinished(() => bridgeHost.unmount())
+    if (!startedBridge)
+      throw new Error('Expected the context bridge to start.')
+    const bridge = startedBridge
+    await bridge.initializeStreamView()
+    onTestFinished(() => bridge.dispose())
+    const producer = createContextChannel()
+    onTestFinished(() => producer.dispose())
+    const context = {
+      sessionId: 'session-b',
+      turnId: 'turn-1',
+      assistantMessageId: 'assistant-1',
+      message: { id: 'turn-1', role: 'user', content: 'ping' },
+      contexts: {},
+      composedMessage: [],
+    } satisfies ChatStreamEventContext
+
+    await producer.emitStream({ type: 'before-send', message: 'ping', sessionId: 'session-b', context })
+    await producer.emitStream({ type: 'token-literal', literal: 'Remote reply', sessionId: 'session-b', context })
+
+    await expect.element(screen.getByText('Remote reply')).toBeVisible()
   })
 
   it('places the conversation selector opposite settings in the mobile header', async () => {

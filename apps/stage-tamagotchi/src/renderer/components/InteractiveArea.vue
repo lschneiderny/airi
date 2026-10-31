@@ -16,6 +16,7 @@ import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useChatStreamStore } from '@proj-airi/stage-ui/stores/chat/stream-store'
 import { useJournalPreviewStore } from '@proj-airi/stage-ui/stores/journal-preview'
+import { useContextBridgeStore } from '@proj-airi/stage-ui/stores/mods/api/context-bridge'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { BasicTextarea, GhostButton } from '@proj-airi/ui'
@@ -93,6 +94,7 @@ const airiCardStore = useAiriCardStore()
 const { activeSessionId, messages } = storeToRefs(chatSession)
 const { streamingMessage } = storeToRefs(chatStream)
 const { activeTurns } = storeToRefs(chatStore)
+const { isReceivingRemoteStream } = storeToRefs(useContextBridgeStore())
 const { activeCard, activeCardId } = storeToRefs(airiCardStore)
 const { chatReady } = storeToRefs(useConsciousnessStore())
 const openSettings = useElectronEventaInvoke(electronOpenSettings)
@@ -222,7 +224,10 @@ watch(sendMode, () => {
 
 const historyMessages = computed(() => messages.value)
 const assistantLabel = computed(() => activeCard.value?.name?.trim() || undefined)
-const isActiveSessionSending = computed(() => activeTurns.value.some(turn => turn.sessionId === activeSessionId.value))
+// A reply that another window streams stays in view until this window loads the stored reply. The producer clears its
+// turn before that, and a gap would remount the reply as complete, which shows every pending break bubble at once.
+const isActiveSessionSending = computed(() => activeTurns.value.some(turn => turn.sessionId === activeSessionId.value)
+  || isReceivingRemoteStream.value)
 const visibleStreamingMessage = streamingMessage
 
 async function handleDeleteMessage(payload: { message: ChatHistoryItem, index: number }) {
