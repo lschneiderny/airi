@@ -298,6 +298,33 @@ describe('stage emotion routing on Live2D', () => {
     expect(gestures.value).toEqual([])
   })
 
+  it('plays a lab gesture request on the Natural scene', async () => {
+    const { gestures, override } = await renderStage('natural')
+
+    const played = until(() => gestures.value.length, count => count === 1)
+    override.requestGesture('nod', 2)
+    await played
+
+    expect(gestures.value).toEqual([['nod', 2]])
+  })
+
+  it.each(['universal', 'magic'] as const)('hands no lab gesture request to the scene under %s', async (driver) => {
+    // The spy wraps the real method, and a reactive counter lets `until` observe the call the stage makes.
+    const original = StagePerformanceConductor.prototype.gesture
+    const calls = shallowRef(0)
+    vi.spyOn(StagePerformanceConductor.prototype, 'gesture').mockImplementation(function (this: StagePerformanceConductor, ...args: Parameters<StagePerformanceConductor['gesture']>) {
+      calls.value++
+      return original.apply(this, args)
+    })
+    const { gestures, override } = await renderStage(driver)
+
+    const routed = until(() => calls.value, count => count === 1)
+    override.requestGesture('nod', 2)
+    await routed
+
+    expect(gestures.value).toEqual([])
+  })
+
   it('doses mood from a scene touch under Natural and forwards the poke to the situation leader', async () => {
     const { scene, moods } = await renderStage('natural')
     const observations = shallowRef<TouchObservation[]>([])

@@ -76,6 +76,26 @@ describe('natural performance override', () => {
     expect(stage.emotionPulse).toEqual({ name: 'happy', nominal: 1, seq: 2 })
   })
 
+  it('advances the gesture request sequence for each request, including repeats', async () => {
+    const namespace = `natural-override-${Math.random().toString(36).slice(2)}`
+
+    const stageWindow = createWindow(namespace, 'leader-only')
+    setActivePinia(stageWindow.pinia)
+    const stage = useNaturalPerformanceOverride()
+
+    const labWindow = createWindow(namespace, 'follower-only')
+    setActivePinia(labWindow.pinia)
+    const lab = useNaturalPerformanceOverride()
+
+    const requested = until(() => stage.gestureRequest?.seq).toBe(2, { timeout: 5000, throwOnTimeout: true })
+
+    lab.requestGesture('nod', 2)
+    lab.requestGesture('nod', 2)
+
+    await requested
+    expect(stage.gestureRequest).toEqual({ kind: 'nod', count: 2, seq: 2 })
+  })
+
   it('restores the defaults on resetState', () => {
     const window = createWindow(`natural-override-${Math.random().toString(36).slice(2)}`, 'leader-only')
     setActivePinia(window.pinia)
@@ -85,12 +105,14 @@ describe('natural performance override', () => {
     store.overrideMode = 'thinking'
     store.overrideEnergy = 0.2
     store.pulseEmotion('sad', 0.5)
+    store.requestGesture('shrug', 1)
     store.resetState()
 
     expect(store.overrideEnabled).toBe(false)
     expect(store.overrideMode).toBe('idle')
     expect(store.overrideEnergy).toBeNull()
     expect(store.emotionPulse).toBeNull()
+    expect(store.gestureRequest).toBeNull()
     expect(store.performanceOverride).toBeNull()
   })
 
