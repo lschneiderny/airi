@@ -18,6 +18,14 @@ export interface NaturalEpisode extends ReactionEpisode {
   moodGain?: number
 }
 
+// TODO(todo-3): Import MoodDose from @proj-airi/stage-shared/expression-performance when that lane lands.
+export interface MoodDose {
+  id: string
+  valence: number
+  arousal: number
+  tension: number
+}
+
 /** Active-time afterglow. Episode doses survive decay so escalations add only the missing dose. */
 export class NaturalMood {
   valence = 0
@@ -25,6 +33,7 @@ export class NaturalMood {
   tension = 0
   private settings = defaultExpressionPerformanceSettings.moodDynamics
   private readonly episodes = new Map<string, { emotion: ReactionEpisode['emotion'], dose: number }>()
+  private readonly doseIds = new Set<string>()
 
   constructor(private readonly emotions = naturalEmotions) {}
 
@@ -34,6 +43,16 @@ export class NaturalMood {
 
   get active() {
     return this.valence !== 0 || this.arousal !== 0 || this.tension !== 0
+  }
+
+  /** Applies each external dose once for this controller's lifetime, independently of episode escalation. */
+  addDose(dose: MoodDose) {
+    if (this.doseIds.has(dose.id) || ![dose.valence, dose.arousal, dose.tension].every(Number.isFinite))
+      return
+    this.doseIds.add(dose.id)
+    this.valence = clamp(this.valence + dose.valence, -1, 1)
+    this.arousal = clamp(this.arousal + dose.arousal, -1, 1)
+    this.tension = clamp(this.tension + dose.tension, 0, 1)
   }
 
   /** Ignores malformed doses and stale escalations without changing accumulated state. */

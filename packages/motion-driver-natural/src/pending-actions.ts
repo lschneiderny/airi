@@ -1,12 +1,13 @@
 import type { ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 
+import type { CueGestureKind, NaturalCueGestures } from './cue-gestures'
 import type { naturalEmotions } from './emotions'
 import type { NaturalPerformanceEnergy } from './energy'
 import type { NaturalMotionObserver, NaturalTouchRegion } from './frame-types'
 import type { NaturalGazeLayer } from './gaze'
 import type { NaturalGestures } from './gestures'
 import type { NaturalImpulses } from './impulses'
-import type { NaturalEpisode, NaturalMood } from './mood'
+import type { MoodDose, NaturalEpisode, NaturalMood } from './mood'
 import type { Vec3 } from './posture'
 
 import { pokeDirection, pokeGlanceHold, pokeNudgeTau, pokeStrength, pokeSurpriseDedupeSeconds } from './touch'
@@ -22,6 +23,8 @@ const glanceTargets = { camera: { x: 0, y: 0 } }
 /** Work requested between grid steps; it starts at the next step so grid states stay consistent. */
 export type PendingAction
   = | { kind: 'emotion', episode: NaturalEpisode }
+    | { kind: 'gesture', gesture: CueGestureKind, count: number }
+    | { kind: 'mood', dose: MoodDose }
     | { kind: 'react', reaction: 'wake' | 'screen-change' }
     | { kind: 'poke', region: NaturalTouchRegion, x: number, y: number }
     | { kind: 'chat', cue: 'sent' | 'unfold', words: number }
@@ -40,6 +43,7 @@ export interface PendingActionTargets {
   energy: NaturalPerformanceEnergy
   mood: NaturalMood
   gestures: NaturalGestures
+  cueGestures: NaturalCueGestures
   /** Per-emotion performance strength; zero suppresses new episodes while held emotions are enabled. */
   emotionStrengths: Partial<Record<PerformanceEmotion, number>>
   /** The mood, held-emotion, and band switches read when each episode starts. */
@@ -52,9 +56,18 @@ export interface PendingActionTargets {
 
 /** Starts emotion impulses and desktop reactions requested since the previous step; returns the updated poke surprise state. */
 export function startPending(actions: Exclude<PendingAction, { kind: 'chat' }>[], at: number, targets: PendingActionTargets, pokeState: PokeSurpriseState): PokeSurpriseState {
-  const { impulses, gaze, energy, mood, gestures, emotionStrengths, settings, emotions, notify } = targets
+  const { impulses, gaze, energy, mood, gestures, cueGestures, emotionStrengths, settings, emotions, notify } = targets
   let { pokes, lastPokeSurprise } = pokeState
   for (const action of actions) {
+    if (action.kind === 'gesture') {
+      cueGestures.trigger(action.gesture, action.count, at)
+      continue
+    }
+    if (action.kind === 'mood') {
+      if (settings.mood)
+        mood.addDose(action.dose)
+      continue
+    }
     if (action.kind === 'poke') {
       const strength = pokeStrength[action.region]
       impulses.nudge(pokeDirection(action.region, action.x, action.y), strength.nudge, at, pokeNudgeTau)
@@ -78,7 +91,7 @@ export function startPending(actions: Exclude<PendingAction, { kind: 'chat' }>[]
       if (!started)
         continue
       notify?.({ kind: 'impulse', at, emotion: action.episode.emotion, band: started.band, intensity: started.intensity, side: started.side })
-      if (gesture)
+      if (gesture && !cueGestures.headActive(at))
         gestures.trigger(gesture, action.episode.intensity, settings.bands ? action.episode.band : 'clear', at, notify && ((played, side) => notify({ kind: 'gesture', at, gesture: played, side })))
       if (settings.mood)
         mood.add(action.episode)

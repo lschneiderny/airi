@@ -2,10 +2,11 @@ import type { ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-ai
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { NaturalBreathOutput } from './breath'
+import type { CueGestureKind } from './cue-gestures'
 import type { NaturalFaceOutput } from './face'
 import type { NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionVoice, NaturalRigTraits, NaturalTouchRegion } from './frame-types'
 import type { GazePoint } from './gaze'
-import type { NaturalEpisode } from './mood'
+import type { MoodDose, NaturalEpisode } from './mood'
 import type { PendingAction } from './pending-actions'
 import type { Vec3 } from './posture'
 import type { RandomStream } from './random'
@@ -16,6 +17,7 @@ import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@pro
 import { NaturalBlinkScheduler } from './blink'
 import { NaturalBodyLayer } from './body'
 import { NaturalBreathLayer } from './breath'
+import { NaturalCueGestures } from './cue-gestures'
 import { mapCursor, NaturalCursorAttention, releaseAt } from './cursor-attention'
 import { naturalEmotions } from './emotions'
 import { NaturalPerformanceEnergy } from './energy'
@@ -48,7 +50,7 @@ export interface NaturalChatInput {
 
 // Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
 // Index 4 belonged to the v1 fixation rule and now seeds the gaze layer that replaces it.
-const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12, cursorAttention: 13, chat: 14 }
+const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12, cursorAttention: 13, chat: 14, cueGestures: 15 }
 
 // Fixed integration grid. Processes advance only in whole steps and the output is
 // interpolated between the two grid states around the current time, so frame
@@ -138,6 +140,7 @@ export class NaturalMotion {
   private readonly mood: NaturalMood
   private readonly hold: NaturalHoldLayer
   private readonly gestures: NaturalGestures
+  private readonly cueGestures: NaturalCueGestures
   private emotionStrengths: Partial<Record<PerformanceEmotion, number>> = {}
   private performanceSettings = defaultExpressionPerformanceSettings
   private readonly emphasis: NaturalSpeechEmphasis
@@ -215,6 +218,7 @@ export class NaturalMotion {
     this.emphasis = new NaturalSpeechEmphasis(stream('emphasis'))
     this.impulses = new NaturalImpulses(stream('impulses'), this.emotions)
     this.gestures = new NaturalGestures(stream('gestures'))
+    this.cueGestures = new NaturalCueGestures(stream('cueGestures'), this.gaze)
     this.previous = { head: [...home], compensationHead: [...home], body: this.body.pose, gaze: { x: 0, y: 0 }, face: NaturalFaceLayer.rest(), blinkFactor: 1, breath: this.breath.output }
     this.next = this.integrate()
   }
@@ -336,6 +340,7 @@ export class NaturalMotion {
   setPlacement(u: number | null, nowSeconds: number) {
     this.advance(nowSeconds)
     this.placement.set(u)
+    this.cueGestures.placement = u ?? 0
     if (u === null) {
       this.yawBias = 0
       this.gaze.setInward(0)
@@ -371,6 +376,18 @@ export class NaturalMotion {
   impulse(episode: NaturalEpisode, nowSeconds: number) {
     this.advance(nowSeconds)
     this.pending.push({ kind: 'emotion', episode })
+  }
+
+  /** Starts an explicit cue on the next grid step, independently of held-emotion settings. */
+  gesture(kind: CueGestureKind, count: number, nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.pending.push({ kind: 'gesture', gesture: kind, count })
+  }
+
+  /** External affect uses the same grid and mood switch as emotion episode doses. */
+  addMood(dose: MoodDose, nowSeconds: number) {
+    this.advance(nowSeconds)
+    this.pending.push({ kind: 'mood', dose: { ...dose } })
   }
 
   /** Advances first; the held target takes effect on the next grid step. Repeated targets keep their side and onset. */
@@ -447,6 +464,7 @@ export class NaturalMotion {
     const stepStart = this.stepIndex * step
     this.stepIndex++
     this.placement.step(step)
+    this.cueGestures.advance(stepStart)
     this.gaze.setInward(this.placement.value)
     this.gaze.setScreenPointActive(this.energy.screen || this.energy.watching)
     const chatTarget = this.chat?.target
@@ -536,7 +554,7 @@ export class NaturalMotion {
           this.notify({ kind: 'touch', at: stepStart, touch: 'poke', region: action.region })
       }
     }
-    const pokeState = startPending(pending.filter(action => action.kind !== 'chat'), stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings, emotions: this.emotions, notify: this.observer ? this.notify : undefined }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })
+    const pokeState = startPending(pending.filter(action => action.kind !== 'chat'), stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, cueGestures: this.cueGestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings, emotions: this.emotions, notify: this.observer ? this.notify : undefined }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })
     this.pokes = pokeState.pokes
     this.lastPokeSurprise = pokeState.lastPokeSurprise
     this.energy.step(step)
@@ -571,13 +589,11 @@ export class NaturalMotion {
     // Speech onsets can lead a due posture shift, so detection runs before attention and posture see the shift time.
     const emphasis = this.emphasis.step(step, this.voice.level, emphasisAcceptance)
     this.onsetShifts.update(this.posture, this.emphasis, this.voice.speaking)
-    if (this.performanceSettings.heldEmotions) {
-      const remaining = this.gestures.activeUntil() - stepStart
-      // Postpone only a due shift. Adding the remaining duration every step would accumulate minutes of idle delay.
-      if (remaining > 0.5 && this.posture.secondsUntilShift <= step)
-        this.posture.postponeShift(remaining)
-    }
-    if (stepStart >= this.petGlanceUntil && stepStart >= this.chatGlanceUntil)
+    const remaining = Math.max(this.performanceSettings.heldEmotions ? this.gestures.activeUntil() : 0, this.cueGestures.activeUntil()) - stepStart
+    // Postpone only a due shift. Adding the remaining duration every step would accumulate minutes of idle delay.
+    if (remaining > 0.5 && this.posture.secondsUntilShift <= step)
+      this.posture.postponeShift(remaining)
+    if (stepStart >= this.petGlanceUntil && stepStart >= this.chatGlanceUntil && !this.cueGestures.eyesActive(stepStart))
       this.attention.update(this.posture, this.gaze, stepStart, step)
     this.onCursor += (Number(this.gaze.onCursor) - this.onCursor) * (1 - Math.exp(-step / cursorFixationSmoothingSeconds))
     if (this.gaze.onChat || this.onChatLevel !== 0)
@@ -593,7 +609,7 @@ export class NaturalMotion {
       followTarget.cursorY += chatHead.y
     }
     this.follow(followTarget)
-    this.posture.continuousScale = this.performanceSettings.heldEmotions ? this.gestures.continuousScale(stepStart + step) : 1
+    this.posture.continuousScale = Math.min(this.performanceSettings.heldEmotions ? this.gestures.continuousScale(stepStart + step) : 1, this.cueGestures.continuousScale(stepStart + step))
     this.yawBias = 0.10 * this.placement.value * (1 - this.onCursor)
     if (this.observer && Math.abs(this.yawBias - this.lastEmittedYawBias) >= 0.005) {
       this.lastEmittedYawBias = this.yawBias
@@ -608,6 +624,7 @@ export class NaturalMotion {
     const petHead = this.pet.headOffset()
     const heldPosture = this.performanceSettings.heldEmotions ? this.hold.posture() : [0, 0, 0]
     const gestureHead = this.performanceSettings.heldEmotions ? this.gestures.headOffset(stepStart + step) : [0, 0, 0]
+    const cueHead = this.cueGestures.headOffset(stepStart + step)
     // The eyes counter-rotate for the head without the continuous wobble: the same terms, minus that one.
     const compose = (base: Readonly<Vec3>) => base.map((value, axis) => {
       let total = value + emphasis[axis] + impulse[axis] + petHead[axis]
@@ -615,6 +632,8 @@ export class NaturalMotion {
         total += heldPosture[axis]
       if (gestureHead[axis] !== 0)
         total += gestureHead[axis]
+      if (cueHead[axis] !== 0)
+        total += cueHead[axis]
       return clamp(total, 1)
     }) as Vec3
     const head = compose(posture)
@@ -639,6 +658,11 @@ export class NaturalMotion {
       this.face.onGazeShift(this.gaze.saccadeSize)
     }
     const lean = this.impulses.bodyOffset(stepStart + step)
+    const cueBody = this.cueGestures.bodyOffset(stepStart + step)
+    for (const axis of [0, 1, 2] as const) {
+      if (cueBody[axis] !== 0)
+        lean[axis] += cueBody[axis]
+    }
     if (this.performanceSettings.heldEmotions) {
       const gestureBody = this.gestures.bodyOffset(stepStart + step)
       for (const axis of [0, 1, 2] as const) {
@@ -647,6 +671,10 @@ export class NaturalMotion {
       }
     }
     const face = withHints(this.face.step(step), stepStart + step, this.impulses, this.pet, moodMouthForm(this.mood, this.performanceSettings), this.performanceSettings.heldEmotions && this.hold.level > 0 ? { hold: this.hold, accentScale: this.performanceSettings.held.accentScale } : undefined)
+    const cueFace = this.cueGestures.faceOffset(stepStart + step)
+    face.browLY += cueFace.browY
+    face.browRY += cueFace.browY
+    face.mouthForm += cueFace.mouthForm
     if (this.performanceSettings.heldEmotions) {
       // The laugh pulses ride on the composed face; the adapter clamps the smile and mouth to the rig range.
       // The mouth stays shut while speech is active or recent, like the idle mouth opening.

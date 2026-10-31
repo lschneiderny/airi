@@ -17,6 +17,52 @@ function dimensions(mood: NaturalMood) {
 }
 
 describe('natural mood', () => {
+  it('applies external doses once even after decay and intervening doses or episodes', () => {
+    const mood = new NaturalMood()
+    const dose = { id: 'touch-1', valence: 0.2, arousal: -0.1, tension: 0.3 }
+    mood.addDose(dose)
+    expect(dimensions(mood)).toEqual([0.2, -0.1, 0.3])
+    mood.step(2)
+    mood.add(episode())
+    mood.addDose({ id: 'touch-2', valence: 0.1, arousal: 0, tension: -0.1 })
+    const before = dimensions(mood)
+    mood.addDose(dose)
+    mood.addDose({ ...dose, valence: 1 })
+    expect(dimensions(mood)).toEqual(before)
+  })
+
+  it('clamps external doses like episodes and ignores nonfinite dimensions without consuming the id', () => {
+    const mood = new NaturalMood()
+    for (const invalid of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      for (const dimension of ['valence', 'arousal', 'tension'] as const) {
+        mood.addDose({ id: 'dose', valence: 0, arousal: 0, tension: 0, [dimension]: invalid })
+        expect(dimensions(mood)).toEqual([0, 0, 0])
+      }
+    }
+    mood.addDose({ id: 'dose', valence: 5, arousal: -5, tension: 5 })
+    expect(dimensions(mood)).toEqual([1, -1, 1])
+    mood.addDose({ id: 'opposite', valence: -5, arousal: 5, tension: -5 })
+    expect(dimensions(mood)).toEqual([-1, 1, 0])
+  })
+
+  it('accepts external doses on the next grid step only while mood is enabled', () => {
+    const motion = new NaturalMotion({ seed: 41 })
+    const dose = { id: 'touch', valence: 0.2, arousal: -0.1, tension: 0.3 }
+    motion.setPerformanceSettings({ ...defaults, mood: false })
+    motion.addMood(dose, 0)
+    motion.advance(0.1)
+    expect(motion.moodState).toEqual({ valence: 0, arousal: 0, tension: 0 })
+    motion.setPerformanceSettings(defaults)
+    motion.addMood(dose, 0.1)
+    expect(motion.moodState.valence).toBe(0)
+    motion.advance(0.2)
+    expect(motion.moodState.valence).toBeGreaterThan(0)
+    const before = motion.moodState
+    motion.addMood(dose, 0.2)
+    motion.advance(0.3)
+    expect(motion.moodState.valence).toBeLessThan(before.valence)
+  })
+
   it('keeps seeded ten-minute idle bit-identical to bypassed modulation', () => {
     const enabled = new NaturalMotion({ seed: 41 })
     const disabled = new NaturalMotion({ seed: 41 })

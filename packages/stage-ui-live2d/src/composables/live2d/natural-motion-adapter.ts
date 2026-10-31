@@ -1,5 +1,6 @@
+import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalFaceOutput } from '@proj-airi/motion-driver-natural/face'
-import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
+import type { MoodDose, NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionOptions, NaturalMotionPose } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { PostureHome } from '@proj-airi/motion-driver-natural/posture'
 import type { ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
@@ -188,6 +189,8 @@ export class Live2DNaturalMotionAdapter {
   onPlacementStep: ((placement: number | null, yawBias: number) => void) | null = null
   /** Last chat input handed to the controller; a fresh controller starts without a chat signal. */
   private chat: NaturalChatInput | null = null
+  private readonly pendingGestures: { kind: CueGestureKind, count: number }[] = []
+  private readonly pendingMoods: MoodDose[] = []
   private readonly visibilityChanged = () => {
     this.hidden = this.visibility?.hidden ?? false
     this.frameTime = undefined
@@ -270,6 +273,19 @@ export class Live2DNaturalMotionAdapter {
     return this.controller.moodState
   }
 
+  /** Scene cues are accepted only for the selected Natural driver and drained at composition. */
+  gesture(kind: CueGestureKind, count: number) {
+    const { driver, exclusive } = this.attention()
+    if (!this.disposed && driver === 'natural' && !exclusive)
+      this.pendingGestures.push({ kind, count })
+  }
+
+  addMood(dose: MoodDose) {
+    const { driver, exclusive } = this.attention()
+    if (!this.disposed && driver === 'natural' && !exclusive)
+      this.pendingMoods.push({ ...dose })
+  }
+
   /** Forwards the expression-performance switches and tunables to the Natural controller. */
   setPerformanceSettings(settings: ExpressionPerformanceSettings) {
     this.controller.setPerformanceSettings(settings)
@@ -338,6 +354,14 @@ export class Live2DNaturalMotionAdapter {
     const mouthAllowed = !voice.speaking && (ended === null || this.now - ended > speechHandoffSeconds)
     this.controller.setPerformance(attention.performance, attention.energy, this.time)
     this.controller.setVoice({ speaking: voice.speaking, speechActiveOrRecent: !mouthAllowed, level: voice.level })
+    for (const gesture of this.pendingGestures.splice(0)) {
+      if (active)
+        this.controller.gesture(gesture.kind, gesture.count, this.time)
+    }
+    for (const dose of this.pendingMoods.splice(0)) {
+      if (active)
+        this.controller.addMood(dose, this.time)
+    }
     // Emotions queued while Natural is inactive are stale by the time it resumes.
     for (const emotion of attention.pendingEmotions.splice(0)) {
       if (active)
