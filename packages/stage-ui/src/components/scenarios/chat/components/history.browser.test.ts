@@ -15,8 +15,6 @@ import { useChatStreamStore } from '../../../../stores/chat/stream-store'
 import { getChatHistoryItemKey } from '../utils'
 
 const triggerHaptic = vi.fn()
-/** The real timer, for a wait that must order against a dependency's own real timer while the clock is faked. */
-const realSetTimeout = globalThis.setTimeout
 
 vi.mock('web-haptics/vue', () => ({
   useWebHaptics: () => ({ trigger: triggerHaptic }),
@@ -2197,103 +2195,7 @@ describe('chat history', () => {
       }
     })
 
-    // ROOT CAUSE:
-    //
-    // The history follows changes to the message list. A bubble revealed after a break changes nothing in
-    // the list, so the history stayed put and the bubble sat behind the composer, 2 px visible.
-    // See .omo/evidence/nonverbal-channels/task-20-ef-rerun-summary.md.
-    async function renderOverflowingBurst() {
-      const filler = Array.from({ length: 12 }, (_, index): ChatHistoryItem => ({
-        id: `user-${index}`,
-        role: 'user',
-        content: `Message ${index} `.repeat(8),
-        createdAt: index,
-      }))
-      const screen = render(ChatHistory, {
-        props: {
-          messages: filler,
-          sending: true,
-          streamingMessage: assistant('burst', [text('One')], 'One'),
-          style: 'height: 240px; width: 320px; overflow-y: auto;',
-        },
-        global: { plugins: [createEnglishI18n()] },
-      })
-      const history = screen.container.querySelector<HTMLElement>('.chat-history-list')
-      if (!history)
-        throw new Error('Expected a chat history viewport.')
-      const atTail = () => history.scrollTop + history.clientHeight >= history.scrollHeight - 24
-      await vi.waitFor(() => {
-        expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('One')])
-        expect(history.scrollHeight).toBeGreaterThan(history.clientHeight)
-        expect(atTail()).toBe(true)
-      })
-      /** Frames stay real under the fake clock; the index scroll lands within a few of them. */
-      const settleFrames = async () => {
-        for (let frame = 0; frame < 6; frame++)
-          await new Promise(requestAnimationFrame)
-      }
-      /** The break and the text after it arrive together; the list follows the stream as it already did. */
-      const streamBreak = async () => {
-        await screen.rerender({ sending: true, streamingMessage: assistant('burst', [text('One'), { type: 'break', seconds: 1 }, text('Two '.repeat(40))], 'One\n\nTwo') })
-        await nextTick()
-        expect(screen.container.querySelectorAll('[data-chat-bubble]')).toHaveLength(1)
-        await settleFrames()
-        expect(atTail()).toBe(true)
-        // NOTICE:
-        // Virtua re-applies an imperative scroll on item resize until a 150 ms real timer, outside the fake
-        // clock, disarms it. Wait past that timer on the real queue, as the app's later reveal does.
-        // Source: node_modules/virtua/src/core/driver.ts createScrollScheduler; utils.ts `timeout`.
-        // Removal condition: Virtua exposes when an imperative scroll settled.
-        await new Promise(resolve => realSetTimeout(resolve, 200))
-      }
-      /** One second later the bubble after the break appears; nothing in the message list changes. */
-      const revealSecondBubble = async () => {
-        vi.advanceTimersByTime(1000)
-        await nextTick()
-        expect(screen.container.querySelectorAll('[data-chat-bubble]')).toHaveLength(2)
-        await settleFrames()
-      }
-      return { screen, history, atTail, streamBreak, revealSecondBubble }
-    }
-
-    it('follows the bottom when a break bubble is revealed and the reader was at the bottom', async () => {
-      const { history, atTail, streamBreak, revealSecondBubble } = await renderOverflowingBurst()
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
-      try {
-        await streamBreak()
-        await revealSecondBubble()
-        expect(history.scrollHeight - history.clientHeight - history.scrollTop).toBeLessThanOrEqual(24)
-        expect(atTail()).toBe(true)
-      }
-      finally {
-        vi.clearAllTimers()
-        vi.useRealTimers()
-      }
-    })
-
-    it('keeps a reader who scrolled up where they are when a break bubble is revealed', async () => {
-      const { history, streamBreak, revealSecondBubble } = await renderOverflowingBurst()
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
-      try {
-        await streamBreak()
-        history.dispatchEvent(new WheelEvent('wheel', { deltaY: -1000 }))
-        // Up by more than the 24 px tail tolerance, with the reply still in view: the virtualizer buffers only in
-        // the scroll direction, so a reader further up has no reply mounted to reveal into.
-        const readerPosition = history.scrollHeight - history.clientHeight - 60
-        history.scrollTop = readerPosition
-        history.dispatchEvent(new Event('scroll'))
-        await new Promise(requestAnimationFrame)
-        await new Promise(requestAnimationFrame)
-        expect(history.scrollTop).toBe(readerPosition)
-
-        await revealSecondBubble()
-        expect(history.scrollTop).toBe(readerPosition)
-      }
-      finally {
-        vi.clearAllTimers()
-        vi.useRealTimers()
-      }
-    })
+    // The follow-on-reveal tests live in history-break-follow.browser.test.ts, on a clock faked before virtua loads.
 
     it('renders one bubble for a trailing break', async () => {
       const screen = await renderHistory({
