@@ -67,7 +67,7 @@ import { setupNoticeWindowManager } from './windows/notice'
 import { setupOnboardingWindowManager } from './windows/onboarding'
 import { setupSettingsWindowReusableFunc } from './windows/settings'
 import { setupSpotlightWindowManager } from './windows/spotlight'
-import { createStageConfig, defaultStageConfig, selectHostMode, setupClassicWindowStageInvokes, setupStageWindow } from './windows/stage'
+import { createStageConfig, createStageStateBroadcast, defaultStageConfig, selectHostMode, setupStageWindow, setupWindowStageInvokes } from './windows/stage'
 import { setupWidgetsWindowManager } from './windows/widgets'
 
 // TODO: once we refactored eventa to support window-namespaced contexts,
@@ -360,11 +360,19 @@ app.whenReady().then(async () => {
     build: ({ dependsOn }) => setupEditorWindowManager(dependsOn),
   })
 
+  // The host is chosen once per launch: a mode change applies at the next launch.
+  const stageConfig = createStageConfig()
+  stageConfig.setup()
+  const stageStateBroadcast = createStageStateBroadcast()
+  const hostMode = selectHostMode(stageConfig.get() ?? defaultStageConfig, platform, env)
+  log.log(`Building the ${hostMode === 'desktop' ? 'desktop stage' : 'classic window'} host`)
+
   const settingsWindow = injeca.provide('windows:settings', {
     dependsOn: { widgetsManager, beatSync, autoUpdater, devtoolsWindow: devtoolsMarkdownStressWindow, serverChannel, godotStageManager, mcpManager, i18n, globalShortcut, spotlightWindow, ioTraceRecording, goNetwork },
     build: async ({ dependsOn }) => {
       settingsWindowManager = setupSettingsWindowReusableFunc({
         ...dependsOn,
+        stage: { config: stageConfig, running: hostMode, broadcast: stageStateBroadcast, applyHomeDisplay: () => stageHost?.applyHomeDisplay() },
         getMainWindow: () => userFacingMainWindow,
         onWindowCreated: (window) => {
           dependsOn.goNetwork.bindWindow(window)
@@ -381,12 +389,6 @@ app.whenReady().then(async () => {
     },
   })
 
-  // The host is chosen once per launch: a mode change applies at the next launch.
-  const stageConfig = createStageConfig()
-  stageConfig.setup()
-  const hostMode = selectHostMode(stageConfig.get() ?? defaultStageConfig, platform, env)
-  log.log(`Building the ${hostMode === 'desktop' ? 'desktop stage' : 'classic window'} host`)
-
   const userFacingWindowDependencies = { editorWindow, settingsWindow, chatWindow, widgetsManager, noticeWindow, beatSync, autoUpdater, serverChannel, godotStageManager, mcpManager, i18n, onboardingWindowManager, inlayWindow, appleSpeechTranscription, appleVision, ioTraceRecording, globalShortcut, goNetwork }
   const onUserFacingWindowCreated = (network: { bindWindow: (window: BrowserWindow) => void }) => (window: BrowserWindow) => {
     network.bindWindow(window)
@@ -397,7 +399,7 @@ app.whenReady().then(async () => {
     ? injeca.provide('windows:stage', {
         dependsOn: userFacingWindowDependencies,
         build: async ({ dependsOn }) => {
-          const stage = await setupStageWindow({ ...dependsOn, config: stageConfig, onWindowCreated: onUserFacingWindowCreated(dependsOn.goNetwork) })
+          const stage = await setupStageWindow({ ...dependsOn, config: stageConfig, broadcast: stageStateBroadcast, onWindowCreated: onUserFacingWindowCreated(dependsOn.goNetwork) })
           stageHost = stage
           return stage.window
         },
@@ -406,7 +408,7 @@ app.whenReady().then(async () => {
         dependsOn: userFacingWindowDependencies,
         build: async ({ dependsOn }) => {
           const window = await setupMainWindow({ ...dependsOn, onWindowCreated: onUserFacingWindowCreated(dependsOn.goNetwork) })
-          setupClassicWindowStageInvokes({ window, config: stageConfig })
+          setupWindowStageInvokes({ window, config: stageConfig, running: 'window', broadcast: stageStateBroadcast })
           return window
         },
       })

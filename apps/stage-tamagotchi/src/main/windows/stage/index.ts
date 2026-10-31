@@ -1,7 +1,9 @@
 import type { BrowserWindow } from 'electron'
 
+import type { StageHostMode } from '../../../shared/eventa'
 import type { setupMainWindow } from '../main'
 import type { StageConfigStore, StageWindowInvokes } from './rpc/index.electron'
+import type { StageStateBroadcast } from './state-broadcast'
 
 import { dirname, join, resolve } from 'node:path'
 import { env } from 'node:process'
@@ -27,9 +29,12 @@ import { applyStageInputIsolation, createStageWindowOptions } from './window-con
 export { createStageConfig, defaultStageConfig } from './config'
 export { centerUserFacingWindow, isStageWindow, showUserFacingWindow } from './identity'
 export { selectHostMode } from './mode'
+export { createStageStateBroadcast } from './state-broadcast'
 
 export interface StageWindowHost extends Pick<StageWindowInvokes, 'getCharacterPlacement' | 'onCharacterPlacementChange'> {
   window: BrowserWindow
+  /** Moves the window to the home display's work area after the saved home display changed. */
+  applyHomeDisplay: () => void
 }
 
 export function relaunchApp(): void {
@@ -38,17 +43,25 @@ export function relaunchApp(): void {
 }
 
 /**
- * Registers the stage contracts on the classic main window, so its page can report the active renderer and read the
- * stage state while the classic host runs.
+ * Registers the stage contracts on a window other than the desktop stage: the classic main window, so its page can
+ * report the active renderer, and the settings window, so its page can edit the mode and the home display.
  */
-export function setupClassicWindowStageInvokes(params: { window: BrowserWindow, config: StageConfigStore }): StageWindowInvokes {
+export function setupWindowStageInvokes(params: {
+  window: BrowserWindow
+  config: StageConfigStore
+  running: StageHostMode
+  broadcast: StageStateBroadcast
+  applyHomeDisplay?: () => void
+}): StageWindowInvokes {
   return setupStageWindowInvokes({
     window: params.window,
     config: params.config,
     defaultConfig: defaultStageConfig,
     screen,
-    running: 'window',
+    running: params.running,
     relaunch: relaunchApp,
+    broadcast: params.broadcast,
+    applyHomeDisplay: params.applyHomeDisplay,
   })
 }
 
@@ -67,7 +80,7 @@ export function setupClassicWindowStageInvokes(params: { window: BrowserWindow, 
  *   the placement the renderer publishes
  */
 export async function setupStageWindow(
-  params: Parameters<typeof setupMainWindow>[0] & { config: StageConfigStore },
+  params: Parameters<typeof setupMainWindow>[0] & { config: StageConfigStore, broadcast: StageStateBroadcast },
 ): Promise<StageWindowHost> {
   const getConfig = () => params.config.get() ?? defaultStageConfig
   const home = resolveHomeDisplay(readStageDisplays(screen), getConfig())
@@ -113,8 +126,9 @@ export async function setupStageWindow(
     screen,
     running: 'desktop',
     relaunch: relaunchApp,
+    broadcast: params.broadcast,
   })
-  bindStageWindowToHomeDisplay({ screen, window, getConfig, onDisplaysChanged: invokes.emitState })
+  const { applyHomeBounds } = bindStageWindowToHomeDisplay({ screen, window, getConfig, onDisplaysChanged: params.broadcast.emitAll })
 
   await load(window, withHashRoute(baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')), '/stage', {
     query: mainWindowQuery(is.dev, env),
@@ -130,6 +144,7 @@ export async function setupStageWindow(
 
   return {
     window,
+    applyHomeDisplay: applyHomeBounds,
     getCharacterPlacement: invokes.getCharacterPlacement,
     onCharacterPlacementChange: invokes.onCharacterPlacementChange,
   }

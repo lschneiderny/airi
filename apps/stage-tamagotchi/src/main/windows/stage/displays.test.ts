@@ -51,6 +51,20 @@ describe('bindStageWindowToHomeDisplay', () => {
     expect(onDisplaysChanged).toHaveBeenCalledOnce()
   })
 
+  it('moves the stage to the new home display when asked after a config change', () => {
+    const screen = new FakeScreen()
+    const window = new FakeWindow(builtIn.workArea)
+    const onDisplaysChanged = vi.fn()
+    let homeDisplayId: string | null = null
+    const { applyHomeBounds } = bindStageWindowToHomeDisplay({ screen, window, getConfig: () => ({ ...defaultStageConfig, homeDisplayId }), onDisplaysChanged })
+
+    homeDisplayId = '7'
+    applyHomeBounds()
+
+    expect(window.setBounds).toHaveBeenCalledWith(external.workArea)
+    expect(onDisplaysChanged).toHaveBeenCalledOnce()
+  })
+
   it('keeps the bounds when the home display is unchanged, and stops listening once the window closes', () => {
     const screen = new FakeScreen()
     const window = new FakeWindow(builtIn.workArea)

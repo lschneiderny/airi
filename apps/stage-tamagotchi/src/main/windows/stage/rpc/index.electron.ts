@@ -3,6 +3,7 @@ import type { BrowserWindow } from 'electron'
 import type { StageCharacterPlacement, StageHostMode, StageHostState } from '../../../../shared/eventa'
 import type { StageConfig } from '../config'
 import type { StageScreen } from '../displays'
+import type { StageStateBroadcast } from '../state-broadcast'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { number, object, picklist, safeParse, string } from 'valibot'
@@ -14,11 +15,12 @@ import {
   electronStageRelaunch,
   electronStageSetActiveRenderer,
   electronStageSetHome,
+  electronStageSetHomeDisplay,
   electronStageSetMode,
   electronStageStateChanged,
 } from '../../../../shared/eventa'
 import { createWindowContext } from '../../../libs/electron/window-context'
-import { buildStageHostState, withStageHome } from '../config'
+import { buildStageHostState, withStageHome, withStageHomeDisplay } from '../config'
 import { readStageDisplays } from '../displays'
 
 const rectSchema = object({ x: number(), y: number(), width: number(), height: number() })
@@ -40,17 +42,19 @@ export interface StageWindowInvokes {
 }
 
 /**
- * Registers the stage contracts on one window: the desktop stage, or the classic main window, whose page reports the
- * active renderer too.
+ * Registers the stage contracts on one window: the desktop stage, the classic main window, whose page reports the
+ * active renderer too, or the settings window, whose page edits the mode and the home display.
  *
  * Use when:
  * - A window whose renderer reads or writes the stage config has been created
  *
  * Expects:
  * - `config` was set up, and `running` is the host this launch built
+ * - `broadcast` is shared by every window of this launch, so a config change made here reaches the other windows
+ * - `applyHomeDisplay` re-bounds the desktop stage window when one exists; it runs after the home display changed
  *
  * Returns:
- * - The state emitter and the placement the renderer published last
+ * - The state emitter for this window and the placement the renderer published last
  */
 export function setupStageWindowInvokes(params: {
   window: BrowserWindow
@@ -59,6 +63,8 @@ export function setupStageWindowInvokes(params: {
   screen: Pick<StageScreen, 'getAllDisplays' | 'getPrimaryDisplay'>
   running: StageHostMode
   relaunch: () => void
+  broadcast: StageStateBroadcast
+  applyHomeDisplay?: () => void
 }): StageWindowInvokes {
   const { context } = createWindowContext(params.window)
   const getConfig = () => params.config.get() ?? params.defaultConfig
@@ -77,13 +83,20 @@ export function setupStageWindowInvokes(params: {
 
   function updateConfig(next: StageConfig): StageHostState {
     params.config.update(next)
-    emitState()
+    params.broadcast.emitAll()
     return getState()
   }
+
+  const stopBroadcast = params.broadcast.add(emitState)
 
   defineInvokeHandler(context, electronStageGetState, () => getState())
   defineInvokeHandler(context, electronStageSetHome, payload =>
     updateConfig(withStageHome(getConfig(), readStageDisplays(params.screen), payload)))
+  defineInvokeHandler(context, electronStageSetHomeDisplay, (payload) => {
+    const state = updateConfig(withStageHomeDisplay(getConfig(), readStageDisplays(params.screen), payload))
+    params.applyHomeDisplay?.()
+    return state
+  })
   defineInvokeHandler(context, electronStageSetMode, (payload) => {
     const parsed = safeParse(modeSchema, payload)
     if (!parsed.success)
@@ -98,10 +111,8 @@ export function setupStageWindowInvokes(params: {
       return getState()
     return updateConfig({ ...getConfig(), activeRenderer: parsed.output })
   })
-  // NOTICE:
-  // The relaunch does not carry an unsent chat draft over: nothing restores a collected draft in the next process.
-  // Source: plan fullscreen-stage-locomotion todo 6; `windows/chat/index.ts` keeps drafts in memory only.
-  // Removal condition: todo 14 adds the Relaunch control with a draft that survives the relaunch.
+  // Policy: the relaunch does not carry an unsent chat draft over. Drafts live in memory (`windows/chat/index.ts`), and
+  // the settings page says so next to its Relaunch button (`settings.mmd.stage.relaunch.description`).
   defineInvokeHandler(context, electronStageRelaunch, () => params.relaunch())
   defineInvokeHandler(context, electronStageGetCharacterPlacement, () => placement)
 
@@ -116,7 +127,10 @@ export function setupStageWindowInvokes(params: {
       listener(parsed.output)
   })
 
-  params.window.once('closed', () => placementListeners.clear())
+  params.window.once('closed', () => {
+    stopBroadcast()
+    placementListeners.clear()
+  })
 
   return {
     emitState,

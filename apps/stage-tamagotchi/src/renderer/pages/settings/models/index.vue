@@ -14,11 +14,13 @@ import type {
 import { errorMessageFrom } from '@moeru/std'
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { ModelSettingsPanel } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings'
+import { provideDesktopStageHost } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/desktop-stage'
 import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
-import { Callout, GhostButton } from '@proj-airi/ui'
+import { Button, Callout, GhostButton } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import {
   electronGodotStageApplySceneInput,
@@ -33,6 +35,7 @@ import {
   electronGodotStageViewStateError,
 } from '../../../../shared/eventa'
 import { useModelSettingsRuntimeSnapshot } from '../../../composables/model-settings-runtime-snapshot'
+import { useDesktopStageHost } from '../../../composables/use-desktop-stage-host'
 import { assertGodotSceneInputSupportedDisplayModel } from './godot-scene-input'
 import { createGodotViewPatchQueue } from './godot-view-patch-queue'
 import {
@@ -62,6 +65,9 @@ const switchingGodotStage = ref(false)
 const godotViewError = ref<StageViewErrorPayload>()
 const godotViewSnapshot = ref<StageViewSnapshotPayload | null>(null)
 const { runtimeSnapshot, sendLive2DExpressionCommand, sendMMDExpressionCommand } = useModelSettingsRuntimeSnapshot()
+const { t } = useI18n()
+const desktopStage = useDesktopStageHost()
+provideDesktopStageHost(desktopStage.host)
 
 let sceneSyncGeneration = 0
 let godotSessionEpoch = 0
@@ -368,6 +374,23 @@ onUnmounted(() => {
       theme="orange"
     >
       <p>{{ godotStatusMessage }}</p>
+    </Callout>
+    <Callout
+      v-if="desktopStage.nonMmdNotice.value"
+      :class="['w-full max-w-6xl']"
+      :label="t('settings.mmd.stage.title')"
+      theme="orange"
+    >
+      <p>{{ t('settings.mmd.stage.non-mmd-notice') }}</p>
+      <Button
+        v-if="desktopStage.needsRelaunch.value"
+        :class="['mt-2', 'w-fit']"
+        variant="primary"
+        color="primary"
+        @click="desktopStage.host.relaunch()"
+      >
+        {{ t('settings.mmd.stage.relaunch.button') }}
+      </Button>
     </Callout>
 
     <div :class="['relative', 'h-full', 'flex justify-center', 'w-full']">

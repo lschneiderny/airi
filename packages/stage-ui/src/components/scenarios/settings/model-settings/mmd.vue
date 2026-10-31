@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { MMDGazeMode, MMDMotionDriver, MorphSlot } from '@proj-airi/stage-ui-mmd'
+import type { MMDGazeMode, MMDMotionDriver, MMDRoamMode, MorphSlot } from '@proj-airi/stage-ui-mmd'
 import type { SelectTabOption } from '@proj-airi/ui'
 
+import type { DesktopStageDisplay, DesktopStageMode } from './desktop-stage'
 import type { ExpressionPanelCommand, ExpressionPanelSnapshot, ExpressionPanelSource } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
@@ -19,6 +20,7 @@ import { useSettingsStageModel } from '../../../../stores/settings/stage-model'
 import { Container, PropertyColor, PropertyNumber } from '../../../data-pane'
 import { Section } from '../../../layouts'
 import { ColorPalette } from '../../../widgets'
+import { useDesktopStageHost } from './desktop-stage'
 
 const props = withDefaults(defineProps<{
   palette: string[]
@@ -83,7 +85,70 @@ const {
   directionalPosition,
   albedoGlow,
   renderScale,
+  stageCharacterHeight,
+  roamMode,
 } = storeToRefs(mmdStore)
+
+const desktopStage = useDesktopStageHost()
+const desktopStageState = computed(() => desktopStage?.state.value ?? null)
+const desktopStageMode = computed<DesktopStageMode>({
+  get: () => desktopStageState.value?.mode ?? 'window',
+  set: (mode) => { void desktopStage?.setMode(mode) },
+})
+const desktopStageNeedsRelaunch = computed(() => {
+  const state = desktopStageState.value
+  return state !== null && state.mode !== state.running
+})
+const desktopStageModeOptions = computed<SelectTabOption<DesktopStageMode>[]>(() => [
+  {
+    value: 'window',
+    label: t('settings.mmd.stage.mode.options.window.title'),
+    description: t('settings.mmd.stage.mode.options.window.description'),
+  },
+  {
+    value: 'desktop',
+    label: t('settings.mmd.stage.mode.options.desktop.title'),
+    description: t('settings.mmd.stage.mode.options.desktop.description'),
+  },
+])
+
+function homeDisplayLabel(display: DesktopStageDisplay) {
+  const label = t('settings.mmd.stage.home-display.option', {
+    id: display.id,
+    width: display.workArea.width,
+    height: display.workArea.height,
+  })
+  return display.primary ? `${label} (${t('settings.mmd.stage.home-display.primary')})` : label
+}
+
+const homeDisplayOptions = computed(() => (desktopStageState.value?.displays ?? []).map(display => ({
+  label: homeDisplayLabel(display),
+  value: display.id,
+  description: '',
+})))
+
+function setHomeDisplay(value: string | number | undefined) {
+  if (typeof value !== 'string' || value === desktopStageState.value?.homeDisplayId)
+    return
+  void desktopStage?.setHomeDisplay(value)
+}
+
+const roamModeOptions = computed<SelectTabOption<MMDRoamMode>[]>(() => [
+  {
+    value: 'stay',
+    label: t('settings.mmd.stage.roam.options.stay.title'),
+    description: t('settings.mmd.stage.roam.options.stay.description'),
+  },
+  {
+    value: 'roam',
+    label: t('settings.mmd.stage.roam.options.roam.title'),
+    description: t('settings.mmd.stage.roam.options.roam.description'),
+  },
+])
+
+function formatCharacterHeight(value: number) {
+  return `${Math.round(value)} pt`
+}
 
 const canExtractColors = computed(() => props.runtimeSnapshot.canCapturePreview)
 
@@ -307,7 +372,85 @@ function removeMotion(id: string) {
         label="Render Scale"
       />
     </div>
+    <p v-if="desktopStage" :class="['px-2', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
+      {{ t('settings.mmd.stage.classic-only-note') }}
+    </p>
   </Container>
+
+  <Section
+    v-if="desktopStage"
+    :title="t('settings.mmd.stage.title')"
+    icon="i-solar:monitor-bold-duotone"
+    inner-class="text-sm"
+    :class="['rounded-xl', 'bg-white/80 dark:bg-black/75', 'backdrop-blur-lg']"
+    size="sm"
+    :expand="false"
+  >
+    <p :class="['mb-2', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
+      {{ t('settings.mmd.stage.description') }}
+    </p>
+    <label :class="['flex flex-wrap gap-4']">
+      <div :class="['min-w-0 flex-1 basis-full sm:basis-auto']">
+        <div :class="['flex items-center gap-1 text-sm font-medium']">
+          {{ t('settings.mmd.stage.mode.title') }}
+        </div>
+        <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+          {{ t('settings.mmd.stage.mode.description') }}
+        </div>
+      </div>
+      <SelectTab
+        v-model="desktopStageMode"
+        :options="desktopStageModeOptions"
+        :disabled="desktopStageState === null"
+        size="sm"
+        :class="['shrink-0', 'min-w-72']"
+      />
+    </label>
+    <div
+      v-if="desktopStageNeedsRelaunch"
+      :class="['flex flex-wrap items-center gap-4']"
+    >
+      <Button variant="primary" color="primary" @click="desktopStage.relaunch()">
+        {{ t('settings.mmd.stage.relaunch.button') }}
+      </Button>
+      <p :class="['min-w-0 flex-1 basis-full sm:basis-auto', 'text-xs text-neutral-500 dark:text-neutral-400']">
+        {{ t('settings.mmd.stage.relaunch.description') }}
+      </p>
+    </div>
+    <FieldCombobox
+      :model-value="desktopStageState?.homeDisplayId ?? ''"
+      :options="homeDisplayOptions"
+      :disabled="homeDisplayOptions.length < 2"
+      :label="t('settings.mmd.stage.home-display.title')"
+      :description="t('settings.mmd.stage.home-display.description')"
+      @update:model-value="setHomeDisplay"
+    />
+    <FieldRange
+      v-model="stageCharacterHeight"
+      :min="200"
+      :max="1200"
+      :step="10"
+      :label="t('settings.mmd.stage.character-height.title')"
+      :description="t('settings.mmd.stage.character-height.description')"
+      :format-value="formatCharacterHeight"
+    />
+    <label :class="['flex flex-wrap gap-4']">
+      <div :class="['min-w-0 flex-1 basis-full sm:basis-auto']">
+        <div :class="['flex items-center gap-1 text-sm font-medium']">
+          {{ t('settings.mmd.stage.roam.title') }}
+        </div>
+        <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+          {{ t('settings.mmd.stage.roam.description') }}
+        </div>
+      </div>
+      <SelectTab
+        v-model="roamMode"
+        :options="roamModeOptions"
+        size="sm"
+        :class="['shrink-0']"
+      />
+    </label>
+  </Section>
 
   <Section
     :title="t('settings.mmd.physics.title')"

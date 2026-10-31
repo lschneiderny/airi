@@ -2811,6 +2811,46 @@ mmd:
     description: >-
       Adjust the opacity of individual model parts (face, hair, clothing,
       accessories). Set a part to 0 to hide it.
+  stage:
+    title: Desktop stage
+    description: >-
+      Let the character stand on the desktop, over every other window, instead of
+      living in the classic window.
+    classic-only-note: Scale, position and rotation apply in the classic window only.
+    mode:
+      title: Stage mode
+      description: The mode applies at the next launch.
+      options:
+        window:
+          title: Classic window
+          description: A movable window that frames the character.
+        desktop:
+          title: Desktop stage
+          description: The character stands on the work area of the home display.
+    relaunch:
+      button: Relaunch to apply
+      description: >-
+        The saved mode differs from the running one. An unsent chat draft is not
+        carried across the relaunch.
+    home-display:
+      title: Home display
+      description: The display the character stands on. The saved home position stays on each display.
+      option: 'Display {id}: {width} x {height}'
+      primary: primary
+    character-height:
+      title: Character height
+      description: The on-screen height of the character on the desktop stage, in points.
+    roam:
+      title: Roam
+      description: What the character does when nothing holds her attention.
+      options:
+        stay:
+          title: Stays put
+          description: She returns to her home spot and waits there.
+        roam:
+          title: Roams
+          description: She wanders along the ground and comes back home.
+    non-mmd-notice: Desktop stage supports MMD models; the classic window is used.
 tachie:
   title: Tachie Settings
   archive-description: Tachie models use .tachie.zip archives containing emotion-named images.
