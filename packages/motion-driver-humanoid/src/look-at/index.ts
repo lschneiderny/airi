@@ -6,6 +6,8 @@ export interface LookAtInput {
   readonly targetPitch: number
   /** Actual facing in the same stance frame; feed back the previous command when unobstructed. */
   readonly facingYaw: number
+  /** False while another planner (locomotion) owns facing: no turn steps, facing passes through. Default true. */
+  readonly allowTurn?: boolean
 }
 
 export type LookAtOptions = Partial<Pick<RigTraits, 'eyeYawLimit' | 'eyePitchLimit'>>
@@ -149,6 +151,15 @@ class LookAtController {
       }
       facingYaw = nextFacing
       this.time += elapsed
+    }
+
+    if (input.allowTurn === false) {
+      this.turning = false
+      this.activeStep = null
+      this.dwell = 0
+      this.dwellDirection = 0
+      advance(remaining)
+      remaining = 0
     }
 
     // Split at dwell, step, and refractory boundaries rather than quantizing them to frames.

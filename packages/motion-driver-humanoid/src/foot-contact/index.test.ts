@@ -117,6 +117,23 @@ describe('foot contact', () => {
     expect(result.feet.right.kneePreBend).toBe(0)
   })
 
+  it('re-bases planted anchors through setAnchors without re-easing contact', () => {
+    const planner = createFootContact({ legs, traits })
+    planner.step(standing, 0.3)
+    const anchors = {
+      left: { position: { x: 1.6, y: traits.footBaselineY, z: 0.4 }, yaw: 0.5 },
+      right: { position: { x: -1.2, y: traits.footBaselineY, z: 0.4 }, yaw: 0.5 },
+    }
+    planner.setAnchors(anchors)
+    const result = planner.step(standing, 1 / 60)
+    for (const side of sides) {
+      expect(result.feet[side].anchor).toEqual(anchors[side])
+      expect(result.feet[side].target.position).toEqual(anchors[side].position)
+      expect(result.feet[side].target.yaw).toBeCloseTo(anchors[side].yaw, 12)
+      expect(result.feet[side].c).toBe(1)
+    }
+  })
+
   it('keeps a degenerate zero-length leg finite', () => {
     const zero = { x: 0, y: 0, z: 0 }
     const leg = { hip: zero, knee: zero, ankle: zero }
@@ -153,5 +170,15 @@ describe('turn step planner', () => {
     expect(third.sample(0)).toEqual(first.sample(0.4))
     expect(third.sample(0.4).yaw).toBeCloseTo(Math.PI / 2)
     expect(first.sample(1)).toEqual(first.sample(0.4))
+  })
+
+  it('lifts arcs by the supplied swing height', () => {
+    const anchors = {
+      left: { position: { x: 1, y: 1, z: 0 }, yaw: 0 },
+      right: { position: { x: -1, y: 1, z: 0 }, yaw: 0 },
+    }
+    const [step] = planFootSteps([{ foot: 'right', yawDelta: -Math.PI / 4, duration: 0.45 }], anchors, { x: 0, y: 0, z: 0 }, 0.12)
+    expect(step?.sample(0.225).position.y).toBeCloseTo(1.12, 12)
+    expect(step?.sample(0.45).position.y).toBe(1)
   })
 })

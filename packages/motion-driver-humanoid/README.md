@@ -10,6 +10,8 @@ deterministic motion algorithms for reusable character motion drivers.
 - `./foot-contact`: planted foot anchors, eased contact, shared pelvis reach
   correction, signed knee pre-bend, and body-turn step arcs.
 - `./look-at`: `createLookAt`, look-at and turn-step contracts, and `aimEyes`.
+- `./locomotion`: `createLocomotion`, a deterministic procedural gait with root
+  motion, planted world foot anchors, body channels, and arm swing.
 - `./rest-pose`: `createArmRest`, the relaxed arm, hand, and finger rest pose.
 - `./types`: canonical humanoid and finger bones, rig traits, positions, rotations (with `rotationToMatrix` and `mirrorRotation`), and body intents.
 - `./weight-shift`: deterministic seeded weight shift and Natural body composition.
@@ -39,11 +41,13 @@ and is requested again. Clip foot weights and ducking reduce the contact target;
 animated knees receive no pre-bend. Renderer adapters retain ownership of bone
 rotations and solving IK.
 
-`planFootSteps(turnSteps, anchors, pivot)` accepts newly issued commands with
-`foot`, relative `yawDelta` (radians), and `duration` (seconds). Play the returned
-steps sequentially, sampling each with elapsed seconds. Each arc lifts 0.3 model
-units at its midpoint and lands at the anchor rotated about the mesh-local pivot.
-Feed the landed ankle back to the contact planner after releasing that foot.
+`planFootSteps(turnSteps, anchors, pivot, swingHeight = 0.3)` accepts newly issued
+commands with `foot`, relative `yawDelta` (radians), and `duration` (seconds). Play
+the returned steps sequentially, sampling each with elapsed seconds. Each arc lifts
+`swingHeight` model units at its midpoint and lands at the anchor rotated about the
+pivot. Feed the landed ankle back to the contact planner after releasing that foot.
+`setAnchors(anchors)` re-bases the planted anchors without re-easing contact, for
+example when the gait hands its final anchors back after a walk.
 
 ```ts
 import { createLookAt } from '@proj-airi/motion-driver-humanoid/look-at'
@@ -72,10 +76,49 @@ left/right feet, each lasting 0.4 seconds with at most 22.5 degrees of signed ya
 creation. A foot-contact adapter consumes the events; this module never moves
 feet or writes bones.
 
+Pass `allowTurn: false` while another planner owns facing, such as locomotion:
+no turn steps are planned and `facingYaw` passes through.
+
 Time is supplied only through `dt` in seconds, with no clocks or randomness.
 Springs integrate their response analytically, including the changing facing
 during turns. Non-finite target angles become zero; coincident or non-finite
 world targets aim eyes forward. Negative or non-finite `dt` advances no time.
+
+### Locomotion
+
+```ts
+import { createLocomotion } from '@proj-airi/motion-driver-humanoid/locomotion'
+
+const locomotion = createLocomotion({ traits, seed: 7 })
+locomotion.rebase({ x: homeX, yaw: 0 })
+const frame = locomotion.step({ now, goalX, pace: 'walk', arriveFacing: 0, enabled: true, idleSupport, plantedFeet }, 1 / 120)
+```
+
+`traits` are `GaitTraits`: leg length L, ankle baseline, bind hip-to-ankle height,
+and bind ankles. Step on the fixed 120 Hz grid. Positions are world model units on
+the ground line (y = 0, travel along x). Yaw 0 faces the camera, and walking faces
++/-90 degrees. The reference step is 0.5 L at 1.8 Hz, so `v_ref = 0.9 L` per
+second; `pace` (`LocomotionPace` from `./types`) scales it by 0.6 or 1.0. Speed ramps at `v_ref` per second and
+stops exactly at `goalX`. A goal that needs a new heading first turns in place
+through `planFootSteps` about the root: at most 45 degrees per 0.45 second step,
+so 90 degrees takes two steps. After arrival the gait closes the stance, turns to
+`arriveFacing`, and returns to `idle` after both feet have been planted for 0.25
+seconds.
+
+Planted foot targets are frozen world anchors. Landing targets are re-planned until
+75% of the swing, so the stance stays symmetric about the hip while the speed
+changes. The pelvis drop is the design bob, sized from the planned stance spans, plus
+a reach floor that may lower it by at most 0.01 L for off-centre stances. A leash
+shortens root travel if a planted ankle would end farther than 0.985 L from its hip;
+`leashClamps` counts those ticks and stays zero in normal driving. Body channels use `composeWeightShift` field names and
+signs: blend them as `lerp(weightShift, frame.body, frame.weight)` and duck
+weight-shift by `1 - frame.weight`. While `frame.weight > 0`, the gait owns the foot
+targets: seed it with the contact planner's planted anchors (converted to world),
+and hand `frame.feet` back through `setAnchors` when it returns to idle. Pass
+`frame.root.yaw` to look-at as `facingYaw` with `allowTurn: false` while moving.
+`rebase` teleports the root, re-plants both feet at the bind ankle offsets, and
+makes the next frame `idle`; use it for drag and teleports. The seed only breaks
+first-foot ties.
 
 `decideBody(input, memory)` from `./director` returns a `BodyIntent` and the
 next memory. It sits after 120 seconds of continuous idle mode

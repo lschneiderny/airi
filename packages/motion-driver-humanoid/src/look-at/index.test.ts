@@ -187,6 +187,21 @@ describe('body turns', () => {
     expect(steps.reduce((sum, step) => sum + step.yaw, 0)).toBeCloseTo(sign * 105 * rad, 8)
   })
 
+  it('passes facing through without turn steps while turning is not allowed', () => {
+    const lookAt = createLookAt()
+    let frame: LookAtFrame | undefined
+    for (let i = 0; i < 720; i++) {
+      frame = lookAt.step({ targetYaw: 120 * rad, targetPitch: 0, facingYaw: 0.3, allowTurn: false }, 1 / 120)
+      expect(frame.turnStarted).toBe(false)
+      expect(frame.turning).toBe(false)
+      expect(frame.turnSteps).toHaveLength(0)
+      expect(frame.facingYaw).toBe(0.3)
+    }
+    expect(frame?.rotations.head.yaw).toBeCloseTo(35 * rad, 6)
+    const allowed = lookAt.step({ targetYaw: 120 * rad, targetPitch: 0, facingYaw: 0.3 }, 1 / 120)
+    expect(allowed.turnStarted).toBe(true)
+  })
+
   it('requires a continuous half second beyond sixty degrees', () => {
     const lookAt = createLookAt()
     const before = lookAt.step({ targetYaw: 70 * rad, targetPitch: 0, facingYaw: 0 }, 0.49)
