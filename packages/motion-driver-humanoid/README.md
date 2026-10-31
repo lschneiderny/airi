@@ -10,6 +10,7 @@ deterministic motion algorithms for reusable character motion drivers.
   correction, signed knee pre-bend, and body-turn step arcs.
 - `./look-at`: `createLookAt`, look-at and turn-step contracts, and `aimEyes`.
 - `./types`: canonical humanoid bones, rig traits, positions, rotations, and body intents.
+- `./weight-shift`: deterministic seeded weight shift and Natural body composition.
 
 ## Usage
 
@@ -18,6 +19,8 @@ import type { BodyIntent, HumanoidBoneName, RigTraits } from '@proj-airi/motion-
 
 import { decideBody, initialBodyDirectorMemory } from '@proj-airi/motion-driver-humanoid/director'
 import { createFootContact, planFootSteps } from '@proj-airi/motion-driver-humanoid/foot-contact'
+import { createLookAt } from '@proj-airi/motion-driver-humanoid/look-at'
+import { createWeightShift } from '@proj-airi/motion-driver-humanoid/weight-shift'
 ```
 
 Create one foot-contact planner per rig with mesh-local bind hip, knee, and ankle

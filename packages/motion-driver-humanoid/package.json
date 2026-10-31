@@ -6,7 +6,8 @@
     "./director": "./src/director/index.ts",
     "./foot-contact": "./src/foot-contact/index.ts",
     "./look-at": "./src/look-at/index.ts",
-    "./types": "./src/types/index.ts"
+    "./types": "./src/types/index.ts",
+    "./weight-shift": "./src/weight-shift/index.ts"
   },
   "scripts": {
     "test": "vitest run",
