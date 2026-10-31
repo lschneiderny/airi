@@ -1,9 +1,8 @@
 import type { ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 
-import type { Live2DTouchRegion } from '../touch-gestures'
 import type { naturalEmotions } from './emotions'
 import type { NaturalPerformanceEnergy } from './energy'
-import type { NaturalMotionObserver } from './frame-types'
+import type { NaturalMotionObserver, NaturalTouchRegion } from './frame-types'
 import type { NaturalGazeLayer } from './gaze'
 import type { NaturalGestures } from './gestures'
 import type { NaturalImpulses } from './impulses'
@@ -24,7 +23,7 @@ const glanceTargets = { camera: { x: 0, y: 0 } }
 export type PendingAction
   = | { kind: 'emotion', episode: NaturalEpisode }
     | { kind: 'react', reaction: 'wake' | 'screen-change' }
-    | { kind: 'poke', region: Live2DTouchRegion, x: number, y: number }
+    | { kind: 'poke', region: NaturalTouchRegion, x: number, y: number }
     | { kind: 'chat', cue: 'sent' | 'unfold', words: number }
 
 /** Poke surprise bookkeeping the owner carries between calls. */

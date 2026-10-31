@@ -7,6 +7,12 @@ import type { GazePoint } from './gaze'
 import type { PostureHome } from './posture'
 import type { RandomStream } from './random'
 
+export type NaturalTouchRegion = 'head' | 'body'
+
+export interface NaturalRigTraits {
+  bodyFromHeadPhysics: { x: boolean, y: boolean, z: boolean }
+}
+
 export interface Live2DNaturalMotionOptions {
   /** Seeds every layer stream; equal seeds replay equal motion. Takes precedence over `random`. */
   seed?: number

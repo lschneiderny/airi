@@ -116,7 +116,7 @@ it('recruits body lean without writing physics-owned body axes', () => {
   const motion = new Live2DNaturalMotion({ seed: 41 })
   motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
   const control = new Live2DNaturalMotion({ seed: 41 })
-  motion.setRigProfile({ bodyFromHeadPhysics: { x: true, y: false, z: true } })
+  motion.setRigTraits({ bodyFromHeadPhysics: { x: true, y: false, z: true } })
   motion.impulse({ id: 'strong', emotion: Emotion.Happy, nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false }, 0)
   control.advance(0)
   let peak = 0
@@ -233,7 +233,7 @@ describe('natural motion', () => {
   it('reports physics-derived body axes as null without changing other channels', () => {
     const motion = new Live2DNaturalMotion({ seed: 17 })
     const reference = new Live2DNaturalMotion({ seed: 17 })
-    motion.setRigProfile({ bodyFromHeadPhysics: { x: true, y: false, z: false } })
+    motion.setRigTraits({ bodyFromHeadPhysics: { x: true, y: false, z: false } })
     motion.advance(0)
     reference.advance(0)
     const { pose } = motion.advance(4)

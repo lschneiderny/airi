@@ -227,7 +227,7 @@ export class Live2DNaturalMotionAdapter {
     })
     this.mouth = owned('mouthOpen')
     this.breath = owned('breath')
-    this.controller.setRigProfile(profile)
+    this.controller.setRigTraits({ bodyFromHeadPhysics: profile.bodyFromHeadPhysics })
   }
 
   /** Read-only snapshot of the capture counters; the lab reads it once when a capture ends. */

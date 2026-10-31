@@ -1,9 +1,8 @@
 import type { Band, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
 
-import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
+import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it } from 'vitest'
 
-import { EMOTION_VALUES } from '../../../constants/emotions'
 import { headPulseOffset, impulseEnvelope, NaturalImpulses } from './impulses'
 import { createRandomStream } from './random'
 
@@ -60,7 +59,7 @@ describe('band-driven Natural episodes', () => {
   })
 
   it('keeps every head peak within 0.12 I^0.7 x 1.2', () => {
-    for (const emotion of EMOTION_VALUES) {
+    for (const emotion of PERFORMANCE_EMOTIONS) {
       for (const intensity of [0.2, 0.6, 1]) {
         for (let seed = 1; seed <= 20; seed++) {
           const impulses = new NaturalImpulses(createRandomStream(seed))
