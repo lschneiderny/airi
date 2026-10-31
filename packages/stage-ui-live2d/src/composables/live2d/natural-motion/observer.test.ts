@@ -8,19 +8,31 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Live2DNaturalMotion } from '../natural-motion'
 import { naturalEmotions } from './emotions'
 
-// sha256 per seed (1, 2, 3) over `${JSON.stringify({ pose, fixation, face, blink, breath })}\n` of every frame.
-// Pins come from Node Vitest (never Bun). Motion changes that moved them: face low-pass, boost removal,
-// duck, laugh, and eye compensation for the slow head only.
-const idleHashes = [
-  '2dbac2b1fb9f26c9e8124eaa604f993e1c9cb2b750bdb8cd1251543cdae18918',
-  '787f42a7888a341a0517e1ed9683479f61b992d5f164eb75eb63cfe58f7983e5',
-  '311836fb977667c41d845e0b1ac188409d93ce80559bac4504914a6bcf6d6764',
-]
-const emotionHashes = [
-  '8ffeabecaaa8ce790e8e5f24c43a11dff8beada90a010f68df5d1c65ce8726cc',
-  '4527dbaa28d18e3e6005948b37440e9cb4299843816ce924542ee83d50680f80',
-  'ec6fa2cd923d0738fb75935a6c02ba29aff9071191545e82e93e2e6235437589',
-]
+// SHA-256 per seed over each frame's serialized output; pins come from Node Vitest.
+// Pins reflect face low-pass, boost removal, duck, laugh and slow-head eye compensation.
+// Darwin x64 and arm64 libm differ in the last bit; arm64 measurements: task-1-observer-rootcause.txt.
+const idleHashes = process.platform === 'darwin' && process.arch === 'arm64'
+  ? [
+      'b9d8e0ce32926707d9f3bc9f67c9e88fb3d28e43fab548d89d70b61e166a3d36',
+      'db5869b255e5251b6fa2952a08e1df30bffbe6a976a29031569fe747b643ed3a',
+      '77212d070b2b422f3cbeae0573e151b15488136f503c6c786fc33ca42cfe90fd',
+    ]
+  : [
+      '2dbac2b1fb9f26c9e8124eaa604f993e1c9cb2b750bdb8cd1251543cdae18918',
+      '787f42a7888a341a0517e1ed9683479f61b992d5f164eb75eb63cfe58f7983e5',
+      '311836fb977667c41d845e0b1ac188409d93ce80559bac4504914a6bcf6d6764',
+    ]
+const emotionHashes = process.platform === 'darwin' && process.arch === 'arm64'
+  ? [
+      '6e01715d3eeb59189fc0be55dea2746d350424c46937f13763dba90414b6a79b',
+      '32fe6b7c2871a7b15de4698bb287b89ccbd86d0af694a3b4d199cb29b3ab6b1f',
+      '026172f02f55146739a283cc7636b2fd6bdc262763ebca804c7eb0eb1bb63c1a',
+    ]
+  : [
+      '8ffeabecaaa8ce790e8e5f24c43a11dff8beada90a010f68df5d1c65ce8726cc',
+      '4527dbaa28d18e3e6005948b37440e9cb4299843816ce924542ee83d50680f80',
+      'ec6fa2cd923d0738fb75935a6c02ba29aff9071191545e82e93e2e6235437589',
+    ]
 
 const rate = 120
 const step = 1 / rate
