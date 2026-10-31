@@ -130,6 +130,38 @@ devtools:
           category: Category
           reason: Reason
           count: Count
+      reactions:
+        title: Touch reactions
+        last-touch: Last touch
+        last-touch-empty: No touch event yet. Petting the character's head or poking her on the stage adds one.
+        text: Text
+        salience: Salience
+        shown: Shown
+        age: Age
+        not-shown: 'no'
+        policy: Reaction policy
+        not-started: The reaction policy has not run in the leader window yet. It runs only in a host that supports unprompted turns.
+        decision: Last decision
+        decision-speak: 'speak: {kind} (roll {roll} below {probability}; {ago})'
+        decision-hold: 'hold: {reason} (kind {kind}, roll {roll}; {ago})'
+        pets-seen: Pets seen
+        poke-times: Recent pokes
+        last-line: Last line
+        pending: Pending
+        pending-value: '{kind}, event {eventId}, decided {ago}'
+        refractory: Refractory remaining
+        retry: Retry wait remaining
+        none: none
+        never: never
+        outcomes: Outcomes per reaction kind
+        outcomes-note: Counted since the leader window started. Refused counts sends that another pending unprompted turn refused; the policy treats them as never attempted.
+        columns:
+          kind: Kind
+          spoken: Spoken
+          declined: Declined
+          cancelled: Cancelled
+          failed: Failed
+          refused: Refused
       reasons:
         title: Reasons
         current: Current reasons
