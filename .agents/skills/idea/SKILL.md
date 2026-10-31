@@ -14,7 +14,7 @@ The dTuber planning vault is a separate git repository at `Z:/Obsidian/dTuber` (
    - `bug` when something behaves wrongly or feels wrong while using the app.
    - `idea` for everything else, including questions.
 3. Choose a short, recognizable title in sentence case, such as `Petting rocks too fast`. Use it as the filename. If a note with that name exists, append ` 2`, ` 3`, and so on.
-4. Write the note with the matching template's shape from `Z:/Obsidian/dTuber/Templates/Idea.md` or `Bug.md`. Replace the QuickAdd tokens: `{{TITLE}}` with the title, `{{DATE:YYYY-MM-DD}}` with today's date, and each free-text `{{VALUE:...}}` with the user's words. Keep `status: inbox`. Replace each `js quickadd` block with its result: for bugs, the output of `git describe --always --dirty` in this repository; for the "Captured from" line, nothing.
+4. Write the note with the matching template's shape from `Z:/Obsidian/dTuber/Templates/Idea.md` or `Bug.md`. Replace the QuickAdd tokens: `{{TITLE}}` with the title, `{{DATE:YYYY-MM-DD}}` with today's date, and each free-text `{{VALUE:...}}` with the user's words. Keep `status: inbox`, and on bugs keep `source: capture` and `fixed_in: ""`. Replace each `js quickadd` block with its result: for bugs, the output of `git describe --always --dirty` in this repository; for the "Captured from" line, nothing.
 5. Fill each dropdown token (`{{VALUE:a,b,c|label:...}}`) with one of its listed values:
    - `area`: the area from the table in the vault's `Home.md` that clearly owns the capture, or `unsure`.
    - `severity` and `frequency` on bugs: only what the user said. Otherwise use `annoying` and `not sure`.

@@ -22,6 +22,7 @@ This personal fork keeps local development workflows, not upstream publishing or
 | --- | --- |
 | `idea` | Save an idea or bug to the Obsidian vault inbox at `Z:/Obsidian/dTuber/00 Inbox`. |
 | `triage` | Propose and apply outcomes for vault inbox notes after the user approves them. |
+| `vault-sync` | Bring the vault up to date with the repository after new commits, after the user approves the proposal. |
 
 ## Tools and integration references
 
