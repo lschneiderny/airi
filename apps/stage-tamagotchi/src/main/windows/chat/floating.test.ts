@@ -193,6 +193,25 @@ describe('floating chat attached to an anchor', () => {
     expect(floating.attentionSnapshot().window?.bounds).toEqual(floating.getOpenWindow()!.getBounds())
   })
 
+  it('reports an unfolded chat as shown even when showing it sends no show event', async () => {
+    const { floating, onWindowChange } = setup(() => createManualAnchor(homeAt(800)).anchor)
+    await floating.open()
+    await floating.toggle()
+    mocks.handlers.get(electronChatFloatingContentHidden)!()
+    const window = floating.getOpenWindow()!
+    expect(window.isVisible()).toBe(false)
+    // A macOS child window can become visible without a `show` event.
+    window.show = () => {
+      Object.assign(window, { visible: true })
+    }
+    const seen: ReturnType<typeof floating.attentionSnapshot>[] = []
+    onWindowChange.mockImplementation(() => seen.push(floating.attentionSnapshot()))
+
+    await floating.toggle()
+
+    expect(seen.at(-1)).toMatchObject({ folded: false, relocating: false, window: { shown: true } })
+  })
+
   it('moves a shown chat to the other side once its content has folded away', async () => {
     const manual = createManualAnchor(homeAt(500))
     const { floating } = setup(() => manual.anchor)

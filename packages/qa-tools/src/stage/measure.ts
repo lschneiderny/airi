@@ -1,7 +1,9 @@
+import type { Buffer } from 'node:buffer'
+
 import type { OwnedProcess } from '../env/processes'
 import type { StageFrameRun, StageMode } from './gates'
 
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { cpSync, mkdtempSync, rmSync } from 'node:fs'
 import { loadavg, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,8 +19,9 @@ import { teardownRun, trackTree } from '../t3/teardown'
 
 /**
  * The K6 measurement of todo 1, productised: it reads the MMD frame measurement through the motion diagnostics
- * BroadcastChannel of the stage target while CDP moves the pointer over the character, so the synchronous hit-test
- * readback is part of the measured frames. A 1 Hz sidecar records the load average and any concurrent heavyweight
+ * BroadcastChannel of the stage target while the OS cursor circles over the character, so the synchronous hit-test
+ * readback is part of the measured frames. Both host pages take the cursor from the main process, not from DOM
+ * events, so the real cursor must move. A 1 Hz sidecar records the load average and any concurrent heavyweight
  * check (Vitest, tsc, vue-tsc); a run with a hit is INVALID-CONCURRENT-LOAD and is repeated.
  */
 
@@ -52,7 +55,7 @@ export interface StageMeasureAttempt {
   samples: LoadSample[]
   heavyweightHits: number
   psBackground: string[] | null
-  pointerMoves: number
+  pointer: { method: 'os' | 'cdp', moves: number }
   verdict: 'VALID' | 'INVALID-CONCURRENT-LOAD'
 }
 
@@ -66,7 +69,8 @@ export interface StageMeasureRecord {
   result: StageFrameRun
   detail: { snapshots: number, loadedModelKey: string | null, driver: string | null, state: string, durationMs: number, stages: Record<string, StageTiming> }
   physicsUpdate: StageTiming | null
-  pointer: { cx: number, cy: number, r: number }
+  /** The pointer circle in page CSS pixels; `origin` is the window's screen position for the OS cursor. */
+  pointer: { cx: number, cy: number, r: number, origin: { x: number, y: number } }
   load: StageMeasureAttempt
   discarded: StageMeasureAttempt[]
   valid: boolean
@@ -164,7 +168,7 @@ function mountedExpression(timeoutMs: number): string {
         const cx = p ? p.x + p.width / 2 : innerWidth / 2
         const cy = p ? p.y + p.height * 0.4 : innerHeight / 2
         const r = Math.min(160, (p ? Math.min(p.width, p.height) : Math.min(innerWidth, innerHeight)) * 0.3)
-        resolve({ loadedModelKey: snapshot.loadedModelKey, cx, cy, r })
+        resolve({ loadedModelKey: snapshot.loadedModelKey, cx, cy, r, origin: { x: screenX, y: screenY } })
       })
     })
   }
@@ -181,14 +185,50 @@ async function connectTarget(port: number, mode: StageMode): Promise<{ client: C
   return { client: await CdpClient.connect(target.webSocketDebuggerUrl), url: target.url }
 }
 
-async function measureAttempt(client: CdpClient, seconds: number, pointer: { cx: number, cy: number, r: number }): Promise<{ collected: Collected, attempt: StageMeasureAttempt }> {
+/**
+ * Circles the OS cursor over the character for `seconds` from one long-lived process and resolves with the number of
+ * moves it made, or returns `null` where no OS cursor driver exists (CDP moves are used instead, and the hit test then
+ * records no readback).
+ */
+function startOsWiggle(pointer: { cx: number, cy: number, r: number, origin: { x: number, y: number } }, seconds: number): Promise<number> | null {
+  const cx = pointer.origin.x + pointer.cx
+  const cy = pointer.origin.y + pointer.cy
+  let command: string
+  let args: string[]
+  if (platform === 'darwin') {
+    // CGWarpMouseCursorPosition needs no Accessibility trust.
+    command = 'osascript'
+    args = ['-l', 'JavaScript', '-e', `ObjC.import('CoreGraphics'); var t0 = Date.now(); var n = 0; while (Date.now() - t0 < ${seconds * 1000}) { var a = n * 0.12; $.CGWarpMouseCursorPosition({ x: ${cx} + ${pointer.r} * Math.cos(a), y: ${cy} + ${pointer.r * 0.6} * Math.sin(a) }); n++; delay(0.016) } n`]
+  }
+  else if (platform === 'win32') {
+    command = 'powershell'
+    args = ['-NoProfile', '-NonInteractive', '-Command', [
+      'Add-Type -MemberDefinition \'[DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);\' -Name QaWiggle -Namespace Qa',
+      `$sw = [Diagnostics.Stopwatch]::StartNew(); $n = 0; while ($sw.ElapsedMilliseconds -lt ${seconds * 1000}) { $a = $n * 0.12; [void][Qa.QaWiggle]::SetCursorPos([int](${cx} + ${pointer.r} * [Math]::Cos($a)), [int](${cy} + ${pointer.r * 0.6} * [Math]::Sin($a))); $n++; Start-Sleep -Milliseconds 16 }; $n`,
+    ].join('; ')]
+  }
+  else {
+    return null
+  }
+  return new Promise((resolveMoves) => {
+    let stdout = ''
+    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true })
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += String(chunk)
+    })
+    child.once('error', () => resolveMoves(0))
+    child.once('exit', () => resolveMoves(Number.parseInt(stdout.trim(), 10) || 0))
+  })
+}
+
+async function measureAttempt(client: CdpClient, seconds: number, pointer: { cx: number, cy: number, r: number, origin: { x: number, y: number } }): Promise<{ collected: Collected, attempt: StageMeasureAttempt }> {
   const attempt: StageMeasureAttempt = {
     startedAt: new Date().toISOString(),
     pre: { load: loadavg().map(value => Number(value.toFixed(2))), heavyweight: await heavyweightProcesses() },
     samples: [],
     heavyweightHits: 0,
     psBackground: null,
-    pointerMoves: 0,
+    pointer: { method: 'cdp', moves: 0 },
     verdict: 'VALID',
   }
   const started = Date.now()
@@ -204,26 +244,31 @@ async function measureAttempt(client: CdpClient, seconds: number, pointer: { cx:
       attempt.psBackground = top
     })
   }, seconds * 500)
+  const wiggle = startOsWiggle(pointer, seconds)
   let angle = 0
   let moving = false
-  const pointerTimer = setInterval(() => {
-    if (moving)
-      return
-    moving = true
-    angle += 0.35
-    const x = Math.round(pointer.cx + pointer.r * Math.cos(angle))
-    const y = Math.round(pointer.cy + pointer.r * 0.6 * Math.sin(angle))
-    void client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }, 5_000)
-      .then(() => {
-        attempt.pointerMoves += 1
-      })
-      .catch(() => {})
-      .finally(() => {
-        moving = false
-      })
-  }, 50)
+  const pointerTimer = wiggle
+    ? undefined
+    : setInterval(() => {
+        if (moving)
+          return
+        moving = true
+        angle += 0.35
+        const x = Math.round(pointer.cx + pointer.r * Math.cos(angle))
+        const y = Math.round(pointer.cy + pointer.r * 0.6 * Math.sin(angle))
+        void client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }, 5_000)
+          .then(() => {
+            attempt.pointer.moves += 1
+          })
+          .catch(() => {})
+          .finally(() => {
+            moving = false
+          })
+      }, 50)
   try {
     const collected = await client.evaluate<Collected>(collectExpression(seconds), seconds * 1_000 + 30_000)
+    if (wiggle)
+      attempt.pointer = { method: 'os', moves: await wiggle }
     return { collected, attempt }
   }
   finally {
@@ -239,7 +284,7 @@ async function measureAttempt(client: CdpClient, seconds: number, pointer: { cx:
  * The record is `valid: false` when every attempt was invalid.
  */
 async function measureStage(client: CdpClient, options: { mode: StageMode, target: string, seconds: number, attempts: number, n?: number, log: (line: string) => void }): Promise<StageMeasureRecord> {
-  const pointer = await client.evaluate<{ loadedModelKey: string, cx: number, cy: number, r: number }>(mountedExpression(180_000), 190_000)
+  const pointer = await client.evaluate<{ loadedModelKey: string, cx: number, cy: number, r: number, origin: { x: number, y: number } }>(mountedExpression(180_000), 190_000)
   const discarded: StageMeasureAttempt[] = []
   for (let index = 1; ; index += 1) {
     await waitForQuiet(300_000, options.log)
@@ -260,7 +305,7 @@ async function measureStage(client: CdpClient, options: { mode: StageMode, targe
         result: { mode: options.mode, fps: collected.measurement.fps, p95StageMs, readbackMs: collected.readbackMs, frames: collected.measurement.frames },
         detail: { snapshots: collected.snapshots, loadedModelKey: collected.loadedModelKey, driver: collected.driver, state: collected.measurement.state, durationMs: collected.measurement.durationMs, stages },
         physicsUpdate: stages['physics.update'] ?? null,
-        pointer: { cx: pointer.cx, cy: pointer.cy, r: pointer.r },
+        pointer: { cx: pointer.cx, cy: pointer.cy, r: pointer.r, origin: pointer.origin },
         load: attempt,
         discarded,
         valid: attempt.verdict === 'VALID',

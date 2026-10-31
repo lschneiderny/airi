@@ -22,7 +22,7 @@ import {
   resolveComponentStateToRuntimePhase,
 } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
-import { isCanvasRegionTransparent } from '@proj-airi/stage-ui/composables/canvas-alpha'
+import { CanvasRegionAlphaReader, isCanvasRegionTransparent } from '@proj-airi/stage-ui/composables/canvas-alpha'
 import { useVoiceListening } from '@proj-airi/stage-ui/composables/voice-input-mode'
 import { useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
 import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
@@ -389,7 +389,13 @@ useElectronEventaInvoke(electronAppIsWayland)()
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
 let clickThrough = createStageClickThroughState()
 
-function readHit(cursor: { x: number, y: number }): boolean {
+// Right after the scene submits its frame, a synchronous readPixels waits for the GPU (4-5 ms measured). On WebGL2
+// the reader copies the pixel asynchronously and answers a frame or two later.
+let alphaReader: { gl: WebGL2RenderingContext, reader: CanvasRegionAlphaReader } | null = null
+onScopeDispose(() => alphaReader?.reader.dispose())
+
+/** Whether her pixel is under the cursor; `undefined` while the asynchronous read has no answer yet. */
+function readHit(cursor: { x: number, y: number }): boolean | undefined {
   const canvas = stageCanvas.value
   if (componentStateStage.value !== 'mounted' || !canvas || document.elementFromPoint(cursor.x, cursor.y) !== canvas)
     return false
@@ -397,23 +403,25 @@ function readHit(cursor: { x: number, y: number }): boolean {
   if (!gl)
     return false
   const bounds = canvas.getBoundingClientRect()
+  const region = { clientX: cursor.x, clientY: cursor.y, left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height, radius: 0, threshold: 10 }
   const readbackStart = performance.now()
-  const transparent = isCanvasRegionTransparent({
-    gl,
-    clientX: cursor.x,
-    clientY: cursor.y,
-    left: bounds.left,
-    top: bounds.top,
-    width: bounds.width,
-    height: bounds.height,
-    radius: 0,
-    threshold: 10,
-  })
+  let hit: boolean | undefined
+  if (gl instanceof WebGL2RenderingContext) {
+    if (alphaReader?.gl !== gl) {
+      alphaReader?.reader.dispose()
+      alphaReader = { gl, reader: new CanvasRegionAlphaReader(gl) }
+    }
+    const finished = alphaReader.reader.poll()
+    hit = alphaReader.reader.request(region) === 'transparent' ? false : finished === undefined ? undefined : !finished
+  }
+  else {
+    hit = !isCanvasRegionTransparent({ gl, ...region })
+  }
   motionDiagnostics.reportReadback(performance.now() - readbackStart)
-  return !transparent
+  return hit
 }
 
-// A readback stalls the GPU pipeline for milliseconds, so a resting cursor re-reads only as often as her animation can
+// Each read copies a pixel through the GPU, so a resting cursor re-reads only as often as her animation can
 // change the pixel under it; a moving cursor reads on every frame.
 const restingReadbackIntervalMs = 100
 let lastReadback: { atMs: number, x: number, y: number } | null = null
