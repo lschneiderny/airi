@@ -12,6 +12,7 @@ import SituationActCompliance from './components/situation-act-compliance.vue'
 import SituationBlock from './components/situation-block.vue'
 import SituationEvents from './components/situation-events.vue'
 import SituationGate from './components/situation-gate.vue'
+import SituationReactions from './components/situation-reactions.vue'
 import SituationReasons from './components/situation-reasons.vue'
 import SituationSource from './components/situation-source.vue'
 import SituationSpend from './components/situation-spend.vue'
@@ -132,6 +133,12 @@ onMounted(refresh)
         :threads="inspection.threads"
         :extraction="inspection.extraction"
         :outcomes="inspection.outcomes"
+        :now-ms="inspection.nowMs"
+      />
+      <SituationReactions
+        :reactions="inspection.reactions"
+        :events="inspection.state.events"
+        :tracking="inspection.state.tracking"
         :now-ms="inspection.nowMs"
       />
       <SituationSpend :spend="inspection.spend" :now-ms="inspection.nowMs" />
