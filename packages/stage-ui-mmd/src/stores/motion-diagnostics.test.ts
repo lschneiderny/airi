@@ -4,6 +4,7 @@ import { createPinia, disposePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 import { watch } from 'vue'
 
+import { mmdOverlaysOff } from '../composables/mmd/overlay-flags'
 import { mmdOverlaySetEvent, useMMDMotionDiagnostics } from './motion-diagnostics'
 
 describe('mmd motion diagnostics channel', () => {
@@ -37,7 +38,8 @@ describe('mmd motion diagnostics channel', () => {
           measurement: null,
           locomotion: null,
           arms: null,
-          overlays: { ik: false, colliders: false, feet: false, lookAt: false },
+          overlays: { ik: false, colliders: false, feet: false, lookAt: false, floorLine: false, groundLine: false, home: false, goal: false, armCapsules: false },
+          world: null,
         },
       })
     }
@@ -91,8 +93,8 @@ describe('mmd motion diagnostics channel', () => {
       })
       lab.setOverlays({ colliders: true })
       await toggled
-      expect(stage.overlays).toEqual({ ik: false, colliders: true, feet: false, lookAt: false })
-      expect(lab.overlays).toEqual({ ik: false, colliders: true, feet: false, lookAt: false })
+      expect(stage.overlays).toEqual({ ...mmdOverlaysOff, colliders: true })
+      expect(lab.overlays).toEqual({ ...mmdOverlaysOff, colliders: true })
 
       const mirrored = new Promise<void>((resolve, reject) => {
         const signal = AbortSignal.timeout(2000)
@@ -130,8 +132,8 @@ describe('mmd motion diagnostics channel', () => {
       })
       stage.publish()
       await mirrored
-      expect(stage.snapshot.overlays).toEqual({ ik: false, colliders: false, feet: true, lookAt: false })
-      expect(lab.overlays).toEqual({ ik: false, colliders: false, feet: true, lookAt: false })
+      expect(stage.snapshot.overlays).toEqual({ ...mmdOverlaysOff, feet: true })
+      expect(lab.overlays).toEqual({ ...mmdOverlaysOff, feet: true })
       const before = lab.overlays
       const again = new Promise<void>((resolve, reject) => {
         const signal = AbortSignal.timeout(2000)
@@ -167,7 +169,7 @@ describe('mmd motion diagnostics channel', () => {
       store.publish()
       expect(store.snapshot.measurement).toMatchObject({ state: 'done', durationMs: 20, frames: 1, fps: 50 })
       expect(store.directorClockOffsetMs).toBe(60000)
-      expect(store.overlays).toEqual({ ik: true, colliders: false, feet: false, lookAt: false })
+      expect(store.overlays).toEqual({ ...mmdOverlaysOff, ik: true })
     }
     finally {
       disposePinia(pinia)
@@ -226,6 +228,26 @@ describe('mmd motion diagnostics channel', () => {
     finally {
       warning.mockRestore()
       peer.close()
+      disposePinia(pinia)
+    }
+  })
+
+  it('accepts a roam mode of stay or roam and rejects any other value with one warning', () => {
+    const pinia = createPinia()
+    const store = useMMDMotionDiagnostics(pinia)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      store.command({ type: 'command', name: 'setRoamMode', value: { mode: 'roam' } })
+      expect(store.roamModeRequest).toEqual({ seq: 1, mode: 'roam' })
+      for (const value of [{ mode: 'wander' }, { mode: 1 }, 'roam', null, {}])
+        store.command({ type: 'command', name: 'setRoamMode', value } as unknown as MMDMotionCommand)
+      expect(store.roamModeRequest).toEqual({ seq: 1, mode: 'roam' })
+      expect(warning).toHaveBeenCalledTimes(1)
+      store.command({ type: 'command', name: 'setRoamMode', value: { mode: 'stay' } })
+      expect(store.roamModeRequest).toEqual({ seq: 2, mode: 'stay' })
+    }
+    finally {
+      warning.mockRestore()
       disposePinia(pinia)
     }
   })

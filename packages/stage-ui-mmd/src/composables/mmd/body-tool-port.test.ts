@@ -139,12 +139,29 @@ describe('mmd body tool port with the stance director', () => {
     await unanswered
   })
 
-  it('fails the pending request when the scene is disposed', async () => {
+  it('withdraws a timed-out request, so a stage that resumes after a stall does not walk her', async () => {
+    vi.useFakeTimers()
+    const { director, port, frame } = stage({ rootX: 30, homeX: 40 })
+    frame(0)
+
+    const stalled = port.comeHere()
+    expect(port.request?.kind).toBe('come-here')
+    await vi.advanceTimersByTimeAsync(2_000)
+    await expect(stalled).resolves.toMatchObject({ success: false, error: 'The stage did not answer the request.' })
+
+    expect(port.request).toBeNull()
+    frame(2_100)
+    expect(director.diagnostics.reason).toBe('stay')
+    expect(director.diagnostics.goalX).toBeNull()
+  })
+
+  it('fails and withdraws the pending request when the scene is disposed', async () => {
     const { port } = stage({ rootX: 0, homeX: 0 })
     const pending = port.comeHere()
 
     port.dispose()
 
     await expect(pending).resolves.toMatchObject({ success: false })
+    expect(port.request).toBeNull()
   })
 })

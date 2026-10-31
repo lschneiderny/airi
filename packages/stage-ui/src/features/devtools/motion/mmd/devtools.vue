@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 
+import ArmsPanel from './components/arms-panel.vue'
 import BodyReadouts from './components/body-readouts.vue'
 import DirectorPanel from './components/director-panel.vue'
+import LocomotionPanel from './components/locomotion-panel.vue'
 import OverlayControls from './components/overlay-controls.vue'
 import RigReport from './components/rig-report.vue'
 import TimingsPanel from './components/timings-panel.vue'
+import WorldPanel from './components/world-panel.vue'
 
 const { t } = useI18n()
 </script>
@@ -16,7 +19,10 @@ const { t } = useI18n()
       {{ t('tamagotchi.settings.devtools.pages.mmd-motion.main-window-note') }}
     </div>
     <OverlayControls />
+    <WorldPanel />
+    <LocomotionPanel />
     <DirectorPanel />
+    <ArmsPanel />
     <BodyReadouts />
     <TimingsPanel />
     <RigReport />

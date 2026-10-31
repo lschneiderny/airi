@@ -89,10 +89,18 @@ export class MMDBodyToolPort {
     this.settle(pending, frame.diagnostics.toolRefused ? refusal(frame) : { success: true, state: this.state() })
   }
 
-  /** Fails the pending request, for a scene that goes away before the director answers. */
+  /** Fails the pending request and withdraws it, for a scene that goes away before the director answers. */
   dispose(): void {
+    this.latest = null
     if (this.pending)
       this.settle(this.pending, { success: false, error: 'The stage went away before the request was answered.' })
+  }
+
+  /** A request the caller was told failed must never run later: a stalled stage that resumes sees no request. */
+  private expire(pending: PendingRequest): void {
+    if (this.latest === pending.request)
+      this.latest = null
+    this.settle(pending, { success: false, error: 'The stage did not answer the request.' })
   }
 
   private submit(kind: BodyToolRequest['kind'], target?: BodyToolRequest['target']): Promise<MMDBodyToolResult> {
@@ -104,7 +112,7 @@ export class MMDBodyToolPort {
       const pending: PendingRequest = {
         request,
         resolve,
-        timer: setTimeout(() => this.settle(pending, { success: false, error: 'The stage did not answer the request.' }), ANSWER_TIMEOUT_MS),
+        timer: setTimeout(() => this.expire(pending), ANSWER_TIMEOUT_MS),
       }
       this.pending = pending
     })

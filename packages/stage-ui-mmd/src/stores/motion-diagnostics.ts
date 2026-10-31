@@ -7,6 +7,7 @@ import type { FrameMeasurement, StageTiming } from '../composables/mmd/frame-met
 import type { MMDOverlayFlags } from '../composables/mmd/overlay-flags'
 import type { MMDRigProfile } from '../composables/mmd/rig'
 import type { MMDStanceDiagnostics } from '../composables/mmd/stance'
+import type { MMDRoamMode } from './mmd'
 
 import { createContext, defineEventa } from '@moeru/eventa'
 import { createContext as createBroadcastChannelContext } from '@moeru/eventa/adapters/broadcast-channel'
@@ -77,6 +78,12 @@ export interface MMDMotionSnapshot {
   } | null
   /** The overlay flags the stage draws, so a lab opened after a toggle shows the stage's state. */
   overlays: MMDOverlayFlags
+  /**
+   * Stage mode only: the calibration the stage world was built from. `unitsPerDip` converts work-area DIP to model
+   * units on the floor line, `floorRowDip` is the floor line's work-area row, `ground` the reachable x range in model
+   * units, `homeX` the resting root x and `characterHeightDip` the configured character height.
+   */
+  world: { unitsPerDip: number, floorRowDip: number, ground: { minX: number, maxX: number }, homeX: number, characterHeightDip: number } | null
 }
 
 export type MMDMotionCommand
@@ -86,6 +93,11 @@ export type MMDMotionCommand
     | { type: 'command', name: 'setOverlay', value: Partial<MMDOverlayFlags> }
     | { type: 'command', name: 'requestGoal', value: { x: number, pace: LocomotionPace } }
     | { type: 'command', name: 'setHome', value: { x: number } }
+    | { type: 'command', name: 'setRoamMode', value: { mode: MMDRoamMode } }
+
+function isRoamMode(value: unknown): value is MMDRoamMode {
+  return value === 'stay' || value === 'roam'
+}
 
 function isLocomotionPace(value: unknown): value is LocomotionPace {
   return value === 'stroll' || value === 'walk'
@@ -118,6 +130,8 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
   const goalRequest = shallowRef<{ seq: number, x: number, pace: LocomotionPace } | null>(null)
   /** Home x set from the lab; todo 12's director reads it as its home spot. */
   const homeX = ref<number | null>(null)
+  /** The roam mode the lab asked for; the stage writes it to the `mmd` store's `roamMode` setting. */
+  const roamModeRequest = shallowRef<{ seq: number, mode: MMDRoamMode } | null>(null)
   /** Set once this window's stage publishes; a stage window never mirrors another window's snapshots. */
   let publisher = false
   const snapshot = shallowRef<MMDMotionSnapshot>({
@@ -138,6 +152,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     locomotion: null,
     arms: null,
     overlays: { ...mmdOverlaysOff },
+    world: null,
   })
 
   function warn() {
@@ -210,6 +225,14 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
           return
         }
         homeX.value = x
+        break
+      }
+      case 'setRoamMode': {
+        if (typeof value !== 'object' || value === null || !('mode' in value) || !isRoamMode(value.mode)) {
+          warn()
+          return
+        }
+        roamModeRequest.value = { seq: (roamModeRequest.value?.seq ?? 0) + 1, mode: value.mode }
         break
       }
       default:
@@ -286,6 +309,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     overlays,
     goalRequest,
     homeX,
+    roamModeRequest,
     publish,
     command,
     setOverlays,

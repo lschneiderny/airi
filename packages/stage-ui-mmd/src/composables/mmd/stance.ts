@@ -21,8 +21,10 @@ export type MMDStanceWorld = Omit<BodyDirectorInput, 'nowMs' | 'performance' | '
 
 export interface MMDStanceDiagnostics {
   stance: MMDStance
-  /** Director-clock time, in milliseconds, at which the current stance began. */
+  /** Director-clock time, in milliseconds, at which the current stance began; it moves only on a stance change. */
   sinceMs: number
+  /** Director-clock time, in milliseconds, of the last frame the director decided; it advances every frame. */
+  nowMs: number
   /** Why the stance holds (`idle-timeout`, `away`, ...). */
   stanceReason: string
   /** The locomotion reason: `approach-chat`, `approach-cursor`, `return-home`, `wander`, `tool`, `debug` or `stay`. */
@@ -200,6 +202,7 @@ export class MMDStanceDirector {
     return {
       stance: this.memory.stance,
       sinceMs: this.memory.stanceSinceMs ?? this.startMs ?? 0,
+      nowMs: this.memory.nowMs ?? 0,
       stanceReason: this.reason,
       reason: this.memory.reason,
       goalX: this.memory.goalX,

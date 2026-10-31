@@ -21,9 +21,11 @@ import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { SkinnedMesh, Texture } from 'three'
 
 import type { GazeOffset, MMDAnimationManager, MorphController } from '../../composables/mmd'
+import type { MMDOverlayStage } from '../../composables/mmd/overlays'
 import type { MMDStageExtent, MMDStageWorld } from '../../composables/mmd/stage-world'
 import type { MMDStanceWorld } from '../../composables/mmd/stance'
 import type { SpeechEvent } from '../../stores/expression-slots'
+import type { MMDMotionSnapshot } from '../../stores/motion-diagnostics'
 import type { ResolvedMMDModel } from '../../utils/mmd-loader'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -72,6 +74,7 @@ import { ARM_SWING_REACH, resolveFrameBounds } from '../../composables/mmd/camer
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
 import { fnv1a32 } from '../../composables/mmd/natural/seed'
+import { createOverlayLabel } from '../../composables/mmd/overlay-label'
 import { MMDOverlays } from '../../composables/mmd/overlays'
 import { readMMDRigProfile } from '../../composables/mmd/rig'
 import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, stagePixelRatio } from '../../composables/mmd/stage-world'
@@ -651,7 +654,35 @@ function renderLoop(now = performance.now()) {
       animation: animation?.snapshot() ?? { idle: null, currentAction: null, actionsStarted: 0 },
       characterPlacement: characterPlacement.value,
       stageModel: stageModel.value,
+      world: worldSnapshot(),
     })
+  }
+}
+
+/** The stage calibration for the lab's World card; `characterHeightDip` follows from the calibration's `s = Hm / P`. */
+function worldSnapshot(): MMDMotionSnapshot['world'] {
+  const world = props.stageWorld
+  const model = stageModel.value
+  if (!world || !model)
+    return null
+  const { unitsPerDip, floorRowDip } = world.calibration
+  return { unitsPerDip, floorRowDip, ground: { minX: world.ground.minX, maxX: world.ground.maxX }, homeX: world.homeX, characterHeightDip: model.height / unitsPerDip }
+}
+
+/** What the world overlays draw this frame: the work-area edges on the floor line, the ground, home and the director's goal. */
+function overlayStage(): MMDOverlayStage | null {
+  const world = props.stageWorld
+  if (!world)
+    return null
+  const { calibration, workArea } = world
+  const floorX = (xDip: number) => dipToPlane(calibration, { x: xDip, y: calibration.floorRowDip }, 0).x
+  const director = stance?.diagnostics
+  return {
+    floor: { minX: floorX(0), maxX: floorX(workArea.width) },
+    ground: { minX: world.ground.minX, maxX: world.ground.maxX },
+    homeX: world.homeX,
+    goalX: director?.goalX ?? null,
+    goalReason: director?.reason ?? null,
   }
 }
 
@@ -1116,12 +1147,19 @@ watch(componentState, (state) => {
     colliders: buildMMDTouchColliders(mmd.pmx, activeMesh.skeleton.boneInverses, activeMesh.bindMatrix, mmdTouchRegionRoots(rig)),
     createIkHelper: () => mmd.ikSolver.createHelper(),
     lookAtTarget: () => motionDriver.value === 'natural' ? body?.diagnostics.lookAt.target ?? null : null,
+    stage: overlayStage,
+    createLabel: createOverlayLabel,
   })
   overlays.apply(diagnostics.overlays)
 }, { flush: 'sync' })
 
 watch(() => diagnostics.overlays, (flags) => {
   overlays?.apply(flags)
+})
+
+watch(() => diagnostics.roamModeRequest, (request) => {
+  if (request)
+    roamMode.value = request.mode
 })
 
 useEventListener(canvasRef, ['pointerdown', 'pointermove', 'pointerup', 'pointerleave', 'pointercancel'], (event: PointerEvent) => {

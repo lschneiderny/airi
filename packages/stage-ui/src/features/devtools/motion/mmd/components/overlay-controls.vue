@@ -32,6 +32,11 @@ const legend = [
   ['foot-anchor', hex(mmdOverlayColors.footAnchor)],
   ['ankle', hex(mmdOverlayColors.ankle)],
   ['look-at', hex(mmdOverlayColors.lookAt)],
+  ['floor-line', hex(mmdOverlayColors.floorLine)],
+  ['ground-line', hex(mmdOverlayColors.groundLine)],
+  ['home', hex(mmdOverlayColors.home)],
+  ['goal', hex(mmdOverlayColors.goal)],
+  ['arm-capsule', hex(mmdOverlayColors.armCapsule)],
 ] as const
 </script>
 
