@@ -2,6 +2,7 @@ import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { AffectSignal, AffectTrace, AffectTraceRequest, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, PerformanceDecision, PerformanceProfile, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 import type { Live2DMotionDriver } from '@proj-airi/stage-ui-live2d'
 
+import type { StageExpressionBackend } from '../../features/performance/expression-backend'
 import type { ActiveExpression, ExposedExpression, ExposedExpressionGroup, PerformanceMoodSnapshot } from '../../features/performance/runtime-state'
 import type { ExecutableTool } from '../../stores/ai/chat-llm/tools'
 import type { ExpressionToolPort } from '../../tools/expression'
@@ -10,7 +11,6 @@ import { errorMessageFrom } from '@moeru/std'
 import { SpeechOnsetDetector } from '@proj-airi/motion-driver-natural/speech-emphasis'
 import { applyMappingWeights, createDecider, isLlmEligible, resolveEffectiveSettings, withAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
-import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { useIntervalFn } from '@vueuse/core'
 import { computed, onScopeDispose, shallowRef, watch } from 'vue'
 
@@ -79,7 +79,7 @@ function shownSlotsOf(entry: CatalogEntry): SlotName[] {
   return slot ? [slot] : []
 }
 
-/** The Live2D scene surface the conductor dispatches to; `Live2DScene` exposes it. */
+/** The active renderer's scene surface the conductor dispatches to. */
 export interface StagePerformanceScene {
   setEmotion: (episode: NaturalEpisode) => void
   applySlots: (commands: SlotCommand[], now: number) => void
@@ -90,7 +90,7 @@ export interface StagePerformanceScene {
 }
 
 export interface StagePerformanceConductorOptions {
-  /** Undefined while no Live2D model is mounted; decisions still advance the decider state. */
+  /** Undefined while no performance scene is mounted; decisions still advance the decider state. */
   scene: () => StagePerformanceScene | undefined
   driver: () => Live2DMotionDriver
   /** Plays a motion group for the Universal and MAGIC drivers. */
@@ -648,11 +648,18 @@ const MOOD_SAMPLE_MS = 2000
  * the expression tool executors, and the only window that answers lab affect-trace requests.
  */
 export function useStagePerformanceConductor(options: Pick<StagePerformanceConductorOptions, 'scene' | 'driver' | 'playMotion' | 'profile'> & {
+  renderer: () => string | undefined
+  expressionBackend: () => StageExpressionBackend | undefined
   /** Reads the Natural mood of the mounted model, or `null` when none runs. */
   mood: () => PerformanceMoodSnapshot | null
 }) {
   const performanceSettings = useExpressionPerformanceSettings()
-  const expressions = useExpressionStore()
+  const expressions: StageExpressionBackend = {
+    get catalog() { return options.expressionBackend()?.catalog ?? [] },
+    get modelId() { return options.expressionBackend()?.modelId ?? '' },
+    get llmEligibleEntries() { return options.expressionBackend()?.llmEligibleEntries ?? [] },
+    get leases() { return options.expressionBackend()?.leases ?? { face: null, effect: null, prop: null } },
+  }
   const runtimeState = usePerformanceRuntimeState()
   // The shared document; the conductor applies each signal's character profile on top of it.
   const settingsDocument = computed(() => performanceSettings.document)
@@ -697,7 +704,7 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
   }, { immediate: true })
   const diagnostics = useNaturalMotionDiagnostics()
   watch(() => diagnostics.affectTraceRequest, (request) => {
-    if (request)
+    if (request && options.renderer() === 'live2d')
       answerAffectTraceRequest(conductor, diagnostics, request)
   })
 

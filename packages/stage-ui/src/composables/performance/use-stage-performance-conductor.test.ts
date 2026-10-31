@@ -4,12 +4,16 @@ import type { Live2DMotionDriver } from '@proj-airi/stage-ui-live2d'
 import type { StagePerformanceScene } from './use-stage-performance-conductor'
 
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace } from '@proj-airi/stage-shared/expression-performance'
+import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
-import { createPinia, setActivePinia } from 'pinia'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, disposePinia, setActivePinia } from 'pinia'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { computed, effectScope, nextTick, ref } from 'vue'
 
+import { useLive2DExpressionBackend } from '../../features/performance/expression-backend'
+import { selectStagePerformanceRenderer } from '../../features/performance/renderer'
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
-import { createExpressionToolPort, createExpressionToolRegistration, expressionToolIds, maxAffectTraceEntries, StagePerformanceConductor, toExposedExpressions } from './use-stage-performance-conductor'
+import { createExpressionToolPort, createExpressionToolRegistration, expressionToolIds, maxAffectTraceEntries, StagePerformanceConductor, toExposedExpressions, useStagePerformanceConductor } from './use-stage-performance-conductor'
 
 // `createDecider` stays the real factory, wrapped in a spy so the timing tests can replace the
 // next decider with one that reports deadlines, which the picker never does (`mockReturnValueOnce`).
@@ -64,6 +68,129 @@ function createConductor(driver: Live2DMotionDriver, scene: StagePerformanceScen
   }
   return { conductor, playMotion, advance }
 }
+
+describe('stage performance renderer selection', () => {
+  let pinia: ReturnType<typeof createPinia>
+  let scope: ReturnType<typeof effectScope>
+
+  beforeEach(() => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    })
+    pinia = createPinia()
+    setActivePinia(pinia)
+    scope = effectScope()
+  })
+
+  afterEach(() => {
+    scope.stop()
+    disposePinia(pinia)
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  function mountConductor(initialRenderer: string | undefined = 'live2d', mounted = true) {
+    const renderer = ref<string | undefined>(initialRenderer)
+    const scene = fakeScene()
+    const store = useExpressionStore()
+    store.registerDefinitions('rig', catalog.map(({ id }) => ({ id, name: id, fadeIn: 0, fadeOut: 0, parameters: [{ id, value: 1, blend: 'Add' as const }] })))
+    for (const { id, kind, mappings, exposedToLlm } of catalog)
+      store.updateEntry(id, { kind, mappings, exposedToLlm, confirmed: true })
+    const backend = useLive2DExpressionBackend()
+    const selected = computed(() => selectStagePerformanceRenderer(renderer.value, {
+      scene: mounted ? scene : undefined,
+      driver: 'natural',
+      expressionBackend: backend,
+    }))
+    const result = scope.run(() => useStagePerformanceConductor({
+      renderer: () => renderer.value,
+      scene: () => selected.value.scene,
+      driver: () => selected.value.driver,
+      expressionBackend: () => selected.value.expressionBackend,
+      playMotion: vi.fn(),
+      mood: () => null,
+    }))
+    if (!result)
+      throw new Error('The conductor scope did not start')
+    return { ...result, renderer, scene, selected, backend, store }
+  }
+
+  it.each(['vrm', 'mmd', 'unknown', undefined])('makes no scene calls with renderer %s', (renderer) => {
+    const { conductor, scene, selected, renderer: activeRenderer } = mountConductor()
+    activeRenderer.value = renderer
+
+    conductor.emotion('happy', 0.7, 'devtools')
+    conductor.setMuted(true)
+    conductor.clipStart('turn-a', 'clip-a', true)
+    conductor.turnEnd('turn-a')
+    conductor.clearExpression(undefined, 'devtools')
+
+    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0])
+    expect(selected.value.expressionBackend).toBeUndefined()
+    expect(selected.value.driver).toBe('natural')
+  })
+
+  it.each(['vrm', 'mmd'])('does not dispatch or throw for an ACT expression after switching to %s', async (renderer) => {
+    const { conductor, scene, renderer: activeRenderer } = mountConductor()
+    expect(conductor.expression('game', undefined, 'act', 'turn-a')?.id).toBe('game')
+    expect(scene.applySlots).toHaveBeenCalledTimes(1)
+    for (const method of Object.values(scene))
+      method.mockClear()
+    activeRenderer.value = renderer
+    await nextTick()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(() => conductor.expression('game', undefined, 'act', 'turn-b')).not.toThrow()
+
+    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0])
+    expect(useLlmToolsStore().tools).toEqual([])
+  })
+
+  it('keeps the Live2D backend catalog and performer state live', () => {
+    const { conductor, scene, backend, store } = mountConductor()
+    store.applySlots([{ slot: 'prop', expressionId: 'game', holdSeconds: 4, until: 'speech' }], 10)
+
+    expect(createExpressionToolPort(conductor, backend).list()).toEqual([{ label: 'game', kind: 'prop', active: true }])
+    expect(backend.modelId).toBe('rig')
+    expect(backend.catalog).toBe(store.catalog)
+    conductor.emotion('happy', 0.7, 'act', 'turn-a')
+    expect(scene.setEmotion).toHaveBeenCalledTimes(1)
+    expect(scene.applySlots).toHaveBeenCalledTimes(1)
+  })
+
+  it('advances without throwing when the Live2D scene is undefined', () => {
+    const { conductor } = mountConductor('live2d', false)
+
+    expect(() => conductor.expression('game', undefined, 'act', 'turn-a')).not.toThrow()
+    expect(() => conductor.emotion('happy', 0.7, 'act', 'turn-a')).not.toThrow()
+  })
+
+  it('answers an affect-trace request for live2d', async () => {
+    const { conductor } = mountConductor()
+    const diagnostics = useNaturalMotionDiagnostics()
+
+    const id = diagnostics.requestAffectTrace('start')
+    await nextTick()
+
+    expect(diagnostics.affectTraceResult).toEqual({ id, action: 'start', entries: 0, truncated: false, savedPath: null })
+    expect(diagnostics.affectTraceRequest).toBeNull()
+    expect(conductor.exportTrace()).toMatchObject({ entries: [], truncated: false })
+  })
+
+  it('ignores an affect-trace request for mmd', async () => {
+    const { conductor } = mountConductor('mmd')
+    const diagnostics = useNaturalMotionDiagnostics()
+
+    const id = diagnostics.requestAffectTrace('start')
+    await nextTick()
+
+    expect(diagnostics.affectTraceRequest).toEqual({ id, action: 'start' })
+    expect(diagnostics.affectTraceResult).toBeNull()
+    expect(conductor.exportTrace()).toBeUndefined()
+  })
+})
 
 describe('stage performance conductor', () => {
   afterEach(() => {
