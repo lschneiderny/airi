@@ -1,5 +1,7 @@
 import type { Bone, SkinnedMesh } from 'three'
 
+import type { MMDCleanPose } from './frame-pipeline'
+
 import { Euler, MathUtils, Quaternion } from 'three'
 
 /** Normalized screen-space gaze offset, each axis in roughly [-1, 1]. */
@@ -36,12 +38,12 @@ function findBone(mesh: SkinnedMesh, names: string[]): Bone | undefined {
 
 interface GazeBone {
   bone: Bone
-  rest: Quaternion
+  index: number
 }
 
 export interface GazeController {
   /** Drives gaze toward a normalized offset; pass `undefined` to idle-saccade. */
-  update: (offset: GazeOffset | undefined, delta: number) => void
+  update: (offset: GazeOffset | undefined, delta: number, clean: MMDCleanPose) => void
 }
 
 /**
@@ -49,14 +51,13 @@ export interface GazeController {
  *
  * VRM exposes a first-class `lookAt`; MMD does not, so we rotate the eye bones
  * and add a damped fraction of the same aim to the head bone for a natural
- * follow. Rotations are applied relative to each bone's rest pose and must run
- * after the MMD runtime update so they layer on top of the active motion.
+ * follow. Rotations compose with the clean clip pose, before IK, grants, and
+ * physics, so the active motion is preserved and hair follows the same frame.
  *
  * We rotate the actual `左目`/`右目` eye bones (which the eyeballs are skinned
  * to) rather than the `両目` control bone. `両目` drives the eyes through the
- * append/grant solver, which runs *inside* the runtime update; rotating it
- * afterward would be too late and the eyes would not move. `両目` is used only
- * as a fallback when a model lacks separate eye bones.
+ * append/grant solver. `両目` is used only as a fallback when a model lacks
+ * separate eye bones; the following solver stage propagates its rotation.
  *
  * When no tracking target is supplied the controller produces small idle
  * saccades, matching the VRM renderer's resting-eye behavior.
@@ -66,15 +67,15 @@ export function createGazeController(mesh: SkinnedMesh): GazeController {
   const left = findBone(mesh, LEFT_EYE_NAMES)
   const right = findBone(mesh, RIGHT_EYE_NAMES)
   if (left)
-    eyeBones.push({ bone: left, rest: left.quaternion.clone() })
+    eyeBones.push({ bone: left, index: mesh.skeleton.bones.indexOf(left) })
   if (right)
-    eyeBones.push({ bone: right, rest: right.quaternion.clone() })
+    eyeBones.push({ bone: right, index: mesh.skeleton.bones.indexOf(right) })
 
   // Fallback: a single both-eyes bone the eyeballs are skinned to directly.
   if (eyeBones.length === 0) {
     const both = findBone(mesh, BOTH_EYES_NAMES)
     if (both)
-      eyeBones.push({ bone: both, rest: both.quaternion.clone() })
+      eyeBones.push({ bone: both, index: mesh.skeleton.bones.indexOf(both) })
   }
 
   if (eyeBones.length === 0) {
@@ -87,7 +88,7 @@ export function createGazeController(mesh: SkinnedMesh): GazeController {
 
   const headBoneRaw = findBone(mesh, HEAD_NAMES)
   const headBone: GazeBone | undefined = headBoneRaw
-    ? { bone: headBoneRaw, rest: headBoneRaw.quaternion.clone() }
+    ? { bone: headBoneRaw, index: mesh.skeleton.bones.indexOf(headBoneRaw) }
     : undefined
 
   // Smoothed current aim, lerped toward the target each frame.
@@ -99,15 +100,15 @@ export function createGazeController(mesh: SkinnedMesh): GazeController {
   let saccade: GazeOffset = { x: 0, y: 0 }
   let nextSaccadeIn = 0
 
-  function applyBone(target: GazeBone, yaw: number, pitch: number) {
-    // Yaw about Y, pitch about X, relative to the bone's rest pose.
+  function applyBone(target: GazeBone, yaw: number, pitch: number, clean: MMDCleanPose) {
+    // Yaw about Y, pitch about X, relative to this frame's clean clip pose.
     scratchEuler.set(pitch, yaw, 0, 'XYZ')
     scratchQuat.setFromEuler(scratchEuler)
-    target.bone.quaternion.copy(target.rest).multiply(scratchQuat)
+    target.bone.quaternion.copy(clean.quaternions[target.index]).multiply(scratchQuat)
   }
 
   return {
-    update(offset, delta) {
+    update(offset, delta, clean) {
       let desired = offset
       if (!desired) {
         nextSaccadeIn -= delta * 1000
@@ -129,10 +130,10 @@ export function createGazeController(mesh: SkinnedMesh): GazeController {
       // Positive cursor-x (right) turns gaze toward screen-right; positive
       // cursor-y (down) looks down.
       for (const eye of eyeBones)
-        applyBone(eye, current.x * EYE_YAW_LIMIT, current.y * EYE_PITCH_LIMIT)
+        applyBone(eye, current.x * EYE_YAW_LIMIT, current.y * EYE_PITCH_LIMIT, clean)
 
       if (headBone)
-        applyBone(headBone, current.x * HEAD_YAW_LIMIT, current.y * HEAD_PITCH_LIMIT)
+        applyBone(headBone, current.x * HEAD_YAW_LIMIT, current.y * HEAD_PITCH_LIMIT, clean)
     },
   }
 }
