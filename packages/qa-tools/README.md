@@ -145,6 +145,8 @@ The desktop stage gates live in `src/stage/gates.ts`; `src/stage/measure.ts` pro
 - `measure --port` attaches to an app started with `APP_REMOTE_DEBUG=true`, `APP_REMOTE_DEBUG_PORT`, and `AIRI_STAGE_HOST=<mode>`, with an MMD model mounted. `measure --pairs` copies `--profile` (onboarding done, MMD model selected) for every run, launches `stage-tamagotchi dev` with `AIRI_STAGE_HOST` set to window, then desktop, for each pair, waits for the model, settles for `--settle` seconds, measures, and tears the run down like T3. It rewrites `--out` after every run; a broken run is listed under `failures` and exits 1.
 - Keep the desktop undisturbed during a measurement: the frame rate is the measured value.
 - Tests: `pnpm -F @proj-airi/qa-tools exec vitest run --project node src/stage`. The fixtures in `fixtures/stage/` are minimal copies of the plan's real evidence, and each names its `source`.
+- `measure --pairs` launches the app through the same pnpm resolver as T3, which expects pnpm's own `.tools` layout under `PNPM_HOME`. A standalone pnpm binary, such as the one mise installs, does not have that layout. On such a machine, attach with `measure --port` instead.
+- `stage-frame-budget` passes its readback-max criterion with little margin, because the asynchronous read's buffer copy still stalls occasionally. If it fails again, the next fix is a CPU silhouette mask, not a threshold change. The gates and the stage architecture are recorded in [the full-screen stage ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md).
 
 ## Gates
 

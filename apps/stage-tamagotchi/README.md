@@ -15,6 +15,30 @@ process serves installed files to the renderer through `airi-model`. The desktop
 release bundles X-ASR through `airi-sherpaw`. Sherpaw settings control
 remote downloads. The Resource Status Island shows transfer progress and errors.
 
+## Desktop stage window
+
+An MMD character can live on a full-screen desktop stage instead of the classic 450x600 window. `src/main/windows/stage/` builds that host: one frameless, transparent, always-on-top window over the work area of the home display. It stays out of the taskbar, is shown with `showInactive()` so it never takes focus, and starts click-through (`setIgnoreMouseEvents(true, { forward: true })`). The stage page (`src/renderer/pages/stage.vue`, route `#/stage`) captures the mouse only over her pixels. Outside her padded placement rect, the answer is click-through without a read. Inside it, an asynchronous canvas alpha read decides, at most once per read interval (`src/renderer/composables/stage-click-through.ts`). The classic window (`src/main/windows/main/`) is unchanged.
+
+`selectHostMode` (`src/main/windows/stage/mode.ts`) picks the host once per launch:
+
+1. `AIRI_STAGE_HOST=window` or `AIRI_STAGE_HOST=desktop` overrides everything. Use it for QA runs, for example `pnpm qa:stage measure`.
+2. Linux always gets the classic window, because Wayland does not forward click-through.
+3. A stage model that is not MMD, or that has never been reported, gets the classic window.
+4. Otherwise the saved stage mode applies.
+
+Whichever window is built becomes `userFacingMainWindow`. The desktop stage must never be moved, resized, or focused, so every consumer checks `isStageWindow` (`src/main/windows/stage/identity.ts`):
+
+| Consumer | Classic window | Desktop stage |
+| --- | --- | --- |
+| Single-instance guard (`src/main/app/single-instance.ts`) | Restores, shows, and focuses it. | `showUserFacingWindow` shows it inactive. |
+| Tray Show, click, and double-click (`src/main/tray/index.ts`) | Restores, shows, and focuses it. | `showUserFacingWindow` shows it inactive. |
+| Tray Adjust sizes and Align to (`src/main/tray/window-layout.ts`) | Resizes and moves it. | The items are hidden, and both actions return early. |
+| `electronCenterMainWindow` (main and settings window invokes) | Centres it on its display. | `centerUserFacingWindow` returns its bounds without moving it. |
+| Onboarding guard (`src/main/services/airi/onboarding/index.ts`) | Slides it beside the onboarding window. | Leaves it in place; it already covers the work area. |
+| Floating chat (`src/main/windows/chat/anchor.ts`) | Attaches to its bounds as a native child window. | Attaches to her home rect (`createCharacterAnchor`), never to her live rect. |
+
+The architecture and the removal condition for the classic window mode are recorded in [the full-screen stage ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md).
+
 ## Desktop stage settings
 
 **Settings > Models** shows a **Desktop stage** section for an MMD model. It edits the stage config (`stage/config.json` under the user data directory) through the stage eventa contracts, which `setupWindowStageInvokes` registers on the settings window as well as on the classic window. Every config change is broadcast as `electronStageStateChanged` to each registered window (`createStageStateBroadcast`), because one window's eventa context emits only to its own renderer.

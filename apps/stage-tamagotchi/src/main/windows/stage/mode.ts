@@ -34,5 +34,10 @@ export function selectHostMode(
   if (config.activeRenderer !== 'mmd')
     return 'window'
 
+  // NOTICE:
+  // The saved mode can still pick the classic window for an MMD model, as a rollback path.
+  // Window flags are fixed at creation, so the host is chosen once per launch.
+  // Source: docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md, Follow-ups.
+  // Removal condition: roaming, chat anchoring and display hand-off ship, plus one feedback cycle.
   return config.mode
 }
