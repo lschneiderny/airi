@@ -37,6 +37,7 @@ import { toast } from 'vue-sonner'
 import ControlsIslandRoot from '../components/stage-islands/controls-island/controls-island-root.vue'
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
 
+import { defaultFloatingChatWidthDip } from '../../shared/chat-floating'
 import {
   electronAppIsWayland,
   electronChatAttentionTargetChanged,
@@ -63,8 +64,6 @@ import { useToolSelectionStore } from '../stores/tools'
 const toeMarginDip = 8
 /** A press on her becomes a drag once the cursor has moved this far. */
 const dragStartDip = 8
-/** The default floating chat width (`windows/chat/index.ts`), used for the default home while the chat has no bounds. */
-const defaultChatWidthDip = 380
 /** The calibration stands in this model height until the scene has measured the loaded model; PMX models are ~20 units. */
 const provisionalModelHeight = 20
 
@@ -207,7 +206,7 @@ async function ensureHome() {
   if (!display || savedHomeDipX.value !== null || defaultHomeSavedFor === display.id)
     return
   defaultHomeSavedFor = display.id
-  const chatWidthDip = chatTarget.value?.bounds?.width ?? defaultChatWidthDip
+  const chatWidthDip = chatTarget.value?.bounds?.width ?? defaultFloatingChatWidthDip
   const xDip = defaultHomeDipX(display.workArea, 'left', chatWidthDip, 0.3 * stageCharacterHeight.value)
   homeDipX.value = xDip
   try {
