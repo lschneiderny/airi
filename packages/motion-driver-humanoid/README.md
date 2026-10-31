@@ -75,6 +75,24 @@ Springs integrate their response analytically, including the changing facing
 during turns. Non-finite target angles become zero; coincident or non-finite
 world targets aim eyes forward. Negative or non-finite `dt` advances no time.
 
+`decideBody(input, memory)` from `./director` returns a `BodyIntent` and the
+next memory. It sits after 120 seconds of continuous idle mode
+(`IDLE_TO_SIT_MS`) and sleeps while the user is away, only when the matching
+slot is available, and holds each stance for at least 3 seconds
+(`STANCE_MIN_DWELL_MS`).
+
+`MMDBody` and `MMDStanceDirector` in `@proj-airi/stage-ui-mmd` are the first
+consumers. The architecture is recorded in
+[the 3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md).
+
+## Checks
+
+```bash
+pnpm -F @proj-airi/motion-driver-humanoid exec vitest run
+pnpm -F @proj-airi/motion-driver-humanoid typecheck
+pnpm exec publint packages/motion-driver-humanoid --pack false
+```
+
 ## When to use it
 
 Use these canonical types at boundaries between humanoid motion algorithms and

@@ -66,6 +66,24 @@ Runtime configuration (physics/IK/grant toggles, gaze tracking, scale,
 morph overrides, emotion→motion mapping) lives in the `useMMD` Pinia store and
 is edited through the model settings panel.
 
+The architecture, its boundaries and its open follow-ups are recorded in
+[the 3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md).
+
+### Model loading
+
+Loads are latest-wins. Each load and dispose increments a load generation;
+a model, physics initialization or motion registration that finishes for an
+older generation is disposed and never acquires the scene or the expression
+store. `disposeMMDObject` releases geometry, materials, their textures and
+skeleton bone textures exactly once, including resources shared between parts.
+
+`resolveFrameBounds` (`src/composables/mmd/camera-bounds.ts`) frames the
+camera from the skeleton, so skirts and hair hanging below the feet do not
+shrink the model. The bottom is the lowest ankle or toe bone, the top is the
+higher of the mesh top and the 頭 bone plus 1.5 neck-to-head lengths, and the
+width is the upper-arm span times 2.2. The whole mesh bounding box is used
+only when 頭, 首 or both ankles are missing.
+
 ### Frame pipeline and diagnostics
 
 `MMDFramePipeline` owns a clean, pre-solver pose for each model. It restores
@@ -73,6 +91,12 @@ that pose before queued playback commands and mixer sampling, then captures
 the clip pose before registered pose stages, IK, grants, and physics. Surface
 stages apply expressions, blink, and lip-sync after physics. Model transforms
 and animation loops request a physics reset.
+
+The scene registers these pose stages in order: `natural`, `weight-shift`,
+`foot-contact`, `look-at`, `eyes`, `classic-gaze`, `classic-face`, `lip-sync`
+and `bone-morphs`. Its surface stages are `body-diagnostics` and `morphs`.
+The Natural and body stages run only for the Natural driver; the classic
+stages run only for Classic. Every stage is timed under its id.
 
 Classic gaze is a pose stage: it composes head and eye aim with the clean
 clip rotation before solvers and physics, rather than replacing VMD rotation
@@ -88,10 +112,36 @@ Classic retains its gaze, blink and emotion composables. Switching drivers
 clears procedural morph channels and starts a fresh Natural controller.
 
 The adapter accepts performance, voice, chat, head-width cursor coordinates,
-screen inwardness and touch inputs. Stage performance wiring is supplied by
-the host; the scene currently derives idle/talking, voice level and projected
-cursor inputs. Diagnostics publish the rig profile and Natural event count,
-requested energy and the head bone's local yaw in radians.
+screen inwardness and touch inputs. `Stage.vue` passes the resolved
+`performance` state, Natural energy, expression performance settings, screen
+placement, chat target and activity, mouth level and speaking state, and routes
+the stage performance conductor to this scene when the MMD renderer is active
+(`selectStagePerformanceRenderer` in `@proj-airi/stage-ui`). The MMD Natural
+driver is the conductor's `natural` driver and Classic is `universal`. The
+exposed `setEmotion`, `applyHolds`, `applySlots`, `onSpeech`, `setMuted` and
+`getMood` methods form the `StagePerformanceScene` surface. Diagnostics publish
+the rig profile and Natural event count, requested energy and the head bone's
+local yaw in radians.
+
+### Body layers
+
+`MMDBody` (`src/composables/mmd/body/`) owns the `weight-shift`,
+`foot-contact`, `look-at` and `eyes` pose stages for one model, built on
+`@proj-airi/motion-driver-humanoid`. Weight shift is seeded with FNV-1a over
+the model key and composes Natural body sway, roll and breath into pelvis,
+hips, spine and chest motion. Foot contact keeps mesh-local ankle anchors and
+writes leg IK targets, IK-bone yaw and knee pre-bend before the IK solver; it
+measures ankle error after IK and physics. The look-at stage distributes yaw
+and pitch over spine, chest, neck and head, turns the center bone past the
+turn threshold, and the eyes stage aims both eyes at the target. The target is
+the cursor on the stage plane or the camera (`body/attention.ts`).
+
+Looping stance clips duck the body fully but keep half of the head and neck
+look-at (`STANCE_HEAD_ATTENTION`); other clips duck body and head fully, and
+foot contact eases out under any non-stance clip. Diagnostics publish `feet`
+(`maxError`, `errorL`, `errorR`, `contact`) and `lookAt` (`target`, `yaw`,
+`pitch`, `turning`, `turns`) while Natural drives the model. The
+`setDebugFlag` command disables foot contact or look-at for QA.
 
 Pose stages read `context.clean` and write absolute transforms from that
 snapshot; they must not modify the snapshot itself. `clipFootIK` records
@@ -195,6 +245,28 @@ seconds, and `update(now)` must run once per frame: it expires leases, advances
 the fades and writes the morph-runtime `expression` layer. A finished release
 clears its channel instead of holding a zero weight. The store ignores an
 unknown expression id and warns once per model.
+
+### Settings, expression panel, and Motion Lab
+
+The MMD model settings expose the motion driver, Natural energy
+(`settings/mmd/natural-energy`), the touch toggles and the per-model stance
+slots (`settings/mmd/stance-slots`). The expression section is the shared
+expression panel from `@proj-airi/stage-ui`, fed by `useMMDExpressionStore`;
+MMD publishes no free parameters, so custom switches do not appear. In the
+Electron app, Settings > System > Developer > MMD Motion Lab
+(`/devtools/mmd-motion`) reads the diagnostics store from the main window's
+stage and toggles its overlays.
+
+### Checks
+
+```bash
+pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project node
+pnpm -F @proj-airi/stage-ui-mmd exec vitest run --project browser
+pnpm -F @proj-airi/stage-ui-mmd typecheck
+```
+
+Pure motion math belongs in `@proj-airi/motion-driver-humanoid` or
+`@proj-airi/motion-driver-natural` and is tested there in Node.
 
 ## When to use it
 
