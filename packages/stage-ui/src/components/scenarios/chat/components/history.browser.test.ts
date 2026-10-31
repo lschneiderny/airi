@@ -5,12 +5,13 @@ import en from '@proj-airi/i18n/locales/en'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import ChatHistory from './history.vue'
 
 import { useSituationSettings } from '../../../../features/situation/settings'
+import { useChatStreamStore } from '../../../../stores/chat/stream-store'
 import { getChatHistoryItemKey } from '../utils'
 
 const triggerHaptic = vi.fn()
@@ -2143,6 +2144,50 @@ describe('chat history', () => {
         vi.advanceTimersByTime(1)
         await nextTick()
         expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('One'), 'Two', 'Three'])
+      }
+      finally {
+        vi.clearAllTimers()
+        vi.useRealTimers()
+      }
+    })
+
+    it('reveals a break on its schedule in a window that rebuilds the reply in its stream store', async () => {
+      // The chat window runs no turn of its own. The context bridge rebuilds the reply in the stream store,
+      // and the window renders the store's message, as InteractiveArea does.
+      let stream: ReturnType<typeof useChatStreamStore> | undefined
+      const screen = render(defineComponent({
+        setup() {
+          const store = useChatStreamStore()
+          stream = store
+          return () => h(ChatHistory, {
+            style: 'height: 480px; width: 480px; overflow-y: auto;',
+            messages: [],
+            sending: true,
+            streamingMessage: store.streamingMessage,
+          })
+        },
+      }), { global: { plugins: [pinia, createEnglishI18n()] } })
+      if (!stream)
+        throw new Error('Expected the stream store to start.')
+
+      stream.beginStream('turn-1')
+      stream.appendStreamLiteral('hey :3')
+      await vi.waitFor(() => expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('hey :3')]))
+
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+      try {
+        stream.appendStreamBreak(1)
+        stream.appendStreamLiteral('you there? ^^')
+        await nextTick()
+        expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('hey :3')])
+
+        vi.advanceTimersByTime(999)
+        await nextTick()
+        expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('hey :3')])
+
+        vi.advanceTimersByTime(1)
+        await nextTick()
+        expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('hey :3'), 'you there? ^^'])
       }
       finally {
         vi.clearAllTimers()

@@ -33,6 +33,7 @@ const { characterWindows } = vi.hoisted(() => ({
 }))
 const beginStreamMock = vi.fn()
 const appendStreamLiteralMock = vi.fn()
+const appendStreamBreakMock = vi.fn()
 const resetStreamMock = vi.fn()
 const refreshSessionMock = vi.fn()
 const serverSendMock = vi.fn()
@@ -279,6 +280,7 @@ vi.mock('../../chat/stream-store', () => ({
   useChatStreamStore: () => ({
     beginStream: beginStreamMock,
     appendStreamLiteral: appendStreamLiteralMock,
+    appendStreamBreak: appendStreamBreakMock,
     resetStream: resetStreamMock,
   }),
 }))
@@ -320,6 +322,7 @@ describe('context bridge contract', () => {
     situationIngestMock.mockClear()
     beginStreamMock.mockReset()
     appendStreamLiteralMock.mockReset()
+    appendStreamBreakMock.mockReset()
     resetStreamMock.mockReset()
     refreshSessionMock.mockReset().mockResolvedValue(true)
     serverSendMock.mockReset()
@@ -810,6 +813,57 @@ describe('context bridge contract', () => {
     expect(localTokenHook).not.toHaveBeenCalled()
     expect(ensureConnectedMock).not.toHaveBeenCalled()
     expect(serverSendMock).not.toHaveBeenCalled()
+
+    await store.dispose()
+  })
+
+  it('relays a break between two texts so a minimal window shows the text after it as its own bubble', async () => {
+    // ROOT CAUSE:
+    //
+    // The chat window rebuilt a remote reply from literals only and dropped the forwarded break special,
+    // so it showed "hey :3you there? ^^" as one bubble with no pause.
+    //
+    // We fixed this by turning a well-formed break special into a break slice of the stream store.
+    const { useChatStreamStore: useRealChatStreamStore } = await vi.importActual<typeof import('../../chat/stream-store')>('../../chat/stream-store')
+    const stream = useRealChatStreamStore(pinia)
+    beginStreamMock.mockImplementation((id: string) => stream.beginStream(id))
+    appendStreamLiteralMock.mockImplementation((literal: string) => stream.appendStreamLiteral(literal))
+    appendStreamBreakMock.mockImplementation((seconds: number) => stream.appendStreamBreak(seconds))
+    const store = useContextBridgeStore()
+    await store.initializeStreamView()
+    const streamSender = createTestChannel(CHAT_STREAM_CHANNEL_NAME)
+    const context = {
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      message: { role: 'user', content: 'ping' },
+      contexts: {},
+      composedMessage: [],
+    } satisfies ChatStreamEventContext
+
+    streamSender.postMessage({ type: 'before-send', message: 'ping', sessionId: 'session-1', context })
+    streamSender.postMessage({ type: 'token-literal', literal: 'hey :3', sessionId: 'session-1', context })
+    // Other specials, and a BREAK whose body is no duration, split nothing.
+    streamSender.postMessage({ type: 'token-special', special: '<|ACT {"emotion":"happy"}|>', sessionId: 'session-1', context })
+    streamSender.postMessage({ type: 'token-special', special: '<|BREAK soon|>', sessionId: 'session-1', context })
+    streamSender.postMessage({ type: 'token-special', special: '<|BREAK 1.5|>', sessionId: 'session-1', context })
+    streamSender.postMessage({ type: 'token-literal', literal: 'you there?', sessionId: 'session-1', context })
+    streamSender.postMessage({ type: 'token-literal', literal: ' ^^', sessionId: 'session-1', context })
+    await vi.waitFor(() => expect(appendStreamLiteralMock).toHaveBeenCalledTimes(3))
+
+    expect(stream.streamingMessage.slices).toEqual([
+      { type: 'text', text: 'hey :3' },
+      { type: 'break', seconds: 1.5 },
+      { type: 'text', text: 'you there? ^^' },
+    ])
+    expect(stream.streamingMessage.content).toBe('hey :3\n\nyou there? ^^')
+    expect(appendStreamBreakMock).toHaveBeenCalledTimes(1)
+
+    // A break of a completed reply arrives too late to split anything.
+    streamSender.postMessage({ type: 'assistant-end', message: 'hey :3\n\nyou there? ^^', sessionId: 'session-1', context })
+    await vi.waitFor(() => expect(refreshSessionMock).toHaveBeenCalledWith('session-1'))
+    streamSender.postMessage({ type: 'token-special', special: '<|BREAK|>', sessionId: 'session-1', context })
+    await waitForBroadcastDelivery()
+    expect(appendStreamBreakMock).toHaveBeenCalledTimes(1)
 
     await store.dispose()
   })

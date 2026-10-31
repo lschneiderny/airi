@@ -44,6 +44,19 @@ export const useChatStreamStore = defineStore('chat-stream', () => {
     })
   }
 
+  /**
+   * Adds a pause between two bubbles to a stream that this window rebuilds from another renderer's events.
+   * The next literal opens a new text slice. A break before the first text has nothing to split and is ignored,
+   * as the runtime does.
+   */
+  function appendStreamBreak(seconds: number) {
+    if (!streamingMessage.value.slices.some(slice => slice.type === 'text'))
+      return
+
+    streamingMessage.value.slices.push({ type: 'break', seconds })
+    streamingMessage.value.content += '\n\n'
+  }
+
   function resetStream() {
     streamingMessage.value = { role: 'assistant', content: '', slices: [], tool_results: [] }
   }
@@ -54,6 +67,7 @@ export const useChatStreamStore = defineStore('chat-stream', () => {
     updateActiveTurns,
     beginStream,
     appendStreamLiteral,
+    appendStreamBreak,
     resetStream,
   }
 })
