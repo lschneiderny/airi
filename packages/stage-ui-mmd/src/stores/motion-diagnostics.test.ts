@@ -2,7 +2,7 @@ import { createPinia, disposePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 import { watch } from 'vue'
 
-import { useMMDMotionDiagnostics } from './motion-diagnostics'
+import { mmdOverlaySetEvent, useMMDMotionDiagnostics } from './motion-diagnostics'
 
 describe('mmd motion diagnostics channel', () => {
   it('publishes the complete unloaded snapshot over the real channel', async () => {
@@ -68,6 +68,47 @@ describe('mmd motion diagnostics channel', () => {
     }
   })
 
+  it('carries overlay toggles to another window over the eventa contract and mirrors stage snapshots', async () => {
+    const stagePinia = createPinia()
+    const labPinia = createPinia()
+    const stage = useMMDMotionDiagnostics(stagePinia)
+    const lab = useMMDMotionDiagnostics(labPinia)
+    try {
+      const toggled = new Promise<void>((resolve, reject) => {
+        const signal = AbortSignal.timeout(2000)
+        const stop = watch(() => stage.overlays.colliders, () => resolve(), { once: true, flush: 'sync' })
+        signal.addEventListener('abort', () => {
+          stop()
+          reject(signal.reason)
+        }, { once: true })
+      })
+      lab.setOverlays({ colliders: true })
+      await toggled
+      expect(stage.overlays).toEqual({ ik: false, colliders: true, feet: false, lookAt: false })
+      expect(lab.overlays).toEqual({ ik: false, colliders: true, feet: false, lookAt: false })
+
+      const mirrored = new Promise<void>((resolve, reject) => {
+        const signal = AbortSignal.timeout(2000)
+        const stop = watch(() => lab.snapshot.loadedModelKey, () => resolve(), { once: true, flush: 'sync' })
+        signal.addEventListener('abort', () => {
+          stop()
+          reject(signal.reason)
+        }, { once: true })
+      })
+      stage.publish({ loadedModelKey: 'fixture', driver: 'natural' })
+      await mirrored
+      expect(lab.snapshot).toMatchObject({ loadedModelKey: 'fixture', driver: 'natural' })
+    }
+    finally {
+      disposePinia(stagePinia)
+      disposePinia(labPinia)
+    }
+  })
+
+  it('exposes the overlay contract as a named eventa event', () => {
+    expect(mmdOverlaySetEvent.id).toBe('eventa:event:mmd:motion-diagnostics:overlay:set')
+  })
+
   it('routes measurement, director clock, and overlay commands without persisting them', () => {
     const pinia = createPinia()
     const store = useMMDMotionDiagnostics(pinia)
@@ -80,7 +121,7 @@ describe('mmd motion diagnostics channel', () => {
       store.publish()
       expect(store.snapshot.measurement).toMatchObject({ state: 'done', durationMs: 20, frames: 1, fps: 50 })
       expect(store.directorClockOffsetMs).toBe(60000)
-      expect(store.overlay).toEqual({ ik: true })
+      expect(store.overlays).toEqual({ ik: true, colliders: false, feet: false, lookAt: false })
     }
     finally {
       disposePinia(pinia)

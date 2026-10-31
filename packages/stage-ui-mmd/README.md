@@ -104,7 +104,13 @@ including `loadedModelKey: null` when the scene has no model. Commands use
 and `stopMeasurement` capture every frame interval and stage duration, separate
 from the 600-sample rolling FPS and timing readouts. `setDebugFlag`,
 `advanceDirectorClock`, and `setOverlay` carry transient controls for the
-body, director, and overlay consumers.
+body, director, and overlay consumers. Windows that never publish mirror the
+latest stage snapshot they receive, so the devtools lab reads the stage's
+state from the same store. Overlay toggles also travel as the Eventa event
+`mmdOverlaySetEvent` on the same channel; the scene adds the IK helper,
+touch-collider wireframes, foot anchors, and look-at marker
+(`src/composables/mmd/overlays.ts`) to its scene only while each flag is on
+and disposes them when it turns off.
 
 ### Touch
 
