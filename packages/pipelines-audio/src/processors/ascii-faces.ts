@@ -1,30 +1,4 @@
-/**
- * ASCII faces a texting reply may carry. They are shown in bubbles and never spoken.
- *
- * Pronounceable word faces such as `uwu` and `owo` are left out on purpose: speech reads them.
- * The list is case-sensitive: `xD` and `XD` are both listed, `:p` is not.
- */
-export const ASCII_FACES = [
-  ':3',
-  '^^',
-  '^_^',
-  '>_<',
-  '>.<',
-  'T_T',
-  ';_;',
-  ':)',
-  ':(',
-  ':D',
-  ';)',
-  ':P',
-  'xD',
-  'XD',
-  'o_o',
-  'O_O',
-  '-_-',
-  '^w^',
-  '<3',
-] as const
+import { ASCII_FACES } from '@proj-airi/stage-shared/conversation-register'
 
 // Longest first so `^_^` is not read as a shorter face.
 const asciiFacePattern = new RegExp(
