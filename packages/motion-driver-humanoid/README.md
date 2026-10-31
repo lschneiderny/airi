@@ -5,16 +5,18 @@ deterministic motion algorithms for reusable character motion drivers.
 
 ## Entry points
 
-- `./types`: canonical humanoid bones, rig traits, positions, rotations, and body intents.
-- `./look-at`: `createLookAt`, look-at and turn-step contracts, and `aimEyes`.
+- `./director` exports the pure stance and attention director.
 - `./foot-contact`: planted foot anchors, eased contact, shared pelvis reach
   correction, signed knee pre-bend, and body-turn step arcs.
+- `./look-at`: `createLookAt`, look-at and turn-step contracts, and `aimEyes`.
+- `./types`: canonical humanoid bones, rig traits, positions, rotations, and body intents.
 
 ## Usage
 
 ```ts
 import type { BodyIntent, HumanoidBoneName, RigTraits } from '@proj-airi/motion-driver-humanoid/types'
 
+import { decideBody, initialBodyDirectorMemory } from '@proj-airi/motion-driver-humanoid/director'
 import { createFootContact, planFootSteps } from '@proj-airi/motion-driver-humanoid/foot-contact'
 ```
 
