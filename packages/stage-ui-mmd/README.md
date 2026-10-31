@@ -16,6 +16,11 @@ reaching feature parity with the Live2D and VRM renderers:
 - **Importable, mappable motions**: import VMD clips (persisted to IndexedDB,
   synced across windows), set one as the looping idle, preview any as a
   one-shot, remove them, and map AIRI emotions to gesture motions.
+- **Stance slots**: assign imported motions to a model's `idle`, `sit` and
+  `sleep` slots (`stanceSlots` in the `mmd` store). The body director sits
+  the model after two minutes idle and sleeps it while the user is away, with
+  a 0.6 s eased cross-fade on the base layer; a sit or sleep clip never plays
+  as the standing idle.
 - **Morph-based lip-sync** driven by the shared wLipSync profile, mapping
   phonemes to the canonical あいうえお mouth morphs, with per-slot morph
   remapping for non-standard models.

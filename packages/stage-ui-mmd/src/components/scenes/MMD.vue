@@ -65,6 +65,7 @@ import { resolveFrameBounds } from '../../composables/mmd/camera-bounds'
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
 import { readMMDRigProfile } from '../../composables/mmd/rig'
+import { frameClocks, MMDStanceDirector } from '../../composables/mmd/stance'
 import { MMDTouch } from '../../composables/mmd/touch'
 import { Emotion, EMOTION_VALUES } from '../../constants/emotions'
 import { useMMDExpressionStore } from '../../stores/expression-store'
@@ -144,6 +145,7 @@ const {
   materialOpacity,
   idleMotionName,
   availableMotions,
+  stanceSlots,
   oneShotAction,
   cameraFov,
   ambientColor,
@@ -176,6 +178,9 @@ let body: MMDBody | undefined
 let rig: ReturnType<typeof readMMDRigProfile> | undefined
 let stopMorphOverrides: (() => void) | undefined
 let touch: MMDTouch | undefined
+let stance: MMDStanceDirector | undefined
+// Natural's clock for the current frame; the director clock offset never reaches it.
+let naturalSeconds = performance.now() / 1000
 // Motion names already bound to the current model runtime.
 const registeredMotions = new Set<string>()
 let rafHandle = 0
@@ -430,6 +435,19 @@ function renderLoop(now = performance.now()) {
 
   expressions.setSlotSettings(props.performanceSettings.slots)
   expressions.update(now / 1000)
+  const clocks = frameClocks(now, diagnostics.directorClockOffsetMs)
+  naturalSeconds = clocks.naturalSeconds
+  if (animation && stance && loadedModelKey) {
+    const base = stance.update({
+      nowMs: clocks.directorMs,
+      performance: props.performance,
+      slots: stanceSlots.value[loadedModelKey] ?? {},
+      idleMotionName: idleMotionName.value,
+      isRegistered: name => registeredMotions.has(name),
+    })
+    if (base.changed)
+      animation.setBaseMotion(base.motion)
+  }
   animation?.update(delta)
   if (touch)
     handleTouchEvents(touch.update(now))
@@ -450,9 +468,19 @@ function renderLoop(now = performance.now()) {
       feet: motionDriver.value === 'natural' ? body?.diagnostics.feet ?? null : null,
       lookAt: motionDriver.value === 'natural' ? body?.diagnostics.lookAt ?? null : null,
       touch: touch && canvasRef.value ? touch.diagnostics(activeCamera, canvasRef.value.getBoundingClientRect()) : null,
+      director: stance ? { ...stance.diagnostics, clockOffsetMs: diagnostics.directorClockOffsetMs, centerY: centerModelY() } : null,
       animation: animation?.snapshot() ?? { idle: null, currentAction: null, actionsStarted: 0 },
     })
   }
+}
+
+/** センター height in model units, so stance checks do not depend on the view scale. */
+function centerModelY(): number | null {
+  const name = rig?.hipsTranslation.center
+  const center = name ? mesh?.skeleton.bones.find(bone => bone.name === name) : undefined
+  if (!mesh || !center)
+    return null
+  return mesh.worldToLocal(center.getWorldPosition(new Vector3())).y
 }
 
 function disposeModel() {
@@ -484,19 +512,20 @@ function disposeModel() {
   morphRuntime = undefined
   natural = undefined
   body = undefined
+  stance = undefined
   rig = undefined
   gaze = undefined
   resolved = undefined
   loadedModelKey = null
   diagnostics.setMetrics(new MMDFrameMetrics())
-  diagnostics.publish({ loadedModelKey: null, rig: null, natural: null, feet: null, lookAt: null, animation: { idle: null, currentAction: null, actionsStarted: 0 } })
+  diagnostics.publish({ loadedModelKey: null, rig: null, natural: null, feet: null, lookAt: null, director: null, animation: { idle: null, currentAction: null, actionsStarted: 0 } })
   mmdStore.isModelLoaded = false
 }
 
 /**
  * Loads and registers any imported VMD motions not yet bound to the current
- * model, then (re)applies the selected idle motion. Safe to call repeatedly;
- * already-registered motions are skipped.
+ * model. The render loop's stance director picks the base clip once a motion
+ * is registered. Safe to call repeatedly; already-registered motions are skipped.
  */
 async function syncMotions() {
   if (!animation || !mesh)
@@ -544,9 +573,6 @@ async function syncMotions() {
       emit('error', err)
     }
   }
-
-  if (idleMotionName.value && registeredMotions.has(idleMotionName.value))
-    activeAnimation.setIdleMotion(idleMotionName.value)
 }
 
 async function loadModel(src: string) {
@@ -596,6 +622,8 @@ async function loadModel(src: string) {
     gaze = createGazeController(mesh)
     rig = readMMDRigProfile(resolved.mmd.pmx)
     natural = new MMDNaturalAdapter(mesh, rig, modelKey)
+    const activeStance = new MMDStanceDirector()
+    stance = activeStance
     const activeMesh = mesh
     // The pure morph core copies enumerable x/y/z/w fields. Three's quaternion
     // stores _x/_y/_z/_w, so serialize explicitly at this renderer boundary.
@@ -615,6 +643,7 @@ async function loadModel(src: string) {
           frame: natural.bodyFrame.frame,
           target: resolveBodyTarget({ mesh: activeMesh, camera, viewport: canvasRef.value.getBoundingClientRect(), gazeMode: gazeMode.value }, natural.bodyFrame),
           ...diagnostics.debugFlags,
+          stanceClips: activeStance.baseClips,
         }
       },
     })
@@ -653,7 +682,7 @@ async function loadModel(src: string) {
             : placement && dipScale > 0
               ? screenInwardness(placement.displays, placement.windowBounds.x + head.x * dipScale)
               : mmdScreenInwardness(rect, head.x),
-        }, performance.now() / 1000)
+        }, naturalSeconds)
         natural.applyPose(clean, true)
         // Channels must be prepared before bone-morph evaluation. Their surface
         // effects are applied after physics by the morph-runtime surface stage.
@@ -877,12 +906,6 @@ watch(oneShotAction, (request) => {
 watch(availableMotions, () => {
   void syncMotions()
 }, { deep: true })
-
-// Idle-motion selection from the settings panel.
-watch(idleMotionName, (name) => {
-  if (name && registeredMotions.has(name))
-    animation?.setIdleMotion(name)
-})
 
 // Scene settings — lighting.
 watch([ambientColor, ambientIntensity], () => {

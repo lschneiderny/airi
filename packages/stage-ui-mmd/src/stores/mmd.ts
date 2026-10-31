@@ -1,3 +1,4 @@
+import type { MMDStanceSlots } from '../composables/mmd/stance'
 import type { Emotion } from '../constants/emotions'
 import type { MorphSlot } from '../constants/morphs'
 
@@ -166,6 +167,12 @@ export const useMMD = defineStore('mmd', () => {
    * files live in IndexedDB.
    */
   const availableMotions = useLocalStorageManualReset<MMDMotionDescriptor[]>('settings/mmd/motions', () => [])
+  /**
+   * Per-model stance clips, keyed by model id, naming imported motions. The
+   * body director plays `sit` after a long idle and `sleep` while away; `idle`
+   * replaces `idleMotionName` for that model.
+   */
+  const stanceSlots = useLocalStorageManualReset<Record<string, MMDStanceSlots>>('settings/mmd/stance-slots', () => ({}))
 
   /**
    * Persists a VMD file to IndexedDB and adds it to the synced list.
@@ -205,6 +212,12 @@ export const useMMD = defineStore('mmd', () => {
     // Drop the idle selection if it pointed at the removed motion.
     if (motion && idleMotionName.value === motion.name)
       idleMotionName.value = ''
+    if (motion) {
+      stanceSlots.value = Object.fromEntries(Object.entries(stanceSlots.value).map(([modelId, slots]) => [
+        modelId,
+        Object.fromEntries(Object.entries(slots).filter(([, name]) => name !== motion.name)),
+      ]))
+    }
     await localforage.removeItem(id)
   }
   /** Per-emotion gesture motion overrides; falls back to EMOTION_ACTION_NAME. */
@@ -282,6 +295,7 @@ export const useMMD = defineStore('mmd', () => {
     albedoGlow.reset()
     renderScale.reset()
     idleMotionName.reset()
+    stanceSlots.reset()
     void clearMotions()
     oneShotAction.value = undefined
     emotionActionMap.reset()
@@ -317,6 +331,7 @@ export const useMMD = defineStore('mmd', () => {
 
     idleMotionName,
     availableMotions,
+    stanceSlots,
     addMotion,
     getMotionFile,
     clearMotions,

@@ -78,6 +78,7 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI) {
     enabled: true,
     disableFootContact: false,
     disableLookAt: false,
+    stanceClips: new Set(),
     target: null,
     frame: {
       pose: { headX: 0, headY: 0, headZ: 0, bodyX: 0, bodyY: 0, bodyZ: 0, eyeX: 0, eyeY: 0 },

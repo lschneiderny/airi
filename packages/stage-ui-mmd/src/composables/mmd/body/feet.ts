@@ -51,6 +51,8 @@ export class MMDFootContact {
   apply(context: MMDFrameContext, input: {
     offset: Vector3
     duck: number
+    /** Planner duck: one-shots only. Stance clips reduce contact through their foot-IK tracks. */
+    contactDuck: number
     disabled: boolean
     look: LookAtFrame
     now: number
@@ -82,12 +84,13 @@ export class MMDFootContact {
     }
     const samples = { left: sample('left'), right: sample('right') }
     const previous = this.result
-    // All active clips duck this layer, including one-shots without IK tracks.
+    // One-shots duck this layer even without IK tracks; stance clips duck it
+    // only through clipFootTrackWeight, so feet stay planted while sitting down.
     this.result = this.planner.step({
       pelvisOffset: input.offset,
       feet: samples,
       enabled: !input.disabled,
-      duck: input.duck,
+      duck: input.contactDuck,
     }, dt)
     for (const leg of this.legs) {
       const contact = this.result.feet[leg.side]

@@ -7,6 +7,8 @@ import { ensureAmmo } from '../../utils/ammo'
 import { MMDFramePipeline } from './frame-pipeline'
 
 const DEFAULT_CROSSFADE = 0.4
+/** Cross-fade, in seconds, between looping base clips when the stance changes. */
+export const BASE_CROSSFADE = 0.6
 
 export interface MMDAnimationManagerOptions {
   /**
@@ -46,6 +48,7 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
   const pipeline = new MMDFramePipeline({ mmd, mixer })
   const registry = new Map<string, AnimationClip>()
   const finishListeners = new Map<AnimationAction, (event: { action: AnimationAction }) => void>()
+  const baseFades = new Map<AnimationAction, { from: number, to: number, elapsed: number, duration: number }>()
 
   let idleAction: AnimationAction | undefined
   let currentAction: AnimationAction | undefined
@@ -214,6 +217,66 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
     return true
   }
 
+  function ease(action: AnimationAction, to: number, duration: number): void {
+    baseFades.set(action, { from: action.weight, to, elapsed: 0, duration })
+  }
+
+  function advanceBaseFades(delta: number): void {
+    for (const [action, fade] of baseFades) {
+      fade.elapsed += delta
+      const progress = fade.duration > 0 ? Math.min(1, fade.elapsed / fade.duration) : 1
+      const eased = progress * progress * (3 - 2 * progress)
+      action.weight = fade.from + (fade.to - fade.from) * eased
+      if (progress < 1)
+        continue
+      baseFades.delete(action)
+      if (fade.to === 0 && action !== idleAction && action !== currentAction)
+        action.stop()
+    }
+  }
+
+  /**
+   * Replaces the looping base clip, or fades it out to the rest pose when
+   * `name` is `null`. A running one-shot keeps playing and returns to the new
+   * base when it finishes.
+   *
+   * The weights follow a smoothstep instead of three's linear fade: a nearly
+   * straight IK leg turns with the square root of the hip drop, so a linear
+   * fade into a crouching clip snaps the thighs on its first frame.
+   *
+   * @returns `false` when no clip is registered under `name`.
+   */
+  function setBaseMotion(name: string | null, crossfade = BASE_CROSSFADE): boolean {
+    const clip = name === null ? undefined : registry.get(name)
+    if (name !== null && !clip) {
+      console.warn(`[mmd] setBaseMotion skipped: "${name}" is not registered`)
+      return false
+    }
+
+    pipeline.enqueue(() => {
+      const next = clip ? mixer.clipAction(clip) : undefined
+      const previous = idleAction
+      if (next === previous)
+        return
+      if (previous)
+        ease(previous, 0, crossfade)
+      if (next) {
+        if (!next.isRunning()) {
+          next.reset()
+          next.weight = 0
+        }
+        next.setLoop(LoopRepeat, Number.POSITIVE_INFINITY)
+        next.clampWhenFinished = false
+        next.play()
+        ease(next, 1, crossfade)
+      }
+      idleAction = next
+      if (!currentAction || currentAction === previous)
+        currentAction = next
+    })
+    return true
+  }
+
   function setPhysicsEnabled(enabled: boolean): void {
     pipeline.options.physics = enabled
   }
@@ -235,6 +298,8 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
   function update(delta: number): void {
     if (!initialized || disposed)
       return
+    // Match the pipeline's own dt clamp so fades and clips advance together.
+    advanceBaseFades(Math.min(delta, 1 / 20))
     pipeline.step(delta)
   }
 
@@ -246,6 +311,7 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
     for (const listener of finishListeners.values())
       mixer.removeEventListener('finished', listener)
     finishListeners.clear()
+    baseFades.clear()
     pipeline.dispose()
     mixer.stopAllAction()
     mixer.uncacheRoot(mmd.mesh)
@@ -269,6 +335,7 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
     playIdle,
     playAction,
     setIdleMotion,
+    setBaseMotion,
     setPhysicsEnabled,
     setGravity,
     setIKEnabled,
