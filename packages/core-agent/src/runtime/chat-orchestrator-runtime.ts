@@ -1097,6 +1097,13 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
             return
           }
 
+          // A `<` held before a visible marker opens no tag, so it is text that belongs before the marker.
+          if (categorizer.filterToSpeech(special, streamPosition)) {
+            await appendSpeech(categorizer.flush())
+            if (shouldAbort() || outputClosed())
+              return
+          }
+
           if (normalizeMarker(special) === declineMarker) {
             // Only a marker in visible speech before the first spoken text counts. Reasoning can mention it.
             // The marker is control data: it is never forwarded to hooks or stored.
