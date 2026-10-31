@@ -1,4 +1,4 @@
-import type { Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import type { ExpressionPanelEntry } from './source'
 
 import en from '@proj-airi/i18n/locales/en'
 
@@ -23,7 +23,7 @@ function createTestI18n() {
 
 const { t } = createTestI18n().global
 
-type ExpressionEntry = Live2DExpressionSettingsSnapshot['entries'][number]
+type ExpressionEntry = ExpressionPanelEntry
 
 function expressionEntry(overrides: Partial<ExpressionEntry> & Pick<ExpressionEntry, 'id' | 'label'>): ExpressionEntry {
   return {
@@ -87,7 +87,7 @@ function k(key: string, params: Record<string, string> = {}) {
 }
 
 async function renderReactions(entries: ExpressionEntry[]) {
-  const { default: Reactions } = await import('./live2d-expression-reactions.vue')
+  const { default: Reactions } = await import('./reactions.vue')
   await import('virtual:uno.css')
   const onCommand = vi.fn()
   const screen = await render(Reactions, {
@@ -105,7 +105,7 @@ function rowOf(screen: Awaited<ReturnType<typeof renderReactions>>['screen'], ke
 describe('live2D expression reactions', () => {
   beforeAll(async () => {
     await Promise.all([
-      import('./live2d-expression-reactions.vue'),
+      import('./reactions.vue'),
       import('virtual:uno.css'),
     ])
     for (const key of ['title', 'description', 'empty', 'add', 'remove', 'preview', 'select', 'make-combo', 'make-combo-hint'])
@@ -253,10 +253,10 @@ describe('live2D expression reactions', () => {
   })
 
   it('renders the Expressions tab as Reactions, then Combos, then Everything else', async () => {
-    const { default: Section } = await import('./live2d-expressions-section.vue')
+    const { default: Section } = await import('./panel.vue')
     await import('virtual:uno.css')
     const screen = await render(Section, {
-      props: { snapshot: { entries: boothEntries(), freeParameters: [] }, enabled: true, search: '', showAll: false, onCommand: vi.fn() },
+      props: { snapshot: { entries: boothEntries(), groups: [], activeIds: [], restIds: [], freeParameters: [] }, enabled: true, search: '', showAll: false, onCommand: vi.fn() },
       global: { plugins: [createPinia(), createTestI18n()] },
     })
     const headings = screen.getByRole('heading', { level: 3 }).all().map(heading => heading.element().textContent?.trim())

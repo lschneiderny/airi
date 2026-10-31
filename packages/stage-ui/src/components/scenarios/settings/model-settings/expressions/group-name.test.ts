@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { groupDisplayName } from './expression-group-name'
+import { groupDisplayName } from './group-name'
 
 describe('groupDisplayName', () => {
   it.each([

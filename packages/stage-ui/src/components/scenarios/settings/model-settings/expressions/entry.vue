@@ -1,18 +1,18 @@
 <script setup lang="ts">
 import type { ExpressionArea, ExpressionKind } from '@proj-airi/stage-shared/expression-performance'
-import type { Live2DExpressionSettingsCommand, Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 
-import type { DraftMapping } from './live2d-expression-trigger-editor.vue'
+import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelEntry } from './source'
+import type { DraftMapping } from './trigger-editor.vue'
 
 import { Button, Checkbox, Input, Select } from '@proj-airi/ui'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import Live2dExpressionTriggerEditor from './live2d-expression-trigger-editor.vue'
+import ExpressionTriggerEditor from './trigger-editor.vue'
 
-import { groupDisplayName } from './expression-group-name'
+import { groupDisplayName } from './group-name'
 
-type Entry = Live2DExpressionSettingsSnapshot['entries'][number]
+type Entry = ExpressionPanelEntry
 
 const props = defineProps<{
   entry: Entry
@@ -22,7 +22,7 @@ const props = defineProps<{
   labelOf?: (id: string) => string
 }>()
 const emit = defineEmits<{
-  (e: 'command', command: Live2DExpressionSettingsCommand): void
+  (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
 }>()
 
 const { t } = useI18n()
@@ -88,7 +88,7 @@ function toggleEditor() {
 const isStale = computed(() => open.value && JSON.stringify(props.entry) !== baseline.value)
 
 const labelError = computed(() => draftLabel.value.trim() === '' ? t('settings.live2d.expressions.validation.label-required') : '')
-const triggerEditor = ref<InstanceType<typeof Live2dExpressionTriggerEditor> | null>(null)
+const triggerEditor = ref<InstanceType<typeof ExpressionTriggerEditor> | null>(null)
 const hasErrors = computed<boolean>(() => labelError.value !== '' || (triggerEditor.value?.hasErrors ?? false))
 // The header checkbox owns the AI toggle for entries, so the editor hides its own copy.
 const draftExposedToLlm = ref(false)
@@ -287,7 +287,7 @@ function resetEntry() {
         <Checkbox v-model="draftInverted" :class="['shrink-0']" :aria-label="t('settings.live2d.expressions.fields.inverted')" />
       </label>
 
-      <Live2dExpressionTriggerEditor
+      <ExpressionTriggerEditor
         ref="triggerEditor"
         v-model:mappings="draftMappings"
         v-model:exposed-to-llm="draftExposedToLlm"

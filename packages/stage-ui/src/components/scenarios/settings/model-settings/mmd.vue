@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import type { MMDGazeMode, MorphSlot } from '@proj-airi/stage-ui-mmd'
 
+import type { ExpressionPanelCommand, ExpressionPanelSnapshot, ExpressionPanelSource } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
-import { controlConfig, useMMD } from '@proj-airi/stage-ui-mmd'
+import { controlConfig, useMMD, useMMDExpressionStore } from '@proj-airi/stage-ui-mmd'
 import { Button, FieldCheckbox, FieldCombobox, FieldRange, GhostButton } from '@proj-airi/ui'
 import { useFileDialog } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+
+import ExpressionPanel from './expressions/panel.vue'
 
 import { Container, PropertyColor, PropertyNumber } from '../../../data-pane'
 import { Section } from '../../../layouts'
@@ -22,13 +25,30 @@ const props = withDefaults(defineProps<{
   allowExtractColors: true,
 })
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'extractColorsFromModel'): void
+  (e: 'mmdExpressionCommand', command: ExpressionPanelCommand): void
 }>()
 
 const { t } = useI18n()
 
 const mmdStore = useMMD()
+// In Electron the settings window has no model; the stage window publishes `mmdExpressions` and applies the commands.
+const localExpressionSource: ExpressionPanelSource = useMMDExpressionStore()
+const usesRemoteExpressionRuntime = computed(() => props.runtimeSnapshot.mmdExpressions != null)
+const expressionSettingsSnapshot = computed<ExpressionPanelSnapshot>(() => props.runtimeSnapshot.mmdExpressions ?? localExpressionSource.settingsSnapshot)
+const expressionSearch = ref('')
+const showAllExpressions = ref(false)
+
+function applyExpressionSettingsCommand(command: ExpressionPanelCommand) {
+  if (usesRemoteExpressionRuntime.value) {
+    emit('mmdExpressionCommand', command)
+    return
+  }
+
+  localExpressionSource.applySettingsCommand(command)
+}
+
 const {
   scale,
   position,
@@ -299,6 +319,25 @@ function removeMotion(id: string) {
         </div>
       </div>
     </div>
+  </Section>
+
+  <Section
+    :title="t('settings.mmd.expressions.title')"
+    icon="i-solar:face-scan-circle-bold-duotone"
+    inner-class="text-sm"
+    :class="['rounded-xl', 'bg-white/80 dark:bg-black/75', 'backdrop-blur-lg']"
+    size="sm"
+    :expand="false"
+  >
+    <p :class="['mb-2', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
+      {{ t('settings.mmd.expressions.description') }}
+    </p>
+    <ExpressionPanel
+      v-model:search="expressionSearch"
+      v-model:show-all="showAllExpressions"
+      :snapshot="expressionSettingsSnapshot"
+      @command="applyExpressionSettingsCommand"
+    />
   </Section>
 
   <Section

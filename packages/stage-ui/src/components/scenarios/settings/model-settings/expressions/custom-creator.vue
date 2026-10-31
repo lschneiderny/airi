@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import type { Live2DExpressionSettingsCommand, Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelFreeParameter } from './source'
 
 import { Button, FieldCombobox, FieldRange, Input } from '@proj-airi/ui'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-type FreeParameter = Live2DExpressionSettingsSnapshot['freeParameters'][number]
+type FreeParameter = ExpressionPanelFreeParameter
 
 const props = defineProps<{
   /** Parameters no expression or runtime driver writes; each can become one custom switch. */
   freeParameters: FreeParameter[]
 }>()
 const emit = defineEmits<{
-  (e: 'command', command: Live2DExpressionSettingsCommand): void
+  (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
   (e: 'close'): void
 }>()
 

@@ -16,6 +16,7 @@ import {
   useElectronWindowBounds,
 } from '@proj-airi/electron-vueuse'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import { useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
 import { useModelStore, useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three'
 import { HearingStatus, HoloCoupon } from '@proj-airi/stage-ui/components'
 import {
@@ -117,6 +118,7 @@ function handleStageReset() {
 }
 const modelStore = useModelStore()
 const expressionStore = useExpressionStore()
+const mmdExpressionStore = useMMDExpressionStore()
 const { sceneMutationLocked, scenePhase } = storeToRefs(modelStore)
 const { stagePaused } = storeToRefs(useStageWindowLifecycleStore())
 // The stage window owns the desktop activity samples that drive the Natural motion performance state.
@@ -279,11 +281,13 @@ const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() =
 
     return createEmptyModelSettingsRuntimeSnapshot({
       ownerInstanceId: modelSettingsRuntimeOwnerInstanceId,
+      modelId: mmdExpressionStore.modelId,
       renderer: 'mmd',
       phase,
       controlsLocked: hasModel ? phase !== 'mounted' : false,
       previewAvailable: hasModel,
       canCapturePreview: false,
+      mmdExpressions: mmdExpressionStore.settingsSnapshot,
       updatedAt: Date.now(),
     })
   }
@@ -386,6 +390,9 @@ useModelSettingsRuntimeOwner({
   runtimeSnapshot: modelSettingsRuntimeSnapshot,
   applyLive2DExpressionCommand: (command) => {
     expressionStore.applySettingsCommand(command)
+  },
+  applyMMDExpressionCommand: (command) => {
+    mmdExpressionStore.applySettingsCommand(command)
   },
 })
 

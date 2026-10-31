@@ -1,9 +1,10 @@
 import type { Live2DExpressionSettingsCommand } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import type { ExpressionPanelCommand } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/expressions/source'
 import type {
   ModelSettingsRuntimeSnapshot,
 } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 
-import type { ModelSettingsRuntimeContext } from '../../shared/model-settings-runtime'
+import type { ApplyExpressionSettingsCommandResponse, ModelSettingsRuntimeContext } from '../../shared/model-settings-runtime'
 
 import { defineInvoke } from '@moeru/eventa'
 import {
@@ -13,6 +14,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 
 import {
   applyLive2DExpressionSettingsCommand,
+  applyMMDExpressionSettingsCommand,
   getModelSettingsRuntimeContext,
   modelSettingsRuntimeOwnerGone,
   modelSettingsRuntimeSnapshotChanged,
@@ -28,19 +30,25 @@ interface UseModelSettingsRuntimeSnapshotOptions {
 export function useModelSettingsRuntimeSnapshot(options: UseModelSettingsRuntimeSnapshotOptions = {}) {
   const runtimeSnapshot = ref<ModelSettingsRuntimeSnapshot>(createEmptyModelSettingsRuntimeSnapshot())
   const context = options.context ?? getModelSettingsRuntimeContext()
-  const invokeExpressionCommand = defineInvoke(context, applyLive2DExpressionSettingsCommand)
+  const invokeLive2DExpressionCommand = defineInvoke(context, applyLive2DExpressionSettingsCommand)
+  const invokeMMDExpressionCommand = defineInvoke(context, applyMMDExpressionSettingsCommand)
 
   const requestCurrent = () => {
     void context.emit(modelSettingsRuntimeSnapshotRequested, undefined)
   }
 
-  const sendLive2DExpressionCommand = async (command: Live2DExpressionSettingsCommand) => {
+  /** Sends one command to the owner of the matching renderer and adopts the snapshot it answers with. */
+  async function sendExpressionCommand<Command>(
+    renderer: ModelSettingsRuntimeSnapshot['renderer'],
+    invoke: (request: { ownerInstanceId: string, modelId: string, command: Command }, options: { signal: AbortSignal }) => Promise<ApplyExpressionSettingsCommandResponse>,
+    command: Command,
+  ) {
     const snapshot = runtimeSnapshot.value
-    if (!snapshot.ownerInstanceId || !snapshot.modelId || snapshot.renderer !== 'live2d' || snapshot.controlsLocked)
+    if (!snapshot.ownerInstanceId || !snapshot.modelId || snapshot.renderer !== renderer || snapshot.controlsLocked)
       return false
 
     try {
-      const response = await invokeExpressionCommand({
+      const response = await invoke({
         ownerInstanceId: snapshot.ownerInstanceId,
         modelId: snapshot.modelId,
         command,
@@ -53,10 +61,13 @@ export function useModelSettingsRuntimeSnapshot(options: UseModelSettingsRuntime
     catch (error) {
       runtimeSnapshot.value = createEmptyModelSettingsRuntimeSnapshot()
       requestCurrent()
-      console.warn('[Model Settings Runtime] Failed to apply the Live2D expression command:', error)
+      console.warn(`[Model Settings Runtime] Failed to apply the ${renderer} expression command:`, error)
       return false
     }
   }
+
+  const sendLive2DExpressionCommand = (command: Live2DExpressionSettingsCommand) => sendExpressionCommand('live2d', invokeLive2DExpressionCommand, command)
+  const sendMMDExpressionCommand = (command: ExpressionPanelCommand) => sendExpressionCommand('mmd', invokeMMDExpressionCommand, command)
 
   const syncFromOwner = () => {
     requestCurrent()
@@ -94,5 +105,6 @@ export function useModelSettingsRuntimeSnapshot(options: UseModelSettingsRuntime
     runtimeSnapshot,
     requestCurrent,
     sendLive2DExpressionCommand,
+    sendMMDExpressionCommand,
   }
 }

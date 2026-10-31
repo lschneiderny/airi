@@ -7,6 +7,7 @@ import type {
 import type { Live2DExpressionSettingsCommand } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 
 import type { DisplayModel } from '../../../../stores/display-models'
+import type { ExpressionPanelCommand } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
 import { Button, Callout, ScrollableArea } from '@proj-airi/ui'
@@ -39,6 +40,7 @@ interface ModelSettingsPanelProps {
 interface ModelSettingsPanelEmits {
   extractColorsFromModel: []
   live2dExpressionCommand: [command: Live2DExpressionSettingsCommand]
+  mmdExpressionCommand: [command: ExpressionPanelCommand]
   patchGodotViewState: [patch: StageViewPatch]
 }
 
@@ -134,6 +136,7 @@ async function handleModelPick(selectedModel: DisplayModel | undefined) {
         :palette="palette"
         :runtime-snapshot="runtimeSnapshot"
         @extract-colors-from-model="emit('extractColorsFromModel')"
+        @mmd-expression-command="emit('mmdExpressionCommand', $event)"
       />
       <Tachie
         v-if="effectiveRenderer === 'tachie'"

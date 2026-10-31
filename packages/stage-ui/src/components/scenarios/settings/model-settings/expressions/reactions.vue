@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import type { EmotionMapping } from '@proj-airi/stage-shared/expression-performance'
-import type { Live2DExpressionSettingsCommand, Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+
+import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelEntry } from './source'
 
 import { Button, Checkbox, FieldCombobox } from '@proj-airi/ui'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import Live2dExpressionComboEditor from './live2d-expression-combo-editor.vue'
+import ExpressionComboEditor from './combo-editor.vue'
 
-type Entry = Live2DExpressionSettingsSnapshot['entries'][number]
+type Entry = ExpressionPanelEntry
 type Emotion = EmotionMapping['emotion']
 type ComboMember = NonNullable<Entry['members']>[number]
 
@@ -17,7 +18,7 @@ const props = defineProps<{
   entries: Entry[]
 }>()
 const emit = defineEmits<{
-  (e: 'command', command: Live2DExpressionSettingsCommand): void
+  (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
 }>()
 
 const { t } = useI18n()
@@ -60,7 +61,7 @@ function candidatesFor(emotion: Emotion) {
 }
 
 /** Combos and custom switches keep their mappings in their own documents; every other id is an override. */
-function mappingsCommand(entry: Entry, mappings: EmotionMapping[]): Live2DExpressionSettingsCommand {
+function mappingsCommand(entry: Entry, mappings: EmotionMapping[]): ExpressionPanelCommand | ExpressionPanelCustomCommand {
   if (entry.id.startsWith('combo:'))
     return { type: 'update-combo', id: entry.id, patch: { mappings } }
   if (entry.id.startsWith('custom:'))
@@ -237,7 +238,7 @@ function closeComposer(emotion: Emotion) {
           v-if="composingEmotion === emotion"
           :class="['pt-2', 'border-t border-neutral-200 dark:border-neutral-800']"
         >
-          <Live2dExpressionComboEditor
+          <ExpressionComboEditor
             :key="emotion"
             :entries="entries"
             :initial-members="initialMembersFor(emotion)"
