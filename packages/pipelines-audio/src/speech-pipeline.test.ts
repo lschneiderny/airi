@@ -1,4 +1,5 @@
 import type { SpeechPipelineOptions } from './speech-pipeline'
+import type { TimelineClock } from './timeline'
 import type { IntentHandle, LoggerLike, PlaybackItem, TextSegment, TextToken, TtsRequest } from './types'
 
 import { describe, expect, it, vi } from 'vitest'
@@ -51,7 +52,8 @@ function createSegmenter(texts: string[]) {
 }
 
 /** Records clip boundaries in `log` when given. A scheduled clip starts at once and, with `autoEnd`, ends on the next microtask. */
-function createPlaybackSpy(options?: { autoEnd?: boolean, log?: string[] }) {
+function createPlaybackSpy(options?: { autoEnd?: boolean, log?: string[], now?: () => number }) {
+  const now = options?.now ?? Date.now
   const scheduled: Array<PlaybackItem<string>> = []
   const startListeners: Array<(event: { item: PlaybackItem<string>, startedAt: number }) => void> = []
   const endListeners: Array<(event: { item: PlaybackItem<string>, endedAt: number }) => void> = []
@@ -60,7 +62,7 @@ function createPlaybackSpy(options?: { autoEnd?: boolean, log?: string[] }) {
   function end(item: PlaybackItem<string>) {
     options?.log?.push(`end:${item.text}`)
     for (const listener of endListeners)
-      listener({ item, endedAt: Date.now() })
+      listener({ item, endedAt: now() })
   }
 
   return {
@@ -70,7 +72,7 @@ function createPlaybackSpy(options?: { autoEnd?: boolean, log?: string[] }) {
       schedule(item: PlaybackItem<string>) {
         scheduled.push(item)
         options?.log?.push(`start:${item.text}`)
-        startListeners.forEach(listener => listener({ item, startedAt: Date.now() }))
+        startListeners.forEach(listener => listener({ item, startedAt: now() }))
         if (autoEnd)
           queueMicrotask(() => end(item))
       },
@@ -424,10 +426,10 @@ function createHeldSynthesis(count: number, outcome: (request: TtsRequest) => Pr
 }
 
 /** Runs one turn through the real chunker and records clip boundaries and markers in one ordered log. */
-function createOrderedPipeline(tts: SpeechPipelineOptions<string>['tts'], options?: { autoEnd?: boolean }) {
+function createOrderedPipeline(tts: SpeechPipelineOptions<string>['tts'], options?: { autoEnd?: boolean, clock?: TimelineClock }) {
   const log: string[] = []
-  const spy = createPlaybackSpy({ autoEnd: options?.autoEnd, log })
-  const pipeline = createSpeechPipeline<string>({ playback: spy.playback, tts, logger: quietLogger })
+  const spy = createPlaybackSpy({ autoEnd: options?.autoEnd, log, now: options?.clock?.now })
+  const pipeline = createSpeechPipeline<string>({ playback: spy.playback, tts, logger: quietLogger, clock: options?.clock })
   pipeline.on('onSpecial', segment => log.push(`special:${segment.special}`))
   const turnEnded = new Promise<void>(resolve => pipeline.on('onTurnEnd', () => resolve()))
 
@@ -555,5 +557,84 @@ describe('special marker playback order', () => {
     await turnCanceled
 
     expect(log).toEqual(['start:I am annoyed now.', 'end:I am annoyed now.'])
+  })
+})
+
+/** A driver clock that only moves when the speech track sleeps on it. */
+function createFakeClock(): TimelineClock {
+  let nowMs = 0
+  return {
+    now: () => nowMs,
+    sleep: async (ms) => {
+      nowMs += ms
+    },
+  }
+}
+
+describe('speech pause at BREAK', () => {
+  it.each([
+    ['a break after a finished sentence', 'Hi there.', '<|BREAK 0.5|>', 500],
+    ['a break carried by the clip before it', 'Hi there', '<|BREAK 0.5|>', 500],
+    ['a break without a duration', 'Hi there.', '<|BREAK|>', 1000],
+    ['a malformed break', 'Hi there.', '<|BREAK x|>', 0],
+    ['another special', 'Hi there.', neutral, 0],
+  ])('starts the next clip after %s only once its pause passed on the driver clock', async (_label, before, special, pauseMs) => {
+    const clock = createFakeClock()
+    const { log, pipeline, speak, turnEnded } = createOrderedPipeline(createHeldSynthesis(2), { clock })
+    const startedAt: number[] = []
+    pipeline.on('onPlaybackStart', event => startedAt.push(event.startedAt))
+
+    speak([{ literal: before }, { special }, { literal: ' Okay.' }])
+    await turnEnded
+
+    expect(log).toEqual([`start:${before}`, `end:${before}`, `special:${special}`, 'start:Okay.', 'end:Okay.'])
+    expect(startedAt[1]! - startedAt[0]!).toBe(pauseMs)
+  })
+
+  it('keeps the pause between markers when no text produces audio', async () => {
+    const clock = createFakeClock()
+    const { log, speak, turnEnded } = createOrderedPipeline(async () => null, { clock })
+
+    speak([{ literal: 'Hi there.' }, { special: '<|BREAK 2|>' }, { literal: ' Okay' }, { special: neutral }])
+    await turnEnded
+
+    expect(log).toEqual(['special:<|BREAK 2|>', `special:${neutral}`])
+    expect(clock.now()).toBe(2000)
+  })
+
+  it('ends a pause at once when its turn is cancelled and never schedules the clip after it', async () => {
+    const { log, pipeline, scheduled, speak } = createOrderedPipeline(createHeldSynthesis(2), {
+      clock: { now: () => 0, sleep: () => new Promise<void>(() => {}) },
+    })
+    const breakFired = new Promise<void>(resolve => pipeline.on('onSpecial', () => resolve()))
+    const turnCanceled = new Promise<void>(resolve => pipeline.on('onTurnCancel', () => resolve()))
+
+    const intent = speak([{ literal: 'Hi there.' }, { special: '<|BREAK 3|>' }, { literal: ' Okay.' }])
+    await breakFired
+    intent.cancel('test-cancel')
+    await turnCanceled
+
+    expect(log).toEqual(['start:Hi there.', 'end:Hi there.', 'special:<|BREAK 3|>'])
+    expect(scheduled.map(item => item.text)).toEqual(['Hi there.'])
+  })
+})
+
+describe('speech without ASCII faces', () => {
+  it.each([
+    [[{ literal: 'hi :3' }, { special: '<|BREAK 0.5|>' }, { literal: 'ok ^^' }], ['hi', 'ok'], ['hi :3', 'ok ^^']],
+    [[{ literal: 'Meet at 10:30 :3' }], ['Meet at 10:30'], ['Meet at 10:30 :3']],
+    [[{ literal: 'Okay. :3' }], ['Okay.'], ['Okay.']],
+  ] satisfies Array<[Part[], string[], string[]]>)('synthesizes %j without its faces and keeps them on the clips', async (parts, spoken, shown) => {
+    const requests: string[] = []
+    const { scheduled, speak, turnEnded } = createOrderedPipeline(async (request) => {
+      requests.push(request.text)
+      return request.text
+    }, { clock: createFakeClock() })
+
+    speak(parts)
+    await turnEnded
+
+    expect(requests).toEqual(spoken)
+    expect(scheduled.map(item => item.text)).toEqual(shown)
   })
 })

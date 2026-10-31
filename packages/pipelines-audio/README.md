@@ -71,6 +71,13 @@ When that text produces no audio (synthesis failed, returned nothing, or speech 
 Every marker fires before the next clip starts. Markers before any text fire before the first clip, and consecutive markers keep their order.
 With no audio at all, markers fire in arrival order. A cancelled or interrupted intent drops its pending markers.
 
+A well-formed BREAK marker also pauses the ordered speech track: after it fires, the next clip or marker waits `seconds` on the pipeline `clock` (default: the wall clock).
+The pause belongs to the pipeline, so it holds even when the `onSpecial` listener returns at once. Cancelling the intent ends a pause immediately.
+Other markers, DELAY included, do not pause the speech track.
+
+The default segmenter is the TTS chunker with `stripAsciiFaces`, in every conversation register.
+A TTS request carries the text without faces. Its playback item carries the segment's `displayText`, so captions keep the faces.
+
 ## Streaming-control cues and text chunking
 
 `createStreamingControlParser` loads the ACT, DELAY, BREAK, and CALL parsers by default.

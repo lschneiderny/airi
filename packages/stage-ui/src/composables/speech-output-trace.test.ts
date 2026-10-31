@@ -3,6 +3,7 @@ import type { TtsRequest } from '@proj-airi/pipelines-audio'
 
 import type { ReadableSpan } from './use-io-tracer'
 
+import { VoiceResponse } from '@proj-airi/core-agent'
 import { Playback } from '@proj-airi/pipelines-audio'
 import { IOAttributes, IOSpanNames } from '@proj-airi/stage-shared'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -28,6 +29,38 @@ function turnSpan() {
 function spanNamed(name: string) {
   return spans.find(span => span.name === name)
 }
+
+function spanTexts(name: string) {
+  return spans.filter(span => span.name === name).map(span => span.attributes[IOAttributes.TTSText])
+}
+
+it.each([
+  [['hi :3', '<|BREAK 0.5|>', 'ok ^^'], ['hi', 'ok'], ['hi :3', 'ok ^^']],
+  [['Meet at 10:30 :3'], ['Meet at 10:30'], ['Meet at 10:30 :3']],
+])('speaks %j through the voice response without ASCII faces and plays it with them', async (parts, spoken, shown) => {
+  const trace = traceSpeechOutput({ sessionId: 'alice', turnId: 'reply' }, turnSpan(), {
+    playback: new Playback({ nowMs: () => 0, play: (clip) => {
+      clip.onStart?.()
+      return { done: Promise.resolve({ throughMs: 0 }), stop: async () => ({ throughMs: 0 }) }
+    } }),
+    synthesize: async request => new Blob([request.text]),
+  }, async () => ({ duration: 0 }))
+  const response = new VoiceResponse({ sessionId: 'alice', turnId: 'reply' }, trace.output, () => {})
+  const speech = response.openSpeech({ purpose: 'reply' })
+  // The voice store hands every special of the turn, BREAK included, to `SpeechStream.special`.
+  for (const part of parts) {
+    if (part.startsWith('<|'))
+      speech.special(part)
+    else
+      speech.write(part)
+  }
+
+  expect(await response.finish()).toBe('finished')
+  trace.end()
+
+  expect(spanTexts(IOSpanNames.TTSSynthesis)).toEqual(spoken)
+  expect(spanTexts(IOSpanNames.AudioPlayback)).toEqual(shown)
+})
 
 it('records synthesis, playback, and turn spans with the fields that timelines join', async () => {
   const started = vi.fn()
