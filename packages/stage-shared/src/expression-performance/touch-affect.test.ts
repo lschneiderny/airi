@@ -40,7 +40,8 @@ const pokes = (count: number, from: number, spacing: number) => Array.from({ len
 describe('touchAffect', () => {
   it('escalates a pet of at least 3 s to the clear dose, habituated, with tension clamped at 0', () => {
     const { doses } = run([petStart(0), petEnd(3.5, 3.5), petStart(10), petEnd(13, 3)])
-    for (const [pet, h] of [[doses.slice(0, 2), 1], [doses.slice(2, 4), 0.8]] as const) {
+    // The first pet's start and escalation both count, so the second pet habituates by 0.8^2.
+    for (const [pet, h] of [[doses.slice(0, 2), 1], [doses.slice(2, 4), 0.64]] as const) {
       expect(pet.every(dose => dose !== null)).toBe(true)
       const mood = accumulate(pet)
       expect(mood.valence).toBeCloseTo(clear * h, 10)
@@ -62,6 +63,19 @@ describe('touchAffect', () => {
     expect(doses.map(dose => dose?.id ?? null)).toEqual(['touch-1-pet', null, null, 'touch-2-pet-long', 'touch-3-pet'])
     // The cooldown pet gave nothing at its start, so its escalation is the whole habituated clear dose.
     expect(doses[3]?.valence).toBeCloseTo(clear * 0.8, 10)
+  })
+
+  it('saturates 62 s of back-to-back 3.5 s pets instead of summing past the mood clamp', () => {
+    // Every pet that starts inside the 62 s, each beginning as the previous one ends.
+    const count = Math.ceil(62 / 3.5)
+    const pets = Array.from({ length: count }, (_, index) => [petStart(index * 3.5), petEnd(index * 3.5 + 3.5, 3.5)]).flat()
+    const { doses } = run(pets)
+    // Every pet doses once in total: its start plus its escalation, or only the escalation of a pet opened in the cooldown.
+    const perPet = Array.from({ length: count }, (_, index) => (doses[index * 2]?.valence ?? 0) + (doses[index * 2 + 1]?.valence ?? 0))
+    expect(perPet.every(dose => dose > 0)).toBe(true)
+    for (let index = 1; index < perPet.length; index++)
+      expect(perPet[index]).toBeLessThanOrEqual(perPet[index - 1])
+    expect(perPet.reduce((total, dose) => total + dose, 0)).toBeLessThanOrEqual(0.6)
   })
 
   it('paces 20 rapid pokes to at most 10 doses with a monotone habituation and bounded arousal', () => {
