@@ -93,7 +93,7 @@ The host renderer resolves the ID to local artwork. The core has no image assets
 
 ## Unprompted turns
 
-A host can start a turn without user input by passing `origin: 'unprompted'` and a `trigger` (`{ topicKey, text, kind? }`) in the send options. The optional `kind` names the reason that the host reached out for. The runtime stores it on the trigger message and passes it through unchanged, so hosts can label the cue in history. In AIRI, the stage's situation gate and widget reaction requests start these turns.
+A host can start a turn without user input by passing `origin: 'unprompted'` and a `trigger` (`{ topicKey, text, kind? }`) in the send options. The optional `kind` names the reason that the host reached out for. The runtime stores it on the trigger message and passes it through unchanged, so hosts can label the cue in history. In AIRI, the stage's situation gate, widget reaction requests, and touch reactions start these turns.
 The trigger message reaches the provider as the trailing user turn, so runtime context attaches to it. The runtime commits the trigger only when the reply is decided as spoken, at its first non-whitespace literal.
 Until then, it buffers literal and special hooks and publishes no assistant message.
 

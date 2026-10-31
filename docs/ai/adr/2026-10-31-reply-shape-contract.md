@@ -25,6 +25,10 @@ Providers decide whether reasoning tokens count toward `max_tokens`. A thinking 
 
 The cap applies to every model request of a turn, tool continuations included. Tool-call arguments on chat turns (memory entries, wake words) are small.
 
+## Revision
+
+The [nonverbal channels ADR](2026-10-31-nonverbal-channels.md) revised the contract once to be register-neutral. The reply-shape section no longer says "You are talking, not writing", and it gained the rule for answering with only an ACT cue and `<|SILENT|>`. Whether she talks or texts now comes from a register section in the character prompt, outside the contract, so the contract hash is the same in both registers. The reply-shape rules and `REPLY_MAX_TOKENS` are otherwise unchanged.
+
 ## Validation
 
 `stage-shared/src/stage-contract/index.test.ts` pins the rendered order and the English hash; `stage-ui/src/composables/use-airi-runtime-prompt.test.ts` and `qa-tools/src/model/stage-contract.test.ts` check the same hash through the real i18n instance. Reply length and question rate are measured with the model-eval track, not asserted in tests.

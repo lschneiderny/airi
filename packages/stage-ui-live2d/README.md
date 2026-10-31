@@ -269,7 +269,7 @@ Cursor attention melts into the hand during a pet, with both horizontal and vert
 
 In the Electron stage window, clicks reach the canvas only over opaque pixels, because the window is click-through elsewhere. Hover pets still work there, because the window forwards pointer movement while it is click-through.
 
-`Live2DScene` emits a `touch` event for every poke, pet start, and pet end. No consumer reads it yet; it exists for a later chat reaction.
+`Live2DScene` emits a `touch` event for every poke, pet start, and pet end. In `@proj-airi/stage-ui`, the stage touch store turns each event into a mood dose and forwards finished pets and pokes to the situation leader, which may answer with a short reaction line. The [nonverbal channels ADR](../../docs/ai/adr/2026-10-31-nonverbal-channels.md) records that design.
 
 ### Liveliness score and reference stats
 
