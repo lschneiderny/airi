@@ -77,13 +77,19 @@ export function applyStageCamera(camera: PerspectiveCamera, calibration: CameraC
 }
 
 /**
- * Puts the model root on the floor line: unit scale, no yaw, feet at `y = 0`. The classic scale, rotation and position
- * settings never apply in stage mode, so every stage write of the root goes through here.
+ * Puts the model root on the floor line: unit scale, feet at `y = 0`, and the locomotion's yaw (0 faces the camera).
+ * The classic scale, rotation and position settings never apply in stage mode, so every stage placement of the root goes
+ * through here.
  */
-export function applyStageRoot(group: Group, rootX: number, footBaselineY: number): void {
+export function applyStageRoot(group: Group, rootX: number, footBaselineY: number, yaw = 0): void {
   group.scale.setScalar(1)
-  group.rotation.y = 0
+  group.rotation.y = yaw
   group.position.set(rootX, -footBaselineY, 0)
+}
+
+/** A goal x on the reachable ground line: a goal beyond either edge stops at that edge. */
+export function clampToGround(ground: WorldFrame['ground'], x: number): number {
+  return Math.min(ground.maxX, Math.max(ground.minX, x))
 }
 
 /** Splits skeleton frame bounds, measured with the root at the origin, into the root-relative extent and the foot baseline. */

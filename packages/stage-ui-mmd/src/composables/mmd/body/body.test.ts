@@ -229,4 +229,107 @@ describe('mmd full-body stages', () => {
     expect(bones.find(bone => bone.name === '左目')?.quaternion.toArray()).toEqual([0, 0, 0, 1])
     expect(bones.find(bone => bone.name === '右目')?.quaternion.y).toBeGreaterThan(0)
   })
+
+  it('walks the root to the goal with world-planted feet and resets physics only on a teleport', () => {
+    const { pipeline, body, mmd, mesh, setInput, setRootX } = bodyFixture()
+    let resets = 0
+    mmd.physics = {
+      createHelper: () => { throw new Error('Unused helper') },
+      reset: () => {
+        resets++
+      },
+      update: () => {},
+    }
+    pipeline.options.physics = true
+    setInput({ rootMotion: true })
+    for (let frame = 0; frame < 30; frame++)
+      pipeline.step(1 / 60)
+    resets = 0
+    body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+    let skate = 0
+    let walked = false
+    let maxError = 0
+    for (let frame = 0; frame < 1200 && (!walked || body.diagnostics.locomotion?.mode !== 'idle'); frame++) {
+      pipeline.step(1 / 60)
+      const locomotion = body.diagnostics.locomotion
+      skate = Math.max(skate, locomotion?.skate ?? Infinity)
+      maxError = Math.max(maxError, body.diagnostics.feet.maxError)
+      walked ||= locomotion?.mode === 'walking'
+      expect(mesh.position.x).toBe(locomotion?.position.x)
+    }
+    const locomotion = body.diagnostics.locomotion
+    expect(walked).toBe(true)
+    expect(locomotion?.mode).toBe('idle')
+    expect(Math.abs((locomotion?.position.x ?? 0) - 10)).toBeLessThan(1e-2)
+    expect(locomotion?.leashClamps).toBe(0)
+    expect(skate).toBeLessThan(0.01)
+    expect(maxError).toBeLessThan(0.05)
+    expect(body.locomotionFrame?.feet.left.planted).toBe(true)
+    expect(body.locomotionFrame?.feet.right.planted).toBe(true)
+    expect(body.diagnostics.feet.contact).toBe(1)
+    expect(body.diagnostics.feet.maxError).toBeLessThan(0.01)
+    expect(resets).toBe(0)
+
+    setRootX(3, { teleport: true })
+    pipeline.step(1 / 60)
+    expect(resets).toBe(1)
+    expect(body.diagnostics.locomotion?.position.x).toBe(3)
+  })
+
+  it('keeps a drag: a pending goal never pulls the root back and both feet re-plant beside it', () => {
+    const { pipeline, body, mesh, bone, setInput, setRootX } = bodyFixture()
+    setInput({ rootMotion: true })
+    for (let frame = 0; frame < 30; frame++)
+      pipeline.step(1 / 60)
+    body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+    for (let frame = 0; frame < 20; frame++)
+      pipeline.step(1 / 60)
+    expect(body.diagnostics.locomotion?.mode).not.toBe('idle')
+    setRootX(6, { teleport: false })
+    for (let frame = 0; frame < 120; frame++) {
+      pipeline.step(1 / 60)
+      expect(Math.abs(mesh.position.x - 6)).toBeLessThan(1e-3)
+      expect(Math.abs((body.diagnostics.locomotion?.position.x ?? 0) - 6)).toBeLessThan(1e-3)
+    }
+    expect(body.diagnostics.locomotion?.mode).toBe('idle')
+    expect(body.diagnostics.locomotion?.goalX).toBeNull()
+    for (const [name, x] of [['左足首', 1], ['右足首', -1]] as const) {
+      const beside = mesh.localToWorld(new Vector3(x, 1, 0))
+      expect(bone(name).getWorldPosition(new Vector3()).distanceTo(beside)).toBeLessThan(0.01)
+    }
+  })
+
+  it('ignores a goal while a stance clip plays', () => {
+    const { pipeline, mixer, body, mesh, setInput } = bodyFixture()
+    const clip = new AnimationClip('sit', 1, [new VectorKeyframeTrack('.bones[センター].position', [0, 1], [0, 8, 0, 0, 8, 0])])
+    pipeline.registerClip(clip.name, clip)
+    body.registerClip(clip.name, clip)
+    pipeline.enqueue(() => mixer.clipAction(clip).play())
+    setInput({ rootMotion: true, stanceClips: new Set(['sit']) })
+    for (let frame = 0; frame < 30; frame++)
+      pipeline.step(1 / 60)
+    body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+    for (let frame = 0; frame < 120; frame++) {
+      pipeline.step(1 / 60)
+      expect(body.diagnostics.locomotion).toMatchObject({ mode: 'idle', enabled: false, goalX: null })
+      expect(mesh.position.x).toBe(0)
+    }
+  })
+
+  it('aims both eye rays at a world target after the root moves and turns', () => {
+    const { pipeline, body, bone, mesh, setInput } = bodyFixture()
+    mesh.position.x = 5
+    mesh.rotation.y = 0.7
+    mesh.updateMatrixWorld(true)
+    body.rebase(5, 0.7)
+    const target = mesh.localToWorld(new Vector3(4, 21, 30))
+    setInput({ target })
+    for (let frame = 0; frame < 180; frame++)
+      pipeline.step(1 / 60)
+    for (const name of ['左目', '右目']) {
+      const eye = bone(name)
+      const ray = new Vector3(0, 0, 1).applyQuaternion(eye.getWorldQuaternion(new Quaternion()))
+      expect(ray.angleTo(target.clone().sub(eye.getWorldPosition(new Vector3())))).toBeLessThan(Math.PI / 360)
+    }
+  })
 })

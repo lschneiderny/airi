@@ -71,7 +71,7 @@ import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
 import { MMDOverlays } from '../../composables/mmd/overlays'
 import { readMMDRigProfile } from '../../composables/mmd/rig'
-import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, stagePixelRatio } from '../../composables/mmd/stage-world'
+import { applyStageCamera, applyStageRoot, clampToGround, measureStageExtent, projectCharacterPlacement, stagePixelRatio } from '../../composables/mmd/stage-world'
 import { frameClocks, MMDStanceDirector } from '../../composables/mmd/stance'
 import { buildMMDTouchColliders, MMDTouch, mmdTouchRegionRoots } from '../../composables/mmd/touch'
 import { Emotion, EMOTION_VALUES } from '../../constants/emotions'
@@ -211,6 +211,7 @@ let loadGeneration = 0
 let stageExtent: MMDStageExtent | undefined
 let stageFootBaselineY = 0
 let stageRootX = 0
+let stageRootYaw = 0
 const characterPlacement = shallowRef<PlacementRect | null>(null)
 const stageModel = shallowRef<{ height: number, footBaselineY: number } | null>(null)
 
@@ -278,7 +279,7 @@ function applyTransform() {
   if (!modelGroup)
     return
   if (props.stageWorld) {
-    applyStageRoot(modelGroup, stageRootX, stageFootBaselineY)
+    applyStageRoot(modelGroup, stageRootX, stageFootBaselineY, stageRootYaw)
     return
   }
   modelGroup.scale.setScalar(scale.value)
@@ -309,14 +310,17 @@ function publishPlacement() {
 }
 
 /**
- * Moves the root along the floor line in model units. `teleport: true` resets physics once; `teleport: false` is a plain
- * root write that leaves physics simulating, for drag moves and locomotion.
+ * Moves the root along the floor line in model units, for drags and teleports. The body re-plants both feet beside the
+ * new root and drops its walk goal, so the next gait frame never undoes the move. `teleport: true` resets physics once;
+ * `teleport: false` leaves physics simulating. Locomotion moves the root through the body's root handle instead.
  */
 function setRootX(x: number, options: { teleport: boolean }) {
   stageRootX = x
   if (!props.stageWorld || !modelGroup || !stageExtent)
     return
   modelGroup.position.x = x
+  modelGroup.updateMatrixWorld(true)
+  body?.rebase(x)
   if (options.teleport)
     animation?.pipeline.requestPhysicsReset()
   publishPlacement()
@@ -401,7 +405,10 @@ function frameCamera() {
     stageExtent = measured.extent
     stageModel.value = { height: measured.extent.height, footBaselineY: stageFootBaselineY }
     stageRootX = props.stageWorld.homeX
+    stageRootYaw = 0
     applyStageRoot(modelGroup, stageRootX, stageFootBaselineY)
+    modelGroup.updateMatrixWorld(true)
+    body?.rebase(stageRootX, 0)
     animation?.pipeline.requestPhysicsReset()
     applyStageWorld()
     return
@@ -563,6 +570,7 @@ function renderLoop(now = performance.now()) {
       natural: natural?.diagnostics ?? null,
       feet: motionDriver.value === 'natural' ? body?.diagnostics.feet ?? null : null,
       lookAt: motionDriver.value === 'natural' ? body?.diagnostics.lookAt ?? null : null,
+      locomotion: motionDriver.value === 'natural' ? body?.diagnostics.locomotion ?? null : null,
       touch: touch && canvasRef.value ? touch.diagnostics(activeCamera, canvasRef.value.getBoundingClientRect()) : null,
       director: stance ? { ...stance.diagnostics, clockOffsetMs: diagnostics.directorClockOffsetMs, centerY: centerModelY() } : null,
       animation: animation?.snapshot() ?? { idle: null, currentAction: null, actionsStarted: 0 },
@@ -619,10 +627,11 @@ function disposeModel() {
   loadedModelKey = null
   stageExtent = undefined
   stageFootBaselineY = 0
+  stageRootYaw = 0
   characterPlacement.value = null
   stageModel.value = null
   diagnostics.setMetrics(new MMDFrameMetrics())
-  diagnostics.publish({ loadedModelKey: null, rig: null, natural: null, feet: null, lookAt: null, director: null, animation: { idle: null, currentAction: null, actionsStarted: 0 }, characterPlacement: null, stageModel: null })
+  diagnostics.publish({ loadedModelKey: null, rig: null, natural: null, feet: null, lookAt: null, director: null, animation: { idle: null, currentAction: null, actionsStarted: 0 }, characterPlacement: null, stageModel: null, locomotion: null })
   mmdStore.isModelLoaded = false
 }
 
@@ -744,12 +753,25 @@ async function loadModel(src: string) {
           return null
         return {
           enabled: motionDriver.value === 'natural',
+          // The root is placed on the floor line (and the body re-based there) once the stage extent is measured.
+          rootMotion: props.stageWorld !== undefined && stageExtent !== undefined,
           frame: natural.bodyFrame.frame,
           target: resolveBodyTarget({ mesh: activeMesh, camera, viewport: canvasRef.value.getBoundingClientRect(), gazeMode: gazeMode.value, calibration: props.stageWorld?.calibration }, natural.bodyFrame),
           ...diagnostics.debugFlags,
           stanceClips: activeStance.baseClips,
         }
       },
+      // Per-frame root motion: no physics reset on this path, so Ammo feels the travel.
+      root: { setPose: (x, yaw) => {
+        if (!modelGroup)
+          return
+        stageRootX = x
+        stageRootYaw = yaw
+        modelGroup.position.x = x
+        modelGroup.rotation.y = yaw
+        modelGroup.updateMatrixWorld(true)
+        publishPlacement()
+      } },
     })
     diagnostics.setMetrics(animation.pipeline.metrics)
     animation.pipeline.poseStages.push(
@@ -998,6 +1020,14 @@ watch(() => props.enableOrbitControls, (enabled) => {
 })
 
 watch(() => props.stageWorld, () => applyStageWorld())
+
+// Until todo 12's director owns goals, the lab's `requestGoal` command reaches the body directly, clamped to the ground.
+watch(() => diagnostics.goalRequest, (request) => {
+  const world = props.stageWorld
+  if (!request || !world)
+    return
+  body?.setLocomotionGoal({ goalX: clampToGround(world.ground, request.x), pace: request.pace, arriveFacing: 0, reason: 'debug' })
+})
 
 // View transform sliders.
 watch([scale, rotationY, () => position.value.x, () => position.value.y], () => applyTransform())

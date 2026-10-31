@@ -8,8 +8,11 @@ import { MMDFramePipeline } from '../frame-pipeline'
 import { readMMDRigProfile } from '../rig'
 import { MMDBody } from './index'
 
-/** Both legs, positive post-parse knees, and a nonidentity IK parent. No model assets. */
-export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI) {
+/**
+ * Both legs, positive post-parse knees, and a nonidentity IK parent. No model assets. `hair` adds a physics pendulum
+ * behind the head: a follow-bone body on the head and a dynamic body on `髪`, joined by a spring joint.
+ */
+export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean } = {}) {
   const mesh = new SkinnedMesh(new BufferGeometry(), new MeshBasicMaterial())
   const definitions: Array<{ name: string, parent: number, position: [number, number, number] }> = [
     { name: 'センター', parent: -1, position: [0, 10, 0] },
@@ -30,6 +33,7 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI) {
     { name: 'IK親', parent: -1, position: [3, 0, 2] },
     { name: '左足ＩＫ', parent: 15, position: [-2, 1, -2] },
     { name: '右足ＩＫ', parent: 15, position: [-4, 1, -2] },
+    ...options.hair ? [{ name: '髪', parent: 6, position: [0, -2, -1] as [number, number, number] }] : [],
   ]
   const bones = definitions.map(({ name, position }) => {
     const bone = new Bone()
@@ -46,6 +50,7 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI) {
   mesh.updateMatrixWorld(true)
   mesh.bind(new Skeleton(bones))
   const shell = createModel()
+  const isIk = (index: number) => index === 16 || index === 17
   const pmx: PmxObject = {
     ...shell.pmx,
     bones: definitions.map(({ name, parent }, index) => ({
@@ -54,8 +59,8 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI) {
       parentBoneIndex: parent,
       position: bones[index].getWorldPosition(new Vector3()).toArray(),
       transformOrder: index,
-      flag: index >= 16 ? PmxObject.Bone.Flag.IsIkEnabled : 0,
-      ik: index >= 16
+      flag: isIk(index) ? PmxObject.Bone.Flag.IsIkEnabled : 0,
+      ik: isIk(index)
         ? {
             target: index === 16 ? 11 : 14,
             iteration: 64,
@@ -67,6 +72,7 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI) {
           }
         : undefined,
     })),
+    ...options.hair ? hairPhysics() : {},
   }
   shell.dispose()
   const mmd = new MMD(pmx, mesh)
@@ -76,6 +82,7 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI) {
   const rig = readMMDRigProfile(pmx)
   const input: MMDBodyInput = {
     enabled: true,
+    rootMotion: false,
     disableFootContact: false,
     disableLookAt: false,
     stanceClips: new Set(),
@@ -89,9 +96,25 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI) {
     },
   }
   let current = input
-  const body = new MMDBody(mmd, rig, { modelKey: 'body-test', input: () => current })
+  const body = new MMDBody(mmd, rig, {
+    modelKey: 'body-test',
+    input: () => current,
+    root: { setPose: (x, yaw) => {
+      mesh.position.x = x
+      mesh.rotation.y = yaw
+      mesh.updateMatrixWorld(true)
+    } },
+  })
   const setInput = (next: Partial<MMDBodyInput>) => {
     current = { ...current, ...next }
+  }
+  /** Mirrors `MMD.vue`'s `setRootX`: a drag or teleport moves the root, re-bases the body, and only a teleport resets physics. */
+  const setRootX = (x: number, { teleport }: { teleport: boolean }) => {
+    mesh.position.x = x
+    mesh.updateMatrixWorld(true)
+    body.rebase(x)
+    if (teleport)
+      pipeline.requestPhysicsReset()
   }
   pipeline.poseStages.push({ id: 'natural', run: () => {} }, ...body.poseStages)
   pipeline.surfaceStages.push(body.surfaceStage)
@@ -101,5 +124,41 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI) {
       throw new TypeError(`Missing fixture bone ${name}`)
     return found
   }
-  return { mmd, mesh, bones, bone, mixer, pipeline, body, rig, input, setInput, identity: new Quaternion() }
+  return { mmd, mesh, bones, bone, mixer, pipeline, body, rig, input, setInput, setRootX, identity: new Quaternion() }
+}
+
+function hairPhysics(): Pick<PmxObject, 'rigidBodies' | 'joints'> {
+  const body: Omit<PmxObject.RigidBody, 'name' | 'boneIndex' | 'shapeSize' | 'shapePosition' | 'physicsMode'> = {
+    englishName: '',
+    collisionGroup: 0,
+    collisionMask: 0,
+    shapeType: PmxObject.RigidBody.ShapeType.Sphere,
+    shapeRotation: [0, 0, 0],
+    mass: 1,
+    linearDamping: 0.5,
+    angularDamping: 0.5,
+    repulsion: 0,
+    friction: 0.5,
+  }
+  return {
+    rigidBodies: [
+      { ...body, name: 'head', boneIndex: 6, shapeSize: [0.5, 0, 0], shapePosition: [0, 18.5, 0], physicsMode: PmxObject.RigidBody.PhysicsMode.FollowBone },
+      { ...body, name: 'hair', boneIndex: 18, collisionGroup: 1, shapeSize: [0.3, 0, 0], shapePosition: [0, 15, -1], physicsMode: PmxObject.RigidBody.PhysicsMode.Physics },
+    ],
+    joints: [{
+      name: 'hair',
+      englishName: '',
+      type: PmxObject.Joint.Type.Spring6dof,
+      rigidbodyIndexA: 0,
+      rigidbodyIndexB: 1,
+      position: [0, 16, -1],
+      rotation: [0, 0, 0],
+      positionMin: [0, 0, 0],
+      positionMax: [0, 0, 0],
+      rotationMin: [-1, 0, -1],
+      rotationMax: [1, 0, 1],
+      springPosition: [0, 0, 0],
+      springRotation: [0, 0, 0],
+    }],
+  }
 }

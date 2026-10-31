@@ -1,4 +1,5 @@
 import type { Foot, FootAnchor, LegGeometry } from '@proj-airi/motion-driver-humanoid/foot-contact'
+import type { LocomotionFoot } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { LookAtFrame } from '@proj-airi/motion-driver-humanoid/look-at'
 import type { AnimationClip } from 'three'
 
@@ -12,7 +13,32 @@ import { toRigTraits } from '../rig'
 
 const sides = ['left', 'right'] as const
 
-/** Mesh-local anchors survive pose restoration, but never a model replacement. */
+/** The model root on the ground line: world x, and yaw about +Y. The root never leaves z = 0. */
+export interface MMDRootPose {
+  readonly x: number
+  readonly yaw: number
+}
+
+/** Ground frame (world x and z, model-unit heights) to the mesh-local frame of a root at `root`. */
+function toMeshAnchor(anchor: FootAnchor, root: MMDRootPose): FootAnchor {
+  const dx = anchor.position.x - root.x
+  const dz = anchor.position.z
+  const cos = Math.cos(root.yaw)
+  const sin = Math.sin(root.yaw)
+  return { position: { x: cos * dx - sin * dz, y: anchor.position.y, z: sin * dx + cos * dz }, yaw: anchor.yaw - root.yaw }
+}
+
+function toGroundAnchor(anchor: FootAnchor, root: MMDRootPose): FootAnchor {
+  const { x, y, z } = anchor.position
+  const cos = Math.cos(root.yaw)
+  const sin = Math.sin(root.yaw)
+  return { position: { x: root.x + cos * x + sin * z, y, z: -sin * x + cos * z }, yaw: anchor.yaw + root.yaw }
+}
+
+/**
+ * Planted anchors live in the ground frame, so root motion never drags a planted foot. They are converted into the
+ * mesh-local frame before every IK write. With the root at the origin both frames coincide exactly.
+ */
 export class MMDFootContact {
   private readonly legs
   private readonly planner
@@ -22,6 +48,10 @@ export class MMDFootContact {
   private readonly steps: Partial<Record<Foot, { start: number, arc: ReturnType<typeof planFootSteps>[number] }>> = {}
   private readonly last: Record<Foot, Vector3>
   private plannedYaw = 0
+  private root: MMDRootPose = { x: 0, yaw: 0 }
+  /** Feet that carry weight this frame, and their solved world ankles from the previous measurement. */
+  private readonly carrying: Record<Foot, boolean> = { left: false, right: false }
+  private readonly carried: Partial<Record<Foot, Vector3>> = {}
 
   constructor(private readonly pose: MMDBodyPose) {
     this.legs = sides.flatMap((side) => {
@@ -48,6 +78,42 @@ export class MMDFootContact {
     }
   }
 
+  /** Bind geometry of both legs, or null when either leg IK chain is missing. */
+  get bindLegs(): Record<Foot, LegGeometry> | null {
+    const left = this.legs.find(leg => leg.side === 'left')?.geometry
+    const right = this.legs.find(leg => leg.side === 'right')?.geometry
+    return left && right ? { left, right } : null
+  }
+
+  /** Planted anchors in the ground frame, falling back to the bind ankles beside the root. */
+  anchors(): Record<Foot, FootAnchor> {
+    const bind = this.bindAnchors()
+    return {
+      left: this.planted.left ?? toGroundAnchor(bind.left, this.root),
+      right: this.planted.right ?? toGroundAnchor(bind.right, this.root),
+    }
+  }
+
+  /** The caller moved the root to `root`: re-plant both feet at their bind offsets beside it. */
+  rebase(root: MMDRootPose): void {
+    this.root = root
+    const bind = this.bindAnchors()
+    for (const side of sides) {
+      delete this.steps[side]
+      delete this.carried[side]
+      this.planted[side] = toGroundAnchor(bind[side], root)
+    }
+    this.planner?.setAnchors(bind)
+  }
+
+  private bindAnchors(): Record<Foot, FootAnchor> {
+    const anchor = (side: Foot): FootAnchor => {
+      const ankle = this.legs.find(leg => leg.side === side)?.geometry.ankle ?? { x: 0, z: 0 }
+      return { position: { x: ankle.x, y: this.pose.rig.footBaselineY ?? 0, z: ankle.z }, yaw: 0 }
+    }
+    return { left: anchor('left'), right: anchor('right') }
+  }
+
   apply(context: MMDFrameContext, input: {
     offset: Vector3
     duck: number
@@ -57,10 +123,15 @@ export class MMDFootContact {
     look: LookAtFrame
     now: number
     clips: ReadonlyMap<string, AnimationClip>
+    root: MMDRootPose
+    /** Gait foot targets in the ground frame; they own both feet while the gait weight is above 0. */
+    gait: Record<Foot, LocomotionFoot> | null
   }): void {
     if (!this.planner)
       return
     const { clean, dt, mmd } = context
+    const root = input.root
+    this.root = root
     const sample = (side: Foot) => {
       const chain = this.pose.rig.legIk[side]
       let clipFootTrackWeight = 0
@@ -83,6 +154,17 @@ export class MMDFootContact {
       }
     }
     const samples = { left: sample('left'), right: sample('right') }
+    if (input.gait) {
+      for (const side of sides) {
+        const target = input.gait[side].target
+        this.planted[side] = { position: { ...target.position }, yaw: target.yaw }
+        delete this.steps[side]
+      }
+      // The gait leaves facing on the root, so the hip yaw that turn steps track is zero again.
+      this.plannedYaw = 0
+      const planted = this.anchors()
+      this.planner.setAnchors({ left: toMeshAnchor(planted.left, root), right: toMeshAnchor(planted.right, root) })
+    }
     const previous = this.result
     // One-shots duck this layer even without IK tracks; stance clips duck it
     // only through clipFootTrackWeight, so feet stay planted while sitting down.
@@ -94,15 +176,15 @@ export class MMDFootContact {
     }, dt)
     for (const leg of this.legs) {
       const contact = this.result.feet[leg.side]
-      if (!this.planted[leg.side] || (previous?.feet[leg.side].c === 0 && contact.c > 0))
-        this.planted[leg.side] = contact.anchor
+      if (!input.gait && (!this.planted[leg.side] || (previous?.feet[leg.side].c === 0 && contact.c > 0)))
+        this.planted[leg.side] = toGroundAnchor(contact.anchor, root)
     }
     for (const step of input.look.turnSteps) {
       this.plannedYaw += step.yaw
-      const left = this.planted.left ?? this.result.feet.left.anchor
-      const right = this.planted.right ?? this.result.feet.right.anchor
+      const left = this.planted.left ?? toGroundAnchor(this.result.feet.left.anchor, root)
+      const right = this.planted.right ?? toGroundAnchor(this.result.feet.right.anchor, root)
       const anchor = step.foot === 'left' ? left : right
-      const [arc] = planFootSteps([{ foot: step.foot, yawDelta: this.plannedYaw - anchor.yaw, duration: step.duration }], { left, right }, { x: 0, y: 0, z: 0 })
+      const [arc] = planFootSteps([{ foot: step.foot, yawDelta: root.yaw + this.plannedYaw - anchor.yaw, duration: step.duration }], { left, right }, { x: root.x, y: 0, z: 0 })
       this.steps[step.foot] = { start: step.startTime, arc }
     }
     const offset = new Vector3().copy(input.offset).lerp(this.result.pelvisOffset, input.duck)
@@ -116,8 +198,9 @@ export class MMDFootContact {
         if (input.now - step.start >= step.arc.duration)
           delete this.steps[side]
       }
-      const anchor = this.planted[side] ?? contact.anchor
+      const anchor = toMeshAnchor(this.planted[side] ?? toGroundAnchor(contact.anchor, root), root)
       this.targets[side] = anchor
+      this.carrying[side] = !input.disabled && contact.c >= 1 && (input.gait ? input.gait[side].planted : !this.steps[side])
       if (input.disabled) {
         mmd.ikSolver.setEnabled(chain.ikBoneIndex, false)
         continue
@@ -164,12 +247,26 @@ export class MMDFootContact {
     }
   }
 
-  /** Read after the real IK, grants, and physics, never the commanded IK target. */
+  /**
+   * Read after the real IK, grants, and physics, never the commanded IK target. `skate` is the largest horizontal
+   * world movement of a solved ankle that carried weight in both this frame and the previous one; it should be 0.
+   */
   measure() {
     let errorL = 0
     let errorR = 0
     let contact = 0
+    let skate = 0
     for (const leg of this.legs) {
+      const world = leg.ankle.getWorldPosition(new Vector3())
+      const before = this.carried[leg.side]
+      if (this.carrying[leg.side]) {
+        if (before)
+          skate = Math.max(skate, Math.hypot(world.x - before.x, world.z - before.z))
+        this.carried[leg.side] = world
+      }
+      else {
+        delete this.carried[leg.side]
+      }
       const solved = this.pose.localPosition(leg.ankle)
       this.last[leg.side].copy(solved)
       const target = this.targets[leg.side]
@@ -180,6 +277,6 @@ export class MMDFootContact {
         errorR = error
       contact += this.result?.feet[leg.side].c ?? 0
     }
-    return { maxError: Math.max(errorL, errorR), errorL, errorR, contact: this.legs.length ? contact / this.legs.length : 0 }
+    return { maxError: Math.max(errorL, errorR), errorL, errorR, contact: this.legs.length ? contact / this.legs.length : 0, skate }
   }
 }
