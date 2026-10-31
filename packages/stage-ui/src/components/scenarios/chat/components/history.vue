@@ -175,7 +175,7 @@ const { itemProps } = useVirtualizerBottomAlignment({
   virtualizer: virtualizerRef,
 })
 
-useChatHistoryScroll({
+const { followTail } = useChatHistoryScroll({
   container: chatHistoryRef,
   messages: renderMessages,
   getKey: getChatHistoryItemKey,
@@ -323,6 +323,7 @@ function emitToolCallRerun(
               @copy="emitCopyMessage(message, index)"
               @delete="emitDeleteMessage(message, index)"
               @reply="emitReplyMessage(message)"
+              @reveal="followTail()"
               @tool-call-rerun="emitToolCallRerun(message, index, $event)"
             />
             <ChatUnpromptedCue

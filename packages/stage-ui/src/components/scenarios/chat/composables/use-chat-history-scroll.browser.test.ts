@@ -48,8 +48,8 @@ function startScrollBehavior({
 }) {
   const scope = effectScope()
   activeScopes.push(scope)
-  scope.run(() => {
-    useChatHistoryScroll({
+  return scope.run(() => {
+    return useChatHistoryScroll({
       container,
       messages,
       getKey: message => message.id,
@@ -57,7 +57,7 @@ function startScrollBehavior({
       tailInset,
       passive,
     })
-  })
+  })!
 }
 
 async function flushReactivity() {
@@ -241,6 +241,30 @@ describe('useChatHistoryScroll', () => {
     messages.value = [...messages.value, { id: 'assistant-2' }]
     await flushReactivity()
     expect(scrollToIndex).toHaveBeenLastCalledWith(2, 'end')
+  })
+
+  // A bubble revealed after a break grows the last message without changing the list, so the
+  // history exposes the same follow decision for the item to call.
+  it('follows the tail on a reveal, and holds after a user scroll away from the tail', async () => {
+    const currentContainer = createScrollContainer(2)
+    currentContainer.scrollTop = currentContainer.scrollHeight
+    const container = shallowRef<HTMLElement | null>(currentContainer)
+    const messages = shallowRef<TestMessage[]>([{ id: 'user-1' }, { id: 'assistant-1' }])
+    const scrollToIndex = vi.fn()
+    const { followTail } = startScrollBehavior({ container, messages, scrollToIndex })
+    await flushReactivity()
+    scrollToIndex.mockClear()
+
+    followTail()
+    expect(scrollToIndex).toHaveBeenCalledTimes(1)
+    expect(scrollToIndex).toHaveBeenCalledWith(1, 'end')
+    scrollToIndex.mockClear()
+
+    currentContainer.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -100 }))
+    currentContainer.scrollTop = 0
+    currentContainer.dispatchEvent(new Event('scroll'))
+    followTail()
+    expect(scrollToIndex).not.toHaveBeenCalled()
   })
 
   it('keeps a streaming tail aligned to the viewport end', async () => {
