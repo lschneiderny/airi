@@ -3,7 +3,7 @@ import type { Live2DMotionDriver } from '@proj-airi/stage-ui-live2d'
 
 import type { StagePerformanceScene } from './use-stage-performance-conductor'
 
-import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace } from '@proj-airi/stage-shared/expression-performance'
+import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace, touchAffect } from '@proj-airi/stage-shared/expression-performance'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
@@ -47,6 +47,8 @@ function fakeScene() {
     applyHolds: vi.fn<StagePerformanceScene['applyHolds']>(),
     onSpeech: vi.fn<StagePerformanceScene['onSpeech']>(),
     setMuted: vi.fn<StagePerformanceScene['setMuted']>(),
+    gesture: vi.fn<NonNullable<StagePerformanceScene['gesture']>>(),
+    addMood: vi.fn<NonNullable<StagePerformanceScene['addMood']>>(),
   }
 }
 
@@ -136,7 +138,7 @@ describe('stage performance renderer selection', () => {
     conductor.turnEnd('turn-a')
     conductor.clearExpression(undefined, 'devtools')
 
-    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0])
+    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0])
     expect(selected.value.expressionBackend).toBeUndefined()
     expect(selected.value.driver).toBe('natural')
   })
@@ -153,7 +155,7 @@ describe('stage performance renderer selection', () => {
 
     expect(() => conductor.expression('game', undefined, 'act', 'turn-b')).not.toThrow()
 
-    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0])
+    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0])
     expect(useLlmToolsStore().tools).toEqual([])
   })
 
@@ -165,7 +167,7 @@ describe('stage performance renderer selection', () => {
     expect(conductor.expression('smile', undefined, 'act', 'mmd-turn')?.id).toBe('mmd:0:smile')
     expect(mmdScene.applySlots).toHaveBeenLastCalledWith(expect.arrayContaining([expect.objectContaining({ expressionId: 'mmd:0:smile' })]), expect.any(Number))
     expect(selected.value.expressionBackend?.catalog).toBe(mmdStore.catalog)
-    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0])
+    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0, 0, 0])
   })
 
   it('keeps the Live2D backend catalog and performer state live', () => {
@@ -430,6 +432,67 @@ describe('stage performance conductor', () => {
     ])
     expect(warn).toHaveBeenCalledTimes(5)
     expect(warn).toHaveBeenCalledWith('[performance-conductor] Expression is not exposed and was dropped:', 'hat', 'available:', ['game', 'Blush'])
+  })
+
+  describe('touch, cue gestures, and moodless turns', () => {
+    it('doses mood from a touch through the decider and hands the dose to the Natural scene only', () => {
+      const scene = fakeScene()
+      const { conductor } = createConductor('natural', scene)
+
+      conductor.touch({ touch: 'poke', region: 'head' })
+
+      // The conductor clock reads 10, so the decider sees the poke at 10 s.
+      const expected = touchAffect(initialTouchAffectMemory, { touch: 'poke', region: 'head', at: 10 }, defaultExpressionPerformanceSettings).dose
+      expect(expected).not.toBeNull()
+      expect(scene.addMood.mock.calls).toEqual([[expected]])
+      expect(scene.setEmotion).not.toHaveBeenCalled()
+      expect(scene.applySlots).not.toHaveBeenCalled()
+    })
+
+    it.each(['universal', 'magic'] as const)('never doses mood or plays a motion group for a touch under %s', (driver) => {
+      const scene = fakeScene()
+      const { conductor, playMotion } = createConductor(driver, scene)
+
+      conductor.touch({ touch: 'pet-start', region: 'head' })
+      conductor.touch({ touch: 'poke', region: 'body' })
+
+      expect(scene.addMood).not.toHaveBeenCalled()
+      expect(playMotion).not.toHaveBeenCalled()
+      expect(scene.setEmotion).not.toHaveBeenCalled()
+    })
+
+    it('plays an ACT cue gesture on the scene under Natural and ignores it under Universal and MAGIC', () => {
+      const played = (['natural', 'universal', 'magic'] as const).map((driver) => {
+        const scene = fakeScene()
+        createConductor(driver, scene).conductor.gesture('nod', 2)
+        return [driver, scene.gesture.mock.calls]
+      })
+
+      expect(played).toEqual([
+        ['natural', [['nod', 2]]],
+        ['universal', []],
+        ['magic', []],
+      ])
+    })
+
+    it('gives every episode of a moodless turn a zero mood gain and leaves other turns alone', () => {
+      const scene = fakeScene()
+      const { conductor, advance } = createConductor('natural', scene)
+      const gains = defaultExpressionPerformanceSettings.moodDynamics
+
+      conductor.markMoodless('reaction')
+      conductor.emotion('happy', 0.6, 'act', 'reaction')
+      advance(3)
+      conductor.emotion('sad', 0.9, 'act', 'reaction')
+      advance(3)
+      conductor.emotion('angry', 0.6, 'act', 'user-turn')
+
+      expect(scene.setEmotion.mock.calls.map(([episode]) => [episode.emotion, episode.band, episode.moodGain])).toEqual([
+        ['happy', 'clear', 0],
+        ['sad', 'strong', 0],
+        ['angry', 'clear', gains.clearGain],
+      ])
+    })
   })
 
   describe('combos', () => {
