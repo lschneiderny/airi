@@ -2,6 +2,7 @@ import type { MMDMaterialDescriptor } from '@moeru/three-mmd/materials'
 
 import { MMDToonMaterial } from '@moeru/three-mmd/materials/toon'
 import {
+  Bone,
   BufferGeometry,
   Color,
   Group,
@@ -10,9 +11,11 @@ import {
   MeshDepthMaterial,
   MeshDistanceMaterial,
   MeshPhongMaterial,
+  Skeleton,
+  SkinnedMesh,
   Texture,
 } from 'three'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   applyMMDMaterialOpacity,
@@ -87,6 +90,46 @@ describe('mmd surface materials', () => {
 })
 
 describe('mmd GPU resource disposal', () => {
+  it.each([false, true])('disposes a shared skeleton once with bone texture allocated: %s', (allocated) => {
+    const skeleton = new Skeleton([new Bone()])
+    if (allocated)
+      skeleton.computeBoneTexture()
+    const boneTexture = skeleton.boneTexture
+    const boneTextureDispose = boneTexture ? vi.spyOn(boneTexture, 'dispose') : undefined
+    const skeletonDispose = vi.spyOn(skeleton, 'dispose')
+    const root = new Group()
+    for (let i = 0; i < 2; i++) {
+      const mesh = new SkinnedMesh(new BufferGeometry(), new MeshBasicMaterial())
+      mesh.bind(skeleton)
+      root.add(mesh)
+    }
+
+    disposeMMDObject(root)
+
+    if (boneTextureDispose)
+      expect(boneTextureDispose).toHaveBeenCalledTimes(1)
+    expect(skeleton.boneTexture).toBeNull()
+    expect(skeletonDispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases shared model textures once across surface and outline materials', () => {
+    const texture = new Texture()
+    const toon = new Texture()
+    const surface = new MMDToonMaterial({ ...createDescriptor('surface'), toonMap: toon })
+    surface.map = texture
+    surface.emissiveMap = texture
+    const outline = new MeshBasicMaterial({ map: texture })
+    const mesh = new Mesh(new BufferGeometry(), surface)
+    mesh.add(new Mesh(mesh.geometry, outline))
+    const textureDispose = vi.spyOn(texture, 'dispose')
+    const toonDispose = vi.spyOn(toon, 'dispose')
+
+    disposeMMDObject(mesh)
+
+    expect(textureDispose).toHaveBeenCalledTimes(1)
+    expect(toonDispose).toHaveBeenCalledTimes(1)
+  })
+
   it('disposes shared geometry, render materials, and custom shadow materials once', () => {
     const geometry = new BufferGeometry()
     const surface = new MMDToonMaterial(createDescriptor('surface'))
