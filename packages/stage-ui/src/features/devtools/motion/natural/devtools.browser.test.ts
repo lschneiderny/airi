@@ -4,6 +4,7 @@ import type { AffectTraceSink, NaturalCaptureResult } from '@proj-airi/stage-ui-
 import en from '@proj-airi/i18n/locales/en'
 
 import { defaultExpressionPerformanceSettings, parseAffectTrace } from '@proj-airi/stage-shared/expression-performance'
+import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d/live2d'
 import { setAffectTraceSink, setNaturalTraceSink, useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { until } from '@vueuse/core'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
@@ -109,6 +110,29 @@ describe('natural motion lab', () => {
     setAffectTraceSink(null)
     cleanup()
     localStorage.removeItem('settings/expression-performance')
+    localStorage.removeItem('settings/live2d/motion-driver')
+  })
+
+  it('plays a gesture with the chosen count while the driver is Natural', async () => {
+    const { screen, override } = await renderLab()
+    useSettingsLive2d().live2dMotionDriver = 'natural'
+    const nod = screen.getByRole('button', { name: /gestures\.names\.nod/ })
+    await expect.element(nod).toBeEnabled()
+
+    await screen.getByRole('button', { name: '2', exact: true }).click()
+    await nod.click()
+    expect(override.gestureRequest).toEqual({ kind: 'nod', count: 2, seq: 1 })
+
+    await screen.getByRole('button', { name: /gestures\.names\.shrug/ }).click()
+    expect(override.gestureRequest).toEqual({ kind: 'shrug', count: 1, seq: 2 })
+  })
+
+  it.each(['magic', 'universal'] as const)('disables the gesture buttons under %s', async (driver) => {
+    const { screen, override } = await renderLab()
+    useSettingsLive2d().live2dMotionDriver = driver
+    for (const kind of ['nod', 'shake', 'shrug', 'lean', 'glance'])
+      await expect.element(screen.getByRole('button', { name: new RegExp(`gestures\\.names\\.${kind}`) })).toBeDisabled()
+    expect(override.gestureRequest).toBeNull()
   })
 
   it('writes the performance override from its controls', async () => {
