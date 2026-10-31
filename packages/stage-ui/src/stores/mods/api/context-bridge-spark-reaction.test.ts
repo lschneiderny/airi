@@ -240,6 +240,7 @@ describe('widget spark reactions', () => {
       unpromptedPending: () => unpromptedPending,
       activeSessionId: () => 'session-1',
       submitUnprompted: payload => submitUnprompted(payload),
+      submitReaction: async () => ({ status: 'failed', error: 'No reaction turns in this test' }),
       sessionMessages: () => [],
       extractionSelection: async () => null,
       stream: async () => {},

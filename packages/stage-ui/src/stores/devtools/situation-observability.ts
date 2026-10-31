@@ -1,4 +1,9 @@
 import type {
+  ReactionDecision,
+  ReactionHoldReason,
+  ReactionKind,
+  ReactionMemory,
+  ReactionPending,
   Reason,
   ReasonCategory,
   ReasonKind,
@@ -17,7 +22,7 @@ import type { Message } from '@xsai/shared-chat'
 import type { ChatUnpromptedResult } from '../chat'
 
 import { defineInvoke, defineInvokeEventa, defineInvokeHandler } from '@moeru/eventa'
-import { advanceSituation, initialSituationState, renderSituation } from '@proj-airi/stage-shared/situation'
+import { advanceSituation, initialSituationState, REACTION_REFRACTORY_MS, REACTION_RETRY_MS, renderSituation } from '@proj-airi/stage-shared/situation'
 import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { computed, shallowRef, watch } from 'vue'
@@ -191,6 +196,48 @@ export interface SituationReasonOutcome {
 
 export type SituationReasonOutcomes = Readonly<Record<ReasonKind, SituationReasonOutcome>>
 
+/** The newest touch reaction decision, reduced to what the inspector lists. */
+export interface SituationReactionDecisionRecord {
+  speak: boolean
+  /** The kind the touch reacted or would react with; `null` when the touch was not usable. */
+  kind: ReactionKind | null
+  /** Why the policy held; `null` when it decided to speak. */
+  reason: ReactionHoldReason | null
+  /** The draw of a roll, `null` when the policy held before the roll. */
+  roll: number | null
+  /** The kind's probability of a speak decision, `null` for holds. */
+  probability: number | null
+  atMs: number
+}
+
+/**
+ * Outcomes of the reaction turns of one kind since this window started. `refused` counts sends that another pending
+ * unprompted turn refused; the policy treats them as never attempted.
+ */
+export interface SituationReactionOutcome {
+  spoken: number
+  declined: number
+  cancelled: number
+  failed: number
+  refused: number
+}
+
+export type SituationReactionOutcomeStatus = keyof SituationReactionOutcome
+
+export interface SituationReactionInspection {
+  /** `null` until a touch was evaluated in this window. */
+  decision: SituationReactionDecisionRecord | null
+  /** The reaction policy's memory now; `null` until the gate loop started. */
+  memory: ReactionMemory | null
+  /** Milliseconds until the refractory after the last spoken line ends, at the inspection's `nowMs`; 0 when none holds. */
+  refractoryRemainingMs: number
+  /** Milliseconds until the retry wait after the last attempt ends, at the inspection's `nowMs`; 0 when none holds. */
+  retryRemainingMs: number
+  pending: ReactionPending | null
+  /** One fixed entry per reaction kind, so the inspection stays bounded. */
+  outcomes: Readonly<Record<ReactionKind, SituationReactionOutcome>>
+}
+
 export interface SituationInspection extends SituationLiveState {
   /** Clock of the answering window when it built the inspection. */
   nowMs: number
@@ -208,6 +255,8 @@ export interface SituationInspection extends SituationLiveState {
   rituals: RitualDay | null
   extraction: SituationExtraction
   outcomes: SituationReasonOutcomes
+  /** The touch reaction policy of this window. */
+  reactions: SituationReactionInspection
 }
 
 export interface SituationPreview extends RenderedSituation {
@@ -255,6 +304,17 @@ const NO_OUTCOMES: SituationReasonOutcomes = Object.freeze({
   'notify': NO_OUTCOME,
 })
 
+const NO_REACTION_OUTCOME: SituationReactionOutcome = Object.freeze({ spoken: 0, declined: 0, cancelled: 0, failed: 0, refused: 0 })
+const NO_REACTION_OUTCOMES: Readonly<Record<ReactionKind, SituationReactionOutcome>> = Object.freeze({
+  'pet-soft': NO_REACTION_OUTCOME,
+  'poke-protest': NO_REACTION_OUTCOME,
+})
+
+/** Milliseconds left of a hold of `durationMs` that started at `sinceMs`, never negative. */
+function remainingMs(sinceMs: number | null, durationMs: number, nowMs: number): number {
+  return sinceMs === null ? 0 : Math.max(0, sinceMs + durationMs - nowMs)
+}
+
 const NO_REASONS: readonly Reason[] = Object.freeze([])
 const NO_THREADS: readonly Thread[] = Object.freeze([])
 
@@ -298,6 +358,9 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
   const extractionLedger = shallowRef<readonly ThreadExtractionLedgerEntry[]>([])
   const extractionInFlight = shallowRef(false)
   const outcomes = shallowRef<SituationReasonOutcomes>(NO_OUTCOMES)
+  const reactionDecision = shallowRef<SituationReactionDecisionRecord | null>(null)
+  const reactionMemory = shallowRef<ReactionMemory | null>(null)
+  const reactionOutcomes = shallowRef<Readonly<Record<ReactionKind, SituationReactionOutcome>>>(NO_REACTION_OUTCOMES)
   /** Spoken turns whose engagement is not settled yet, oldest first. */
   let awaitingEngagement: readonly { kind: ReasonKind, spokenAtMs: number }[] = []
   const actCompliance = useActComplianceStore()
@@ -413,6 +476,25 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
       countOutcome(spoken.kind, atMs - spoken.spokenAtMs <= SITUATION_ENGAGEMENT_WINDOW_MS ? 'engaged' : 'ignored')
   }
 
+  /** Called by the situation store of this window after every touch reaction evaluation, with the memory it left. */
+  function recordReactionDecision(decision: ReactionDecision, memory: ReactionMemory, atMs: number) {
+    reactionDecision.value = decision.speak
+      ? { speak: true, kind: decision.kind, reason: null, roll: decision.roll, probability: decision.probability, atMs }
+      : { speak: false, kind: decision.kind, reason: decision.reason, roll: decision.roll, probability: null, atMs }
+    reactionMemory.value = memory
+  }
+
+  /** Called by the situation store of this window whenever its reaction memory changes; `null` once the gate stops. */
+  function publishReactionMemory(memory: ReactionMemory | null) {
+    reactionMemory.value = memory
+  }
+
+  /** Called by the situation store of this window when a reaction turn has its outcome. */
+  function recordReactionOutcome(kind: ReactionKind, status: SituationReactionOutcomeStatus) {
+    const current = reactionOutcomes.value[kind]
+    reactionOutcomes.value = { ...reactionOutcomes.value, [kind]: { ...current, [status]: current[status] + 1 } }
+  }
+
   /** Called by the thread extractor of this window after every extraction attempt, `skipped` included. */
   function recordExtraction(entry: ThreadExtractionLedgerEntry) {
     extractionLedger.value = [entry, ...extractionLedger.value].slice(0, SITUATION_EXTRACTION_LEDGER_MAX)
@@ -464,10 +546,12 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
 
   /** Returns the live situation, the render and gate history, and the spend of this window. */
   async function inspect(): Promise<SituationInspection> {
+    const nowMs = Date.now()
+    const memory = reactionMemory.value
     return {
       leading: live.value.leading,
       state: live.value.state,
-      nowMs: Date.now(),
+      nowMs,
       renders: [...renders.value],
       spend: { sessions: [...sessionSpend.value.values()], lastUnpromptedRequest: lastUnpromptedRequest.value },
       urge: { trace: urgeTrace.value, decision: urgeDecision.value, history: [...urgeDecisionHistory.value], memory: urgeMemory.value },
@@ -477,6 +561,14 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
       rituals: urgeTrace.value?.rituals ?? null,
       extraction: { ledger: [...extractionLedger.value], inFlight: extractionInFlight.value },
       outcomes: outcomes.value,
+      reactions: {
+        decision: reactionDecision.value,
+        memory,
+        refractoryRemainingMs: remainingMs(memory?.lastLineAtMs ?? null, REACTION_REFRACTORY_MS, nowMs),
+        retryRemainingMs: remainingMs(memory?.lastAttemptAtMs ?? null, REACTION_RETRY_MS, nowMs),
+        pending: memory?.pending ?? null,
+        outcomes: reactionOutcomes.value,
+      },
     }
   }
 
@@ -513,6 +605,9 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
     publishUrgeState,
     recordReasonOutcome,
     recordUserTurn,
+    recordReactionDecision,
+    publishReactionMemory,
+    recordReactionOutcome,
     recordExtraction,
     publishExtractionInFlight,
     recordUnpromptedOutcome,
