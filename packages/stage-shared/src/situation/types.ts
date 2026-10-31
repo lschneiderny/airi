@@ -105,6 +105,25 @@ export interface BusyObservation {
   readonly atMs: number
 }
 
+/** How the user touched the character on the stage. */
+export type TouchGesture = 'pet' | 'poke'
+
+/** Where the user touched the character. */
+export type TouchRegion = 'head' | 'body'
+
+/**
+ * The user touched the character on the stage. A pet is reported once, when it ends: `atMs` is its end and
+ * `durationMs` its length. Only head pets count; a poke needs no duration.
+ */
+export interface TouchObservation {
+  readonly kind: 'touch'
+  readonly gesture: TouchGesture
+  readonly region: TouchRegion
+  readonly atMs: number
+  /** Length of a pet in ms. Required for pets, ignored for pokes. */
+  readonly durationMs?: number
+}
+
 /** One input to the situation reducer. Every variant is JSON-serializable. */
 export type Observation
   = | PresenceObservation
@@ -115,6 +134,7 @@ export type Observation
     | NotifyObservation
     | StageObservation
     | BusyObservation
+    | TouchObservation
 
 /** Kinds of events the reducer derives from observations. */
 export type SituationEventKind
@@ -126,6 +146,7 @@ export type SituationEventKind
     | 'switching-burst'
     | 'context'
     | 'notify'
+    | 'touch'
 
 /**
  * Something worth mentioning. Salience decays with `halfLifeMs` from `atMs`.
@@ -223,6 +244,19 @@ export interface SituationTracking {
   readonly tierDone: number
   readonly switchTimes: readonly number[]
   readonly burstActive: boolean
+  /** `atMs` of the latest touch observation; an older touch is ignored. */
+  readonly touchAtMs: number | null
+  /** Times of the recent pokes, oldest first; at most 8 within the poke burst window. */
+  readonly pokeTimes: readonly number[]
+  /** The latest pet, merged with the pets just before it, or `null` before any. */
+  readonly lastPet: SituationPet | null
+}
+
+/** A pet span. Pets close together merge into one span whose `durationMs` is the sum of their lengths. */
+export interface SituationPet {
+  readonly startedAtMs: number
+  readonly endedAtMs: number
+  readonly durationMs: number
 }
 
 /**
@@ -275,19 +309,27 @@ export const initialSituationState: SituationState = Object.freeze({
     tierDone: 0,
     switchTimes: Object.freeze([]),
     burstActive: false,
+    touchAtMs: null,
+    pokeTimes: Object.freeze([]),
+    lastPet: null,
   }),
 })
 
 /**
  * Keys of {@link BASE_SALIENCE} and {@link HALF_LIFE_MS}. Kinds whose weight
  * depends on the observation have variants: `context-vision` for the `vision`
- * source, `notify-<urgency>`, and `notify-critical` for critical reminders.
+ * source, `notify-<urgency>`, `notify-critical` for critical reminders, and
+ * `touch-pet`, `touch-pet-long`, `touch-poke`, `touch-poke-burst` for touches.
  */
 export type SalienceKey
-  = | Exclude<SituationEventKind, 'notify'>
+  = | Exclude<SituationEventKind, 'notify' | 'touch'>
     | 'context-vision'
     | `notify-${NotifyUrgency}`
     | 'notify-critical'
+    | 'touch-pet'
+    | 'touch-pet-long'
+    | 'touch-poke'
+    | 'touch-poke-burst'
 
 // Every salience and half-life below is a starting value that has not been
 // measured against real sessions. Tune them with the devtools situation panel.
@@ -312,6 +354,10 @@ export const BASE_SALIENCE: Readonly<Record<SalienceKey, number>> = Object.freez
   'notify-soon': 0.7,
   'notify-later': 0.4,
   'notify-critical': 1.0,
+  'touch-pet': 0.3,
+  'touch-pet-long': 0.4,
+  'touch-poke': 0.25,
+  'touch-poke-burst': 0.4,
 })
 
 const MINUTE_MS = 60_000
@@ -335,6 +381,10 @@ export const HALF_LIFE_MS: Readonly<Record<SalienceKey, number>> = Object.freeze
   'notify-soon': 30 * MINUTE_MS,
   'notify-later': 60 * MINUTE_MS,
   'notify-critical': 30 * MINUTE_MS,
+  'touch-pet': 3 * MINUTE_MS,
+  'touch-pet-long': 3 * MINUTE_MS,
+  'touch-poke': 3 * MINUTE_MS,
+  'touch-poke-burst': 3 * MINUTE_MS,
 })
 
 /** Salience added per long-session tier above the first. Tuning: raise if late tiers go unmentioned. */
@@ -383,3 +433,5 @@ export function notifyTopicKey(sourceKey: string, eventId: string): string {
 export const PRESENCE_RETURN_TOPIC_KEY = 'presence:return'
 /** Topic key of wake (unlock or resume) events. */
 export const WAKE_TOPIC_KEY = 'wake'
+/** Topic key of touch events; each touch replaces the previous one. */
+export const TOUCH_TOPIC_KEY = 'touch'
