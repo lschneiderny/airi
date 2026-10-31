@@ -5,11 +5,13 @@ deterministic motion algorithms for reusable character motion drivers.
 
 ## Entry points
 
+- `./clip-mask`: `buildClipBoneMask`, which reports which bone groups a clip animates.
 - `./director` exports the pure stance and attention director.
 - `./foot-contact`: planted foot anchors, eased contact, shared pelvis reach
   correction, signed knee pre-bend, and body-turn step arcs.
 - `./look-at`: `createLookAt`, look-at and turn-step contracts, and `aimEyes`.
-- `./types`: canonical humanoid bones, rig traits, positions, rotations, and body intents.
+- `./rest-pose`: `createArmRest`, the relaxed arm, hand, and finger rest pose.
+- `./types`: canonical humanoid and finger bones, rig traits, positions, rotations (with `rotationToMatrix` and `mirrorRotation`), and body intents.
 - `./weight-shift`: deterministic seeded weight shift and Natural body composition.
 
 ## Usage
@@ -84,6 +86,33 @@ slot is available, and holds each stance for at least 3 seconds
 `MMDBody` and `MMDStanceDirector` in `@proj-airi/stage-ui-mmd` are the first
 consumers. The architecture is recorded in
 [the 3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md).
+
+## Arm rest pose and clip masks
+
+`RestRelativeRotation` is intrinsic YXZ Euler: `R = Ry(yaw) * Rx(pitch) * Rz(roll)`.
+`rotationToMatrix` and `matrixToRotation` convert it, and `mirrorRotation` flips
+yaw and roll for the right side. Bind frames must be world-aligned (MMD and
+normalized VRM bones both are).
+
+`createArmRest().step(input, dt)` returns rest-relative rotations for the shoulder,
+upper arm, lower arm, hand, and finger bones. The body-space angles in
+`DEFAULT_ARM_REST_POSE` are the same for every rig. `bindArmAngle` (36 degrees
+for an MMD A-pose, 0 for a T-pose) converts them into rig-local rotations, so
+both rigs end with the same world forearm direction. Pass `thumbAxis`, measured
+by the adapter, to curl the thumb about its own axis. Breath (-1..1) rolls the
+shoulder by 0.8 degrees and counter-rolls the upper arm by 0.6 degrees. Torso roll
+goes through a critically damped spring with omega 6. Locomotion `swing` adds
+forward pitch and elbow flex, scaled by `swingWeight`. Every group's output is
+scaled by `1 - owned[group]`. Thumb curl entries map to Metacarpal, Proximal,
+Distal; other fingers map to Proximal, Intermediate, Distal and have no
+Metacarpal output.
+
+`buildClipBoneMask(tracks, bones)` runs once per clip. A quaternion track counts as
+animated when a key differs from identity, or from the first key, by more than
+0.5 degrees. A position track counts when a key is more than 0.01 units from the
+origin or from the first key. Identity-keyed tracks own nothing. Groups are `root`,
+`leftLegIk`/`rightLegIk`, `leftArm`/`rightArm` (plus bones listed under
+`bones.helpers`), `leftFingers`/`rightFingers`, `upperBody`, and `head`.
 
 ## Checks
 
