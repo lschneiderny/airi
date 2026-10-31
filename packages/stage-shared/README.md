@@ -177,6 +177,10 @@ const { sample } = storeToRefs(useForegroundWindowStore())
 Use this store to pass foreground samples from a host producer to the situation sensor in `@proj-airi/stage-ui`.
 Do not persist or replicate it, because a sample carries a raw window title. Do not sample the foreground window in this package; the host producer owns sampling.
 
+### Stage world
+
+The `stage-world` entrypoint owns the pure camera calibration (`calibrateCamera`, `worldToDip`, `dipToPlane`) and ground-line helpers (`groundLineOf`, `defaultHomeDipX`) that map work-area DIP to a character's world x. Do not use it for rendering: it imports no `three`, `vue`, or `pinia`.
+
 ## Character state
 
 The `character-state` module holds the character's inner state on three clocks: mood (hours), temperament (days), and relationship (weeks to months). The moment layer stays in the Natural motion driver. The pure reducer takes explicit time and returns its memory, so the same events at the same times give the same state. `applyEvent` applies one event, `advance` moves the state to a time, `readCharacter` returns the reading the app uses, and `renderCharacterContext` returns the `system:character` text. The stage-ui character-state store is the app's entry point. Rendered text has no digits, and a resting state renders nothing.
