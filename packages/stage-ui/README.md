@@ -459,14 +459,15 @@ Use `submitReaction` only for the touch reaction policy of the situation leader.
 
 `Stage.vue` hands each Live2D `touch` event to `useStageTouchStore`, together with its own performance conductor. Only the Natural driver classifies touches.
 
-- Every pet start, pet end, and poke becomes a `touch` affect signal on that conductor. Its decider owns cooldowns and habituation, and the conductor sends the resulting mood doses to the scene's `addMood` under Natural only.
+- Every pet start, pet end, and poke becomes a `touch` affect signal on that conductor. Its decider owns cooldowns and habituation, and the conductor sends the resulting mood doses to the scene's `addMood` under Live2D Natural only.
 - A finished pet and a poke are also sent to the situation leader as a `TouchObservation` over `situationTouchObservedEvent` (`stores/situation/touch-bus`) on the speech bus. A pet start is not sent.
 - Each rendered stage owns its own conductor, so two stages that render at once dose mood twice for touches on both. No guard prevents it.
 
 The leader folds each observation into the situation and, while its urge gate runs, evaluates the touch reaction policy of `@proj-airi/stage-shared/situation`. A speak decision marks the touch event shown and calls `submitReaction`. A spoken reaction settles at its first literal: it starts the policy's 45 s refractory and the gate's short floor (`recordExternalSpeech`). A declined, cancelled, or failed reaction only clears the pending entry, and a send refused by another pending unprompted turn is rolled back, random draw included. Reaction outcomes never reach `recordUrgeFireOutcome`. The reaction memory is saved with the gate's inner state.
 
 A reaction turn's own cues dose no mood, because the touch already did. When a turn's trigger has the `touch` topic key, `Stage.vue` calls `markMoodless(turnId)` on the conductor, and every episode of that turn carries a mood gain of 0.
-The conductor's `gesture(kind, count)` plays an ACT `gesture` field on the scene under Natural only; Universal and MAGIC ignore it.
+The conductor's `gesture(kind, count)` plays an ACT `gesture` field on the scene under Live2D Natural only; Universal and MAGIC ignore it.
+MMD Natural currently ignores gestures, touch mood doses, and touch reactions; MMD support is a follow-up.
 The [nonverbal channels ADR](../../docs/ai/adr/2026-10-31-nonverbal-channels.md) records the design and its consequences.
 
 ### Situation inspector

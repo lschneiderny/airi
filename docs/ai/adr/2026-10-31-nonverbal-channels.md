@@ -43,7 +43,8 @@ A dose is measured in band units, where one unit is the band's profile-resolved 
 - A poke doses slight along [0, +1 arousal, 0], scaled by 0.6 on the body, at most once per second. The third poke within 10 s doses clear along [0, +0.5, +1 tension] instead, once per burst.
 - Doses of the same kind habituate over a 60 s window. Poke and burst doses use `max(habituationFloor, habituationBase^n)`. Pet doses use `habituationBase^n` without the floor, so continuous petting saturates instead of adding a floor-sized dose on every pet.
 
-The stage conductor sends each dose to the scene's `addMood`, which adds it to `NaturalMood` with the same clamps as emotion episodes and ignores a repeated dose id. Universal and MAGIC never receive a dose, and the Natural `mood` switch still disables mood.
+Under Live2D Natural only, the stage conductor sends each dose to the scene's `addMood`, which adds it to `NaturalMood` with the same clamps as emotion episodes and ignores a repeated dose id. Universal and MAGIC never receive a dose, and the Natural `mood` switch still disables mood.
+MMD Natural currently ignores gestures, touch mood doses, and touch reactions; MMD support is a follow-up.
 Touch creates no emotion episode. The Natural flinch, glance, and pet layer behave as before.
 A reaction turn about a touch must not dose mood again from its own cues. When a turn's trigger has the `touch` topic key, `Stage.vue` calls `markMoodless(turnId)` on its conductor, and every episode of that turn carries a mood gain of 0.
 
@@ -93,7 +94,7 @@ Under Natural, `NaturalCueGestures` plays each gesture as a time-shaped clip on 
 - A glance moves only the eyes aside for 0.6 s and back.
 
 A gesture that is still active is not restarted. A conflicting gesture waits in a one-slot queue for up to 1.5 s, and a newer conflicting gesture replaces it. While a cue gesture owns the head, emotion recipe clips do not start. The `heldEmotions` switch does not gate cue gestures.
-The cue gesture kind `CueGestureKind` is separate from the emotion clip kinds, whose `shake` is unchanged. Universal and MAGIC ignore the field. The amplitudes are starting values that are tuned on screen. The [stage-ui-live2d README](../../../packages/stage-ui-live2d/README.md) lists the shapes.
+The cue gesture kind `CueGestureKind` is separate from the emotion clip kinds, whose `shake` is unchanged. Only Live2D Natural plays the field; Universal, MAGIC, and MMD Natural ignore it. The amplitudes are starting values that are tuned on screen. The [stage-ui-live2d README](../../../packages/stage-ui-live2d/README.md) lists the shapes.
 
 ### BREAK splits one reply into bubbles (D8)
 
@@ -155,6 +156,7 @@ The work ships on the branch `luke/feat/nonverbal-channels` as atomic commits th
 - DELAY does not pause the speech track.
 - The qa-tools aggregate report does not total the scorer version 3 fields.
 - The qa-tools 3-poke scenario evaluates the reaction policy itself, because the leader's evaluation is internal to the situation store.
+- MMD Natural ignores cue gestures, touch mood doses, and touch reactions, because the stage gates gestures on the Live2D renderer, `MMDScene` has no `gesture` or `addMood`, and only the Live2D scene emits `touch`.
 - Reaction odds, the refractory, and gesture amplitudes are starting values that are tuned from real use and the inspector.
 
 ## Validation
@@ -162,7 +164,7 @@ The work ships on the branch `luke/feat/nonverbal-channels` as atomic commits th
 - Pure rules have unit tests with explicit time and seeded randomness: the touch reducer, touch affect (including a 20-poke saturation run), the reaction policy (including 10,000-candidate rate bands of 0.30 and 0.80 within 0.02), register parsing, BREAK and gesture parsing, and face stripping.
 - Pin tests keep `touch` out of `GATE_ELIGIBLE_EVENT_KINDS`, keep the unprompted decline of `<|ACT happy|><|SILENT|>`, keep the existing emotion gesture draws, and keep the `hardReason` order.
 - `STAGE_CONTRACT_EN_SHA256` is pinned in stage-shared, stage-ui, and qa-tools, and a test renders the contract under both registers and compares the hashes.
-- Runtime tests cover wordless and silent user turns and the break rules. Store and component tests cover the reaction submission, settle, and rollback paths; the moodless turn; Natural-only gesture dispatch; the bubble reveal schedule; the wordless chip; and the sync policy.
+- Runtime tests cover wordless and silent user turns and the break rules. Store and component tests cover the reaction submission, settle, and rollback paths; the moodless turn; Live2D Natural-only gesture dispatch; the bubble reveal schedule; the wordless chip; and the sync policy.
 - Natural tests check each cue gesture's trajectory, the queue rules, and that every gesture stays within the parameter range when combined with a strong emotion clip and the pet layer.
 - qa-tools scorer version 3 counts gestures, breaks, silent and wordless replies, and ASCII faces. Its T1 scenarios assert the five gesture trajectories, and a touch scenario asserts that a 3-poke burst makes exactly one reaction decision. The [qa-tools README](../../../packages/qa-tools/README.md) documents the fields.
 - A rendered pass in the Electron app checks each channel before the branch merges.

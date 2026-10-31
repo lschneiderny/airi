@@ -18,7 +18,7 @@ const { t } = useI18n()
 const override = useNaturalPerformanceOverride()
 const { live2dMotionDriver } = storeToRefs(useSettingsLive2d())
 const count = ref(1)
-// Gestures play under Natural only; MAGIC and Universal ignore them.
+// Gestures play under Live2D Natural only; MAGIC, Universal, and MMD Natural ignore them.
 const disabled = computed(() => live2dMotionDriver.value !== 'natural')
 
 function play(kind: CueGestureKind) {
