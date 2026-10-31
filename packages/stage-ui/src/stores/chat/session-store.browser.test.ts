@@ -5,8 +5,8 @@ import type { ChatSessionMeta } from '../../types/chat-session'
 import { CODE_BLOCK_SYSTEM_PROMPT, MATH_SYNTAX_SYSTEM_PROMPT } from '@proj-airi/stage-shared/stage-contract'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, nextTick } from 'vue'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { createApp, defineComponent, h, nextTick, watch } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import { chatSessionsRepo } from '../../database/repos/chat-sessions.repo'
@@ -239,6 +239,34 @@ describe('chat session synchronization', () => {
     expect(store.getSessionSystemPrompt(active)).not.toContain('Stage contract A')
     // A request for an inactive session reads its prompt again, so it also ends with the new contract.
     expect(store.getSessionSystemPrompt(background).endsWith('\n\nStage contract B')).toBe(true)
+  })
+
+  it('places the register section between the character prompt and the stage contract and rewrites the active system message once per change', async () => {
+    const namespace = `chat-session:${crypto.randomUUID()}`
+    const leader = createSyncedContext(namespace, 'leader-only')
+    await vi.waitFor(() => expect(leader.runtime.isLeader()).toBe(true))
+    setActivePinia(leader.pinia)
+    const store = useChatSessionStore()
+    await store.initialize()
+    const active = store.activeSessionId
+    store.setStageContract('Stage contract')
+    await nextTick()
+    const withoutRegister = store.getSessionSystemPrompt(active)
+    const rewrites: unknown[] = []
+    onTestFinished(watch(() => store.sessionMessages[active]?.[0]?.content, content => rewrites.push(content), { flush: 'sync' }))
+
+    store.setRegisterPrompt('Register section')
+    await nextTick()
+
+    expect(rewrites).toEqual([store.getSessionSystemPrompt(active)])
+    expect(store.getSessionSystemPrompt(active)).toBe(withoutRegister.replace(/\n\nStage contract$/, '\n\nRegister section\n\nStage contract'))
+
+    // An empty section is left out, so the prompt is the one without a register again.
+    store.setRegisterPrompt('')
+    await nextTick()
+
+    expect(rewrites).toEqual([expect.stringContaining('Register section'), withoutRegister])
+    expect(store.getSessionMessages(active)[0]?.content).toBe(withoutRegister)
   })
 
   it('persists follower interruption retries once and preserves the first control event', async () => {

@@ -118,6 +118,8 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   const cloudSyncReady = ref(false)
   // Local to this renderer and not returned, so the synced state does not carry it.
   const stageContract = ref('')
+  // Local to this renderer like the contract. Empty until the chat store sets it, and an empty section is left out.
+  const registerPrompt = ref('')
   /**
    * Number of message sends + tombstone deletes waiting on cloud delivery.
    * Reactive so a UI banner can surface "N messages syncing" / "K failed".
@@ -197,9 +199,13 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     return next
   }
 
-  /** Composes a system prompt from the fixed formatting rules, the character prompt, and the stage contract. */
+  /**
+   * Composes a system prompt from the fixed formatting rules, the character prompt, the register section, and the
+   * stage contract. The register section belongs to the character prompt, so the contract text never depends on it.
+   */
   function systemPromptFrom(characterPrompt: string, contract: string) {
-    return composeSystemPrompt(characterPrompt, contract)
+    const prompt = registerPrompt.value ? `${characterPrompt}\n\n${registerPrompt.value}` : characterPrompt
+    return composeSystemPrompt(prompt, contract)
   }
 
   /**
@@ -209,6 +215,14 @@ export const useChatSessionStore = defineStore('chat-session', () => {
    */
   function setStageContract(contract: string) {
     stageContract.value = contract
+  }
+
+  /**
+   * Sets the register section that follows the character prompt. The chat store owns the localized text from the
+   * conversation settings and passes it in. A change refreshes the stored system message of the active session.
+   */
+  function setRegisterPrompt(text: string) {
+    registerPrompt.value = text
   }
 
   function generateInitialMessageFromPrompt(prompt: string) {
@@ -1800,7 +1814,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
   // Keep the active conversation aligned with edits to the active card. The
   // active session id is included because card switching resolves the target
   // session asynchronously after the card prompt itself has already changed.
-  watch([systemPrompt, stageContract, activeSessionId], refreshActiveSessionSystemMessage)
+  watch([systemPrompt, registerPrompt, stageContract, activeSessionId], refreshActiveSessionSystemMessage)
 
   return {
     isReady,
@@ -1832,6 +1846,7 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     getSessionMessages,
     getSessionSystemPrompt,
     setStageContract,
+    setRegisterPrompt,
     getSessionMessagesIfLoaded,
     sessionMessages,
     sessionMetas,
