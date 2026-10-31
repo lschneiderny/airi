@@ -1,6 +1,6 @@
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { GenerationProvider } from '@proj-airi/provider-inference'
-import type { ExpressionPerformanceSettings, MoodDose, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, MoodDose } from '@proj-airi/stage-shared/expression-performance'
 import type { TouchObservation } from '@proj-airi/stage-shared/situation'
 import type { Component, ComponentInternalInstance, VNode } from 'vue'
 
@@ -172,13 +172,13 @@ async function renderStage(driver: 'natural' | 'universal' | 'magic') {
   // Stage calls the scene through its template ref, which reads the exposed object,
   // so the recorder sees exactly the call the stage makes and still forwards it.
   const exposed = scene.exposed as {
-    setEmotion: (episode: ReactionEpisode) => void
+    setEmotion: (episode: NaturalEpisode) => void
     applyHolds: StagePerformanceScene['applyHolds']
     gesture: NonNullable<StagePerformanceScene['gesture']>
     addMood: (dose: MoodDose) => void
   }
   const forward = exposed.setEmotion
-  const episodes = shallowRef<ReactionEpisode[]>([])
+  const episodes = shallowRef<NaturalEpisode[]>([])
   exposed.setEmotion = (episode) => {
     episodes.value = [...episodes.value, episode]
     forward(episode)
@@ -314,6 +314,28 @@ describe('stage emotion routing on Live2D', () => {
     expect(moods.value).toEqual([expect.objectContaining({ id: 'touch-1-poke', valence: 0, tension: 0 })])
     expect(moods.value[0].arousal).toBeGreaterThan(0)
     expect(observations.value).toEqual([{ kind: 'touch', gesture: 'poke', region: 'head', atMs: expect.any(Number) }])
+  })
+
+  type TurnStart = (chat: ReturnType<typeof useChatStore>, sessionId: string) => Promise<unknown>
+  const clearGain = defaultExpressionPerformanceSettings.moodDynamics.clearGain
+  it.each<[string, string, number, TurnStart]>([
+    ['a touch reaction turn at zero', 'reaction:touch-1', 0, chat => chat.submitReaction({ kind: 'pet-soft', topicText: 'petted your head', eventId: 'touch-1' })],
+    ['an unprompted turn at its band gain', 'unprompted-1', clearGain, chat => chat.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-1' })],
+    ['a user turn at its band gain', 'user-1', clearGain, (chat, sessionId) => chat.send({ sessionId, messageId: 'user-1', text: 'hello' })],
+  ])('doses the ACT emotion of %s', async (_name, turnId, moodGain, start) => {
+    const { episodes } = await renderStage('natural')
+    const { sessionId, requests } = await holdProviderRequests()
+
+    const started = until(() => requests.value.length, count => count === 1)
+    const turn = start(useChatStore(), sessionId)
+    await started
+    const delivered = until(() => episodes.value.length, count => count === 1)
+    await useLlmStreamingControlStore().dispatchWith('<|ACT {"emotion":{"name":"happy","intensity":0.6}}|>', { turnId })
+    await delivered
+
+    expect(episodes.value.map(episode => [episode.emotion, episode.band, episode.moodGain])).toEqual([[Emotion.Happy, 'clear', moodGain]])
+    requests.value[0].release()
+    await turn
   })
 
   it.each(['universal', 'magic'] as const)('plays a motion group for every emotion under %s, repeats and neutral included', async (driver) => {
