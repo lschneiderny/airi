@@ -477,7 +477,8 @@ chatHookCleanups.push(streamingControl.onSignal(async (signal, context) => {
     const motion = stageModelRenderer.value === 'live2d' && act.motion ? act.motion : undefined
     if (motion)
       currentMotion.value = { group: motion }
-    // The conductor plays it under Natural only; Universal and MAGIC ignore the gesture field.
+    // The conductor plays it under Live2D Natural only; Universal and MAGIC ignore the gesture field.
+    // MMD Natural currently ignores gestures, touch mood doses, and touch reactions (follow-up).
     if (act.gesture && stageModelRenderer.value === 'live2d')
       performanceConductor.gesture(act.gesture.kind, act.gesture.count)
     const emotion = act.emotion ? toStageEmotionPayload(act.emotion) : undefined
