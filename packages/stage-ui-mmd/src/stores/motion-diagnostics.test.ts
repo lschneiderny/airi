@@ -1,3 +1,5 @@
+import type { MMDMotionCommand } from './motion-diagnostics'
+
 import { createPinia, disposePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 import { watch } from 'vue'
@@ -34,6 +36,7 @@ describe('mmd motion diagnostics channel', () => {
           stageModel: null,
           measurement: null,
           locomotion: null,
+          arms: null,
         },
       })
     }
@@ -61,7 +64,7 @@ describe('mmd motion diagnostics channel', () => {
       peer.postMessage({ type: 'command', name: 'also-unknown' })
       peer.postMessage({ type: 'command', name: 'setDebugFlag', value: { flag: 'disableLookAt', on: true } })
       await applied
-      expect(store.debugFlags).toEqual({ disableLookAt: true, disableFootContact: false })
+      expect(store.debugFlags).toEqual({ disableLookAt: true, disableFootContact: false, armRestHangDeg: null })
       expect(warning).toHaveBeenCalledTimes(1)
     }
     finally {
@@ -183,6 +186,28 @@ describe('mmd motion diagnostics channel', () => {
     finally {
       warning.mockRestore()
       peer.close()
+      disposePinia(pinia)
+    }
+  })
+
+  it('accepts the arm rest hang angle between 0 and 90 degrees, clears it with null and rejects the rest with one warning', () => {
+    const pinia = createPinia()
+    const store = useMMDMotionDiagnostics(pinia)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      store.command({ type: 'command', name: 'setDebugFlag', value: { flag: 'armRestHangDeg', value: 20 } })
+      expect(store.debugFlags.armRestHangDeg).toBe(20)
+      for (const value of [-1, 91, Number.NaN, '20', undefined])
+        store.command({ type: 'command', name: 'setDebugFlag', value: { flag: 'armRestHangDeg', value } } as unknown as MMDMotionCommand)
+      expect(store.debugFlags.armRestHangDeg).toBe(20)
+      expect(warning).toHaveBeenCalledTimes(1)
+      store.command({ type: 'command', name: 'setDebugFlag', value: { flag: 'armRestHangDeg', value: 90 } })
+      expect(store.debugFlags.armRestHangDeg).toBe(90)
+      store.command({ type: 'command', name: 'setDebugFlag', value: { flag: 'armRestHangDeg', value: null } })
+      expect(store.debugFlags.armRestHangDeg).toBeNull()
+    }
+    finally {
+      warning.mockRestore()
       disposePinia(pinia)
     }
   })

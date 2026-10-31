@@ -77,6 +77,43 @@ export function buildMMDTouchColliders(
   bindMatrix: Matrix4,
   roots: MMDTouchRegionRoots,
 ): MMDTouchCollider[] {
+  return buildColliders(source, boneInverses, bindMatrix, boneIndex => mmdTouchRegionOf(boneIndex, source.bones, roots))
+}
+
+/**
+ * The rigid bodies an arm must not enter: the torso, hip and lower-body (skirt) subtrees, including the centre and
+ * groove bones above the waist. Arm subtrees (sleeves, hand physics) and the head and neck are excluded, and the
+ * nearest listed ancestor decides, as for touch regions. Touch regions are unchanged.
+ */
+export function buildMMDArmTestColliders(
+  source: MMDTouchSource,
+  boneInverses: readonly Matrix4[],
+  bindMatrix: Matrix4,
+  rig: Pick<MMDRigProfile, 'bones' | 'hipsTranslation'>,
+): MMDTouchCollider[] {
+  const names = (keys: readonly (keyof MMDRigProfile['bones'])[]) => keys.flatMap(key => rig.bones[key] ?? [])
+  const included = [...names(['hips', 'spine', 'chest', 'upperChest']), ...[rig.hipsTranslation.center, rig.hipsTranslation.groove].flatMap(name => name ?? [])]
+  const excluded = names(['head', 'neck', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm'])
+  return buildColliders(source, boneInverses, bindMatrix, (boneIndex) => {
+    const visited = new Set<number>()
+    for (let index = boneIndex; index >= 0 && index < source.bones.length && !visited.has(index); index = source.bones[index].parentBoneIndex) {
+      visited.add(index)
+      const name = source.bones[index].name
+      if (excluded.includes(name))
+        return null
+      if (included.includes(name))
+        return 'body'
+    }
+    return null
+  })
+}
+
+function buildColliders(
+  source: MMDTouchSource,
+  boneInverses: readonly Matrix4[],
+  bindMatrix: Matrix4,
+  regionOf: (boneIndex: number) => NaturalTouchRegion | null,
+): MMDTouchCollider[] {
   const colliders: MMDTouchCollider[] = []
   const rotation = new Quaternion()
   for (const body of source.rigidBodies) {
@@ -84,7 +121,7 @@ export function buildMMDTouchColliders(
     const inverse = boneInverses[body.boneIndex]
     if (!shape || !inverse)
       continue
-    const region = mmdTouchRegionOf(body.boneIndex, source.bones, roots)
+    const region = regionOf(body.boneIndex)
     if (!region)
       continue
     rotation.setFromEuler(new Euler(body.shapeRotation[0], body.shapeRotation[1], body.shapeRotation[2], 'YXZ'))

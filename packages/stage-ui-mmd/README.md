@@ -164,6 +164,22 @@ foot contact eases out under any non-stance clip. Diagnostics publish `feet`
 `pitch`, `turning`, `turns`) while Natural drives the model. The
 `setDebugFlag` command disables foot contact or look-at for QA.
 
+The `arm-rest` stage runs after look-at and before eyes. It relaxes shoulders,
+upper and lower arms, hands and the finger bones the rig has (`fingerBones`,
+read through `HUMANOID_FINGER_CANDIDATES`: thumbs `親指０/１/２` map to
+Metacarpal, Proximal and Distal; a leading `０` is the metacarpal of the other
+fingers), over the bind pose with `restArmAngles`, `restForearmAngles` and
+`thumbAxis`, and adds the gait's arm swing. A clip owns the arm and finger bones
+it keys: `registerClip` builds a `ClipBoneMask` once and `body.ownership()`
+returns `min(1, sum(weight * mask))` per group (`root`, `leftLegIk`,
+`rightLegIk`, `leftArm`, `rightArm`, `leftFingers`, `rightFingers`,
+`upperBody`, `head`). The rest pose is written with weight `1 - owned`, and the
+gait is enabled only while no clip owns `root` or a leg IK bone. A clip the body
+never saw owns every group. Diagnostics publish `arms` (`weight`, `owned`,
+`penetration` per side in model units against torso, hip and skirt rigid bodies,
+and `handBelowHip`); `setDebugFlag` with `{ flag: 'armRestHangDeg', value }`
+(0-90, `null` restores the default) overrides the rest hang angle for QA.
+
 Pose stages read `context.clean` and write absolute transforms from that
 snapshot; they must not modify the snapshot itself. `clipFootIK` records
 which registered motions contain left/right foot IK position tracks.

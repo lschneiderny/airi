@@ -1,4 +1,5 @@
 import type { MMD } from '@moeru/three-mmd'
+import type { ClipBoneMask, ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { LocomotionFrame } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { LookAtFrame } from '@proj-airi/motion-driver-humanoid/look-at'
 import type { NaturalMotionFrame } from '@proj-airi/motion-driver-natural/natural-motion'
@@ -6,6 +7,7 @@ import type { AnimationClip } from 'three'
 
 import type { MMDFrameContext, MMDFrameStage } from '../frame-pipeline'
 import type { MMDRigProfile } from '../rig'
+import type { MMDArmsMeasurement } from './arms'
 import type { MMDBodyRoot, MMDLocomotionGoal } from './locomotion'
 
 import { createLookAt } from '@proj-airi/motion-driver-humanoid/look-at'
@@ -13,7 +15,9 @@ import { composeWeightShift, createWeightShift } from '@proj-airi/motion-driver-
 import { Euler, Quaternion, Vector3 } from 'three'
 
 import { fnv1a32 } from '../natural/seed'
-import { toRigTraits } from '../rig'
+import { buildMMDClipMask, toRigTraits } from '../rig'
+import { buildMMDArmTestColliders } from '../touch/colliders'
+import { MMDArmRest } from './arms'
 import { MMDEyes } from './eyes'
 import { MMDFootContact } from './feet'
 import { blendBodyComposition, MMDLocomotion } from './locomotion'
@@ -31,7 +35,13 @@ export interface MMDBodyInput {
   readonly disableLookAt: boolean
   /** Looping base clips. They duck the body fully but keep half of the head's look-at. */
   readonly stanceClips: ReadonlySet<string>
+  /** Debug override of the arm rest hang angle in degrees below horizontal (0-90); null or absent keeps the default. */
+  readonly armRestHangDeg?: number | null
 }
+
+const OWNERSHIP_GROUPS: readonly ClipMaskGroup[] = ['root', 'leftLegIk', 'rightLegIk', 'lowerBody', 'leftArm', 'rightArm', 'leftFingers', 'rightFingers', 'upperBody', 'head']
+
+export type MMDBodyOwnership = Readonly<Record<ClipMaskGroup, number>>
 
 /** Share of the head and neck look-at kept under a fully weighted stance clip. */
 export const STANCE_HEAD_ATTENTION = 0.5
@@ -49,6 +59,11 @@ export class MMDBody {
   private readonly shift
   private readonly look
   private readonly locomotion: MMDLocomotion | null
+  private readonly arms: MMDArmRest
+  private readonly masks = new Map<string, ClipBoneMask>()
+  private readonly owned: Record<ClipMaskGroup, number> = { root: 0, leftLegIk: 0, rightLegIk: 0, lowerBody: 0, leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0, upperBody: 0, head: 0 }
+  private armsSnapshot: MMDArmsMeasurement | null = null
+  private torsoRoll = 0
   private readonly root: MMDBodyRoot | undefined
   private goal: MMDLocomotionGoal | null = null
   private gait: LocomotionFrame | null = null
@@ -81,10 +96,13 @@ export class MMDBody {
     const legs = this.feet.bindLegs
     this.locomotion = legs ? new MMDLocomotion(legs, toRigTraits(rig), fnv1a32(`${options.modelKey}:locomotion`)) : null
     this.root = options.root
+    const { skeleton, bindMatrix } = mmd.mesh
+    this.arms = new MMDArmRest(this.pose, buildMMDArmTestColliders(mmd.pmx, skeleton.boneInverses, bindMatrix, rig))
     this.poseStages = [
       // Root motion lands before every bone write and before physics, so the pose and Ammo both see this frame's root.
       { id: 'locomotion', run: (context) => {
         this.input = options.input()
+        this.updateOwnership(context.clean.clipWeights)
         if (this.input?.enabled)
           this.applyLocomotion(context)
       } },
@@ -117,6 +135,7 @@ export class MMDBody {
         }
       } },
       { id: 'look-at', run: context => this.applyLook(context) },
+      { id: 'arm-rest', run: context => this.applyArms(context) },
       { id: 'eyes', run: ({ clean, dt }) => {
         if (this.input?.enabled) {
           this.eyes.apply(clean, {
@@ -134,11 +153,37 @@ export class MMDBody {
       const { skate, ...feet } = this.feet.measure()
       this.feetSnapshot = feet
       this.skate = skate
+      this.armsSnapshot = this.arms.measure(this.owned)
     } }
   }
 
   registerClip(name: string, clip: AnimationClip): void {
     this.clips.set(name, clip)
+    this.masks.set(name, buildMMDClipMask(clip, this.pose.rig))
+  }
+
+  /**
+   * How much of each bone group the playing clips own this frame, `min(1, sum(weight * mask))`. A playing clip that was
+   * never registered with the body owns every group, so unknown motion still stops the gait.
+   */
+  ownership(): MMDBodyOwnership {
+    return this.owned
+  }
+
+  private updateOwnership(weights: ReadonlyMap<string, number>): void {
+    for (const group of OWNERSHIP_GROUPS)
+      this.owned[group] = 0
+    for (const [name, weight] of weights) {
+      if (!(weight > 0))
+        continue
+      const mask = this.masks.get(name)
+      for (const group of OWNERSHIP_GROUPS) {
+        if (!mask || mask.groups[group])
+          this.owned[group] += weight
+      }
+    }
+    for (const group of OWNERSHIP_GROUPS)
+      this.owned[group] = Math.min(1, this.owned[group])
   }
 
   /** The single entry point for walk goals. A goal set while a clip plays is dropped, not deferred. */
@@ -164,14 +209,14 @@ export class MMDBody {
     return this.gait
   }
 
-  private applyLocomotion({ dt, clean }: MMDFrameContext): void {
+  private applyLocomotion({ dt }: MMDFrameContext): void {
     const input = this.input
     if (!input || !this.locomotion)
       return
-    // Every playing clip is a stance clip or a one-shot, and both stop the gait; clips that key the root or a leg IK
-    // bone are among them. Todo 11 replaces this with the body's per-group ownership.
-    const clipPlaying = [...clean.clipWeights.values()].some(weight => weight > 0)
-    this.gaitEnabled = input.rootMotion && this.root !== undefined && !clipPlaying
+    // A clip that keys the root or a leg IK bone owns the body's travel and stops the gait. Clips that animate only
+    // arms, fingers or the head, such as an idle-slot VMD, leave walking on.
+    const { root, leftLegIk, rightLegIk } = this.owned
+    this.gaitEnabled = input.rootMotion && this.root !== undefined && root === 0 && leftLegIk === 0 && rightLegIk === 0
     if (!this.gaitEnabled)
       this.goal = null
     this.gait = this.locomotion.step(dt, {
@@ -222,6 +267,7 @@ export class MMDBody {
       breath: (breath.value - 0.45) * 2 * this.duck,
     })
     const composed = gait ? blendBodyComposition(idle, gait.body, walk) : idle
+    this.torsoRoll = composed.upperBodyRoll + composed.chestCounterRoll
     this.offset = this.pose.right.clone().multiplyScalar(composed.pelvisLateral).addScaledVector(this.pose.forward, composed.pelvisForeAft).addScaledVector(this.pose.up, -composed.pelvisDrop)
     this.pose.translate(rig.hipsTranslation.groove ?? rig.hipsTranslation.center, clean, this.offset)
     this.pose.rotate(rig.bones.hips, clean, { pitch: 0, yaw: composed.lowerBodyYaw, roll: composed.lowerBodyRoll })
@@ -270,6 +316,22 @@ export class MMDBody {
     }
   }
 
+  private applyArms({ clean, dt }: MMDFrameContext): void {
+    const input = this.input
+    if (!input?.enabled)
+      return
+    const gait = this.gait
+    this.arms.apply(clean, {
+      dt,
+      breath: Math.max(-1, Math.min(1, (input.frame.breath.value - 0.45) * 2)) * this.duck,
+      torsoRoll: this.torsoRoll,
+      swing: gait?.armSwing,
+      swingWeight: (gait?.weight ?? 0) * this.duck,
+      owned: this.owned,
+      hangDeg: input.armRestHangDeg ?? null,
+    })
+  }
+
   private applyLook(context: MMDFrameContext): void {
     const input = this.input
     if (!input?.enabled)
@@ -308,6 +370,7 @@ export class MMDBody {
         turning: this.lookFrame.turning,
         turns: this.turns,
       },
+      arms: this.armsSnapshot,
       locomotion: this.gait && this.locomotion
         ? {
             mode: this.gait.mode,

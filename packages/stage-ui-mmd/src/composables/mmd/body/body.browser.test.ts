@@ -55,3 +55,11 @@ it('walks eight units on planted feet while the hair physics feels the travel', 
   expect(walked.swing).toBeGreaterThan(0.05)
   expect(walked.swing).toBeGreaterThan(3 * still.swing)
 })
+
+it('hangs the arms clear of the torso, hips and skirt on the standing fixture', () => {
+  const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true })
+  for (let frame = 0; frame < 120; frame++)
+    pipeline.step(1 / 60)
+  expect(body.diagnostics.arms?.penetration).toEqual({ left: 0, right: 0 })
+  expect(body.diagnostics.arms?.handBelowHip).toBe(true)
+})

@@ -281,3 +281,74 @@ describe('toRigTraits', () => {
     })
   })
 })
+
+function withHands(base: RigFixture): RigFixture {
+  const bones = [...base.bones]
+  const rigidBodies = [...base.rigidBodies]
+  for (const [side, sign] of [['左', 1], ['右', -1]] as const) {
+    const wrist = base.bones.find(bone => bone.name === `${side}手首`)
+    if (!wrist)
+      throw new Error(`fixture has no ${side}手首`)
+    const at = (x: number, y: number, z: number): [number, number, number] => [wrist.position[0] + sign * x, wrist.position[1] + y, wrist.position[2] + z]
+    const chain = (names: string[], first: [number, number, number], step: [number, number, number]) => names.forEach((name, index) => bones.push({
+      name: `${side}${name}`,
+      parent: index === 0 ? wrist.name : `${side}${names[index - 1]}`,
+      position: at(first[0] + step[0] * index, first[1] + step[1] * index, first[2] + step[2] * index),
+    }))
+    chain(['親指０', '親指１', '親指２'], [0.1, -0.05, 0.2], [0.2, -0.05, 0.3])
+    chain(['人指０', '人指１', '人指２', '人指３'], [0.3, -0.1, 0], [0.3, -0.1, 0])
+    chain(['小指１', '小指２', '小指３'], [0.3, -0.1, -0.3], [0.2, -0.05, 0])
+    bones.push({ name: `${side}腕捩`, parent: `${side}腕`, position: wrist.position }, { name: `${side}手捩`, parent: `${side}ひじ`, position: wrist.position })
+  }
+  rigidBodies.push({ name: 'little-physics', bone: '右小指１', physicsMode: 1 })
+  return { bones, rigidBodies }
+}
+
+describe('readMMDRigProfile fingers and arm helpers', () => {
+  const profile = profileOf(withHands(carlottaRig))
+
+  it('maps thumbs to Metacarpal, Proximal, Distal and accepts a leading ０ as the metacarpal of other fingers', () => {
+    expect(profile.fingerBones).toMatchObject({
+      leftThumbMetacarpal: '左親指０',
+      leftThumbProximal: '左親指１',
+      leftThumbDistal: '左親指２',
+      leftIndexMetacarpal: '左人指０',
+      leftIndexProximal: '左人指１',
+      leftIndexIntermediate: '左人指２',
+      leftIndexDistal: '左人指３',
+      rightThumbMetacarpal: '右親指０',
+      rightLittleDistal: '右小指３',
+    })
+    expect(profile.fingerBones.leftThumbIntermediate).toBeUndefined()
+    expect(profile.fingerBones.leftMiddleProximal).toBeUndefined()
+    expect(Object.keys(profile.fingerBones)).not.toContain('rightLittleProximal')
+  })
+
+  it('lists the twist and shoulder helpers that exist per side', () => {
+    expect(profile.armHelpers).toEqual({ left: ['左腕捩', '左手捩', '左肩P', '左肩C'], right: ['右腕捩', '右手捩', '右肩P', '右肩C'] })
+    // Audited Carlotta already carries the twist and shoulder helpers; the fixture's own copies are the same names.
+    expect(profileOf(carlottaRig).armHelpers.left).toEqual(['左腕捩', '左手捩', '左肩P', '左肩C'])
+    expect(profileOf(carlottaRig).fingerBones).toEqual({})
+  })
+
+  it('measures the thumb curl axis per side from the bind thumb direction and a downward palm', () => {
+    const left = profile.thumbAxis.left
+    const right = profile.thumbAxis.right
+    expect(Math.hypot(...(left ?? [0, 0, 0]))).toBeCloseTo(1, 9)
+    // thumbDir = (0.2, -0.05, 0.3) on the left; its cross product with (0, -1, 0) is (0.3, 0, -0.2) normalized.
+    expect(left?.[0]).toBeCloseTo(0.3 / Math.hypot(0.3, 0.2), 6)
+    expect(left?.[1]).toBe(0)
+    expect(left?.[2]).toBeCloseTo(-0.2 / Math.hypot(0.3, 0.2), 6)
+    expect(right?.[0]).toBeCloseTo(left?.[0] ?? 0, 6)
+    expect(right?.[2]).toBeCloseTo(-(left?.[2] ?? 0), 6)
+    expect(profileOf(carlottaRig).thumbAxis).toEqual({ left: null, right: null })
+  })
+
+  it('reports per-side upper-arm and forearm bind angles whose upper-arm mean is restArmAngle', () => {
+    const { restArmAngles, restForearmAngles, restArmAngle } = profileOf(carlottaRig)
+    expect(restArmAngles.left).not.toBeNull()
+    expect(restForearmAngles.left).not.toBeNull()
+    expect(restForearmAngles.right).not.toBeNull()
+    expect(((restArmAngles.left ?? 0) + (restArmAngles.right ?? 0)) / 2).toBeCloseTo(restArmAngle ?? Number.NaN, 9)
+  })
+})

@@ -571,6 +571,7 @@ function renderLoop(now = performance.now()) {
       feet: motionDriver.value === 'natural' ? body?.diagnostics.feet ?? null : null,
       lookAt: motionDriver.value === 'natural' ? body?.diagnostics.lookAt ?? null : null,
       locomotion: motionDriver.value === 'natural' ? body?.diagnostics.locomotion ?? null : null,
+      arms: motionDriver.value === 'natural' ? body?.diagnostics.arms ?? null : null,
       touch: touch && canvasRef.value ? touch.diagnostics(activeCamera, canvasRef.value.getBoundingClientRect()) : null,
       director: stance ? { ...stance.diagnostics, clockOffsetMs: diagnostics.directorClockOffsetMs, centerY: centerModelY() } : null,
       animation: animation?.snapshot() ?? { idle: null, currentAction: null, actionsStarted: 0 },
