@@ -37,6 +37,7 @@ describe('mmd motion diagnostics channel', () => {
           measurement: null,
           locomotion: null,
           arms: null,
+          overlays: { ik: false, colliders: false, feet: false, lookAt: false },
         },
       })
     }
@@ -104,6 +105,45 @@ describe('mmd motion diagnostics channel', () => {
       stage.publish({ loadedModelKey: 'fixture', driver: 'natural' })
       await mirrored
       expect(lab.snapshot).toMatchObject({ loadedModelKey: 'fixture', driver: 'natural' })
+    }
+    finally {
+      disposePinia(stagePinia)
+      disposePinia(labPinia)
+    }
+  })
+
+  it('shows a lab opened after an overlay was enabled the flags the stage publishes', async () => {
+    const stagePinia = createPinia()
+    const stage = useMMDMotionDiagnostics(stagePinia)
+    stage.command({ type: 'command', name: 'setOverlay', value: { feet: true } })
+    const labPinia = createPinia()
+    const lab = useMMDMotionDiagnostics(labPinia)
+    try {
+      expect(lab.overlays.feet).toBe(false)
+      const mirrored = new Promise<void>((resolve, reject) => {
+        const signal = AbortSignal.timeout(2000)
+        const stop = watch(() => lab.overlays.feet, () => resolve(), { once: true, flush: 'sync' })
+        signal.addEventListener('abort', () => {
+          stop()
+          reject(signal.reason)
+        }, { once: true })
+      })
+      stage.publish()
+      await mirrored
+      expect(stage.snapshot.overlays).toEqual({ ik: false, colliders: false, feet: true, lookAt: false })
+      expect(lab.overlays).toEqual({ ik: false, colliders: false, feet: true, lookAt: false })
+      const before = lab.overlays
+      const again = new Promise<void>((resolve, reject) => {
+        const signal = AbortSignal.timeout(2000)
+        const stop = watch(() => lab.snapshot, () => resolve(), { once: true, flush: 'sync' })
+        signal.addEventListener('abort', () => {
+          stop()
+          reject(signal.reason)
+        }, { once: true })
+      })
+      stage.publish()
+      await again
+      expect(lab.overlays).toBe(before)
     }
     finally {
       disposePinia(stagePinia)

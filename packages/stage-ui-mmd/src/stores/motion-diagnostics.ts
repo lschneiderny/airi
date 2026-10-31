@@ -14,7 +14,7 @@ import { defineStore } from 'pinia'
 import { onScopeDispose, ref, shallowRef } from 'vue'
 
 import { MMDFrameMetrics } from '../composables/mmd/frame-metrics'
-import { isMMDOverlayFlags, mmdOverlaysOff } from '../composables/mmd/overlay-flags'
+import { isMMDOverlayFlags, mmdOverlayFlagNames, mmdOverlaysOff } from '../composables/mmd/overlay-flags'
 
 /** The lab turns stage overlays on or off in every window. Not persisted: a reloaded stage starts with them off. */
 export const mmdOverlaySetEvent = defineEventa<Partial<MMDOverlayFlags>>('eventa:event:mmd:motion-diagnostics:overlay:set')
@@ -75,6 +75,8 @@ export interface MMDMotionSnapshot {
     hangDeg: number
     handBelowHip: boolean
   } | null
+  /** The overlay flags the stage draws, so a lab opened after a toggle shows the stage's state. */
+  overlays: MMDOverlayFlags
 }
 
 export type MMDMotionCommand
@@ -135,6 +137,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     measurement: null,
     locomotion: null,
     arms: null,
+    overlays: { ...mmdOverlaysOff },
   })
 
   function warn() {
@@ -224,8 +227,10 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
       return
     event.stopImmediatePropagation()
     if (isSnapshotMessage(event.data)) {
-      if (!publisher)
+      if (!publisher) {
         snapshot.value = event.data.snapshot
+        mirrorOverlays(event.data.snapshot.overlays)
+      }
       return
     }
     receive(event.data)
@@ -244,6 +249,12 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     channel?.close()
   })
 
+  /** A mirroring window adopts the stage's flags; an equal set is left alone so the toggles do not re-render at 10 Hz. */
+  function mirrorOverlays(flags: MMDOverlayFlags): void {
+    if (mmdOverlayFlagNames.some(flag => overlays.value[flag] !== flags[flag]))
+      overlays.value = { ...flags }
+  }
+
   /** Turns stage overlays on or off in every window over the Eventa contract. */
   function setOverlays(patch: Partial<MMDOverlayFlags>): void {
     void context.emit(mmdOverlaySetEvent, patch)
@@ -257,6 +268,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
       fps: metrics.fps(),
       timings: metrics.timings(),
       measurement: metrics.measurement(),
+      overlays: overlays.value,
     }
     channel?.postMessage({ type: 'snapshot', snapshot: snapshot.value })
   }
