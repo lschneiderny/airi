@@ -234,6 +234,22 @@ describe('mmd motion lab', () => {
     disposePinia(stagePinia)
   })
 
+  it('walks by the typed offset from the locomotion card', async () => {
+    const stagePinia = createPinia()
+    setActivePinia(stagePinia)
+    const stage = useMMDMotionDiagnostics()
+    const { screen } = await renderLab()
+    stage.publish(fixture)
+
+    await screen.getByTestId('mmd-locomotion-walk-dip').getByRole('spinbutton').fill('-300')
+    const walked = until(() => stage.goalRequest).toMatch(request => request !== null, { timeout: 5000, throwOnTimeout: true })
+    await expect.element(screen.getByTestId('mmd-locomotion-walk')).toBeEnabled()
+    await screen.getByTestId('mmd-locomotion-walk').click()
+    await walked
+    expect(stage.goalRequest).toEqual({ seq: 1, x: 12.5 + -300 * 0.05, pace: 'walk' })
+    disposePinia(stagePinia)
+  })
+
   it('advances the stage director clock by the entered milliseconds', async () => {
     const stagePinia = createPinia()
     setActivePinia(stagePinia)
