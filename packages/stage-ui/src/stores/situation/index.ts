@@ -867,9 +867,15 @@ export const useSituationStore = defineStore('situation', () => {
   /**
    * Records the first literal of a reaction turn: the policy settles as spoken (starting its refractory), the gate's
    * floor starts like after a forced turn (never an unanswered opening), and the line counts as her last line.
+   * A late line whose pending attempt was already dropped (older than 30 s, or lost in a promotion) still starts the
+   * refractory, so she does not react again right after it; a newer pending attempt is left to its own turn.
    */
   function reactionSpoke(turnId: string, nowMs: number) {
-    settleReactionTurn(turnId, 'spoken', nowMs)
+    const memory = reactionMemory
+    if (memory && memory.pending && `reaction:${memory.pending.eventId}` === turnId)
+      settleReactionTurn(turnId, 'spoken', nowMs)
+    else if (memory)
+      setReactionMemory({ ...memory, lastLineAtMs: nowMs })
     if (gateTicker !== undefined)
       setGateMemory(recordExternalSpeech(gateMemory, nowMs))
     ingest({ kind: 'conversation', who: 'character', origin: 'reaction', atMs: nowMs })
