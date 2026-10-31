@@ -6,11 +6,12 @@ import type { StagePerformanceScene } from './use-stage-performance-conductor'
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import { useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, effectScope, nextTick, ref } from 'vue'
 
-import { useLive2DExpressionBackend } from '../../features/performance/expression-backend'
+import { useLive2DExpressionBackend, useMMDExpressionBackend } from '../../features/performance/expression-backend'
 import { selectStagePerformanceRenderer } from '../../features/performance/renderer'
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
 import { createExpressionToolPort, createExpressionToolRegistration, expressionToolIds, maxAffectTraceEntries, StagePerformanceConductor, toExposedExpressions, useStagePerformanceConductor } from './use-stage-performance-conductor'
@@ -99,10 +100,18 @@ describe('stage performance renderer selection', () => {
     for (const { id, kind, mappings, exposedToLlm } of catalog)
       store.updateEntry(id, { kind, mappings, exposedToLlm, confirmed: true })
     const backend = useLive2DExpressionBackend()
+    const mmdScene = fakeScene()
+    const mmdStore = useMMDExpressionStore()
+    mmdStore.registerMorphs('mmd-rig', [{ index: 0, name: 'smile', type: 1, category: 2 }])
+    mmdStore.updateEntry('mmd:0:smile', { kind: 'face', exposedToLlm: true, confirmed: true, mappings: [{ emotion: 'happy', weight: 1, minBand: 'clear' }] })
     const selected = computed(() => selectStagePerformanceRenderer(renderer.value, {
       scene: mounted ? scene : undefined,
       driver: 'natural',
       expressionBackend: backend,
+    }, {
+      scene: mounted ? mmdScene : undefined,
+      driver: 'natural',
+      expressionBackend: useMMDExpressionBackend(),
     }))
     const result = scope.run(() => useStagePerformanceConductor({
       renderer: () => renderer.value,
@@ -114,10 +123,10 @@ describe('stage performance renderer selection', () => {
     }))
     if (!result)
       throw new Error('The conductor scope did not start')
-    return { ...result, renderer, scene, selected, backend, store }
+    return { ...result, renderer, scene, mmdScene, mmdStore, selected, backend, store }
   }
 
-  it.each(['vrm', 'mmd', 'unknown', undefined])('makes no scene calls with renderer %s', (renderer) => {
+  it.each(['vrm', 'unknown', undefined])('makes no scene calls with renderer %s', (renderer) => {
     const { conductor, scene, selected, renderer: activeRenderer } = mountConductor()
     activeRenderer.value = renderer
 
@@ -132,7 +141,7 @@ describe('stage performance renderer selection', () => {
     expect(selected.value.driver).toBe('natural')
   })
 
-  it.each(['vrm', 'mmd'])('does not dispatch or throw for an ACT expression after switching to %s', async (renderer) => {
+  it.each(['vrm'])('does not dispatch or throw for an ACT expression after switching to %s', async (renderer) => {
     const { conductor, scene, renderer: activeRenderer } = mountConductor()
     expect(conductor.expression('game', undefined, 'act', 'turn-a')?.id).toBe('game')
     expect(scene.applySlots).toHaveBeenCalledTimes(1)
@@ -146,6 +155,17 @@ describe('stage performance renderer selection', () => {
 
     expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0])
     expect(useLlmToolsStore().tools).toEqual([])
+  })
+
+  it('dispatches MMD emotions and ACT expressions to its scene and catalog, not Live2D', () => {
+    const { conductor, scene, mmdScene, mmdStore, selected, renderer } = mountConductor()
+    renderer.value = 'mmd'
+    conductor.emotion('happy', 0.7, 'act', 'mmd-turn')
+    expect(mmdScene.setEmotion).toHaveBeenCalledWith(expect.objectContaining({ emotion: 'happy' }))
+    expect(conductor.expression('smile', undefined, 'act', 'mmd-turn')?.id).toBe('mmd:0:smile')
+    expect(mmdScene.applySlots).toHaveBeenLastCalledWith(expect.arrayContaining([expect.objectContaining({ expressionId: 'mmd:0:smile' })]), expect.any(Number))
+    expect(selected.value.expressionBackend?.catalog).toBe(mmdStore.catalog)
+    expect(Object.values(scene).map(method => method.mock.calls.length)).toEqual([0, 0, 0, 0, 0])
   })
 
   it('keeps the Live2D backend catalog and performer state live', () => {

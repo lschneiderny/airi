@@ -9,13 +9,21 @@
   * contract Stage.vue expects from every renderer.
 */
 
+import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
+import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
+import type { ExpressionPerformanceSettings, HoldCommand, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
+import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { SkinnedMesh, Texture } from 'three'
 
 import type { GazeOffset, MMDAnimationManager, MorphController } from '../../composables/mmd'
+import type { SpeechEvent } from '../../stores/expression-slots'
 import type { ResolvedMMDModel } from '../../utils/mmd-loader'
 
 import { errorMessageFrom } from '@moeru/std'
 import { coverRect } from '@proj-airi/stage-shared'
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
+import { screenInwardness } from '@proj-airi/stage-shared/stage-placement'
 import { Screen } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import {
@@ -35,7 +43,7 @@ import {
   WebGLRenderer,
 } from 'three'
 import { OrbitControls } from 'three-stdlib'
-import { onMounted, onUnmounted, ref, toRef, watch } from 'vue'
+import { onMounted, onUnmounted, ref, toRaw, toRef, watch } from 'vue'
 
 import {
   createGazeController,
@@ -54,6 +62,7 @@ import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
 import { readMMDRigProfile } from '../../composables/mmd/rig'
 import { Emotion, EMOTION_VALUES } from '../../constants/emotions'
+import { useMMDExpressionStore } from '../../stores/expression-store'
 import { useMMD } from '../../stores/mmd'
 import { useMMDMotionDiagnostics } from '../../stores/motion-diagnostics'
 import { loadMMDModelFromSource } from '../../utils/mmd-loader'
@@ -71,6 +80,14 @@ const props = withDefaults(defineProps<{
   modelId?: string
   paused?: boolean
   cursorPosition?: { x: number, y: number }
+  performance?: PerformanceState
+  naturalEnergy?: number
+  performanceSettings?: ExpressionPerformanceSettings
+  screenPlacement?: { displays: PlacementRect[], windowBounds: PlacementRect }
+  chatTarget?: { visible: boolean, bounds: PlacementRect | null }
+  chatActivity?: Pick<NaturalChatInput, 'typing' | 'sentSeq' | 'sentWords'>
+  mouthOpenSize?: number
+  nowSpeaking?: boolean
   /**
    * Scene painted behind the model, inside this canvas rather than under it, so one
    * readback answers for the whole stage.
@@ -80,6 +97,11 @@ const props = withDefaults(defineProps<{
   enableOrbitControls?: boolean
 }>(), {
   paused: false,
+  performance: () => ({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }),
+  naturalEnergy: undefined,
+  performanceSettings: () => defaultExpressionPerformanceSettings,
+  mouthOpenSize: 0,
+  nowSpeaking: false,
   enableOrbitControls: false,
 })
 
@@ -91,6 +113,14 @@ const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', {
 
 const mmdStore = useMMD()
 const diagnostics = useMMDMotionDiagnostics()
+const expressions = useMMDExpressionStore()
+let chatVisible: boolean | undefined
+let chatUnfoldSeq = 0
+watch(() => props.chatTarget?.visible, (visible) => {
+  if (chatVisible === false && visible)
+    chatUnfoldSeq++
+  chatVisible = visible
+}, { immediate: true })
 const {
   physicsEnabled,
   ikEnabled,
@@ -387,6 +417,8 @@ function renderLoop(now = performance.now()) {
   if (props.paused || !renderer || !scene || !camera)
     return
 
+  expressions.setSlotSettings(props.performanceSettings.slots)
+  expressions.update(now / 1000)
   animation?.update(delta)
 
   controls?.update()
@@ -408,6 +440,7 @@ function renderLoop(now = performance.now()) {
 }
 
 function disposeModel() {
+  expressions.dispose()
   stopMorphOverrides?.()
   stopMorphOverrides = undefined
   emote?.dispose()
@@ -515,6 +548,7 @@ async function loadModel(src: string) {
 
     const runtime = createMMDMorphRuntime(resolved.mmd)
     morphRuntime = runtime
+    expressions.registerMorphs(props.modelId ?? src, runtime.morphs, runtime)
     const expressionMorphs = createMorphController(mesh, morphOverrides.value, (name, weight) => runtime.setChannel('expression', name, weight))
     const blinkMorphs = createMorphController(mesh, morphOverrides.value, (name, weight) => runtime.setChannel('blink', name, weight, { alpha: weight > 0 ? 1 : 0 }))
     const lipMorphs = createMorphController(mesh, morphOverrides.value, (name, weight) => runtime.setChannel('lipSync', name, weight))
@@ -542,15 +576,31 @@ async function loadModel(src: string) {
         const cursor = gazeMode.value === 'mouse' && head && props.cursorPosition
           ? { x: (props.cursorPosition.x - head.x) / head.width, y: (head.y - props.cursorPosition.y) / head.width }
           : gazeMode.value === 'camera' ? { x: 0, y: 0 } : null
-        const speaking = props.currentAudioSource !== undefined
+        const speaking = props.nowSpeaking
+        const placement = props.screenPlacement
+        const dipScale = placement ? placement.windowBounds.width / document.documentElement.clientWidth : 0
+        const bounds = props.chatTarget?.bounds
+        const chatPoint = head && placement && bounds && dipScale > 0
+          ? {
+              x: ((bounds.x + bounds.width / 2 - placement.windowBounds.x) / dipScale - head.x) / head.width,
+              y: (head.y - (bounds.y + bounds.height / 2 - placement.windowBounds.y) / dipScale) / head.width,
+            }
+          : null
+        natural.setPerformanceSettings(toRaw(props.performanceSettings))
         natural.advance(dt, {
-          performance: { mode: speaking ? 'talking' : 'idle', attention: 'cursor', away: false, reactSeq: 0, reactKind: 'none' },
-          energy: 0.5,
-          voice: { speaking, speechActiveOrRecent: speaking, level: lipSync.level.value },
+          performance: props.performance,
+          energy: props.naturalEnergy ?? 0.5,
+          voice: { speaking, speechActiveOrRecent: speaking, level: props.mouthOpenSize },
           cursor,
-          chat: null,
-          placement: head ? mmdScreenInwardness(rect, head.x) : null,
-        })
+          chat: props.chatTarget
+            ? { ...props.chatActivity ?? { typing: false, sentSeq: 0, sentWords: 0 }, target: props.chatTarget.visible ? chatPoint : null, unfoldSeq: chatUnfoldSeq }
+            : null,
+          placement: !head
+            ? null
+            : placement && dipScale > 0
+              ? screenInwardness(placement.displays, placement.windowBounds.x + head.x * dipScale)
+              : mmdScreenInwardness(rect, head.x),
+        }, performance.now() / 1000)
         natural.applyPose(clean)
         // Channels must be prepared before bone-morph evaluation. Their surface
         // effects are applied after physics by the morph-runtime surface stage.
@@ -627,7 +677,7 @@ async function loadModel(src: string) {
 }
 
 /** Plays the gesture motion mapped to an emotion, if the model has one. */
-function setEmotion(emotion: string, intensity = 1) {
+function setClassicEmotion(emotion: string, intensity = 1) {
   const value = EMOTION_VALUES.includes(emotion as Emotion) ? emotion as Emotion : Emotion.Neutral
   if (motionDriver.value === 'classic')
     emote?.setEmotion(value, intensity)
@@ -635,7 +685,7 @@ function setEmotion(emotion: string, intensity = 1) {
     natural?.setEmotion(value, intensity)
 
   const actionName = emotionActionMap.value[value]
-  if (actionName)
+  if (actionName && registeredMotions.has(actionName))
     animation?.playAction(actionName, { loop: false })
 }
 
@@ -769,7 +819,24 @@ watch(materialOpacity, () => {
 defineExpose({
   canvasElement,
   captureFrame,
-  setEmotion,
+  setClassicEmotion,
+  setEmotion: (episode: NaturalEpisode) => {
+    natural?.impulse(episode)
+    const actionName = emotionActionMap.value[episode.emotion]
+    if (actionName && registeredMotions.has(actionName))
+      animation?.playAction(actionName)
+  },
+  applySlots: (commands: SlotCommand[], now: number) => expressions.applySlots(commands, now),
+  applyHolds: (commands: HoldCommand[], now: number) => natural?.applyHolds(commands, now),
+  onSpeech: (event: SpeechEvent, turnId: string, now: number) => {
+    expressions.onSpeech(event, turnId, now)
+    natural?.onSpeech(event, turnId, now)
+  },
+  setMuted: (muted: boolean) => {
+    expressions.setMuted(muted)
+    natural?.setMuted(muted)
+  },
+  getMood: () => natural?.mood ?? null,
   listMorphs: () => morphs?.availableMorphs ?? [],
   listMotions: () => animation?.availableClips() ?? [],
 })

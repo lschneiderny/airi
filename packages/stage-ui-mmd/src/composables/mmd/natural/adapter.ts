@@ -1,19 +1,23 @@
 import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
+import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionVoice } from '@proj-airi/motion-driver-natural/natural-motion'
-import type { PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, HoldCommand, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { Camera, SkinnedMesh } from 'three'
 
 import type { MorphSlot } from '../../../constants/morphs'
+import type { SlotLease, SpeechEvent } from '../../../stores/expression-slots'
 import type { MMDCleanPose } from '../frame-pipeline'
 import type { createMMDMorphRuntime } from '../morph-runtime'
 import type { MMDRigProfile } from '../rig'
 
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { screenInwardness } from '@proj-airi/stage-shared/stage-placement'
 import { Euler, Quaternion, Vector3 } from 'three'
 
+import { applySpeechEvent, createLease, leaseReleaseAt } from '../../../stores/expression-slots'
 import { EYE_PITCH_LIMIT, EYE_YAW_LIMIT } from '../gaze'
 import { applyNaturalFace } from './face'
 import { fnv1a32 } from './seed'
@@ -65,6 +69,11 @@ export class MMDNaturalAdapter {
   private headYaw = 0
   private placement: number | null = null
   private frame: NaturalMotionFrame
+  private readonly pending: NaturalEpisode[] = []
+  private hold: { emotion: PerformanceEmotion, strength: number, lease: SlotLease } | null = null
+  private readonly activeSpeech = new Map<string, { lastClipEndAt: number | null }>()
+  private muted = false
+  private settings = defaultExpressionPerformanceSettings
 
   constructor(
     private readonly mesh: SkinnedMesh,
@@ -78,8 +87,13 @@ export class MMDNaturalAdapter {
     this.frame = this.natural.advance(0)
   }
 
-  advance(dt: number, input: MMDNaturalInput): void {
+  advance(dt: number, input: MMDNaturalInput, now = this.time + dt): void {
     this.time += dt
+    if (this.hold && now >= leaseReleaseAt(this.hold.lease, this.muted, this.settings.slots))
+      this.hold = null
+    this.natural.setHeldEmotion(this.hold, this.time)
+    for (const episode of this.pending.splice(0))
+      this.natural.impulse(episode, this.time)
     this.energy = input.energy
     this.natural.setVoice(input.voice)
     this.natural.setPerformance(input.performance, input.energy, this.time)
@@ -103,6 +117,55 @@ export class MMDNaturalAdapter {
 
   setEmotion(emotion: PerformanceEmotion, strength: number): void {
     this.natural.setHeldEmotion({ emotion, strength }, this.time)
+  }
+
+  impulse(episode: NaturalEpisode): void {
+    this.pending.push(episode)
+  }
+
+  setPerformanceSettings(settings: ExpressionPerformanceSettings): void {
+    if (this.settings === settings)
+      return
+    this.settings = settings
+    this.natural.setPerformanceSettings(settings)
+  }
+
+  /** Lease timestamps use the conductor clock, not accumulated animation time. */
+  applyHolds(commands: HoldCommand[], now: number): void {
+    for (const command of commands) {
+      if (command.emotion === null) {
+        this.hold = null
+        continue
+      }
+      const lease = createLease(`emotion:${command.emotion}`, command, now, 0)
+      const speech = lease.turnId === null ? undefined : this.activeSpeech.get(lease.turnId)
+      this.hold = {
+        emotion: command.emotion,
+        strength: command.strength,
+        lease: speech ? { ...lease, sawClipStart: true, lastClipEndAt: speech.lastClipEndAt } : lease,
+      }
+    }
+  }
+
+  onSpeech(event: SpeechEvent, turnId: string, now: number): void {
+    if (event === 'clip-start' && !this.activeSpeech.has(turnId))
+      this.activeSpeech.set(turnId, { lastClipEndAt: null })
+    else if (event === 'clip-end' && this.activeSpeech.has(turnId))
+      this.activeSpeech.set(turnId, { lastClipEndAt: now })
+    else if (event === 'clip-stopped' || event === 'turn-end')
+      this.activeSpeech.delete(turnId)
+    if (this.hold?.lease.turnId === turnId) {
+      const lease = applySpeechEvent(this.hold.lease, event, now, this.muted, this.settings.slots)
+      this.hold = lease ? { ...this.hold, lease } : null
+    }
+  }
+
+  setMuted(muted: boolean): void {
+    this.muted = muted
+  }
+
+  get mood() {
+    return this.natural.moodState
   }
 
   applyPose(clean: MMDCleanPose, eyesOwned = false): void {
