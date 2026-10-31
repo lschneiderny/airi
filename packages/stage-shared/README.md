@@ -132,14 +132,15 @@ Do not use it to run a scenario or to read clocks or randomness: the runners in 
 
 ### Situation
 
-The `situation` entrypoint owns the pure core of situational presence: observation and state types, the reducer, situation block renderer, urge gate, reason sources, and window-title helpers.
+The `situation` entrypoint owns the pure core of situational presence: observation and state types, the reducer, situation block renderer, urge gate, touch reaction policy, reason sources, and window-title helpers.
 
 - `reduceSituation` folds one `Observation` into a `SituationState`. `advanceSituation` derives the events that need no observation, such as settled app switches, long-session tiers, and expiry.
 - `renderSituation` renders the bounded `[Situation HH:MM]` block and returns the ids of the events that it showed as new. Pass them to `markShown`, so the next block does not repeat them.
 - `evaluateUrgeGate` integrates a seeded urge against the current hazard, selects an eligible screen event or inner reason, and returns the next gate memory. `recordUrgeFireOutcome`, `recordUrgeUserTurn`, and `recordExternalSpeech` update social state. Only the urge gate exists; `hardReason` in `gate.ts` holds the hard contract that it checks first.
+- `reactionPolicy` decides whether a touch (a long enough pet, or a burst of pokes) gets a short line, and `settleReaction` records the outcome. It never goes through the urge gate: it has its own pacing, its own random checkpoint, and a subset of the hard suppressors that skips presence, stale signals, and busy states.
 - `normalizeWindowTitle`, `appIdFromExe`, `labelFromExe`, `categorizeApp`, and `isDenylisted` turn a foreground sample into an app id, label, category, and model-facing title.
 
-The pure rules read no clock, store, or global randomness. Pass explicit time and retain returned state and memory for the next call; the urge gate checkpoints its random state in gate memory.
+The pure rules read no clock, store, or global randomness. Pass explicit time and retain returned state and memory for the next call; the urge gate and the reaction policy each checkpoint their random state in their own memory.
 
 ```ts
 import { initialSituationState, markShown, reduceSituation, renderSituation } from '@proj-airi/stage-shared/situation'
