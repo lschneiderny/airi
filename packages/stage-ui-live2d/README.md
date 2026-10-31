@@ -56,6 +56,7 @@ A speech-bound lease lasts while its own speech turn plays. It releases after th
 
 Natural is composed of independent layers. Each layer draws from its own seeded random stream, so retuning one layer does not reshuffle another.
 The `NaturalMotion` controller from `@proj-airi/motion-driver-natural` advances every layer on a fixed 120 Hz grid and interpolates between grid states, so the frame rate does not change the motion.
+The controller and its pure layers live in `packages/motion-driver-natural`, shared with the MMD renderer. This package keeps the Live2D adapter (`natural-motion-adapter.ts`) and, under `src/composables/live2d/natural-motion/`, the rig profile, trace recorder, scorers, reference stats, and QA gates. The [3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md) records the split.
 
 - Posture moves the head through a slow home drift, continuous sub-second motion whose activity waxes and wanes, and occasional heavy-tailed posture shifts along min-jerk paths. Activity changes only while a shift moves, so a held pose never starts shivering mid-hold.
 - Gaze picks fixation targets (camera, desk, and peripheral points) independently of the head and compensates the eyes for the slow head pose (posture shifts, drift, cursor bias, plus emphasis, impulse, pet, hold, and gesture heads), not for the sub-second continuous wobble.
