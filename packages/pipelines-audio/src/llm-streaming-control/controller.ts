@@ -11,7 +11,7 @@ import type {
   LlmStreamingControlTurnDone,
 } from './types'
 
-import { tokenAct, tokenCall, tokenDelay } from './parsers'
+import { tokenAct, tokenBreak, tokenCall, tokenDelay } from './parsers'
 import { renderCallManifestPrompt } from './parsers/call'
 
 interface StreamingControlTurnState {
@@ -50,6 +50,7 @@ export function createStreamingControlParser(
   const parsers = options.parsers ?? [
     tokenAct(),
     tokenDelay(),
+    tokenBreak(),
     tokenCall(),
   ]
 
@@ -401,6 +402,7 @@ function parsedParameter(signal: LlmStreamingControlSignal): string | undefined 
         ? JSON.stringify(signal.payload)
         : undefined
 
+    case 'break':
     case 'delay':
       return `${signal.seconds}s`
   }

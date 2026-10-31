@@ -44,7 +44,17 @@ describe('tokenAct', () => {
     '<|ACT sad -1|>',
     '<|ACT sad 0.3.1|>',
     '<|ACT:{"emotion":"happy"}|>',
+    '<|ACT nod|>',
+    '<|ACT shrug|>',
+    '<|ACT happy nod|>',
   ])('rejects invalid bare ACT token %s', (special) => {
     expect(parser.parse(special)).toBeUndefined()
+  })
+
+  it('accepts a gesture-only JSON ACT, which is not inert', () => {
+    const parsed = parser.parse('<|ACT {"gesture":{"kind":"nod","count":2}}|>')
+
+    expect(parsed).toEqual({ type: 'act', payload: { gesture: { kind: 'nod', count: 2 } } })
+    expect(normalizeActPayload(parsed?.payload ?? {})).toEqual({ gesture: { kind: 'nod', count: 2 } })
   })
 })

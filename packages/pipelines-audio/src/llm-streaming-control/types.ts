@@ -146,7 +146,7 @@ export interface LlmStreamingControl {
 }
 
 export interface LlmStreamingControlOptions {
-  /** Optional parsers. Defaults to the built-in ACT, DELAY, and CALL parsers. */
+  /** Optional parsers. Defaults to the built-in ACT, DELAY, BREAK, and CALL parsers. */
   parsers?: LlmStreamingControlParser<LlmStreamingControlSignal>[]
 }
 
@@ -186,7 +186,20 @@ export interface LlmStreamingControlTokenDelay {
   seconds: number
 }
 
+/**
+ * Parsed BREAK token payload: a pause that ends one part of a reply before the next.
+ */
+export interface LlmStreamingControlTokenBreak {
+  /** Parsed signal kind. */
+  type: 'break'
+  /** Pause length in seconds, within 0.3-3.0. */
+  seconds: number
+  /** True when the model wrote the duration; false when the 1.0 s default applies. */
+  explicit: boolean
+}
+
 export type LlmStreamingControlSignal
   = | LlmStreamingControlTokenAct
+    | LlmStreamingControlTokenBreak
     | LlmStreamingControlTokenCall
     | LlmStreamingControlTokenDelay

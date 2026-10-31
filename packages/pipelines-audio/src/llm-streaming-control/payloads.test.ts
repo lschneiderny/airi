@@ -140,6 +140,34 @@ describe('normalizeActPayload', () => {
     expect(normalizeActPayload({ emotion: 'curious', look })).toEqual({ emotion: { name: 'curious', intensity: 0.6 } })
   })
 
+  it.each([
+    ['nod', { kind: 'nod', count: 2 }],
+    [' Shake ', { kind: 'shake', count: 2 }],
+    ['SHRUG', { kind: 'shrug', count: 1 }],
+    ['lean', { kind: 'lean', count: 1 }],
+    ['glance', { kind: 'glance', count: 1 }],
+    [{ kind: 'nod', count: 2 }, { kind: 'nod', count: 2 }],
+    [{ kind: 'nod', count: 3 }, { kind: 'nod', count: 3 }],
+    [{ kind: 'nod', count: 1 }, { kind: 'nod', count: 1 }],
+    [{ kind: 'nod', count: 5 }, { kind: 'nod', count: 3 }],
+    [{ kind: 'shake', count: 0 }, { kind: 'shake', count: 1 }],
+    [{ kind: 'shake', count: -2 }, { kind: 'shake', count: 1 }],
+    [{ kind: 'nod', count: 2.5 }, { kind: 'nod', count: 3 }],
+    [{ kind: 'nod', count: 1.4 }, { kind: 'nod', count: 1 }],
+    [{ kind: 'nod', count: Number.NaN }, { kind: 'nod', count: 2 }],
+    [{ kind: 'nod', count: Number.POSITIVE_INFINITY }, { kind: 'nod', count: 2 }],
+    [{ kind: 'nod', count: '3' }, { kind: 'nod', count: 2 }],
+    [{ kind: 'nod' }, { kind: 'nod', count: 2 }],
+    [{ kind: ' Lean ', count: 3 }, { kind: 'lean', count: 1 }],
+    [{ kind: 'glance', count: 2 }, { kind: 'glance', count: 1 }],
+  ])('normalizes gesture %j to %j', (gesture, expected) => {
+    expect(normalizeActPayload({ gesture })).toEqual({ gesture: expected })
+  })
+
+  it.each(['wave', '', '   ', 'nod twice', 'constructor', 7, null, ['nod'], { kind: 'wave', count: 2 }, { count: 2 }, { kind: 7 }])('drops the unsupported gesture %j', (gesture) => {
+    expect(normalizeActPayload({ emotion: 'happy', gesture })).toEqual({ emotion: { name: 'happy', intensity: 0.6 } })
+  })
+
   it('carries look next to the other fields of the taught JSON form', () => {
     expect(normalizeActPayload({ emotion: 'happy', intensity: 'strong', expression: 'Blush', motion: 'nod', look: 'screen' })).toEqual({
       emotion: { name: 'happy', intensity: 0.9 },
