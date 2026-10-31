@@ -73,6 +73,21 @@ Classic gaze is a pose stage: it composes head and eye aim with the clean
 clip rotation before solvers and physics, rather than replacing VMD rotation
 with a rest-relative gaze override.
 
+`useMMD().motionDriver` persists at `settings/mmd/motion-driver` and defaults
+to `natural`. Natural seeds its shared controller with FNV-1a over the model
+id's UTF-16 code units. Its pose stage splits head motion between neck (40%)
+and head (60%) over a 30-degree span, and body motion between spine and chest
+over a 10-degree span. Writes are absolute from the clean clip pose and skip
+physics-owned bones. Face and blink use separate morph-runtime layers.
+Classic retains its gaze, blink and emotion composables. Switching drivers
+clears procedural morph channels and starts a fresh Natural controller.
+
+The adapter accepts performance, voice, chat, head-width cursor coordinates,
+screen inwardness and touch inputs. Stage performance wiring is supplied by
+the host; the scene currently derives idle/talking, voice level and projected
+cursor inputs. Diagnostics publish the rig profile and Natural event count,
+requested energy and the head bone's local yaw in radians.
+
 Pose stages read `context.clean` and write absolute transforms from that
 snapshot; they must not modify the snapshot itself. `clipFootIK` records
 which registered motions contain left/right foot IK position tracks.
@@ -98,9 +113,11 @@ renderer-neutral `RigTraits`. Pose stages must not write physics-owned bones.
 ### PMX morph runtime
 
 `createMMDMorphRuntime` from `@proj-airi/stage-ui-mmd/composables/mmd`
-provides a separate runtime for group, vertex, bone, material and UV morphs.
-It is not yet connected to `MMDScene`. Use it inside a frame pipeline, not
-alongside the scene's existing morph controller.
+provides the scene's runtime for group, vertex, bone, material and UV morphs.
+The scene prepares procedural channels in pose stages, composes bone morphs
+after the procedural pose and before physics, then applies surfaces after
+physics. Classic expression, blink and lip-sync controllers write their own
+layers instead of overwriting mesh influences.
 
 Channels are persistent named weights. `setChannel(layer, name, weight)`
 replaces that layer's value; `clearChannel(layer, name)` releases ownership.

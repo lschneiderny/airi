@@ -59,6 +59,7 @@ const MOTION_STORAGE_PREFIX = 'mmd-motion-'
 
 /** Eye/head tracking mode, mirroring the VRM renderer's tracking modes. */
 export type MMDGazeMode = 'camera' | 'mouse' | 'none'
+export type MMDMotionDriver = 'natural' | 'classic'
 
 /** Transient request to play a one-shot motion, bumped per request. */
 export interface MMDOneShotAction {
@@ -123,6 +124,7 @@ export const useMMD = defineStore('mmd', () => {
    * - `none`   — no tracking; idle saccades only
    */
   const gazeMode = useLocalStorageManualReset<MMDGazeMode>('settings/mmd/gaze-mode', 'mouse')
+  const motionDriver = useLocalStorageManualReset<MMDMotionDriver>('settings/mmd/motion-driver', 'natural')
 
   // === Scene: camera ===
   /** Vertical field of view in degrees. */
@@ -264,6 +266,7 @@ export const useMMD = defineStore('mmd', () => {
     grantEnabled.reset()
     physicsGravity.reset()
     gazeMode.reset()
+    motionDriver.reset()
     cameraFov.reset()
     ambientColor.reset()
     ambientIntensity.reset()
@@ -293,6 +296,7 @@ export const useMMD = defineStore('mmd', () => {
     grantEnabled,
     physicsGravity,
     gazeMode,
+    motionDriver,
 
     cameraFov,
     ambientColor,

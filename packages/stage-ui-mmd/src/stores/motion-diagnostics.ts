@@ -1,4 +1,5 @@
 import type { FrameMeasurement, StageTiming } from '../composables/mmd/frame-metrics'
+import type { MMDRigProfile } from '../composables/mmd/rig'
 
 import { defineStore } from 'pinia'
 import { onScopeDispose, ref, shallowRef } from 'vue'
@@ -10,8 +11,8 @@ export interface MMDMotionSnapshot {
   driver: 'natural' | 'classic'
   fps: { last: number, mean60s: number }
   timings: Record<string, StageTiming>
-  rig: object | null
-  natural: { events: number, energy: number } | null
+  rig: MMDRigProfile | null
+  natural: { events: number, energy: number, headYaw: number } | null
   feet: { maxError: number, errorL: number, errorR: number, contact: number } | null
   lookAt: { target: { x: number, y: number, z: number } | null, yaw: number, pitch: number, turning: boolean, turns: number } | null
   director: { stance: string, sinceMs: number, reason: string, clockOffsetMs: number } | null

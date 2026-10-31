@@ -33,6 +33,7 @@ export function useMMDLipSync(
   audioSource: Readonly<Ref<AudioBufferSourceNode | undefined>>,
 ) {
   const lipSyncAnalysis = shallowRef<WLipSyncAnalysis>()
+  const level = shallowRef(0)
   const vowelDriver = createWLipSyncVowelDriver()
 
   watch(audioContext, (context, _, onCleanup) => {
@@ -87,13 +88,16 @@ export function useMMDLipSync(
 
   function update(morphs: MorphController | undefined, delta = 0.016) {
     const node = lipSyncAnalysis.value?.node
-    if (!morphs || !node)
+    if (!morphs || !node) {
+      level.value = 0
       return
+    }
 
     const weights = vowelDriver.update(node, delta)
+    level.value = Math.min(1, WLIP_SYNC_VOWELS.reduce((sum, vowel) => sum + weights[vowel], 0))
     for (const vowel of WLIP_SYNC_VOWELS)
       morphs.set(MMD_SLOT_BY_VOWEL[vowel], weights[vowel])
   }
 
-  return { update }
+  return { update, level }
 }
