@@ -36,6 +36,8 @@ pnpm qa:motion validate-scorer --level t1
 pnpm qa:report <runDir>
 ```
 
+For the MMD desktop stage, `pnpm qa:stage measure` records window/desktop frame-budget pairs and `pnpm qa:stage gate <json>...` judges `stage-walk-skate`, `stage-arm-penetration`, and `stage-frame-budget`. A measurement moves the real OS cursor and needs a quiet, undisturbed desktop. See the Stage gates section of the qa-tools README.
+
 The `builtin:t3-touch` scenario pets, pokes, and triggers the touch blush with the real OS pointer. `builtin:t3-touch-pass` verifies that a passing cursor does not start a pet. The T1 touch suite covers deterministic touch behavior. T3 touch runs move the real OS cursor and need an undisturbed desktop; the runner refuses paths outside the virtual screen and stops when the reported head is implausible.
 
 Set `AIRI_QA_RIG_FORBOOTH` to the local ForBOOTH rig directory for T2 and T3. Set `AIRI_QA_CUBISM_CORE` when the core is not at the current checkout's default path. `AIRI_QA_RIG_BEAR` is an optional doctor input; Luke's rule says acceptance on one rig counts for the other. The bridge is enabled only when the build is development and both `APP_REMOTE_DEBUG=true` and `APP_MOTION_QA_BRIDGE=true` are set. T3 uses `APP_USER_DATA_PATH` for a temporary profile and manages its remote-debug port internally. Do not reuse a personal Electron profile.
