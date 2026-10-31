@@ -1,5 +1,6 @@
 import type { CatalogEntry } from './catalog'
 import type { ExpressionPerformanceSettings } from './settings'
+import type { MoodDose, TouchAffectInput, TouchRegion } from './touch-affect'
 
 export const PERFORMANCE_EMOTIONS = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral', 'love', 'flustered', 'sleepy'] as const
 export type PerformanceEmotion = typeof PERFORMANCE_EMOTIONS[number]
@@ -29,6 +30,8 @@ export interface TimingEvent {
  * A `clear` releases the named slot, or the face, effect, and prop slots when no slot is named.
  * It differs from a `neutral` emotion, which clears only face and effect and also resets the
  * reaction history.
+ *
+ * A `touch` doses mood only (see `touchAffect`): it never creates an episode, slot, or hold.
  */
 export type AffectSignal
   = | { kind: 'emotion', source: 'act' | 'tool' | 'devtools', emotion: PerformanceEmotion, nominal: number, turnId?: string, at: number }
@@ -36,6 +39,7 @@ export type AffectSignal
     | { kind: 'clear', source: 'act' | 'tool' | 'devtools', slot?: SlotCommand['slot'], turnId?: string, at: number }
     | { kind: 'speech', event: 'clip-start' | 'clip-end' | 'clip-stopped' | 'turn-end', turnId: string, clipId?: string, at: number }
     | { kind: 'muted', muted: boolean, at: number }
+    | { kind: 'touch', touch: TouchAffectInput['touch'], region: TouchRegion, durationSeconds?: number, at: number }
     | { kind: 'timing', event: TimingEvent, at: number }
     | { kind: 'deadline', at: number }
 
@@ -62,6 +66,8 @@ export interface PerformanceDecision {
   episodes: ReactionEpisode[]
   slots: SlotCommand[]
   holds: HoldCommand[]
+  /** Mood doses for the Natural performer; empty for every signal except `touch`. */
+  moods: MoodDose[]
 }
 
 export interface DeciderContext {
