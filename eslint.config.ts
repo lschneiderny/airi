@@ -94,6 +94,18 @@ export default defineConfig({
     'yaml/plain-scalar': 'off',
   },
 }, {
+  files: ['packages/motion-driver-{natural,humanoid}/src/**'],
+  rules: {
+    'no-restricted-imports': ['error', {
+      patterns: [
+        {
+          group: ['three', 'three/*', 'vue', 'pinia', '@moeru/three-mmd*', '@proj-airi/stage-ui*'],
+          message: 'Motion driver packages must remain renderer-neutral.',
+        },
+      ],
+    }],
+  },
+}, {
   files: ['server/apps/api/**/*.ts'],
   rules: {
     'no-restricted-syntax': [
