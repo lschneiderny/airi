@@ -1,4 +1,6 @@
 import type { BroadcastChannelEmitOptions } from '@moeru/eventa/adapters/broadcast-channel'
+import type { LocomotionFrame } from '@proj-airi/motion-driver-humanoid/locomotion'
+import type { BodyLocomotionReason, LocomotionPace } from '@proj-airi/motion-driver-humanoid/types'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 
 import type { FrameMeasurement, StageTiming } from '../composables/mmd/frame-metrics'
@@ -34,6 +36,25 @@ export interface MMDMotionSnapshot {
   /** Stage mode only: the measured model height and foot baseline in model units, which the host calibrates the camera from. */
   stageModel: { height: number, footBaselineY: number } | null
   measurement: FrameMeasurement | null
+  /**
+   * The gait, in world units on the ground line. `skate` is the largest per-frame horizontal world movement of a planted
+   * ankle (0 when feet stay planted), `leashClamps` counts ticks on which the reach leash shortened root travel, and
+   * `enabled` is false while a clip owns the body.
+   */
+  locomotion: {
+    mode: LocomotionFrame['mode']
+    position: { x: number, z: number }
+    yaw: number
+    goalX: number | null
+    reason: BodyLocomotionReason | null
+    pace: LocomotionPace | null
+    speed: number
+    phase: number
+    weight: number
+    skate: number
+    leashClamps: number
+    enabled: boolean
+  } | null
 }
 
 export type MMDMotionCommand
@@ -41,6 +62,16 @@ export type MMDMotionCommand
     | { type: 'command', name: 'setDebugFlag', value: { flag: 'disableFootContact' | 'disableLookAt', on: boolean } }
     | { type: 'command', name: 'advanceDirectorClock', value: number }
     | { type: 'command', name: 'setOverlay', value: Partial<MMDOverlayFlags> }
+    | { type: 'command', name: 'requestGoal', value: { x: number, pace: LocomotionPace } }
+    | { type: 'command', name: 'setHome', value: { x: number } }
+
+function isLocomotionPace(value: unknown): value is LocomotionPace {
+  return value === 'stroll' || value === 'walk'
+}
+
+function finiteX(value: unknown): number | null {
+  return typeof value === 'object' && value !== null && 'x' in value && typeof value.x === 'number' && Number.isFinite(value.x) ? value.x : null
+}
 
 function isSnapshotMessage(data: unknown): data is { type: 'snapshot', snapshot: MMDMotionSnapshot } {
   return typeof data === 'object' && data !== null && 'type' in data && data.type === 'snapshot'
@@ -60,6 +91,10 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
   const debugFlags = ref({ disableFootContact: false, disableLookAt: false })
   const directorClockOffsetMs = ref(0)
   const overlays = shallowRef<MMDOverlayFlags>({ ...mmdOverlaysOff })
+  /** The latest walk goal from the lab; a new `seq` marks a new request, even to the same x. */
+  const goalRequest = shallowRef<{ seq: number, x: number, pace: LocomotionPace } | null>(null)
+  /** Home x set from the lab; todo 12's director reads it as its home spot. */
+  const homeX = ref<number | null>(null)
   /** Set once this window's stage publishes; a stage window never mirrors another window's snapshots. */
   let publisher = false
   const snapshot = shallowRef<MMDMotionSnapshot>({
@@ -77,6 +112,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     characterPlacement: null,
     stageModel: null,
     measurement: null,
+    locomotion: null,
   })
 
   function warn() {
@@ -124,6 +160,24 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
         }
         overlays.value = { ...overlays.value, ...value }
         break
+      case 'requestGoal': {
+        const x = finiteX(value)
+        if (x === null || typeof value !== 'object' || value === null || !('pace' in value) || !isLocomotionPace(value.pace)) {
+          warn()
+          return
+        }
+        goalRequest.value = { seq: (goalRequest.value?.seq ?? 0) + 1, x, pace: value.pace }
+        break
+      }
+      case 'setHome': {
+        const x = finiteX(value)
+        if (x === null) {
+          warn()
+          return
+        }
+        homeX.value = x
+        break
+      }
       default:
         warn()
     }
@@ -187,6 +241,8 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     debugFlags,
     directorClockOffsetMs,
     overlays,
+    goalRequest,
+    homeX,
     publish,
     command,
     setOverlays,

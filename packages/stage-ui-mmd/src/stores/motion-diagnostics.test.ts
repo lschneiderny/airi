@@ -33,6 +33,7 @@ describe('mmd motion diagnostics channel', () => {
           characterPlacement: null,
           stageModel: null,
           measurement: null,
+          locomotion: null,
         },
       })
     }
@@ -147,6 +148,41 @@ describe('mmd motion diagnostics channel', () => {
     }
     finally {
       now.mockRestore()
+      disposePinia(pinia)
+    }
+  })
+
+  it('accepts locomotion goal and home commands and rejects malformed ones with one warning', async () => {
+    const pinia = createPinia()
+    const store = useMMDMotionDiagnostics(pinia)
+    const peer = new BroadcastChannel('airi-stores-stage-ui-mmd-motion-diagnostics')
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const applied = new Promise<void>((resolve, reject) => {
+        const signal = AbortSignal.timeout(2000)
+        const stop = watch(() => store.homeX, () => resolve(), { once: true, flush: 'sync' })
+        signal.addEventListener('abort', () => {
+          stop()
+          reject(signal.reason)
+        }, { once: true })
+      })
+      peer.postMessage({ type: 'command', name: 'requestGoal', value: { x: 4, pace: 'sprint' } })
+      peer.postMessage({ type: 'command', name: 'requestGoal', value: { x: Number.NaN, pace: 'walk' } })
+      peer.postMessage({ type: 'command', name: 'setHome', value: { x: '3' } })
+      peer.postMessage({ type: 'command', name: 'setHome', value: { x: -3 } })
+      await applied
+      expect(store.goalRequest).toBeNull()
+      expect(store.homeX).toBe(-3)
+      expect(warning).toHaveBeenCalledTimes(1)
+
+      store.command({ type: 'command', name: 'requestGoal', value: { x: 12, pace: 'walk' } })
+      expect(store.goalRequest).toEqual({ seq: 1, x: 12, pace: 'walk' })
+      store.command({ type: 'command', name: 'requestGoal', value: { x: 12, pace: 'stroll' } })
+      expect(store.goalRequest).toEqual({ seq: 2, x: 12, pace: 'stroll' })
+    }
+    finally {
+      warning.mockRestore()
+      peer.close()
       disposePinia(pinia)
     }
   })

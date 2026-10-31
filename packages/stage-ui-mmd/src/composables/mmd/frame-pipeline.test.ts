@@ -2,6 +2,7 @@ import { AnimationClip, AnimationMixer, LoopRepeat, NumberKeyframeTrack, Quatern
 import { describe, expect, it, vi } from 'vitest'
 
 import { createModel } from './__fixtures__/model'
+import { bodyFixture } from './body/fixture'
 import { MMDFrameMetrics } from './frame-metrics'
 import { MMDFramePipeline } from './frame-pipeline'
 
@@ -161,5 +162,17 @@ describe('mmd frame pipeline', () => {
       new VectorKeyframeTrack('.bones[左足ＩＫ].position', [0, 1], [1, 1, 0, 1, 1, 0]),
     ]))
     expect(pipeline.clipFootIK.get('left')).toEqual({ left: true, right: false })
+  })
+
+  it('runs the body stages with locomotion first, before weight-shift, foot-contact, look-at and eyes', () => {
+    const { pipeline } = bodyFixture()
+    const order: string[] = []
+    const measure = pipeline.metrics.measure.bind(pipeline.metrics)
+    vi.spyOn(pipeline.metrics, 'measure').mockImplementation((id, run) => {
+      order.push(id)
+      measure(id, run)
+    })
+    pipeline.step(1 / 60)
+    expect(order.slice(order.indexOf('natural') + 1, order.indexOf('beforePhysics'))).toEqual(['locomotion', 'weight-shift', 'foot-contact', 'look-at', 'eyes'])
   })
 })

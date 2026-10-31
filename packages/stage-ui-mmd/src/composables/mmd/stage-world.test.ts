@@ -2,7 +2,7 @@ import { calibrateCamera, worldToDip } from '@proj-airi/stage-shared/stage-world
 import { Matrix4, PerspectiveCamera } from 'three'
 import { describe, expect, it } from 'vitest'
 
-import { applyCalibrationToCamera, applyStageCamera, projectCharacterPlacement, stagePixelRatio } from './stage-world'
+import { applyCalibrationToCamera, applyStageCamera, clampToGround, projectCharacterPlacement, stagePixelRatio } from './stage-world'
 
 const workedExample = calibrateCamera({
   workArea: { width: 2560, height: 1400 },
@@ -70,5 +70,14 @@ describe('stagePixelRatio', () => {
   it('lets the render scale lower it', () => {
     expect(stagePixelRatio(2, 0.5)).toBe(1)
     expect(stagePixelRatio(1, 0.5)).toBe(0.5)
+  })
+})
+
+describe('clampToGround', () => {
+  it('stops a goal beyond either ground edge at that edge and keeps one inside', () => {
+    const ground = { minX: -5, maxX: 5 }
+    expect(clampToGround(ground, 9)).toBe(5)
+    expect(clampToGround(ground, -9)).toBe(-5)
+    expect(clampToGround(ground, 2)).toBe(2)
   })
 })
