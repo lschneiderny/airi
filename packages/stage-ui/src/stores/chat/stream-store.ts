@@ -30,6 +30,8 @@ export const useChatStreamStore = defineStore('chat-stream', () => {
   function appendStreamLiteral(literal: string) {
     streamingMessage.value.content += literal
 
+    // Text merges into an open text slice only. After a break slice (or any other slice) a new text slice opens,
+    // so history renders the text after a break as its own bubble.
     const lastSlice = streamingMessage.value.slices.at(-1)
     if (lastSlice?.type === 'text') {
       lastSlice.text += literal

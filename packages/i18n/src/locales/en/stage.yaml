@@ -132,6 +132,17 @@ chat:
       long-session: about how long they have been at it
       returned: because they came back
       notify: about a reminder
+      touch-pet: Reacted to a pet
+      touch-poke: Reacted to a poke
+  wordless:
+    reacted: 'reacted - {cues}'
+    silent: stayed quiet
+    cues:
+      nod: nodded
+      shake: shook her head
+      shrug: shrugged
+      lean: leaned in
+      glance: glanced away
   reasoning: Reasoning
   swipe-demo:
     show-label: Show labels

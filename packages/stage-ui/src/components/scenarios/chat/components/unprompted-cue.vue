@@ -19,11 +19,14 @@ const { t, te } = useI18n()
 const settings = useSituationSettings()
 /** A trigger without topic text shows no cue, never the prompt that was sent to the model. */
 const topic = computed(() => getChatHistoryItemCopyText(props.message).trim())
-/** A kind without a label key (unknown or missing) falls back to the topic text. */
-const label = computed(() => {
-  const kind = getUnpromptedCueKind(props.message)
-  const key = `stage.chat.unprompted.labels.${kind}`
-  return kind && te(key) ? t(key) : topic.value
+const kind = computed(() => getUnpromptedCueKind(props.message))
+const labelKey = computed(() => kind.value && te(`stage.chat.unprompted.labels.${kind.value}`) ? `stage.chat.unprompted.labels.${kind.value}` : undefined)
+/** A touch reaction answers the user, so its label is the whole cue. Other kinds explain why she reached out. */
+const text = computed(() => {
+  if (labelKey.value && kind.value?.startsWith('touch-'))
+    return t(labelKey.value)
+  // A kind without a label key (unknown or missing) falls back to the topic text.
+  return t('stage.chat.unprompted.cue', { label: labelKey.value ? t(labelKey.value) : topic.value })
 })
 </script>
 
@@ -37,6 +40,6 @@ const label = computed(() => {
       variant === 'mobile' ? 'mr-0' : 'mr-12',
     ]"
   >
-    {{ t('stage.chat.unprompted.cue', { label }) }}
+    {{ text }}
   </p>
 </template>

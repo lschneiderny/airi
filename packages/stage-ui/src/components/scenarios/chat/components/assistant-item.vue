@@ -5,7 +5,7 @@ import type { ChatHistoryReplyPayload } from '../reply'
 import type { ChatToolCallRendererRegistry } from './tool-call-renderer'
 
 import { isStageCapacitor, isStageWeb } from '@proj-airi/stage-shared'
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import ChatReplyQuote from './reply-quote.vue'
 import ResponseCitations from './response-citations.vue'
@@ -14,7 +14,7 @@ import ChatSticker from './sticker.vue'
 import ChatToolCallBlock from './tool-call-block.vue'
 
 import { MarkdownRenderer } from '../../../markdown'
-import { getChatHistoryItemCopyText } from '../utils'
+import { getChatHistoryItemCopyText, splitSlicesIntoBubbles } from '../utils'
 import { ChatActionMenu } from './action-menu'
 import { createToolCallResultLookup, resolveToolCallBlockState } from './tool-call-results'
 
@@ -25,6 +25,12 @@ const props = withDefaults(defineProps<{
   canReply?: boolean
   scrollContainer?: HTMLElement | null
   showPlaceholder?: boolean
+  /**
+   * `true` while this message is the live stream of the history. A bubble after a break then appears `seconds` after
+   * the break slice arrived, on a schedule that keeps running after generation ends, as long as this item stays
+   * mounted. A message mounted complete shows every bubble at once.
+   */
+  streaming?: boolean
   variant?: 'desktop' | 'mobile'
   /** How the bubble paints its background; see `ChatHistory`'s `surface`. */
   surface?: 'translucent' | 'opaque'
@@ -32,6 +38,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   canReply: false,
   showPlaceholder: false,
+  streaming: false,
   scrollContainer: null,
   variant: 'desktop',
   surface: 'translucent',
@@ -105,7 +112,48 @@ function getToolCallRenderer(slice: ChatSlices) {
   return props.toolCallRenderers[slice.toolCall.toolName] ?? ChatToolCallBlock
 }
 
+const bubbles = computed(() => splitSlicesIntoBubbles(resolvedSlices.value))
+const breakSlices = computed(() => resolvedSlices.value.filter(slice => slice.type === 'break'))
+
+/**
+ * Reveal schedule of the bubbles after a break, in epoch milliseconds: entry `i` is when the bubble after break `i`
+ * may appear. It never decreases, so bubbles appear in order even when a later break asks for a shorter pause.
+ * The item owns the one pending timer and clears it on unmount.
+ */
+const revealDeadlines: number[] = []
+/** Breaks whose next bubble is visible. Infinity for a message mounted complete, which hides nothing. */
+const revealedBreaks = ref(props.streaming ? 0 : Number.POSITIVE_INFINITY)
+let revealTimer: ReturnType<typeof setTimeout> | undefined
+
+function scheduleNextReveal() {
+  clearTimeout(revealTimer)
+  revealTimer = undefined
+  const deadline = revealDeadlines[revealedBreaks.value]
+  if (deadline === undefined)
+    return
+  revealTimer = setTimeout(() => {
+    revealedBreaks.value += 1
+    scheduleNextReveal()
+  }, Math.max(0, deadline - Date.now()))
+}
+
+watch(breakSlices, (breaks) => {
+  if (!Number.isFinite(revealedBreaks.value))
+    return
+  for (let index = revealDeadlines.length; index < breaks.length; index++) {
+    const slice = breaks[index]
+    const pauseMs = slice.type === 'break' ? slice.seconds * 1000 : 0
+    revealDeadlines.push(Math.max(revealDeadlines[index - 1] ?? 0, Date.now() + pauseMs))
+  }
+  scheduleNextReveal()
+}, { immediate: true })
+onBeforeUnmount(() => clearTimeout(revealTimer))
+
+const visibleBubbles = computed(() => bubbles.value.slice(0, revealedBreaks.value + 1))
+
 const showLoader = computed(() => props.showPlaceholder && resolvedSlices.value.length === 0)
+/** The bubble shells to draw: the visible bubbles, or one empty shell that holds the loader. */
+const shells = computed(() => visibleBubbles.value.length ? visibleBubbles.value : showLoader.value ? [[]] : [])
 const containerClass = computed(() => props.variant === 'mobile' ? 'mr-0' : 'mr-12')
 const boxClasses = computed(() => {
   const spacing = props.variant === 'mobile' ? 'px-2 py-2 text-sm' : 'px-3 py-3'
@@ -135,46 +183,55 @@ const copyText = computed(() => getChatHistoryItemCopyText(props.message as Chat
       @reply="emit('reply')"
     >
       <template #default="{ setMeasuredElement }">
-        <div
-          :ref="setMeasuredElement"
-          flex="~ col" shadow="sm primary-200/50 dark:none"
-          min-w-20 gap-2 rounded-xl h="unset <sm:fit"
-          :class="[
-            'chat-message-item-container',
-            boxClasses,
-            (isStageWeb() || isStageCapacitor()) && props.variant === 'mobile' ? 'select-none sm:select-auto' : '',
-          ]"
-        >
-          <ChatReplyQuote v-if="replyTarget" :target="replyTarget" />
-          <ChatResponsePart
-            v-if="message.categorization"
-            :message="message"
-            :variant="variant"
-          />
-          <div class="<sm:hidden">
-            <span text-sm text="black/60 dark:white/65" font-normal>{{ label }}</span>
-          </div>
-          <div v-if="resolvedSlices.length > 0" class="flex flex-col gap-2 break-words" text="primary-700 dark:primary-100">
-            <template v-for="(slice, sliceIndex) in resolvedSlices" :key="sliceIndex">
-              <component
-                :is="getToolCallRenderer(slice)"
-                v-if="slice.type === 'tool-call'"
-                :tool-call-id="slice.toolCall.toolCallId"
-                :tool-name="slice.toolCall.toolName"
-                :args="slice.toolCall.args"
-                :state="resolveToolCallBlockState(getToolCallResult(sliceIndex))"
-                :result="getToolCallResult(sliceIndex)?.result"
-                @tool-call-rerun="emitToolCallRerun(sliceIndex, $event)"
+        <!-- One shell per bubble; the quote, reasoning, and label stay on the first, the citations on the last. -->
+        <div v-if="shells.length" :ref="setMeasuredElement" :class="['flex min-w-0 flex-col items-start gap-1.5']">
+          <div
+            v-for="(bubble, bubbleIndex) in shells"
+            :key="bubbleIndex"
+            data-chat-bubble
+            :class="[
+              'chat-message-item-container',
+              'flex flex-col gap-2',
+              'min-w-20 max-w-full rounded-xl',
+              'h-unset <sm:h-fit',
+              'shadow-sm shadow-primary-200/50 dark:shadow-none',
+              boxClasses,
+              (isStageWeb() || isStageCapacitor()) && props.variant === 'mobile' ? 'select-none sm:select-auto' : '',
+            ]"
+          >
+            <template v-if="bubbleIndex === 0">
+              <ChatReplyQuote v-if="replyTarget" :target="replyTarget" />
+              <ChatResponsePart
+                v-if="message.categorization"
+                :message="message"
+                :variant="variant"
               />
-              <template v-else-if="slice.type === 'tool-call-result'" />
-              <ChatSticker v-else-if="slice.type === 'sticker'" :sticker-id="slice.stickerId" />
-              <template v-else-if="slice.type === 'text'">
-                <MarkdownRenderer :content="slice.text" />
-              </template>
+              <div class="<sm:hidden">
+                <span :class="['text-sm font-normal', 'text-black/60 dark:text-white/65']">{{ label }}</span>
+              </div>
             </template>
+            <div v-if="bubble.length > 0" :class="['flex flex-col gap-2 break-words', 'text-primary-700 dark:text-primary-100']">
+              <template v-for="{ slice, index: sliceIndex } in bubble" :key="sliceIndex">
+                <component
+                  :is="getToolCallRenderer(slice)"
+                  v-if="slice.type === 'tool-call'"
+                  :tool-call-id="slice.toolCall.toolCallId"
+                  :tool-name="slice.toolCall.toolName"
+                  :args="slice.toolCall.args"
+                  :state="resolveToolCallBlockState(getToolCallResult(sliceIndex))"
+                  :result="getToolCallResult(sliceIndex)?.result"
+                  @tool-call-rerun="emitToolCallRerun(sliceIndex, $event)"
+                />
+                <template v-else-if="slice.type === 'tool-call-result'" />
+                <ChatSticker v-else-if="slice.type === 'sticker'" :sticker-id="slice.stickerId" />
+                <template v-else-if="slice.type === 'text'">
+                  <MarkdownRenderer :content="slice.text" />
+                </template>
+              </template>
+            </div>
+            <ResponseCitations v-if="bubbleIndex === shells.length - 1 && message.citations?.length" :citations="message.citations" />
+            <div v-if="bubble.length === 0 && showLoader" i-eos-icons:three-dots-loading />
           </div>
-          <ResponseCitations v-if="message.citations?.length" :citations="message.citations" />
-          <div v-if="!resolvedSlices.length && showLoader" i-eos-icons:three-dots-loading />
         </div>
       </template>
     </ChatActionMenu>

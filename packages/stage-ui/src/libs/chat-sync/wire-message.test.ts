@@ -47,6 +47,25 @@ describe('extractMessageText', () => {
 
   /**
    * @example
+   * A burst (text slices separated by break slices) travels as its content:
+   * the runtime wrote `\n\n` at each break, so another device shows one bubble.
+   */
+  it('maps a burst to its content', () => {
+    const burst: ChatAssistantMessage = {
+      role: 'assistant',
+      content: 'One\n\nTwo',
+      slices: [
+        { type: 'text', text: 'One' },
+        { type: 'break', seconds: 1 },
+        { type: 'text', text: 'Two' },
+      ],
+      tool_results: [],
+    }
+    expect(extractMessageText(burst)).toBe('One\n\nTwo')
+  })
+
+  /**
+   * @example
    * User message with multimodal parts → only the text parts come back.
    */
   it('flattens content arrays into their text parts only', () => {
@@ -77,6 +96,18 @@ describe('isCloudSyncableMessage', () => {
     expect(isCloudSyncableMessage({ role: 'assistant', interrupted: true, content: 'partial', slices: [], tool_results: [] })).toBe(false)
     expect(isCloudSyncableMessage({ role: 'user', content: 'x' })).toBe(true)
     expect(isCloudSyncableMessage({ role: 'assistant', content: 'x', slices: [], tool_results: [] })).toBe(true)
+  })
+
+  /**
+   * @example
+   * A wordless reply is a local stage cue with empty content, kept local like
+   * the unprompted trigger it resembles. A burst is a completed turn and syncs.
+   */
+  it('keeps wordless replies local and syncs bursts', () => {
+    expect(isCloudSyncableMessage({ role: 'assistant', content: '', slices: [], tool_results: [], wordless: { cues: [{ emotion: 'happy' }] } })).toBe(false)
+    expect(isCloudSyncableMessage({ role: 'assistant', content: '', slices: [], tool_results: [], wordless: { cues: [] } })).toBe(false)
+    expect(isCloudSyncableMessage({ role: 'user', content: 'x', origin: 'unprompted', trigger: { topicKey: 'k', text: 't' } })).toBe(false)
+    expect(isCloudSyncableMessage({ role: 'assistant', content: 'One\n\nTwo', slices: [{ type: 'text', text: 'One' }, { type: 'break', seconds: 1 }, { type: 'text', text: 'Two' }], tool_results: [] })).toBe(true)
   })
 })
 
