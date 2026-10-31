@@ -49,6 +49,8 @@ const emit = defineEmits<{
   (e: 'copy'): void
   (e: 'delete'): void
   (e: 'reply'): void
+  /** A bubble after a break appeared on the reveal schedule; the item grew without any change to its message. */
+  (e: 'reveal'): void
   (e: 'toolCallRerun', payload: ToolCallRerunRequest): void
 }>()
 
@@ -133,6 +135,7 @@ function scheduleNextReveal() {
     return
   revealTimer = setTimeout(() => {
     revealedBreaks.value += 1
+    emit('reveal')
     scheduleNextReveal()
   }, Math.max(0, deadline - Date.now()))
 }

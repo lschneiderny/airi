@@ -30,6 +30,10 @@ interface ChatHistoryScrollOptions<TMessage> {
  * A user scroll away from the tail disables automatic movement. Layout changes
  * and index scrolls do not disable it. Pointer, focus, and selection on an older
  * message also block movement until that inspection ends.
+ *
+ * Returns `followTail`, for growth inside the last message that changes no
+ * message, such as a bubble revealed after a break. It realigns the tail under
+ * the same rules as a new message.
  */
 export function useChatHistoryScroll<TMessage>({
   container,
@@ -184,4 +188,15 @@ export function useChatHistoryScroll<TMessage>({
     if (hidden > previous)
       returnToTail()
   }, { flush: 'post' })
+
+  function followTail() {
+    const lastIndex = messages.value.length - 1
+    if (!container.value || lastIndex < 0 || !didRequestInitialScroll)
+      return
+    if (!isFollowingConversation || isPointerOrFocusOnOlderMessage || isSelectionInOlderMessage)
+      return
+    scrollToIndex(lastIndex, 'end')
+  }
+
+  return { followTail }
 }
