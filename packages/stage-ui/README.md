@@ -420,6 +420,8 @@ Do not read them in the Electron main process.
 `useConversationSettings` in `features/conversation/settings` stores one document at `settings/conversation`: `register` (`talking` or `texting`, default `talking`) and `textingFlavor` (`plain` or `discord`, default `plain`, read only while texting).
 The value sets come from `@proj-airi/stage-shared/conversation-register`. An invalid stored field falls back to its default, and defaults are never written until the first `update` or `reset`. The leader routes `update` and `reset`.
 
+The chat store renders the register section with `renderRegisterSection(register, textingFlavor, t)` and passes it to `useChatSessionStore().setRegisterPrompt(text)`. Each session system prompt places it after the character prompt and before the stage contract, so the stage contract text and its hash never depend on the register. An empty section is left out. A register, flavor, or locale change rewrites the active session's stored system message once; an unchanged setting keeps the system prompt byte-identical across turns.
+
 ### Unprompted turns
 
 `useChatStore().submitUnprompted({ topicKey, topicText, force?, messageId?, supplement? })` starts one turn without user input in the leader's active session. It resolves to `spoken` with the text, `declined`, `cancelled`, or `failed`.
@@ -436,6 +438,14 @@ The character store no longer speaks spark reactions through its own `Speech` cl
 
 Use `submitUnprompted` for remarks that code decided to offer: gate fires and forced reactions.
 Do not pass a raw window title in `topicText`, because the trigger message is stored in history.
+
+### Reaction turns
+
+`useChatStore().submitReaction({ kind, topicText, eventId })` starts a short in-character reaction to a touch on the stage in the leader's active session. `kind` is the `ReactionKind` of `@proj-airi/stage-shared/situation`: `pet-soft` or `poke-protest`. It is a synced action like `submitUnprompted` and resolves to the same outcomes.
+A reaction is an unprompted turn with the turn ID `reaction:<eventId>`, so it shares the single pending turn: while any unprompted turn is pending, another reaction or unprompted turn fails with `Another unprompted turn is still pending`, and a repeated call for the pending event joins it.
+The trigger message is `base.prompt.reaction-trigger` with `topicText`, and its trigger is `{ topicKey: 'touch', text: topicText, kind }` with kind `touch-pet` or `touch-poke`. The instruction is `base.prompt.reaction`, or `base.prompt.reaction-protest` for a poke protest. A reaction has no reason category and is never forced: it gets only `builtIn_readMemory`, and a `<|SILENT|>` reply declines it with one control record.
+
+Use `submitReaction` only for the touch reaction policy of the situation leader. Do not use it for notify or widget reactions; they use `submitUnprompted`.
 
 ### Situation inspector
 

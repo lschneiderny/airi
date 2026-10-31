@@ -10,6 +10,7 @@ import type { LlmStreamOptions } from './ai/chat-llm/llm'
 import { errorMessageFrom } from '@moeru/std'
 import { SpanStatusCode } from '@opentelemetry/api'
 import { IOAttributes, IOSpanNames } from '@proj-airi/stage-shared'
+import { ASCII_FACES } from '@proj-airi/stage-shared/conversation-register'
 import { notifyTopicKey } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
@@ -21,6 +22,7 @@ import { computed, createApp, nextTick, reactive, ref, toRaw } from 'vue'
 import * as coreAgent from '@proj-airi/core-agent'
 
 import { memoryRepo } from '../database/repos/memory.repo'
+import { useConversationSettings } from '../features/conversation/settings'
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 import { isCloudSyncableMessage } from '../libs/chat-sync'
@@ -122,6 +124,8 @@ const cardSelections = new Map<string, { provider: string, model: string }>()
 const sessionSystemPrompts = new Map<string, string>()
 /** The stage contract that the chat store passed to the session store, which ends every session system prompt. */
 const stageContract = { value: '' }
+/** The register section that the chat store passed to the session store, which follows the character prompt. */
+const registerPrompt = { value: '' }
 const activeModelRef = ref('gpt-test')
 const chatReadyRef = computed(() => !!activeProviderRef.value && !!activeModelRef.value)
 const streamingMessageRef = ref<any>({ role: 'assistant', content: '', slices: [], tool_results: [] })
@@ -246,10 +250,14 @@ vi.mock('./chat/session-store', () => ({
     },
     sessionMetas: { 'session-1': { characterId: 'alice' }, 'session-2': { characterId: 'bob' }, 'session-b': { characterId: 'bob' }, 'session-forked': { characterId: 'alice' } },
     getSessionMessages: (sessionId: string) => sessionMessages[sessionId] ?? [],
-    // Mirrors the session store: the character prompt, then the stage contract that the chat store set.
-    getSessionSystemPrompt: (sessionId: string) => [sessionSystemPrompts.get(sessionId) ?? 'system prompt', stageContract.value].filter(Boolean).join('\n\n'),
+    // Mirrors the session store: the character prompt, the register section, then the stage contract that the chat
+    // store set.
+    getSessionSystemPrompt: (sessionId: string) => [sessionSystemPrompts.get(sessionId) ?? 'system prompt', registerPrompt.value, stageContract.value].filter(Boolean).join('\n\n'),
     setStageContract: (contract: string) => {
       stageContract.value = contract
+    },
+    setRegisterPrompt: (text: string) => {
+      registerPrompt.value = text
     },
     getSessionMessagesIfLoaded: (sessionId: string) => sessionMessages[sessionId],
     loadSession: loadSessionMock,
@@ -483,6 +491,7 @@ describe('chat store contract', () => {
     cardSelections.clear()
     sessionSystemPrompts.clear()
     stageContract.value = ''
+    registerPrompt.value = ''
     streamingMessageRef.value = { role: 'assistant', content: '', slices: [], tool_results: [] }
     currentGeneration = 1
 
@@ -714,9 +723,9 @@ describe('chat store contract', () => {
     const store = useChatStore()
     await store.send({ sessionId: 'session-1', text: 'Use a tool' })
 
-    expect(steps[0]).toMatchObject({ model: 'alice-model', providerId: 'alice-provider', systemPrompt: `Alice prompt\n\n${stageContract.value}\n\nPlugin toolset guidance.` })
+    expect(steps[0]).toMatchObject({ model: 'alice-model', providerId: 'alice-provider', systemPrompt: `Alice prompt\n\n${registerPrompt.value}\n\n${stageContract.value}\n\nPlugin toolset guidance.` })
     expect(steps[0]?.headers).not.toHaveProperty(AIRI_CHAT_SESSION_ID_HEADER)
-    expect(steps[1]).toMatchObject({ model: 'chat-auto', providerId: 'official-provider', systemPrompt: `Edited Alice prompt\n\n${stageContract.value}\n\nPlugin toolset guidance.` })
+    expect(steps[1]).toMatchObject({ model: 'chat-auto', providerId: 'official-provider', systemPrompt: `Edited Alice prompt\n\n${registerPrompt.value}\n\n${stageContract.value}\n\nPlugin toolset guidance.` })
     expect(steps[1]?.headers).toMatchObject({
       [AIRI_CHAT_SESSION_ID_HEADER]: 'session-1',
       [AIRI_CHAT_ROUND_ID_HEADER]: expect.any(String),
@@ -2120,8 +2129,32 @@ describe('chat store contract', () => {
     expect(ingestContextMessageMock.mock.lastCall?.[0]?.text).toContain('- Stage - on stage: face: smile; active: face smile; mood: unknown')
     expect(systemMessages).toHaveLength(2)
     expect(systemMessages[0]).toContain('base.prompt.emotion')
+    expect(systemMessages[0]).toContain('base.prompt.register-talking')
     expect(systemMessages[0]).not.toContain('[Situation')
     expect(systemMessages[1]).toBe(systemMessages[0])
+  })
+
+  it('places the register section of the conversation settings before the stage contract and leaves the contract unchanged', async () => {
+    const systemPrompts: string[] = []
+    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {
+      systemPrompts.push((await options.resolveStep!()).systemPrompt ?? '')
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+    const store = useChatStore()
+    const contract = stageContract.value
+
+    await store.send({ sessionId: 'session-1', text: 'first turn' })
+    await useConversationSettings().update({ register: 'texting', textingFlavor: 'discord' })
+    await nextTick()
+    await store.send({ sessionId: 'session-1', text: 'second turn' })
+
+    // The mocked `t` returns the key, followed by its parameters.
+    const discord = `base.prompt.register-texting-discord ${JSON.stringify({ faces: ASCII_FACES.join(' ') })}`
+    expect(contract).toContain('base.prompt.emotion')
+    expect(systemPrompts).toHaveLength(2)
+    expect(systemPrompts[0].startsWith(`system prompt\n\nbase.prompt.register-talking\n\n${contract}`)).toBe(true)
+    expect(systemPrompts[1].startsWith(`system prompt\n\nbase.prompt.register-texting\n\n${discord}\n\n${contract}`)).toBe(true)
+    expect(stageContract.value).toBe(contract)
   })
 
   it('sends no runtime context, not even the live state, when the situation store was never initialized', async () => {
@@ -2508,6 +2541,57 @@ describe('chat store contract', () => {
       await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', force: true, reason: { kind: 'continuation', category: 'continuation' } })
 
       expect(instructionKeysOf(prompts[0])).toEqual(['base.prompt.unprompted-forced'])
+    })
+
+    it.each([
+      { kind: 'pet-soft', triggerKind: 'touch-pet', key: 'base.prompt.reaction' },
+      { kind: 'poke-protest', triggerKind: 'touch-poke', key: 'base.prompt.reaction-protest' },
+    ] as const)('sends the $key instruction for a $kind reaction and stores a $triggerKind touch trigger', async ({ kind, triggerKind, key }) => {
+      const prompts: string[] = []
+      llmStreamMock.mockImplementation(replyWith(['Hey!'], prompts))
+      const store = useChatStore()
+
+      const result = await store.submitReaction({ kind, topicText: 'touched you', eventId: 'touch-1' })
+
+      expect(result).toEqual({ status: 'spoken', text: expect.stringContaining('Hey!') })
+      expect(prompts).toHaveLength(1)
+      expect(prompts[0]).toContain(`base.prompt.reaction-trigger ${JSON.stringify({ touch: 'touched you' })}`.replaceAll('"', '\\"'))
+      expect((prompts[0].match(/base\.prompt\.reaction[\w-]*/g) ?? []).filter(match => match !== 'base.prompt.reaction-trigger')).toEqual([key])
+      // A reaction is never a forced or plain unprompted turn.
+      expect(instructionKeysOf(prompts[0])).toEqual([])
+      expect(sessionMessages['session-1'].slice(1)[0]).toMatchObject({ role: 'user', id: 'reaction:touch-1', origin: 'unprompted', trigger: { topicKey: 'touch', text: 'touched you', kind: triggerKind } })
+    })
+
+    it('declines a reaction on SILENT and stores only the decline record', async () => {
+      llmStreamMock.mockImplementation(replyWith(['<|SILENT|>']))
+      const store = useChatStore()
+      const messageCount = sessionMessages['session-1'].length
+
+      const result = await store.submitReaction({ kind: 'pet-soft', topicText: 'petted your head', eventId: 'touch-silent' })
+
+      expect(result).toEqual({ status: 'declined' })
+      expect(sessionMessages['session-1']).toHaveLength(messageCount)
+      expect(controlRecords).toEqual([{ eventId: expect.any(String), turn: { sessionId: 'session-1', turnId: 'reaction:touch-silent' }, topicKey: 'touch', atMs: expect.any(Number) }])
+    })
+
+    it('starts no reaction while another unprompted turn is pending, and joins a repeated call for the same touch', async () => {
+      const signals: AbortSignal[] = []
+      llmStreamMock.mockImplementationOnce(holdUntilAborted(signals))
+      const store = useChatStore()
+
+      const first = store.submitReaction({ kind: 'poke-protest', topicText: 'poked you 3 times in a few seconds', eventId: 'touch-burst' })
+      const repeated = store.submitReaction({ kind: 'poke-protest', topicText: 'poked you 3 times in a few seconds', eventId: 'touch-burst' })
+      const second = store.submitReaction({ kind: 'pet-soft', topicText: 'petted your head', eventId: 'touch-pet' })
+      const unprompted = store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic' })
+
+      expect(await second).toEqual({ status: 'failed', error: 'Another unprompted turn is still pending' })
+      expect(await unprompted).toEqual({ status: 'failed', error: 'Another unprompted turn is still pending' })
+      await vi.waitFor(() => expect(signals).toHaveLength(1))
+      await store.cancelTurn({ sessionId: 'session-1', turnId: 'reaction:touch-burst' })
+
+      expect(await first).toEqual({ status: 'cancelled' })
+      expect(await repeated).toEqual({ status: 'cancelled' })
+      expect(llmStreamMock).toHaveBeenCalledTimes(1)
     })
 
     it('declines a ritual turn on SILENT and stores only the decline record', async () => {

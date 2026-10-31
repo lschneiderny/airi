@@ -1,7 +1,7 @@
 import type { ChatAttachment, ChatOrchestratorRuntimeState, ChatOrchestratorSendOptions, Conversation, StreamEvent, StreamOptions } from '@proj-airi/core-agent'
 import type { GenerationProvider, GenerationRequest } from '@proj-airi/provider-inference'
 import type { WebSocketEventInputs } from '@proj-airi/server-sdk'
-import type { ReasonCategory, ReasonKind } from '@proj-airi/stage-shared/situation'
+import type { ReactionKind, ReasonCategory, ReasonKind } from '@proj-airi/stage-shared/situation'
 import type { Message } from '@xsai/shared-chat'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
@@ -16,6 +16,8 @@ import { fileSource } from '@proj-airi/audio/encoding'
 import { createChatOrchestratorRuntime, renderConversationPreview } from '@proj-airi/core-agent'
 import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import { IOAttributes, IOEvents, IOSpanNames, IOSubsystems } from '@proj-airi/stage-shared'
+import { renderRegisterSection } from '@proj-airi/stage-shared/conversation-register'
+import { TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
 import { REPLY_MAX_TOKENS } from '@proj-airi/stage-shared/stage-contract'
 import { isEqual } from 'es-toolkit'
 import { nanoid } from 'nanoid'
@@ -28,6 +30,7 @@ import { useStageContractPrompt } from '../composables/use-airi-runtime-prompt'
 import { registerTurnSpan, startSpan, takeComposerVoiceParent, takeVoiceTurnParent } from '../composables/use-io-tracer'
 import { useChatVision } from '../composables/vision/use-chat-vision'
 import { useVisionInference } from '../composables/vision/use-vision-inference'
+import { useConversationSettings } from '../features/conversation/settings'
 import { chatAssetIdFrom, inlineConversationAssets, storeChatAttachments } from '../libs/chat-assets'
 import { extractMessageText, isCloudSyncableMessage } from '../libs/chat-sync'
 import { createChatAnalyticsHooks, getProviderMode } from '../libs/product-signals/events/chat'
@@ -122,6 +125,19 @@ export interface ChatUnpromptedPayload {
   messageId?: string
   /** Extra system prompt text, appended after the unprompted instruction. */
   supplement?: string
+}
+
+/**
+ * A short in-character reaction to a touch on the stage. The leader sends it to its active session as an unprompted
+ * turn. `topicText` is shown to the model and stored on the trigger message.
+ */
+export interface ChatReactionPayload {
+  /** The reaction that the touch reaction policy chose. A poke protest gets its own instruction. */
+  kind: ReactionKind
+  /** Model-facing description of the touch, for example `petted your head`. It is the only data in the trigger. */
+  topicText: string
+  /** Situation event of the touch. The turn ID is `reaction:<eventId>`, so a repeated call joins the pending turn. */
+  eventId: string
 }
 
 /** The outcome of one unprompted turn. A turn that the model declined, or that a user turn replaced, spoke nothing. */
@@ -282,6 +298,7 @@ export const useChatStore = defineStore('chat', () => {
   const pinia = getActivePinia()
   const { t } = useI18n()
   const stageContractPrompt = useStageContractPrompt()
+  const conversationSettings = useConversationSettings()
   const situationStore = useSituationStore()
   const authStore = useAuthStore()
   const llmStore = useLLM()
@@ -313,6 +330,11 @@ export const useChatStore = defineStore('chat', () => {
 
   // The stage contract is part of every session system prompt. A locale change refreshes the stored system message.
   watch(stageContractPrompt, contract => chatSession.setStageContract(contract), { immediate: true })
+
+  // The register section follows the character prompt and precedes the stage contract, so the contract text never
+  // depends on the register. A register, flavor, or locale change refreshes the stored system message.
+  const registerPrompt = computed(() => renderRegisterSection(conversationSettings.document.register, conversationSettings.document.textingFlavor, t))
+  watch(registerPrompt, text => chatSession.setRegisterPrompt(text), { immediate: true })
 
   /**
    * Returns the account prompt for one request, or undefined when signed out.
@@ -1167,8 +1189,41 @@ export const useChatStore = defineStore('chat', () => {
    *   error message to the chat.
    */
   function submitUnprompted(payload: ChatUnpromptedPayload): Promise<ChatUnpromptedResult> {
+    const reason = payload.reason ?? { kind: 'notify', category: 'urgent' } satisfies NonNullable<ChatUnpromptedPayload['reason']>
+
+    return startUnprompted(payload.messageId ?? nanoid(), t('base.prompt.unprompted-trigger', { reason: payload.topicText }), {
+      trigger: { topicKey: payload.topicKey, text: payload.topicText, kind: reason.kind },
+      instruction: t(payload.force ? 'base.prompt.unprompted-forced' : unpromptedInstructionKeys[reason.category]),
+      supplement: payload.supplement,
+    })
+  }
+
+  /**
+   * Starts a short in-character reaction to a touch on the stage in the leader's active session.
+   *
+   * Use when:
+   * - The situation leader's touch reaction policy decides that she reacts to a pet or a poke burst.
+   *
+   * Expects:
+   * - It shares the single pending unprompted turn with `submitUnprompted`: while any unprompted turn is pending, a
+   *   call with another event starts nothing and returns `failed`. A call for the pending event returns its result.
+   *
+   * Returns:
+   * - The outcomes of `submitUnprompted`. The instruction always offers the decline marker, so a look instead of words
+   *   returns `declined` and stores one decline record.
+   */
+  function submitReaction(payload: ChatReactionPayload): Promise<ChatUnpromptedResult> {
+    const protest = payload.kind === 'poke-protest'
+
+    return startUnprompted(`reaction:${payload.eventId}`, t('base.prompt.reaction-trigger', { touch: payload.topicText }), {
+      trigger: { topicKey: TOUCH_TOPIC_KEY, text: payload.topicText, kind: protest ? 'touch-poke' : 'touch-pet' },
+      instruction: t(protest ? 'base.prompt.reaction-protest' : 'base.prompt.reaction'),
+    })
+  }
+
+  /** Runs one unprompted turn with the trigger message `text` behind the single-pending guard. */
+  function startUnprompted(messageId: string, text: string, unprompted: UnpromptedSend): Promise<ChatUnpromptedResult> {
     const sessionId = activeSessionId.value
-    const messageId = payload.messageId ?? nanoid()
     const key = JSON.stringify([sessionId, messageId])
     const pending = unpromptedResults.get(key)
     if (pending)
@@ -1177,18 +1232,8 @@ export const useChatStore = defineStore('chat', () => {
     if (unpromptedResults.size > 0)
       return Promise.resolve({ status: 'failed', error: 'Another unprompted turn is still pending' })
 
-    const reason = payload.reason ?? { kind: 'notify', category: 'urgent' } satisfies NonNullable<ChatUnpromptedPayload['reason']>
-
     unpromptedTurns.add(key)
-    const request = startSend({
-      sessionId,
-      messageId,
-      text: t('base.prompt.unprompted-trigger', { reason: payload.topicText }),
-    }, false, {
-      trigger: { topicKey: payload.topicKey, text: payload.topicText, kind: reason.kind },
-      instruction: t(payload.force ? 'base.prompt.unprompted-forced' : unpromptedInstructionKeys[reason.category]),
-      supplement: payload.supplement,
-    })
+    const request = startSend({ sessionId, messageId, text }, false, unprompted)
     const signal = requests.get(key)!.abort.signal
 
     const result = (async (): Promise<ChatUnpromptedResult> => {
@@ -1438,6 +1483,7 @@ export const useChatStore = defineStore('chat', () => {
     sendInLeader,
     submit,
     submitUnprompted,
+    submitReaction,
     settleAudioTranscript,
     cancelTurn,
     receiveInterruption,
@@ -1471,7 +1517,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 }, {
   synced: {
-    actions: ['submit', 'submitUnprompted', 'settleAudioTranscript', 'cancelTurn', 'receiveInterruption', 'cancelPendingSends', 'cleanup', 'deleteSession', 'rerunToolCall', 'retry', 'sendInLeader'],
+    actions: ['submit', 'submitUnprompted', 'submitReaction', 'settleAudioTranscript', 'cancelTurn', 'receiveInterruption', 'cancelPendingSends', 'cleanup', 'deleteSession', 'rerunToolCall', 'retry', 'sendInLeader'],
     state: true,
   },
 })
