@@ -49,6 +49,7 @@ import {
   useMMDEmote,
   useMMDLipSync,
 } from '../../composables/mmd'
+import { resolveFrameBounds } from '../../composables/mmd/camera-bounds'
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
 import { readMMDRigProfile } from '../../composables/mmd/rig'
@@ -255,10 +256,23 @@ function frameCamera() {
     return
   modelGroup.updateMatrixWorld(true)
   const box = new Box3().setFromObject(modelGroup)
-  if (box.isEmpty())
+  const boneByName = new Map(mesh?.skeleton.bones.map(bone => [bone.name, bone]))
+  const scratch = new Vector3()
+  const bounds = resolveFrameBounds(
+    rig?.bones ?? {},
+    (name) => {
+      const bone = boneByName.get(name)
+      if (!bone)
+        return null
+      bone.getWorldPosition(scratch)
+      return [scratch.x, scratch.y, scratch.z]
+    },
+    box.isEmpty() ? null : { min: box.min.toArray(), max: box.max.toArray() },
+  )
+  if (!bounds)
     return
-  const size = box.getSize(new Vector3())
-  const center = box.getCenter(new Vector3())
+  const size = new Vector3(...bounds.size)
+  const center = new Vector3(...bounds.center)
 
   // Fit to BOTH axes using the camera aspect, so the model fills a portrait or
   // landscape viewport without being cropped (mirrors Spine's auto-fit).
