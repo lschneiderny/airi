@@ -164,6 +164,75 @@ function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore
 }
 
 describe('natural motion adapter', () => {
+  it.each(['magic', 'universal'] as const)('discards cue gestures and mood doses under %s without parameter writes or later replay', (driver) => {
+    const actual = fixture()
+    const control = fixture()
+    for (const f of [actual, control]) {
+      f.state.driver = driver
+      f.frame(0)
+    }
+    actual.adapter.gesture('shrug', 1)
+    actual.adapter.addMood({ id: 'inactive', valence: 0.4, arousal: 0.2, tension: 0.1 })
+    for (const time of [0.1, 0.3, 1]) {
+      const a = actual.frame(time)
+      expect(a.written.size).toBe(0)
+      expect(a.commanded).toEqual(control.frame(time).commanded)
+    }
+    for (const f of [actual, control]) {
+      f.state.driver = 'natural'
+      f.frame(2)
+    }
+    for (const time of [2.1, 2.3, 2.5, 3])
+      expect(actual.frame(time).commanded).toEqual(control.frame(time).commanded)
+    expect(actual.adapter.mood).toEqual({ valence: 0, arousal: 0, tension: 0 })
+    actual.adapter.dispose()
+    control.adapter.dispose()
+  })
+
+  it('composes scene gestures and mood doses through the Natural adapter', () => {
+    const actual = fixture()
+    const control = fixture()
+    for (const f of [actual, control]) {
+      f.state.driver = 'natural'
+      f.frame(0)
+      f.frame(1)
+    }
+    actual.adapter.gesture('shrug', 1)
+    actual.adapter.addMood({ id: 'active', valence: 0.2, arousal: 0, tension: 0 })
+    actual.frame(1.01)
+    control.frame(1.01)
+    const a = actual.frame(1.4)
+    const b = control.frame(1.4)
+    expect(a.commanded[actual.at('ParamBodyAngleY')] - b.commanded[control.at('ParamBodyAngleY')]).toBeGreaterThan(2)
+    expect(a.commanded[actual.at('ParamBrowLY')] - b.commanded[control.at('ParamBrowLY')]).toBeGreaterThan(0.28)
+    expect(actual.adapter.mood.valence).toBeGreaterThan(0)
+    actual.adapter.dispose()
+    control.adapter.dispose()
+  })
+
+  it('drops a queued cue if MAGIC takes ownership before composition', () => {
+    const actual = fixture()
+    const control = fixture()
+    for (const f of [actual, control]) {
+      f.state.driver = 'natural'
+      f.frame(0)
+      f.frame(1)
+    }
+    actual.adapter.gesture('nod', 2)
+    actual.adapter.addMood({ id: 'stale', valence: 0.4, arousal: 0.2, tension: 0.1 })
+    for (const f of [actual, control])
+      f.state.driver = 'magic'
+    for (const time of [1.01, 1.3, 2])
+      expect(actual.frame(time).commanded).toEqual(control.frame(time).commanded)
+    for (const f of [actual, control])
+      f.state.driver = 'natural'
+    for (const time of [3, 3.3, 3.6, 4])
+      expect(actual.frame(time).commanded).toEqual(control.frame(time).commanded)
+    expect(actual.adapter.mood).toEqual({ valence: 0, arousal: 0, tension: 0 })
+    actual.adapter.dispose()
+    control.adapter.dispose()
+  })
+
   it('raises the CDI-resolved blush parameter while petting', () => {
     const f = fixture({ blush: { id: 'CustomBlush', name: 'Blush' } })
     f.state.eligible = true

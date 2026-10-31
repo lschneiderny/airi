@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
+import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
+import type { MoodDose, NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { ExpressionPerformanceSettings, HoldCommand, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
@@ -171,6 +172,8 @@ defineExpose({
   },
   /** Queues a Natural emotion impulse. Callers use it only while the Natural driver is selected. */
   setEmotion: (episode: NaturalEpisode) => live2dModelRef.value?.setEmotion(episode),
+  gesture: (kind: CueGestureKind, count: number) => live2dModelRef.value?.gesture(kind, count),
+  addMood: (dose: MoodDose) => live2dModelRef.value?.addMood(dose),
   applySlots: (commands: SlotCommand[], now: number) => live2dModelRef.value?.applySlots(commands, now),
   applyHolds: (commands: HoldCommand[], now: number) => live2dModelRef.value?.applyHolds(commands, now),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => live2dModelRef.value?.onSpeech(event, turnId, now),

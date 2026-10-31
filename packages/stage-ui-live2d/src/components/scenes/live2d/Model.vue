@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { Application } from '@pixi/app'
 import type { Filter } from '@pixi/core'
+import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalMotionObserver } from '@proj-airi/motion-driver-natural/frame-types'
-import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
+import type { MoodDose, NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { ExpressionPerformanceSettings, HoldCommand, PerformanceEmotion, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
@@ -1696,6 +1697,8 @@ defineExpose({
   headAnchor,
   /** The stage calls this only under Natural; Universal and MAGIC retain motion-group routing. */
   setEmotion: (episode: NaturalEpisode) => { pendingNaturalEmotions.push(episode) },
+  gesture: (kind: CueGestureKind, count: number) => naturalMotion?.gesture(kind, count),
+  addMood: (dose: MoodDose) => naturalMotion?.addMood(dose),
   /** Executes decider slot commands; lifetimes are owned by the expression store. */
   applySlots: (commands: SlotCommand[], now: number) => expressionStore.applySlots(commands, now),
   /** Natural only: the performer owns the lease and manual-preview fallback of the held emotion. */
