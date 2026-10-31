@@ -10,7 +10,7 @@ import { PERFORMANCE_EMOTIONS } from '../expression-performance/types'
 import { composeSystemPrompt, renderStageContract, STAGE_CONTRACT_EN_SHA256, stageContractEmotions } from './index'
 
 describe('stage contract', () => {
-  it('renders every emotion between the contract keys in performance order', () => {
+  it('renders every emotion after the cue rules, then the emoji and response rules, in performance order', () => {
     expect(renderStageContract(key => key)).toBe([
       'base.prompt.emotion',
       [
@@ -28,6 +28,7 @@ describe('stage contract', () => {
         '- sleepy (Emotion for feeling Sleepy)',
       ].join('\n'),
       'base.prompt.emoji',
+      'base.prompt.response',
     ].join('\n\n'))
   })
 

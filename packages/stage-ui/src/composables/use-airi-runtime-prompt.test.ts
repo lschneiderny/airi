@@ -119,7 +119,7 @@ describe('useStageContractPrompt', () => {
       fallbackWarn: false,
       missingWarn: false,
       messages: {
-        en: { base: { prompt: { emotion: 'en-emotion', emoji: 'en-emoji' } } },
+        en: { base: { prompt: { emotion: 'en-emotion', emoji: 'en-emoji', response: 'en-response' } } },
         th: { base: { prompt: { emotion: 'th-emotion' } } },
       },
     })
@@ -128,7 +128,7 @@ describe('useStageContractPrompt', () => {
     const prompt = useStageContractPrompt().value
 
     expect(prompt.startsWith('th-emotion\n\n')).toBe(true)
-    expect(prompt.endsWith('\n\nen-emoji')).toBe(true)
+    expect(prompt.endsWith('\n\nen-emoji\n\nen-response')).toBe(true)
   })
 })
 

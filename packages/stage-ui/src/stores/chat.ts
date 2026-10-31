@@ -16,6 +16,7 @@ import { fileSource } from '@proj-airi/audio/encoding'
 import { createChatOrchestratorRuntime, renderConversationPreview } from '@proj-airi/core-agent'
 import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import { IOAttributes, IOEvents, IOSpanNames, IOSubsystems } from '@proj-airi/stage-shared'
+import { REPLY_MAX_TOKENS } from '@proj-airi/stage-shared/stage-contract'
 import { isEqual } from 'es-toolkit'
 import { nanoid } from 'nanoid'
 import { defineStore, getActivePinia, storeToRefs } from 'pinia'
@@ -1054,6 +1055,8 @@ export const useChatStore = defineStore('chat', () => {
         systemPrompt: chatSession.getSessionSystemPrompt(payload.sessionId) + (memory.enabled ? composeMemoryPrompt(memory.indexFor(characterId)) : ''),
         temperature,
         topP,
+        // Backs the contract's reply-shape rules; a reply that follows them stays far below the cap.
+        maxTokens: REPLY_MAX_TOKENS,
       }
     }
 

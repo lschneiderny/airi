@@ -15,12 +15,19 @@ export const stageContractEmotions: readonly { value: PerformanceEmotion, prompt
   { value: 'sleepy', promptName: 'Sleepy' },
 ]
 
-export const STAGE_CONTRACT_KEYS = { emotion: 'base.prompt.emotion', emoji: 'base.prompt.emoji' } as const
+export const STAGE_CONTRACT_KEYS = { emotion: 'base.prompt.emotion', emoji: 'base.prompt.emoji', response: 'base.prompt.response' } as const
 
-/** Renders the stable stage cue rules without reading locale or application state. */
+/**
+ * Output token cap of one model request on a chat turn. It backs the reply-shape rules of the contract: a reply
+ * that obeys them stays far below it, so it binds only when the model ignores them. Providers decide whether
+ * reasoning tokens count toward it; a thinking model that counts them can hit the cap before it speaks.
+ */
+export const REPLY_MAX_TOKENS = 320
+
+/** Renders the stable stage rules (cues, emotion list, speech-safe text, reply shape) without reading locale or application state. */
 export function renderStageContract(t: (key: string) => string): string {
   const lines = stageContractEmotions.map(({ value, promptName }) => `- ${value} (Emotion for feeling ${promptName})`).join('\n')
-  return [t(STAGE_CONTRACT_KEYS.emotion), lines, t(STAGE_CONTRACT_KEYS.emoji)].join('\n\n')
+  return [t(STAGE_CONTRACT_KEYS.emotion), lines, t(STAGE_CONTRACT_KEYS.emoji), t(STAGE_CONTRACT_KEYS.response)].join('\n\n')
 }
 
 export const CODE_BLOCK_SYSTEM_PROMPT = '- For any programming code block, always specify the programming language that supported on @shikijs/rehype on the rendered markdown, eg. ```python ... ```\n'
@@ -39,4 +46,4 @@ export function composeSystemPrompt(characterPrompt: string, contract: string): 
 }
 
 /** Update in the same contract-version commit whenever the English rendering changes. */
-export const STAGE_CONTRACT_EN_SHA256 = 'f979e6969867590d47465f8db19b1cd38e97774d85dce3124369abb744a7de5a'
+export const STAGE_CONTRACT_EN_SHA256 = 'd7e28f8ef7d034fb204b8cad820091e18361074702f05f47cf7caa10d9d01ce9'

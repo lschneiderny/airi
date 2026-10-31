@@ -31,7 +31,7 @@ function formatMood(mood: PerformanceRuntimeSnapshot['mood']) {
 }
 
 /**
- * Returns the stable stage contract: the cue rules, the emotion list, and the emoji rule.
+ * Returns the stable stage contract: the cue rules, the emotion list, the emoji rule, and the reply-shape rules.
  *
  * It changes only with the locale, so callers place it in the system prompt, where it stays a cache-stable prefix.
  * A locale that lacks a key renders the English text through the i18n `fallbackLocale`.
