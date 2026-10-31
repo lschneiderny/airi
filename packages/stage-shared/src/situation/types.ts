@@ -54,8 +54,11 @@ export interface ActivityObservation {
 export interface ConversationObservation {
   readonly kind: 'conversation'
   readonly who: 'user' | 'character'
-  /** `unprompted` marks a character turn the character started on its own. */
-  readonly origin: 'user' | 'unprompted'
+  /**
+   * `unprompted` marks a character turn the character started on its own. `reaction` marks a spoken character line
+   * answering a touch (the reaction policy); it counts only as her last line.
+   */
+  readonly origin: 'user' | 'unprompted' | 'reaction'
   readonly atMs: number
 }
 
