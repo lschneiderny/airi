@@ -2,7 +2,7 @@ import type { BodyDirectorMemory } from '@proj-airi/motion-driver-humanoid/direc
 import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
-import { decideBody, initialBodyDirectorMemory } from '@proj-airi/motion-driver-humanoid/director'
+import { decideBody, initialBodyDirectorMemory, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
 
 /** Imported VMD motion names assigned to one model's stances. */
 export interface MMDStanceSlots {
@@ -82,6 +82,7 @@ export class MMDStanceDirector {
       chatPoint: null,
       cameraPoint: null,
       slots: available,
+      ...NO_WORLD_BODY_INPUT,
     }, this.memory)
     this.memory = memory
     this.startMs ??= memory.nowMs

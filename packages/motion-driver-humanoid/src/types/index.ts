@@ -67,6 +67,22 @@ export interface RigTraits {
   presentBones: HumanoidBoneName[]
 }
 
+/** Locomotion pace; 0.6 and 1.0 times the reference speed. */
+export type LocomotionPace = 'stroll' | 'walk'
+
+/** Why the director issued the current locomotion goal. */
+export type BodyLocomotionReason = 'stay' | 'return-home' | 'wander' | 'approach-chat' | 'approach-cursor' | 'tool' | 'debug'
+
+/** Where the body should walk, in stage-world x coordinates. */
+export interface BodyLocomotionIntent {
+  homeX: number
+  goalX: number | null
+  pace: LocomotionPace
+  /** Facing yaw in radians to settle into on arrival; 0 faces the camera. */
+  arriveFacing: number
+  reason: BodyLocomotionReason
+}
+
 /** A renderer-neutral intent for body stance, attention, and facing. */
 export interface BodyIntent {
   stance: 'stand' | 'sit' | 'sleep'
@@ -76,4 +92,5 @@ export interface BodyIntent {
   }
   /** Facing direction in radians. */
   facingYaw: number
+  locomotion: BodyLocomotionIntent
 }
