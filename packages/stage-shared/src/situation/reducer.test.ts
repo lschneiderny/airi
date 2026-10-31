@@ -605,6 +605,20 @@ describe('reduceSituation touch', () => {
     expect(reduceSituation(state, poke(T0 + 5 * SEC), T0 + 10 * SEC)).toEqual(state)
   })
 
+  it('ignores a re-delivered poke with the same time, so it cannot fake a burst', () => {
+    const poked = run([poke(T0), poke(T0), poke(T0)])
+
+    expect(poked.tracking.pokeTimes).toHaveLength(1)
+    expect(eventsOf(poked, 'touch')).toMatchObject([{ text: 'poked your head' }])
+  })
+
+  it('ignores a re-delivered pet end with the same time, so it cannot merge with itself', () => {
+    const petted = run([pet(T0, 3 * SEC), pet(T0, 3 * SEC)])
+
+    expect(petted.tracking.lastPet).toEqual({ startedAtMs: T0 - 3 * SEC, endedAtMs: T0, durationMs: 3 * SEC })
+    expect(eventsOf(petted, 'touch')).toMatchObject([{ text: 'petted your head for about 3 s' }])
+  })
+
   it('leaves the state unchanged for touches it cannot use', () => {
     const base = run([poke(T0 + SEC)])
     const bad: Observation[] = [
