@@ -175,6 +175,7 @@ let rafHandle = 0
 let previousFrameTime: number | undefined
 let lastDiagnosticsTime = 0
 let loadedModelKey: string | null = null
+let loadGeneration = 0
 
 // Lip-sync owns Vue lifecycle hooks, so it must be created during setup.
 const lipSync = useMMDLipSync(
@@ -445,6 +446,8 @@ function renderLoop(now = performance.now()) {
 }
 
 function disposeModel() {
+  // Invalidate pending loader, physics initialization and motion continuations.
+  loadGeneration++
   expressions.dispose()
   stopMorphOverrides?.()
   stopMorphOverrides = undefined
@@ -489,6 +492,9 @@ async function syncMotions() {
   if (!animation || !mesh)
     return
 
+  const generation = loadGeneration
+  const activeAnimation = animation
+  const activeMesh = mesh
   for (const descriptor of availableMotions.value) {
     if (registeredMotions.has(descriptor.name))
       continue
@@ -496,14 +502,18 @@ async function syncMotions() {
       // The VMD file lives in IndexedDB (shared across windows); build a
       // window-local object URL to load it, then revoke it once parsed.
       const file = await mmdStore.getMotionFile(descriptor.id)
+      if (generation !== loadGeneration)
+        return
       if (!file) {
         console.warn(`[mmd] motion file "${descriptor.name}" (${descriptor.id}) not found in storage`)
         continue
       }
       const url = URL.createObjectURL(file)
       try {
-        const clip = await loadMMDAnimationClip(url, mesh)
-        animation.registerClip(descriptor.name, clip)
+        const clip = await loadMMDAnimationClip(url, activeMesh)
+        if (generation !== loadGeneration)
+          return
+        activeAnimation.registerClip(descriptor.name, clip)
         body?.registerClip(descriptor.name, clip)
         registeredMotions.add(descriptor.name)
         if (clip.tracks.length === 0) {
@@ -518,13 +528,15 @@ async function syncMotions() {
       }
     }
     catch (err) {
+      if (generation !== loadGeneration)
+        return
       console.error('[mmd] failed to load motion', descriptor.name, errorMessageFrom(err))
       emit('error', err)
     }
   }
 
   if (idleMotionName.value && registeredMotions.has(idleMotionName.value))
-    animation.setIdleMotion(idleMotionName.value)
+    activeAnimation.setIdleMotion(idleMotionName.value)
 }
 
 async function loadModel(src: string) {
@@ -533,9 +545,20 @@ async function loadModel(src: string) {
 
   componentState.value = 'loading'
   disposeModel()
+  const generation = loadGeneration
+  const modelId = props.modelId
+  const modelKey = modelId ?? src
 
   try {
-    resolved = await loadMMDModelFromSource(src, { cacheKey: props.modelId })
+    const loaded = await loadMMDModelFromSource(src, { cacheKey: modelId })
+    // A stale result never acquires scene or expression-store ownership.
+    if (generation !== loadGeneration) {
+      loaded.mmd.dispose()
+      disposeMMDObject(loaded.mesh)
+      loaded.dispose()
+      return
+    }
+    resolved = loaded
     mesh = resolved.mesh
 
     modelGroup = new Group()
@@ -555,14 +578,14 @@ async function loadModel(src: string) {
 
     const runtime = createMMDMorphRuntime(resolved.mmd)
     morphRuntime = runtime
-    expressions.registerMorphs(props.modelId ?? src, runtime.morphs, runtime)
+    expressions.registerMorphs(modelKey, runtime.morphs, runtime)
     const expressionMorphs = createMorphController(mesh, morphOverrides.value, (name, weight) => runtime.setChannel('expression', name, weight))
     const blinkMorphs = createMorphController(mesh, morphOverrides.value, (name, weight) => runtime.setChannel('blink', name, weight, { alpha: weight > 0 ? 1 : 0 }))
     const lipMorphs = createMorphController(mesh, morphOverrides.value, (name, weight) => runtime.setChannel('lipSync', name, weight))
     emote = useMMDEmote(expressionMorphs)
     gaze = createGazeController(mesh)
     rig = readMMDRigProfile(resolved.mmd.pmx)
-    natural = new MMDNaturalAdapter(mesh, rig, props.modelId ?? src)
+    natural = new MMDNaturalAdapter(mesh, rig, modelKey)
     const activeMesh = mesh
     // The pure morph core copies enumerable x/y/z/w fields. Three's quaternion
     // stores _x/_y/_z/_w, so serialize explicitly at this renderer boundary.
@@ -573,7 +596,7 @@ async function loadModel(src: string) {
 
     animation = createMMDAnimationManager(resolved.mmd, { physicsEnabled: physicsEnabled.value })
     body = new MMDBody(resolved.mmd, rig, {
-      modelKey: props.modelId ?? src,
+      modelKey,
       input: () => {
         if (!natural || !camera || !canvasRef.value)
           return null
@@ -672,6 +695,8 @@ async function loadModel(src: string) {
     // No preset idle VMD ships yet; the runtime still advances solvers and
     // physics without an animation action.
     await animation.init()
+    if (generation !== loadGeneration)
+      return
     animation.setIKEnabled(ikEnabled.value)
     animation.setGrantEnabled(grantEnabled.value)
     animation.setGravity(physicsGravity.value)
@@ -684,13 +709,15 @@ async function loadModel(src: string) {
     applyMMDMaterialOpacity(modelGroup, materialOpacity.value)
 
     mmdStore.isModelLoaded = true
-    loadedModelKey = props.modelId ?? src
+    loadedModelKey = modelKey
     componentState.value = 'mounted'
 
     // Bind any motions imported before this model mounted.
     await syncMotions()
   }
   catch (err) {
+    if (generation !== loadGeneration)
+      return
     disposeModel()
     componentState.value = 'pending'
     console.error('[mmd] failed to load model:', errorMessageFrom(err))

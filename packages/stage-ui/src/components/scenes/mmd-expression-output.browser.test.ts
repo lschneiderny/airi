@@ -9,6 +9,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
 import { defineComponent, getCurrentInstance, h, ref, watch } from 'vue'
 
+import { loadMMDModelFromSource } from '../../../../stage-ui-mmd/src/utils/mmd-loader'
+
 /** PMX 2.0: one skinned triangle, one bone, one material and one vertex morph. No external assets. */
 function modelBlob(morphName: string) {
   const buffer = new ArrayBuffer(1024)
@@ -82,6 +84,190 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   localStorage.clear()
+})
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: Error) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+function renderLifecycleScene(pinia: ReturnType<typeof createPinia>) {
+  let host: ComponentInternalInstance | null = null
+  const rendered = render(defineComponent({
+    setup() {
+      host = getCurrentInstance()
+      return () => h(MMDScene, { style: 'width:640px;height:480px' })
+    },
+  }), { global: { plugins: [pinia] } })
+  // Observe the real scene and lifecycle, without adding a production debug expose.
+  const state = () => (host!.subTree.component as ComponentInternalInstance & {
+    setupState: {
+      loadModel: (src: string) => Promise<void>
+      scene: { children: { type: string, children: object[] }[] }
+      animation: import('@proj-airi/stage-ui-mmd/composables/mmd').MMDAnimationManager
+      morphRuntime: ReturnType<typeof import('../../../../stage-ui-mmd/src/composables/mmd/morph-runtime').createMMDMorphRuntime>
+    }
+  }).setupState
+  return { rendered, state }
+}
+
+it.each([2, 3])('keeps one scene group and runtime after %i overlapping loads finish out of order', async (count) => {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  useMMD().physicsEnabled = false
+  const expressions = useMMDExpressionStore()
+  const register = vi.spyOn(expressions, 'registerMorphs')
+  const urls = Array.from({ length: count }, (_, i) => URL.createObjectURL(modelBlob(`overlap-${i}`)))
+  const exemplar = await loadMMDModelFromSource(urls[0])
+  const runtimePrototype: ResolvedMMDModel['mmd'] = Object.getPrototypeOf(exemplar.mmd)
+  const runtimeDispose = vi.spyOn(runtimePrototype, 'dispose')
+  const geometryPrototype: ResolvedMMDModel['mesh']['geometry'] = Object.getPrototypeOf(exemplar.mesh.geometry)
+  const geometryDispose = vi.spyOn(geometryPrototype, 'dispose')
+  const skeletonPrototype: ResolvedMMDModel['mesh']['skeleton'] = Object.getPrototypeOf(exemplar.mesh.skeleton)
+  const skeletonDispose = vi.spyOn(skeletonPrototype, 'dispose')
+  const gates = urls.map(() => deferred<Response>())
+  const responses = await Promise.all(urls.map(url => fetch(url)))
+  const originalFetch = window.fetch.bind(window)
+  vi.spyOn(window, 'fetch').mockImplementation((input, init) => {
+    const index = urls.indexOf(String(input))
+    return index < 0 ? originalFetch(input, init) : gates[index].promise
+  })
+
+  const { rendered, state } = renderLifecycleScene(pinia)
+  try {
+    // All loads start before any loader promise resolves.
+    const loads = urls.map(url => state().loadModel(url))
+    const latest = count - 1
+    gates[latest].resolve(responses[latest])
+    await loads[latest]
+    const animation = state().animation
+    const morphRuntime = state().morphRuntime
+    const pipelineDispose = vi.spyOn(animation.pipeline, 'dispose')
+    const reset = vi.spyOn(morphRuntime!, 'resetToBase')
+    for (let i = 0; i < latest; i++) {
+      gates[i].resolve(responses[i])
+      await loads[i]
+    }
+
+    const groups = state().scene.children.filter(child => child.type === 'Group')
+    expect(groups).toHaveLength(1)
+    expect(state().animation).toBe(animation)
+    expect(state().morphRuntime).toBe(morphRuntime)
+    expect(register).toHaveBeenCalledTimes(1)
+    expect(register.mock.calls[0][2]).toBe(morphRuntime)
+    expect(expressions.modelId).toBe(urls[latest])
+    expect(runtimeDispose).toHaveBeenCalledTimes(latest)
+    expect(geometryDispose).toHaveBeenCalledTimes(latest)
+    expect(skeletonDispose).toHaveBeenCalledTimes(latest)
+    expect(runtimeDispose.mock.contexts).toEqual(
+      Array.from({ length: latest }, (_, i) => expect.objectContaining({
+        mesh: expect.objectContaining({ morphTargetDictionary: { [`overlap-${i}`]: 0 } }),
+      })),
+    )
+    expect(pipelineDispose).not.toHaveBeenCalled()
+    expect(reset).not.toHaveBeenCalled()
+    rendered.unmount()
+    expect(pipelineDispose).toHaveBeenCalledTimes(1)
+    expect(reset).toHaveBeenCalledTimes(1)
+    expect(expressions.modelId).toBe('')
+    expect(runtimeDispose).toHaveBeenCalledTimes(count)
+    expect(geometryDispose).toHaveBeenCalledTimes(count)
+    expect(skeletonDispose).toHaveBeenCalledTimes(count)
+  }
+  finally {
+    rendered.unmount()
+    exemplar.mmd.dispose()
+    exemplar.mesh.geometry.dispose()
+    disposePinia(pinia)
+    for (const url of urls)
+      URL.revokeObjectURL(url)
+  }
+})
+
+it('detaches the superseded pipeline and morph runtime while physics initializes', async () => {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  useMMD().physicsEnabled = false
+  const expressions = useMMDExpressionStore()
+  const registered = deferred<void>()
+  const registerMorphs = expressions.registerMorphs
+  vi.spyOn(expressions, 'registerMorphs').mockImplementationOnce((...args) => {
+    registerMorphs(...args)
+    registered.resolve()
+  })
+  const urls = ['initializing', 'latest'].map(name => URL.createObjectURL(modelBlob(name)))
+  const { rendered, state } = renderLifecycleScene(pinia)
+  try {
+    const first = state().loadModel(urls[0])
+    await registered.promise
+    const oldAnimation = state().animation
+    const oldRuntime = state().morphRuntime
+    const pipelineDispose = vi.spyOn(oldAnimation.pipeline, 'dispose')
+    const reset = vi.spyOn(oldRuntime, 'resetToBase')
+    const clear = vi.spyOn(oldRuntime, 'clearChannel')
+    expressions.applySlots([{ slot: 'face', expressionId: 'mmd:0:initializing', holdSeconds: 10, until: 'hold' }], 0)
+    expressions.update(1)
+
+    const second = state().loadModel(urls[1])
+    await Promise.all([first, second])
+
+    expect(state().scene.children.filter(child => child.type === 'Group')).toHaveLength(1)
+    expect(pipelineDispose).toHaveBeenCalledTimes(1)
+    expect(reset).toHaveBeenCalledTimes(1)
+    expect(clear).toHaveBeenCalledWith('expression', 'initializing')
+    expect(oldAnimation.pipeline.poseStages).toEqual([])
+    expect(oldAnimation.pipeline.surfaceStages).toEqual([])
+    expect(state().animation).not.toBe(oldAnimation)
+    expect(state().morphRuntime).not.toBe(oldRuntime)
+    expect(expressions.modelId).toBe(urls[1])
+    expect(expressions.leases.face).toBeNull()
+  }
+  finally {
+    rendered.unmount()
+    disposePinia(pinia)
+    urls.forEach(url => URL.revokeObjectURL(url))
+  }
+})
+
+it.each(['unmount', 'reject'] as const)('ignores a pending load after %s without reviving or clearing the scene', async (ending) => {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  useMMD().physicsEnabled = false
+  const expressions = useMMDExpressionStore()
+  const register = vi.spyOn(expressions, 'registerMorphs')
+  const urls = ['pending', 'current'].map(name => URL.createObjectURL(modelBlob(name)))
+  const response = await fetch(urls[0])
+  const pending = deferred<Response>()
+  const fetchOriginal = window.fetch.bind(window)
+  vi.spyOn(window, 'fetch').mockImplementation((input, init) => String(input) === urls[0] ? pending.promise : fetchOriginal(input, init))
+  const { rendered, state } = renderLifecycleScene(pinia)
+  const scene = state().scene
+  try {
+    const first = state().loadModel(urls[0])
+    if (ending === 'unmount') {
+      rendered.unmount()
+      pending.resolve(response)
+    }
+    else {
+      await state().loadModel(urls[1])
+      pending.reject(new Error('superseded network failure'))
+    }
+    await first
+
+    expect(scene.children.filter(child => child.type === 'Group')).toHaveLength(ending === 'unmount' ? 0 : 1)
+    expect(register).toHaveBeenCalledTimes(ending === 'unmount' ? 0 : 1)
+    expect(expressions.modelId).toBe(ending === 'unmount' ? '' : urls[1])
+  }
+  finally {
+    rendered.unmount()
+    disposePinia(pinia)
+    urls.forEach(url => URL.revokeObjectURL(url))
+  }
 })
 
 it('loads, advances and detaches expression channels through the MMD scene frame loop', async () => {
@@ -167,10 +353,16 @@ it('loads, advances and detaches expression channels through the MMD scene frame
     expect(firstChannel).toHaveBeenLastCalledWith('expression', 'qa-face', 1)
     expect(firstMesh.morphTargetInfluences![0]).toBe(1)
 
+    const firstBoneTexture = firstMesh.skeleton.boneTexture
+    if (!firstBoneTexture)
+      throw new Error('Rendered MMD fixture must allocate a bone texture')
+    const firstBoneTextureDispose = vi.spyOn(firstBoneTexture, 'dispose')
     const switched = nextMount()
     modelId.value = 'qa-second'
     modelSrc.value = secondUrl
     await switched
+    expect(firstBoneTextureDispose).toHaveBeenCalledTimes(1)
+    expect(firstMesh.skeleton.boneTexture).toBeNull()
     expect(register).toHaveBeenCalledTimes(2)
     expect(firstClear).toHaveBeenCalledWith('expression', 'qa-face')
     expect(firstMesh.morphTargetInfluences![0]).toBe(0)
@@ -190,7 +382,13 @@ it('loads, advances and detaches expression channels through the MMD scene frame
     expect(firstChannel).not.toHaveBeenCalled()
     expect(firstMesh.morphTargetInfluences![0]).toBe(0)
 
+    const secondBoneTexture = secondMesh.skeleton.boneTexture
+    if (!secondBoneTexture)
+      throw new Error('Rendered replacement must allocate a bone texture')
+    const secondBoneTextureDispose = vi.spyOn(secondBoneTexture, 'dispose')
     rendered.unmount()
+    expect(secondBoneTextureDispose).toHaveBeenCalledTimes(1)
+    expect(secondMesh.skeleton.boneTexture).toBeNull()
     expect(secondClear).toHaveBeenCalledWith('expression', 'qa-next')
     expect(secondMesh.morphTargetInfluences![0]).toBe(0)
     expect(expressions.modelId).toBe('')

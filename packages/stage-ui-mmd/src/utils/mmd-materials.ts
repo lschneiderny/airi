@@ -1,8 +1,8 @@
 import type { MMDMaterial } from '@moeru/three-mmd/materials'
 import type { MMDToonMaterial } from '@moeru/three-mmd/materials/toon'
-import type { BufferGeometry, Material, Object3D } from 'three'
+import type { BufferGeometry, Material, Object3D, Skeleton } from 'three'
 
-import { Mesh } from 'three'
+import { Mesh, SkinnedMesh, Texture } from 'three'
 
 interface OriginalSurfaceState {
   opacity: number
@@ -113,18 +113,22 @@ export function applyMMDMaterialOpacity(root: Object3D, overrides: Record<string
  * Releases GPU resources owned by an MMD object tree exactly once.
  *
  * three-mmd outline meshes can share geometry with their surface, while SDEF
- * depth and distance materials live outside `Mesh.material`; both cases are
- * accounted for explicitly.
+ * depth and distance materials live outside `Mesh.material`. Skeletons own
+ * their rendered bone textures and may also be shared by several mesh parts.
  */
 export function disposeMMDObject(root: Object3D): void {
   const geometries = new Set<BufferGeometry>()
   const materials = new Set<Material>()
+  const textures = new Set<Texture>()
+  const skeletons = new Set<Skeleton>()
 
   root.traverse((object) => {
     if (!(object instanceof Mesh))
       return
 
     geometries.add(object.geometry)
+    if (object instanceof SkinnedMesh)
+      skeletons.add(object.skeleton)
     const renderMaterials = Array.isArray(object.material) ? object.material : [object.material]
     for (const material of renderMaterials)
       materials.add(material)
@@ -137,6 +141,17 @@ export function disposeMMDObject(root: Object3D): void {
 
   for (const geometry of geometries)
     geometry.dispose()
-  for (const material of materials)
+  for (const material of materials) {
+    // MMD surfaces expose map, emissiveMap, sphereMap and toonMap directly.
+    // A texture can be shared by several passes of this model.
+    for (const value of Object.values(material)) {
+      if (value instanceof Texture)
+        textures.add(value)
+    }
     material.dispose()
+  }
+  for (const texture of textures)
+    texture.dispose()
+  for (const skeleton of skeletons)
+    skeleton.dispose()
 }
