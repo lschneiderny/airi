@@ -22,6 +22,7 @@ import type { SkinnedMesh, Texture } from 'three'
 
 import type { GazeOffset, MMDAnimationManager, MorphController } from '../../composables/mmd'
 import type { MMDStageExtent, MMDStageWorld } from '../../composables/mmd/stage-world'
+import type { MMDStanceWorld } from '../../composables/mmd/stance'
 import type { SpeechEvent } from '../../stores/expression-slots'
 import type { ResolvedMMDModel } from '../../utils/mmd-loader'
 
@@ -29,7 +30,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { coverRect } from '@proj-airi/stage-shared'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { screenInwardness } from '@proj-airi/stage-shared/stage-placement'
-import { worldToDip } from '@proj-airi/stage-shared/stage-world'
+import { dipToPlane, worldToDip } from '@proj-airi/stage-shared/stage-world'
 import { Screen } from '@proj-airi/ui'
 import { useEventListener } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
@@ -65,14 +66,15 @@ import {
   useMMDLipSync,
 } from '../../composables/mmd'
 import { MMDBody } from '../../composables/mmd/body'
-import { resolveBodyTarget } from '../../composables/mmd/body/attention'
+import { resolveBodyPoints, resolveBodyTarget } from '../../composables/mmd/body/attention'
 import { resolveFrameBounds } from '../../composables/mmd/camera-bounds'
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
+import { fnv1a32 } from '../../composables/mmd/natural/seed'
 import { MMDOverlays } from '../../composables/mmd/overlays'
 import { readMMDRigProfile } from '../../composables/mmd/rig'
-import { applyStageCamera, applyStageRoot, clampToGround, measureStageExtent, projectCharacterPlacement, stagePixelRatio } from '../../composables/mmd/stage-world'
-import { frameClocks, MMDStanceDirector } from '../../composables/mmd/stance'
+import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, stagePixelRatio } from '../../composables/mmd/stage-world'
+import { chatStandX, frameClocks, MMDStanceDirector } from '../../composables/mmd/stance'
 import { buildMMDTouchColliders, MMDTouch, mmdTouchRegionRoots } from '../../composables/mmd/touch'
 import { Emotion, EMOTION_VALUES } from '../../constants/emotions'
 import { useMMDExpressionStore } from '../../stores/expression-store'
@@ -113,6 +115,11 @@ const props = withDefaults(defineProps<{
    * stands at `homeX` on the floor line, and the classic scale, position and rotation settings are ignored.
    */
   stageWorld?: MMDStageWorld
+  /**
+   * Counts the host's own interactions with her (a drag release). A new value starts the chase window the way a poke
+   * does. Stage mode only.
+   */
+  interactionSeq?: number
 }>(), {
   paused: false,
   performance: () => ({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }),
@@ -128,6 +135,8 @@ const emit = defineEmits<{
   (e: 'touch', event: NaturalTouchGesture): void
   /** The character's projected rect in work-area DIP changed (stage mode only). */
   (e: 'placement', rect: PlacementRect): void
+  /** The live root x in model units changed (stage mode only); walking moves it without the host's help. */
+  (e: 'root', x: number): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -135,6 +144,22 @@ const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', {
 const mmdStore = useMMD()
 const diagnostics = useMMDMotionDiagnostics()
 const expressions = useMMDExpressionStore()
+// Interactions that start the director's chase window: touch pokes and pets, host drags and sent chat messages.
+let interactionSeq = 0
+let interactionAtMs: number | null = null
+let directorNowMs = 0
+function noteInteraction() {
+  interactionSeq++
+  interactionAtMs = directorNowMs
+}
+watch(() => props.interactionSeq, (next, previous) => {
+  if (next !== undefined && next !== previous)
+    noteInteraction()
+})
+watch(() => props.chatActivity?.sentSeq, (next, previous) => {
+  if (next !== undefined && previous !== undefined && next > previous)
+    noteInteraction()
+})
 let chatVisible: boolean | undefined
 let chatUnfoldSeq = 0
 watch(() => props.chatTarget?.visible, (visible) => {
@@ -171,6 +196,7 @@ const {
   directionalPosition,
   albedoGlow,
   renderScale,
+  roamMode,
 } = storeToRefs(mmdStore)
 /** A model without saved strengths performs every emotion at 1. */
 const defaultEmotionStrengths: NaturalEmotionStrengths = {}
@@ -197,6 +223,8 @@ let rig: ReturnType<typeof readMMDRigProfile> | undefined
 let stopMorphOverrides: (() => void) | undefined
 let touch: MMDTouch | undefined
 let stance: MMDStanceDirector | undefined
+// The body director's target points for the current frame, in model units.
+let bodyPoints: ReturnType<typeof resolveBodyPoints> = null
 let overlays: MMDOverlays | undefined
 // Natural's clock for the current frame; the director clock offset never reaches it.
 let naturalSeconds = performance.now() / 1000
@@ -305,8 +333,10 @@ function publishPlacement() {
   const next = projectCharacterPlacement(world.calibration, stageExtent, stageRootX)
   const previous = characterPlacement.value
   characterPlacement.value = next
-  if (!previous || previous.x !== next.x || previous.y !== next.y || previous.width !== next.width || previous.height !== next.height)
+  if (!previous || previous.x !== next.x || previous.y !== next.y || previous.width !== next.width || previous.height !== next.height) {
     emit('placement', next)
+    emit('root', stageRootX)
+  }
 }
 
 /**
@@ -318,6 +348,8 @@ function setRootX(x: number, options: { teleport: boolean }) {
   stageRootX = x
   if (!props.stageWorld || !modelGroup || !stageExtent)
     return
+  // The host placed her, so the director drops its goal and held goal; the body drops its own in `rebase`.
+  stance?.clearGoal()
   modelGroup.position.x = x
   modelGroup.updateMatrixWorld(true)
   body?.rebase(x)
@@ -539,15 +571,28 @@ function renderLoop(now = performance.now()) {
   const clocks = frameClocks(now, diagnostics.directorClockOffsetMs)
   naturalSeconds = clocks.naturalSeconds
   if (animation && stance && loadedModelKey) {
+    directorNowMs = clocks.directorMs
+    bodyPoints = motionDriver.value === 'natural' && natural && mesh && camera && canvasRef.value
+      ? resolveBodyPoints({ mesh, camera, viewport: canvasRef.value.getBoundingClientRect(), gazeMode: gazeMode.value, calibration: props.stageWorld?.calibration }, natural.bodyFrame)
+      : null
     const base = stance.update({
       nowMs: clocks.directorMs,
       performance: props.performance,
       slots: stanceSlots.value[loadedModelKey] ?? {},
       idleMotionName: idleMotionName.value,
       isRegistered: name => registeredMotions.has(name),
+      points: bodyPoints ?? undefined,
+      world: props.stageWorld ? directorWorld(props.stageWorld, loadedModelKey) : undefined,
+      // Pokes and drags exist in the classic window too, so the interaction inputs ride outside the world.
+      interaction: { interactionSeq, chatSendSeq: 0, interactionAtMs, actionRequest: null, actionFeedback: null, dragging: false },
     })
     if (base.changed)
       animation.setBaseMotion(base.motion)
+    // Sent every frame: the body drops a goal set while a clip owns the root, so the intent is the only source of truth.
+    const locomotion = stance.intent?.locomotion
+    body?.setLocomotionGoal(locomotion && locomotion.goalX !== null
+      ? { goalX: locomotion.goalX, pace: locomotion.pace, arriveFacing: locomotion.arriveFacing, reason: locomotion.reason }
+      : null)
   }
   animation?.update(delta)
   if (touch)
@@ -578,6 +623,41 @@ function renderLoop(now = performance.now()) {
       characterPlacement: characterPlacement.value,
       stageModel: stageModel.value,
     })
+  }
+}
+
+/** The world half of the director input for this frame; only called in stage mode. */
+function directorWorld(world: MMDStageWorld, modelKey: string): MMDStanceWorld {
+  const { calibration } = world
+  const placement = props.screenPlacement
+  const dipScale = placement ? placement.windowBounds.width / document.documentElement.clientWidth : 0
+  const chat = props.chatTarget?.visible ? props.chatTarget.bounds : null
+  const legLength = rig?.legLength ?? 1
+  const halfWidth = (characterPlacement.value?.width ?? 0) / 2 * calibration.unitsPerDip
+  // The chat's left and right edges, projected to the ground at the floor row.
+  const edges = chat && placement && dipScale > 0
+    ? [chat.x, chat.x + chat.width].map(x => dipToPlane(calibration, { x: (x - placement.windowBounds.x) / dipScale, y: calibration.floorRowDip }, 0).x)
+    : null
+  const chatX = edges ? chatStandX({ minX: edges[0], maxX: edges[1] }, stageRootX, world.homeX, halfWidth, legLength) : null
+  const cursor = props.cursorPosition
+  const owned = body?.ownership()
+  return {
+    ground: world.ground,
+    rootX: stageRootX,
+    homeX: world.homeX,
+    locomotionMode: body?.locomotionFrame?.mode ?? 'idle',
+    clipOwnsRoot: !!owned && (owned.root > 0 || owned.leftLegIk > 0 || owned.rightLegIk > 0),
+    speaking: props.nowSpeaking || props.performance.mode === 'talking',
+    roamMode: roamMode.value,
+    chatUnfoldSeq,
+    chatX,
+    cursorX: cursor ? dipToPlane(calibration, cursor, 0).x : null,
+    cursorOnStage: !!cursor && cursor.x >= 0 && cursor.y >= 0 && cursor.x <= world.workArea.width && cursor.y <= world.workArea.height,
+    // NOTICE: todo 13 supplies the body tool port; until then no tool request reaches the director.
+    toolRequest: null,
+    debugGoal: diagnostics.goalRequest,
+    legLength,
+    seed: fnv1a32(modelKey),
   }
 }
 
@@ -757,7 +837,7 @@ async function loadModel(src: string) {
           // The root is placed on the floor line (and the body re-based there) once the stage extent is measured.
           rootMotion: props.stageWorld !== undefined && stageExtent !== undefined,
           frame: natural.bodyFrame.frame,
-          target: resolveBodyTarget({ mesh: activeMesh, camera, viewport: canvasRef.value.getBoundingClientRect(), gazeMode: gazeMode.value, calibration: props.stageWorld?.calibration }, natural.bodyFrame),
+          target: resolveBodyTarget(bodyPoints, natural.bodyFrame, gazeMode.value, activeStance.intent),
           ...diagnostics.debugFlags,
           stanceClips: activeStance.baseClips,
         }
@@ -953,11 +1033,16 @@ const touchActive = computed(() => naturalTouch.value && motionDriver.value === 
 function handleTouchEvents(events: NaturalTouchGesture[]) {
   if (!touch)
     return
-  for (const poke of touch.takePokes())
+  for (const poke of touch.takePokes()) {
     natural?.poke(poke.region, poke)
+    noteInteraction()
+  }
   natural?.setPet(touch.petHand)
-  for (const event of events)
+  for (const event of events) {
+    if (event.kind === 'pet-start')
+      noteInteraction()
     emit('touch', event)
+  }
 }
 
 function resetTouch() {
@@ -1021,14 +1106,6 @@ watch(() => props.enableOrbitControls, (enabled) => {
 })
 
 watch(() => props.stageWorld, () => applyStageWorld())
-
-// Until todo 12's director owns goals, the lab's `requestGoal` command reaches the body directly, clamped to the ground.
-watch(() => diagnostics.goalRequest, (request) => {
-  const world = props.stageWorld
-  if (!request || !world)
-    return
-  body?.setLocomotionGoal({ goalX: clampToGround(world.ground, request.x), pace: request.pace, arriveFacing: 0, reason: 'debug' })
-})
 
 // View transform sliders.
 watch([scale, rotationY, () => position.value.x, () => position.value.y], () => applyTransform())

@@ -21,6 +21,15 @@ reaching feature parity with the Live2D and VRM renderers:
   the model after two minutes idle and sleeps it while the user is away, with
   a 0.6 s eased cross-fade on the base layer; a sit or sleep clip never plays
   as the standing idle.
+- **Stage locomotion** (desktop stage only, `stageWorld` set): the body director
+  also walks her to the chat after it unfolds, chases the cursor after a poke,
+  pet, drag or sent message, returns home 20 s after the last reason and, with
+  `roamMode` (`settings/mmd/roam-mode`, `'stay' | 'roam'`, default `'stay'`),
+  wanders. Goals wait while she speaks, and a goal held longer than 30 s is
+  dropped. `director` in the diagnostics snapshot reports `reason` (the
+  locomotion reason), `goalX`, `pace`, `pendingGoal` and the tool refractories;
+  `stanceReason` is the stance's reason. The `requestGoal` command is the
+  director's `debugGoal`. Without a stage world no goal is ever issued.
 - **Morph-based lip-sync** driven by the shared wLipSync profile, mapping
   phonemes to the canonical あいうえお mouth morphs, with per-slot morph
   remapping for non-standard models.
