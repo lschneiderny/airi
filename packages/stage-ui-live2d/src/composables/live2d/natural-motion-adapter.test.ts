@@ -65,10 +65,11 @@ function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore
   profile?: (profile: Live2DRigProfile) => Live2DRigProfile
   /** `false` drops the SDK `loadParameters()` restore, so writes would persist across frames. */
   restore?: boolean
-  blush?: { id: string, name: string }
+  /** `range` is `[default, minimum, maximum]`, `[0, 0, 1]` when omitted. */
+  blush?: { id: string, name: string, range?: [number, number, number] }
 } = {}) {
   const ids = [...posture, ...Object.keys(face), ...blush ? [blush.id] : []].filter(id => id !== omit)
-  const range = (id: string) => id === blush?.id ? [0, 0, 1] : face[id] ?? [2, -8, 22]
+  const range = (id: string) => id === blush?.id ? blush.range ?? [0, 0, 1] : face[id] ?? [2, -8, 22]
   const parameters = {
     ids,
     defaultValues: new Float32Array(ids.map(id => range(id)[0])),
@@ -171,6 +172,18 @@ describe('natural motion adapter', () => {
     f.state.pet = { x: 0, y: 0 }
     f.frame(1.01)
     expect(f.frame(3).rendered[f.at('CustomBlush')]).toBeGreaterThan(0)
+    f.adapter.dispose()
+  })
+
+  it('blushes toward the minimum on a rig whose blush range ends at its default', () => {
+    // Hiyori Free shape: ParamCheek runs [-1, 0] with default 0, so positive blush would clamp away.
+    const f = fixture({ blush: { id: 'CustomBlush', name: 'Blush', range: [0, -1, 0] } })
+    f.state.eligible = true
+    f.frame(0)
+    expect(f.frame(1).rendered[f.at('CustomBlush')]).toBe(0)
+    f.state.pet = { x: 0, y: 0 }
+    f.frame(1.01)
+    expect(f.frame(3).rendered[f.at('CustomBlush')]).toBeLessThan(0)
     f.adapter.dispose()
   })
 

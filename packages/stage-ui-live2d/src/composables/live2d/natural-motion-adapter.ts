@@ -107,6 +107,15 @@ const closedEyeThreshold = 0.15
 /** Natural micro-narrowing never lowers open lids below this outside a blink. */
 const eyelidFloor = 0.2
 
+/**
+ * Direction of a face offset on its rig parameter. Blush is one-sided: some rigs store it as
+ * `[-1, 0]` with default 0 (Hiyori Free `ParamCheek`), so it grows toward the range end farther
+ * from the default. Bipolar channels keep the parameter's own direction.
+ */
+function offsetSign(channel: NaturalChannel, range: ChannelRange): 1 | -1 {
+  return channel === 'cheek' && range.neutral - range.min > range.max - range.neutral ? -1 : 1
+}
+
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
 const clampRange = (value: number, range: ChannelRange) => Math.max(range.min, Math.min(range.max, value))
 
@@ -146,7 +155,7 @@ export class Live2DNaturalMotionAdapter {
   private readonly originalFocus: () => void
   private posture: (ChannelRange & { axis: PostureAxis })[] = []
   private eyelids: ChannelRange[] = []
-  private offsets: (ChannelRange & { key: keyof NaturalFaceOutput })[] = []
+  private offsets: (ChannelRange & { key: keyof NaturalFaceOutput, sign: 1 | -1 })[] = []
   private mouth: ChannelRange | undefined
   private breath: ChannelRange | undefined
   private time = 0
@@ -223,7 +232,7 @@ export class Live2DNaturalMotionAdapter {
     this.eyelids = eyelidChannels.flatMap(channel => owned(channel) ?? [])
     this.offsets = (Object.entries(faceOffsets) as [NaturalChannel, keyof NaturalFaceOutput][]).flatMap(([channel, key]) => {
       const range = owned(channel)
-      return range ? [{ ...range, key }] : []
+      return range ? [{ ...range, key, sign: offsetSign(channel, range) }] : []
     })
     this.mouth = owned('mouthOpen')
     this.breath = owned('breath')
@@ -400,7 +409,7 @@ export class Live2DNaturalMotionAdapter {
     }
     for (const range of this.offsets.filter(free)) {
       const base = core.getParameterValueByIndex(range.index)
-      core.setParameterValueByIndex(range.index, clampRange(base + face[range.key] * (range.max - range.min) / 2, range))
+      core.setParameterValueByIndex(range.index, clampRange(base + range.sign * face[range.key] * (range.max - range.min) / 2, range))
     }
     if (this.mouth && free(this.mouth) && mouthAllowed) {
       const base = core.getParameterValueByIndex(this.mouth.index)

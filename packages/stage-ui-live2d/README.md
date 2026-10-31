@@ -100,6 +100,8 @@ Blush resolution first excludes every candidate whose id or CDI display name con
 
 Missing or malformed optional CDI is ignored without throwing; conventional-id resolution remains available.
 
+Blush grows toward the end of the resolved parameter's range that lies farther from its default. Most rigs store blush as `[0, 1]` with default 0, so blush rises. Some rigs, such as Hiyori Free's `ParamCheek`, store it as `[-1, 0]` with default 0, so blush falls toward -1. Without this, the range clamp would remove every blush on those rigs.
+
 Natural never writes these channels:
 
 - any parameter that model physics outputs;
