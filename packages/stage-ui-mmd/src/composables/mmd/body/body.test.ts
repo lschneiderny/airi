@@ -1,4 +1,4 @@
-import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3 } from 'three'
+import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
 
 import { bodyFixture } from './fixture'
@@ -186,6 +186,32 @@ describe('mmd full-body stages', () => {
     expect(bone('頭').quaternion.clone().normalize().angleTo(rotation)).toBeLessThan(1e-6)
     expect(bone('グルーブ').position.length()).toBeLessThan(1e-6)
     expect(bone('左目').quaternion.angleTo(new Quaternion())).toBeLessThan(1e-6)
+  })
+
+  it('keeps half of the head look-at under a fully weighted stance clip while ducking the body', () => {
+    const headAngle = (clipped: boolean, stanceClips: ReadonlySet<string>) => {
+      const { pipeline, mixer, bone, setInput } = bodyFixture()
+      if (clipped) {
+        const clip = new AnimationClip('sit', 1, [new VectorKeyframeTrack('.bones[センター].position', [0, 1], [0, 10, 0, 0, 10, 0])])
+        pipeline.registerClip(clip.name, clip)
+        pipeline.enqueue(() => mixer.clipAction(clip).play())
+      }
+      let groove = 0
+      for (let frame = 0; frame < 240; frame++) {
+        setInput({ target: new Vector3(Math.sin(frame / 20) * 12 + 14, 22, 20), stanceClips })
+        pipeline.step(1 / 30)
+        groove = Math.max(groove, bone('グルーブ').position.length())
+      }
+      return { head: bone('頭').quaternion.angleTo(new Quaternion()), groove }
+    }
+    const free = headAngle(false, new Set())
+    const stance = headAngle(true, new Set(['sit']))
+    const oneShot = headAngle(true, new Set())
+    expect(free.head).toBeGreaterThan(0.05)
+    expect(stance.head / free.head).toBeGreaterThan(0.4)
+    expect(stance.head / free.head).toBeLessThan(0.6)
+    expect(stance.groove).toBeLessThan(1e-6)
+    expect(oneShot.head).toBeLessThan(1e-6)
   })
 
   it('tolerates missing leg IK and one missing eye without touching physics bones', () => {

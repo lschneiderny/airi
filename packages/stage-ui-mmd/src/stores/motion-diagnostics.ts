@@ -15,7 +15,8 @@ export interface MMDMotionSnapshot {
   natural: { events: number, energy: number, headYaw: number } | null
   feet: { maxError: number, errorL: number, errorR: number, contact: number } | null
   lookAt: { target: { x: number, y: number, z: number } | null, yaw: number, pitch: number, turning: boolean, turns: number } | null
-  director: { stance: string, sinceMs: number, reason: string, clockOffsetMs: number } | null
+  /** `centerY` is the センター bone's Y in model units (mesh space), independent of the view scale. */
+  director: { stance: string, sinceMs: number, reason: string, clockOffsetMs: number, centerY: number | null } | null
   touch: { lastRegion: string | null, hitBody: boolean, petActive: boolean, headScreenPoint: { x: number, y: number } | null, events: number } | null
   animation: { idle: string | null, currentAction: string | null, actionsStarted: number }
   measurement: FrameMeasurement | null

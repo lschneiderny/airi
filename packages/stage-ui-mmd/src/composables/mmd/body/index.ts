@@ -22,7 +22,12 @@ export interface MMDBodyInput {
   readonly target: Vector3 | null
   readonly disableFootContact: boolean
   readonly disableLookAt: boolean
+  /** Looping base clips. They duck the body fully but keep half of the head's look-at. */
+  readonly stanceClips: ReadonlySet<string>
 }
+
+/** Share of the head and neck look-at kept under a fully weighted stance clip. */
+export const STANCE_HEAD_ATTENTION = 0.5
 
 /** Owns one model's body planners. The pipeline remains the only frame clock. */
 export class MMDBody {
@@ -35,6 +40,8 @@ export class MMDBody {
   private readonly look
   private now = 0
   private duck = 1
+  private attention = 1
+  private contactDuck = 1
   private roll = 0
   private facing = 0
   private turns = 0
@@ -69,6 +76,7 @@ export class MMDBody {
         this.feet.apply(context, {
           offset: this.offset,
           duck: this.duck,
+          contactDuck: this.contactDuck,
           disabled: this.input.disableFootContact,
           look: this.lookFrame,
           now: this.now,
@@ -106,7 +114,17 @@ export class MMDBody {
     if (!input)
       return
     this.now += dt
-    this.duck = 1 - Math.min(1, [...clean.clipWeights.values()].reduce((sum, weight) => sum + weight, 0))
+    let stanceWeight = 0
+    let otherWeight = 0
+    for (const [name, weight] of clean.clipWeights) {
+      if (input.stanceClips.has(name))
+        stanceWeight += weight
+      else
+        otherWeight += weight
+    }
+    this.duck = 1 - Math.min(1, stanceWeight + otherWeight)
+    this.attention = 1 - Math.min(1, otherWeight + stanceWeight * (1 - STANCE_HEAD_ATTENTION))
+    this.contactDuck = 1 - Math.min(1, otherWeight)
     const { pose, breath } = input.frame
     this.roll += ((pose.bodyZ ?? 0) - this.roll) * (1 - Math.exp(-dt / 0.5))
     const rig = this.pose.rig
@@ -180,7 +198,8 @@ export class MMDBody {
         bone.quaternion.copy(upper)
       if (active) {
         const angles = this.lookFrame.rotations[key]
-        const rotation = new Quaternion().setFromEuler(new Euler(angles.pitch * this.duck, angles.yaw * this.duck, 0, 'YXZ'))
+        const scale = key === 'neck' || key === 'head' ? this.attention : this.duck
+        const rotation = new Quaternion().setFromEuler(new Euler(angles.pitch * scale, angles.yaw * scale, 0, 'YXZ'))
         this.pose.premultiply(bone, rotation)
       }
     }
