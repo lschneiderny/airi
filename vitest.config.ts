@@ -24,6 +24,7 @@ export default withCpuSlots(defineConfig({
       'packages/better-ws',
       'packages/model-driver-magic-live2d',
       'packages/motion-driver-magic',
+      'packages/motion-driver-humanoid',
       'packages/plugin-protocol',
       'packages/stage-layouts',
       'packages/stage-ui-tachie',

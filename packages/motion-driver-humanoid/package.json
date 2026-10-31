@@ -1,0 +1,19 @@
+{
+  "name": "@proj-airi/motion-driver-humanoid",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./types": "./src/types/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@proj-airi/stage-shared": "workspace:^"
+  },
+  "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^",
+    "vitest": "catalog:vitest"
+  }
+}
