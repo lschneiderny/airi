@@ -311,4 +311,12 @@ describe('renderSituation', () => {
       expect(shownEventIds).toEqual(['n1', 'n2'])
     })
   })
+
+  it('renders a touch as a New: line with the time phrase added once', () => {
+    const state = fold([{ kind: 'touch', gesture: 'pet', region: 'head', atMs: T0, durationMs: 4 * SEC }])
+    const { text, shownEventIds } = renderSituation(state, T0)
+
+    expect(text.split('\n').slice(1)).toEqual(['- New: petted your head for about 4 s (just now)'])
+    expect(shownEventIds).toEqual([`touch@${T0}`])
+  })
 })

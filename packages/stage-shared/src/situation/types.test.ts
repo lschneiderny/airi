@@ -13,6 +13,7 @@ import {
   longSessionSalience,
   notifyTopicKey,
   PRESENCE_RETURN_TOPIC_KEY,
+  TOUCH_TOPIC_KEY,
   WAKE_TOPIC_KEY,
 } from '.'
 
@@ -26,6 +27,7 @@ describe('topic keys', () => {
     expect(notifyTopicKey('plugin:calendar', 'evt-1')).toBe('notify:plugin:calendar:evt-1')
     expect(PRESENCE_RETURN_TOPIC_KEY).toBe('presence:return')
     expect(WAKE_TOPIC_KEY).toBe('wake')
+    expect(TOUCH_TOPIC_KEY).toBe('touch')
   })
 
   it('gives the same notify key for a re-enqueued reminder and a different one per event id', () => {
@@ -48,6 +50,10 @@ describe('salience constants', () => {
     ['notify-soon', 0.7, 30],
     ['notify-later', 0.4, 60],
     ['notify-critical', 1.0, 30],
+    ['touch-pet', 0.3, 3],
+    ['touch-pet-long', 0.4, 3],
+    ['touch-poke', 0.25, 3],
+    ['touch-poke-burst', 0.4, 3],
   ])('%s starts at %s with a %s min half-life', (key, salience, halfLifeMinutes) => {
     expect(BASE_SALIENCE[key]).toBe(salience)
     expect(HALF_LIFE_MS[key]).toBe(halfLifeMinutes * MINUTE_MS)
@@ -75,6 +81,7 @@ describe('initialSituationState', () => {
     expect(JSON.parse(JSON.stringify(initialSituationState))).toEqual(initialSituationState)
     expect(initialSituationState.conversation.lastUnpromptedTopic).toBeNull()
     expect(initialSituationState.tracking.switchTimes).toEqual([])
+    expect(initialSituationState.tracking).toMatchObject({ touchAtMs: null, pokeTimes: [], lastPet: null })
   })
 
   it('is frozen so the reducer cannot mutate the shared start value', () => {
@@ -83,5 +90,6 @@ describe('initialSituationState', () => {
     expect(Object.isFrozen(initialSituationState.contexts)).toBe(true)
     expect(Object.isFrozen(initialSituationState.tracking)).toBe(true)
     expect(Object.isFrozen(initialSituationState.tracking.switchTimes)).toBe(true)
+    expect(Object.isFrozen(initialSituationState.tracking.pokeTimes)).toBe(true)
   })
 })

@@ -1,4 +1,4 @@
-import type { ActivityObservation, ContextObservation, NotifyObservation, Observation, PresenceObservation, SituationEvent, SituationState } from '.'
+import type { ActivityObservation, ContextObservation, NotifyObservation, Observation, PresenceObservation, SituationEvent, SituationState, TouchObservation } from '.'
 
 import { describe, expect, it } from 'vitest'
 
@@ -14,6 +14,7 @@ import {
   reduceSituation,
   RETURNED_AFTER_AWAY_MS,
   SITUATION_EVENTS_MAX,
+  TOUCH_TOPIC_KEY,
 } from '.'
 
 const T0 = 1_700_000_000_000
@@ -44,6 +45,15 @@ function notify(overrides: Partial<NotifyObservation> = {}): NotifyObservation {
     atMs: T0,
     ...overrides,
   }
+}
+
+function poke(atMs: number, region: TouchObservation['region'] = 'head'): TouchObservation {
+  return { kind: 'touch', gesture: 'poke', region, atMs }
+}
+
+/** A pet reported when it ends at `atMs`. */
+function pet(atMs: number, durationMs: number | undefined, overrides: Partial<TouchObservation> = {}): TouchObservation {
+  return { kind: 'touch', gesture: 'pet', region: 'head', atMs, durationMs, ...overrides }
 }
 
 /** Feeds observations in order, each reduced at its own `atMs`, carrying state between them. */
@@ -550,7 +560,79 @@ describe('markAddressed', () => {
   })
 })
 
+describe('reduceSituation touch', () => {
+  it('counts pokes within 10 s as a burst and starts a new count at exactly 10 s', () => {
+    const burst = run([poke(T0), poke(T0 + 4 * SEC), poke(T0 + 9_999)])
+
+    expect(eventsOf(burst, 'touch')).toMatchObject([
+      { topicKey: TOUCH_TOPIC_KEY, text: 'poked you 3 times in a few seconds', salience: 0.4, halfLifeMs: 3 * MIN, atMs: T0 + 9_999 },
+    ])
+
+    const apart = run([poke(T0), poke(T0 + 10 * SEC, 'body')])
+    expect(apart.tracking.pokeTimes).toEqual([T0 + 10 * SEC])
+    expect(eventsOf(apart, 'touch')).toMatchObject([{ text: 'poked your body', salience: 0.25, halfLifeMs: 3 * MIN }])
+  })
+
+  it('keeps at most 8 poke times', () => {
+    const state = run(Array.from({ length: 10 }, (_, index) => poke(T0 + index * 500)))
+
+    expect(state.tracking.pokeTimes).toHaveLength(8)
+    expect(eventsOf(state, 'touch')[0].text).toBe('poked you 8 times in a few seconds')
+  })
+
+  it('merges a pet that starts within 5 s of the previous one and sums the durations', () => {
+    const merged = run([pet(T0, 2 * SEC), pet(T0 + 6_900, 2 * SEC)])
+
+    expect(merged.tracking.lastPet).toEqual({ startedAtMs: T0 - 2 * SEC, endedAtMs: T0 + 6_900, durationMs: 4 * SEC })
+    expect(eventsOf(merged, 'touch')).toMatchObject([{ text: 'petted your head for about 4 s', salience: 0.3, atMs: T0 + 6_900 }])
+
+    const separate = run([pet(T0, 2 * SEC), pet(T0 + 7_100, 2 * SEC)])
+    expect(separate.tracking.lastPet).toEqual({ startedAtMs: T0 + 5_100, endedAtMs: T0 + 7_100, durationMs: 2 * SEC })
+    expect(eventsOf(separate, 'touch')[0].text).toBe('petted your head for about 2 s')
+  })
+
+  it('describes brief and long pets', () => {
+    expect(eventsOf(run([pet(T0, 1_999)]), 'touch')).toMatchObject([{ text: 'petted your head briefly', salience: 0.3 }])
+    expect(eventsOf(run([pet(T0, 9_999)]), 'touch')).toMatchObject([{ text: 'petted your head for about 10 s', salience: 0.3 }])
+    expect(eventsOf(run([pet(T0, 10 * SEC)]), 'touch')).toMatchObject([{ text: 'petted your head for about 10 s', salience: 0.4, halfLifeMs: 3 * MIN }])
+  })
+
+  it('keeps one touch event, never marks it addressed, and ignores an older touch', () => {
+    const state = run([poke(T0), pet(T0 + 10 * SEC, 3 * SEC)])
+
+    expect(eventsOf(state, 'touch')).toMatchObject([{ text: 'petted your head for about 3 s', addressedAtMs: null, shownAtMs: null }])
+    expect(state.tracking.addressedTopic).toBeNull()
+    expect(reduceSituation(state, poke(T0 + 5 * SEC), T0 + 10 * SEC)).toEqual(state)
+  })
+
+  it('leaves the state unchanged for touches it cannot use', () => {
+    const base = run([poke(T0 + SEC)])
+    const bad: Observation[] = [
+      pet(T0 + SEC, 3 * SEC, { region: 'body' }),
+      poke(Number.NaN),
+      pet(T0 + SEC, undefined),
+      pet(T0 + SEC, Number.NaN),
+      pet(T0 + SEC, -1),
+      pet(T0 + SEC, Number.POSITIVE_INFINITY),
+      { ...poke(T0 + SEC), gesture: 'slap' as never },
+      { ...poke(T0 + SEC), region: 'tail' as never },
+    ]
+
+    for (const observation of bad)
+      expect(reduceSituation(base, observation, T0 + SEC)).toEqual(base)
+  })
+})
+
 describe('forgetForeground', () => {
+  it('keeps touch events and touch bookkeeping', () => {
+    const state = run([activity('a', T0), poke(T0 + SEC), poke(T0 + 2 * SEC), pet(T0 + 5 * SEC, 2 * SEC)])
+
+    const forgotten = forgetForeground(state)
+
+    expect(eventsOf(forgotten, 'touch')).toEqual(eventsOf(state, 'touch'))
+    expect(forgotten.tracking).toMatchObject({ touchAtMs: T0 + 5 * SEC, pokeTimes: [T0 + SEC, T0 + 2 * SEC], lastPet: state.tracking.lastPet })
+  })
+
   it('drops the apps, their topics and the busy state, and keeps everything else', () => {
     const state = run([
       presence('here', T0),

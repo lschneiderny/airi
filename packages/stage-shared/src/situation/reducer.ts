@@ -12,9 +12,13 @@ import type {
   SalienceKey,
   SituationEvent,
   SituationEventKind,
+  SituationPet,
   SituationRecentActivity,
   SituationState,
   SituationTracking,
+  TouchGesture,
+  TouchObservation,
+  TouchRegion,
 } from './types'
 
 import {
@@ -29,6 +33,7 @@ import {
   PRESENCE_RETURN_TOPIC_KEY,
   RECENT_ACTIVITIES_MAX,
   SITUATION_EVENTS_MAX,
+  TOUCH_TOPIC_KEY,
   WAKE_TOPIC_KEY,
 } from './types'
 
@@ -67,6 +72,19 @@ export const RETURNED_AFTER_AWAY_MS = 5 * MINUTE_MS
 /** Events whose effective salience falls below this are dropped. Tuning: raise to forget sooner. */
 export const EVENT_DROP_SALIENCE = 0.05
 
+/** Pokes within {@link TOUCH_POKE_WINDOW_MS} that turn the touch event into a poke burst. Tuning: raise to call fewer pokes a burst. */
+export const TOUCH_POKE_BURST_COUNT = 3
+/** Window in which pokes count together; a poke exactly this long after another starts a new count. */
+export const TOUCH_POKE_WINDOW_MS = 10_000
+/** Most poke times kept in {@link SituationTracking.pokeTimes}. */
+export const TOUCH_POKE_TIMES_MAX = 8
+/** A pet that starts at most this long after the previous pet ended continues it. Tuning: raise to merge slower strokes. */
+export const TOUCH_PET_MERGE_GAP_MS = 5_000
+/** Pets shorter than this read as brief. */
+export const TOUCH_PET_BRIEF_MS = 2_000
+/** Pets at least this long use the `touch-pet-long` salience. Tuning: lower to make shorter pets weigh more. */
+export const TOUCH_PET_LONG_MS = 10_000
+
 /** Topic key of `switching-burst` events. */
 export const SWITCH_BURST_TOPIC_KEY = 'activity:burst'
 /** Topic key of `went-away` events. */
@@ -91,6 +109,8 @@ const PRESENCE_REASONS: ReadonlySet<string> = new Set<PresenceReason>(['locked',
 const BUSY_STATES: ReadonlySet<string> = new Set<BusyState>(['accepts', 'busy', 'fullscreen', 'presentation', 'quiet', 'unknown'])
 const CATEGORIES: ReadonlySet<string> = new Set<AppCategory>(['game', 'browser', 'editor', 'media', 'chat', 'call', 'work', 'other'])
 const URGENCIES: ReadonlySet<string> = new Set(['immediate', 'soon', 'later'])
+const TOUCH_GESTURES: ReadonlySet<string> = new Set<TouchGesture>(['pet', 'poke'])
+const TOUCH_REGIONS: ReadonlySet<string> = new Set<TouchRegion>(['head', 'body'])
 
 function isTime(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
@@ -357,6 +377,43 @@ function applyNotify(draft: Draft, o: NotifyObservation, at: number): void {
   pushEvent(draft, makeEvent('notify', key, topicKey, `${o.headline.trim()}${note}`, at))
 }
 
+/**
+ * Turns a touch into the single touch event, replacing the previous one. Text carries no time phrase: the renderer adds
+ * it. Touch never marks a topic as addressed and never reaches the urge gate.
+ */
+function applyTouch(draft: Draft, o: TouchObservation, at: number): void {
+  const tracking = draft.tracking
+  if (!TOUCH_GESTURES.has(o.gesture) || !TOUCH_REGIONS.has(o.region) || (tracking.touchAtMs !== null && at < tracking.touchAtMs))
+    return
+
+  if (o.gesture === 'poke') {
+    tracking.touchAtMs = at
+    tracking.pokeTimes = [...tracking.pokeTimes.filter(time => at - time < TOUCH_POKE_WINDOW_MS), at].slice(-TOUCH_POKE_TIMES_MAX)
+    const count = tracking.pokeTimes.length
+    if (count >= TOUCH_POKE_BURST_COUNT)
+      pushEvent(draft, makeEvent('touch', 'touch-poke-burst', TOUCH_TOPIC_KEY, `poked you ${count} times in a few seconds`, at))
+    else
+      pushEvent(draft, makeEvent('touch', 'touch-poke', TOUCH_TOPIC_KEY, `poked your ${o.region}`, at))
+    return
+  }
+
+  // Only head pets count, and a pet must say how long it lasted.
+  if (o.region !== 'head' || !isTime(o.durationMs))
+    return
+  tracking.touchAtMs = at
+  const durationMs = o.durationMs
+  const startedAtMs = at - durationMs
+  const previous = tracking.lastPet
+  const pet: SituationPet = previous !== null && startedAtMs - previous.endedAtMs <= TOUCH_PET_MERGE_GAP_MS
+    ? { startedAtMs: previous.startedAtMs, endedAtMs: at, durationMs: previous.durationMs + durationMs }
+    : { startedAtMs, endedAtMs: at, durationMs }
+  tracking.lastPet = pet
+  const text = pet.durationMs < TOUCH_PET_BRIEF_MS
+    ? 'petted your head briefly'
+    : `petted your head for about ${Math.round(pet.durationMs / 1000)} s`
+  pushEvent(draft, makeEvent('touch', pet.durationMs >= TOUCH_PET_LONG_MS ? 'touch-pet-long' : 'touch-pet', TOUCH_TOPIC_KEY, text, at))
+}
+
 function applyObservation(draft: Draft, observation: Observation, now: number, options: ReduceSituationOptions): void {
   const raw = observation as { kind?: unknown, atMs?: unknown } | null
   if (!raw || typeof raw !== 'object' || !isTime(raw.atMs))
@@ -397,6 +454,9 @@ function applyObservation(draft: Draft, observation: Observation, now: number, o
       break
     case 'notify':
       applyNotify(draft, observation, at)
+      break
+    case 'touch':
+      applyTouch(draft, observation, at)
       break
     case 'stage': {
       const stage = draft.stage
