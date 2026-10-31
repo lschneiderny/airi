@@ -383,7 +383,9 @@ function applyNotify(draft: Draft, o: NotifyObservation, at: number): void {
  */
 function applyTouch(draft: Draft, o: TouchObservation, at: number): void {
   const tracking = draft.tracking
-  if (!TOUCH_GESTURES.has(o.gesture) || !TOUCH_REGIONS.has(o.region) || (tracking.touchAtMs !== null && at < tracking.touchAtMs))
+  // Unlike the other slots, an equal time is ignored too: it is a re-delivered touch, which would otherwise count as
+  // another poke or merge a pet with itself. Touches from one pointer cannot share a millisecond.
+  if (!TOUCH_GESTURES.has(o.gesture) || !TOUCH_REGIONS.has(o.region) || (tracking.touchAtMs !== null && at <= tracking.touchAtMs))
     return
 
   if (o.gesture === 'poke') {
