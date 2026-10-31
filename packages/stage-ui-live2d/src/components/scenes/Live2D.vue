@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
-import type { MoodDose, NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
+import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
-import type { ExpressionPerformanceSettings, HoldCommand, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 
