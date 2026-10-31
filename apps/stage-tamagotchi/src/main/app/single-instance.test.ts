@@ -9,6 +9,7 @@ const windowMock = vi.hoisted(() => ({
 vi.mock('../windows/shared/window', () => ({
   toggleWindowShow: windowMock.toggleWindowShow,
 }))
+vi.mock('../windows/shared/display', () => ({ centerWindowOnDisplay: vi.fn() }))
 
 function createMockApp(hasSingleInstanceLock: boolean): MockApp {
   return {
@@ -24,6 +25,7 @@ function createMockWindow() {
 
 describe('installSingleInstanceGuard', async () => {
   const { installSingleInstanceGuard } = await import('./single-instance')
+  const { markStageWindow } = await import('../windows/stage/identity')
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -69,6 +71,26 @@ describe('installSingleInstanceGuard', async () => {
     secondInstanceHandler()
 
     expect(windowMock.toggleWindowShow).toHaveBeenCalledWith(window)
+  })
+
+  /**
+   * @example
+   * secondInstanceHandler()
+   * expect(stage.showInactive).toHaveBeenCalledOnce()
+   */
+  it('shows the desktop stage without focusing it when a second launch is forwarded', () => {
+    const app = createMockApp(true)
+    const stage = Object.assign(createMockWindow(), { isDestroyed: vi.fn(() => false), showInactive: vi.fn(), show: vi.fn(), focus: vi.fn() })
+    markStageWindow(stage)
+
+    installSingleInstanceGuard({ app, getWindow: vi.fn(() => stage) })
+    const secondInstanceHandler = app.on.mock.calls[0]?.[1] as () => void
+    secondInstanceHandler()
+
+    expect(stage.showInactive).toHaveBeenCalledOnce()
+    expect(stage.show).not.toHaveBeenCalled()
+    expect(stage.focus).not.toHaveBeenCalled()
+    expect(windowMock.toggleWindowShow).not.toHaveBeenCalled()
   })
 })
 type MockApp = App & {

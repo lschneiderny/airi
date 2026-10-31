@@ -9,6 +9,7 @@ import { screen } from 'electron'
 import { electronOpenOnboarding } from '../../../../shared/eventa'
 import { Animator } from '../../../windows/shared/animator'
 import { computeAdjacentPosition } from '../../../windows/shared/display'
+import { isStageWindow } from '../../../windows/stage/identity'
 
 const ANIMATION_DURATION = 350
 
@@ -24,6 +25,10 @@ export function createOnboardingService(params: {
     const savedBounds = params.mainWindow.getBounds()
 
     const onboardingWindow = await params.onboardingWindowManager.getAndToggleWindow()
+    // The desktop stage covers the whole work area and never moves, so only the classic window slides beside onboarding.
+    if (isStageWindow(params.mainWindow))
+      return
+
     const onboardingBounds = onboardingWindow.getBounds()
     const display = screen.getDisplayMatching(onboardingBounds)
 

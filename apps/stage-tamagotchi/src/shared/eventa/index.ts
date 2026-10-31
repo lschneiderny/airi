@@ -16,6 +16,7 @@ import type {
   StageViewSnapshotPayload,
 } from '@proj-airi/stage-shared/godot-stage'
 import type { ServerChannelQrPayload } from '@proj-airi/stage-shared/server-channel-qr'
+import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { IOTraceHubState, IOTraceRecordingState, SerializedIOSpan } from '@proj-airi/stage-shared/types/io-trace'
 import type {
   ThreeHitTestReadTracePayload,
@@ -220,6 +221,65 @@ export const electronChatFloatingMoveTo = defineInvokeEventa<void, { x: number, 
  * chat button does, so the button there shows the chat as closed.
  */
 export const electronChatFloatingFold = defineInvokeEventa<void>('eventa:invoke:electron:windows:chat-floating:fold')
+/** Which window hosts the character: the classic 450x600 window or the full-screen desktop stage. */
+export type StageHostMode = 'window' | 'desktop'
+
+/** The renderer the stage model uses. Only `'mmd'` can run in the desktop stage. */
+export type StageActiveRenderer = 'mmd' | 'other'
+
+/** One display, as the desktop stage sees it. Rectangles are Electron DIP screen coordinates. */
+export interface StageDisplayInfo {
+  /** `String(Display.id)`; the key of {@link StageHostState.homes}. */
+  id: string
+  bounds: PlacementRect
+  workArea: PlacementRect
+  scaleFactor: number
+  primary: boolean
+}
+
+export interface StageHostState {
+  /** The saved mode. It applies at the next launch, so it can differ from `running`. */
+  mode: StageHostMode
+  /** The renderer the stage pages last reported; `null` until one has reported. */
+  activeRenderer: StageActiveRenderer | null
+  displays: StageDisplayInfo[]
+  /** The display the character lives on: the saved one when it is connected, otherwise the primary display. */
+  homeDisplayId: string
+  /**
+   * The home of each connected display, as a screen x in DIP on the floor row. `null` when the display has no saved
+   * home, or when its size or scale changed since the home was saved; the renderer then computes the default home and
+   * saves it with `electronStageSetHome`.
+   */
+  homes: Record<string, { xDip: number } | null>
+  /** The host this process built at launch. */
+  running: StageHostMode
+}
+
+/** Where the character is drawn, published by the stage renderer. Rectangles are Electron DIP screen coordinates. */
+export interface StageCharacterPlacement {
+  displayId: string
+  /** The projected skeleton bounds where the character is now. */
+  bounds: PlacementRect
+  /** The same bounds with the character at home. */
+  homeBounds: PlacementRect
+}
+
+export const electronStageGetState = defineInvokeEventa<StageHostState>('eventa:invoke:electron:windows:stage:get-state')
+/** Sent to the stage window whenever the persisted stage config or the displays change. */
+export const electronStageStateChanged = defineEventa<StageHostState>('eventa:event:electron:windows:stage:state-changed')
+/** Saves the home of a connected display. Rejects for a display that is not connected or an `xDip` that is not finite. */
+export const electronStageSetHome = defineInvokeEventa<StageHostState, { displayId: string, xDip: number }>('eventa:invoke:electron:windows:stage:set-home')
+/** Persists the host mode. It applies at the next launch (see `electronStageRelaunch`). */
+export const electronStageSetMode = defineInvokeEventa<StageHostState, StageHostMode>('eventa:invoke:electron:windows:stage:set-mode')
+/** Persists the renderer of the stage model. Both stage pages call it whenever the stage model changes. */
+export const electronStageSetActiveRenderer = defineInvokeEventa<StageHostState, StageActiveRenderer>('eventa:invoke:electron:windows:stage:set-active-renderer')
+/** Restarts the app so a changed mode applies. */
+export const electronStageRelaunch = defineInvokeEventa<void>('eventa:invoke:electron:windows:stage:relaunch')
+/** Sent by the stage renderer when the character placement changes. */
+export const electronStageCharacterPlacementChanged = defineEventa<StageCharacterPlacement>('eventa:event:electron:windows:stage:character-placement-changed')
+/** The last placement the stage renderer published; `null` before the first one. */
+export const electronStageGetCharacterPlacement = defineInvokeEventa<StageCharacterPlacement | null>('eventa:invoke:electron:windows:stage:get-character-placement')
+
 export const electronSpotlightHide = defineInvokeEventa<void>('eventa:invoke:electron:windows:spotlight:hide')
 export const electronSpotlightShowResultNotification = defineInvokeEventa<void, { body: string }>('eventa:invoke:electron:windows:spotlight:show-result-notification')
 export const electronSpotlightShortcutGet = defineInvokeEventa<ShortcutAccelerator>('eventa:invoke:electron:windows:spotlight:shortcut:get')

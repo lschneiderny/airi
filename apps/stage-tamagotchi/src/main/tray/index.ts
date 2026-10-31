@@ -31,6 +31,7 @@ import { Animator } from '../windows/shared/animator'
 import { AppIconVisibility } from '../windows/shared/app-icon'
 import { computeResizedBoundsAnchoredToDominantDisplay } from '../windows/shared/display'
 import { toggleWindowShow } from '../windows/shared/window'
+import { showUserFacingWindow } from '../windows/stage/identity'
 
 const RECOMMENDED_WIDTH = 450
 const RECOMMENDED_HEIGHT = 600
@@ -151,7 +152,7 @@ const setupTrayOnce = once((params: SetupTrayParams): void => {
     const halfWidthTarget = Math.floor(halfHeightTarget * ASPECT_RATIO)
 
     const contextMenu = Menu.buildFromTemplate([
-      { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.show'), click: () => toggleWindowShow(params.mainWindow) },
+      { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.show'), click: () => showUserFacingWindow(params.mainWindow) },
       { type: 'separator' },
       {
         label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.adjust_sizes'),
@@ -290,11 +291,11 @@ const setupTrayOnce = once((params: SetupTrayParams): void => {
   })
 
   appTray.setToolTip('Project AIRI')
-  appTray.addListener('click', () => toggleWindowShow(params.mainWindow))
+  appTray.addListener('click', () => showUserFacingWindow(params.mainWindow))
 
   // On macOS, there's a special double-click event
   if (isMacOS) {
-    appTray.addListener('double-click', () => toggleWindowShow(params.mainWindow))
+    appTray.addListener('double-click', () => showUserFacingWindow(params.mainWindow))
   }
 })
 

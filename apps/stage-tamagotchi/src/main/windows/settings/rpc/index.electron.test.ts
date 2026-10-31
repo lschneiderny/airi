@@ -1,7 +1,23 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { electronCenterMainWindow } from '../../../../shared/eventa'
+import { centerWindowOnDisplay } from '../../shared/display'
+import { markStageWindow } from '../../stage/identity'
 import { setupSettingsWindowInvokes } from './index.electron'
+
+const invokeHandlers = vi.hoisted(() => new Map<unknown, (payload?: unknown) => unknown>())
+
+vi.mock('@moeru/eventa', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@moeru/eventa')>()
+  return {
+    ...original,
+    defineInvokeHandler: ((context, definition, handler) => {
+      invokeHandlers.set(definition, handler as (payload?: unknown) => unknown)
+      return original.defineInvokeHandler(context, definition, handler)
+    }) as typeof original.defineInvokeHandler,
+  }
+})
 
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events')
@@ -39,10 +55,11 @@ vi.mock('../../../services/airi/io-trace-recording/register', () => ({
   registerIOTraceRecording: vi.fn(() => vi.fn()),
 }))
 
-async function setup(window: BrowserWindow) {
+async function setup(window: BrowserWindow, getMainWindow?: () => BrowserWindow | undefined) {
   type Params = Parameters<typeof setupSettingsWindowInvokes>[0]
   return setupSettingsWindowInvokes({
     settingsWindow: window,
+    getMainWindow,
     globalShortcut: {
       registerWindow: vi.fn(),
       registerMainShortcut: vi.fn(),
@@ -85,6 +102,37 @@ describe('settings IPC lifetime', () => {
 
     expect(ipcMain.listenerCount('eventa-message')).toBe(1)
     expect(ipcMain.listenerCount('eventa-error')).toBe(1)
+    settings.close()
+  })
+})
+
+describe('settings electronCenterMainWindow', () => {
+  afterEach(() => {
+    ipcMain.removeAllListeners()
+    vi.mocked(centerWindowOnDisplay).mockClear()
+  })
+
+  it('returns the desktop stage bounds without moving it', async () => {
+    const bounds = { x: 0, y: 25, width: 1440, height: 875 }
+    const stage = Object.assign(new BrowserWindow(), { getBounds: vi.fn(() => bounds), setBounds: vi.fn() })
+    markStageWindow(stage)
+    const settings = new BrowserWindow()
+    await setup(settings, () => stage)
+
+    expect(invokeHandlers.get(electronCenterMainWindow)?.()).toEqual(bounds)
+    expect(centerWindowOnDisplay).not.toHaveBeenCalled()
+    expect(stage.setBounds).not.toHaveBeenCalled()
+    settings.close()
+  })
+
+  it('still centers the classic main window', async () => {
+    const main = new BrowserWindow()
+    const settings = new BrowserWindow()
+    await setup(settings, () => main)
+
+    invokeHandlers.get(electronCenterMainWindow)?.()
+
+    expect(centerWindowOnDisplay).toHaveBeenCalledWith(main)
     settings.close()
   })
 })
