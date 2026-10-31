@@ -23,7 +23,10 @@ export interface TextSegment {
   streamId: string
   intentId: string
   segmentId: string
+  /** Text to synthesize. */
   text: string
+  /** Text to display when it differs from `text`, for example with the ASCII faces that synthesis skips. */
+  displayText?: string
   special: string | null
   reason: 'boost' | 'limit' | 'hard' | 'flush' | 'special'
   createdAt: number
@@ -70,6 +73,7 @@ export interface PlaybackItem<TAudio> {
   sequence: number
   ownerId?: string
   priority: number
+  /** Display text of the clip: the segment's `displayText` when it has one, so it can keep faces the clip does not speak. */
   text: string
   special: string | null
   audio: TAudio

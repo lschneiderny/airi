@@ -1,6 +1,7 @@
 import type { Eventa } from '@moeru/eventa'
 
 import type { SpeechPipelineEventName } from './eventa'
+import type { TimelineClock } from './timeline'
 import type {
   IntentHandle,
   IntentOptions,
@@ -16,6 +17,7 @@ import type {
 import { createContext } from '@moeru/eventa'
 
 import { speechPipelineEventMap } from './eventa'
+import { tokenBreak } from './llm-streaming-control/parsers'
 import { createPriorityResolver } from './priority'
 import { createTtsSegmentStream } from './processors/tts-chunker'
 import { createPushStream } from './stream'
@@ -41,6 +43,17 @@ export interface SpeechPipelineOptions<TAudio> {
   }
   logger?: LoggerLike
   priority?: ReturnType<typeof createPriorityResolver>
+  /**
+   * Clock of the ordered speech track. A BREAK special waits on it before the next clip is scheduled.
+   *
+   * @default the wall clock (`Date.now` and `setTimeout`)
+   */
+  clock?: TimelineClock
+  /**
+   * Splits the token stream into TTS segments.
+   *
+   * @default the TTS chunker with `stripAsciiFaces`, so ASCII faces are never spoken in any conversation register
+   */
   segmenter?: (tokens: ReadableStream<TextToken>, meta: { streamId: string, intentId: string, turnId?: string }) => ReadableStream<TextSegment>
 }
 
@@ -58,17 +71,36 @@ interface IntentState {
   canceled: boolean
 }
 
+/** One output slot whose synthesis settled. */
+interface CompletedOutput<TAudio> {
+  result: TtsResult<TAudio> | null
+  /** The segment whose special still fires when the slot has no audio. */
+  special: TextSegment | null
+  /** The segment's display text, when it differs from the synthesized text. */
+  displayText?: string
+}
+
 function createId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+const breakParser = tokenBreak()
+
+/** Returns the pause of a well-formed BREAK special in seconds, or 0 for any other special. */
+function breakSeconds(special: string | null) {
+  if (!special || !breakParser.match(special))
+    return 0
+
+  return breakParser.parse(special)?.seconds ?? 0
 }
 
 export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAudio>) {
   const logger = options.logger ?? console
   const priorityResolver = options.priority ?? createPriorityResolver()
-  const segmenter = options.segmenter ?? createTtsSegmentStream
+  const segmenter = options.segmenter ?? ((tokens, meta) => createTtsSegmentStream(tokens, meta, { stripAsciiFaces: true }))
   const ttsMaxConcurrent = Math.max(1, options.ttsMaxConcurrent ?? 4)
   const context = createContext()
-  const timeline = createTimeline()
+  const timeline = createTimeline({ clock: options.clock })
 
   const intents = new Map<string, IntentState>()
   const pending: IntentState[] = []
@@ -134,21 +166,43 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
     // Every segment takes one output slot in arrival order. A slot completes when its synthesis
     // settles, or at once for a special-only segment. Completed slots enter the timeline strictly in
     // slot order, so a special plays after the clip before it and before the clip after it.
-    const completedOutputs = new Map<number, { result: TtsResult<TAudio> | null, special: TextSegment | null }>()
+    const completedOutputs = new Map<number, CompletedOutput<TAudio>>()
     const inFlightTasks = new Set<Promise<void>>()
     let nextRequestSequence = 0
     let nextOutputSlot = 0
     let nextSlotToSchedule = 0
 
+    /**
+     * Holds the speech track for the pause of a BREAK special, so the next clip starts that much later.
+     * Cancelling the intent ends the pause at once.
+     */
+    async function pauseAtBreak(special: string | null, clock: TimelineClock) {
+      const seconds = breakSeconds(special)
+      const { signal } = intent.controller
+      if (seconds === 0 || signal.aborted)
+        return
+
+      const aborted = Promise.withResolvers<void>()
+      const onAbort = () => aborted.resolve()
+      signal.addEventListener('abort', onAbort, { once: true })
+      try {
+        await Promise.race([clock.sleep(seconds * 1000), aborted.promise])
+      }
+      finally {
+        signal.removeEventListener('abort', onAbort)
+      }
+    }
+
     function enqueueSpecial(segment: TextSegment) {
       timeline.enqueue({
         id: `special:${segment.segmentId}`,
         track: 'speech',
-        run() {
+        async run({ clock }) {
           if (intent.canceled || intent.controller.signal.aborted)
             return
 
           context.emit(speechPipelineEventMap.onSpecial, segment)
+          await pauseAtBreak(segment.special, clock)
         },
       })
     }
@@ -157,7 +211,7 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
       timeline.enqueue({
         id: `playback:${item.id}`,
         track: 'speech',
-        async run() {
+        async run({ clock }) {
           if (intent.canceled || intent.controller.signal.aborted)
             return
 
@@ -179,16 +233,17 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
               reason: 'special',
               createdAt: item.createdAt,
             })
+            await pauseAtBreak(item.special, clock)
           }
         },
       })
     }
 
-    function completeOutput(slot: number, output: { result: TtsResult<TAudio> | null, special: TextSegment | null }) {
+    function completeOutput(slot: number, output: CompletedOutput<TAudio>) {
       completedOutputs.set(slot, output)
 
       while (completedOutputs.has(nextSlotToSchedule)) {
-        const { result: completedRequest, special } = completedOutputs.get(nextSlotToSchedule)!
+        const { result: completedRequest, special, displayText } = completedOutputs.get(nextSlotToSchedule)!
         completedOutputs.delete(nextSlotToSchedule)
 
         if (completedRequest) {
@@ -201,7 +256,7 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
             sequence: completedRequest.sequence,
             ownerId: intent.ownerId,
             priority: intent.priority,
-            text: completedRequest.text,
+            text: displayText ?? completedRequest.text,
             sentenceIndex: completedRequest.sentenceIndex,
             sentenceStart: completedRequest.sentenceStart,
             special: completedRequest.special,
@@ -218,7 +273,7 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
       }
     }
 
-    function createTtsTask(request: TtsRequest, slot: number, special: TextSegment | null) {
+    function createTtsTask(request: TtsRequest, slot: number, special: TextSegment | null, displayText: string | undefined) {
       const task = (async () => {
         let audio: TAudio | null = null
         try {
@@ -256,7 +311,7 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
 
         context.emit(speechPipelineEventMap.onTtsResult, ttsResult)
         // The playback item carries the special and emits it after the clip ends.
-        completeOutput(slot, { result: ttsResult, special: null })
+        completeOutput(slot, { result: ttsResult, special: null, displayText })
       })()
         .finally(() => {
           inFlightTasks.delete(task)
@@ -307,7 +362,7 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
         }
 
         context.emit(speechPipelineEventMap.onTtsRequest, request)
-        createTtsTask(request, nextOutputSlot++, value.special ? value : null)
+        createTtsTask(request, nextOutputSlot++, value.special ? value : null, value.displayText)
       }
 
       await Promise.allSettled(inFlightTasks)

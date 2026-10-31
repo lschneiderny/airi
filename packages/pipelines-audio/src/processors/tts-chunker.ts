@@ -41,6 +41,8 @@ export interface TtsInputChunk {
   sentenceIndex: number
   sentenceStart: boolean
   text: string
+  /** The segment text with its ASCII faces, set only when `stripAsciiFaces` removed one. */
+  displayText?: string
   words: number
   reason: 'boost' | 'limit' | 'hard' | 'flush' | 'special'
 }
@@ -81,6 +83,8 @@ export interface TtsChunkItem {
   sentenceIndex: number
   sentenceStart: boolean
   chunk: string
+  /** See `TtsInputChunk.displayText`. */
+  displayText?: string
   special: string | null
   reason: 'boost' | 'limit' | 'hard' | 'flush' | 'special'
 }
@@ -93,13 +97,14 @@ export async function* chunkTtsInput(
   let sentenceIndex = 0
   let sentenceStart = true
   for await (const chunk of chunkInput(input, options)) {
-    const text = options?.stripAsciiFaces
-      ? stripAsciiFaces(removeChunkMarkers(chunk.text))
-      : removeChunkMarkers(chunk.text)
+    const cleaned = removeChunkMarkers(chunk.text)
+    const text = options?.stripAsciiFaces ? stripAsciiFaces(cleaned) : cleaned
     yield {
       ...chunk,
       // Faces are stripped from the whole segment, never from a delta, so a split face is still found.
       text: options?.stripAsciiFaces ? text : chunk.text,
+      // Captions and other displays keep the faces that synthesis skips.
+      ...(text !== cleaned ? { displayText: cleaned } : {}),
       sentenceIndex,
       sentenceStart: text.length > 0 && sentenceStart,
     }
@@ -350,10 +355,10 @@ export async function chunkEmitter(
 
       if (chunk.reason === 'special') {
         const specialToken = pendingSpecials.shift()
-        await handler({ chunk: cleanedText, special: specialToken ?? null, reason: chunk.reason, sentenceIndex: chunk.sentenceIndex, sentenceStart: chunk.sentenceStart })
+        await handler({ chunk: cleanedText, displayText: chunk.displayText, special: specialToken ?? null, reason: chunk.reason, sentenceIndex: chunk.sentenceIndex, sentenceStart: chunk.sentenceStart })
       }
       else {
-        await handler({ chunk: cleanedText, special: null, reason: chunk.reason, sentenceIndex: chunk.sentenceIndex, sentenceStart: chunk.sentenceStart })
+        await handler({ chunk: cleanedText, displayText: chunk.displayText, special: null, reason: chunk.reason, sentenceIndex: chunk.sentenceIndex, sentenceStart: chunk.sentenceStart })
       }
     }
   }
@@ -619,6 +624,7 @@ export function createTtsSegmentStream(
           intentId: meta.intentId,
           segmentId: `${meta.streamId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
           text: chunk.chunk,
+          ...(chunk.displayText !== undefined ? { displayText: chunk.displayText } : {}),
           sentenceIndex: chunk.sentenceIndex,
           sentenceStart: chunk.sentenceStart,
           special: chunk.special,
