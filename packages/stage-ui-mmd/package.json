@@ -37,6 +37,7 @@
     "@moeru/three-mmd": "catalog:",
     "@moeru/three-mmd-physics-ammo": "catalog:",
     "@proj-airi/model-driver-lipsync": "workspace:^",
+    "@proj-airi/motion-driver-humanoid": "workspace:^",
     "@proj-airi/stage-shared": "workspace:^",
     "@proj-airi/ui": "workspace:^",
     "@vueuse/core": "catalog:",

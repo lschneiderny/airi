@@ -5601,6 +5601,9 @@ importers:
       '@proj-airi/model-driver-lipsync':
         specifier: workspace:^
         version: link:../model-driver-lipsync
+      '@proj-airi/motion-driver-humanoid':
+        specifier: workspace:^
+        version: link:../motion-driver-humanoid
       '@proj-airi/stage-shared':
         specifier: workspace:^
         version: link:../stage-shared
