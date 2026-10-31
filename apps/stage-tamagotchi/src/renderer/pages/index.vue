@@ -16,7 +16,7 @@ import {
   useElectronWindowBounds,
 } from '@proj-airi/electron-vueuse'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
-import { useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
+import { useMMDExpressionStore, useMMDMotionDiagnostics } from '@proj-airi/stage-ui-mmd/stores'
 import { useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three/composables/hit-test'
 import { useModelStore } from '@proj-airi/stage-ui-three/stores/model-store'
 import { HearingStatus, HoloCoupon } from '@proj-airi/stage-ui/components'
@@ -44,6 +44,7 @@ import { electronAppIsWayland, electronChatAttentionTargetChanged, electronGetCh
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
 import { usePushToTalkShortcut } from '../composables/use-push-to-talk-shortcut'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
+import { useStageActiveRenderer } from '../composables/use-stage-active-renderer'
 import { stageOpaqueAttribute } from '../composables/use-stage-painted-mask'
 import { useControlsIslandStore } from '../stores/controls-island'
 import { useDesktopActivityProducerStore } from '../stores/desktop-activity'
@@ -52,6 +53,8 @@ import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
 import { useToolSelectionStore } from '../stores/tools'
 import { resolveFadeOnHoverInteraction } from '../utils/fade-on-hover'
 import { shouldSampleStageTransparency } from '../utils/stage-three-transparency'
+
+useStageActiveRenderer()
 
 const hearingStatusElement = ref<HTMLElement>()
 const { isOutside: outsideHearingStatus } = useElectronMouseInElement(hearingStatusElement)
@@ -120,6 +123,7 @@ function handleStageReset() {
 const modelStore = useModelStore()
 const expressionStore = useExpressionStore()
 const mmdExpressionStore = useMMDExpressionStore()
+const motionDiagnostics = useMMDMotionDiagnostics()
 const { sceneMutationLocked, scenePhase } = storeToRefs(modelStore)
 const { stagePaused } = storeToRefs(useStageWindowLifecycleStore())
 // The stage window owns the desktop activity samples that drive the Natural motion performance state.
@@ -193,10 +197,12 @@ const isTransparentForMouseEvents = computed(() => {
   if (!isPointerOverStageCanvas.value)
     return false
 
-  if (stageModelRenderer.value === 'vrm')
-    return shouldUseThreeTransparencyHitTest.value ? isTransparentByThreeExact.value : false
-
-  return isTransparentByPixelsExact.value
+  const readbackStart = performance.now()
+  const transparent = stageModelRenderer.value === 'vrm'
+    ? shouldUseThreeTransparencyHitTest.value && isTransparentByThreeExact.value
+    : isTransparentByPixelsExact.value
+  motionDiagnostics.reportReadback(performance.now() - readbackStart)
+  return transparent
 })
 
 const { isNearAnyBorder: isAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 10 })

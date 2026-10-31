@@ -87,7 +87,7 @@ export async function setupStageWindow(
   window.on('ready-to-show', () => window.showInactive())
   protectPrivilegedWindowNavigation(window)
 
-  // The stage page is `/` until the stage route lands, so it needs every main-window invoke.
+  // The stage page replaces the classic page, so it keeps every main-window invoke (controls, chat, inlay, settings).
   await setupMainWindowElectronInvokes({
     window,
     editorWindow: params.editorWindow,
@@ -116,12 +116,8 @@ export async function setupStageWindow(
   })
   bindStageWindowToHomeDisplay({ screen, window, getConfig, onDisplaysChanged: invokes.emitState })
 
-  // NOTICE:
-  // Todo 7 of plan fullscreen-stage-locomotion adds the `/stage` route; until then the stage loads the classic page
-  // with `stage-host=desktop`.
-  // Removal condition: todo 7 switches this load to `/stage`.
-  await load(window, withHashRoute(baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')), '/', {
-    query: { ...mainWindowQuery(is.dev, env), 'stage-host': 'desktop' },
+  await load(window, withHashRoute(baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')), '/stage', {
+    query: mainWindowQuery(is.dev, env),
   }))
 
   // The inlay loads once and stays shown, as with the classic window; showing it inactive keeps focus where it is.
