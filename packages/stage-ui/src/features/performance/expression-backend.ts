@@ -1,6 +1,7 @@
 import type { CatalogEntry, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import { useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
 
 /** Catalog and performer state read by the conductor; commands go through the selected scene. */
 export interface StageExpressionBackend {
@@ -12,4 +13,8 @@ export interface StageExpressionBackend {
 
 export function useLive2DExpressionBackend(): StageExpressionBackend {
   return useExpressionStore()
+}
+
+export function useMMDExpressionBackend(): StageExpressionBackend {
+  return useMMDExpressionStore()
 }

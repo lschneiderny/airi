@@ -127,6 +127,30 @@ Opacity composition runs every frame, including on unmorphed materials.
 `resetToBase()` clears channels and overrides and restores bind bones,
 descriptor material values, base UVs and zero vertex influences.
 
+### Expression catalog and store
+
+`deriveMMDCatalog(morphs)` builds one `CatalogEntry` per PMX morph, with
+the id `mmd:<morph index>:<name>`. Vowels and the blink and wink morphs are
+`system`, material and UV morphs are `effect`, and every other morph is `face`.
+The PMX panel sets the area: hidden for panel 0, eyes for the eyebrow and eye
+panels, mouth for the mouth panel. Emotion mappings come from Japanese and
+English name tokens. A repeated name keeps its own entry as a `duplicateOf`
+alias of its first morph. A blank-named morph keeps its raw name for the
+channel, gets the label `Morph <index>`, and defaults to a hidden `system`
+entry the LLM cannot pick.
+
+`useMMDExpressionStore` (Pinia id `mmd-expressions`) has the same settings API
+as the Live2D expression store: `modelId`, `settingsSnapshot` (a
+renderer-neutral `ExpressionPanelSnapshot`) and `applySettingsCommand`. It
+satisfies `StageExpressionBackend`. Curation and rest sets persist under
+`expression-catalog:${modelId}` and `expression-rest:${modelId}`, in the Live2D
+document shape. `registerMorphs(modelId, runtime.morphs, runtime)` binds a
+loaded model. `applySlots`, `onSpeech` and `activate` take explicit times in
+seconds, and `update(now)` must run once per frame: it expires leases, advances
+the fades and writes the morph-runtime `expression` layer. A finished release
+clears its channel instead of holding a zero weight. The store ignores an
+unknown expression id and warns once per model.
+
 ## When to use it
 
 - Displaying MMD/MikuMikuDance characters (`.pmx`/`.pmd`) on the AIRI stage.
