@@ -24,7 +24,7 @@ export const STAGE_CONTRACT_KEYS = { emotion: 'base.prompt.emotion', emoji: 'bas
  */
 export const REPLY_MAX_TOKENS = 320
 
-/** Renders the stable stage rules (cues, emotion list, speech-safe text, reply shape) without reading locale or application state. */
+/** Renders the register-neutral stage rules (cues, emotion list, emoji restriction, reply shape) without reading locale or application state. */
 export function renderStageContract(t: (key: string) => string): string {
   const lines = stageContractEmotions.map(({ value, promptName }) => `- ${value} (Emotion for feeling ${promptName})`).join('\n')
   return [t(STAGE_CONTRACT_KEYS.emotion), lines, t(STAGE_CONTRACT_KEYS.emoji), t(STAGE_CONTRACT_KEYS.response)].join('\n\n')
@@ -46,4 +46,4 @@ export function composeSystemPrompt(characterPrompt: string, contract: string): 
 }
 
 /** Update in the same contract-version commit whenever the English rendering changes. */
-export const STAGE_CONTRACT_EN_SHA256 = 'd7e28f8ef7d034fb204b8cad820091e18361074702f05f47cf7caa10d9d01ce9'
+export const STAGE_CONTRACT_EN_SHA256 = '598435c88f0277971737bdf586d9b9dd105dc8c7efce6313ac695237b9fbcd6d'
