@@ -1,5 +1,6 @@
 import type { NaturalMotionFrame } from '@proj-airi/motion-driver-natural/natural-motion'
 
+import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { AnimationMixer, Euler, Quaternion } from 'three'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -44,6 +45,42 @@ function output(value: number): NaturalMotionFrame {
 }
 
 describe('mmd Natural adapter', () => {
+  it('queues episodes until settings reach the next frame and exposes the resulting mood', () => {
+    const { adapter } = fixture()
+    adapter.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, moodDynamics: { ...defaultExpressionPerformanceSettings.moodDynamics, clearGain: 0 } })
+    const impulse = vi.spyOn(adapter.natural, 'impulse')
+    adapter.impulse({ id: 'happy', emotion: 'happy', nominal: 0.7, intensity: 0.7, band: 'clear', escalation: false })
+    expect(impulse).not.toHaveBeenCalled()
+    adapter.advance(2 / 120, input, 100)
+    expect(impulse).toHaveBeenCalledOnce()
+    adapter.advance(2 / 120, input, 100 + 2 / 120)
+    expect(adapter.mood.valence).toBe(0)
+    const { adapter: enabled } = fixture()
+    enabled.impulse({ id: 'happy', emotion: 'happy', nominal: 0.7, intensity: 0.7, band: 'clear', escalation: false })
+    enabled.advance(2 / 120, input, 100)
+    enabled.advance(2 / 120, input, 100 + 2 / 120)
+    expect(enabled.mood.valence).toBeGreaterThan(0)
+  })
+
+  it('uses the conductor clock for holds, remembers ongoing speech, and releases on stop or mute', () => {
+    const { adapter } = fixture()
+    const held = vi.spyOn(adapter.natural, 'setHeldEmotion')
+    adapter.onSpeech('clip-start', 'turn', 100)
+    adapter.applyHolds([{ emotion: 'happy', strength: 0.7, holdSeconds: 1, until: 'speech', turnId: 'turn' }], 100)
+    adapter.advance(1 / 60, input, 102)
+    expect(held).toHaveBeenLastCalledWith(expect.objectContaining({ emotion: 'happy', strength: 0.7 }), expect.any(Number))
+    adapter.onSpeech('clip-stopped', 'other-turn', 102)
+    adapter.advance(1 / 60, input, 102.1)
+    expect(held).toHaveBeenLastCalledWith(expect.objectContaining({ emotion: 'happy' }), expect.any(Number))
+    adapter.onSpeech('clip-stopped', 'turn', 102.1)
+    adapter.advance(1 / 60, input, 102.2)
+    expect(held).toHaveBeenLastCalledWith(null, expect.any(Number))
+    adapter.applyHolds([{ emotion: 'sad', strength: 0.6, holdSeconds: 1, until: 'speech', turnId: 'next' }], 103)
+    adapter.setMuted(true)
+    adapter.advance(1 / 60, input, 104)
+    expect(held).toHaveBeenLastCalledWith(null, expect.any(Number))
+  })
+
   it('moves head, neck and spine with real seeded Natural output before physics', () => {
     const { adapter, pipeline, bone } = fixture()
     let frame = 0

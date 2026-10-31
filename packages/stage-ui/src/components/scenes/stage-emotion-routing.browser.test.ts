@@ -8,6 +8,8 @@ import type { StagePerformanceScene } from '../../composables/performance/use-st
 import { NaturalMotion } from '@proj-airi/motion-driver-natural'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
 import { createPickerDecider, defaultExpressionPerformanceSettings, replayAffectTrace } from '@proj-airi/stage-shared/expression-performance'
+import { MMDScene } from '@proj-airi/stage-ui-mmd'
+import { useMMD, useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
 import { createPinia, getActivePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
@@ -25,6 +27,7 @@ import { useChatSessionStore } from '../../stores/chat/session-store'
 import { useChatStreamStore } from '../../stores/chat/stream-store'
 import { useAiriCardStore } from '../../stores/modules/airi-card'
 import { useConsciousnessStore } from '../../stores/modules/consciousness'
+import { useSpeechStore } from '../../stores/modules/speech'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
 import { ChatHistory } from '../scenarios/chat'
@@ -70,12 +73,14 @@ function until<T>(source: () => T, predicate: (value: T) => boolean): Promise<T>
 // pixi-live2d-display reads the Cubism core global when it is imported, so the
 // Live2D scene and the stage load after the global exists.
 let Stage: Component
+let PreviewStage: Component
 let live2d: typeof import('@proj-airi/stage-ui-live2d')
 
 beforeAll(async () => {
   Object.assign(window, { Live2DCubismCore: {} })
   live2d = await import('@proj-airi/stage-ui-live2d')
   Stage = (await import('./Stage.vue')).default
+  PreviewStage = (await import('../scenarios/settings/model-settings/preview-stage.vue')).default
 })
 
 /** The loader the chat history shows for an assistant reply that has no text yet. */
@@ -468,5 +473,118 @@ describe('stage emotion routing on Tachie', () => {
     }
 
     expect(calls.value).toEqual([['happy', 0.7], ['awkward', 0.7], ['neutral', 0.7], ['sad', 0.7]])
+  })
+})
+
+describe('stage performance routing on MMD', () => {
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+    vi.restoreAllMocks()
+  })
+
+  async function renderMMD(component: Component = Stage) {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useSettingsStageModel().setStageModelRenderer('mmd')
+    useMMD().motionDriver = 'natural'
+    let host = null as ComponentInternalInstance | null
+    render(defineComponent({
+      setup() {
+        host = getCurrentInstance()
+        return () => h('div', { style: 'width:640px;height:480px' }, [h(component)])
+      },
+    }), {
+      global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
+    })
+    await nextTick()
+    const scene = findInstance(host?.subTree, MMDScene)!
+    expect(scene).toBeDefined()
+    return scene
+  }
+
+  it('dispatches an ACT happy expression and Natural episode through the MMD scene', async () => {
+    const scene = await renderMMD()
+    const expressions = useMMDExpressionStore()
+    expressions.registerMorphs('mmd-test', [{ index: 0, name: 'smile', category: 2, type: 1 }])
+    expressions.updateEntry('mmd:0:smile', { confirmed: true, exposedToLlm: true, kind: 'face', mappings: [{ emotion: 'happy', weight: 1, minBand: 'clear' }] })
+    const exposed = scene.exposed as StagePerformanceScene
+    const episodes = shallowRef<NaturalEpisode[]>([])
+    const slots = shallowRef<Parameters<StagePerformanceScene['applySlots']>[0]>([])
+    const forwardSlots = exposed.applySlots
+    exposed.setEmotion = (episode) => {
+      episodes.value = [...episodes.value, episode]
+    }
+    exposed.applySlots = (commands, now) => {
+      slots.value = [...slots.value, ...commands]
+      forwardSlots(commands, now)
+    }
+    const delivered = until(() => slots.value, commands => commands.some(command => command.expressionId === 'mmd:0:smile'))
+    await useLlmStreamingControlStore().dispatchWith('<|ACT {"emotion":{"name":"happy","intensity":0.7},"expression":"smile"}|>')
+    await delivered
+    expect(episodes.value).toContainEqual(expect.objectContaining({ emotion: 'happy', band: 'clear' }))
+    expect(expressions.leases.face?.expressionId).toBe('mmd:0:smile')
+  })
+
+  it('keeps preview-stage usable without performance inputs', async () => {
+    const scene = await renderMMD(PreviewStage)
+    expect(scene.props.performance).toEqual({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' })
+    expect(scene.props.mouthOpenSize).toBe(0)
+    expect(scene.props.nowSpeaking).toBe(false)
+    expect((scene.exposed as { canvasElement: () => HTMLCanvasElement }).canvasElement()).toBeInstanceOf(HTMLCanvasElement)
+  })
+
+  it('sends synthesized speech level to MMD and the conductor, then stops sampling on VRM', async () => {
+    const scene = await renderMMD()
+    const cards = useAiriCardStore()
+    await cards.initialize()
+    const sessions = useChatSessionStore()
+    await sessions.initialize()
+    const sessionId = sessions.activeSessionId
+    onTestFinished(() => sessions.deleteSession(sessionId))
+    const samples = shallowRef<number[]>([])
+    const original = StagePerformanceConductor.prototype.sampleVoiceLevel
+    vi.spyOn(StagePerformanceConductor.prototype, 'sampleVoiceLevel').mockImplementation(function (this: StagePerformanceConductor, level: number) {
+      samples.value = [...samples.value, level]
+      return original.call(this, level)
+    })
+    // A provider boundary supplies PCM WAV; stage playback and both analysers stay real.
+    const sampleRate = 48_000
+    const pcm = new ArrayBuffer(44 + sampleRate * 4)
+    const view = new DataView(pcm)
+    const tag = (at: number, value: string) => [...value].forEach((char, index) => view.setUint8(at + index, char.charCodeAt(0)))
+    tag(0, 'RIFF')
+    view.setUint32(4, pcm.byteLength - 8, true)
+    tag(8, 'WAVE')
+    tag(12, 'fmt ')
+    view.setUint32(16, 16, true)
+    view.setUint16(20, 1, true)
+    view.setUint16(22, 1, true)
+    view.setUint32(24, sampleRate, true)
+    view.setUint32(28, sampleRate * 2, true)
+    view.setUint16(32, 2, true)
+    view.setUint16(34, 16, true)
+    tag(36, 'data')
+    view.setUint32(40, pcm.byteLength - 44, true)
+    for (let index = 0; index < sampleRate * 2; index++)
+      view.setInt16(44 + index * 2, Math.sin(2 * Math.PI * 220 * index / sampleRate) * 10000, true)
+    vi.spyOn(useSpeechStore(), 'createOutput').mockImplementation((_turn, _selection, output) => ({ ...output, synthesize: async () => new Blob([pcm], { type: 'audio/wav' }) }))
+    const chat = useChatStore()
+    const context = { sessionId, turnId: 'mmd-tone', message: { role: 'user' as const, content: 'tone' }, contexts: {}, composedMessage: [] }
+    const mouthOpened = until(() => scene.props.mouthOpenSize as number, level => level > 0)
+    const sampled = until(() => samples.value, levels => levels.some(level => level > 0))
+    await chat.emitBeforeMessageComposedHooks('tone', context)
+    await chat.emitTokenLiteralHooks('A tone.', context)
+    await chat.emitStreamEndHooks(context)
+    const [mouth, levels] = await Promise.all([mouthOpened, sampled])
+    expect(mouth).toBeGreaterThan(0)
+    expect(levels.some(level => level > 0)).toBe(true)
+
+    useSettingsStageModel().setStageModelRenderer('vrm')
+    await nextTick()
+    const count = samples.value.length
+    // Two frame signals prove the canceled RAF does not sample again; no timer sleeps.
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    expect(samples.value).toHaveLength(count)
   })
 })

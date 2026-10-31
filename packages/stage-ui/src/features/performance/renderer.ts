@@ -10,10 +10,12 @@ interface StagePerformanceRenderer {
 }
 
 /** Selects the renderer that owns performance dispatch and expression feedback. */
-export function selectStagePerformanceRenderer(renderer: string | undefined, live2d: StagePerformanceRenderer): StagePerformanceRenderer {
+export function selectStagePerformanceRenderer(renderer: string | undefined, live2d: StagePerformanceRenderer, mmd: StagePerformanceRenderer): StagePerformanceRenderer {
   switch (renderer) {
     case 'live2d':
       return live2d
+    case 'mmd':
+      return mmd
     default:
       return { scene: undefined, driver: live2d.driver, expressionBackend: undefined }
   }

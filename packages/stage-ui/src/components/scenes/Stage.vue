@@ -24,6 +24,7 @@ import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { MMDScene } from '@proj-airi/stage-ui-mmd'
+import { useMMD } from '@proj-airi/stage-ui-mmd/stores'
 import { SpineScene } from '@proj-airi/stage-ui-spine'
 import { TachieScene } from '@proj-airi/stage-ui-tachie'
 import { ThreeScene } from '@proj-airi/stage-ui-three'
@@ -43,7 +44,7 @@ import { useStagePerformanceConductor } from '../../composables/performance/use-
 // import { useDuckDb } from '../../composables/use-duck-db'
 import { Emotion, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { live2dMotionMagicProfiles, useLive2DMotionMagic, useLive2DMotionMagicSettings } from '../../features/motions/live2d'
-import { useLive2DExpressionBackend } from '../../features/performance/expression-backend'
+import { useLive2DExpressionBackend, useMMDExpressionBackend } from '../../features/performance/expression-backend'
 import { selectStagePerformanceRenderer } from '../../features/performance/renderer'
 import { chatComposerActivityChangedEvent, chatComposerSentEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, speechOutputGetPlaybackState, speechOutputPlaybackStateChangedEvent, voiceGenerationEnded } from '../../services/speech/bus'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
@@ -65,13 +66,13 @@ import { chatActivityFrom } from './chat-activity'
 const props = withDefaults(defineProps<{
   cursorPosition?: { x: number, y: number }
   /**
-   * Displays and this window's content bounds in Electron DIP screen coordinates. Only the Live2D scene reads them,
+   * Displays and this window's content bounds in Electron DIP screen coordinates. Natural scenes read them,
    * for Natural screen placement; hosts without window bounds (web, pocket) leave it undefined.
    */
   screenPlacement?: { displays: PlacementRect[], windowBounds: PlacementRect }
   /**
-   * The host's chat window: shown or not, and its bounds in the same DIP space as `screenPlacement`. Only the Live2D
-   * scene reads it, for Natural chat attention; hosts without a chat window target (web, pocket) leave it undefined,
+   * The host's chat window: shown or not, and its bounds in the same DIP space as `screenPlacement`. Natural
+   * scenes read it for chat attention; hosts without a chat window target (web, pocket) leave it undefined,
    * which also keeps the chat activity inert there.
    */
   chatTarget?: { visible: boolean, bounds: PlacementRect | null }
@@ -98,6 +99,7 @@ const live2dSceneRef = ref<InstanceType<typeof Live2DScene>>()
 const spineSceneRef = ref<InstanceType<typeof SpineScene>>()
 const tachieSceneRef = ref<InstanceType<typeof TachieScene>>()
 const mmdSceneRef = ref<InstanceType<typeof MMDScene>>()
+const { motionDriver: mmdMotionDriver } = storeToRefs(useMMD())
 
 const settingsStore = useSettings()
 const {
@@ -305,10 +307,15 @@ const voice = useVoiceStore()
 const cards = useAiriCardStore()
 
 const live2dExpressionBackend = useLive2DExpressionBackend()
+const mmdExpressionBackend = useMMDExpressionBackend()
 const performanceRenderer = computed(() => selectStagePerformanceRenderer(stageModelRenderer.value, {
   scene: live2dSceneRef.value,
   driver: live2dMotionDriver.value,
   expressionBackend: live2dExpressionBackend,
+}, {
+  scene: mmdSceneRef.value,
+  driver: mmdMotionDriver.value === 'natural' ? 'natural' : 'universal',
+  expressionBackend: mmdExpressionBackend,
 }))
 const { conductor: performanceConductor, settings: performanceSettings } = useStagePerformanceConductor({
   renderer: () => stageModelRenderer.value,
@@ -316,7 +323,7 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   driver: () => performanceRenderer.value.driver,
   expressionBackend: () => performanceRenderer.value.expressionBackend,
   playMotion: (group) => { currentMotion.value = { group } },
-  mood: () => live2dSceneRef.value?.getMood() ?? null,
+  mood: () => stageModelRenderer.value === 'mmd' ? mmdSceneRef.value?.getMood() ?? null : live2dSceneRef.value?.getMood() ?? null,
   profile: performanceProfileOf,
 })
 
@@ -339,7 +346,7 @@ function performanceProfileOf(turnId: string | undefined) {
 /** A performance cue with its origin; the turn id keeps speech-bound expressions inside their turn. */
 interface StageCue {
   emotion?: EmotionPayload
-  /** An LLM-named Live2D expression from an ACT marker. */
+  /** An LLM-named expression from an ACT marker for the active renderer. */
   expression?: string
   source: 'act' | 'devtools'
   turnId?: string
@@ -351,11 +358,15 @@ const emotionsQueue = createQueue<StageCue>({
   handlers: [
     async (ctx) => {
       const { emotion, expression } = ctx.data
-      if (stageModelRenderer.value === 'live2d') {
+      if (stageModelRenderer.value === 'live2d' || stageModelRenderer.value === 'mmd') {
         // The conductor sends Natural episodes to the scene and plays the motion group for
         // Universal and MAGIC; the store defers a motion group while the model loads.
-        if (emotion)
-          performanceConductor.emotion(emotion.name, emotion.intensity, ctx.data.source, ctx.data.turnId, { suppressMotionGroup: ctx.data.motionHandled })
+        if (emotion) {
+          if (stageModelRenderer.value === 'mmd' && mmdMotionDriver.value === 'classic')
+            mmdSceneRef.value?.setClassicEmotion(emotion.name, emotion.intensity)
+          else
+            performanceConductor.emotion(emotion.name, emotion.intensity, ctx.data.source, ctx.data.turnId, { suppressMotionGroup: ctx.data.motionHandled })
+        }
         // After the emotion, so an explicit expression replaces the auto pick for its slot.
         if (expression)
           performanceConductor.expression(expression, undefined, 'act', ctx.data.turnId)
@@ -376,9 +387,6 @@ const emotionsQueue = createQueue<StageCue>({
       }
       else if (stageModelRenderer.value === 'tachie') {
         tachieSceneRef.value?.setEmotion(toTachieEmotion(emotion.name), emotion.intensity)
-      }
-      else if (stageModelRenderer.value === 'mmd') {
-        mmdSceneRef.value?.setEmotion(emotion.name, emotion.intensity)
       }
     },
   ],
@@ -715,8 +723,10 @@ function resetLive2dLipSync() {
   lipSyncStarted.value = false
 }
 
+const usesSharedSpeechLevel = computed(() => stageModelRenderer.value === 'live2d' || stageModelRenderer.value === 'mmd')
+
 function syncLipSyncLoop() {
-  if (stageModelRenderer.value === 'live2d' && !props.paused && lipSyncStarted.value) {
+  if (usesSharedSpeechLevel.value && !props.paused && lipSyncStarted.value) {
     startLipSyncLoop()
     return
   }
@@ -725,7 +735,7 @@ function syncLipSyncLoop() {
 }
 
 async function setupLipSync() {
-  if (stageModelRenderer.value !== 'live2d') {
+  if (!usesSharedSpeechLevel.value) {
     resetLive2dLipSync()
     return
   }
@@ -735,6 +745,10 @@ async function setupLipSync() {
 
   try {
     const lipSync = await createLive2DLipSync(audioContext, wlipsyncProfile as Profile, live2dLipSyncOptions)
+    if (!usesSharedSpeechLevel.value) {
+      lipSync.dispose()
+      return
+    }
     live2dLipSync.value = lipSync
     speechDestination.connect(lipSync.input)
     await audioContext.resume()
@@ -854,7 +868,7 @@ watch([stageModelRenderer, () => props.paused], ([renderer]) => {
     componentState.value = 'mounted'
   }
 
-  if (renderer !== 'live2d') {
+  if (!usesSharedSpeechLevel.value) {
     resetLive2dLipSync()
     return
   }
@@ -1011,6 +1025,14 @@ defineExpose({
         v-if="stageModelRenderer === 'mmd' && showStage"
         ref="mmdSceneRef"
         v-model:state="componentState"
+        :performance="performance"
+        :natural-energy="performanceOverride?.energy ?? undefined"
+        :performance-settings="performanceSettings"
+        :screen-placement="screenPlacement"
+        :chat-target="chatTarget"
+        :chat-activity="chatActivity"
+        :mouth-open-size="mouthOpenSize"
+        :now-speaking="nowSpeaking"
         :background-url="activeBackgroundUrl"
         min-w="50% <lg:full"
         h-full w-full flex-1
