@@ -4,8 +4,8 @@ import type { EmotionCellPartial } from './partials'
 import type { ResultLevel, ResultTrajectory } from './report'
 import type { ParameterLevel, TrialSamples } from './samples'
 
+import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 import { hashSeed, quantile } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
-import { createRandomStream } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/random'
 
 import { trajectoryGrid } from './samples'
 

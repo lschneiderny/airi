@@ -1,7 +1,7 @@
+import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
+import { NaturalSpeechEmphasis } from '@proj-airi/motion-driver-natural/speech-emphasis'
 import { describe, expect, it } from 'vitest'
 
-import { createRandomStream } from '../../../composables/live2d/natural-motion/random'
-import { NaturalSpeechEmphasis } from '../../../composables/live2d/natural-motion/speech-emphasis'
 import { naturalVoiceLevel } from './natural-voice-level'
 
 const step = 1 / 120

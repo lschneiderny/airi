@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { ExpressionPerformanceSettings, HoldCommand, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
@@ -7,7 +8,6 @@ import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { Live2DEyeFocusSource } from '../../composables/live2d'
 import type { SpeechEvent } from '../../composables/live2d/expression/slots'
 import type { NaturalChatActivity, NaturalChatTarget } from '../../composables/live2d/natural-chat-input'
-import type { NaturalEpisode } from '../../composables/live2d/natural-motion/mood'
 import type { Live2DTouchEvent } from '../../composables/live2d/touch-gestures'
 
 import { presenceBubbleIdle } from '@proj-airi/stage-shared'

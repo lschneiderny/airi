@@ -1,17 +1,17 @@
+import type { NaturalFaceOutput } from '@proj-airi/motion-driver-natural/face'
+import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
+import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionOptions, NaturalMotionPose } from '@proj-airi/motion-driver-natural/natural-motion'
+import type { PostureHome } from '@proj-airi/motion-driver-natural/posture'
 import type { ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { EmotionHold } from './expression/hold'
 import type { Live2DMotionDriver } from './live2d'
 import type { PixiLive2DInternalModel } from './motion-manager'
-import type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionPose, NaturalChatInput } from './natural-motion'
-import type { NaturalFaceOutput } from './natural-motion/face'
-import type { NaturalEpisode } from './natural-motion/mood'
-import type { PostureHome } from './natural-motion/posture'
 import type { Live2DRigProfile, NaturalChannel } from './natural-motion/rig-profile'
 import type { Live2DTouchRegion } from './touch-gestures'
 
-import { Live2DNaturalMotion } from './natural-motion'
+import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 
 type Core = PixiLive2DInternalModel['coreModel']
 interface FocusModel {
@@ -82,7 +82,7 @@ export interface Live2DNaturalMotionDiagnostics {
 }
 
 type ChannelRange = NonNullable<ReturnType<Live2DRigProfile['channels']['get']>>
-type PostureAxis = keyof Live2DNaturalMotionPose & NaturalChannel
+type PostureAxis = keyof NaturalMotionPose & NaturalChannel
 
 const postureAxes: readonly PostureAxis[] = ['headX', 'headY', 'headZ', 'bodyX', 'bodyY', 'bodyZ', 'eyeX', 'eyeY']
 const eyelidChannels: readonly NaturalChannel[] = ['eyeLOpen', 'eyeROpen']
@@ -142,7 +142,7 @@ function sameChat(a: NaturalChatInput | null, b: NaturalChatInput | null) {
 }
 
 export class Live2DNaturalMotionAdapter {
-  private readonly controller: Live2DNaturalMotion
+  private readonly controller: NaturalMotion
   private readonly originalFocus: () => void
   private posture: (ChannelRange & { axis: PostureAxis })[] = []
   private eyelids: ChannelRange[] = []
@@ -192,10 +192,10 @@ export class Live2DNaturalMotionAdapter {
     private readonly visibility?: Pick<Document, 'hidden' | 'addEventListener' | 'removeEventListener'>,
     random = Math.random,
     /** Constructor overrides: the stage selects its posture home; fixed seeds and emotion tables serve QA runs. */
-    options: Pick<Live2DNaturalMotionOptions, 'seed' | 'home' | 'emotionTable'> = {},
+    options: Pick<NaturalMotionOptions, 'seed' | 'home' | 'emotionTable'> = {},
   ) {
     this.home = options.home ?? 'product'
-    this.controller = new Live2DNaturalMotion({ random, seed: options.seed, home: this.home, emotionTable: options.emotionTable })
+    this.controller = new NaturalMotion({ random, seed: options.seed, home: this.home, emotionTable: options.emotionTable })
     this.controller.setSuspended(true, 0)
     this.setRigProfile(rigProfile)
     this.originalFocus = model.updateFocus
@@ -252,7 +252,7 @@ export class Live2DNaturalMotionAdapter {
    * The Natural controller this adapter drives. QA attaches its observer here (`natural.setObserver`);
    * the adapter owns every other call, so callers must not advance or configure it directly.
    */
-  get natural(): Live2DNaturalMotion {
+  get natural(): NaturalMotion {
     return this.controller
   }
 
@@ -368,7 +368,7 @@ export class Live2DNaturalMotionAdapter {
       this.composeFace(frame, attention, mouthAllowed)
   }
 
-  private composePosture(pose: Live2DNaturalMotionPose, clipOwnedIds: ReadonlySet<string>) {
+  private composePosture(pose: NaturalMotionPose, clipOwnedIds: ReadonlySet<string>) {
     const core = this.model.coreModel
     for (const range of this.posture) {
       const command = pose[range.axis]
@@ -390,7 +390,7 @@ export class Live2DNaturalMotionAdapter {
     }
   }
 
-  private composeFace({ face, blink, breath }: Live2DNaturalMotionFrame, attention: Live2DNaturalMotionAttention, mouthAllowed: boolean) {
+  private composeFace({ face, blink, breath }: NaturalMotionFrame, attention: Live2DNaturalMotionAttention, mouthAllowed: boolean) {
     const core = this.model.coreModel
     const free = (range: ChannelRange) => !attention.clipOwnedIds.has(range.id)
     const blinkFactor = attention.autoBlink ? blink.blinkFactor : 1

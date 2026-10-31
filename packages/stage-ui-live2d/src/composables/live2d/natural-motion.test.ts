@@ -1,21 +1,20 @@
+import type { NaturalAttentionEvent, NaturalMotionEvent } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
-import type { NaturalAttentionEvent, NaturalMotionEvent } from './natural-motion'
-
+import { NaturalBreathLayer } from '@proj-airi/motion-driver-natural/breath'
+import { lostTau, mapCursor, releaseAt } from '@proj-airi/motion-driver-natural/cursor-attention'
+import { NaturalPerformanceEnergy } from '@proj-airi/motion-driver-natural/energy'
+import { NaturalGazeLayer } from '@proj-airi/motion-driver-natural/gaze'
+import { NaturalHoldLayer } from '@proj-airi/motion-driver-natural/hold'
+import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
+import { NaturalPostureLayers } from '@proj-airi/motion-driver-natural/posture'
+import { NaturalSpeechEmphasis } from '@proj-airi/motion-driver-natural/speech-emphasis'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it, vi } from 'vitest'
 
-import { Emotion } from '../../constants/emotions'
-import { Live2DNaturalMotion } from './natural-motion'
-import { NaturalBreathLayer } from './natural-motion/breath'
-import { lostTau, mapCursor, releaseAt } from './natural-motion/cursor-attention'
-import { NaturalPerformanceEnergy } from './natural-motion/energy'
-import { NaturalGazeLayer } from './natural-motion/gaze'
-import { NaturalHoldLayer } from './natural-motion/hold'
-import { NaturalPostureLayers } from './natural-motion/posture'
-import { NaturalSpeechEmphasis } from './natural-motion/speech-emphasis'
+import * as random from '@proj-airi/motion-driver-natural/random'
 
-import * as random from './natural-motion/random'
+import { Emotion } from '../../constants/emotions'
 
 const idle: PerformanceState = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }
 const headAxes = ['headX', 'headY', 'headZ'] as const
@@ -25,8 +24,8 @@ it.each([
   { band: 'clear', intensity: 0.6 },
   { band: 'strong', intensity: 0.9 },
 ] as const)('isolates $band recruitment at the facade', ({ band, intensity }) => {
-  const motion = new Live2DNaturalMotion({ seed: 41 })
-  const control = new Live2DNaturalMotion({ seed: 41 })
+  const motion = new NaturalMotion({ seed: 41 })
+  const control = new NaturalMotion({ seed: 41 })
   motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false, mood: false })
   motion.impulse({ id: band, emotion: Emotion.Happy, nominal: intensity, intensity, band, escalation: false }, 0)
   control.advance(0)
@@ -57,9 +56,9 @@ it.each([
   { band: 'strong', intensity: 0.9 },
 ] as const)('isolates $band recruitment from mood posture modulation', ({ band, intensity }) => {
   const episode = { id: band, emotion: Emotion.Happy, nominal: intensity, intensity, band, escalation: false } as const
-  const motion = new Live2DNaturalMotion({ seed: 41 })
-  const matched = new Live2DNaturalMotion({ seed: 41 })
-  const rest = new Live2DNaturalMotion({ seed: 41 })
+  const motion = new NaturalMotion({ seed: 41 })
+  const matched = new NaturalMotion({ seed: 41 })
+  const rest = new NaturalMotion({ seed: 41 })
   // The matched control receives the same episode but its band gains are zero, so only mood and shared overlays remain.
   const withoutRecruitment = structuredClone(defaultExpressionPerformanceSettings)
   withoutRecruitment.heldEmotions = false
@@ -101,7 +100,7 @@ it.each([
 it.each(['wake', 'screen-change'] as const)('starts the fixed reacting overlay for desktop %s', (reactKind) => {
   const react = vi.spyOn(NaturalPerformanceEnergy.prototype, 'react')
   try {
-    const motion = new Live2DNaturalMotion({ seed: 41 })
+    const motion = new NaturalMotion({ seed: 41 })
     motion.setPerformance(idle, 0.5, 0)
     motion.setPerformance({ ...idle, reactKind, reactSeq: 1 }, 0.5, 0)
     motion.advance(2 / 120)
@@ -113,9 +112,9 @@ it.each(['wake', 'screen-change'] as const)('starts the fixed reacting overlay f
 })
 
 it('recruits body lean without writing physics-owned body axes', () => {
-  const motion = new Live2DNaturalMotion({ seed: 41 })
+  const motion = new NaturalMotion({ seed: 41 })
   motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
-  const control = new Live2DNaturalMotion({ seed: 41 })
+  const control = new NaturalMotion({ seed: 41 })
   motion.setRigTraits({ bodyFromHeadPhysics: { x: true, y: false, z: true } })
   motion.impulse({ id: 'strong', emotion: Emotion.Happy, nominal: 0.9, intensity: 0.9, band: 'strong', escalation: false }, 0)
   control.advance(0)
@@ -130,7 +129,7 @@ it('recruits body lean without writing physics-owned body axes', () => {
   expect(peak).toBeGreaterThan(0)
 })
 
-type Frame = ReturnType<Live2DNaturalMotion['advance']>
+type Frame = ReturnType<NaturalMotion['advance']>
 
 function maximumDelta(a: Frame, b: Frame, axes = Object.keys(a.pose) as (keyof Frame['pose'])[]) {
   // Without a rig profile no axis is null; a null on either side counts as a full-range jump.
@@ -147,8 +146,8 @@ function standardDeviation(values: number[]) {
 
 describe('natural motion', () => {
   it('establishes its time origin and home posture on first advance', () => {
-    const late = new Live2DNaturalMotion({ seed: 7 })
-    const early = new Live2DNaturalMotion({ seed: 7 })
+    const late = new NaturalMotion({ seed: 7 })
+    const early = new NaturalMotion({ seed: 7 })
     const initial = late.advance(100)
     expect(initial.pose.headX).toBe(0)
     expect(initial.pose.headY).toBeCloseTo(-0.1, 12)
@@ -158,7 +157,7 @@ describe('natural motion', () => {
   })
 
   it('keeps zero-duration advances idempotent', () => {
-    const motion = new Live2DNaturalMotion({ seed: 3 })
+    const motion = new NaturalMotion({ seed: 3 })
     motion.advance(0)
     const frame = motion.advance(4.2)
     expect(motion.advance(4.2)).toEqual(frame)
@@ -167,7 +166,7 @@ describe('natural motion', () => {
   })
 
   it('keeps every output finite and within normalized bounds', () => {
-    const motion = new Live2DNaturalMotion({ seed: 11 })
+    const motion = new NaturalMotion({ seed: 11 })
     let finite = true
     let maximum = 0
     for (let frame = 0; frame <= 10 * 60 * 60; frame++) {
@@ -185,8 +184,8 @@ describe('natural motion', () => {
   })
 
   it('freezes during suspension and resumes without a jump or reset', () => {
-    const suspended = new Live2DNaturalMotion({ seed: 5 })
-    const continuous = new Live2DNaturalMotion({ seed: 5 })
+    const suspended = new NaturalMotion({ seed: 5 })
+    const continuous = new NaturalMotion({ seed: 5 })
     suspended.advance(0)
     continuous.advance(0)
     suspended.advance(30)
@@ -202,7 +201,7 @@ describe('natural motion', () => {
   })
 
   it('returns from cursor expiry gradually without resetting followers', () => {
-    const motion = new Live2DNaturalMotion({ seed: 9 })
+    const motion = new NaturalMotion({ seed: 9 })
     motion.advance(0)
     motion.setCursor({ x: 1, y: 1 }, 2)
     const attended = motion.advance(2.5)
@@ -220,8 +219,8 @@ describe('natural motion', () => {
   })
 
   it('keeps disabled cursor input equivalent to autonomous output', () => {
-    const motion = new Live2DNaturalMotion({ seed: 13 })
-    const reference = new Live2DNaturalMotion({ seed: 13 })
+    const motion = new NaturalMotion({ seed: 13 })
+    const reference = new NaturalMotion({ seed: 13 })
     motion.advance(0)
     reference.advance(0)
     for (const time of [0.1, 1.4, 1.8, 5, 10]) {
@@ -231,8 +230,8 @@ describe('natural motion', () => {
   })
 
   it('reports physics-derived body axes as null without changing other channels', () => {
-    const motion = new Live2DNaturalMotion({ seed: 17 })
-    const reference = new Live2DNaturalMotion({ seed: 17 })
+    const motion = new NaturalMotion({ seed: 17 })
+    const reference = new NaturalMotion({ seed: 17 })
     motion.setRigTraits({ bodyFromHeadPhysics: { x: true, y: false, z: false } })
     motion.advance(0)
     reference.advance(0)
@@ -246,7 +245,7 @@ describe('natural motion', () => {
   })
 
   it('drives face, blink, and breath on every advance', () => {
-    const motion = new Live2DNaturalMotion({ seed: 23 })
+    const motion = new NaturalMotion({ seed: 23 })
     const frames = Array.from({ length: 5 * 60 * 60 + 1 }, (_, frame) => motion.advance(frame / 60))
     expect(Math.min(...frames.map(frame => frame.blink.blinkFactor))).toBeLessThan(0.1)
     expect(standardDeviation(frames.map(frame => frame.face.browLY))).toBeGreaterThan(0.01)
@@ -257,8 +256,8 @@ describe('natural motion', () => {
   })
 
   it('applies voice activity to mouth, breath, and head pitch only', () => {
-    const voiced = new Live2DNaturalMotion({ seed: 29 })
-    const quiet = new Live2DNaturalMotion({ seed: 29 })
+    const voiced = new NaturalMotion({ seed: 29 })
+    const quiet = new NaturalMotion({ seed: 29 })
     voiced.setVoice({ speaking: true, speechActiveOrRecent: true, level: 0 })
     const pairs = Array.from({ length: 5 * 60 * 60 + 1 }, (_, frame) => [voiced.advance(frame / 60), quiet.advance(frame / 60)])
     expect(Math.max(...pairs.map(([v]) => v.face.silentMouthOpen))).toBe(0)
@@ -273,8 +272,8 @@ describe('natural motion', () => {
   })
 
   it('cross-fades a state switch without a frame jump', () => {
-    const switched = new Live2DNaturalMotion({ seed: 31 })
-    const control = new Live2DNaturalMotion({ seed: 31 })
+    const switched = new NaturalMotion({ seed: 31 })
+    const control = new NaturalMotion({ seed: 31 })
     for (let frame = 0; frame <= 20 * 60; frame++) {
       switched.advance(frame / 60)
       control.advance(frame / 60)
@@ -300,7 +299,7 @@ describe('natural motion', () => {
 
   it('scales head variability with user energy', () => {
     const deviation = (energy: number) => {
-      const motion = new Live2DNaturalMotion({ seed: 37 })
+      const motion = new NaturalMotion({ seed: 37 })
       motion.setPerformance(idle, energy, 0)
       const axes: number[][] = [[], [], []]
       for (let frame = 0; frame <= 30 * 60 * 30; frame++) {
@@ -315,9 +314,9 @@ describe('natural motion', () => {
   }, 20_000)
 
   it('adds emotion impulses on top of the pose without resetting it', () => {
-    const excited = new Live2DNaturalMotion({ seed: 41 })
+    const excited = new NaturalMotion({ seed: 41 })
     excited.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
-    const control = new Live2DNaturalMotion({ seed: 41 })
+    const control = new NaturalMotion({ seed: 41 })
     for (let frame = 0; frame <= 10 * 60; frame++) {
       excited.advance(frame / 60)
       control.advance(frame / 60)
@@ -344,8 +343,8 @@ describe('natural motion', () => {
   })
 
   it('treats a neutral impulse as a no-op', () => {
-    const neutral = new Live2DNaturalMotion({ seed: 43 })
-    const control = new Live2DNaturalMotion({ seed: 43 })
+    const neutral = new NaturalMotion({ seed: 43 })
+    const control = new NaturalMotion({ seed: 43 })
     neutral.advance(0)
     control.advance(0)
     neutral.impulse({ id: 'neutral', emotion: Emotion.Neutral, nominal: 1, intensity: 1, band: 'clear', escalation: false }, 5)
@@ -354,8 +353,8 @@ describe('natural motion', () => {
   })
 
   it('nods on speech onsets from the voice level', () => {
-    const voiced = new Live2DNaturalMotion({ seed: 47 })
-    const control = new Live2DNaturalMotion({ seed: 47 })
+    const voiced = new NaturalMotion({ seed: 47 })
+    const control = new NaturalMotion({ seed: 47 })
     let largest = 0
     for (let frame = 0; frame <= 60 * 60; frame++) {
       const time = frame / 60
@@ -369,8 +368,8 @@ describe('natural motion', () => {
   })
 
   it('reacts once per reactSeq change after the first state', () => {
-    const woken = new Live2DNaturalMotion({ seed: 53 })
-    const control = new Live2DNaturalMotion({ seed: 53 })
+    const woken = new NaturalMotion({ seed: 53 })
+    const control = new NaturalMotion({ seed: 53 })
     // A reaction that predates the controller is stale, so the first state only records the sequence.
     woken.setPerformance({ ...idle, reactSeq: 4, reactKind: 'wake' }, 0.5, 0)
     control.setPerformance({ ...idle, reactSeq: 4, reactKind: 'wake' }, 0.5, 0)
@@ -386,7 +385,7 @@ describe('natural motion', () => {
   })
 
   it('keeps ACT aside attention through a held emotion and returns to it after an emotion glance', () => {
-    const motion = new Live2DNaturalMotion({ seed: 71 })
+    const motion = new NaturalMotion({ seed: 71 })
     // Love raises camera fixation by 0.25 while it is held.
     motion.setHeldEmotion({ emotion: 'love', strength: 1 }, 0)
     motion.setPerformance({ ...idle, mode: 'talking', attention: 'aside' }, 0.5, 0)
@@ -415,7 +414,7 @@ describe('natural motion', () => {
     const cursor = { x: 0.5, y: 0.5 }
 
     /** Fixations from `from` to `to` seconds at 120 Hz. */
-    function sample(motion: Live2DNaturalMotion, from: number, to: number) {
+    function sample(motion: NaturalMotion, from: number, to: number) {
       const points = []
       for (let frame = Math.round(from * 120); frame < Math.round(to * 120); frame++)
         points.push(motion.advance(frame / 120).fixation)
@@ -428,7 +427,7 @@ describe('natural motion', () => {
 
     /** Talks with the aside cue until 2 s and pauses from 2 s; returns the controller and the side it drew. */
     function pausedAside() {
-      const motion = new Live2DNaturalMotion({ seed: 71 })
+      const motion = new NaturalMotion({ seed: 71 })
       motion.setPerformance(talkingAside, 0.5, 0)
       const side = Math.sign(sample(motion, 0, 2).at(-1)!.x)
       motion.setPerformance(pause, 0.5, 2)
@@ -476,7 +475,7 @@ describe('natural motion', () => {
     })
 
     it('follows the cursor within 0.6 s after notice during a pause without a look cue', () => {
-      const motion = new Live2DNaturalMotion({ seed: 71 })
+      const motion = new NaturalMotion({ seed: 71 })
       const events: NaturalMotionEvent[] = []
       motion.setObserver(event => events.push(event))
       motion.setPerformance({ ...idle, mode: 'talking' }, 0.5, 0)
@@ -500,7 +499,7 @@ describe('natural motion', () => {
     const offCursor = (point: { x: number, y: number }) => point.x > -0.25
 
     /** Moves the cursor every frame from `from` to `to` seconds at 120 Hz, as Model.vue reports it, and returns the fixations. */
-    function track(motion: Live2DNaturalMotion, from: number, to: number) {
+    function track(motion: NaturalMotion, from: number, to: number) {
       const points = []
       for (let frame = Math.round(from * 120); frame < Math.round(to * 120); frame++) {
         motion.setCursor(cursorAt(frame / 120), frame / 120)
@@ -513,14 +512,14 @@ describe('natural motion', () => {
       { name: 'a game in front while watching', state: { ...idle, mode: 'watching', attention: 'screen' } },
       { name: 'the ACT look:"screen" cue while talking', state: { ...idle, mode: 'talking', attention: 'screen' } },
     ] satisfies { name: string, state: PerformanceState }[])('never fixates the cursor for $name', ({ state }) => {
-      const motion = new Live2DNaturalMotion({ seed: 83 })
+      const motion = new NaturalMotion({ seed: 83 })
       motion.setPerformance(state, 0.5, 0)
 
       expect(track(motion, 0, 20).every(offCursor)).toBe(true)
     })
 
     it('still follows the cursor under cursor attention', () => {
-      const motion = new Live2DNaturalMotion({ seed: 83 })
+      const motion = new NaturalMotion({ seed: 83 })
       motion.setPerformance({ ...idle, mode: 'watching', attention: 'cursor' }, 0.5, 0)
       const points = track(motion, 0, 20)
 
@@ -528,7 +527,7 @@ describe('natural motion', () => {
     })
 
     it('keeps the look:"screen" cue off the cursor through a pause between speech clips', () => {
-      const motion = new Live2DNaturalMotion({ seed: 83 })
+      const motion = new NaturalMotion({ seed: 83 })
       motion.setPerformance({ ...idle, mode: 'talking', attention: 'screen' }, 0.5, 0)
       track(motion, 0, 2)
       // During the pause Model.vue reports cursor attention, and the held cue must still win.
@@ -538,7 +537,7 @@ describe('natural motion', () => {
     })
 
     it('leaves the cursor with one eased saccade when screen attention begins', () => {
-      const motion = new Live2DNaturalMotion({ seed: 83 })
+      const motion = new NaturalMotion({ seed: 83 })
       motion.setPerformance({ ...idle, mode: 'watching', attention: 'cursor' }, 0.5, 0)
       motion.advance(2)
       // A newly active cursor draws the gaze at once.
@@ -565,8 +564,8 @@ describe('natural motion', () => {
   })
 
   it('flinches away from a poke, shows surprise, and meets the camera', () => {
-    const poked = new Live2DNaturalMotion({ seed: 61 })
-    const control = new Live2DNaturalMotion({ seed: 61 })
+    const poked = new NaturalMotion({ seed: 61 })
+    const control = new NaturalMotion({ seed: 61 })
     poked.advance(0)
     control.advance(0)
     poked.poke('head', 1, 0, 2)
@@ -588,14 +587,14 @@ describe('natural motion', () => {
   })
 
   it('only flinches at a repeat poke within 2 s, then surprises again after', () => {
-    const single = new Live2DNaturalMotion({ seed: 61 })
-    const repeated = new Live2DNaturalMotion({ seed: 61 })
+    const single = new NaturalMotion({ seed: 61 })
+    const repeated = new NaturalMotion({ seed: 61 })
     single.advance(0)
     repeated.advance(0)
     single.poke('head', 1, 0, 2)
     repeated.poke('head', 1, 0, 2)
     // Time only moves forward: each window starts one frame after the previous one ends.
-    const browPeak = (motion: Live2DNaturalMotion, from: number, to: number) => {
+    const browPeak = (motion: NaturalMotion, from: number, to: number) => {
       let brow = 0
       for (let frame = from * 60 + 1; frame <= to * 60; frame++)
         brow = Math.max(brow, motion.advance(frame / 60).face.browLY)
@@ -613,7 +612,7 @@ describe('natural motion', () => {
   })
 
   it('lets the pet own gaze and head with happy closed eyes, then lets go', () => {
-    const petted = new Live2DNaturalMotion({ seed: 67 })
+    const petted = new NaturalMotion({ seed: 67 })
     petted.advance(0)
     petted.setCursor({ x: 1, y: 1 }, 0)
     petted.setPet({ x: 0, y: 0 }, 1)
@@ -636,8 +635,8 @@ describe('natural motion', () => {
   })
 
   it('moves exactly as before while nobody pets it', () => {
-    const untouched = new Live2DNaturalMotion({ seed: 71 })
-    const control = new Live2DNaturalMotion({ seed: 71 })
+    const untouched = new NaturalMotion({ seed: 71 })
+    const control = new NaturalMotion({ seed: 71 })
     for (let frame = 0; frame <= 10 * 60; frame++) {
       const time = frame / 60
       // The adapter reports the absent pet on every composition.
@@ -648,7 +647,7 @@ describe('natural motion', () => {
 
   it('keeps head variability independent of frame partition', () => {
     const deviations = [1 / 30, 1 / 60, 1 / 144].map((frameStep) => {
-      const motion = new Live2DNaturalMotion({ seed: 21 })
+      const motion = new NaturalMotion({ seed: 21 })
       const axes: number[][] = [[], [], []]
       for (let frame = 0; frame * frameStep <= 10 * 60; frame++) {
         const { pose } = motion.advance(frame * frameStep)
@@ -667,7 +666,7 @@ describe('natural motion', () => {
 
 describe('continuous cursor attention and touch', () => {
   function observed(seed: number) {
-    const motion = new Live2DNaturalMotion({ seed })
+    const motion = new NaturalMotion({ seed })
     const events: NaturalMotionEvent[] = []
     motion.setObserver(event => events.push(event))
     motion.advance(0)
@@ -726,7 +725,7 @@ describe('continuous cursor attention and touch', () => {
 
   it('(d) tucks monotonically as a hand descends from above and rests near the head', () => {
     const { motion } = observed(41)
-    const baseline = new Live2DNaturalMotion({ seed: 41 })
+    const baseline = new NaturalMotion({ seed: 41 })
     baseline.advance(0)
     let previousDifference = Number.POSITIVE_INFINITY
     let largestRise = Number.NEGATIVE_INFINITY
@@ -754,7 +753,7 @@ describe('continuous cursor attention and touch', () => {
     const seed = 26
     const medium = observed(seed)
     const far = observed(seed)
-    const baseline = new Live2DNaturalMotion({ seed })
+    const baseline = new NaturalMotion({ seed })
     baseline.advance(0)
     for (let frame = 0; frame <= 240; frame++) {
       const time = frame / 120
@@ -857,7 +856,7 @@ describe('continuous cursor attention and touch', () => {
 
   it('(i) lowers head pitch when poked at the top of the head', () => {
     const { motion, events } = observed(61)
-    const baseline = new Live2DNaturalMotion({ seed: 61 })
+    const baseline = new NaturalMotion({ seed: 61 })
     baseline.advance(0)
     motion.poke('head', 0, -1, 2)
     let lowest = 0
@@ -882,7 +881,7 @@ describe('continuous cursor attention and touch', () => {
     })
     try {
       const { motion, events } = observed(41)
-      const reference = new Live2DNaturalMotion({ seed: 41 })
+      const reference = new NaturalMotion({ seed: 41 })
       reference.advance(0)
       for (let frame = 0; frame <= 60 * 120; frame++) {
         const time = frame / 120
@@ -1070,7 +1069,7 @@ describe('continuous cursor attention and touch', () => {
 
   it('keeps observer attachment and detachment neutral for cursor and touch motion', () => {
     const { motion, events } = observed(41)
-    const quiet = new Live2DNaturalMotion({ seed: 41 })
+    const quiet = new NaturalMotion({ seed: 41 })
     quiet.advance(0)
     for (let frame = 0; frame <= 600; frame++) {
       const time = frame / 120
@@ -1095,8 +1094,8 @@ describe('continuous cursor attention and touch', () => {
 
 describe('held Natural composition', () => {
   it('feeds held posture into the body follower without an impulse, mood dose, or gesture', () => {
-    const motion = new Live2DNaturalMotion({ seed: 41 })
-    const control = new Live2DNaturalMotion({ seed: 41 })
+    const motion = new NaturalMotion({ seed: 41 })
+    const control = new NaturalMotion({ seed: 41 })
     const hold = new NaturalHoldLayer()
     control.advance(0)
     hold.set({ emotion: 'question', strength: 0.6 })
@@ -1116,8 +1115,8 @@ describe('held Natural composition', () => {
   })
 
   it.each(['clear', 'strong'] as const)('replaces impulse head and body with the %s gesture instead of doubling them', (band) => {
-    const motion = new Live2DNaturalMotion({ seed: 41 })
-    const control = new Live2DNaturalMotion({ seed: 41 })
+    const motion = new NaturalMotion({ seed: 41 })
+    const control = new NaturalMotion({ seed: 41 })
     const settings = structuredClone(defaultExpressionPerformanceSettings)
     settings.naturalBands.headGain = 0
     settings.naturalBands.bodyGain = 0
@@ -1134,7 +1133,7 @@ describe('held Natural composition', () => {
   it('adds the laugh face only with held emotions on, and opens the mouth only in silence', () => {
     const episode = { id: 'laugh', emotion: 'happy', band: 'strong', nominal: 0.9, intensity: 0.9, escalation: false } as const
     const facePeaks = (heldEmotions: boolean, speaking: boolean, withEpisode: boolean) => {
-      const motion = new Live2DNaturalMotion({ seed: 41 })
+      const motion = new NaturalMotion({ seed: 41 })
       motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions })
       motion.setVoice({ speaking, speechActiveOrRecent: speaking, level: 0 })
       motion.advance(0)
@@ -1165,7 +1164,7 @@ describe('held Natural composition', () => {
   })
 
   it.each([true, false])('ducks posture continuous motion under gesture clips only with held emotions on (%s)', (heldEmotions) => {
-    const motion = new Live2DNaturalMotion({ seed: 41 })
+    const motion = new NaturalMotion({ seed: 41 })
     motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions })
     const scales: number[] = []
     const original = NaturalPostureLayers.prototype.step
@@ -1191,7 +1190,7 @@ describe('held Natural composition', () => {
   })
 
   it('applies the held breathing period to the actual controller waveform', () => {
-    const motion = new Live2DNaturalMotion({ seed: 41 })
+    const motion = new NaturalMotion({ seed: 41 })
     const hold = new NaturalHoldLayer()
     const breath = new NaturalBreathLayer(random.createRandomStream(random.deriveSeed(41, 9)))
     breath.step(1 / 120)
@@ -1211,8 +1210,8 @@ describe('held Natural composition', () => {
   })
 
   it('applies held acceptance and size to speech nods observed in the composed head', () => {
-    const voiced = new Live2DNaturalMotion({ seed: 41 })
-    const quiet = new Live2DNaturalMotion({ seed: 41 })
+    const voiced = new NaturalMotion({ seed: 41 })
+    const quiet = new NaturalMotion({ seed: 41 })
     const hold = new NaturalHoldLayer()
     const emphasis = new NaturalSpeechEmphasis(random.createRandomStream(random.deriveSeed(41, 10)))
     emphasis.step(1 / 120, 0, 0.25)
@@ -1244,8 +1243,8 @@ describe('held Natural composition', () => {
   })
 
   it('changes blink timing and gaze destinations while sleepy', () => {
-    const motion = new Live2DNaturalMotion({ seed: 19092026 })
-    const control = new Live2DNaturalMotion({ seed: 19092026 })
+    const motion = new NaturalMotion({ seed: 19092026 })
+    const control = new NaturalMotion({ seed: 19092026 })
     motion.setHeldEmotion({ emotion: 'sleepy', strength: 1 }, 0)
     let actualBlinks = 0
     let controlBlinks = 0
@@ -1287,8 +1286,8 @@ describe('held Natural composition', () => {
       }
     })
     try {
-      const motion = new Live2DNaturalMotion({ seed: 19092026 })
-      const legacy = new Live2DNaturalMotion({ seed: 19092026 })
+      const motion = new NaturalMotion({ seed: 19092026 })
+      const legacy = new NaturalMotion({ seed: 19092026 })
       legacy.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
 
       for (let frame = 0; frame <= 3600; frame++) {
@@ -1306,8 +1305,8 @@ describe('held Natural composition', () => {
   it('holds a readable clear happy face and recruits less body than strong', () => {
     const peaks: number[] = []
     for (const intensity of [0.6, 0.9]) {
-      const motion = new Live2DNaturalMotion({ seed: 41 })
-      const control = new Live2DNaturalMotion({ seed: 41 })
+      const motion = new NaturalMotion({ seed: 41 })
+      const control = new NaturalMotion({ seed: 41 })
       motion.setHeldEmotion({ emotion: 'happy', strength: intensity }, 0)
       motion.impulse({ id: 'happy', emotion: 'happy', intensity, nominal: intensity, band: intensity === 0.6 ? 'clear' : 'strong', escalation: false }, 0)
       let bodyPeak = 0
@@ -1335,7 +1334,7 @@ describe('held Natural composition', () => {
   })
 
   it('releases with the exact 0.6 second decay without snapping the visible tail', () => {
-    const motion = new Live2DNaturalMotion({ seed: 41 })
+    const motion = new NaturalMotion({ seed: 41 })
     motion.setHeldEmotion({ emotion: 'happy', strength: 0.6 }, 0)
     const peak = motion.advance(4).face.eyeSmile
 
@@ -1350,8 +1349,8 @@ describe('held Natural composition', () => {
   })
 
   it('glides from happy to sad within the face step bound', () => {
-    const motion = new Live2DNaturalMotion({ seed: 41 })
-    const control = new Live2DNaturalMotion({ seed: 41 })
+    const motion = new NaturalMotion({ seed: 41 })
+    const control = new NaturalMotion({ seed: 41 })
     motion.setHeldEmotion({ emotion: 'happy', strength: 1 }, 0)
     control.setHeldEmotion({ emotion: 'happy', strength: 1 }, 0)
     const before = motion.advance(4)
@@ -1368,9 +1367,9 @@ describe('held Natural composition', () => {
   })
 
   it.each(['happy', 'question', 'surprised'] as const)('gives pet priority over actual overlapping %s channels', (emotion) => {
-    const held = new Live2DNaturalMotion({ seed: 41 })
-    const petted = new Live2DNaturalMotion({ seed: 41 })
-    const petOnly = new Live2DNaturalMotion({ seed: 41 })
+    const held = new NaturalMotion({ seed: 41 })
+    const petted = new NaturalMotion({ seed: 41 })
+    const petOnly = new NaturalMotion({ seed: 41 })
     held.setHeldEmotion({ emotion, strength: 1 }, 0)
     petted.setHeldEmotion({ emotion, strength: 1 }, 0)
     petted.setPet({ x: 0, y: 0 }, 0)
@@ -1390,9 +1389,9 @@ describe('held Natural composition', () => {
   })
 
   it('attenuates same-emotion accents in the composed held smile without saturating it', () => {
-    const accented = new Live2DNaturalMotion({ seed: 41 })
-    const held = new Live2DNaturalMotion({ seed: 41 })
-    const accentOnly = new Live2DNaturalMotion({ seed: 41 })
+    const accented = new NaturalMotion({ seed: 41 })
+    const held = new NaturalMotion({ seed: 41 })
+    const accentOnly = new NaturalMotion({ seed: 41 })
     for (const motion of [accented, held, accentOnly]) {
       motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, mood: false })
       motion.advance(0)
@@ -1408,7 +1407,7 @@ describe('held Natural composition', () => {
     const base = held.advance(4.5).face.eyeSmile
     const fullAccent = accentOnly.advance(4.5).face.eyeSmile
     // The laugh smile is a gesture term, not an accent hint, so the attenuation does not touch it.
-    const hintsOnly = new Live2DNaturalMotion({ seed: 41 })
+    const hintsOnly = new NaturalMotion({ seed: 41 })
     hintsOnly.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, mood: false, heldEmotions: false })
     hintsOnly.advance(0)
     hintsOnly.impulse(episode, 4)
@@ -1420,9 +1419,9 @@ describe('held Natural composition', () => {
   })
 
   it('leaves a different-emotion accent unattenuated', () => {
-    const accented = new Live2DNaturalMotion({ seed: 41 })
-    const held = new Live2DNaturalMotion({ seed: 41 })
-    const accentOnly = new Live2DNaturalMotion({ seed: 41 })
+    const accented = new NaturalMotion({ seed: 41 })
+    const held = new NaturalMotion({ seed: 41 })
+    const accentOnly = new NaturalMotion({ seed: 41 })
     accentOnly.advance(0)
     accented.setHeldEmotion({ emotion: 'sad', strength: 1 }, 0)
     held.setHeldEmotion({ emotion: 'sad', strength: 1 }, 0)
@@ -1435,8 +1434,8 @@ describe('held Natural composition', () => {
   })
 
   it('makes a strength-zero hold and episode identical to no emotion', () => {
-    const motion = new Live2DNaturalMotion({ seed: 41 })
-    const control = new Live2DNaturalMotion({ seed: 41 })
+    const motion = new NaturalMotion({ seed: 41 })
+    const control = new NaturalMotion({ seed: 41 })
     motion.setEmotionStrengths({ happy: 0 })
     motion.setHeldEmotion({ emotion: 'happy', strength: 0.9 }, 0)
 
@@ -1448,8 +1447,8 @@ describe('held Natural composition', () => {
   })
 
   it('ignores held targets and zero-strength policy when held emotions are disabled', () => {
-    const motion = new Live2DNaturalMotion({ seed: 41 })
-    const control = new Live2DNaturalMotion({ seed: 41 })
+    const motion = new NaturalMotion({ seed: 41 })
+    const control = new NaturalMotion({ seed: 41 })
     for (const instance of [motion, control])
       instance.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
     motion.setEmotionStrengths({ happy: 0 })
@@ -1464,8 +1463,8 @@ describe('held Natural composition', () => {
   })
 
   it('keeps repeated held setters and repeated suspension continuous in active time', () => {
-    const repeated = new Live2DNaturalMotion({ seed: 41 })
-    const control = new Live2DNaturalMotion({ seed: 41 })
+    const repeated = new NaturalMotion({ seed: 41 })
+    const control = new NaturalMotion({ seed: 41 })
     control.setHeldEmotion({ emotion: 'think', strength: 0.7 }, 0)
     let pause = 0
 
@@ -1491,11 +1490,11 @@ describe('held Natural composition', () => {
 })
 
 describe('reacting overlay', () => {
-  const energyOf = (motion: Live2DNaturalMotion): NaturalPerformanceEnergy => Reflect.get(motion, 'energy')
+  const energyOf = (motion: NaturalMotion): NaturalPerformanceEnergy => Reflect.get(motion, 'energy')
 
   /** Peak posture scales over 4 s after `act`, sampled on the 60 Hz grid. */
-  function peaks(act: (motion: Live2DNaturalMotion) => void) {
-    const motion = new Live2DNaturalMotion({ seed: 77 })
+  function peaks(act: (motion: NaturalMotion) => void) {
+    const motion = new NaturalMotion({ seed: 77 })
     motion.setPerformance(idle, 0.5, 0)
     act(motion)
     let amplitude = 0
@@ -1534,7 +1533,7 @@ describe('eye compensation for the slow head only', () => {
   const frameDts = [1 / 120, 1 / 97] as const
 
   /** Zeroes the posture's continuous motion without touching its random draws, so seeded runs stay comparable. */
-  function silenceContinuous(motion: Live2DNaturalMotion) {
+  function silenceContinuous(motion: NaturalMotion) {
     const posture = Reflect.get(motion, 'posture') as { continuous: { sd: number, value: number }[] }
     for (const process of posture.continuous) {
       process.sd = 0
@@ -1544,10 +1543,10 @@ describe('eye compensation for the slow head only', () => {
   }
 
   function run(options: { silent: boolean, cursor: boolean, dt: number }) {
-    const motion = new Live2DNaturalMotion({ seed: 7 })
+    const motion = new NaturalMotion({ seed: 7 })
     if (options.silent)
       silenceContinuous(motion)
-    const frames: ReturnType<Live2DNaturalMotion['advance']>[] = []
+    const frames: ReturnType<NaturalMotion['advance']>[] = []
     for (let i = 0; i <= 60 / options.dt; i++) {
       const time = i * options.dt
       if (options.cursor)

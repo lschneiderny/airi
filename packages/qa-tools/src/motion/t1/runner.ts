@@ -1,6 +1,6 @@
+import type { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
 import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
-import type { naturalEmotions } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotions'
 import type { NaturalTrace } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
 
 import { referenceStats } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/reference-stats'

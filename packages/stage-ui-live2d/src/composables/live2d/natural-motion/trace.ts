@@ -1,8 +1,8 @@
+import type { NaturalMotionEvent } from '@proj-airi/motion-driver-natural/frame-types'
+import type { PostureHome } from '@proj-airi/motion-driver-natural/posture'
 import type { ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 
-import type { NaturalMotionEvent } from './frame-types'
 import type { LivelinessTrace, ParameterRanges } from './liveliness'
-import type { PostureHome } from './posture'
 
 import { resolveCheekParameterId } from './rig-profile'
 

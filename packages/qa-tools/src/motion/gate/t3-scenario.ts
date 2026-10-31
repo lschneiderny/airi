@@ -5,9 +5,9 @@ import type { EmotionT3Gate } from '@proj-airi/stage-ui-live2d/composables/live2
 
 import { isDeepStrictEqual } from 'node:util'
 
+import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 import { MotionScenarioSchema } from '@proj-airi/stage-shared/motion-scenario'
 import { hashSeed, naturalEmotionLifetime } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
-import { createRandomStream } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/random'
 import { parse, safeParse } from 'valibot'
 
 import { maxEventLagSeconds } from '../../t3/verify-trace'

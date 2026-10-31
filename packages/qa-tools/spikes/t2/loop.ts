@@ -3,10 +3,10 @@ import type { Live2DNaturalMotionAttention } from '../../../stage-ui-live2d/src/
 import type { PhysicsRigLike } from '../../../stage-ui-live2d/src/composables/live2d/natural-motion/rig-profile'
 import type { NaturalTrace } from '../../../stage-ui-live2d/src/composables/live2d/natural-motion/trace'
 
+import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 
 import { Live2DNaturalMotionAdapter } from '../../../stage-ui-live2d/src/composables/live2d/natural-motion-adapter'
-import { createRandomStream } from '../../../stage-ui-live2d/src/composables/live2d/natural-motion/random'
 import { readLive2DRigProfile } from '../../../stage-ui-live2d/src/composables/live2d/natural-motion/rig-profile'
 import { NaturalTraceRecorder } from '../../../stage-ui-live2d/src/composables/live2d/natural-motion/trace'
 

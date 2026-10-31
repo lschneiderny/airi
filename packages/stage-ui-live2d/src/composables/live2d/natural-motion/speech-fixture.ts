@@ -1,4 +1,4 @@
-import { createRandomStream } from './random'
+import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 
 /**
  * Syllable envelope fixture at `rate` Hz: phrases of 10-16 syllables at 4 Hz, separated by

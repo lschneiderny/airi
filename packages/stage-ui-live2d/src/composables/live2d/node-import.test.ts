@@ -14,7 +14,6 @@ const naturalModules = readdirSync(new URL('./natural-motion/', import.meta.url)
   .map(file => file.slice(0, -'.ts'.length))
 /** Subpath export -> the source file it must resolve to. The wildcard is checked for every module it exposes. */
 const subpaths: Record<string, string> = {
-  'composables/live2d/natural-motion': 'src/composables/live2d/natural-motion.ts',
   'composables/live2d/natural-motion-adapter': 'src/composables/live2d/natural-motion-adapter.ts',
   'composables/live2d/expression/compose': 'src/composables/live2d/expression/compose.ts',
   'composables/live2d/expression/hold': 'src/composables/live2d/expression/hold.ts',

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { Live2DNaturalMotion } from '../natural-motion'
 import { NaturalGazeLayer } from './gaze'
+import { NaturalMotion } from './natural-motion'
 import { NaturalPlacement, shapeInwardness } from './placement'
 
 const dt = 1 / 120
@@ -56,8 +56,8 @@ describe('natural placement controller', () => {
   })
 
   it.each([-1, 1])('biases only head yaw inward during a seeded 120 s run with placement %s', (inward) => {
-    const motion = new Live2DNaturalMotion({ seed: 41, home: 'desk' })
-    const reference = new Live2DNaturalMotion({ seed: 41, home: 'desk' })
+    const motion = new NaturalMotion({ seed: 41, home: 'desk' })
+    const reference = new NaturalMotion({ seed: 41, home: 'desk' })
     motion.setPlacement(inward, 0)
     reference.setPlacement(null, 0)
     let sum = 0
@@ -87,7 +87,7 @@ describe('natural placement controller', () => {
       onCursor += (Number(this.onCursor) - onCursor) * (1 - Math.exp(-delta / 0.3))
       return originalStep.call(this, delta)
     })
-    const motion = new Live2DNaturalMotion({ seed: 41, home: 'desk' })
+    const motion = new NaturalMotion({ seed: 41, home: 'desk' })
     motion.setPlacement(1, 0)
     let engaged = 0
     let count = 0
@@ -108,7 +108,7 @@ describe('natural placement controller', () => {
 
   it('disables placement on the very next grid step without an easing tail', () => {
     const inward = vi.spyOn(NaturalGazeLayer.prototype, 'setInward')
-    const motion = new Live2DNaturalMotion({ seed: 41, home: 'desk' })
+    const motion = new NaturalMotion({ seed: 41, home: 'desk' })
     motion.setPlacement(1, 0)
     motion.advance(30)
     expect(motion.placementYawBias).toBeGreaterThan(0.099)
@@ -124,7 +124,7 @@ describe('natural placement controller', () => {
   })
 
   it('activates the screen point only for watching or screen attention and uses it for screen changes', () => {
-    const motion = new Live2DNaturalMotion({ seed: 41, home: 'desk' })
+    const motion = new NaturalMotion({ seed: 41, home: 'desk' })
     const state = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' } as const
     motion.setPlacement(1, 0)
     motion.setPerformance(state, 0.5, 0)

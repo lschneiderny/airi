@@ -23,6 +23,7 @@ const isSource = (path: string) => /\.(?:ts|mts|vue)$/.test(path) && !path.endsW
  * import, would make a gate input invisible to the closure, so a stale result could hit.
  */
 const workerSide = [
+  ...sourceFiles(join(repoRoot, 'packages/motion-driver-natural/src')),
   ...sourceFiles(join(repoRoot, 'packages/stage-ui-live2d/src/composables/live2d/natural-motion')),
   ...sourceFiles(join(qaTools, 'gates')),
   ...['src/motion/gate/trials.ts', 'src/motion/gate/options.ts', 'src/motion/validation/plan.ts', 'src/motion/validation/units.ts', 'src/motion/scenario-sink.ts'].map(path => join(qaTools, path)),

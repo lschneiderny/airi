@@ -1,9 +1,9 @@
+import type { NaturalMotionFrame } from '@proj-airi/motion-driver-natural/frame-types'
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
-import type { Live2DNaturalMotionFrame } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/frame-types'
 import type { NaturalTrace } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
 
+import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { buildPointerApproach, buildPointerPoke, buildPointerStroke } from '@proj-airi/stage-shared/motion-scenario'
-import { Live2DNaturalMotion } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion'
 import { describe, expect, it, vi } from 'vitest'
 
 import { runT1 } from './t1/runner'
@@ -19,9 +19,9 @@ function pointerScenario(id: string, events: MotionScenario['events'], durationS
  * The adapter's own `advance` call is the last one at a timestamp, so the map keeps that frame.
  */
 function runWithFrames(scenario: MotionScenario) {
-  const frames = new Map<number, Live2DNaturalMotionFrame>()
-  const advance = Live2DNaturalMotion.prototype.advance
-  const spy = vi.spyOn(Live2DNaturalMotion.prototype, 'advance').mockImplementation(function (this: Live2DNaturalMotion, nowSeconds: number) {
+  const frames = new Map<number, NaturalMotionFrame>()
+  const advance = NaturalMotion.prototype.advance
+  const spy = vi.spyOn(NaturalMotion.prototype, 'advance').mockImplementation(function (this: NaturalMotion, nowSeconds: number) {
     const frame = advance.call(this, nowSeconds)
     frames.set(nowSeconds, frame)
     return frame
@@ -77,7 +77,7 @@ describe('t1 touch scenarios', () => {
     const approach = (from: 'left' | 'right' | 'top' | 'bottom') => {
       const run = runWithFrames(pointerScenario(`approach-${from}`, buildPointerApproach({ at, from, startDistance: 8, endDistance: 0.6, speed: 3, rateHz: 60 }), durationSeconds))
       const final = run.frames.filter(entry => entry.t > durationSeconds - 1)
-      const mean = (read: (frame: Live2DNaturalMotionFrame) => number) => final.reduce((sum, entry) => sum + read(entry.frame), 0) / final.length
+      const mean = (read: (frame: NaturalMotionFrame) => number) => final.reduce((sum, entry) => sum + read(entry.frame), 0) / final.length
       return {
         events: attention(run.trace),
         fixation: { x: mean(frame => frame.fixation.x), y: mean(frame => frame.fixation.y) },

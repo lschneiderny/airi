@@ -1,24 +1,23 @@
-import type { NaturalChatInput } from '../natural-motion'
-import type { NaturalMotionEvent } from './frame-types'
+import type { NaturalMotionEvent } from '@proj-airi/motion-driver-natural/frame-types'
+import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 
+import { mapCursor } from '@proj-airi/motion-driver-natural/cursor-attention'
+import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { describe, expect, it } from 'vitest'
-
-import { Live2DNaturalMotion } from '../natural-motion'
-import { mapCursor } from './cursor-attention'
 
 const dt = 1 / 120
 const target = { x: -3, y: -1 }
 const input: NaturalChatInput = { target, typing: false, sentSeq: 0, sentWords: 8, unfoldSeq: 0 }
 
 function fixture() {
-  const motion = new Live2DNaturalMotion({ seed: 42 })
+  const motion = new NaturalMotion({ seed: 42 })
   const events: NaturalMotionEvent[] = []
   motion.setObserver(event => events.push(event))
   motion.advance(0)
   return { motion, events }
 }
 
-function advance(motion: Live2DNaturalMotion, from: number, to: number) {
+function advance(motion: NaturalMotion, from: number, to: number) {
   for (let frame = Math.round(from / dt) + 1; frame <= Math.round(to / dt); frame++)
     motion.advance(frame * dt)
 }

@@ -1,9 +1,8 @@
+import { NaturalBlinkScheduler } from '@proj-airi/motion-driver-natural/blink'
+import { NaturalBreathLayer } from '@proj-airi/motion-driver-natural/breath'
+import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
+import { NaturalSpeechEmphasis } from '@proj-airi/motion-driver-natural/speech-emphasis'
 import { describe, expect, it } from 'vitest'
-
-import { NaturalBlinkScheduler } from './blink'
-import { NaturalBreathLayer } from './breath'
-import { createRandomStream } from './random'
-import { NaturalSpeechEmphasis } from './speech-emphasis'
 
 const dt = 1 / 120
 

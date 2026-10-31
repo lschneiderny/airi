@@ -3,8 +3,8 @@ import type { CheckResult, EmotionGate, EmotionGateScore, EmotionTrialRecord, Sc
 import type { ValidationRecordsPartial, ValidationScorePartial } from '../gate/partials'
 import type { MutationId, ValidationOptions, ValidationPlan } from './plan'
 
+import { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
-import { naturalEmotions } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotions'
 import { buildEmotionChecks } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 
 import { readPartial } from '../gate/partials'

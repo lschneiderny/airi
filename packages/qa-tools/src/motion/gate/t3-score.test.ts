@@ -2,10 +2,10 @@ import type { EmotionTrialRecord, PlaceboRecord, ScoredChannel } from '@proj-air
 
 import type { T3ReleaseRecord } from './t3-score'
 
+import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { releaseGrid, scoredChannels } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
 import { buildEmotionChecks, emotionGate, naturalEmotionT3Gate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
-import { createRandomStream } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/random'
 import { describe, expect, it } from 'vitest'
 
 import { scoreT3Emotion, t3TransferRatio } from './t3-score'

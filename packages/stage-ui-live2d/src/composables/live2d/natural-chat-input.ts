@@ -1,7 +1,6 @@
+import type { GazePoint } from '@proj-airi/motion-driver-natural/gaze'
+import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
-
-import type { NaturalChatInput } from './natural-motion'
-import type { GazePoint } from './natural-motion/gaze'
 
 /** Where the host's chat sits: shown or not, and its window rectangle in Electron DIP screen coordinates. */
 export interface NaturalChatTarget {

@@ -19,9 +19,10 @@ import { closureMatches, findHit, lookupResult, recordResult, replayHit } from '
 import { keepPerKey, readEntries, writeEntry } from './store'
 
 const runtime = { node: 'v24.0.0', platform: 'win32', arch: 'x64', vitestVersion: '4.1.11', vitestManifestSha: 'a'.repeat(64) }
+const naturalDriver = 'packages/motion-driver-natural/src'
 const naturalMotion = 'packages/stage-ui-live2d/src/composables/live2d/natural-motion'
 const closureFiles = [
-  `${naturalMotion}/emotions.ts`,
+  `${naturalDriver}/emotions.ts`,
   `${naturalMotion}/emotion-score.ts`,
   'packages/qa-tools/vitest.config.ts',
   'packages/qa-tools/src/motion/gate/trials.ts',
@@ -151,7 +152,7 @@ describe('closure validation', () => {
 
   it('b3: a blob change, a deleted file, and a CRLF-only change each miss', () => {
     record(repo, planFor(repo))
-    const file = `${naturalMotion}/emotions.ts`
+    const file = `${naturalDriver}/emotions.ts`
     const original = readFileSync(join(repo, file))
     write(repo, file, `${original.toString()}// edit\n`)
     expect(findHit(planFor(repo), repo)).toBeNull()
