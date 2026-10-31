@@ -57,6 +57,8 @@ import {
   useMMDEmote,
   useMMDLipSync,
 } from '../../composables/mmd'
+import { MMDBody } from '../../composables/mmd/body'
+import { resolveBodyTarget } from '../../composables/mmd/body/attention'
 import { resolveFrameBounds } from '../../composables/mmd/camera-bounds'
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
@@ -164,6 +166,7 @@ let animation: MMDAnimationManager | undefined
 let emote: ReturnType<typeof useMMDEmote> | undefined
 let morphRuntime: ReturnType<typeof createMMDMorphRuntime> | undefined
 let natural: MMDNaturalAdapter | undefined
+let body: MMDBody | undefined
 let rig: ReturnType<typeof readMMDRigProfile> | undefined
 let stopMorphOverrides: (() => void) | undefined
 // Motion names already bound to the current model runtime.
@@ -434,6 +437,8 @@ function renderLoop(now = performance.now()) {
       driver: motionDriver.value,
       rig: rig ?? null,
       natural: natural?.diagnostics ?? null,
+      feet: motionDriver.value === 'natural' ? body?.diagnostics.feet ?? null : null,
+      lookAt: motionDriver.value === 'natural' ? body?.diagnostics.lookAt ?? null : null,
       animation: animation?.snapshot() ?? { idle: null, currentAction: null, actionsStarted: 0 },
     })
   }
@@ -465,12 +470,13 @@ function disposeModel() {
   emote = undefined
   morphRuntime = undefined
   natural = undefined
+  body = undefined
   rig = undefined
   gaze = undefined
   resolved = undefined
   loadedModelKey = null
   diagnostics.setMetrics(new MMDFrameMetrics())
-  diagnostics.publish({ loadedModelKey: null, rig: null, natural: null, animation: { idle: null, currentAction: null, actionsStarted: 0 } })
+  diagnostics.publish({ loadedModelKey: null, rig: null, natural: null, feet: null, lookAt: null, animation: { idle: null, currentAction: null, actionsStarted: 0 } })
   mmdStore.isModelLoaded = false
 }
 
@@ -498,6 +504,7 @@ async function syncMotions() {
       try {
         const clip = await loadMMDAnimationClip(url, mesh)
         animation.registerClip(descriptor.name, clip)
+        body?.registerClip(descriptor.name, clip)
         registeredMotions.add(descriptor.name)
         if (clip.tracks.length === 0) {
           console.warn(
@@ -565,6 +572,19 @@ async function loadModel(src: string) {
     }))
 
     animation = createMMDAnimationManager(resolved.mmd, { physicsEnabled: physicsEnabled.value })
+    body = new MMDBody(resolved.mmd, rig, {
+      modelKey: props.modelId ?? src,
+      input: () => {
+        if (!natural || !camera || !canvasRef.value)
+          return null
+        return {
+          enabled: motionDriver.value === 'natural',
+          frame: natural.bodyFrame.frame,
+          target: resolveBodyTarget({ mesh: activeMesh, camera, viewport: canvasRef.value.getBoundingClientRect(), gazeMode: gazeMode.value }, natural.bodyFrame),
+          ...diagnostics.debugFlags,
+        }
+      },
+    })
     diagnostics.setMetrics(animation.pipeline.metrics)
     animation.pipeline.poseStages.push(
       { id: 'natural', run: ({ dt, clean }) => {
@@ -601,11 +621,12 @@ async function loadModel(src: string) {
               ? screenInwardness(placement.displays, placement.windowBounds.x + head.x * dipScale)
               : mmdScreenInwardness(rect, head.x),
         }, performance.now() / 1000)
-        natural.applyPose(clean)
+        natural.applyPose(clean, true)
         // Channels must be prepared before bone-morph evaluation. Their surface
         // effects are applied after physics by the morph-runtime surface stage.
         natural.applySurface(runtime, morphOverrides.value)
       } },
+      ...body.poseStages,
       { id: 'classic-gaze', run: ({ dt, clean }) => {
         if (motionDriver.value === 'classic')
           gaze?.update(resolveGazeOffset(), dt, clean)
@@ -633,6 +654,7 @@ async function loadModel(src: string) {
       } },
     )
     animation.pipeline.surfaceStages.push(
+      body.surfaceStage,
       { id: 'morphs', run: () => runtime.applySurfaceStage() },
     )
     stopMorphOverrides = watch(morphOverrides, (overrides) => {

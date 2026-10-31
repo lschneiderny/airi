@@ -74,6 +74,7 @@ export class MMDNaturalAdapter {
   private readonly activeSpeech = new Map<string, { lastClipEndAt: number | null }>()
   private muted = false
   private settings = defaultExpressionPerformanceSettings
+  private input: MMDNaturalInput | null = null
 
   constructor(
     private readonly mesh: SkinnedMesh,
@@ -88,6 +89,7 @@ export class MMDNaturalAdapter {
   }
 
   advance(dt: number, input: MMDNaturalInput, now = this.time + dt): void {
+    this.input = input
     this.time += dt
     if (this.hold && now >= leaseReleaseAt(this.hold.lease, this.muted, this.settings.slots))
       this.hold = null
@@ -204,6 +206,15 @@ export class MMDNaturalAdapter {
 
   get diagnostics() {
     return { events: this.events, energy: this.energy, headYaw: this.headYaw }
+  }
+
+  /** The body adapter consumes the same frame; it must never advance Natural again. */
+  get bodyFrame() {
+    return {
+      frame: this.frame,
+      input: this.input,
+      onChat: this.natural.onChat || Math.hypot(this.natural.chatHeadFollow.x, this.natural.chatHeadFollow.y) > 0,
+    }
   }
 }
 
