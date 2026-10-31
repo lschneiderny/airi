@@ -1,4 +1,4 @@
-import type { ChatHistoryItem } from '../../../../types/chat'
+import type { ChatHistoryItem, StreamingAssistantMessage } from '../../../../types/chat'
 
 import en from '@proj-airi/i18n/locales/en'
 
@@ -2067,7 +2067,8 @@ describe('chat history', () => {
   })
 
   describe('break bubbles, wordless replies, and reaction cues', () => {
-    const assistant = (id: string, slices: Extract<ChatHistoryItem, { role: 'assistant' }>['slices'], content = ''): ChatHistoryItem => ({
+    /** An assistant item that also fits the `streamingMessage` prop, so one helper builds the stream and the persisted item. */
+    const assistant = (id: string, slices: StreamingAssistantMessage['slices'], content = ''): StreamingAssistantMessage => ({
       id,
       role: 'assistant',
       content,
@@ -2077,7 +2078,7 @@ describe('chat history', () => {
     const text = (value: string) => ({ type: 'text', text: value } as const)
     const bubbleTexts = (container: Element) => Array.from(container.querySelectorAll<HTMLElement>('[data-chat-bubble]')).map(bubble => bubble.textContent?.trim())
 
-    function renderHistory(props: Record<string, unknown>) {
+    function renderHistory(props: { messages: ChatHistoryItem[], sending?: boolean, streamingMessage?: StreamingAssistantMessage }) {
       return render(ChatHistory, {
         props: {
           style: 'height: 480px; width: 480px; overflow-y: auto;',
