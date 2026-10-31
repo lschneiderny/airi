@@ -2714,6 +2714,33 @@ mmd:
       cursor: Mouse
       camera: Camera
       none: Disabled
+  motion:
+    title: Motion
+    driver:
+      title: Motion driver
+      description: Select how AIRI moves the body while the model is idle.
+      options:
+        natural:
+          title: Natural
+          description: Full-body motion with planted feet, weight shifts, head and eye attention, poke and pet, and sit and sleep stances.
+        classic:
+          title: Classic
+          description: Play the imported idle motion with gaze tracking and no procedural body motion.
+    natural-energy:
+      title: Energy
+      description: How lively Natural movement is, from calm to energetic.
+    natural-touch:
+      title: Poke and pet
+      description: React when you click the model or stroke its head with the cursor.
+    natural-touch-pet-requires-hold:
+      title: Pet only while holding the button
+      description: Count strokes as petting only while the left mouse button is held, so moving the cursor across the head does nothing.
+    stance:
+      description: Assign imported motions to stances for this model. The idle stance replaces the global idle motion. Sit plays after a long idle and sleep plays while you are away.
+      idle: Idle stance
+      sit: Sit stance
+      sleep: Sleep stance
+      none: None
   animation:
     title: Animation
     idle-motion: Idle Motion

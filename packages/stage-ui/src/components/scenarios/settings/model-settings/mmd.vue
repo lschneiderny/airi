@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import type { MMDGazeMode, MorphSlot } from '@proj-airi/stage-ui-mmd'
+import type { MMDGazeMode, MMDMotionDriver, MorphSlot } from '@proj-airi/stage-ui-mmd'
+import type { SelectTabOption } from '@proj-airi/ui'
 
 import type { ExpressionPanelCommand, ExpressionPanelSnapshot, ExpressionPanelSource } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
 import { controlConfig, useMMD, useMMDExpressionStore } from '@proj-airi/stage-ui-mmd'
-import { Button, FieldCheckbox, FieldCombobox, FieldRange, GhostButton } from '@proj-airi/ui'
+import { Button, FieldCheckbox, FieldCombobox, FieldRange, GhostButton, SelectTab } from '@proj-airi/ui'
 import { useFileDialog } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
@@ -13,6 +14,7 @@ import { useI18n } from 'vue-i18n'
 
 import ExpressionPanel from './expressions/panel.vue'
 
+import { useSettingsStageModel } from '../../../../stores/settings/stage-model'
 import { Container, PropertyColor, PropertyNumber } from '../../../data-pane'
 import { Section } from '../../../layouts'
 import { ColorPalette } from '../../../widgets'
@@ -33,6 +35,8 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const mmdStore = useMMD()
+// Stance slots are keyed by the id the stage passes to the MMD scene as `modelId`.
+const { stageModelSelected } = storeToRefs(useSettingsStageModel())
 // In Electron the settings window has no model; the stage window publishes `mmdExpressions` and applies the commands.
 const localExpressionSource: ExpressionPanelSource = useMMDExpressionStore()
 const usesRemoteExpressionRuntime = computed(() => props.runtimeSnapshot.mmdExpressions != null)
@@ -58,6 +62,11 @@ const {
   grantEnabled,
   physicsGravity,
   gazeMode,
+  motionDriver,
+  naturalEnergy,
+  naturalTouch,
+  naturalTouchPetRequiresHold,
+  stanceSlots,
   idleMotionName,
   availableMotions,
   availableMorphs,
@@ -88,6 +97,50 @@ const motionOptions = computed(() => availableMotions.value.map(motion => ({
   value: motion.name,
   description: '',
 })))
+
+const motionDriverOptions = computed<SelectTabOption<MMDMotionDriver>[]>(() => [
+  {
+    value: 'natural',
+    label: t('settings.mmd.motion.driver.options.natural.title'),
+    description: t('settings.mmd.motion.driver.options.natural.description'),
+  },
+  {
+    value: 'classic',
+    label: t('settings.mmd.motion.driver.options.classic.title'),
+    description: t('settings.mmd.motion.driver.options.classic.description'),
+  },
+])
+
+function formatNaturalEnergy(value: number) {
+  return `${Math.round(value * 100)}%`
+}
+
+type StanceSlotName = keyof (typeof stanceSlots.value)[string]
+const STANCE_SLOTS: readonly StanceSlotName[] = ['idle', 'sit', 'sleep']
+
+/**
+ * Option value for the "none" state: no slot, or a slot naming a motion that was
+ * removed. The combobox drops options with an empty value, and a motion name
+ * comes from a file name, which cannot contain a slash, so this never collides.
+ */
+const STANCE_NONE = '/none'
+const stanceOptions = computed(() => [
+  { label: t('settings.mmd.motion.stance.none'), value: STANCE_NONE, description: '' },
+  ...motionOptions.value,
+])
+
+function stanceSlotValue(slot: StanceSlotName): string {
+  const name = stanceSlots.value[stageModelSelected.value]?.[slot]
+  return name && availableMotions.value.some(motion => motion.name === name) ? name : STANCE_NONE
+}
+
+function setStanceSlot(slot: StanceSlotName, value: string | number | undefined) {
+  if (typeof value !== 'string')
+    return
+  const modelId = stageModelSelected.value
+  const { [slot]: _, ...rest } = stanceSlots.value[modelId] ?? {}
+  stanceSlots.value = { ...stanceSlots.value, [modelId]: value === STANCE_NONE ? rest : { ...rest, [slot]: value } }
+}
 
 // '(auto)' lets the renderer pick the morph by its standard-name candidates.
 const morphOptions = computed(() => [
@@ -272,6 +325,67 @@ function removeMotion(id: string) {
       :step="1"
       :default-value="98"
       :label="t('settings.mmd.physics.gravity')"
+    />
+  </Section>
+
+  <Section
+    :title="t('settings.mmd.motion.title')"
+    icon="i-solar:walking-round-bold-duotone"
+    inner-class="text-sm"
+    :class="['rounded-xl', 'bg-white/80 dark:bg-black/75', 'backdrop-blur-lg']"
+    size="sm"
+    :expand="false"
+  >
+    <label :class="['flex flex-wrap gap-4']">
+      <div :class="['min-w-0 flex-1 basis-full sm:basis-auto']">
+        <div :class="['flex items-center gap-1 text-sm font-medium']">
+          {{ t('settings.mmd.motion.driver.title') }}
+        </div>
+        <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+          {{ t('settings.mmd.motion.driver.description') }}
+        </div>
+      </div>
+      <SelectTab
+        v-model="motionDriver"
+        :options="motionDriverOptions"
+        size="sm"
+        :class="['shrink-0']"
+      />
+    </label>
+    <FieldRange
+      v-if="motionDriver === 'natural'"
+      v-model="naturalEnergy"
+      :min="0"
+      :max="1"
+      :step="0.05"
+      :label="t('settings.mmd.motion.natural-energy.title')"
+      :description="t('settings.mmd.motion.natural-energy.description')"
+      :format-value="formatNaturalEnergy"
+    />
+    <FieldCheckbox
+      v-if="motionDriver === 'natural'"
+      v-model="naturalTouch"
+      :label="t('settings.mmd.motion.natural-touch.title')"
+      :description="t('settings.mmd.motion.natural-touch.description')"
+      placement="right"
+    />
+    <FieldCheckbox
+      v-if="motionDriver === 'natural' && naturalTouch"
+      v-model="naturalTouchPetRequiresHold"
+      :label="t('settings.mmd.motion.natural-touch-pet-requires-hold.title')"
+      :description="t('settings.mmd.motion.natural-touch-pet-requires-hold.description')"
+      placement="right"
+    />
+    <p :class="['mt-2', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
+      {{ t('settings.mmd.motion.stance.description') }}
+    </p>
+    <FieldCombobox
+      v-for="slot in STANCE_SLOTS"
+      :key="slot"
+      :model-value="stanceSlotValue(slot)"
+      :options="stanceOptions"
+      :label="t(`settings.mmd.motion.stance.${slot}`)"
+      @update:model-value="value => setStanceSlot(slot, value)"
     />
   </Section>
 
