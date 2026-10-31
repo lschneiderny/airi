@@ -415,6 +415,11 @@ Turning `shareForegroundWindow` off also stops unprompted speech, because the ga
 Turning `shareBrowserActivity` off removes the web extension's page and video titles, links, subtitles, and video notifications from the situation. It does not affect foreground sharing or the gate. Web and Pocket have no control for it, so the extension always reaches the situation there.
 Do not read them in the Electron main process.
 
+### Conversation settings
+
+`useConversationSettings` in `features/conversation/settings` stores one document at `settings/conversation`: `register` (`talking` or `texting`, default `talking`) and `textingFlavor` (`plain` or `discord`, default `plain`, read only while texting).
+The value sets come from `@proj-airi/stage-shared/conversation-register`. An invalid stored field falls back to its default, and defaults are never written until the first `update` or `reset`. The leader routes `update` and `reset`.
+
 ### Unprompted turns
 
 `useChatStore().submitUnprompted({ topicKey, topicText, force?, messageId?, supplement? })` starts one turn without user input in the leader's active session. It resolves to `spoken` with the text, `declined`, `cancelled`, or `failed`.
