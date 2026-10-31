@@ -1,7 +1,14 @@
 # `@proj-airi/motion-driver-humanoid`
 
-This package defines renderer-neutral humanoid rig types and procedural motion
-planners for reusable character motion drivers.
+This package defines renderer-neutral humanoid rig and body-intent types and
+deterministic motion algorithms for reusable character motion drivers.
+
+## Entry points
+
+- `./types`: canonical humanoid bones, rig traits, positions, rotations, and body intents.
+- `./look-at`: `createLookAt`, look-at and turn-step contracts, and `aimEyes`.
+- `./foot-contact`: planted foot anchors, eased contact, shared pelvis reach
+  correction, signed knee pre-bend, and body-turn step arcs.
 
 ## Usage
 
@@ -10,12 +17,6 @@ import type { BodyIntent, HumanoidBoneName, RigTraits } from '@proj-airi/motion-
 
 import { createFootContact, planFootSteps } from '@proj-airi/motion-driver-humanoid/foot-contact'
 ```
-
-## Entry points
-
-- `./types`: canonical bones, rig traits, positions, rotations, and body intents.
-- `./foot-contact`: planted foot anchors, eased contact, shared pelvis reach
-  correction, signed knee pre-bend, and body-turn step arcs.
 
 Create one foot-contact planner per rig with mesh-local bind hip, knee, and ankle
 positions. Call `step(input, dt)` with explicit seconds, the requested pelvis
@@ -36,6 +37,38 @@ rotations and solving IK.
 steps sequentially, sampling each with elapsed seconds. Each arc lifts 0.3 model
 units at its midpoint and lands at the anchor rotated about the mesh-local pivot.
 Feed the landed ankle back to the contact planner after releasing that foot.
+
+```ts
+import { createLookAt } from '@proj-airi/motion-driver-humanoid/look-at'
+
+const lookAt = createLookAt({ eyeYawLimit: 0.35, eyePitchLimit: 0.25 })
+const frame = lookAt.step({ targetYaw: 0.5, targetPitch: 0.1, facingYaw: 0 }, 1 / 60)
+```
+
+Targets and facing use the same stance frame: +Z forward, positive yaw toward
++X, positive pitch downward. Feed actual facing back each frame; when the facing
+command is applied directly, feed back `frame.facingYaw`. Rotations are absolute
+rest-relative parent-frame angles, not incremental bone writes.
+
+The spine, chest, neck, and head share yaw/pitch through critically damped
+springs. Eye output covers the remaining angular error within rig limits.
+`aimEyes` separately computes per-eye world-aligned angles from world positions
+and a target; adapters must account for each animated eye parent's orientation
+before applying these angles. Neither helper imports renderer math types.
+
+A continuous yaw error above 60 degrees starts a turn after 0.5 seconds; an
+error above 90 degrees starts immediately. Turns finish planted steps, aim for
+15 degrees remaining, stop below 20 degrees, and wait 1.5 seconds before
+restarting. `turnSteps` contains events emitted once at step start, alternating
+left/right feet, each lasting 0.4 seconds with at most 22.5 degrees of signed yaw
+(45 degrees per pair). Event timestamps are elapsed seconds since controller
+creation. A foot-contact adapter consumes the events; this module never moves
+feet or writes bones.
+
+Time is supplied only through `dt` in seconds, with no clocks or randomness.
+Springs integrate their response analytically, including the changing facing
+during turns. Non-finite target angles become zero; coincident or non-finite
+world targets aim eyes forward. Negative or non-finite `dt` advances no time.
 
 ## When to use it
 
