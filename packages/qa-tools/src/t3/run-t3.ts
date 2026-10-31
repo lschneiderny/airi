@@ -70,7 +70,7 @@ function sleep(ms: number) {
   return new Promise<void>(resolveSleep => setTimeout(resolveSleep, ms))
 }
 
-async function closeBrowser(browserUrl: string): Promise<void> {
+export async function closeBrowser(browserUrl: string): Promise<void> {
   const browser = await CdpClient.connect(browserUrl, 5_000)
   try {
     await browser.send('Browser.close', {}, 5_000)

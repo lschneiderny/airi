@@ -45,9 +45,9 @@ export const fatalStartupPattern = /App threw an error during load[^\n]*\n?[^\n]
  * Starts `pnpm --dir <repoRoot> -F @proj-airi/stage-tamagotchi dev` with the T3 environment. `--dir` puts the
  * worktree path into the root's command line, so teardown can prove ownership from the live process table.
  */
-export async function launchStageTamagotchi(options: { repoRoot: string, profileDir: string, logFile: string, list: ProcessLister }): Promise<LaunchedApp> {
+export async function launchStageTamagotchi(options: { repoRoot: string, profileDir: string, logFile: string, list: ProcessLister, env?: Record<string, string> }): Promise<LaunchedApp> {
   const port = await findAvailablePort()
-  const env = t3LaunchEnv(options.profileDir, port)
+  const env = { ...t3LaunchEnv(options.profileDir, port), ...options.env }
   // The caller (`runT3Cli`, `gate --level t3`) already holds the exclusive lease, so this reuses it in-process and only
   // reads its env. A direct caller without one queues here and gives the lease back when the app exits.
   const lease = await acquire({ class: 'exclusive', command: `stage-tamagotchi dev (T3, ${options.repoRoot})`, cwd: options.repoRoot })

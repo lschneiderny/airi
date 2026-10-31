@@ -17,6 +17,7 @@
     "model": "tsx bin/model.ts",
     "motion": "tsx bin/motion.ts",
     "report": "tsx bin/report.ts",
+    "stage": "tsx bin/stage.ts",
     "t2:probe": "tsx bin/t2-probe.ts",
     "test:qa": "tsx bin/test.ts",
     "typecheck": "tsc --noEmit"
