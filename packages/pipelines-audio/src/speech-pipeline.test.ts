@@ -624,6 +624,9 @@ describe('speech without ASCII faces', () => {
     [[{ literal: 'hi :3' }, { special: '<|BREAK 0.5|>' }, { literal: 'ok ^^' }], ['hi', 'ok'], ['hi :3', 'ok ^^']],
     [[{ literal: 'Meet at 10:30 :3' }], ['Meet at 10:30'], ['Meet at 10:30 :3']],
     [[{ literal: 'Okay. :3' }], ['Okay.'], ['Okay.']],
+    // The chat runtime releases a `<` that ends a reply as its own last delta.
+    [[{ literal: 'ow, hey >_' }, { literal: '<' }], ['ow, hey'], ['ow, hey >_<']],
+    [[{ literal: 'hello there! >_<' }], ['hello there!'], ['hello there!']],
   ] satisfies Array<[Part[], string[], string[]]>)('synthesizes %j without its faces and keeps them on the clips', async (parts, spoken, shown) => {
     const requests: string[] = []
     const { scheduled, speak, turnEnded } = createOrderedPipeline(async (request) => {

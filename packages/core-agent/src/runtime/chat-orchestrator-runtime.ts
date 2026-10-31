@@ -1003,6 +1003,72 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       const stickers = options.stickers
       let stickerEmitted = false
 
+      // Visible speech, in stream order: it decides a held unprompted turn, then is stored, published, and spoken.
+      const appendSpeech = async (speech: string) => {
+        let speechOnly = speech
+        if (speechOnly) {
+          if (!speechStarted) {
+            // Leading whitespace belongs to speech only after visible text arrives.
+            pendingSpeechWhitespace += speechOnly
+            if (!pendingSpeechWhitespace.trim())
+              return
+            speechOnly = pendingSpeechWhitespace
+            pendingSpeechWhitespace = ''
+            speechStarted = true
+          }
+
+          // Visible speech decides an unprompted turn. Held specials are emitted in order before this literal.
+          if (turnState === 'holding') {
+            if (!await commitUnpromptedTurn())
+              return
+            for (const special of heldSpecials.splice(0)) {
+              await hooks.emitTokenSpecialHooks(special, streamingMessageContext)
+              if (shouldAbort())
+                return
+            }
+          }
+
+          if (pendingBreak) {
+            // Whitespace between a break and the next text belongs to neither bubble.
+            if (!speechOnly.trim())
+              return
+            speechOnly = speechOnly.trimStart()
+            const accepted = pendingBreak
+            pendingBreak = undefined
+            breaks++
+            await hooks.emitTokenSpecialHooks(accepted.special, streamingMessageContext)
+            if (shouldAbort())
+              return
+            buildingMessage.slices.push({ type: 'break', seconds: accepted.seconds })
+            buildingMessage.content += '\n\n'
+          }
+          else if (separateAfterIgnoredBreak) {
+            separateAfterIgnoredBreak = false
+            const previous = buildingMessage.slices.at(-1)
+            if (previous?.type === 'text' && !/\s$/.test(previous.text) && !/^\s/.test(speechOnly))
+              speechOnly = ` ${speechOnly}`
+          }
+
+          buildingMessage.content += speechOnly
+
+          await hooks.emitTokenLiteralHooks(speechOnly, streamingMessageContext)
+          if (shouldAbort())
+            return
+
+          const lastSlice = buildingMessage.slices.at(-1)
+          if (lastSlice?.type === 'text') {
+            lastSlice.text += speechOnly
+          }
+          else {
+            buildingMessage.slices.push({
+              type: 'text',
+              text: speechOnly,
+            })
+          }
+          publishStream()
+        }
+      }
+
       const parser = useLlmmarkerParser({
         onLiteral: async (literal) => {
           if (shouldAbort() || outputClosed())
@@ -1010,70 +1076,9 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
 
           categorizer.consume(literal)
 
-          let speechOnly = categorizer.filterToSpeech(literal, streamPosition)
+          const speechOnly = categorizer.filterToSpeech(literal, streamPosition)
           streamPosition += literal.length
-
-          if (speechOnly) {
-            if (!speechStarted) {
-              // Leading whitespace belongs to speech only after visible text arrives.
-              pendingSpeechWhitespace += speechOnly
-              if (!pendingSpeechWhitespace.trim())
-                return
-              speechOnly = pendingSpeechWhitespace
-              pendingSpeechWhitespace = ''
-              speechStarted = true
-            }
-
-            // Visible speech decides an unprompted turn. Held specials are emitted in order before this literal.
-            if (turnState === 'holding') {
-              if (!await commitUnpromptedTurn())
-                return
-              for (const special of heldSpecials.splice(0)) {
-                await hooks.emitTokenSpecialHooks(special, streamingMessageContext)
-                if (shouldAbort())
-                  return
-              }
-            }
-
-            if (pendingBreak) {
-              // Whitespace between a break and the next text belongs to neither bubble.
-              if (!speechOnly.trim())
-                return
-              speechOnly = speechOnly.trimStart()
-              const accepted = pendingBreak
-              pendingBreak = undefined
-              breaks++
-              await hooks.emitTokenSpecialHooks(accepted.special, streamingMessageContext)
-              if (shouldAbort())
-                return
-              buildingMessage.slices.push({ type: 'break', seconds: accepted.seconds })
-              buildingMessage.content += '\n\n'
-            }
-            else if (separateAfterIgnoredBreak) {
-              separateAfterIgnoredBreak = false
-              const previous = buildingMessage.slices.at(-1)
-              if (previous?.type === 'text' && !/\s$/.test(previous.text) && !/^\s/.test(speechOnly))
-                speechOnly = ` ${speechOnly}`
-            }
-
-            buildingMessage.content += speechOnly
-
-            await hooks.emitTokenLiteralHooks(speechOnly, streamingMessageContext)
-            if (shouldAbort())
-              return
-
-            const lastSlice = buildingMessage.slices.at(-1)
-            if (lastSlice?.type === 'text') {
-              lastSlice.text += speechOnly
-            }
-            else {
-              buildingMessage.slices.push({
-                type: 'text',
-                text: speechOnly,
-              })
-            }
-            publishStream()
-          }
+          await appendSpeech(speechOnly)
         },
         onSpecial: async (special, recovery) => {
           if (shouldAbort() || outputClosed())
@@ -1154,6 +1159,11 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           await hooks.emitTokenSpecialHooks(special, streamingMessageContext)
         },
         onEnd: async (fullText) => {
+          if (shouldAbort() || outputClosed())
+            return
+
+          // A `<` that ended the reply was held in case the next chunk made it a tag. No chunk did, so it is text.
+          await appendSpeech(categorizer.flush())
           if (shouldAbort() || outputClosed())
             return
 

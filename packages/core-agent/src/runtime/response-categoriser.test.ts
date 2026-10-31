@@ -93,6 +93,25 @@ describe('createStreamingCategorizer', () => {
     expect(spoken).toBe('Hello')
   })
 
+  it.each([
+    [['a <', '3 you'], 'a <3 you', ''],
+    [['hey >_<'], 'hey >_', '<'],
+    [['hey >_', '<'], 'hey >_', '<'],
+    [['a <', '<'], 'a <', '<'],
+  ])('releases a held `<` of %j when the next chunk shows it is text, or at flush', (pieces, streamed, flushed) => {
+    const categorizer = createStreamingCategorizer()
+    let spoken = ''
+    let position = 0
+    for (const piece of pieces) {
+      categorizer.consume(piece)
+      spoken += categorizer.filterToSpeech(piece, position)
+      position += piece.length
+    }
+    expect(spoken).toBe(streamed)
+    expect(categorizer.flush()).toBe(flushed)
+    expect(categorizer.flush()).toBe('')
+  })
+
   it('should handle tags split across chunks', () => {
     const categorizer = createStreamingCategorizer()
     const chunks = [
