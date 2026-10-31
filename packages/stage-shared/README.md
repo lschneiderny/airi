@@ -172,6 +172,10 @@ const { sample } = storeToRefs(useForegroundWindowStore())
 Use this store to pass foreground samples from a host producer to the situation sensor in `@proj-airi/stage-ui`.
 Do not persist or replicate it, because a sample carries a raw window title. Do not sample the foreground window in this package; the host producer owns sampling.
 
+### Stage world
+
+The `stage-world` entrypoint owns the pure camera calibration (`calibrateCamera`, `worldToDip`, `dipToPlane`) and ground-line helpers (`groundLineOf`, `defaultHomeDipX`) that map work-area DIP to a character's world x. Do not use it for rendering: it imports no `three`, `vue`, or `pinia`.
+
 ## Do not use this package
 
 Keep Electron IPC definitions in the Electron application. Keep UI state and actions in `@proj-airi/stage-ui`. Keep Extension runtime and manifest behavior in `@proj-airi/plugin-sdk`.

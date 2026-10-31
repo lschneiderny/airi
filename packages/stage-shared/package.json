@@ -33,6 +33,7 @@
     "./situation": "./src/situation/index.ts",
     "./stage-contract": "./src/stage-contract/index.ts",
     "./stage-placement": "./src/stage-placement/index.ts",
+    "./stage-world": "./src/stage-world/index.ts",
     "./stores/desktop-activity": "./src/stores/desktop-activity.ts",
     "./stores/foreground-window": "./src/stores/foreground-window.ts",
     "./stores/screen-ambient-light": "./src/stores/screen-ambient-light.ts",

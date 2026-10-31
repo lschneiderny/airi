@@ -94,7 +94,7 @@ export default defineConfig({
     'yaml/plain-scalar': 'off',
   },
 }, {
-  files: ['packages/motion-driver-{natural,humanoid}/src/**'],
+  files: ['packages/motion-driver-{natural,humanoid}/src/**', 'packages/stage-shared/src/stage-world/**'],
   rules: {
     'no-restricted-imports': ['error', {
       patterns: [
