@@ -1,4 +1,4 @@
-import type { ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, MoodDose, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 
 import type { CueGestureKind, NaturalCueGestures } from './cue-gestures'
 import type { naturalEmotions } from './emotions'
@@ -7,7 +7,7 @@ import type { NaturalMotionObserver, NaturalTouchRegion } from './frame-types'
 import type { NaturalGazeLayer } from './gaze'
 import type { NaturalGestures } from './gestures'
 import type { NaturalImpulses } from './impulses'
-import type { MoodDose, NaturalEpisode, NaturalMood } from './mood'
+import type { NaturalEpisode, NaturalMood } from './mood'
 import type { Vec3 } from './posture'
 
 import { pokeDirection, pokeGlanceHold, pokeNudgeTau, pokeStrength, pokeSurpriseDedupeSeconds } from './touch'

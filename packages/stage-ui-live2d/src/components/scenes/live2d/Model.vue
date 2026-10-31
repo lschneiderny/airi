@@ -3,9 +3,9 @@ import type { Application } from '@pixi/app'
 import type { Filter } from '@pixi/core'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalMotionObserver } from '@proj-airi/motion-driver-natural/frame-types'
-import type { MoodDose, NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
+import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
-import type { ExpressionPerformanceSettings, HoldCommand, PerformanceEmotion, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceEmotion, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type {
   AmbientLightEnvironment,

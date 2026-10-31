@@ -1,4 +1,4 @@
-import type { ExpressionPerformanceSettings, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, MoodDose, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
 
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 
@@ -16,14 +16,6 @@ function clamp(value: number, min: number, max: number) {
  */
 export interface NaturalEpisode extends ReactionEpisode {
   moodGain?: number
-}
-
-// TODO(todo-3): Import MoodDose from @proj-airi/stage-shared/expression-performance when that lane lands.
-export interface MoodDose {
-  id: string
-  valence: number
-  arousal: number
-  tension: number
 }
 
 /** Active-time afterglow. Episode doses survive decay so escalations add only the missing dose. */
