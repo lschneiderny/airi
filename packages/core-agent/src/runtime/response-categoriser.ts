@@ -224,13 +224,16 @@ export function createStreamingCategorizer(
   type TagState = 'outside' | 'in-opening-tag' | 'in-content' | 'in-closing-tag'
   let tagState: TagState = 'outside'
   let tagStackDepth = 0
+  // Buffer index of a `<` that ended the buffer and was left out of speech. The next chunk decides whether it opens a
+  // tag, and `flush` releases it when the stream ends on it.
+  let heldLessThanAt = -1
 
-  // Fallback for filterToSpeech - uses rehype for robust incomplete tag detection
-  function checkIncompleteTag(): boolean {
+  // Fallback for filterToSpeech - uses rehype for incomplete tag detection
+  function checkIncompleteTag(holdTrailingLessThan = true): boolean {
     try {
       // rehype writes a text `<` (as in `a < b`) and `&` as references, so write them so here too. A `<` that ends the
-      // buffer stays raw: the next chunk can turn it into a tag such as `<think>`.
-      const source = buffer.replaceAll('&', '&#x26;').replace(/<(?![a-z/!]|$)/gi, '&#x3C;')
+      // buffer stays raw, since the next chunk can make it a tag such as `<think>`, unless `holdTrailingLessThan` is false.
+      const source = buffer.replaceAll('&', '&#x26;').replace(holdTrailingLessThan ? /<(?![a-z/!]|$)/gi : /<(?![a-z/!])/gi, '&#x3C;')
       const tree = unified().use(rehypeParse, { fragment: true }).parse(source) as Root
       const stringified = unified().use(rehypeStringify).stringify(tree).toString()
 
@@ -368,8 +371,27 @@ export function createStreamingCategorizer(
      * Removes content that falls within thought/reasoning segments
      */
     filterToSpeech(text: string, startPosition: number): string {
+      // A literal is consumed before it is filtered. A marker is filtered without being consumed, only to test visibility.
+      const consumed = startPosition + text.length === buffer.length
+      let released = ''
+      if (consumed && heldLessThanAt !== -1) {
+        // The rule of `checkIncompleteTag`: a `<` before a letter, `/`, or `!` opens a tag, which the tag handling
+        // below keeps out of speech. Any other `<` is text.
+        if (!/[a-z/!]/i.test(buffer[heldLessThanAt + 1] ?? ''))
+          released = '<'
+        heldLessThanAt = -1
+      }
+
+      // A `<` that ends the buffer after complete text is held alone until the next chunk or `flush`. Filtering out the
+      // whole literal instead lost the text before a trailing face such as `>_<`, because nothing released it.
+      const onlyTrailingLessThan = buffer.endsWith('<') && !checkIncompleteTag(false)
+      if (onlyTrailingLessThan && consumed) {
+        heldLessThanAt = buffer.length - 1
+        text = text.slice(0, -1)
+      }
+
       // Check if we're currently inside an incomplete tag
-      if (checkIncompleteTag()) {
+      if (!onlyTrailingLessThan && checkIncompleteTag()) {
         // Try to find where the tag closes in the combined buffer + text
         const fullText = buffer + text
         try {
@@ -398,7 +420,7 @@ export function createStreamingCategorizer(
           })
 
           if (closingOffset === -1)
-            return '' // Still incomplete, filter everything
+            return released // Still incomplete, filter everything
 
           // Return only content after the closing tag
           // The buffer already includes text up to closingOffset (from consume())
@@ -408,13 +430,13 @@ export function createStreamingCategorizer(
           categorized = categorizeResponse(buffer, providerId)
         }
         catch {
-          return '' // Parsing failed, filter everything
+          return released // Parsing failed, filter everything
         }
       }
 
       if (!categorized || categorized.segments.length === 0) {
         // No segments detected, all text is speech
-        return text
+        return released + text
       }
 
       let filtered = ''
@@ -428,7 +450,7 @@ export function createStreamingCategorizer(
 
       if (overlappingSegments.length === 0) {
         // No overlapping segments, all text is speech
-        return text
+        return released + text
       }
 
       // Build filtered text by excluding non-speech segments
@@ -454,7 +476,16 @@ export function createStreamingCategorizer(
         filtered += text.slice(afterStart)
       }
 
-      return filtered
+      return released + filtered
+    },
+    /**
+     * Releases a `<` that ended the stream. It was held because a later chunk could have made it a tag.
+     * Call it once after the last chunk and treat the result as speech.
+     */
+    flush(): string {
+      const held = heldLessThanAt === -1 ? '' : '<'
+      heldLessThanAt = -1
+      return held
     },
     getCurrentPosition(): number {
       return buffer.length

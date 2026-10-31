@@ -6,6 +6,7 @@ import type { ChatHistoryItem, ChatTurnCueStats, ContextMessage, StreamingAssist
 import type { StreamEvent, StreamOptions } from '../types/llm'
 import type { ChatOrchestratorRuntimeState, ChatOrchestratorSessionPort } from './chat-orchestrator-runtime'
 
+import { chunkTtsInput } from '@proj-airi/pipelines-audio'
 import { ContextUpdateStrategy } from '@proj-airi/server-shared/types'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -3384,6 +3385,30 @@ describe('wordless user turns and break slices', () => {
     expect(specials).toEqual([])
     expect(saved).toMatchObject({ content: 'Hi there', slices: [{ type: 'text', text: 'Hi there' }] })
     expect(streamEnds[0]).toMatchObject({ breaks: 0, breaksIgnored: 1 })
+  })
+
+  it.each([
+    ['ow, hey >_<', 'ow, hey'],
+    ['hello there! >_<', 'hello there!'],
+    ['ow, hey! >_< you', 'ow, hey! you'],
+  ])('stores every character of %j and speaks it as %j, at every chunk split', async (reply, spoken) => {
+    // ROOT CAUSE:
+    //
+    // The categorizer held a `<` that ended its buffer, since the next chunk could make it a tag, by filtering the whole
+    // literal out of speech. Nothing released it, so the text before a trailing face such as `>_<` was lost.
+    for (const chunks of chunkingsOf(reply)) {
+      const label = JSON.stringify(chunks)
+      const { literals, saved } = await userTurn(chunks)
+
+      expect(saved?.content, label).toBe(reply)
+      expect(saved?.role === 'assistant' && saved.slices, label).toEqual([{ type: 'text', text: reply }])
+      const tts: string[] = []
+      for await (const chunk of chunkTtsInput(literals.join(''), { stripAsciiFaces: true })) {
+        if (chunk.text.trim())
+          tts.push(chunk.text.trim())
+      }
+      expect(tts.join(' '), label).toBe(spoken)
+    }
   })
 
   it('forwards a malformed BREAK as an ordinary special without splitting the text', async () => {
