@@ -1,10 +1,19 @@
+import type { BroadcastChannelEmitOptions } from '@moeru/eventa/adapters/broadcast-channel'
+
 import type { FrameMeasurement, StageTiming } from '../composables/mmd/frame-metrics'
+import type { MMDOverlayFlags } from '../composables/mmd/overlays'
 import type { MMDRigProfile } from '../composables/mmd/rig'
 
+import { createContext, defineEventa } from '@moeru/eventa'
+import { createContext as createBroadcastChannelContext } from '@moeru/eventa/adapters/broadcast-channel'
 import { defineStore } from 'pinia'
 import { onScopeDispose, ref, shallowRef } from 'vue'
 
 import { MMDFrameMetrics } from '../composables/mmd/frame-metrics'
+import { isMMDOverlayFlags, mmdOverlaysOff } from '../composables/mmd/overlays'
+
+/** The lab turns stage overlays on or off in every window. Not persisted: a reloaded stage starts with them off. */
+export const mmdOverlaySetEvent = defineEventa<Partial<MMDOverlayFlags>>('eventa:event:mmd:motion-diagnostics:overlay:set')
 
 export interface MMDMotionSnapshot {
   loadedModelKey: string | null
@@ -26,7 +35,16 @@ export type MMDMotionCommand
   = | { type: 'command', name: 'startMeasurement' | 'stopMeasurement', value?: undefined }
     | { type: 'command', name: 'setDebugFlag', value: { flag: 'disableFootContact' | 'disableLookAt', on: boolean } }
     | { type: 'command', name: 'advanceDirectorClock', value: number }
-    | { type: 'command', name: 'setOverlay', value: unknown }
+    | { type: 'command', name: 'setOverlay', value: Partial<MMDOverlayFlags> }
+
+function isSnapshotMessage(data: unknown): data is { type: 'snapshot', snapshot: MMDMotionSnapshot } {
+  return typeof data === 'object' && data !== null && 'type' in data && data.type === 'snapshot'
+    && 'snapshot' in data && typeof data.snapshot === 'object' && data.snapshot !== null && 'loadedModelKey' in data.snapshot
+}
+
+function isRawMessage(data: unknown): boolean {
+  return typeof data === 'object' && data !== null && 'type' in data && (data.type === 'command' || data.type === 'snapshot')
+}
 
 export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () => {
   const channel = typeof BroadcastChannel === 'undefined'
@@ -36,7 +54,9 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
   let warned = false
   const debugFlags = ref({ disableFootContact: false, disableLookAt: false })
   const directorClockOffsetMs = ref(0)
-  const overlay = shallowRef<unknown>(null)
+  const overlays = shallowRef<MMDOverlayFlags>({ ...mmdOverlaysOff })
+  /** Set once this window's stage publishes; a stage window never mirrors another window's snapshots. */
+  let publisher = false
   const snapshot = shallowRef<MMDMotionSnapshot>({
     loadedModelKey: null,
     driver: 'classic',
@@ -91,23 +111,54 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
         directorClockOffsetMs.value += value
         break
       case 'setOverlay':
-        overlay.value = value
+        if (!isMMDOverlayFlags(value)) {
+          warn()
+          return
+        }
+        overlays.value = { ...overlays.value, ...value }
         break
       default:
         warn()
     }
   }
 
+  // NOTICE:
+  // Raw command and snapshot messages share this channel, so this earlier listener stops them before Eventa.
+  // The Eventa adapter logs a parse error for every non-Eventa message.
+  // Source: `restoreInner` in node_modules/@moeru/eventa/dist/internal-*.mjs; the Live2D store does the same.
+  // Remove when the raw BroadcastChannel command protocol moves to Eventa contracts.
   function onMessage(event: MessageEvent<unknown>) {
+    if (!isRawMessage(event.data))
+      return
+    event.stopImmediatePropagation()
+    if (isSnapshotMessage(event.data)) {
+      if (!publisher)
+        snapshot.value = event.data.snapshot
+      return
+    }
     receive(event.data)
   }
   channel?.addEventListener('message', onMessage)
+  const { context, dispose } = channel
+    ? createBroadcastChannelContext(channel)
+    : { context: createContext<undefined, BroadcastChannelEmitOptions>(), dispose: () => {} }
+  context.on(mmdOverlaySetEvent, ({ body }) => {
+    if (body)
+      overlays.value = { ...overlays.value, ...body }
+  })
   onScopeDispose(() => {
+    dispose()
     channel?.removeEventListener('message', onMessage)
     channel?.close()
   })
 
+  /** Turns stage overlays on or off in every window over the Eventa contract. */
+  function setOverlays(patch: Partial<MMDOverlayFlags>): void {
+    void context.emit(mmdOverlaySetEvent, patch)
+  }
+
   function publish(state: Partial<MMDMotionSnapshot> = {}): void {
+    publisher = true
     snapshot.value = {
       ...snapshot.value,
       ...state,
@@ -128,9 +179,10 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     snapshot,
     debugFlags,
     directorClockOffsetMs,
-    overlay,
+    overlays,
     publish,
     command,
+    setOverlays,
     setMetrics: (next: MMDFrameMetrics) => { metrics = next },
     recordFrame: (delta: number) => metrics.recordFrame(delta),
     measure: (id: string, run: () => void) => metrics.measure(id, run),

@@ -445,6 +445,108 @@ devtools:
           leave-timer: 'Off the head for {ms} of {limit} ms'
         copy: Copy snapshot
         copied: Copied
+    mmd-motion:
+      title: MMD Motion Lab
+      description: Read the MMD rig report, director, body and timing diagnostics, and draw stage overlays
+      main-window-note: Readouts come from the character in the main AIRI window, and overlays draw there.
+      overlays:
+        title: Stage overlays
+        description: Each overlay is added to the stage scene while it is on and removed when it is off.
+        flags:
+          ik:
+            title: IK chains
+            description: Draw every PMX IK chain with the solver's helper.
+          colliders:
+            title: Touch colliders
+            description: Draw the rigid-body shapes that pokes and pets hit, posed from the bones.
+          feet:
+            title: Foot anchors
+            description: Mark each leg IK bone and the ankle it pulls.
+          lookAt:
+            title: Look-at target
+            description: Mark the world point the body is turning toward.
+        legend:
+          collider-head: Head collider
+          collider-body: Body collider
+          foot-anchor: Foot anchor
+          ankle: Ankle
+          look-at: Look-at target
+      director:
+        title: Body director
+        empty: No director is running. Load an MMD model in the main window.
+        rows:
+          stance: Stance
+          since: In stance for
+          reason: Reason
+          clock-offset: Debug clock offset
+          center-y: Center Y (model units)
+        advance:
+          title: Advance the director clock (ms)
+          description: Adds to the director's clock only. Natural and physics keep real time.
+          button: Advance
+      body:
+        title: Body
+        natural-only: Available while the Natural driver runs.
+        look-at:
+          title: Look-at
+          turning: Turning
+          settled: Settled
+          rows:
+            target: Target
+            yaw: Head yaw
+            pitch: Head pitch
+            turning: State
+            turns: Turns
+        feet:
+          title: Feet
+          rows:
+            max-error: Max error
+            error-left: Left error
+            error-right: Right error
+            contact: Contact
+        touch:
+          title: Touch
+          empty: Touch is off, or no model is mounted.
+          yes: 'Yes'
+          no: 'No'
+          rows:
+            last-region: Last region
+            hit-body: Hit a collider
+            pet-active: Petting
+            head-screen-point: Head on screen
+            events: Events
+      timings:
+        title: Timings
+        no-model: No model loaded
+        model: Model
+        driver: Driver
+        fps: FPS (last / 60 s mean)
+        empty: No stage timings yet.
+        columns:
+          stage: Stage
+          last: Last (ms)
+          p95: p95 (ms)
+      rig:
+        title: Rig report
+        empty: No rig profile. Load an MMD model in the main window.
+        yes: 'Yes'
+        no: 'No'
+        rows:
+          missing: Missing humanoid bones
+          physics-owned: Physics-owned humanoid bones
+          center: Center / groove
+          leg-ik-left: Left leg IK
+          leg-ik-right: Right leg IK
+          toe-ik: Toe IK (left / right)
+          knee: Knee bend sign
+          leg-length: Leg length
+          foot-baseline: Foot baseline Y
+          rest-arm: Rest arm angle
+          eyes: Eye source
+          waist-cancel: Waist cancel
+        columns:
+          humanoid: Humanoid
+          bone: Bone
     live2d-motion:
       title: Live2D Motion Control
       description: Control Live2D eye, head, and body motion.

@@ -64,9 +64,10 @@ import { resolveBodyTarget } from '../../composables/mmd/body/attention'
 import { resolveFrameBounds } from '../../composables/mmd/camera-bounds'
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
+import { MMDOverlays } from '../../composables/mmd/overlays'
 import { readMMDRigProfile } from '../../composables/mmd/rig'
 import { frameClocks, MMDStanceDirector } from '../../composables/mmd/stance'
-import { MMDTouch } from '../../composables/mmd/touch'
+import { buildMMDTouchColliders, MMDTouch, mmdTouchRegionRoots } from '../../composables/mmd/touch'
 import { Emotion, EMOTION_VALUES } from '../../constants/emotions'
 import { useMMDExpressionStore } from '../../stores/expression-store'
 import { useMMD } from '../../stores/mmd'
@@ -180,6 +181,7 @@ let rig: ReturnType<typeof readMMDRigProfile> | undefined
 let stopMorphOverrides: (() => void) | undefined
 let touch: MMDTouch | undefined
 let stance: MMDStanceDirector | undefined
+let overlays: MMDOverlays | undefined
 // Natural's clock for the current frame; the director clock offset never reaches it.
 let naturalSeconds = performance.now() / 1000
 // Motion names already bound to the current model runtime.
@@ -452,6 +454,7 @@ function renderLoop(now = performance.now()) {
   animation?.update(delta)
   if (touch)
     handleTouchEvents(touch.update(now))
+  overlays?.update()
 
   controls?.update()
   const activeRenderer = renderer
@@ -491,6 +494,8 @@ function disposeModel() {
   stopMorphOverrides?.()
   stopMorphOverrides = undefined
   emote?.dispose()
+  overlays?.dispose()
+  overlays = undefined
   morphRuntime?.resetToBase()
   const runtimeDisposedByManager = animation !== undefined
   if (animation) {
@@ -856,6 +861,29 @@ watch(naturalTouchPetRequiresHold, (requireHold) => {
   resetTouch()
   if (touch)
     touch.gestures.requireHold = requireHold
+})
+
+// --- Devtools overlays
+// Overlay objects live in the scene only while the lab has them on; the model's lifecycle recreates them.
+watch(componentState, (state) => {
+  overlays?.dispose()
+  overlays = undefined
+  if (state !== 'mounted' || !mesh || !resolved || !rig || !scene)
+    return
+  const { mmd } = resolved
+  const activeMesh = mesh
+  overlays = new MMDOverlays(scene, {
+    mesh: activeMesh,
+    rig,
+    colliders: buildMMDTouchColliders(mmd.pmx, activeMesh.skeleton.boneInverses, activeMesh.bindMatrix, mmdTouchRegionRoots(rig)),
+    createIkHelper: () => mmd.ikSolver.createHelper(),
+    lookAtTarget: () => motionDriver.value === 'natural' ? body?.diagnostics.lookAt.target ?? null : null,
+  })
+  overlays.apply(diagnostics.overlays)
+}, { flush: 'sync' })
+
+watch(() => diagnostics.overlays, (flags) => {
+  overlays?.apply(flags)
 })
 
 useEventListener(canvasRef, ['pointerdown', 'pointermove', 'pointerup', 'pointerleave', 'pointercancel'], (event: PointerEvent) => {

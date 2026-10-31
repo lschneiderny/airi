@@ -33,6 +33,7 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@moeru/eventa": "catalog:",
     "@moeru/std": "catalog:",
     "@moeru/three-mmd": "catalog:",
     "@moeru/three-mmd-physics-ammo": "catalog:",
