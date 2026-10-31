@@ -24,7 +24,8 @@ const ALL_HOLDING: GateHardInput = {
     ...initialSituationState,
     presence: { state: 'away', reason: 'locked', sinceMs: T0 },
     busy: { state: 'busy', atMs: T0 },
-    activity: { appId: 'discord', label: 'Discord', category: 'call', title: null, sinceMs: T0 },
+    // A game that is also a quiet app holds both quiet-app and busy-game, so their order shows.
+    activity: { appId: 'game.exe', label: 'Game', category: 'game', title: null, sinceMs: T0 },
     nowMs: T0,
   },
   signals: {
@@ -37,7 +38,7 @@ const ALL_HOLDING: GateHardInput = {
     foregroundFresh: false,
     stageVisible: false,
   },
-  settings: { enabled: false, chattiness: 0.5, dontDisturb: true, quietApps: [], speakDuringGames: false },
+  settings: { enabled: false, chattiness: 0.5, dontDisturb: true, quietApps: ['game.exe'], speakDuringGames: false },
 }
 
 /** Clears the suppressor reported at the same step, so the next one in order surfaces. */
@@ -54,7 +55,7 @@ const CLEARS: readonly ((input: GateHardInput) => GateHardInput)[] = [
   input => withSignals(input, { generating: false }),
   input => withSignals(input, { queued: 0 }),
   input => withSituation(input, { busy: { state: 'accepts', atMs: T0 } }),
-  input => withSituation(input, { activity: { appId: 'game', label: 'Game', category: 'game', title: null, sinceMs: T0 } }),
+  input => withSettings(input, { quietApps: [] }),
   input => withSituation(input, { activity: null }),
 ]
 
