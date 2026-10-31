@@ -4,7 +4,7 @@ import type { AffectTraceSink, NaturalCaptureResult } from '@proj-airi/stage-ui-
 import en from '@proj-airi/i18n/locales/en'
 
 import { defaultExpressionPerformanceSettings, parseAffectTrace } from '@proj-airi/stage-shared/expression-performance'
-import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d/live2d'
+import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { setAffectTraceSink, setNaturalTraceSink, useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { until } from '@vueuse/core'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'

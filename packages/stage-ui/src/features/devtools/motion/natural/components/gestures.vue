@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 
-import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d/live2d'
+import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { Button } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
