@@ -1,3 +1,4 @@
+import type { MMDMaterial } from '@moeru/three-mmd/materials'
 import type { MMDToonMaterial } from '@moeru/three-mmd/materials/toon'
 import type { BufferGeometry, Material, Object3D } from 'three'
 
@@ -9,6 +10,17 @@ interface OriginalSurfaceState {
 }
 
 const originalSurfaceStates = new WeakMap<MMDToonMaterial, OriginalSurfaceState>()
+
+/** Composes a live morph opacity with user intent and authored transparency. */
+export function composeMMDMaterialOpacity(material: MMDMaterial, evaluatedOpacity: number, override?: number): void {
+  const { descriptor } = material
+  const authoredTransparency = (descriptor.alphaTest ?? 0) <= 0 && (descriptor.opacity < 1 || descriptor.textureAlphaMode === 'blend')
+  const previousTransparency = material.transparent
+  material.opacity = override ?? evaluatedOpacity
+  material.transparent = authoredTransparency || material.opacity < 1
+  if (material.transparent !== previousTransparency)
+    material.needsUpdate = true
+}
 
 function forEachMMDMaterial(root: Object3D, visit: (material: MMDToonMaterial) => void): void {
   root.traverse((object) => {

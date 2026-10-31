@@ -95,6 +95,38 @@ the knee bend sign, leg length, foot baseline, eye bone source, physics-owned
 bones and the waist-cancel flag. `toRigTraits(profile)` converts it to the
 renderer-neutral `RigTraits`. Pose stages must not write physics-owned bones.
 
+### PMX morph runtime
+
+`createMMDMorphRuntime` from `@proj-airi/stage-ui-mmd/composables/mmd`
+provides a separate runtime for group, vertex, bone, material and UV morphs.
+It is not yet connected to `MMDScene`. Use it inside a frame pipeline, not
+alongside the scene's existing morph controller.
+
+Channels are persistent named weights. `setChannel(layer, name, weight)`
+replaces that layer's value; `clearChannel(layer, name)` releases ownership.
+An explicitly set clip channel can own a zero weight; an inactive zero mesh
+influence does not mask Natural face output.
+Optional channel alpha blends over lower layers; additive contributions sum
+after layer composition. Priority is devtools, lipSync, blink, expression,
+clip, naturalFace, from highest to lowest.
+
+Before `applyBoneStage(cleanPose)`, supply fresh clip influences on the mesh
+and a clean array of `{ position, quaternion }` in skeleton order.
+Run the bone stage before physics, then `applySurfaceStage()` after physics.
+Group vertex children stay baked into the group's position target; the runtime
+expands only bone, material and base-UV children. Nested groups, Flip, Impulse
+and additional-UV morphs are unsupported and reported once per model.
+
+`setComposition({ speakEnv, exprEyeClosure })` supplies normalized speech and
+eye-closure envelopes. Without an explicit speech envelope, a lip-sync channel
+owns its target at full alpha. Standard vowel names identify lip-sync targets; PMX
+Lip/Eye categories identify other mouth and eye morphs.
+`setMaterialOpacityOverrides(overrides)` composes user opacity after the fresh
+material morph state. Removing an override exposes the live morph value.
+Opacity composition runs every frame, including on unmorphed materials.
+`resetToBase()` clears channels and overrides and restores bind bones,
+descriptor material values, base UVs and zero vertex influences.
+
 ## When to use it
 
 - Displaying MMD/MikuMikuDance characters (`.pmx`/`.pmd`) on the AIRI stage.
