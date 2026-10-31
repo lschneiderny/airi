@@ -31,11 +31,8 @@ import { Animator } from '../windows/shared/animator'
 import { AppIconVisibility } from '../windows/shared/app-icon'
 import { computeResizedBoundsAnchoredToDominantDisplay } from '../windows/shared/display'
 import { toggleWindowShow } from '../windows/shared/window'
-import { showUserFacingWindow } from '../windows/stage/identity'
-
-const RECOMMENDED_WIDTH = 450
-const RECOMMENDED_HEIGHT = 600
-const ASPECT_RATIO = RECOMMENDED_WIDTH / RECOMMENDED_HEIGHT
+import { isStageWindow, showUserFacingWindow } from '../windows/stage/identity'
+import { resolveAlignedWindowBounds, windowLayoutMenuItems } from './window-layout'
 
 function applyWindowSize(window: BrowserWindow, width: number, height: number, x?: number, y?: number): void {
   if (isRendererUnavailable(window)) {
@@ -61,49 +58,6 @@ function applyWindowSize(window: BrowserWindow, width: number, height: number, x
   window.show()
 }
 
-function resolveAlignedWindowBounds(
-  window: BrowserWindow,
-  workArea: Rectangle,
-  position: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right',
-): Rectangle {
-  const { width: windowWidth, height: windowHeight } = window.getBounds()
-  const { x: areaX, y: areaY, width: areaWidth, height: areaHeight } = workArea
-
-  let x = areaX
-  let y = areaY
-
-  switch (position) {
-    case 'center':
-      x = areaX + Math.floor((areaWidth - windowWidth) / 2)
-      y = areaY + Math.floor((areaHeight - windowHeight) / 2)
-      break
-    case 'top-left':
-      break
-    case 'top-right':
-      x = areaX + areaWidth - windowWidth
-      break
-    case 'bottom-left':
-      y = areaY + areaHeight - windowHeight
-      break
-    case 'bottom-right':
-      x = areaX + areaWidth - windowWidth
-      y = areaY + areaHeight - windowHeight
-      break
-  }
-
-  return { x, y, width: windowWidth, height: windowHeight }
-}
-
-function isSizeMatch(window: BrowserWindow, targetWidth: number, targetHeight: number): boolean {
-  const { width, height } = window.getBounds()
-  return Math.abs(width - Math.round(targetWidth)) <= 2 && Math.abs(height - Math.round(targetHeight)) <= 2
-}
-
-function isPositionMatch(window: BrowserWindow, targetX: number, targetY: number): boolean {
-  const { x, y } = window.getBounds()
-  return Math.abs(x - targetX) <= 5 && Math.abs(y - targetY) <= 5
-}
-
 interface SetupTrayParams {
   mainWindow: BrowserWindow
   settingsWindow: SettingsWindowManager
@@ -121,12 +75,16 @@ const setupTrayOnce = once((params: SetupTrayParams): void => {
   const mainWindowAnimator = new Animator(params.mainWindow)
 
   function animateMainWindowTo(workArea: Rectangle, position: Parameters<typeof resolveAlignedWindowBounds>[2]) {
+    if (isStageWindow(params.mainWindow))
+      return
     const bounds = resolveAlignedWindowBounds(params.mainWindow, workArea, position)
     mainWindowAnimator.windowBoundsAnimateTo(bounds)
     params.mainWindow.show()
   }
 
   function applyMainWindowSize(width: number, height: number, x?: number, y?: number) {
+    if (isStageWindow(params.mainWindow))
+      return
     mainWindowAnimator.stop()
     applyWindowSize(params.mainWindow, width, height, x, y)
   }
@@ -143,82 +101,15 @@ const setupTrayOnce = once((params: SetupTrayParams): void => {
 
     const mainWindowBounds = params.mainWindow.getBounds()
     const currentDisplay = findDominantDisplayArea(mainWindowBounds, screen.getAllDisplays()) ?? screen.getDisplayMatching(mainWindowBounds)
-    const { x: areaX, y: areaY, width: areaWidth, height: areaHeight } = currentDisplay.workArea
-    const { width: windowWidth, height: windowHeight } = mainWindowBounds
-
-    const fullHeightTarget = areaHeight
-    const fullWidthTarget = Math.floor(areaHeight * ASPECT_RATIO)
-    const halfHeightTarget = Math.floor(areaHeight / 2)
-    const halfWidthTarget = Math.floor(halfHeightTarget * ASPECT_RATIO)
-
     const contextMenu = Menu.buildFromTemplate([
       { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.show'), click: () => showUserFacingWindow(params.mainWindow) },
-      { type: 'separator' },
-      {
-        label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.adjust_sizes'),
-        submenu: [
-          {
-            label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.recommended_size'),
-            type: 'checkbox',
-            checked: isSizeMatch(params.mainWindow, RECOMMENDED_WIDTH, RECOMMENDED_HEIGHT),
-            click: () => applyMainWindowSize(RECOMMENDED_WIDTH, RECOMMENDED_HEIGHT),
-          },
-          {
-            label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.full_height'),
-            type: 'checkbox',
-            checked: isSizeMatch(params.mainWindow, fullWidthTarget, fullHeightTarget),
-            click: () => applyMainWindowSize(fullWidthTarget, fullHeightTarget),
-          },
-          {
-            label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.half_height'),
-            type: 'checkbox',
-            checked: isSizeMatch(params.mainWindow, halfWidthTarget, halfHeightTarget),
-            click: () => applyMainWindowSize(halfWidthTarget, halfHeightTarget),
-          },
-          {
-            label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.full_screen'),
-            type: 'checkbox',
-            checked: isSizeMatch(params.mainWindow, areaWidth, areaHeight),
-            click: () => applyMainWindowSize(areaWidth, areaHeight, areaX, areaY),
-          },
-        ],
-      },
-      {
-        label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.align_to'),
-        submenu: [
-          {
-            label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.center'),
-            type: 'checkbox',
-            checked: isPositionMatch(params.mainWindow, areaX + Math.floor((areaWidth - windowWidth) / 2), areaY + Math.floor((areaHeight - windowHeight) / 2)),
-            click: () => animateMainWindowTo(currentDisplay.workArea, 'center'),
-          },
-          { type: 'separator' },
-          {
-            label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.top_left'),
-            type: 'checkbox',
-            checked: isPositionMatch(params.mainWindow, areaX, areaY),
-            click: () => animateMainWindowTo(currentDisplay.workArea, 'top-left'),
-          },
-          {
-            label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.top_right'),
-            type: 'checkbox',
-            checked: isPositionMatch(params.mainWindow, areaX + areaWidth - windowWidth, areaY),
-            click: () => animateMainWindowTo(currentDisplay.workArea, 'top-right'),
-          },
-          {
-            label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.bottom_left'),
-            type: 'checkbox',
-            checked: isPositionMatch(params.mainWindow, areaX, areaY + areaHeight - windowHeight),
-            click: () => animateMainWindowTo(currentDisplay.workArea, 'bottom-left'),
-          },
-          {
-            label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.bottom_right'),
-            type: 'checkbox',
-            checked: isPositionMatch(params.mainWindow, areaX + areaWidth - windowWidth, areaY + areaHeight - windowHeight),
-            click: () => animateMainWindowTo(currentDisplay.workArea, 'bottom-right'),
-          },
-        ],
-      },
+      ...windowLayoutMenuItems({
+        window: params.mainWindow,
+        workArea: currentDisplay.workArea,
+        t: key => params.i18n.t(key),
+        resize: applyMainWindowSize,
+        align: position => animateMainWindowTo(currentDisplay.workArea, position),
+      }),
       { type: 'separator' },
       { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.settings'), click: () => void params.settingsWindow.openWindow('/settings') },
       { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.about'), click: () => params.aboutWindow().then(window => toggleWindowShow(window)) },

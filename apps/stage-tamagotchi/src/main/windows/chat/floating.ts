@@ -550,6 +550,9 @@ export function setupFloatingChatWindow(params: {
     target.show()
     target.focus()
     target.moveTop()
+    // The updates above ran while a folded chat was still hidden, and a macOS child window can become visible without
+    // a `show` event, so the stage would not see the unfolded chat until the next move.
+    params.onWindowChange()
   }
 
   function fold(target: BrowserWindow) {
