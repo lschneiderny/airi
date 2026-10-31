@@ -7,6 +7,7 @@ import type { ServerChannel } from '../../services/airi/channel-server'
 import type { McpManager } from '../../services/airi/mcp-servers'
 import type { SettingsWindowManager } from '../settings'
 import type { WidgetsWindowManager } from '../widgets'
+import type { CharacterPlacementSource } from './anchor'
 
 import { join, resolve } from 'node:path'
 
@@ -17,6 +18,7 @@ import { boolean, number, object, optional, picklist } from 'valibot'
 
 import icon from '../../../../resources/icon.png?asset'
 
+import { defaultFloatingChatWidthDip } from '../../../shared/chat-floating'
 import {
   electronChatWindowCollectDraft,
   electronChatWindowDraftSettled,
@@ -29,6 +31,7 @@ import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { protectPrivilegedWindowNavigation } from '../shared'
+import { createCharacterAnchor, createMainWindowAnchor } from './anchor'
 import { chatAttentionTargetOf, createChatAttentionTargetFeed } from './attention-target'
 import { setupFloatingChatWindow } from './floating'
 import { createChatModeSwitch } from './mode-switch'
@@ -60,7 +63,7 @@ const defaultChatWindowConfig: ChatWindowConfig = {
   mode: 'floating',
   placement: 'attached',
   pinned: true,
-  floating: { width: 380, height: 560 },
+  floating: { width: defaultFloatingChatWidthDip, height: 560 },
 }
 
 /**
@@ -101,6 +104,12 @@ export interface ChatWindowManager {
  */
 export function setupChatWindowManager(params: {
   getMainWindow: () => BrowserWindow | undefined
+  /**
+   * The character placement of the desktop stage. An attached chat lines up
+   * against her home rectangle while this returns a source, and against the
+   * main window while it returns `undefined`.
+   */
+  getCharacterPlacementSource?: () => CharacterPlacementSource | undefined
   openSettingsWindow: SettingsWindowManager['openWindow']
   widgetsManager: WidgetsWindowManager
   serverChannel: ServerChannel
@@ -212,6 +221,13 @@ export function setupChatWindowManager(params: {
 
   const floating = setupFloatingChatWindow({
     getMainWindow: params.getMainWindow,
+    getAnchor: () => {
+      const source = params.getCharacterPlacementSource?.()
+      if (source)
+        return createCharacterAnchor(source)
+      const main = params.getMainWindow()
+      return main && !main.isDestroyed() ? createMainWindowAnchor(main) : undefined
+    },
     getPlacement: () => getConfig().placement,
     getPinned: () => getConfig().pinned,
     getBounds: () => getConfig().floating,

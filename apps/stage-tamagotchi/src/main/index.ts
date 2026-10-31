@@ -2,6 +2,7 @@ import type { BrowserWindow } from 'electron'
 
 import type { FileLoggerHandle } from './app/file-logger'
 import type { SettingsWindowManager } from './windows/settings'
+import type { StageWindowHost } from './windows/stage'
 
 import process, { env, platform } from 'node:process'
 
@@ -162,6 +163,8 @@ electronApp.setAppUserModelId('ai.moeru.airi')
 // The second-instance handler should restore the main UI instead of accidentally surfacing internals.
 let userFacingMainWindow: BrowserWindow | undefined
 let settingsWindowManager: SettingsWindowManager | undefined
+/** The desktop stage host, set when the launch builds the desktop stage. The chat attaches to its character placement. */
+let stageHost: StageWindowHost | undefined
 let extensionManagementWebContentsId: number | undefined
 const shouldStartMainProcess = installSingleInstanceGuard({ app, getWindow: () => userFacingMainWindow })
 
@@ -337,6 +340,7 @@ app.whenReady().then(async () => {
     build: ({ dependsOn }) => setupChatWindowManager({
       ...dependsOn,
       getMainWindow: () => userFacingMainWindow,
+      getCharacterPlacementSource: () => stageHost,
       // NOTICE:
       // Chat cannot depend on Settings in injeca, because Settings depends on
       // Spotlight and Spotlight depends on Chat. Settings is built before any
@@ -394,6 +398,7 @@ app.whenReady().then(async () => {
         dependsOn: userFacingWindowDependencies,
         build: async ({ dependsOn }) => {
           const stage = await setupStageWindow({ ...dependsOn, config: stageConfig, onWindowCreated: onUserFacingWindowCreated(dependsOn.goNetwork) })
+          stageHost = stage
           return stage.window
         },
       })

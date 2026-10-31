@@ -3,6 +3,7 @@ import type { ResizeDirection } from '@proj-airi/electron-eventa'
 import type { Point, Rectangle } from 'electron'
 
 import type { ChatFloatingPlacement, ChatFloatingState } from '../../../shared/eventa'
+import type { ChatAnchor } from './anchor'
 import type { ChatWindowSnapshot } from './attention-target'
 import type { AttachedChatLayout } from './floating-placement'
 
@@ -96,6 +97,8 @@ function gripDirection(layout: AttachedChatLayout): ResizeDirection {
  */
 export function setupFloatingChatWindow(params: {
   getMainWindow: () => BrowserWindow | undefined
+  /** What an attached chat lines up against: the main window, or the character's home in desktop mode. */
+  getAnchor: () => ChatAnchor | undefined
   getPlacement: () => ChatFloatingPlacement
   /** Whether a `free` chat stays above other windows. */
   getPinned: () => boolean
@@ -120,6 +123,8 @@ export function setupFloatingChatWindow(params: {
   let pinned = false
   let slide: ReturnType<typeof animate> | undefined
   let detachFromMain: (() => void) | undefined
+  /** The anchor of the current attached placement. */
+  let anchor: ChatAnchor | undefined
   /**
    * The size the chat is meant to have. A new window takes the saved size, and
    * then only the resize grip changes it.
@@ -169,12 +174,14 @@ export function setupFloatingChatWindow(params: {
     params.onFoldedChange()
   }
 
-  function moveToLayout(main: BrowserWindow, target: BrowserWindow) {
-    const mainBounds = main.getBounds()
-    const offset = attachedChatOffset(mainBounds, boundsOf(target), screen.getDisplayMatching(mainBounds).workArea, layout)
+  function moveToLayout(target: BrowserWindow) {
+    const rect = anchor?.getRect()
+    if (!rect)
+      return
+    const offset = attachedChatOffset(rect, boundsOf(target), screen.getDisplayMatching(rect).workArea, layout)
     // A child window has already moved with the main window, so this is
     // usually a no-op during a drag.
-    placeAt(target, mainBounds.x + offset.x, mainBounds.y + offset.y)
+    placeAt(target, rect.x + offset.x, rect.y + offset.y)
   }
 
   function stopSlide() {
@@ -187,12 +194,14 @@ export function setupFloatingChatWindow(params: {
    * places the chat from the current main window position, so a drag that
    * continues during the slide does not leave the chat behind.
    */
-  function slideToLayout(main: BrowserWindow, target: BrowserWindow) {
+  function slideToLayout(target: BrowserWindow) {
     stopSlide()
-    const mainBounds = main.getBounds()
+    const rect = anchor?.getRect()
+    if (!rect)
+      return
     const bounds = boundsOf(target)
-    const offset = { x: bounds.x - mainBounds.x, y: bounds.y - mainBounds.y }
-    const to = attachedChatOffset(mainBounds, bounds, screen.getDisplayMatching(mainBounds).workArea, layout)
+    const offset = { x: bounds.x - rect.x, y: bounds.y - rect.y }
+    const to = attachedChatOffset(rect, bounds, screen.getDisplayMatching(rect).workArea, layout)
 
     slide = animate(offset, {
       x: to.x,
@@ -200,9 +209,9 @@ export function setupFloatingChatWindow(params: {
       duration: 220,
       ease: 'outCubic',
       onRender: () => {
-        if (target.isDestroyed() || main.isDestroyed())
+        const current = anchor?.getRect()
+        if (target.isDestroyed() || !current)
           return
-        const current = main.getBounds()
         placeAt(target, wholePixels(current.x + offset.x), wholePixels(current.y + offset.y))
       },
       onComplete: () => {
@@ -211,21 +220,25 @@ export function setupFloatingChatWindow(params: {
     })
   }
 
-  function finishRelocation(main: BrowserWindow, target: BrowserWindow) {
+  function finishRelocation(target: BrowserWindow) {
     relocating = false
-    const mainBounds = main.getBounds()
-    // The main window may have moved on while the content folded.
-    layout = chooseAttachedChatLayout(mainBounds, boundsOf(target), screen.getDisplayMatching(mainBounds).workArea, layout)
-    moveToLayout(main, target)
+    const rect = anchor?.getRect()
+    if (rect) {
+      // The anchor may have moved on while the content folded.
+      layout = chooseAttachedChatLayout(rect, boundsOf(target), screen.getDisplayMatching(rect).workArea, layout)
+      moveToLayout(target)
+    }
     emitState()
   }
 
-  function followMain(main: BrowserWindow, target: BrowserWindow) {
+  function followAnchor(target: BrowserWindow) {
     if (target.isDestroyed() || relocating)
       return
 
-    const mainBounds = main.getBounds()
-    const next = chooseAttachedChatLayout(mainBounds, boundsOf(target), screen.getDisplayMatching(mainBounds).workArea, layout)
+    const rect = anchor?.getRect()
+    if (!rect)
+      return
+    const next = chooseAttachedChatLayout(rect, boundsOf(target), screen.getDisplayMatching(rect).workArea, layout)
     const sideChanged = next.side !== layout.side
     const anchorChanged = next.anchor !== layout.anchor
 
@@ -233,7 +246,7 @@ export function setupFloatingChatWindow(params: {
     if (!target.isVisible() || folded) {
       stopSlide()
       layout = next
-      moveToLayout(main, target)
+      moveToLayout(target)
       if (sideChanged)
         emitState()
       return
@@ -247,19 +260,19 @@ export function setupFloatingChatWindow(params: {
       emitState()
       // A renderer that cannot animate would never report the content hidden.
       if (isRendererUnavailable(target))
-        finishRelocation(main, target)
+        finishRelocation(target)
       return
     }
 
     if (anchorChanged) {
       layout = next
-      slideToLayout(main, target)
+      slideToLayout(target)
       return
     }
 
     // A running slide places the chat on every frame.
     if (!slide)
-      moveToLayout(main, target)
+      moveToLayout(target)
   }
 
   /** Keeps the chat's pin equal to the main window's. Returns the function that stops it. */
@@ -271,7 +284,9 @@ export function setupFloatingChatWindow(params: {
   }
 
   /**
-   * Keeps an attached chat beside the main window.
+   * Keeps an attached chat beside its anchor: the main window, or the
+   * character's home in desktop mode, where the main window is the full-screen
+   * stage that never moves.
    *
    * On macOS, while the chat does not have keyboard focus, it is a child
    * window of the main window, and the window server moves it with the main
@@ -287,13 +302,14 @@ export function setupFloatingChatWindow(params: {
    * that the window manager did not move with the main window, and they
    * change the layout when the current one stops fitting.
    */
-  function attachToMain(target: BrowserWindow) {
+  function attachTo(target: BrowserWindow, nextAnchor: ChatAnchor) {
     const main = params.getMainWindow()
     if (!main || main.isDestroyed())
       return
 
+    anchor = nextAnchor
     const follow = () => {
-      followMain(main, target)
+      followAnchor(target)
       params.onWindowChange()
     }
     const hideWithMain = () => target.hide()
@@ -308,24 +324,24 @@ export function setupFloatingChatWindow(params: {
       target.setAlwaysOnTop(main.isAlwaysOnTop())
     }
 
-    const mainBounds = main.getBounds()
-    layout = chooseAttachedChatLayout(mainBounds, boundsOf(target), screen.getDisplayMatching(mainBounds).workArea, preferredAttachedChatLayout)
-    moveToLayout(main, target)
+    const rect = nextAnchor.getRect()
+    if (rect)
+      layout = chooseAttachedChatLayout(rect, boundsOf(target), screen.getDisplayMatching(rect).workArea, preferredAttachedChatLayout)
+    moveToLayout(target)
     const stopFollowingPin = followMainPin(main, target)
     // NOTICE:
     // Only macOS moves a child window with its parent during a drag, so only
     // macOS links the chat. With this link, the attached chat on Windows
     // flickered and used much CPU; the unlinked free chat did not.
     // Removal condition: a Windows build that keeps the link stable.
-    const linksToMain = isMacOS
+    const linksToMain = isMacOS && nextAnchor.nativeChild
     if (linksToMain) {
       if (!target.isFocused())
         linkToMain()
       target.on('focus', unlinkFromMain)
       target.on('blur', linkToMain)
     }
-    main.on('move', follow)
-    main.on('resize', follow)
+    const stopFollowingAnchor = nextAnchor.onChange(follow)
     // A minimized chat does not follow the main window, so it catches up when
     // it comes back.
     target.on('restore', follow)
@@ -334,8 +350,8 @@ export function setupFloatingChatWindow(params: {
 
     detachFromMain = () => {
       stopSlide()
-      main.off('move', follow)
-      main.off('resize', follow)
+      anchor = undefined
+      stopFollowingAnchor()
       main.off('hide', hideWithMain)
       main.off('show', showWithMain)
       stopFollowingPin()
@@ -359,12 +375,17 @@ export function setupFloatingChatWindow(params: {
     // the main window's pin state.
     const placement = params.getPlacement()
     const main = params.getMainWindow()
-    if (placement === 'attached')
-      attachToMain(target)
-    else if (placement === 'danmaku' && main && !main.isDestroyed())
+    const nextAnchor = placement === 'attached' ? params.getAnchor() : undefined
+    if (placement === 'attached') {
+      if (nextAnchor)
+        attachTo(target, nextAnchor)
+    }
+    else if (placement === 'danmaku' && main && !main.isDestroyed()) {
       detachFromMain = followMainPin(main, target)
-    else
+    }
+    else {
       target.setAlwaysOnTop(params.getPinned())
+    }
 
     emitState()
   }
@@ -386,8 +407,7 @@ export function setupFloatingChatWindow(params: {
   }
 
   function resizeBy(target: BrowserWindow, delta: { deltaX: number, deltaY: number }) {
-    const main = params.getMainWindow()
-    const attachedTo = params.getPlacement() === 'attached' && main && !main.isDestroyed() ? main : undefined
+    const attachedTo = params.getPlacement() === 'attached' ? anchor : undefined
 
     // The layout stays during a resize, so the chat never jumps to the other
     // side under the cursor. A chat that is not attached has its grip at the
@@ -405,7 +425,7 @@ export function setupFloatingChatWindow(params: {
     size = { width: placed.width, height: placed.height }
     placeAt(target, placed.x, placed.y)
     if (attachedTo)
-      moveToLayout(attachedTo, target)
+      moveToLayout(target)
 
     persistBounds(target)
   }
@@ -487,9 +507,8 @@ export function setupFloatingChatWindow(params: {
         return
       }
 
-      const main = params.getMainWindow()
-      if (relocating && main && !main.isDestroyed())
-        finishRelocation(main, target)
+      if (relocating && anchor)
+        finishRelocation(target)
     })
     defineInvokeHandler(targetContext, electronChatFloatingFold, () => fold(target))
     defineInvokeHandler(targetContext, electronChatFloatingResizeBy, (delta) => {
