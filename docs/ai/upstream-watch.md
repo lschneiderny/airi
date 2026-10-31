@@ -42,6 +42,15 @@ The upstream review of 2026-10-26 created this list. Commits that the fork took 
 - **Revisit when:** Upstream's voice input pipeline stops changing, with no follow-up rewrites of the same modules for a few weeks. Also wait until speaker gates land, because they decide which voice inputs start at all. Before importing, check the fork's `user-speaking` and interruption behavior against the new decision rules.
 - **Search terms:** `voice input`, `speculat`, `rewrite`, `turn detection`, `stream-kit`.
 
+## Kirie desktop host
+
+- **Upstream:** `apps/stage-tamagotchi-kirie`, a Godot desktop host that renders the Stage Vue renderer through CEF on [`moeru-ai/godot-kirie`](https://github.com/moeru-ai/godot-kirie). Recent ports include the system tray ([#3077](https://github.com/moeru-ai/airi/pull/3077)), the floating chat window ([#3140](https://github.com/moeru-ai/airi/pull/3140)), settings search ([#3113](https://github.com/moeru-ai/airi/pull/3113)), and renderer sync from stage-tamagotchi ([#3076](https://github.com/moeru-ai/airi/pull/3076)).
+- **What it adds:** A replacement for Electron as the desktop shell. Upstream ships Electron and keeps it as the behavior reference while Kirie catches up.
+- **Why it matters here:** If upstream makes Kirie its primary desktop host, upstream desktop fixes will land there and stop applying to the fork's Electron app.
+- **Fork conflicts (2026-10-31):** The fork removed the app on 2026-10-31. Every fork desktop feature is Electron-only: the foreground sensor, situational presence, unprompted turns, chat attention, the IO trace hub, and the Godot VRM sidecar launch. A port means reimplementing those host adapters for Kirie. The Godot VRM engine in `engines/stage-tamagotchi-godot` is separate and stays.
+- **Revisit when:** Upstream ships Kirie as a packaged desktop release, the Windows CEF exit crash (GAP-015 in its `MIGRATION.md`) is fixed, and the deferred server channel, plugin host, and model-rendering acceptance are done.
+- **Search terms:** `kirie`, `godot-kirie`, `tamagotchi-kirie`, `cef`.
+
 ## Chat actions in the tab that has the Stage
 
 - **Upstream:** `599336d03` ([#3101](https://github.com/moeru-ai/airi/pull/3101)), 2026-10-24. 7 files, and a `pinia-plugin-synced` bump from 0.1.5 to 0.1.6 for synced roles.

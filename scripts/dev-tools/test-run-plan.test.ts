@@ -33,7 +33,6 @@ describe('testRunSuites', () => {
       'pnpm run test-stage-ui-three:run',
       'pnpm run test-stage-ui-mmd:run',
       'pnpm run test-audio-browser:run',
-      'pnpm run test-stage-tamagotchi-kirie-browser:run',
     ])
   })
 })

@@ -27,7 +27,6 @@ export const testRunSuites: readonly TestRunSuite[] = [
   { label: 'test-stage-ui-three:run', command: 'pnpm run test-stage-ui-three:run' },
   { label: 'test-stage-ui-mmd:run', command: 'pnpm run test-stage-ui-mmd:run' },
   { label: 'test-audio-browser:run', command: 'pnpm run test-audio-browser:run' },
-  { label: 'test-stage-tamagotchi-kirie-browser:run', command: 'pnpm run test-stage-tamagotchi-kirie-browser:run' },
 ]
 
 export interface VitestConfigCoverage {
@@ -43,8 +42,6 @@ export interface VitestConfigCoverage {
  * cannot have tests that no runner runs.
  */
 export const vitestConfigCoverage: Readonly<Record<string, VitestConfigCoverage>> = {
-  'apps/stage-tamagotchi-kirie/vitest.config.ts': { runBy: ['test-stage-tamagotchi-kirie-browser:run'], note: 'its node project runs through vitest.node.config.ts' },
-  'apps/stage-tamagotchi-kirie/vitest.node.config.ts': { runBy: ['root'] },
   'apps/stage-tamagotchi/vitest.config.ts': { runBy: ['test-stage-tamagotchi:run'] },
   'apps/stage-tamagotchi/vitest.node.config.ts': { runBy: ['root'] },
   'apps/stage-web/vitest.config.ts': { runBy: ['test-stage-web:run'], note: 'its unit project matches no file' },

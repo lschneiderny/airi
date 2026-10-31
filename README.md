@@ -24,7 +24,6 @@ The design records for these features are in [`docs/ai/adr/`](./docs/ai/adr/).
 | Desktop (Stage Tamagotchi, Electron) | [`apps/stage-tamagotchi`](./apps/stage-tamagotchi) | Main target |
 | Web (Stage Web) | [`apps/stage-web`](./apps/stage-web) | Works without desktop-only features such as foreground-window sampling |
 | Mobile (Stage Pocket, Capacitor) | [`apps/stage-pocket`](./apps/stage-pocket) | Inherited from upstream and not tested in this fork |
-| Kirie (Godot desktop host) | [`apps/stage-tamagotchi-kirie`](./apps/stage-tamagotchi-kirie) | Inherited from upstream and still being migrated |
 
 ## Getting started
 
@@ -47,7 +46,7 @@ After the app starts, configure a chat provider in Settings > Providers, then ch
 
 | Directory | Contents |
 | --- | --- |
-| `apps/` | Host apps for desktop, web, mobile, and Kirie |
+| `apps/` | Host apps for desktop, web, and mobile |
 | `packages/` | Shared UI, chat orchestration, Live2D/VRM/MMD renderers, audio, providers, and i18n |
 | `engines/` | Godot rendering sidecar |
 | `integrations/` | Discord, Telegram, Minecraft, and VS Code integrations inherited from upstream |

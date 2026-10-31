@@ -22,7 +22,6 @@ export const extraTestConfigs: { config: string, project?: string }[] = [
   { config: 'packages/stage-ui-mmd/vitest.config.ts', project: 'browser' },
   { config: 'packages/stage-pages/vitest.config.ts' },
   { config: 'apps/stage-web/vitest.config.ts', project: 'browser' },
-  { config: 'apps/stage-tamagotchi-kirie/vitest.config.ts', project: 'browser' },
   { config: 'packages/audio/vitest.config.ts', project: 'browser' },
 ]
 

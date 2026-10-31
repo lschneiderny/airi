@@ -51,7 +51,7 @@ What each kind of work needs beyond that:
 | Work | Needs |
 | --- | --- |
 | Web app, desktop app, packages | Nothing more |
-| Godot sidecar and Kirie | `cd apps/stage-tamagotchi-kirie && mise trust && mise install` installs the Godot Mono version that the root [`global.json`](../global.json) pins. Before `pnpm dev:tamagotchi`, point `GODOT4` at it: `export GODOT4="$(cd apps/stage-tamagotchi-kirie && mise which godot)"`. |
+| Godot VRM stage sidecar | `cd engines/stage-tamagotchi-godot && mise trust && mise install` installs the Godot Mono version that the root [`global.json`](../global.json) pins. Before `pnpm dev:tamagotchi`, point `GODOT4` at it: `export GODOT4="$(cd engines/stage-tamagotchi-godot && mise which godot)"`. |
 | iOS app | Full Xcode from the App Store, selected with `sudo xcode-select -s /Applications/Xcode.app`. The project uses Swift Package Manager, so CocoaPods is not needed. `pnpm lint:swift` needs `brew install swiftlint`. |
 | Packaged desktop app | Xcode 26 or later builds the `.icon` app icon. With an older Xcode, the build uses `.icns` and prints a warning. |
 | Local backend | Docker Desktop or another Docker engine for `pnpm dev:backend` |

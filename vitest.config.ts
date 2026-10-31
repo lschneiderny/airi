@@ -31,7 +31,6 @@ export default withCpuSlots(defineConfig({
       'packages/stage-ui-tachie',
       'integrations/minecraft',
       'services/computer-use-mcp',
-      'apps/stage-tamagotchi-kirie/vitest.node.config.ts',
       'packages/plugin-sdk',
       'packages/plugin-sdk-tamagotchi',
       ...providerInferenceProjects.map(project => ({ ...project, root: 'packages/provider-inference' })),

@@ -903,7 +903,7 @@ export const useSituationStore = defineStore('situation', () => {
   /**
    * Renders the situation block for one chat request and marks its `New:` events as shown, so the next request
    * does not repeat them. Returns `undefined` outside the leader, so a host that never initialized the store
-   * (for example Kirie, which shares the chat store) sends no situation block.
+   * sends no situation block.
    */
   function renderForRequest(nowMs: number): string | undefined {
     if (!leading.value)

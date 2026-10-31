@@ -45,7 +45,6 @@
     "test-ui:run": "vitest run --config packages/stage-ui/vitest.config.ts",
     "test-stage-ui-live2d:run": "vitest run --config packages/stage-ui-live2d/vitest.config.ts --project browser",
     "test-audio-browser:run": "vitest run --config packages/audio/vitest.config.ts --project browser",
-    "test-stage-tamagotchi-kirie-browser:run": "vitest run --config apps/stage-tamagotchi-kirie/vitest.config.ts --project browser",
     "test-model-driver-lipsync:run": "vitest run --config packages/model-driver-lipsync/vitest.config.ts --project browser",
     "test-stage-ui-three:run": "vitest run --config packages/stage-ui-three/vitest.config.ts --project browser",
     "test-stage-ui-mmd:run": "vitest run --config packages/stage-ui-mmd/vitest.config.ts --project browser",

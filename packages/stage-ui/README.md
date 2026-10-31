@@ -116,7 +116,7 @@ The mode does not fall back to `always-on`, because that opens the microphone al
 | --- | --- |
 | stage-tamagotchi | Yes. All windows share one app, so the settings window offers the mode too. |
 | stage-web | Only with a fine pointer, `(any-pointer: fine)`. Space is the only trigger, and no Web API reports a hardware keyboard. |
-| stage-pocket, stage-tamagotchi-kirie | No. They provide nothing. |
+| stage-pocket | No. It provides nothing. |
 
 ### Wake words
 
