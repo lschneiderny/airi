@@ -1,9 +1,9 @@
+import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
 import type { CameraCalibration } from '@proj-airi/stage-shared/stage-world'
 import type { Camera, SkinnedMesh } from 'three'
 
 import type { MMDNaturalAdapter } from '../natural/adapter'
 
-import { decideBody, initialBodyDirectorMemory, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
 import { dipToPlane } from '@proj-airi/stage-shared/stage-world'
 import { Plane, Raycaster, Vector2, Vector3 } from 'three'
 
@@ -12,15 +12,24 @@ import { projectMMDHead } from '../natural/adapter'
 /** Fraction of the camera distance, toward the camera, where stage-mode cursor and chat gaze converges. */
 export const STAGE_GAZE_PLANE_FRACTION = 0.6
 
+export interface BodyView {
+  mesh: SkinnedMesh
+  camera: Camera
+  viewport: DOMRect
+  gazeMode: 'none' | 'mouse' | 'camera'
+  calibration?: CameraCalibration
+}
+
 /**
- * Converts Natural's screen-DIP attention into a world-space stage-plane target.
+ * Converts Natural's screen-DIP attention into world-space targets for the body director.
  * With `calibration` (stage mode) points unproject onto the plane `0.6 * D` in front of her and the camera point is
- * the calibration eye; without it the legacy raycast onto her head plane applies.
+ * the calibration eye; without it the legacy raycast onto her head plane applies. Returns null when the frame has no
+ * input or the gaze mode is `none`.
  */
-export function resolveBodyTarget(
-  view: { mesh: SkinnedMesh, camera: Camera, viewport: DOMRect, gazeMode: 'none' | 'mouse' | 'camera', calibration?: CameraCalibration },
+export function resolveBodyPoints(
+  view: BodyView,
   natural: MMDNaturalAdapter['bodyFrame'],
-): Vector3 | null {
+): { cursor: Vector3 | null, chat: Vector3 | null, camera: Vector3 } | null {
   const { input } = natural
   if (!input || view.gazeMode === 'none')
     return null
@@ -43,25 +52,24 @@ export function resolveBodyTarget(
   const cameraPoint = view.calibration
     ? new Vector3(view.calibration.position.x, view.calibration.position.y, view.calibration.position.z)
     : view.camera.getWorldPosition(new Vector3())
-  if (view.gazeMode === 'camera')
-    return cameraPoint
-  const chatPoint = point(input.chat?.target ?? null)
-  if (natural.onChat && chatPoint)
-    return chatPoint
-  const { intent } = decideBody({
-    nowMs: 0,
-    performance: input.performance,
-    cursorPoint: point(input.cursor),
-    chatPoint,
-    cameraPoint,
-    slots: { sit: false, sleep: false },
-    ...NO_WORLD_BODY_INPUT,
-    interactionSeq: 0,
-    chatSendSeq: 0,
-    interactionAtMs: null,
-    actionRequest: null,
-    actionFeedback: null,
-    dragging: false,
-  }, initialBodyDirectorMemory)
-  return intent.attention.point ? new Vector3().copy(intent.attention.point) : null
+  return { cursor: point(input.cursor), chat: point(input.chat?.target ?? null), camera: cameraPoint }
+}
+
+/**
+ * The body's look-at target: the camera in camera mode, the chat while Natural glances at it, otherwise the point of
+ * the director's latest intent.
+ */
+export function resolveBodyTarget(
+  points: ReturnType<typeof resolveBodyPoints>,
+  natural: Pick<MMDNaturalAdapter['bodyFrame'], 'onChat'>,
+  gazeMode: BodyView['gazeMode'],
+  intent: BodyIntent | null,
+): Vector3 | null {
+  if (!points || gazeMode === 'none')
+    return null
+  if (gazeMode === 'camera')
+    return points.camera
+  if (natural.onChat && points.chat)
+    return points.chat
+  return intent?.attention.point ? new Vector3().copy(intent.attention.point) : null
 }

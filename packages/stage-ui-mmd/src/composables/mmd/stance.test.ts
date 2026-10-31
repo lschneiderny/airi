@@ -1,18 +1,20 @@
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
-import type { MMDStanceSlots } from './stance'
+import type { MMDStanceInteraction, MMDStanceSlots, MMDStanceWorld } from './stance'
 
+import { NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
 import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
 
 import { createMMDAnimationManager } from './animation-manager'
 import { MMDBody } from './body'
 import { bodyFixture } from './body/fixture'
-import { frameClocks, MMDStanceDirector, standingBaseMotion } from './stance'
+import { CHAT_STAND_GAP_LEGS, chatStandX, frameClocks, MMDStanceDirector, standingBaseMotion } from './stance'
 
 const idle: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: false }
 const away: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'idle', attention: 'camera', away: true }
 const EPOCH_MS = 1_000_000
+const quiet: MMDStanceInteraction = { interactionSeq: 0, chatSendSeq: 0, interactionAtMs: null, actionRequest: null, actionFeedback: null, dragging: false }
 
 function pose(name: string, center: number, legPitch: number, kneePitch: number): AnimationClip {
   const quaternion = (pitch: number) => new Quaternion().setFromEuler(new Euler(pitch, 0, 0)).toArray()
@@ -39,7 +41,7 @@ describe('standingBaseMotion', () => {
     expect(standingBaseMotion('breathe', { idle: 'nap', sleep: 'nap' })).toBe('breathe')
 
     const director = new MMDStanceDirector()
-    const result = director.update({ nowMs: EPOCH_MS, performance: idle, slots: { idle: 'qa-sit', sit: 'qa-sit' }, idleMotionName: '', isRegistered: () => true })
+    const result = director.update({ interaction: quiet, nowMs: EPOCH_MS, performance: idle, slots: { idle: 'qa-sit', sit: 'qa-sit' }, idleMotionName: '', isRegistered: () => true })
     expect(director.diagnostics.stance).toBe('stand')
     expect(result.motion).toBeNull()
   })
@@ -59,28 +61,28 @@ describe('mmd stance director', () => {
     for (const offset of [0, 60_000, 120_000]) {
       const clocks = frameClocks(nowMs, offset)
       naturalTimes.push(clocks.naturalSeconds)
-      director.update({ nowMs: clocks.directorMs, performance: idle, slots, idleMotionName: '', isRegistered: registered })
+      director.update({ interaction: quiet, nowMs: clocks.directorMs, performance: idle, slots, idleMotionName: '', isRegistered: registered })
     }
     expect(new Set(naturalTimes).size).toBe(1)
-    expect(director.diagnostics).toMatchObject({ stance: 'sit', sinceMs: nowMs + 120_000, reason: 'idle-timeout' })
+    expect(director.diagnostics).toMatchObject({ stance: 'sit', sinceMs: nowMs + 120_000, stanceReason: 'idle-timeout' })
   })
 
   it('keeps standing while away without a sleep slot, and sleeps with one', () => {
     const director = new MMDStanceDirector()
     for (let second = 0; second <= 300; second += 10)
-      director.update({ nowMs: EPOCH_MS + second * 1000, performance: away, slots: { sit: 'sit-vmd' }, idleMotionName: '', isRegistered: registered })
-    expect(director.diagnostics).toMatchObject({ stance: 'stand', reason: 'no-sleep-slot' })
+      director.update({ interaction: quiet, nowMs: EPOCH_MS + second * 1000, performance: away, slots: { sit: 'sit-vmd' }, idleMotionName: '', isRegistered: registered })
+    expect(director.diagnostics).toMatchObject({ stance: 'stand', stanceReason: 'no-sleep-slot' })
 
-    const result = director.update({ nowMs: EPOCH_MS + 310_000, performance: away, slots: { sleep: 'sleep-vmd' }, idleMotionName: '', isRegistered: registered })
+    const result = director.update({ interaction: quiet, nowMs: EPOCH_MS + 310_000, performance: away, slots: { sleep: 'sleep-vmd' }, idleMotionName: '', isRegistered: registered })
     expect(director.diagnostics.stance).toBe('sleep')
     expect(result).toEqual({ motion: 'sleep-vmd', changed: true })
   })
 
   it('ignores a stance slot whose motion is not registered on this model', () => {
     const director = new MMDStanceDirector()
-    director.update({ nowMs: EPOCH_MS, performance: idle, slots: { sit: 'missing' }, idleMotionName: '', isRegistered: () => false })
-    director.update({ nowMs: EPOCH_MS + 200_000, performance: idle, slots: { sit: 'missing' }, idleMotionName: '', isRegistered: () => false })
-    expect(director.diagnostics).toMatchObject({ stance: 'stand', reason: 'no-sit-slot' })
+    director.update({ interaction: quiet, nowMs: EPOCH_MS, performance: idle, slots: { sit: 'missing' }, idleMotionName: '', isRegistered: () => false })
+    director.update({ interaction: quiet, nowMs: EPOCH_MS + 200_000, performance: idle, slots: { sit: 'missing' }, idleMotionName: '', isRegistered: () => false })
+    expect(director.diagnostics).toMatchObject({ stance: 'stand', stanceReason: 'no-sit-slot' })
   })
 
   it('cross-fades a stance switch on the base layer without pose pops', async () => {
@@ -107,7 +109,7 @@ describe('mmd stance director', () => {
       if (frame === 120)
         offset += 120_000
       const clocks = frameClocks(EPOCH_MS + frame * 1000 / 60, offset)
-      const base = director.update({ nowMs: clocks.directorMs, performance: idle, slots, idleMotionName: 'sit', isRegistered: name => animation.availableClips().includes(name) })
+      const base = director.update({ interaction: quiet, nowMs: clocks.directorMs, performance: idle, slots, idleMotionName: 'sit', isRegistered: name => animation.availableClips().includes(name) })
       if (base.changed)
         animation.setBaseMotion(base.motion)
       animation.update(1 / 60)
@@ -133,5 +135,148 @@ describe('mmd stance director', () => {
     expect(transitionFrames).toBeGreaterThanOrEqual(30)
     expect(transitionFrames).toBeLessThanOrEqual(40)
     expect(maxDelta * 180 / Math.PI).toBeLessThan(5)
+  })
+})
+
+describe('mmd stance director in the stage world', () => {
+  const registered = () => true
+  const talking: Pick<PerformanceState, 'mode' | 'attention' | 'away'> = { mode: 'talking', attention: 'camera', away: false }
+  const world = (patch: Partial<MMDStanceWorld> = {}): MMDStanceWorld => ({
+    ...NO_WORLD_BODY_INPUT,
+    ground: { minX: -10, maxX: 10 },
+    legLength: 1,
+    ...patch,
+  })
+  function frame(director: MMDStanceDirector, atMs: number, input: MMDStanceWorld, performance = idle, offsetMs = 0, interaction: MMDStanceInteraction = quiet) {
+    return director.update({
+      interaction,
+      nowMs: frameClocks(EPOCH_MS + atMs, offsetMs).directorMs,
+      performance,
+      slots: {},
+      idleMotionName: '',
+      isRegistered: registered,
+      world: input,
+    })
+  }
+
+  it('walks to one leg length short of the chat, on the side of home, after an unfold', () => {
+    const director = new MMDStanceDirector()
+    frame(director, 0, world())
+    expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay' })
+    frame(director, 100, world({ chatUnfoldSeq: 1, chatX: 5 }))
+    expect(director.diagnostics).toMatchObject({ goalX: 4, reason: 'approach-chat', pace: 'walk' })
+    expect(director.intent?.locomotion).toMatchObject({ goalX: 4, reason: 'approach-chat' })
+  })
+
+  it('stops beside a 380 DIP chat for either root side and either home side, never over it', () => {
+    const unitsPerDip = 1 / 15
+    const legLength = 9
+    const halfWidth = 2.7
+    // A 380 DIP chat centred at x 0, inside a wide ground line.
+    const chat = { minX: -190 * unitsPerDip, maxX: 190 * unitsPerDip }
+    for (const rootSide of [1, -1]) {
+      for (const homeSide of [1, -1]) {
+        const rootX = rootSide * 30
+        const homeX = homeSide * 40
+        const director = new MMDStanceDirector()
+        const input = (patch: Partial<MMDStanceWorld>) => world({ ground: { minX: -80, maxX: 80 }, legLength, rootX, homeX, ...patch })
+        frame(director, 0, input({}))
+        frame(director, 100, input({ chatUnfoldSeq: 1, chatX: chatStandX(chat, rootX, homeX, halfWidth, legLength) }))
+        const goalX = director.diagnostics.goalX!
+        const edge = rootSide > 0 ? chat.maxX : chat.minX
+        const label = `root ${rootSide > 0 ? 'right' : 'left'}, home ${homeSide > 0 ? 'right' : 'left'}`
+        expect(director.diagnostics.reason, label).toBe('approach-chat')
+        expect(goalX, label).toBeCloseTo(edge + rootSide * (halfWidth + CHAT_STAND_GAP_LEGS * legLength))
+        // Her body rect [goalX - halfWidth, goalX + halfWidth] does not overlap the chat.
+        expect(goalX - halfWidth >= chat.maxX || goalX + halfWidth <= chat.minX, label).toBe(true)
+      }
+    }
+  })
+
+  it('ignores requests that predate its first frame', () => {
+    const director = new MMDStanceDirector()
+    frame(director, 0, world({ chatUnfoldSeq: 3, chatX: 5, debugGoal: { seq: 2, x: 6, pace: 'walk' } }))
+    expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay', pendingGoal: null })
+  })
+
+  it('chases a cursor eight leg lengths away after a poke', () => {
+    const director = new MMDStanceDirector()
+    frame(director, 0, world())
+    frame(director, 1_000, world({ cursorX: 8, cursorOnStage: true }), idle, 0, { ...quiet, interactionSeq: 1, interactionAtMs: EPOCH_MS + 1_000 })
+    expect(director.diagnostics).toMatchObject({ goalX: 7, reason: 'approach-cursor' })
+  })
+
+  it('holds a goal while speaking, finishes the one in flight, then issues the held goal', () => {
+    const director = new MMDStanceDirector()
+    frame(director, 0, world())
+    frame(director, 100, world({ chatUnfoldSeq: 1, chatX: 5 }))
+    expect(director.diagnostics.goalX).toBe(4)
+
+    // Speaking starts mid-walk: the relocation finishes.
+    frame(director, 4_000, world({ speaking: true, rootX: 2, locomotionMode: 'walking' }))
+    expect(director.diagnostics).toMatchObject({ goalX: 4, reason: 'approach-chat' })
+    frame(director, 8_000, world({ speaking: true, rootX: 4, locomotionMode: 'idle' }))
+    expect(director.diagnostics.goalX).toBeNull()
+
+    frame(director, 9_000, world({ speaking: true, rootX: 4, debugGoal: { seq: 1, x: -6, pace: 'walk' } }))
+    expect(director.diagnostics).toMatchObject({ goalX: null, pendingGoal: { x: -6, reason: 'debug' } })
+    frame(director, 20_000, world({ speaking: true, rootX: 4, debugGoal: { seq: 1, x: -6, pace: 'walk' } }))
+    expect(director.diagnostics.pendingGoal).not.toBeNull()
+    frame(director, 21_000, world({ speaking: false, rootX: 4, debugGoal: { seq: 1, x: -6, pace: 'walk' } }))
+    expect(director.diagnostics).toMatchObject({ goalX: -6, reason: 'debug', pendingGoal: null })
+  })
+
+  it('drops a held goal after the time to live, and treats the talking performance as speaking', () => {
+    const director = new MMDStanceDirector()
+    frame(director, 0, world(), talking)
+    frame(director, 1_000, world({ debugGoal: { seq: 1, x: -6, pace: 'walk' } }), talking)
+    expect(director.diagnostics.pendingGoal).not.toBeNull()
+    frame(director, 36_000, world({ debugGoal: { seq: 1, x: -6, pace: 'walk' } }), talking)
+    expect(director.diagnostics).toMatchObject({ goalX: null, pendingGoal: null })
+    frame(director, 37_000, world(), idle)
+    expect(director.diagnostics.goalX).toBeNull()
+  })
+
+  it('walks home after twenty seconds with no reason', () => {
+    const director = new MMDStanceDirector()
+    frame(director, 0, world({ rootX: 3, homeX: 0 }))
+    frame(director, 19_000, world({ rootX: 3, homeX: 0 }))
+    expect(director.diagnostics.goalX).toBeNull()
+    frame(director, 20_000, world({ rootX: 3, homeX: 0 }))
+    expect(director.diagnostics).toMatchObject({ goalX: 0, reason: 'return-home', pace: 'stroll' })
+  })
+
+  it('wanders after the debug clock skips ahead only in roam mode', () => {
+    const wander = (roamMode: 'stay' | 'roam') => {
+      const director = new MMDStanceDirector()
+      frame(director, 0, world({ roamMode, seed: 7 }))
+      frame(director, 1_000, world({ roamMode, seed: 7 }), idle, 1_200_000)
+      return director.diagnostics
+    }
+    expect(wander('roam')).toMatchObject({ reason: 'wander' })
+    expect(wander('roam').goalX).not.toBeNull()
+    expect(wander('stay')).toMatchObject({ goalX: null, reason: 'stay', nextWanderAtMs: null })
+  })
+
+  it('drops its goal and held goal when the host places her, and waits before walking home', () => {
+    const director = new MMDStanceDirector()
+    frame(director, 0, world())
+    frame(director, 100, world({ chatUnfoldSeq: 1, chatX: 5 }))
+    frame(director, 200, world({ speaking: true, debugGoal: { seq: 1, x: 6, pace: 'walk' } }))
+    director.clearGoal()
+    expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay', pendingGoal: null })
+    frame(director, 15_000, world({ rootX: 8, homeX: 0 }))
+    expect(director.diagnostics.goalX).toBeNull()
+    frame(director, 21_000, world({ rootX: 8, homeX: 0 }))
+    expect(director.diagnostics.reason).toBe('return-home')
+  })
+
+  it('never issues a goal without a ground line', () => {
+    const director = new MMDStanceDirector()
+    const classic = { ...NO_WORLD_BODY_INPUT }
+    frame(director, 0, classic)
+    frame(director, 100, { ...classic, chatUnfoldSeq: 1, chatX: 5, debugGoal: { seq: 1, x: 6, pace: 'walk' } })
+    expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay', pendingGoal: null })
+    expect(director.intent?.locomotion.goalX).toBeNull()
   })
 })

@@ -82,6 +82,8 @@ const props = withDefaults(defineProps<{
   chatTarget?: { visible: boolean, bounds: PlacementRect | null }
   /** The desktop stage world for the MMD scene: calibrated camera, ground line and home x. Classic hosts leave it undefined. */
   stageWorld?: MMDStageWorld
+  /** Counts the host's own interactions with the MMD character (a drag release); a new value starts the director's chase window. */
+  interactionSeq?: number
   enableOrbitControls?: boolean
   paused?: boolean
 }>(), {
@@ -95,6 +97,8 @@ const emit = defineEmits<{
   reset: []
   /** The MMD character's projected rect in work-area DIP changed; only emitted while `stageWorld` is set. */
   placement: [rect: PlacementRect]
+  /** The MMD character's live root x in model units changed; only emitted while `stageWorld` is set. */
+  root: [x: number]
 }>()
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
 
@@ -1072,6 +1076,7 @@ defineExpose({
         :chat-target="chatTarget"
         :chat-activity="chatActivity"
         :stage-world="stageWorld"
+        :interaction-seq="interactionSeq"
         :mouth-open-size="mouthOpenSize"
         :now-speaking="nowSpeaking"
         :background-url="activeBackgroundUrl"
@@ -1087,6 +1092,7 @@ defineExpose({
         @error="reportStageRenderError"
         @touch="onTouch"
         @placement="emit('placement', $event)"
+        @root="emit('root', $event)"
       />
       <div
         v-if="stageModelRenderer === 'godot'"

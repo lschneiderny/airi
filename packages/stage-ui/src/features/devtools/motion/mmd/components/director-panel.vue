@@ -33,7 +33,7 @@ const rows = computed(() => {
   return [
     { id: 'stance', value: director.stance },
     { id: 'since', value: `${(director.sinceMs / 1000).toFixed(1)} s` },
-    { id: 'reason', value: director.reason },
+    { id: 'reason', value: director.stanceReason },
     { id: 'clock-offset', value: `${(director.clockOffsetMs / 1000).toFixed(1)} s` },
     { id: 'center-y', value: director.centerY === null ? '-' : director.centerY.toFixed(3) },
   ].map(row => ({ ...row, label: t(`${prefix}.rows.${row.id}`) }))

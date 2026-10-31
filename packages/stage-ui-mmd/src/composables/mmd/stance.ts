@@ -1,5 +1,5 @@
-import type { BodyDirectorMemory } from '@proj-airi/motion-driver-humanoid/director'
-import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
+import type { BodyDirectorInput, BodyDirectorMemory } from '@proj-airi/motion-driver-humanoid/director'
+import type { BodyIntent, Vec3 } from '@proj-airi/motion-driver-humanoid/types'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import { decideBody, initialBodyDirectorMemory, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
@@ -13,11 +13,47 @@ export interface MMDStanceSlots {
 
 export type MMDStance = BodyIntent['stance']
 
+/** The user-interaction and action half of the director input; every host supplies it, with or without a stage world. */
+export type MMDStanceInteraction = Pick<BodyDirectorInput, 'interactionSeq' | 'chatSendSeq' | 'interactionAtMs' | 'actionRequest' | 'actionFeedback' | 'dragging'>
+
+/** The world half of the director input; `NO_WORLD_BODY_INPUT` is its inert value. */
+export type MMDStanceWorld = Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | keyof MMDStanceInteraction>
+
 export interface MMDStanceDiagnostics {
   stance: MMDStance
   /** Director-clock time, in milliseconds, at which the current stance began. */
   sinceMs: number
-  reason: string
+  /** Why the stance holds (`idle-timeout`, `away`, ...). */
+  stanceReason: string
+  /** The locomotion reason: `approach-chat`, `approach-cursor`, `return-home`, `wander`, `tool`, `debug` or `stay`. */
+  reason: BodyIntent['locomotion']['reason']
+  goalX: number | null
+  pace: BodyIntent['locomotion']['pace']
+  pendingGoal: { x: number, reason: string } | null
+  nextWanderAtMs: number | null
+  moveRefractoryUntilMs: number
+  lookRefractoryUntilMs: number
+  lastToolSeq: number
+  toolRefused: boolean
+}
+
+/** Gap, in leg lengths, between her body and the chat window's near edge when she stops beside it. */
+export const CHAT_STAND_GAP_LEGS = 0.25
+
+/**
+ * The `chatX` the director should see so that she stops beside the chat, not over it.
+ *
+ * Her stand spot is the chat's near edge (the edge facing her root) pushed out by half her body width plus
+ * `CHAT_STAND_GAP_LEGS`. The director then offsets `chatX` by one leg length toward home, whichever side of the chat
+ * home is on, so this subtracts that leg toward home and she arrives exactly at the stand spot. All values are ground
+ * x in model units.
+ */
+export function chatStandX(chat: { minX: number, maxX: number }, rootX: number, homeX: number, halfWidth: number, legLength: number): number {
+  const centre = (chat.minX + chat.maxX) / 2
+  const side = rootX >= centre ? 1 : -1
+  const towardHome = homeX >= centre ? 1 : -1
+  const stand = (side > 0 ? chat.maxX : chat.minX) + side * (halfWidth + CHAT_STAND_GAP_LEGS * legLength)
+  return stand - towardHome * legLength
 }
 
 /**
@@ -61,6 +97,7 @@ export class MMDStanceDirector {
   private applied: string | null | undefined
   private reason = 'initial'
   private candidates = new Set<string>()
+  private lastIntent: BodyIntent | null = null
 
   /**
    * @returns The base motion for this frame (`null` for the rest pose) and
@@ -72,25 +109,40 @@ export class MMDStanceDirector {
     slots: MMDStanceSlots
     idleMotionName: string
     isRegistered: (name: string) => boolean
+    /** Target points in model units; absent points leave the matching attention without a target. */
+    points?: { cursor: Vec3 | null, chat: Vec3 | null, camera: Vec3 | null }
+    /** Omitted in classic mode: no ground, so no goal is ever issued. */
+    world?: MMDStanceWorld
+    /** Pokes, drags and clip requests; classic mode has them too. */
+    interaction: MMDStanceInteraction
   }): { motion: string | null, changed: boolean } {
     const ready = (name: string | undefined) => name !== undefined && name !== '' && input.isRegistered(name)
     const available = { sit: ready(input.slots.sit), sleep: ready(input.slots.sleep) }
+    const world = input.world ?? NO_WORLD_BODY_INPUT
+    if (this.memory === initialBodyDirectorMemory) {
+      // Requests that predate this model's load belong to an earlier director; only newer ones count.
+      this.memory = {
+        ...this.memory,
+        lastUnfoldSeq: world.chatUnfoldSeq,
+        lastInteractionSeq: input.interaction.interactionSeq,
+        lastSendSeq: input.interaction.chatSendSeq,
+        lastActionSeq: input.interaction.actionRequest?.seq ?? 0,
+        lastToolSeq: world.toolRequest?.seq ?? 0,
+        lastDebugSeq: world.debugGoal?.seq ?? 0,
+      }
+    }
     const { intent, memory } = decideBody({
       nowMs: input.nowMs,
       performance: input.performance,
-      cursorPoint: null,
-      chatPoint: null,
-      cameraPoint: null,
+      cursorPoint: input.points?.cursor ?? null,
+      chatPoint: input.points?.chat ?? null,
+      cameraPoint: input.points?.camera ?? null,
       slots: available,
-      ...NO_WORLD_BODY_INPUT,
-      interactionSeq: 0,
-      chatSendSeq: 0,
-      interactionAtMs: null,
-      actionRequest: null,
-      actionFeedback: null,
-      dragging: false,
+      ...world,
+      ...input.interaction,
     }, this.memory)
     this.memory = memory
+    this.lastIntent = intent
     this.startMs ??= memory.nowMs
 
     const standing = standingBaseMotion(input.idleMotionName, input.slots)
@@ -118,6 +170,26 @@ export class MMDStanceDirector {
     return { motion, changed }
   }
 
+  /** The latest intent, which the body reads for its attention target; null before the first frame. */
+  get intent(): BodyIntent | null {
+    return this.lastIntent
+  }
+
+  /**
+   * The host moved her (a drag or a teleport): drop the goal in progress and any held goal, and restart the return-home
+   * delay, so the next frame never walks her back.
+   */
+  clearGoal(): void {
+    this.memory = {
+      ...this.memory,
+      goalX: null,
+      goalSinceMs: null,
+      reason: 'stay',
+      pendingGoal: null,
+      lastReasonMs: this.memory.nowMs ?? this.memory.lastReasonMs,
+    }
+  }
+
   /** Every clip that can loop on the base layer for this model. */
   get baseClips(): ReadonlySet<string> {
     return this.candidates
@@ -127,7 +199,16 @@ export class MMDStanceDirector {
     return {
       stance: this.memory.stance,
       sinceMs: this.memory.stanceSinceMs ?? this.startMs ?? 0,
-      reason: this.reason,
+      stanceReason: this.reason,
+      reason: this.memory.reason,
+      goalX: this.memory.goalX,
+      pace: this.memory.goalPace,
+      pendingGoal: this.memory.pendingGoal && { x: this.memory.pendingGoal.x, reason: this.memory.pendingGoal.reason },
+      nextWanderAtMs: this.memory.nextWanderAtMs,
+      moveRefractoryUntilMs: this.memory.moveRefractoryUntilMs,
+      lookRefractoryUntilMs: this.memory.lookRefractoryUntilMs,
+      lastToolSeq: this.memory.lastToolSeq,
+      toolRefused: this.memory.toolRefused,
     }
   }
 }

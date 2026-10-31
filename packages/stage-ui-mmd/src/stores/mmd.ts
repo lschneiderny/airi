@@ -66,6 +66,8 @@ const NATURAL_ENERGY_DEFAULT = 0.5
 /** Eye/head tracking mode, mirroring the VRM renderer's tracking modes. */
 export type MMDGazeMode = 'camera' | 'mouse' | 'none'
 export type MMDMotionDriver = 'natural' | 'classic'
+/** Whether she stays near home (`stay`) or occasionally wanders the ground line (`roam`) on the desktop stage. */
+export type MMDRoamMode = 'stay' | 'roam'
 
 /** Transient request to play a one-shot motion, bumped per request. */
 export interface MMDOneShotAction {
@@ -181,6 +183,7 @@ export const useMMD = defineStore('mmd', () => {
   const renderScale = useLocalStorageManualReset<number>('settings/mmd/render-scale', 1)
   /** On-screen character height in DIP on the desktop stage; the stage page calibrates its camera from it. */
   const stageCharacterHeight = useLocalStorageManualReset<number>('settings/mmd/stage-character-height', 560)
+  const roamMode = useLocalStorageManualReset<MMDRoamMode>('settings/mmd/roam-mode', 'stay')
 
   // === Animation ===
   /** Name of the persistent idle motion; empty means none/static. */
@@ -324,6 +327,7 @@ export const useMMD = defineStore('mmd', () => {
     albedoGlow.reset()
     renderScale.reset()
     stageCharacterHeight.reset()
+    roamMode.reset()
     idleMotionName.reset()
     stanceSlots.reset()
     void clearMotions()
@@ -361,6 +365,7 @@ export const useMMD = defineStore('mmd', () => {
     albedoGlow,
     renderScale,
     stageCharacterHeight,
+    roamMode,
 
     idleMotionName,
     availableMotions,
