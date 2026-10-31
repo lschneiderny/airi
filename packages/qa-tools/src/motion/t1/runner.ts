@@ -3,6 +3,8 @@ import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performanc
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
 import type { NaturalTrace } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
 
+import type { ScenarioSinkOptions } from '../scenario-sink'
+
 import { referenceStats } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/reference-stats'
 import { readLive2DRigProfile } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/rig-profile'
 import { naturalTraceParameterIds, NaturalTraceRecorder } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
@@ -18,6 +20,8 @@ export interface RunT1Options {
   catalog?: CatalogEntry[]
   /** Emotion table seam of the Natural controller, for scorer mutation runs. @default naturalEmotions */
   emotionTable?: typeof naturalEmotions
+  /** Receives every classified touch at its sim time; see `ScenarioSinkOptions.onTouch`. */
+  onTouch?: ScenarioSinkOptions['onTouch']
 }
 
 /** Ranges for ids that the reference statistics lack; the stage reads the real rig's table for these. */
@@ -60,7 +64,7 @@ function buildParameterTable() {
  * records what Natural performed.
  */
 export function runT1(input: MotionScenario, options: RunT1Options = {}): NaturalTrace {
-  const { simHz = 120, sampleHz = 30, catalog = [], emotionTable } = options
+  const { simHz = 120, sampleHz = 30, catalog = [], emotionTable, onTouch } = options
   if (sampleHz !== 30)
     throw new Error(`[qa-tools] T1 samples at 30 Hz only, got ${sampleHz}`)
   if (!Number.isInteger(simHz) || simHz < sampleHz)
@@ -71,6 +75,7 @@ export function runT1(input: MotionScenario, options: RunT1Options = {}): Natura
     simHz,
     catalog,
     emotionTable,
+    onTouch,
     createHost: () => {
       const table = buildParameterTable()
       const values = Float32Array.from(table.base)

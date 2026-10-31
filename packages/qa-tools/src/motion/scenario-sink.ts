@@ -81,6 +81,8 @@ export interface ScenarioSinkOptions {
   createHost: (context: ScenarioHostContext) => ScenarioHost
   /** Emotion table seam of the Natural controller, for scorer mutation runs. @default naturalEmotions */
   emotionTable?: typeof naturalEmotions
+  /** Receives every touch the stage's classifier reports from `pointer` events, at the sim time it fired. */
+  onTouch?: (touch: Live2DTouchEvent, simTime: number) => void
 }
 
 /** Simulated timers fire in due order, ties in arming order; canceled native handles only identify them. */
@@ -189,6 +191,7 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
     let pet: Live2DNaturalMotionAttention['pet'] = null
     const applyTouch = (events: Live2DTouchEvent[]) => {
       for (const touch of events) {
+        options.onTouch?.(touch, simTime)
         if (touch.kind === 'poke')
           pendingPokes.push({ region: touch.region, ...headHand(touch) })
       }
@@ -307,6 +310,10 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
               break
             case 'placement':
               placement = event.inward
+              break
+            case 'gesture':
+              // The stage's ACT handler calls the scene API; the adapter drops it unless Natural owns the model.
+              adapter.gesture(event.gesture, event.count ?? (event.gesture === 'nod' || event.gesture === 'shake' ? 2 : 1))
               break
             case 'chat-target':
             case 'chat-typing':

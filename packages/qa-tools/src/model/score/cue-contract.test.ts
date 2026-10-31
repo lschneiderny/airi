@@ -40,6 +40,10 @@ describe('cue contract scorer', () => {
       expect(score.residualChars).toBe(row.expect.residualChars)
     if (row.expect.spoken !== undefined)
       expect(score.spokenText).toBe(row.expect.spoken)
+    // No fixture uses a gesture, BREAK, SILENT, or face, so every v3 field stays neutral and `blank` keeps its v2 value.
+    expect(score).toMatchObject({ bareGestureAttempts: 0, breaks: 0, breaksIgnored: 0, silent: { count: 0, beforeSpeech: false }, wordless: false, silentNoCue: false, asciiFaces: 0 })
+    expect(score.acts.map(act => act.gesture)).toEqual(score.acts.map(() => ({ kind: null, count: null, dropped: false })))
+    expect(score.blank).toBe(score.spokenText.trim() === '')
   })
 
   it('retains an invented JSON emotion as an inert parsed act', async () => {
@@ -198,6 +202,46 @@ describe('cue contract scorer', () => {
       cueStats: { act: 0, recovered: 0, stripped: 0 },
       spokenText: text,
     })
+  })
+
+  it('counts a bare gesture attempt instead of an act', async () => {
+    const score = await cueContractScorer.score(record('<|ACT nod|>'), context)
+    expect(score).toMatchObject({ bareGestureAttempts: 1, acts: [], stageRejected: 1, outcome: 'rejected' })
+    expect((await cueContractScorer.score(record('<|ACT shrug 2|> Hm.'), context)).bareGestureAttempts).toBe(1)
+    expect((await cueContractScorer.score(record('<|ACT pouty|> Hmph.'), context)).bareGestureAttempts).toBe(0)
+  })
+
+  it.each([
+    ['<|ACT {"gesture":{"kind":"shake","count":3}}|> No.', { kind: 'shake', count: 3, dropped: false }, false],
+    ['<|ACT {"emotion":"happy","gesture":"NOD"}|> Yes.', { kind: 'nod', count: 2, dropped: false }, false],
+    ['<|ACT {"gesture":"shrug"}|>', { kind: 'shrug', count: 1, dropped: false }, false],
+    ['<|ACT {"gesture":"wave"}|> Hi.', { kind: null, count: null, dropped: true }, true],
+  ])('records the normalized gesture of a JSON ACT: %s', async (text, gesture, inert) => {
+    const score = await cueContractScorer.score(record(text), context)
+    expect(score.acts).toHaveLength(1)
+    expect(score.acts[0]).toMatchObject({ stageParsed: true, gesture, inert })
+    expect(score.bareGestureAttempts).toBe(0)
+  })
+
+  it('counts kept and ignored breaks without rejecting them', async () => {
+    const score = await cueContractScorer.score(record('a<|BREAK|>b<|BREAK 0.5|>c<|BREAK|>d'), context)
+    expect(score).toMatchObject({ breaks: 2, breaksIgnored: 1, stageRejected: 0, unknownMarkers: [], outcome: 'none' })
+  })
+
+  it.each([
+    ['<|ACT happy|><|SILENT|>', { silent: { count: 1, beforeSpeech: true }, wordless: true, silentNoCue: false, blank: false }],
+    ['<|SILENT|><|ACT {"gesture":"nod"}|>', { silent: { count: 1, beforeSpeech: true }, wordless: true, silentNoCue: false, blank: false }],
+    ['<|SILENT|>', { silent: { count: 1, beforeSpeech: true }, wordless: false, silentNoCue: true, blank: false }],
+    ['Hi <|SILENT|> there', { silent: { count: 1, beforeSpeech: false }, wordless: false, silentNoCue: false, blank: false, spokenText: 'Hi  there' }],
+    ['<think><|SILENT|></think>', { silent: { count: 0, beforeSpeech: false }, wordless: false, silentNoCue: false, blank: true }],
+  ])('scores SILENT on a user turn: %s', async (text, expected) => {
+    expect(await cueContractScorer.score(record(text), context)).toMatchObject(expected)
+  })
+
+  it('counts the ASCII faces speech output strips, and only those', async () => {
+    const score = await cueContractScorer.score(record('ok :3 sure <3! ^_^ at 10:30 C:D x^^y :3x'), context)
+    expect(score.asciiFaces).toBe(3)
+    expect(score.spokenText).toContain(':3')
   })
 
   it('caps rejected token samples without capping rejection totals', async () => {
