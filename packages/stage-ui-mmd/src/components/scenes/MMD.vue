@@ -135,6 +135,7 @@ const {
   physicsGravity,
   gazeMode,
   motionDriver,
+  naturalEnergy,
   naturalTouch,
   naturalTouchPetRequiresHold,
   position,
@@ -671,7 +672,7 @@ async function loadModel(src: string) {
         natural.setPerformanceSettings(toRaw(props.performanceSettings))
         natural.advance(dt, {
           performance: props.performance,
-          energy: props.naturalEnergy ?? 0.5,
+          energy: props.naturalEnergy ?? naturalEnergy.value,
           voice: { speaking, speechActiveOrRecent: speaking, level: props.mouthOpenSize },
           cursor,
           chat: props.chatTarget

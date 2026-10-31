@@ -6,6 +6,7 @@ import localforage from 'localforage'
 
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { useBroadcastChannel } from '@vueuse/core'
+import { clamp } from 'es-toolkit'
 import { nanoid } from 'nanoid/non-secure'
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
@@ -57,6 +58,7 @@ export interface MMDMaterialDescriptor {
 }
 
 const MOTION_STORAGE_PREFIX = 'mmd-motion-'
+const NATURAL_ENERGY_DEFAULT = 0.5
 
 /** Eye/head tracking mode, mirroring the VRM renderer's tracking modes. */
 export type MMDGazeMode = 'camera' | 'mouse' | 'none'
@@ -126,6 +128,16 @@ export const useMMD = defineStore('mmd', () => {
    */
   const gazeMode = useLocalStorageManualReset<MMDGazeMode>('settings/mmd/gaze-mode', 'mouse')
   const motionDriver = useLocalStorageManualReset<MMDMotionDriver>('settings/mmd/motion-driver', 'natural')
+  /** Liveliness of Natural movement, 0 (calm) to 1 (energetic); the same scale and default as Live2D's `settings/live2d/natural-energy`. */
+  const naturalEnergy = useLocalStorageManualReset<number>('settings/mmd/natural-energy', NATURAL_ENERGY_DEFAULT, {
+    serializer: {
+      read: (raw) => {
+        const value = Number.parseFloat(raw)
+        return Number.isFinite(value) ? clamp(value, 0, 1) : NATURAL_ENERGY_DEFAULT
+      },
+      write: value => String(value),
+    },
+  })
   /** Let the user poke the model and pet its head with the cursor while Natural drives it. */
   const naturalTouch = useLocalStorageManualReset<boolean>('settings/mmd/natural-touch', true)
   /** Count only strokes made with the primary button held as pets, so passing the cursor over the head never pets it. */
@@ -284,6 +296,7 @@ export const useMMD = defineStore('mmd', () => {
     physicsGravity.reset()
     gazeMode.reset()
     motionDriver.reset()
+    naturalEnergy.reset()
     naturalTouch.reset()
     naturalTouchPetRequiresHold.reset()
     cameraFov.reset()
@@ -317,6 +330,7 @@ export const useMMD = defineStore('mmd', () => {
     physicsGravity,
     gazeMode,
     motionDriver,
+    naturalEnergy,
     naturalTouch,
     naturalTouchPetRequiresHold,
 
