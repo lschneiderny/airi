@@ -12,7 +12,7 @@ This personal fork keeps local development workflows, not upstream publishing or
 | `enforce-rules-for-unocss` | Local styling, shared primitives, icons, and themes. |
 | `enforce-rules-for-vitest` | Test scope, regression coverage, Vue tests, and runtime boundaries. |
 | `enforce-rules-for-pinia-synced` | Cross-window ownership, replication, and persistence. |
-| `stage-tamagotchi-godot-csharp` | Kirie and Godot C# migration guidance. |
+| `stage-tamagotchi-godot-csharp` | Godot engine C# method and style. |
 | `analyze-io-traces` | Saved chat, voice, and audio trace analysis. |
 | `motion-qa` | Motion, emotion, and idle QA levels, gates, and evidence workflow. |
 

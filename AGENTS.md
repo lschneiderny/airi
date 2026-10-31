@@ -3,14 +3,14 @@
 **Generated:** 2026-10-25T21:49:57Z | **Commit:** fc620aaf6fa71c5aa4b2abcc69e80d1975911cbf | **Branch:** main
 
 ## OVERVIEW
-AIRI is the `moeru-ai/airi` pnpm monorepo for character interaction across web, Electron, mobile, and Godot hosts.
+AIRI is the `moeru-ai/airi` pnpm monorepo for character interaction across web, Electron, and mobile hosts, with a Godot VRM sidecar for Electron.
 This personal fork documents account-free clients. Internal hosted/auth adapters do not prove that hosted services or client routes are enabled.
 The Vue apps use Vue 3, Vite, TypeScript, Pinia, VueUse, UnoCSS, Vitest, and ESLint.
 
 ## STRUCTURE
 ```text
-apps/          Web, Electron, Capacitor, Kirie, and standalone auth UI
-engines/       Godot rendering sidecar, separate from Kirie
+apps/          Web, Electron, Capacitor, and standalone auth UI
+engines/       Godot VRM rendering sidecar that Electron launches
 packages/      Shared UI, orchestration, models, audio, providers, and channel contracts
 server/        Hosted API, independent identity, backend-only packages, local edge and stack
 services/      Computer-use execution and orchestration
@@ -25,7 +25,7 @@ Before working in a directory, read its nested `AGENTS.md`. Read the matching ta
 | Task | Location | Notes |
 | --- | --- | --- |
 | Host apps | `apps/stage-{web,pocket,tamagotchi}/AGENTS.md` | Web pages: `src/pages`. Electron pages/devtools: `src/renderer/pages`. Mobile uses Capacitor, Kotlin, and Swift. |
-| Kirie / engine / auth UI | [Kirie](apps/stage-tamagotchi-kirie/AGENTS.md), [renderer](apps/stage-tamagotchi-kirie/src-web/AGENTS.md), [Godot](engines/stage-tamagotchi-godot/AGENTS.md), [auth UI](apps/ui-server-auth/AGENTS.md) | Kirie migration scope lives in `MIGRATION.md`. |
+| Godot engine / auth UI | [Godot](engines/stage-tamagotchi-godot/AGENTS.md), [auth UI](apps/ui-server-auth/AGENTS.md) | The Godot engine is the VRM stage sidecar of the Electron app. |
 | Routing / settings | `apps/stage-web/vite.config.ts`, `apps/stage-tamagotchi/electron.vite.config.ts` | Layouts: `packages/stage-layouts/src/layouts/settings.vue` and Electron `src/renderer/layouts/settings.vue`. |
 | Shared business UI | [stage-ui](packages/stage-ui/AGENTS.md) | Definitions: `src/libs/providers/providers/`. Provider records/instances: `src/stores/providers/`. Orchestration: `src/stores/modules/`. |
 | UI composition | `packages/stage-ui/src/{composables,components}` | Single-use business UI: `components/scenarios/`. Stories: `packages/stage-ui/stories`, `histoire.config.ts`, `src/components/misc/Button.story.vue`. |
@@ -152,6 +152,6 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 
 ## NOTES
 Nested guides own local exceptions and package-specific checks. Historical ADRs/audits and scanner observations are not current runtime acceptance.
-Kirie is separate from Electron and the Godot sidecar. Its deferred features and native approvals remain governed by its migration guidance.
+The fork removed the Kirie Godot/CEF desktop host on 2026-10-31. `docs/ai/upstream-watch.md` records when to port it back.
 Root `pnpm dev*` scripts run through `node scripts/dev.mjs`, which bypasses Windows `.cmd` shims and supports only `&&` chains of plain words.
 Guidance is in local mode: `.git/info/exclude` ignores most nested `AGENTS.md` files, so links resolve locally but those guides do not appear in commits.

@@ -2,8 +2,7 @@
 name: stage-tamagotchi-godot-csharp
 description: >-
   Apply the Stage Tamagotchi Godot C# development method and code style when
-  working in `apps/stage-tamagotchi-kirie` or its migration predecessor,
-  `engines/stage-tamagotchi-godot`. Use it for their `.cs` files, `.csproj`,
+  working in `engines/stage-tamagotchi-godot`. Use it for its `.cs` files, `.csproj`,
   local `.editorconfig`, and Godot-specific C# structure decisions. Do not use
   it for TypeScript, Electron, renderer code, shared workspace configuration,
   or repo-wide C# conventions.
@@ -11,16 +10,13 @@ description: >-
 
 # Stage Tamagotchi Godot C#
 
-1. Treat `apps/stage-tamagotchi-kirie` and
-   `engines/stage-tamagotchi-godot` as one Godot project migration line.
-   Use `apps/stage-tamagotchi-kirie` as the active desktop host. Keep changes
-   in the directory that owns the affected runtime.
+1. `engines/stage-tamagotchi-godot` is the only Godot project. It is the VRM
+   stage sidecar that the Electron app launches.
 2. Before editing C# files, read:
    - `engines/stage-tamagotchi-godot/docs/csharp-development-method.md`
    - `engines/stage-tamagotchi-godot/.editorconfig`
    - `engines/stage-tamagotchi-godot/docs/csharp-style.md`
-   These files remain the canonical C# guidance while the application moves
-   to `apps/stage-tamagotchi-kirie`.
+   These files are the canonical C# guidance.
 3. Treat the development-method document as the primary source of truth for
    structure and feature usage. Treat `.editorconfig` and `csharp-style.md` as
    secondary formatting and naming guidance.
