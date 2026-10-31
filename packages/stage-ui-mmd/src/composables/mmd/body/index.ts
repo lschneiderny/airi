@@ -5,7 +5,7 @@ import type { LookAtFrame } from '@proj-airi/motion-driver-humanoid/look-at'
 import type { NaturalMotionFrame } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { AnimationClip } from 'three'
 
-import type { MMDFrameContext, MMDFrameStage } from '../frame-pipeline'
+import type { MMDCleanPose, MMDFrameContext, MMDFrameStage } from '../frame-pipeline'
 import type { MMDRigProfile } from '../rig'
 import type { MMDArmsMeasurement } from './arms'
 import type { MMDBodyRoot, MMDLocomotionGoal } from './locomotion'
@@ -155,6 +155,11 @@ export class MMDBody {
       this.skate = skate
       this.armsSnapshot = this.arms.measure(this.owned)
     } }
+  }
+
+  /** World positions of bones with the arms in the standing rest pose; see `MMDArmRest.restPositions`. */
+  restPositions(clean: MMDCleanPose, names: readonly string[]): Map<string, [number, number, number]> {
+    return this.arms.restPositions(clean, names)
   }
 
   registerClip(name: string, clip: AnimationClip): void {

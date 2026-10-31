@@ -62,13 +62,17 @@ export interface MMDMotionSnapshot {
   } | null
   /**
    * The arm rest layer. `weight` is one minus the larger arm ownership, `owned` the clip ownership per group (0-1),
-   * `penetration` the deepest arm capsule entry into a torso, hip or skirt body in model units, and `handBelowHip`
+   * `penetration` the deepest arm capsule-radius overlap of a kinematic torso, hip, leg or skirt-root body in model units
+   * (the gate: 0), `clothContact` the deepest centerline overlap of a dynamic cloth body (information only), `hangDeg`
+   * the rest upper-arm hang in effect (default, solved per rig, or the debug override), and `handBelowHip`
    * whether both hand bones sit below the hips bone.
    */
   arms: {
     weight: number
     owned: { leftArm: number, rightArm: number, leftFingers: number, rightFingers: number }
     penetration: { left: number, right: number }
+    clothContact: { left: number, right: number }
+    hangDeg: number
     handBelowHip: boolean
   } | null
 }

@@ -131,4 +131,22 @@ describe('resolveFrameBounds', () => {
     expect(noArms.size[0]).toBe(0)
     expect(Number.isFinite(noArms.center[0])).toBe(true)
   })
+
+  it('widens the frame to the farthest hand or fingertip reach, and only when it exceeds the shoulder width', () => {
+    const reach = (names: readonly string[], positions: Record<string, BoundsVec3>) => resolveFrameBounds(BONE_NAMES, name => positions[name] ?? null, elysiaMesh, names)!
+    const hands: Record<string, BoundsVec3> = { ...elysiaPositions, 左手首: [5.4, 11, 0], 右手首: [-5.2, 11, 0], 左中指３: [6.5, 9.5, 0.3] }
+    const shoulderWidth = 2.28 * 2.2
+
+    expect(reach([], hands).size[0]).toBeCloseTo(shoulderWidth, 6)
+    expect(reach(['左手首', '右手首'], hands).size[0]).toBeCloseTo(2 * 5.4, 6)
+    expect(reach(['左手首', '右手首', '左中指３'], hands).size[0]).toBeCloseTo(2 * 6.5, 6)
+    expect(reach(['左手首'], { ...hands, 左手首: [2.4, 11, 0] }).size[0]).toBeCloseTo(shoulderWidth, 6)
+    expect(reach(['存在しない'], hands).size[0]).toBeCloseTo(shoulderWidth, 6)
+
+    // A swing share adds that fraction of the hand's distance from the nearer upper arm to its lateral reach.
+    const swung = resolveFrameBounds(BONE_NAMES, name => hands[name] ?? null, elysiaMesh, ['左手首'], 0.5)!
+    const arm = elysiaPositions['左腕']
+    const wrist = hands['左手首']
+    expect(swung.size[0]).toBeCloseTo(2 * (5.4 + 0.5 * Math.hypot(wrist[0] - arm[0], wrist[1] - arm[1], wrist[2] - arm[2])), 6)
+  })
 })

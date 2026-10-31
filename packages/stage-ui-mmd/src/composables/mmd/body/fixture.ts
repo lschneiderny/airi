@@ -14,7 +14,7 @@ import { MMDBody } from './index'
  * arms at 36 degrees below horizontal with thumb and index finger chains (the index has a Carlotta-style `０` metacarpal),
  * and `bodies` adds a torso capsule, a hip box and a physics skirt sphere for the arm penetration check.
  */
-export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean, arms?: boolean, bodies?: boolean } = {}) {
+export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean, arms?: boolean, bodies?: boolean, extraBodies?: ExtraBody[] } = {}) {
   const mesh = new SkinnedMesh(new BufferGeometry(), new MeshBasicMaterial())
   const definitions: Array<{ name: string, parent: number, position: [number, number, number] }> = [
     { name: 'センター', parent: -1, position: [0, 10, 0] },
@@ -84,7 +84,7 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
     })),
     ...options.hair ? hairPhysics() : {},
     ...options.bodies
-      ? { rigidBodies: [...options.hair ? hairPhysics().rigidBodies : [], ...bodyColliders(name => definitions.findIndex(definition => definition.name === name))] }
+      ? { rigidBodies: [...options.hair ? hairPhysics().rigidBodies : [], ...bodyColliders(name => definitions.findIndex(definition => definition.name === name), options.extraBodies ?? [])] }
       : {},
   }
   shell.dispose()
@@ -162,11 +162,20 @@ function armDefinitions(): Array<{ name: string, parent: string, position: [numb
   })
 }
 
-function bodyColliders(boneIndex: (name: string) => number): PmxObject['rigidBodies'] {
-  const body: Omit<PmxObject.RigidBody, 'name' | 'boneIndex' | 'shapeType' | 'shapeSize' | 'shapePosition' | 'physicsMode'> = {
+/** A sphere on a fixture bone, for the arm penetration tests: kinematic unless `dynamic`. */
+export interface ExtraBody {
+  name: string
+  bone: string
+  position: [number, number, number]
+  radius: number
+  collisionMask: number
+  dynamic?: boolean
+}
+
+function bodyColliders(boneIndex: (name: string) => number, extra: readonly ExtraBody[]): PmxObject['rigidBodies'] {
+  const body: Omit<PmxObject.RigidBody, 'name' | 'boneIndex' | 'shapeType' | 'shapeSize' | 'shapePosition' | 'physicsMode' | 'collisionMask'> = {
     englishName: '',
     collisionGroup: 0,
-    collisionMask: 0,
     shapeRotation: [0, 0, 0],
     mass: 1,
     linearDamping: 0.5,
@@ -174,10 +183,12 @@ function bodyColliders(boneIndex: (name: string) => number): PmxObject['rigidBod
     repulsion: 0,
     friction: 0.5,
   }
+  const mask = 65535
   return [
-    { ...body, name: 'torso', boneIndex: boneIndex('上半身'), shapeType: PmxObject.RigidBody.ShapeType.Capsule, shapeSize: [1.2, 3, 0], shapePosition: [0, 13.5, 0], physicsMode: PmxObject.RigidBody.PhysicsMode.FollowBone },
-    { ...body, name: 'hip', boneIndex: boneIndex('下半身'), shapeType: PmxObject.RigidBody.ShapeType.Box, shapeSize: [1.5, 1.2, 1.2], shapePosition: [0, 11, 0], physicsMode: PmxObject.RigidBody.PhysicsMode.FollowBone },
-    { ...body, name: 'skirt', boneIndex: boneIndex('スカート'), shapeType: PmxObject.RigidBody.ShapeType.Sphere, shapeSize: [1.8, 0, 0], shapePosition: [0, 9.5, 0], physicsMode: PmxObject.RigidBody.PhysicsMode.Physics },
+    { ...body, collisionMask: mask, name: 'torso', boneIndex: boneIndex('上半身'), shapeType: PmxObject.RigidBody.ShapeType.Capsule, shapeSize: [1.2, 3, 0], shapePosition: [0, 13.5, 0], physicsMode: PmxObject.RigidBody.PhysicsMode.FollowBone },
+    { ...body, collisionMask: mask, name: 'hip', boneIndex: boneIndex('下半身'), shapeType: PmxObject.RigidBody.ShapeType.Box, shapeSize: [1.5, 1.2, 1.2], shapePosition: [0, 11, 0], physicsMode: PmxObject.RigidBody.PhysicsMode.FollowBone },
+    { ...body, collisionMask: mask, name: 'skirt', boneIndex: boneIndex('スカート'), shapeType: PmxObject.RigidBody.ShapeType.Sphere, shapeSize: [1.8, 0, 0], shapePosition: [0, 9.5, 0], physicsMode: PmxObject.RigidBody.PhysicsMode.Physics },
+    ...extra.map(({ name, bone, position, radius, collisionMask, dynamic }) => ({ ...body, collisionMask, name, boneIndex: boneIndex(bone), shapeType: PmxObject.RigidBody.ShapeType.Sphere, shapeSize: [radius, 0, 0] as [number, number, number], shapePosition: position, physicsMode: dynamic ? PmxObject.RigidBody.PhysicsMode.Physics : PmxObject.RigidBody.PhysicsMode.FollowBone })),
   ]
 }
 

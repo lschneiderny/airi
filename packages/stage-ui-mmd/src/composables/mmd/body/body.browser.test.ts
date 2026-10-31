@@ -61,5 +61,6 @@ it('hangs the arms clear of the torso, hips and skirt on the standing fixture', 
   for (let frame = 0; frame < 120; frame++)
     pipeline.step(1 / 60)
   expect(body.diagnostics.arms?.penetration).toEqual({ left: 0, right: 0 })
+  expect(body.diagnostics.arms?.clothContact).toEqual({ left: 0, right: 0 })
   expect(body.diagnostics.arms?.handBelowHip).toBe(true)
 })

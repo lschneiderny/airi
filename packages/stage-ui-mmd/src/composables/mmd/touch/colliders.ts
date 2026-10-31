@@ -81,20 +81,49 @@ export function buildMMDTouchColliders(
 }
 
 /**
+ * A body larger than this fraction of the shoulder span (the distance between the upper-arm bones) is a coat or cloth
+ * shell, not a body part. Across Ellen, Vivian, Chisa and Elysia the largest real kinematic body is 0.44 of the span
+ * (a hip or thigh) and Chisa's radius-2 coat shell is 0.80. The collision mask cannot tell them apart, because the
+ * real torso, hip and leg bodies turn off collision with their own group.
+ */
+const MAX_BODY_SPAN_FRACTION = 0.65
+
+/** PMX physics mode 0: the body follows its bone. Modes 1 and 2 are simulated cloth and hair. */
+const PHYSICS_FOLLOW_BONE = 0
+
+/** The PMX fields the arm test reads: the touch fields plus each bone's position and each body's physics mode. */
+export interface MMDArmTestSource {
+  bones: readonly Pick<PmxObject.Bone, 'name' | 'parentBoneIndex' | 'position'>[]
+  rigidBodies: readonly (MMDTouchSource['rigidBodies'][number] & Pick<PmxObject.RigidBody, 'physicsMode'>)[]
+}
+
+/** The arm test bodies: `kinematic` follow their bones and gate the arms; `dynamic` are simulated and only reported. */
+export interface MMDArmTestColliders {
+  kinematic: MMDTouchCollider[]
+  dynamic: MMDTouchCollider[]
+}
+
+/**
  * The rigid bodies an arm must not enter: the torso, hip and lower-body (skirt) subtrees, including the centre and
  * groove bones above the waist. Arm subtrees (sleeves, hand physics) and the head and neck are excluded, and the
- * nearest listed ancestor decides, as for touch regions. Touch regions are unchanged.
+ * nearest listed ancestor decides, as for touch regions. Collision masks are ignored, because the rig's own torso, hip,
+ * chest and leg bodies commonly turn off collision with group 0. Only a body wider than `MAX_BODY_SPAN_FRACTION` of the
+ * shoulder span (Chisa's radius-2 coat shell) is skipped. Bodies are split by physics mode: kinematic ones follow the bone and
+ * obstruct the arm, dynamic (physics) ones are moved by the simulation, which resolves their contact. Touch regions are unchanged.
  */
 export function buildMMDArmTestColliders(
-  source: MMDTouchSource,
+  source: MMDArmTestSource,
   boneInverses: readonly Matrix4[],
   bindMatrix: Matrix4,
   rig: Pick<MMDRigProfile, 'bones' | 'hipsTranslation'>,
-): MMDTouchCollider[] {
+): MMDArmTestColliders {
   const names = (keys: readonly (keyof MMDRigProfile['bones'])[]) => keys.flatMap(key => rig.bones[key] ?? [])
   const included = [...names(['hips', 'spine', 'chest', 'upperChest']), ...[rig.hipsTranslation.center, rig.hipsTranslation.groove].flatMap(name => name ?? [])]
   const excluded = names(['head', 'neck', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm'])
-  return buildColliders(source, boneInverses, bindMatrix, (boneIndex) => {
+  const [leftArm, rightArm] = [rig.bones.leftUpperArm, rig.bones.rightUpperArm].map(name => source.bones.find(bone => bone.name === name))
+  const maxSize = leftArm && rightArm ? MAX_BODY_SPAN_FRACTION * new Vector3().fromArray(leftArm.position).distanceTo(new Vector3().fromArray(rightArm.position)) : Number.POSITIVE_INFINITY
+  const colliding = source.rigidBodies.filter(body => Math.max(...(body.shapeType === SHAPE_BOX ? body.shapeSize : [body.shapeSize[0]])) <= maxSize)
+  const regionOf = (boneIndex: number): NaturalTouchRegion | null => {
     const visited = new Set<number>()
     for (let index = boneIndex; index >= 0 && index < source.bones.length && !visited.has(index); index = source.bones[index].parentBoneIndex) {
       visited.add(index)
@@ -105,7 +134,12 @@ export function buildMMDArmTestColliders(
         return 'body'
     }
     return null
-  })
+  }
+  const build = (rigidBodies: typeof colliding) => buildColliders({ bones: source.bones, rigidBodies }, boneInverses, bindMatrix, regionOf)
+  return {
+    kinematic: build(colliding.filter(body => body.physicsMode === PHYSICS_FOLLOW_BONE)),
+    dynamic: build(colliding.filter(body => body.physicsMode !== PHYSICS_FOLLOW_BONE)),
+  }
 }
 
 function buildColliders(
