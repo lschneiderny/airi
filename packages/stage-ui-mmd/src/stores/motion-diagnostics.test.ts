@@ -127,4 +127,25 @@ describe('mmd motion diagnostics channel', () => {
       disposePinia(pinia)
     }
   })
+
+  it('folds reported readback timings into the next published measurement', () => {
+    const pinia = createPinia()
+    const store = useMMDMotionDiagnostics(pinia)
+    const now = vi.spyOn(performance, 'now').mockReturnValue(10_000)
+    try {
+      store.reportReadback(0.5)
+      store.publish()
+      expect(store.snapshot.measurement).toBeNull()
+
+      store.command({ type: 'command', name: 'startMeasurement' })
+      store.reportReadback(1.5)
+      store.recordFrame(1 / 60)
+      store.publish()
+      expect(store.snapshot.measurement).toMatchObject({ state: 'running', frames: 1, readbackMs: { meanMs: 1, maxMs: 1.5 } })
+    }
+    finally {
+      now.mockRestore()
+      disposePinia(pinia)
+    }
+  })
 })

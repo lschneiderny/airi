@@ -76,6 +76,8 @@ const props = withDefaults(defineProps<{
    * which also keeps the chat activity inert there.
    */
   chatTarget?: { visible: boolean, bounds: PlacementRect | null }
+  /** Fixed MMD framing for the throwaway full-screen stage spike; the desktop-stage calibration replaces it. */
+  spikeCalibration?: { characterHeightDip: number }
   enableOrbitControls?: boolean
   paused?: boolean
 }>(), {
@@ -1031,6 +1033,7 @@ defineExpose({
         :screen-placement="screenPlacement"
         :chat-target="chatTarget"
         :chat-activity="chatActivity"
+        :spike-calibration="spikeCalibration"
         :mouth-open-size="mouthOpenSize"
         :now-speaking="nowSpeaking"
         :background-url="activeBackgroundUrl"

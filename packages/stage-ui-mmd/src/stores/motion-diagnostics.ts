@@ -186,5 +186,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     setMetrics: (next: MMDFrameMetrics) => { metrics = next },
     recordFrame: (delta: number) => metrics.recordFrame(delta),
     measure: (id: string, run: () => void) => metrics.measure(id, run),
+    /** The host page times its alpha readback; the next published `measurement` carries the last second of samples. */
+    reportReadback: (ms: number) => metrics.recordReadback(ms, performance.now()),
   }
 })

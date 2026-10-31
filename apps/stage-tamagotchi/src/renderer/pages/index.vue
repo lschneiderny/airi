@@ -16,7 +16,7 @@ import {
   useElectronWindowBounds,
 } from '@proj-airi/electron-vueuse'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
-import { useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
+import { useMMDExpressionStore, useMMDMotionDiagnostics } from '@proj-airi/stage-ui-mmd/stores'
 import { useModelStore, useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three'
 import { HearingStatus, HoloCoupon } from '@proj-airi/stage-ui/components'
 import {
@@ -51,6 +51,14 @@ import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
 import { useToolSelectionStore } from '../stores/tools'
 import { resolveFadeOnHoverInteraction } from '../utils/fade-on-hover'
 import { shouldSampleStageTransparency } from '../utils/stage-three-transparency'
+
+// NOTICE:
+// `stage-spike=1` marks the throwaway full-screen stage window from `main/windows/stage/spike.ts`.
+// It covers the work area, so it has no border to resize and frames the MMD model with a fixed calibration.
+// Source: `.omo/plans/fullscreen-stage-locomotion.md`, todo 1.
+// Removal condition: delete with `spike.ts` when the desktop-stage page lands (todo 6 and todo 8).
+const stageSpike = new URLSearchParams(globalThis.location?.search ?? '').get('stage-spike') === '1'
+const stageSpikeCalibration = stageSpike ? { characterHeightDip: 560 } : undefined
 
 const hearingStatusElement = ref<HTMLElement>()
 const { isOutside: outsideHearingStatus } = useElectronMouseInElement(hearingStatusElement)
@@ -119,6 +127,7 @@ function handleStageReset() {
 const modelStore = useModelStore()
 const expressionStore = useExpressionStore()
 const mmdExpressionStore = useMMDExpressionStore()
+const motionDiagnostics = useMMDMotionDiagnostics()
 const { sceneMutationLocked, scenePhase } = storeToRefs(modelStore)
 const { stagePaused } = storeToRefs(useStageWindowLifecycleStore())
 // The stage window owns the desktop activity samples that drive the Natural motion performance state.
@@ -192,13 +201,18 @@ const isTransparentForMouseEvents = computed(() => {
   if (!isPointerOverStageCanvas.value)
     return false
 
-  if (stageModelRenderer.value === 'vrm')
-    return shouldUseThreeTransparencyHitTest.value ? isTransparentByThreeExact.value : false
-
-  return isTransparentByPixelsExact.value
+  const readbackStart = performance.now()
+  const transparent = stageModelRenderer.value === 'vrm'
+    ? shouldUseThreeTransparencyHitTest.value && isTransparentByThreeExact.value
+    : isTransparentByPixelsExact.value
+  motionDiagnostics.reportReadback(performance.now() - readbackStart)
+  return transparent
 })
 
-const { isNearAnyBorder: isAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 10 })
+// The spike window spans the work area, so it has no resize border to detect.
+const isAroundWindowBorder = stageSpike
+  ? shallowRef(false)
+  : useElectronMouseAroundWindowBorder({ threshold: 10 }).isNearAnyBorder
 const isAroundWindowBorderFor250Ms = refDebounced(isAroundWindowBorder, 250)
 
 // The controls Island hides while the cursor is away from the window. The edge
@@ -507,6 +521,7 @@ const stageChatTarget = computed(() => chatTarget.value ?? { visible: false, bou
           :cursor-position="cursorPosition"
           :screen-placement="screenPlacement"
           :chat-target="stageChatTarget"
+          :spike-calibration="stageSpikeCalibration"
           :paused="stagePaused"
           @error="handleStageRenderError"
           @reset="handleStageReset"

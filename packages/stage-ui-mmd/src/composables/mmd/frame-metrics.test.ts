@@ -43,4 +43,22 @@ describe('mmd frame metrics', () => {
     expect(metrics.measurement()?.stages).toEqual({})
     expect(metrics.measurement()?.fps).toBe(10)
   })
+
+  it('reports the alpha readback mean and max over the last second, and omits the field without samples', () => {
+    const metrics = new MMDFrameMetrics()
+    metrics.startMeasurement()
+    metrics.recordFrame(1 / 60)
+    expect(metrics.measurement()).not.toHaveProperty('readbackMs')
+
+    metrics.recordReadback(5, 0)
+    expect(metrics.measurement()?.readbackMs).toEqual({ meanMs: 5, maxMs: 5 })
+
+    metrics.recordReadback(0.2, 1500)
+    metrics.recordReadback(0.4, 1600)
+    expect(metrics.measurement()?.readbackMs?.meanMs).toBeCloseTo(0.3)
+    expect(metrics.measurement()?.readbackMs?.maxMs).toBe(0.4)
+
+    metrics.recordReadback(0.1, 2700)
+    expect(metrics.measurement()?.readbackMs).toEqual({ meanMs: 0.1, maxMs: 0.1 })
+  })
 })

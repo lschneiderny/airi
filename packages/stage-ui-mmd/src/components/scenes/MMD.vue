@@ -102,6 +102,11 @@ const props = withDefaults(defineProps<{
   backgroundUrl?: string | null
   currentAudioSource?: AudioBufferSourceNode
   enableOrbitControls?: boolean
+  /**
+   * Fixed framing for the throwaway full-screen stage spike: the model stands `characterHeightDip` DIP tall on the
+   * canvas bottom, centered, with a symmetric camera. The desktop-stage calibration replaces it.
+   */
+  spikeCalibration?: { characterHeightDip: number }
 }>(), {
   paused: false,
   performance: () => ({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }),
@@ -191,6 +196,8 @@ let previousFrameTime: number | undefined
 let lastDiagnosticsTime = 0
 let loadedModelKey: string | null = null
 let loadGeneration = 0
+// Model height and foot baseline in world units, measured once per load for the spike camera.
+let spikeFrame: { heightM: number, footY: number } | undefined
 
 // Lip-sync owns Vue lifecycle hooks, so it must be created during setup.
 const lipSync = useMMDLipSync(
@@ -259,6 +266,37 @@ function applyTransform() {
   modelGroup.rotation.y = rotationY.value
   modelGroup.position.set(position.value.x, position.value.y, 0)
   animation?.pipeline.requestPhysicsReset()
+  if (props.spikeCalibration)
+    applySpikeCamera()
+}
+
+/**
+ * Applies the symmetric spike camera from the design notes (B.1) with the floor row on the canvas bottom:
+ * `s = Hm / P`, `D = 5 * Hm`, eye at `(s * W / 2, s * H / 2, D)`, `fov = 2 * atan(s * H / (2 * D))`.
+ * The model root stands at `x = s * W / 2` with its feet on `y = 0`.
+ */
+function applySpikeCamera() {
+  if (!props.spikeCalibration || !spikeFrame || !camera || !controls || !modelGroup || !canvasRef.value)
+    return
+  const width = canvasRef.value.clientWidth
+  const height = canvasRef.value.clientHeight
+  if (width === 0 || height === 0)
+    return
+  const unitsPerDip = spikeFrame.heightM / props.spikeCalibration.characterHeightDip
+  const distance = 5 * spikeFrame.heightM
+  const eyeX = unitsPerDip * width / 2
+  const eyeY = unitsPerDip * height / 2
+  camera.fov = (2 * Math.atan(unitsPerDip * height / (2 * distance)) * 180) / Math.PI
+  camera.aspect = width / height
+  camera.near = 0.1 * distance
+  camera.far = 2 * distance
+  camera.position.set(eyeX, eyeY, distance)
+  camera.updateProjectionMatrix()
+  controls.target.set(eyeX, eyeY, 0)
+  camera.lookAt(controls.target)
+  controls.update()
+  modelGroup.position.set(eyeX, -spikeFrame.footY, 0)
+  animation?.pipeline.requestPhysicsReset()
 }
 
 /**
@@ -296,13 +334,15 @@ function setupScene() {
 
   controls = new OrbitControls(camera, canvas)
   controls.enableDamping = true
-  controls.enabled = props.enableOrbitControls
+  controls.enabled = props.enableOrbitControls && !props.spikeCalibration
 }
 
 /** Frames the camera so the whole model fits the viewport, and centers it. */
 function frameCamera() {
   if (!camera || !controls || !modelGroup)
     return
+  if (props.spikeCalibration)
+    modelGroup.position.set(0, 0, 0)
   modelGroup.updateMatrixWorld(true)
   const box = new Box3().setFromObject(modelGroup)
   const boneByName = new Map(mesh?.skeleton.bones.map(bone => [bone.name, bone]))
@@ -320,6 +360,11 @@ function frameCamera() {
   )
   if (!bounds)
     return
+  if (props.spikeCalibration) {
+    spikeFrame = { heightM: bounds.size[1], footY: bounds.center[1] - bounds.size[1] / 2 }
+    applySpikeCamera()
+    return
+  }
   const size = new Vector3(...bounds.size)
   const center = new Vector3(...bounds.center)
 
@@ -425,6 +470,7 @@ function resize() {
   renderer.setSize(w, h, false)
   camera.aspect = w / h
   camera.updateProjectionMatrix()
+  applySpikeCamera()
   layoutBackground()
 }
 
@@ -894,7 +940,7 @@ useEventListener(canvasRef, ['pointerdown', 'pointermove', 'pointerup', 'pointer
 
 watch(() => props.enableOrbitControls, (enabled) => {
   if (controls)
-    controls.enabled = enabled
+    controls.enabled = enabled && !props.spikeCalibration
 })
 
 // View transform sliders.
@@ -955,7 +1001,7 @@ watch(directionalPosition, () => {
 
 // Scene settings — camera & rendering.
 watch(cameraFov, () => {
-  if (!camera)
+  if (!camera || props.spikeCalibration)
     return
   camera.fov = cameraFov.value
   camera.updateProjectionMatrix()

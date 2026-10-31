@@ -65,6 +65,7 @@ import { setupNoticeWindowManager } from './windows/notice'
 import { setupOnboardingWindowManager } from './windows/onboarding'
 import { setupSettingsWindowReusableFunc } from './windows/settings'
 import { setupSpotlightWindowManager } from './windows/spotlight'
+import { isStageSpikeEnabled, setupStageSpikeWindow } from './windows/stage/spike'
 import { setupWidgetsWindowManager } from './windows/widgets'
 
 // TODO: once we refactored eventa to support window-namespaced contexts,
@@ -376,7 +377,7 @@ app.whenReady().then(async () => {
 
   const mainWindow = injeca.provide('windows:main', {
     dependsOn: { editorWindow, settingsWindow, chatWindow, widgetsManager, noticeWindow, beatSync, autoUpdater, serverChannel, godotStageManager, mcpManager, i18n, onboardingWindowManager, inlayWindow, appleSpeechTranscription, appleVision, ioTraceRecording, globalShortcut, goNetwork },
-    build: async ({ dependsOn }) => setupMainWindow({
+    build: async ({ dependsOn }) => (isStageSpikeEnabled() ? setupStageSpikeWindow : setupMainWindow)({
       ...dependsOn,
       onWindowCreated: (window) => {
         dependsOn.goNetwork.bindWindow(window)
