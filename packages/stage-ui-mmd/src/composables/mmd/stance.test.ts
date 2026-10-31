@@ -67,6 +67,16 @@ describe('mmd stance director', () => {
     expect(director.diagnostics).toMatchObject({ stance: 'sit', sinceMs: nowMs + 120_000, stanceReason: 'idle-timeout' })
   })
 
+  it('reports the director clock of every frame while the stance start holds', () => {
+    const director = new MMDStanceDirector()
+    director.update({ interaction: quiet, nowMs: EPOCH_MS, performance: idle, slots: {}, idleMotionName: '', isRegistered: registered })
+    const first = director.diagnostics
+    director.update({ interaction: quiet, nowMs: EPOCH_MS + 2_500, performance: idle, slots: {}, idleMotionName: '', isRegistered: registered })
+    const second = director.diagnostics
+    expect(first).toMatchObject({ nowMs: EPOCH_MS, sinceMs: EPOCH_MS })
+    expect(second).toMatchObject({ nowMs: EPOCH_MS + 2_500, sinceMs: EPOCH_MS })
+  })
+
   it('keeps standing while away without a sleep slot, and sleeps with one', () => {
     const director = new MMDStanceDirector()
     for (let second = 0; second <= 300; second += 10)

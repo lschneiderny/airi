@@ -2,6 +2,7 @@ import type { MMDMotionSnapshot } from '@proj-airi/stage-ui-mmd/stores'
 
 import en from '@proj-airi/i18n/locales/en'
 
+import { mmdOverlaysOff } from '@proj-airi/stage-ui-mmd/composables/mmd'
 import { useMMDMotionDiagnostics } from '@proj-airi/stage-ui-mmd/stores'
 import { until } from '@vueuse/core'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
@@ -58,9 +59,10 @@ const fixture: Partial<MMDMotionSnapshot> = {
   director: {
     stance: 'sit',
     sinceMs: 12_500,
+    nowMs: 40_000,
     stanceReason: 'idle-timeout',
-    reason: 'stay',
-    goalX: null,
+    reason: 'approach-chat',
+    goalX: 22.5,
     pace: 'walk',
     pendingGoal: null,
     nextWanderAtMs: null,
@@ -75,6 +77,11 @@ const fixture: Partial<MMDMotionSnapshot> = {
   lookAt: { target: { x: 0.5, y: 1.25, z: -2 }, yaw: Math.PI / 6, pitch: -Math.PI / 36, turning: true, turns: 3 },
   feet: { maxError: 0.0312, errorL: 0.0312, errorR: 0.0104, contact: 0.95 },
   touch: { lastRegion: 'head', hitBody: true, petActive: false, headScreenPoint: { x: 320.4, y: 180.6 }, events: 7 },
+  world: { unitsPerDip: 0.05, floorRowDip: 892, ground: { minX: -60.25, maxX: 60.25 }, homeX: 35.713, characterHeightDip: 300 },
+  characterPlacement: { x: 507.25, y: 592.5, width: 84.5, height: 300.4 },
+  stageModel: { height: 15.02, footBaselineY: 0.731 },
+  locomotion: { mode: 'walking', position: { x: 12.5, z: 0 }, yaw: Math.PI / 2, goalX: 22.5, reason: 'approach-chat', pace: 'walk', speed: 1.234, phase: 0.42, weight: 1, skate: 0.0123, leashClamps: 2, enabled: true },
+  arms: { weight: 0.75, owned: { leftArm: 0.25, rightArm: 0, leftFingers: 0.25, rightFingers: 0 }, penetration: { left: 0, right: 0.0456 }, clothContact: { left: 0.1, right: 0 }, hangDeg: 72, handBelowHip: true },
 }
 
 async function renderLab() {
@@ -113,11 +120,12 @@ describe('mmd motion lab', () => {
 
     await expect.element(screen.getByTestId('readout-stance')).toHaveTextContent('sit')
     await expect.element(screen.getByTestId('readout-since')).toHaveTextContent('12.5 s')
+    await expect.element(screen.getByTestId('mmd-director').getByTestId('readout-reason')).toHaveTextContent('idle-timeout')
     await expect.element(screen.getByTestId('readout-clock-offset')).toHaveTextContent('60.0 s')
     await expect.element(screen.getByTestId('readout-center-y')).toHaveTextContent('-6.512')
 
     await expect.element(screen.getByTestId('readout-target')).toHaveTextContent('0.50, 1.25, -2.00')
-    await expect.element(screen.getByTestId('readout-yaw')).toHaveTextContent('30.0 deg')
+    await expect.element(screen.getByTestId('mmd-look-at').getByTestId('readout-yaw')).toHaveTextContent('30.0 deg')
     await expect.element(screen.getByTestId('readout-turning')).toHaveTextContent(t(`${prefix}.body.look-at.turning`))
     await expect.element(screen.getByTestId('readout-max-error')).toHaveTextContent('0.0312')
     await expect.element(screen.getByTestId('readout-contact')).toHaveTextContent('0.95')
@@ -142,14 +150,87 @@ describe('mmd motion lab', () => {
     const collidersOn = until(() => stage.overlays.colliders).toBe(true, { timeout: 5000, throwOnTimeout: true })
     await screen.getByTestId('mmd-overlay-colliders').getByRole('switch').click()
     await collidersOn
-    expect(stage.overlays).toEqual({ ik: true, colliders: true, feet: false, lookAt: false })
+    expect(stage.overlays).toEqual({ ...mmdOverlaysOff, ik: true, colliders: true })
     await expect.element(screen.getByTestId('mmd-overlay-ik').getByRole('switch')).toBeChecked()
 
     const ikOff = until(() => stage.overlays.ik).toBe(false, { timeout: 5000, throwOnTimeout: true })
     await screen.getByTestId('mmd-overlay-ik').getByRole('switch').click()
     await ikOff
-    expect(stage.overlays).toEqual({ ik: false, colliders: true, feet: false, lookAt: false })
+    expect(stage.overlays).toEqual({ ...mmdOverlaysOff, colliders: true })
+
+    const goalOn = until(() => stage.overlays.goal).toBe(true, { timeout: 5000, throwOnTimeout: true })
+    await screen.getByTestId('mmd-overlay-goal').getByRole('switch').click()
+    await goalOn
+    expect(stage.overlays).toEqual({ ...mmdOverlaysOff, colliders: true, goal: true })
     await expect.element(screen.getByTestId('mmd-overlay-ik').getByRole('switch')).not.toBeChecked()
+    disposePinia(stagePinia)
+  })
+
+  it('shows the world, locomotion and arm cards from a fixture snapshot', async () => {
+    const { screen, diagnostics } = await renderLab()
+    const { t } = createTestI18n().global
+    await expect.element(screen.getByTestId('mmd-world')).toHaveTextContent(t(`${prefix}.world.empty`))
+    await expect.element(screen.getByTestId('mmd-locomotion')).toHaveTextContent(t(`${prefix}.locomotion.empty`))
+    await expect.element(screen.getByTestId('mmd-arms')).toHaveTextContent(t(`${prefix}.arms.empty`))
+    await expect.element(screen.getByTestId('mmd-locomotion-walk')).toBeDisabled()
+
+    diagnostics.publish(fixture)
+
+    const world = screen.getByTestId('mmd-world')
+    await expect.element(world.getByTestId('readout-units-per-dip')).toHaveTextContent('0.05000')
+    await expect.element(world.getByTestId('readout-floor-row')).toHaveTextContent('892.0 DIP')
+    await expect.element(world.getByTestId('readout-ground')).toHaveTextContent('-60.25 .. 60.25')
+    await expect.element(world.getByTestId('readout-home-x')).toHaveTextContent('35.713')
+    await expect.element(world.getByTestId('readout-character-height')).toHaveTextContent('300.0 DIP')
+    await expect.element(world.getByTestId('readout-model-height')).toHaveTextContent('15.020 / 0.731')
+    await expect.element(world.getByTestId('readout-placement')).toHaveTextContent('507.3, 592.5 84.5 x 300.4')
+
+    const locomotion = screen.getByTestId('mmd-locomotion')
+    await expect.element(locomotion.getByTestId('readout-mode')).toHaveTextContent('walking')
+    await expect.element(locomotion.getByTestId('readout-position')).toHaveTextContent('12.500, 0.000')
+    await expect.element(locomotion.getByTestId('readout-yaw')).toHaveTextContent('90.0 deg')
+    await expect.element(locomotion.getByTestId('readout-goal')).toHaveTextContent('22.500')
+    await expect.element(locomotion.getByTestId('readout-reason')).toHaveTextContent('approach-chat')
+    await expect.element(locomotion.getByTestId('readout-pace')).toHaveTextContent('walk')
+    await expect.element(locomotion.getByTestId('readout-speed')).toHaveTextContent('1.234')
+    await expect.element(locomotion.getByTestId('readout-phase')).toHaveTextContent('0.42')
+    await expect.element(locomotion.getByTestId('readout-skate')).toHaveTextContent('0.0123')
+    await expect.element(locomotion.getByTestId('readout-leash-clamps')).toHaveTextContent('2')
+    await expect.element(locomotion.getByTestId('readout-enabled')).toHaveTextContent(t(`${prefix}.locomotion.yes`))
+
+    const arms = screen.getByTestId('mmd-arms')
+    await expect.element(arms.getByTestId('readout-weight')).toHaveTextContent('0.75')
+    await expect.element(arms.getByTestId('readout-owned-left-arm')).toHaveTextContent('0.25')
+    await expect.element(arms.getByTestId('readout-penetration-right')).toHaveTextContent('0.0456')
+    await expect.element(arms.getByTestId('readout-cloth-contact-left')).toHaveTextContent('0.1000')
+    await expect.element(arms.getByTestId('readout-hang')).toHaveTextContent('72.0 deg')
+    await expect.element(arms.getByTestId('readout-hand-below-hip')).toHaveTextContent(t(`${prefix}.arms.yes`))
+  })
+
+  it('posts a walk goal, a home and a roam mode to the stage from the locomotion card', async () => {
+    const stagePinia = createPinia()
+    setActivePinia(stagePinia)
+    const stage = useMMDMotionDiagnostics()
+    const { screen } = await renderLab()
+    stage.publish(fixture)
+
+    const walked = until(() => stage.goalRequest).toMatch(request => request !== null, { timeout: 5000, throwOnTimeout: true })
+    await expect.element(screen.getByTestId('mmd-locomotion-walk')).toBeEnabled()
+    await screen.getByTestId('mmd-locomotion-walk').click()
+    await walked
+    expect(stage.goalRequest).toEqual({ seq: 1, x: 12.5 + 400 * 0.05, pace: 'walk' })
+
+    const homed = until(() => stage.homeX).toBe(12.5, { timeout: 5000, throwOnTimeout: true })
+    await screen.getByTestId('mmd-locomotion-set-home').click()
+    await homed
+
+    const roaming = until(() => stage.roamModeRequest?.mode).toBe('roam', { timeout: 5000, throwOnTimeout: true })
+    await screen.getByTestId('mmd-locomotion-roam').getByRole('switch').click()
+    await roaming
+    expect(stage.roamModeRequest).toEqual({ seq: 1, mode: 'roam' })
+
+    await screen.getByTestId('mmd-locomotion-walk-dip').getByRole('spinbutton').fill('')
+    await expect.element(screen.getByTestId('mmd-locomotion-walk')).toBeDisabled()
     disposePinia(stagePinia)
   })
 

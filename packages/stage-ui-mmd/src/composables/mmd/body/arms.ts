@@ -87,6 +87,25 @@ function signedDistance(collider: MMDTouchCollider, point: Vector3): number {
   }
 }
 
+/** One test capsule of an arm: a segment with a radius, in the space of the bone positions it was built from. */
+export interface MMDArmCapsule {
+  from: Vector3
+  to: Vector3
+  radius: number
+}
+
+/**
+ * The two capsules the penetration test uses for one arm: the lower half of the upper arm (the shoulder joint sits
+ * inside the chest bodies) and the forearm extended through the hand. The overlay draws exactly these.
+ */
+export function mmdArmCapsules(upper: Vector3, elbow: Vector3, wrist: Vector3): [MMDArmCapsule, MMDArmCapsule] {
+  const fingertip = wrist.clone().addScaledVector(wrist.clone().sub(elbow), HAND_EXTENSION)
+  return [
+    { from: upper.clone().lerp(elbow, SHOULDER_SKIP), to: elbow, radius: ARM_RADIUS_RATIO * upper.distanceTo(elbow) },
+    { from: elbow, to: fingertip, radius: ARM_RADIUS_RATIO * elbow.distanceTo(wrist) },
+  ]
+}
+
 function boundingRadius(collider: MMDTouchCollider): number {
   const [x, y, z] = collider.size
   return collider.shape === 'sphere' ? x : collider.shape === 'box' ? Math.hypot(x, y, z) : x + y / 2
@@ -202,11 +221,7 @@ export class MMDArmRest {
         handsBelow = false
       if (!upper || !elbow || !wrist)
         continue
-      const fingertip = wrist.clone().addScaledVector(wrist.clone().sub(elbow), HAND_EXTENSION)
-      const capsules = [
-        { from: upper.clone().lerp(elbow, SHOULDER_SKIP), to: elbow, radius: ARM_RADIUS_RATIO * upper.distanceTo(elbow) },
-        { from: elbow, to: fingertip, radius: ARM_RADIUS_RATIO * elbow.distanceTo(wrist) },
-      ]
+      const capsules = mmdArmCapsules(upper, elbow, wrist)
       const samples = capsules.flatMap(({ from, to, radius }) =>
         Array.from({ length: SAMPLES_PER_CAPSULE }, (_, index) => ({ point: from.clone().lerp(to, index / (SAMPLES_PER_CAPSULE - 1)), radius, clearance: SOLVER_CLEARANCE_RATIO * from.distanceTo(to) })))
       penetration[side] = this.deepest(samples, this.colliders.kinematic, toMesh)

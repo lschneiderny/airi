@@ -652,12 +652,87 @@ devtools:
           lookAt:
             title: Look-at target
             description: Mark the world point the body is turning toward.
+          floorLine:
+            title: Floor line
+            description: Desktop stage only. Draw the y = 0 line across the work area at z = 0.
+          groundLine:
+            title: Ground line
+            description: Desktop stage only. Draw the reachable ground segment on the floor line.
+          home:
+            title: Home
+            description: Desktop stage only. Mark the resting root x.
+          goal:
+            title: Goal
+            description: Desktop stage only. Mark the director's goal x and label it with the locomotion reason.
+          armCapsules:
+            title: Arm capsules
+            description: Draw the capsules the arm penetration test sweeps, per side.
         legend:
           collider-head: Head collider
           collider-body: Body collider
           foot-anchor: Foot anchor
           ankle: Ankle
           look-at: Look-at target
+          floor-line: Floor line
+          ground-line: Ground line
+          home: Home
+          goal: Goal
+          arm-capsule: Arm capsule
+      world:
+        title: World
+        empty: Desktop stage only. Load an MMD model on the desktop stage.
+        rows:
+          units-per-dip: Units per DIP
+          floor-row: Floor row
+          ground: Ground (min .. max)
+          home-x: Home X
+          character-height: Character height
+          model-height: Model height / foot baseline
+          placement: Placement (x, y w x h, DIP)
+      locomotion:
+        title: Locomotion
+        empty: Available while the Natural driver runs.
+        'yes': 'Yes'
+        'no': 'No'
+        rows:
+          mode: Mode
+          position: Position (x, z)
+          yaw: Yaw
+          goal: Goal X
+          reason: Reason
+          pace: Pace
+          speed: Speed
+          phase: Phase
+          weight: Weight
+          skate: Skate
+          leash-clamps: Leash clamps
+          enabled: Gait enabled
+          pending-goal: Pending goal
+        walk:
+          title: Walk here (DIP from the root)
+          description: Posts a requestGoal at the current x plus this many DIP along the floor line.
+          button: Walk here
+        set-home: Set home here
+        roam:
+          title: Roams
+          description: Posts setRoamMode. In roam mode the director wanders the ground line.
+      arms:
+        title: Arms
+        empty: Available while the Natural driver runs.
+        'yes': 'Yes'
+        'no': 'No'
+        rows:
+          weight: Rest weight
+          owned-left-arm: Owned left arm
+          owned-right-arm: Owned right arm
+          owned-left-fingers: Owned left fingers
+          owned-right-fingers: Owned right fingers
+          penetration-left: Penetration left
+          penetration-right: Penetration right
+          cloth-contact-left: Cloth contact left
+          cloth-contact-right: Cloth contact right
+          hang: Hang angle
+          hand-below-hip: Hands below hips
       director:
         title: Body director
         empty: No director is running. Load an MMD model in the main window.

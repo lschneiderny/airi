@@ -10,11 +10,21 @@ export interface MMDOverlayFlags {
   feet: boolean
   /** The world-space point the body look-at is turning toward. */
   lookAt: boolean
+  /** Stage mode: the floor line, `y = 0` across the work area at `z = 0`. */
+  floorLine: boolean
+  /** Stage mode: the reachable ground segment, `ground.minX` to `ground.maxX` on the floor line. */
+  groundLine: boolean
+  /** Stage mode: a marker at `homeX`. */
+  home: boolean
+  /** Stage mode: a marker at the director's `goalX` with the locomotion reason as its label. */
+  goal: boolean
+  /** The capsules the arm penetration test sweeps: the lower upper arm and the forearm through the hand, per side. */
+  armCapsules: boolean
 }
 
-export const mmdOverlayFlagNames = ['ik', 'colliders', 'feet', 'lookAt'] as const satisfies readonly (keyof MMDOverlayFlags)[]
+export const mmdOverlayFlagNames = ['ik', 'colliders', 'feet', 'lookAt', 'floorLine', 'groundLine', 'home', 'goal', 'armCapsules'] as const satisfies readonly (keyof MMDOverlayFlags)[]
 
-export const mmdOverlaysOff: MMDOverlayFlags = { ik: false, colliders: false, feet: false, lookAt: false }
+export const mmdOverlaysOff: MMDOverlayFlags = { ik: false, colliders: false, feet: false, lookAt: false, floorLine: false, groundLine: false, home: false, goal: false, armCapsules: false }
 
 export function isMMDOverlayFlags(value: unknown): value is Partial<MMDOverlayFlags> {
   if (typeof value !== 'object' || value === null)
@@ -29,4 +39,9 @@ export const mmdOverlayColors = {
   footAnchor: 0xFACC15,
   ankle: 0xFB923C,
   lookAt: 0x4ADE80,
+  floorLine: 0x94A3B8,
+  groundLine: 0x22D3EE,
+  home: 0xA78BFA,
+  goal: 0xF87171,
+  armCapsule: 0xFBBF24,
 } as const

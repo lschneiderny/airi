@@ -122,9 +122,10 @@ and animation loops request a physics reset. During a measurement,
 (`requestPhysicsReset`, for example a stage teleport); loop wraps are not
 counted.
 
-The scene registers these pose stages in order: `natural`, `weight-shift`,
-`foot-contact`, `look-at`, `eyes`, `classic-gaze`, `classic-face`, `lip-sync`
-and `bone-morphs`. Its surface stages are `body-diagnostics` and `morphs`.
+The scene registers these pose stages in order: `natural`, `locomotion`,
+`weight-shift`, `foot-contact`, `look-at`, `arm-rest`, `eyes`, `classic-gaze`,
+`classic-face`, `lip-sync` and `bone-morphs`. Its surface stages are
+`body-diagnostics` and `morphs`.
 The Natural and body stages run only for the Natural driver; the classic
 stages run only for Classic. Every stage is timed under its id.
 
@@ -221,7 +222,68 @@ reports the flags the stage draws, so a lab opened after a toggle starts with
 the stage's state; the scene adds the IK helper,
 touch-collider wireframes, foot anchors, and look-at marker
 (`src/composables/mmd/overlays.ts`) to its scene only while each flag is on
-and disposes them when it turns off.
+and disposes them when it turns off. The stage-mode overlays `floorLine`
+(`y = 0` across the work area at `z = 0`), `groundLine` (`ground.minX` to
+`ground.maxX`), `home` (a marker at `homeX`) and `goal` (a marker at the
+director's `goalX`, labelled with the locomotion reason) read the stage world
+every frame and stay hidden in classic mode; `armCapsules` draws the two
+capsules per side that the arm penetration test sweeps (`mmdArmCapsules`).
+
+#### Snapshot fields
+
+The snapshot and command field names are a QA contract (`AGENTS.md`): the
+stage gates read them, so fields are only ever appended. Every field is
+published at 10 Hz by the scene (`MMD.vue`); `null` means the source is not
+running (no model, the Classic driver, or the classic window).
+
+| Field | Meaning |
+| --- | --- |
+| `loadedModelKey`, `driver` | The mounted model key (`null` without a model) and `natural` or `classic`. |
+| `fps { last, mean60s }`, `timings { <stage>: { lastMs, p95Ms } }` | Rolling frame rate and per-stage timings over the last 600 samples. |
+| `measurement` | The explicit measurement window: `state`, `durationMs`, `frames`, `fps`, `readbackMs { meanMs, maxMs }` (the host's alpha readback cost, `reportReadback`) and `physicsResets` (resets callers requested through `requestPhysicsReset`; loop wraps are not counted). |
+| `rig` | The `MMDRigProfile` of the loaded model. |
+| `natural { events, energy, headYaw }` | Natural event count, requested energy and the head bone's local yaw in radians. |
+| `feet { maxError, errorL, errorR, contact }` | Ankle error after IK and physics in model units, and the foot-contact weight. |
+| `lookAt { target, yaw, pitch, turning, turns }` | The world-space look target, head yaw and pitch in radians, whether the center bone is turning, and the turn count. |
+| `director` | The body director (below). |
+| `touch { lastRegion, hitBody, petActive, headScreenPoint, events }` | The touch classifier state; `headScreenPoint` is in canvas client pixels. |
+| `animation { idle, currentAction, actionsStarted }` | The looping base clip, the one-shot in progress and the one-shot count. |
+| `characterPlacement { x, y, width, height }` | Stage mode: the character's projected rect in work-area DIP with the root at its current x. |
+| `stageModel { height, footBaselineY }` | Stage mode: the measured model height and foot baseline in model units, which the host calibrates the camera from. |
+| `world { unitsPerDip, floorRowDip, ground { minX, maxX }, homeX, characterHeightDip }` | Stage mode: the calibration the world was built from. `unitsPerDip` converts work-area DIP to model units on the floor line, `floorRowDip` is the floor line's row, `ground` the reachable root x range, `homeX` the resting root x and `characterHeightDip` the configured height (`stageModel.height / unitsPerDip`). |
+| `locomotion { mode, position { x, z }, yaw, goalX, reason, pace, speed, phase, weight, skate, leashClamps, enabled }` | The gait in world units: `mode` (`idle`, `turning`, `walking`, `stopping`), the root position and yaw, the body's goal and its reason and pace, the speed and gait phase, the gait weight, `skate` (the largest per-frame horizontal world movement of a planted ankle; 0 when the feet stay planted), `leashClamps` (ticks on which the reach leash shortened root travel) and `enabled` (false while a clip owns the root or a leg IK bone). |
+| `arms { weight, owned, penetration { left, right }, clothContact { left, right }, hangDeg, handBelowHip }` | The arm rest layer: `weight` is one minus the larger arm ownership, `owned` the clip ownership per group (`leftArm`, `rightArm`, `leftFingers`, `rightFingers`, 0-1), `penetration` the deepest arm capsule-radius overlap of a kinematic body per side in model units (the gate: 0), `clothContact` the deepest centerline overlap of a dynamic cloth body (information only), `hangDeg` the rest hang in effect and `handBelowHip` whether both hands sit below the hips bone. |
+| `overlays` | The `MMDOverlayFlags` the stage draws. |
+
+The `director` block carries `MMDStanceDiagnostics` plus `clockOffsetMs` (the
+`advanceDirectorClock` total) and `centerY` (the センター bone's Y in model
+units): `stance`, `sinceMs` (director-clock time at which the stance began; it
+moves only on a stance change), `nowMs` (director-clock time of the last frame
+the director decided; it advances every frame), `stanceReason` (why the stance
+holds: `idle-timeout`, `away`, `dwell`, `no-sleep-slot`, `idle`, `no-sit-slot`
+or `active`), `reason` (the locomotion reason: `approach-chat`,
+`approach-cursor`, `return-home`, `wander`, `tool`, `debug` or `stay`),
+`goalX`, `pace`, `pendingGoal { x, reason }` (a goal held while she speaks),
+`nextWanderAtMs` (`null` outside roam mode), `moveRefractoryUntilMs` and
+`lookRefractoryUntilMs` (director-clock times until which `come_here` and
+`go_home`, or `look_at`, are refused), `lastToolSeq`, `toolRefused` (whether the
+last tool request was refused) and `toolRetryAfterMs` (how long the refused
+request must wait, `null` when it was accepted).
+
+#### Commands
+
+| Command | Value | Effect |
+| --- | --- | --- |
+| `startMeasurement`, `stopMeasurement` | none | Open and close the measurement window. |
+| `setDebugFlag` | `{ flag: 'disableFootContact' \| 'disableLookAt', on }` or `{ flag: 'armRestHangDeg', value }` | Disables a body stage for QA, or overrides the rest hang in degrees below horizontal (0-90; `null` restores the default and the per-rig solver). |
+| `advanceDirectorClock` | milliseconds | Adds to the director's clock only; Natural and physics keep real time. |
+| `setOverlay` | `Partial<MMDOverlayFlags>` | Turns overlays on or off (the lab uses `mmdOverlaySetEvent`). |
+| `requestGoal` | `{ x, pace: 'stroll' \| 'walk' }` | The director's `debugGoal`: walks her to `x` on the ground line, clamped to `ground`. Any other pace is rejected with one warning. |
+| `setHome` | `{ x }` | Moves the resting root x the director returns to. |
+| `setRoamMode` | `{ mode: 'stay' \| 'roam' }` | Writes `roamMode` (`settings/mmd/roam-mode`) from the lab. |
+
+A malformed command is ignored with one `console.warn` per store; later valid
+commands are still applied.
 
 ### Touch
 
@@ -322,7 +384,12 @@ expression panel from `@proj-airi/stage-ui`, fed by `useMMDExpressionStore`;
 MMD publishes no free parameters, so custom switches do not appear. In the
 Electron app, Settings > System > Developer > MMD Motion Lab
 (`/devtools/mmd-motion`) reads the diagnostics store from the main window's
-stage and toggles its overlays.
+stage and toggles its overlays. Its World card shows the `world` calibration,
+`stageModel` and `characterPlacement`; its Locomotion card shows the
+`locomotion` fields with the director's `reason`, `pace`, `goalX` and
+`pendingGoal`, posts `requestGoal` ("Walk here", a DIP offset from the
+root along the floor line), `setHome` and `setRoamMode`; its Arms card shows
+the `arms` fields; the Director card keeps `stanceReason`.
 
 ### Checks
 
