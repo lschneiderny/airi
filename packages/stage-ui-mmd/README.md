@@ -101,6 +101,23 @@ from the 600-sample rolling FPS and timing readouts. `setDebugFlag`,
 `advanceDirectorClock`, and `setOverlay` carry transient controls for the
 body, director, and overlay consumers.
 
+### Touch
+
+While Natural drives the model, the scene turns canvas pointer input into pokes
+and pets (`src/composables/mmd/touch/`). Pointer rays hit the model's PMX rigid
+bodies as analytic shapes (sphere radius, box half-extents, capsule radius and
+cylinder height along Y), posed from bone matrices through a body-to-bone offset
+stored at load; the Ammo world is never read. Bodies under 頭/首 are `head`, and
+bodies under 上半身/上半身2/上半身3/下半身 are `body`. A model without usable rigid
+bodies falls back to a skinned mesh raycast and the hit face's heaviest bone.
+Gesture rules mirror the Live2D classifier. Pokes and pets feed
+`NaturalMotion`, so the response is pre-physics head and body motion.
+`settings/mmd/natural-touch` (default on) and
+`settings/mmd/natural-touch-pet-requires-hold` (default off) match the Live2D
+settings, and the scene emits `touch` events like `Live2DScene`. Diagnostics
+publish `touch` with `lastRegion`, `hitBody`, `petActive`, `events`, and
+`headScreenPoint` in canvas client pixels.
+
 ### Rig profile
 
 For motion layers, `readMMDRigProfile(mmd.pmx)` (exported from

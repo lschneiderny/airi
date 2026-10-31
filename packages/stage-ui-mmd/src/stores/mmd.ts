@@ -125,6 +125,10 @@ export const useMMD = defineStore('mmd', () => {
    */
   const gazeMode = useLocalStorageManualReset<MMDGazeMode>('settings/mmd/gaze-mode', 'mouse')
   const motionDriver = useLocalStorageManualReset<MMDMotionDriver>('settings/mmd/motion-driver', 'natural')
+  /** Let the user poke the model and pet its head with the cursor while Natural drives it. */
+  const naturalTouch = useLocalStorageManualReset<boolean>('settings/mmd/natural-touch', true)
+  /** Count only strokes made with the primary button held as pets, so passing the cursor over the head never pets it. */
+  const naturalTouchPetRequiresHold = useLocalStorageManualReset<boolean>('settings/mmd/natural-touch-pet-requires-hold', false)
 
   // === Scene: camera ===
   /** Vertical field of view in degrees. */
@@ -267,6 +271,8 @@ export const useMMD = defineStore('mmd', () => {
     physicsGravity.reset()
     gazeMode.reset()
     motionDriver.reset()
+    naturalTouch.reset()
+    naturalTouchPetRequiresHold.reset()
     cameraFov.reset()
     ambientColor.reset()
     ambientIntensity.reset()
@@ -297,6 +303,8 @@ export const useMMD = defineStore('mmd', () => {
     physicsGravity,
     gazeMode,
     motionDriver,
+    naturalTouch,
+    naturalTouchPetRequiresHold,
 
     cameraFov,
     ambientColor,
