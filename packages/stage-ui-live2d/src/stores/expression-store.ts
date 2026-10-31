@@ -25,6 +25,10 @@ export interface NamedExpressionDefinition extends ExpressionDefinition {
 /** Target activation state; fading releases remain owned by the composer until zero. */
 export interface Live2DExpressionSettingsSnapshot {
   entries: (CatalogEntry & { name: string, active: boolean, effective: boolean, overriddenBy: string | null, via: string[], isDefault: boolean, usesOverwrite: boolean })[]
+  /** Choose-one sets in catalog order; the shared expression panel reads them from every renderer. */
+  groups: { id: string, memberIds: string[] }[]
+  activeIds: string[]
+  restIds: string[]
   freeParameters: FreeParameter[]
 }
 
@@ -170,24 +174,34 @@ export const useExpressionStore = defineStore('live2d-expressions', () => {
     reconcile()
   }
 
-  const settingsSnapshot = computed<Live2DExpressionSettingsSnapshot>(() => ({
-    entries: catalog.value.map(entry => ({
-      ...entry,
-      parameterIds: [...entry.parameterIds],
-      mappings: entry.mappings.map(mapping => ({ ...mapping })),
-      members: entry.members?.map(member => ({ ...member })),
-      aliases: entry.aliases ? [...entry.aliases] : undefined,
-      slots: entry.slots ? [...entry.slots] : undefined,
-      name: entry.label,
-      active: isActive(entry.id),
-      effective: resolved.value.effective.has(entry.id),
-      overriddenBy: resolved.value.effective.has(entry.id) ? null : catalog.value.find(trigger => trigger.id === resolved.value.masked.get(entry.id))?.label ?? null,
-      via: resolved.value.via.get(entry.id) ?? [],
-      isDefault: restSet.value.includes(entry.id),
-      usesOverwrite: expandEntry(entry, catalog.value).some(member => definitions.value.find(def => def.id === member.expressionId)?.parameters.some(parameter => parameter.blend === 'Overwrite')),
-    })),
-    freeParameters: freeParameters.value.filter(parameter => !validCustoms.value.some(custom => custom.parameterId === parameter.id)).map(parameter => ({ ...parameter })),
-  }))
+  const settingsSnapshot = computed<Live2DExpressionSettingsSnapshot>(() => {
+    const groups = new Map<string, string[]>()
+    for (const entry of catalog.value) {
+      if (entry.group !== null)
+        groups.set(entry.group, [...groups.get(entry.group) ?? [], entry.id])
+    }
+    return {
+      groups: [...groups].map(([id, memberIds]) => ({ id, memberIds })),
+      activeIds: catalog.value.filter(entry => isActive(entry.id)).map(entry => entry.id),
+      restIds: [...restSet.value],
+      entries: catalog.value.map(entry => ({
+        ...entry,
+        parameterIds: [...entry.parameterIds],
+        mappings: entry.mappings.map(mapping => ({ ...mapping })),
+        members: entry.members?.map(member => ({ ...member })),
+        aliases: entry.aliases ? [...entry.aliases] : undefined,
+        slots: entry.slots ? [...entry.slots] : undefined,
+        name: entry.label,
+        active: isActive(entry.id),
+        effective: resolved.value.effective.has(entry.id),
+        overriddenBy: resolved.value.effective.has(entry.id) ? null : catalog.value.find(trigger => trigger.id === resolved.value.masked.get(entry.id))?.label ?? null,
+        via: resolved.value.via.get(entry.id) ?? [],
+        isDefault: restSet.value.includes(entry.id),
+        usesOverwrite: expandEntry(entry, catalog.value).some(member => definitions.value.find(def => def.id === member.expressionId)?.parameters.some(parameter => parameter.blend === 'Overwrite')),
+      })),
+      freeParameters: freeParameters.value.filter(parameter => !validCustoms.value.some(custom => custom.parameterId === parameter.id)).map(parameter => ({ ...parameter })),
+    }
+  })
 
   function defineExpressions() {
     for (const custom of curated.value.customs ?? []) {

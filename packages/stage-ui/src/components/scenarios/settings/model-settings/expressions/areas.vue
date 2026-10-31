@@ -1,27 +1,28 @@
 <script setup lang="ts">
 import type { ExpressionArea } from '@proj-airi/stage-shared/expression-performance'
-import type { Live2DExpressionSettingsCommand, Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+
+import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelEntry, ExpressionPanelSnapshot } from './source'
 
 import { Button, Collapsible, Input } from '@proj-airi/ui'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import Live2dExpressionCustomCreator from './live2d-expression-custom-creator.vue'
-import Live2dExpressionEntry from './live2d-expression-entry.vue'
-import Live2dExpressionGroupRow from './live2d-expression-group-row.vue'
+import ExpressionCustomCreator from './custom-creator.vue'
+import ExpressionEntry from './entry.vue'
+import ExpressionGroupRow from './group-row.vue'
 
-import { groupDisplayName } from './expression-group-name'
+import { groupDisplayName } from './group-name'
 
-type Entry = Live2DExpressionSettingsSnapshot['entries'][number]
+type Entry = ExpressionPanelEntry
 type ExpressionRow
   = | { type: 'group', group: string, members: Entry[] }
     | { type: 'entry', entry: Entry }
 
 const props = defineProps<{
-  snapshot: Live2DExpressionSettingsSnapshot
+  snapshot: ExpressionPanelSnapshot
 }>()
 const emit = defineEmits<{
-  (e: 'command', command: Live2DExpressionSettingsCommand): void
+  (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
 }>()
 
 const { t } = useI18n()
@@ -118,19 +119,19 @@ const creating = ref(false)
       <h3 :class="['text-sm font-medium text-neutral-700 dark:text-neutral-300']">
         {{ t('settings.live2d.expressions.areas.title') }}
       </h3>
-      <Button size="sm" :aria-expanded="creating" @click="creating = !creating">
+      <Button v-if="snapshot.freeParameters" size="sm" :aria-expanded="creating" @click="creating = !creating">
         {{ creating ? t('settings.live2d.expressions.combos.cancel') : t('settings.live2d.expressions.custom.add') }}
       </Button>
     </div>
 
     <div
-      v-if="creating"
+      v-if="creating && snapshot.freeParameters"
       :class="[
         'min-w-0 p-2',
         'rounded-lg border border-solid border-neutral-200 dark:border-neutral-800',
       ]"
     >
-      <Live2dExpressionCustomCreator
+      <ExpressionCustomCreator
         :free-parameters="snapshot.freeParameters"
         @command="emit('command', $event)"
         @close="creating = false"
@@ -175,7 +176,7 @@ const creating = ref(false)
       </template>
       <div role="list" :class="['flex flex-col gap-2 pb-2']">
         <template v-for="row in section.rows" :key="rowKey(row)">
-          <Live2dExpressionGroupRow
+          <ExpressionGroupRow
             v-if="row.type === 'group'"
             role="listitem"
             :group="row.group"
@@ -184,7 +185,7 @@ const creating = ref(false)
             :label-of="labelOf"
             @command="emit('command', $event)"
           />
-          <Live2dExpressionEntry
+          <ExpressionEntry
             v-else
             role="listitem"
             :entry="row.entry"
@@ -215,7 +216,7 @@ const creating = ref(false)
         </p>
       </div>
       <div role="list" :class="['flex flex-col gap-2']">
-        <Live2dExpressionEntry
+        <ExpressionEntry
           v-for="entry in visibleUnsorted"
           :key="entry.id"
           role="listitem"

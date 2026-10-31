@@ -871,3 +871,20 @@ pass through to the underlying `BasicButton`.
 ## Live2D scene API
 
 `Live2D.vue` in `@proj-airi/stage-ui-live2d` is a scene component, not a `@proj-airi/ui` primitive. Its `naturalEnergy` and `performanceSettings` props, its `touch` event, and its exposed `applySlots` and `applyHolds` methods are documented in the [stage-ui-live2d README](../../../../packages/stage-ui-live2d/README.md), under Expression slots, Held emotions, Energy, and Touch: poke and pet.
+
+---
+
+## Model settings expression panel
+
+`packages/stage-ui/src/components/scenarios/settings/model-settings/expressions/panel.vue` is the renderer-neutral expression panel. The Live2D and MMD settings components (`live2d.vue`, `mmd.vue`) mount it; it never imports a renderer store.
+
+**Contract** (`expressions/source.ts`): `ExpressionPanelSnapshot` carries `entries`, `groups` (choose-one sets), `activeIds`, `restIds` and, for renderers with custom switches, `freeParameters`. `ExpressionPanelCommand` covers curate (`update-entry`, `reset-entry`), active and rest state (`toggle`, `set-active`, `save-defaults`, `reset-all`) and combos (`create-combo`, `update-combo`, `delete-combo`). `ExpressionPanelSource` is `{ settingsSnapshot, applySettingsCommand }`; `useExpressionStore` (Live2D) and `useMMDExpressionStore` (MMD) satisfy it structurally.
+
+**Props:** `snapshot: ExpressionPanelSnapshot`, `enabled?: boolean` (default `true`).
+**Models:** `search: string`, `showAll: boolean` (required; the parent owns them so they survive a collapsed section).
+**Emits:** `command(ExpressionPanelCommand)`; `customCommand(ExpressionPanelCustomCommand)` for Live2D custom switches only.
+**Slots:** `disabled`, rendered instead of the controls when `enabled` is `false`.
+
+Layout is emotion first: Reactions, then Combos, then every expression by area. The strings stay under `settings.live2d.expressions.*`.
+
+`ModelSettingsPanel` (`model-settings/panel.vue`) re-emits `live2dExpressionCommand` and `mmdExpressionCommand`. In Electron the settings window reads `runtimeSnapshot.live2dExpressions` or `runtimeSnapshot.mmdExpressions` and forwards the command over the model-settings runtime channel (`apps/stage-tamagotchi/src/shared/model-settings-runtime.ts`); the stage window applies it to its store and answers with the next snapshot.

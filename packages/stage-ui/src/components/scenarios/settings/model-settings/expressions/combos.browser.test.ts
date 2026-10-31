@@ -1,4 +1,4 @@
-import type { Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import type { ExpressionPanelEntry } from './source'
 
 import en from '@proj-airi/i18n/locales/en'
 
@@ -23,7 +23,7 @@ function createTestI18n() {
 
 const { t } = createTestI18n().global
 
-type ExpressionEntry = Live2DExpressionSettingsSnapshot['entries'][number]
+type ExpressionEntry = ExpressionPanelEntry
 
 function expressionEntry(overrides: Partial<ExpressionEntry>): ExpressionEntry {
   return {
@@ -78,7 +78,7 @@ const coatLook = expressionEntry({
 const baseEntries = [blush, sparkle, coat, blushCopy]
 
 async function renderCombos(entries: ExpressionEntry[]) {
-  const { default: Combos } = await import('./live2d-expression-combos.vue')
+  const { default: Combos } = await import('./combos.vue')
   await import('virtual:uno.css')
   const onCommand = vi.fn()
   const screen = await render(Combos, {
@@ -93,7 +93,7 @@ const k = (key: string) => t(`settings.live2d.expressions.combos.${key}`)
 describe('live2D expression combos', () => {
   beforeAll(async () => {
     await Promise.all([
-      import('./live2d-expression-combos.vue'),
+      import('./combos.vue'),
       import('virtual:uno.css'),
     ])
     for (const key of ['title', 'description', 'empty', 'new', 'members', 'add-member', 'strength-hint', 'manual-only', 'save', 'cancel', 'delete', 'delete-confirm', 'marker-ai', 'marker-default'])

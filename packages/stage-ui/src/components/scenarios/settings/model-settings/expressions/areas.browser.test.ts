@@ -1,4 +1,4 @@
-import type { Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import type { ExpressionPanelEntry, ExpressionPanelFreeParameter } from './source'
 
 import en from '@proj-airi/i18n/locales/en'
 
@@ -24,8 +24,8 @@ function createTestI18n() {
 
 const { t } = createTestI18n().global
 
-type ExpressionEntry = Live2DExpressionSettingsSnapshot['entries'][number]
-type FreeParameter = Live2DExpressionSettingsSnapshot['freeParameters'][number]
+type ExpressionEntry = ExpressionPanelEntry
+type FreeParameter = ExpressionPanelFreeParameter
 
 function expressionEntry(overrides: Partial<ExpressionEntry> & Pick<ExpressionEntry, 'id' | 'label'>): ExpressionEntry {
   return {
@@ -75,12 +75,12 @@ const freeParameters: FreeParameter[] = [
 ]
 
 async function renderAreas(entries: ExpressionEntry[], options: { freeParameters?: FreeParameter[], showAll?: boolean } = {}) {
-  const { default: Areas } = await import('./live2d-expression-areas.vue')
+  const { default: Areas } = await import('./areas.vue')
   await import('virtual:uno.css')
   const onCommand = vi.fn()
   const screen = await render(Areas, {
     props: {
-      snapshot: { entries, freeParameters: options.freeParameters ?? [] },
+      snapshot: { entries, groups: [], activeIds: [], restIds: [], freeParameters: options.freeParameters ?? [] },
       search: '',
       showAll: options.showAll ?? false,
       onCommand,
@@ -95,7 +95,7 @@ function area(key: string) {
 }
 
 /** The area heading button and the list that follows it, so rows can be asserted inside their section. */
-function sectionOf(screen: Awaited<ReturnType<typeof renderAreas>>['screen'], key: string) {
+function sectionOf(screen: { getByRole: typeof page.getByRole }, key: string) {
   const heading = screen.getByRole('button', { name: new RegExp(`^${area(key)}\\b`) }).element()
   const container = heading.parentElement
   if (!container)
@@ -106,7 +106,7 @@ function sectionOf(screen: Awaited<ReturnType<typeof renderAreas>>['screen'], ke
 describe('live2D expression areas', () => {
   beforeAll(async () => {
     await Promise.all([
-      import('./live2d-expression-areas.vue'),
+      import('./areas.vue'),
       import('virtual:uno.css'),
     ])
     for (const key of ['areas.title', 'areas.eyes', 'areas.mouth', 'areas.cheeks', 'areas.outfit-hair', 'areas.unsorted', 'areas.unsorted-description', 'duplicates.also', 'duplicates.keep-separate', 'overridden-by', 'custom.add', 'custom.parameter', 'custom.value', 'custom.label', 'custom.create', 'custom.none-free', 'custom.delete', 'fields.area', 'fields.kind', 'kinds.unsorted', 'group-select', 'group-none', 'fields.group'])
@@ -136,7 +136,7 @@ describe('live2D expression areas', () => {
     store.registerDefinitions('custom-area', [], [], undefined, undefined, params, params)
     store.applySettingsCommand({ type: 'create-custom', custom: { label: 'Earphones', parameterId: 'Param7', target: 1 } })
     store.applySettingsCommand({ type: 'update-custom', id: store.catalog.at(-1)!.id, patch: { kind: 'outfit', exposedToLlm: false } })
-    const { default: Areas } = await import('./live2d-expression-areas.vue')
+    const { default: Areas } = await import('./areas.vue')
     await import('virtual:uno.css')
     const screen = await render(Areas, {
       props: { snapshot: store.settingsSnapshot, search: '', showAll: true, onCommand: vi.fn() },
@@ -253,7 +253,7 @@ describe('live2D expression areas', () => {
     const id = store.catalog.at(-1)!.id
     store.applySettingsCommand({ type: 'update-custom', id, patch: { kind: 'face' } })
     const onCommand = vi.fn((command: Parameters<typeof store.applySettingsCommand>[0]) => store.applySettingsCommand(command))
-    const { default: Areas } = await import('./live2d-expression-areas.vue')
+    const { default: Areas } = await import('./areas.vue')
     await import('virtual:uno.css')
     const screen = await render(Areas, {
       props: { snapshot: store.settingsSnapshot, search: '', showAll: true, onCommand },

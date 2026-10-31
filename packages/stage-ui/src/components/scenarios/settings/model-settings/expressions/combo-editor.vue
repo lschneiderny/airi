@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import type { EmotionMapping, ExpressionArea } from '@proj-airi/stage-shared/expression-performance'
-import type { Live2DExpressionSettingsCommand, Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 
-import type { DraftMapping } from './live2d-expression-trigger-editor.vue'
+import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelEntry } from './source'
+import type { DraftMapping } from './trigger-editor.vue'
 
 import { Button, FieldCombobox, FieldRange, Input, Select } from '@proj-airi/ui'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import Live2dExpressionTriggerEditor from './live2d-expression-trigger-editor.vue'
+import ExpressionTriggerEditor from './trigger-editor.vue'
 
-type Entry = Live2DExpressionSettingsSnapshot['entries'][number]
+type Entry = ExpressionPanelEntry
 type ComboMember = NonNullable<Entry['members']>[number]
 
 const props = defineProps<{
@@ -24,7 +24,7 @@ const props = defineProps<{
   initialEmotion?: EmotionMapping['emotion']
 }>()
 const emit = defineEmits<{
-  (e: 'command', command: Live2DExpressionSettingsCommand): void
+  (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
   (e: 'close'): void
 }>()
 
@@ -94,7 +94,7 @@ function removeMember(index: number) {
 }
 
 const labelError = computed(() => draftLabel.value.trim() === '' ? t('settings.live2d.expressions.validation.label-required') : '')
-const triggerEditor = ref<InstanceType<typeof Live2dExpressionTriggerEditor> | null>(null)
+const triggerEditor = ref<InstanceType<typeof ExpressionTriggerEditor> | null>(null)
 const canSave = computed<boolean>(() => labelError.value === '' && draftMembers.value.length > 0 && !(triggerEditor.value?.hasErrors ?? false))
 
 function save() {
@@ -181,7 +181,7 @@ function remove() {
       <Select v-model="draftArea" :options="areaOptions" />
     </label>
 
-    <Live2dExpressionTriggerEditor
+    <ExpressionTriggerEditor
       ref="triggerEditor"
       v-model:mappings="draftMappings"
       v-model:exposed-to-llm="draftExposedToLlm"

@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import type { Live2DExpressionSettingsCommand, Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelEntry } from './source'
 
 import { Button, Select } from '@proj-airi/ui'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import Live2dExpressionEntry from './live2d-expression-entry.vue'
+import ExpressionEntry from './entry.vue'
 
-import { groupDisplayName } from './expression-group-name'
+import { groupDisplayName } from './group-name'
 
-type Entry = Live2DExpressionSettingsSnapshot['entries'][number]
+type Entry = ExpressionPanelEntry
 
 const props = defineProps<{
   group: string
@@ -21,7 +21,7 @@ const props = defineProps<{
   labelOf?: (id: string) => string
 }>()
 const emit = defineEmits<{
-  (e: 'command', command: Live2DExpressionSettingsCommand): void
+  (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
 }>()
 
 const { t } = useI18n()
@@ -82,7 +82,7 @@ const membersOpen = ref(false)
         'border-t border-neutral-200 dark:border-neutral-800',
       ]"
     >
-      <Live2dExpressionEntry
+      <ExpressionEntry
         v-for="member in members"
         :key="member.id"
         :entry="member"

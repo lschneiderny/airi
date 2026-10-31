@@ -1,4 +1,4 @@
-import type { Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import type { ExpressionPanelEntry } from './source'
 
 import en from '@proj-airi/i18n/locales/en'
 
@@ -23,7 +23,7 @@ function createTestI18n() {
 
 const { t } = createTestI18n().global
 
-type ExpressionEntry = Live2DExpressionSettingsSnapshot['entries'][number]
+type ExpressionEntry = ExpressionPanelEntry
 
 function expressionEntry(overrides: Partial<ExpressionEntry>): ExpressionEntry {
   return {
@@ -54,7 +54,7 @@ function hairMembers(activeId: string | null) {
 }
 
 async function renderGroupRow(members: ExpressionEntry[]) {
-  const { default: GroupRow } = await import('./live2d-expression-group-row.vue')
+  const { default: GroupRow } = await import('./group-row.vue')
   await import('virtual:uno.css')
   const onCommand = vi.fn()
   const screen = await render(GroupRow, {
@@ -67,7 +67,7 @@ async function renderGroupRow(members: ExpressionEntry[]) {
 describe('live2D expression group row', () => {
   beforeAll(async () => {
     await Promise.all([
-      import('./live2d-expression-group-row.vue'),
+      import('./group-row.vue'),
       import('virtual:uno.css'),
     ])
     for (const key of ['group-select', 'group-option-none', 'group-members', 'group-members-close'])

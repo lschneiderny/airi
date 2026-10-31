@@ -64,7 +64,7 @@ function remoteSnapshot(groups: ExpressionEntry[]): ModelSettingsRuntimeSnapshot
     previewAvailable: true,
     canCapturePreview: false,
     updatedAt: 1,
-    live2dExpressions: { entries: groups, freeParameters: [] },
+    live2dExpressions: { entries: groups, groups: [], activeIds: [], restIds: [], freeParameters: [] },
   }
 }
 
@@ -192,6 +192,9 @@ describe('live2D model settings', () => {
       canCapturePreview: false,
       updatedAt: 1,
       live2dExpressions: {
+        groups: [],
+        activeIds: [],
+        restIds: [],
         freeParameters: [],
         entries: [
           { id: 'happy.exp3.json', name: 'happy', label: 'happy', kind: 'face', group: null, confirmed: false, exposedToLlm: false, mappings: [], fileName: 'happy.exp3.json', parameterIds: [], active: false, effective: false, overriddenBy: null, via: [], usesOverwrite: false, isDefault: false },

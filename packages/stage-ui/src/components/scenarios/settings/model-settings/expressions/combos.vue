@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import type { Live2DExpressionSettingsCommand, Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import type { ExpressionPanelCommand, ExpressionPanelCustomCommand, ExpressionPanelEntry } from './source'
 
 import { Button, Checkbox } from '@proj-airi/ui'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import Live2dExpressionComboEditor from './live2d-expression-combo-editor.vue'
+import ExpressionComboEditor from './combo-editor.vue'
 
-type Entry = Live2DExpressionSettingsSnapshot['entries'][number]
+type Entry = ExpressionPanelEntry
 type ComboMember = NonNullable<Entry['members']>[number]
 
 const props = defineProps<{
@@ -15,7 +15,7 @@ const props = defineProps<{
   entries: Entry[]
 }>()
 const emit = defineEmits<{
-  (e: 'command', command: Live2DExpressionSettingsCommand): void
+  (e: 'command', command: ExpressionPanelCommand | ExpressionPanelCustomCommand): void
 }>()
 
 const { t } = useI18n()
@@ -69,7 +69,7 @@ function toggleEditor(id: string) {
         'rounded-lg border border-solid border-neutral-200 dark:border-neutral-800',
       ]"
     >
-      <Live2dExpressionComboEditor
+      <ExpressionComboEditor
         :entries="entries"
         @command="emit('command', $event)"
         @close="creating = false"
@@ -154,7 +154,7 @@ function toggleEditor(id: string) {
           v-if="editingId === combo.id"
           :class="['pt-2', 'border-t border-neutral-200 dark:border-neutral-800']"
         >
-          <Live2dExpressionComboEditor
+          <ExpressionComboEditor
             :key="combo.id"
             :combo="combo"
             :entries="entries"

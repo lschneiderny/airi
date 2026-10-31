@@ -4,13 +4,14 @@ import type { ModelSettingsRuntimeSnapshot } from '@proj-airi/stage-ui/component
 import { defineInvoke } from '@moeru/eventa'
 import { createContext as createBroadcastChannelContext } from '@moeru/eventa/adapters/broadcast-channel'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
+import { useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
 import { createEmptyModelSettingsRuntimeSnapshot } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 import { createPinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
 import { computed, defineComponent, nextTick, shallowRef } from 'vue'
 
-import { applyLive2DExpressionSettingsCommand, modelSettingsRuntimeChannelName, modelSettingsRuntimeSnapshotChanged } from '../../shared/model-settings-runtime'
+import { applyLive2DExpressionSettingsCommand, applyMMDExpressionSettingsCommand, modelSettingsRuntimeChannelName, modelSettingsRuntimeSnapshotChanged } from '../../shared/model-settings-runtime'
 import { useModelSettingsRuntimeOwner } from './model-settings-runtime-owner'
 import { useModelSettingsRuntimeSnapshot } from './model-settings-runtime-snapshot'
 
@@ -85,6 +86,9 @@ describe('model settings runtime channel', () => {
           renderer: () => renderer.value,
           runtimeSnapshot: ownerSnapshot,
           applyLive2DExpressionCommand: command => ownerExpressionStore.applySettingsCommand(command),
+          applyMMDExpressionCommand: () => {
+            throw new Error('A Live2D owner must not receive MMD commands.')
+          },
           context: ownerChannelContext.context,
         })
         settingsRuntime = useModelSettingsRuntimeSnapshot({
@@ -171,6 +175,114 @@ describe('model settings runtime channel', () => {
     expect(ownerExpressionStore.catalog[0].label).toBe('happy')
     await nextTick()
     expect(mountedSettingsRuntime.runtimeSnapshot.value.modelId).toBe('model-b')
+  })
+
+  it('applies an MMD expression command through Eventa and refuses Live2D commands while MMD owns the stage', async () => {
+    const ownerInstanceId = 'stage-owner'
+    const ownerPinia = createPinia()
+    const settingsPinia = createPinia()
+    const ownerMMDStore = useMMDExpressionStore(ownerPinia)
+    ownerMMDStore.registerMorphs('display-model-chisa', [
+      { index: 0, name: '笑い', category: 2, type: 1 },
+      { index: 1, name: '怒り', category: 2, type: 1 },
+    ], null, 0)
+    const ownerLive2DStore = useExpressionStore(ownerPinia)
+
+    const ownerChannelContext = createBroadcastChannelContext(new BroadcastChannel(modelSettingsRuntimeChannelName), { closeOnDispose: true })
+    const settingsChannelContext = createBroadcastChannelContext(new BroadcastChannel(modelSettingsRuntimeChannelName), { closeOnDispose: true })
+    channelContexts.push(ownerChannelContext, settingsChannelContext)
+
+    const ownerSnapshot = computed(() => createEmptyModelSettingsRuntimeSnapshot({
+      ownerInstanceId,
+      modelId: ownerMMDStore.modelId,
+      renderer: 'mmd',
+      phase: 'mounted',
+      controlsLocked: false,
+      previewAvailable: true,
+      canCapturePreview: false,
+      mmdExpressions: ownerMMDStore.settingsSnapshot,
+      updatedAt: Date.now(),
+    }))
+
+    let settingsRuntime: ReturnType<typeof useModelSettingsRuntimeSnapshot> | undefined
+    const firstSnapshot = new Promise<void>((resolve, reject) => {
+      const signal = AbortSignal.timeout(5000)
+      const stop = settingsChannelContext.context.on(modelSettingsRuntimeSnapshotChanged, (event) => {
+        if (event.body?.modelId !== 'display-model-chisa')
+          return
+        stop()
+        signal.removeEventListener('abort', abort)
+        resolve()
+      })
+      function abort() {
+        stop()
+        reject(new Error('Initial model snapshot did not arrive.'))
+      }
+      signal.addEventListener('abort', abort, { once: true })
+    })
+    const live2dCommands = vi.fn()
+    const TestHost = defineComponent({
+      setup() {
+        useModelSettingsRuntimeOwner({
+          ownerInstanceId,
+          renderer: () => 'mmd',
+          runtimeSnapshot: ownerSnapshot,
+          applyLive2DExpressionCommand: live2dCommands,
+          applyMMDExpressionCommand: command => ownerMMDStore.applySettingsCommand(command),
+          context: ownerChannelContext.context,
+        })
+        settingsRuntime = useModelSettingsRuntimeSnapshot({
+          context: settingsChannelContext.context,
+        })
+
+        return () => null
+      },
+    })
+
+    await render(TestHost, {
+      global: {
+        plugins: [settingsPinia],
+      },
+    })
+
+    if (!settingsRuntime)
+      throw new Error('The settings runtime did not mount.')
+    const mountedSettingsRuntime = settingsRuntime
+
+    await firstSnapshot
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.mmdExpressions?.entries.map(entry => entry.id)).toEqual(['mmd:0:笑い', 'mmd:1:怒り'])
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.live2dExpressions).toBeUndefined()
+
+    const staleOwnerResponse = await defineInvoke(settingsChannelContext.context, applyMMDExpressionSettingsCommand)({
+      ownerInstanceId: 'stale-owner',
+      modelId: 'display-model-chisa',
+      command: { type: 'set-active', id: 'mmd:0:笑い', active: true },
+    }, {
+      signal: AbortSignal.timeout(1000),
+    })
+    expect(staleOwnerResponse.applied).toBe(false)
+    expect(staleOwnerResponse.rejectionReason).toBe('owner-changed')
+    expect(ownerMMDStore.manualActive).toEqual([])
+
+    const activated = await mountedSettingsRuntime.sendMMDExpressionCommand({ type: 'set-active', id: 'mmd:0:笑い', active: true })
+    expect(activated).toBe(true)
+    expect(ownerMMDStore.manualActive).toEqual(['mmd:0:笑い'])
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.mmdExpressions?.activeIds).toEqual(['mmd:0:笑い'])
+
+    const curated = await mountedSettingsRuntime.sendMMDExpressionCommand({ type: 'update-entry', id: 'mmd:1:怒り', patch: { exposedToLlm: false } })
+    expect(curated).toBe(true)
+    expect(JSON.parse(localStorage.getItem('expression-catalog:display-model-chisa') ?? 'null')).toMatchObject({ overrides: [{ id: 'mmd:1:怒り', exposedToLlm: false }] })
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.mmdExpressions?.entries.find(entry => entry.id === 'mmd:1:怒り')?.exposedToLlm).toBe(false)
+
+    const saved = await mountedSettingsRuntime.sendMMDExpressionCommand({ type: 'save-defaults' })
+    expect(saved).toBe(true)
+    expect(mountedSettingsRuntime.runtimeSnapshot.value.mmdExpressions?.restIds).toEqual(['mmd:0:笑い'])
+
+    // The settings client refuses before sending: the renderer is MMD, so no Live2D owner exists.
+    expect(await mountedSettingsRuntime.sendLive2DExpressionCommand({ type: 'toggle', id: 'mmd:0:笑い' })).toBe(false)
+    expect(live2dCommands).not.toHaveBeenCalled()
+    expect(ownerLive2DStore.definitions).toEqual([])
+    expect(useMMDExpressionStore(settingsPinia).catalog).toEqual([])
   })
 
   // https://github.com/moeru-ai/airi/issues/2450

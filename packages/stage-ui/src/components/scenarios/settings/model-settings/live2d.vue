@@ -6,6 +6,7 @@ import type {
 } from '@proj-airi/stage-ui-live2d'
 import type { SelectTabOption } from '@proj-airi/ui'
 
+import type { ExpressionPanelSource } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
 import { defaultModelParameters, useExpressionStore, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
@@ -17,7 +18,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import MagicMotionSettings from '../../../../features/motions/live2d/components/magic-settings.vue'
-import Live2dExpressionsSection from './live2d-expressions-section.vue'
+import ExpressionPanel from './expressions/panel.vue'
 
 import { useExpressionPerformanceSettings } from '../../../../features/performance/settings'
 import { useSettingsStageModel } from '../../../../stores/settings/stage-model'
@@ -88,7 +89,9 @@ const {
 } = storeToRefs(live2d)
 
 const expressionStore = useExpressionStore()
-const expressionSettingsSnapshot = computed(() => props.runtimeSnapshot.live2dExpressions ?? expressionStore.settingsSnapshot)
+// The Live2D store satisfies the shared panel contract; custom-switch commands stay on its wider command type.
+const localExpressionSource: ExpressionPanelSource = expressionStore
+const expressionSettingsSnapshot = computed(() => props.runtimeSnapshot.live2dExpressions ?? localExpressionSource.settingsSnapshot)
 const usesRemoteExpressionRuntime = computed(() => props.runtimeSnapshot.live2dExpressions != null)
 
 function applyExpressionSettingsCommand(command: Live2DExpressionSettingsCommand) {
@@ -928,13 +931,20 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       <span text-sm text-neutral-600 dark:text-neutral-400>{{ t('settings.live2d.expressions.override-toggle') }}</span>
       <Checkbox v-model="live2dExpressionEnabled" />
     </div>
-    <Live2dExpressionsSection
+    <ExpressionPanel
       v-model:search="expressionSearch"
       v-model:show-all="showAllExpressions"
       :snapshot="expressionSettingsSnapshot"
       :enabled="live2dExpressionEnabled"
       @command="applyExpressionSettingsCommand"
-    />
+      @custom-command="applyExpressionSettingsCommand"
+    >
+      <template #disabled>
+        <div py-2 text-xs text-neutral-500 dark:text-neutral-400>
+          {{ t('settings.live2d.expressions.sdk-preset-preserved-notice') }}
+        </div>
+      </template>
+    </ExpressionPanel>
   </Section>
   <Section
     :title="t('settings.live2d.performance.title')"

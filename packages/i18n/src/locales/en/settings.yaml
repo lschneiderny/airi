@@ -2712,6 +2712,12 @@ mmd:
       Import VMD motion files, set one as the looping idle, or play any as a
       one-shot gesture. Map emotions to motions to play gestures alongside
       facial expressions.
+  expressions:
+    title: Expressions
+    description: >-
+      Expressions come from the model's morphs. Pick what each emotion shows,
+      build combos, choose a rest look, and decide which expressions the AI
+      may use.
   morphs:
     title: Morphs
     auto: (auto)

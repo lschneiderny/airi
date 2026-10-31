@@ -2,6 +2,7 @@ import type { StageAvatarBoundsPayload, StageViewState } from '@proj-airi/stage-
 import type { Live2DExpressionSettingsSnapshot } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 
 import type { StageModelRenderer } from '../../../../stores/settings/stage-model'
+import type { ExpressionPanelSnapshot } from './expressions/source'
 
 export type ModelSettingsRuntimeRenderer = 'disabled' | 'live2d' | 'vrm' | 'spine' | 'tachie' | 'mmd' | 'godot'
 export type ModelSettingsRuntimePhase = 'pending' | 'loading' | 'binding' | 'mounted' | 'no-model' | 'error'
@@ -16,6 +17,7 @@ export interface ModelSettingsRuntimeSnapshot {
   previewAvailable: boolean
   canCapturePreview: boolean
   live2dExpressions?: Live2DExpressionSettingsSnapshot
+  mmdExpressions?: ExpressionPanelSnapshot
   lastError?: string
   updatedAt: number
 }
