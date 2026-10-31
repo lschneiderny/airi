@@ -2,12 +2,18 @@ import type { ChatHistoryItem, ChatHookRegistry, TurnRef } from '@proj-airi/core
 import type {
   AppCategory,
   GateLocalTime,
+  GateOutcome,
+  GateSettings,
   GateSignals,
   Observation,
+  ReactionDecision,
+  ReactionMemory,
   ReasonKind,
   SavedGateMemory,
+  SituationEvent,
   SituationState,
   ThreadState,
+  TouchObservation,
   UrgeGateDecision,
   UrgeGateMemory,
 } from '@proj-airi/stage-shared/situation'
@@ -15,7 +21,7 @@ import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { ExtractionReadPosition } from '../../features/situation/inner-state'
 import type { LlmStream, ThreadExtractionSelection } from '../../features/situation/thread-extraction'
-import type { ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
+import type { ChatReactionPayload, ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
 import type { SituationGateEvaluation } from '../devtools/situation-observability'
 import type { ConversationHookSource } from './sensors/conversation'
 import type { ChatExchange, ExchangeSensor } from './sensors/exchange'
@@ -28,6 +34,7 @@ import {
   evaluateUrgeGate,
   forgetForeground,
   forgetSource,
+  initialReactionMemory,
   initialSituationState,
   initialUrgeMemory,
   isSourceInNamespace,
@@ -39,12 +46,15 @@ import {
   promotionUrgeMemory,
   pruneThreads,
   raiseThread,
+  reactionPolicy,
   recordExternalSpeech,
   recordUrgeFireOutcome,
   recordUrgeUserTurn,
   reduceSituation,
   renderSituation,
   restoreSocialMemory,
+  settleReaction,
+  TOUCH_TOPIC_KEY,
   visibilityRegainUrgeMemory,
   withoutAppExtension,
 } from '@proj-airi/stage-shared/situation'
@@ -65,6 +75,7 @@ import { DESKTOP_SAMPLE_STALE_MS, startDesktopSensor } from './sensors/desktop'
 import { EXCHANGE_QUIET_MS, startExchangeSensor } from './sensors/exchange'
 import { FOREGROUND_SAMPLE_STALE_VISIBLE_MS, startForegroundSensor } from './sensors/foreground'
 import { startStageSensor } from './sensors/stage'
+import { situationTouchObservedEvent } from './touch-bus'
 
 /**
  * How often the leader derives the time-based events (settled app switches, long-session tiers, expiry) and
@@ -175,6 +186,8 @@ export interface SituationChatControls {
   /** The chat session of this window. Only its open threads may give the gate a reason to reach out. */
   activeSessionId: () => string
   submitUnprompted: (payload: ChatUnpromptedPayload) => Promise<ChatUnpromptedResult>
+  /** Starts a touch reaction turn; it shares the single pending unprompted turn with `submitUnprompted`. */
+  submitReaction: (payload: ChatReactionPayload) => Promise<ChatUnpromptedResult>
   /** The loaded messages of a session, oldest first, for thread extraction; empty when it is not loaded. */
   sessionMessages: (sessionId: string) => readonly ChatHistoryItem[]
   /** The active chat provider and model that extract threads, or `null` when none is configured. */
@@ -220,6 +233,13 @@ interface RunningSensors {
  * messages of that chat session that no earlier extraction read (the read positions are saved with the threads); the
  * threads it returns join the gate's reasons for that chat session, and each attempt shows in the inspector's
  * extraction ledger, never in chat history.
+ *
+ * While the gate runs, the leader also answers touches. A pet or poke that a stage window reports over
+ * `situationTouchObservedEvent` is folded like any observation, then the touch reaction policy decides whether she says
+ * one short line about it. A speak decision marks the touch event as shown (the trigger message carries it) and starts a
+ * reaction turn through `submitReaction`. Its outcome settles the policy, never the gate's fire memory: a spoken line
+ * starts the gate's floor (`recordExternalSpeech`) and counts as her last line, and a refused send counts as never
+ * attempted. The reaction memory, with its own random checkpoint, is saved with the gate's inner state.
  */
 export const useSituationStore = defineStore('situation', () => {
   const current = shallowRef<SituationState>(initialSituationState)
@@ -283,6 +303,11 @@ export const useSituationStore = defineStore('situation', () => {
   const heldTopics = new Set<string>()
   /** The unprompted turn whose first literal was seen last, so its topic is addressed once. */
   let lastSpokenUnpromptedTurnId: string | undefined
+  /** The touch reaction policy's memory while the gate runs; `undefined` while it does not. */
+  let reactionMemory: ReactionMemory | undefined
+  /** The reaction turn that was submitted and has no result yet. */
+  let reacting: { turnId: string } | undefined
+  let stopTouchListener: (() => void) | undefined
   const notifySpokenListeners = new Set<(spoken: { topicKey: string, text: string }) => void>()
 
   // Feeds the devtools Situation inspector of this window. Sync flush keeps it equal to the state after every call.
@@ -344,6 +369,10 @@ export const useSituationStore = defineStore('situation', () => {
     if (!leading.value || !chatHooks || stopConversation)
       return
     const stopSensor = startConversationSensor(chatHooks, (observation) => {
+      // Only one unprompted turn runs at a time, so a character turn that ends while a reaction runs is that reaction.
+      // Its line was already folded with origin `reaction` when it started speaking, so it never counts as unprompted.
+      if (reacting && observation.kind === 'conversation' && observation.who === 'character' && observation.origin === 'unprompted')
+        return
       ingest(observation)
       // The sensor reports user turns only for user-origin sends, so the character's own turns earn no engagement.
       if (observation.kind === 'conversation' && observation.who === 'user' && observation.origin === 'user') {
@@ -365,13 +394,18 @@ export const useSituationStore = defineStore('situation', () => {
       if (context.origin !== 'unprompted' || context.turnId === lastSpokenUnpromptedTurnId)
         return
       lastSpokenUnpromptedTurnId = context.turnId
+      const trigger = context.message.role === 'user' ? context.message.trigger : undefined
+      const nowMs = Date.now()
+      // A touch reaction is not a gate topic: it settles the reaction policy and never addresses the touch event.
+      if (trigger?.topicKey === TOUCH_TOPIC_KEY) {
+        reactionSpoke(context.turnId, nowMs)
+        return
+      }
       // Every spoken unprompted turn addresses its own topic here, whoever started it. A widget reaction's notify is
       // addressed only once it speaks, and its topic becomes the remark recorded when the reply ends, not the topic
       // of an earlier declined turn.
-      const trigger = context.message.role === 'user' ? context.message.trigger : undefined
       if (trigger)
         markAddressed(trigger.topicKey)
-      const nowMs = Date.now()
       // Recording a gate fire as spoken now, not when the reply ends, lets a user reply mid-reply count as engagement.
       if (firing && !firing.spoken && context.turnId === firing.turnId) {
         firing.spoken = true
@@ -394,6 +428,11 @@ export const useSituationStore = defineStore('situation', () => {
       if (context.origin !== 'unprompted' || !context.cueStats?.declined)
         return
       const trigger = context.message.role === 'user' ? context.message.trigger : undefined
+      // A declined touch reaction settles the reaction policy instead; the touch event is never addressed.
+      if (trigger?.topicKey === TOUCH_TOPIC_KEY) {
+        settleReactionTurn(context.turnId, 'declined', Date.now())
+        return
+      }
       if (trigger)
         markAddressed(trigger.topicKey)
     })
@@ -569,8 +608,15 @@ export const useSituationStore = defineStore('situation', () => {
     saveInnerState()
   }
 
+  /** Changes the reaction memory, shows it in the devtools Situation inspector, and saves it. */
+  function setReactionMemory(memory: ReactionMemory) {
+    reactionMemory = memory
+    observability.publishReactionMemory(memory)
+    saveInnerState()
+  }
+
   function innerStateSnapshot(): string {
-    return JSON.stringify([savedGateMemory(gateMemory), threads.threads, extractedThrough])
+    return JSON.stringify([savedGateMemory(gateMemory), threads.threads, extractedThrough, reactionMemory ?? null])
   }
 
   /**
@@ -585,7 +631,7 @@ export const useSituationStore = defineStore('situation', () => {
     const snapshot = innerStateSnapshot()
     if (snapshot === savedSnapshot)
       return
-    if (innerState.write({ gate: savedGateMemory(gateMemory), threads: threads.threads, extractedThrough }, leadership))
+    if (innerState.write({ gate: savedGateMemory(gateMemory), threads: threads.threads, extractedThrough, reaction: reactionMemory ?? null }, leadership))
       savedSnapshot = snapshot
   }
 
@@ -613,6 +659,22 @@ export const useSituationStore = defineStore('situation', () => {
     }
   }
 
+  /** The gate settings from the user's situation settings; the reaction policy reads the same ones. */
+  function gateSettings(): GateSettings {
+    const document = settings.document
+    return {
+      enabled: document.unpromptedEnabled,
+      chattiness: document.chattiness,
+      dontDisturb: document.dontDisturb,
+      // Settings list executable or bundle names; the gate matches app ids without their extension.
+      quietApps: document.quietApps.map(pattern => withoutAppExtension(
+        pattern.trim(),
+        typeof window !== 'undefined' && isElectronWindow(window) ? window.platform : undefined,
+      )),
+      speakDuringGames: document.speakDuringGames,
+    }
+  }
+
   /**
    * One gate evaluation. Nothing is evaluated while an unprompted turn is pending: from the fire until `sending`
    * turns true the chat reports nothing, so the gate's own `generating` guard cannot see it yet.
@@ -634,7 +696,6 @@ export const useSituationStore = defineStore('situation', () => {
     wasStageShown = stageShown
     threads = pruneThreads(threads, nowMs)
 
-    const document = settings.document
     const before = gateMemory
     const { decision, memory } = evaluateUrgeGate({
       nowMs,
@@ -645,17 +706,7 @@ export const useSituationStore = defineStore('situation', () => {
       // The collector drops held keys for every reason kind, thread and urgent notify topics included.
       heldTopics,
       signals,
-      settings: {
-        enabled: document.unpromptedEnabled,
-        chattiness: document.chattiness,
-        dontDisturb: document.dontDisturb,
-        // Settings list executable or bundle names; the gate matches app ids without their extension.
-        quietApps: document.quietApps.map(pattern => withoutAppExtension(
-          pattern.trim(),
-          typeof window !== 'undefined' && isElectronWindow(window) ? window.platform : undefined,
-        )),
-        speakDuringGames: document.speakDuringGames,
-      },
+      settings: gateSettings(),
       forceTiming,
     }, gateMemory)
     // Recording the decision publishes this memory to the inspector too.
@@ -723,6 +774,105 @@ export const useSituationStore = defineStore('situation', () => {
       for (const listener of notifySpokenListeners)
         listener({ topicKey: picked.key, text })
     }
+  }
+
+  /**
+   * Runs the touch reaction policy for a touch that was just folded into the situation. Only the leader's running gate
+   * evaluates, with the chat controls it reads; a speak decision starts the reaction turn.
+   */
+  function evaluateReaction(touch: TouchObservation) {
+    const controls = chat
+    if (!controls || gateTicker === undefined || reactionMemory === undefined)
+      return
+    const nowMs = Date.now()
+    const event = current.value.events.find(candidate => candidate.topicKey === TOUCH_TOPIC_KEY)
+    const before = reactionMemory
+    const { decision, memory } = reactionPolicy({
+      nowMs,
+      touch,
+      eventId: event?.id ?? '',
+      situation: current.value,
+      sessionId: controls.activeSessionId(),
+      signals: gateSignals(controls, nowMs),
+      settings: gateSettings(),
+    }, before)
+    observability.recordReactionDecision(decision, memory, nowMs)
+    setReactionMemory(memory)
+    if (decision.speak && event)
+      void react(controls, decision, event, before)
+  }
+
+  /**
+   * Starts the reaction turn of a speak decision and settles the outcomes that no chat hook reports (cancelled and
+   * failed). A send that another pending unprompted turn refuses is rolled back: it takes no retry wait and no draw.
+   */
+  async function react(controls: SituationChatControls, decision: Extract<ReactionDecision, { speak: true }>, event: SituationEvent, before: ReactionMemory) {
+    const turnId = `reaction:${decision.eventId}`
+    const startedIn = leadership
+    let result: ChatUnpromptedResult
+    if (firing || controls.unpromptedPending()) {
+      // The chat would refuse it, so the touch stays unshown for her next reply.
+      result = { status: 'failed', error: UNPROMPTED_BUSY_ERROR }
+    }
+    else {
+      reacting = { turnId }
+      // The trigger message carries the touch, so the situation block of the same request does not list it again.
+      current.value = markShown(current.value, [event.id], Date.now())
+      try {
+        result = await controls.submitReaction({ kind: decision.kind, topicText: event.text, eventId: decision.eventId })
+      }
+      catch (error) {
+        result = { status: 'failed', error: errorMessageFrom(error) ?? 'Unknown reaction turn failure' }
+      }
+      finally {
+        if (reacting?.turnId === turnId)
+          reacting = undefined
+      }
+    }
+    if (startedIn !== leadership || reactionMemory === undefined)
+      return
+    if (result.status === 'failed' && result.error === UNPROMPTED_BUSY_ERROR) {
+      const memory = reactionMemory
+      if (memory.pending?.eventId !== decision.eventId)
+        return
+      observability.recordReactionOutcome(decision.kind, 'refused')
+      // A refused protest leaves its burst free to roll again; the attempt and its draw never happened.
+      const sameSession = memory.sessionId === before.sessionId
+      setReactionMemory({
+        ...memory,
+        pending: null,
+        lastAttemptAtMs: sameSession ? before.lastAttemptAtMs : null,
+        rngState: before.rngState,
+        pokeBurstRolled: decision.kind === 'poke-protest' ? false : memory.pokeBurstRolled,
+      })
+      return
+    }
+    // A spoken turn settles at its first literal; a spoken result that arrives first settles it the same way.
+    if (result.status === 'spoken' && reactionMemory.pending?.eventId === decision.eventId)
+      reactionSpoke(turnId, Date.now())
+    else
+      settleReactionTurn(turnId, result.status, Date.now())
+  }
+
+  /** Settles the pending reaction with `status` when `turnId` is its turn; a repeated or late outcome is ignored. */
+  function settleReactionTurn(turnId: string, status: GateOutcome, nowMs: number) {
+    const memory = reactionMemory
+    const pending = memory?.pending
+    if (!memory || !pending || `reaction:${pending.eventId}` !== turnId)
+      return
+    observability.recordReactionOutcome(pending.kind, status)
+    setReactionMemory(settleReaction(memory, status, nowMs))
+  }
+
+  /**
+   * Records the first literal of a reaction turn: the policy settles as spoken (starting its refractory), the gate's
+   * floor starts like after a forced turn (never an unanswered opening), and the line counts as her last line.
+   */
+  function reactionSpoke(turnId: string, nowMs: number) {
+    settleReactionTurn(turnId, 'spoken', nowMs)
+    if (gateTicker !== undefined)
+      setGateMemory(recordExternalSpeech(gateMemory, nowMs))
+    ingest({ kind: 'conversation', who: 'character', origin: 'reaction', atMs: nowMs })
   }
 
   /**
@@ -802,6 +952,9 @@ export const useSituationStore = defineStore('situation', () => {
       gateMemory = saved.gate === null ? promoted : restoreSocialMemory(promoted, saved.gate, nowMs)
       threads = { threads: saved.threads }
       extractedThrough = saved.extractedThrough
+      // The previous leader's pending reaction has no turn in this window, so it is dropped.
+      reactionMemory = saved.reaction === null ? initialReactionMemory(seedSource()) : { ...saved.reaction, pending: null }
+      observability.publishReactionMemory(reactionMemory)
       savedSnapshot = innerStateSnapshot()
       wasStageShown = false
       stopVoiceTurnListener = startVoiceTurnListener()
@@ -823,6 +976,9 @@ export const useSituationStore = defineStore('situation', () => {
       stopVoiceTurnListener = undefined
       threads = NO_THREADS
       extractedThrough = []
+      reactionMemory = undefined
+      reacting = undefined
+      observability.publishReactionMemory(null)
       savedSnapshot = undefined
       setGateMemory(initialUrgeMemory)
     }
@@ -843,6 +999,11 @@ export const useSituationStore = defineStore('situation', () => {
       if (body)
         ingest(body)
     })
+    // Touches on every stage window, this one's included, arrive here.
+    stopTouchListener = getSpeechBusContext().on(situationTouchObservedEvent, ({ body }) => {
+      if (body)
+        ingest(body)
+    })
     ticker = setInterval(() => {
       const nowMs = Date.now()
       sensors?.check(nowMs)
@@ -860,6 +1021,8 @@ export const useSituationStore = defineStore('situation', () => {
     stopConversation = undefined
     stopNotifyListener?.()
     stopNotifyListener = undefined
+    stopTouchListener?.()
+    stopTouchListener = undefined
     if (ticker !== undefined)
       clearInterval(ticker)
     ticker = undefined
@@ -881,7 +1044,7 @@ export const useSituationStore = defineStore('situation', () => {
    *
    * A notify enters the situation once per leadership: a repeat of a remembered topic key is dropped even after its
    * event decayed out of the ring, so one notification is never raised (and spoken) twice. A context or notify from a
-   * source the user does not share ({@link sharesSource}) is dropped.
+   * source the user does not share ({@link sharesSource}) is dropped. A touch then runs the touch reaction policy.
    */
   function ingest(observation: Observation) {
     if (!leading.value)
@@ -898,6 +1061,8 @@ export const useSituationStore = defineStore('situation', () => {
       if (oldest !== undefined)
         seenNotifyTopics.delete(oldest)
     }
+    if (observation.kind === 'touch')
+      evaluateReaction(observation)
   }
 
   /**

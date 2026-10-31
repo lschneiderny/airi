@@ -866,6 +866,7 @@ export const useChatStore = defineStore('chat', () => {
     unpromptedPending: () => unpromptedResults.size > 0,
     activeSessionId: () => activeSessionId.value,
     submitUnprompted: payload => submitUnprompted(payload),
+    submitReaction: payload => submitReaction(payload),
     sessionMessages: sessionId => chatSession.getSessionMessagesIfLoaded(sessionId) ?? [],
     // Thread extraction runs on the active chat selection, like the chat itself, with the session character's name.
     extractionSelection: async (sessionId) => {
