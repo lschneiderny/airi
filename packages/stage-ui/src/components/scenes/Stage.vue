@@ -6,6 +6,7 @@ import type { StreamingControlLook } from '@proj-airi/pipelines-audio'
 import type { CaptionChannelEvent, PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { PerformanceCueAttention, PerformanceState, ResolverMemory } from '@proj-airi/stage-shared/performance-state'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
+import type { Live2DTouchEvent } from '@proj-airi/stage-ui-live2d/composables/live2d/touch-gestures'
 import type { TachieEmotion } from '@proj-airi/stage-ui-tachie'
 import type { VrmInteractionTarget } from '@proj-airi/stage-ui-three'
 
@@ -60,6 +61,7 @@ import { useSettingsPresenceBubble } from '../../stores/presence-bubble'
 import { useSettings } from '../../stores/settings'
 import { useSituationStore } from '../../stores/situation'
 import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
+import { useStageTouchStore } from '../../stores/touch'
 import { useVoiceStore } from '../../stores/voice'
 import { chatActivityFrom } from './chat-activity'
 
@@ -327,6 +329,13 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   profile: performanceProfileOf,
 })
 
+const stageTouch = useStageTouchStore()
+
+/** A pet or poke on the Live2D scene; the scene only classifies touches under the Natural driver. */
+function onTouch(event: Live2DTouchEvent) {
+  stageTouch.touch(event, performanceConductor)
+}
+
 /**
  * The card performance profile of a performance signal: the character of the signal's turn
  * session, or the active card for lab pulses, tool calls, and turns that already ended.
@@ -467,6 +476,9 @@ chatHookCleanups.push(streamingControl.onSignal(async (signal, context) => {
     const motion = stageModelRenderer.value === 'live2d' && act.motion ? act.motion : undefined
     if (motion)
       currentMotion.value = { group: motion }
+    // The conductor plays it under Natural only; Universal and MAGIC ignore the gesture field.
+    if (act.gesture && stageModelRenderer.value === 'live2d')
+      performanceConductor.gesture(act.gesture.kind, act.gesture.count)
     const emotion = act.emotion ? toStageEmotionPayload(act.emotion) : undefined
     if (emotion || act.expression) {
       // eslint-disable-next-line no-console
@@ -970,6 +982,7 @@ defineExpose({
         :live2d-max-fps="live2dMaxFps"
         :live2d-render-scale="live2dRenderScale"
         @error="handleStageRenderError"
+        @touch="onTouch"
       />
       <ThreeScene
         v-if="stageModelRenderer === 'vrm' && showStage"

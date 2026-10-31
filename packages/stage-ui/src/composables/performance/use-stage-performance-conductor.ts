@@ -1,5 +1,6 @@
+import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
-import type { AffectSignal, AffectTrace, AffectTraceRequest, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, PerformanceDecision, PerformanceProfile, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
+import type { AffectSignal, AffectTrace, AffectTraceRequest, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceDecision, PerformanceProfile, SlotCommand, TimingEvent, TouchAffectInput } from '@proj-airi/stage-shared/expression-performance'
 import type { Live2DMotionDriver } from '@proj-airi/stage-ui-live2d'
 
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
@@ -33,6 +34,12 @@ type StageDecision = Omit<PerformanceDecision, 'episodes'> & { episodes: Natural
 
 /** An affect recording keeps at most this many entries; the next one marks it truncated. */
 export const maxAffectTraceEntries = 20_000
+
+/**
+ * Moodless turns the conductor remembers, oldest dropped first. Reaction turns are single-pending and short, so a
+ * turn falls out of this window long after its last episode was decided.
+ */
+const maxMoodlessTurns = 32
 
 /** The turn a signal belongs to; deadline, muted, and touch signals belong to none. */
 function turnOf(signal: AffectSignal): string | undefined {
@@ -87,6 +94,16 @@ export interface StagePerformanceScene {
   applyHolds: (commands: HoldCommand[], now: number) => void
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => void
   setMuted: (muted: boolean) => void
+  /**
+   * Natural only: plays an ACT cue gesture. A scene that renders no cue gestures, such as a scenario sink, omits it
+   * and the gesture is dropped.
+   */
+  gesture?: (kind: CueGestureKind, count: number) => void
+  /**
+   * Natural only: adds a decided mood dose, deduplicated by id. A scene without a Natural mood omits it and the dose
+   * is dropped; the decider state still advances.
+   */
+  addMood?: (dose: MoodDose) => void
 }
 
 export interface StagePerformanceConductorOptions {
@@ -149,6 +166,11 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  *   The decider context reports `heldEmotions` off there, so explicit expressions derive no
  *   reaction state and later slot decisions match the held-emotion-free behavior.
  * - Slot commands go to `scene.applySlots` for every driver.
+ * - Touch mood doses go to `scene.addMood` and ACT cue gestures to `scene.gesture`, both under Natural only. Universal
+ *   and MAGIC have no touch path and ignore the gesture field.
+ *
+ * Moodless turns: `markMoodless(turnId)` makes every later episode decided for that turn carry `moodGain` 0, so a
+ * reaction to a touch shows on the face without dosing mood a second time; the touch already dosed it.
  *
  * Timing events: the conductor derives `TimingEvent`s from playback and sends them to the
  * decider as `timing` signals, each carrying its turn id:
@@ -199,6 +221,8 @@ export class StagePerformanceConductor {
   private timingSeq = 0
   /** The open affect recording and the JSON of the last context it recorded. */
   private recording: { trace: Omit<AffectTrace, 'endAt'>, context: string } | undefined
+  /** Turns whose episodes dose no mood, in insertion order; see {@link maxMoodlessTurns}. */
+  private readonly moodlessTurns = new Set<string>()
 
   constructor(private readonly options: StagePerformanceConductorOptions) {
     this.seed = options.seed
@@ -264,6 +288,36 @@ export class StagePerformanceConductor {
     const decision = this.decide({ kind: 'clear', source, slot, turnId, at })
     this.dispatchNatural(decision, at)
     this.dispatchSlots(decision, at)
+  }
+
+  /**
+   * Doses mood from a classified touch. The decider owns pacing and habituation (see `touchAffect`); the doses reach
+   * `scene.addMood` under Natural only, and Universal and MAGIC never receive one. A touch belongs to no turn, so it
+   * is decided under the active card's profile.
+   */
+  touch(input: Omit<TouchAffectInput, 'at'>) {
+    const at = this.clock()
+    const decision = this.decide({ kind: 'touch', ...input, at })
+    if (this.options.driver() !== 'natural')
+      return
+    const scene = this.options.scene()
+    for (const dose of decision.moods)
+      scene?.addMood?.(dose)
+  }
+
+  /** Plays an ACT cue gesture under Natural; Universal and MAGIC ignore it. The decider is not involved. */
+  gesture(kind: CueGestureKind, count: number) {
+    if (this.options.driver() === 'natural')
+      this.options.scene()?.gesture?.(kind, count)
+  }
+
+  /** Every episode decided for `turnId` from now on carries `moodGain` 0. Marking a turn again keeps it marked. */
+  markMoodless(turnId: string) {
+    this.moodlessTurns.delete(turnId)
+    this.moodlessTurns.add(turnId)
+    const oldest = this.moodlessTurns.values().next()
+    if (this.moodlessTurns.size > maxMoodlessTurns && !oldest.done)
+      this.moodlessTurns.delete(oldest.value)
   }
 
   /**
@@ -523,7 +577,9 @@ export class StagePerformanceConductor {
     this.armDeadline()
     // After the decider, so decisions and traces stay exactly what the decider produced.
     const mood = context.settings.moodDynamics
-    return { ...result.decision, episodes: result.decision.episodes.map(episode => ({ ...episode, moodGain: mood[`${episode.band}Gain`] })) }
+    const turnId = turnOf(signal)
+    const moodless = turnId !== undefined && this.moodlessTurns.has(turnId)
+    return { ...result.decision, episodes: result.decision.episodes.map(episode => ({ ...episode, moodGain: moodless ? 0 : mood[`${episode.band}Gain`] })) }
   }
 
   private dispatchSlots(decision: StageDecision, at: number) {

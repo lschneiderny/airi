@@ -1,6 +1,7 @@
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { GenerationProvider } from '@proj-airi/provider-inference'
-import type { ExpressionPerformanceSettings, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, MoodDose, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
+import type { TouchObservation } from '@proj-airi/stage-shared/situation'
 import type { Component, ComponentInternalInstance, VNode } from 'vue'
 
 import type { StagePerformanceScene } from '../../composables/performance/use-stage-performance-conductor'
@@ -20,6 +21,7 @@ import { StagePerformanceConductor, useStagePerformanceConductor } from '../../c
 import { Emotion, EMOTION_EmotionMotionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { useLive2DExpressionBackend } from '../../features/performance/expression-backend'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
+import { getSpeechBusContext } from '../../services/speech/bus'
 import { useLLM } from '../../stores/ai/chat-llm/llm'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useChatStore } from '../../stores/chat'
@@ -30,6 +32,7 @@ import { useConsciousnessStore } from '../../stores/modules/consciousness'
 import { useSpeechStore } from '../../stores/modules/speech'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
+import { situationTouchObservedEvent } from '../../stores/situation/touch-bus'
 import { ChatHistory } from '../scenarios/chat'
 
 /** Walks the rendered tree under `vnode` for the first instance of `type`, through child components, fragments and slots. */
@@ -168,7 +171,12 @@ async function renderStage(driver: 'natural' | 'universal' | 'magic') {
   const scene = findInstance(host?.subTree, live2d.Live2DScene)!
   // Stage calls the scene through its template ref, which reads the exposed object,
   // so the recorder sees exactly the call the stage makes and still forwards it.
-  const exposed = scene.exposed as { setEmotion: (episode: ReactionEpisode) => void, applyHolds: StagePerformanceScene['applyHolds'] }
+  const exposed = scene.exposed as {
+    setEmotion: (episode: ReactionEpisode) => void
+    applyHolds: StagePerformanceScene['applyHolds']
+    gesture: NonNullable<StagePerformanceScene['gesture']>
+    addMood: (dose: MoodDose) => void
+  }
   const forward = exposed.setEmotion
   const episodes = shallowRef<ReactionEpisode[]>([])
   exposed.setEmotion = (episode) => {
@@ -181,13 +189,25 @@ async function renderStage(driver: 'natural' | 'universal' | 'magic') {
     holds.value = [...holds.value, commands]
     forwardHolds(commands, now)
   }
+  const forwardGesture = exposed.gesture
+  const gestures = shallowRef<Array<Parameters<typeof forwardGesture>>>([])
+  exposed.gesture = (kind, count) => {
+    gestures.value = [...gestures.value, [kind, count]]
+    forwardGesture(kind, count)
+  }
+  const forwardMood = exposed.addMood
+  const moods = shallowRef<MoodDose[]>([])
+  exposed.addMood = (dose) => {
+    moods.value = [...moods.value, dose]
+    forwardMood(dose)
+  }
   // Recorded synchronously so a repeated group that replaces an equal value is still counted.
   const motionGroups = shallowRef<string[]>([])
   watch(() => params.currentMotion, (motion) => {
     motionGroups.value = [...motionGroups.value, motion.group]
   }, { flush: 'sync' })
 
-  return { params, scene, episodes, holds, motionGroups, override: useNaturalPerformanceOverride() }
+  return { params, scene, episodes, holds, gestures, moods, motionGroups, override: useNaturalPerformanceOverride() }
 }
 
 describe('stage emotion routing on Live2D', () => {
@@ -248,6 +268,52 @@ describe('stage emotion routing on Live2D', () => {
     expect(emotion).toHaveBeenCalledWith(Emotion.Happy, 0.7, 'act', undefined, { suppressMotionGroup: true })
     expect(params.currentMotion).toEqual({ group: 'Nod' })
     expect(motionGroups.value).toEqual(['Nod'])
+  })
+
+  it('plays a gesture-only ACT cue on the Natural scene', async () => {
+    const { gestures, episodes } = await renderStage('natural')
+
+    const played = until(() => gestures.value.length, count => count === 1)
+    await useLlmStreamingControlStore().dispatchWith('<|ACT {"gesture":{"kind":"shake","count":3}}|>')
+    await played
+
+    expect(gestures.value).toEqual([['shake', 3]])
+    expect(episodes.value).toEqual([])
+  })
+
+  it.each(['universal', 'magic'] as const)('hands no ACT cue gesture to the scene under %s', async (driver) => {
+    // The spy wraps the real method, and a reactive counter lets `until` observe the call the stage makes.
+    const original = StagePerformanceConductor.prototype.gesture
+    const calls = shallowRef(0)
+    vi.spyOn(StagePerformanceConductor.prototype, 'gesture').mockImplementation(function (this: StagePerformanceConductor, ...args: Parameters<StagePerformanceConductor['gesture']>) {
+      calls.value++
+      return original.apply(this, args)
+    })
+    const { gestures } = await renderStage(driver)
+
+    const routed = until(() => calls.value, count => count === 1)
+    await useLlmStreamingControlStore().dispatchWith('<|ACT {"gesture":"nod"}|>')
+    await routed
+
+    expect(gestures.value).toEqual([])
+  })
+
+  it('doses mood from a scene touch under Natural and forwards the poke to the situation leader', async () => {
+    const { scene, moods } = await renderStage('natural')
+    const observations = shallowRef<TouchObservation[]>([])
+    onTestFinished(getSpeechBusContext().on(situationTouchObservedEvent, ({ body }) => {
+      if (body)
+        observations.value = [...observations.value, body]
+    }))
+
+    const dosed = until(() => moods.value.length, count => count === 1)
+    const forwarded = until(() => observations.value.length, count => count === 1)
+    scene.emit('touch', { kind: 'poke', region: 'head', x: 0, y: 0 })
+    await Promise.all([dosed, forwarded])
+
+    expect(moods.value).toEqual([expect.objectContaining({ id: 'touch-1-poke', valence: 0, tension: 0 })])
+    expect(moods.value[0].arousal).toBeGreaterThan(0)
+    expect(observations.value).toEqual([{ kind: 'touch', gesture: 'poke', region: 'head', atMs: expect.any(Number) }])
   })
 
   it.each(['universal', 'magic'] as const)('plays a motion group for every emotion under %s, repeats and neutral included', async (driver) => {
