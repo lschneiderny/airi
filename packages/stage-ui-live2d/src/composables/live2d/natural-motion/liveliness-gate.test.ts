@@ -6,14 +6,14 @@ import process from 'node:process'
 
 import { writeFileSync } from 'node:fs'
 
+import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
+import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
+import { NaturalSpeechEmphasis } from '@proj-airi/motion-driver-natural/speech-emphasis'
 import { describe, expect, it } from 'vitest'
 
-import { Live2DNaturalMotion } from '../natural-motion'
 import { naturalIdleLivelinessGate, naturalTalkingGate } from './gates'
 import { generatedBlinkBands, generatedMouthOpenBand, scoreLiveliness, scoreTalkingRelative } from './liveliness'
-import { createRandomStream } from './random'
 import { referenceStats } from './reference-stats'
-import { NaturalSpeechEmphasis } from './speech-emphasis'
 import { syllableFixture } from './speech-fixture'
 
 // The gated metric list before it moved into `naturalIdleLivelinessGate`; the gate must keep exactly this meaning.
@@ -57,7 +57,7 @@ const { warmUpSeconds, scoredSeconds } = naturalIdleLivelinessGate
  * eyes normalized, and face channels in ForBOOTH ranges (brow and mouth form +/-1, eyelids 0..1).
  */
 function simulate(seed: number): LivelinessTrace {
-  const motion = new Live2DNaturalMotion({ seed, home: 'desk' })
+  const motion = new NaturalMotion({ seed, home: 'desk' })
   const t: number[] = []
   const channels: Record<string, number[]> = { ParamAngleX: [], ParamAngleY: [], ParamAngleZ: [], ParamEyeBallX: [], ParamEyeBallY: [], ParamEyeLOpen: [], ParamBrowLY: [], ParamMouthForm: [], ParamBreath: [] }
   const decimation = simulationRate / traceRate
@@ -88,7 +88,7 @@ const idleState: PerformanceState = { mode: 'idle', attention: 'camera', away: f
 
 /** Head-only desk trace in reference units; `talking` drives the talking state and the syllable fixture after warm-up. */
 function simulateVoice(seed: number, talking: boolean) {
-  const motion = new Live2DNaturalMotion({ seed, home: 'desk' })
+  const motion = new NaturalMotion({ seed, home: 'desk' })
   const fixture = syllableFixture(talkingSeconds, seed + 100)
   motion.advance(0)
   if (talking)

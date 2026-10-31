@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { naturalEmotions } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotions'
+import { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
 import { buildEmotionChecks, emotionGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 import { afterEach, describe, expect, it } from 'vitest'
 

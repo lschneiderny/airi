@@ -5,8 +5,8 @@ import { createHash } from 'node:crypto'
 import { defaultExpressionPerformanceSettings as defaults } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it } from 'vitest'
 
-import { Live2DNaturalMotion } from '../natural-motion'
 import { NaturalMood } from './mood'
+import { NaturalMotion } from './natural-motion'
 
 function episode(overrides: Partial<ReactionEpisode> = {}): ReactionEpisode {
   return { id: 'one', emotion: 'happy', intensity: 0.9, nominal: 0.9, band: 'strong', escalation: false, ...overrides }
@@ -18,8 +18,8 @@ function dimensions(mood: NaturalMood) {
 
 describe('natural mood', () => {
   it('keeps seeded ten-minute idle bit-identical to bypassed modulation', () => {
-    const enabled = new Live2DNaturalMotion({ seed: 41 })
-    const disabled = new Live2DNaturalMotion({ seed: 41 })
+    const enabled = new NaturalMotion({ seed: 41 })
+    const disabled = new NaturalMotion({ seed: 41 })
     disabled.setPerformanceSettings({ ...defaults, mood: false })
     const a = createHash('sha256')
     const b = createHash('sha256')
@@ -119,8 +119,8 @@ describe('natural mood', () => {
   })
 
   it('bypasses mood after episodes and when toggled during decay', () => {
-    const motion = new Live2DNaturalMotion({ seed: 41 })
-    const control = new Live2DNaturalMotion({ seed: 41 })
+    const motion = new NaturalMotion({ seed: 41 })
+    const control = new NaturalMotion({ seed: 41 })
     control.setPerformanceSettings({ ...defaults, mood: false })
     motion.impulse(episode(), 0)
     control.impulse(episode(), 0)
@@ -135,8 +135,8 @@ describe('natural mood', () => {
   })
 
   it('is identity with mood disabled even after episodes', () => {
-    const disabled = new Live2DNaturalMotion({ seed: 41 })
-    const zeroDose = new Live2DNaturalMotion({ seed: 41 })
+    const disabled = new NaturalMotion({ seed: 41 })
+    const zeroDose = new NaturalMotion({ seed: 41 })
     disabled.setPerformanceSettings({ ...defaults, mood: false })
     zeroDose.setPerformanceSettings({ ...defaults, moodDynamics: { ...defaults.moodDynamics, strongGain: 0 } })
     disabled.impulse(episode(), 0)

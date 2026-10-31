@@ -2,9 +2,9 @@ import type { PerformanceEmotion } from '@proj-airi/stage-shared/expression-perf
 
 import type { ScoredChannel } from './emotion-score'
 
+import { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
 import { describe, expect, it } from 'vitest'
 
-import { naturalEmotions } from './emotions'
 import { buildEmotionChecks, unscoredRecipeEntries } from './gates'
 
 const faceChannels = { browAngle: 'browAngle', eyeSmile: 'eyeSmile', mouthForm: 'mouthForm', mouthOpen: 'mouthOpen', cheek: 'cheek' } as const

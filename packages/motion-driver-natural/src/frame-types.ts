@@ -13,7 +13,7 @@ export interface NaturalRigTraits {
   bodyFromHeadPhysics: { x: boolean, y: boolean, z: boolean }
 }
 
-export interface Live2DNaturalMotionOptions {
+export interface NaturalMotionOptions {
   /** Seeds every layer stream; equal seeds replay equal motion. Takes precedence over `random`. */
   seed?: number
   /** Draws the seed when `seed` is absent. @default Math.random */
@@ -110,7 +110,7 @@ export interface NaturalGestureEvent {
 export type NaturalMotionObserver = (event: NaturalMotionEvent) => void
 
 /** Normalized pose commands in [-1, 1]. */
-export interface Live2DNaturalMotionPose {
+export interface NaturalMotionPose {
   headX: number
   headY: number
   headZ: number
@@ -124,7 +124,7 @@ export interface Live2DNaturalMotionPose {
 }
 
 /** Voice activity inputs. The host derives both from speech output and voice detection. */
-export interface Live2DNaturalMotionVoice {
+export interface NaturalMotionVoice {
   /** Speech output is playing; breath becomes shallower. */
   speaking: boolean
   /** Speech is active or ended moments ago; lipsync owns the mouth, so silent mouth openings stop. */
@@ -133,8 +133,8 @@ export interface Live2DNaturalMotionVoice {
   level: number
 }
 
-export interface Live2DNaturalMotionFrame {
-  pose: Live2DNaturalMotionPose
+export interface NaturalMotionFrame {
+  pose: NaturalMotionPose
   /** Unclamped gaze point before head compensation. */
   fixation: GazePoint
   face: NaturalFaceOutput

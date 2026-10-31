@@ -1,41 +1,41 @@
 import type { ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
-import type { NaturalBreathOutput } from './natural-motion/breath'
-import type { NaturalFaceOutput } from './natural-motion/face'
-import type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionVoice, NaturalMotionEvent, NaturalMotionObserver, NaturalRigTraits, NaturalTouchRegion } from './natural-motion/frame-types'
-import type { GazePoint } from './natural-motion/gaze'
-import type { NaturalEpisode } from './natural-motion/mood'
-import type { PendingAction } from './natural-motion/pending-actions'
-import type { Vec3 } from './natural-motion/posture'
-import type { RandomStream } from './natural-motion/random'
+import type { NaturalBreathOutput } from './breath'
+import type { NaturalFaceOutput } from './face'
+import type { NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionVoice, NaturalRigTraits, NaturalTouchRegion } from './frame-types'
+import type { GazePoint } from './gaze'
+import type { NaturalEpisode } from './mood'
+import type { PendingAction } from './pending-actions'
+import type { Vec3 } from './posture'
+import type { RandomStream } from './random'
 
 import { errorMessageFrom } from '@moeru/std'
 import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 
-import { NaturalBlinkScheduler } from './natural-motion/blink'
-import { NaturalBodyLayer } from './natural-motion/body'
-import { NaturalBreathLayer } from './natural-motion/breath'
-import { mapCursor, NaturalCursorAttention, releaseAt } from './natural-motion/cursor-attention'
-import { naturalEmotions } from './natural-motion/emotions'
-import { NaturalPerformanceEnergy } from './natural-motion/energy'
-import { NaturalFaceLayer } from './natural-motion/face'
-import { withHints } from './natural-motion/face-hints'
-import { NaturalAttentionShifts, NaturalGazeLayer } from './natural-motion/gaze'
-import { NaturalGestures } from './natural-motion/gestures'
-import { NaturalHoldLayer } from './natural-motion/hold'
-import { NaturalImpulses } from './natural-motion/impulses'
-import { clamp, lerp, lerpRecord } from './natural-motion/interpolation'
-import { NaturalMood } from './natural-motion/mood'
-import { modulateByMood, moodMouthForm } from './natural-motion/mood-modulation'
-import { startPending } from './natural-motion/pending-actions'
-import { NaturalPlacement } from './natural-motion/placement'
-import { NaturalPostureLayers, postureHomes } from './natural-motion/posture'
-import { createRandomStream, deriveSeed } from './natural-motion/random'
-import { NaturalSpeechEmphasis, SpeechOnsetShifts } from './natural-motion/speech-emphasis'
-import { NaturalPetLayer } from './natural-motion/touch'
+import { NaturalBlinkScheduler } from './blink'
+import { NaturalBodyLayer } from './body'
+import { NaturalBreathLayer } from './breath'
+import { mapCursor, NaturalCursorAttention, releaseAt } from './cursor-attention'
+import { naturalEmotions } from './emotions'
+import { NaturalPerformanceEnergy } from './energy'
+import { NaturalFaceLayer } from './face'
+import { withHints } from './face-hints'
+import { NaturalAttentionShifts, NaturalGazeLayer } from './gaze'
+import { NaturalGestures } from './gestures'
+import { NaturalHoldLayer } from './hold'
+import { NaturalImpulses } from './impulses'
+import { clamp, lerp, lerpRecord } from './interpolation'
+import { NaturalMood } from './mood'
+import { modulateByMood, moodMouthForm } from './mood-modulation'
+import { startPending } from './pending-actions'
+import { NaturalPlacement } from './placement'
+import { NaturalPostureLayers, postureHomes } from './posture'
+import { createRandomStream, deriveSeed } from './random'
+import { NaturalSpeechEmphasis, SpeechOnsetShifts } from './speech-emphasis'
+import { NaturalPetLayer } from './touch'
 
-export type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionPose, Live2DNaturalMotionVoice, NaturalAttentionEvent, NaturalGestureEvent, NaturalGlanceEvent, NaturalHoldEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionObserver, NaturalPlacementEvent, NaturalTouchEvent } from './natural-motion/frame-types'
+export type { NaturalAttentionEvent, NaturalGestureEvent, NaturalGlanceEvent, NaturalHoldEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionPose, NaturalMotionVoice, NaturalPlacementEvent, NaturalTouchEvent } from './frame-types'
 
 /** Chat timing and geometry only, never text. Target is an eye-anchored offset in head widths, Y up. */
 export interface NaturalChatInput {
@@ -113,7 +113,7 @@ interface Snapshot {
  * Suspension freezes every process and active time; resume continues from the frozen state.
  * Cursor loss fades attention; deliberate dismissal also ends pursuit immediately.
  */
-export class Live2DNaturalMotion {
+export class NaturalMotion {
   private readonly posture: NaturalPostureLayers
   private readonly gaze: NaturalGazeLayer
   private readonly chatRandom: RandomStream
@@ -156,7 +156,7 @@ export class Live2DNaturalMotion {
   private readonly pending: PendingAction[] = []
   /** Last `reactSeq` seen; `undefined` until the first state, which only sets the baseline. */
   private reactSeq: number | undefined
-  private voice: Live2DNaturalMotionVoice = { speaking: false, speechActiveOrRecent: false, level: 0 }
+  private voice: NaturalMotionVoice = { speaking: false, speechActiveOrRecent: false, level: 0 }
   private saccadeCount = 0
   private cursor: GazePoint | null = null
   private cursorMode: 'live' | 'dismissed' = 'live'
@@ -188,7 +188,7 @@ export class Live2DNaturalMotion {
     }
   }
 
-  constructor(options: Live2DNaturalMotionOptions = {}) {
+  constructor(options: NaturalMotionOptions = {}) {
     this.emotions = options.emotionTable ?? naturalEmotions
     this.mood = new NaturalMood(this.emotions)
     this.hold = new NaturalHoldLayer(this.emotions)
@@ -220,7 +220,7 @@ export class Live2DNaturalMotion {
   }
 
   /** Returns a fresh normalized pose, the unclamped gaze point (before head compensation), and face, blink, and breath channels. */
-  advance(nowSeconds: number): Live2DNaturalMotionFrame {
+  advance(nowSeconds: number): NaturalMotionFrame {
     const elapsed = this.lastTimestamp === undefined ? 0 : nowSeconds - this.lastTimestamp
     this.lastTimestamp = nowSeconds
     if (!this.suspended && elapsed > 0) {
@@ -277,7 +277,7 @@ export class Live2DNaturalMotion {
   }
 
   /** Applies voice activity and the mouth level from the next grid step; the mouth suppression applies immediately. */
-  setVoice(voice: Live2DNaturalMotionVoice) {
+  setVoice(voice: NaturalMotionVoice) {
     this.voice = { ...voice }
     this.face.speechActiveOrRecent = voice.speechActiveOrRecent
     this.breath.speaking = voice.speaking

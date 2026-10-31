@@ -1,13 +1,13 @@
+import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { GenerationProvider } from '@proj-airi/provider-inference'
 import type { ExpressionPerformanceSettings, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
-import type { NaturalEpisode } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import type { Component, ComponentInternalInstance, VNode } from 'vue'
 
 import type { StagePerformanceScene } from '../../composables/performance/use-stage-performance-conductor'
 
+import { NaturalMotion } from '@proj-airi/motion-driver-natural'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
 import { createPickerDecider, defaultExpressionPerformanceSettings, replayAffectTrace } from '@proj-airi/stage-shared/expression-performance'
-import { Live2DNaturalMotion } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { createPinia, getActivePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
@@ -380,7 +380,7 @@ describe('per-signal character profiles at the Natural consumer', () => {
   })
 
   it('consumes a zero-gain turn episode at zero mood when a turnless signal is decided before the Natural frame', async () => {
-    const motion = new Live2DNaturalMotion({ seed: 41 })
+    const motion = new NaturalMotion({ seed: 41 })
     motion.advance(0)
     // Model.vue queues episodes until its next frame; this queue stands in for it.
     const pending: NaturalEpisode[] = []

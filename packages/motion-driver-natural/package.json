@@ -1,0 +1,21 @@
+{
+  "name": "@proj-airi/motion-driver-natural",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@moeru/std": "catalog:",
+    "@proj-airi/stage-shared": "workspace:^"
+  },
+  "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^",
+    "vitest": "catalog:vitest"
+  }
+}

@@ -1,4 +1,4 @@
-import { createRandomStream } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/random'
+import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 import { describe, expect, it } from 'vitest'
 
 import { kolmogorovCdf, ksStatisticUniform, ksTestUniform } from './ks'

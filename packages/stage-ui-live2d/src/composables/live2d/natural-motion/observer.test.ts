@@ -1,12 +1,11 @@
-import type { Live2DNaturalMotionOptions, NaturalMotionEvent, NaturalMotionObserver } from './frame-types'
+import type { NaturalMotionEvent, NaturalMotionObserver, NaturalMotionOptions } from '@proj-airi/motion-driver-natural/frame-types'
 
 import { createHash } from 'node:crypto'
 
+import { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
+import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-
-import { Live2DNaturalMotion } from '../natural-motion'
-import { naturalEmotions } from './emotions'
 
 // SHA-256 per seed over each frame's serialized output; pins come from Node Vitest.
 // Pins reflect face low-pass, boost removal, duck, laugh and slow-head eye compensation.
@@ -37,7 +36,7 @@ const emotionHashes = process.platform === 'darwin' && process.arch === 'arm64'
 const rate = 120
 const step = 1 / rate
 /** Inputs applied before `advance(t)` of the frame they are keyed by. */
-type Timeline = Record<number, (motion: Live2DNaturalMotion, t: number) => void>
+type Timeline = Record<number, (motion: NaturalMotion, t: number) => void>
 
 /** Angry strong at 20 s, happy clear at 40 s (each an impulse plus a hold), release at 50 s. */
 const emotionTimeline: Timeline = {
@@ -53,8 +52,8 @@ const emotionTimeline: Timeline = {
 }
 
 /** Simulates the desk fixture at 120 Hz from frame 0 to `seconds` inclusive and hashes every frame. */
-function run(seed: number, seconds: number, timeline: Timeline, options: { observer?: NaturalMotionObserver, setup?: (motion: Live2DNaturalMotion) => void } & Pick<Live2DNaturalMotionOptions, 'emotionTable'> = {}) {
-  const motion = new Live2DNaturalMotion({ seed, home: 'desk', emotionTable: options.emotionTable })
+function run(seed: number, seconds: number, timeline: Timeline, options: { observer?: NaturalMotionObserver, setup?: (motion: NaturalMotion) => void } & Pick<NaturalMotionOptions, 'emotionTable'> = {}) {
+  const motion = new NaturalMotion({ seed, home: 'desk', emotionTable: options.emotionTable })
   options.setup?.(motion)
   if (options.observer)
     motion.setObserver(options.observer)
@@ -74,9 +73,9 @@ function recorder() {
 }
 
 /** Mean of `browLY - browRY` over `[from, to]` s after `input` runs at `at` s. */
-function browAsymmetry(seed: number, at: number, from: number, to: number, input: (motion: Live2DNaturalMotion, t: number) => void) {
+function browAsymmetry(seed: number, at: number, from: number, to: number, input: (motion: NaturalMotion, t: number) => void) {
   const { events, observer } = recorder()
-  const motion = new Live2DNaturalMotion({ seed, home: 'desk' })
+  const motion = new NaturalMotion({ seed, home: 'desk' })
   motion.setObserver(observer)
   let sum = 0
   let count = 0
@@ -110,7 +109,7 @@ describe('natural motion observer', () => {
 
   it('reports eased placement yaw and exactly one zero event when disabled', () => {
     const { events, observer } = recorder()
-    const motion = new Live2DNaturalMotion({ seed: 1, home: 'desk' })
+    const motion = new NaturalMotion({ seed: 1, home: 'desk' })
     motion.setObserver(observer)
     motion.advance(0)
     motion.setPlacement(1, 1)
@@ -216,7 +215,7 @@ describe('natural motion observer', () => {
 
   it('reports impulses but no holds or gestures while held emotions are off', () => {
     const { events, observer } = recorder()
-    const setup = (motion: Live2DNaturalMotion) => motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
+    const setup = (motion: NaturalMotion) => motion.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, heldEmotions: false })
     run(1, 60, emotionTimeline, { observer, setup })
 
     expect(events.map(event => event.kind)).toEqual(['impulse', 'impulse'])

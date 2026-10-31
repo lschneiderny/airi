@@ -1,10 +1,10 @@
+import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
+import type { PostureHome } from '@proj-airi/motion-driver-natural/posture'
 import type { AffectTrace, AffectTraceFailureCode, AffectTraceRequest, AffectTraceResult } from '@proj-airi/stage-shared/expression-performance'
 import type { ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 
 import type { EmotionHold } from '../composables/live2d/expression/hold'
-import type { NaturalChatInput } from '../composables/live2d/natural-motion'
 import type { LivelinessReport } from '../composables/live2d/natural-motion/liveliness'
-import type { PostureHome } from '../composables/live2d/natural-motion/posture'
 import type { NaturalTrace } from '../composables/live2d/natural-motion/trace'
 import type { Live2DTouchDebugSnapshot } from '../composables/live2d/touch-debug'
 

@@ -1,11 +1,12 @@
+import type { HeldSpec, naturalEmotions as NaturalEmotionTable } from '@proj-airi/motion-driver-natural/emotions'
 import type { Band, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 
 import type { ChannelCheck, EmotionGate, ScoredChannel } from './emotion-score'
-import type { HeldSpec, naturalEmotions as NaturalEmotionTable } from './emotions'
 import type { MetricReference } from './liveliness'
 
+import { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
+
 import { scoredChannels } from './emotion-score'
-import { naturalEmotions } from './emotions'
 import { generatedBlinkBands, generatedMouthOpenBand } from './liveliness'
 import { referenceStats } from './reference-stats'
 

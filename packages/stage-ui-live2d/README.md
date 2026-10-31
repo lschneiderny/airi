@@ -55,7 +55,7 @@ A speech-bound lease lasts while its own speech turn plays. It releases after th
 ### Natural layers
 
 Natural is composed of independent layers. Each layer draws from its own seeded random stream, so retuning one layer does not reshuffle another.
-The `Live2DNaturalMotion` controller advances every layer on a fixed 120 Hz grid and interpolates between grid states, so the frame rate does not change the motion.
+The `NaturalMotion` controller from `@proj-airi/motion-driver-natural` advances every layer on a fixed 120 Hz grid and interpolates between grid states, so the frame rate does not change the motion.
 
 - Posture moves the head through a slow home drift, continuous sub-second motion whose activity waxes and wanes, and occasional heavy-tailed posture shifts along min-jerk paths. Activity changes only while a shift moves, so a held pose never starts shivering mid-hold.
 - Gaze picks fixation targets (camera, desk, and peripheral points) independently of the head and compensates the eyes for the slow head pose (posture shifts, drift, cursor bias, plus emphasis, impulse, pet, hold, and gesture heads), not for the sub-second continuous wobble.
@@ -113,7 +113,7 @@ While Natural is selected, the SDK blink plugin is off and Natural's own blink s
 
 ### Natural observer and QA seams
 
-`Live2DNaturalMotion.setObserver(observer)` reports what the controller performed. Pass `null` to stop reporting. The adapter exposes its controller as `natural`.
+`NaturalMotion.setObserver(observer)` reports what the controller performed. Pass `null` to stop reporting. The adapter exposes its controller as `natural`.
 
 - `impulse`: an emotion episode started, with its band, clamped intensity, and side.
 - `hold`: the held emotion or its side changed. A release, or held emotions switched off, reports `emotion: null`.
@@ -129,7 +129,7 @@ The `emotionTable` constructor option replaces the `naturalEmotions` recipe tabl
 
 These subpath exports load in plain Node without pixi, Vue files, or `window`, so QA tools can run the controller outside the renderer:
 
-- `@proj-airi/stage-ui-live2d/composables/live2d/natural-motion`;
+- `@proj-airi/motion-driver-natural` and its layer subpaths;
 - `@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/*`, for example `natural-motion/trace` or `natural-motion/speech-fixture`;
 - `@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter`;
 - `@proj-airi/stage-ui-live2d/composables/live2d/expression/hold`.
@@ -189,7 +189,7 @@ The decider sends a hold with each episode, and the conductor passes it to the s
 The held emotion eases in over `held.onsetTau` and out over `held.releaseTau`, and a switch to another emotion glides without a jump.
 While it lasts, Natural adds the emotion's face to brows, eyes, eye smile, mouth form, and cheek, and keeps a head and body posture bias at every band. It also changes blink intervals, breath period, posture amplitude, camera and desk gaze, and the size and frequency of speech nods.
 A pet overrides the held face on the channels that the pet shapes. A repeated pulse of the held emotion adds a smaller accent, so the face does not saturate.
-The `naturalEmotions` table in `natural-motion/emotions.ts` holds every per-emotion value: the impulse, the mood coefficients, the held recipe, and the gesture.
+The `naturalEmotions` table in `@proj-airi/motion-driver-natural/emotions` holds every per-emotion value: the impulse, the mood coefficients, the held recipe, and the gesture.
 
 Gestures are short head clips: a laugh for happy, a recoil for surprised, a head shake or drop for angry, a sway for awkward, a tilt-in for love, a look-away for flustered, and a nod-off for sleepy. Sad, think, question, and curious have none.
 A gesture plays only at the clear and strong bands, and each kind has a cooldown. The body follows a gesture only at strong.

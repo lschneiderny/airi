@@ -4,14 +4,14 @@ import type { Live2DMotionDriver } from './live2d'
 import type { Live2DNaturalMotionAttention } from './natural-motion-adapter'
 import type { Live2DRigProfile, PhysicsRigLike } from './natural-motion/rig-profile'
 
+import { mapCursor } from '@proj-airi/motion-driver-natural/cursor-attention'
+import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { createPinia, setActivePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 
 import { Emotion } from '../../constants/emotions'
 import { useNaturalMotionDiagnostics } from '../../stores/natural-motion-diagnostics'
-import { Live2DNaturalMotion } from './natural-motion'
 import { Live2DNaturalMotionAdapter } from './natural-motion-adapter'
-import { mapCursor } from './natural-motion/cursor-attention'
 import { readLive2DRigProfile } from './natural-motion/rig-profile'
 
 // Posture fixture ranges: neutral 2, minimum -8, maximum 22.
@@ -37,7 +37,7 @@ function natural(activeSeconds: number, cursor: { x: number, y: number } | null 
 
 /** A reference controller advanced in lockstep with a fixture adapter from active time 0. */
 function stream(cursor: { x: number, y: number } | null = null) {
-  const motion = new Live2DNaturalMotion({ random: () => 0.8 })
+  const motion = new NaturalMotion({ random: () => 0.8 })
   motion.advance(0)
   motion.setCursor(cursor, 0)
   return motion
@@ -589,7 +589,7 @@ describe('natural motion adapter', () => {
   })
 
   it('(h) drains pending emotions exactly once', () => {
-    const impulse = vi.spyOn(Live2DNaturalMotion.prototype, 'impulse')
+    const impulse = vi.spyOn(NaturalMotion.prototype, 'impulse')
     try {
       const f = fixture()
       const episode = { id: 'happy', emotion: Emotion.Happy, nominal: 0.5, intensity: 0.5, band: 'clear' as const, escalation: false }
@@ -703,9 +703,9 @@ describe('natural motion adapter', () => {
   })
 
   it('(j) forwards a changed placement to the controller right after the cursor', () => {
-    const setCursor = vi.spyOn(Live2DNaturalMotion.prototype, 'setCursor')
-    const setPlacement = vi.spyOn(Live2DNaturalMotion.prototype, 'setPlacement')
-    const advance = vi.spyOn(Live2DNaturalMotion.prototype, 'advance')
+    const setCursor = vi.spyOn(NaturalMotion.prototype, 'setCursor')
+    const setPlacement = vi.spyOn(NaturalMotion.prototype, 'setPlacement')
+    const advance = vi.spyOn(NaturalMotion.prototype, 'advance')
     try {
       const f = fixture()
       f.state.eligible = true
@@ -736,8 +736,8 @@ describe('natural motion adapter', () => {
   })
 
   it('(k) forwards a changed chat input right after the placement, and an equal rebuilt input never', () => {
-    const setPlacement = vi.spyOn(Live2DNaturalMotion.prototype, 'setPlacement')
-    const setChat = vi.spyOn(Live2DNaturalMotion.prototype, 'setChat')
+    const setPlacement = vi.spyOn(NaturalMotion.prototype, 'setPlacement')
+    const setChat = vi.spyOn(NaturalMotion.prototype, 'setChat')
     try {
       const f = fixture()
       f.state.eligible = true
@@ -816,8 +816,8 @@ describe('natural motion adapter', () => {
   })
 
   it('(i) drains pokes exactly once and forwards a pet only while Natural is active', () => {
-    const poke = vi.spyOn(Live2DNaturalMotion.prototype, 'poke')
-    const setPet = vi.spyOn(Live2DNaturalMotion.prototype, 'setPet')
+    const poke = vi.spyOn(NaturalMotion.prototype, 'poke')
+    const setPet = vi.spyOn(NaturalMotion.prototype, 'setPet')
     try {
       const f = fixture()
       f.state.pendingPokes.push({ region: 'head', x: 0.5, y: -0.25 })

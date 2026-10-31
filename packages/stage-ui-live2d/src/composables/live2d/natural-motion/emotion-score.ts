@@ -1,16 +1,15 @@
+import type { RandomStream } from '@proj-airi/motion-driver-natural/random'
 import type { Band, ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 
 import type { ParameterRanges } from './liveliness'
-import type { RandomStream } from './random'
 import type { NaturalTrace, NaturalTraceEvent } from './trace'
 
+import { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
+import { NaturalGazeLayer } from '@proj-airi/motion-driver-natural/gaze'
+import { gestureDuckRelease, gestureLifetimes } from '@proj-airi/motion-driver-natural/gestures'
+import { impulseFaceLifetime, impulseLifetime } from '@proj-airi/motion-driver-natural/impulses'
+import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
-
-import { naturalEmotions } from './emotions'
-import { NaturalGazeLayer } from './gaze'
-import { gestureDuckRelease, gestureLifetimes } from './gestures'
-import { impulseFaceLifetime, impulseLifetime } from './impulses'
-import { createRandomStream } from './random'
 
 /**
  * Idle-noise-relative emotion scorer. Pure: no clocks, no `Math.random`, no Node APIs.

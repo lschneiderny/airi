@@ -1,9 +1,9 @@
+import type { HeldSpec } from '@proj-airi/motion-driver-natural/emotions'
 import type { Band, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type { EmotionGate, SeedRange, TrialVariant } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
-import type { HeldSpec } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotions'
 
+import { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
-import { naturalEmotions } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotions'
 
 import { gateBands, gateEmotions, longHoldBands, seedRange, variantsFor } from '../gate/options'
 

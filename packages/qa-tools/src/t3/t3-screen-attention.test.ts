@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 
-import { Live2DNaturalMotion } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion'
+import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { runT1 } from '../motion/t1/runner'
@@ -32,8 +32,8 @@ describe('builtin t3-screen-attention scenario', () => {
 
   // Idle cost about 0.5 s (one runT1 simulation, like t3-smoke); 20 s under load.
   it('drives Natural placement and chat at T1 and stamps the same scenario events', () => {
-    const setPlacement = vi.spyOn(Live2DNaturalMotion.prototype, 'setPlacement')
-    const setChat = vi.spyOn(Live2DNaturalMotion.prototype, 'setChat')
+    const setPlacement = vi.spyOn(NaturalMotion.prototype, 'setPlacement')
+    const setChat = vi.spyOn(NaturalMotion.prototype, 'setChat')
 
     const trace = parseTraceEvents(runT1(scenario))
 

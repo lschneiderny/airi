@@ -4,15 +4,15 @@ import type { ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 import type { ChannelCheck, EmotionGate, EmotionTrialRecord, PlaceboRecord, ScorerInput } from './emotion-score'
 import type { NaturalTrace, NaturalTraceEvent } from './trace'
 
+import { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
+import { gestureDuckRelease, gestureLifetimes, NaturalGestures } from '@proj-airi/motion-driver-natural/gestures'
+import { createRandomStream, gaussian } from '@proj-airi/motion-driver-natural/random'
 import { defaultExpressionPerformanceSettings, parseExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { buildEmotionTrial } from '@proj-airi/stage-shared/motion-scenario'
 import { describe, expect, it } from 'vitest'
 
 import { fitExponential, holmAdjust, measureEmotionTrial, measurePlacebos, naturalEmotionLifetime, naturalFaceResidue, scoreEmotionGate, signFlipPValue, stratifiedUnpairedPValue, unpairedPValue } from './emotion-score'
-import { naturalEmotions } from './emotions'
 import { buildEmotionChecks, emotionGate } from './gates'
-import { gestureDuckRelease, gestureLifetimes, NaturalGestures } from './gestures'
-import { createRandomStream, gaussian } from './random'
 
 const pulseAt = emotionGate.scenario.warmup
 const ranges = { ParamMouthForm: { min: -1, max: 1, default: 0 } }

@@ -6,10 +6,10 @@ import type { Experiment, GenerationUnit, ScoringJob, ValidationPlan } from './p
 
 import { isDeepStrictEqual } from 'node:util'
 
+import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { measureEmotionTrial, naturalFaceResidue, scoreEmotionGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
 import { buildEmotionChecks } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
-import { createRandomStream } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/random'
 
 import { gateBands, gateEmotions } from '../gate/options'
 import { readPartial, writePartial } from '../gate/partials'

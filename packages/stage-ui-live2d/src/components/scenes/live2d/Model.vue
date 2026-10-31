@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { Application } from '@pixi/app'
 import type { Filter } from '@pixi/core'
+import type { NaturalMotionObserver } from '@proj-airi/motion-driver-natural/frame-types'
+import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
+import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { ExpressionPerformanceSettings, HoldCommand, PerformanceEmotion, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type {
@@ -17,10 +20,7 @@ import type { ArchiveExpressionFile, Model3ExpressionRef } from '../../../compos
 import type { SpeechEvent } from '../../../composables/live2d/expression/slots'
 import type { Live2DModelCanvasRect } from '../../../composables/live2d/head-anchor'
 import type { NaturalChatActivity, NaturalChatTarget } from '../../../composables/live2d/natural-chat-input'
-import type { NaturalChatInput } from '../../../composables/live2d/natural-motion'
 import type { Live2DNaturalMotionAttention } from '../../../composables/live2d/natural-motion-adapter'
-import type { NaturalMotionObserver } from '../../../composables/live2d/natural-motion/frame-types'
-import type { NaturalEpisode } from '../../../composables/live2d/natural-motion/mood'
 import type { PhysicsRigLike } from '../../../composables/live2d/natural-motion/rig-profile'
 import type { Live2DTouchDebugOverlay, Live2DTouchDebugSource } from '../../../composables/live2d/touch-debug'
 import type { Live2DTouchEvent, Live2DTouchSample } from '../../../composables/live2d/touch-gestures'
