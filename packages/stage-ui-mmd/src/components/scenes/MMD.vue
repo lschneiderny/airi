@@ -67,7 +67,7 @@ import {
 } from '../../composables/mmd'
 import { MMDBody } from '../../composables/mmd/body'
 import { resolveBodyPoints, resolveBodyTarget } from '../../composables/mmd/body/attention'
-import { resolveFrameBounds } from '../../composables/mmd/camera-bounds'
+import { ARM_SWING_REACH, resolveFrameBounds } from '../../composables/mmd/camera-bounds'
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
 import { fnv1a32 } from '../../composables/mmd/natural/seed'
@@ -408,6 +408,13 @@ function setupScene() {
   controls.enabled = props.enableOrbitControls && !props.stageWorld
 }
 
+/** The hands and the distal finger bones: the stage placement rect must hold them while she stands and swings her arms in a walk. */
+function stageReachBones(): string[] {
+  const hands = [rig?.bones.leftHand, rig?.bones.rightHand]
+  const fingertips = Object.entries(rig?.fingerBones ?? {}).filter(([finger]) => finger.endsWith('Distal')).map(([, name]) => name)
+  return [...hands, ...fingertips].filter((name): name is string => name !== undefined)
+}
+
 /** Frames the camera so the whole model fits the viewport, and centers it. */
 function frameCamera() {
   if (!camera || !controls || !modelGroup)
@@ -418,9 +425,15 @@ function frameCamera() {
   const box = new Box3().setFromObject(modelGroup)
   const boneByName = new Map(mesh?.skeleton.bones.map(bone => [bone.name, bone]))
   const scratch = new Vector3()
+  // The rect holds the hands where the arm-rest stage puts them, not where the bind A-pose does.
+  const reachBones = props.stageWorld ? stageReachBones() : []
+  const rested = body && animation && reachBones.length > 0 ? body.restPositions(animation.pipeline.clean, reachBones) : undefined
   const bounds = resolveFrameBounds(
     rig?.bones ?? {},
     (name) => {
+      const restedPosition = rested?.get(name)
+      if (restedPosition)
+        return restedPosition
       const bone = boneByName.get(name)
       if (!bone)
         return null
@@ -428,6 +441,8 @@ function frameCamera() {
       return [scratch.x, scratch.y, scratch.z]
     },
     box.isEmpty() ? null : { min: box.min.toArray(), max: box.max.toArray() },
+    reachBones,
+    ARM_SWING_REACH,
   )
   if (!bounds)
     return

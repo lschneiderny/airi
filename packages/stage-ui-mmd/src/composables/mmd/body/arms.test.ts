@@ -25,7 +25,7 @@ describe('mmd arm rest stage', () => {
     const { mmd, rig, pipeline, bone, mesh } = bodyFixture(0, Math.PI, { arms: true })
     expect(rig.restArmAngles.left).toBeCloseTo(0.2 * Math.PI, 6)
     expect(rig.restForearmAngles.right).toBeCloseTo(0.2 * Math.PI, 6)
-    const arms = new MMDArmRest(new MMDBodyPose(mmd, rig), [])
+    const arms = new MMDArmRest(new MMDBodyPose(mmd, rig), { kinematic: [], dynamic: [] })
     arms.apply(pipeline.clean, { dt: 1 / 60, breath: 0, torsoRoll: 0, swing: undefined, swingWeight: 0, owned, hangDeg: null })
     mesh.updateMatrixWorld(true)
     const direction = (elbow: string, wrist: string) => bone(wrist).getWorldPosition(new Vector3()).sub(bone(elbow).getWorldPosition(new Vector3())).normalize()
@@ -42,7 +42,7 @@ describe('mmd arm rest stage', () => {
     const { mmd, rig, pipeline, bone } = bodyFixture(0, Math.PI, { arms: true })
     expect(rig.fingerBones.leftThumbMetacarpal).toBe('左親指０')
     expect(rig.fingerBones.leftIndexMetacarpal).toBe('左人指０')
-    const arms = new MMDArmRest(new MMDBodyPose(mmd, rig), [])
+    const arms = new MMDArmRest(new MMDBodyPose(mmd, rig), { kinematic: [], dynamic: [] })
     arms.apply(pipeline.clean, { dt: 1 / 60, breath: 0, torsoRoll: 0, swing: undefined, swingWeight: 0, owned, hangDeg: null })
     expect(bone('左人指１').quaternion.angleTo(new Quaternion())).toBeGreaterThan(0.1)
     expect(bone('左親指０').quaternion.angleTo(new Quaternion())).toBeGreaterThan(0.05)
@@ -53,10 +53,10 @@ describe('mmd arm rest stage', () => {
     const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true })
     for (let frame = 0; frame < 120; frame++)
       pipeline.step(1 / 60)
-    expect(body.diagnostics.arms).toEqual({ weight: 1, owned, penetration: { left: 0, right: 0 }, handBelowHip: true })
+    expect(body.diagnostics.arms).toEqual({ weight: 1, owned, penetration: { left: 0, right: 0 }, clothContact: { left: 0, right: 0 }, hangDeg: 78, handBelowHip: true })
   })
 
-  it('reports penetration when the arms hang straight into the hip body and lifts the hands at 20 degrees', () => {
+  it('reports penetration when the arms hang straight into the hip body at 90 degrees, and lifts the hands at 20 degrees', () => {
     const { pipeline, body, setInput } = bodyFixture(0, Math.PI, { arms: true, bodies: true })
     setInput({ armRestHangDeg: 90 })
     for (let frame = 0; frame < 30; frame++)
@@ -67,6 +67,78 @@ describe('mmd arm rest stage', () => {
     for (let frame = 0; frame < 30; frame++)
       pipeline.step(1 / 60)
     expect(body.diagnostics.arms?.handBelowHip).toBe(false)
+  })
+
+  it('ignores a body around the shoulder joint, which every arm starts inside', () => {
+    const shoulder = { name: 'shoulder-shell', bone: '上半身2', position: [1.5, 16, 0] as [number, number, number], radius: 0.5, collisionMask: 65535 }
+    const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [shoulder, { ...shoulder, name: 'right-shoulder-shell', position: [-1.5, 16, 0] }] })
+    for (let frame = 0; frame < 60; frame++)
+      pipeline.step(1 / 60)
+    expect(body.diagnostics.arms?.penetration).toEqual({ left: 0, right: 0 })
+  })
+
+  it('counts a kinematic body on the arm path whatever its collision mask, and skips a shell wider than the shoulder span', () => {
+    const path = (collisionMask: number, radius: number) => {
+      const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [{ name: 'on-the-arm', bone: '上半身2', position: [1.9, 13.8, 0], radius, collisionMask }] })
+      for (let frame = 0; frame < 60; frame++)
+        pipeline.step(1 / 60)
+      return body.diagnostics.arms?.penetration.left ?? Number.NaN
+    }
+    expect(path(65535, 0.6)).toBeGreaterThan(0.1)
+    // A group-0 body with self-collision off, like a real rig's own torso, still gates the arm.
+    expect(path(0xFF02, 0.6)).toBeGreaterThan(0.1)
+    // Wider than 0.65 of the 3-unit shoulder span: a coat shell, ignored.
+    expect(path(65535, 2.1)).toBe(0)
+  })
+
+  it('reports a dynamic cloth body on the arm path as clothContact and never as penetration', () => {
+    const cloth = { name: 'cloth-on-the-arm', bone: '上半身2', position: [1.9, 13.8, 0] as [number, number, number], radius: 0.6, collisionMask: 65535, dynamic: true }
+    const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [cloth] })
+    for (let frame = 0; frame < 60; frame++)
+      pipeline.step(1 / 60)
+    expect(body.diagnostics.arms?.penetration).toEqual({ left: 0, right: 0 })
+    expect(body.diagnostics.arms?.clothContact.left).toBeGreaterThan(0)
+    expect(body.diagnostics.arms?.hangDeg).toBe(78)
+  })
+
+  it('lifts the arm in 2 degree steps after the warm-up, once the clearance to a kinematic body is violated, and settles', () => {
+    const post = { name: 'post', bone: '上半身2', position: [2.2, 12, 0] as [number, number, number], radius: 0.3, collisionMask: 65535 }
+    const hangs: number[] = []
+    const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [post] })
+    for (let frame = 0; frame < 300; frame++) {
+      pipeline.step(1 / 60)
+      hangs.push(body.diagnostics.arms?.hangDeg ?? Number.NaN)
+    }
+    expect(hangs.slice(0, 60).every(hang => hang === 78)).toBe(true)
+    expect(hangs.at(-1)).toBeLessThan(78)
+    expect(hangs.at(-1)).toBeGreaterThanOrEqual(60)
+    expect(hangs.every((hang, index) => index === 0 || [0, -2].includes(hang - hangs[index - 1]))).toBe(true)
+    expect(hangs.slice(-60).every(hang => hang === hangs.at(-1))).toBe(true)
+    expect(body.diagnostics.arms?.penetration).toEqual({ left: 0, right: 0 })
+  })
+
+  it('does not lift the arm for a body that stays clear of it', () => {
+    const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true })
+    for (let frame = 0; frame < 300; frame++)
+      pipeline.step(1 / 60)
+    expect(body.diagnostics.arms?.hangDeg).toBe(78)
+  })
+
+  it('never lifts the arm below 60 degrees, however long the overlap lasts', () => {
+    const wall = { name: 'wall', bone: '上半身2', position: [2.6, 11, 0] as [number, number, number], radius: 1.9, collisionMask: 65535 }
+    const { pipeline, body } = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [wall] })
+    for (let frame = 0; frame < 400; frame++)
+      pipeline.step(1 / 60)
+    expect(body.diagnostics.arms?.hangDeg).toBe(60)
+  })
+
+  it('does not solve a hang while the debug override is set', () => {
+    const post = { name: 'post', bone: '上半身2', position: [2.2, 12, 0] as [number, number, number], radius: 0.3, collisionMask: 65535 }
+    const { pipeline, body, setInput } = bodyFixture(0, Math.PI, { arms: true, bodies: true, extraBodies: [post] })
+    setInput({ armRestHangDeg: 78 })
+    for (let frame = 0; frame < 120; frame++)
+      pipeline.step(1 / 60)
+    expect(body.diagnostics.arms?.hangDeg).toBe(78)
   })
 
   it('gives a clip ownership only of the groups its keys move', () => {

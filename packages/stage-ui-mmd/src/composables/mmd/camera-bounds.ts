@@ -19,6 +19,15 @@ export const HEAD_TOP_NECK_FACTOR = 1.5
 /** Framed width is the shoulder span times this factor, to leave room for the arms. */
 export const SHOULDER_WIDTH_FACTOR = 2.2
 
+/**
+ * The gait swings an arm by at most 2 + 12 * 1.3 = 17.6 degrees of shoulder flexion plus 12 to 20 degrees of elbow flexion,
+ * so a hand strays at most sin(25 degrees) = 0.42 of its distance from the shoulder; the rest is margin.
+ * While she walks she faces along the stage, so that forward swing is lateral on screen.
+ */
+export const ARM_SWING_REACH = 0.45
+
+const distance = (a: BoundsVec3, b: BoundsVec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+
 type FrameBone = Extract<HumanoidBoneName, 'head' | 'neck' | 'leftFoot' | 'rightFoot' | 'leftToes' | 'rightToes' | 'leftUpperArm' | 'rightUpperArm'>
 
 /**
@@ -33,12 +42,19 @@ type FrameBone = Extract<HumanoidBoneName, 'head' | 'neck' | 'leftFoot' | 'right
  * used only when 頭, 首 or both ankles are missing. A missing or zero arm span gives width 0,
  * so the fit is by height alone.
  *
+ * `reachBones` names bones (hands and fingertips) whose lateral distance from the shoulder centre, plus `swingReach` times
+ * the bone's distance from the nearer upper arm, widens the frame to twice the farthest one when that exceeds the shoulder
+ * width. The desktop stage passes them, with positions from the rest pose, so its placement rect holds the hands while she
+ * stands and swings her arms in a walk; the classic window passes none and keeps its framing.
+ *
  * `positionOf` returns a world position for a mapped bone name, or null when it is absent.
  */
 export function resolveFrameBounds(
   bones: Partial<Record<HumanoidBoneName, string>>,
   positionOf: (boneName: string) => BoundsVec3 | null,
   mesh: MeshBounds | null,
+  reachBones: readonly string[] = [],
+  swingReach = 0,
 ): FrameBounds | null {
   const at = (humanoid: FrameBone): BoundsVec3 | null => {
     const name = bones[humanoid]
@@ -56,8 +72,15 @@ export function resolveFrameBounds(
     const armL = at('leftUpperArm')
     const armR = at('rightUpperArm')
     const span = armL && armR ? Math.hypot(armL[0] - armR[0], armL[1] - armR[1], armL[2] - armR[2]) : 0
-    const width = span * SHOULDER_WIDTH_FACTOR
     const centerX = armL && armR ? (armL[0] + armR[0]) / 2 : head[0]
+    const reach = reachBones.reduce((max, name) => {
+      const position = positionOf(name)
+      if (!position)
+        return max
+      const arm = [armL, armR].reduce((nearest, candidate) => candidate && (!nearest || distance(candidate, position) < distance(nearest, position)) ? candidate : nearest, null as BoundsVec3 | null)
+      return Math.max(max, Math.abs(position[0] - centerX) + (arm ? swingReach * distance(arm, position) : 0))
+    }, 0)
+    const width = Math.max(span * SHOULDER_WIDTH_FACTOR, 2 * reach)
     if (top > lowest) {
       return {
         center: [centerX, (lowest + top) / 2, head[2]],

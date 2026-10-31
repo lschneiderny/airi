@@ -184,10 +184,23 @@ returns `min(1, sum(weight * mask))` per group (`root`, `leftLegIk`,
 `rightLegIk`, `leftArm`, `rightArm`, `leftFingers`, `rightFingers`,
 `upperBody`, `head`). The rest pose is written with weight `1 - owned`, and the
 gait is enabled only while no clip owns `root` or a leg IK bone. A clip the body
-never saw owns every group. Diagnostics publish `arms` (`weight`, `owned`,
-`penetration` per side in model units against torso, hip and skirt rigid bodies,
-and `handBelowHip`); `setDebugFlag` with `{ flag: 'armRestHangDeg', value }`
-(0-90, `null` restores the default) overrides the rest hang angle for QA.
+never saw owns every group. Diagnostics publish `arms` (`weight`, `owned`, `penetration`, `clothContact`,
+`hangDeg` and `handBelowHip`). `penetration` per side is the gate and must be 0: the overlap, in model units, of the
+arm capsules (radius 0.12 of the segment, the hand reaching 0.65 of the forearm beyond the wrist) with the KINEMATIC
+rigid bodies, those that follow a bone (torso, hips, legs, kinematic skirt roots). `clothContact` per side is
+information only: the centerline overlap with DYNAMIC (physics) bodies such as skirt plates, belts and wings, which the
+simulation resolves. The test skips the first half of the upper arm, because the shoulder joint sits inside the chest
+bodies by construction. It ignores collision masks, because a rig's own torso, hip and leg bodies turn off collision
+with their group, and skips only a body wider than 0.65 of the shoulder span (a coat shell such as Chisa's radius-2
+body). While both arms are free and the gait is idle, a rig whose kinematic overlap persists for 5 frames after the
+60-frame warm-up, at the default 78 degree hang gets a
+per-rig hang: the arm is lifted away from the body in 2 degree steps, down to 60, until the overlap is 0 (the hang is the
+angle below horizontal, so a larger one swings the arm into the hips). `hangDeg` reports the value in effect.
+`setDebugFlag` with `{ flag: 'armRestHangDeg', value }` (0-90, `null` restores the default) overrides the hang for QA
+and switches the solver off. The desktop stage measures its placement rect from the REST-POSED hands and fingertips
+(`body.restPositions`, passed as `reachBones` of `resolveFrameBounds`) plus `ARM_SWING_REACH` of each one's
+distance from the shoulder for the walking swing, so her hands stay inside the click-through rect without widening it to
+the bind A-pose.
 
 Pose stages read `context.clean` and write absolute transforms from that
 snapshot; they must not modify the snapshot itself. `clipFootIK` records
