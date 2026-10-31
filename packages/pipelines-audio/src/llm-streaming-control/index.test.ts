@@ -45,6 +45,9 @@ describe('createStreamingControlParser', () => {
     expect(control.match('<|CALL ["chess.play"]|>')).toBe(true)
     expect(control.match('<|ACT {"emotion":"happy"}|>')).toBe(true)
     expect(control.match('<|DELAY 1|>')).toBe(true)
+    expect(control.match('<|BREAK|>')).toBe(true)
+    expect(control.match('<|BREAK 2|>')).toBe(true)
+    expect(control.match('<|BREAKFAST|>')).toBe(false)
   })
 
   /**
@@ -307,6 +310,64 @@ describe('createStreamingControlParser', () => {
         createdAt: expect.any(Number),
       }),
     )
+
+    dispose()
+  })
+
+  it.each([
+    ['<|BREAK|>', 1, false],
+    ['<|BREAK 2|>', 2, true],
+    ['<|BREAK 1.5|>', 1.5, true],
+    ['<|BREAK 0.1|>', 0.3, true],
+    ['<|BREAK 0|>', 0.3, true],
+    ['<|BREAK 9|>', 3, true],
+    [' <|BREAK  2.25 |> ', 2.25, true],
+  ])('dispatches %s as a break of %s seconds', async (special, seconds, explicit) => {
+    const control = createStreamingControlParser()
+    const handler = vi.fn()
+    const observer = vi.fn()
+    const dispose = control.onSignal(handler)
+
+    await expect(control.dispatchWith(special, { observer })).resolves.toBe(true)
+    expect(handler).toHaveBeenCalledExactlyOnceWith({ type: 'break', seconds, explicit }, expect.objectContaining({ createdAt: expect.any(Number) }))
+    expect(observer).toHaveBeenCalledWith(expect.objectContaining({ parserName: 'BREAK', tokenType: 'break', parameter: `${seconds}s`, type: 'parsed' }))
+
+    dispose()
+  })
+
+  it.each([
+    '<|BREAK x|>',
+    '<|BREAK 1s|>',
+    '<|BREAK -1|>',
+    '<|BREAK .5|>',
+    '<|BREAK 1 2|>',
+    '<|BREAK 1e2|>',
+    '<|BREAK:2|>',
+  ])('reports %s as parse-failed without a signal', async (special) => {
+    const control = createStreamingControlParser()
+    const handler = vi.fn()
+    const observer = vi.fn()
+    const dispose = control.onSignal(handler)
+
+    await expect(control.dispatchWith(special, { observer })).resolves.toBe(false)
+    expect(handler).not.toHaveBeenCalled()
+    expect(observer).toHaveBeenCalledExactlyOnceWith({ parserName: 'BREAK', reason: 'parse-failed', type: 'rejected' })
+
+    dispose()
+  })
+
+  it('keeps an ACT valid when its gesture is unknown and leaves the raw gesture for drop reporting', async () => {
+    const control = createStreamingControlParser()
+    const handler = vi.fn()
+    const dispose = control.onSignal(handler)
+
+    await expect(control.dispatchWith('<|ACT {"gesture":"wave"}|>')).resolves.toBe(true)
+    expect(handler).toHaveBeenCalledExactlyOnceWith({ type: 'act', payload: { gesture: 'wave' } }, expect.anything())
+    expect(normalizeActPayload({ gesture: 'wave' })).toEqual({})
+
+    handler.mockClear()
+    await expect(control.dispatchWith('<|ACT {"emotion":"happy","gesture":"wave"}|>')).resolves.toBe(true)
+    expect(normalizeActPayload(handler.mock.calls[0][0].payload)).toEqual({ emotion: { name: 'happy', intensity: 0.6 } })
 
     dispose()
   })

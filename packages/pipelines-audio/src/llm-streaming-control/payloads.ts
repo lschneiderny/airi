@@ -37,6 +37,29 @@ const lookValues: ReadonlyMap<string, StreamingControlLook> = new Map([
   ['aside', 'away'],
 ])
 
+/**
+ * A short body gesture an ACT cue asks for. Only `nod` and `shake` repeat; the others play once.
+ */
+export type StreamingControlGestureKind = 'nod' | 'shake' | 'shrug' | 'lean' | 'glance'
+
+const gestureKinds: ReadonlyMap<string, StreamingControlGestureKind> = new Map([
+  ['nod', 'nod'],
+  ['shake', 'shake'],
+  ['shrug', 'shrug'],
+  ['lean', 'lean'],
+  ['glance', 'glance'],
+])
+
+/** Gestures whose `count` the model may choose. */
+const repeatableGestureKinds: ReadonlySet<StreamingControlGestureKind> = new Set(['nod', 'shake'])
+
+export interface StreamingControlGesture {
+  /** Canonical gesture kind. */
+  kind: StreamingControlGestureKind
+  /** Repetitions: 1-3 for `nod` and `shake` (2 when unset), always 1 for the other kinds. */
+  count: number
+}
+
 export interface StreamingControlEmotionPayload {
   /** Canonical normalized emotion. */
   name: StreamingControlEmotion
@@ -53,6 +76,8 @@ export interface NormalizedActPayload {
   expression?: string
   /** Gaze direction emitted by the model, when present and supported. */
   look?: StreamingControlLook
+  /** Body gesture emitted by the model, when present and supported. */
+  gesture?: StreamingControlGesture
 }
 
 /**
@@ -188,6 +213,38 @@ function normalizeLook(value: unknown): StreamingControlLook | undefined {
 }
 
 /**
+ * Converts a `gesture` value into a canonical gesture; unknown kinds are dropped.
+ *
+ * Supported:
+ * - "nod"
+ * - { kind: "nod", count: 2 }
+ *
+ * A dropped gesture leaves no trace here. Callers that report drops compare the raw payload
+ * with the normalized one, as they do for `look`. `count` must be a JSON number; anything
+ * else, including a numeric string, takes the default.
+ */
+function normalizeGesture(value: unknown): StreamingControlGesture | undefined {
+  const isObject = typeof value === 'object' && value !== null && !Array.isArray(value)
+  const rawKind = isObject ? (value as { kind?: unknown }).kind : value
+  if (typeof rawKind !== 'string')
+    return undefined
+
+  const kind = gestureKinds.get(rawKind.trim().toLowerCase())
+  if (!kind)
+    return undefined
+
+  if (!repeatableGestureKinds.has(kind))
+    return { kind, count: 1 }
+
+  const rawCount = isObject ? (value as { count?: unknown }).count : undefined
+  const count = typeof rawCount === 'number' && Number.isFinite(rawCount)
+    ? Math.max(1, Math.min(3, Math.round(rawCount)))
+    : 2
+
+  return { kind, count }
+}
+
+/**
  * Normalizes ACT token payloads.
  *
  * Input:
@@ -212,11 +269,13 @@ export function normalizeActPayload(
   const motion = normalizeCue(payload.motion)
   const expression = normalizeCue(payload.expression)
   const look = normalizeLook(payload.look)
+  const gesture = normalizeGesture(payload.gesture)
 
   return {
     ...(emotion && { emotion }),
     ...(motion && { motion }),
     ...(expression && { expression }),
     ...(look && { look }),
+    ...(gesture && { gesture }),
   }
 }

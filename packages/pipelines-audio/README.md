@@ -71,6 +71,16 @@ When that text produces no audio (synthesis failed, returned nothing, or speech 
 Every marker fires before the next clip starts. Markers before any text fire before the first clip, and consecutive markers keep their order.
 With no audio at all, markers fire in arrival order. A cancelled or interrupted intent drops its pending markers.
 
+## Streaming-control cues and text chunking
+
+`createStreamingControlParser` loads the ACT, DELAY, BREAK, and CALL parsers by default.
+
+- An ACT JSON payload may carry `gesture`: `"nod"`, `"shake"`, `"shrug"`, `"lean"`, or `"glance"`, or `{ "kind": "nod", "count": 2 }`. `normalizeActPayload` drops unknown kinds. `count` is 1-3 for `nod` and `shake` (default 2) and 1 for the other kinds. A gesture-only ACT is valid. The bare form, such as `<|ACT nod|>`, accepts emotions only.
+- `<|BREAK|>` pauses for 1.0 s and `<|BREAK n|>` for `n` seconds, clamped to 0.3-3.0. Any other body is rejected as parse-failed and produces no signal.
+
+The TTS chunker ends a segment at every special. At a BREAK, it also ends a segment whose text is held at soft punctuation, so text written before the pause is never spoken after it.
+With `stripAsciiFaces`, the chunker removes the faces in `ASCII_FACES` from each assembled segment. It keeps a face with punctuation, such as `:3`, in one segment even when the face arrives split across deltas, and it skips a segment that becomes empty.
+
 ## Checks
 
 Run `pnpm -F @proj-airi/pipelines-audio typecheck` and `pnpm -F @proj-airi/pipelines-audio test:run`.

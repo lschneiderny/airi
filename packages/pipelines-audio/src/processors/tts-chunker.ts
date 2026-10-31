@@ -4,16 +4,37 @@ import type { TextSegment, TextToken } from '../types'
 
 import { readGraphemeClusters } from 'clustr'
 
+import { tokenBreak } from '../llm-streaming-control/parsers'
 import { createPushStream } from '../stream'
+import { ASCII_FACES, stripAsciiFaces } from './ascii-faces'
 
 export const TTS_FLUSH_INSTRUCTION = '\u200B'
 export const TTS_SPECIAL_TOKEN = '\u2063'
+// Marks a BREAK special in the chunker's byte stream. It is a special like `TTS_SPECIAL_TOKEN`,
+// but text held back at soft punctuation never crosses it.
+const TTS_BREAK_TOKEN = '\u2064'
+
+const breakParser = tokenBreak()
 
 const regexpAnySingleDigit = /\d/
 
 const keptPunctuations = new Set('?？!！')
 const hardPunctuations = new Set('.。?？!！…⋯～~\n\t\r')
 const softPunctuations = new Set(',，、–—:：;；《》「」')
+
+/** Faces that contain chunk punctuation, with the index of their first punctuation character. */
+const punctuatedFaces = ASCII_FACES.flatMap((face) => {
+  const index = [...face].findIndex(char => hardPunctuations.has(char) || softPunctuations.has(char))
+  return index === -1 ? [] : [{ face, index }]
+})
+
+function removeChunkMarkers(text: string) {
+  return text
+    .replaceAll(TTS_SPECIAL_TOKEN, '')
+    .replaceAll(TTS_BREAK_TOKEN, '')
+    .replaceAll(TTS_FLUSH_INSTRUCTION, '')
+    .trim()
+}
 
 export interface TtsInputChunk {
   sentenceIndex: number
@@ -44,6 +65,15 @@ export interface TtsInputChunkOptions {
   maximumWords?: number
   stripNarrative?: boolean
   keepNarrativeText?: boolean
+  /**
+   * Removes standalone ASCII faces (see `ASCII_FACES`) from each assembled segment before it is spoken.
+   *
+   * The chunker also keeps a face that contains punctuation, such as `:3` or `>.<`, inside one segment,
+   * so a face is recognized even when it arrives split across deltas. A segment left empty is skipped.
+   *
+   * @default false
+   */
+  stripAsciiFaces?: boolean
 }
 
 export interface TtsChunkItem {
@@ -62,8 +92,16 @@ export async function* chunkTtsInput(
   let sentenceIndex = 0
   let sentenceStart = true
   for await (const chunk of chunkInput(input, options)) {
-    const text = chunk.text.replaceAll(TTS_SPECIAL_TOKEN, '').replaceAll(TTS_FLUSH_INSTRUCTION, '').trim()
-    yield { ...chunk, sentenceIndex, sentenceStart: text.length > 0 && sentenceStart }
+    const text = options?.stripAsciiFaces
+      ? stripAsciiFaces(removeChunkMarkers(chunk.text))
+      : removeChunkMarkers(chunk.text)
+    yield {
+      ...chunk,
+      // Faces are stripped from the whole segment, never from a delta, so a split face is still found.
+      text: options?.stripAsciiFaces ? text : chunk.text,
+      sentenceIndex,
+      sentenceStart: text.length > 0 && sentenceStart,
+    }
     if (text.length > 0)
       sentenceStart = false
     if (chunk.reason === 'flush' || /[.!?…。！？]$/.test(text)) {
@@ -83,7 +121,7 @@ async function* chunkInput(
     maximumWords = 12,
   } = options ?? {}
 
-  const iterator = readGraphemeClusters(
+  const graphemes = readGraphemeClusters(
     typeof input === 'string'
       ? new ReadableStream({
           start(controller) {
@@ -93,6 +131,47 @@ async function* chunkInput(
         }).getReader()
       : input,
   )
+  // Graphemes read ahead to recognize a face are replayed before the source continues.
+  const readAhead: IteratorResult<string, void>[] = []
+  const iterator = {
+    next: async (): Promise<IteratorResult<string, void>> => readAhead.shift() ?? await graphemes.next(),
+  }
+
+  async function peekGraphemes(count: number) {
+    while (readAhead.length < count)
+      readAhead.push(await graphemes.next())
+    return readAhead.slice(0, count)
+  }
+
+  /**
+   * Returns the rest of a face starting at punctuation `value`, consuming its read-ahead graphemes,
+   * or undefined when `value` is ordinary punctuation.
+   *
+   * The face must stand alone in the segment text the way `stripAsciiFaces` will see it: after the
+   * segment start or whitespace, and before the end, whitespace, `.,!?`, or a marker.
+   */
+  async function readFaceFrom(value: string, segmentText: string) {
+    for (const { face, index } of punctuatedFaces) {
+      if (face[index] !== value || !segmentText.endsWith(face.slice(0, index)))
+        continue
+
+      const before = segmentText.slice(0, segmentText.length - index)
+      if (before.length > 0 && !/\s$/.test(before))
+        continue
+
+      const rest = face.slice(index + 1)
+      const ahead = await peekGraphemes(rest.length + 1)
+      if (ahead.slice(0, rest.length).map(result => result.done ? '' : result.value).join('') !== rest)
+        continue
+
+      const follower = ahead[rest.length]
+      if (follower && !follower.done && !/^[\s.,!?\u200B\u2063\u2064]/.test(follower.value))
+        continue
+
+      readAhead.splice(0, rest.length)
+      return value + rest
+    }
+  }
 
   const segmenter = new Intl.Segmenter(undefined, { granularity: 'word' }) // I love Intl.Segmenter
 
@@ -113,12 +192,23 @@ async function* chunkInput(
       value = '\n'
 
     const flush = value === TTS_FLUSH_INSTRUCTION
-    const special = value === TTS_SPECIAL_TOKEN
+    const breakSpecial = value === TTS_BREAK_TOKEN
+    const special = value === TTS_SPECIAL_TOKEN || breakSpecial
     const hard = hardPunctuations.has(value)
     const soft = softPunctuations.has(value)
     const kept = keptPunctuations.has(value)
     let next: IteratorResult<string, void> | undefined
     let afterNext: IteratorResult<string, void> | undefined
+
+    if (options?.stripAsciiFaces && (hard || soft)) {
+      const face = await readFaceFrom(value, chunk + buffer)
+      if (face) {
+        buffer += face
+        previousValue = face.at(-1)
+        current = await iterator.next()
+        continue
+      }
+    }
 
     if (flush || special || hard || soft) {
       switch (value) {
@@ -149,12 +239,16 @@ async function* chunkInput(
 
       if (buffer.length === 0) {
         if (special) {
+          // Text held at soft punctuation would otherwise join the text after the pause.
+          const text = breakSpecial ? chunk.trim() : ''
           yield {
-            text: '',
-            words: 0,
+            text,
+            words: breakSpecial ? chunkWordsCount : 0,
             reason: 'special',
           }
           yieldCount++
+          if (breakSpecial)
+            chunk = ''
           chunkWordsCount = 0
         }
 
@@ -246,16 +340,9 @@ export async function chunkEmitter(
   options: TtsInputChunkOptions | undefined,
   handler: (ttsSegment: TtsChunkItem) => Promise<void> | void,
 ) {
-  function sanitizeChunk(text: string) {
-    return text
-      .replaceAll(TTS_SPECIAL_TOKEN, '')
-      .replaceAll(TTS_FLUSH_INSTRUCTION, '')
-      .trim()
-  }
-
   try {
     for await (const chunk of chunkTtsInput(reader, options)) {
-      const cleanedText = sanitizeChunk(chunk.text)
+      const cleanedText = removeChunkMarkers(chunk.text)
       if (!cleanedText && chunk.reason !== 'special') {
         continue
       }
@@ -494,8 +581,10 @@ export function createTtsSegmentStream(
           }
 
           if (value.type === 'special') {
-            pendingSpecials.push(value.value ?? '')
-            writeBytes(encoder.encode(TTS_SPECIAL_TOKEN))
+            const special = value.value ?? ''
+            pendingSpecials.push(special)
+            // A BREAK splits the reply, so it always ends the current segment.
+            writeBytes(encoder.encode(breakParser.match(special) ? TTS_BREAK_TOKEN : TTS_SPECIAL_TOKEN))
           }
           else if (value.type === 'flush') {
             writeBytes(encoder.encode(TTS_FLUSH_INSTRUCTION))

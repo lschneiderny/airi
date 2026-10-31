@@ -1,10 +1,11 @@
 // packages/pipelines-audio/src/processors/tts-chunker.test.ts
 
-import type { TtsInputChunk } from './tts-chunker'
+import type { TextSegment, TextToken } from '../types'
+import type { TtsInputChunk, TtsInputChunkOptions } from './tts-chunker'
 
 import { describe, expect, it } from 'vitest'
 
-import { chunkTtsInput, isProbablyAngleTag, processNarrative, TTS_FLUSH_INSTRUCTION, TTS_SPECIAL_TOKEN } from './tts-chunker'
+import { chunkTtsInput, createTtsSegmentStream, isProbablyAngleTag, processNarrative, TTS_FLUSH_INSTRUCTION, TTS_SPECIAL_TOKEN } from './tts-chunker'
 
 async function collectChunkText(input: string) {
   const chunks: string[] = []
@@ -21,6 +22,108 @@ async function collectChunks(text: string): Promise<TtsInputChunk[]> {
     chunks.push(chunk)
   return chunks
 }
+
+function token(type: TextToken['type'], value: string, sequence: number): TextToken {
+  return { type, value, streamId: 'stream', intentId: 'intent', sequence, createdAt: 0 }
+}
+
+/** Streams `parts` as tokens: `<|...|>` parts become specials, everything else a literal delta. */
+async function collectSegments(parts: string[], options?: TtsInputChunkOptions) {
+  const tokens = new ReadableStream<TextToken>({
+    start(controller) {
+      parts.forEach((part, index) => controller.enqueue(token(part.startsWith('<|') ? 'special' : 'literal', part, index)))
+      controller.close()
+    },
+  })
+  const segments: Pick<TextSegment, 'text' | 'special' | 'reason'>[] = []
+  const reader = createTtsSegmentStream(tokens, { streamId: 'stream', intentId: 'intent' }, options).getReader()
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done)
+      return segments
+    segments.push({ text: value.text, special: value.special, reason: value.reason })
+  }
+}
+
+describe('createTtsSegmentStream BREAK boundary', () => {
+  // The space after the comma puts text in the buffer, so any special already ended the segment there.
+  it('ends the segment at a BREAK after buffered text, as every special does', async () => {
+    expect(await collectSegments(['Hi there, ', '<|BREAK|>', ' ok.'])).toEqual([
+      { text: 'Hi there,', special: '<|BREAK|>', reason: 'special' },
+      { text: 'ok.', special: null, reason: 'hard' },
+    ])
+  })
+
+  // ROOT CAUSE:
+  //
+  // Text held at soft punctuation stays pending when the buffer is empty, so a special that follows it
+  // directly yields an empty segment and the held text joins the text after it. For a BREAK that would
+  // speak "Hi there," after the pause.
+  it('keeps text held at soft punctuation before a BREAK that follows it directly', async () => {
+    expect(await collectSegments(['Hi there,', '<|BREAK 2|>', ' ok.'])).toEqual([
+      { text: 'Hi there,', special: '<|BREAK 2|>', reason: 'special' },
+      { text: 'ok.', special: null, reason: 'hard' },
+    ])
+  })
+
+  it('leaves other specials after soft punctuation as they were', async () => {
+    expect(await collectSegments(['Hi there,', '<|ACT happy|>', ' ok.'])).toEqual([
+      { text: '', special: '<|ACT happy|>', reason: 'special' },
+      { text: 'Hi there, ok.', special: null, reason: 'hard' },
+    ])
+  })
+
+  it('ends the segment at a malformed BREAK too, which the controller later rejects', async () => {
+    expect(await collectSegments(['Hi there,', '<|BREAK x|>', ' ok.'])).toEqual([
+      { text: 'Hi there,', special: '<|BREAK x|>', reason: 'special' },
+      { text: 'ok.', special: null, reason: 'hard' },
+    ])
+  })
+})
+
+describe('createTtsSegmentStream ASCII faces', () => {
+  const strip = { stripAsciiFaces: true }
+
+  it('strips a face split across deltas even where boost would end the segment at its colon', async () => {
+    expect(await collectSegments(['that is so cute of you :', '3 bye'], strip)).toEqual([
+      { text: 'that is so cute of you bye', special: null, reason: 'flush' },
+    ])
+  })
+
+  it('speaks faces unchanged without the option', async () => {
+    expect(await collectSegments(['love you <3'])).toEqual([
+      { text: 'love you <3', special: null, reason: 'flush' },
+    ])
+  })
+
+  it.each([
+    [['so sorry about that one >', '.< really'], 'so sorry about that one really'],
+    [['I am so tired today ;', '_; ok'], 'I am so tired today ok'],
+    [['love you <', '3'], 'love you'],
+  ])('keeps the face in %j whole and strips it', async (parts, text) => {
+    expect((await collectSegments(parts, strip)).map(segment => segment.text)).toEqual([text])
+  })
+
+  it('skips a segment that only held a face and keeps the special of a face before it', async () => {
+    expect(await collectSegments(['Okay. :3'], strip)).toEqual([
+      { text: 'Okay.', special: null, reason: 'hard' },
+    ])
+    expect(await collectSegments(['love you :3', '<|ACT happy|>', ' bye'], strip)).toEqual([
+      { text: 'love you', special: '<|ACT happy|>', reason: 'special' },
+      { text: 'bye', special: null, reason: 'flush' },
+    ])
+  })
+
+  it.each([
+    [['We meet at 10:30 and then talk about everything, C:D drive']],
+    [['We meet at 10:', '30 and then x^^y and :3c later']],
+  ])('splits %j, which only looks like faces, exactly as without the option', async (parts) => {
+    const stripped = await collectSegments(parts, strip)
+
+    expect(stripped).toEqual(await collectSegments(parts))
+    expect(stripped.map(segment => segment.text).join(' ')).toContain('10:')
+  })
+})
 
 describe('chunkTtsInput boost', () => {
   it('preserves pre-change chunk bytes and sentence identity across mid-sentence markers', async () => {
