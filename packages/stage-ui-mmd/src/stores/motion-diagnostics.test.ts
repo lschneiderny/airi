@@ -30,6 +30,8 @@ describe('mmd motion diagnostics channel', () => {
           director: null,
           touch: null,
           animation: { idle: null, currentAction: null, actionsStarted: 0 },
+          characterPlacement: null,
+          stageModel: null,
           measurement: null,
         },
       })

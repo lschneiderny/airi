@@ -21,6 +21,7 @@ import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { SkinnedMesh, Texture } from 'three'
 
 import type { GazeOffset, MMDAnimationManager, MorphController } from '../../composables/mmd'
+import type { MMDStageExtent, MMDStageWorld } from '../../composables/mmd/stage-world'
 import type { SpeechEvent } from '../../stores/expression-slots'
 import type { ResolvedMMDModel } from '../../utils/mmd-loader'
 
@@ -28,6 +29,7 @@ import { errorMessageFrom } from '@moeru/std'
 import { coverRect } from '@proj-airi/stage-shared'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { screenInwardness } from '@proj-airi/stage-shared/stage-placement'
+import { worldToDip } from '@proj-airi/stage-shared/stage-world'
 import { Screen } from '@proj-airi/ui'
 import { useEventListener } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
@@ -48,7 +50,7 @@ import {
   WebGLRenderer,
 } from 'three'
 import { OrbitControls } from 'three-stdlib'
-import { computed, onMounted, onUnmounted, ref, toRaw, toRef, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef, toRaw, toRef, watch } from 'vue'
 
 import {
   createGazeController,
@@ -69,6 +71,7 @@ import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
 import { MMDOverlays } from '../../composables/mmd/overlays'
 import { readMMDRigProfile } from '../../composables/mmd/rig'
+import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, stagePixelRatio } from '../../composables/mmd/stage-world'
 import { frameClocks, MMDStanceDirector } from '../../composables/mmd/stance'
 import { buildMMDTouchColliders, MMDTouch, mmdTouchRegionRoots } from '../../composables/mmd/touch'
 import { Emotion, EMOTION_VALUES } from '../../constants/emotions'
@@ -105,6 +108,11 @@ const props = withDefaults(defineProps<{
   backgroundUrl?: string | null
   currentAudioSource?: AudioBufferSourceNode
   enableOrbitControls?: boolean
+  /**
+   * The desktop stage world. When set, the camera comes from the calibration (no framing, no orbit controls), the root
+   * stands at `homeX` on the floor line, and the classic scale, position and rotation settings are ignored.
+   */
+  stageWorld?: MMDStageWorld
 }>(), {
   paused: false,
   performance: () => ({ mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }),
@@ -118,6 +126,8 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'error', err: unknown): void
   (e: 'touch', event: NaturalTouchGesture): void
+  /** The character's projected rect in work-area DIP changed (stage mode only). */
+  (e: 'placement', rect: PlacementRect): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -197,6 +207,12 @@ let previousFrameTime: number | undefined
 let lastDiagnosticsTime = 0
 let loadedModelKey: string | null = null
 let loadGeneration = 0
+// Stage mode: the character's root-relative extent and foot baseline, measured once per load, and the live root x.
+let stageExtent: MMDStageExtent | undefined
+let stageFootBaselineY = 0
+let stageRootX = 0
+const characterPlacement = shallowRef<PlacementRect | null>(null)
+const stageModel = shallowRef<{ height: number, footBaselineY: number } | null>(null)
 
 // Lip-sync owns Vue lifecycle hooks, so it must be created during setup.
 const lipSync = useMMDLipSync(
@@ -261,10 +277,61 @@ function resolveGazeOffset(): GazeOffset | undefined {
 function applyTransform() {
   if (!modelGroup)
     return
+  if (props.stageWorld) {
+    applyStageRoot(modelGroup, stageRootX, stageFootBaselineY)
+    return
+  }
   modelGroup.scale.setScalar(scale.value)
   modelGroup.rotation.y = rotationY.value
   modelGroup.position.set(position.value.x, position.value.y, 0)
   animation?.pipeline.requestPhysicsReset()
+}
+
+/** Re-applies the calibration camera and republishes the placement; runs on resize and whenever `stageWorld` changes. */
+function applyStageWorld() {
+  const world = props.stageWorld
+  if (!world || !camera || !controls)
+    return
+  applyStageCamera(camera, world.calibration)
+  controls.target.set(world.calibration.position.x, world.calibration.position.y, 0)
+  publishPlacement()
+}
+
+function publishPlacement() {
+  const world = props.stageWorld
+  if (!world || !stageExtent)
+    return
+  const next = projectCharacterPlacement(world.calibration, stageExtent, stageRootX)
+  const previous = characterPlacement.value
+  characterPlacement.value = next
+  if (!previous || previous.x !== next.x || previous.y !== next.y || previous.width !== next.width || previous.height !== next.height)
+    emit('placement', next)
+}
+
+/**
+ * Moves the root along the floor line in model units. `teleport: true` resets physics once; `teleport: false` is a plain
+ * root write that leaves physics simulating, for drag moves and locomotion.
+ */
+function setRootX(x: number, options: { teleport: boolean }) {
+  stageRootX = x
+  if (!props.stageWorld || !modelGroup || !stageExtent)
+    return
+  modelGroup.position.x = x
+  if (options.teleport)
+    animation?.pipeline.requestPhysicsReset()
+  publishPlacement()
+}
+
+const headScratch = new Vector3()
+
+/** The head bone's window DIP column, for screen inwardness in stage mode. */
+function stageHeadDipX(world: MMDStageWorld): number | null {
+  const name = rig?.bones.head
+  const bone = name ? mesh?.skeleton.bones.find(candidate => candidate.name === name) : undefined
+  if (!bone)
+    return null
+  bone.getWorldPosition(headScratch)
+  return worldToDip(world.calibration, headScratch).x
 }
 
 /**
@@ -282,7 +349,7 @@ function setupScene() {
   // MMD toon materials are not PBR/HDR; filmic tone mapping desaturates and
   // washes them out, so render their colors directly.
   renderer.toneMapping = NoToneMapping
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * renderScale.value)
+  renderer.setPixelRatio(props.stageWorld ? stagePixelRatio(window.devicePixelRatio, renderScale.value) : Math.min(window.devicePixelRatio, 2) * renderScale.value)
 
   scene = new Scene()
   // The scene is already chosen when the renderer mounts, so the watcher below never
@@ -302,13 +369,15 @@ function setupScene() {
 
   controls = new OrbitControls(camera, canvas)
   controls.enableDamping = true
-  controls.enabled = props.enableOrbitControls
+  controls.enabled = props.enableOrbitControls && !props.stageWorld
 }
 
 /** Frames the camera so the whole model fits the viewport, and centers it. */
 function frameCamera() {
   if (!camera || !controls || !modelGroup)
     return
+  if (props.stageWorld)
+    applyStageRoot(modelGroup, 0, 0)
   modelGroup.updateMatrixWorld(true)
   const box = new Box3().setFromObject(modelGroup)
   const boneByName = new Map(mesh?.skeleton.bones.map(bone => [bone.name, bone]))
@@ -326,6 +395,17 @@ function frameCamera() {
   )
   if (!bounds)
     return
+  if (props.stageWorld) {
+    const measured = measureStageExtent(bounds)
+    stageFootBaselineY = measured.footBaselineY
+    stageExtent = measured.extent
+    stageModel.value = { height: measured.extent.height, footBaselineY: stageFootBaselineY }
+    stageRootX = props.stageWorld.homeX
+    applyStageRoot(modelGroup, stageRootX, stageFootBaselineY)
+    animation?.pipeline.requestPhysicsReset()
+    applyStageWorld()
+    return
+  }
   const size = new Vector3(...bounds.size)
   const center = new Vector3(...bounds.center)
 
@@ -429,8 +509,13 @@ function resize() {
   if (w === 0 || h === 0)
     return
   renderer.setSize(w, h, false)
-  camera.aspect = w / h
-  camera.updateProjectionMatrix()
+  if (props.stageWorld) {
+    applyStageWorld()
+  }
+  else {
+    camera.aspect = w / h
+    camera.updateProjectionMatrix()
+  }
   layoutBackground()
 }
 
@@ -462,7 +547,8 @@ function renderLoop(now = performance.now()) {
     handleTouchEvents(touch.update(now))
   overlays?.update()
 
-  controls?.update()
+  if (!props.stageWorld)
+    controls?.update()
   const activeRenderer = renderer
   const activeScene = scene
   const activeCamera = camera
@@ -480,6 +566,8 @@ function renderLoop(now = performance.now()) {
       touch: touch && canvasRef.value ? touch.diagnostics(activeCamera, canvasRef.value.getBoundingClientRect()) : null,
       director: stance ? { ...stance.diagnostics, clockOffsetMs: diagnostics.directorClockOffsetMs, centerY: centerModelY() } : null,
       animation: animation?.snapshot() ?? { idle: null, currentAction: null, actionsStarted: 0 },
+      characterPlacement: characterPlacement.value,
+      stageModel: stageModel.value,
     })
   }
 }
@@ -529,8 +617,12 @@ function disposeModel() {
   gaze = undefined
   resolved = undefined
   loadedModelKey = null
+  stageExtent = undefined
+  stageFootBaselineY = 0
+  characterPlacement.value = null
+  stageModel.value = null
   diagnostics.setMetrics(new MMDFrameMetrics())
-  diagnostics.publish({ loadedModelKey: null, rig: null, natural: null, feet: null, lookAt: null, director: null, animation: { idle: null, currentAction: null, actionsStarted: 0 } })
+  diagnostics.publish({ loadedModelKey: null, rig: null, natural: null, feet: null, lookAt: null, director: null, animation: { idle: null, currentAction: null, actionsStarted: 0 }, characterPlacement: null, stageModel: null })
   mmdStore.isModelLoaded = false
 }
 
@@ -653,7 +745,7 @@ async function loadModel(src: string) {
         return {
           enabled: motionDriver.value === 'natural',
           frame: natural.bodyFrame.frame,
-          target: resolveBodyTarget({ mesh: activeMesh, camera, viewport: canvasRef.value.getBoundingClientRect(), gazeMode: gazeMode.value }, natural.bodyFrame),
+          target: resolveBodyTarget({ mesh: activeMesh, camera, viewport: canvasRef.value.getBoundingClientRect(), gazeMode: gazeMode.value, calibration: props.stageWorld?.calibration }, natural.bodyFrame),
           ...diagnostics.debugFlags,
           stanceClips: activeStance.baseClips,
         }
@@ -670,6 +762,7 @@ async function loadModel(src: string) {
         const cursor = gazeMode.value === 'mouse' && head && props.cursorPosition
           ? { x: (props.cursorPosition.x - head.x) / head.width, y: (head.y - props.cursorPosition.y) / head.width }
           : gazeMode.value === 'camera' ? { x: 0, y: 0 } : null
+        const headX = props.stageWorld ? stageHeadDipX(props.stageWorld) ?? head?.x : head?.x
         const speaking = props.nowSpeaking
         const placement = props.screenPlacement
         const dipScale = placement ? placement.windowBounds.width / document.documentElement.clientWidth : 0
@@ -689,11 +782,11 @@ async function loadModel(src: string) {
           chat: props.chatTarget
             ? { ...props.chatActivity ?? { typing: false, sentSeq: 0, sentWords: 0 }, target: props.chatTarget.visible ? chatPoint : null, unfoldSeq: chatUnfoldSeq }
             : null,
-          placement: !head
+          placement: !head || headX === undefined
             ? null
             : placement && dipScale > 0
-              ? screenInwardness(placement.displays, placement.windowBounds.x + head.x * dipScale)
-              : mmdScreenInwardness(rect, head.x),
+              ? screenInwardness(placement.displays, placement.windowBounds.x + headX * dipScale)
+              : mmdScreenInwardness(rect, headX),
           emotionStrengths: naturalEmotionStrength.value[props.modelId ?? ''] ?? defaultEmotionStrengths,
         }, naturalSeconds)
         natural.applyPose(clean, true)
@@ -901,8 +994,10 @@ useEventListener(canvasRef, ['pointerdown', 'pointermove', 'pointerup', 'pointer
 
 watch(() => props.enableOrbitControls, (enabled) => {
   if (controls)
-    controls.enabled = enabled
+    controls.enabled = enabled && !props.stageWorld
 })
+
+watch(() => props.stageWorld, () => applyStageWorld())
 
 // View transform sliders.
 watch([scale, rotationY, () => position.value.x, () => position.value.y], () => applyTransform())
@@ -962,13 +1057,13 @@ watch(directionalPosition, () => {
 
 // Scene settings — camera & rendering.
 watch(cameraFov, () => {
-  if (!camera)
+  if (!camera || props.stageWorld)
     return
   camera.fov = cameraFov.value
   camera.updateProjectionMatrix()
 })
 watch(renderScale, () => {
-  renderer?.setPixelRatio(Math.min(window.devicePixelRatio, 2) * renderScale.value)
+  renderer?.setPixelRatio(props.stageWorld ? stagePixelRatio(window.devicePixelRatio, renderScale.value) : Math.min(window.devicePixelRatio, 2) * renderScale.value)
   resize()
 })
 watch(albedoGlow, () => {
@@ -1006,6 +1101,8 @@ defineExpose({
   getMood: () => natural?.mood ?? null,
   listMorphs: () => morphs?.availableMorphs ?? [],
   listMotions: () => animation?.availableClips() ?? [],
+  setRootX,
+  characterPlacement,
 })
 </script>
 

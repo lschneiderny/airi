@@ -7,6 +7,7 @@ import type { StreamingControlLook } from '@proj-airi/pipelines-audio'
 import type { CaptionChannelEvent, PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { PerformanceCueAttention, PerformanceState, ResolverMemory } from '@proj-airi/stage-shared/performance-state'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
+import type { MMDStageWorld } from '@proj-airi/stage-ui-mmd/composables/mmd'
 import type { TachieEmotion } from '@proj-airi/stage-ui-tachie'
 import type { VrmInteractionTarget } from '@proj-airi/stage-ui-three'
 
@@ -79,6 +80,8 @@ const props = withDefaults(defineProps<{
    * which also keeps the chat activity inert there.
    */
   chatTarget?: { visible: boolean, bounds: PlacementRect | null }
+  /** The desktop stage world for the MMD scene: calibrated camera, ground line and home x. Classic hosts leave it undefined. */
+  stageWorld?: MMDStageWorld
   enableOrbitControls?: boolean
   paused?: boolean
 }>(), {
@@ -1064,6 +1067,7 @@ defineExpose({
         :screen-placement="screenPlacement"
         :chat-target="chatTarget"
         :chat-activity="chatActivity"
+        :stage-world="stageWorld"
         :mouth-open-size="mouthOpenSize"
         :now-speaking="nowSpeaking"
         :background-url="activeBackgroundUrl"
