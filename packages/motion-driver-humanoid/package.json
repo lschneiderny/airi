@@ -3,6 +3,7 @@
   "type": "module",
   "private": true,
   "exports": {
+    "./foot-contact": "./src/foot-contact/index.ts",
     "./types": "./src/types/index.ts"
   },
   "scripts": {
