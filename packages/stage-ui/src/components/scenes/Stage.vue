@@ -43,6 +43,8 @@ import { useStagePerformanceConductor } from '../../composables/performance/use-
 // import { useDuckDb } from '../../composables/use-duck-db'
 import { Emotion, EMOTION_VRMExpressionName_value, EmotionThinkMotionName } from '../../constants/emotions'
 import { live2dMotionMagicProfiles, useLive2DMotionMagic, useLive2DMotionMagicSettings } from '../../features/motions/live2d'
+import { useLive2DExpressionBackend } from '../../features/performance/expression-backend'
+import { selectStagePerformanceRenderer } from '../../features/performance/renderer'
 import { chatComposerActivityChangedEvent, chatComposerSentEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, speechOutputGetPlaybackState, speechOutputPlaybackStateChangedEvent, voiceGenerationEnded } from '../../services/speech/bus'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useAudioContext, useSpeakingStore } from '../../stores/audio'
@@ -302,9 +304,17 @@ const { currentMotion } = storeToRefs(useLive2dParams())
 const voice = useVoiceStore()
 const cards = useAiriCardStore()
 
+const live2dExpressionBackend = useLive2DExpressionBackend()
+const performanceRenderer = computed(() => selectStagePerformanceRenderer(stageModelRenderer.value, {
+  scene: live2dSceneRef.value,
+  driver: live2dMotionDriver.value,
+  expressionBackend: live2dExpressionBackend,
+}))
 const { conductor: performanceConductor, settings: performanceSettings } = useStagePerformanceConductor({
-  scene: () => live2dSceneRef.value,
-  driver: () => live2dMotionDriver.value,
+  renderer: () => stageModelRenderer.value,
+  scene: () => performanceRenderer.value.scene,
+  driver: () => performanceRenderer.value.driver,
+  expressionBackend: () => performanceRenderer.value.expressionBackend,
   playMotion: (group) => { currentMotion.value = { group } },
   mood: () => live2dSceneRef.value?.getMood() ?? null,
   profile: performanceProfileOf,

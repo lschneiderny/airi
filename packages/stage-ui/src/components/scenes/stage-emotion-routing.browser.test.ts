@@ -16,6 +16,7 @@ import { createI18n } from 'vue-i18n'
 
 import { StagePerformanceConductor, useStagePerformanceConductor } from '../../composables/performance/use-stage-performance-conductor'
 import { Emotion, EMOTION_EmotionMotionName_value, EmotionThinkMotionName } from '../../constants/emotions'
+import { useLive2DExpressionBackend } from '../../features/performance/expression-backend'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
 import { useLLM } from '../../stores/ai/chat-llm/llm'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
@@ -390,6 +391,8 @@ describe('per-signal character profiles at the Natural consumer', () => {
     render(defineComponent({
       setup() {
         api = useStagePerformanceConductor({
+          renderer: () => 'live2d',
+          expressionBackend: () => useLive2DExpressionBackend(),
           scene: () => ({ setEmotion: episode => pending.push(episode), applySlots: () => {}, applyHolds: () => {}, onSpeech: () => {}, setMuted: () => {} }),
           driver: () => 'natural',
           playMotion: () => {},
