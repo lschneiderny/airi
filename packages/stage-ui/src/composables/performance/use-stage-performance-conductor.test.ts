@@ -1,5 +1,6 @@
 import type { AffectSignal, AffectTrace, CatalogEntry, ExpressionPerformanceSettings, PerformanceProfile, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 
+import type { BodyToolPort } from '../../tools/body'
 import type { StagePerformanceDriver, StagePerformanceScene } from './use-stage-performance-conductor'
 
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace, touchAffect } from '@proj-airi/stage-shared/expression-performance'
@@ -7,13 +8,13 @@ import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { computed, effectScope, nextTick, ref } from 'vue'
 
 import { useLive2DExpressionBackend, useMMDExpressionBackend } from '../../features/performance/expression-backend'
 import { selectStagePerformanceRenderer } from '../../features/performance/renderer'
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
-import { createExpressionToolPort, createExpressionToolRegistration, expressionToolIds, maxAffectTraceEntries, StagePerformanceConductor, toExposedExpressions, useStagePerformanceConductor } from './use-stage-performance-conductor'
+import { bodyToolIds, createBodyToolRegistration, createExpressionToolPort, createExpressionToolRegistration, expressionToolIds, maxAffectTraceEntries, StagePerformanceConductor, toExposedExpressions, useStagePerformanceConductor } from './use-stage-performance-conductor'
 
 // `createDecider` stays the real factory, wrapped in a spy so the timing tests can replace the
 // next decider with one that reports deadlines, which the picker never does (`mockReturnValueOnce`).
@@ -1140,5 +1141,67 @@ describe('stage performance conductor', () => {
     registration.dispose()
     await registration.sync(toExposedExpressions(current))
     expect(tools.tools).toEqual([])
+  })
+
+  describe('body tools', () => {
+    const result = { success: true, state: { position: 'home' as const, moving: false, refractorySeconds: 0 } }
+    const port: BodyToolPort = {
+      state: () => result.state,
+      comeHere: async () => result,
+      goHome: async () => result,
+      lookAt: async () => result,
+    }
+
+    it('registers the body tools by id, replaces them with a new port, and removes them without one', async () => {
+      setActivePinia(createPinia())
+      const tools = useLlmToolsStore()
+      const registration = createBodyToolRegistration(tools)
+
+      await registration.sync(port)
+      expect(tools.tools.map(tool => tool.id)).toEqual([...bodyToolIds])
+      expect(tools.activeTools.map(tool => tool.function.name)).toEqual(['come_here', 'go_home', 'look_at'])
+
+      await registration.sync(port)
+      expect(tools.tools.map(tool => tool.id)).toEqual([...bodyToolIds])
+
+      await registration.sync(undefined)
+      expect(tools.tools).toEqual([])
+
+      // A build that a newer, port-less sync overtakes must not register stale tools.
+      const overtaken = registration.sync(port)
+      await registration.sync(undefined)
+      await overtaken
+      expect(tools.tools).toEqual([])
+
+      await registration.sync(port)
+      registration.dispose()
+      await registration.sync(port)
+      expect(tools.tools).toEqual([])
+    })
+
+    it('exposes the body tools only while the active scene offers a body port', async () => {
+      setActivePinia(createPinia())
+      const tools = useLlmToolsStore()
+      const bodyPort = ref<BodyToolPort | undefined>()
+      const scope = effectScope()
+      onTestFinished(() => scope.stop())
+      scope.run(() => useStagePerformanceConductor({
+        renderer: () => 'mmd',
+        scene: () => undefined,
+        driver: () => 'natural',
+        expressionBackend: () => undefined,
+        bodyPort: () => bodyPort.value,
+        playMotion: vi.fn(),
+        mood: () => null,
+      }))
+      await nextTick()
+      expect(tools.tools.filter(tool => tool.id.startsWith('body:'))).toEqual([])
+
+      bodyPort.value = port
+      await vi.waitFor(() => expect(tools.tools.map(tool => tool.id)).toEqual([...bodyToolIds]))
+
+      bodyPort.value = undefined
+      await vi.waitFor(() => expect(tools.tools).toEqual([]))
+    })
   })
 })
