@@ -4,7 +4,7 @@ import type { StageConfig } from './config'
 import { parse } from 'valibot'
 import { describe, expect, it, vi } from 'vitest'
 
-import { buildStageHostState, defaultStageConfig, resolveHome, resolveHomeDisplay, stageConfigSchema, withStageHome } from './config'
+import { buildStageHostState, defaultStageConfig, resolveHome, resolveHomeDisplay, stageConfigSchema, withStageHome, withStageHomeDisplay } from './config'
 
 vi.mock('electron', () => ({ app: { getPath: () => '/tmp/airi-test' } }))
 
@@ -108,5 +108,22 @@ describe('withStageHome', () => {
 
   it('rejects an x that is not finite', () => {
     expect(() => withStageHome(defaultStageConfig, [builtIn], { displayId: '1', xDip: Number.NaN })).toThrow(TypeError)
+  })
+})
+
+describe('withStageHomeDisplay', () => {
+  const saved = config({ homes: { 1: { xDip: 548, fingerprint: { width: 1440, height: 875, scaleFactor: 2 } } } })
+
+  it('changes the home display and keeps every saved home', () => {
+    const next = withStageHomeDisplay(saved, [builtIn, external], '7')
+
+    expect(next.homeDisplayId).toBe('7')
+    expect(next.homes).toEqual(saved.homes)
+    expect(resolveHomeDisplay([builtIn, external], next)).toBe(external)
+  })
+
+  it('rejects a display that is not connected, and a payload that is not a string', () => {
+    expect(() => withStageHomeDisplay(saved, [builtIn], '7')).toThrow('display "7" is not connected')
+    expect(() => withStageHomeDisplay(saved, [builtIn], 1)).toThrow('display 1 is not connected')
   })
 })

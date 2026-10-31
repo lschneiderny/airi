@@ -1,3 +1,4 @@
+import type { DesktopStageHost, DesktopStageState } from './desktop-stage'
 import type { ExpressionPanelEntry } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
@@ -7,8 +8,10 @@ import { createPinia } from 'pinia'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
 import { userEvent } from 'vitest/browser'
-import { nextTick } from 'vue'
+import { nextTick, shallowRef } from 'vue'
 import { createI18n } from 'vue-i18n'
+
+import { desktopStageHostKey } from './desktop-stage'
 
 import '@unocss/reset/tailwind.css'
 import '@proj-airi/ui/main.css'
@@ -172,6 +175,129 @@ describe('mmd model settings expressions', () => {
 })
 
 const MODEL_ID = 'preset-live2d-1'
+
+const builtInDisplay: DesktopStageState['displays'][number] = { id: '1', primary: true, workArea: { x: 0, y: 25, width: 1440, height: 801 }, scaleFactor: 2 }
+const externalDisplay: DesktopStageState['displays'][number] = { id: '7', primary: false, workArea: { x: 1440, y: 0, width: 2560, height: 1415 }, scaleFactor: 1 }
+
+/** A host whose writes land in its own state, as the Electron page does after each invoke resolves. */
+function fakeDesktopStageHost(initial: DesktopStageState) {
+  const state = shallowRef<DesktopStageState | null>(initial)
+  const host: DesktopStageHost = {
+    state,
+    setMode: vi.fn(async (mode) => {
+      state.value = { ...state.value!, mode }
+    }),
+    setHomeDisplay: vi.fn(async (homeDisplayId) => {
+      state.value = { ...state.value!, homeDisplayId }
+    }),
+    relaunch: vi.fn(async () => {}),
+  }
+  return host
+}
+
+describe('mmd model settings desktop stage', () => {
+  beforeAll(async () => {
+    await Promise.all([
+      import('@proj-airi/stage-ui-mmd'),
+      import('./mmd.vue'),
+      import('virtual:uno.css'),
+    ])
+  }, 60_000)
+
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  async function renderWithHost(host: DesktopStageHost | undefined) {
+    const [{ useMMD }, { default: MMDSettings }] = await Promise.all([
+      import('@proj-airi/stage-ui-mmd'),
+      import('./mmd.vue'),
+    ])
+    const pinia = createPinia()
+    const store = useMMD(pinia)
+    store.resetState()
+    const screen = await render(MMDSettings, {
+      props: { palette: [], runtimeSnapshot: localSnapshot },
+      global: {
+        plugins: [pinia, createTestI18n()],
+        provide: host ? { [desktopStageHostKey as symbol]: host } : {},
+      },
+    })
+    return { screen, store }
+  }
+
+  it('hides the section and the classic-only note when no desktop host is provided', async () => {
+    const { screen } = await renderWithHost(undefined)
+
+    expect(t('settings.mmd.stage.title')).not.toBe('settings.mmd.stage.title')
+    await expect.element(screen.getByText(t('settings.mmd.stage.title'), { exact: true })).not.toBeInTheDocument()
+    await expect.element(screen.getByText(t('settings.mmd.stage.classic-only-note'), { exact: true })).not.toBeInTheDocument()
+  })
+
+  it('renders the saved mode from the host state and shows the relaunch button only while the saved mode differs from the running one', async () => {
+    const host = fakeDesktopStageHost({ mode: 'window', running: 'window', homeDisplayId: '1', displays: [builtInDisplay] })
+    const { screen } = await renderWithHost(host)
+    await expect.element(screen.getByText(t('settings.mmd.stage.classic-only-note'), { exact: true })).toBeVisible()
+    await screen.getByText(t('settings.mmd.stage.title'), { exact: true }).click()
+
+    const classic = screen.getByRole('radio', { name: t('settings.mmd.stage.mode.options.window.title'), exact: true })
+    const desktop = screen.getByRole('radio', { name: t('settings.mmd.stage.mode.options.desktop.title'), exact: true })
+    const relaunch = screen.getByRole('button', { name: t('settings.mmd.stage.relaunch.button'), exact: true })
+    await expect.element(classic).toBeChecked()
+    await expect.element(relaunch).not.toBeInTheDocument()
+    // One display: the home display cannot change, so the control is disabled.
+    await expect.element(screen.getByRole('combobox', { name: t('settings.mmd.stage.home-display.title') })).toBeDisabled()
+
+    await desktop.click()
+    await vi.waitFor(() => expect(host.setMode).toHaveBeenCalledWith('desktop'))
+    await expect.element(desktop).toBeChecked()
+    await expect.element(relaunch).toBeVisible()
+    await expect.element(screen.getByText(t('settings.mmd.stage.relaunch.description'), { exact: true })).toBeVisible()
+
+    await relaunch.click()
+    expect(host.relaunch).toHaveBeenCalledOnce()
+
+    // Saving the running mode again hides the button; the mode is never applied live.
+    await classic.click()
+    await vi.waitFor(() => expect(host.setMode).toHaveBeenLastCalledWith('window'))
+    await expect.element(relaunch).not.toBeInTheDocument()
+  })
+
+  it('switches the home display through the host and leaves the current one alone', async () => {
+    const host = fakeDesktopStageHost({ mode: 'desktop', running: 'desktop', homeDisplayId: '1', displays: [builtInDisplay, externalDisplay] })
+    const { screen } = await renderWithHost(host)
+    await screen.getByText(t('settings.mmd.stage.title'), { exact: true }).click()
+
+    const combobox = screen.getByRole('combobox', { name: t('settings.mmd.stage.home-display.title') })
+    await expect.element(combobox).not.toBeDisabled()
+    await combobox.click()
+    await screen.getByRole('option', { name: /Display 7/ }).click()
+
+    await vi.waitFor(() => expect(host.setHomeDisplay).toHaveBeenCalledWith('7'))
+    expect(host.setHomeDisplay).toHaveBeenCalledOnce()
+  })
+
+  it('writes the character height and the roam mode to the store and persists them', async () => {
+    const host = fakeDesktopStageHost({ mode: 'desktop', running: 'desktop', homeDisplayId: '1', displays: [builtInDisplay] })
+    const { screen, store } = await renderWithHost(host)
+    await screen.getByText(t('settings.mmd.stage.title'), { exact: true }).click()
+
+    await expect.element(screen.getByRole('radio', { name: t('settings.mmd.stage.roam.options.stay.title'), exact: true })).toBeChecked()
+    await screen.getByRole('radio', { name: t('settings.mmd.stage.roam.options.roam.title'), exact: true }).click()
+    await nextTick()
+    expect(store.roamMode).toBe('roam')
+    expect(localStorage.getItem('settings/mmd/roam-mode')).toBe('roam')
+
+    // The Range input scales its value, so read the formatted readout next to the label.
+    await expect.element(screen.getByRole('slider', { name: t('settings.mmd.stage.character-height.title') })).toBeVisible()
+    await expect.element(screen.getByText('560 pt', { exact: true })).toBeVisible()
+    store.stageCharacterHeight = 400
+    await nextTick()
+    await expect.element(screen.getByText('400 pt', { exact: true })).toBeVisible()
+    expect(localStorage.getItem('settings/mmd/stage-character-height')).toBe('400')
+  })
+})
 
 describe('mmd model settings motion', () => {
   beforeAll(async () => {

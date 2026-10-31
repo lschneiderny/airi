@@ -47,7 +47,8 @@ export function readStageDisplays(screen: Pick<StageScreen, 'getAllDisplays' | '
  * - `getConfig` returns the current stage config
  *
  * Returns:
- * - A function that removes the listeners. They are also removed when the window closes.
+ * - `applyHomeBounds`, which re-bounds the window now, for a config change such as a new home display
+ * - `dispose`, which removes the listeners. They are also removed when the window closes.
  *
  * On `display-added`, `display-removed` and `display-metrics-changed` the home display is resolved again (falling back
  * to the primary display when the saved one is gone), the window takes that display's work area when it differs, and
@@ -58,7 +59,7 @@ export function bindStageWindowToHomeDisplay(params: {
   window: StageBoundWindow
   getConfig: () => StageConfig
   onDisplaysChanged: () => void
-}): () => void {
+}): { applyHomeBounds: () => void, dispose: () => void } {
   function applyHomeBounds() {
     if (params.window.isDestroyed())
       return
@@ -82,5 +83,5 @@ export function bindStageWindowToHomeDisplay(params: {
   }
 
   params.window.once('closed', dispose)
-  return dispose
+  return { applyHomeBounds, dispose }
 }

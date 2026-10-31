@@ -107,6 +107,24 @@ export function buildStageHostState(params: {
 }
 
 /**
+ * Returns the config with `displayId` as the home display. The saved homes are kept, so a home saved earlier on that
+ * display is used again.
+ *
+ * Throws (so the invoke rejects and the config stays unchanged) when the display is not connected.
+ */
+export function withStageHomeDisplay(
+  config: StageConfig,
+  displays: readonly StageDisplayInfo[],
+  displayId: unknown,
+): StageConfig {
+  const display = typeof displayId === 'string' && displays.find(candidate => candidate.id === displayId)
+  if (!display)
+    throw new Error(`electronStageSetHomeDisplay: display ${JSON.stringify(displayId)} is not connected`)
+
+  return { ...config, homeDisplayId: display.id }
+}
+
+/**
  * Returns the config with the home of `payload.displayId` saved, with that display's fingerprint.
  *
  * Throws (so the invoke rejects and the config stays unchanged) when the display is not connected or `xDip` is not a

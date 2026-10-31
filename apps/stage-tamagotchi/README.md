@@ -15,6 +15,17 @@ process serves installed files to the renderer through `airi-model`. The desktop
 release bundles X-ASR through `airi-sherpaw`. Sherpaw settings control
 remote downloads. The Resource Status Island shows transfer progress and errors.
 
+## Desktop stage settings
+
+**Settings > Models** shows a **Desktop stage** section for an MMD model. It edits the stage config (`stage/config.json` under the user data directory) through the stage eventa contracts, which `setupWindowStageInvokes` registers on the settings window as well as on the classic window. Every config change is broadcast as `electronStageStateChanged` to each registered window (`createStageStateBroadcast`), because one window's eventa context emits only to its own renderer.
+
+- **Stage mode** is saved at once but applies at the next launch. When the saved mode differs from the running host, a **Relaunch to apply** button appears. An unsent chat draft is not carried across the relaunch: drafts live in memory (`windows/chat/index.ts`), and the button's description says so. This is the supported policy, not a gap to close.
+- **Home display** calls `electronStageSetHomeDisplay`, which writes `homeDisplayId`, keeps every saved home x, and re-bounds the desktop stage window to the new display's work area. On a host with one display the control is disabled.
+- **Character height** and **Roam** write the MMD store (`settings/mmd/stage-character-height`, `settings/mmd/roam-mode`); the stage page re-calibrates from them.
+- Scale, position and rotation under the scene controls apply in the classic window only; the section says so.
+- Only an MMD model can stand on the desktop stage. The stage pages record the stage model's renderer in the stage config (`activeRenderer`). When it is not MMD while the saved mode is `desktop`, the settings page writes the mode back to `window` and shows "Desktop stage supports MMD models; the classic window is used". `selectHostMode` enforces the same rule at launch.
+- The desktop stage page shows the Controls Island only. The hearing and resource status islands stay hidden there: the stage is a transparent, click-through window over the whole work area, so each island would need its own rect gate to keep desktop clicks working, and the same information is reachable from the Controls Island and the settings window. Revisit this if a desktop-stage user cannot tell that the microphone is live.
+
 ## Foreground window sensor
 
 Situational presence runs in the Electron desktop app on Windows and macOS. The character reaches out a few times a day for her own reasons, with long quiet stretches between messages. She stays quiet during calls, games, presentations, and full-screen apps. Eligible long sessions, returns, and notifications can also prompt a turn; app switches alone cannot.

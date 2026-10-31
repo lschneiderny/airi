@@ -20,6 +20,7 @@ import { electronSettingsNavigate } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { protectPrivilegedWindowNavigation, toggleWindowShow } from '../shared'
+import { setupWindowStageInvokes } from '../stage'
 import { setupSettingsWindowInvokes } from './rpc/index.electron'
 
 export interface SettingsWindowManager {
@@ -40,6 +41,8 @@ export function setupSettingsWindowReusableFunc(params: {
   globalShortcut: GlobalShortcutService
   spotlightWindow: SpotlightWindowManager
   ioTraceRecording: IOTraceRecordingService
+  /** The stage config and the host this launch built, so the settings page can edit the mode and the home display. */
+  stage: Omit<Parameters<typeof setupWindowStageInvokes>[0], 'window'>
 }): SettingsWindowManager {
   const rendererBase = baseUrl(resolve(getElectronMainDirname(), '..', 'renderer'))
   const defaultRoute = '/settings'
@@ -80,6 +83,7 @@ export function setupSettingsWindowReusableFunc(params: {
       spotlightWindow: params.spotlightWindow,
       ioTraceRecording: params.ioTraceRecording,
     })
+    setupWindowStageInvokes({ window, ...params.stage })
 
     await load(window, withHashRoute(rendererBase, currentRoute, {
       query: { 'synced-leader': 'false' },

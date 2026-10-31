@@ -269,6 +269,11 @@ export const electronStageGetState = defineInvokeEventa<StageHostState>('eventa:
 export const electronStageStateChanged = defineEventa<StageHostState>('eventa:event:electron:windows:stage:state-changed')
 /** Saves the home of a connected display. Rejects for a display that is not connected or an `xDip` that is not finite. */
 export const electronStageSetHome = defineInvokeEventa<StageHostState, { displayId: string, xDip: number }>('eventa:invoke:electron:windows:stage:set-home')
+/**
+ * Makes a connected display the home display and moves the desktop stage to its work area. The saved home x of each
+ * display is kept. Rejects for a display that is not connected.
+ */
+export const electronStageSetHomeDisplay = defineInvokeEventa<StageHostState, string>('eventa:invoke:electron:windows:stage:set-home-display')
 /** Persists the host mode. It applies at the next launch (see `electronStageRelaunch`). */
 export const electronStageSetMode = defineInvokeEventa<StageHostState, StageHostMode>('eventa:invoke:electron:windows:stage:set-mode')
 /** Persists the renderer of the stage model. Both stage pages call it whenever the stage model changes. */
