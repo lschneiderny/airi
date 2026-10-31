@@ -61,6 +61,27 @@ Runtime configuration (physics/IK/grant toggles, gaze tracking, scale,
 morph overrides, emotion→motion mapping) lives in the `useMMD` Pinia store and
 is edited through the model settings panel.
 
+### Frame pipeline and diagnostics
+
+`MMDFramePipeline` owns a clean, pre-solver pose for each model. It restores
+that pose before queued playback commands and mixer sampling, then captures
+the clip pose before registered pose stages, IK, grants, and physics. Surface
+stages apply expressions, blink, and lip-sync after physics. Model transforms
+and animation loops request a physics reset.
+
+Pose stages read `context.clean` and write absolute transforms from that
+snapshot; they must not modify the snapshot itself. `clipFootIK` records
+which registered motions contain left/right foot IK position tracks.
+
+The `mmd-motion-diagnostics` store publishes `{ type: 'snapshot', snapshot }`
+at 10 Hz on `airi-stores-stage-ui-mmd-motion-diagnostics` while a scene runs,
+including `loadedModelKey: null` when the scene has no model. Commands use
+`{ type: 'command', name, value }` on the same channel. `startMeasurement`
+and `stopMeasurement` capture every frame interval and stage duration, separate
+from the 600-sample rolling FPS and timing readouts. `setDebugFlag`,
+`advanceDirectorClock`, and `setOverlay` carry transient controls for the
+body, director, and overlay consumers.
+
 ## When to use it
 
 - Displaying MMD/MikuMikuDance characters (`.pmx`/`.pmd`) on the AIRI stage.
