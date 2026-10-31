@@ -79,6 +79,12 @@ class FootContact {
     this.lengths = { left: length(options.legs.left), right: length(options.legs.right) }
   }
 
+  /** Re-bases the planted anchors, for example after root motion or a gait hand-back. Contact weights are kept. */
+  setAnchors(anchors: Record<Foot, FootAnchor>) {
+    for (const side of sides)
+      this.contacts[side].anchor = { position: { ...anchors[side].position }, yaw: anchors[side].yaw }
+  }
+
   step(input: FootContactInput, dt: number) {
     for (const side of sides) {
       const state = this.contacts[side]
@@ -170,8 +176,11 @@ export interface TurnStep {
   readonly duration: number
 }
 
-/** Plan newly issued turn commands once, then sample each sequential arc in seconds. */
-export function planFootSteps(turnSteps: readonly TurnStep[], anchors: Record<Foot, FootAnchor>, pivot: Vec3) {
+/**
+ * Plan newly issued turn commands once, then sample each sequential arc in seconds.
+ * Each arc lifts `swingHeight` model units at its midpoint; gait callers pass 0.03 * legLength.
+ */
+export function planFootSteps(turnSteps: readonly TurnStep[], anchors: Record<Foot, FootAnchor>, pivot: Vec3, swingHeight = 0.3) {
   const current = { ...anchors }
   return turnSteps.map((step) => {
     const start = current[step.foot]
@@ -191,7 +200,7 @@ export function planFootSteps(turnSteps: readonly TurnStep[], anchors: Record<Fo
         const t = step.duration > 0 ? Math.max(0, Math.min(1, elapsed / step.duration)) : 1
         const target = blendAnchor(start, end, t)
         return {
-          position: { ...target.position, y: target.position.y + (t > 0 && t < 1 ? 0.3 * Math.sin(Math.PI * t) : 0) },
+          position: { ...target.position, y: target.position.y + (t > 0 && t < 1 ? swingHeight * Math.sin(Math.PI * t) : 0) },
           yaw: target.yaw,
         }
       },
