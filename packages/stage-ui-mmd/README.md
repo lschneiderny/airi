@@ -84,6 +84,24 @@ higher of the mesh top and the 頭 bone plus 1.5 neck-to-head lengths, and the
 width is the upper-arm span times 2.2. The whole mesh bounding box is used
 only when 頭, 首 or both ankles are missing.
 
+### Stage mode
+
+`MMD.vue` accepts an optional `stageWorld` prop (`MMDStageWorld`: work area,
+`CameraCalibration`, ground line and `homeX`, from `@proj-airi/stage-shared/stage-world`).
+Without it every classic code path is unchanged. With it the scene builds an
+off-axis camera from the calibration (`applyStageCamera`, using
+`makePerspective`; never `updateProjectionMatrix`), skips framing and orbit
+controls, ignores the classic scale, position and rotation settings, caps the
+drawing buffer at one pixel per DIP (`stagePixelRatio`), and stands the root at
+`(homeX, -footBaselineY, 0)` with one physics reset. The calibration needs the
+model height, so the host reads it from the `stageModel` diagnostics field
+after the load. `setRootX(x, { teleport })` writes the root x (`teleport: true`
+resets physics once, `false` never does). `characterPlacement`, the projected
+rect of the skeleton bounds in work-area DIP, is exposed on the scene,
+published in the diagnostics snapshot and emitted as a `placement` event.
+`body/attention.ts` resolves cursor and chat points onto the plane `0.6 * D`
+in front of her and uses the calibration eye as the camera point.
+
 ### Frame pipeline and diagnostics
 
 `MMDFramePipeline` owns a clean, pre-solver pose for each model. It restores

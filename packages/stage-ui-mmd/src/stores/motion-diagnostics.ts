@@ -1,4 +1,5 @@
 import type { BroadcastChannelEmitOptions } from '@moeru/eventa/adapters/broadcast-channel'
+import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 
 import type { FrameMeasurement, StageTiming } from '../composables/mmd/frame-metrics'
 import type { MMDOverlayFlags } from '../composables/mmd/overlay-flags'
@@ -28,6 +29,10 @@ export interface MMDMotionSnapshot {
   director: { stance: string, sinceMs: number, reason: string, clockOffsetMs: number, centerY: number | null } | null
   touch: { lastRegion: string | null, hitBody: boolean, petActive: boolean, headScreenPoint: { x: number, y: number } | null, events: number } | null
   animation: { idle: string | null, currentAction: string | null, actionsStarted: number }
+  /** Stage mode only: the character's projected rect in work-area DIP, with the root at its current x. */
+  characterPlacement: PlacementRect | null
+  /** Stage mode only: the measured model height and foot baseline in model units, which the host calibrates the camera from. */
+  stageModel: { height: number, footBaselineY: number } | null
   measurement: FrameMeasurement | null
 }
 
@@ -69,6 +74,8 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     director: null,
     touch: null,
     animation: { idle: null, currentAction: null, actionsStarted: 0 },
+    characterPlacement: null,
+    stageModel: null,
     measurement: null,
   })
 
