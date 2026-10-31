@@ -1,11 +1,14 @@
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
-import type { ChatStreamEvent, ChatStreamEventContext, ContextMessage } from '../../../types/chat'
+import type { ChatHistoryItem, ChatStreamEvent, ChatStreamEventContext, ContextMessage } from '../../../types/chat'
 
 import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
-import { ref } from 'vue'
+import { render } from 'vitest-browser-vue'
+import { defineComponent, h, nextTick, ref } from 'vue'
+
+import ChatHistory from '../../../components/scenarios/chat/components/history.vue'
 
 import { chatAssetsRepo } from '../../../database/repos/chat-assets.repo'
 import { storeChatAsset } from '../../../libs/chat-assets'
@@ -232,8 +235,11 @@ vi.mock('@proj-airi/stage-shared', async (importOriginal) => {
 })
 
 vi.mock('vue-i18n', () => ({
+  // The chat history reads `locale` and `te` too, for the test that renders it.
   useI18n: () => ({
     t: (key: string) => key,
+    te: () => false,
+    locale: { value: 'en' },
   }),
 }))
 
@@ -864,6 +870,122 @@ describe('context bridge contract', () => {
     streamSender.postMessage({ type: 'token-special', special: '<|BREAK|>', sessionId: 'session-1', context })
     await waitForBroadcastDelivery()
     expect(appendStreamBreakMock).toHaveBeenCalledTimes(1)
+
+    await store.dispose()
+  })
+
+  it('keeps a chat window reply on its break schedule when the stored reply replaces the stream', async () => {
+    // ROOT CAUSE:
+    //
+    // The chat window keyed the remote stream by turn, but the reply is stored under its own id. The refresh
+    // mounted the stored reply as complete, which showed a pending bubble early.
+    //
+    // We fixed this by keying the stream with the reply id on the hook context.
+    const { useChatStreamStore: useRealChatStreamStore } = await vi.importActual<typeof import('../../chat/stream-store')>('../../chat/stream-store')
+    const stream = useRealChatStreamStore(pinia)
+    // Each store call the bridge makes is recorded, so the test waits for the exact call instead of a delay.
+    const streamCalls: string[] = []
+    let streamCallWaiter: { count: number, resolve: () => void } | undefined
+    const recordStreamCall = (call: string) => {
+      streamCalls.push(call)
+      if (streamCallWaiter && streamCalls.length >= streamCallWaiter.count) {
+        streamCallWaiter.resolve()
+        streamCallWaiter = undefined
+      }
+    }
+    const untilStreamCalls = (count: number) => {
+      if (streamCalls.length >= count)
+        return Promise.resolve()
+      const waiter = Promise.withResolvers<void>()
+      streamCallWaiter = { count, resolve: waiter.resolve }
+      return waiter.promise
+    }
+    beginStreamMock.mockImplementation((id: string) => {
+      stream.beginStream(id)
+      recordStreamCall(`begin:${id}`)
+    })
+    appendStreamLiteralMock.mockImplementation((literal: string) => {
+      stream.appendStreamLiteral(literal)
+      recordStreamCall(`literal:${literal}`)
+    })
+    appendStreamBreakMock.mockImplementation((seconds: number) => {
+      stream.appendStreamBreak(seconds)
+      recordStreamCall(`break:${seconds}`)
+    })
+    resetStreamMock.mockImplementation(() => {
+      stream.resetStream()
+      recordStreamCall('reset')
+    })
+    const userMessage: ChatHistoryItem = { id: 'turn-1', role: 'user', content: 'ping' }
+    const replyText = 'hey :3\n\nyou there? ^^'
+    const storedReply: ChatHistoryItem = {
+      id: 'assistant-1',
+      role: 'assistant',
+      content: replyText,
+      slices: [{ type: 'text', text: 'hey :3' }, { type: 'break', seconds: 1 }, { type: 'text', text: 'you there? ^^' }],
+      tool_results: [],
+    }
+    const sessionMessages = ref<ChatHistoryItem[]>([userMessage])
+    refreshSessionMock.mockImplementation(async () => {
+      sessionMessages.value = [userMessage, storedReply]
+      return true
+    })
+    const store = useContextBridgeStore()
+    await store.initializeStreamView()
+    // The producing renderer's turn has already ended here, so only the bridge keeps the reply in view.
+    const screen = render(defineComponent({
+      setup: () => () => h(ChatHistory, {
+        style: 'height: 480px; width: 480px; overflow-y: auto;',
+        messages: sessionMessages.value,
+        sending: store.isReceivingRemoteStream,
+        streamingMessage: stream.streamingMessage,
+      }),
+    }), { global: { plugins: [pinia] } })
+    onTestFinished(() => screen.unmount())
+    const bubbleTexts = () => Array.from(screen.container.querySelectorAll<HTMLElement>('[data-chat-bubble]')).map(bubble => bubble.textContent?.trim())
+    const streamSender = createTestChannel(CHAT_STREAM_CHANNEL_NAME)
+    const context = {
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      assistantMessageId: 'assistant-1',
+      message: userMessage,
+      contexts: {},
+      composedMessage: [],
+    } satisfies ChatStreamEventContext
+
+    streamSender.postMessage({ type: 'before-send', message: 'ping', sessionId: 'session-1', context })
+    streamSender.postMessage({ type: 'token-literal', literal: 'hey :3', sessionId: 'session-1', context })
+    await untilStreamCalls(2)
+    await vi.waitFor(() => expect(bubbleTexts()).toEqual([expect.stringContaining('hey :3')]))
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      streamSender.postMessage({ type: 'token-special', special: '<|BREAK|>', sessionId: 'session-1', context })
+      streamSender.postMessage({ type: 'token-literal', literal: 'you there? ^^', sessionId: 'session-1', context })
+      await untilStreamCalls(4)
+      await nextTick()
+      expect(bubbleTexts()).toEqual([expect.stringContaining('hey :3')])
+
+      // Generation ends 400 ms later, before the break's second: the stored reply replaces the stream.
+      vi.advanceTimersByTime(400)
+      streamSender.postMessage({ type: 'assistant-end', message: replyText, sessionId: 'session-1', context })
+      await untilStreamCalls(5)
+      await nextTick()
+      expect(bubbleTexts()).toEqual([expect.stringContaining('hey :3')])
+      expect(streamCalls).toEqual(['begin:assistant-1', 'literal:hey :3', 'break:1', 'literal:you there? ^^', 'reset'])
+
+      vi.advanceTimersByTime(599)
+      await nextTick()
+      expect(bubbleTexts()).toEqual([expect.stringContaining('hey :3')])
+
+      vi.advanceTimersByTime(1)
+      await nextTick()
+      expect(bubbleTexts()).toEqual([expect.stringContaining('hey :3'), 'you there? ^^'])
+    }
+    finally {
+      vi.clearAllTimers()
+      vi.useRealTimers()
+    }
 
     await store.dispose()
   })

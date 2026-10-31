@@ -734,6 +734,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     const streamingMessageContext: ChatStreamEventContext = {
       sessionId,
       turnId: roundId,
+      assistantMessageId,
       message: {
         role: 'user',
         content: sendingMessage,

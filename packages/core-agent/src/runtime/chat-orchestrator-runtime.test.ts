@@ -1064,6 +1064,23 @@ describe('createChatOrchestratorRuntime', () => {
     ])
   })
 
+  it('names the stored reply on the hook context, so another window can key its stream with it', async () => {
+    const harness = createHarness()
+    let beforeSendAssistantMessageId: string | undefined
+
+    harness.runtime.hooks.onBeforeSend(async (_message, context) => {
+      beforeSendAssistantMessageId = context.assistantMessageId
+    })
+
+    await harness.runtime.ingest('hello', {
+      model: 'gpt-test',
+      chatProvider: provider,
+    })
+
+    expect(beforeSendAssistantMessageId).toBe('assistant-id')
+    expect(harness.sessionMessages['session-1'].findLast(message => message.role === 'assistant')?.id).toBe('assistant-id')
+  })
+
   it('keeps timestamp prefixes stable for legacy user messages without createdAt', async () => {
     const harness = createHarness()
     const legacyUserMessage: ChatHistoryItem = {
