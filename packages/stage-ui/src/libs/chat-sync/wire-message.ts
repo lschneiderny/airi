@@ -14,8 +14,11 @@ import type { NewMessagesPayload, WireMessage } from '@proj-airi/server-sdk-shar
  *   fidelity, wait until the server-side schema grows structured content.
  *
  * Returns:
- * - The first text slice for assistant messages with slice arrays; otherwise
- *   the message's stringified content. Empty string when nothing extractable.
+ * - The joined text slices for assistant messages with slice arrays; a burst
+ *   (text slices separated by break slices) maps to its `content`, which the
+ *   runtime wrote with `\n\n` at each break, so another device shows one
+ *   bubble. Otherwise the message's stringified content. Empty string when
+ *   nothing extractable.
  */
 export function extractMessageText(message: ChatHistoryItem): string {
   if (message.role === 'assistant') {
@@ -23,6 +26,8 @@ export function extractMessageText(message: ChatHistoryItem): string {
     // `slices`; reading via the narrowed alias keeps tsc happy without an
     // `as` cast.
     const assistant: ChatAssistantMessage = message
+    if (Array.isArray(assistant.slices) && assistant.slices.some(slice => slice.type === 'break') && typeof assistant.content === 'string')
+      return assistant.content
     if (Array.isArray(assistant.slices) && assistant.slices.length > 0) {
       const text = assistant.slices
         .filter((slice): slice is { type: 'text', text: string } => slice.type === 'text')
@@ -63,7 +68,9 @@ export function extractMessageText(message: ChatHistoryItem): string {
  * - `true` when the message is a user or completed assistant turn. `tool`,
  *   `system`, `error`, and interrupted assistant messages stay local because
  *   the wire schema cannot preserve their runtime state. Unprompted trigger
- *   messages stay local because the user did not write them.
+ *   messages stay local because the user did not write them, and wordless
+ *   replies stay local because the wire carries content only and theirs is
+ *   empty. Both are supported policy: cloud sync is inactive in this fork.
  */
 export function isCloudSyncableMessage(message: ChatHistoryItem): boolean {
   if (message.role === 'tool')
@@ -79,6 +86,9 @@ export function isCloudSyncableMessage(message: ChatHistoryItem): boolean {
     return false
   // An unprompted trigger is a local stage cue, not something the user said. Its reply stays local with it.
   if (message.role === 'user' && message.origin === 'unprompted')
+    return false
+  // A wordless reply is a stage cue with empty content; the wire would carry an empty assistant turn.
+  if (message.role === 'assistant' && message.wordless)
     return false
   return true
 }

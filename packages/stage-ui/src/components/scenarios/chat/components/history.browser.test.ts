@@ -2065,4 +2065,150 @@ describe('chat history', () => {
       },
     ]])
   })
+
+  describe('break bubbles, wordless replies, and reaction cues', () => {
+    const assistant = (id: string, slices: Extract<ChatHistoryItem, { role: 'assistant' }>['slices'], content = ''): ChatHistoryItem => ({
+      id,
+      role: 'assistant',
+      content,
+      slices,
+      tool_results: [],
+    })
+    const text = (value: string) => ({ type: 'text', text: value } as const)
+    const bubbleTexts = (container: Element) => Array.from(container.querySelectorAll<HTMLElement>('[data-chat-bubble]')).map(bubble => bubble.textContent?.trim())
+
+    function renderHistory(props: Record<string, unknown>) {
+      return render(ChatHistory, {
+        props: {
+          style: 'height: 480px; width: 480px; overflow-y: auto;',
+          ...props,
+        },
+        global: {
+          plugins: [createEnglishI18n()],
+        },
+      })
+    }
+
+    it('renders one bubble per text slice at once for a message that is already complete', async () => {
+      const screen = await renderHistory({
+        messages: [assistant('burst', [text('One'), { type: 'break', seconds: 1 }, text('Two'), { type: 'break', seconds: 0.5 }, text('Three')], 'One\n\nTwo\n\nThree')],
+      })
+
+      await vi.waitFor(() => expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('One'), 'Two', 'Three']))
+      expect(screen.container.querySelectorAll('.chat-message-item-container')).toHaveLength(3)
+      // The label and the actions stay on the message, not on each bubble.
+      expect(screen.container.querySelectorAll('[data-chat-bubble]')[0].textContent).toContain('AIRI')
+      expect(screen.container.querySelectorAll('[data-chat-bubble]')[1].textContent).not.toContain('AIRI')
+    })
+
+    it('reveals the bubbles after a break on the break schedule, even when generation finishes before the first delay', async () => {
+      const screen = await renderHistory({
+        messages: [],
+        sending: true,
+        streamingMessage: assistant('burst', [text('One')], 'One'),
+      })
+      await vi.waitFor(() => expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('One')]))
+
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+      try {
+        // The first break arrives with the text after it: bubble two is due one second from now.
+        await screen.rerender({ sending: true, streamingMessage: assistant('burst', [text('One'), { type: 'break', seconds: 1 }, text('Two')], 'One\n\nTwo') })
+        await nextTick()
+        expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('One')])
+
+        // Generation completes 400 ms later with a second, longer break; the persisted item replaces the stream.
+        vi.advanceTimersByTime(400)
+        await screen.rerender({
+          sending: false,
+          streamingMessage: { role: 'assistant', content: '', slices: [], tool_results: [] },
+          messages: [assistant('burst', [text('One'), { type: 'break', seconds: 1 }, text('Two'), { type: 'break', seconds: 2 }, text('Three')], 'One\n\nTwo\n\nThree')],
+        })
+        await nextTick()
+        expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('One')])
+
+        vi.advanceTimersByTime(599)
+        await nextTick()
+        expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('One')])
+
+        vi.advanceTimersByTime(1)
+        await nextTick()
+        expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('One'), 'Two'])
+
+        // The second break arrived at 400 ms with a two second pause, so bubble three is due at 2400 ms.
+        vi.advanceTimersByTime(1399)
+        await nextTick()
+        expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('One'), 'Two'])
+
+        vi.advanceTimersByTime(1)
+        await nextTick()
+        expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('One'), 'Two', 'Three'])
+      }
+      finally {
+        vi.clearAllTimers()
+        vi.useRealTimers()
+      }
+    })
+
+    it('renders one bubble for a trailing break', async () => {
+      const screen = await renderHistory({
+        messages: [assistant('trailing', [text('Only line'), { type: 'break', seconds: 1 }], 'Only line\n\n')],
+      })
+
+      await vi.waitFor(() => expect(bubbleTexts(screen.container)).toEqual([expect.stringContaining('Only line')]))
+      expect(screen.container.querySelectorAll('[data-chat-bubble]')).toHaveLength(1)
+    })
+
+    it('renders no bubble for an assistant message with empty content and no slices', async () => {
+      const screen = await renderHistory({
+        messages: [{ id: 'user-1', role: 'user', content: 'hello' }, assistant('empty', [])],
+      })
+
+      await vi.waitFor(() => expect(screen.container.querySelector('[data-chat-message-role="assistant"]')).not.toBeNull())
+      expect(screen.container.querySelector('[data-chat-message-role="assistant"] .chat-message-item-container')).toBeNull()
+      expect(screen.container.querySelector('[data-chat-wordless-chip]')).toBeNull()
+    })
+
+    it('shows a wordless reply as a chip without a bubble, and offers no reply to it', async () => {
+      const screen = await renderHistory({
+        messages: [
+          { id: 'user-1', role: 'user', content: 'hello?' },
+          { ...assistant('nod', []), wordless: { cues: [{ emotion: 'happy', gesture: { kind: 'nod', count: 2 } }] } },
+          { ...assistant('quiet', []), wordless: { cues: [] } },
+        ],
+      })
+
+      await vi.waitFor(() => expect(screen.container.querySelectorAll('[data-chat-wordless-chip]')).toHaveLength(2))
+      const chips = Array.from(screen.container.querySelectorAll<HTMLElement>('[data-chat-wordless-chip]'))
+      expect(chips.map(chip => chip.textContent?.trim())).toEqual(['reacted - nodded', 'stayed quiet'])
+      for (const chip of chips) {
+        expect(chip.closest('.chat-message-item-container')).toBeNull()
+        expect(chip.closest('[data-chat-message-role="assistant"]')?.querySelector('.i-solar\\:reply-bold-duotone')).toBeNull()
+      }
+      expect(screen.container.querySelectorAll('[data-chat-message-role="assistant"] .chat-message-item-container')).toHaveLength(0)
+    })
+
+    it('labels a touch reaction cue by the trigger kind', async () => {
+      const reaction = (id: string, kind: string): ChatHistoryItem => ({
+        id,
+        role: 'user',
+        content: '(They touched you.)',
+        origin: 'unprompted',
+        trigger: { topicKey: 'touch', text: 'touch', kind },
+      } as ChatHistoryItem)
+      const screen = await renderHistory({
+        messages: [
+          { id: 'user-0', role: 'user', content: 'A written message' },
+          reaction('pet', 'touch-pet'),
+          assistant('pet-reply', [text('Hehe.')], 'Hehe.'),
+          reaction('poke', 'touch-poke'),
+          assistant('poke-reply', [text('Hey!')], 'Hey!'),
+        ],
+      })
+
+      await vi.waitFor(() => expect(screen.container.querySelectorAll('[data-chat-unprompted-cue]')).toHaveLength(2))
+      const cues = Array.from(screen.container.querySelectorAll<HTMLElement>('[data-chat-unprompted-cue]'))
+      expect(cues.map(cue => cue.textContent?.trim())).toEqual(['Reacted to a pet', 'Reacted to a poke'])
+      expect(screen.container.textContent).not.toContain('They touched you')
+    })
+  })
 })

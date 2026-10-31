@@ -18,11 +18,12 @@ import ChatHistoryMessageFrame from './history-message-frame.vue'
 import ChatHistoryTimeSeparator from './history-time-separator.vue'
 import ChatUnpromptedCue from './unprompted-cue.vue'
 import ChatUserItem from './user-item.vue'
+import ChatWordlessChip from './wordless-chip.vue'
 
 import { useChatHistoryScroll } from '../composables/use-chat-history-scroll'
 import { useChatHistoryTopFade } from '../composables/use-chat-history-top-fade'
 import { useVirtualizerBottomAlignment, useVirtualizerScroll } from '../composables/use-virtualizer-scroll'
-import { getChatHistoryItemCopyText, getChatHistoryItemKey, isUnpromptedCue } from '../utils'
+import { getChatHistoryItemCopyText, getChatHistoryItemKey, isUnpromptedCue, isWordlessReply } from '../utils'
 
 defineOptions({
   inheritAttrs: false,
@@ -301,6 +302,12 @@ function emitToolCallRerun(
               @retry="emitRetryMessage(message, index)"
               @delete="emitDeleteMessage(message, index)"
             />
+            <!-- The chip replaces the bubble: a wordless reply has no text, and the live stream before it shows nothing. -->
+            <ChatWordlessChip
+              v-else-if="isWordlessReply(message)"
+              :message="message"
+              :variant="variant"
+            />
             <ChatAssistantItem
               v-else-if="message.role === 'assistant'"
               :message="message"
@@ -308,6 +315,7 @@ function emitToolCallRerun(
               :reply-target="getReplyTarget(message)"
               :can-reply="canReplyToMessage(message)"
               :show-placeholder="shouldShowPlaceholder(message) && showStreamingPlaceholder"
+              :streaming="shouldShowPlaceholder(message)"
               :scroll-container="chatHistoryRef"
               :variant="variant"
               :surface="surface"
