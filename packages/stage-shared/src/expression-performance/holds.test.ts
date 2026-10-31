@@ -154,7 +154,7 @@ function holdsSuite<S>(name: 'picker' | 'planner', decider: Decider<S>) {
         expect(decision.episodes).toEqual([])
         expect(decision.holds).toEqual([])
       }
-      expect(decider.decide(expression('missing', 0), ctx, decider.initial(17)).decision).toEqual({ episodes: [], slots: [], holds: [] })
+      expect(decider.decide(expression('missing', 0), ctx, decider.initial(17)).decision).toEqual({ episodes: [], slots: [], holds: [], moods: [] })
     })
 
     it('keeps the old slot-only behavior when held emotions are off', () => {

@@ -15,6 +15,7 @@ const signalSchema = variant('kind', [
   strictObject({ kind: literal('clear'), source: picklist(['act', 'tool', 'devtools']), slot: optional(picklist(['face', 'effect', 'prop'])), turnId, at: seconds }),
   strictObject({ kind: literal('speech'), event: picklist(['clip-start', 'clip-end', 'clip-stopped', 'turn-end']), turnId: string(), clipId: optional(string()), at: seconds }),
   strictObject({ kind: literal('muted'), muted: boolean(), at: seconds }),
+  strictObject({ kind: literal('touch'), touch: picklist(['pet-start', 'pet-end', 'poke']), region: picklist(['head', 'body']), durationSeconds: optional(seconds), at: seconds }),
   strictObject({ kind: literal('timing'), event: strictObject({ id: string(), kind: picklist(['sentence_start', 'pause', 'utterance_end', 'emphasis']), turnId: string(), at: seconds }), at: seconds }),
   strictObject({ kind: literal('deadline'), at: seconds }),
 ])

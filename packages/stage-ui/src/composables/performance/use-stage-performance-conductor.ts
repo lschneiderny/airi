@@ -34,11 +34,11 @@ type StageDecision = Omit<PerformanceDecision, 'episodes'> & { episodes: Natural
 /** An affect recording keeps at most this many entries; the next one marks it truncated. */
 export const maxAffectTraceEntries = 20_000
 
-/** The turn a signal belongs to; deadline and muted signals belong to none. */
+/** The turn a signal belongs to; deadline, muted, and touch signals belong to none. */
 function turnOf(signal: AffectSignal): string | undefined {
   if (signal.kind === 'timing')
     return signal.event.turnId
-  return signal.kind === 'deadline' || signal.kind === 'muted' ? undefined : signal.turnId
+  return signal.kind === 'deadline' || signal.kind === 'muted' || signal.kind === 'touch' ? undefined : signal.turnId
 }
 
 /** The performer slot each LLM-reachable kind occupies; outfit and system kinds have none. */

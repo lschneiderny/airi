@@ -1,10 +1,12 @@
 import type { ReactionState } from './reaction-strength'
 import type { AutoSlot, Tickets } from './selection'
+import type { TouchAffectMemory } from './touch-affect'
 import type { Decider, DeciderContext, PerformanceDecision } from './types'
 
 import { entrySlots } from './combos'
 import { acceptReaction, createReactionState } from './reaction-strength'
 import { applySlotOccupants, autoPicks, clearCommands, drawEpisodeTickets, emotionHold, explicitExpressionCommand, explicitExpressionReaction, neutralCommands, releaseHold } from './selection'
+import { initialTouchAffectMemory, touchAffect } from './touch-affect'
 
 /** Episode tickets and occupants survive checkpoints so escalations cannot reroll a pick. */
 export interface PickerState {
@@ -13,6 +15,8 @@ export interface PickerState {
   occupants: Record<AutoSlot, string | null>
   streams: Record<AutoSlot, number>
   tickets: Record<AutoSlot, Tickets> | null
+  /** Touch pacing and habituation behind the mood doses of `touch` signals. */
+  touch: TouchAffectMemory
 }
 
 /** Pure baseline policy; speech lifetimes belong to the slot performer, not this state. */
@@ -25,11 +29,18 @@ export function createPickerDecider(): Decider<PickerState> {
         occupants: { face: null, effect: null },
         streams: { face: (seed ^ 0x9E3779B9) >>> 0, effect: (seed ^ 0x85EBCA6B) >>> 0 },
         tickets: null,
+        touch: initialTouchAffectMemory,
       }
     },
     nextDeadline: () => null,
     decide(signal, ctx: DeciderContext, state) {
-      const decision: PerformanceDecision = { episodes: [], slots: [], holds: [] }
+      const decision: PerformanceDecision = { episodes: [], slots: [], holds: [], moods: [] }
+      if (signal.kind === 'touch') {
+        const affect = touchAffect(state.touch, signal, ctx.settings)
+        if (affect.dose)
+          decision.moods.push(affect.dose)
+        return { decision, state: { ...state, touch: affect.memory } }
+      }
       if (signal.kind === 'expression') {
         const commands = explicitExpressionCommand(signal, ctx)
         if (!commands)

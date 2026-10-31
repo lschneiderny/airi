@@ -143,7 +143,7 @@ describe('picker', () => {
     expect(escalated.state.occupants.face).toBe(first.state.occupants.face)
     expect(escalated.decision.episodes[0].escalation).toBe(true)
     const repeat = decider.decide(emotion(0.9, 1.5), ctx, escalated.state)
-    expect(repeat.decision).toEqual({ episodes: [], slots: [], holds: [] })
+    expect(repeat.decision).toEqual({ episodes: [], slots: [], holds: [], moods: [] })
   })
 
   it('honors switches and minimum bands', () => {
@@ -185,7 +185,7 @@ describe('picker', () => {
       { kind: 'deadline', at: 0 },
     ]
     for (const signal of signals)
-      expect(decider.decide(signal, ctx, state)).toEqual({ decision: { episodes: [], slots: [], holds: [] }, state })
+      expect(decider.decide(signal, ctx, state)).toEqual({ decision: { episodes: [], slots: [], holds: [], moods: [] }, state })
     decider.decide(emotion(), ctx, state)
     expect(JSON.stringify(state)).toBe(before)
     expect(decider.nextDeadline(state)).toBeNull()
@@ -198,7 +198,7 @@ describe('picker clear signal', () => {
 
     const result = decider.decide({ kind: 'clear', source: 'tool', slot: 'face', turnId: 'turn', at: 1 }, ctx, state)
 
-    expect(result.decision).toEqual({ episodes: [], slots: [{ slot: 'face', expressionId: null, holdSeconds: 0, until: 'hold', turnId: 'turn' }], holds: [] })
+    expect(result.decision).toEqual({ episodes: [], slots: [{ slot: 'face', expressionId: null, holdSeconds: 0, until: 'hold', turnId: 'turn' }], holds: [], moods: [] })
     expect(state.occupants.face).not.toBeNull()
     expect(result.state.occupants.face).toBeNull()
     expect(result.state.occupants.effect).toBe(state.occupants.effect)
