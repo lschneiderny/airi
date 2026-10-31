@@ -2,11 +2,12 @@ import type { ReaderLike } from 'clustr'
 
 import type { TextSegment, TextToken } from '../types'
 
+import { ASCII_FACES } from '@proj-airi/stage-shared/conversation-register'
 import { readGraphemeClusters } from 'clustr'
 
 import { tokenBreak } from '../llm-streaming-control/parsers'
 import { createPushStream } from '../stream'
-import { ASCII_FACES, stripAsciiFaces } from './ascii-faces'
+import { stripAsciiFaces } from './ascii-faces'
 
 export const TTS_FLUSH_INSTRUCTION = '\u200B'
 export const TTS_SPECIAL_TOKEN = '\u2063'

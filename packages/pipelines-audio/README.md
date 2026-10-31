@@ -79,7 +79,7 @@ With no audio at all, markers fire in arrival order. A cancelled or interrupted 
 - `<|BREAK|>` pauses for 1.0 s and `<|BREAK n|>` for `n` seconds, clamped to 0.3-3.0. Any other body is rejected as parse-failed and produces no signal.
 
 The TTS chunker ends a segment at every special. At a BREAK, it also ends a segment whose text is held at soft punctuation, so text written before the pause is never spoken after it.
-With `stripAsciiFaces`, the chunker removes the faces in `ASCII_FACES` from each assembled segment. It keeps a face with punctuation, such as `:3`, in one segment even when the face arrives split across deltas, and it skips a segment that becomes empty.
+With `stripAsciiFaces`, the chunker removes the faces in `ASCII_FACES` from `@proj-airi/stage-shared/conversation-register` from each assembled segment. It keeps a face with punctuation, such as `:3`, in one segment even when the face arrives split across deltas, and it skips a segment that becomes empty.
 
 ## Checks
 

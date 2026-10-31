@@ -22,7 +22,13 @@ export const TEXTING_FLAVOR_PROMPT_KEYS = {
   discord: 'base.prompt.register-texting-discord',
 } as const
 
-/** Closed vocabulary shared by prompt rendering and speech sanitization. */
+/**
+ * Closed vocabulary shared by prompt rendering and speech sanitization. A texting reply may carry
+ * these faces; they are shown in bubbles and never spoken.
+ *
+ * Pronounceable word faces such as `uwu` and `owo` are left out on purpose: speech reads them.
+ * The list is case-sensitive: `xD` and `XD` are both listed, `:p` is not.
+ */
 export const ASCII_FACES = [':3', '^^', '^_^', '>_<', '>.<', 'T_T', ';_;', ':)', ':(', ':D', ';)', ':P', 'xD', 'XD', 'o_o', 'O_O', '-_-', '^w^', '<3'] as const
 
 /** Renders a character-prompt section, separate from the versioned stage contract. */
