@@ -3411,6 +3411,20 @@ describe('wordless user turns and break slices', () => {
     }
   })
 
+  it.each([
+    ['a trailing break', ['ow >_<', '<|BREAK 1|>'], [{ type: 'text', text: 'ow >_<' }], 'ow >_<', { breaks: 0, breaksIgnored: 1 }],
+    ['a break before more text', ['ow >_<', '<|BREAK 0.5|>', ' more'], [{ type: 'text', text: 'ow >_<' }, { type: 'break', seconds: 0.5 }, { type: 'text', text: 'more' }], 'ow >_<\n\nmore', { breaks: 1, breaksIgnored: 0 }],
+  ])('keeps a face whole before %s', async (_name, chunks, slices, content, cueStats) => {
+    // ROOT CAUSE:
+    //
+    // A held `<` was released only by the next literal or by `flush`, and a marker is neither. A face right before a
+    // BREAK left its `<` held across the marker, so it became a bubble of its own or started the next bubble.
+    const { saved, streamEnds } = await userTurn(chunks)
+
+    expect(saved).toMatchObject({ content, slices })
+    expect(streamEnds[0]).toMatchObject(cueStats)
+  })
+
   it('forwards a malformed BREAK as an ordinary special without splitting the text', async () => {
     const { specials, saved, streamEnds } = await userTurn(['a', '<|BREAK x|>', 'b'])
 
