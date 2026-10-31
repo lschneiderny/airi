@@ -1,0 +1,1 @@
+{ "source": ".omo/evidence/fullscreen-stage-locomotion/task-1-c-classic-1.json", "mode": "classic", "n": 1, "result": { "mode": "classic", "fps": 48.338871815372826, "p95StageMs": 1.8000001907348633, "readbackMs": { "max": 2.399999976158142, "mean": 0.030992907493531566, "windows": 564 }, "frames": 2902 } }

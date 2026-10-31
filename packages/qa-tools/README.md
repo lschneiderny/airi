@@ -19,6 +19,9 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 | `pnpm qa:motion t3 --rig forbooth --scenario <builtin:name\|file.json> [--keep-open]` | Drive a scenario in the rendered Electron app and collect a Natural trace and screenshots. |
 | `pnpm qa:motion validate-scorer --level t1 [--sections aa,zero,mutations,unmutated,determinism] [--seeds N] [--workers N] [--timeout-minutes N]` | Evaluate scorer false positives, mutation detection, unmutated gate power, and determinism. A missed validation threshold exits 1 by design. |
 | `pnpm qa:report <runDir> [<runDir>...] [--out <file>]` | Combine gate, T3, and test-run evidence into a self-contained HTML review page. |
+| `pnpm qa:stage measure --mode <window\|desktop> --port <cdp port> [--seconds 60] [--attempts 3] --out <json>` | Measure the MMD frame budget of a running app in one host mode. See [Stage gates](#stage-gates). |
+| `pnpm qa:stage measure --pairs <n> --profile <dir> [--seconds 60] [--settle 10] [--attempts 3] --out <json>` | Launch the app once per run and measure alternating window and desktop pairs into one file. |
+| `pnpm qa:stage gate <json> [<json>...]` | Judge stage evidence with `stage-walk-skate`, `stage-arm-penetration`, and `stage-frame-budget`. |
 | `pnpm qa:model prompt [--locale en] [--card <file>] [--full <fixture.json>] [--exposed-actions <label:kind,...>] [--json]` | Print the application's system prompt; JSON mode includes the prompt and contract hashes and contract version. `--full` adds the tail segments of a fixture file. `--exposed-actions` adds the `actions` segment for the listed clips (see below). |
 | `pnpm qa:model score <transcripts.jsonl> [--set <id>] [--label <l>] [--example-lines-from <file>] [--exposed-actions <label:kind,...>] [--json]` | Score saved replies through the real chat runtime and stage controller, then write reply, JSON summary, and Markdown summary artifacts. |
 | `pnpm qa:model import-ollama-bench <dir> --set <id> [--out <file>] [--machine-label <label>] [--server-version <version>] [--mem-gb <number>]` | Convert saved Ollama bench, sweep, and flash-attention results into transcript JSONL. |
@@ -124,6 +127,24 @@ A `gesture` event (`{ kind: 'gesture', at, gesture, count? }`) sends an ACT cue 
 Before any cursor movement, the runner reads the physical virtual-screen bounds with `GetSystemMetrics` and checks every mapped target. It keeps a fitting declared path. If the path does not fit, it mirrors the approach axis toward the virtual-screen center, including later strokes and pokes, and checks the entire mirrored path. It never clips points or shortens the approach. If neither path fits, `pointer-path-outside-virtual-screen` refuses input. The playback script rechecks the live bounds before input, so a changed monitor layout cannot silently clamp targets. `bridge.json` records the virtual-screen rectangle, selected mirror axis, and effective physical steps; scenario trace markers retain the declared coordinates.
 
 Before any cursor movement, a head width greater than half the stage window's CSS width refuses the run as `pointer-head-implausible`, with both widths in the error. A path that cannot fit the desktop is also a named refusal, not permission to shrink the reported head or bypass bounds checks. Real cursor receipt mismatches remain failures, and the receipt is preserved in the error. Touch runs enable cursor attention; ordinary smoke and emotion/liveliness gates keep their existing cursor-parked behavior.
+
+## Stage gates
+
+The desktop stage gates live in `src/stage/gates.ts`; `src/stage/measure.ts` produces the frame-budget input. Relative paths resolve against pnpm's `INIT_CWD`: the directory where you typed the command, or the `--dir` directory when pnpm is called with `--dir`.
+
+| Gate id | Input | Passes when |
+| --- | --- | --- |
+| `stage-walk-skate` | A walk timeline: `perFrameSeries` (top level or under `walk`) with the columns `mode`, `skate`, and `feetMaxError`, one row per frame. | The non-idle frames include `walking`, max `locomotion.skate` < 0.05, and max `feet.maxError` < 0.05. |
+| `stage-arm-penetration` | A standing run per model: `model` plus `perFrame` with `t_ms`, `penL`, and `penR`, or a `models.<name>.penetration.left/right.max` summary. | Kinematic `arms.penetration` max is 0 over at least 30 s on every model. `clothContact` is printed for information only. |
+| `stage-frame-budget` | `measure` records (`result` with `mode`, `fps`, `p95StageMs`, `readbackMs`, `frames`), single files or one pairs file. | At least 3 window/desktop pairs; every desktop p95 AIRI stage sum <= 4 ms; median desktop/window FPS ratio >= 0.9; every desktop readback mean <= 1 ms; median per-pair (desktop readback max - window readback max) <= 1 ms. |
+
+- `gate` prints `<gate id>: PASS`, `FAIL`, or `NO INPUT`, each followed by its checks with the measured values. Exit codes: 0 every gate with input passed, 1 a gate failed, 2 usage error, unreadable or unrecognised evidence, or no input for any gate.
+- Runs pair by their `n` field; when a run lacks one, runs pair in the order given. The todo 1 evidence names the window `classic` and the desktop stage `spike`; both vocabularies are accepted.
+- `measure` reads the frame measurement through the motion diagnostics BroadcastChannel of the stage target (`#/` for window, `#/stage` for desktop) while CDP moves the pointer in a circle over the character, so the synchronous hit-test `readPixels` cost is part of the readback numbers. AIRI stages are every timed stage except the three-mmd internals and `render`.
+- Before each attempt `measure` waits up to 5 minutes for a quiet machine: no `vitest`, `tsc --noEmit`, or `vue-tsc` process, and a 1-minute load average below 3. During the run, a 1 Hz sidecar records the load average and `pgrep` hits, and one `ps` top-8 CPU listing is taken halfway. An attempt with a hit is `INVALID-CONCURRENT-LOAD` and is repeated up to `--attempts`; discarded attempts stay in the record, and the record has `valid: false` when every attempt was invalid. On Windows, the sidecar records no `pgrep` or `ps` data.
+- `measure --port` attaches to an app started with `APP_REMOTE_DEBUG=true`, `APP_REMOTE_DEBUG_PORT`, and `AIRI_STAGE_HOST=<mode>`, with an MMD model mounted. `measure --pairs` copies `--profile` (onboarding done, MMD model selected) for every run, launches `stage-tamagotchi dev` with `AIRI_STAGE_HOST` set to window, then desktop, for each pair, waits for the model, settles for `--settle` seconds, measures, and tears the run down like T3. It rewrites `--out` after every run; a broken run is listed under `failures` and exits 1.
+- Keep the desktop undisturbed during a measurement: the frame rate is the measured value.
+- Tests: `pnpm -F @proj-airi/qa-tools exec vitest run --project node src/stage`. The fixtures in `fixtures/stage/` are minimal copies of the plan's real evidence, and each names its `source`.
 
 ## Gates
 
@@ -271,7 +292,7 @@ The report is a review aid. It does not change a gate verdict or make a naturaln
 
 ## When to use
 
-Use this package when motion needs a gate verdict, an agent needs to run a rendered scenario, a test run must distinguish new failures from the baseline, or QA evidence needs a portable report and durable archive.
+Use this package when motion or the desktop stage needs a gate verdict, an agent needs to run a rendered scenario, a test run must distinguish new failures from the baseline, or QA evidence needs a portable report and durable archive.
 
 ## When not to use
 

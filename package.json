@@ -35,6 +35,7 @@
     "qa:model": "pnpm --silent -F @proj-airi/qa-tools run --silent model",
     "qa:motion": "pnpm -F @proj-airi/qa-tools run motion",
     "qa:report": "pnpm -F @proj-airi/qa-tools run report",
+    "qa:stage": "pnpm -F @proj-airi/qa-tools run stage",
     "qa:test": "pnpm -F @proj-airi/qa-tools run test:qa",
     "test": "vitest --coverage",
     "test:run": "tsx scripts/dev-tools/test-run.ts",

@@ -1,0 +1,1 @@
+{ "source": ".omo/evidence/fullscreen-stage-locomotion/task-1-d-spike-1.json", "mode": "spike", "n": 1, "result": { "mode": "spike", "fps": 43.42517527480124, "p95StageMs": 1.7000002264976501, "readbackMs": { "max": 5.099999964237213, "mean": 0.06427443792549277, "windows": 549 }, "frames": 2607 } }
