@@ -823,6 +823,21 @@ pages:
     title-denylist:
       title: Private window titles
       description: The character never reads window titles from these apps. Enter one app file name per line, such as bitwarden.exe or 1Password 7.app. Use * to match any characters.
+  conversation:
+    title: Conversation
+    description: Decide how the character writes its replies
+    register:
+      title: Register
+      description: Talking writes replies as spoken words. Texting writes them like chat messages and can split one reply into a few short messages.
+      options:
+        talking: Talking
+        texting: Texting
+    texting-flavor:
+      title: Texting flavor
+      description: Plain texting uses no faces. Discord texting adds text faces such as :3 or ^_^. Faces are shown in the chat but never spoken. Applies only while the register is Texting.
+      options:
+        plain: Plain
+        discord: Discord
   models:
     description: Live2D, VRM, Spine, MMD, etc.
     title: Models
