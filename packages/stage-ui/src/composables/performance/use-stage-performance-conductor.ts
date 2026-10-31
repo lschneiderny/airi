@@ -8,6 +8,7 @@ import type { AffectTraceRequest } from '@proj-airi/stage-shared/expression-perf
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
 import type { ActiveExpression, ExposedExpression, ExposedExpressionGroup, PerformanceMoodSnapshot } from '../../features/performance/runtime-state'
 import type { ExecutableTool } from '../../stores/ai/chat-llm/tools'
+import type { BodyToolPort } from '../../tools/body'
 import type { ExpressionToolPort } from '../../tools/expression'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -22,6 +23,7 @@ import { EMOTION_EmotionMotionName_value, EMOTION_VALUES } from '../../constants
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
+import { createBodyTools } from '../../tools/body'
 import { createExpressionTools } from '../../tools/expression'
 
 type SpeechEvent = Extract<AffectSignal, { kind: 'speech' }>['event']
@@ -658,6 +660,41 @@ export function createExpressionToolRegistration(host: ExpressionToolsHost, port
   return { sync, dispose }
 }
 
+export const bodyToolIds = ['body:come_here', 'body:go_home', 'body:look_at'] as const
+
+/**
+ * Keeps the body tools registered while the active scene offers a body port.
+ *
+ * A missing port removes the tools, a new port replaces them by id, and `dispose` removes them for good.
+ * A build that a newer port overtook is discarded.
+ */
+export function createBodyToolRegistration(host: ExpressionToolsHost) {
+  let generation = 0
+  let disposed = false
+
+  async function sync(port: BodyToolPort | undefined) {
+    const current = ++generation
+    if (disposed)
+      return
+    if (!port) {
+      host.removeToolsByIds(...bodyToolIds)
+      return
+    }
+    const tools = await createBodyTools(port)
+    if (current !== generation || disposed)
+      return
+    host.addTools(...tools.map(tool => ({ ...tool, id: `body:${tool.function.name}` } satisfies ExecutableTool)))
+  }
+
+  function dispose() {
+    disposed = true
+    generation++
+    host.removeToolsByIds(...bodyToolIds)
+  }
+
+  return { sync, dispose }
+}
+
 /** The expression store surface the tool port reads; leases are the performer's slot occupants. */
 export interface ExpressionToolPerformer {
   readonly llmEligibleEntries: readonly CatalogEntry[]
@@ -737,6 +774,8 @@ export const FACE_BASELINE_SAMPLE_MS = 1000
 export function useStagePerformanceConductor(options: Pick<StagePerformanceConductorOptions, 'scene' | 'driver' | 'playMotion' | 'profile'> & {
   renderer: () => string | undefined
   expressionBackend: () => StageExpressionBackend | undefined
+  /** The body tool port of the active scene; undefined when it has no body support (Live2D, classic MMD). */
+  bodyPort?: () => BodyToolPort | undefined
   /** Reads the Natural mood of the mounted model, or `null` when none runs. */
   mood: () => PerformanceMoodSnapshot | null
   /**
@@ -801,6 +840,10 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
   watch(() => JSON.stringify(exposed.value), () => {
     registration.sync(exposed.value).catch(error => console.error('[performance-conductor] Expression tools failed to register:', errorMessageFrom(error)))
   }, { immediate: true })
+  const bodyRegistration = createBodyToolRegistration(useLlmToolsStore())
+  watch(() => options.bodyPort?.(), (port) => {
+    bodyRegistration.sync(port).catch(error => console.error('[performance-conductor] Body tools failed to register:', errorMessageFrom(error)))
+  }, { immediate: true })
   const diagnostics = useNaturalMotionDiagnostics()
   watch(() => diagnostics.affectTraceRequest, (request) => {
     if (request && options.renderer() === 'live2d')
@@ -809,6 +852,7 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
 
   onScopeDispose(() => {
     registration.dispose()
+    bodyRegistration.dispose()
     conductor.dispose()
   })
 
