@@ -106,9 +106,9 @@ The model declines with the decline marker, `<|SILENT|>` by default (`declineMar
 
 A decline marker that arrives after speech started is removed from the content and the hooks.
 An unprompted turn carries only the host's `unpromptedTools`, which must have no effects. The Responses adapter adds no hosted `web_search`, and `origin` in `StreamOptions` tells the host to send no built-in tools.
-The stream context reports `origin` and the turn's `cueStats` (`act`, `recovered`, `origin`, and `declined`) before the stream-end hooks.
+The stream context reports `origin` and the turn's `cueStats` (`act`, `recovered`, `rejected`, `origin`, `declined`, `silent`, `wordless`, `breaks`, and `breaksIgnored`) before the stream-end hooks.
 For an unprompted turn, `accepted` resolves when the trigger is committed or when the turn is declined, so it does not prove persistence.
-User-origin turns behave exactly as before.
+A user turn treats the decline marker as described in [Wordless and silent user turns](#wordless-and-silent-user-turns).
 
 ```ts
 const { done } = runtime.submit(
@@ -127,6 +127,35 @@ Use unprompted turns when the host has decided that a moment exists and wants th
 Do not use them for messages that the user wrote. Do not add a plugin-protocol input event for them: `origin` is a local runtime field.
 The optional `trigger.kind` lets a host identify why it reached out, such as a thread, ritual, or eligible screen event.
 The [unprompted reach-out cadence ADR](../../docs/ai/adr/2026-10-29-unprompted-reach-out-cadence.md) records the stage design.
+
+## Wordless and silent user turns
+
+The decline marker is control data on every origin. On a user turn, the runtime consumes it: no hook receives it, and neither the content, the stored speech, nor the assistant-end text contains it.
+A marker counts only in visible speech before the first spoken text. A marker inside reasoning or after speech started is removed and changes nothing else.
+When such a reply ends without visible text, the turn is answered without words:
+
+- With at least one ACT, the reply is wordless. The ACT hooks run as usual, so the stage performs the cues, and no literal reaches speech.
+- Without an ACT, the reply is silent.
+
+Both store one assistant message with `content: ''`, the usual slices and tool results (empty for a plain reply), and `wordless: { cues }`, so the user's message does not look unanswered.
+`cues` holds one `{ emotion?, gesture? }` entry per ACT, in order, and is empty for a silent reply. The message has no generation transcript, because that transcript would carry the marker.
+Later requests send the message to the provider as its cue text: one `<|ACT {...}|>` per cue that has a field, then the decline marker, for example `<|ACT {"emotion":"happy"}|><|SILENT|>`. ACT markers alone are not a wordless reply, so the marker stays part of that text.
+The stream-end, assistant-end, assistant-message, and turn-complete hooks run as for a spoken reply, and `cueStats.silent` or `cueStats.wordless` reports the outcome.
+Plugins therefore no longer receive the marker as a special on user turns. Unprompted turns keep their decline semantics unchanged.
+
+## Break slices
+
+`<|BREAK|>` (1 s) and `<|BREAK n|>` (`n` seconds, clamped to 0.3-3.0 by `tokenBreak` from `@proj-airi/pipelines-audio`) split one reply into at most three bubbles. The reply stays one assistant message.
+A well-formed BREAK in visible speech follows these rules on every origin:
+
+- A break before the first text slice is ignored.
+- An accepted break waits for the next visible text. Then it adds a `{ type: 'break', seconds }` slice and `\n\n` to the content, and the token-special hooks receive it before that text. Whitespace between the break and that text is dropped.
+- Adjacent breaks merge into one, which keeps the larger `seconds`.
+- At most two breaks are accepted. A later one is ignored, and a space keeps the texts on both sides apart.
+- A break that no visible text follows is dropped, so a trailing break adds nothing.
+
+`cueStats.breaks` counts the stored break slices. `cueStats.breaksIgnored` counts the leading, over-limit, and trailing breaks. Merged breaks count in neither.
+A malformed BREAK, such as `<|BREAK x|>`, and a BREAK inside reasoning stay ordinary specials. `replayReply` runs the same runtime, so replays follow these rules.
 
 ## VoiceController
 

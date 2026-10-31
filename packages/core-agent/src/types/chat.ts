@@ -1,3 +1,4 @@
+import type { StreamingControlEmotion, StreamingControlGesture } from '@proj-airi/pipelines-audio'
 import type { ContextUpdate, MetadataEventSource, WebSocketEventInputs } from '@proj-airi/server-shared/types'
 import type { AssistantMessage, CommonContentPart, CompletionToolCall, Message, SystemMessage, ToolMessage, UserMessage } from '@xsai/shared-chat'
 
@@ -26,7 +27,20 @@ export interface ChatSlicesSticker {
   stickerId: string
 }
 
-export type ChatSlices = ChatSlicesText | ChatSlicesToolCall | ChatSlicesToolCallResult | ChatSlicesSticker
+/** A pause between two text slices of one reply. Renderers start a new bubble after it. */
+export interface ChatSlicesBreak {
+  type: 'break'
+  /** Pause length in seconds, within 0.3-3.0. */
+  seconds: number
+}
+
+export type ChatSlices = ChatSlicesText | ChatSlicesToolCall | ChatSlicesToolCallResult | ChatSlicesSticker | ChatSlicesBreak
+
+/** One ACT cue of a wordless reply, reduced to the fields that history shows. An ACT with neither field stays an empty entry. */
+export interface ChatWordlessCue {
+  emotion?: StreamingControlEmotion
+  gesture?: StreamingControlGesture
+}
 
 export interface ChatAssistantMessage extends AssistantMessage {
   /** True when transport failure ended this locally preserved response before completion. */
@@ -50,6 +64,14 @@ export interface ChatAssistantMessage extends AssistantMessage {
   providerTranscript?: Message[]
   /** Portable turn history and adapter-owned continuation data. */
   generationTranscript?: AssistantTurn
+  /**
+   * Set when a user turn was answered without words: the reply had no visible text and carried the decline marker
+   * before any speech. `cues` holds one entry per ACT of the reply and is empty for a silent reply. Such a message has
+   * empty content and no generation transcript, and providers receive it as its cue text.
+   */
+  wordless?: {
+    cues: ChatWordlessCue[]
+  }
   categorization?: {
     speech: string
     reasoning: string
@@ -143,6 +165,14 @@ export interface ChatTurnCueStats {
   origin: 'user' | 'unprompted'
   /** The unprompted turn ended without speech. Its cues were never performed. */
   declined: boolean
+  /** The user turn was answered with the decline marker and no ACT and no visible text. */
+  silent: boolean
+  /** The user turn was answered with the decline marker, at least one ACT, and no visible text. */
+  wordless: boolean
+  /** Break slices in the stored reply. */
+  breaks: number
+  /** Well-formed BREAK markers in visible speech that split nothing: before the first text, over the limit, or trailing. */
+  breaksIgnored: number
 }
 
 export type ChatStreamEvent

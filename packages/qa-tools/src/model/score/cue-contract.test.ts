@@ -91,11 +91,13 @@ describe('cue contract scorer', () => {
     expect(score.acts.filter(act => act.recoveredFrom !== null)).toHaveLength(score.cueStats.recovered)
   })
 
-  it('excludes user-origin SILENT from unknown markers without changing stage rejection', async () => {
+  it('scores a user-origin SILENT as consumed by the runtime, not as a stage rejection or a sticker', async () => {
     const score = await cueContractScorer.score(record('<|SILENT|>'), context)
-    expect(score.stageRejected).toBe(1)
-    expect(score.outcome).toBe('rejected')
+    expect(score.stageRejected).toBe(0)
+    expect(score.stageRejectedTokens).toEqual([])
+    expect(score.outcome).toBe('none')
     expect(score.unknownMarkers).toEqual([])
+    expect(score.stickerMarkers).toBe(0)
   })
 
   it('classifies scientific numeric intensity accepted by the normalizer as a number', async () => {
@@ -130,7 +132,7 @@ describe('cue contract scorer', () => {
   it('uses runtime routing for SILENT variants and STICKER boundaries', async () => {
     const score = await cueContractScorer.score(record('<| silent |> <|STICKER:bad|> <|STICKERS cat|> <|LOOK screen|>'), context)
     expect(score.stickerMarkers).toBe(1)
-    expect(score.stageRejected).toBe(3)
+    expect(score.stageRejected).toBe(2)
     expect(score.unknownMarkers).toEqual(['<|STICKERS cat|>', '<|LOOK screen|>'])
   })
 

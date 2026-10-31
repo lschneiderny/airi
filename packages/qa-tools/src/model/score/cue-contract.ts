@@ -103,17 +103,13 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
         else {
           diagnosticSpecials += value.length
           if (!controller.match(value)) {
-            // User-origin routing consumes stickers. After visible speech, unprompted routing
-            // additionally consumes SILENT without declining the turn or holding other specials.
+            // Runtime routing consumes stickers and, on every origin, the decline marker. A lone decline marker
+            // answers a user turn as silent, which tells it apart from a sticker.
             const user = await replayReply({ text: value })
             if (user.specials.length === 0) {
-              stickerMarkers++
               runtimeOnlyMarkers.add(value)
-            }
-            else {
-              const unprompted = await replayReply({ text: `speech ${value}`, origin: 'unprompted' })
-              if (unprompted.specials.length === 0)
-                runtimeOnlyMarkers.add(value)
+              if (!user.cueStats.silent)
+                stickerMarkers++
             }
           }
         }

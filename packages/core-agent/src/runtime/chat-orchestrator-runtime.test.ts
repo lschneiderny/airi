@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { chatMessagesToTurns, conversationToChatMessages } from '../messages/chat-completions'
 import { createChatOrchestratorRuntime } from './chat-orchestrator-runtime'
 import { streamFrom } from './llm-service'
+import { replayReplyAtEveryChunking } from './reply-replay'
 
 const provider: GenerationProvider = {
   generation: model => ({ protocol: 'chat-completions', config: { model, baseURL: 'https://example.com/' } }),
@@ -2151,9 +2152,13 @@ describe('user-origin hook sequence', () => {
     `)
   })
 
-  it('forwards a decline marker as an ordinary special in a user turn', async () => {
+  it('answers a user turn with only the decline marker as a silent reply', async () => {
     const harness = createHarness()
     harness.recordHooks()
+    const streamEnds: Array<ChatTurnCueStats | undefined> = []
+    harness.runtime.hooks.onStreamEnd(async (context) => {
+      streamEnds.push(context.cueStats && { ...context.cueStats })
+    })
     harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
       await options?.onStreamEvent?.({ type: 'text-delta', text: '<|SILENT|>' })
       await options?.onStreamEvent?.({ type: 'finish' })
@@ -2161,6 +2166,9 @@ describe('user-origin hook sequence', () => {
 
     await harness.runtime.ingest('hello', { model: 'gpt-test', chatProvider: provider })
 
+    // The marker is consumed: no hook receives it and nothing stores it. One empty assistant message is committed.
+    expect(streamEnds).toEqual([{ act: 0, recovered: 0, rejected: 0, origin: 'user', declined: false, silent: true, wordless: false, breaks: 0, breaksIgnored: 0 }])
+    expect(JSON.stringify(harness.sessionMessages['session-1'])).not.toContain('SILENT')
     expect({
       order: harness.order,
       messages: harness.sessionMessages['session-1'],
@@ -2180,6 +2188,22 @@ describe('user-origin hook sequence', () => {
             "id": "user-id",
             "role": "user",
           },
+          {
+            "categorization": {
+              "reasoning": "",
+              "speech": "",
+            },
+            "completedAt": 1777157220000,
+            "content": "",
+            "createdAt": 1777157220000,
+            "id": "assistant-id",
+            "role": "assistant",
+            "slices": [],
+            "tool_results": [],
+            "wordless": {
+              "cues": [],
+            },
+          },
         ],
         "order": [
           "lifecycle:before-compose",
@@ -2197,13 +2221,14 @@ describe('user-origin hook sequence', () => {
           "hook:before-send",
           "llmRequestStarted",
           "llmFirstToken",
-          "hook:token-special:<|SILENT|>",
           "foreground:patch",
           "assistantResponseRendered",
+          "commitAssistantMessage:assistant",
+          "assistantMessageAppended",
           "hook:stream-end",
-          "hook:assistant-end:<|SILENT|>",
+          "hook:assistant-end:",
           "hook:after-send",
-          "hook:assistant-message:<|SILENT|>",
+          "hook:assistant-message:",
           "hook:turn-complete",
           "assistantTurnReady",
           "foreground:reset",
@@ -3093,6 +3118,9 @@ it('isolates sticker catalogs, providers, and supplements across concurrent and 
   })
 })
 
+/** Cue stats fields of a reply that is neither wordless nor silent and has no BREAK marker. */
+const noReplyShape = { silent: false, wordless: false, breaks: 0, breaksIgnored: 0 } as const
+
 describe('cue stats of a turn', () => {
   function replyWith(harness: ReturnType<typeof createHarness>, chunks: string[]) {
     harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
@@ -3138,7 +3166,7 @@ describe('cue stats of a turn', () => {
     await harness.runtime.ingest('Hi', { model: 'test', chatProvider: provider }, 'session-1')
 
     expect(seen.filter(entry => entry.hook === 'stream-end')).toEqual([
-      { hook: 'stream-end', cueStats: { rejected: 0, ...expected, origin: 'user', declined: false } },
+      { hook: 'stream-end', cueStats: { rejected: 0, ...expected, origin: 'user', declined: false, ...noReplyShape } },
     ])
   })
 
@@ -3154,8 +3182,8 @@ describe('cue stats of a turn', () => {
     expect(seen).toEqual([
       { hook: 'token-special', cueStats: undefined },
       { hook: 'token-special', cueStats: undefined },
-      { hook: 'stream-end', cueStats: { act: 2, recovered: 1, rejected: 0, origin: 'user', declined: false } },
-      { hook: 'stream-end', cueStats: { act: 0, recovered: 0, rejected: 0, origin: 'user', declined: false } },
+      { hook: 'stream-end', cueStats: { act: 2, recovered: 1, rejected: 0, origin: 'user', declined: false, ...noReplyShape } },
+      { hook: 'stream-end', cueStats: { act: 0, recovered: 0, rejected: 0, origin: 'user', declined: false, ...noReplyShape } },
     ])
   })
 
@@ -3168,7 +3196,7 @@ describe('cue stats of a turn', () => {
 
     expect(harness.settled).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', status: 'declined' }])
     expect(seen).toEqual([
-      { hook: 'stream-end', cueStats: { act: 1, recovered: 1, rejected: 0, origin: 'unprompted', declined: true } },
+      { hook: 'stream-end', cueStats: { act: 1, recovered: 1, rejected: 0, origin: 'unprompted', declined: true, ...noReplyShape } },
     ])
   })
 
@@ -3180,8 +3208,191 @@ describe('cue stats of a turn', () => {
     await harness.runtime.ingest('(A quiet moment.)', { model: 'test', chatProvider: provider, origin: 'unprompted', messageId: 'trigger-1' }, 'session-1')
 
     expect(seen.filter(entry => entry.hook === 'stream-end')).toEqual([
-      { hook: 'stream-end', cueStats: { act: 1, recovered: 0, rejected: 0, origin: 'unprompted', declined: false } },
+      { hook: 'stream-end', cueStats: { act: 1, recovered: 0, rejected: 0, origin: 'unprompted', declined: false, ...noReplyShape } },
     ])
+  })
+})
+
+describe('wordless user turns and break slices', () => {
+  function replyWith(harness: ReturnType<typeof createHarness>, chunks: string[]) {
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      for (const text of chunks)
+        await options?.onStreamEvent?.({ type: 'text-delta', text })
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+  }
+
+  /** Runs one user turn and returns what the hooks saw and what the session stored. */
+  async function userTurn(chunks: string[]) {
+    const harness = createHarness()
+    harness.recordHooks()
+    const literals: string[] = []
+    const specials: string[] = []
+    const streamEnds: Array<ChatTurnCueStats | undefined> = []
+    harness.runtime.hooks.onTokenLiteral(async (text) => {
+      literals.push(text)
+    })
+    harness.runtime.hooks.onTokenSpecial(async (text) => {
+      specials.push(text)
+    })
+    harness.runtime.hooks.onStreamEnd(async (context) => {
+      streamEnds.push(context.cueStats && { ...context.cueStats })
+    })
+    replyWith(harness, chunks)
+
+    await harness.runtime.ingest('Hi', { model: 'test', chatProvider: provider }, 'session-1')
+
+    return { harness, literals, specials, streamEnds, saved: harness.sessionMessages['session-1'].at(-1) }
+  }
+
+  /** Every way a stream can deliver `text`: whole, split once at each offset, and one character per chunk. */
+  function chunkingsOf(text: string) {
+    const splits = Array.from({ length: text.length - 1 }, (_, index) => [text.slice(0, index + 1), text.slice(index + 1)])
+    return [[text], ...splits, [...text]]
+  }
+
+  it('stores a wordless reply for ACT then the decline marker, performs the ACT, and speaks nothing', async () => {
+    const { harness, literals, specials, streamEnds, saved } = await userTurn(['<|ACT happy|><|SILENT|>'])
+
+    expect(specials).toEqual(['<|ACT happy|>'])
+    expect(literals).toEqual([])
+    expect(saved).toMatchObject({ role: 'assistant', content: '', slices: [], tool_results: [], wordless: { cues: [{ emotion: 'happy' }] } })
+    expect(streamEnds).toEqual([{ act: 1, recovered: 0, rejected: 0, origin: 'user', declined: false, silent: false, wordless: true, breaks: 0, breaksIgnored: 0 }])
+    expect(JSON.stringify(harness.sessionMessages['session-1'])).not.toContain('SILENT')
+    expect(harness.order.filter(entry => entry.includes('SILENT'))).toEqual([])
+    // Hosts close the speech response that they opened before composition.
+    expect(harness.order.filter(entry => entry === 'hook:stream-end')).toHaveLength(1)
+    expect(harness.settled).toEqual([expect.objectContaining({ status: 'finished' })])
+  })
+
+  it('stores a wordless reply when the decline marker comes before a gesture-only ACT', async () => {
+    const { specials, literals, saved, streamEnds } = await userTurn(['<|SILENT|>', '<|ACT {"gesture":"nod"}|>'])
+
+    expect(specials).toEqual(['<|ACT {"gesture":"nod"}|>'])
+    expect(literals).toEqual([])
+    expect(saved).toMatchObject({ role: 'assistant', content: '', slices: [], wordless: { cues: [{ gesture: { kind: 'nod', count: 2 } }] } })
+    expect(streamEnds[0]).toMatchObject({ act: 1, silent: false, wordless: true })
+  })
+
+  it('commits a wordless reply without the generation transcript that carries the decline marker', async () => {
+    const harness = createHarness()
+    const [generatedTurn] = chatMessagesToTurns([{ role: 'assistant', content: '<|ACT happy|><|SILENT|>' }])
+    if (generatedTurn.type !== 'assistant')
+      throw new Error('Expected assistant turn')
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '<|ACT happy|><|SILENT|>' })
+      await options?.onGeneratedTurn?.(generatedTurn)
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest('Hi', { model: 'test', chatProvider: provider }, 'session-1')
+
+    const saved = harness.sessionMessages['session-1'].at(-1)
+    expect(saved).toMatchObject({ role: 'assistant', wordless: { cues: [{ emotion: 'happy' }] } })
+    expect(saved?.role === 'assistant' && saved.generationTranscript).toBeUndefined()
+    expect(JSON.stringify(saved)).not.toContain('SILENT')
+  })
+
+  it.each([
+    ['a wordless reply', ['<|ACT {"emotion":"happy","gesture":"shrug"}|>', '<|SILENT|>'], '<|ACT {"emotion":"happy","gesture":{"kind":"shrug","count":1}}|><|SILENT|>'],
+    ['a silent reply', ['<|SILENT|>'], '<|SILENT|>'],
+  ])('sends %s to the provider as its cue text in the next request', async (_name, chunks, cueText) => {
+    const harness = createHarness()
+    replyWith(harness, chunks)
+    replyWith(harness, ['Sure.'])
+
+    await harness.runtime.ingest('first', { model: 'test', chatProvider: provider }, 'session-1')
+    await harness.runtime.ingest('second', { model: 'test', chatProvider: provider }, 'session-1')
+
+    const [, , conversation] = harness.stream.mock.calls[1]!
+    const messages = conversationToChatMessages(conversation)
+    expect(messages.filter(message => message.role === 'assistant')).toEqual([{ role: 'assistant', content: cueText }])
+  })
+
+  it('removes a decline marker that arrives after speech started and stores an ordinary reply', async () => {
+    const { harness, specials, saved, streamEnds } = await userTurn(['Hi ', '<|SILENT|>', ' there'])
+
+    expect(specials).toEqual([])
+    expect(saved).toMatchObject({ role: 'assistant', content: 'Hi  there', categorization: { speech: 'Hi  there' } })
+    expect(saved?.role === 'assistant' && saved.wordless).toBeUndefined()
+    expect(harness.order).toContain('hook:assistant-end:Hi  there')
+    expect(streamEnds[0]).toMatchObject({ silent: false, wordless: false })
+  })
+
+  it('does not answer wordless for a decline marker inside reasoning', async () => {
+    const { specials, saved, streamEnds } = await userTurn(['<think>I could stay ', '<|SILENT|>', '</think>', '<|ACT happy|>'])
+
+    expect(specials).toEqual(['<|ACT happy|>'])
+    // Without visible text or a wordless answer, the turn stores no assistant message, as before.
+    expect(saved?.role).toBe('user')
+    expect(streamEnds).toEqual([{ act: 1, recovered: 0, rejected: 0, origin: 'user', declined: false, silent: false, wordless: false, breaks: 0, breaksIgnored: 0 }])
+  })
+
+  it('splits text at most twice at BREAK and joins the text around an ignored one, at every chunk split', async () => {
+    const reply = 'a<|BREAK|>b<|BREAK 0.5|>c<|BREAK|>d'
+    for (const chunks of chunkingsOf(reply)) {
+      const label = JSON.stringify(chunks)
+      const { specials, saved, streamEnds } = await userTurn(chunks)
+
+      expect(specials, label).toEqual(['<|BREAK|>', '<|BREAK 0.5|>'])
+      expect(saved?.role === 'assistant' && saved.slices, label).toEqual([
+        { type: 'text', text: 'a' },
+        { type: 'break', seconds: 1 },
+        { type: 'text', text: 'b' },
+        { type: 'break', seconds: 0.5 },
+        { type: 'text', text: 'c d' },
+      ])
+      expect(saved?.content, label).toBe('a\n\nb\n\nc d')
+      expect(streamEnds[0], label).toMatchObject({ breaks: 2, breaksIgnored: 1 })
+    }
+  })
+
+  it('merges adjacent breaks into the longer one and drops the whitespace between bubbles', async () => {
+    const { specials, saved, streamEnds } = await userTurn(['Hi', '<|BREAK 0.5|>', ' ', '<|BREAK 2|>', ' there'])
+
+    expect(specials).toEqual(['<|BREAK 2|>'])
+    expect(saved).toMatchObject({
+      content: 'Hi\n\nthere',
+      slices: [{ type: 'text', text: 'Hi' }, { type: 'break', seconds: 2 }, { type: 'text', text: 'there' }],
+    })
+    expect(streamEnds[0]).toMatchObject({ breaks: 1, breaksIgnored: 0 })
+  })
+
+  it.each([
+    ['a leading break', ['<|BREAK|>', 'Hi there']],
+    ['a trailing break', ['Hi there', '<|BREAK 2|>', '  ']],
+  ])('keeps one bubble for %s', async (_name, chunks) => {
+    const { specials, saved, streamEnds } = await userTurn(chunks)
+
+    expect(specials).toEqual([])
+    expect(saved).toMatchObject({ content: 'Hi there', slices: [{ type: 'text', text: 'Hi there' }] })
+    expect(streamEnds[0]).toMatchObject({ breaks: 0, breaksIgnored: 1 })
+  })
+
+  it('forwards a malformed BREAK as an ordinary special without splitting the text', async () => {
+    const { specials, saved, streamEnds } = await userTurn(['a', '<|BREAK x|>', 'b'])
+
+    expect(specials).toEqual(['<|BREAK x|>'])
+    expect(saved).toMatchObject({ content: 'ab', slices: [{ type: 'text', text: 'ab' }] })
+    expect(streamEnds[0]).toMatchObject({ breaks: 0, breaksIgnored: 0 })
+  })
+
+  it('ignores a break before the first text of an unprompted turn and still commits at that text', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    replyWith(harness, ['<|BREAK|>', 'Oh, hi!'])
+
+    await harness.runtime.ingest('(A quiet moment.)', { model: 'test', chatProvider: provider, origin: 'unprompted', messageId: 'trigger-1' }, 'session-1')
+
+    expect(harness.sessionMessages['session-1'].at(-1)).toMatchObject({ role: 'assistant', content: 'Oh, hi!', slices: [{ type: 'text', text: 'Oh, hi!' }] })
+    expect(harness.order.filter(entry => entry.startsWith('hook:token-') && entry.includes('BREAK'))).toEqual([])
+  })
+
+  it('replays the break rule identically at every chunking', async () => {
+    const replay = await replayReplyAtEveryChunking('a<|BREAK|>b<|BREAK|>c<|BREAK|>d<|BREAK|>')
+
+    expect(replay.specials).toEqual([{ value: '<|BREAK|>' }, { value: '<|BREAK|>' }])
+    expect(replay.cueStats).toMatchObject({ breaks: 2, breaksIgnored: 2 })
   })
 })
 
@@ -3223,7 +3434,7 @@ describe('malformed DELAY durations, line-broken ACT cues and colon-form cues th
    * Checks one reply at every chunking. The runtime does not forward a whitespace-only literal to the hooks,
    * so split runs compare the spoken text without whitespace. The whole-reply run and the stored speech compare exactly.
    */
-  async function expectAtEveryChunking(reply: string, speech: string, cueStats: Omit<ChatTurnCueStats, 'origin' | 'declined'>) {
+  async function expectAtEveryChunking(reply: string, speech: string, cueStats: Pick<ChatTurnCueStats, 'act' | 'recovered' | 'rejected'>) {
     for (const chunks of chunkingsOf(reply)) {
       const label = JSON.stringify(chunks)
       const result = await replay(chunks)
@@ -3232,7 +3443,7 @@ describe('malformed DELAY durations, line-broken ACT cues and colon-form cues th
       if (chunks.length === 1)
         expect(result.literal, label).toBe(speech)
       expect(result.speech, label).toBe(speech)
-      expect(result.cueStats, label).toEqual({ ...cueStats, origin: 'user', declined: false })
+      expect(result.cueStats, label).toEqual({ ...cueStats, origin: 'user', declined: false, ...noReplyShape })
     }
   }
 
@@ -3288,7 +3499,7 @@ describe('malformed DELAY durations, line-broken ACT cues and colon-form cues th
       literal: ' e',
       specials: [special],
       speech: ' e',
-      cueStats: { act, recovered: 1, rejected: 0, origin: 'user', declined: false },
+      cueStats: { act, recovered: 1, rejected: 0, origin: 'user', declined: false, ...noReplyShape },
     })
   })
 })

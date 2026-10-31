@@ -75,7 +75,7 @@ describe('exchange situation sensor', () => {
     const sensor = start()
     const unprompted = turn('turn-1', { origin: 'unprompted' })
     await hooks.emitBeforeSendHooks('', unprompted)
-    await hooks.emitStreamEndHooks({ ...unprompted, cueStats: { act: 0, recovered: 0, rejected: 0, origin: 'unprompted', declined: true } })
+    await hooks.emitStreamEndHooks({ ...unprompted, cueStats: { act: 0, recovered: 0, rejected: 0, origin: 'unprompted', declined: true, silent: false, wordless: false, breaks: 0, breaksIgnored: 0 } })
     await reply(hooks, turn('turn-2', { origin: 'unprompted' }))
 
     sensor.check(T0 + 2 * EXCHANGE_QUIET_MS)
