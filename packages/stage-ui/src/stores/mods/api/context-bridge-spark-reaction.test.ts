@@ -184,7 +184,7 @@ async function speakUnprompted(hooks: ChatHookRegistry, payload: ChatUnpromptedP
 async function declineUnprompted(hooks: ChatHookRegistry, payload: ChatUnpromptedPayload) {
   const context = unpromptedContext(payload)
   await hooks.emitBeforeSendHooks(context.message.content as string, context)
-  await hooks.emitStreamEndHooks({ ...context, cueStats: { act: 0, recovered: 0, rejected: 0, origin: 'unprompted', declined: true } })
+  await hooks.emitStreamEndHooks({ ...context, cueStats: { act: 0, recovered: 0, rejected: 0, origin: 'unprompted', declined: true, silent: false, wordless: false, breaks: 0, breaksIgnored: 0 } })
 }
 
 describe('widget spark reactions', () => {

@@ -825,7 +825,7 @@ describe('situation gate loop', () => {
     const turnId = payload.messageId!
     const context: ChatStreamEventContext = { sessionId: 'session-1', turnId, origin: 'unprompted', message: { role: 'user', content: '(A quiet moment.)', createdAt: Date.now(), id: turnId, trigger: triggerOf(payload) }, contexts: {}, composedMessage: [] }
     await hooks.emitBeforeSendHooks('(A quiet moment.)', context)
-    await hooks.emitStreamEndHooks({ ...context, cueStats: { act: 0, recovered: 0, rejected: 0, origin: 'unprompted', declined: true } })
+    await hooks.emitStreamEndHooks({ ...context, cueStats: { act: 0, recovered: 0, rejected: 0, origin: 'unprompted', declined: true, silent: false, wordless: false, breaks: 0, breaksIgnored: 0 } })
   }
 
   /** An open question from an earlier exchange of `session-1`, ripe now and saved before the leader starts. */

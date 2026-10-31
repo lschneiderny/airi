@@ -5,9 +5,10 @@ import type { AgentContextPort } from '../contracts/context-port'
 import type { AgentLLMPort } from '../contracts/llm-port'
 import type { AgentForegroundStreamPort } from '../contracts/stream-port'
 import type { AssistantTurn, Conversation, Turn } from '../messages/types'
-import type { ChatHistoryItem, ChatSlices, ChatSlicesToolCall, ChatStreamEventContext, ChatToolReference, ChatTurnTrigger, ContextMessage, StreamingAssistantMessage } from '../types/chat'
+import type { ChatAssistantMessage, ChatHistoryItem, ChatSlices, ChatSlicesToolCall, ChatStreamEventContext, ChatToolReference, ChatTurnTrigger, ChatWordlessCue, ContextMessage, StreamingAssistantMessage } from '../types/chat'
 import type { LlmUsage, StreamEvent, StreamOptions } from '../types/llm'
 
+import { normalizeActPayload, tokenAct, tokenBreak } from '@proj-airi/pipelines-audio'
 import { createQueue } from '@proj-airi/stream-kit'
 
 import { chatMessagesToTurns } from '../messages/chat-completions'
@@ -27,6 +28,42 @@ const REASONING_UI_FLUSH_CHUNK_SIZE = 24
 const REPLY_PROMPT_REFERENCE_CHARACTER_LIMIT = 480
 
 const DEFAULT_DECLINE_MARKER = '<|SILENT|>'
+
+/** Accepted breaks per reply. Two breaks split a reply into at most three bubbles. */
+const REPLY_BREAK_LIMIT = 2
+
+const actParser = tokenAct()
+const breakParser = tokenBreak()
+
+/**
+ * Reduces an ACT marker to the cue fields that a wordless reply keeps.
+ *
+ * @example
+ * wordlessCueFrom('<|ACT {"emotion":"happy","gesture":"shrug"}|>')
+ * // => { emotion: 'happy', gesture: { kind: 'shrug', count: 1 } }
+ */
+function wordlessCueFrom(special: string): ChatWordlessCue {
+  const token = actParser.parse(special)
+  if (!token)
+    return {}
+  const { emotion, gesture } = normalizeActPayload(token.payload)
+  return { ...(emotion && { emotion: emotion.name }), ...(gesture && { gesture }) }
+}
+
+/**
+ * Renders a wordless reply as the model output that produces one, so later requests show how the turn was answered.
+ * The decline marker is part of that output: ACT markers alone are not a wordless reply, and a silent reply has no cue.
+ *
+ * @example
+ * renderWordlessCueText({ cues: [{ emotion: 'happy' }, {}] }, '<|SILENT|>')
+ * // => '<|ACT {"emotion":"happy"}|><|SILENT|>'
+ */
+function renderWordlessCueText(wordless: NonNullable<ChatAssistantMessage['wordless']>, declineMarker: string) {
+  const cues = wordless.cues
+    .filter(cue => cue.emotion || cue.gesture)
+    .map(cue => `<|ACT ${JSON.stringify(cue)}|>`)
+  return `${cues.join('')}${declineMarker}`
+}
 
 /**
  * Normalizes a special marker for decline comparison.
@@ -632,10 +669,12 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     return fallbackCreatedAt
   }
 
-  function buildContext(history: ChatHistoryItem[]): Conversation {
+  function buildContext(history: ChatHistoryItem[], declineMarker: string): Conversation {
     const nowTs = now()
     const messagesById = new Map(history.flatMap(message => message.id ? [[message.id, message] as const] : []))
     const turns = history.flatMap((message, historyIndex): Turn[] => {
+      if (message.role === 'assistant' && message.wordless)
+        return chatMessagesToTurns([{ ...unwrapMessage(message), content: renderWordlessCueText(message.wordless, declineMarker) }], message.id ?? `history-${historyIndex}`)
       if (message.role === 'assistant' && message.generationTranscript)
         return [structuredClone(unwrapMessage(message.generationTranscript))]
       const source = message.role === 'user'
@@ -661,9 +700,12 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     // An unprompted turn is undecided ('holding') until its first visible speech. Until then it commits nothing,
     // publishes no assistant message, and buffers special hooks. It then becomes 'spoken' or 'declined'.
     const unprompted = options.origin === 'unprompted'
-    const declineMarker = normalizeMarker(options.declineMarker ?? DEFAULT_DECLINE_MARKER)
-    const declineMarkerPattern = unprompted ? createDeclineMarkerPattern(declineMarker) : undefined
-    const withoutDeclineMarkers = (text: string) => declineMarkerPattern ? text.replace(declineMarkerPattern, '') : text
+    // The decline marker is control data on every origin. It declines an unprompted turn and answers a user turn
+    // without words, and it is never forwarded to hooks or stored.
+    const declineMarkerText = (options.declineMarker ?? DEFAULT_DECLINE_MARKER).trim()
+    const declineMarker = normalizeMarker(declineMarkerText)
+    const declineMarkerPattern = createDeclineMarkerPattern(declineMarker)
+    const withoutDeclineMarkers = (text: string) => text.replace(declineMarkerPattern, '')
 
     const existingSessionMessages = deps.session.getSessionMessages(sessionId)
     let replyToMessageId = resolveReplyTargetId(options.replyToMessageId, existingSessionMessages)
@@ -947,6 +989,16 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       let strippedCueCount = 0
       let pendingSpeechWhitespace = ''
       let speechStarted = false
+      // Set when the decline marker of a user turn arrives in visible speech before any spoken text.
+      let silentSeen = false
+      // One entry per ACT, in order. A wordless reply stores them.
+      const wordlessCues: ChatWordlessCue[] = []
+      // An accepted break waits for the next visible text. A break before it merges into it, and a trailing one is dropped.
+      let pendingBreak: { special: string, seconds: number } | undefined
+      let breaks = 0
+      let breaksIgnored = 0
+      // A break over the limit splits nothing, but the texts on both sides of it must stay apart.
+      let separateAfterIgnoredBreak = false
       const stickers = options.stickers
       let stickerEmitted = false
 
@@ -980,6 +1032,27 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
                 if (shouldAbort())
                   return
               }
+            }
+
+            if (pendingBreak) {
+              // Whitespace between a break and the next text belongs to neither bubble.
+              if (!speechOnly.trim())
+                return
+              speechOnly = speechOnly.trimStart()
+              const accepted = pendingBreak
+              pendingBreak = undefined
+              breaks++
+              await hooks.emitTokenSpecialHooks(accepted.special, streamingMessageContext)
+              if (shouldAbort())
+                return
+              buildingMessage.slices.push({ type: 'break', seconds: accepted.seconds })
+              buildingMessage.content += '\n\n'
+            }
+            else if (separateAfterIgnoredBreak) {
+              separateAfterIgnoredBreak = false
+              const previous = buildingMessage.slices.at(-1)
+              if (previous?.type === 'text' && !/\s$/.test(previous.text) && !/^\s/.test(speechOnly))
+                speechOnly = ` ${speechOnly}`
             }
 
             buildingMessage.content += speechOnly
@@ -1018,12 +1091,17 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
             return
           }
 
-          if (unprompted && normalizeMarker(special) === declineMarker) {
-            // Only a marker in visible speech before the first spoken text declines. Reasoning can mention it.
+          if (normalizeMarker(special) === declineMarker) {
+            // Only a marker in visible speech before the first spoken text counts. Reasoning can mention it.
             // The marker is control data: it is never forwarded to hooks or stored.
-            if (turnState === 'holding' && categorizer.filterToSpeech(special, streamPosition)) {
-              declineTurn()
-              stopProvider()
+            if (unprompted) {
+              if (turnState === 'holding' && categorizer.filterToSpeech(special, streamPosition)) {
+                declineTurn()
+                stopProvider()
+              }
+            }
+            else if (!speechStarted && categorizer.filterToSpeech(special, streamPosition)) {
+              silentSeen = true
             }
             return
           }
@@ -1042,8 +1120,30 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
             return
           }
 
-          if (/^<\|ACT\b/.test(special))
+          // A malformed BREAK is no break. It stays an ordinary special, which the stage rejects.
+          const breakToken = breakParser.match(special) && categorizer.filterToSpeech(special, streamPosition)
+            ? breakParser.parse(special)
+            : undefined
+          if (breakToken) {
+            // Adjacent breaks are one pause, as long as the longer one.
+            if (pendingBreak) {
+              if (breakToken.seconds > pendingBreak.seconds)
+                pendingBreak = { special, seconds: breakToken.seconds }
+              return
+            }
+            if (!buildingMessage.slices.some(slice => slice.type === 'text') || breaks >= REPLY_BREAK_LIMIT) {
+              breaksIgnored++
+              separateAfterIgnoredBreak = true
+              return
+            }
+            pendingBreak = { special, seconds: breakToken.seconds }
+            return
+          }
+
+          if (/^<\|ACT\b/.test(special)) {
             actCount++
+            wordlessCues.push(wordlessCueFrom(special))
+          }
 
           if (turnState === 'holding') {
             heldSpecials.push(special)
@@ -1056,8 +1156,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           if (shouldAbort() || outputClosed())
             return
 
-          // Strip only sticker markers, including the escaped form accepted by the parser.
-          // Unprompted turns also strip their decline marker.
+          // Strip only sticker markers and the decline marker, including the escaped form accepted by the parser.
           const speechText = withoutDeclineMarkers(fullText.replace(/<(?:\||\{'\|'\})STICKER\b[\s\S]*?(?:(?:\||\{'\|'\})>|$)/g, ''))
           const finalCategorization = categorizeResponse(speechText, activeProvider)
 
@@ -1082,6 +1181,10 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           rejected: strippedCueCount,
           origin: unprompted ? 'unprompted' : 'user',
           declined: turnState === 'declined',
+          silent: !!buildingMessage.wordless && actCount === 0,
+          wordless: !!buildingMessage.wordless && actCount > 0,
+          breaks,
+          breaksIgnored,
         }
       }
 
@@ -1106,7 +1209,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         ],
       })
 
-      const context = buildContext(sessionMessagesForSend)
+      const context = buildContext(sessionMessagesForSend, declineMarkerText)
       const stickerPrompt = stickers?.length
         ? [
             'You can send one optional sticker per reply with a marker from this catalog.',
@@ -1313,6 +1416,11 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         return
       }
       fullText = withoutDeclineMarkers(fullText)
+      // A break that no text follows splits nothing.
+      if (pendingBreak) {
+        pendingBreak = undefined
+        breaksIgnored++
+      }
 
       // A reply that ends without visible speech declines an unprompted turn.
       if (turnState === 'holding')
@@ -1330,7 +1438,13 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       }
 
       generationCompleted = true
-      buildingMessage.generationTranscript = generatedTurn
+      // A user turn answered by the decline marker before any text is wordless with an ACT, and silent without one.
+      // One assistant message keeps the user's message from looking ignored. Its transcript would carry the marker,
+      // so providers receive its cue text instead.
+      if (!unprompted && silentSeen && !buildingMessage.slices.some(slice => slice.type === 'text'))
+        buildingMessage.wordless = { cues: wordlessCues }
+      else
+        buildingMessage.generationTranscript = generatedTurn
       try {
         deps.onAssistantResponseRendered?.({
           ...correlation,
@@ -1342,7 +1456,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         console.error('Assistant response observer failed:', error)
       }
 
-      if (!shouldAbort() && (buildingMessage.slices.length > 0 || generatedTurn?.rounds.length)) {
+      if (!shouldAbort() && (buildingMessage.slices.length > 0 || generatedTurn?.rounds.length || buildingMessage.wordless)) {
         const finalAssistant = buildingMessage
         finalAssistant.completedAt = now()
         await deps.session.commitAssistantMessage(sessionId, { ...finalAssistant, id: assistantMessageId })
