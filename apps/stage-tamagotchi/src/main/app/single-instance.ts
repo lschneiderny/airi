@@ -1,6 +1,6 @@
 import type { App, BrowserWindow } from 'electron'
 
-import { toggleWindowShow } from '../windows/shared/window'
+import { showUserFacingWindow } from '../windows/stage/identity'
 
 interface SingleInstanceGuardOptions {
   app: App
@@ -8,7 +8,8 @@ interface SingleInstanceGuardOptions {
 }
 
 /**
- * Focuses the main AIRI window after a duplicate launch.
+ * Shows the user-facing AIRI window after a duplicate launch. The classic window is focused; the desktop stage is
+ * shown without focus, so the launch does not take focus from the app in front.
  *
  * Use when:
  * - Electron forwards a second process launch to the primary instance
@@ -26,7 +27,7 @@ function focusMainWindow(getWindow: SingleInstanceGuardOptions['getWindow']) {
     return
   }
 
-  toggleWindowShow(window)
+  showUserFacingWindow(window)
 }
 
 /**

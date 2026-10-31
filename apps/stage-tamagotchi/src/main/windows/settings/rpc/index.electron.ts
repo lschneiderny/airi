@@ -27,8 +27,8 @@ import { registerIOTraceRecording } from '../../../services/airi/io-trace-record
 import { createMcpServersService } from '../../../services/airi/mcp-servers'
 import { createWidgetsService } from '../../../services/airi/widgets'
 import { createAutoUpdaterService } from '../../../services/electron'
-import { centerWindowOnDisplay } from '../../shared/display'
 import { setupBaseWindowElectronInvokes } from '../../shared/window'
+import { centerUserFacingWindow } from '../../stage/identity'
 
 export async function setupSettingsWindowInvokes(params: {
   settingsWindow: BrowserWindow
@@ -64,7 +64,7 @@ export async function setupSettingsWindowInvokes(params: {
   // Register the global shortcut service for the settings window.
   params.globalShortcut.registerWindow({ context, window: params.settingsWindow })
 
-  defineInvokeHandler(context, electronCenterMainWindow, () => centerWindowOnDisplay(params.getMainWindow?.()))
+  defineInvokeHandler(context, electronCenterMainWindow, () => centerUserFacingWindow(params.getMainWindow?.()))
   defineInvokeHandler(context, electronSpotlightShortcutGet, () => params.spotlightWindow.getShortcutAccelerator())
   defineInvokeHandler(context, electronSpotlightShortcutSet, (payload) => {
     if (payload?.accelerator === undefined)

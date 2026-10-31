@@ -37,8 +37,8 @@ import { createMcpServersService } from '../../../services/airi/mcp-servers'
 import { createOnboardingService } from '../../../services/airi/onboarding'
 import { createWidgetsService } from '../../../services/airi/widgets'
 import { createAutoUpdaterService } from '../../../services/electron'
-import { centerWindowOnDisplay } from '../../shared/display'
 import { setupBaseWindowElectronInvokes } from '../../shared/window'
+import { centerUserFacingWindow } from '../../stage/identity'
 
 export async function setupMainWindowElectronInvokes(params: {
   window: BrowserWindow
@@ -81,7 +81,7 @@ export async function setupMainWindowElectronInvokes(params: {
   const stopIOTraceRecording = registerIOTraceRecording(context, params.ioTraceRecording)
   params.window.once('closed', stopIOTraceRecording)
 
-  defineInvokeHandler(context, electronCenterMainWindow, () => centerWindowOnDisplay(params.window))
+  defineInvokeHandler(context, electronCenterMainWindow, () => centerUserFacingWindow(params.window))
   defineInvokeHandler(context, electronOpenMainDevtools, () => params.window.webContents.openDevTools({ mode: 'detach' }))
   defineInvokeHandler(context, electronOpenEditor, () => params.editorWindow.openWindow())
   // Speech opens the inlay without focus, so the user can keep working in another app while speaking.
