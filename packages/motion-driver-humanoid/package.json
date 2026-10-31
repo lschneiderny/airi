@@ -3,9 +3,11 @@
   "type": "module",
   "private": true,
   "exports": {
+    "./clip-mask": "./src/clip-mask/index.ts",
     "./director": "./src/director/index.ts",
     "./foot-contact": "./src/foot-contact/index.ts",
     "./look-at": "./src/look-at/index.ts",
+    "./rest-pose": "./src/rest-pose/index.ts",
     "./types": "./src/types/index.ts",
     "./weight-shift": "./src/weight-shift/index.ts"
   },

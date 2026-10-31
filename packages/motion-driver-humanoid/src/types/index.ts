@@ -25,6 +25,12 @@ export type HumanoidBoneName
     | 'rightLowerArm'
     | 'rightHand'
 
+/** Canonical finger bone names; Metacarpal is absent on rigs without it. */
+export type HumanoidFingerBoneName = `${'left' | 'right'}${'Thumb' | 'Index' | 'Middle' | 'Ring' | 'Little'}${'Metacarpal' | 'Proximal' | 'Intermediate' | 'Distal'}`
+
+/** Bones driven by the arm rest pose: shoulder, upper arm, lower arm, hand and fingers. */
+export type ArmBoneName = Extract<HumanoidBoneName, `${string}${'Shoulder' | 'UpperArm' | 'LowerArm' | 'Hand'}`> | HumanoidFingerBoneName
+
 /** A position or direction in model units. */
 export interface Vec3 {
   x: number
@@ -32,12 +38,18 @@ export interface Vec3 {
   z: number
 }
 
-/** Rest-relative angles, in radians, in the bone's parent frame. */
+/**
+ * Rest-relative angles, in radians, in the bone's parent frame.
+ * Applied as intrinsic YXZ Euler angles: `R = Ry(yaw) * Rx(pitch) * Rz(roll)`.
+ */
 export interface RestRelativeRotation {
   yaw: number
   pitch: number
   roll: number
 }
+
+export { matrixToRotation, mirrorRotation, rotationToMatrix } from './rotation'
+export type { RotationMatrix } from './rotation'
 
 /** Measurements and capabilities derived from a humanoid rig. */
 export interface RigTraits {
