@@ -49,6 +49,9 @@ import {
   useMMDEmote,
   useMMDLipSync,
 } from '../../composables/mmd'
+import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
+import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
+import { readMMDRigProfile } from '../../composables/mmd/rig'
 import { Emotion, EMOTION_VALUES } from '../../constants/emotions'
 import { useMMD } from '../../stores/mmd'
 import { useMMDMotionDiagnostics } from '../../stores/motion-diagnostics'
@@ -93,6 +96,7 @@ const {
   grantEnabled,
   physicsGravity,
   gazeMode,
+  motionDriver,
   position,
   scale,
   rotationY,
@@ -127,6 +131,10 @@ let mesh: SkinnedMesh | undefined
 let morphs: MorphController | undefined
 let animation: MMDAnimationManager | undefined
 let emote: ReturnType<typeof useMMDEmote> | undefined
+let morphRuntime: ReturnType<typeof createMMDMorphRuntime> | undefined
+let natural: MMDNaturalAdapter | undefined
+let rig: ReturnType<typeof readMMDRigProfile> | undefined
+let stopMorphOverrides: (() => void) | undefined
 // Motion names already bound to the current model runtime.
 const registeredMotions = new Set<string>()
 let rafHandle = 0
@@ -377,12 +385,19 @@ function renderLoop(now = performance.now()) {
     lastDiagnosticsTime = now
     diagnostics.publish({
       loadedModelKey,
+      driver: motionDriver.value,
+      rig: rig ?? null,
+      natural: natural?.diagnostics ?? null,
       animation: animation?.snapshot() ?? { idle: null, currentAction: null, actionsStarted: 0 },
     })
   }
 }
 
 function disposeModel() {
+  stopMorphOverrides?.()
+  stopMorphOverrides = undefined
+  emote?.dispose()
+  morphRuntime?.resetToBase()
   const runtimeDisposedByManager = animation !== undefined
   if (animation) {
     animation.dispose()
@@ -401,11 +416,14 @@ function disposeModel() {
   mesh = undefined
   morphs = undefined
   emote = undefined
+  morphRuntime = undefined
+  natural = undefined
+  rig = undefined
   gaze = undefined
   resolved = undefined
   loadedModelKey = null
   diagnostics.setMetrics(new MMDFrameMetrics())
-  diagnostics.publish({ loadedModelKey: null, animation: { idle: null, currentAction: null, actionsStarted: 0 } })
+  diagnostics.publish({ loadedModelKey: null, rig: null, natural: null, animation: { idle: null, currentAction: null, actionsStarted: 0 } })
   mmdStore.isModelLoaded = false
 }
 
@@ -481,19 +499,90 @@ async function loadModel(src: string) {
       )
     }
 
-    emote = useMMDEmote(morphs)
+    const runtime = createMMDMorphRuntime(resolved.mmd)
+    morphRuntime = runtime
+    const expressionMorphs = createMorphController(mesh, morphOverrides.value, (name, weight) => runtime.setChannel('expression', name, weight))
+    const blinkMorphs = createMorphController(mesh, morphOverrides.value, (name, weight) => runtime.setChannel('blink', name, weight, { alpha: weight > 0 ? 1 : 0 }))
+    const lipMorphs = createMorphController(mesh, morphOverrides.value, (name, weight) => runtime.setChannel('lipSync', name, weight))
+    emote = useMMDEmote(expressionMorphs)
     gaze = createGazeController(mesh)
+    rig = readMMDRigProfile(resolved.mmd.pmx)
+    natural = new MMDNaturalAdapter(mesh, rig, props.modelId ?? src)
+    const activeMesh = mesh
+    // The pure morph core copies enumerable x/y/z/w fields. Three's quaternion
+    // stores _x/_y/_z/_w, so serialize explicitly at this renderer boundary.
+    const proceduralPose = mesh.skeleton.bones.map(bone => ({
+      position: bone.position,
+      quaternion: { x: bone.quaternion.x, y: bone.quaternion.y, z: bone.quaternion.z, w: bone.quaternion.w },
+    }))
 
     animation = createMMDAnimationManager(resolved.mmd, { physicsEnabled: physicsEnabled.value })
     diagnostics.setMetrics(animation.pipeline.metrics)
     animation.pipeline.poseStages.push(
-      { id: 'classic-gaze', run: ({ dt, clean }) => gaze?.update(resolveGazeOffset(), dt, clean) },
+      { id: 'natural', run: ({ dt, clean }) => {
+        if (motionDriver.value !== 'natural' || !natural || !camera || !canvasRef.value)
+          return
+        const rect = canvasRef.value.getBoundingClientRect()
+        activeMesh.updateWorldMatrix(true, false)
+        const head = projectMMDHead(activeMesh, camera, rect)
+        const cursor = gazeMode.value === 'mouse' && head && props.cursorPosition
+          ? { x: (props.cursorPosition.x - head.x) / head.width, y: (head.y - props.cursorPosition.y) / head.width }
+          : gazeMode.value === 'camera' ? { x: 0, y: 0 } : null
+        const speaking = props.currentAudioSource !== undefined
+        natural.advance(dt, {
+          performance: { mode: speaking ? 'talking' : 'idle', attention: 'cursor', away: false, reactSeq: 0, reactKind: 'none' },
+          energy: 0.5,
+          voice: { speaking, speechActiveOrRecent: speaking, level: lipSync.level.value },
+          cursor,
+          chat: null,
+          placement: head ? mmdScreenInwardness(rect, head.x) : null,
+        })
+        natural.applyPose(clean)
+        // Channels must be prepared before bone-morph evaluation. Their surface
+        // effects are applied after physics by the morph-runtime surface stage.
+        natural.applySurface(runtime, morphOverrides.value)
+      } },
+      { id: 'classic-gaze', run: ({ dt, clean }) => {
+        if (motionDriver.value === 'classic')
+          gaze?.update(resolveGazeOffset(), dt, clean)
+      } },
+      { id: 'classic-face', run: ({ dt }) => {
+        if (motionDriver.value !== 'classic')
+          return
+        emote?.update(dt)
+        blink.update(blinkMorphs, dt)
+      } },
+      { id: 'lip-sync', run: ({ dt }) => {
+        lipSync.update(lipMorphs, dt)
+        runtime.setComposition({ speakEnv: props.currentAudioSource ? 1 : 0 })
+      } },
+      { id: 'bone-morphs', run: () => {
+        activeMesh.skeleton.bones.forEach((bone, index) => {
+          const quaternion = proceduralPose[index].quaternion
+          quaternion.x = bone.quaternion.x
+          quaternion.y = bone.quaternion.y
+          quaternion.z = bone.quaternion.z
+          quaternion.w = bone.quaternion.w
+        })
+        runtime.setMaterialOpacityOverrides(materialOpacity.value)
+        runtime.applyBoneStage(proceduralPose)
+      } },
     )
     animation.pipeline.surfaceStages.push(
-      { id: 'expression', run: ({ dt }) => emote?.update(dt) },
-      { id: 'blink', run: ({ dt }) => blink.update(morphs, dt) },
-      { id: 'lip-sync', run: ({ dt }) => lipSync.update(morphs, dt) },
+      { id: 'morphs', run: () => runtime.applySurfaceStage() },
     )
+    stopMorphOverrides = watch(morphOverrides, (overrides) => {
+      for (const morph of runtime.morphs) {
+        runtime.clearChannel('naturalFace', morph.name)
+        runtime.clearChannel('blink', morph.name)
+      }
+      for (const controller of [expressionMorphs, blinkMorphs, lipMorphs]) {
+        for (const slot of controller.resolvedSlots)
+          controller.override(slot, overrides[slot] ?? '')
+        for (const [slot, name] of Object.entries(overrides))
+          controller.override(slot as Parameters<MorphController['override']>[0], name ?? '')
+      }
+    }, { deep: true })
     // No preset idle VMD ships yet; the runtime still advances solvers and
     // physics without an animation action.
     await animation.init()
@@ -526,7 +615,10 @@ async function loadModel(src: string) {
 /** Plays the gesture motion mapped to an emotion, if the model has one. */
 function setEmotion(emotion: string, intensity = 1) {
   const value = EMOTION_VALUES.includes(emotion as Emotion) ? emotion as Emotion : Emotion.Neutral
-  emote?.setEmotion(value, intensity)
+  if (motionDriver.value === 'classic')
+    emote?.setEmotion(value, intensity)
+  else
+    natural?.setEmotion(value, intensity)
 
   const actionName = emotionActionMap.value[value]
   if (actionName)
@@ -586,6 +678,17 @@ watch(physicsEnabled, v => animation?.setPhysicsEnabled(v))
 watch(ikEnabled, v => animation?.setIKEnabled(v))
 watch(grantEnabled, v => animation?.setGrantEnabled(v))
 watch(physicsGravity, v => animation?.setGravity(v))
+
+watch(motionDriver, () => {
+  if (morphRuntime) {
+    for (const morph of morphRuntime.morphs) {
+      for (const layer of ['naturalFace', 'blink', 'expression', 'lipSync'] as const)
+        morphRuntime.clearChannel(layer, morph.name)
+    }
+  }
+  if (mesh && rig)
+    natural = new MMDNaturalAdapter(mesh, rig, props.modelId ?? props.modelSrc ?? '')
+})
 
 // Morph-slot overrides: rebind each slot the user remapped (empty = auto).
 watch(morphOverrides, (overrides) => {

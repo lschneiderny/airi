@@ -26,6 +26,13 @@ export type MorphSlot
     | 'surprise'
     | 'troubled'
     | 'serious'
+    | 'lid'
+    | 'browTroubledLeft'
+    | 'browTroubledRight'
+    | 'browSeriousLeft'
+    | 'browSeriousRight'
+    | 'browAngryLeft'
+    | 'browAngryRight'
 
 /**
  * Ordered candidate morph names per logical slot.
@@ -46,6 +53,13 @@ export const MORPH_CANDIDATES: Record<MorphSlot, readonly string[]> = {
   blink: ['まばたき', 'blink', 'Blink'],
   blinkLeft: ['ウィンク', 'ウインク', 'wink', 'Wink'],
   blinkRight: ['ウィンク右', 'ウインク右', 'ウィンク2', 'wink_r', 'Wink_R'],
+  lid: ['まばたき', 'blink', 'Blink'],
+  browTroubledLeft: ['困る左', '困るL', '困る', 'troubled'],
+  browTroubledRight: ['困る右', '困るR', '困る', 'troubled'],
+  browSeriousLeft: ['真面目左', '真面目L', '真面目', 'serious'],
+  browSeriousRight: ['真面目右', '真面目R', '真面目', 'serious'],
+  browAngryLeft: ['怒り左', '怒りL', '怒り', 'anger'],
+  browAngryRight: ['怒り右', '怒りR', '怒り', 'anger'],
 
   // Expression morphs. Multiple common spellings per emotion are listed
   // because model authors are inconsistent (にこり vs 笑い for "smile", etc.).

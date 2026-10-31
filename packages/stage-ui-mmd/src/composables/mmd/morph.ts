@@ -56,12 +56,14 @@ export interface MorphController {
 export function createMorphController(
   mesh: SkinnedMesh,
   overrides: Partial<Record<MorphSlot, string>> = {},
+  writeChannel?: (name: string, weight: number) => void,
 ): MorphController {
   const dictionary = mesh.morphTargetDictionary ?? {}
   const available = new Set(Object.keys(dictionary))
 
   const slotIndex = new Map<MorphSlot, number>()
   const slotOverrides: Partial<Record<MorphSlot, string>> = { ...overrides }
+  const channelWeights = new Map<number, number>()
 
   function rebind() {
     slotIndex.clear()
@@ -87,14 +89,30 @@ export function createMorphController(
       const influences = mesh.morphTargetInfluences
       if (index === undefined || !influences)
         return
-      influences[index] = weight < 0 ? 0 : weight > 1 ? 1 : weight
+      const value = weight < 0 ? 0 : weight > 1 ? 1 : weight
+      if (writeChannel) {
+        const name = Object.keys(dictionary).find(name => dictionary[name] === index)
+        if (name !== undefined)
+          writeChannel(name, value)
+        channelWeights.set(index, value)
+      }
+      else {
+        influences[index] = value
+      }
     },
     get(slot) {
       const index = slotIndex.get(slot)
       const influences = mesh.morphTargetInfluences
-      return index === undefined || !influences ? 0 : influences[index] ?? 0
+      return index === undefined || !influences ? 0 : writeChannel ? channelWeights.get(index) ?? 0 : influences[index] ?? 0
     },
     override(slot, morphName) {
+      const oldIndex = slotIndex.get(slot)
+      if (oldIndex !== undefined && writeChannel) {
+        const oldName = Object.keys(dictionary).find(name => dictionary[name] === oldIndex)
+        if (oldName !== undefined)
+          writeChannel(oldName, 0)
+        channelWeights.delete(oldIndex)
+      }
       slotOverrides[slot] = morphName
       rebind()
     },
@@ -102,8 +120,17 @@ export function createMorphController(
       const influences = mesh.morphTargetInfluences
       if (!influences)
         return
-      for (const index of slotIndex.values())
-        influences[index] = 0
+      for (const index of slotIndex.values()) {
+        if (writeChannel) {
+          const name = Object.keys(dictionary).find(name => dictionary[name] === index)
+          if (name !== undefined)
+            writeChannel(name, 0)
+          channelWeights.set(index, 0)
+        }
+        else {
+          influences[index] = 0
+        }
+      }
     },
   }
 }

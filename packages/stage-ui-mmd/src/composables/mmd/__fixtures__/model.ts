@@ -13,6 +13,9 @@ export function createModel() {
     { name: '左ひざ', parent: 4, position: [0, -4, -0.1] },
     { name: '左足首', parent: 5, position: [0, -4, 0.1] },
     { name: '左足ＩＫ', parent: -1, position: [1, 1, 0] },
+    { name: '上半身', parent: 0, position: [0, 2, 0] },
+    { name: '上半身2', parent: 8, position: [0, 3, 0] },
+    { name: '首', parent: 9, position: [0, 3, 0] },
   ]
   const bones = definitions.map(({ name, position }) => {
     const bone = new Bone()
