@@ -15,10 +15,14 @@ const { t } = useI18n()
 const diagnostics = useMMDMotionDiagnostics()
 const { snapshot } = storeToRefs(diagnostics)
 
-const walkDip = ref('400')
+// The number field binds through `v-model.number`: a typed value arrives as a number, an empty field as ''.
+const walkDip = ref<number | string>(400)
 const walkOffsetDip = computed(() => {
-  const value = Number(walkDip.value)
-  return walkDip.value.trim() !== '' && Number.isFinite(value) ? value : null
+  const raw = walkDip.value
+  if (typeof raw === 'string' && raw.trim() === '')
+    return null
+  const value = Number(raw)
+  return Number.isFinite(value) ? value : null
 })
 const walkGoalX = computed(() => {
   const { locomotion, world } = snapshot.value
