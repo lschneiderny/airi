@@ -486,11 +486,13 @@ async function loadModel(src: string) {
 
     animation = createMMDAnimationManager(resolved.mmd, { physicsEnabled: physicsEnabled.value })
     diagnostics.setMetrics(animation.pipeline.metrics)
+    animation.pipeline.poseStages.push(
+      { id: 'classic-gaze', run: ({ dt, clean }) => gaze?.update(resolveGazeOffset(), dt, clean) },
+    )
     animation.pipeline.surfaceStages.push(
       { id: 'expression', run: ({ dt }) => emote?.update(dt) },
       { id: 'blink', run: ({ dt }) => blink.update(morphs, dt) },
       { id: 'lip-sync', run: ({ dt }) => lipSync.update(morphs, dt) },
-      { id: 'classic-gaze', run: ({ dt }) => gaze?.update(resolveGazeOffset(), dt) },
     )
     // No preset idle VMD ships yet; the runtime still advances solvers and
     // physics without an animation action.

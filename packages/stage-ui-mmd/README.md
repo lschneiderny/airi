@@ -69,6 +69,10 @@ the clip pose before registered pose stages, IK, grants, and physics. Surface
 stages apply expressions, blink, and lip-sync after physics. Model transforms
 and animation loops request a physics reset.
 
+Classic gaze is a pose stage: it composes head and eye aim with the clean
+clip rotation before solvers and physics, rather than replacing VMD rotation
+with a rest-relative gaze override.
+
 Pose stages read `context.clean` and write absolute transforms from that
 snapshot; they must not modify the snapshot itself. `clipFootIK` records
 which registered motions contain left/right foot IK position tracks.
