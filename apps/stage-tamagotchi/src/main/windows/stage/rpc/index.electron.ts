@@ -107,8 +107,10 @@ export function setupStageWindowInvokes(params: {
 
   context.on(electronStageCharacterPlacementChanged, (event) => {
     const parsed = safeParse(placementSchema, event.body)
-    if (!parsed.success)
+    if (!parsed.success) {
+      console.warn('[stage] Dropped a malformed character placement:', parsed.issues.map(issue => issue.message).join('; '))
       return
+    }
     placement = parsed.output
     for (const listener of placementListeners)
       listener(parsed.output)
