@@ -1,4 +1,4 @@
-import type { Live2DTouchRegion } from '../touch-gestures'
+import type { NaturalTouchRegion } from './frame-types'
 import type { Vec3 } from './posture'
 
 /** Face offsets of a pet, in the units of `NaturalFaceOutput`. */
@@ -34,7 +34,7 @@ const petPostureAmplitude = 0.4
  * if startled. A poke on the top of the head bonks it down instead. A head poke moves more than
  * a body poke.
  */
-export function pokeDirection(region: Live2DTouchRegion, x: number, y: number): Vec3 {
+export function pokeDirection(region: NaturalTouchRegion, x: number, y: number): Vec3 {
   const side = Math.max(-1, Math.min(1, x))
   const top = Math.max(0, -Math.max(-1, Math.min(1, y)))
   return region === 'head'
@@ -52,7 +52,7 @@ export const pokeNudgeTau = { min: 0.12, max: 0.18 }
  * intensity 1 the head peaks near 2 degrees on a ±30 rig, which measured as barely
  * visible on the stage. A head nudge of 2.5 peaks near 0.23 normalized.
  */
-export const pokeStrength: Record<Live2DTouchRegion, { nudge: number, surprise: number }> = {
+export const pokeStrength: Record<NaturalTouchRegion, { nudge: number, surprise: number }> = {
   head: { nudge: 2.5, surprise: 1 },
   body: { nudge: 1.5, surprise: 0.6 },
 }

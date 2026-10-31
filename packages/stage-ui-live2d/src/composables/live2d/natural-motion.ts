@@ -3,19 +3,16 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 
 import type { NaturalBreathOutput } from './natural-motion/breath'
 import type { NaturalFaceOutput } from './natural-motion/face'
-import type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionVoice, NaturalMotionEvent, NaturalMotionObserver } from './natural-motion/frame-types'
+import type { Live2DNaturalMotionFrame, Live2DNaturalMotionOptions, Live2DNaturalMotionVoice, NaturalMotionEvent, NaturalMotionObserver, NaturalRigTraits, NaturalTouchRegion } from './natural-motion/frame-types'
 import type { GazePoint } from './natural-motion/gaze'
 import type { NaturalEpisode } from './natural-motion/mood'
 import type { PendingAction } from './natural-motion/pending-actions'
 import type { Vec3 } from './natural-motion/posture'
 import type { RandomStream } from './natural-motion/random'
-import type { Live2DRigProfile } from './natural-motion/rig-profile'
-import type { Live2DTouchRegion } from './touch-gestures'
 
 import { errorMessageFrom } from '@moeru/std'
-import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
+import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 
-import { EMOTION_VALUES } from '../../constants/emotions'
 import { NaturalBlinkScheduler } from './natural-motion/blink'
 import { NaturalBodyLayer } from './natural-motion/body'
 import { NaturalBreathLayer } from './natural-motion/breath'
@@ -167,7 +164,7 @@ export class Live2DNaturalMotion {
   private mappedCursor = mapCursor({ x: 0, y: 0 })
   private onCursor = 0
   private approach = 0
-  private bodyFromHeadPhysics: Live2DRigProfile['bodyFromHeadPhysics'] = { x: false, y: false, z: false }
+  private bodyFromHeadPhysics: NaturalRigTraits['bodyFromHeadPhysics'] = { x: false, y: false, z: false }
   private shiftCount = 0
   private readonly u = Object.fromEntries(Object.keys(followers).map(axis => [axis, 0])) as Record<Axis, number>
   private readonly x = { ...this.u }
@@ -385,7 +382,7 @@ export class Live2DNaturalMotion {
   /** Per-model values are clamped to 0..2; malformed persisted entries use 1. Zero disables new emotion performance. */
   setEmotionStrengths(record: Partial<Record<PerformanceEmotion, number>>) {
     this.emotionStrengths = {}
-    for (const emotion of EMOTION_VALUES) {
+    for (const emotion of PERFORMANCE_EMOTIONS) {
       const value = record[emotion]
       this.emotionStrengths[emotion] = Number.isFinite(value) ? Math.max(0, Math.min(2, value ?? 1)) : 1
     }
@@ -415,7 +412,7 @@ export class Live2DNaturalMotion {
    * Position is relative to the touched region's center: x from -1 left to 1 right, y from
    * -1 top to 1 bottom. The head flinches away, the face shows surprise, and gaze meets the camera.
    */
-  poke(region: Live2DTouchRegion, x: number, y: number, nowSeconds: number) {
+  poke(region: NaturalTouchRegion, x: number, y: number, nowSeconds: number) {
     this.advance(nowSeconds)
     this.pending.push({ kind: 'poke', region, x, y })
   }
@@ -441,8 +438,8 @@ export class Live2DNaturalMotion {
    * Applies rig ownership. Body axes that rig physics derives from the head are
    * reported as `null`; their processes keep running, so ownership changes never reset motion.
    */
-  setRigProfile(profile: Pick<Live2DRigProfile, 'bodyFromHeadPhysics'>) {
-    this.bodyFromHeadPhysics = { ...profile.bodyFromHeadPhysics }
+  setRigTraits(traits: NaturalRigTraits) {
+    this.bodyFromHeadPhysics = { ...traits.bodyFromHeadPhysics }
   }
 
   /** Advances every process by one grid step and returns the new grid state. */
