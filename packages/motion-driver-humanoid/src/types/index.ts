@@ -67,6 +67,9 @@ export interface RigTraits {
   presentBones: HumanoidBoneName[]
 }
 
+/** Locomotion pace; 0.6 and 1.0 times the reference speed. */
+export type LocomotionPace = 'stroll' | 'walk'
+
 /** A renderer-neutral intent for body stance, attention, and facing. */
 export interface BodyIntent {
   stance: 'stand' | 'sit' | 'sleep'
