@@ -235,7 +235,8 @@ describe('reactionPolicy pacing', () => {
       if (atMs >= T + 12 * SEC)
         reasons.add(holdReason(evaluation))
     }
-    reasons.add(holdReason(stage.touch(poke(T + 44_999))))
+    // Distinct times: the situation ignores a touch that is not newer than the last one.
+    reasons.add(holdReason(stage.touch(poke(T + 44_998))))
     reasons.add(holdReason(stage.touch(pet(T + 44_999, 3 * SEC))))
     expect([...reasons]).toEqual(['refractory'])
 
