@@ -49,7 +49,7 @@ import {
   electronStageStateChanged,
 } from '../../shared/eventa'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
-import { createStageClickThroughState, isInsidePaddedRect, resolveStageClickThrough } from '../composables/stage-click-through'
+import { createStageClickThroughState, createStageHitReadState, isInsidePaddedRect, planStageHitRead, resolveStageClickThrough } from '../composables/stage-click-through'
 import { usePushToTalkShortcut } from '../composables/use-push-to-talk-shortcut'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
 import { useStageActiveRenderer } from '../composables/use-stage-active-renderer'
@@ -394,52 +394,55 @@ let clickThrough = createStageClickThroughState()
 let alphaReader: { gl: WebGL2RenderingContext, reader: CanvasRegionAlphaReader } | null = null
 onScopeDispose(() => alphaReader?.reader.dispose())
 
-/** Whether her pixel is under the cursor; `undefined` while the asynchronous read has no answer yet. */
-function readHit(cursor: { x: number, y: number }): boolean | undefined {
+/**
+ * Polls the read in flight and, when `request` is set, starts a read under the cursor. Returns whether her pixel is
+ * under the cursor, or `undefined` when no answer arrived this frame. Polling runs every frame a read is in flight, so
+ * the answer arrives two or three frames after the request whatever the request interval.
+ */
+function readHit(cursor: { x: number, y: number }, request: boolean): boolean | undefined {
   const canvas = stageCanvas.value
-  if (componentStateStage.value !== 'mounted' || !canvas || document.elementFromPoint(cursor.x, cursor.y) !== canvas)
+  if (componentStateStage.value !== 'mounted' || !canvas)
+    return request ? false : undefined
+  if (request && document.elementFromPoint(cursor.x, cursor.y) !== canvas)
     return false
   const gl = (canvas.getContext('webgl2') || canvas.getContext('webgl')) as WebGL2RenderingContext | WebGLRenderingContext | null
   if (!gl)
-    return false
-  const bounds = canvas.getBoundingClientRect()
-  const region = { clientX: cursor.x, clientY: cursor.y, left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height, radius: 0, threshold: 10 }
+    return request ? false : undefined
+  if (!(gl instanceof WebGL2RenderingContext)) {
+    if (!request)
+      return undefined
+    const bounds = canvas.getBoundingClientRect()
+    const readbackStart = performance.now()
+    const transparent = isCanvasRegionTransparent({ gl, clientX: cursor.x, clientY: cursor.y, left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height, radius: 0, threshold: 10 })
+    motionDiagnostics.reportReadback(performance.now() - readbackStart)
+    return !transparent
+  }
+  if (alphaReader?.gl !== gl) {
+    alphaReader?.reader.dispose()
+    alphaReader = { gl, reader: new CanvasRegionAlphaReader(gl) }
+  }
+  const { reader } = alphaReader
+  if (!request && !reader.pending)
+    return undefined
+  const bounds = request ? canvas.getBoundingClientRect() : null
   const readbackStart = performance.now()
-  let hit: boolean | undefined
-  if (gl instanceof WebGL2RenderingContext) {
-    if (alphaReader?.gl !== gl) {
-      alphaReader?.reader.dispose()
-      alphaReader = { gl, reader: new CanvasRegionAlphaReader(gl) }
-    }
-    const finished = alphaReader.reader.poll()
-    hit = alphaReader.reader.request(region) === 'transparent' ? false : finished === undefined ? undefined : !finished
-  }
-  else {
-    hit = !isCanvasRegionTransparent({ gl, ...region })
-  }
+  const finished = reader.poll()
+  let hit = finished === undefined ? undefined : !finished
+  if (bounds && reader.request({ clientX: cursor.x, clientY: cursor.y, left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height, radius: 0, threshold: 10 }) === 'transparent')
+    hit = false
   motionDiagnostics.reportReadback(performance.now() - readbackStart)
   return hit
 }
 
-// Each read copies a pixel through the GPU, so a resting cursor re-reads only as often as her animation can
-// change the pixel under it; a moving cursor reads on every frame.
-const restingReadbackIntervalMs = 100
-let lastReadback: { atMs: number, x: number, y: number } | null = null
-
-function shouldRead(cursor: { x: number, y: number }, nowMs: number): boolean {
-  return !lastReadback || lastReadback.x !== cursor.x || lastReadback.y !== cursor.y
-    || nowMs - lastReadback.atMs >= restingReadbackIntervalMs
-}
+let hitRead = createStageHitReadState()
 
 useRafFn(({ timestamp }) => {
   const cursor = cursorPosition.value
   const rect = placementRect.value
   const forceCapture = stagePaused.value || isWayland.value || press.value !== null || controlsHoldPointer.value
-  let hit: boolean | undefined
-  if (!forceCapture && isInsidePaddedRect(cursor, rect) && shouldRead(cursor, timestamp)) {
-    lastReadback = { atMs: timestamp, x: cursor.x, y: cursor.y }
-    hit = readHit(cursor)
-  }
+  const plan = planStageHitRead(hitRead, { nowMs: timestamp, cursor, rect, forceCapture })
+  hitRead = plan.state
+  const hit = readHit(cursor, plan.read)
   const result = resolveStageClickThrough(clickThrough, { nowMs: timestamp, cursor, rect, forceCapture, hit })
   clickThrough = result.state
   if (result.changed)

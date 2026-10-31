@@ -42,6 +42,48 @@ export interface StageClickThroughResult {
   changed: boolean
 }
 
+/** A still cursor re-reads only as often as her animation can change the pixel under it. */
+export const stageRestingReadIntervalMs = 100
+
+/**
+ * A moving cursor reads at most this often. Each read ends in one synchronous GPU-process copy that occasionally
+ * stalls for several milliseconds, so fewer reads mean fewer stalls; with the answer two or three frames after the
+ * request, a hit is known within about this interval plus 50 ms.
+ */
+export const stageMovingReadIntervalMs = 50
+
+export interface StageHitReadState {
+  /** When the last read was requested, on the caller's clock; `null` before the first one. */
+  lastReadMs: number | null
+  /** The cursor of the last read. */
+  lastCursor: { x: number, y: number } | null
+}
+
+export function createStageHitReadState(): StageHitReadState {
+  return { lastReadMs: null, lastCursor: null }
+}
+
+/**
+ * Decides whether this frame starts a pixel read under the cursor.
+ *
+ * No read is needed when the answer is known without one: the pointer is captured anyway, or it is outside the padded
+ * character rect (click-through, see {@link resolveStageClickThrough}). Otherwise a still cursor re-reads every
+ * {@link stageRestingReadIntervalMs} and a moving one at most every {@link stageMovingReadIntervalMs}; between reads
+ * the click-through state keeps the last answer.
+ */
+export function planStageHitRead(state: StageHitReadState, input: Pick<StageClickThroughInput, 'nowMs' | 'cursor' | 'rect' | 'forceCapture'>): { read: boolean, state: StageHitReadState } {
+  const { cursor, nowMs } = input
+  if (input.forceCapture || !cursor || !isInsidePaddedRect(cursor, input.rect))
+    return { read: false, state }
+  if (state.lastReadMs !== null && state.lastCursor) {
+    const moved = state.lastCursor.x !== cursor.x || state.lastCursor.y !== cursor.y
+    const interval = moved ? stageMovingReadIntervalMs : stageRestingReadIntervalMs
+    if (nowMs - state.lastReadMs < interval)
+      return { read: false, state }
+  }
+  return { read: true, state: { lastReadMs: nowMs, lastCursor: { x: cursor.x, y: cursor.y } } }
+}
+
 export function createStageClickThroughState(): StageClickThroughState {
   return { ignoring: true, misses: 0, lastHitMs: null }
 }

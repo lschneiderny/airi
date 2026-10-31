@@ -2,7 +2,7 @@ import type { StageClickThroughInput, StageClickThroughState } from './stage-cli
 
 import { describe, expect, it } from 'vitest'
 
-import { createStageClickThroughState, resolveStageClickThrough } from './stage-click-through'
+import { createStageClickThroughState, createStageHitReadState, planStageHitRead, resolveStageClickThrough, stageMovingReadIntervalMs, stageRestingReadIntervalMs } from './stage-click-through'
 
 const rect = { x: 100, y: 200, width: 200, height: 560 }
 const onHer = { x: 200, y: 400 }
@@ -88,5 +88,37 @@ describe('resolveStageClickThrough', () => {
   it('lets clicks through before the scene publishes a rect', () => {
     const result = run(captured(), { nowMs: 16, rect: null, hit: true })
     expect(result.state.ignoring).toBe(true)
+  })
+})
+
+describe('planStageHitRead', () => {
+  const plan = (state: ReturnType<typeof createStageHitReadState>, nowMs: number, cursor: { x: number, y: number } | null = onHer, forceCapture = false) =>
+    planStageHitRead(state, { nowMs, cursor, rect, forceCapture })
+
+  it('skips the read when the answer is known without one', () => {
+    expect(plan(createStageHitReadState(), 0, farAway).read).toBe(false)
+    expect(plan(createStageHitReadState(), 0, null).read).toBe(false)
+    expect(plan(createStageHitReadState(), 0, onHer, true).read).toBe(false)
+    expect(plan(createStageHitReadState(), 0, onHer).read).toBe(true)
+  })
+
+  it('reuses the last answer for a still cursor until the resting interval has passed', () => {
+    const first = plan(createStageHitReadState(), 1_000)
+    expect(plan(first.state, 1_000 + stageRestingReadIntervalMs - 1).read).toBe(false)
+    expect(plan(first.state, 1_000 + stageRestingReadIntervalMs).read).toBe(true)
+  })
+
+  it('reads a moving cursor at most once per moving interval', () => {
+    let state = createStageHitReadState()
+    let reads = 0
+    for (let frame = 0; frame < 60; frame++) {
+      const result = plan(state, frame * 16.7, { x: onHer.x + frame, y: onHer.y })
+      state = result.state
+      if (result.read)
+        reads++
+    }
+    // At 60 fps a 50 ms interval reads on frames 0, 3, 6, ...: 20 of 60 frames instead of all 60.
+    expect(stageMovingReadIntervalMs).toBe(50)
+    expect(reads).toBe(20)
   })
 })
