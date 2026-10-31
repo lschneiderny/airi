@@ -29,4 +29,8 @@ describe('situation reason contracts and tuning', () => {
     for (const kind of excludedKinds)
       expect(GATE_ELIGIBLE_EVENT_KINDS.has(kind)).toBe(false)
   })
+
+  it('never lets a touch start a turn', () => {
+    expect([...GATE_ELIGIBLE_EVENT_KINDS]).not.toContain('touch')
+  })
 })

@@ -2530,6 +2530,17 @@ describe('unprompted turns', () => {
     expect(harness.order.some(entry => entry.includes('ACT'))).toBe(false)
   })
 
+  it('declines a held special and the silent marker in one chunk without emitting the ACT hook', async () => {
+    const harness = createHarness()
+    harness.recordHooks()
+    replyWith(harness, ['<|ACT happy|><|SILENT|>'])
+
+    await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+
+    expectDeclined(harness)
+    expect(harness.order.some(entry => entry.includes('ACT'))).toBe(false)
+  })
+
   it('holds a recovered near-miss cue like any special and commits at the first spoken text', async () => {
     const harness = createHarness()
     harness.recordHooks()
