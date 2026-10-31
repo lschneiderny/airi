@@ -11,7 +11,7 @@ import type { ChatReactionPayload, ChatUnpromptedPayload, ChatUnpromptedResult }
 import type { ThreadExtractionLedgerEntry } from '../devtools/situation-observability'
 
 import { createChatHooks } from '@proj-airi/core-agent'
-import { evaluateUrgeGate, FLOOR_MS, HOUR_MS, initialReactionMemory, initialSituationState, nextRandom, notifyTopicKey, REACTION_REFRACTORY_MS, REACTION_RETRY_MS, reactionPolicy, recordUrgeFireOutcome, SETTLE_MS, threadMinAgeMs, TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
+import { evaluateUrgeGate, FLOOR_MS, HOUR_MS, initialReactionMemory, initialSituationState, nextRandom, notifyTopicKey, REACTION_PENDING_MAX_MS, REACTION_REFRACTORY_MS, REACTION_RETRY_MS, reactionPolicy, recordUrgeFireOutcome, SETTLE_MS, threadMinAgeMs, TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { createPinia, setActivePinia } from 'pinia'
@@ -2021,6 +2021,63 @@ describe('situation gate loop', () => {
 
     expect(Date.now() - attemptAtMs).toBeLessThan(REACTION_RETRY_MS)
     expect((await reactionInspection(observability)).decision).toMatchObject({ speak: false, reason: 'retry-wait', kind: 'poke-protest' })
+    expect(chat.submitReaction).toHaveBeenCalledOnce()
+  })
+
+  it('settles a declined reaction at its stream end, before the submit result arrives', async () => {
+    saveReactionCheckpoint()
+    const { hooks, chat, observability } = startQuietLeader()
+    let finish!: (result: ChatUnpromptedResult) => void
+    chat.submitReaction.mockImplementationOnce(() => new Promise<ChatUnpromptedResult>((resolve) => {
+      finish = resolve
+    }))
+    await pokeTimes(3)
+    const context = reactionContext(chat.submitReaction.mock.calls[0][0])
+    const attemptAtMs = Date.now()
+    await hooks.emitBeforeSendHooks('(Just now, on the stage)', context)
+
+    await hooks.emitStreamEndHooks({ ...context, cueStats: { act: 0, recovered: 0, rejected: 0, origin: 'unprompted', declined: true, silent: false, wordless: false, breaks: 0, breaksIgnored: 0 } })
+
+    const declined = await reactionInspection(observability)
+    expect(declined.memory).toMatchObject({ lastAttemptAtMs: attemptAtMs, lastLineAtMs: null, pending: null })
+    expect(declined.outcomes['poke-protest']).toEqual({ spoken: 0, declined: 1, cancelled: 0, failed: 0, refused: 0 })
+
+    // The result that arrives afterwards finds nothing pending and counts no second outcome.
+    finish({ status: 'declined' })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect((await reactionInspection(observability)).outcomes['poke-protest']).toEqual({ spoken: 0, declined: 1, cancelled: 0, failed: 0, refused: 0 })
+  })
+
+  it('starts the refractory for a reaction that speaks after its pending attempt was dropped', async () => {
+    saveReactionCheckpoint()
+    const { hooks, chat, observability } = startQuietLeader()
+    let finish!: (result: ChatUnpromptedResult) => void
+    chat.submitReaction.mockImplementationOnce(() => new Promise<ChatUnpromptedResult>((resolve) => {
+      finish = resolve
+    }))
+    await pokeTimes(3)
+    const context = reactionContext(chat.submitReaction.mock.calls[0][0])
+    await hooks.emitBeforeSendHooks('(Just now, on the stage)', context)
+
+    // A poke past the 30 s pending limit drops the attempt that is still waiting for its first literal.
+    await pokeAfter(REACTION_PENDING_MAX_MS + 1_000)
+    expect((await reactionInspection(observability)).pending).toBeNull()
+
+    await hooks.emitTokenLiteralHooks('Hey, quit it!', context)
+    const spokenAtMs = Date.now()
+    finish({ status: 'spoken', text: 'Hey, quit it!' })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect((await reactionInspection(observability)).memory).toMatchObject({ lastLineAtMs: spokenAtMs, pending: null })
+
+    // The retry wait from the attempt is over, so only the refractory of the late line holds the next burst.
+    await pokeAfter(1_000)
+    await pokeAfter(1_000)
+    await pokeAfter(1_000)
+
+    expect(Date.now() - spokenAtMs).toBeLessThan(REACTION_REFRACTORY_MS)
+    expect((await reactionInspection(observability)).decision).toMatchObject({ speak: false, reason: 'refractory', kind: 'poke-protest' })
     expect(chat.submitReaction).toHaveBeenCalledOnce()
   })
 
