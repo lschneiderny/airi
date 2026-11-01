@@ -431,6 +431,17 @@ export const useHearingStore = defineStore('hearing-store', () => {
     rephraseModel.reset()
   }
 
+  /** Clears a selection whose provider settings were removed. Other hearing preferences stay unchanged. */
+  async function clearUnavailableProviderSelection() {
+    if (!activeTranscriptionProvider.value || providersStore.isProviderAvailableWithoutConfiguration(activeTranscriptionProvider.value))
+      return
+
+    activeTranscriptionProvider.value = ''
+    activeTranscriptionModel.value = ''
+    activeCustomModelName.value = ''
+    transcriptionModelSearchQuery.value = ''
+  }
+
   async function transcription(
     providerId: string,
     provider: TranscriptionProvider | TranscriptionProviderWithExtraOptions<string, Record<string, unknown>>,
@@ -675,10 +686,12 @@ export const useHearingStore = defineStore('hearing-store', () => {
     createTranscriber,
     loadModelsForProvider,
     getModelsForProvider,
+    clearUnavailableProviderSelection,
     resetState,
   }
 }, {
   synced: {
+    actions: ['clearUnavailableProviderSelection'],
     state: true,
   },
 })

@@ -985,11 +985,12 @@ export const useProviderStore = defineStore('provider', () => {
     const overrides = { ...providerAvailabilityOverrides.value }
     const providers: ProviderMetadata[] = []
 
-    for (const provider of allProvidersMetadata.value) {
+    // Resolve instance IDs before the first await. A reset can remove their settings during availability checks.
+    const candidates = allProvidersMetadata.value.map(provider => ({ provider, definition: getProviderDefinition(provider.id) }))
+    for (const { provider, definition } of candidates) {
       if (overrides[provider.id] === false)
         continue
 
-      const definition = getProviderDefinition(provider.id)
       const isAvailableBy = definition.isAvailableBy || (() => true)
 
       const isAvailable = await isAvailableBy()
@@ -1050,9 +1051,12 @@ export const useProviderStore = defineStore('provider', () => {
     return providerId === 'prompt-api' && 'LanguageModel' in globalThis
   }
 
+  /** Returns whether a known provider can remain selected after its stored settings are removed. Account-owned providers still require authentication settings. */
   function isProviderAvailableWithoutConfiguration(providerId: string) {
-    return providerConfiguredBy(providerId) !== 'authentication'
-      && getProviderDefinition(providerId).requiresCredentials === false
+    const definition = findProviderDefinition(providerId)
+    return definition !== undefined
+      && providerConfiguredBy(providerId) !== 'authentication'
+      && definition.requiresCredentials === false
   }
 
   function providerConfiguredBy(providerId: string) {
@@ -1152,6 +1156,7 @@ export const useProviderStore = defineStore('provider', () => {
     getChatProviderInstance,
     disposeProviderInstance,
     resetProviderSettings,
+    isProviderAvailableWithoutConfiguration,
     forceProviderConfigured,
     setProviderUnconfigured,
     setProviderAvailabilityOverride,
