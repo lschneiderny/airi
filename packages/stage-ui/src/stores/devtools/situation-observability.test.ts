@@ -217,6 +217,22 @@ describe('situation observability store', () => {
     })
   })
 
+  it('sizes the last unprompted request by the composer report when the projection carries one', async () => {
+    const store = useSituationObservabilityStore()
+    const context = useContextObservabilityStore()
+
+    context.capturePromptProjection({ sessionId: 'session-a', message: 'trigger', contexts: {}, promptReport: [
+      { id: 'card', chars: 120, estimatedTokens: 30, dropped: 0, truncated: false, overBudget: false },
+      { id: 'memory', chars: 80, estimatedTokens: 20, dropped: 2, truncated: false, overBudget: true },
+    ] })
+    context.captureProviderPromptProjection('session-a', [
+      { role: 'system', content: 'You are AIRI.' },
+      { role: 'user', content: '(A quiet moment.)' },
+    ], { turnId: 'turn-1', origin: 'unprompted' })
+
+    expect((await store.inspect()).spend.lastUnpromptedRequest).toMatchObject({ turnId: 'turn-1', messageCount: 2, chars: 200 })
+  })
+
   it('answers an evaluation request without a gate as skipped, and with one through the gate evaluator only', async () => {
     const store = useSituationObservabilityStore()
     expect(await store.evaluateGate()).toEqual({ status: 'skipped', reason: 'gate-not-running' })
