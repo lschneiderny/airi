@@ -51,17 +51,19 @@ export const useMemoryStore = defineStore('memory', () => {
   }
 
   /**
-   * The index for a card: its own memories, then general ones, each as an id and its description.
-   * A run reads it when it starts, from the entries that the window read last.
+   * The index lines for a card, oldest change first: its own memories and the general ones, each as an id and its
+   * description. A general line says so. A run reads them when it starts, from the entries that the window read last.
+   * The prompt composer drops the oldest lines when the index exceeds its budget.
    */
+  function indexEntriesFor(personaId: string) {
+    return entries.value
+      .filter(entry => !entry.persona || entry.persona === personaId)
+      .map(entry => entry.persona ? `- ${entry.id}: ${entry.description}` : `- ${entry.id} (general): ${entry.description}`)
+  }
+
+  /** The index for a card as one text, one line per entry. See {@link indexEntriesFor}. */
   function indexFor(personaId: string) {
-    const line = (entry: MemoryEntry) => `- ${entry.id}: ${entry.description}`
-    const own = entries.value.filter(entry => entry.persona === personaId).map(line)
-    const general = entries.value.filter(entry => !entry.persona).map(line)
-    return [
-      ...(own.length ? [`Your own:\n${own.join('\n')}`] : []),
-      ...(general.length ? [`General:\n${general.join('\n')}`] : []),
-    ].join('\n')
+    return indexEntriesFor(personaId).join('\n')
   }
 
   /** Reads an entry that the persona can see by its id: one of its own, or a general one. */
@@ -118,6 +120,7 @@ export const useMemoryStore = defineStore('memory', () => {
     enabled,
     entries: computed(() => entries.value),
     ready,
+    indexEntriesFor,
     indexFor,
     read,
     write,

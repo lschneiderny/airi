@@ -73,6 +73,7 @@ export type {
 
 export type {
   BuiltinToolsResolver,
+  PromptReportEntry,
   StreamEvent,
   StreamFromOptions,
   StreamOptions,

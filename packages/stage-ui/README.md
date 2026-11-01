@@ -483,9 +483,9 @@ Do not use it as a user-facing settings page.
 
 `useMemoryStore` in `stores/memory.ts` keeps entries in IndexedDB through the localforage instance `airi-memory/entries`. It uses the `airi:memory` BroadcastChannel to reload changes in other windows and stores the toggle at `memory/enabled`.
 
-`tools/memory.ts` defines `builtIn_readMemory`, `builtIn_writeMemory`, and `builtIn_forgetMemory`. `composeMemoryPrompt` adds the memory rules and the chat session character's index to a model step. Card selection does not change the character bound to a queued turn. Spark Notify instead uses the active card's index.
+`tools/memory.ts` defines `builtIn_readMemory`, `builtIn_writeMemory`, and `builtIn_forgetMemory`. `composeMemoryHeader` renders the memory rules, and `composeMemoryPrompt` adds the index below them. The index lists one line per entry, oldest change first, and marks general entries with `(general)`. Card selection does not change the character bound to a queued turn. Spark Notify instead uses the active card's index.
 
-The index joins each step prompt in `stores/chat.ts` during `prepareSend`, after the identity and stage contract and before the request supplement. It stays out of `session-store.ts`, so the stage-contract prompt hash does not change.
+Chat requests build their system prompt with `useChatPrompt` in `stores/chat/prompt.ts` and `composePrompt` from `@proj-airi/stage-shared/stage-contract`. The memory index is the first segment after the identity and stage contract. Its rules are the segment header, and its lines are the entries that the composer drops oldest first past its budget. The index stays out of `session-store.ts`, so the stage-contract prompt hash does not change. The [prompt composition ADR](../../docs/ai/adr/2026-11-01-prompt-composition.md) lists every segment.
 
 Unprompted turns receive only `builtIn_readMemory` through the core-agent runtime's `unpromptedTools` option. In `stores/ai/chat-llm/llm.ts`, unprompted requests resolve only the supplied custom tools and no built-in tools.
 

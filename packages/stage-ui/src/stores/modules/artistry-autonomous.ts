@@ -93,7 +93,7 @@ export const useAutonomousArtistryStore = defineStore('artistry-autonomous', () 
       }
 
       // 1. Compose the "Director" prompt based on target
-      const memoryPrompt = memory.enabled ? composeMemoryPrompt(memory.indexFor(cardId)) : ''
+      const memoryPrompt = memory.enabled ? `\n\n${composeMemoryPrompt(memory.indexFor(cardId))}` : ''
       const systemPrompt = target === 'assistant'
         ? `You are the Cinematic Director for AIRI. 
 Your job is to analyze the character's response and reaction to the user, and decide if it warrants a visual manifestation (a generative image).

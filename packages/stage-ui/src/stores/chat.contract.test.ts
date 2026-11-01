@@ -12,6 +12,7 @@ import { SpanStatusCode } from '@opentelemetry/api'
 import { IOAttributes, IOSpanNames } from '@proj-airi/stage-shared'
 import { ASCII_FACES } from '@proj-airi/stage-shared/conversation-register'
 import { notifyTopicKey } from '@proj-airi/stage-shared/situation'
+import { composeSystemPrompt } from '@proj-airi/stage-shared/stage-contract'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
@@ -121,7 +122,8 @@ const consciousnessModels = vi.hoisted(() => ({ value: [{ id: 'gpt-test', metada
 const activeSessionIdRef = ref('session-1')
 const activeProviderRef = ref('mock-provider')
 const cardSelections = new Map<string, { provider: string, model: string }>()
-const sessionSystemPrompts = new Map<string, string>()
+/** Character prompts by card id. A card without one has the prompt `system prompt`, like the stored system message. */
+const cardPrompts = new Map<string, string>()
 /** The stage contract that the chat store passed to the session store, which ends every session system prompt. */
 const stageContract = { value: '' }
 /** The register section that the chat store passed to the session store, which follows the character prompt. */
@@ -250,9 +252,6 @@ vi.mock('./chat/session-store', () => ({
     },
     sessionMetas: { 'session-1': { characterId: 'alice' }, 'session-2': { characterId: 'bob' }, 'session-b': { characterId: 'bob' }, 'session-forked': { characterId: 'alice' } },
     getSessionMessages: (sessionId: string) => sessionMessages[sessionId] ?? [],
-    // Mirrors the session store: the character prompt, the register section, then the stage contract that the chat
-    // store set.
-    getSessionSystemPrompt: (sessionId: string) => [sessionSystemPrompts.get(sessionId) ?? 'system prompt', registerPrompt.value, stageContract.value].filter(Boolean).join('\n\n'),
     setStageContract: (contract: string) => {
       stageContract.value = contract
     },
@@ -330,6 +329,7 @@ vi.mock('./modules/airi-card', () => ({
   useAiriCardStore: () => ({
     activeCard: undefined,
     getCard: () => undefined,
+    getSystemPrompt: (id: string) => cardPrompts.get(id) ?? 'system prompt',
     getModules: (id: string) => ({
       consciousness: cardSelections.get(id) ?? { provider: activeProviderRef.value, model: activeModelRef.value },
       vision: { provider: visionMocks.configured ? 'vision-provider' : '', model: visionMocks.configured ? 'vision-model' : '' },
@@ -489,7 +489,7 @@ describe('chat store contract', () => {
     activeSessionIdRef.value = 'session-1'
     activeProviderRef.value = 'mock-provider'
     cardSelections.clear()
-    sessionSystemPrompts.clear()
+    cardPrompts.clear()
     stageContract.value = ''
     registerPrompt.value = ''
     streamingMessageRef.value = { role: 'assistant', content: '', slices: [], tool_results: [] }
@@ -539,7 +539,7 @@ describe('chat store contract', () => {
     await store.send({ sessionId: 'session-1', text: 'Recall what you know' })
 
     const prepared = submit.mock.calls[0][1]
-    expect((await prepared.resolveStep!()).systemPrompt.endsWith(composeMemoryPrompt(index))).toBe(true)
+    expect((await prepared.resolveStep!()).systemPrompt).toContain(composeMemoryPrompt(index))
     expect(resolvedToolNames).toEqual([[
       'configure_wake_words',
       'builtIn_readMemory',
@@ -548,10 +548,44 @@ describe('chat store contract', () => {
     ]])
     expect(prompts[0]).toContain(composeMemoryPrompt(index))
     expect(prompts[0]).toContain(`- ${own!.id}: Alice fact`)
-    expect(prompts[0]).toContain(`- ${shared!.id}: General fact`)
+    expect(prompts[0]).toContain(`- ${shared!.id} (general): General fact`)
     expect(prompts[0]).not.toContain(other!.id)
     expect(prompts[0]).not.toContain('Bob fact')
     expect(prepared.toolReferences).toBeUndefined()
+  })
+
+  it('shows the sent system prompt, memory index included, in the prompt projection', async () => {
+    const memory = useMemoryStore()
+    memory.enabled = true
+    const own = await memory.write({ description: 'Alice fact', body: 'Alice memory body' }, 'alice')
+    const sent: string[] = []
+    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {
+      // The provider adapter sends the resolved step prompt in place of the system message.
+      sent.push((await options.resolveStep!()).systemPrompt)
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await useChatStore().send({ sessionId: 'session-1', text: 'Recall what you know' })
+
+    const projection = useContextObservabilityStore().lastPromptProjection?.composedMessage ?? []
+    expect(sent).toHaveLength(1)
+    expect(sent[0]).toContain(`Memory index:\n- ${own!.id}: Alice fact`)
+    expect(projection.filter(message => message.role === 'system')).toEqual([{ role: 'system', content: sent[0] }])
+  })
+
+  it('shows a card edited after the session started in the prompt projection', async () => {
+    // The stored system message still holds the card text of the session start.
+    sessionMessages['session-1'] = [{ role: 'system', content: 'Original Alice card', createdAt: 1, id: 'system' }]
+    cardPrompts.set('alice', 'Edited Alice card')
+    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await useChatStore().send({ sessionId: 'session-1', text: 'Hello' })
+
+    const system = JSON.stringify(useContextObservabilityStore().lastPromptProjection?.composedMessage?.filter(message => message.role === 'system'))
+    expect(system).toContain('Edited Alice card')
+    expect(system).not.toContain('Original Alice card')
   })
 
   it('omits memory tools and the memory prompt when memory is disabled', async () => {
@@ -710,22 +744,22 @@ describe('chat store contract', () => {
 
   it('reads the session character settings and prompt again before each model step', async () => {
     cardSelections.set('alice', { provider: 'alice-provider', model: 'alice-model' })
-    sessionSystemPrompts.set('session-1', 'Alice prompt')
+    cardPrompts.set('alice', 'Alice prompt')
     const steps: Awaited<ReturnType<NonNullable<StreamOptions['resolveStep']>>>[] = []
     llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _messages: Conversation, options: StreamOptions) => {
       steps.push(await options.resolveStep!())
       // A tool round edits the character before the next model request.
       cardSelections.set('alice', { provider: 'official-provider', model: 'chat-auto' })
-      sessionSystemPrompts.set('session-1', 'Edited Alice prompt')
+      cardPrompts.set('alice', 'Edited Alice prompt')
       steps.push(await options.resolveStep!())
       await options.onStreamEvent?.({ type: 'finish' })
     })
     const store = useChatStore()
     await store.send({ sessionId: 'session-1', text: 'Use a tool' })
 
-    expect(steps[0]).toMatchObject({ model: 'alice-model', providerId: 'alice-provider', systemPrompt: `Alice prompt\n\n${registerPrompt.value}\n\n${stageContract.value}\n\nPlugin toolset guidance.` })
+    expect(steps[0]).toMatchObject({ model: 'alice-model', providerId: 'alice-provider', systemPrompt: `${composeSystemPrompt(['Alice prompt', registerPrompt.value].filter(Boolean).join('\n\n'), stageContract.value)}\n\nPlugin toolset guidance.` })
     expect(steps[0]?.headers).not.toHaveProperty(AIRI_CHAT_SESSION_ID_HEADER)
-    expect(steps[1]).toMatchObject({ model: 'chat-auto', providerId: 'official-provider', systemPrompt: `Edited Alice prompt\n\n${registerPrompt.value}\n\n${stageContract.value}\n\nPlugin toolset guidance.` })
+    expect(steps[1]).toMatchObject({ model: 'chat-auto', providerId: 'official-provider', systemPrompt: `${composeSystemPrompt(['Edited Alice prompt', registerPrompt.value].filter(Boolean).join('\n\n'), stageContract.value)}\n\nPlugin toolset guidance.` })
     expect(steps[1]?.headers).toMatchObject({
       [AIRI_CHAT_SESSION_ID_HEADER]: 'session-1',
       [AIRI_CHAT_ROUND_ID_HEADER]: expect.any(String),
@@ -772,6 +806,8 @@ describe('chat store contract', () => {
     })
     const store = useChatStore()
     await store.submit({ sessionId: 'session-2', messageId: 'bob-voice', text: 'For Bob' })
+    // `submit` resolves with the storage receipt. Generation continues after it.
+    await vi.waitFor(() => expect(llmStreamMock).toHaveBeenCalledOnce())
 
     expect(getChatProviderInstanceMock).toHaveBeenCalledWith('bob-provider', { reasoning: 'disabled' })
     expect(llmStreamMock.mock.calls[0]?.[0]).toBe('bob-model')
@@ -798,7 +834,8 @@ describe('chat store contract', () => {
       text: 'continue',
     })
 
-    expect(getChatProviderInstanceMock).toHaveBeenCalledTimes(2)
+    // Each send resolves its provider once while it prepares and once for the step of its first request.
+    expect(getChatProviderInstanceMock).toHaveBeenCalledTimes(4)
     expect(getChatProviderInstanceMock).toHaveBeenCalledWith('mock-provider', { reasoning: 'disabled' })
     expect(() => structuredClone(result)).not.toThrow()
     // The session character's wake word tool joins every turn. It is not a selectable stored tool.
@@ -1867,13 +1904,12 @@ describe('chat store contract', () => {
     expect(llmSpan.setAttribute).toHaveBeenCalledWith(IOAttributes.LLMOutputChunkLengths, [5])
     expect(llmSpan.setAttribute).toHaveBeenCalledWith(IOAttributes.LLMTextLength, 5)
 
-    // The persisted system message stays unchanged. Per-message time prefixes
+    // The request carries the composed system prompt. Per-message time prefixes
     // keep the static card prompt cacheable across day boundaries.
     if (composedMessages[0].type !== 'system' || composedMessages[1].type !== 'user')
       throw new Error('Expected system and user turns')
     expect(composedMessages[0].content).toEqual([
-      { type: 'text', text: 'system prompt' },
-      { type: 'text', text: '\n\nPlugin toolset guidance.' },
+      { type: 'text', text: `${composeSystemPrompt(['system prompt', registerPrompt.value].filter(Boolean).join('\n\n'), stageContract.value)}\n\nPlugin toolset guidance.` },
     ])
     expect(composedMessages[1].content[0]).toMatchObject({
       type: 'text',
@@ -2152,8 +2188,8 @@ describe('chat store contract', () => {
     const discord = `base.prompt.register-texting-discord ${JSON.stringify({ faces: ASCII_FACES.join(' ') })}`
     expect(contract).toContain('base.prompt.emotion')
     expect(systemPrompts).toHaveLength(2)
-    expect(systemPrompts[0].startsWith(`system prompt\n\nbase.prompt.register-talking\n\n${contract}`)).toBe(true)
-    expect(systemPrompts[1].startsWith(`system prompt\n\nbase.prompt.register-texting\n\n${discord}\n\n${contract}`)).toBe(true)
+    expect(systemPrompts[0].startsWith(composeSystemPrompt('system prompt\n\nbase.prompt.register-talking', contract))).toBe(true)
+    expect(systemPrompts[1].startsWith(composeSystemPrompt(`system prompt\n\nbase.prompt.register-texting\n\n${discord}`, contract))).toBe(true)
     expect(stageContract.value).toBe(contract)
   })
 

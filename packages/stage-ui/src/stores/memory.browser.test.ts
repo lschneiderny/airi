@@ -40,7 +40,7 @@ describe('memory store', () => {
     expect(other.id).not.toBe(game.id)
     expect(memory.entries).toHaveLength(2)
     expect(memory.read(game.id, 'airi')?.body).toBe('Minecraft.')
-    expect(memory.indexFor('airi')).toBe(`Your own:\n- ${other.id}: What the owner plays.\n- ${game.id}: What the owner plays now.`)
+    expect(memory.indexFor('airi')).toBe(`- ${other.id}: What the owner plays.\n- ${game.id}: What the owner plays now.`)
   })
 
   // A card keeps its own memories. Only the owner makes one general, and then every card reads it.
@@ -49,12 +49,13 @@ describe('memory store', () => {
     const nickname = (await memory.write({ description: 'What the owner likes to be called.', body: 'Yumeka.' }, 'airi'))!
     const rules = (await memory.write({ description: 'Rules of the Discord channel.', body: 'No spoilers.' }, 'discord-host'))!
 
-    expect(memory.indexFor('discord-host')).toBe(`Your own:\n- ${rules.id}: Rules of the Discord channel.`)
+    expect(memory.indexFor('discord-host')).toBe(`- ${rules.id}: Rules of the Discord channel.`)
     expect(memory.read(nickname.id, 'discord-host')).toBeUndefined()
 
     await memory.makeGeneral(nickname)
 
-    expect(memory.indexFor('discord-host')).toBe(`Your own:\n- ${rules.id}: Rules of the Discord channel.\nGeneral:\n- ${nickname.id}: What the owner likes to be called.`)
+    // The index lists entries oldest change first. Making an entry general changes it.
+    expect(memory.indexEntriesFor('discord-host')).toEqual([`- ${rules.id}: Rules of the Discord channel.`, `- ${nickname.id} (general): What the owner likes to be called.`])
     expect(memory.read(nickname.id, 'discord-host')?.body).toBe('Yumeka.')
     expect(memory.entries.find(entry => entry.id === nickname.id)?.persona).toBeUndefined()
   })
