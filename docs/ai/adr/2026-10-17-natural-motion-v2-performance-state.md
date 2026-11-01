@@ -179,6 +179,7 @@ Documentation refers to recordings only by placeholder paths.
 - No new main-process polling. The renderer polls idle time only while the stage is visible.
 - No change to Universal or MAGIC motion behavior.
 
+  Exception, recorded 2026-11-01: `disableLive2DSdkBreath` deletes the Cubism SDK breath pass for every Live2D driver, not only Natural. This predates this ADR: it arrived with the upstream `stage-ui-live2d` import (`f3e6a244e`), together with AIRI's manual breath control and the regression test in `motion-manager.test.ts`, because the SDK pass added head, body, and breath offsets after AIRI's final plugins and made a controlled pose wiggle. No ADR in `docs/ai/adr/` chose a breath policy per driver, and Natural v2 did not change it, so Universal and MAGIC keep the behavior they had before v2. Gating the deletion to Natural would itself change Universal and MAGIC.
 ## Cursor recency
 
 Natural owns cursor recency and attention decay. `Live2D.vue` retains the last host cursor position without applying its 1000 ms expiry while Natural is selected; the controller fades attention when the host reports no cursor. Other motion drivers keep the scene's 1000 ms expiry.
