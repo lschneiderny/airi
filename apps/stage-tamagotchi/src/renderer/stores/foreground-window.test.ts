@@ -42,7 +42,7 @@ function deferredReply() {
 }
 
 describe('useForegroundWindowProducerStore', async () => {
-  const { useForegroundWindowProducerStore } = await import('./foreground-window')
+  const { HIDDEN_SAMPLE_INTERVAL_MS, SAMPLE_INTERVAL_MS, useForegroundWindowProducerStore } = await import('./foreground-window')
 
   let pinia: ReturnType<typeof createPinia>
   let reads: number
@@ -88,7 +88,7 @@ describe('useForegroundWindowProducerStore', async () => {
     expect(reads).toBe(5)
   })
 
-  it('keeps polling while the stage is minimized or hidden', async () => {
+  it('keeps polling at the slower hidden cadence while the stage is minimized or hidden', async () => {
     const producer = useForegroundWindowProducerStore()
     const holder = useForegroundWindowStore()
     const lifecycle = useStageWindowLifecycleStore()
@@ -98,18 +98,60 @@ describe('useForegroundWindowProducerStore', async () => {
 
     lifecycle.updateWindowLifecycle({ ...createDefaultWindowLifecycleState(), minimized: true, reason: 'minimize' })
     await nextTick()
-    await vi.advanceTimersByTimeAsync(5000)
+    await vi.advanceTimersByTimeAsync(HIDDEN_SAMPLE_INTERVAL_MS - 1)
 
     expect(producer.polling).toBe(true)
-    expect(reads).toBe(6)
-    expect(holder.sample?.sampledAtMs).toBe(1_005_000)
+    expect(reads).toBe(1)
 
+    await vi.advanceTimersByTimeAsync(1)
+    expect(reads).toBe(2)
+    expect(holder.sample?.sampledAtMs).toBe(1_000_000 + HIDDEN_SAMPLE_INTERVAL_MS)
+
+    // Moving from minimized to hidden keeps the hidden cadence.
     lifecycle.updateWindowLifecycle({ ...createDefaultWindowLifecycleState(), visible: false, reason: 'hide' })
     await nextTick()
-    await vi.advanceTimersByTimeAsync(2000)
+    await vi.advanceTimersByTimeAsync(HIDDEN_SAMPLE_INTERVAL_MS * 2)
 
-    expect(reads).toBe(8)
-    expect(holder.sample?.sampledAtMs).toBe(1_007_000)
+    expect(reads).toBe(4)
+    expect(holder.sample?.sampledAtMs).toBe(1_000_000 + HIDDEN_SAMPLE_INTERVAL_MS * 3)
+    expect(vi.getTimerCount()).toBe(1)
+  })
+
+  it('starts at the hidden cadence when the stage is already hidden', async () => {
+    const producer = useForegroundWindowProducerStore()
+    useStageWindowLifecycleStore().updateWindowLifecycle({ ...createDefaultWindowLifecycleState(), visible: false, reason: 'hide' })
+
+    producer.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(reads).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(HIDDEN_SAMPLE_INTERVAL_MS * 2)
+    expect(reads).toBe(3)
+  })
+
+  it('samples at once when the stage is shown and returns to the 1 Hz cadence', async () => {
+    const producer = useForegroundWindowProducerStore()
+    const holder = useForegroundWindowStore()
+    const lifecycle = useStageWindowLifecycleStore()
+
+    producer.start()
+    await vi.advanceTimersByTimeAsync(0)
+    lifecycle.updateWindowLifecycle({ ...createDefaultWindowLifecycleState(), minimized: true, reason: 'minimize' })
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(reads).toBe(1)
+
+    reply = async () => windowSample('Code.exe')
+    lifecycle.updateWindowLifecycle({ ...createDefaultWindowLifecycleState(), reason: 'restore' })
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(reads).toBe(2)
+    expect(holder.sample).toMatchObject({ exeName: 'Code.exe', sampledAtMs: 1_003_000 })
+
+    await vi.advanceTimersByTimeAsync(SAMPLE_INTERVAL_MS * 3)
+    expect(reads).toBe(5)
+    expect(vi.getTimerCount()).toBe(1)
   })
 
   it('keeps the last good sample with its old timestamp when a read fails or finds no window', async () => {

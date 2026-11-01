@@ -1,4 +1,5 @@
 import type { ForegroundWindowSample } from '@proj-airi/electron-eventa'
+import type { EffectScope } from 'vue'
 
 import { defineInvoke } from '@moeru/eventa'
 import { errorMessageFrom } from '@moeru/std'
@@ -6,10 +7,18 @@ import { electron } from '@proj-airi/electron-eventa'
 import { getElectronEventaContext } from '@proj-airi/electron-vueuse'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { defineStore } from 'pinia'
-import { shallowRef } from 'vue'
+import { computed, effectScope, shallowRef, watch } from 'vue'
+
+import { useStageWindowLifecycleStore } from './stage-window-lifecycle'
 
 /** The situation reads app switches at human pace, so 1 Hz is enough and cheap for the FFI read. */
-const SAMPLE_INTERVAL_MS = 1000
+export const SAMPLE_INTERVAL_MS = 1000
+/**
+ * The cadence while the stage is hidden or minimized. A hidden-stage sample stays fresh for 20 s
+ * (`FOREGROUND_SAMPLE_STALE_HIDDEN_MS`), so four reads per freshness window keep it fresh through
+ * throttled or skipped ticks, at a fifth of the main-thread FFI work.
+ */
+export const HIDDEN_SAMPLE_INTERVAL_MS = 5000
 
 /**
  * Feeds the shared foreground window store from the Electron host.
@@ -20,19 +29,27 @@ const SAMPLE_INTERVAL_MS = 1000
  * Expects:
  * - Only the main stage window starts it; follower windows never do, so one
  *   renderer polls the main process
+ * - The window lifecycle bridge is initialized, so visibility is known
  *
  * Returns:
  * - `start`/`stop`, both idempotent, and `polling` for diagnostics
  *
  * Unlike the desktop activity producer, polling continues while the stage
- * window is hidden or minimized: the user's foreground app matters most then.
+ * window is hidden or minimized, because the user's foreground app matters most then.
+ * It slows to {@link HIDDEN_SAMPLE_INTERVAL_MS} while hidden and samples at once when
+ * the stage is shown again, where the 5 s visible freshness applies.
  */
 export const useForegroundWindowProducerStore = defineStore('foreground-window-producer', () => {
   const foregroundWindow = useForegroundWindowStore()
+  const windowLifecycle = useStageWindowLifecycleStore()
 
-  /** Whether the 1 Hz foreground poll is running. */
+  /** Whether the foreground poll is running, at either cadence. */
   const polling = shallowRef(false)
 
+  // Same rule as the situation's `setStageVisible`, which picks the freshness limit.
+  const stageVisible = computed(() => windowLifecycle.windowLifecycle.visible && !windowLifecycle.windowLifecycle.minimized)
+
+  let scope: EffectScope | undefined
   let timer: ReturnType<typeof setInterval> | undefined
   /** Advances whenever polling stops, so a reply that arrives later is dropped. */
   let pollGeneration = 0
@@ -73,20 +90,37 @@ export const useForegroundWindowProducerStore = defineStore('foreground-window-p
     }
   }
 
+  function schedule(readForegroundWindow: () => Promise<ForegroundWindowSample | null>, visible: boolean) {
+    clearInterval(timer)
+    timer = setInterval(() => void sample(readForegroundWindow), visible ? SAMPLE_INTERVAL_MS : HIDDEN_SAMPLE_INTERVAL_MS)
+  }
+
   function start() {
-    if (timer !== undefined)
+    if (scope)
       return
 
     const readForegroundWindow = defineInvoke(getElectronEventaContext(), electron.foregroundWindow.sample)
     polling.value = true
     void sample(readForegroundWindow)
-    timer = setInterval(() => void sample(readForegroundWindow), SAMPLE_INTERVAL_MS)
+    schedule(readForegroundWindow, stageVisible.value)
+
+    scope = effectScope(true)
+    scope.run(() => {
+      watch(stageVisible, (visible) => {
+        schedule(readForegroundWindow, visible)
+        // The last hidden sample can be older than the 5 s visible limit, so refresh it now.
+        if (visible)
+          void sample(readForegroundWindow)
+      })
+    })
   }
 
   function stop() {
-    if (timer === undefined)
+    if (!scope)
       return
 
+    scope.stop()
+    scope = undefined
     clearInterval(timer)
     timer = undefined
     pollGeneration += 1
