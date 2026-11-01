@@ -25,7 +25,7 @@ type MarkerToken
 
 interface MarkerParserOptions {
   minLiteralEmitLength?: number
-  recoverCueNames?: string[]
+  recoverCueNames?: readonly string[]
 }
 
 type CueOpener
@@ -40,7 +40,7 @@ type CueResolution
     | { kind: 'flush' }
     | { kind: 'drop' }
 
-function createCueMatcher(names: string[]) {
+function createCueMatcher(names: readonly string[]) {
   const upper = names.map(name => name.toUpperCase()).filter(Boolean)
   const alternatives = upper.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
   const openerPattern = new RegExp(`^([<\\[])(\\|?)(${alternatives})(?![A-Za-z0-9_])`, 'i')
@@ -527,7 +527,7 @@ export function useLlmmarkerParser(options: {
    * An unterminated canonical `<|...` tail is still dropped at the end of the stream.
    * Unset keeps the original parsing byte for byte.
    */
-  recoverCueNames?: string[]
+  recoverCueNames?: readonly string[]
 }) {
   let fullText = ''
   const recovering = !!options.recoverCueNames?.length

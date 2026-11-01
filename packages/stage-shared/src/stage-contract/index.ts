@@ -19,6 +19,12 @@ export const stageContractEmotions: readonly { value: PerformanceEmotion, prompt
   { value: 'sleepy', promptName: 'Sleepy' },
 ]
 
+/**
+ * Marker vocabulary of the stage that the chat runtime enforces. `declineMarker` lets the model decline an unprompted
+ * turn; `recoverCueNames` are the cues whose near-miss spellings, such as `[ACT happy]`, become real cues.
+ */
+export const STAGE_RUNTIME_CONFIG = { declineMarker: '<|SILENT|>', recoverCueNames: ['ACT', 'DELAY'] } as const
+
 export const STAGE_CONTRACT_KEYS = { emotion: 'base.prompt.emotion', emoji: 'base.prompt.emoji', response: 'base.prompt.response' } as const
 
 /**

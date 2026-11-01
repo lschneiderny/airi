@@ -80,9 +80,10 @@ function projection(replay: ReplyReplay) {
 
 export const cueContractScorer: ReplyScorer<ReplyScore> = {
   ...CUE_CONTRACT_SCORER,
-  async score(record) {
+  async score(record, { stage }) {
     const input = {
       text: record.reply.text,
+      stage,
       thinkingText: record.reply.thinkingText,
       origin: record.conversation.origin,
       stickers: record.stickers,
@@ -110,7 +111,7 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
     }
     const diagnostic = useLlmmarkerParser({
       minLiteralEmitLength: 1,
-      recoverCueNames: ['ACT', 'DELAY'],
+      recoverCueNames: stage.recoverCueNames,
       onLiteral: (value) => {
         diagnosticLiterals += value.length
         consumeLiteral(value)
@@ -123,7 +124,7 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
             consumeLiteral(recovery.raw)
             return true
           }
-          const recovered = await replayReply({ text: recovery.raw })
+          const recovered = await replayReply({ text: recovery.raw, stage })
           if (recovered.specials.length === 0) {
             if (recovered.cueStats.rejected === 0)
               consumeLiteral(recovery.raw)
@@ -135,7 +136,7 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
           if (!controller.match(value)) {
             // Runtime routing consumes stickers and, on every origin, the decline marker. A lone decline marker
             // answers a user turn as silent, which tells it apart from a sticker.
-            const user = await replayReply({ text: value })
+            const user = await replayReply({ text: value, stage })
             if (user.specials.length === 0) {
               runtimeOnlyMarkers.add(value)
               if (!user.cueStats.silent) {

@@ -4,7 +4,7 @@ import type { Message, Tool } from '@xsai/shared-chat'
 import type { Conversation } from '../messages/types'
 import type { ChatHistoryItem, ChatTurnCueStats, ContextMessage, StreamingAssistantMessage } from '../types/chat'
 import type { StreamEvent, StreamOptions } from '../types/llm'
-import type { ChatOrchestratorPromptProjection, ChatOrchestratorRuntimeState, ChatOrchestratorSessionPort } from './chat-orchestrator-runtime'
+import type { ChatOrchestratorPromptProjection, ChatOrchestratorRuntimeDeps, ChatOrchestratorRuntimeState, ChatOrchestratorSessionPort, ChatOrchestratorStageConfig } from './chat-orchestrator-runtime'
 
 import { chunkTtsInput } from '@proj-airi/pipelines-audio'
 import { ContextUpdateStrategy } from '@proj-airi/server-shared/types'
@@ -19,7 +19,10 @@ const provider: GenerationProvider = {
   generation: model => ({ protocol: 'chat-completions', config: { model, baseURL: 'https://example.com/' } }),
 }
 
-function createHarness(getActiveProvider = () => 'mock-provider') {
+/** Mirrors the stage rules that AIRI hosts pass; core-agent cannot import them from stage-shared. */
+const liveStage: ChatOrchestratorStageConfig = { declineMarker: '<|SILENT|>', recoverCueNames: ['ACT', 'DELAY'] }
+
+function createHarness(getActiveProvider = () => 'mock-provider', stage = liveStage) {
   const sessionMessages: Record<string, ChatHistoryItem[]> = {
     'session-1': [
       {
@@ -94,6 +97,7 @@ function createHarness(getActiveProvider = () => 'mock-provider') {
   })
 
   const runtime = createChatOrchestratorRuntime({
+    stage,
     session: {
       commitUserMessage,
       getSessionMessages: sessionId => sessionMessages[sessionId] ?? [],
@@ -2793,6 +2797,40 @@ describe('unprompted turns', () => {
     expectDeclined(harness)
   })
 
+  describe('with a host stage that declines on <|QUIET|>', () => {
+    const quietStage = { declineMarker: '<|QUIET|>', recoverCueNames: ['ACT'] }
+
+    it('declines on the host marker', async () => {
+      const harness = createHarness(undefined, quietStage)
+      harness.recordHooks()
+      replyWith(harness, ['<|QUIET|>', 'Unused text'])
+
+      await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+
+      expectDeclined(harness)
+    })
+
+    it('does not decline on the silent marker', async () => {
+      const harness = createHarness(undefined, quietStage)
+      replyWith(harness, ['<|SILENT|>', ' Oh, hi!'])
+
+      await harness.runtime.ingest(triggerText, unpromptedOptions, 'session-1')
+
+      expect(harness.declined).toEqual([])
+      expect(harness.settled).toEqual([{ sessionId: 'session-1', turnId: 'trigger-1', status: 'finished' }])
+    })
+
+    it('lets the send option override the host marker', async () => {
+      const harness = createHarness(undefined, quietStage)
+      harness.recordHooks()
+      replyWith(harness, ['<|PASS|>', 'Unused text'])
+
+      await harness.runtime.ingest(triggerText, { ...unpromptedOptions, declineMarker: '<|PASS|>' }, 'session-1')
+
+      expectDeclined(harness)
+    })
+  })
+
   it('does not decline on a silent marker inside reasoning', async () => {
     const harness = createHarness()
     harness.recordHooks()
@@ -3440,10 +3478,36 @@ describe('wordless user turns and break slices', () => {
   })
 
   it('replays the break rule identically at every chunking', async () => {
-    const replay = await replayReplyAtEveryChunking('a<|BREAK|>b<|BREAK|>c<|BREAK|>d<|BREAK|>')
+    const replay = await replayReplyAtEveryChunking('a<|BREAK|>b<|BREAK|>c<|BREAK|>d<|BREAK|>', liveStage)
 
     expect(replay.specials).toEqual([{ value: '<|BREAK|>' }, { value: '<|BREAK|>' }])
     expect(replay.cueStats).toMatchObject({ breaks: 2, breaksIgnored: 2 })
+  })
+})
+
+describe('host stage config', () => {
+  it('recovers only the cue names that the host stage lists', async () => {
+    const harness = createHarness(undefined, { declineMarker: '<|QUIET|>', recoverCueNames: ['ACT'] })
+    const specials: string[] = []
+    harness.runtime.hooks.onTokenSpecial(async (special) => {
+      specials.push(special)
+    })
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '[ACT happy] Hi [DELAY 1] there' })
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest('hello', { model: 'test', chatProvider: provider }, 'session-1')
+
+    expect(specials).toEqual(['<|ACT happy|>'])
+    expect(harness.sessionMessages['session-1'].at(-1)).toMatchObject({ role: 'assistant', categorization: { speech: expect.stringContaining('[DELAY 1]') } })
+  })
+
+  it('requires the host stage config', () => {
+    const build = (deps: Omit<ChatOrchestratorRuntimeDeps, 'stage'>) =>
+      // @ts-expect-error The host must supply the decline marker and the cue names.
+      createChatOrchestratorRuntime(deps)
+    expect(build).toBeTypeOf('function')
   })
 })
 

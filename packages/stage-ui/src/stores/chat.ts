@@ -19,7 +19,7 @@ import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import { IOAttributes, IOEvents, IOSpanNames, IOSubsystems } from '@proj-airi/stage-shared'
 import { renderRegisterSection } from '@proj-airi/stage-shared/conversation-register'
 import { TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
-import { composePrompt, REPLY_MAX_TOKENS } from '@proj-airi/stage-shared/stage-contract'
+import { composePrompt, REPLY_MAX_TOKENS, STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'
 import { isEqual } from 'es-toolkit'
 import { nanoid } from 'nanoid'
 import { defineStore, getActivePinia, storeToRefs } from 'pinia'
@@ -759,6 +759,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   const runtime = createChatOrchestratorRuntime({
+    stage: STAGE_RUNTIME_CONFIG,
     session: {
       getSessionMessages: sessionId => chatSession.getSessionMessages(sessionId).map(message => toRaw(message)),
       commitUserMessage: (sessionId, message) => chatSession.commitUserMessage(sessionId, message),

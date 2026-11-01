@@ -433,7 +433,7 @@ The chat store renders the register section with `renderRegisterSection(register
 ### Unprompted turns
 
 `useChatStore().submitUnprompted({ topicKey, topicText, force?, messageId?, supplement? })` starts one turn without user input in the leader's active session. It resolves to `spoken` with the text, `declined`, `cancelled`, or `failed`.
-`force` changes only the instruction: without it, the instruction invites the model to decline with `<|SILENT|>`, and with it, the instruction asks her to speak. A forced turn still declines when the reply starts with the decline marker or has no visible speech. A decline writes an `unprompted-declined` control record and nothing else.
+`force` changes only the instruction: without it, the instruction invites the model to decline with `<|SILENT|>`, the `declineMarker` of `STAGE_RUNTIME_CONFIG` that the chat store passes to the runtime, and with it, the instruction asks her to speak. A forced turn still declines when the reply starts with the decline marker or has no visible speech. A decline writes an `unprompted-declined` control record and nothing else.
 At most one unprompted turn is pending at a time. A user send in the same session cancels it.
 The trigger message keeps `topicText` in chat history, so the gate never passes a window title or a web extension title or link as `topicText`. Its trigger kind identifies the reason source. Thread text reaches the model only as labelled data in the trigger, never in the instruction. For a web extension topic it passes only the kind of topic, and the situation block of the request carries the details.
 `userSending` ignores unprompted turns, so the presence bubble and the streaming placeholder follow user turns only.
