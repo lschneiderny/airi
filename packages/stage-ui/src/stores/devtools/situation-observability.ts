@@ -377,11 +377,11 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
       turnId: projection.turnId,
       capturedAtMs: projection.capturedAt,
       messageCount: projection.composedMessage.length,
-      // The composer report sizes the system prompt the provider received. A projection without a report (no
-      // `resolveStep`, as in tests) falls back to the text of the composed messages; this is supported, not legacy.
-      chars: projection.promptReport
-        ? projection.promptReport.reduce((total, entry) => total + entry.chars, 0)
-        : projection.composedMessage.reduce((total, message) => total + messageTextLength(message), 0),
+      // The composer report sizes the system prompt the provider received, so it replaces the system message's
+      // length; every other message still counts its text. Without a report, the system message counts its text.
+      chars: projection.composedMessage.reduce((total, message) => total + (message.role === 'system' && projection.promptReport
+        ? projection.promptReport.reduce((prompt, entry) => prompt + entry.chars, 0)
+        : messageTextLength(message)), 0),
     }
   }, { flush: 'sync' })
 

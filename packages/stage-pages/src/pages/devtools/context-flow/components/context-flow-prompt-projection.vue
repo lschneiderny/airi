@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { PromptReportEntry } from '@proj-airi/core-agent'
 import type { PromptProjectionSnapshot } from '@proj-airi/stage-ui/stores/devtools/context-observability'
 
 import { Section } from '@proj-airi/stage-ui/components'
@@ -24,18 +23,6 @@ const reportTotal = computed(() => {
   )
 })
 
-/** Budget outcomes of one segment, as text; a palette alone would not say what happened. */
-function segmentFlags(entry: PromptReportEntry): string[] {
-  const flags: string[] = []
-  if (entry.overBudget)
-    flags.push(t(`${REPORT_KEY}.over-budget`))
-  if (entry.truncated)
-    flags.push(t(`${REPORT_KEY}.truncated`))
-  if (entry.dropped > 0)
-    flags.push(t(`${REPORT_KEY}.dropped`, { count: entry.dropped }))
-  return flags
-}
-
 const labelClass = ['text-xs font-medium uppercase tracking-[0.08em]', 'text-neutral-400 dark:text-neutral-500']
 const noteClass = ['text-xs', 'text-neutral-500 dark:text-neutral-400']
 const emptyClass = ['text-sm', 'text-neutral-500 dark:text-neutral-400']
@@ -46,7 +33,7 @@ const headCellClass = ['px-2 py-1.5 font-medium whitespace-nowrap']
 const rowClass = ['border-t', 'border-neutral-200/70 dark:border-neutral-800/80', 'align-top']
 const cellClass = ['px-2 py-1.5']
 const numberCellClass = [...cellClass, 'text-right font-mono tabular-nums whitespace-nowrap']
-const flagClass = ['font-medium', 'text-orange-600 dark:text-orange-400']
+const flagClass = 'font-medium text-orange-600 dark:text-orange-400'
 </script>
 
 <template>
@@ -163,8 +150,14 @@ const flagClass = ['font-medium', 'text-orange-600 dark:text-orange-400']
                     <th :class="[...headCellClass, 'text-right']">
                       {{ t(`${REPORT_KEY}.columns.tokens`) }}
                     </th>
+                    <th :class="[...headCellClass, 'text-right']">
+                      {{ t(`${REPORT_KEY}.columns.dropped`) }}
+                    </th>
                     <th :class="headCellClass">
-                      {{ t(`${REPORT_KEY}.columns.flags`) }}
+                      {{ t(`${REPORT_KEY}.columns.truncated`) }}
+                    </th>
+                    <th :class="headCellClass">
+                      {{ t(`${REPORT_KEY}.columns.over-budget`) }}
                     </th>
                   </tr>
                 </thead>
@@ -185,11 +178,14 @@ const flagClass = ['font-medium', 'text-orange-600 dark:text-orange-400']
                     <td :class="numberCellClass">
                       {{ entry.estimatedTokens }}
                     </td>
-                    <td :class="cellClass">
-                      <span v-if="segmentFlags(entry).length" :class="flagClass">{{ segmentFlags(entry).join(' · ') }}</span>
-                      <template v-else>
-                        -
-                      </template>
+                    <td :class="[...numberCellClass, entry.dropped > 0 ? flagClass : '']">
+                      {{ entry.dropped > 0 ? entry.dropped : '-' }}
+                    </td>
+                    <td :class="[...cellClass, entry.truncated ? flagClass : '']">
+                      {{ entry.truncated ? t(`${REPORT_KEY}.yes`) : '-' }}
+                    </td>
+                    <td :class="[...cellClass, entry.overBudget ? flagClass : '']">
+                      {{ entry.overBudget ? t(`${REPORT_KEY}.yes`) : '-' }}
                     </td>
                   </tr>
                 </tbody>
@@ -204,7 +200,7 @@ const flagClass = ['font-medium', 'text-orange-600 dark:text-orange-400']
                     <td :class="numberCellClass">
                       {{ reportTotal.estimatedTokens }}
                     </td>
-                    <td :class="cellClass" />
+                    <td :class="cellClass" colspan="3" />
                   </tr>
                 </tfoot>
               </table>

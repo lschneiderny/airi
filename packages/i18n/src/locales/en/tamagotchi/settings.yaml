@@ -82,14 +82,14 @@ devtools:
         note: Sizes of the system prompt the provider received, as the prompt composer reported them. Tokens are estimated as chars / 4.
         empty: The last compose carried no segment report.
         total: Total
-        over-budget: over budget
-        truncated: truncated
-        dropped: '{count} dropped'
+        yes: 'yes'
         columns:
           segment: Segment
           chars: Chars
           tokens: Est. tokens
-          flags: Flags
+          dropped: Dropped
+          truncated: Truncated
+          over-budget: Over budget
     memory:
       title: Memory
       description: What each character remembers, and what memory did in each chat request

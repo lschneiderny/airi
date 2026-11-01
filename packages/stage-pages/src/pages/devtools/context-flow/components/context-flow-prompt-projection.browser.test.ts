@@ -23,9 +23,9 @@ describe('context flow prompt projection', () => {
   })
 
   it('lists one row per reported segment and marks the over-budget ones', async () => {
-    const overBudgetLabel = t('tamagotchi.settings.devtools.pages.context-flow.prompt-report.over-budget')
+    const yes = t('tamagotchi.settings.devtools.pages.context-flow.prompt-report.yes')
     // A missing locale entry renders the key, which the text query would still match.
-    expect(overBudgetLabel).not.toBe('tamagotchi.settings.devtools.pages.context-flow.prompt-report.over-budget')
+    expect(yes).not.toBe('tamagotchi.settings.devtools.pages.context-flow.prompt-report.yes')
 
     const lastProjection = projection({ promptReport: [
       { id: 'format', chars: 400, estimatedTokens: 100, dropped: 0, truncated: false, overBudget: false },
@@ -42,10 +42,12 @@ describe('context flow prompt projection', () => {
     const body = table.element().querySelector('tbody')
     expect(body?.querySelectorAll('tr').length).toBe(6)
     expect([...body?.querySelectorAll('tr[data-over-budget]') ?? []].map(row => row.getAttribute('data-segment'))).toEqual(['card', 'memory', 'voice'])
-    expect(body?.querySelector('tr[data-segment="card"]')?.textContent).toMatch(new RegExp(`card\\s*9000\\s*2250\\s*${overBudgetLabel}`))
-    expect(body?.querySelector('tr[data-segment="memory"]')?.textContent).toContain(t('tamagotchi.settings.devtools.pages.context-flow.prompt-report.dropped', { count: 3 }))
-    expect(body?.querySelector('tr[data-segment="voice"]')?.textContent).toContain(t('tamagotchi.settings.devtools.pages.context-flow.prompt-report.truncated'))
-    expect(body?.querySelector('tr[data-segment="format"]')?.textContent).toMatch(/format\s*400\s*100\s*-/)
+    const cells = (segment: string) => [...body?.querySelector(`tr[data-segment="${segment}"]`)?.querySelectorAll('td') ?? []].map(cell => cell.textContent?.trim())
+    // Columns: segment, chars, est. tokens, dropped, truncated, over budget.
+    expect(cells('card')).toEqual(['card', '9000', '2250', '-', '-', yes])
+    expect(cells('memory')).toEqual(['memory', '5800', '1450', '3', '-', yes])
+    expect(cells('voice')).toEqual(['voice', '1000', '250', '-', yes, yes])
+    expect(cells('format')).toEqual(['format', '400', '100', '-', '-', '-'])
     await expect.element(screen.getByTestId('prompt-report-total')).toHaveTextContent(/17400\s*4350/)
   })
 
