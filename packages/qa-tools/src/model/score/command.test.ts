@@ -81,7 +81,7 @@ describe('score command', () => {
     expect(manifest.result.summary).toContain(summary[0].sources.closureDigest)
     expect(manifest.artifacts).toHaveLength(3)
     expect(summary[0].sources.files.map(file => file.repoPath)).toContain('packages/core-agent/src/runtime/response-categoriser.ts')
-    expect(summary[0].sources.files).toHaveLength(16)
+    expect(summary[0].sources.files).toHaveLength(18)
     expect(summary[0].sources.closureDigest).toBe(sha256Bytes(Buffer.from(JSON.stringify(summary[0].sources.files))))
     expect(summary[0].sources.coreAgentDistSha256).toBe(sha256Bytes(await readFile(join(repoRoot, 'packages/core-agent/dist/index.mjs'))))
     expect(summary[0].fixtures).toMatchObject({ passed: 25, total: 25 })

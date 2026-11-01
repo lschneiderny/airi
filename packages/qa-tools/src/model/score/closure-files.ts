@@ -7,6 +7,8 @@ export const SCORE_CLOSURE_FILES = [
   'packages/core-agent/src/runtime/reply-replay.ts',
   'packages/core-agent/src/runtime/cue-compliance.ts',
   'packages/core-agent/src/runtime/cue-contract-fixtures.ts',
+  'packages/stage-shared/src/stage-contract/compose.ts',
+  'packages/stage-shared/src/stage-contract/index.ts',
   'packages/pipelines-audio/src/llm-streaming-control/controller.ts',
   'packages/pipelines-audio/src/llm-streaming-control/payloads.ts',
   'packages/pipelines-audio/src/llm-streaming-control/parsers/act.ts',

@@ -1,0 +1,24 @@
+{
+  "memory": {
+    "header": "Long-term memory. You keep it yourself. Each index line gives the id of one remembered fact.\nMemory index:",
+    "entries": [
+      "(general) m1: The owner prefers short replies.",
+      "p2: The owner has a cat named Mochi."
+    ]
+  },
+  "toolset": "You can call the tools listed for this turn.",
+  "account": "The signed-in owner is Fixture Owner.",
+  "stickers": {
+    "header": "You can send one optional sticker per reply with a marker from this catalog.",
+    "entries": [
+      {
+        "id": "wave",
+        "description": "A friendly wave"
+      },
+      {
+        "id": "cheer",
+        "description": "Celebrating"
+      }
+    ]
+  }
+}

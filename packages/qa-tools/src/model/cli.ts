@@ -12,7 +12,7 @@ export const modelUsage = `Usage: pnpm qa:model <command> [options]
 
 Commands:
   score <transcripts.jsonl> [--set <id>] [--label <l>]   score a transcript file with the real runtime replay
-  prompt [--locale en] [--card <file>] [--json]          print the system prompt the app sends and its hashes
+  prompt [--locale en] [--card <file>] [--full <fixture>] [--json]  print the system prompt the app sends and its hashes
   import-ollama-bench <dir> --set <id>                   convert legacy ollama-bench results into transcripts
   help                                                   print this usage
 

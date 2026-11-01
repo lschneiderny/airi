@@ -1,4 +1,5 @@
 import type { ConversationRegister, TextingFlavor } from '@proj-airi/stage-shared/conversation-register'
+import type { PromptSegment } from '@proj-airi/stage-shared/stage-contract'
 
 import { createHash } from 'node:crypto'
 
@@ -6,7 +7,7 @@ import messages from '@proj-airi/i18n/locales'
 
 import { createFallbackOptions } from '@proj-airi/i18n'
 import { renderRegisterSection } from '@proj-airi/stage-shared/conversation-register'
-import { composeSystemPrompt, renderStageContract } from '@proj-airi/stage-shared/stage-contract'
+import { CODE_BLOCK_SYSTEM_PROMPT, composePrompt, MATH_SYNTAX_SYSTEM_PROMPT, renderStageContract } from '@proj-airi/stage-shared/stage-contract'
 import { createI18n } from 'vue-i18n'
 
 /** Extracts spoken examples using the same rule as the rendered contract. */
@@ -41,23 +42,32 @@ export function buildStageContract(locale = 'en') {
 
 /**
  * Composes formatting rules, untrusted card text, and the canonical stage contract without interpreting the card.
- * With a `register`, the register section follows the card and precedes the contract, as the app's session prompt
- * places it; the contract, and so `contract.sha256`, does not depend on the register. Without one, no section is added.
+ * With a `register`, the register section follows the card and precedes the contract, as the app's chat prompt places
+ * it; the contract, and so `contract.sha256`, does not depend on the register. Without one, no section is added.
+ * Without `segments` the result is the cacheable prefix alone. With them, the tail segments follow in the composer's
+ * order, as the production chat prompt builds them.
  */
-export function buildSystemPrompt({ locale = 'en', cardPrompt, register, textingFlavor = 'plain' }: {
+export function buildSystemPrompt({ locale = 'en', cardPrompt, register, textingFlavor = 'plain', segments = [] }: {
   locale?: string
   cardPrompt: string
   register?: ConversationRegister
   textingFlavor?: TextingFlavor
+  segments?: readonly PromptSegment[]
 }) {
   const contract = buildStageContract(locale)
-  let characterPrompt = cardPrompt
+  let registerSection = ''
   if (register !== undefined) {
     const { global } = createPromptI18n(locale, contract.warnings)
-    const section = renderRegisterSection(register, textingFlavor, (key, params) => params ? global.t(key, params) : global.t(key))
-    characterPrompt = [cardPrompt, section].filter(Boolean).join('\n\n')
+    registerSection = renderRegisterSection(register, textingFlavor, (key, params) => params ? global.t(key, params) : global.t(key))
   }
-  const text = composeSystemPrompt(characterPrompt, contract.text)
+  const composed = composePrompt([
+    { id: 'format', text: CODE_BLOCK_SYSTEM_PROMPT + MATH_SYNTAX_SYSTEM_PROMPT },
+    { id: 'card', text: cardPrompt },
+    { id: 'register', text: registerSection },
+    { id: 'contract', text: contract.text },
+    ...segments,
+  ])
+  const text = composed.text
   const sha256 = createHash('sha256').update(text).digest('hex')
-  return { text, sha256, contract }
+  return { text, sha256, contract, report: composed.report }
 }
