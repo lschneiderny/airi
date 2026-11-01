@@ -217,7 +217,7 @@ describe('situation observability store', () => {
     })
   })
 
-  it('sizes the last unprompted request by the composer report when the projection carries one', async () => {
+  it('sizes the system message by the composer report and the other messages by their text', async () => {
     const store = useSituationObservabilityStore()
     const context = useContextObservabilityStore()
 
@@ -230,7 +230,8 @@ describe('situation observability store', () => {
       { role: 'user', content: '(A quiet moment.)' },
     ], { turnId: 'turn-1', origin: 'unprompted' })
 
-    expect((await store.inspect()).spend.lastUnpromptedRequest).toMatchObject({ turnId: 'turn-1', messageCount: 2, chars: 200 })
+    // 200 report chars for the system message plus the 17-char user message; the 13-char system text is not counted.
+    expect((await store.inspect()).spend.lastUnpromptedRequest).toMatchObject({ turnId: 'turn-1', messageCount: 2, chars: 200 + '(A quiet moment.)'.length })
   })
 
   it('answers an evaluation request without a gate as skipped, and with one through the gate evaluator only', async () => {
