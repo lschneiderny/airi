@@ -6,8 +6,7 @@
       "- p2: The owner has a cat named Mochi."
     ]
   },
-  "toolset": "You can call the tools listed for this turn.",
-  "account": "The signed-in owner is Fixture Owner.",
+  "toolset": "## Toolset\n\n### Home Assistant\n\nControl the lights and switches that the owner lists.\n\n### Browser\n\nOpen a page when the owner asks for it.",
   "stickers": {
     "header": "You can send one optional sticker per reply with a marker from this catalog.\nUse stickers when the user requests one or when a lighthearted response fits. Avoid them in serious conversations.\nKeep your text complete. Never invent sticker IDs or image URLs.\nChoose the ID whose name and emotion tags best fit the conversation.",
     "entries": [
