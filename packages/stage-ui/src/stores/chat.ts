@@ -303,10 +303,9 @@ export const useChatStore = defineStore('chat', () => {
   const llmToolsStore = useLlmToolsStore()
   const { buildChatPromptSegments } = useChatPrompt()
   // Instantiate the web-search store eagerly so its `configured` watcher registers
-  // WEB_SEARCH_TOOLSET_PROMPT before the first system prompt is composed. The
-  // tool resolver that would otherwise be the first to create this store runs after
-  // the system prompt is composed, which would expose web_search on the first turn
-  // without its paired prompt-injection defense.
+  // WEB_SEARCH_TOOLSET_PROMPT before the first system prompt is composed. The tool
+  // resolver would create this store only after composition, so the first turn
+  // would expose web_search without its paired prompt-injection defense.
   useWebSearchStore()
   const consciousnessStore = useConsciousnessStore()
   const providerConfigStore = useProviderConfigStore()

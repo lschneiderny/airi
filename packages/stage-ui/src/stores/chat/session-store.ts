@@ -240,7 +240,8 @@ export const useChatSessionStore = defineStore('chat-session', () => {
 
   /**
    * Returns the current system prompt of the character that owns the session.
-   * The selected character does not change it. Chat requests read it again before each model step.
+   * The selected character does not change it. Only `generateInitialMessageForSession` and tests use it.
+   * Chat requests compose their own system prompt with `composePrompt(buildChatPromptSegments(...))`.
    */
   function getSessionSystemPrompt(sessionId: string) {
     // A session without metadata has no owner yet. The selected character creates and owns it.
