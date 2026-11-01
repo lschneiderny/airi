@@ -25,8 +25,10 @@ const fixtureSchema = strictObject({
 
 /**
  * Builds the tail segments of a fixture in the shapes that stage-ui's chat prompt builds: a memory header with its
- * entries oldest first, one text per plain segment, and one `<|STICKER id|>` line per catalog entry.
- * qa-tools cannot import stage-ui, so a test pins this mirror against the composer.
+ * entries oldest first, one text per plain segment, and one `<|STICKER id|>: description` line per catalog entry.
+ * qa-tools cannot import stage-ui, so the fixture carries stage-ui's header and index-line text. The stage-ui test
+ * `prompt-fixture-parity.test.ts` reads the fixture and fails when that text drifts; the sticker line format is pinned
+ * there and in `prompt-full.test.ts`.
  */
 export function segmentsFromFixture(value: unknown): PromptSegment[] {
   const fixture = parse(fixtureSchema, value)
