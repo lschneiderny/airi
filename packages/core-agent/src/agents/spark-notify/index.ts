@@ -5,10 +5,7 @@ export type {
   SparkNotifyHandleRequest,
   SparkNotifyHandleResult,
 } from './agent'
-export {
-  createSparkNotifyAgent,
-  getSparkNotifyHandlingAgentInstruction,
-} from './agent'
+export { createSparkNotifyAgent } from './agent'
 export {
   createSparkNotifyBuiltinToolsPlugin,
   createSparkNotifyObserverPlugin,

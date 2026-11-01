@@ -4,15 +4,16 @@ import type { NotifyObservation } from '@proj-airi/stage-shared/situation'
 
 import { createSparkNotifyAgent } from '@proj-airi/core-agent/agents/spark-notify'
 import { notifyTopicKey } from '@proj-airi/stage-shared/situation'
+import { composePrompt, REPLY_MAX_TOKENS } from '@proj-airi/stage-shared/stage-contract'
 import { defineStore, storeToRefs } from 'pinia'
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
-import { useCharacterNotebookStore, useCharacterStore } from '../'
-import { useStageContractPrompt, useStageLiveStatePrompt } from '../../../composables/use-airi-runtime-prompt'
-import { composeMemoryPrompt } from '../../../tools/memory'
+import { useCharacterNotebookStore } from '../'
+import { useStageLiveStatePrompt } from '../../../composables/use-airi-runtime-prompt'
 import { getEventSourceKey } from '../../../utils/event-source'
 import { useLLM } from '../../ai/chat-llm/llm'
-import { useMemoryStore } from '../../memory'
+import { useChatPrompt } from '../../chat/prompt'
 import { useModsServerChannelStore } from '../../mods/api/channel-server'
 import { useAiriCardStore } from '../../modules/airi-card'
 import { useConsciousnessStore } from '../../modules/consciousness'
@@ -33,12 +34,10 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
   const { stream } = useLLM()
   const consciousnessStore = useConsciousnessStore()
   const { activeProvider, activeModel } = storeToRefs(consciousnessStore)
-  const characterStore = useCharacterStore()
+  const { t } = useI18n()
   const notebookStore = useCharacterNotebookStore()
-  const { systemPrompt } = storeToRefs(characterStore)
   const cardStore = useAiriCardStore()
-  const memory = useMemoryStore()
-  const stageContractPrompt = useStageContractPrompt()
+  const { buildChatPromptSegments } = useChatPrompt()
   const liveStatePrompt = useStageLiveStatePrompt()
   const modsServerChannelStore = useModsServerChannelStore()
   const situationStore = useSituationStore()
@@ -72,6 +71,7 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
   // The agent runs only for the commands of notifies addressed beyond the character. Whether the character speaks
   // about a notify is the situation gate's decision, so this agent has no reaction plugin and its text is ignored.
   const sparkNotifyAgent = createSparkNotifyAgent({
+    instruction: moduleName => t('base.prompt.spark-notify', { moduleName }),
     runner: {
       run: request => stream(
         request.selectedChat.model,
@@ -84,6 +84,7 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
           waitForTools: request.policy.waitForTools,
           toolChoice: request.policy.toolChoice,
           onStreamEvent: request.onStreamEvent,
+          maxTokens: REPLY_MAX_TOKENS,
         },
       ),
     },
@@ -182,11 +183,8 @@ export const useCharacterOrchestratorStore = defineStore('character-orchestrator
           provider,
         },
         // The stable stage contract belongs to the system prompt. Only the live state rides with the notify.
-        systemPrompt: [
-          systemPrompt.value,
-          stageContractPrompt.value,
-          memory.enabled ? composeMemoryPrompt(memory.indexFor(cardStore.activeCardId ?? 'default')) : '',
-        ].filter(Boolean).join('\n\n'),
+        // Spark uses the active card's memory, not the memory of a queued turn's card.
+        systemPrompt: composePrompt(buildChatPromptSegments({ characterId: cardStore.activeCardId ?? 'default' })).text,
         runtimePrompt: liveStatePrompt.value,
         control: { ...control, commandsOnly: true },
       })
