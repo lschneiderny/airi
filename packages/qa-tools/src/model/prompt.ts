@@ -1,3 +1,5 @@
+import type { PromptSegment } from '@proj-airi/stage-shared/stage-contract'
+
 import process from 'node:process'
 
 import { readFile } from 'node:fs/promises'
@@ -5,8 +7,41 @@ import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
+import { array, object, optional, parse, strictObject, string } from 'valibot'
 
 import { buildSystemPrompt } from './stage-contract'
+
+const listSegmentSchema = strictObject({ header: optional(string()), entries: array(string()) })
+const fixtureSchema = strictObject({
+  memory: optional(listSegmentSchema),
+  toolset: optional(string()),
+  account: optional(string()),
+  voice: optional(string()),
+  control: optional(string()),
+  unprompted: optional(string()),
+  plugin: optional(string()),
+  stickers: optional(strictObject({ header: optional(string()), entries: array(object({ id: string(), description: string() })) })),
+})
+
+/**
+ * Builds the tail segments of a fixture in the shapes that stage-ui's chat prompt builds: a memory header with its
+ * entries oldest first, one text per plain segment, and one `<|STICKER id|>` line per catalog entry.
+ * qa-tools cannot import stage-ui, so a test pins this mirror against the composer.
+ */
+export function segmentsFromFixture(value: unknown): PromptSegment[] {
+  const fixture = parse(fixtureSchema, value)
+  const segments: PromptSegment[] = []
+  if (fixture.memory)
+    segments.push({ id: 'memory', header: fixture.memory.header, text: fixture.memory.entries })
+  for (const id of ['toolset', 'account', 'voice', 'control', 'unprompted', 'plugin'] as const) {
+    const text = fixture[id]
+    if (text !== undefined)
+      segments.push({ id, text })
+  }
+  if (fixture.stickers)
+    segments.push({ id: 'stickers', header: fixture.stickers.header, text: fixture.stickers.entries.map(sticker => `<|STICKER ${sticker.id}|>: ${sticker.description}`) })
+  return segments
+}
 
 interface PromptCliIo {
   stdout?: (text: string) => void
@@ -30,6 +65,7 @@ export async function runPromptCli(
         locale: { type: 'string', default: 'en' },
         card: { type: 'string' },
         json: { type: 'boolean' },
+        full: { type: 'string' },
       },
       strict: true,
       allowPositionals: false,
@@ -54,7 +90,22 @@ export async function runPromptCli(
     }
   }
 
-  const prompt = buildSystemPrompt({ locale: values.locale, cardPrompt })
+  let segments: PromptSegment[] = []
+  if (values.full !== undefined) {
+    try {
+      segments = segmentsFromFixture(JSON.parse(await readFile(resolve(repoRoot, values.full), 'utf8')))
+    }
+    catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        stderr(`qa-tools model prompt: fixture file not found: ${values.full}\n`)
+        return 2
+      }
+      stderr(`qa-tools model prompt: invalid --full fixture ${values.full}: ${errorMessageFrom(error) ?? 'unreadable'}\n`)
+      return 2
+    }
+  }
+
+  const prompt = buildSystemPrompt({ locale: values.locale, cardPrompt, segments })
   const metadata = {
     promptSha256: prompt.sha256,
     contractSha256: prompt.contract.sha256,
