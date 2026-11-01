@@ -8,7 +8,7 @@ Use this package when a type or behavior must cross stage application boundaries
 
 | Entrypoint | Use | Do not use |
 | --- | --- | --- |
-| `stage-contract` | Render the stable cue contract with a supplied translator and compose the system prompt from budgeted segments with `composePrompt` (see the [prompt composition ADR](../../docs/ai/adr/2026-11-01-prompt-composition.md)). The English SHA-256 pins its version; update it in the commit that changes the contract. | Read locale state, collect live stage state, or parse model replies. |
+| `stage-contract` | Render the stable cue contract with a supplied translator and compose every character-turn system prompt from budgeted segments with `composePrompt`, which orders the segments and reports their sizes (see the [prompt composition ADR](../../docs/ai/adr/2026-11-01-prompt-composition.md)). The English SHA-256 pins its version; update it in the commit that changes the contract. | Read locale state, collect live stage state, or parse model replies. |
 | `conversation-register` | Read the conversation registers (`talking`, `texting`) and texting flavors (`plain`, `discord`), parse a stored register, render the register section of the character prompt with `renderRegisterSection`, and share the `ASCII_FACES` list that speech strips. | Change the stage contract per register: the register section stays outside the contract, so the contract hash is the same in both registers. |
 
 The `plugin-host` entrypoint owns the serializable Plugin Host snapshots exchanged between the Electron main process and shared renderer code:

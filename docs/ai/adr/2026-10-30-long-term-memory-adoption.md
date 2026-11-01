@@ -26,3 +26,8 @@ Memory is stored in local IndexedDB and does not sync through the cloud. Any win
 ## Validation
 
 The implementation is covered by `memory.browser.test.ts`, `tools/memory.test.ts`, memory cases in `chat.contract.test.ts`, unprompted cases in `llm.test.ts`, `use-data-maintenance.browser.test.ts`, `airi-card.test.ts`, `airi-card-import-export.test.ts`, `orchestrator/index.test.ts`, `artistry-autonomous.test.ts`, `memory-observability.test.ts`, and `memory-long-term-memories.browser.test.ts`. Live Electron validation is described in plan row 16.
+## Amendments
+
+### 2026-11-01: memory index as a composer segment
+
+The memory index is the first tail segment (`memory`) of the composed system prompt, and the composer owns its budget. The index is a flat list, oldest-updated first, with `(general)` markers on entries that every character sees. It holds 40 entries and 6000 characters, and it drops the oldest entries first. The rules text is the segment header and sits outside the character cap. The Decision above is unchanged. See the [prompt composition ADR](2026-11-01-prompt-composition.md).
