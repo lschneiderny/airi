@@ -3,6 +3,8 @@
 Date: 2026-10-24
 Status: accepted
 
+Channel ownership is defined in the [living parameter-ownership document](../live2d-parameter-ownership.md).
+
 ## Context
 
 The Live2D expression tab showed one flat list. Whole-face moods and small details looked the same there, duplicate files appeared twice, and files that the app could not classify landed under `face`. Each emotion mapped to single expressions only, so a look built from several expressions, such as an angry face with puffed cheeks and a dark face, could not be saved or triggered as one unit.

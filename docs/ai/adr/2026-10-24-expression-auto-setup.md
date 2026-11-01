@@ -3,6 +3,8 @@
 Date: 2026-10-24
 Status: accepted
 
+Channel ownership is defined in the [living parameter-ownership document](../live2d-parameter-ownership.md).
+
 ## Context
 
 Luke's QA found that setting up expressions required too much manual work before the model could react. Reviewing every entry, confirming it, selecting emotion mappings, and exposing entries to the LLM made a new model profile feel unfinished.
@@ -17,10 +19,12 @@ The settings view presents a relevance view for reviewing entries, groups relate
 
 ## Overrides
 
-- The fresh-profile default in `docs/ai/adr/2026-10-18-expression-performance.md` at line 194 is superseded.
-- The confirmation and initial catalog state at line 204 are superseded.
-- The eligibility rules at lines 220-221 are superseded.
-- The settings command list at line 237 is superseded.
+- The fresh-profile default in `docs/ai/adr/2026-10-18-expression-performance.md` (section Discovery, "a fresh profile defaults it to `false`") is superseded.
+- The confirmation and initial catalog state (section Catalog, the `confirmed: false`, `exposedToLlm: false` default) are superseded.
+- The eligibility rules (section Catalog, `isAutoEligible` and `isLlmEligible`) are superseded.
+- The settings command list (section Catalog, the command table) is superseded.
+
+Amendment (2026-11-01): this list first cited line numbers (194, 204, 220-221, 237), which drifted as that ADR gained notes. It now names sections and sentences; each superseded location still carries a "Superseded by" link back here.
 
 Each superseded location points back to this ADR.
 

@@ -3,6 +3,8 @@
 Date: 2026-10-19
 Status: accepted
 
+Channel ownership is defined in the [living parameter-ownership document](../live2d-parameter-ownership.md).
+
 ## Supersedes
 
 This ADR supersedes these parts of earlier ADRs:
@@ -137,6 +139,7 @@ The decided layer priority is pet, then hold, then accent, then mood. The facade
 - The facade sets `posture.continuousScale` immediately before each posture step, only with `heldEmotions` on, and posture applies it to the continuous term only: `amplitudeScale * (continuousScale * gain * continuous + shift)`. Drift, posture shifts, the gesture clip, and the shift postponement rule are not scaled. The scale draws no random values. With no clip active it is exactly 1, so idle output is bit-identical to before. A clip triggered in a call is first reflected on the next grid step, because the trigger runs after that call advanced the controller; the ease-in starts at 0, so no step is skipped.
 - `naturalEmotionLifetime` adds `gestureDuckRelease` to the longest gesture clip, so QA windows clear the duck release too.
 - Superseded in part by [2026-10-25 ADR](2026-10-25-natural-idle-reshape-and-emotion-ducking.md): its Decision section records the idle duck under gesture clips (`4bd1df081`) and the laugh's synced face pulses (`160158688`) as delivered.
+  Amendment (2026-11-01): the 2026-10-25 ADR lists these two items as delivered, and its status line accepts only the delivered parts. It does not supersede the duck rules in this section. Its face-pulse change replaces the earlier contract that gestures never touch the face.
 
 For an emotion with a gesture, the impulse keeps its random draws, face hints, glance, and mood dose, but adds no head pulse or body lean. The gesture clip takes their place.
 The impulse drops them even when the gesture does not start. While that gesture is cooling down, for example on a repeat or an escalation soon after the last clip, the episode adds no head clip, head pulse, or body lean.

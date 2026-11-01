@@ -3,6 +3,8 @@
 Date: 2026-10-18
 Status: accepted
 
+Channel ownership is defined in the [living parameter-ownership document](../live2d-parameter-ownership.md).
+
 ## Decision and scope
 
 The user can poke the Live2D character and pet its head with the desktop cursor, and the Natural motion driver reacts at once.

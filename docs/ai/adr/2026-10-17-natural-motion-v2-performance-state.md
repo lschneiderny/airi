@@ -3,6 +3,8 @@
 Date: 2026-10-17
 Status: accepted
 
+Channel ownership is defined in the [living parameter-ownership document](../live2d-parameter-ownership.md).
+
 ## Decision and scope
 
 The Live2D Natural motion driver becomes a layered, per-frame overlay that reacts to what the character and the user are doing.
