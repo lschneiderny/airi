@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { memoryRepo } from '../../database/repos/memory.repo'
 import { composeMemoryHeader } from '../../tools/memory'
+import { useLlmToolsetPromptsStore } from '../ai/chat-llm/toolset-prompts'
 import { useMemoryStore } from '../memory'
 import { stickerPromptSegment } from './prompt'
 
@@ -23,6 +24,7 @@ vi.mock('../modules/airi-card', async () => {
 // Source: packages/qa-tools/src/model/prompt.ts (segmentsFromFixture).
 // Removal condition: qa-tools can import the stage-ui assembler.
 const fixture = parse(object({
+  toolset: string(),
   memory: object({ header: string(), entries: array(string()) }),
   stickers: object({ header: string(), entries: array(object({ id: string(), description: string() })) }),
 }), JSON.parse(readFileSync(join(import.meta.dirname, '../../../../qa-tools/fixtures/model/full-prompt.json'), 'utf8')))
@@ -55,5 +57,13 @@ describe('qa-tools full-prompt fixture parity', () => {
       header: fixture.stickers.header,
       text: fixture.stickers.entries.map(sticker => `<|STICKER ${sticker.id}|>: ${sticker.description}`),
     })
+  })
+
+  it('carries the toolset text that the toolset store renders for its plugins', () => {
+    const toolsets = useLlmToolsetPromptsStore()
+    toolsets.registerToolsetPrompts('home-assistant', [{ id: 'home-assistant', title: 'Home Assistant', content: 'Control the lights and switches that the owner lists.' }])
+    toolsets.registerToolsetPrompts('browser', [{ id: 'browser', title: 'Browser', content: 'Open a page when the owner asks for it.' }])
+
+    expect(fixture.toolset).toBe(toolsets.activeToolsetPrompt)
   })
 })

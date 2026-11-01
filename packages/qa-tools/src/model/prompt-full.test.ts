@@ -40,7 +40,6 @@ describe('runPromptCli --full', () => {
     interface Fixture {
       memory: { header: string, entries: string[] }
       toolset: string
-      account: string
       stickers: { header: string, entries: { id: string, description: string }[] }
     }
     const fixture: Fixture = JSON.parse(readFileSync(join(qaToolsRoot, fixturePath), 'utf8'))
@@ -48,7 +47,6 @@ describe('runPromptCli --full', () => {
       buildSystemPrompt({ cardPrompt: '' }).text,
       [fixture.memory.header, ...fixture.memory.entries].join('\n'),
       fixture.toolset,
-      fixture.account,
       [fixture.stickers.header, ...fixture.stickers.entries.map(sticker => `<|STICKER ${sticker.id}|>: ${sticker.description}`)].join('\n'),
     ].join('\n\n'))
   })
