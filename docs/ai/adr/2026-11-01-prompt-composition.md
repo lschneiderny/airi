@@ -17,20 +17,21 @@ Every character-turn system prompt is built by `composePrompt` in `@proj-airi/st
 | --- | --- | --- | --- | --- |
 | 1 | `format` (code block and math rules) | prefix | fixed | - |
 | 2 | `card` (character prompt) | prefix | warn | 8000 |
-| 3 | `contract` (stage contract) | prefix | fixed | - |
-| 4 | `memory` (memory index) | tail | drop-oldest | 40 entries, 6000 |
-| 5 | `toolset` | tail | warn | 2000 |
-| 6 | `account` | tail | warn | 2000 |
-| 7 | `voice` | tail | truncate | 1000 |
-| 8 | `control` | tail | truncate | 1500 |
-| 9 | `unprompted` | tail | fixed | - |
-| 10 | `plugin` | tail | truncate | 2000 |
-| 11 | `stickers` | tail | drop-oldest | 12 entries |
-| 12 | `spark` | tail | fixed | - |
+| 3 | `register` (conversation register section) | prefix | fixed | - |
+| 4 | `contract` (stage contract) | prefix | fixed | - |
+| 5 | `memory` (memory index) | tail | drop-oldest | 40 entries, 6000 |
+| 6 | `toolset` | tail | warn | 2000 |
+| 7 | `account` | tail | warn | 2000 |
+| 8 | `voice` | tail | truncate | 1000 |
+| 9 | `control` | tail | truncate | 1500 |
+| 10 | `unprompted` | tail | fixed | - |
+| 11 | `plugin` | tail | truncate | 2000 |
+| 12 | `stickers` | tail | drop-oldest | 12 entries |
+| 13 | `spark` | tail | fixed | - |
 
-The composer orders segments by this table, not by input order. Non-empty segments are joined by a blank line (`\n\n`). The only exception is `format`, which ends with its own newline and is followed directly by the card. This keeps the prefix byte-identical to `composeSystemPrompt` before the composer existed, so the provider's prompt cache and the contract fingerprint are unaffected. The contract still renders last in the prefix, as the [reply-shape ADR](2026-10-31-reply-shape-contract.md) requires. `composeSystemPrompt` is now `composePrompt([format, card, contract]).prefix`.
+The composer orders segments by this table, not by input order. Non-empty segments are joined by a blank line (`\n\n`). The only exception is `format`, which ends with its own newline and is followed directly by the card. This keeps the prefix byte-identical to `composeSystemPrompt` before the composer existed, so the provider's prompt cache and the contract fingerprint are unaffected. The contract still renders last in the prefix, as the [reply-shape ADR](2026-10-31-reply-shape-contract.md) requires. `composeSystemPrompt` is now `composePrompt([format, card, contract]).prefix`. The `register` segment carries the register section of the conversation settings. It belongs to the character prompt, so it renders after the card and before the contract, and the contract text never depends on the register. With a register section, the prefix equals `composeSystemPrompt` of the card and the section joined by a blank line, which is the stored session system message.
 
-The prefix changes only when the card or the contract changes. Tail segments change per turn and follow the prefix.
+The prefix changes only when the card, the conversation register, or the contract changes. Tail segments change per turn and follow the prefix.
 
 ### Overflow policies
 

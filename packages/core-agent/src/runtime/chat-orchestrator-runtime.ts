@@ -6,7 +6,7 @@ import type { AgentLLMPort } from '../contracts/llm-port'
 import type { AgentForegroundStreamPort } from '../contracts/stream-port'
 import type { AssistantTurn, Conversation, Turn } from '../messages/types'
 import type { ChatAssistantMessage, ChatHistoryItem, ChatSlices, ChatSlicesToolCall, ChatStreamEventContext, ChatToolReference, ChatTurnTrigger, ChatWordlessCue, ContextMessage, StreamingAssistantMessage } from '../types/chat'
-import type { LlmUsage, StreamEvent, StreamOptions } from '../types/llm'
+import type { LlmUsage, PromptReportEntry, StreamEvent, StreamOptions } from '../types/llm'
 
 import { normalizeActPayload, tokenAct, tokenBreak } from '@proj-airi/pipelines-audio'
 import { createQueue } from '@proj-airi/stream-kit'
@@ -187,8 +187,6 @@ export interface ChatOrchestratorSendOptions {
   /** Model capabilities captured before the request enters its session queue. */
   supportsAudioInput?: boolean
   supportsVisionInput?: boolean
-  /** Request-owned character instructions, captured before waiting in the session queue. */
-  systemPromptSupplement?: string
   /** Eligible catalog for this request. Omission disables stickers. The queue copies entries before waiting. */
   stickers?: readonly { id: string, description: string }[]
   /** Stable user-message identity. Retries acknowledge the existing message without generating another reply. */
@@ -212,8 +210,9 @@ export interface ChatOrchestratorSendOptions {
   unpromptedTools?: StreamOptions['tools']
   /**
    * Reads the current settings of the request owner before each model request.
-   * The runtime appends this request's system prompt supplement to the returned prompt.
-   * Omission keeps `model`, `chatProvider`, and the composed system prompt for every step.
+   * The first result also replaces the system message of the display projection, so hooks and diagnostics see the
+   * system prompt that the first request sends. Omission keeps `model`, `chatProvider`, and the stored system message
+   * for every step.
    */
   resolveStep?: StreamOptions['resolveStep']
   /** Serializable tool names stored with the user message for later requests. */
@@ -331,6 +330,8 @@ export interface ChatOrchestratorPromptProjection {
   promptMessage?: Message | null
   /** Display projection for hooks and diagnostics. This is not an API payload. */
   composedMessage?: Message[]
+  /** Segment sizes of the first request's system prompt, when the host's `resolveStep` reports them. */
+  promptReport?: readonly PromptReportEntry[]
 }
 
 /**
@@ -375,8 +376,6 @@ export interface ChatOrchestratorRuntimeDeps {
   getActiveSessionId: () => string
   /** Returns the currently active provider ID for categorization policy. */
   getActiveProvider: () => string | undefined
-  /** Returns optional prompt text appended to the provider system message for this send. */
-  getSystemPromptSupplement?: () => string | undefined
   /** Runtime context providers ingested immediately before prompt composition. */
   runtimeContextProviders?: Array<() => ContextMessage | null | undefined>
   /** Clock used for persisted message timestamps. @default Date.now */
@@ -535,14 +534,14 @@ function defaultCreateId() {
 }
 
 /** Releases the request owner on abort even when an external provider does not settle. Late provider output remains signal-guarded. */
-async function waitForProvider(work: Promise<unknown>, signal: AbortSignal) {
+async function waitForProvider<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
   const cancelled = Promise.withResolvers<never>()
   const abort = () => cancelled.reject(signal.reason)
   signal.addEventListener('abort', abort, { once: true })
   if (signal.aborted)
     abort()
   try {
-    await Promise.race([work, cancelled.promise])
+    return await Promise.race([work, cancelled.promise])
   }
   finally {
     signal.removeEventListener('abort', abort)
@@ -1228,25 +1227,19 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       })
 
       const context = buildContext(sessionMessagesForSend, declineMarkerText)
-      const stickerPrompt = stickers?.length
-        ? [
-            'You can send one optional sticker per reply with a marker from this catalog.',
-            'Use stickers when the user requests one or when a lighthearted response fits. Avoid them in serious conversations.',
-            'Keep your text complete. Never invent sticker IDs or image URLs.',
-            'Choose the ID whose name and emotion tags best fit the conversation.',
-            ...stickers.map(sticker => `<|STICKER ${sticker.id}|>: ${sticker.description}`),
-          ].join('\n')
-        : ''
-      const systemPromptSupplement = [options.systemPromptSupplement?.trim(), stickerPrompt].filter(Boolean).join('\n\n')
-      // The composed system message carries the supplement for requests without `resolveStep` and for the display
-      // projection below. With `resolveStep`, each resolved prompt replaces this message (`StreamOptions.resolveStep`),
-      // so the supplement reaches the provider once, through the resolved prompt.
-      if (systemPromptSupplement) {
-        const systemMessage = context.turns.find(turn => turn.type === 'system' && turn.authority === 'system')
-        if (systemMessage?.type === 'system')
-          systemMessage.content.push({ type: 'text', text: `\n\n${systemPromptSupplement}` })
-        else
-          context.turns.unshift({ id: 'system-supplement', type: 'system', authority: 'system', content: [{ type: 'text', text: systemPromptSupplement }] })
+      // The first request uses the step resolved here, so the display projection below carries the system prompt that
+      // the provider receives. Each adapter puts a resolved prompt in place of the system message the same way.
+      const resolveOwnerStep = options.resolveStep
+      let firstStep = resolveOwnerStep ? await waitForProvider(resolveOwnerStep(), providerSignal) : undefined
+      if (shouldAbort())
+        return
+      const promptReport = firstStep?.promptReport
+      if (firstStep) {
+        const systemTurn = context.turns.find(turn => turn.type === 'system' && turn.authority === 'system')
+        if (systemTurn?.type === 'system')
+          systemTurn.content = [{ type: 'text', text: firstStep.systemPrompt }]
+        else if (firstStep.systemPrompt)
+          context.turns.unshift({ id: 'system-resolved', type: 'system', authority: 'system', content: [{ type: 'text', text: firstStep.systemPrompt }] })
       }
 
       const contextsSnapshot = deps.context.snapshot()
@@ -1266,6 +1259,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         message: sendingMessage,
         contexts: contextsSnapshot,
         composedMessage: streamingMessageContext.composedMessage,
+        promptReport,
       })
       deps.onLifecycle?.({
         phase: 'after-compose',
@@ -1295,15 +1289,15 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         hasVoice,
       })
 
-      const resolveOwnerStep = options.resolveStep
       await waitForProvider(deps.llm.stream(options.model, options.chatProvider, context, {
         headers,
         providerId: activeProvider,
-        // A resolved prompt replaces the composed system message, so it carries the supplement instead.
+        // The first request reuses the step that the projection shows. Later requests read the owner's settings again.
         resolveStep: resolveOwnerStep
           ? async () => {
-            const step = await resolveOwnerStep()
-            return { ...step, systemPrompt: [step.systemPrompt, systemPromptSupplement].filter(Boolean).join('\n\n') }
+            const step = firstStep ?? await resolveOwnerStep()
+            firstStep = undefined
+            return step
           }
           : undefined,
         supportsAudioInput: options.supportsAudioInput,
@@ -1676,7 +1670,6 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       sendingMessage,
       options: {
         ...options,
-        systemPromptSupplement: options.systemPromptSupplement ?? deps.getSystemPromptSupplement?.(),
         stickers: options.stickers?.map(({ id, description }) => ({ id, description })),
       },
       generation,

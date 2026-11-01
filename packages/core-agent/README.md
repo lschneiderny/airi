@@ -18,7 +18,7 @@ When a caller supplies `resolveStep`, `streamFrom` reads current settings before
 
 `prepareConversation` adapts media to the resolved request before the protocol adapter projects the conversation. It runs for each SDK stream, so it also runs after a scope change selects another model. It returns a request copy and keeps stored recordings intact. Stage uses it to send audio only to models that accept audio, and transcripts to other models.
 
-The chat orchestrator forwards a send's `resolveStep`. It appends that send's system prompt supplement, including sticker instructions, to each resolved prompt.
+The chat orchestrator forwards a send's `resolveStep` and adds no prompt text. It resolves the first step before it renders the display projection, puts that step's `systemPrompt` in place of the system message, and reuses the step for the first request. Hooks, `onPromptProjection`, and diagnostics therefore show the system prompt that the provider receives. A step's optional `promptReport` reaches `onPromptProjection` unchanged.
 
 To cap each request's output, set `StreamOptions.maxTokens`. Chat sends `max_tokens`, and Responses sends `max_output_tokens`.
 A `resolveStep` cap overrides the caller's cap. If the step omits its cap, the caller's cap applies.
@@ -81,9 +81,9 @@ Source links remain separate from speech text and survive local history persiste
 ## Chat stickers
 
 A host can supply `stickers` in the send options. Each entry has an `id` and a model-facing `description`. Hosts include image names and emotion tags in that description.
-The queue copies the catalog when the request is submitted, alongside its provider identity and system prompt supplement.
-Concurrent sessions and queued sends retain their own catalog. The runtime adds its marker instructions to that request's system prompt.
-An absent or empty catalog disables sticker output and adds no prompt instructions.
+The queue copies the catalog when the request is submitted, alongside its provider identity.
+Concurrent sessions and queued sends retain their own catalog. The host renders the marker instructions into the system prompt that its `resolveStep` returns; the runtime uses the catalog only to accept markers.
+An absent or empty catalog disables sticker output.
 
 The existing marker parser accepts `<|STICKER id|>` across stream chunks.
 The runtime stores at most one known ID as a `ChatSlicesSticker` per reply.

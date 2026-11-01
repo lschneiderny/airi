@@ -177,6 +177,17 @@ describe('composePrompt', () => {
       ]).prefix)).toBe(fixture.sha256)
     })
 
+    it('places the register section between the card and the contract, as part of the character prompt', () => {
+      const composed = composePrompt([
+        { id: 'contract', text: contract },
+        { id: 'register', text: 'register' },
+        { id: 'card', text: 'card' },
+        { id: 'format', text: format },
+      ])
+
+      expect(composed.prefix).toBe(composeSystemPrompt('card\n\nregister', contract))
+    })
+
     it('keeps the prefix unchanged when tail segments are added', () => {
       const prefix = composeSystemPrompt('card', contract)
       const composed = composePrompt([

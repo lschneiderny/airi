@@ -507,7 +507,7 @@ describe('store character-orchestrator', () => {
       await useCharacterOrchestratorStore(pinia).handleSparkNotify(moduleNotify())
 
       const system = systemMessageOf(mockStream)
-      expect(system).toContain(`Memory index:\nYour own:\n- ${entry.id}: What the owner likes to be called.`)
+      expect(system).toContain(`Memory index:\n- ${entry.id}: What the owner likes to be called.`)
       expect(system).not.toContain('Another card only.')
       // The test card has no identity text of its own, so the stage contract is the part that the memory prompt must follow.
       const stageContractAt = system.indexOf('base.prompt.emotion')

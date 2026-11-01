@@ -25,6 +25,20 @@ export type StreamEvent
     | { type: 'search', id: string, status: 'in_progress' | 'searching' | 'completed' | 'failed' }
     | { type: 'error', error: unknown }
 
+/**
+ * Size of one system prompt segment, as the host's prompt composer reports it. Only diagnostics read it; the runtime
+ * passes it through unchanged.
+ */
+export interface PromptReportEntry {
+  id: string
+  chars: number
+  estimatedTokens: number
+  /** List entries the composer dropped to fit the budget. */
+  dropped: number
+  truncated: boolean
+  overBudget: boolean
+}
+
 /** Options shared by generation adapters. SDK payloads stay inside each adapter. */
 export interface StreamOptions {
   /**
@@ -46,7 +60,8 @@ export interface StreamOptions {
    *
    * The returned `systemPrompt` replaces the content of the conversation's system message for that request in every
    * protocol adapter, or becomes the system message when the conversation has none. The conversation's own system
-   * message is therefore never sent next to it.
+   * message is therefore never sent next to it. The chat orchestrator runtime resolves the first step before it renders
+   * the display projection and reuses that result for the first request.
    */
   resolveStep?: () => Promise<{
     model: string
@@ -63,6 +78,8 @@ export interface StreamOptions {
      */
     maxTokens?: number
     tools?: Tool[]
+    /** Segment sizes of `systemPrompt`, reported with the display projection. */
+    promptReport?: readonly PromptReportEntry[]
   }>
   /** Internal turn identity reused after a protocol change. */
   generationTurnId?: string

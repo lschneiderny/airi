@@ -4,7 +4,7 @@ import type { Message, Tool } from '@xsai/shared-chat'
 import type { Conversation } from '../messages/types'
 import type { ChatHistoryItem, ChatTurnCueStats, ContextMessage, StreamingAssistantMessage } from '../types/chat'
 import type { StreamEvent, StreamOptions } from '../types/llm'
-import type { ChatOrchestratorRuntimeState, ChatOrchestratorSessionPort } from './chat-orchestrator-runtime'
+import type { ChatOrchestratorPromptProjection, ChatOrchestratorRuntimeState, ChatOrchestratorSessionPort } from './chat-orchestrator-runtime'
 
 import { chunkTtsInput } from '@proj-airi/pipelines-audio'
 import { ContextUpdateStrategy } from '@proj-airi/server-shared/types'
@@ -80,7 +80,6 @@ function createHarness(getActiveProvider = () => 'mock-provider') {
   })
   const ids = ['stream-context', 'assistant-id', 'user-id', 'fallback-id']
   let nextId = 0
-  let systemPromptSupplement: string | undefined
   let nowValue = new Date(2026, 3, 25, 18, 47).getTime()
   let monotonicNowValues = [1000]
   let generation = 1
@@ -124,7 +123,6 @@ function createHarness(getActiveProvider = () => 'mock-provider') {
     },
     getActiveSessionId: () => 'session-1',
     getActiveProvider,
-    getSystemPromptSupplement: () => systemPromptSupplement,
     now: () => nowValue,
     monotonicNow: () => monotonicNowValues.shift() ?? 1000,
     createId: () => ids.shift() ?? `generated-${nextId++}`,
@@ -280,11 +278,6 @@ function createHarness(getActiveProvider = () => 'mock-provider') {
     sessionMessages,
     stateChanges,
     stream,
-    systemPromptSupplement: {
-      set: (next: string | undefined) => {
-        systemPromptSupplement = next
-      },
-    },
     telemetry,
     userAppended,
     userTurns,
@@ -1123,10 +1116,9 @@ describe('createChatOrchestratorRuntime', () => {
     expect(legacyUserMessage.createdAt).toBe(new Date(2026, 3, 25, 18, 47).getTime())
   })
 
-  it('appends system prompt supplement to the provider system message', async () => {
+  it('sends the stored system message unchanged without resolveStep', async () => {
     const harness = createHarness()
     let composedMessages: Message[] = []
-    harness.systemPromptSupplement.set('Plugin toolset guidance.')
     harness.stream.mockImplementationOnce(async (_model, _chatProvider, messages, options) => {
       composedMessages = conversationToChatMessages(messages)
       await options?.onStreamEvent?.({ type: 'text-delta', text: 'hello' })
@@ -1136,37 +1128,57 @@ describe('createChatOrchestratorRuntime', () => {
     await harness.runtime.ingest('hello from user', {
       model: 'gpt-test',
       chatProvider: provider,
+      stickers: [{ id: 'heart', description: 'A heart' }],
     })
 
-    expect(composedMessages[0]).toMatchObject({
-      role: 'system',
-      content: 'system prompt\n\nPlugin toolset guidance.',
-    })
+    // The host composes every prompt part, stickers included. The runtime adds no prompt text.
+    expect(composedMessages[0]).toEqual({ role: 'system', content: 'system prompt' })
   })
 
-  it('appends the request supplement to the system prompt of each resolved step', async () => {
+  it('resolves the first step once and shows its system prompt in the projection and the request', async () => {
     const harness = createHarness()
-    harness.systemPromptSupplement.set('Plugin toolset guidance.')
+    const promptReport = [{ id: 'card', chars: 13, estimatedTokens: 4, dropped: 0, truncated: false, overBudget: false }]
+    const resolveStep = vi.fn(async () => ({ model: 'edited-model', chatProvider: provider, providerId: 'mock-provider', systemPrompt: 'edited prompt', promptReport }))
+    let requestMessages: Message[] = []
     let resolvedPrompt: string | undefined
-    harness.stream.mockImplementationOnce(async (_model, _chatProvider, _messages, options) => {
+    harness.stream.mockImplementationOnce(async (_model, _chatProvider, messages, options) => {
+      requestMessages = conversationToChatMessages(messages)
+      // The protocol adapter resolves the step of its first request.
       resolvedPrompt = (await options?.resolveStep?.())?.systemPrompt
       await options?.onStreamEvent?.({ type: 'finish' })
     })
 
-    await harness.runtime.ingest('hello from user', {
-      model: 'gpt-test',
-      chatProvider: provider,
-      resolveStep: async () => ({ model: 'edited-model', chatProvider: provider, providerId: 'mock-provider', systemPrompt: 'edited prompt' }),
-    })
+    await harness.runtime.ingest('hello from user', { model: 'gpt-test', chatProvider: provider, resolveStep })
 
-    expect(resolvedPrompt).toBe('edited prompt\n\nPlugin toolset guidance.')
+    expect(resolveStep).toHaveBeenCalledOnce()
+    expect(resolvedPrompt).toBe('edited prompt')
+    expect(requestMessages[0]).toEqual({ role: 'system', content: 'edited prompt' })
+    const projection = harness.promptProjections[0] as ChatOrchestratorPromptProjection
+    expect(projection.composedMessage?.[0]).toEqual({ role: 'system', content: 'edited prompt' })
+    expect(projection.promptReport).toEqual(promptReport)
   })
 
-  it('creates a system message when only a system prompt supplement is available', async () => {
+  it('reads the owner settings again for each request after the first', async () => {
+    const harness = createHarness()
+    let version = 0
+    const resolveStep = vi.fn(async () => ({ model: 'edited-model', chatProvider: provider, providerId: 'mock-provider', systemPrompt: `prompt ${++version}` }))
+    const prompts: string[] = []
+    harness.stream.mockImplementationOnce(async (_model, _chatProvider, _messages, options) => {
+      // A tool round makes a second request.
+      prompts.push((await options!.resolveStep!()).systemPrompt, (await options!.resolveStep!()).systemPrompt)
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest('hello from user', { model: 'gpt-test', chatProvider: provider, resolveStep })
+
+    expect(resolveStep).toHaveBeenCalledTimes(2)
+    expect(prompts).toEqual(['prompt 1', 'prompt 2'])
+  })
+
+  it('creates a system message from the resolved prompt when the history has none', async () => {
     const harness = createHarness()
     let composedMessages: Message[] = []
     harness.sessionMessages['session-1'] = []
-    harness.systemPromptSupplement.set('Plugin toolset guidance.')
     harness.stream.mockImplementationOnce(async (_model, _chatProvider, messages, options) => {
       composedMessages = conversationToChatMessages(messages)
       await options?.onStreamEvent?.({ type: 'text-delta', text: 'hello' })
@@ -1176,12 +1188,10 @@ describe('createChatOrchestratorRuntime', () => {
     await harness.runtime.ingest('hello from user', {
       model: 'gpt-test',
       chatProvider: provider,
+      resolveStep: async () => ({ model: 'gpt-test', chatProvider: provider, providerId: 'mock-provider', systemPrompt: 'resolved prompt' }),
     })
 
-    expect(composedMessages[0]).toMatchObject({
-      role: 'system',
-      content: 'Plugin toolset guidance.',
-    })
+    expect(composedMessages[0]).toEqual({ role: 'system', content: 'resolved prompt' })
     expect(composedMessages[1]).toMatchObject({ role: 'user' })
   })
 
@@ -1989,8 +1999,7 @@ describe('chat stickers', () => {
     harness.runtime.hooks.onTokenSpecial(async (text) => {
       specials.push(text)
     })
-    harness.stream.mockImplementationOnce(async (_model, _provider, context, options) => {
-      expect(JSON.stringify(context)).toContain('<|STICKER heart|>')
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
       for (const text of ['Hello! ', '<', '|STI', 'CKER heart|', '>', '<|STICKER heart|>', '<|ACT|>'])
         await options?.onStreamEvent?.({ type: 'text-delta', text })
     })
@@ -3076,48 +3085,34 @@ describe('unprompted turns', () => {
 // ROOT CAUSE:
 // Reading a shared catalog at execution time ignored request-owned eligibility and changed queued sends.
 // Copying catalogs at enqueue preserves each request's provider, prompt, and sticker selection.
-it('isolates sticker catalogs, providers, and supplements across concurrent and queued requests (PR #2714)', async () => {
+it('isolates sticker catalogs and providers across concurrent and queued requests (PR #2714)', async () => {
   let activeProvider = 'provider-a'
   const harness = createHarness(() => activeProvider)
   const held = Promise.withResolvers<void>()
   const started: string[] = []
   const heart = [{ id: 'heart', description: 'A heart' }]
-  harness.systemPromptSupplement.set('Supplement A')
-  harness.stream.mockImplementation(async (model, _provider, context, options) => {
+  harness.stream.mockImplementation(async (model, _provider, _context, options) => {
     started.push(model)
-    const prompt = JSON.stringify(context)
     if (model === 'first') {
-      expect(prompt).toContain('Supplement A')
-      expect(prompt).not.toContain('Supplement B')
-      expect(prompt).toContain('<|STICKER heart|>')
-      expect(prompt).not.toContain('<|STICKER dog|>')
       expect(options?.providerId).toBe('provider-a')
       await held.promise
     }
     else if (model === 'other') {
-      expect(prompt).toContain('Supplement B')
-      expect(prompt).not.toContain('Supplement A')
-      expect(prompt).toContain('<|STICKER dog|>')
-      expect(prompt).not.toContain('<|STICKER heart|>')
       expect(options?.providerId).toBe('provider-b')
     }
     else {
-      expect(prompt).toContain('Queued supplement')
-      expect(prompt).not.toContain('Changed supplement')
       expect(options?.providerId).toBe('provider-a')
     }
     await options?.onStreamEvent?.({ type: 'text-delta', text: 'Reply <|STICKER heart|><|STICKER dog|>' })
   })
   const first = harness.runtime.ingest('first', { model: 'first', chatProvider: provider, stickers: heart }, 'session-1')
-  const queued = harness.runtime.ingest('queued', { model: 'queued', chatProvider: provider, systemPromptSupplement: 'Queued supplement', stickers: heart }, 'session-1')
+  const queued = harness.runtime.ingest('queued', { model: 'queued', chatProvider: provider, stickers: heart }, 'session-1')
   heart[0]!.id = 'changed'
   activeProvider = 'provider-b'
-  harness.systemPromptSupplement.set('Supplement B')
   const other = harness.runtime.ingest('other', { model: 'other', chatProvider: provider, stickers: [{ id: 'dog', description: 'A dog' }] }, 'session-2')
   try {
     await expect.poll(() => started).toContain('other')
     await other
-    harness.systemPromptSupplement.set('Changed supplement')
     expect(started).toEqual(['first', 'other'])
   }
   finally {
