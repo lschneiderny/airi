@@ -21,7 +21,7 @@ Keep the situation gate as the only decider for unasked speech. Do not import re
 
 ## Consequences
 
-Memory is stored in local IndexedDB and does not sync through the cloud. A card's memories are removed with the card unless exported first. General entries are included in every character's index; entries owned by a card are scoped to that character. Memory tools use strict function calling, which some local models may not support; `ollama-bench` exercises those tools.
+Memory is stored in local IndexedDB and does not sync through the cloud. Any window may write through `useMemoryStore`; a write invalidates the other windows over a BroadcastChannel, and no lock or leader routing orders writes. That is safe while only the leader runs chat turns, which with Settings are the only writers. Amendment (2026-11-01): recorded with the tier rule in [persistence tiers](2026-11-01-persistence-tiers.md). A card's memories are removed with the card unless exported first. General entries are included in every character's index; entries owned by a card are scoped to that character. Memory tools use strict function calling, which some local models may not support; `ollama-bench` exercises those tools.
 
 ## Validation
 

@@ -123,6 +123,7 @@ For `origin: 'unprompted'`:
 - The decline marker (`<|SILENT|>` by default) before any speech, or a reply without visible speech, declines the turn. A declined turn commits nothing, calls `emitStreamEndHooks` and `onTurnDeclined`, and settles with the status `declined`.
 - On decline, the runtime stops the provider request at once, so `sending` clears and no more tokens are spent. The stop is not reported as a cancellation or an error.
 - An unprompted turn carries no tools. The stage-ui LLM layer sends no built-in or custom tools, and the Responses adapter adds no hosted `web_search`.
+  Amendment (2026-11-01): an unprompted turn now carries the read-only tools in `unpromptedTools`, which today is `builtIn_readMemory` from the [long-term memory adoption ADR](2026-10-30-long-term-memory-adoption.md). Tools with effects stay excluded.
 - The stream context reports `origin` and per-turn `cueStats`.
 
 `useChatStore().submitUnprompted` is a leader-routed synced action. It sends to the leader's active session with the trigger text `(No one spoke to you. You may speak up about: <topic>)` and the `base.prompt.unprompted` instruction, or `base.prompt.unprompted-forced` when `force` is set.
