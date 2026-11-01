@@ -41,7 +41,13 @@ export interface StreamOptions {
     providerId?: string
     request: GenerationRequest
   }) => Promise<Conversation>
-  /** Reads the pinned character's current settings before each model request. */
+  /**
+   * Reads the pinned character's current settings before each model request.
+   *
+   * The returned `systemPrompt` replaces the content of the conversation's system message for that request in every
+   * protocol adapter, or becomes the system message when the conversation has none. The conversation's own system
+   * message is therefore never sent next to it.
+   */
   resolveStep?: () => Promise<{
     model: string
     chatProvider: GenerationProvider

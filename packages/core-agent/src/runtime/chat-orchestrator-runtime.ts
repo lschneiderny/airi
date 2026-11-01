@@ -718,9 +718,9 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     let isActivationAttempt = !unprompted && !existingSessionMessages.some(message => message.role === 'assistant' && !message.interrupted)
 
     // Datetime is no longer injected through the side-channel context store.
-    // It is applied at message-assembly time (see below) as a system-prompt
-    // date anchor + per-message [HH:MM] prefixes, which is more KV-cache
-    // friendly and less prone to weak models echoing timestamps verbatim.
+    // Message assembly prefixes each message with `[YYYY-MM-DD HH:MM]`
+    // (`messages/datetime-prefix.ts`); the system prompt carries no date, so
+    // its prefix stays cacheable.
     ingestRuntimeContexts()
 
     const sendingCreatedAt = now()
@@ -1238,6 +1238,9 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
           ].join('\n')
         : ''
       const systemPromptSupplement = [options.systemPromptSupplement?.trim(), stickerPrompt].filter(Boolean).join('\n\n')
+      // The composed system message carries the supplement for requests without `resolveStep` and for the display
+      // projection below. With `resolveStep`, each resolved prompt replaces this message (`StreamOptions.resolveStep`),
+      // so the supplement reaches the provider once, through the resolved prompt.
       if (systemPromptSupplement) {
         const systemMessage = context.turns.find(turn => turn.type === 'system' && turn.authority === 'system')
         if (systemMessage?.type === 'system')
@@ -1296,7 +1299,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       await waitForProvider(deps.llm.stream(options.model, options.chatProvider, context, {
         headers,
         providerId: activeProvider,
-        // A resolved prompt replaces the composed system message, so it must carry the same supplement.
+        // A resolved prompt replaces the composed system message, so it carries the supplement instead.
         resolveStep: resolveOwnerStep
           ? async () => {
             const step = await resolveOwnerStep()

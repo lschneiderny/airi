@@ -155,6 +155,27 @@ it('resolves the first live step before projecting Chat content', async () => {
   ])
 })
 
+// The runtime appends its per-request supplement both to the composed system message and to the resolved prompt; the
+// provider must receive it once.
+it('sends the resolved prompt in place of the conversation system message', async () => {
+  const requests: Array<{ messages: Array<{ role: string, content: unknown }> }> = []
+  const fetch: typeof globalThis.fetch = async (_url, init) => {
+    requests.push(JSON.parse(String(init?.body)))
+    return new Response('data: {"choices":[{"index":0,"delta":{"content":"done"},"finish_reason":"stop"}]}\n\n', { headers: { 'Content-Type': 'text/event-stream' } })
+  }
+  const chatProvider: GenerationProvider = { generation: model => ({ protocol: 'chat-completions', config: { model, baseURL: 'https://model.test/v1/', fetch } }) }
+  await streamFrom({
+    model: 'model',
+    chatProvider,
+    conversation: { turns: [
+      { type: 'system', id: 'system', authority: 'system', content: [{ type: 'text', text: 'composed prompt\n\nsupplement' }] },
+      { type: 'user', id: 'user', content: [{ type: 'text', text: 'Hello' }] },
+    ] },
+    options: { resolveStep: async () => ({ model: 'model', chatProvider, providerId: 'live', systemPrompt: 'resolved prompt\n\nsupplement' }) },
+  })
+  expect(requests[0].messages.filter(message => message.role === 'system')).toEqual([{ role: 'system', content: 'resolved prompt\n\nsupplement' }])
+})
+
 it('keeps native Chat reasoning within its model across three tool steps', async () => {
   let model = 'first'
   const requests: Array<{ model: string, messages: Array<{ reasoning_content?: string }> }> = []
