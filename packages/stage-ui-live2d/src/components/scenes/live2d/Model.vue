@@ -220,10 +220,8 @@ let latestPointer: { x: number, y: number, atMs: number } | undefined
 const pointerFreshMs = 100
 /** Parameter ids the playing explicit clip animates; Natural masks them. Empty while no clip plays. */
 let clipOwnedIds: ReadonlySet<string> = new Set<string>()
-/** Latest SDK timestamp (seconds) seen by the Natural frame hook; NaN before the first frame of a model. */
-let sdkNowSeconds = Number.NaN
-/** SDK seconds at which assistant speech last ended on the loaded model, for Natural's mouth handoff. */
-let speechEndedAtSeconds: number | null = null
+/** Whether the lipsync plugin wrote `ParamMouthOpenY` this frame; Natural leaves the mouth to it. */
+let lipSyncOwnsMouth = false
 
 const modelSrcRef = toRef(() => props.modelSrc)
 
@@ -621,7 +619,9 @@ async function performModelLoad() {
       'final',
     )
     motionManagerUpdate.register(useMotionUpdatePluginManualControl(manualMotionControl, manualMotionSpring), 'final')
-    motionManagerUpdate.register(useMotionUpdatePluginLipSync(mouthOpenSize, nowSpeaking), 'final')
+    motionManagerUpdate.register(useMotionUpdatePluginLipSync(mouthOpenSize, nowSpeaking, (owned) => {
+      lipSyncOwnsMouth = owned
+    }), 'final')
     motionManagerUpdate.register(useMotionUpdatePluginBreathControl(manualBreathControl), 'final')
     // NOTICE:
     // Natural must know which parameters physics drives, and the parsed rig is only reachable
@@ -629,8 +629,7 @@ async function performModelLoad() {
     // Source: pixi-live2d-display 0.4.0 types/index.d.ts (CubismPhysics._physicsRig).
     // Remove when pixi-live2d-display exposes the parsed physics rig through a public API.
     const readRigProfile = () => readLive2DRigProfile(coreModel.getModel().parameters, internalModel.physics?._physicsRig, (internalModel.settings as { _cdiData?: unknown })._cdiData)
-    sdkNowSeconds = Number.NaN
-    speechEndedAtSeconds = null
+    lipSyncOwnsMouth = false
     clipOwnedIds = new Set<string>()
     pendingNaturalEmotions.length = 0
     pendingNaturalPokes.length = 0
@@ -685,7 +684,7 @@ async function performModelLoad() {
           springActive: manualMotionSpring.output.value.active,
           performance: props.performance,
           energy: props.naturalEnergy,
-          voice: { speaking: nowSpeaking.value, level: naturalVoiceLevel(mouthOpenSize.value), speechEndedAtSeconds },
+          voice: { speaking: nowSpeaking.value, level: naturalVoiceLevel(mouthOpenSize.value), lipSyncOwnsMouth },
           autoBlink: props.naturalAutoBlink,
           manualBreathActive: manualBreathControl.value.active,
           clipOwnedIds,
@@ -723,7 +722,6 @@ async function performModelLoad() {
     // Physics normally loads inside setupLive2DModel; a late load must still hand its outputs back to physics.
     live2DModel.on('physicsLoaded', () => naturalAdapter.setRigProfile(readRigProfile()))
     motionManagerUpdate.register((ctx) => {
-      sdkNowSeconds = ctx.now
       // A pet ends and a held press commits as a poke while the pointer rests, which produces no pointer event.
       if (touchGestures.petting || touchGestures.pressPending)
         handleTouchEvents(touchGestures.update(performance.now()))
@@ -1202,11 +1200,6 @@ watch(() => props.performanceSettings, (settings) => {
   expressionStore.setSlotSettings(settings.slots)
   holdPerformer.setSlotSettings(settings.slots)
 }, { immediate: true })
-watch(nowSpeaking, (speaking, wasSpeaking) => {
-  // A speech end before the first SDK frame has no clock value to anchor the handoff to.
-  if (!speaking && wasSpeaking)
-    speechEndedAtSeconds = Number.isNaN(sdkNowSeconds) ? null : sdkNowSeconds
-})
 
 /**
  * Records post-physics parameter values for one lab capture request.

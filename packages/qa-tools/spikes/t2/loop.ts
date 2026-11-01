@@ -98,7 +98,7 @@ function idleAttention(): Live2DNaturalMotionAttention {
     // Model.vue's default `performance` prop.
     performance: { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' },
     energy: 0.5,
-    voice: { speaking: false, level: 0, speechEndedAtSeconds: null },
+    voice: { speaking: false, level: 0, lipSyncOwnsMouth: false },
     autoBlink: true,
     manualBreathActive: false,
     clipOwnedIds: new Set(),

@@ -121,7 +121,7 @@ The adapter applies these rules:
 - Natural blink replaces the SDK blink plugin while Natural is selected, and it blinks only while the user's auto-blink setting is on.
 - Natural writes breath unless manual breath control is active.
 - Natural never writes a parameter that physics outputs.
-- Natural does not write the mouth-opening channel (`ParamMouthOpenY`) while the character speaks or within 0.7 s after speech ends, so lipsync owns mouth opening. Other face offsets, including mouth form, still compose.
+- Natural does not write the mouth-opening channel (`ParamMouthOpenY`) while the character speaks or within 0.7 s after speech ends, so lipsync owns mouth opening. Other face offsets, including mouth form, still compose. Since 2026-11-01 the lipsync plugin owns this window (its 200 ms release plus 500 ms hold, `lipsync-handoff.ts`) and reports each frame whether it wrote the mouth; the adapter reads that flag (`voice.lipSyncOwnsMouth`) and keeps no copy of the 0.7 s.
 - Posture fades out while manual or spring motion control is active.
 - While an exclusive owner holds the model, posture fades out, the controller suspends, and face, blink, and breath composition stops.
 - On a channel that a playing explicit clip animates, posture keeps a 10% residual, and face channels are skipped.

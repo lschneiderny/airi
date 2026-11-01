@@ -8,6 +8,7 @@ import type { Live2DMotionSpringController } from './motion-control-spring'
 
 import { sampleLive2DBreath } from '../../stores/motion-control'
 import { useLive2DIdleEyeFocus } from './animation'
+import { lipSyncHandoffHoldMs, lipSyncReleaseMs } from './lipsync-handoff'
 
 type CubismModel = Cubism4InternalModel['coreModel']
 type CubismEyeBlink = Cubism4InternalModel['eyeBlink']
@@ -743,23 +744,28 @@ export function useMotionUpdatePluginManualControl(
  * gaps between phonemes write 0 directly instead of triggering the release.
  *
  * After the release tail elapses, the plugin keeps forcing ParamMouthOpenY to 0
- * for a short handoff hold (HANDOFF_HOLD_MS) before handing control back to
+ * for a short handoff hold (`lipSyncHandoffHoldMs`) before handing control back to
  * motion/expression plugins. This reliably closes the mouth after speech even
  * when an idle motion curve leaves a non-zero resting value, while still
  * letting idle mouth expressions take over shortly after speech ends (rather
  * than overriding them forever).
+ *
+ * Every frame the plugin reports through `onMouthOwnership` whether it wrote
+ * ParamMouthOpenY (speech, release, or hold), so later writers such as the
+ * Natural adapter defer to this one window instead of keeping their own copy.
  */
 export function useMotionUpdatePluginLipSync(
   mouthOpenSize: Ref<number>,
   nowSpeaking: Ref<boolean>,
+  onMouthOwnership: (owned: boolean) => void,
 ): MotionManagerPlugin {
   // 200 ms covers a typical phoneme tail without lagging behind the next utterance.
-  const RELEASE_DURATION_MS = 200
+  const RELEASE_DURATION_MS = lipSyncReleaseMs
   // After the release tail, keep forcing the mouth shut for this long before
   // handing control back to motion/expression plugins. This guarantees the
   // mouth actually closes even on the first idle frame, where a non-zero
   // resting motion curve would otherwise reopen it immediately.
-  const HANDOFF_HOLD_MS = 500
+  const HANDOFF_HOLD_MS = lipSyncHandoffHoldMs
 
   let releaseRemainingMs = 0
   let handoffRemainingMs = 0
@@ -774,10 +780,12 @@ export function useMotionUpdatePluginLipSync(
       releaseRemainingMs = RELEASE_DURATION_MS
       handoffRemainingMs = HANDOFF_HOLD_MS
       ctx.model.setParameterValueById('ParamMouthOpenY', mouthOpenSize.value)
+      onMouthOwnership(true)
       return
     }
 
     if (releaseRemainingMs <= 0) {
+      onMouthOwnership(handoffRemainingMs > 0)
       if (handoffRemainingMs > 0) {
         // Release tail elapsed. Keep forcing the mouth shut through the handoff
         // hold so a non-zero idle motion curve cannot reopen it on the first
@@ -797,5 +805,6 @@ export function useMotionUpdatePluginLipSync(
     const blended = lastForcedValue * (1 - blend) + motionValue * blend
 
     ctx.model.setParameterValueById('ParamMouthOpenY', blended)
+    onMouthOwnership(true)
   }
 }

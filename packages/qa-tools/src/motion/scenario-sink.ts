@@ -15,6 +15,7 @@ import { normalizeActPayload, tokenAct } from '@proj-airi/pipelines-audio'
 import { parseExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { createScenarioPlayer, MotionScenarioSchema, nextScenarioChatInput } from '@proj-airi/stage-shared/motion-scenario'
 import { EmotionHoldPerformer } from '@proj-airi/stage-ui-live2d/composables/live2d/expression/hold'
+import { lipSyncHandoffHoldMs, lipSyncReleaseMs } from '@proj-airi/stage-ui-live2d/composables/live2d/lipsync-handoff'
 import { Live2DNaturalMotionAdapter } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
 import { syllableFixture } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/speech-fixture'
 import { Live2DTouchGestures } from '@proj-airi/stage-ui-live2d/composables/live2d/touch-gestures'
@@ -204,7 +205,8 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
       exclusive: false,
       performance,
       energy,
-      voice: { speaking: speeches.size > 0, level: speechLevel(), speechEndedAtSeconds: speechEndedAt },
+      // The sim has no lipsync plugin, so it replays that plugin's release and hold on the sim clock.
+      voice: { speaking: speeches.size > 0, level: speechLevel(), lipSyncOwnsMouth: speeches.size > 0 || (speechEndedAt !== null && simTime - speechEndedAt <= (lipSyncReleaseMs + lipSyncHandoffHoldMs) / 1000) },
       autoBlink: true,
       manualBreathActive: false,
       clipOwnedIds,

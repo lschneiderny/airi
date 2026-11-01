@@ -33,8 +33,11 @@ export interface Live2DNaturalMotionAttention {
     speaking: boolean
     /** Lipsync mouth level in [0, 1]. */
     level: number
-    /** SDK seconds at which `speaking` last turned false; `null` when speech never ended. */
-    speechEndedAtSeconds: number | null
+    /**
+     * The lipsync plugin wrote `ParamMouthOpenY` this frame: speech, its release, or its handoff hold.
+     * Lipsync owns the handoff window, so the adapter keeps no timing of its own.
+     */
+    lipSyncOwnsMouth: boolean
   }
   /** The user's auto-blink setting; `false` keeps Natural blinks off. */
   autoBlink: boolean
@@ -101,8 +104,6 @@ const faceOffsets: Partial<Record<NaturalChannel, keyof NaturalFaceOutput>> = {
 
 /** Share of the Natural posture offset kept on channels an explicit clip animates. */
 const clipResidual = 0.1
-/** Lipsync release (200 ms) plus its handoff hold (500 ms). */
-const speechHandoffSeconds = 0.7
 /** Expression-closed eyes at or below the blink plugin threshold are left untouched. */
 const closedEyeThreshold = 0.15
 /** Natural micro-narrowing never lowers open lids below this outside a blink. */
@@ -161,8 +162,6 @@ export class Live2DNaturalMotionAdapter {
   private breath: ChannelRange | undefined
   private time = 0
   private frameTime: number | undefined
-  /** Last SDK timestamp, kept across pauses for the speech handoff window. */
-  private now = Number.NaN
   private paused = false
   private hidden = false
   /** Natural driver without an exclusive owner: the controller runs, face, blink, and breath compose. */
@@ -303,7 +302,6 @@ export class Live2DNaturalMotionAdapter {
     if (!this.paused && !this.hidden && this.frameTime !== undefined)
       this.time += nowSeconds - this.frameTime
     this.frameTime = nowSeconds
-    this.now = nowSeconds
   }
 
   private updateSuspension() {
@@ -349,9 +347,7 @@ export class Live2DNaturalMotionAdapter {
       this.updateSuspension()
     }
 
-    const ended = voice.speechEndedAtSeconds
-    // NaN before the first frame keeps a recorded speech end inside the handoff window.
-    const mouthAllowed = !voice.speaking && (ended === null || this.now - ended > speechHandoffSeconds)
+    const mouthAllowed = !voice.speaking && !voice.lipSyncOwnsMouth
     this.controller.setPerformance(attention.performance, attention.energy, this.time)
     this.controller.setVoice({ speaking: voice.speaking, speechActiveOrRecent: !mouthAllowed, level: voice.level })
     for (const gesture of this.pendingGestures.splice(0)) {

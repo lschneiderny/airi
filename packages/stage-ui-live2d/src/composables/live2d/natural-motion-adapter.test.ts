@@ -86,7 +86,7 @@ function fixture({ omit = '', fixed = '', physics, profile: editProfile, restore
     exclusive: false,
     performance: { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' } as PerformanceState,
     energy: 0.5,
-    voice: { speaking: false, level: 0, speechEndedAtSeconds: null as number | null },
+    voice: { speaking: false, level: 0, lipSyncOwnsMouth: false },
     autoBlink: true,
     manualBreathActive: false,
     clipOwnedIds: new Set<string>() as ReadonlySet<string>,
@@ -558,28 +558,38 @@ describe('natural motion adapter', () => {
     free.adapter.dispose()
   })
 
-  it('(d) never writes the mouth while speaking or within 0.7 s after speech', () => {
-    const f = fixture()
-    f.state.eligible = true
-    let silentOpenings = 0
-    for (let index = 0; index <= 400 * 30; index++) {
-      const time = index / 30
-      const speaking = time % 20 < 6
-      if (f.state.voice.speaking && !speaking)
-        f.state.voice.speechEndedAtSeconds = time
-      f.state.voice.speaking = speaking
-      f.state.voice.level = speaking ? 0.5 : 0
-      const { base, commanded, written } = f.frame(time)
-      const ended = f.state.voice.speechEndedAtSeconds
-      const mouth = f.at('ParamMouthOpenY')
-      if (speaking || (ended !== null && time - ended <= 0.7))
-        expect(written.has('ParamMouthOpenY')).toBe(false)
-      else if (commanded[mouth] > base[mouth])
-        silentOpenings++
+  it('(d) never writes the mouth while speaking or while lipsync reports owning it', () => {
+    // Lipsync owns the handoff window. Tails other than its 0.7 s show that the adapter keeps no copy.
+    for (const tail of [1.3, 0.05]) {
+      const f = fixture()
+      f.state.eligible = true
+      let silentOpenings = 0
+      let openingsInsideOldWindow = 0
+      for (let index = 0; index <= 400 * 30; index++) {
+        const time = index / 30
+        const phase = time % 20
+        const speaking = phase < 6
+        f.state.voice.speaking = speaking
+        f.state.voice.lipSyncOwnsMouth = phase < 6 + tail
+        f.state.voice.level = speaking ? 0.5 : 0
+        const { base, commanded, written } = f.frame(time)
+        const mouth = f.at('ParamMouthOpenY')
+        if (f.state.voice.lipSyncOwnsMouth) {
+          expect(written.has('ParamMouthOpenY')).toBe(false)
+        }
+        else if (commanded[mouth] > base[mouth]) {
+          silentOpenings++
+          if (phase <= 6.7)
+            openingsInsideOldWindow++
+        }
+      }
+      // The schedule leaves silence long enough for the 1/40 s opening rate to show.
+      expect(silentOpenings).toBeGreaterThan(0)
+      // A short lipsync tail hands the mouth back before the old adapter-side 0.7 s window ended.
+      if (tail < 0.7)
+        expect(openingsInsideOldWindow).toBeGreaterThan(0)
+      f.adapter.dispose()
     }
-    // The schedule leaves silence long enough for the 1/40 s opening rate to show.
-    expect(silentOpenings).toBeGreaterThan(0)
-    f.adapter.dispose()
   })
 
   it('(e) leaves ParamBreath untouched while manual breath is active', () => {

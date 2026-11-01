@@ -12,6 +12,7 @@ import {
   useMotionUpdatePluginBreathControl,
   useMotionUpdatePluginIdleDisable,
   useMotionUpdatePluginLightSquint,
+  useMotionUpdatePluginLipSync,
   useMotionUpdatePluginManualControl,
 } from './motion-manager'
 
@@ -92,6 +93,27 @@ describe('live2d motion manager plugins', () => {
     internalModel.breath?.updateParameters()
 
     expect(updateParameters).not.toHaveBeenCalled()
+  })
+
+  it('reports mouth ownership through speech, the 200 ms release, and the 500 ms hold, then releases it', () => {
+    const speaking = ref(true)
+    const ownership: boolean[] = []
+    const plugin = useMotionUpdatePluginLipSync(ref(0.6), speaking, owned => ownership.push(owned))
+    // SDK frame delta in seconds; 0.1 s steps make the 200 ms release two frames and the hold five.
+    const frame = () => {
+      const context = createContext({ timeDelta: 0.1 })
+      context.model.setParameterValueById('ParamMouthOpenY', 0.3)
+      plugin(context)
+      return context.model
+    }
+
+    expect(frame().setParameterValueById).toHaveBeenLastCalledWith('ParamMouthOpenY', 0.6)
+    speaking.value = false
+    const owned = Array.from({ length: 9 }, () => vi.mocked(frame().setParameterValueById).mock.calls.length > 1)
+
+    // The flag matches the frames that wrote ParamMouthOpenY, so a reader needs no window of its own.
+    expect(ownership).toEqual([true, true, true, true, true, true, true, true, false, false])
+    expect(owned).toEqual(ownership.slice(1))
   })
 
   it('applies manual breath after motion and restores the configured value on release', () => {
