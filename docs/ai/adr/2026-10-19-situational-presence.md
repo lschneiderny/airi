@@ -239,6 +239,7 @@ Pre-existing gaps that this design does not fix:
 - **Synced actions for the inspector.** The first inspector polled the synced action `inspect` every second. pinia-plugin-synced keeps each action result in the shared domain state for its 5-minute call timeout and rebroadcasts it, so the state grew from about 41 KB to 1.36 MB, and one long reply moved 27 MB between windows. Eventa invokes on a BroadcastChannel retain nothing.
 - **Tools on unprompted turns.** An unprompted turn may only speak or decline. A tool call, including a hosted web search, would act before the turn is decided, so unprompted requests carry no tools.
 - **A synced or persisted situation.** Only the leader sends chat requests, and window titles must not persist. The situation stays in the leader's memory.
+
 ## Amendment (2026-11-01): supplement composition
 
 The reaction supplement at line 150 (`appendSystemInstructions`) reaches the model as the `plugin` tail segment of the composed system prompt. It is capped at 2000 characters, truncated with a report flag, and attached once. The decision and the reaction flow are unchanged. See the [prompt composition ADR](2026-11-01-prompt-composition.md).
