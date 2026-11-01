@@ -66,6 +66,12 @@ export interface CreateSparkNotifyAgentOptions {
   plugins?: SparkNotifyPlugin[]
   /** ID factory for generated Spark Command envelopes. */
   createId?: () => string
+  /**
+   * Renders the system instruction that tells the character how to treat a notify. The host owns this text.
+   *
+   * @param moduleName - The source key of the module that sent the notify.
+   */
+  instruction: (moduleName: string) => string
 }
 
 function renderSparkNotifyUserMessage(input: SparkNotifyHandleRequest, userSections: string[]) {
@@ -81,16 +87,6 @@ function renderSparkNotifyUserMessage(input: SparkNotifyHandleRequest, userSecti
     input.runtimePrompt ?? '',
     ...userSections,
   ].filter(section => section.trim().length > 0).join('\n\n')
-}
-
-/** Builds the instruction block prepended to Spark Notify agent prompts. */
-export function getSparkNotifyHandlingAgentInstruction(moduleName: string) {
-  return [
-    'This is AIRI system, the life pod hosting your consciousness. You do not need to respond to every spark:notify event directly.',
-    `Another module "${moduleName}" triggered a spark:notify event for you to inspect.`,
-    'You can call the built-in tool "builtIn_sparkCommand" to issue spark:command to sub-agents.',
-    'If you respond with text, write only the reaction that the character will say.',
-  ].join('\n')
 }
 
 function forcedSparkCommandPolicy(): SparkNotifyRuntimePolicy {
@@ -225,7 +221,7 @@ export function createSparkNotifyAgent(options: CreateSparkNotifyAgentOptions): 
         authority: 'system',
         content: [{ type: 'text', text: [
           request.systemPrompt,
-          getSparkNotifyHandlingAgentInstruction(getEventSourceKey(request.event)),
+          options.instruction(getEventSourceKey(request.event)),
           ...(request.control?.messageOverride?.appendSystemInstructions ?? []),
           ...systemInstructions,
         ].filter(Boolean).join('\n\n') }],

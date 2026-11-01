@@ -13,6 +13,7 @@ import type { AiriCard } from '../../modules'
 
 import { renderConversationPreview } from '@proj-airi/core-agent'
 import { effectiveSalience, notifyTopicKey } from '@proj-airi/stage-shared/situation'
+import { CODE_BLOCK_SYSTEM_PROMPT, MATH_SYNTAX_SYSTEM_PROMPT, REPLY_MAX_TOKENS } from '@proj-airi/stage-shared/stage-contract'
 import { tool } from '@xsai/tool'
 import { nanoid } from 'nanoid'
 import { createPinia, setActivePinia } from 'pinia'
@@ -386,6 +387,26 @@ describe('store character-orchestrator', () => {
     const topicKey = notifyTopicKey('minecraft', event.data.eventId)
     expect(notifyEvents(situation).map(item => item.topicKey)).toEqual([topicKey])
     expect(store.sparkNotifyIdOf(topicKey)).toBe(event.data.id)
+  })
+
+  it('composes the commands-only system prompt through the chat assembler and caps the reply', async () => {
+    const mockStream = vi.fn()
+    mockedStore(useLLM, pinia).stream = mockStream
+    const store = useCharacterOrchestratorStore(pinia)
+    const event: WebSocketEventOf<'spark:notify'> = {
+      type: 'spark:notify',
+      source: 'minecraft',
+      data: { id: nanoid(), eventId: nanoid(), kind: 'alarm', urgency: 'immediate', headline: 'Hit by zombie', destinations: ['minecraft'] },
+    }
+
+    await store.handleSparkNotify(event)
+
+    const context = mockStream.mock.lastCall?.[2] as Conversation | undefined
+    const system = context ? String(renderConversationPreview(context)[0].content) : ''
+    expect(system.startsWith(CODE_BLOCK_SYSTEM_PROMPT + MATH_SYNTAX_SYSTEM_PROMPT)).toBe(true)
+    // The host renders the notify instruction; the i18n mock returns the key.
+    expect(system).toContain('base.prompt.spark-notify')
+    expect(mockStream.mock.lastCall?.[3]).toMatchObject({ maxTokens: REPLY_MAX_TOKENS })
   })
 
   it('queues a non-immediate module notify for the commands-only agent', async () => {

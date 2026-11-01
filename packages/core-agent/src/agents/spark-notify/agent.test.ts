@@ -7,6 +7,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { createSparkNotifyAgent } from './agent'
 import { createSparkNotifyObserverPlugin, createSparkNotifyReactionPlugin } from './plugins'
 
+function instruction(moduleName: string) {
+  return `Notify from ${moduleName}.`
+}
+
 function createEvent(): WebSocketEventOf<'spark:notify'> {
   return {
     type: 'spark:notify',
@@ -29,11 +33,14 @@ describe('createSparkNotifyAgent', () => {
     const observedEvents: string[] = []
     const run = vi.fn(async (request: SparkNotifyRunRequest) => {
       expect(request.conversation.turns).toHaveLength(2)
+      // The host instruction follows the host system prompt and names the module that sent the notify.
+      expect(request.conversation.turns[0].type === 'system' ? request.conversation.turns[0].content : undefined).toEqual([{ type: 'text', text: 'You are a character.\n\nNotify from plugin:airi-plugin-game-chess.' }])
       expect(request.tools).toHaveLength(2)
       await request.onStreamEvent({ type: 'text-delta', text: 'Checkmate.' })
     })
     const agent = createSparkNotifyAgent({
       runner: { run },
+      instruction,
       plugins: [
         createSparkNotifyReactionPlugin({ onDelta, onEnd }),
         createSparkNotifyObserverPlugin((event) => {
@@ -65,7 +72,7 @@ describe('createSparkNotifyAgent', () => {
       expect(request.tools).toEqual([])
       await request.onStreamEvent({ type: 'text-delta', text: 'I will speak.' })
     })
-    const agent = createSparkNotifyAgent({ runner: { run } })
+    const agent = createSparkNotifyAgent({ runner: { run }, instruction })
 
     await agent.handle({
       event: createEvent(),
@@ -95,6 +102,7 @@ describe('createSparkNotifyAgent', () => {
     })
     const agent = createSparkNotifyAgent({
       runner: { run },
+      instruction,
       plugins: [createSparkNotifyReactionPlugin({ onDelta, onEnd })],
       createId: () => 'generated-id',
     })
@@ -122,7 +130,7 @@ describe('createSparkNotifyAgent', () => {
     const run = vi.fn(async (request: SparkNotifyRunRequest) => {
       expect(request.conversation.turns[1].type === 'user' ? request.conversation.turns[1].content : undefined).toEqual([{ type: 'text', text: 'Rendered board snapshot\n\nCaller context\n\nRuntime prompt' }])
     })
-    const agent = createSparkNotifyAgent({ runner: { run } })
+    const agent = createSparkNotifyAgent({ runner: { run }, instruction })
 
     await agent.handle({
       event: createEvent(),
@@ -142,5 +150,10 @@ describe('createSparkNotifyAgent', () => {
     })
 
     expect(run).toHaveBeenCalledTimes(1)
+  })
+
+  it('requires the host to supply the notify instruction', () => {
+    // @ts-expect-error - the instruction text belongs to the host, so the agent has no default.
+    createSparkNotifyAgent({ runner: { run: vi.fn() } })
   })
 })
