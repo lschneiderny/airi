@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AffectTraceFailureCode } from '@proj-airi/stage-shared/expression-performance'
+import type { AffectTraceFailureCode } from '@proj-airi/stage-shared/expression-performance/affect-trace-diagnostics'
 
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { Button } from '@proj-airi/ui'

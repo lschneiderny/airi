@@ -1,6 +1,6 @@
 # `@proj-airi/stage-shared`
 
-Shared contracts and runtime-neutral helpers for AIRI stage applications and UI packages.
+The client domain layer for AIRI stage applications and UI packages. It holds the shared contracts, the pure decision cores of the fork's character systems (expression performance, situation, performance state, stage contract, motion scenarios), and runtime-neutral helpers. Each pure core takes explicit time and returns its memory; Vue and Pinia appear only in the small holder stores under `stores/`.
 
 ## Use this package
 
@@ -73,7 +73,6 @@ The `expression-performance` entrypoint owns the pure decision layer for charact
 - reaction strength with bands, habituation, and escalation (`acceptReaction`);
 - the picker and planner deciders, selected by `createDecider`, and the timing-slot scheduler;
 - affect traces and their replay (`withAffectTrace`, `parseAffectTrace`, `replayAffectTrace`);
-- the Eventa contracts that carry lab affect-trace requests, results, and failure codes between windows (`affectTraceRequestedEvent`, `affectTraceCompletedEvent`, `affectTraceFailedEvent`, `createAffectTraceDiagnosticsContext`);
 - character performance profiles (`resolveEffectiveSettings`, `applyMappingWeights`);
 - touch affect (`touchAffect`, `initialTouchAffectMemory`, `MoodDose`), which turns one classified pet or poke into at most one mood dose with cooldowns and habituation. A `touch` affect signal returns its dose in the decision's `moods`, and every other signal returns an empty list. Touch never creates an emotion episode.
 
@@ -109,6 +108,8 @@ Use this entrypoint to decide how a character reacts to emotions and expression 
 Do not use it to render, compose parameters, or hold timers. The stage conductor in `@proj-airi/stage-ui` owns clocks and timers, and `@proj-airi/stage-ui-live2d` executes the decisions.
 The [expression performance ADR](../../docs/ai/adr/2026-10-18-expression-performance.md) records the contracts.
 The [Natural emotion revamp ADR](../../docs/ai/adr/2026-10-19-natural-emotion-revamp.md) records the hold contract.
+
+The `expression-performance/affect-trace-diagnostics` entrypoint holds the Eventa contracts that carry lab affect-trace requests, results, and failure codes between windows (`affectTraceRequestedEvent`, `affectTraceCompletedEvent`, `affectTraceFailedEvent`, `createAffectTraceDiagnosticsContext`). It is separate so the decision entrypoint stays free of a transport and a DOM `BroadcastChannel`.
 
 ### Motion scenario
 

@@ -21,6 +21,7 @@
     "./beat-sync": "./src/beat-sync/index.ts",
     "./conversation-register": "./src/conversation-register/index.ts",
     "./expression-performance": "./src/expression-performance/index.ts",
+    "./expression-performance/affect-trace-diagnostics": "./src/expression-performance/affect-trace-diagnostics.ts",
     "./global-shortcut": "./src/global-shortcut/index.ts",
     "./godot-stage": "./src/godot-stage/index.ts",
     "./model-assets": "./src/model-assets/index.ts",
@@ -47,6 +48,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@moeru/eventa": "catalog:",
     "@moeru/std": "catalog:",
     "@vueuse/core": "catalog:",
     "gpuu": "catalog:",
@@ -56,7 +58,6 @@
   },
   "devDependencies": {
     "@electron-toolkit/preload": "catalog:",
-    "@moeru/eventa": "catalog:",
     "@nekopaw/tempora": "catalog:",
     "@proj-airi/cpu-slots": "workspace:^",
     "@proj-airi/electron-screen-capture": "workspace:^",

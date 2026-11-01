@@ -1,6 +1,7 @@
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { PostureHome } from '@proj-airi/motion-driver-natural/posture'
-import type { AffectTrace, AffectTraceFailureCode, AffectTraceRequest, AffectTraceResult } from '@proj-airi/stage-shared/expression-performance'
+import type { AffectTrace } from '@proj-airi/stage-shared/expression-performance'
+import type { AffectTraceFailureCode, AffectTraceRequest, AffectTraceResult } from '@proj-airi/stage-shared/expression-performance/affect-trace-diagnostics'
 import type { ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 
 import type { EmotionHold } from '../composables/live2d/expression/hold'
@@ -10,7 +11,7 @@ import type { Live2DTouchDebugSnapshot } from '../composables/live2d/touch-debug
 
 import { defineEventa } from '@moeru/eventa'
 import { errorMessageFrom } from '@moeru/std'
-import { affectTraceCompletedEvent, affectTraceFailedEvent, affectTraceRequestedEvent, createAffectTraceDiagnosticsContext } from '@proj-airi/stage-shared/expression-performance'
+import { affectTraceCompletedEvent, affectTraceFailedEvent, affectTraceRequestedEvent, createAffectTraceDiagnosticsContext } from '@proj-airi/stage-shared/expression-performance/affect-trace-diagnostics'
 import { defineStore } from 'pinia'
 import { onScopeDispose, readonly, shallowRef } from 'vue'
 
