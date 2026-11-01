@@ -500,6 +500,16 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
     extractionLedger.value = [entry, ...extractionLedger.value].slice(0, SITUATION_EXTRACTION_LEDGER_MAX)
   }
 
+  /**
+   * Called by the situation store of this window when the user deleted all data. Drops the records that hold what the
+   * user said or did: the rendered situation blocks, the open threads, and the extraction ledger.
+   */
+  function forget() {
+    renders.value = []
+    threads.value = NO_THREADS
+    extractionLedger.value = []
+  }
+
   /** Called by the thread extractor of this window when an extraction starts and when it settles. */
   function publishExtractionInFlight(inFlight: boolean) {
     extractionInFlight.value = inFlight
@@ -609,6 +619,7 @@ export const useSituationObservabilityStore = defineStore('devtools:situation-ob
     publishReactionMemory,
     recordReactionOutcome,
     recordExtraction,
+    forget,
     publishExtractionInFlight,
     recordUnpromptedOutcome,
     serveGateEvaluation,

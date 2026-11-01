@@ -52,6 +52,25 @@ export const chatComposerSentEvent = defineEventa<{ sourceId: string, words: num
  */
 export const situationNotifyObservedEvent = defineEventa<NotifyObservation>('eventa:situation:notify-observed')
 
+/**
+ * What the character must forget of what she derived from conversations and the desktop.
+ *
+ * - `sessions`: the open threads and extraction read positions of chat sessions the user deleted.
+ * - `threads`: every open thread and extraction read position, after the user deleted every chat session.
+ * - `everything`: also the gate's social memory and ritual day, the observed situation, the inspector's records of
+ *   rendered blocks and extractions, and the stored inner state, after the user deleted all data.
+ */
+export type SituationForgetRequest
+  = | { scope: 'sessions', sessionIds: readonly string[] }
+    | { scope: 'threads' }
+    | { scope: 'everything' }
+
+/**
+ * A follower window asks the leader to forget; see {@link SituationForgetRequest}. Only the leader holds the gate's
+ * state, and it would write a forgotten thread back at its next save, so the request must reach it.
+ */
+export const situationForgetRequestedEvent = defineEventa<SituationForgetRequest>('eventa:situation:forget-requested')
+
 const BUS_CHANNEL_NAME = 'proj-airi:pipelines:outputs:speech'
 
 let context: ReturnType<typeof createBroadcastChannelContext>['context'] | undefined

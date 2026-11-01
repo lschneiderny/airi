@@ -65,6 +65,7 @@ Messages that the user addresses to her bypass the gate.
 
 `useSituationStore` in `@proj-airi/stage-ui` holds the state in memory, in the leader window only. It is neither synced nor persisted.
 A promoted leader starts from `initialSituationState`, and a demoted window drops its state. Nothing survives a restart.
+Amendment (2026-11-01): the observed situation still does not persist, but the gate's inner state does. The [unprompted reach-out cadence ADR](2026-10-29-unprompted-reach-out-cadence.md) persists the social memory, the ritual day, the open threads, and the extraction read positions in `settings/situation-inner`, so they survive a restart. "Delete all data" clears them through the leader (`useSituationStore().forget`), and deleting a chat session drops its threads.
 
 ### Sensors
 

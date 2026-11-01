@@ -22,7 +22,7 @@ import { usePerformanceRuntimeState } from '../../features/performance/runtime-s
 import { useSituationInnerState } from '../../features/situation/inner-state'
 import { useSituationSettings } from '../../features/situation/settings'
 import { EXTRACTION_MAX_TOKENS } from '../../features/situation/thread-extraction'
-import { chatComposerActivityChangedEvent, getSpeechBusContext, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged } from '../../services/speech/bus'
+import { chatComposerActivityChangedEvent, getSpeechBusContext, situationForgetRequestedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged } from '../../services/speech/bus'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { DESKTOP_SAMPLE_STALE_MS } from './sensors/desktop'
 import { EXCHANGE_QUIET_MS } from './sensors/exchange'
@@ -942,6 +942,43 @@ describe('situation gate loop', () => {
     const entry = await recorded
 
     expect(entry.status).toBe('ok')
+    expect(useSituationInnerState().read().threads).toEqual([])
+  })
+
+  it('forgets the threads and read position of a deleted chat session and keeps those of the others', () => {
+    const deleted = saveRipeQuestion()
+    const kept: Thread = { ...deleted, id: 'thread:question:2', topicKey: 'thread:question:2', sessionId: 'session-2' }
+    useSituationInnerState().write({
+      threads: [deleted, kept],
+      extractedThrough: [{ sessionId: 'session-1', messageId: 'user-1' }, { sessionId: 'session-2', messageId: 'user-2' }],
+    }, -1)
+    const { store } = startQuietLeader()
+
+    store.forget({ scope: 'sessions', sessionIds: ['session-1'] })
+
+    expect(useSituationInnerState().read()).toMatchObject({ threads: [kept], extractedThrough: [{ sessionId: 'session-2', messageId: 'user-2' }] })
+  })
+
+  it('forgets everything when a follower window asks the leader over the speech bus', async () => {
+    saveRipeQuestion()
+    const { store, observability } = startQuietLeader()
+    store.renderForRequest(Date.now())
+    expect(observability.renders).toHaveLength(1)
+
+    getSpeechBusContext().emit(situationForgetRequestedEvent, { scope: 'everything' })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(useSituationInnerState().read()).toMatchObject({ threads: [], extractedThrough: [] })
+    expect(observability.renders).toEqual([])
+    expect((await observability.inspect()).threads).toEqual([])
+  })
+
+  it('clears the stored inner state when a follower forgets everything and no leader runs', () => {
+    saveRipeQuestion()
+    const { store } = startQuietLeader({ leader: false })
+
+    store.forget({ scope: 'everything' })
+
     expect(useSituationInnerState().read().threads).toEqual([])
   })
 

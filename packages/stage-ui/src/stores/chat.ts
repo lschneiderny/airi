@@ -1431,7 +1431,9 @@ export const useChatStore = defineStore('chat', () => {
   async function deleteSession(sessionId: string): Promise<void> {
     failedImageReads.delete(sessionId)
     await cancelPendingSends(sessionId)
-    return chatSession.deleteSession(sessionId)
+    await chatSession.deleteSession(sessionId)
+    // The threads extracted from the session are derived from its messages, so they go with it.
+    situationStore.forget({ scope: 'sessions', sessionIds: [sessionId] })
   }
 
   async function ingestOnFork(

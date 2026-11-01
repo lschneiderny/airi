@@ -4,12 +4,15 @@ import en from '@proj-airi/i18n/locales/en'
 import localforage from 'localforage'
 
 import { PiniaColada } from '@pinia/colada'
+import { useMMD } from '@proj-airi/stage-ui-mmd/stores/mmd'
 import { createPinia, disposePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createApp } from 'vue'
 import { createI18n } from 'vue-i18n'
 
+import { useExpressionPerformanceSettings } from '../features/performance/settings'
+import { useSituationSettings } from '../features/situation/settings'
 import { injectKeyPiniaSynced } from '../libs/pinia/synced-context'
 import { useMemoryStore } from '../stores/memory'
 import { useModsServerChannelStore } from '../stores/mods/api/channel-server'
@@ -136,6 +139,30 @@ it('removes downloaded speech models when all data is deleted', async () => {
   await maintenance.deleteAllData()
 
   await expect(origin.getDirectoryHandle('airi-model-assets')).rejects.toThrow()
+})
+
+it('forgets derived conversation state, presence, expression, and MMD settings when all data is deleted', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
+  localStorage.setItem('settings/situation-inner', JSON.stringify({ v: 1, threads: [], savedAtMs: 1 }))
+  // Documents of a model that is not loaded must go too.
+  localStorage.setItem('expression-catalog:unloaded-model', JSON.stringify({ version: 1, overrides: [] }))
+  localStorage.setItem('expression-rest:unloaded-model', JSON.stringify({ version: 1, active: [] }))
+  const { pinia, runtime, maintenance } = mountMaintenance(`maintenance:${crypto.randomUUID()}`, 'leader-only')
+  await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
+  const situationSettings = useSituationSettings(pinia)
+  const expressionSettings = useExpressionPerformanceSettings(pinia)
+  const mmd = useMMD(pinia)
+  await situationSettings.update({ shareForegroundWindow: false })
+  await expressionSettings.update({ bands: false })
+  mmd.physicsEnabled = false
+
+  await maintenance.deleteAllData()
+
+  expect(localStorage.getItem('settings/situation-inner')).toBeNull()
+  expect(Object.keys(localStorage).filter(key => key.startsWith('expression-'))).toEqual([])
+  expect(situationSettings.document.shareForegroundWindow).toBe(true)
+  expect(expressionSettings.document.bands).toBe(true)
+  expect(mmd.physicsEnabled).toBe(true)
 })
 
 it('forgets what the character learned when modules reset', async () => {

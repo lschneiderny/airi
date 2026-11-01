@@ -21,6 +21,7 @@ import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { ExtractionReadPosition } from '../../features/situation/inner-state'
 import type { LlmStream, ThreadExtractionSelection } from '../../features/situation/thread-extraction'
+import type { SituationForgetRequest } from '../../services/speech/bus'
 import type { ChatReactionPayload, ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
 import type { SituationGateEvaluation } from '../devtools/situation-observability'
 import type { ConversationHookSource } from './sensors/conversation'
@@ -67,7 +68,7 @@ import { computed, shallowRef, watch } from 'vue'
 import { localLogicalDayKey, useSituationInnerState } from '../../features/situation/inner-state'
 import { useSituationSettings } from '../../features/situation/settings'
 import { createThreadExtractor } from '../../features/situation/thread-extraction'
-import { chatComposerActivityChangedEvent, getSpeechBusContext, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
+import { chatComposerActivityChangedEvent, getSpeechBusContext, situationForgetRequestedEvent, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
 import { useMemoryObservabilityStore } from '../devtools/memory-observability'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { startConversationSensor } from './sensors/conversation'
@@ -257,6 +258,7 @@ export const useSituationStore = defineStore('situation', () => {
   let exchangeSensor: ExchangeSensor | undefined
   const exchangeEndListeners = new Set<(exchange: ChatExchange) => void>()
   let stopNotifyListener: (() => void) | undefined
+  let stopForgetListener: (() => void) | undefined
   let stopLeadershipListener: (() => void) | undefined
   const observability = useSituationObservabilityStore()
   const memoryObservability = useMemoryObservabilityStore()
@@ -1010,6 +1012,10 @@ export const useSituationStore = defineStore('situation', () => {
       if (body)
         ingest(body)
     })
+    stopForgetListener = getSpeechBusContext().on(situationForgetRequestedEvent, ({ body }) => {
+      if (body)
+        applyForget(body)
+    })
     ticker = setInterval(() => {
       const nowMs = Date.now()
       sensors?.check(nowMs)
@@ -1029,6 +1035,8 @@ export const useSituationStore = defineStore('situation', () => {
     stopNotifyListener = undefined
     stopTouchListener?.()
     stopTouchListener = undefined
+    stopForgetListener?.()
+    stopForgetListener = undefined
     if (ticker !== undefined)
       clearInterval(ticker)
     ticker = undefined
@@ -1085,6 +1093,53 @@ export const useSituationStore = defineStore('situation', () => {
     if (rendered.shownEventIds.length > 0)
       current.value = markShown(current.value, rendered.shownEventIds, nowMs)
     return rendered.text
+  }
+
+  /**
+   * Forgets what the character derived from conversations; {@link SituationForgetRequest} lists what each scope drops.
+   *
+   * Any window may call it. The leader applies it; a follower forwards it to the leader over the speech bus, because
+   * the leader would otherwise write the forgotten state back at its next save. For `everything`, a follower also
+   * clears the stored inner state, so the call works when no leader runs.
+   */
+  function forget(request: SituationForgetRequest) {
+    if (leading.value) {
+      applyForget(request)
+      return
+    }
+    getSpeechBusContext().emit(situationForgetRequestedEvent, request)
+    if (request.scope === 'everything')
+      innerState.reset()
+  }
+
+  function applyForget(request: SituationForgetRequest) {
+    if (!leading.value)
+      return
+    if (request.scope === 'sessions') {
+      const deleted = new Set(request.sessionIds)
+      threads = { threads: threads.threads.filter(thread => !deleted.has(thread.sessionId)) }
+      extractedThrough = extractedThrough.filter(position => !deleted.has(position.sessionId))
+    }
+    else {
+      threads = NO_THREADS
+      extractedThrough = []
+    }
+    if (request.scope === 'everything') {
+      current.value = initialSituationState
+      seenNotifyTopics.clear()
+      observability.forget()
+      innerState.reset()
+      savedSnapshot = undefined
+      if (gateTicker !== undefined)
+        gateMemory = promotionUrgeMemory(Date.now(), seedSource())
+    }
+    if (gateTicker !== undefined) {
+      // An extraction still in flight read the forgotten messages, so its threads must not join the new state.
+      stopThreadExtraction?.()
+      stopThreadExtraction = startThreadExtraction()
+    }
+    // Publishes the remaining threads to the inspector and saves them while the gate runs.
+    setGateMemory(gateMemory)
   }
 
   /** Marks the events of one topic as addressed by the character. Followers ignore it. */
@@ -1181,6 +1236,7 @@ export const useSituationStore = defineStore('situation', () => {
     renderForRequest,
     markAddressed,
     holdTopic,
+    forget,
     onNotifySpoken,
     onExchangeEnd,
     userMidInput,

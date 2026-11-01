@@ -4,9 +4,12 @@ import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { useSettingsScreenAmbientLight } from '@proj-airi/stage-shared/stores/screen-ambient-light'
 import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useLive2dParams } from '@proj-airi/stage-ui-live2d/stores/model-parameters'
+import { useMMD } from '@proj-airi/stage-ui-mmd/stores/mmd'
 import { useModelStore } from '@proj-airi/stage-ui-three'
 
 import { useLive2DMotionMagicSettings } from '../features/motions/live2d'
+import { useExpressionPerformanceSettings } from '../features/performance/settings'
+import { useSituationSettings } from '../features/situation/settings'
 import { clearSherpawModelAssets } from '../libs/providers/providers/sherpaw/model-assets'
 import { useChatStore } from '../stores/chat'
 import { useChatSessionStore } from '../stores/chat/session-store'
@@ -27,6 +30,18 @@ import { useWebSearchStore } from '../stores/modules/web-search'
 import { useOnboardingStore } from '../stores/onboarding'
 import { useProviderStore } from '../stores/providers/provider'
 import { useSettings, useSettingsAudioDevice } from '../stores/settings'
+import { useSituationStore } from '../stores/situation'
+
+/** Per-model expression documents that the Live2D and MMD stages write, keyed `<prefix><model id>`. */
+const expressionDocumentPrefixes = ['expression-catalog:', 'expression-rest:']
+
+/** Removes the curated expression catalog and saved rest expressions of every model, loaded or not. */
+function clearExpressionDocuments() {
+  for (const key of Object.keys(localStorage)) {
+    if (expressionDocumentPrefixes.some(prefix => key.startsWith(prefix)))
+      localStorage.removeItem(key)
+  }
+}
 
 export function useDataMaintenance() {
   const chatStore = useChatSessionStore()
@@ -40,6 +55,10 @@ export function useDataMaintenance() {
   const live2dMagicSettingsStore = useLive2DMotionMagicSettings()
   const screenAmbientLightSettingsStore = useSettingsScreenAmbientLight()
   const threeStore = useModelStore()
+  const mmdStore = useMMD()
+  const situationStore = useSituationStore()
+  const situationSettingsStore = useSituationSettings()
+  const expressionPerformanceSettingsStore = useExpressionPerformanceSettings()
   const hearingStore = useHearingStore()
   const homeAssistantStore = useHomeAssistantStore()
   const memoryStore = useMemoryStore()
@@ -91,6 +110,8 @@ export function useDataMaintenance() {
   async function deleteAllChatSessions() {
     await chatOrchestrator.cancelPendingSends()
     await chatStore.resetAllSessions()
+    // The threads extracted from the sessions are derived from their messages, so they go with them.
+    situationStore.forget({ scope: 'threads' })
   }
 
   async function exportChatSessions() {
@@ -119,18 +140,24 @@ export function useDataMaintenance() {
     live2dMagicSettingsStore.resetState()
     screenAmbientLightSettingsStore.resetState()
     threeStore.resetModelStore()
+    mmdStore.resetState()
+    await situationSettingsStore.reset()
+    await expressionPerformanceSettingsStore.reset()
     mcpStore.resetState()
     onboardingStore.resetSetupState()
     airiCardStore.resetState()
   }
 
   async function deleteAllData() {
+    // Before the model switch below, so the stage loads the default model without a stored catalog.
+    clearExpressionDocuments()
     await deleteAllModels()
     await resetProvidersSettings()
     await resetModulesSettings()
     await deleteAllChatSessions()
     await resetSettingsState()
     await clearSherpawModelAssets()
+    situationStore.forget({ scope: 'everything' })
   }
 
   async function resetDesktopApplicationState() {
