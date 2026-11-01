@@ -1,5 +1,9 @@
 import type { PerformanceEmotion } from '../expression-performance/types'
 
+import { composePrompt } from './compose'
+
+export * from './compose'
+
 export const stageContractEmotions: readonly { value: PerformanceEmotion, promptName: string }[] = [
   { value: 'happy', promptName: 'Happy' },
   { value: 'sad', promptName: 'Sad' },
@@ -41,8 +45,11 @@ export const MATH_SYNTAX_SYSTEM_PROMPT = `${[
 
 /** Keeps formatting rules before the character prompt and a non-empty contract at the end. */
 export function composeSystemPrompt(characterPrompt: string, contract: string): string {
-  const prompt = CODE_BLOCK_SYSTEM_PROMPT + MATH_SYNTAX_SYSTEM_PROMPT + characterPrompt
-  return contract ? `${prompt}\n\n${contract}` : prompt
+  return composePrompt([
+    { id: 'format', text: CODE_BLOCK_SYSTEM_PROMPT + MATH_SYNTAX_SYSTEM_PROMPT },
+    { id: 'card', text: characterPrompt },
+    { id: 'contract', text: contract },
+  ]).prefix
 }
 
 /** Update in the same contract-version commit whenever the English rendering changes. */
