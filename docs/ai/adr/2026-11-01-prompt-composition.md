@@ -63,9 +63,10 @@ core-agent holds no stage prompt text after this change. The exception is `cue-c
 ## Validation
 
 `packages/stage-shared/src/stage-contract/compose.test.ts` checks segment order, the join, each overflow policy, the report fields, the thrown errors, and that the prefix keeps the SHA-256 of the pre-composer `composeSystemPrompt` output for six card and contract fixtures.
+
 ## Amendments
 
-### 2026-11-01: notes from todo 8
+### 2026-11-01: Spark Notify and ingest
 
 - **Spark Notify.** The Spark Notify agent appends its host instruction after the composed prompt. The `spark` segment id is reserved and unused, and the instruction is outside the size report. Spark receives the same segments as chat, including the toolset and account text.
 - **`ingest`.** `ingest` keeps the caller's model and provider. It composes the same prompt and output cap as chat. Where the plan says "same provider/model resolution", the shared part is the prompt and the cap, not the provider resolution.

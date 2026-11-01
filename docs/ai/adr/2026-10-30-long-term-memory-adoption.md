@@ -26,6 +26,7 @@ Memory is stored in local IndexedDB and does not sync through the cloud. Any win
 ## Validation
 
 The implementation is covered by `memory.browser.test.ts`, `tools/memory.test.ts`, memory cases in `chat.contract.test.ts`, unprompted cases in `llm.test.ts`, `use-data-maintenance.browser.test.ts`, `airi-card.test.ts`, `airi-card-import-export.test.ts`, `orchestrator/index.test.ts`, `artistry-autonomous.test.ts`, `memory-observability.test.ts`, and `memory-long-term-memories.browser.test.ts`. Live Electron validation is described in plan row 16.
+
 ## Amendments
 
 ### 2026-11-01: memory index as a composer segment
