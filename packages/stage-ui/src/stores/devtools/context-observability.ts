@@ -1,3 +1,4 @@
+import type { PromptReportEntry } from '@proj-airi/core-agent'
 import type { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import type { Message } from '@xsai/shared-chat'
 
@@ -45,6 +46,8 @@ export interface PromptProjectionSnapshot {
   promptText: string
   promptMessage?: Message
   composedMessage?: Message[]
+  /** Segment sizes of the system prompt in `composedMessage`, as the host's prompt composer reported them. */
+  promptReport?: readonly PromptReportEntry[]
   /** Turn of the provider request in `composedMessage`, set by {@link captureProviderPromptProjection}. */
   turnId?: string
   /** Whether a user or the character herself started that turn. */
@@ -109,6 +112,7 @@ export const useContextObservabilityStore = defineStore('devtools:context-observ
     contexts: Record<string, ContextMessage[]>
     promptMessage?: Message | null
     composedMessage?: Message[]
+    promptReport?: readonly PromptReportEntry[]
   }) {
     lastPromptProjection.value = {
       capturedAt: Date.now(),
@@ -118,6 +122,7 @@ export const useContextObservabilityStore = defineStore('devtools:context-observ
       promptText: formatContextPromptText(payload.contexts),
       promptMessage: payload.promptMessage ? cloneValue(payload.promptMessage) : undefined,
       composedMessage: payload.composedMessage ? cloneValue(payload.composedMessage) : undefined,
+      promptReport: payload.promptReport ? cloneValue(payload.promptReport) : undefined,
     }
   }
 
