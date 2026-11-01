@@ -2,6 +2,7 @@ import type { ChatAttachment, ChatOrchestratorRuntimeState, ChatOrchestratorSend
 import type { GenerationProvider, GenerationRequest } from '@proj-airi/provider-inference'
 import type { WebSocketEventInputs } from '@proj-airi/server-sdk'
 import type { ReactionKind, ReasonCategory, ReasonKind } from '@proj-airi/stage-shared/situation'
+import type { PromptSegment } from '@proj-airi/stage-shared/stage-contract'
 import type { Message } from '@xsai/shared-chat'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
@@ -880,6 +881,34 @@ export const useChatStore = defineStore('chat', () => {
     request: ReturnType<typeof runtime.submit>
   }>()
 
+  /**
+   * Builds the per-step request resolver shared by typed sends and direct ingest.
+   * Both compose the prompt through `composePrompt` and carry the reply cap.
+   * `select` and `segments` run before every model request.
+   */
+  function createReplyResolveStep(input: {
+    select: () => Promise<{ providerId: string, model: string, chatProvider: GenerationProvider }>
+    segments: () => PromptSegment[]
+    temperature?: number
+    topP?: number
+  }) {
+    return async () => {
+      const selection = await input.select()
+      const prompt = composePrompt(input.segments())
+      return {
+        model: selection.model,
+        chatProvider: selection.chatProvider,
+        providerId: selection.providerId,
+        systemPrompt: prompt.text,
+        promptReport: prompt.report,
+        temperature: input.temperature,
+        topP: input.topP,
+        // Backs the contract's reply-shape rules; a reply that follows them stays far below the cap.
+        maxTokens: REPLY_MAX_TOKENS,
+      }
+    }
+  }
+
   async function ingest(
     sendingMessage: string,
     options: ChatOrchestratorSendOptions,
@@ -902,24 +931,21 @@ export const useChatStore = defineStore('chat', () => {
     }
     // The prompt parts belong to the request, so they are read before waiting for the sticker library.
     // The character resolves like the session store's system prompt.
-    const promptSegments = buildChatPromptSegments({ characterId: chatSession.sessionMetas[sessionId]?.characterId || cardStore.activeCardId || 'default' })
+    const promptSegments = buildChatPromptSegments({ characterId: chatSession.sessionMetas[sessionId]?.characterId ?? cardStore.activeCardId ?? 'default' })
     const prepared = (async () => {
       captured.signal.throwIfAborted()
       const stickers = captured.stickers ?? await stickersStore.selectCatalogForReply()
       captured.signal.throwIfAborted()
       if (chatSession.getSessionGeneration(sessionId) !== generation)
         throw new DOMException('Chat session changed during preparation', 'AbortError')
-      const composed = composePrompt([...promptSegments, stickerPromptSegment(stickers ?? [])])
-      const step = {
-        model: captured.model,
-        chatProvider: captured.chatProvider,
-        providerId: captured.providerId,
-        systemPrompt: composed.text,
-        promptReport: composed.report,
+      // The caller chose the provider and model for this request, and the prompt parts were captured above.
+      const resolveStep = createReplyResolveStep({
+        select: async () => ({ providerId: captured.providerId, model: captured.model, chatProvider: captured.chatProvider }),
+        segments: () => [...promptSegments, stickerPromptSegment(stickers ?? [])],
         temperature: captured.temperature,
         topP: captured.topP,
-      }
-      return runtime.submit(sendingMessage, { ...captured, stickers, resolveStep: async () => step }, sessionId)
+      })
+      return runtime.submit(sendingMessage, { ...captured, stickers, resolveStep }, sessionId)
     })()
     const request = {
       accepted: prepared.then(value => value.accepted),
@@ -1047,35 +1073,29 @@ export const useChatStore = defineStore('chat', () => {
      * Reads the session character's current consciousness settings and prompt before each model request.
      * A tool step that edits the character changes the next request. Card selection does not.
      */
-    const resolveStep = async () => {
-      const selection = cardStore.getModules(characterId).consciousness
-      if (!isChatSelectionReady(selection.provider, selection.model))
-        throw new Error('No chat provider or model configured for this character')
+    const resolveStep = createReplyResolveStep({
+      select: async () => {
+        const selection = cardStore.getModules(characterId).consciousness
+        if (!isChatSelectionReady(selection.provider, selection.model))
+          throw new Error('No chat provider or model configured for this character')
 
-      const stepProvider = await consciousnessStore.getChatProviderInstance(selection.provider)
-      if (!stepProvider)
-        throw new Error(`Failed to resolve chat provider "${selection.provider}"`)
+        const stepProvider = await consciousnessStore.getChatProviderInstance(selection.provider)
+        if (!stepProvider)
+          throw new Error(`Failed to resolve chat provider "${selection.provider}"`)
 
-      const prompt = composePrompt(buildChatPromptSegments({
+        return { providerId: selection.provider, model: selection.model, chatProvider: stepProvider }
+      },
+      segments: () => buildChatPromptSegments({
         characterId,
         voiceContext: voice ? payload.speechContext : undefined,
         controlEvents,
         unprompted: unprompted?.instruction,
         plugin: unprompted?.supplement,
         stickers: stickers ?? [],
-      }))
-      return {
-        model: selection.model,
-        chatProvider: stepProvider,
-        providerId: selection.provider,
-        systemPrompt: prompt.text,
-        promptReport: prompt.report,
-        temperature,
-        topP,
-        // Backs the contract's reply-shape rules; a reply that follows them stays far below the cap.
-        maxTokens: REPLY_MAX_TOKENS,
-      }
-    }
+      }),
+      temperature,
+      topP,
+    })
 
     return {
       providerId,

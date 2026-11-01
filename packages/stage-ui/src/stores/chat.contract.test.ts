@@ -12,7 +12,7 @@ import { SpanStatusCode } from '@opentelemetry/api'
 import { IOAttributes, IOSpanNames } from '@proj-airi/stage-shared'
 import { ASCII_FACES } from '@proj-airi/stage-shared/conversation-register'
 import { notifyTopicKey } from '@proj-airi/stage-shared/situation'
-import { composeSystemPrompt } from '@proj-airi/stage-shared/stage-contract'
+import { composeSystemPrompt, REPLY_MAX_TOKENS } from '@proj-airi/stage-shared/stage-contract'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
@@ -552,6 +552,27 @@ describe('chat store contract', () => {
     expect(prompts[0]).not.toContain(other!.id)
     expect(prompts[0]).not.toContain('Bob fact')
     expect(prepared.toolReferences).toBeUndefined()
+  })
+
+  it('gives direct ingest the memory index in its prompt and the reply cap, without memory tools', async () => {
+    const memory = useMemoryStore()
+    memory.enabled = true
+    await memory.write({ description: 'Alice fact', body: 'Alice memory body' }, 'alice')
+    const index = memory.indexFor('alice')
+    const steps: Awaited<ReturnType<NonNullable<StreamOptions['resolveStep']>>>[] = []
+    const toolNames: string[][] = []
+    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {
+      steps.push(await options.resolveStep!())
+      toolNames.push((await resolveCustomTools(options.tools)).map(tool => tool.function.name))
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await useChatStore().ingest('Recall what you know', { model: 'gpt-test', chatProvider: provider })
+
+    expect(steps).toHaveLength(1)
+    expect(steps[0].systemPrompt).toContain(composeMemoryPrompt(index))
+    expect(steps[0].maxTokens).toBe(REPLY_MAX_TOKENS)
+    expect(toolNames.flat().filter(name => name.startsWith('builtIn_') && name.endsWith('Memory'))).toEqual([])
   })
 
   it('shows the sent system prompt, memory index included, in the prompt projection', async () => {
