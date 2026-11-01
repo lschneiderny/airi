@@ -97,7 +97,7 @@ A host can start a turn without user input by passing `origin: 'unprompted'` and
 The trigger message reaches the provider as the trailing user turn, so runtime context attaches to it. The runtime commits the trigger only when the reply is decided as spoken, at its first non-whitespace literal.
 Until then, it buffers literal and special hooks and publishes no assistant message.
 
-The model declines with the decline marker, `<|SILENT|>` by default (`declineMarker` changes it). A marker before any speech, or a reply without visible speech, declines the turn:
+The model declines with the decline marker. The host supplies it with the recoverable cue names in the required `stage` dependency (`{ declineMarker, recoverCueNames }`; AIRI passes `STAGE_RUNTIME_CONFIG` from `@proj-airi/stage-shared/stage-contract`), and a send's `declineMarker` option overrides it. A marker before any speech, or a reply without visible speech, declines the turn:
 
 - Nothing is committed, and no user-message, assistant-message, or turn-complete hook runs.
 - `emitStreamEndHooks` runs, so hosts can close an empty speech response.

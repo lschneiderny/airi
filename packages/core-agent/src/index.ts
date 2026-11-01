@@ -24,6 +24,7 @@ export type {
   ChatOrchestratorRuntimeState,
   ChatOrchestratorSendOptions,
   ChatOrchestratorSessionPort,
+  ChatOrchestratorStageConfig,
   QueuedSendSnapshot,
 } from './runtime/chat-orchestrator-runtime'
 export { createChatOrchestratorRuntime } from './runtime/chat-orchestrator-runtime'

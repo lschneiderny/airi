@@ -14,6 +14,7 @@ import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
+import { STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'
 
 import { createRun } from '../../evidence/run'
 import { sha256Bytes } from '../../motion/cache/key'
@@ -115,6 +116,7 @@ export async function runScoreCli(
           ? contract.exampleLines
           : extractExampleLines(await readFile(resolve(repoRoot, values['example-lines-from']), 'utf8')),
       },
+      stage: STAGE_RUNTIME_CONFIG,
     }
     const absolutePaths = SCORE_CLOSURE_FILES.map(path => resolve(repoRoot, path))
     for (const path of absolutePaths) {

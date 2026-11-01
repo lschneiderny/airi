@@ -5,13 +5,16 @@ import { cueComplianceOutcome } from './cue-compliance'
 import { cueContractFixtures } from './cue-contract-fixtures'
 import { ChunkInvariantError, replayReply, replayReplyAtEveryChunking } from './reply-replay'
 
+/** Mirrors the stage rules that AIRI hosts pass; qa-tools proves parity with the real `STAGE_RUNTIME_CONFIG`. */
+const stage = { declineMarker: '<|SILENT|>', recoverCueNames: ['ACT', 'DELAY'] }
+
 describe('cue contract fixtures', () => {
   it.each(cueContractFixtures)('$id: $text', async (fixture) => {
     if (fixture.expect.chunkInvariant === false)
-      await expect(replayReplyAtEveryChunking(fixture.text)).rejects.toBeInstanceOf(ChunkInvariantError)
+      await expect(replayReplyAtEveryChunking(fixture.text, stage)).rejects.toBeInstanceOf(ChunkInvariantError)
     const replay = fixture.expect.chunkInvariant === false
-      ? await replayReply({ text: fixture.text, thinkingText: fixture.thinkingText, chunks: 'whole' })
-      : await replayReplyAtEveryChunking(fixture.text)
+      ? await replayReply({ text: fixture.text, thinkingText: fixture.thinkingText, stage, chunks: 'whole' })
+      : await replayReplyAtEveryChunking(fixture.text, stage)
     const controller = createStreamingControlParser()
     let stageRejected = 0
     const unknownMarkers: string[] = []

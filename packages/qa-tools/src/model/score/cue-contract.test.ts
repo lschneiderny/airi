@@ -1,6 +1,7 @@
 import type { ReplyTranscriptRecord } from '../transcript/schema'
 
-import { cueContractFixtures } from '@proj-airi/core-agent'
+import { cueContractFixtures, replayReply } from '@proj-airi/core-agent'
+import { STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'
 import { describe, expect, it } from 'vitest'
 
 import { cueContractScorer } from './cue-contract'
@@ -23,8 +24,17 @@ function record(text: string, thinkingText = '', toolCalls: ReplyTranscriptRecor
   }
 }
 
-const context = { contract: null }
+const context = { contract: null, stage: STAGE_RUNTIME_CONFIG }
 const fixture = (id: number) => cueContractFixtures.find(row => row.id === id)!
+
+describe('reply replay with the live stage config', () => {
+  it('recovers a near-miss DELAY as the live runtime does', async () => {
+    const replay = await replayReply({ text: '[DELAY 1] Hi.', stage: STAGE_RUNTIME_CONFIG })
+
+    expect(replay.specials).toEqual([{ value: '<|DELAY 1|>' }])
+    expect(replay.cueStats.recovered).toBe(1)
+  })
+})
 
 describe('cue contract scorer', () => {
   it.each(cueContractFixtures)('parity $id: $text', async (row) => {

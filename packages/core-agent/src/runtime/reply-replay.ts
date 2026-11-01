@@ -1,6 +1,7 @@
 import type { GenerationProvider } from '@proj-airi/provider-inference'
 
 import type { ChatHistoryItem, ChatTurnCueStats } from '../types/chat'
+import type { ChatOrchestratorStageConfig } from './chat-orchestrator-runtime'
 
 import { createChatOrchestratorRuntime } from './chat-orchestrator-runtime'
 
@@ -13,9 +14,13 @@ export interface ReplyReplay {
   fullText: string
 }
 
-/** Replays saved provider output as data through an isolated, in-memory chat runtime. */
+/**
+ * Replays saved provider output as data through an isolated, in-memory chat runtime.
+ * Pass the host's live `stage` so the replay declines and recovers cues as the live runtime does.
+ */
 export async function replayReply(input: {
   text: string
+  stage: ChatOrchestratorStageConfig
   thinkingText?: string
   chunks?: string[] | 'whole' | 'per-char'
   origin?: 'user' | 'unprompted'
@@ -34,6 +39,7 @@ export async function replayReply(input: {
     generation: model => ({ protocol: 'chat-completions', config: { model, baseURL: 'https://example.com/' } }),
   }
   const runtime = createChatOrchestratorRuntime({
+    stage: input.stage,
     session: {
       commitUserMessage: async (_sessionId, message) => {
         messages.push(message)
@@ -133,13 +139,13 @@ function invariantProjection(replay: ReplyReplay) {
  * Whitespace-only literal hooks are omitted by the runtime, so only the hook comparison ignores whitespace.
  * Returns the whole-reply replay, whose literal whitespace remains intact.
  */
-export async function replayReplyAtEveryChunking(text: string): Promise<ReplyReplay> {
-  const canonical = await replayReply({ text, chunks: 'whole' })
+export async function replayReplyAtEveryChunking(text: string, stage: ChatOrchestratorStageConfig): Promise<ReplyReplay> {
+  const canonical = await replayReply({ text, stage, chunks: 'whole' })
   const expected = invariantProjection(canonical)
-  if (invariantProjection(await replayReply({ text, chunks: 'per-char' })) !== expected)
+  if (invariantProjection(await replayReply({ text, stage, chunks: 'per-char' })) !== expected)
     throw new ChunkInvariantError('per-char')
   for (let split = 1; split < text.length; split++) {
-    const replay = await replayReply({ text, chunks: [text.slice(0, split), text.slice(split)] })
+    const replay = await replayReply({ text, stage, chunks: [text.slice(0, split), text.slice(split)] })
     if (invariantProjection(replay) !== expected)
       throw new ChunkInvariantError(`split ${split}`)
   }

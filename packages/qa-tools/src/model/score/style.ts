@@ -25,7 +25,7 @@ export interface StyleScore {
 }
 
 /** Scores the spoken text (the reply with control markers removed) of one reply. */
-export function scoreStyle(spokenText: string, context: ScoreContext): StyleScore {
+export function scoreStyle(spokenText: string, context: Pick<ScoreContext, 'contract'>): StyleScore {
   const s = spokenText
   return {
     schema: 'airi.style-score.reply/v1',

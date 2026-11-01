@@ -27,8 +27,6 @@ const REASONING_UI_FLUSH_CHUNK_SIZE = 24
  */
 const REPLY_PROMPT_REFERENCE_CHARACTER_LIMIT = 480
 
-const DEFAULT_DECLINE_MARKER = '<|SILENT|>'
-
 /** Accepted breaks per reply. Two breaks split a reply into at most three bubbles. */
 const REPLY_BREAK_LIMIT = 2
 
@@ -237,7 +235,7 @@ export interface ChatOrchestratorSendOptions {
   /**
    * Special marker that declines an unprompted turn when it arrives in visible speech before the first spoken text.
    * Comparison ignores surrounding whitespace and case.
-   * @default '<|SILENT|>'
+   * @default deps.stage.declineMarker
    */
   declineMarker?: string
 }
@@ -361,9 +359,24 @@ interface ChatRoundCorrelation {
 }
 
 /**
+ * Stage rules that the host owns. The runtime reads the marker vocabulary from here instead of defining it.
+ */
+export interface ChatOrchestratorStageConfig {
+  /**
+   * Special marker that declines an unprompted turn and answers a user turn without words, unless the send passes its
+   * own `declineMarker`.
+   */
+  declineMarker: string
+  /** Cue names whose near-miss spellings, such as `[ACT happy]`, are rewritten into real cues instead of spoken. */
+  recoverCueNames: readonly string[]
+}
+
+/**
  * Dependency surface used by the platform-agnostic chat orchestrator runtime.
  */
 export interface ChatOrchestratorRuntimeDeps {
+  /** Host-owned stage rules: the decline marker and the recoverable cue names. */
+  stage: ChatOrchestratorStageConfig
   /** Session persistence and generation guard port. */
   session: ChatOrchestratorSessionPort
   /** Context registry facade used for runtime context ingest and prompt snapshots. */
@@ -701,7 +714,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     const unprompted = options.origin === 'unprompted'
     // The decline marker is control data on every origin. It declines an unprompted turn and answers a user turn
     // without words, and it is never forwarded to hooks or stored.
-    const declineMarkerText = (options.declineMarker ?? DEFAULT_DECLINE_MARKER).trim()
+    const declineMarkerText = (options.declineMarker ?? deps.stage.declineMarker).trim()
     const declineMarker = normalizeMarker(declineMarkerText)
     const declineMarkerPattern = createDeclineMarkerPattern(declineMarker)
     const withoutDeclineMarkers = (text: string) => text.replace(declineMarkerPattern, '')
@@ -1188,7 +1201,7 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         // chunk so slow providers update the chat before they reach 24 characters.
         minLiteralEmitLength: 1,
         // Models sometimes write [ACT ...] or <ACT ...>. Rewrite those into real cues instead of speaking them.
-        recoverCueNames: ['ACT', 'DELAY'],
+        recoverCueNames: deps.stage.recoverCueNames,
       })
 
       const setCueStats = () => {
