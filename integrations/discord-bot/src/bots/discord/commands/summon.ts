@@ -155,7 +155,7 @@ export class VoiceManager extends EventEmitter {
   handleAudioReceiveStreamEnd(channel: BaseGuildVoiceChannel): (userId: string) => void {
     return async (userId: string) => {
       const user = channel.members.get(userId)
-      if (!user?.user.bot) {
+      if (user && !user.user.bot) {
         this.logger.log(`User stopped speaking: ${user.displayName}`)
         this.streams.get(userId)?.emit('speakingStopped')
       }
@@ -184,7 +184,7 @@ export class VoiceManager extends EventEmitter {
       adapterCreator: channel.guild.voiceAdapterCreator as any,
       selfDeaf: false,
       selfMute: false,
-      group: this.client.user.id,
+      group: this.client.user?.id,
     })
 
     try {
@@ -221,7 +221,12 @@ export class VoiceManager extends EventEmitter {
   }
 
   private getVoiceConnection(guildId: string) {
-    const connections = getVoiceConnections(this.client.user.id)
+    const group = this.client.user?.id
+    if (!group) {
+      this.logger.warn('Discord client has no user yet, so it holds no voice connections')
+      return
+    }
+    const connections = getVoiceConnections(group)
     if (!connections) {
       this.logger.warn('No voice connections found')
       return
@@ -284,7 +289,7 @@ export class VoiceManager extends EventEmitter {
     this.streams.set(userId, opusDecoder)
     this.connections.set(userId, connection as VoiceConnection)
 
-    const errorHandler = err => this.logger.withError(err).error('Opus decoding error')
+    const errorHandler = (err: Error) => this.logger.withError(err).error('Opus decoding error')
     const streamCloseHandler = () => {
       this.logger.withField('displayName', member?.displayName).log('Voice stream closed')
 
@@ -306,6 +311,8 @@ export class VoiceManager extends EventEmitter {
     receiveStream?.on('close', streamCloseHandler)
 
     pipeline(receiveStream, opusDecoder, (err) => {
+      if (!err)
+        return
       this.logger.withError(err).error('Opus decoding pipeline error')
       if (err.message.includes('memory access out of bounds')) {
         throw err
@@ -474,7 +481,11 @@ export class VoiceManager extends EventEmitter {
         const discordContext = {
           channelId,
           guildId,
-          guildMember: member,
+          guildMember: {
+            id: member.id,
+            displayName: member.displayName,
+            nickname: member.nickname ?? member.displayName,
+          },
         } satisfies Discord
 
         this.airiClient.send({
@@ -533,7 +544,7 @@ export class VoiceManager extends EventEmitter {
     audioPlayer.play(resource)
   }
 
-  cleanupAudioPlayer(audioPlayer: AudioPlayer) {
+  cleanupAudioPlayer(audioPlayer: AudioPlayer | null) {
     if (!audioPlayer)
       return
 
