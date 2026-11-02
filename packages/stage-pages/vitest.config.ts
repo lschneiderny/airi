@@ -41,6 +41,10 @@ export default withCpuSlots(defineConfig({
   ],
   test: {
     include: ['src/**/*.browser.test.ts'],
+    // `expect.element` polls until the DOM settles. Module import dominates these page tests (about 60 s of import
+    // time per run), so the 1 s default reports a slow first render on a fresh checkout as a failure. 5 s is
+    // Playwright's own assertion timeout; a missing element still fails, after the bound.
+    expect: { poll: { timeout: 5_000 } },
     browser: {
       enabled: true,
       headless: true,
