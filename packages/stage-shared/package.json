@@ -19,6 +19,7 @@
     "./auth": "./src/auth/index.ts",
     "./analytics/openpanel": "./src/analytics/openpanel.ts",
     "./beat-sync": "./src/beat-sync/index.ts",
+    "./character-state": "./src/character-state/index.ts",
     "./conversation-register": "./src/conversation-register/index.ts",
     "./expression-performance": "./src/expression-performance/index.ts",
     "./expression-performance/affect-trace-diagnostics": "./src/expression-performance/affect-trace-diagnostics.ts",
