@@ -95,6 +95,15 @@ function groupNames(bones: ClipMaskBones) {
 }
 
 /**
+ * Rig bone names per ownership group (arms, fingers, upper body, head, lower body), without the
+ * root and leg IK groups that the builder derives from bone names. Exposed so adapters can
+ * partition a clip by the same groups the mask uses.
+ */
+export function clipMaskGroupNames(bones: ClipMaskBones): ReadonlyMap<ClipMaskGroup, ReadonlySet<string>> {
+  return groupNames(bones)
+}
+
+/**
  * Builds the clip ownership mask once at clip load from per-track key values.
  * Many VMD files key every bone at frame 0 with identity; those tracks own nothing.
  */
