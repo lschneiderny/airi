@@ -7,7 +7,8 @@ import { Emotion } from './emotions'
  * the loaded model has a registered VMD motion under one of these names, the
  * scene also plays it as a one-shot gesture. Models rarely ship motions named
  * exactly like this, so the animation manager treats a missing name as a
- * no-op and the user can remap names from the settings panel.
+ * no-op and the user can remap names from the settings panel. An empty name plays no clip;
+ * Neutral and Sleepy use it so they no longer replay the idle clip.
  */
 export const EMOTION_ACTION_NAME: Record<Emotion, string> = {
   [Emotion.Happy]: 'happy',
@@ -18,10 +19,10 @@ export const EMOTION_ACTION_NAME: Record<Emotion, string> = {
   [Emotion.Awkward]: 'awkward',
   [Emotion.Question]: 'question',
   [Emotion.Curious]: 'curious',
-  [Emotion.Neutral]: 'idle',
+  [Emotion.Neutral]: '',
   [Emotion.Love]: 'happy',
   [Emotion.Flustered]: 'awkward',
-  [Emotion.Sleepy]: 'idle',
+  [Emotion.Sleepy]: '',
 }
 
 /** Conventional name AIRI uses for the persistent looping idle motion. */
