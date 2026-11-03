@@ -56,7 +56,7 @@ function urgeTrace(nowMs: number, patch: Partial<UrgeGateTrace> = {}): UrgeGateT
     nowMs,
     chattiness: 0.5,
     hazardPerHour: { open: 0.6, continuation: 0, ritual: 0, due: 0, total: 0.6 },
-    multipliers: { base: 0.6, pressure: 1, exchange: 1, clear: 1, damping: 1, floor: 1, game: 1 },
+    multipliers: { base: 0.6, pressure: 1, exchange: 1, clear: 1, damping: 1, floor: 1, game: 1, mood: 1 },
     urge: 0.1,
     urgeThreshold: 1,
     expectedWaitMs: 90 * MINUTE_MS,
