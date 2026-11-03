@@ -32,6 +32,11 @@ export class MMDFramePipeline {
   readonly poseStages: MMDFrameStage[]
   readonly surfaceStages: MMDFrameStage[]
   readonly options: MMDUpdateOptions = { grant: true, ik: true, physics: true }
+  /**
+   * Weights that replace the mixer's for named clips. The animation manager sets one while it plays a
+   * clip through partitions, so ownership keeps reading the clip's nominal weight, not its parts.
+   */
+  readonly clipWeightOverrides = new Map<string, number>()
   readonly clipFootIK = new Map<string, { left: boolean, right: boolean }>()
   readonly metrics: MMDFrameMetrics
   private readonly mmd: MMD
@@ -125,7 +130,7 @@ export class MMDFramePipeline {
       })
       for (const [name, clip] of this.clips) {
         const action = mixer.existingAction(clip)
-        this.clipWeights.set(name, action?.isScheduled() ? action.getEffectiveWeight() : 0)
+        this.clipWeights.set(name, this.clipWeightOverrides.get(name) ?? (action?.isScheduled() ? action.getEffectiveWeight() : 0))
       }
     })
     for (const stage of this.poseStages)
@@ -161,5 +166,6 @@ export class MMDFramePipeline {
     this.clips.clear()
     this.clipFootIK.clear()
     this.clipWeights.clear()
+    this.clipWeightOverrides.clear()
   }
 }
