@@ -7,8 +7,13 @@ import { createStreamingCategorizer, cueComplianceOutcome, replayReply, useLlmma
 import { createStreamingControlParser, normalizeActPayload, tokenAct } from '@proj-airi/pipelines-audio'
 import { ASCII_FACES } from '@proj-airi/stage-shared/conversation-register'
 
-export const CUE_CONTRACT_SCORER = { id: 'cue-contract-score', version: 3 } as const
+export const CUE_CONTRACT_SCORER = { id: 'cue-contract-score', version: 4 } as const
 const REJECTED_TOKENS_MAX = 5
+/**
+ * A native MOOD marker: `<|MOOD` followed by whitespace or the closing `|>`. The character-state layer consumes it,
+ * so it is never a stage rejection. Its body is not validated here; `parseMoodCue` decides validity.
+ */
+const MOOD_MARKER = /^<\|MOOD(?:\s|\|>)/
 // Longest first, so `^_^` is not counted as the shorter `^^`.
 const facesLongestFirst = [...ASCII_FACES].sort((a, b) => b.length - a.length)
 
@@ -59,6 +64,8 @@ export interface ReplyScore {
   asciiFaces: number
   delay: { count: number, valid: number }
   call: { count: number, valid: number }
+  /** Native MOOD markers, well-formed or not. Near-miss spellings such as `[MOOD ...]` stay prose and are not counted. */
+  mood: number
   stickerMarkers: number
   unknownMarkers: string[]
   residualChars: number
@@ -168,7 +175,12 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
     const parsedActs = new Set<string>()
     let stageRejected = 0
     let bareGestureAttempts = 0
+    let mood = 0
     for (const special of whole.specials) {
+      if (MOOD_MARKER.test(special.value)) {
+        mood++
+        continue
+      }
       let stageParsed = false
       await controller.dispatchWith(special.value, {
         observer: (event) => {
@@ -283,6 +295,7 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
       asciiFaces: countAsciiFaces(spokenText),
       delay,
       call,
+      mood,
       stickerMarkers,
       unknownMarkers,
       residualChars: diagnosticText.length - diagnosticLiterals - diagnosticSpecials,

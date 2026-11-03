@@ -3503,6 +3503,28 @@ describe('host stage config', () => {
     expect(harness.sessionMessages['session-1'].at(-1)).toMatchObject({ role: 'assistant', categorization: { speech: expect.stringContaining('[DELAY 1]') } })
   })
 
+  it('passes a MOOD cue to special hooks and speaks and stores only the words around it', async () => {
+    const harness = createHarness()
+    const literals: string[] = []
+    const specials: string[] = []
+    harness.runtime.hooks.onTokenLiteral(async (text) => {
+      literals.push(text)
+    })
+    harness.runtime.hooks.onTokenSpecial(async (special) => {
+      specials.push(special)
+    })
+    harness.stream.mockImplementationOnce(async (_model, _provider, _context, options) => {
+      await options?.onStreamEvent?.({ type: 'text-delta', text: 'Hi<|MOOD brighter: you came back|>' })
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+
+    await harness.runtime.ingest('hello', { model: 'test', chatProvider: provider }, 'session-1')
+
+    expect(specials).toEqual(['<|MOOD brighter: you came back|>'])
+    expect(literals.join('')).toBe('Hi')
+    expect(harness.sessionMessages['session-1'].at(-1)).toMatchObject({ role: 'assistant', content: 'Hi' })
+  })
+
   it('requires the host stage config', () => {
     const build = (deps: Omit<ChatOrchestratorRuntimeDeps, 'stage'>) =>
       // @ts-expect-error The host must supply the decline marker and the cue names.

@@ -176,6 +176,7 @@ export async function runScoreCli(
         && score.leadCue === expected.leadCue
         && score.chunkInvariant === (expected.chunkInvariant ?? true)
         && JSON.stringify(score.unknownMarkers) === JSON.stringify(expected.unknownMarkers ?? [])
+        && score.mood === (expected.mood ?? 0)
         && (expected.spoken === undefined || score.spokenText === expected.spoken)
         && (expected.residualChars === undefined || score.residualChars === expected.residualChars)
       if (matches)

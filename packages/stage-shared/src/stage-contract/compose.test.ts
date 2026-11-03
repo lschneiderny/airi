@@ -160,11 +160,11 @@ describe('composePrompt', () => {
 
     // SHA-256 of composeSystemPrompt before it was routed through composePrompt.
     const cases = [
-      { card: 'You are AIRI, a cheerful virtual streamer.', contract, sha256: 'a4ddf4deab0e8ffb8df5cb43048d565667ade5da775f94f106eb4d3371d84cd9' },
+      { card: 'You are AIRI, a cheerful virtual streamer.', contract, sha256: 'f87abbd2e2ae3f904aacbb6352df7df21a609e6689a6503dcba6db65bba514f5' },
       { card: 'You are AIRI, a cheerful virtual streamer.', contract: '', sha256: '6f0c62f5e551facf0378c2fa86889ce498c3ab6c64bcd3aa63348d0149f81853' },
-      { card: '# Persona\n\nName: Mika\n\n- Speaks softly.\n- Loves rain.\n', contract, sha256: 'c1c576e02573844c4b3960bbf2a141c0bca59e7ffbc906b45a6963543b0f8264' },
+      { card: '# Persona\n\nName: Mika\n\n- Speaks softly.\n- Loves rain.\n', contract, sha256: '5a0d5c0f57321587c0fe20ef3076b27fbcc106f3408861e0e87d74a22a5de26a' },
       { card: '# Persona\n\nName: Mika\n\n- Speaks softly.\n- Loves rain.\n', contract: '', sha256: 'a2a0e1ebcff20d3142b0164c18e71c43128d492aa26caf316a8ee24b2f34acb3' },
-      { card: '', contract, sha256: '933044fd601e77aa6b139829c672a6387be85d49eb342317926f747f6ff58f60' },
+      { card: '', contract, sha256: '45a72604fb5f2f9b4c8b6a4c839a9a0ca30a656c4c434a3d579e38fb78f7878f' },
       { card: '', contract: '', sha256: 'b5179093bae74a7174e49ac33d62ad45b39b16deb7df5e446cd266ba5175874b' },
     ]
 
