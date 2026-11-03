@@ -173,9 +173,14 @@ and pitch over spine, chest, neck and head, turns the center bone past the
 turn threshold, and the eyes stage aims both eyes at the target. The target is
 the cursor on the stage plane or the camera (`body/attention.ts`).
 
-Looping stance clips duck the body fully but keep half of the head and neck
-look-at (`STANCE_HEAD_ATTENTION`); other clips duck body and head fully, and
-foot contact eases out under any non-stance clip. Diagnostics publish `feet`
+Ducking follows clip ownership (below), not raw clip weights. Looping stance
+clips duck the body fully but keep half of the head and neck look-at
+(`STANCE_HEAD_ATTENTION`). Breath, sway and weight shift duck by
+`max(stance weight, owned root, owned upperBody)`; head and neck look-at by
+the head ownership of non-stance clips; foot contact by the larger non-stance
+ownership of `root`, either leg IK or `lowerBody`. An arm or finger gesture
+therefore keeps breath, sway and planted feet, even during a walk. Stance clips
+reduce contact only through their foot-IK tracks. Diagnostics publish `feet`
 (`maxError`, `errorL`, `errorR`, `contact`) and `lookAt` (`target`, `yaw`,
 `pitch`, `turning`, `turns`) while Natural drives the model. The
 `setDebugFlag` command disables foot contact or look-at for QA.
@@ -188,10 +193,14 @@ fingers), over the bind pose with `restArmAngles`, `restForearmAngles` and
 `thumbAxis`, and adds the gait's arm swing. A clip owns the arm and finger bones
 it keys: `registerClip` builds a `ClipBoneMask` once and `body.ownership()`
 returns `min(1, sum(weight * mask))` per group (`root`, `leftLegIk`,
-`rightLegIk`, `leftArm`, `rightArm`, `leftFingers`, `rightFingers`,
+`rightLegIk`, `lowerBody`, `leftArm`, `rightArm`, `leftFingers`, `rightFingers`,
 `upperBody`, `head`). The rest pose is written with weight `1 - owned`, and the
 gait is enabled only while no clip owns `root` or a leg IK bone. A clip the body
-never saw owns every group. Diagnostics publish `arms` (`weight`, `owned`, `penetration`, `clothContact`,
+never saw owns every group. `registerClip(name, clip, { forceGroups })` adds
+groups the mask did not key, so a full-body action or dance that animates only
+the upper body still stops the gait. `body.performing()` returns the clip the
+animation manager reports on its layer (`MMDBodyInput.layerClip`) and its
+captured weight, or `null` once that weight is 0. Diagnostics publish `arms` (`weight`, `owned`, `penetration`, `clothContact`,
 `hangDeg` and `handBelowHip`). `penetration` per side is the gate and must be 0: the overlap, in model units, of the
 arm capsules (radius 0.12 of the segment, the hand reaching 0.65 of the forearm beyond the wrist) with the KINEMATIC
 rigid bodies, those that follow a bone (torso, hips, legs, kinematic skirt roots). `clothContact` per side is
