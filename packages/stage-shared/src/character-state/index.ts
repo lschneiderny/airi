@@ -1,4 +1,5 @@
 export * from './mood'
 export * from './relationship'
 export * from './settings'
+export * from './temperament'
 export * from './types'
