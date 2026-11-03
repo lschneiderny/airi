@@ -39,6 +39,9 @@ export { URGENT_SALIENCE } from './gate'
 const MINUTE_MS = 60_000
 const DAY_MINUTES = 24 * 60
 
+export const MOOD_FACTOR_MIN = 0.67
+export const MOOD_FACTOR_MAX = 1.35
+
 export interface UrgeGateInput {
   /** Epoch milliseconds of this evaluation, from the caller's clock. */
   readonly nowMs: number
@@ -58,6 +61,8 @@ export interface UrgeGateInput {
   readonly heldTopics: ReadonlySet<string>
   /** Skips the timing holds only (devtools "Evaluate now"); hard suppressors still apply and the fire still draws and picks. */
   readonly forceTiming?: boolean
+  /** Mood multiplier on the opening hazard only; default 1, non-finite values count as 1, clamped to [{@link MOOD_FACTOR_MIN}, {@link MOOD_FACTOR_MAX}]. */
+  readonly moodFactor?: number
 }
 
 /** The last fire, until its outcome is known. Never persisted. */
@@ -157,6 +162,8 @@ export interface UrgeGateMultipliers {
   readonly damping: number
   readonly floor: number
   readonly game: number
+  /** Mood factor after clamping; scales the open hazard only. */
+  readonly mood: number
 }
 
 export interface UrgeGatePick {
@@ -256,6 +263,10 @@ const RITUAL_BY_REASON_KIND: Partial<Record<ReasonKind, RitualKind>> = {
 
 function isTime(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
+}
+
+function clampMoodFactor(factor: number | undefined): number {
+  return typeof factor === 'number' && Number.isFinite(factor) ? Math.min(MOOD_FACTOR_MAX, Math.max(MOOD_FACTOR_MIN, factor)) : 1
 }
 
 function clampChattiness(chattiness: number): number {
@@ -365,7 +376,7 @@ function phaseOf(memory: UrgeGateMemory, nowMs: number): PhaseInfo {
  * open/reopened allow open, ritual, and due; continuation-window allows only
  * continuation; quiet allows nothing. Every hazard is multiplied by the
  * exchange factor and the floor factor; only `open` carries the base rate,
- * thread pressure, clear ramp, damping, and the game factor.
+ * thread pressure, clear ramp, damping, the game factor, and the mood factor.
  */
 function hazardsOf(input: UrgeGateInput, memory: UrgeGateMemory, phase: PhaseInfo, reasons: readonly Reason[], chattiness: number): { hazards: UrgeGateHazards, multipliers: UrgeGateMultipliers } {
   const { nowMs, situation } = input
@@ -390,10 +401,11 @@ function hazardsOf(input: UrgeGateInput, memory: UrgeGateMemory, phase: PhaseInf
     damping: recoveryFactor(memory.damp, nowMs) * phase.damping,
     floor: memory.lastFireAtMs !== null && nowMs - memory.lastFireAtMs < FLOOR_MS ? 0 : 1,
     game: situation.activity?.category === 'game' ? GAME_FACTOR : 1,
+    mood: clampMoodFactor(input.moodFactor),
   }
   const shared = multipliers.exchange * multipliers.floor
   const opens = phase.phase === 'open' || phase.phase === 'reopened'
-  const open = opens ? multipliers.base * multipliers.pressure * multipliers.clear * multipliers.damping * multipliers.game * shared : 0
+  const open = opens ? multipliers.base * multipliers.pressure * multipliers.clear * multipliers.damping * multipliers.game * multipliers.mood * shared : 0
   const ritual = opens ? ritualRate * shared : 0
   const due = opens && dueNow ? DUE_BUMP_RATE_PER_HOUR * shared : 0
   const continuation = phase.phase === 'continuation-window' && memory.lastSpokenAtMs !== null
@@ -435,7 +447,7 @@ function syntheticReason(kind: 'continuation' | 'double-text', topicKey: string)
 const ZERO_HAZARDS: UrgeGateHazards = Object.freeze({ open: 0, continuation: 0, ritual: 0, due: 0, total: 0 })
 
 function zeroMultipliers(chattiness: number): UrgeGateMultipliers {
-  return { base: baseRatePerHour(chattiness), pressure: 0, exchange: 0, clear: 0, damping: 0, floor: 0, game: 0 }
+  return { base: baseRatePerHour(chattiness), pressure: 0, exchange: 0, clear: 0, damping: 0, floor: 0, game: 0, mood: 1 }
 }
 
 /**

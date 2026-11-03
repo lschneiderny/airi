@@ -201,3 +201,12 @@ settle after 10 minutes.
 - **Sync inner state.** Window titles and transient reason state do not belong
   in synchronized Pinia state. Local persistence serves the leader and the
   inspector reads through the existing invoke boundary.
+
+## Amendment 2026-11-03: mood factor on the opening hazard
+
+`evaluateUrgeGate` accepts an optional `moodFactor` on its input. It multiplies the
+`open` hazard only; the ritual, due, and continuation hazards, the rates in
+`urge.ts`, the floor, the safety cap, and the five-draw ordinary fire are
+unchanged. The factor defaults to 1, a non-finite value counts as 1, and any
+other value is clamped to [0.67, 1.35]. The trace reports the clamped value as
+`multipliers.mood`. An omitted factor leaves every earlier trace identical.

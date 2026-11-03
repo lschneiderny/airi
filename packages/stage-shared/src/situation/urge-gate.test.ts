@@ -165,7 +165,7 @@ describe('evaluateUrgeGate rate', () => {
     for (const [chattiness, ratio] of expected) {
       const { trace } = evaluateUrgeGate(gateInput({ settings: { chattiness } }), initialUrgeMemory).decision
       expect(trace.multipliers.base / BASE_RATE_AT_HALF_PER_HOUR).toBeCloseTo(ratio, 3)
-      expect({ ...trace.multipliers, base: 0 }).toEqual({ base: 0, pressure: 0.6, exchange: 1, clear: 1, damping: 1, floor: 1, game: 1 })
+      expect({ ...trace.multipliers, base: 0 }).toEqual({ base: 0, pressure: 0.6, exchange: 1, clear: 1, damping: 1, floor: 1, game: 1, mood: 1 })
       opens.push(trace.hazardPerHour.open)
     }
     for (let i = 1; i < opens.length; i++)
@@ -212,6 +212,51 @@ describe('evaluateUrgeGate rate', () => {
   it('halves the opening hazard during games', () => {
     const game = quietSituation({ activity: { appId: 'elden-ring', label: 'Elden Ring', category: 'game', title: null, sinceMs: T0 - MIN } })
     expect(evaluateUrgeGate(gateInput({ situation: game }), initialUrgeMemory).decision.trace.multipliers.game).toBe(0.5)
+  })
+})
+
+describe('evaluateUrgeGate mood factor', () => {
+  const morning: GateLocalTime = { dayKey: '2023-11-14', minuteOfDay: 9 * 60 }
+  const withMood = (moodFactor?: number) => ({ ...gateInput({ local: morning, threads: [laterThread()] }), ...(moodFactor === undefined ? {} : { moodFactor }) })
+  const traceOf = (moodFactor?: number) => evaluateUrgeGate(withMood(moodFactor), initialUrgeMemory).decision.trace
+
+  it('multiplies only the open hazard by the factor', () => {
+    const plain = traceOf()
+    const moody = traceOf(1.35)
+    expect(plain.multipliers.mood).toBe(1)
+    expect(moody.multipliers.mood).toBe(1.35)
+    expect(plain.hazardPerHour.ritual).toBe(12)
+    expect(plain.hazardPerHour.due).toBe(1)
+    expect(moody.hazardPerHour.open).toBeCloseTo(plain.hazardPerHour.open * 1.35, 10)
+    expect(moody.hazardPerHour.ritual).toBe(plain.hazardPerHour.ritual)
+    expect(moody.hazardPerHour.due).toBe(plain.hazardPerHour.due)
+    expect(moody.hazardPerHour.continuation).toBe(plain.hazardPerHour.continuation)
+  })
+
+  it('clamps the factor to 0.67..1.35', () => {
+    expect(traceOf(5).multipliers.mood).toBe(1.35)
+    expect(traceOf(5).hazardPerHour.open).toBe(traceOf(1.35).hazardPerHour.open)
+    expect(traceOf(0.1).multipliers.mood).toBe(0.67)
+    expect(traceOf(-3).multipliers.mood).toBe(0.67)
+    expect(traceOf(0.67).hazardPerHour.open).toBe(traceOf(0.1).hazardPerHour.open)
+  })
+
+  it('treats a non-finite factor as 1', () => {
+    const plain = evaluateUrgeGate(withMood(), initialUrgeMemory)
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])
+      expect(evaluateUrgeGate(withMood(bad), initialUrgeMemory)).toEqual(plain)
+  })
+
+  it('leaves every trace and the RNG draw count identical when the factor is omitted or 1', () => {
+    const ready = memoryWith({ urge: 10, urgeThreshold: 0.5, lastEvalAtMs: T0 - ACCRUAL_DT_MAX_MS })
+    const omitted = evaluateUrgeGate(withMood(), ready)
+    const one = evaluateUrgeGate(withMood(1), ready)
+    expect(omitted.decision.fire).toBe(true)
+    expect(one).toEqual(omitted)
+    expect(omitted.memory.rngState).not.toBe(ready.rngState)
+    // A held evaluation never draws, with or without the factor.
+    const held = memoryWith({ urgeThreshold: 1000 })
+    expect(evaluateUrgeGate(withMood(1.35), held).memory.rngState).toBe(held.rngState)
   })
 })
 

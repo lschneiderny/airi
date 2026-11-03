@@ -32,7 +32,7 @@ function trace(overrides: Partial<UrgeGateTrace> = {}): UrgeGateTrace {
     nowMs: T0,
     chattiness: 0.5,
     hazardPerHour: { open: 0.25, continuation: 0, ritual: 0, due: 0.125, total: 0.375 },
-    multipliers: { base: 0.6, pressure: 1, exchange: 1, clear: 1, damping: 0.5, floor: 1, game: 1 },
+    multipliers: { base: 0.6, pressure: 1, exchange: 1, clear: 1, damping: 0.5, floor: 1, game: 1, mood: 1 },
     urge: 0.3,
     urgeThreshold: 1.2,
     expectedWaitMs: 12 * 60_000,
