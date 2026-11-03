@@ -82,7 +82,7 @@ A TTS request carries the text without faces. Its playback item carries the segm
 
 `createStreamingControlParser` loads the ACT, DELAY, BREAK, and CALL parsers by default.
 
-- An ACT JSON payload may carry `gesture`: `"nod"`, `"shake"`, `"shrug"`, `"lean"`, or `"glance"`, or `{ "kind": "nod", "count": 2 }`. `normalizeActPayload` drops unknown kinds. `count` is 1-3 for `nod` and `shake` (default 2) and 1 for the other kinds. A gesture-only ACT is valid. The bare form, such as `<|ACT nod|>`, accepts emotions only.
+- An ACT JSON payload may carry `gesture`: `"nod"`, `"shake"`, `"shrug"`, `"lean"`, or `"glance"`, or `{ "kind": "nod", "count": 2 }`. `normalizeActPayload` drops unknown kinds. `count` is 1-3 for `nod` and `shake` (default 2) and 1 for the other kinds. A gesture-only ACT is valid. It may also carry `action`, a label the consumer resolves later: `normalizeActPayload` trims and lowercases it and keeps it only when it matches `/^[a-z0-9][a-z0-9-]{0,31}$/`, otherwise it omits the field. The parser never resolves or evaluates it. There is no bare or colon action form. The bare form, such as `<|ACT nod|>`, accepts emotions only.
 - `<|BREAK|>` pauses for 1.0 s and `<|BREAK n|>` for `n` seconds, clamped to 0.3-3.0. Any other body is rejected as parse-failed and produces no signal.
 
 The TTS chunker ends a segment at every special. At a BREAK, it also ends a segment whose text is held at soft punctuation, so text written before the pause is never spoken after it.

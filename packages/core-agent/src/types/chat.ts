@@ -40,6 +40,8 @@ export type ChatSlices = ChatSlicesText | ChatSlicesToolCall | ChatSlicesToolCal
 export interface ChatWordlessCue {
   emotion?: StreamingControlEmotion
   gesture?: StreamingControlGesture
+  /** Action label as normalized by the ACT parser; never resolved here. */
+  action?: string
 }
 
 export interface ChatAssistantMessage extends AssistantMessage {

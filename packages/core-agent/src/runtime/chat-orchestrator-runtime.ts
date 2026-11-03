@@ -44,8 +44,8 @@ function wordlessCueFrom(special: string): ChatWordlessCue {
   const token = actParser.parse(special)
   if (!token)
     return {}
-  const { emotion, gesture } = normalizeActPayload(token.payload)
-  return { ...(emotion && { emotion: emotion.name }), ...(gesture && { gesture }) }
+  const { emotion, gesture, action } = normalizeActPayload(token.payload)
+  return { ...(emotion && { emotion: emotion.name }), ...(gesture && { gesture }), ...(action && { action }) }
 }
 
 /**
@@ -58,7 +58,7 @@ function wordlessCueFrom(special: string): ChatWordlessCue {
  */
 function renderWordlessCueText(wordless: NonNullable<ChatAssistantMessage['wordless']>, declineMarker: string) {
   const cues = wordless.cues
-    .filter(cue => cue.emotion || cue.gesture)
+    .filter(cue => cue.emotion || cue.gesture || cue.action)
     .map(cue => `<|ACT ${JSON.stringify(cue)}|>`)
   return `${cues.join('')}${declineMarker}`
 }
