@@ -4,6 +4,7 @@
   "private": true,
   "exports": {
     "./clip-mask": "./src/clip-mask/index.ts",
+    "./clip-meta": "./src/clip-meta/index.ts",
     "./director": "./src/director/index.ts",
     "./foot-contact": "./src/foot-contact/index.ts",
     "./look-at": "./src/look-at/index.ts",
