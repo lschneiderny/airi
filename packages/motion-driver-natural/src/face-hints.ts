@@ -1,3 +1,4 @@
+import type { FaceBaseline } from './baseline'
 import type { NaturalFaceOutput } from './face'
 import type { NaturalHoldLayer } from './hold'
 import type { NaturalImpulses } from './impulses'
@@ -9,8 +10,11 @@ export interface HeldFaceInput {
   accentScale: number
 }
 
-/** Adds emotion face hints, the pet face, and the held emotion face to the face layer output; with none active every value is unchanged. */
-export function withHints(face: NaturalFaceOutput, time: number, impulses: NaturalImpulses, petLayer: NaturalPetLayer, moodMouthForm: number, held?: HeldFaceInput): NaturalFaceOutput {
+/**
+ * Adds emotion face hints, the pet face, the external face baseline's mouth and brow, and the held emotion face
+ * to the face layer output; with none active every value is unchanged.
+ */
+export function withHints(face: NaturalFaceOutput, time: number, impulses: NaturalImpulses, petLayer: NaturalPetLayer, moodMouthForm: number, baseline: Readonly<FaceBaseline>, held?: HeldFaceInput): NaturalFaceOutput {
   const hints = impulses.hints(time, held && held.hold.emotion
     ? { emotion: held.hold.emotion, scale: 1 - held.accentScale * held.hold.level }
     : undefined)
@@ -28,6 +32,14 @@ export function withHints(face: NaturalFaceOutput, time: number, impulses: Natur
     eyeSmile: face.eyeSmile + hints.eyeSmile + pet.eyeSmile,
     mouthForm: face.mouthForm + hints.mouthForm + pet.mouthForm + moodMouthForm,
     cheek: face.cheek + pet.cheek,
+  }
+  // Skip zero offsets so a neutral baseline leaves every value bit-identical, signed zeros included.
+  if (baseline.mouthForm !== 0)
+    result.mouthForm += baseline.mouthForm
+  if (baseline.browAngle !== 0) {
+    result.browAngle += baseline.browAngle
+    result.browLAngle += baseline.browAngle
+    result.browRAngle += baseline.browAngle
   }
   if (held) {
     const hold = held.hold.face()

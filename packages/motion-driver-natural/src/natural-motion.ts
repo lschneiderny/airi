@@ -1,6 +1,7 @@
 import type { ExpressionPerformanceSettings, MoodDose, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
+import type { FaceBaseline } from './baseline'
 import type { NaturalBreathOutput } from './breath'
 import type { CueGestureKind } from './cue-gestures'
 import type { NaturalFaceOutput } from './face'
@@ -14,6 +15,7 @@ import type { RandomStream } from './random'
 import { errorMessageFrom } from '@moeru/std'
 import { defaultExpressionPerformanceSettings, PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 
+import { FaceBaselineFilter } from './baseline'
 import { NaturalBlinkScheduler } from './blink'
 import { NaturalBodyLayer } from './body'
 import { NaturalBreathLayer } from './breath'
@@ -147,6 +149,7 @@ export class NaturalMotion {
   private readonly impulses: NaturalImpulses
   private readonly onsetShifts = new SpeechOnsetShifts()
   private readonly pet = new NaturalPetLayer()
+  private readonly faceBaseline = new FaceBaselineFilter()
   private petHand = { x: 0, y: 0 }
   private petStartedAt: number | null = null
   private petOverride = false
@@ -406,6 +409,19 @@ export class NaturalMotion {
     this.hold.setStrengths(this.emotionStrengths)
   }
 
+  /**
+   * Sets the resting face target. The applied baseline follows it with a 1.5 s first-order filter on the
+   * grid, independently of held-emotion and mood settings; the neutral baseline leaves every frame unchanged.
+   */
+  setFaceBaseline(baseline: Readonly<FaceBaseline>) {
+    this.faceBaseline.set(baseline)
+  }
+
+  /** The scale on newly drawn blink open intervals from held emotion and the face baseline; 1 when both are neutral. */
+  get blinkIntervalScale() {
+    return this.blink.intervalScale
+  }
+
   /** The current mood afterglow; all zero at rest. */
   get moodState(): { valence: number, arousal: number, tension: number } {
     return { valence: this.mood.valence, arousal: this.mood.arousal, tension: this.mood.tension }
@@ -559,6 +575,8 @@ export class NaturalMotion {
     this.lastPokeSurprise = pokeState.lastPokeSurprise
     this.energy.step(step)
     this.mood.step(step)
+    this.faceBaseline.step(step)
+    const baseline = this.faceBaseline.value
     if (this.performanceSettings.heldEmotions)
       this.hold.step(step)
     if (this.observer)
@@ -574,6 +592,7 @@ export class NaturalMotion {
     this.gaze.cameraFixationProbability = moodScales.cameraFixationProbability
     this.gaze.targetWeights = this.energy.targetWeights
     let emphasisAcceptance = moodScales.emphasisAcceptance
+    let blinkInterval = 1
     if (this.performanceSettings.heldEmotions) {
       const mod = this.hold.modulation()
       this.posture.amplitudeScale *= mod.amplitude
@@ -582,10 +601,12 @@ export class NaturalMotion {
       if (mod.deskWeight !== 0)
         this.gaze.targetWeights = { ...this.gaze.targetWeights, desk: this.gaze.targetWeights.desk + mod.deskWeight }
       emphasisAcceptance = Math.max(0, Math.min(1, emphasisAcceptance + mod.nodAcceptance))
-      this.blink.intervalScale = mod.blinkInterval
+      blinkInterval = mod.blinkInterval
       this.breath.periodScale = mod.breathPeriod
       this.emphasis.sizeScale = mod.nodSize
     }
+    // Recomputed from the base every step; scaling the stored value would compound.
+    this.blink.intervalScale = blinkInterval / (1 + baseline.blinkRateOffset)
     // Speech onsets can lead a due posture shift, so detection runs before attention and posture see the shift time.
     const emphasis = this.emphasis.step(step, this.voice.level, emphasisAcceptance)
     this.onsetShifts.update(this.posture, this.emphasis, this.voice.speaking)
@@ -670,7 +691,7 @@ export class NaturalMotion {
           lean[axis] += gestureBody[axis]
       }
     }
-    const face = withHints(this.face.step(step), stepStart + step, this.impulses, this.pet, moodMouthForm(this.mood, this.performanceSettings), this.performanceSettings.heldEmotions && this.hold.level > 0 ? { hold: this.hold, accentScale: this.performanceSettings.held.accentScale } : undefined)
+    const face = withHints(this.face.step(step), stepStart + step, this.impulses, this.pet, moodMouthForm(this.mood, this.performanceSettings), baseline, this.performanceSettings.heldEmotions && this.hold.level > 0 ? { hold: this.hold, accentScale: this.performanceSettings.held.accentScale } : undefined)
     const cueFace = this.cueGestures.faceOffset(stepStart + step)
     face.browLY += cueFace.browY
     face.browRY += cueFace.browY
@@ -683,7 +704,7 @@ export class NaturalMotion {
       if (!this.face.speechActiveOrRecent)
         face.silentMouthOpen += laugh.mouthOpen
     }
-    face.eyeOpenMultiplier *= 1 - approachEyeSoftening * this.approach
+    face.eyeOpenMultiplier *= (1 - approachEyeSoftening * this.approach) * (1 + baseline.eyeOpen)
     return {
       head,
       compensationHead,
