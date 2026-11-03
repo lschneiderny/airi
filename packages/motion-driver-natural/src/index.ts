@@ -1,3 +1,4 @@
+export type { FaceBaseline } from './baseline'
 export type { NaturalRigTraits, NaturalTouchRegion } from './frame-types'
 export type { NaturalEpisode } from './mood'
 export * from './natural-motion'
