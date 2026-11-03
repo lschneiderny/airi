@@ -935,6 +935,8 @@ export const useSituationStore = defineStore('situation', () => {
         // Publishes the new threads to the inspector and saves them with the social memory.
         setGateMemory(gateMemory)
       },
+      // Nothing consumes relationship events yet; the ledger still records them.
+      onEvents: () => {},
       onLedger: entry => observability.recordExtraction(entry),
       onInFlight: inFlight => observability.publishExtractionInFlight(inFlight),
       now: Date.now,

@@ -1,3 +1,4 @@
+import type { CharacterEventKind } from '@proj-airi/stage-shared/character-state'
 import type {
   ReactionDecision,
   ReactionHoldReason,
@@ -157,6 +158,9 @@ export interface ThreadExtractionAnswer {
   excerpt?: string
 }
 
+/** The character state events a thread extraction may report: the relationship events the conversation itself shows. */
+export type ExtractedEventKind = Extract<CharacterEventKind, 'disclosure' | 'kept-promise' | 'unkind' | 'hurtful' | 'milestone' | 'significant-positive' | 'significant-negative'>
+
 /** One thread extraction attempt at the end of an exchange. */
 export interface ThreadExtractionLedgerEntry {
   atMs: number
@@ -165,12 +169,14 @@ export interface ThreadExtractionLedgerEntry {
   requestChars: number
   messageCount: number
   /**
-   * `ok` stored at least one thread, `empty` found none, `invalid` got a complete answer that failed validation,
+   * `ok` stored at least one thread or event, `empty` found neither, `invalid` got a complete answer that failed validation,
    * `failed` got no complete answer (provider error, timeout, or output cap), `skipped` did not run because another
    * extraction was in flight.
    */
   status: 'ok' | 'empty' | 'invalid' | 'failed' | 'skipped'
   threads: readonly { kind: ThreadKind, summary: string }[]
+  /** The relationship events handed to `onEvents`; absent when the attempt delivered none. */
+  events?: readonly { kind: ExtractedEventKind, reason: string }[]
   error: string | null
   /** Absent when no request was sent: `skipped`, no chat selection, or no conversation text. */
   answer?: ThreadExtractionAnswer
