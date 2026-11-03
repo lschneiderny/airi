@@ -12,7 +12,7 @@ import VoiceInlay from './voice-inlay.vue'
 
 import 'virtual:uno.css'
 
-const { returnHome, setIgnoreMouseEvents, registerShortcut, unregisterShortcut, shortcutListeners, cursor } = vi.hoisted(() => ({
+const { returnHome, setIgnoreMouseEvents, registerShortcut, unregisterShortcut, shortcutListeners, cursor, isWayland } = vi.hoisted(() => ({
   returnHome: vi.fn(),
   setIgnoreMouseEvents: vi.fn(),
   registerShortcut: vi.fn(async () => ({ ok: true })),
@@ -21,16 +21,20 @@ const { returnHome, setIgnoreMouseEvents, registerShortcut, unregisterShortcut, 
   shortcutListeners: new Set<(event: { body?: { id: string, phase: 'down' | 'up' } }) => void>(),
   /** The cursor position that the main process reports. The mock factory fills it with refs. */
   cursor: {} as { x?: { value: number }, y?: { value: number } },
+  /** Whether the mocked platform is Wayland. Most tests cover the click-through platforms. */
+  isWayland: { value: false },
 }))
 
 // The inlay talks to its Electron window through these IPC composables. The cursor starts outside the page.
 vi.mock('@proj-airi/electron-vueuse', async () => {
   const { shallowRef } = await import('vue')
-  const { electronInlayReturnHome, electronShortcutRegister, electronShortcutUnregister } = await import('../../../shared/eventa')
+  const { electronAppIsWayland, electronInlayReturnHome, electronShortcutRegister, electronShortcutUnregister } = await import('../../../shared/eventa')
   const invokes = new Map<unknown, unknown>([
     [electronInlayReturnHome, returnHome],
     [electronShortcutRegister, registerShortcut],
     [electronShortcutUnregister, unregisterShortcut],
+    // Not Wayland by default: the inlay window can stay click-through around its card.
+    [electronAppIsWayland, () => Promise.resolve(isWayland.value)],
   ])
   return {
     useElectronEventaInvoke: (eventa: unknown) => invokes.get(eventa) ?? setIgnoreMouseEvents,
@@ -53,6 +57,7 @@ const cleanups: (() => void)[] = []
 
 afterEach(() => {
   cleanups.splice(0).reverse().forEach(cleanup => cleanup())
+  isWayland.value = false
   returnHome.mockReset()
   setIgnoreMouseEvents.mockReset()
   registerShortcut.mockClear()
@@ -111,6 +116,14 @@ describe('voice inlay', () => {
 
     await expect.poll(inlayView).toBe('hidden')
     await expect.poll(() => setIgnoreMouseEvents.mock.calls.at(-1)).toEqual([[true, { forward: true }]])
+  })
+
+  it('stays interactive on Wayland, where the cursor signal cannot drive click-through', async () => {
+    isWayland.value = true
+    renderInlay()
+
+    await expect.poll(() => setIgnoreMouseEvents.mock.calls.at(-1)).toEqual([[false, { forward: true }]])
+    expect(inlayView()).toBe('hidden')
   })
 
   it('shows a capsule when capture starts, and grows into the card when text arrives', async () => {

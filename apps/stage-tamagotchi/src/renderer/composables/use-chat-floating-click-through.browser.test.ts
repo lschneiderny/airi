@@ -5,10 +5,13 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { defineComponent, h, nextTick, shallowRef, vShow, withDirectives } from 'vue'
 
+import { electronAppIsWayland } from '../../shared/eventa'
 import { dismissOverlays, useChatFloatingClickThrough } from './use-chat-floating-click-through'
 
 const mocks = vi.hoisted(() => ({
   setIgnoreMouseEvents: vi.fn(),
+  /** Whether the mocked platform is Wayland, where the window stays interactive. */
+  isWayland: false,
   /** The cursor, which the doubles report the same on the screen and in the window. */
   cursor: undefined as { x: ShallowRef<number>, y: ShallowRef<number> } | undefined,
 }))
@@ -24,7 +27,7 @@ vi.mock('@proj-airi/electron-vueuse', async () => {
   return {
     useElectronMouse: () => mocks.cursor,
     useElectronRelativeMouse: () => mocks.cursor,
-    useElectronEventaInvoke: () => mocks.setIgnoreMouseEvents,
+    useElectronEventaInvoke: (event: unknown) => event === electronAppIsWayland ? () => Promise.resolve(mocks.isWayland) : mocks.setIgnoreMouseEvents,
   }
 })
 
@@ -186,6 +189,23 @@ describe('useChatFloatingClickThrough', () => {
     mocks.cursor!.x.value = 42
     await nextTick()
     expect(area.value?.style.opacity).toBe('0')
+  })
+
+  it('keeps the window interactive on Wayland, where the cursor signal cannot drive click-through', async () => {
+    // ROOT CAUSE:
+    //
+    // On native Wayland the polled cursor position can stick stale, and
+    // Electron's `forward` flag for ignored mouse events is unsupported on
+    // Linux. The window then stays click-through forever, and the composer
+    // can never be clicked or typed into.
+    mocks.isWayland = true
+    onTestFinished(() => {
+      mocks.isWayland = false
+    })
+    // The page paints nothing, which would pass clicks through elsewhere.
+    await renderPainted(() => h('div'))
+
+    await vi.waitFor(() => expect(mocks.setIgnoreMouseEvents).toHaveBeenLastCalledWith([false, { forward: true }]))
   })
 
   it('closes an open menu when the chat hides', async () => {
