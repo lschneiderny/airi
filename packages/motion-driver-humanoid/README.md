@@ -6,6 +6,7 @@ deterministic motion algorithms for reusable character motion drivers.
 ## Entry points
 
 - `./clip-mask`: `buildClipBoneMask`, which reports which bone groups a clip animates.
+- `./clip-meta`: `deriveClipMeta`, `effectiveLayer` and `slugLabel`, which turn a clip bone mask, duration and name into a layer, kind, loop flag and label.
 - `./director` exports the pure stance and attention director.
 - `./foot-contact`: planted foot anchors, eased contact, shared pelvis reach
   correction, signed knee pre-bend, and body-turn step arcs.
@@ -114,6 +115,17 @@ origin or from the first key. Identity-keyed tracks own nothing. Groups are `roo
 `leftLegIk`/`rightLegIk`, `lowerBody` (hips, FK legs, and caller-listed helper bones), `leftArm`/`rightArm` (plus bones listed under
 `bones.helpers`), `leftFingers`/`rightFingers`, `upperBody`, and `head`.
 The all-parent bone (`全ての親` or `master`) belongs to `root`.
+
+## Clip metadata
+
+`deriveClipMeta(mask, durationMs, name)` classifies a clip once at import. Rules, first match wins:
+a non-positive or non-finite duration or a mask with no animated group is `unusable` on layer `none`;
+a name matching idle, stand, sit or sleep (also Japanese) is a looping `stance`; a clip that animates
+the root, leg IK or `lowerBody` is a `dance` from `DANCE_MIN_MS` (20 s) and an `action` below it;
+an upper-only clip is a `gesture` up to `GESTURE_MAX_MS` (6 s) and an `action` above it. Dances and
+gestures never loop; actions loop when the name contains loop, ループ, repeat or ends in `_l`.
+`slugLabel` gives the ascii label (`CLIP_LABEL_PATTERN`), or `null` with the `non-ascii-name` note.
+`effectiveLayer(meta, kindOverride)` keeps any gesture on the `upper` layer.
 
 ## Checks
 
