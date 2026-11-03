@@ -920,6 +920,7 @@ async function loadModel(src: string) {
           target: resolveBodyTarget(bodyPoints, natural.bodyFrame, gazeMode.value, activeStance.intent),
           ...diagnostics.debugFlags,
           stanceClips: activeStance.baseClips,
+          dragging,
         }
       },
       // Per-frame root motion: no physics reset on this path, so Ammo feels the travel.

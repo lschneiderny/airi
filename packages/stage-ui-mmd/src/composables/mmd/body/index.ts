@@ -37,6 +37,15 @@ export interface MMDBodyInput {
   readonly stanceClips: ReadonlySet<string>
   /** Debug override of the arm rest hang angle in degrees below horizontal (0-90); null or absent keeps the default. */
   readonly armRestHangDeg?: number | null
+  /** The user drags the character. Carried in step with the director's input; the body does not read it yet. */
+  readonly dragging: boolean
+  /** The clip the animation manager reports on its layer (`snapshot().layer.name`); `performing()` reads its weight. */
+  readonly layerClip?: string | null
+}
+
+export interface MMDRegisterClipOptions {
+  /** Groups the clip owns even though its mask keyed none of their bones, so a full-body action stops the gait. */
+  readonly forceGroups?: readonly ClipMaskGroup[]
 }
 
 const OWNERSHIP_GROUPS: readonly ClipMaskGroup[] = ['root', 'leftLegIk', 'rightLegIk', 'lowerBody', 'leftArm', 'rightArm', 'leftFingers', 'rightFingers', 'upperBody', 'head']
@@ -62,6 +71,10 @@ export class MMDBody {
   private readonly arms: MMDArmRest
   private readonly masks = new Map<string, ClipBoneMask>()
   private readonly owned: Record<ClipMaskGroup, number> = { root: 0, leftLegIk: 0, rightLegIk: 0, lowerBody: 0, leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0, upperBody: 0, head: 0 }
+  /** Ownership by non-stance clips only. Stance clips reduce foot contact through their foot-IK tracks instead. */
+  private readonly oneShotOwned: Record<ClipMaskGroup, number> = { root: 0, leftLegIk: 0, rightLegIk: 0, lowerBody: 0, leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0, upperBody: 0, head: 0 }
+  private stanceWeight = 0
+  private readonly weights = new Map<string, number>()
   private armsSnapshot: MMDArmsMeasurement | null = null
   private torsoRoll = 0
   private readonly root: MMDBodyRoot | undefined
@@ -162,9 +175,13 @@ export class MMDBody {
     return this.arms.restPositions(clean, names)
   }
 
-  registerClip(name: string, clip: AnimationClip): void {
+  registerClip(name: string, clip: AnimationClip, options: MMDRegisterClipOptions = {}): void {
     this.clips.set(name, clip)
-    this.masks.set(name, buildMMDClipMask(clip, this.pose.rig))
+    const mask = buildMMDClipMask(clip, this.pose.rig)
+    const groups = { ...mask.groups }
+    for (const group of options.forceGroups ?? [])
+      groups[group] = true
+    this.masks.set(name, { ...mask, groups })
   }
 
   /**
@@ -175,20 +192,46 @@ export class MMDBody {
     return this.owned
   }
 
+  /**
+   * The clip on the manager's layer and its captured weight this frame, or null when no layer clip has weight.
+   * The weight returns to 0 once the layer has eased out and been torn down.
+   */
+  performing(): { name: string, weight: number } | null {
+    const name = this.input?.layerClip
+    const weight = name ? this.weights.get(name) ?? 0 : 0
+    return name && weight > 0 ? { name, weight } : null
+  }
+
+  /** The only reader of raw clip weights in the body; every duck term is derived from the ownership it records. */
   private updateOwnership(weights: ReadonlyMap<string, number>): void {
-    for (const group of OWNERSHIP_GROUPS)
+    for (const group of OWNERSHIP_GROUPS) {
       this.owned[group] = 0
+      this.oneShotOwned[group] = 0
+    }
+    this.stanceWeight = 0
+    this.weights.clear()
+    const stanceClips = this.input?.stanceClips
     for (const [name, weight] of weights) {
       if (!(weight > 0))
         continue
+      this.weights.set(name, weight)
+      const stance = stanceClips?.has(name) ?? false
+      if (stance)
+        this.stanceWeight += weight
       const mask = this.masks.get(name)
       for (const group of OWNERSHIP_GROUPS) {
-        if (!mask || mask.groups[group])
+        if (!mask || mask.groups[group]) {
           this.owned[group] += weight
+          if (!stance)
+            this.oneShotOwned[group] += weight
+        }
       }
     }
-    for (const group of OWNERSHIP_GROUPS)
+    for (const group of OWNERSHIP_GROUPS) {
       this.owned[group] = Math.min(1, this.owned[group])
+      this.oneShotOwned[group] = Math.min(1, this.oneShotOwned[group])
+    }
+    this.stanceWeight = Math.min(1, this.stanceWeight)
   }
 
   /** The single entry point for walk goals. A goal set while a clip plays is dropped, not deferred. */
@@ -246,17 +289,14 @@ export class MMDBody {
     if (!input)
       return
     this.now += dt
-    let stanceWeight = 0
-    let otherWeight = 0
-    for (const [name, weight] of clean.clipWeights) {
-      if (input.stanceClips.has(name))
-        stanceWeight += weight
-      else
-        otherWeight += weight
-    }
-    this.duck = 1 - Math.min(1, stanceWeight + otherWeight)
-    this.attention = 1 - Math.min(1, otherWeight + stanceWeight * (1 - STANCE_HEAD_ATTENTION))
-    this.contactDuck = 1 - Math.min(1, otherWeight)
+    // Duck only what the playing clips own: an arm or finger gesture keeps breath, sway and foot contact. A clip the
+    // body never registered owns every group, so unknown motion still ducks everything.
+    const owned = this.owned
+    const oneShot = this.oneShotOwned
+    this.duck = 1 - Math.max(this.stanceWeight, owned.root, owned.upperBody)
+    this.attention = 1 - Math.min(1, oneShot.head + this.stanceWeight * (1 - STANCE_HEAD_ATTENTION))
+    // Planner duck: one-shots only, as before. Stance clips reduce contact through their foot-IK tracks.
+    this.contactDuck = 1 - Math.max(oneShot.root, oneShot.leftLegIk, oneShot.rightLegIk, oneShot.lowerBody)
     const { pose, breath } = input.frame
     this.roll += ((pose.bodyZ ?? 0) - this.roll) * (1 - Math.exp(-dt / 0.5))
     const rig = this.pose.rig

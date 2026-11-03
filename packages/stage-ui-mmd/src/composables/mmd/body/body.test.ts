@@ -1,8 +1,22 @@
+import type { ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
+
+import type { LayerEvent } from '../animation-manager'
+
 import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
 
+import { createMMDAnimationManager } from '../animation-manager'
+import { mmdClipMaskBones } from '../rig/clip-mask'
 import { bodyFixture } from './fixture'
 import { MMDBody } from './index'
+
+const FULL_BODY: readonly ClipMaskGroup[] = ['root', 'leftLegIk', 'rightLegIk']
+
+/** A clip that holds one bone at a fixed rotation for `duration` seconds. */
+function holdClip(name: string, bone: string, rotation: Euler, duration = 2) {
+  const pose = new Quaternion().setFromEuler(rotation).toArray()
+  return new AnimationClip(name, duration, [new QuaternionKeyframeTrack(`.bones[${bone}].quaternion`, [0, duration], [...pose, ...pose])])
+}
 
 describe('mmd full-body stages', () => {
   it('plants actual ankles through 600 frames of weight shift in a transformed IK parent', () => {
@@ -314,6 +328,124 @@ describe('mmd full-body stages', () => {
       expect(body.diagnostics.locomotion).toMatchObject({ mode: 'idle', enabled: false, goalX: null })
       expect(mesh.position.x).toBe(0)
     }
+  })
+
+  it('keeps foot contact and the gait while an arm-only clip plays through a walk', () => {
+    const { pipeline, body, mixer, setInput } = bodyFixture(0, Math.PI, { arms: true })
+    const wave = holdClip('arms-wave', '左腕', new Euler(0, 0, -Math.PI / 3))
+    pipeline.registerClip(wave.name, wave)
+    body.registerClip(wave.name, wave)
+    pipeline.enqueue(() => mixer.clipAction(wave).play())
+    setInput({ rootMotion: true })
+    for (let frame = 0; frame < 30; frame++)
+      pipeline.step(1 / 60)
+    expect(body.ownership()).toMatchObject({ leftArm: 1, root: 0, leftLegIk: 0, rightLegIk: 0, lowerBody: 0, upperBody: 0 })
+    body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+    let skate = 0
+    let maxError = 0
+    let walked = false
+    for (let frame = 0; frame < 1200 && (!walked || body.diagnostics.locomotion?.mode !== 'idle'); frame++) {
+      pipeline.step(1 / 60)
+      const locomotion = body.diagnostics.locomotion
+      expect(locomotion?.enabled).toBe(true)
+      skate = Math.max(skate, locomotion?.skate ?? Infinity)
+      maxError = Math.max(maxError, body.diagnostics.feet.maxError)
+      walked ||= locomotion?.mode === 'walking'
+    }
+    expect(walked).toBe(true)
+    expect(Math.abs((body.diagnostics.locomotion?.position.x ?? 0) - 10)).toBeLessThan(1e-2)
+    expect(skate).toBeLessThan(0.01)
+    expect(maxError).toBeLessThan(0.05)
+    expect(body.ownership().leftArm).toBe(1)
+    expect(body.diagnostics.feet.contact).toBe(1)
+  })
+
+  it('keeps breath and sway under a finger-only clip', () => {
+    const sway = (withClip: boolean) => {
+      const { pipeline, body, mixer, bone } = bodyFixture(0, Math.PI, { arms: true })
+      if (withClip) {
+        const curl = holdClip('fingers-curl', '左人指１', new Euler(-Math.PI / 4, 0, 0))
+        pipeline.registerClip(curl.name, curl)
+        body.registerClip(curl.name, curl)
+        pipeline.enqueue(() => mixer.clipAction(curl).play())
+      }
+      let groove = 0
+      for (let frame = 0; frame < 300; frame++) {
+        pipeline.step(1 / 30)
+        groove = Math.max(groove, bone('グルーブ').position.length())
+      }
+      return { groove, owned: body.ownership() }
+    }
+    const free = sway(false)
+    const curled = sway(true)
+    expect(curled.owned).toMatchObject({ leftFingers: 1, leftArm: 0, upperBody: 0, root: 0, head: 0 })
+    expect(free.groove).toBeGreaterThan(0.1)
+    expect(curled.groove).toBeCloseTo(free.groove, 6)
+  })
+
+  it('stops the gait for a forced-group clip whose mask keys no root or leg IK bone', () => {
+    const { pipeline, body, mixer, mesh, setInput } = bodyFixture(0, Math.PI, { arms: true })
+    const bow = holdClip('arm-dance', '左腕', new Euler(0, 0, -Math.PI / 3))
+    pipeline.registerClip(bow.name, bow)
+    body.registerClip(bow.name, bow, { forceGroups: FULL_BODY })
+    pipeline.enqueue(() => mixer.clipAction(bow).play())
+    setInput({ rootMotion: true })
+    for (let frame = 0; frame < 30; frame++)
+      pipeline.step(1 / 60)
+    expect(body.ownership()).toMatchObject({ root: 1, leftLegIk: 1, rightLegIk: 1, leftArm: 1, lowerBody: 0 })
+    body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+    for (let frame = 0; frame < 120; frame++) {
+      pipeline.step(1 / 60)
+      expect(body.diagnostics.locomotion).toMatchObject({ mode: 'idle', enabled: false, goalX: null })
+      expect(mesh.position.x).toBe(0)
+    }
+  })
+
+  it('disables the gait while a forced-group layer plays and re-enables it with no stale ownership once its weight is 0', async () => {
+    const { mmd, rig, body, mesh, setInput } = bodyFixture(0, Math.PI, { arms: true })
+    const manager = createMMDAnimationManager(mmd, { maskBones: mmdClipMaskBones(rig), physicsEnabled: false })
+    manager.pipeline.poseStages.push(...body.poseStages)
+    manager.pipeline.surfaceStages.push(body.surfaceStage)
+    const events: LayerEvent[] = []
+    manager.onLayerEvent(event => events.push(event))
+    const bow = holdClip('bow', '左腕', new Euler(0, 0, -Math.PI / 3), 0.5)
+    manager.registerClip('bow', bow)
+    body.registerClip('bow', bow, { forceGroups: FULL_BODY })
+    await manager.init()
+    setInput({ rootMotion: true, layerClip: 'bow' })
+    for (let frame = 0; frame < 30; frame++)
+      manager.update(1 / 60)
+    expect(body.diagnostics.locomotion?.enabled).toBe(true)
+    expect(body.performing()).toBeNull()
+
+    manager.playLayer('bow', { seq: 1, layer: 'full', kind: 'action' })
+    let performed = 0
+    for (let frame = 0; frame < 240; frame++) {
+      manager.update(1 / 60)
+      const performing = body.performing()
+      if (performing) {
+        performed++
+        expect(performing.name).toBe('bow')
+        expect(body.ownership().root).toBe(performing.weight)
+        expect(body.diagnostics.locomotion?.enabled).toBe(false)
+        // A goal set while the clip owns the root is dropped, not deferred.
+        if (performed === 5)
+          body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+      }
+    }
+    expect(performed).toBeGreaterThan(10)
+    expect(events.map(event => event.state)).toEqual(['playing', 'finished'])
+    expect(manager.snapshot().layer).toBeNull()
+    expect(body.performing()).toBeNull()
+    expect(Object.values(body.ownership()).every(weight => weight === 0)).toBe(true)
+    expect(body.diagnostics.locomotion).toMatchObject({ mode: 'idle', enabled: true, goalX: null })
+    expect(mesh.position.x).toBe(0)
+
+    body.setLocomotionGoal({ goalX: 10, pace: 'walk', arriveFacing: 0, reason: 'debug' })
+    for (let frame = 0; frame < 120; frame++)
+      manager.update(1 / 60)
+    expect(body.diagnostics.locomotion?.mode).not.toBe('idle')
+    expect(mesh.position.x).toBeGreaterThan(0.5)
   })
 
   it('aims both eye rays at a world target after the root moves and turns', () => {
