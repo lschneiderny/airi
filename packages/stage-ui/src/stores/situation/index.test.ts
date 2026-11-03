@@ -875,7 +875,7 @@ describe('situation gate loop', () => {
     const messageCountsDuringExtraction: number[] = []
     chat.stream.mockImplementation(async (_model, _provider, _conversation, options) => {
       messageCountsDuringExtraction.push(chat.state.messages.length)
-      await options?.onStreamEvent?.({ type: 'text-delta', text: '[{"kind":"event","summary":"He has a job interview tomorrow at nine.","cue":"how the interview went","dueInMinutes":780}]' })
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '{"threads":[{"kind":"event","summary":"He has a job interview tomorrow at nine.","cue":"how the interview went","dueInMinutes":780}],"events":[]}' })
     })
     const recorded = new Promise<ThreadExtractionLedgerEntry>((resolve) => {
       const record = observability.recordExtraction
@@ -923,7 +923,7 @@ describe('situation gate loop', () => {
     chat.stream.mockImplementation(async (_model, _provider, _conversation, options) => {
       streamStarted()
       await released
-      await options?.onStreamEvent?.({ type: 'text-delta', text: '[{"kind":"event","summary":"He has a job interview tomorrow at nine.","cue":"how the interview went","dueInMinutes":null}]' })
+      await options?.onStreamEvent?.({ type: 'text-delta', text: '{"threads":[{"kind":"event","summary":"He has a job interview tomorrow at nine.","cue":"how the interview went","dueInMinutes":null}],"events":[]}' })
     })
     const recorded = new Promise<ThreadExtractionLedgerEntry>((resolve) => {
       const record = observability.recordExtraction
@@ -989,10 +989,13 @@ describe('situation gate loop', () => {
     chat.state.messages = [{ role: 'user', content: 'Still deciding on the green paint, and I move house tomorrow night.', createdAt: Date.now(), id: 'user-1' }]
     await userTurn(hooks, 'turn-1')
     chat.stream.mockImplementation(async (_model, _provider, _conversation, options) => {
-      await options?.onStreamEvent?.({ type: 'text-delta', text: JSON.stringify([
-        { kind: 'question', summary: 'He is deciding whether to paint his room green.', cue: 'whether he picked the green', dueInMinutes: null },
-        { kind: 'event', summary: 'He moves house tomorrow night.', cue: 'how the move went', dueInMinutes: 1320 },
-      ]) })
+      await options?.onStreamEvent?.({ type: 'text-delta', text: JSON.stringify({
+        threads: [
+          { kind: 'question', summary: 'He is deciding whether to paint his room green.', cue: 'whether he picked the green', dueInMinutes: null },
+          { kind: 'event', summary: 'He moves house tomorrow night.', cue: 'how the move went', dueInMinutes: 1320 },
+        ],
+        events: [],
+      }) })
     })
     const recorded = new Promise<ThreadExtractionLedgerEntry>((resolve) => {
       const record = observability.recordExtraction
@@ -1047,7 +1050,7 @@ describe('situation gate loop', () => {
   it('reads only the messages after the previous extraction of the same chat session', async () => {
     const { hooks, chat, observability } = startQuietLeader()
     const extractions = watchExtractions(observability)
-    chat.stream.mockImplementation(answers('[{"kind":"event","summary":"He has a job interview tomorrow at nine.","cue":"how the interview went","dueInMinutes":780}]'))
+    chat.stream.mockImplementation(answers('{"threads":[{"kind":"event","summary":"He has a job interview tomorrow at nine.","cue":"how the interview went","dueInMinutes":780}],"events":[]}'))
     chat.state.messages = [...INTERVIEW]
     await userTurn(hooks, 'turn-1')
 
@@ -1055,7 +1058,7 @@ describe('situation gate loop', () => {
     expect(await endExchange(extractions)).toMatchObject({ status: 'ok', messageCount: 2 })
     expect(extractionInput(chat.stream, 0)).toBe(INTERVIEW_TEXT)
 
-    chat.stream.mockImplementation(answers('[]'))
+    chat.stream.mockImplementation(answers('{"threads":[],"events":[]}'))
     chat.state.messages.push(...SISTER)
     await userTurn(hooks, 'turn-2')
 
@@ -1067,7 +1070,7 @@ describe('situation gate loop', () => {
   it('keeps the read position of each chat session apart', async () => {
     const { hooks, chat, observability } = startQuietLeader()
     const extractions = watchExtractions(observability)
-    chat.stream.mockImplementation(answers('[]'))
+    chat.stream.mockImplementation(answers('{"threads":[],"events":[]}'))
     const otherSession = [said('user', 'other-1', 'Can you recommend a book?'), said('assistant', 'other-2', 'Try The Left Hand of Darkness.')]
     chat.controls.sessionMessages = sessionId => sessionId === 'session-2' ? otherSession : chat.state.messages
     chat.state.messages = [...INTERVIEW]
@@ -1094,7 +1097,7 @@ describe('situation gate loop', () => {
     await userTurn(hooks, 'turn-1')
     expect(await endExchange(extractions)).toMatchObject({ status: 'failed' })
 
-    chat.stream.mockImplementation(answers('[]'))
+    chat.stream.mockImplementation(answers('{"threads":[],"events":[]}'))
     chat.state.messages.push(...SISTER)
     await userTurn(hooks, 'turn-2')
 
@@ -1105,7 +1108,7 @@ describe('situation gate loop', () => {
   it('continues after the messages read before a reload of the leader window', async () => {
     const first = startQuietLeader()
     const firstExtractions = watchExtractions(first.observability)
-    first.chat.stream.mockImplementation(answers('[]'))
+    first.chat.stream.mockImplementation(answers('{"threads":[],"events":[]}'))
     first.chat.state.messages = [...INTERVIEW]
     await userTurn(first.hooks, 'turn-1')
     await endExchange(firstExtractions)
@@ -1115,7 +1118,7 @@ describe('situation gate loop', () => {
     setActivePinia(createPinia())
     const reloaded = startQuietLeader()
     const reloadedExtractions = watchExtractions(reloaded.observability)
-    reloaded.chat.stream.mockImplementation(answers('[]'))
+    reloaded.chat.stream.mockImplementation(answers('{"threads":[],"events":[]}'))
     reloaded.chat.state.messages = [...INTERVIEW, ...SISTER]
     await userTurn(reloaded.hooks, 'turn-2')
 
