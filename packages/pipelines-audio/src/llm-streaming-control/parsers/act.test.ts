@@ -51,6 +51,19 @@ describe('tokenAct', () => {
     expect(parser.parse(special)).toBeUndefined()
   })
 
+  it('keeps the bare form emotion-only and rejects the colon action form', () => {
+    expect(normalizeActPayload(parser.parse('<|ACT happy|>')?.payload ?? {}).action).toBeUndefined()
+    expect(parser.parse('<|ACT wave|>')).toBeUndefined()
+    expect(parser.parse('<|ACT:{"action":"wave"}|>')).toBeUndefined()
+  })
+
+  it('accepts an action-only JSON ACT and normalizes its label', () => {
+    const parsed = parser.parse('<|ACT {"action":" Wave "}|>')
+
+    expect(parsed).toEqual({ type: 'act', payload: { action: ' Wave ' } })
+    expect(normalizeActPayload(parsed?.payload ?? {})).toEqual({ action: 'wave' })
+  })
+
   it('accepts a gesture-only JSON ACT, which is not inert', () => {
     const parsed = parser.parse('<|ACT {"gesture":{"kind":"nod","count":2}}|>')
 

@@ -78,6 +78,8 @@ export interface NormalizedActPayload {
   look?: StreamingControlLook
   /** Body gesture emitted by the model, when present and supported. */
   gesture?: StreamingControlGesture
+  /** Action label for the consumer to resolve; syntactic only, never matched, resolved or evaluated here. */
+  action?: string
 }
 
 /**
@@ -180,6 +182,25 @@ function normalizeEmotion(
   }
 }
 
+const actionLabelPattern = /^[a-z0-9][a-z0-9-]{0,31}$/
+
+/**
+ * Trims and lowercases an action label and keeps it only when it is a short ASCII slug.
+ *
+ * Syntactic only: the consumer resolves the label; it is never evaluated or interpolated here.
+ */
+function normalizeActionLabel(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const normalized = value.trim().toLowerCase()
+
+  return actionLabelPattern.test(normalized)
+    ? normalized
+    : undefined
+}
+
 /**
  * Trims motion cues and expression labels without interpreting their contents.
  *
@@ -270,6 +291,7 @@ export function normalizeActPayload(
   const expression = normalizeCue(payload.expression)
   const look = normalizeLook(payload.look)
   const gesture = normalizeGesture(payload.gesture)
+  const action = normalizeActionLabel(payload.action)
 
   return {
     ...(emotion && { emotion }),
@@ -277,5 +299,6 @@ export function normalizeActPayload(
     ...(expression && { expression }),
     ...(look && { look }),
     ...(gesture && { gesture }),
+    ...(action && { action }),
   }
 }

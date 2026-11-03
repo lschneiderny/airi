@@ -144,7 +144,7 @@ When such a reply ends without visible text, the turn is answered without words:
 - Without an ACT, the reply is silent.
 
 Both store one assistant message with `content: ''`, the usual slices and tool results (empty for a plain reply), and `wordless: { cues }`, so the user's message does not look unanswered.
-`cues` holds one `{ emotion?, gesture? }` entry per ACT, in order, and is empty for a silent reply. The message has no generation transcript, because that transcript would carry the marker.
+`cues` holds one `{ emotion?, gesture?, action? }` entry per ACT, in order, and is empty for a silent reply. The message has no generation transcript, because that transcript would carry the marker.
 Later requests send the message to the provider as its cue text: one `<|ACT {...}|>` per cue that has a field, then the decline marker, for example `<|ACT {"emotion":"happy"}|><|SILENT|>`. ACT markers alone are not a wordless reply, so the marker stays part of that text.
 The stream-end, assistant-end, assistant-message, and turn-complete hooks run as for a spoken reply, and `cueStats.silent` or `cueStats.wordless` reports the outcome.
 Plugins therefore no longer receive the marker as a special on user turns. Unprompted turns keep their decline semantics unchanged.

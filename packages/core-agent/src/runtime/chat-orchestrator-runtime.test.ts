@@ -3553,6 +3553,12 @@ describe('wordless user turns and break slices', () => {
     expect(streamEnds[0]).toMatchObject({ act: 1, silent: false, wordless: true })
   })
 
+  it('stores the action label of an action-only ACT in a wordless reply', async () => {
+    const { saved } = await userTurn(['<|SILENT|>', '<|ACT {"action":" Wave "}|>'])
+
+    expect(saved).toMatchObject({ role: 'assistant', content: '', wordless: { cues: [{ action: 'wave' }] } })
+  })
+
   it('commits a wordless reply without the generation transcript that carries the decline marker', async () => {
     const harness = createHarness()
     const [generatedTurn] = chatMessagesToTurns([{ role: 'assistant', content: '<|ACT happy|><|SILENT|>' }])

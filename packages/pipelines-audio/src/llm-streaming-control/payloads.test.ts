@@ -168,6 +168,57 @@ describe('normalizeActPayload', () => {
     expect(normalizeActPayload({ emotion: 'happy', gesture })).toEqual({ emotion: { name: 'happy', intensity: 0.6 } })
   })
 
+  it.each([
+    [' Wave ', 'wave'],
+    ['WAVE', 'wave'],
+    ['bow-low', 'bow-low'],
+    ['a', 'a'],
+    ['0', '0'],
+    ['a'.repeat(32), 'a'.repeat(32)],
+  ])('normalizes the action label %j to %j', (action, expected) => {
+    expect(normalizeActPayload({ action })).toEqual({ action: expected })
+  })
+
+  it.each([
+    42,
+    '',
+    '   ',
+    'wave!',
+    'a'.repeat(33),
+    '-wave',
+    '-',
+    '--',
+    'wäve',
+    'wave now',
+    'wave\nnow',
+    null,
+    undefined,
+    ['wave'],
+    { name: 'wave' },
+    true,
+  ])('omits the action %j and keeps the emotion', (action) => {
+    expect(normalizeActPayload({ emotion: 'happy', action })).toEqual({ emotion: { name: 'happy', intensity: 0.6 } })
+  })
+
+  it('rejects a leading hyphen and keeps a trailing hyphen, per the plan pattern', () => {
+    expect(normalizeActPayload({ action: '-wave' })).toEqual({})
+    expect(normalizeActPayload({ action: 'wave-' })).toEqual({ action: 'wave-' })
+  })
+
+  it('normalizes emotion, gesture and action together', () => {
+    expect(normalizeActPayload({ emotion: 'happy', gesture: 'nod', action: ' Wave ' })).toEqual({
+      emotion: { name: 'happy', intensity: 0.6 },
+      gesture: { kind: 'nod', count: 2 },
+      action: 'wave',
+    })
+  })
+
+  it('never evaluates or interpolates the action label', () => {
+    expect(normalizeActPayload({ action: '__proto__' })).toEqual({})
+    expect(normalizeActPayload({ action: 'constructor' })).toEqual({ action: 'constructor' })
+    expect(normalizeActPayload({ action: '$' + '{1+1}' })).toEqual({})
+  })
+
   it('carries look next to the other fields of the taught JSON form', () => {
     expect(normalizeActPayload({ emotion: 'happy', intensity: 'strong', expression: 'Blush', motion: 'nod', look: 'screen' })).toEqual({
       emotion: { name: 'happy', intensity: 0.9 },
