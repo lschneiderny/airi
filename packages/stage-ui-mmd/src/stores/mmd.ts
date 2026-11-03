@@ -1,3 +1,4 @@
+import type { ClipKind, ClipLayer, DerivedClipMeta } from '@proj-airi/motion-driver-humanoid/clip-meta'
 import type { NaturalEmotionStrengthsByModel } from '@proj-airi/motion-driver-natural/emotion-strengths'
 
 import type { MMDStanceSlots } from '../composables/mmd/stance'
@@ -6,6 +7,7 @@ import type { MorphSlot } from '../constants/morphs'
 
 import localforage from 'localforage'
 
+import { CLIP_LABEL_PATTERN, effectiveLayer } from '@proj-airi/motion-driver-humanoid/clip-meta'
 import { parseNaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { useBroadcastChannel } from '@vueuse/core'
@@ -20,6 +22,7 @@ import { supportedControl, useMMDViewControl } from './view-control'
 type BroadcastChannelEvents
   = | BroadcastChannelEventShouldUpdateView
     | BroadcastChannelEventPlayOneShot
+    | BroadcastChannelEventPerform
 
 interface BroadcastChannelEventShouldUpdateView {
   type: 'mmd-should-update-view'
@@ -28,6 +31,11 @@ interface BroadcastChannelEventShouldUpdateView {
 interface BroadcastChannelEventPlayOneShot {
   type: 'mmd-play-one-shot'
   request: MMDOneShotAction
+}
+
+interface BroadcastChannelEventPerform {
+  type: 'mmd-perform'
+  request: MMDPerformRequest
 }
 
 /**
@@ -69,6 +77,42 @@ export type MMDMotionDriver = 'natural' | 'classic'
 /** Whether she stays near home (`stay`) or occasionally wanders the ground line (`roam`) on the desktop stage. */
 export type MMDRoamMode = 'stay' | 'roam'
 
+/** User-owned curation of one imported clip; derived fields are recomputed on load and never stored here. */
+export interface MMDClipCuration {
+  /** The name the chat model can use; `null` keeps the clip out of the library. */
+  label: string | null
+  kind: ClipKind | null
+  loop: boolean | null
+  /** Whether the chat model may trigger the clip. */
+  aiMayUse: boolean
+}
+
+export interface MMDLabeledClip {
+  name: string
+  label: string
+  kind: ClipKind
+  layer: ClipLayer
+  exposed: boolean
+}
+
+/** Transient request to perform a clip (or stop with `name: null`), bumped per request. */
+export interface MMDPerformRequest {
+  name: string | null
+  loop: boolean
+  source: string
+  nonce: number
+}
+
+const LIBRARY_KINDS: readonly ClipKind[] = ['gesture', 'action', 'dance']
+
+function defaultCuration(): MMDClipCuration {
+  return { label: null, kind: null, loop: null, aiMayUse: false }
+}
+
+// NOTICE:
+// `MMDOneShotAction` and `playOneShotAction` stay for two unchecked callers that bypass the body director.
+// `requestPerform` replaces them (plan mmd-actions-library, todos 9, 10, 14).
+// Removal condition: todo 14 deletes both once `MMD.vue` and `model-settings/mmd.vue` call `requestPerform`.
 /** Transient request to play a one-shot motion, bumped per request. */
 export interface MMDOneShotAction {
   name: string
@@ -90,6 +134,8 @@ export const useMMD = defineStore('mmd', () => {
    * storage events do not fire reliably between BrowserWindows.
    */
   const oneShotAction = ref<MMDOneShotAction>()
+  /** Transient perform request (fire-and-forget; not persisted), delivered like `oneShotAction`. */
+  const performRequest = ref<MMDPerformRequest>()
 
   const onShouldUpdateView = (hook: () => void) => {
     shouldUpdateViewHooks.value.add(hook)
@@ -108,6 +154,8 @@ export const useMMD = defineStore('mmd', () => {
       shouldUpdateViewHooks.value.forEach(hook => hook())
     else if (event?.type === 'mmd-play-one-shot')
       oneShotAction.value = event.request
+    else if (event?.type === 'mmd-perform')
+      performRequest.value = event.request
   })
 
   // === Physics & solver toggles ===
@@ -203,6 +251,52 @@ export const useMMD = defineStore('mmd', () => {
    * replaces `idleMotionName` for that model.
    */
   const stanceSlots = useLocalStorageManualReset<Record<string, MMDStanceSlots>>('settings/mmd/stance-slots', () => ({}))
+  /** Per-model clip curation, keyed by model key then clip name. */
+  const clipCuration = useLocalStorageManualReset<Record<string, Record<string, MMDClipCuration>>>('settings/mmd/clip-curation', () => ({}))
+  /** Derived metadata of the imported clips, published by the scene so the settings window can render it. */
+  const availableClipMeta = useLocalStorageManualReset<Record<string, DerivedClipMeta & { name: string }>>('settings/mmd/available-clip-meta', () => ({}))
+
+  function curationFor(modelKey: string, name: string): MMDClipCuration {
+    return clipCuration.value[modelKey]?.[name] ?? defaultCuration()
+  }
+
+  /**
+   * Merges a patch into a clip's curation. Returns `false` and leaves the state untouched when the
+   * label fails `CLIP_LABEL_PATTERN` (an empty string and upper case included; `null` clears it) or
+   * another clip of the same model already uses it.
+   */
+  function setCuration(modelKey: string, name: string, patch: Partial<MMDClipCuration>): boolean {
+    const model = clipCuration.value[modelKey] ?? {}
+    if (patch.label != null) {
+      if (!CLIP_LABEL_PATTERN.test(patch.label))
+        return false
+      if (Object.entries(model).some(([other, curation]) => other !== name && curation.label === patch.label))
+        return false
+    }
+    clipCuration.value = {
+      ...clipCuration.value,
+      [modelKey]: { ...model, [name]: { ...curationFor(modelKey, name), ...patch } },
+    }
+    return true
+  }
+
+  /** Every imported clip with a label and a gesture, action or dance kind (override first), in import order. */
+  function labeledClips(modelKey: string): MMDLabeledClip[] {
+    const clips: MMDLabeledClip[] = []
+    for (const { name } of availableMotions.value) {
+      const meta = availableClipMeta.value[name]
+      const curation = curationFor(modelKey, name)
+      const kind = curation.kind ?? meta?.kind
+      if (!meta || curation.label === null || kind === undefined || !LIBRARY_KINDS.includes(kind))
+        continue
+      clips.push({ name, label: curation.label, kind, layer: effectiveLayer(meta, curation.kind), exposed: curation.aiMayUse })
+    }
+    return clips
+  }
+
+  function exposedActions(modelKey: string): MMDLabeledClip[] {
+    return labeledClips(modelKey).filter(clip => clip.exposed)
+  }
 
   /**
    * Persists a VMD file to IndexedDB and adds it to the synced list.
@@ -247,6 +341,11 @@ export const useMMD = defineStore('mmd', () => {
         modelId,
         Object.fromEntries(Object.entries(slots).filter(([, name]) => name !== motion.name)),
       ]))
+      clipCuration.value = Object.fromEntries(Object.entries(clipCuration.value).map(([modelKey, clips]) => [
+        modelKey,
+        Object.fromEntries(Object.entries(clips).filter(([name]) => name !== motion.name)),
+      ]))
+      availableClipMeta.value = Object.fromEntries(Object.entries(availableClipMeta.value).filter(([name]) => name !== motion.name))
     }
     await localforage.removeItem(id)
   }
@@ -304,6 +403,21 @@ export const useMMD = defineStore('mmd', () => {
     post({ type: 'mmd-play-one-shot', request })
   }
 
+  /**
+   * Queues a clip to perform (or `null` to stop the current one). Applies it in this window and
+   * broadcasts it to the others, for the same reason as `playOneShotAction`.
+   */
+  function requestPerform(name: string | null, options: { loop?: boolean, source: string }) {
+    const request: MMDPerformRequest = {
+      name,
+      loop: options.loop ?? false,
+      source: options.source,
+      nonce: (performRequest.value?.nonce ?? 0) + 1,
+    }
+    performRequest.value = request
+    post({ type: 'mmd-perform', request })
+  }
+
   const { position, scale, rotationY, reset: resetViewControl } = useMMDViewControl()
 
   function resetState() {
@@ -330,8 +444,11 @@ export const useMMD = defineStore('mmd', () => {
     roamMode.reset()
     idleMotionName.reset()
     stanceSlots.reset()
+    clipCuration.reset()
+    availableClipMeta.reset()
     void clearMotions()
     oneShotAction.value = undefined
+    performRequest.value = undefined
     emotionActionMap.reset()
     morphOverrides.reset()
     availableMorphs.reset()
@@ -370,6 +487,12 @@ export const useMMD = defineStore('mmd', () => {
     idleMotionName,
     availableMotions,
     stanceSlots,
+    clipCuration,
+    availableClipMeta,
+    curationFor,
+    setCuration,
+    labeledClips,
+    exposedActions,
     addMotion,
     getMotionFile,
     clearMotions,
@@ -384,6 +507,8 @@ export const useMMD = defineStore('mmd', () => {
     isModelLoaded,
     oneShotAction,
     playOneShotAction,
+    performRequest,
+    requestPerform,
 
     onShouldUpdateView,
     shouldUpdateView,

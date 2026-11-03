@@ -15,6 +15,11 @@ describe('mmd emotion/morph constants', () => {
       expect(typeof EMOTION_ACTION_NAME[emotion]).toBe('string')
   })
 
+  it('maps neutral and sleepy to no clip so they never replay the idle clip', () => {
+    expect(EMOTION_ACTION_NAME[Emotion.Neutral]).toBe('')
+    expect(EMOTION_ACTION_NAME[Emotion.Sleepy]).toBe('')
+  })
+
   it('reuses the Happy, Awkward, and Neutral entries for love, flustered, and sleepy', () => {
     expect(EMOTION_MORPHS[Emotion.Love]).toEqual(EMOTION_MORPHS[Emotion.Happy])
     expect(EMOTION_MORPHS[Emotion.Flustered]).toEqual(EMOTION_MORPHS[Emotion.Awkward])
