@@ -1,5 +1,3 @@
-import type { BrowserWindow } from 'electron'
-
 import type { FileLoggerHandle } from './app/file-logger'
 import type { SettingsWindowManager } from './windows/settings'
 import type { StageWindowHost } from './windows/stage'
@@ -15,7 +13,7 @@ import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { Format, LogLevel, setGlobalFormat, setGlobalHookPostLog, setGlobalLogLevel, useLogg } from '@guiiai/logg'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { hasSelectedScreenCaptureSource, initScreenCaptureForMain } from '@proj-airi/electron-screen-capture/main'
-import { app, ipcMain, protocol, session } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, screen, session } from 'electron'
 import { noop } from 'es-toolkit'
 import { createLoggLogger, injeca, lifecycle } from 'injeca'
 import { isLinux } from 'std-env'
@@ -53,6 +51,7 @@ import { setupSherpawModelAssetsProtocol } from './services/electron/bundled-she
 import { setupGlobalShortcutService } from './services/electron/global-shortcut'
 import { setupPermissionHandlers } from './services/electron/media-permissions'
 import { setupSherpawModelAssets } from './services/electron/sherpaw-model-assets'
+import { isWindowRectsSpikeEnabled, setupWindowRectsSpike } from './services/electron/window-rects-spike'
 import { setupTray } from './tray'
 import { setupAboutWindowReusable } from './windows/about'
 import { setupBeatSync } from './windows/beat-sync'
@@ -438,6 +437,10 @@ app.whenReady().then(async () => {
       callback: noop,
     })
   }
+
+  // Window-rect sensor spike (Windows only), gated by AIRI_WINDOW_SENSOR_SPIKE=1
+  if (platform === 'win32' && isWindowRectsSpikeEnabled())
+    onAppBeforeQuit(setupWindowRectsSpike({ app, screen, BrowserWindow }))
 
   injeca.invoke({
     dependsOn: { mainWindow, tray, serverChannel, airiHttpServer, godotStageManager, pluginHost, mcpManager, onboardingWindow: onboardingWindowManager, widgetsWindow: widgetsManager, spotlightWindow, artistryConfig },
