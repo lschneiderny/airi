@@ -46,6 +46,7 @@ describe('cue contract scorer', () => {
     expect(score.chunkInvariant).toBe(row.expect.chunkInvariant ?? true)
     expect(score.acts.filter(act => act.recoveredFrom !== null)).toHaveLength(score.cueStats.recovered)
     expect(score.unknownMarkers).toEqual(row.expect.unknownMarkers ?? [])
+    expect(score.mood).toBe(row.expect.mood ?? 0)
     if (row.expect.residualChars !== undefined)
       expect(score.residualChars).toBe(row.expect.residualChars)
     if (row.expect.spoken !== undefined)
@@ -252,6 +253,21 @@ describe('cue contract scorer', () => {
     const score = await cueContractScorer.score(record('ok :3 sure <3! ^_^ at 10:30 C:D x^^y :3x'), context)
     expect(score.asciiFaces).toBe(3)
     expect(score.spokenText).toContain(':3')
+  })
+
+  it.each([
+    ['Hi<|MOOD brighter tenser: he remembered|>', 1, 0, []],
+    ['<|MOOD happy|> Hi', 1, 0, []],
+    ['<|MOOD|> Hi', 1, 0, []],
+    ['Hi <|MOOD brighter: a|> <|MOOD lower: b|>', 2, 0, []],
+    ['[MOOD brighter: you came back] Hi', 0, 0, []],
+    ['<MOOD brighter: you came back> Hi', 0, 0, []],
+    ['<|MOODY brighter|> Hi', 0, 1, ['<|MOODY brighter|>']],
+    ['<|mood brighter: x|> Hi', 0, 1, ['<|mood brighter: x|>']],
+  ])('counts every native MOOD marker, well-formed or not, and never as a stage rejection: %s', async (text, mood, stageRejected, unknownMarkers) => {
+    const score = await cueContractScorer.score(record(text), context)
+    expect(score).toMatchObject({ mood, stageRejected, unknownMarkers })
+    expect(score.spokenText).not.toContain('<|MOOD')
   })
 
   it('caps rejected token samples without capping rejection totals', async () => {

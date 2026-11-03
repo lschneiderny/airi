@@ -1,6 +1,6 @@
 import type { CueComplianceOutcome } from './cue-compliance'
 
-export const CUE_CONTRACT_FIXTURES = { id: 'cue-contract-fixtures', version: 1 } as const
+export const CUE_CONTRACT_FIXTURES = { id: 'cue-contract-fixtures', version: 2 } as const
 
 export const cueContractFixtures: readonly {
   id: number
@@ -17,6 +17,8 @@ export const cueContractFixtures: readonly {
     spoken?: string
     residualChars?: number
     unknownMarkers?: string[]
+    /** Native `<|MOOD ...|>` markers; the character-state layer, not the stage controller, consumes them. Defaults to 0. */
+    mood?: number
     notes: string
   }
 }[] = [
@@ -45,4 +47,8 @@ export const cueContractFixtures: readonly {
   { id: 23, text: 'Hi! <|ACT happy|> nice.', expect: { act: 1, recovered: 0, stripped: 0, stageRejected: 0, outcome: 'parsed', leadCue: false, notes: 'Spoken text precedes ACT; projections cannot establish placement.' } },
   { id: 24, text: '<{\'|\'}ACT happy{\'|\'}> Hi', expect: { act: 1, recovered: 0, stripped: 0, stageRejected: 0, outcome: 'parsed', leadCue: true, notes: 'Generated and confirmed: escaped pipes normalize to a native marker without recovery.' } },
   { id: 25, text: '<think>[ACT happy]</think> Hi', expect: { act: 0, recovered: 0, stripped: 0, stageRejected: 0, outcome: 'none', leadCue: false, chunkInvariant: false, notes: 'response-categoriser.ts:260-289 misses a closing </think> when < and / arrive in separate chunks, so per-char literals are "k> Hi" versus " Hi" whole; stored speech is "Hi" in both.' } },
+  { id: 26, text: '<|ACT happy|> Hi! <|MOOD brighter: you came back|>', expect: { act: 1, recovered: 0, stripped: 0, stageRejected: 0, outcome: 'parsed', leadCue: true, mood: 1, spoken: ' Hi! ', notes: 'A MOOD cue after the speech is not spoken and is not a stage rejection.' } },
+  { id: 27, text: 'Hi<|MOOD brighter: you came back|>', expect: { act: 0, recovered: 0, stripped: 0, stageRejected: 0, outcome: 'none', leadCue: false, mood: 1, spoken: 'Hi', notes: 'A MOOD cue alone leaves only the words spoken.' } },
+  { id: 28, text: '[MOOD brighter: you came back] Hi', expect: { act: 0, recovered: 0, stripped: 0, stageRejected: 0, outcome: 'none', leadCue: false, spoken: '[MOOD brighter: you came back] Hi', notes: 'MOOD is not a recoverable cue name, so a near-miss spelling stays prose.' } },
+  { id: 29, text: '<|ACT happy|> Oh! <|MOOD happy|>', expect: { act: 1, recovered: 0, stripped: 0, stageRejected: 0, outcome: 'parsed', leadCue: true, mood: 1, spoken: ' Oh! ', notes: 'A malformed MOOD body still counts as a MOOD marker; parseMoodCue decides validity.' } },
 ]

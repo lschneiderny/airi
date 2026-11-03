@@ -50,6 +50,7 @@ function score(overrides: Partial<ReplyScore> = {}): ReplyScore {
     asciiFaces: 0,
     delay: { valid: 0, count: 0 },
     call: { valid: 0, count: 0 },
+    mood: 0,
     stickerMarkers: 0,
     unknownMarkers: [],
     residualChars: 0,

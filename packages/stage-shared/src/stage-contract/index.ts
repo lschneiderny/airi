@@ -25,7 +25,7 @@ export const stageContractEmotions: readonly { value: PerformanceEmotion, prompt
  */
 export const STAGE_RUNTIME_CONFIG = { declineMarker: '<|SILENT|>', recoverCueNames: ['ACT', 'DELAY'] } as const
 
-export const STAGE_CONTRACT_KEYS = { emotion: 'base.prompt.emotion', emoji: 'base.prompt.emoji', response: 'base.prompt.response' } as const
+export const STAGE_CONTRACT_KEYS = { emotion: 'base.prompt.emotion', mood: 'base.prompt.mood', emoji: 'base.prompt.emoji', response: 'base.prompt.response' } as const
 
 /**
  * Output token cap of one model request on a chat turn. It backs the reply-shape rules of the contract: a reply
@@ -34,10 +34,10 @@ export const STAGE_CONTRACT_KEYS = { emotion: 'base.prompt.emotion', emoji: 'bas
  */
 export const REPLY_MAX_TOKENS = 320
 
-/** Renders the register-neutral stage rules (cues, emotion list, emoji restriction, reply shape) without reading locale or application state. */
+/** Renders the register-neutral stage rules (cues, emotion list, MOOD cue, emoji restriction, reply shape) without reading locale or application state. */
 export function renderStageContract(t: (key: string) => string): string {
   const lines = stageContractEmotions.map(({ value, promptName }) => `- ${value} (Emotion for feeling ${promptName})`).join('\n')
-  return [t(STAGE_CONTRACT_KEYS.emotion), lines, t(STAGE_CONTRACT_KEYS.emoji), t(STAGE_CONTRACT_KEYS.response)].join('\n\n')
+  return [t(STAGE_CONTRACT_KEYS.emotion), lines, t(STAGE_CONTRACT_KEYS.mood), t(STAGE_CONTRACT_KEYS.emoji), t(STAGE_CONTRACT_KEYS.response)].join('\n\n')
 }
 
 export const CODE_BLOCK_SYSTEM_PROMPT = '- For any programming code block, always specify the programming language that supported on @shikijs/rehype on the rendered markdown, eg. ```python ... ```\n'
@@ -59,4 +59,4 @@ export function composeSystemPrompt(characterPrompt: string, contract: string): 
 }
 
 /** Update in the same contract-version commit whenever the English rendering changes. */
-export const STAGE_CONTRACT_EN_SHA256 = '598435c88f0277971737bdf586d9b9dd105dc8c7efce6313ac695237b9fbcd6d'
+export const STAGE_CONTRACT_EN_SHA256 = '0922aabf01ac0e51c1acfaa28e3a378af7bbb6d88049dc31bdeef8fa13dc23a7'

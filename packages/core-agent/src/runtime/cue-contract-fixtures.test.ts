@@ -7,6 +7,8 @@ import { ChunkInvariantError, replayReply, replayReplyAtEveryChunking } from './
 
 /** Mirrors the stage rules that AIRI hosts pass; qa-tools proves parity with the real `STAGE_RUNTIME_CONFIG`. */
 const stage = { declineMarker: '<|SILENT|>', recoverCueNames: ['ACT', 'DELAY'] }
+/** MOOD markers go to the character-state layer, never to the stage controller. */
+const moodMarker = /^<\|MOOD(?:\s|\|>)/
 
 describe('cue contract fixtures', () => {
   it.each(cueContractFixtures)('$id: $text', async (fixture) => {
@@ -19,7 +21,12 @@ describe('cue contract fixtures', () => {
     let stageRejected = 0
     const unknownMarkers: string[] = []
     const parsedActs = new Set<string>()
+    let mood = 0
     for (const special of replay.specials) {
+      if (moodMarker.test(special.value)) {
+        mood++
+        continue
+      }
       await controller.dispatchWith(special.value, {
         observer: (event) => {
           if (event.type === 'rejected') {
@@ -54,6 +61,7 @@ describe('cue contract fixtures', () => {
       leadCue: fixture.expect.leadCue,
     })
     expect(unknownMarkers).toEqual(fixture.expect.unknownMarkers ?? [])
+    expect(mood).toBe(fixture.expect.mood ?? 0)
     expect(replay.literals).toEqual(replay.events.filter(event => event.kind === 'literal').map(event => event.value))
     expect(replay.specials).toEqual(replay.events.filter(event => event.kind === 'special').map(({ value, raw }) => ({ value, ...(raw === undefined ? {} : { raw }) })))
     if (fixture.expect.spoken !== undefined)

@@ -10,7 +10,7 @@ import { PERFORMANCE_EMOTIONS } from '../expression-performance/types'
 import { composeSystemPrompt, renderStageContract, STAGE_CONTRACT_EN_SHA256, stageContractEmotions } from './index'
 
 describe('stage contract', () => {
-  it('renders every emotion after the cue rules, then the emoji and response rules, in performance order', () => {
+  it('renders every emotion after the cue rules, then the MOOD, emoji, and response rules, in performance order', () => {
     expect(renderStageContract(key => key)).toBe([
       'base.prompt.emotion',
       [
@@ -27,12 +27,13 @@ describe('stage contract', () => {
         '- flustered (Emotion for feeling Flustered)',
         '- sleepy (Emotion for feeling Sleepy)',
       ].join('\n'),
+      'base.prompt.mood',
       'base.prompt.emoji',
       'base.prompt.response',
     ].join('\n\n'))
   })
 
-  it('pins the English contract bytes and renders literal ACT markers', () => {
+  it('pins the English contract bytes and renders literal ACT and MOOD markers', () => {
     const i18n = createI18n({
       legacy: false,
       locale: 'en',
@@ -42,6 +43,7 @@ describe('stage contract', () => {
     const text = renderStageContract(i18n.global.t)
 
     expect(text).toContain('<|ACT happy|>')
+    expect(text).toContain('<|MOOD brighter: you came back|>')
     expect(createHash('sha256').update(text).digest('hex')).toBe(STAGE_CONTRACT_EN_SHA256)
   })
 

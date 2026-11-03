@@ -69,7 +69,7 @@ describe('score command', () => {
         return score
       },
     })).toBe(0)
-    expect(fixtureCount).toBe(25)
+    expect(fixtureCount).toBe(29)
     expect(row25Invariant).toBe(false)
     expect(c.stderr).toBe('')
     const { runDir } = JSON.parse(c.stdout)
@@ -84,7 +84,7 @@ describe('score command', () => {
     expect(summary[0].sources.files).toHaveLength(18)
     expect(summary[0].sources.closureDigest).toBe(sha256Bytes(Buffer.from(JSON.stringify(summary[0].sources.files))))
     expect(summary[0].sources.coreAgentDistSha256).toBe(sha256Bytes(await readFile(join(repoRoot, 'packages/core-agent/dist/index.mjs'))))
-    expect(summary[0].fixtures).toMatchObject({ passed: 25, total: 25 })
+    expect(summary[0].fixtures).toMatchObject({ passed: 29, total: 29 })
     const replies = (await readFile(join(runDir, 'replies.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line))
     expect(replies.map(row => row.replyId)).toEqual(['parsed', 'rejected', 'recovered', 'none', 'tool-only'])
     expect(replies.map(row => row.cue.outcome)).toEqual(['parsed', 'rejected', 'recovered', 'none', 'none'])
@@ -204,7 +204,7 @@ describe('score command', () => {
         return { ...score, stageRejected: 100 }
       },
     })).toBe(1)
-    expect(calls).toBe(25)
+    expect(calls).toBe(29)
     expect(c.stderr).toContain('fixture 1')
     expect(c.stdout).toBe('')
   })
