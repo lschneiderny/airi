@@ -103,7 +103,7 @@ describe('useStageContractPrompt', () => {
     const prompt = useStageContractPrompt()
     const before = prompt.value
 
-    usePerformanceRuntimeState().publish({ exposed: toExposedExpressions(catalog), active: [{ slot: 'face', label: 'anger' }], mood: null })
+    usePerformanceRuntimeState().publish({ exposedActions: [], exposed: toExposedExpressions(catalog), active: [{ slot: 'face', label: 'anger' }], mood: null })
     await useExpressionPerformanceSettings().update({ stateFeedback: true })
 
     expect(prompt.value).toBe(before)
@@ -138,7 +138,7 @@ describe('useStageLiveStatePrompt', () => {
   })
 
   it('carries no stage contract', () => {
-    usePerformanceRuntimeState().publish({ exposed: toExposedExpressions(catalog), active: [], mood: null })
+    usePerformanceRuntimeState().publish({ exposedActions: [], exposed: toExposedExpressions(catalog), active: [], mood: null })
 
     const prompt = useStageLiveStatePrompt().value
 
@@ -147,7 +147,7 @@ describe('useStageLiveStatePrompt', () => {
   })
 
   it('lists exactly the exposed expressions by kind and no outfit, system, or unexposed entry', () => {
-    usePerformanceRuntimeState().publish({ exposed: toExposedExpressions(catalog), active: [], mood: null })
+    usePerformanceRuntimeState().publish({ exposedActions: [], exposed: toExposedExpressions(catalog), active: [], mood: null })
 
     const prompt = useStageLiveStatePrompt().value
 
@@ -163,7 +163,7 @@ describe('useStageLiveStatePrompt', () => {
       entry('expression19', 'unsorted'),
       entry('anger-copy', 'face', { duplicateOf: 'anger.exp3.json' }),
     ]
-    usePerformanceRuntimeState().publish({ exposed: toExposedExpressions(withCombos), active: [], mood: null })
+    usePerformanceRuntimeState().publish({ exposedActions: [], exposed: toExposedExpressions(withCombos), active: [], mood: null })
 
     const prompt = useStageLiveStatePrompt().value
 
@@ -173,7 +173,7 @@ describe('useStageLiveStatePrompt', () => {
 
   it('reports active expressions only while state feedback is on, and never the numeric mood', async () => {
     const runtimeState = usePerformanceRuntimeState()
-    runtimeState.publish({ exposed: toExposedExpressions(catalog), active: [{ slot: 'face', label: 'anger' }], mood: { valence: -0.2, arousal: 0.3, tension: 0.4 } })
+    runtimeState.publish({ exposedActions: [], exposed: toExposedExpressions(catalog), active: [{ slot: 'face', label: 'anger' }], mood: { valence: -0.2, arousal: 0.3, tension: 0.4 } })
     const prompt = useStageLiveStatePrompt()
     expect(prompt.value).not.toContain('base.prompt.expression-state')
 

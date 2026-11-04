@@ -41,6 +41,7 @@ function coordinated(runtime: SyncedPiniaRuntime, predicate: () => boolean) {
 
 const snapshot: PerformanceRuntimeSnapshot = {
   exposed: [{ label: 'anger', kind: 'face' }, { label: 'game', kind: 'prop' }],
+  exposedActions: [{ label: 'wave', kind: 'gesture' }, { label: 'moonwalk', kind: 'dance' }],
   active: [{ slot: 'prop', label: 'game' }],
   mood: { valence: 0.3, arousal: 0.2, tension: 0 },
 }
@@ -76,7 +77,7 @@ describe('performance runtime state', () => {
     // An identical publication changes nothing, so it sends nothing.
     stage.store.publish(structuredClone(snapshot))
 
-    expect({ exposed: reader.store.exposed, active: reader.store.active, mood: reader.store.mood }).toEqual(snapshot)
+    expect({ exposed: reader.store.exposed, exposedActions: reader.store.exposedActions, active: reader.store.active, mood: reader.store.mood }).toEqual(snapshot)
     expect(afterFirst).toBeGreaterThan(0)
     expect(stageMutations).toBe(afterFirst)
 

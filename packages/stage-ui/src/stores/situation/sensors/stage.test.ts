@@ -32,6 +32,7 @@ describe('stage situation sensor', () => {
   it('reports the exposed expressions by kind, and the active expressions only with state feedback', async () => {
     const runtimeState = usePerformanceRuntimeState()
     runtimeState.publish({
+      exposedActions: [],
       exposed: [{ label: 'smile', kind: 'face' }, { label: 'wink', kind: 'face' }, { label: 'tear', kind: 'effect' }],
       active: [{ slot: 'face', label: 'smile' }],
       mood: { valence: 0.2, arousal: 0.1, tension: 0 },
@@ -51,11 +52,11 @@ describe('stage situation sensor', () => {
     const runtimeState = usePerformanceRuntimeState()
     startStageSensor(observation => observations.push(observation))
 
-    runtimeState.publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    runtimeState.publish({ exposedActions: [], exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
     // An identical publication changes nothing.
-    runtimeState.publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    runtimeState.publish({ exposedActions: [], exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
     vi.setSystemTime(T0 + 1_000)
-    runtimeState.publish({ exposed: [], active: [], mood: null })
+    runtimeState.publish({ exposedActions: [], exposed: [], active: [], mood: null })
 
     expect(observations).toEqual([
       { kind: 'stage', exposed: 'face: smile', active: '', atMs: T0 },
@@ -67,7 +68,7 @@ describe('stage situation sensor', () => {
     const stop = startStageSensor(observation => observations.push(observation))
 
     stop()
-    usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    usePerformanceRuntimeState().publish({ exposedActions: [], exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
 
     expect(observations).toEqual([])
   })

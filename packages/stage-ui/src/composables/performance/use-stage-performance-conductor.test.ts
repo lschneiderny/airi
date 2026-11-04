@@ -1,7 +1,8 @@
 import type { AffectSignal, AffectTrace, CatalogEntry, ExpressionPerformanceSettings, PerformanceProfile, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
 
+import type { ActionToolPort } from '../../tools/action'
 import type { BodyToolPort } from '../../tools/body'
-import type { StagePerformanceDriver, StagePerformanceScene } from './use-stage-performance-conductor'
+import type { ListedAction, StagePerformanceDriver, StagePerformanceScene } from './use-stage-performance-conductor'
 
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace, touchAffect } from '@proj-airi/stage-shared/expression-performance'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
@@ -13,6 +14,7 @@ import { computed, effectScope, nextTick, ref } from 'vue'
 
 import { useLive2DExpressionBackend, useMMDExpressionBackend } from '../../features/performance/expression-backend'
 import { selectStagePerformanceRenderer } from '../../features/performance/renderer'
+import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
 import { bodyToolIds, createBodyToolRegistration, createExpressionToolPort, createExpressionToolRegistration, expressionToolIds, maxAffectTraceEntries, StagePerformanceConductor, toExposedExpressions, useStagePerformanceConductor } from './use-stage-performance-conductor'
 
@@ -1234,5 +1236,45 @@ describe('stage performance conductor', () => {
       bodyPort.value = undefined
       await vi.waitFor(() => expect(tools.tools).toEqual([]))
     })
+  })
+
+  it('action tools follow the exposed set: add, change, remove, and publish every exposed clip to the runtime state', async () => {
+    setActivePinia(createPinia())
+    const tools = useLlmToolsStore()
+    const runtimeState = usePerformanceRuntimeState()
+    const library = ref<ListedAction[]>([])
+    const exposedOf = () => library.value.filter(clip => clip.exposed && clip.kind !== 'gesture').map(({ label, kind }) => ({ label, kind: kind as 'action' | 'dance' }))
+    const actionPort = ref<ActionToolPort | undefined>({ exposed: exposedOf, perform: async () => ({ success: true }), state: () => ({ performing: null }) })
+    const scope = effectScope()
+    onTestFinished(() => scope.stop())
+    scope.run(() => useStagePerformanceConductor({
+      renderer: () => 'mmd',
+      scene: () => undefined,
+      driver: () => 'natural',
+      expressionBackend: () => undefined,
+      actionPort: () => actionPort.value,
+      listActions: () => library.value,
+      playMotion: vi.fn(),
+      mood: () => null,
+    }))
+    const enumOf = () => (tools.tools.find(tool => tool.id === 'action:perform_action')?.function.parameters as { properties: { action: { enum: string[] } } } | undefined)?.properties.action.enum
+    await nextTick()
+    expect(tools.tools.filter(tool => tool.id.startsWith('action:'))).toEqual([])
+
+    library.value = [{ label: 'moonwalk', kind: 'dance', exposed: true }, { label: 'wave', kind: 'gesture', exposed: true }, { label: 'bow', kind: 'action', exposed: false }]
+    await vi.waitFor(() => expect(enumOf()).toEqual(['moonwalk', 'stop']))
+    expect(runtimeState.exposedActions).toEqual([{ label: 'moonwalk', kind: 'dance' }, { label: 'wave', kind: 'gesture' }])
+
+    library.value = library.value.map(clip => ({ ...clip, exposed: true }))
+    await vi.waitFor(() => expect(enumOf()).toEqual(['moonwalk', 'bow', 'stop']))
+
+    library.value = [{ label: 'wave', kind: 'gesture', exposed: true }]
+    await vi.waitFor(() => expect(tools.tools.filter(tool => tool.id.startsWith('action:'))).toEqual([]))
+    expect(runtimeState.exposedActions).toEqual([{ label: 'wave', kind: 'gesture' }])
+
+    library.value = [{ label: 'moonwalk', kind: 'dance', exposed: true }]
+    await vi.waitFor(() => expect(enumOf()).toEqual(['moonwalk', 'stop']))
+    actionPort.value = undefined
+    await vi.waitFor(() => expect(tools.tools.filter(tool => tool.id.startsWith('action:'))).toEqual([]))
   })
 })
