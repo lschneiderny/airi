@@ -1,3 +1,4 @@
+import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalFaceOutput } from '@proj-airi/motion-driver-natural/face'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
@@ -283,6 +284,15 @@ export class Live2DNaturalMotionAdapter {
     const { driver, exclusive } = this.attention()
     if (!this.disposed && driver === 'natural' && !exclusive)
       this.pendingMoods.push({ ...dose })
+  }
+
+  /**
+   * Sets the resting face target of the Natural controller. It is a continuous target, not a dose, so it is kept under
+   * every driver; Natural composes it only while it drives the face.
+   */
+  setFaceBaseline(baseline: FaceBaseline) {
+    if (!this.disposed)
+      this.controller.setFaceBaseline(baseline)
   }
 
   /** Forwards the expression-performance switches and tunables to the Natural controller. */

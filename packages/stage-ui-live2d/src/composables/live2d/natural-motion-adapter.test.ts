@@ -210,6 +210,32 @@ describe('natural motion adapter', () => {
     control.adapter.dispose()
   })
 
+  it('hands the face baseline to Natural, and a neutral baseline leaves every commanded frame unchanged', () => {
+    const actual = fixture()
+    const neutral = fixture()
+    const control = fixture()
+    const forwarded = vi.spyOn(actual.adapter.natural, 'setFaceBaseline')
+    for (const f of [actual, neutral, control]) {
+      f.state.driver = 'natural'
+      f.frame(0)
+    }
+    const baseline = { mouthForm: -0.3, eyeOpen: -0.1, blinkRateOffset: 0.2, browAngle: 0.2 }
+    actual.adapter.setFaceBaseline(baseline)
+    neutral.adapter.setFaceBaseline({ mouthForm: 0, eyeOpen: 0, blinkRateOffset: 0, browAngle: 0 })
+    expect(forwarded).toHaveBeenCalledWith(baseline)
+    let shifted = actual.frame(0.5)
+    let reference = control.frame(0.5)
+    expect(neutral.frame(0.5).commanded).toEqual(reference.commanded)
+    for (const time of [1, 2, 3, 4, 5, 6]) {
+      shifted = actual.frame(time)
+      reference = control.frame(time)
+      expect(neutral.frame(time).commanded).toEqual(reference.commanded)
+    }
+    expect(shifted.commanded[actual.at('ParamMouthForm')]).toBeLessThan(reference.commanded[control.at('ParamMouthForm')] - 0.2)
+    for (const f of [actual, neutral, control])
+      f.adapter.dispose()
+  })
+
   it('drops a queued cue if MAGIC takes ownership before composition', () => {
     const actual = fixture()
     const control = fixture()

@@ -62,6 +62,21 @@ describe('mmd Natural adapter', () => {
     expect(enabled.mood.valence).toBeGreaterThan(0)
   })
 
+  it('hands the face baseline to Natural, whose face output feeds the morph mapping', () => {
+    const { adapter } = fixture()
+    const { adapter: control } = fixture()
+    const forwarded = vi.spyOn(adapter.natural, 'setFaceBaseline')
+    const baseline = { mouthForm: -0.3, eyeOpen: 0, blinkRateOffset: 0, browAngle: 0 }
+    adapter.setFaceBaseline(baseline)
+    expect(forwarded).toHaveBeenCalledWith(baseline)
+    // Ten seconds is more than six filter time constants of 1.5 s.
+    for (let step = 0; step < 600; step++) {
+      adapter.advance(1 / 60, input)
+      control.advance(1 / 60, input)
+    }
+    expect(adapter.bodyFrame.frame.face.mouthForm - control.bodyFrame.frame.face.mouthForm).toBeCloseTo(-0.3, 2)
+  })
+
   it('uses the conductor clock for holds, remembers ongoing speech, and releases on stop or mute', () => {
     const { adapter } = fixture()
     const held = vi.spyOn(adapter.natural, 'setHeldEmotion')

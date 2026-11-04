@@ -1,5 +1,7 @@
+import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
+import type { CharacterReading } from '@proj-airi/stage-shared/character-state'
 import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceDecision, PerformanceProfile, SlotCommand, TimingEvent, TouchAffectInput } from '@proj-airi/stage-shared/expression-performance'
 import type { AffectTraceRequest } from '@proj-airi/stage-shared/expression-performance/affect-trace-diagnostics'
 import type { Live2DMotionDriver } from '@proj-airi/stage-ui-live2d'
@@ -11,6 +13,7 @@ import type { ExpressionToolPort } from '../../tools/expression'
 
 import { errorMessageFrom } from '@moeru/std'
 import { SpeechOnsetDetector } from '@proj-airi/motion-driver-natural/speech-emphasis'
+import { faceBaselineOf } from '@proj-airi/stage-shared/character-state'
 import { applyMappingWeights, createDecider, isLlmEligible, resolveEffectiveSettings, withAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { useIntervalFn } from '@vueuse/core'
@@ -105,6 +108,11 @@ export interface StagePerformanceScene {
    * the dose; the decider state still advances.
    */
   addMood?: (dose: MoodDose) => void
+  /**
+   * Live2D and MMD Natural: sets the resting face target from the character's slow mood; Natural filters it. A scene
+   * without it, such as a scenario sink, drops it.
+   */
+  setFaceBaseline?: (baseline: FaceBaseline) => void
 }
 
 export interface StagePerformanceConductorOptions {
@@ -170,6 +178,8 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  * - Touch mood doses go to `scene.addMood` and ACT cue gestures to `scene.gesture`, both under Live2D Natural only.
  *   Universal and MAGIC have no touch path and ignore the gesture field. MMD Natural currently ignores gestures, touch
  *   mood doses, and touch reactions (follow-up).
+ * - The resting face baseline goes to `scene.setFaceBaseline` for every driver. Natural composes it only while it
+ *   drives the face, so Universal and MAGIC hold it without writing.
  *
  * Moodless turns: `markMoodless(turnId)` makes every later episode decided for that turn carry `moodGain` 0, so a
  * reaction to a touch shows on the face without dosing mood a second time; the touch already dosed it.
@@ -314,6 +324,11 @@ export class StagePerformanceConductor {
   gesture(kind: CueGestureKind, count: number) {
     if (this.options.driver() === 'natural')
       this.options.scene()?.gesture?.(kind, count)
+  }
+
+  /** Sets the resting face of the mounted scene; the decider is not involved. */
+  faceBaseline(baseline: FaceBaseline) {
+    this.options.scene()?.setFaceBaseline?.(baseline)
   }
 
   /** Every episode decided for `turnId` from now on carries `moodGain` 0. Marking a turn again keeps it marked. */
@@ -700,6 +715,9 @@ export function answerAffectTraceRequest(conductor: StagePerformanceConductor, a
 /** Mood drifts slowly, so state feedback samples it at this period instead of every frame. */
 const MOOD_SAMPLE_MS = 2000
 
+/** The slow mood changes over minutes, so the resting face is recomputed at this period; Natural filters each step. */
+export const FACE_BASELINE_SAMPLE_MS = 1000
+
 /**
  * Creates the stage window's conductor. Creating the performance settings store here also makes
  * the stage window, the synchronization leader in Electron, the owner of its leader-routed
@@ -707,12 +725,21 @@ const MOOD_SAMPLE_MS = 2000
  *
  * The stage renderer is the only writer of the performance runtime state, the only owner of
  * the expression tool executors, and the only window that answers lab affect-trace requests.
+ *
+ * Every {@link FACE_BASELINE_SAMPLE_MS}, and once at creation, it reads `characterReading` and sends its face baseline
+ * to the scene; no reading sends the neutral baseline.
  */
 export function useStagePerformanceConductor(options: Pick<StagePerformanceConductorOptions, 'scene' | 'driver' | 'playMotion' | 'profile'> & {
   renderer: () => string | undefined
   expressionBackend: () => StageExpressionBackend | undefined
   /** Reads the Natural mood of the mounted model, or `null` when none runs. */
   mood: () => PerformanceMoodSnapshot | null
+  /**
+   * The active card's replicated character reading the resting face follows, or `null` for none.
+   *
+   * @default () => null
+   */
+  characterReading?: () => CharacterReading | null
 }) {
   const performanceSettings = useExpressionPerformanceSettings()
   const expressions: StageExpressionBackend = {
@@ -755,6 +782,12 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
   }
   useIntervalFn(sampleMood, MOOD_SAMPLE_MS)
   watch(moodWanted, sampleMood, { immediate: true })
+  function sendFaceBaseline() {
+    conductor.faceBaseline(faceBaselineOf(options.characterReading?.() ?? null, Date.now()))
+  }
+  useIntervalFn(sendFaceBaseline, FACE_BASELINE_SAMPLE_MS)
+  sendFaceBaseline()
+
   watch([exposed, active, mood], () => {
     runtimeState.publish({ exposed: exposed.value, active: active.value, mood: mood.value })
   }, { immediate: true })

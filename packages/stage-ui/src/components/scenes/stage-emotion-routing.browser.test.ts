@@ -1,5 +1,6 @@
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { GenerationProvider } from '@proj-airi/provider-inference'
+import type { CharacterReading } from '@proj-airi/stage-shared/character-state'
 import type { ExpressionPerformanceSettings, MoodDose } from '@proj-airi/stage-shared/expression-performance'
 import type { TouchObservation } from '@proj-airi/stage-shared/situation'
 import type { Component, ComponentInternalInstance, VNode } from 'vue'
@@ -8,6 +9,7 @@ import type { StagePerformanceScene } from '../../composables/performance/use-st
 
 import { NaturalMotion } from '@proj-airi/motion-driver-natural'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
+import { DEFAULT_CHARACTER_PROFILE, faceBaselineOf, initialCharacterState, NEUTRAL_FACE_BASELINE, readCharacter } from '@proj-airi/stage-shared/character-state'
 import { createPickerDecider, defaultExpressionPerformanceSettings, replayAffectTrace } from '@proj-airi/stage-shared/expression-performance'
 import { MMDScene } from '@proj-airi/stage-ui-mmd'
 import { useMMD, useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
@@ -24,6 +26,7 @@ import { useExpressionPerformanceSettings } from '../../features/performance/set
 import { getSpeechBusContext } from '../../services/speech/bus'
 import { useLLM } from '../../stores/ai/chat-llm/llm'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
+import { characterStateContext, useCharacterStateStore } from '../../stores/character-state'
 import { useChatStore } from '../../stores/chat'
 import { useChatSessionStore } from '../../stores/chat/session-store'
 import { useChatStreamStore } from '../../stores/chat/stream-store'
@@ -176,6 +179,7 @@ async function renderStage(driver: 'natural' | 'universal' | 'magic') {
     applyHolds: StagePerformanceScene['applyHolds']
     gesture: NonNullable<StagePerformanceScene['gesture']>
     addMood: (dose: MoodDose) => void
+    setFaceBaseline: NonNullable<StagePerformanceScene['setFaceBaseline']>
   }
   const forward = exposed.setEmotion
   const episodes = shallowRef<NaturalEpisode[]>([])
@@ -201,13 +205,19 @@ async function renderStage(driver: 'natural' | 'universal' | 'magic') {
     moods.value = [...moods.value, dose]
     forwardMood(dose)
   }
+  const forwardBaseline = exposed.setFaceBaseline
+  const baselines = shallowRef<Array<Parameters<typeof forwardBaseline>[0]>>([])
+  exposed.setFaceBaseline = (baseline) => {
+    baselines.value = [...baselines.value, baseline]
+    forwardBaseline(baseline)
+  }
   // Recorded synchronously so a repeated group that replaces an equal value is still counted.
   const motionGroups = shallowRef<string[]>([])
   watch(() => params.currentMotion, (motion) => {
     motionGroups.value = [...motionGroups.value, motion.group]
   }, { flush: 'sync' })
 
-  return { params, scene, episodes, holds, gestures, moods, motionGroups, override: useNaturalPerformanceOverride() }
+  return { params, scene, episodes, holds, gestures, moods, baselines, motionGroups, override: useNaturalPerformanceOverride() }
 }
 
 describe('stage emotion routing on Live2D', () => {
@@ -545,6 +555,125 @@ describe('per-signal character profiles at the Natural consumer', () => {
     motion.advance(2 / 120)
 
     expect(motion.moodState.valence).toBe(0)
+  })
+})
+
+describe('resting face from the replicated character reading', () => {
+  const nowMs = Date.UTC(2026, 10, 3, 18)
+
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
+  /** A reading of `cardId` at `nowMs` with `mood`, just after an interaction, so the face is undamped. */
+  function readingWith(cardId: string, mood: (resting: CharacterReading['resting']) => CharacterReading['mood']): CharacterReading {
+    const context = characterStateContext(nowMs)
+    const reading = readCharacter(initialCharacterState(cardId, DEFAULT_CHARACTER_PROFILE, context), DEFAULT_CHARACTER_PROFILE, null, context)
+    return { ...reading, mood: mood(reading.resting), lastInteractionAtMs: nowMs }
+  }
+
+  const lowMood = (resting: CharacterReading['resting']) => ({ ...resting, valence: -0.6, energy: -0.6 })
+
+  /**
+   * Mounts the stage conductor over a scene that hands its face baseline to `motion` and reads `reading`. Fake timers
+   * drive the 1 s cadence and the wall clock.
+   */
+  function mountConductor(motion: NaturalMotion, reading: CharacterReading | null) {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'], now: nowMs })
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    render(defineComponent({
+      setup() {
+        useStagePerformanceConductor({
+          renderer: () => 'live2d',
+          expressionBackend: () => useLive2DExpressionBackend(),
+          scene: () => ({ setEmotion: () => {}, applySlots: () => {}, applyHolds: () => {}, onSpeech: () => {}, setMuted: () => {}, setFaceBaseline: baseline => motion.setFaceBaseline(baseline) }),
+          driver: () => 'natural',
+          playMotion: () => {},
+          mood: () => motion.moodState,
+          characterReading: () => reading,
+        })
+        return () => h('div')
+      },
+    }), {
+      global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
+    })
+  }
+
+  /** Runs ten seconds of fake time: each second the cadence fires, then both controllers take that second's 120 Hz steps. */
+  function runTenSeconds(motion: NaturalMotion, control: NaturalMotion, onStep?: (frame: ReturnType<NaturalMotion['advance']>, controlFrame: ReturnType<NaturalMotion['advance']>) => void) {
+    let last = { frame: motion.advance(0), control: control.advance(0) }
+    for (let second = 1; second <= 10; second++) {
+      vi.advanceTimersByTime(1000)
+      for (let step = (second - 1) * 120 + 1; step <= second * 120; step++) {
+        last = { frame: motion.advance(step / 120), control: control.advance(step / 120) }
+        onStep?.(last.frame, last.control)
+      }
+    }
+    return last
+  }
+
+  it('lowers the Natural mouth form and changes the blink interval for a low-valence, low-energy reading', () => {
+    const motion = new NaturalMotion({ seed: 41 })
+    const control = new NaturalMotion({ seed: 41 })
+    mountConductor(motion, readingWith('card', lowMood))
+
+    const last = runTenSeconds(motion, control)
+
+    expect(last.frame.face.mouthForm).toBeLessThan(last.control.face.mouthForm - 0.1)
+    expect(control.blinkIntervalScale).toBe(1)
+    expect(motion.blinkIntervalScale).not.toBe(control.blinkIntervalScale)
+  })
+
+  it('leaves the blink interval equal to the no-baseline control for a resting reading', () => {
+    const motion = new NaturalMotion({ seed: 41 })
+    const control = new NaturalMotion({ seed: 41 })
+    mountConductor(motion, readingWith('card', resting => resting))
+
+    const last = runTenSeconds(motion, control)
+
+    expect(motion.blinkIntervalScale).toBe(control.blinkIntervalScale)
+    expect(last.frame).toEqual(last.control)
+  })
+
+  it('keeps every frame deep-equal to the no-baseline control with no reading', () => {
+    const motion = new NaturalMotion({ seed: 41 })
+    const control = new NaturalMotion({ seed: 41 })
+    mountConductor(motion, null)
+
+    let steps = 0
+    runTenSeconds(motion, control, (frame, controlFrame) => {
+      steps++
+      expect(frame).toEqual(controlFrame)
+    })
+
+    expect(steps).toBe(1200)
+    expect(motion.blinkIntervalScale).toBe(control.blinkIntervalScale)
+  })
+
+  it('sends the stage scene the active card\'s replicated reading each second, and the neutral baseline for another card\'s', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'], now: nowMs })
+    const { baselines } = await renderStage('natural')
+    // Both stores already exist in the stage's Pinia, so these calls only look them up.
+    const characterState = useCharacterStateStore()
+    const activeCardId = useAiriCardStore().activeCardId
+    const reading = readingWith(activeCardId, lowMood)
+
+    characterState.replicated = { cardId: activeCardId, reading, revision: 1, updatedAtMs: nowMs }
+    vi.advanceTimersByTime(1000)
+    const sent = baselines.value.at(-1)
+    expect(sent).toEqual(faceBaselineOf(reading, nowMs + 1000))
+    expect(sent?.mouthForm).toBeLessThan(0)
+
+    // A card switch leaves the previous card's reading replicated until the leader publishes the new card's.
+    characterState.replicated = { cardId: `${activeCardId}-previous`, reading, revision: 2, updatedAtMs: nowMs }
+    const count = baselines.value.length
+    vi.advanceTimersByTime(1000)
+    expect(baselines.value).toHaveLength(count + 1)
+    expect(baselines.value.at(-1)).toEqual(NEUTRAL_FACE_BASELINE)
   })
 })
 

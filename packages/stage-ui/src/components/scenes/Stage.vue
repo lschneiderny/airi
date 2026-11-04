@@ -52,6 +52,7 @@ import { chatComposerActivityChangedEvent, chatComposerSentEvent, getSpeechBusCo
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useAudioContext, useSpeakingStore } from '../../stores/audio'
 import { useBackgroundStore } from '../../stores/background'
+import { useCharacterStateStore } from '../../stores/character-state'
 import { useChatStore } from '../../stores/chat'
 import { useChatSessionStore } from '../../stores/chat/session-store'
 import { useActComplianceStore } from '../../stores/devtools/act-compliance'
@@ -308,6 +309,7 @@ const { activeBackgroundUrl } = storeToRefs(backgroundStore)
 const { currentMotion } = storeToRefs(useLive2dParams())
 const voice = useVoiceStore()
 const cards = useAiriCardStore()
+const characterState = useCharacterStateStore()
 
 const live2dExpressionBackend = useLive2DExpressionBackend()
 const mmdExpressionBackend = useMMDExpressionBackend()
@@ -328,6 +330,9 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   playMotion: (group) => { currentMotion.value = { group } },
   mood: () => stageModelRenderer.value === 'mmd' ? mmdSceneRef.value?.getMood() ?? null : live2dSceneRef.value?.getMood() ?? null,
   profile: performanceProfileOf,
+  // Read only, never written from the stage. After a card switch the replicated reading still belongs to the previous
+  // card until the leader publishes the new one, so it counts as no reading.
+  characterReading: () => characterState.cardId === cards.activeCardId ? characterState.reading : null,
 })
 
 const stageTouch = useStageTouchStore()
