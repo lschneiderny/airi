@@ -1,6 +1,6 @@
 {
   "name": "model-spam",
-  "description": "Every turn writes a brighter MOOD cue, one per minute around the clock; the rolling cue budget must hold the model-only raw valence at or below the A10 bound of 0.65.",
+  "description": "Every turn writes a brighter MOOD cue, one per minute around the clock; the rolling cue budget must hold the model-only raw valence at or below the A10 bound of 0.65, and because model cues never move temperament, overall valence stays at or below 0.64 on every day.",
   "days": 3,
   "routines": [
     {

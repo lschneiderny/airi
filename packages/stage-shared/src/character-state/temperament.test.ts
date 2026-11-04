@@ -110,15 +110,38 @@ describe('advanceTemperament', () => {
     expect(Math.abs(tenDays.axes.valence - 0.109)).toBeLessThanOrEqual(0.002)
   })
 
-  it('keeps |T - R| within the clamp at every hour of the three-day model-spam stream', () => {
+  it('holds temperament at the resting disposition at every hour of the three-day model-spam stream', () => {
     const contributions = modelSpamStream()
     let temperament = initial()
     for (let hour = 1; hour <= 4 * 24; hour++) {
       temperament = advanceTemperament(temperament, contributions, RESTING, ctx(START_MS + hour * HOUR_MS)).temperament
-      for (const axis of AXES)
-        expect(offset(temperament, axis)).toBeLessThanOrEqual(clamp[axis])
+      expect(temperament.axes).toEqual(RESTING)
     }
-    expect(temperament.axes.valence).toBeGreaterThan(RESTING.valence)
+  })
+
+  it('applies only the anchor pull on a day of model cues alone, while the day still records the felt mood', () => {
+    const start = initial({ valence: 0.3, energy: 0.1, tension: 0.25 })
+    const cues = modelSpamStream().filter(entry => entry.atMs < START_MS + DAY_MS)
+    const cued = advanceTemperament(start, cues, RESTING, ctx(START_MS + DAY_MS))
+    const quiet = advanceTemperament(start, [], RESTING, ctx(START_MS + DAY_MS))
+    expect(cued.temperament.axes).toEqual(quiet.temperament.axes)
+    expect(cued.completedDays.map(day => day.temperament)).toEqual(quiet.completedDays.map(day => day.temperament))
+    // The history row keeps what she felt: the cues still lift the day's mood samples.
+    expect(cued.completedDays[0].sum.valence).toBeGreaterThan(quiet.completedDays[0].sum.valence + 1)
+  })
+
+  it('still drifts toward a day of touch and a reply, but not when the same contributions are model cues', () => {
+    const { 'touch-pleasant': touch, 'late-reply': reply } = CHARACTER_STATE_SETTINGS.mood.events
+    const engaged: MoodContribution[] = [
+      ...[6, 10, 16, 16.5].map((hour, index) => ({ ...contribution(`touch-${index}`, START_MS + hour * HOUR_MS, touch.delta, touch.halfLifeMs), source: 'touch' as const })),
+      { ...contribution('reply', START_MS + 8 * HOUR_MS, reply.delta, reply.halfLifeMs), source: 'reply' },
+    ]
+    const asCues = engaged.map(entry => ({ ...entry, source: 'model-cue' as const }))
+    const end = ctx(START_MS + DAY_MS)
+    const drifted = advanceTemperament(initial(), engaged, RESTING, end).temperament.axes
+    expect(drifted.valence - RESTING.valence).toBeGreaterThan(0.002)
+    expect(drifted.tension).toBeLessThan(RESTING.tension)
+    expect(advanceTemperament(initial(), asCues, RESTING, end).temperament.axes).toEqual(RESTING)
   })
 
   it('holds |T - R| exactly at the clamp under a saturating mood instead of following it', () => {
