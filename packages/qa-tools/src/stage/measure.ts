@@ -1,7 +1,7 @@
 import type { Buffer } from 'node:buffer'
 
 import type { OwnedProcess } from '../env/processes'
-import type { StageFrameRun, StageMode } from './gates'
+import type { StageFrameRun, StageMode, StageScenario } from './gates'
 
 import { execFile, spawn } from 'node:child_process'
 import { cpSync, mkdtempSync, rmSync } from 'node:fs'
@@ -16,6 +16,7 @@ import { killTree, listLiveProcesses } from '../env/processes'
 import { failOnExit, launchStageTamagotchi } from '../t3/launch'
 import { closeBrowser } from '../t3/run-t3'
 import { teardownRun, trackTree } from '../t3/teardown'
+import { stageScenarioColumns } from './gates'
 
 /**
  * The K6 measurement of todo 1, productised: it reads the MMD frame measurement through the motion diagnostics
@@ -221,7 +222,11 @@ function startOsWiggle(pointer: { cx: number, cy: number, r: number, origin: { x
   })
 }
 
-async function measureAttempt(client: CdpClient, seconds: number, pointer: { cx: number, cy: number, r: number, origin: { x: number, y: number } }): Promise<{ collected: Collected, attempt: StageMeasureAttempt }> {
+/**
+ * Starts the 1 Hz concurrent-load sidecar of one attempt (load average, heavyweight checks, one `ps` listing halfway
+ * through `seconds`). `stop` ends it and sets the verdict.
+ */
+async function startLoadWatch(seconds: number): Promise<{ attempt: StageMeasureAttempt, stop: () => void }> {
   const attempt: StageMeasureAttempt = {
     startedAt: new Date().toISOString(),
     pre: { load: loadavg().map(value => Number(value.toFixed(2))), heavyweight: await heavyweightProcesses() },
@@ -244,6 +249,18 @@ async function measureAttempt(client: CdpClient, seconds: number, pointer: { cx:
       attempt.psBackground = top
     })
   }, seconds * 500)
+  return {
+    attempt,
+    stop: () => {
+      clearInterval(sidecar)
+      clearTimeout(psTimer)
+      attempt.verdict = attempt.heavyweightHits > 0 ? 'INVALID-CONCURRENT-LOAD' : 'VALID'
+    },
+  }
+}
+
+async function measureAttempt(client: CdpClient, seconds: number, pointer: { cx: number, cy: number, r: number, origin: { x: number, y: number } }): Promise<{ collected: Collected, attempt: StageMeasureAttempt }> {
+  const { attempt, stop } = await startLoadWatch(seconds)
   const wiggle = startOsWiggle(pointer, seconds)
   let angle = 0
   let moving = false
@@ -272,10 +289,8 @@ async function measureAttempt(client: CdpClient, seconds: number, pointer: { cx:
     return { collected, attempt }
   }
   finally {
-    clearInterval(sidecar)
     clearInterval(pointerTimer)
-    clearTimeout(psTimer)
-    attempt.verdict = attempt.heavyweightHits > 0 ? 'INVALID-CONCURRENT-LOAD' : 'VALID'
+    stop()
   }
 }
 
@@ -320,6 +335,254 @@ export async function measureAttached(options: { port: number, mode: StageMode, 
   const { client, url } = await connectTarget(options.port, options.mode)
   try {
     return await measureStage(client, { ...options, target: url })
+  }
+  finally {
+    client.close()
+  }
+}
+
+export interface StageScenarioRecord {
+  kind: 'stage-scenario'
+  version: 1
+  scenario: StageScenario
+  clip: string
+  mode: StageMode
+  target: string
+  /** gesture-walk: the walk span to reach with the clip on the upper layer; action-preempt: playing time before the stop. */
+  seconds: number
+  loadedModelKey: string | null
+  /** The walk goal in model units: 600 DIP from the start toward the side with more ground, clamped to the ground. */
+  goal: { fromX: number, x: number, dip: number, unitsPerDip: number }
+  /** ms after the playClip post at which stopClip was posted. */
+  stopAtMs: number | null
+  /** The director's refusal of the playClip request, when it never performed. */
+  refusal: string | null
+  /** action-preempt: no goal was issued within 10 s after the stop. */
+  timedOut: boolean
+  measurement: { fps: number, frames: number, durationMs: number, p95StageMs: number, stages: Record<string, StageTiming> } | null
+  series: { columns: string[], rows: unknown[][] }
+  load: StageMeasureAttempt
+  discarded: StageMeasureAttempt[]
+  valid: boolean
+}
+
+interface ScenarioCollected {
+  loadedModelKey: string | null
+  goal: StageScenarioRecord['goal']
+  stopAtMs: number | null
+  refusal: string | null
+  /** The director's retry time for a refused request (set for action and dance refractories). */
+  retryAfterMs: number | null
+  timedOut: boolean
+  measurement: { fps: number, frames: number, durationMs: number, stages: Record<string, StageTiming> } | null
+  rows: unknown[][]
+}
+
+/**
+ * The page side of a scenario. It waits for her to stand still, starts the frame measurement, requests a walk goal
+ * 600 DIP away and, one second into the walk, posts playClip. gesture-walk loops the clip (a debug loop skips the
+ * gesture repeat cooldown, not the ownership rules) and walks her back and forth between the start and the goal until
+ * the clip has played on the upper layer during `walking` for `seconds`, or for six times that plus 10 s (a 600 DIP
+ * leg spends only about 1.4 s of its starting, walking, stopping and turning in mode `walking`), then posts
+ * stopClip. action-preempt plays the clip with its own loop setting, requests the goal again at the first performing
+ * sample (while the director is still settling), posts stopClip after `seconds` of playing, and records until the held
+ * goal is issued. Every snapshot becomes one row in `stageScenarioColumns` order, `t` in ms since the playClip post.
+ */
+function scenarioExpression(scenario: StageScenario, clip: string, seconds: number): string {
+  return `(async () => {
+  const scenario = ${JSON.stringify(scenario)}
+  const clip = ${JSON.stringify(clip)}
+  const spanMs = ${seconds * 1000}
+  const channel = new BroadcastChannel(${JSON.stringify(diagnosticsChannel)})
+  const send = (name, value) => channel.postMessage(value === undefined ? { type: 'command', name } : { type: 'command', name, value })
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
+  const rows = []
+  let latest = null
+  let recording = false
+  let onSnapshot = null
+  channel.addEventListener('message', (event) => {
+    const snapshot = event.data?.type === 'snapshot' ? event.data.snapshot : null
+    if (!snapshot)
+      return
+    latest = snapshot
+    const now = performance.now()
+    if (recording && snapshot.locomotion && snapshot.director) {
+      const performing = snapshot.action?.performing ?? null
+      rows.push([now, snapshot.locomotion.mode, snapshot.locomotion.enabled, snapshot.locomotion.skate, snapshot.feet?.maxError ?? 0, performing?.name ?? null, performing?.layer ?? null, performing?.phase ?? null, snapshot.director.pendingGoal != null, snapshot.director.goalX ?? null])
+    }
+    onSnapshot?.(snapshot, now)
+  })
+  const until = (test, timeoutMs, what) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      onSnapshot = null
+      reject(new Error('timed out after ' + timeoutMs + ' ms waiting for ' + what))
+    }, timeoutMs)
+    onSnapshot = (snapshot, now) => {
+      if (!test(snapshot, now))
+        return
+      clearTimeout(timer)
+      onSnapshot = null
+      resolve(now)
+    }
+  })
+  try {
+    await until(s => s.loadedModelKey && s.world && s.locomotion && s.director, 30000, 'a mounted model on the stage world')
+    await until(s => s.locomotion.mode === 'idle' && s.director.goalX === null && s.director.pendingGoal === null && s.action.performing === null, 60000, 'her to stand still')
+    const world = latest.world
+    const fromX = latest.locomotion.position.x
+    const side = world.ground.maxX - fromX >= fromX - world.ground.minX ? 1 : -1
+    const x = Math.min(world.ground.maxX, Math.max(world.ground.minX, fromX + side * 600 * world.unitsPerDip))
+    const goal = { fromX, x, dip: Math.abs(x - fromX) / world.unitsPerDip, unitsPerDip: world.unitsPerDip }
+    const startSeq = latest.action.lastActionSeq
+    send('startMeasurement')
+    recording = true
+    send('requestGoal', { x, pace: 'walk' })
+    await until(s => s.locomotion.mode === 'walking', 10000, 'the walk to start')
+    await wait(1000)
+    const playAt = performance.now()
+    send('playClip', scenario === 'gesture-walk' ? { name: clip, loop: true } : { name: clip })
+    let refusal = null
+    let retryAfterMs = null
+    let performed = false
+    let stopAt = null
+    let timedOut = false
+    const refused = (s) => {
+      if (s.action.performing?.name === clip)
+        performed = true
+      if (!performed && s.action.lastActionSeq > startSeq && s.action.refusal) {
+        refusal = s.action.refusal
+        retryAfterMs = s.action.retryAfterMs ?? null
+      }
+      return refusal !== null
+    }
+    if (scenario === 'gesture-walk') {
+      let walkedMs = 0
+      let last = playAt
+      let next = fromX
+      let awaitingGoal = false
+      const limitMs = spanMs * 6 + 10000
+      await until((s, now) => {
+        const performing = s.action.performing
+        if (s.locomotion.mode === 'walking' && performing?.name === clip && performing.layer === 'upper')
+          walkedMs += now - last
+        last = now
+        if (s.director.goalX !== null)
+          awaitingGoal = false
+        if (!awaitingGoal && s.locomotion.mode === 'idle' && s.director.goalX === null && s.director.pendingGoal === null) {
+          send('requestGoal', { x: next, pace: 'walk' })
+          next = next === x ? fromX : x
+          awaitingGoal = true
+        }
+        return refused(s) || walkedMs >= spanMs || now - playAt >= limitMs
+      }, limitMs + 5000, 'the walk span')
+      stopAt = performance.now()
+      send('stopClip')
+      await wait(500)
+    }
+    else {
+      let secondGoal = false
+      await until((s) => {
+        if (s.action.performing?.name === clip && !secondGoal) {
+          send('requestGoal', { x, pace: 'walk' })
+          secondGoal = true
+        }
+        return refused(s) || (s.action.performing?.name === clip && s.action.performing.phase === 'playing')
+      }, 20000, 'the clip to play')
+      if (refusal === null) {
+        const playingAt = performance.now()
+        stopAt = await until((s, now) => s.action.performing === null || now - playingAt >= spanMs, spanMs + 5000, 'the playing time')
+        send('stopClip')
+        await until(s => s.action.performing === null && s.director.pendingGoal === null && s.director.goalX !== null, 10000, 'the held goal to be issued').catch(() => {
+          timedOut = true
+        })
+        await wait(500)
+      }
+    }
+    recording = false
+    send('stopMeasurement')
+    await wait(500)
+    return {
+      loadedModelKey: latest.loadedModelKey,
+      goal,
+      stopAtMs: stopAt === null ? null : Math.round(stopAt - playAt),
+      refusal,
+      retryAfterMs,
+      timedOut,
+      measurement: latest.measurement ?? null,
+      rows: rows.map(([t, ...rest]) => [Math.round(t - playAt), ...rest]),
+    }
+  }
+  finally {
+    recording = false
+    channel.close()
+  }
+})()`
+}
+
+/**
+ * Runs one stage scenario on an attached app with an MMD model mounted on the stage world: up to `attempts` runs,
+ * repeating a run that saw concurrent load; the record is `valid: false` when every attempt was invalid.
+ */
+export async function measureScenario(options: { port: number, mode: StageMode, scenario: StageScenario, clip: string, seconds: number, attempts: number, log: (line: string) => void }): Promise<StageScenarioRecord> {
+  const { client, url } = await connectTarget(options.port, options.mode)
+  try {
+    const discarded: StageMeasureAttempt[] = []
+    let refractoryWaits = 0
+    // The longest page-side wait: stand still (60 s), the walk start, the span limit or the playing time, the resume.
+    const budgetSeconds = 60 + 10 + options.seconds * 6 + 10 + 30
+    for (let index = 1; ; index += 1) {
+      await waitForQuiet(300_000, options.log)
+      options.log(`qa-tools stage: ${options.scenario} with ${options.clip} on the ${options.mode} stage (attempt ${index}/${options.attempts})`)
+      const { attempt, stop } = await startLoadWatch(budgetSeconds)
+      let collected: ScenarioCollected
+      try {
+        collected = await client.evaluate<ScenarioCollected>(scenarioExpression(options.scenario, options.clip, options.seconds), budgetSeconds * 1_000 + 30_000)
+      }
+      finally {
+        stop()
+      }
+      if (collected.refusal)
+        options.log(`qa-tools stage: the director refused ${options.clip}: ${collected.refusal}`)
+      // An earlier attempt that played the clip arms the action or dance refractory (15 s, 60 s); wait it out and repeat
+      // the attempt instead of recording a refusal the scenario caused itself.
+      if (collected.refusal === 'refractory' && collected.retryAfterMs !== null && refractoryWaits < options.attempts) {
+        refractoryWaits += 1
+        options.log(`qa-tools stage: waiting ${Math.ceil(collected.retryAfterMs / 1000) + 1} s for the refractory, then repeating attempt ${index}`)
+        await sleep(collected.retryAfterMs + 1_000)
+        index -= 1
+        continue
+      }
+      if (attempt.verdict === 'VALID' || index >= options.attempts) {
+        const measurement = collected.measurement
+        return {
+          kind: 'stage-scenario',
+          version: 1,
+          scenario: options.scenario,
+          clip: options.clip,
+          mode: options.mode,
+          target: url,
+          seconds: options.seconds,
+          loadedModelKey: collected.loadedModelKey,
+          goal: collected.goal,
+          stopAtMs: collected.stopAtMs,
+          refusal: collected.refusal,
+          timedOut: collected.timedOut,
+          measurement: measurement && {
+            fps: measurement.fps,
+            frames: measurement.frames,
+            durationMs: measurement.durationMs,
+            p95StageMs: Object.entries(measurement.stages).filter(([id]) => !engineStages.has(id)).reduce((sum, [, timing]) => sum + timing.p95Ms, 0),
+            stages: measurement.stages,
+          },
+          series: { columns: [...stageScenarioColumns], rows: collected.rows },
+          load: attempt,
+          discarded,
+          valid: attempt.verdict === 'VALID',
+        }
+      }
+      options.log(`qa-tools stage: attempt ${index} INVALID-CONCURRENT-LOAD (${attempt.heavyweightHits} sidecar hits), repeating`)
+      discarded.push(attempt)
+    }
   }
   finally {
     client.close()

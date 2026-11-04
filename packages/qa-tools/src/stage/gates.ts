@@ -1,8 +1,9 @@
 /**
- * Stage gates for the desktop stage: walking without foot skate, standing arms without kinematic penetration, and the
- * frame budget of the desktop stage against the classic window. The thresholds are the plan's acceptance criteria
- * (`.omo/plans/fullscreen-stage-locomotion.md`, todo 16, frame budget amended by todo 1 phase D); never relax one to
- * make a run pass, a failure is a finding.
+ * Stage gates for the desktop stage: walking without foot skate, standing arms without kinematic penetration, the
+ * frame budget of the desktop stage against the classic window, a gesture over a walk and a full-body pre-emption. The
+ * thresholds are the plan's acceptance criteria (`.omo/plans/fullscreen-stage-locomotion.md`, todo 16, frame budget
+ * amended by todo 1 phase D; `.omo/plans/mmd-actions-library.md`, todo 16, for the two action gates); never relax one
+ * to make a run pass, a failure is a finding.
  */
 
 export const stageGateThresholds = {
@@ -23,11 +24,36 @@ export const stageGateThresholds = {
   readbackMeanMsMax: 1,
   /** Median over pairs of (desktop readback max - window readback max), inclusive. */
   readbackMaxDeltaMsMax: 1,
+  /** Share of the gesture-walk samples in which the clip plays on the upper layer, inclusive. */
+  gesturePresenceMin: 0.8,
+  /** Time from `action.performing` clearing to the held goal being issued, inclusive. */
+  goalResumeMaxMs: 3_000,
 } as const
 
 export type StageMode = 'window' | 'desktop'
-export type StageGateId = 'stage-walk-skate' | 'stage-arm-penetration' | 'stage-frame-budget'
-export const stageGateIds: readonly StageGateId[] = ['stage-walk-skate', 'stage-arm-penetration', 'stage-frame-budget']
+export type StageGateId = 'stage-walk-skate' | 'stage-arm-penetration' | 'stage-frame-budget' | 'stage-gesture-walk' | 'stage-action-preempt'
+export const stageGateIds: readonly StageGateId[] = ['stage-walk-skate', 'stage-arm-penetration', 'stage-frame-budget', 'stage-gesture-walk', 'stage-action-preempt']
+
+export type StageScenario = 'gesture-walk' | 'action-preempt'
+
+/**
+ * Column order of a `measure --scenario` series, one row per diagnostics snapshot: `t` in ms since the playClip post
+ * (negative during the walk lead-in), the `locomotion` fields `mode`, `enabled`, `skate`, `feet.maxError`, the
+ * `action.performing` name, layer and phase (null when nothing performs), whether `director.pendingGoal` is set, and
+ * `director.goalX` (the issued goal, null when none).
+ */
+export const stageScenarioColumns = ['t', 'mode', 'enabled', 'skate', 'feetMaxError', 'performingName', 'performingLayer', 'performingPhase', 'pendingGoal', 'goalX'] as const
+
+export interface ScenarioSample {
+  t: number
+  mode: string
+  enabled: boolean
+  skate: number
+  feetMaxError: number
+  performing: { name: string, layer: string, phase: string } | null
+  pendingGoal: boolean
+  goalX: number | null
+}
 
 /** One measured run: the K6 line `measure` writes as `result`. */
 export interface StageFrameRun {
@@ -42,6 +68,7 @@ export type StageEvidence
   = | { kind: 'frame', source: string, pair: number | null, run: StageFrameRun }
     | { kind: 'walk', source: string, frames: { mode: string, skate: number, feetMaxError: number }[] }
     | { kind: 'arms', source: string, model: string, spanMs: number | null, penetration: { left: number, right: number }, clothContact: { left: number, right: number } | null }
+    | { kind: 'scenario', source: string, scenario: StageScenario, clip: string, seconds: number, stopAtMs: number | null, p95StageMs: number | null, valid: boolean, samples: ScenarioSample[] }
 
 export interface GateCheck {
   name: string
@@ -138,14 +165,65 @@ function readArmSeries(source: string, json: Record<string, unknown>, perFrame: 
   }
 }
 
+function readScenarioSample(source: string, row: unknown, index: number): ScenarioSample {
+  const at = (name: typeof stageScenarioColumns[number]) => stageScenarioColumns.indexOf(name)
+  const nullableString = (value: unknown) => value === null || typeof value === 'string'
+  if (
+    !Array.isArray(row) || row.length !== stageScenarioColumns.length
+    || !isFiniteNumber(row[at('t')]) || typeof row[at('mode')] !== 'string' || typeof row[at('enabled')] !== 'boolean'
+    || !isFiniteNumber(row[at('skate')]) || !isFiniteNumber(row[at('feetMaxError')])
+    || !nullableString(row[at('performingName')]) || !nullableString(row[at('performingLayer')]) || !nullableString(row[at('performingPhase')])
+    || typeof row[at('pendingGoal')] !== 'boolean' || (row[at('goalX')] !== null && !isFiniteNumber(row[at('goalX')]))
+  ) {
+    throw new Error(`${source}: series row ${index} is malformed`)
+  }
+  const name = row[at('performingName')] as string | null
+  return {
+    t: row[at('t')],
+    mode: row[at('mode')],
+    enabled: row[at('enabled')],
+    skate: row[at('skate')],
+    feetMaxError: row[at('feetMaxError')],
+    performing: name === null ? null : { name, layer: String(row[at('performingLayer')]), phase: String(row[at('performingPhase')]) },
+    pendingGoal: row[at('pendingGoal')],
+    goalX: row[at('goalX')],
+  }
+}
+
+/** A `measure --scenario` record (`kind: 'stage-scenario'`); its series columns must be `stageScenarioColumns`. */
+function readScenario(source: string, json: Record<string, unknown>): StageEvidence {
+  if (json.scenario !== 'gesture-walk' && json.scenario !== 'action-preempt')
+    throw new Error(`${source}: scenario must be gesture-walk or action-preempt`)
+  if (typeof json.clip !== 'string' || !isFiniteNumber(json.seconds) || typeof json.valid !== 'boolean')
+    throw new Error(`${source}: a scenario record needs clip, seconds and valid`)
+  const series = json.series
+  if (!isRecord(series) || !Array.isArray(series.columns) || series.columns.join() !== stageScenarioColumns.join() || !Array.isArray(series.rows))
+    throw new Error(`${source}: series needs the columns ${stageScenarioColumns.join(', ')}`)
+  const measurement = json.measurement
+  return {
+    kind: 'scenario',
+    source,
+    scenario: json.scenario,
+    clip: json.clip,
+    seconds: json.seconds,
+    stopAtMs: isFiniteNumber(json.stopAtMs) ? json.stopAtMs : null,
+    p95StageMs: isRecord(measurement) && isFiniteNumber(measurement.p95StageMs) ? measurement.p95StageMs : null,
+    valid: json.valid,
+    samples: series.rows.map((row: unknown, index: number) => readScenarioSample(source, row, index)),
+  }
+}
+
 /**
  * Reads one evidence JSON into gate inputs. Recognised shapes: a `measure` run (`result` with a mode and fps), a pairs
  * file (`runs`), a walk timeline (`perFrameSeries` at the top level or under `walk`), a per-model arm run (`perFrame`
- * with penL/penR) and a multi-model arm summary (`models.<name>.penetration`). Throws for anything else.
+ * with penL/penR), a multi-model arm summary (`models.<name>.penetration`) and a `measure --scenario` record
+ * (`kind: 'stage-scenario'`). Throws for anything else.
  */
 export function readStageEvidence(source: string, json: unknown): StageEvidence[] {
   if (!isRecord(json))
     throw new Error(`${source}: evidence must be a JSON object`)
+  if (json.kind === 'stage-scenario')
+    return [readScenario(source, json)]
   const found: StageEvidence[] = []
 
   if (Array.isArray(json.runs)) {
@@ -330,8 +408,146 @@ export function gateFrameBudget(evidence: readonly StageEvidence[]): GateResult 
   return verdictOf('stage-frame-budget', checks)
 }
 
+type ScenarioEvidence = Extract<StageEvidence, { kind: 'scenario' }>
+
+function scenarios(evidence: readonly StageEvidence[], scenario: StageScenario): ScenarioEvidence[] {
+  return evidence.filter((entry): entry is ScenarioEvidence => entry.kind === 'scenario' && entry.scenario === scenario)
+}
+
+/** `#<row> (t <s> s)` for the first eight offending rows of a series; `rows` are indices into `samples`. */
+function nameFrames(samples: readonly ScenarioSample[], rows: readonly number[]): string {
+  const named = rows.slice(0, 8).map(row => `#${row} (t ${format(samples[row].t / 1000)} s)`).join(', ')
+  return rows.length > 8 ? `${named}, ...` : named
+}
+
+function loadCheck(record: ScenarioEvidence): GateCheck {
+  return { name: `${record.source} load`, pass: record.valid, detail: record.valid ? 'VALID' : 'INVALID-CONCURRENT-LOAD' }
+}
+
+/**
+ * `stage-gesture-walk`: an upper clip looped over a walk. The window is every sample after the playClip post up to the
+ * stopClip post. Each sample in mode `walking` with the clip on the upper layer adds the time since the previous sample
+ * to the walk span, which must reach the record's scenario `seconds` (the plan's run asks for at least 10 s). Skate and
+ * feet error are judged over the non-idle samples with the walk-skate limits, the gait must stay enabled on every
+ * sample, and the clip must be on the upper layer in at least `gesturePresenceMin` of them.
+ */
+export function gateGestureWalk(evidence: readonly StageEvidence[]): GateResult {
+  const limits = stageGateThresholds
+  const checks: GateCheck[] = []
+  for (const record of scenarios(evidence, 'gesture-walk')) {
+    const { samples, clip, source } = record
+    const window = samples.map((_, row) => row).filter(row => samples[row].t > 0 && (record.stopAtMs === null || samples[row].t <= record.stopAtMs))
+    checks.push(loadCheck(record))
+    if (window.length === 0) {
+      checks.push({ name: `${source} window`, pass: false, detail: 'no sample after the playClip post' })
+      continue
+    }
+    const onUpper = (sample: ScenarioSample) => sample.performing?.name === clip && sample.performing.layer === 'upper'
+    const spanMs = window.reduce((sum, row) => row > 0 && samples[row].mode === 'walking' && onUpper(samples[row]) ? sum + samples[row].t - samples[row - 1].t : sum, 0)
+    checks.push({
+      name: `${source} walk span`,
+      pass: spanMs >= record.seconds * 1000,
+      detail: `${format(spanMs / 1000)} s walking with ${clip} on the upper layer (scenario span ${record.seconds} s)`,
+    })
+    const moving = window.filter(row => samples[row].mode !== 'idle')
+    const skate = moving.length === 0 ? 0 : maxOf(moving.map(row => samples[row].skate))
+    const error = moving.length === 0 ? 0 : maxOf(moving.map(row => samples[row].feetMaxError))
+    checks.push({
+      name: `${source} skate`,
+      pass: moving.length > 0 && skate < limits.walkSkateMax,
+      detail: `max locomotion.skate ${format(skate)} over ${moving.length} non-idle samples (limit < ${limits.walkSkateMax})`,
+    })
+    checks.push({
+      name: `${source} feet`,
+      pass: moving.length > 0 && error < limits.walkFeetErrorMax,
+      detail: `max feet.maxError ${format(error)} (limit < ${limits.walkFeetErrorMax})`,
+    })
+    const gaitOff = window.filter(row => !samples[row].enabled)
+    checks.push({
+      name: `${source} gait enabled`,
+      pass: gaitOff.length === 0,
+      detail: gaitOff.length === 0
+        ? `locomotion.enabled true on all ${window.length} samples`
+        : `${gaitOff.length} of ${window.length} samples with locomotion.enabled false: ${nameFrames(samples, gaitOff)}`,
+    })
+    const present = window.filter(row => onUpper(samples[row])).length
+    checks.push({
+      name: `${source} presence`,
+      pass: present / window.length >= limits.gesturePresenceMin,
+      detail: `${clip} on the upper layer in ${present} of ${window.length} samples (${(100 * present / window.length).toFixed(2)} %, limit >= ${limits.gesturePresenceMin * 100} %)`,
+    })
+  }
+  return verdictOf('stage-gesture-walk', checks)
+}
+
+/**
+ * `stage-action-preempt`: a full clip played while a goal was pending. The director keeps the gait on while a full
+ * performance is `settling` (it lets her stop walking first), so the gait and pending-goal checks read only the samples
+ * in phase `playing`; settling samples are counted in the detail. After the performance clears, the held goal must be
+ * issued (pending cleared, `director.goalX` set) within `goalResumeMaxMs`, and the stage p95 must stay in budget.
+ */
+export function gateActionPreempt(evidence: readonly StageEvidence[]): GateResult {
+  const limits = stageGateThresholds
+  const checks: GateCheck[] = []
+  for (const record of scenarios(evidence, 'action-preempt')) {
+    const { samples, clip, source } = record
+    checks.push(loadCheck(record))
+    const performingRows = samples.map((_, row) => row).filter(row => samples[row].performing?.name === clip)
+    const playing = performingRows.filter(row => samples[row].performing!.phase === 'playing')
+    const settling = performingRows.filter(row => samples[row].performing!.phase === 'settling').length
+    const offLayer = performingRows.filter(row => samples[row].performing!.layer !== 'full')
+    checks.push({
+      name: `${source} performance`,
+      pass: playing.length > 0 && offLayer.length === 0,
+      detail: performingRows.length === 0
+        ? `no sample performing ${clip} on the full layer`
+        : offLayer.length > 0
+          ? `${offLayer.length} samples perform ${clip} off the full layer: ${nameFrames(samples, offLayer)}`
+          : `${performingRows.length} samples performing ${clip} on the full layer: ${playing.length} playing, ${settling} settling (settling keeps the gait on and is not gated)`,
+    })
+    const gaitOn = playing.filter(row => samples[row].enabled)
+    checks.push({
+      name: `${source} gait off while playing`,
+      pass: playing.length > 0 && gaitOn.length === 0,
+      detail: gaitOn.length === 0
+        ? `locomotion.enabled false on all ${playing.length} playing samples`
+        : `${gaitOn.length} of ${playing.length} playing samples with locomotion.enabled true: ${nameFrames(samples, gaitOn)}`,
+    })
+    const noGoal = playing.filter(row => !samples[row].pendingGoal)
+    checks.push({
+      name: `${source} pending goal`,
+      pass: playing.length > 0 && noGoal.length === 0,
+      detail: noGoal.length === 0
+        ? `director.pendingGoal set on all ${playing.length} playing samples`
+        : `${noGoal.length} of ${playing.length} playing samples without director.pendingGoal: ${nameFrames(samples, noGoal)}`,
+    })
+    const clearedAt = performingRows.length === 0 ? -1 : performingRows[performingRows.length - 1] + 1
+    if (clearedAt < 0 || clearedAt >= samples.length) {
+      checks.push({ name: `${source} goal resume`, pass: false, detail: performingRows.length === 0 ? 'no performance to resume after' : 'action.performing never cleared' })
+    }
+    else {
+      const cleared = samples[clearedAt]
+      const issued = samples.slice(clearedAt).find(sample => !sample.pendingGoal && sample.goalX !== null)
+      const resumeMs = issued ? issued.t - cleared.t : null
+      checks.push({
+        name: `${source} goal resume`,
+        pass: resumeMs !== null && resumeMs <= limits.goalResumeMaxMs,
+        detail: resumeMs === null
+          ? `no goal issued after action.performing cleared at t ${format(cleared.t / 1000)} s`
+          : `goal issued ${format(resumeMs / 1000)} s after action.performing cleared (limit <= ${limits.goalResumeMaxMs / 1000} s)`,
+      })
+    }
+    checks.push({
+      name: `${source} p95-stage-ms`,
+      pass: record.p95StageMs !== null && record.p95StageMs <= limits.p95StageMsMax,
+      detail: record.p95StageMs === null ? 'no frame measurement recorded' : `p95 AIRI stages ${format(record.p95StageMs)} ms (limit <= ${limits.p95StageMsMax})`,
+    })
+  }
+  return verdictOf('stage-action-preempt', checks)
+}
+
 export function runStageGates(evidence: readonly StageEvidence[]): GateResult[] {
-  return [gateWalkSkate(evidence), gateArmPenetration(evidence), gateFrameBudget(evidence)]
+  return [gateWalkSkate(evidence), gateArmPenetration(evidence), gateFrameBudget(evidence), gateGestureWalk(evidence), gateActionPreempt(evidence)]
 }
 
 export function formatGateResults(results: readonly GateResult[]): string {
