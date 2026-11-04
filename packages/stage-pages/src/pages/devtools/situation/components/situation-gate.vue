@@ -26,7 +26,7 @@ const { t } = useI18n()
 
 const TIMING_REASONS: ReadonlySet<string> = new Set(['floor', 'awaiting-reply', 'quiet-unanswered', 'urge', 'safety-cap'])
 const HAZARD_KEYS = ['open', 'continuation', 'ritual', 'due', 'total'] as const satisfies readonly (keyof UrgeGateHazards)[]
-const MULTIPLIER_KEYS = ['base', 'pressure', 'exchange', 'clear', 'damping', 'floor', 'game'] as const satisfies readonly (keyof UrgeGateMultipliers)[]
+const MULTIPLIER_KEYS = ['base', 'pressure', 'exchange', 'clear', 'damping', 'floor', 'game', 'mood'] as const satisfies readonly (keyof UrgeGateMultipliers)[]
 const RITUAL_KINDS = ['greeting', 'sign-off', 'welcome-back'] as const satisfies readonly RitualKind[]
 
 /** Which group a decision belongs to, so a hard suppressor reads differently from a timing hold. */
@@ -241,7 +241,7 @@ const rowClass = ['border-t', 'border-neutral-200/70 dark:border-neutral-800/80'
           <tbody>
             <tr v-for="key in MULTIPLIER_KEYS" :key="key" :data-multiplier="key" :class="rowClass">
               <td :class="cellClass">
-                {{ key }}
+                {{ t(`tamagotchi.settings.devtools.pages.situation.gate.multiplier-names.${key}`) }}
               </td>
               <td :class="[...cellClass, 'font-mono text-right']">
                 {{ trace ? trace.multipliers[key].toFixed(3) : '-' }}

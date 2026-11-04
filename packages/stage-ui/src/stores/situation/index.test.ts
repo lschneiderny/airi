@@ -11,6 +11,7 @@ import type { ChatReactionPayload, ChatUnpromptedPayload, ChatUnpromptedResult }
 import type { ThreadExtractionLedgerEntry } from '../devtools/situation-observability'
 
 import { createChatHooks } from '@proj-airi/core-agent'
+import { DEFAULT_CHARACTER_PROFILE, initialCharacterState, readCharacter } from '@proj-airi/stage-shared/character-state'
 import { evaluateUrgeGate, FLOOR_MS, HOUR_MS, initialReactionMemory, initialSituationState, nextRandom, notifyTopicKey, REACTION_PENDING_MAX_MS, REACTION_REFRACTORY_MS, REACTION_RETRY_MS, reactionPolicy, recordUrgeFireOutcome, SETTLE_MS, threadMinAgeMs, TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
@@ -23,6 +24,7 @@ import { useSituationInnerState } from '../../features/situation/inner-state'
 import { useSituationSettings } from '../../features/situation/settings'
 import { EXTRACTION_MAX_TOKENS } from '../../features/situation/thread-extraction'
 import { chatComposerActivityChangedEvent, getSpeechBusContext, situationForgetRequestedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged } from '../../services/speech/bus'
+import { characterStateContext, useCharacterStateStore } from '../character-state'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { DESKTOP_SAMPLE_STALE_MS } from './sensors/desktop'
 import { EXCHANGE_QUIET_MS } from './sensors/exchange'
@@ -1526,6 +1528,38 @@ describe('situation gate loop', () => {
       expect(await observability.evaluateGate()).toMatchObject({ status: 'evaluated', decision: { fire: true } })
     },
   )
+
+  it('shows mood 1 in the gate trace while the character store has no reading', async () => {
+    const { observability } = startQuietLeader()
+    offerTopic()
+    expect(useCharacterStateStore().reading).toBeNull()
+
+    const evaluation = await observability.evaluateGate()
+
+    expect(lastEvaluation().input.moodFactor).toBe(1)
+    expect(evaluation).toMatchObject({ status: 'evaluated', decision: { trace: { multipliers: { mood: 1 } } } })
+  })
+
+  it('passes the reading urge factor of a sulky character into the gate trace', async () => {
+    const { observability } = startQuietLeader()
+    offerTopic()
+    const context = characterStateContext(Date.now())
+    const resting = readCharacter(initialCharacterState('default', DEFAULT_CHARACTER_PROFILE, context), DEFAULT_CHARACTER_PROFILE, null, context)
+    useCharacterStateStore().replicated = {
+      cardId: 'default',
+      reading: { ...resting, urgeFactor: 0.8 },
+      revision: 1,
+      updatedAtMs: Date.now(),
+    }
+
+    const evaluation = await observability.evaluateGate()
+
+    expect(lastEvaluation().input.moodFactor).toBe(0.8)
+    expect(evaluation).toMatchObject({ status: 'evaluated', decision: { trace: { multipliers: { mood: 0.8 } } } })
+    useCharacterStateStore().replicated = { cardId: null, reading: null, revision: 2, updatedAtMs: Date.now() }
+    await observability.evaluateGate()
+    expect(lastEvaluation().input.moodFactor).toBe(1)
+  })
 
   it.each([
     ['notepad.exe', 'notepad.exe', 'notepad'],
