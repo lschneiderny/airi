@@ -32,6 +32,15 @@ const { headroom, modelCue } = CHARACTER_STATE_SETTINGS.mood
  */
 export const MODEL_ONLY_RAW_BOUND = Math.ceil(modelCue.budgetPerAxis / (1 - 2 ** (-modelCue.budgetWindowMs / modelCue.halfLifeMs)) * 100) / 100
 
+/**
+ * The IS-11 valence ceiling while only model cues have ever moved her mood: model cues never move temperament, so it
+ * stays at resting and valence is at most `tanh(atanh(R.v) + MODEL_ONLY_RAW_BOUND)`, rounded up to two decimals
+ * (0.64 for the default resting valence of 0.1).
+ */
+export function modelOnlyValenceBound(resting: MoodAxes): number {
+  return Math.ceil(Math.tanh(Math.atanh(resting.valence) + MODEL_ONLY_RAW_BOUND) * 100) / 100
+}
+
 /** The simulator's UTC context: the logical day rolls over at 04:00 UTC. */
 export function utcContext(nowMs: number): AdvanceContext {
   return {
@@ -79,6 +88,11 @@ export interface SimulationResult {
     readonly maxAbsRaw: number
     readonly maxModelOnlyRaw: number
     readonly modelOnlyRawBound: number
+    /**
+     * The valence ceiling checked at every event and hour, or `null` when a source other than a model cue moved her
+     * mood during the run, so the ceiling does not apply.
+     */
+    readonly modelOnlyValenceBound: number | null
     readonly pointedHours: number
     readonly firstPointedDay: number | null
     readonly appliedEvents: number
@@ -107,6 +121,9 @@ export class CharacterSimulation {
   private violationCount = 0
   private maxAbsRaw = 0
   private maxModelOnlyRaw = 0
+  /** True until a contribution from any source other than a model cue enters her mood. */
+  private moodOnlyFromModel = true
+  private readonly valenceBound: number
   private day = 0
   private dayValence = { min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY }
   private lastStages: RelationshipStages
@@ -115,6 +132,7 @@ export class CharacterSimulation {
   constructor(private readonly scenario: Scenario, private readonly seed: number) {
     this.profile = profileOf(scenario)
     this.startMs = startOf(scenario)
+    this.valenceBound = modelOnlyValenceBound(this.profile.resting)
     this.state = initialCharacterState('qa-character-simulation', this.profile, utcContext(this.startMs))
     this.lastStages = this.state.relationship.stages
     this.lastStagesDayKey = utcContext(this.startMs).logicalDayKeyOf(this.startMs)
@@ -140,6 +158,11 @@ export class CharacterSimulation {
         this.violate(atMs, 'model-only-raw', `|model-only raw ${axis}| = ${Math.abs(modelOnly[axis]).toFixed(4)} > ${MODEL_ONLY_RAW_BOUND}`)
     }
     const valence = moodAt(contributions, this.state.temperament.axes, atMs).valence
+    // Model cues alone can lift her mood but never her disposition, so valence stays under the model-only ceiling.
+    if (this.moodOnlyFromModel && contributions.some(contribution => contribution.source !== 'model-cue'))
+      this.moodOnlyFromModel = false
+    if (this.moodOnlyFromModel && valence > this.valenceBound + TOLERANCE)
+      this.violate(atMs, 'model-only-valence', `valence = ${valence.toFixed(4)} > ${this.valenceBound} with only model cues moving her mood`)
     this.dayValence = { min: Math.min(this.dayValence.min, valence), max: Math.max(this.dayValence.max, valence) }
   }
 
@@ -284,6 +307,7 @@ export class CharacterSimulation {
         maxAbsRaw: this.maxAbsRaw,
         maxModelOnlyRaw: this.maxModelOnlyRaw,
         modelOnlyRawBound: MODEL_ONLY_RAW_BOUND,
+        modelOnlyValenceBound: this.moodOnlyFromModel ? this.valenceBound : null,
         pointedHours: daily.reduce((sum, row) => sum + row.pointedHours, 0),
         firstPointedDay: firstPointed?.day ?? null,
         appliedEvents: applied,
@@ -324,7 +348,7 @@ export function formatSimulation(result: SimulationResult): string {
     header,
     ...rows,
     '',
-    `valence range ${fixed(summary.valenceMin)}..${fixed(summary.valenceMax)}; max |raw| ${fixed(summary.maxAbsRaw, 4)} (bound ${headroom}); max model-only |raw| ${fixed(summary.maxModelOnlyRaw, 4)} (bound ${summary.modelOnlyRawBound})`,
+    `valence range ${fixed(summary.valenceMin)}..${fixed(summary.valenceMax)}; max |raw| ${fixed(summary.maxAbsRaw, 4)} (bound ${headroom}); max model-only |raw| ${fixed(summary.maxModelOnlyRaw, 4)} (bound ${summary.modelOnlyRawBound})${summary.modelOnlyValenceBound === null ? '' : `; model-only valence bound ${summary.modelOnlyValenceBound}`}`,
     `pointed hours ${summary.pointedHours}${summary.firstPointedDay === null ? ' (never pointed)' : ` (first on day ${summary.firstPointedDay})`}; events applied ${summary.appliedEvents}, rejected ${summary.rejectedEvents}`,
     `end-of-run text: ${JSON.stringify(result.daily.at(-1)?.text ?? '')}`,
   ]

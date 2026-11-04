@@ -42,6 +42,12 @@ function stepAxis(t: number, r: number, m: number, limit: number): number {
  * `maxHoursPerCall` hours. A longer call processes only the newest `maxHoursPerCall` hours: the older hours get the
  * closed-form anchor pull `T <- R + (T - R) e^(-k_A span)` with no mood samples, so their days are never completed.
  *
+ * Only her own experience moves temperament: the sample that drives the step leaves out `model-cue` contributions.
+ * The model narrating a moment must not change who she is over days, or it reads the brighter baseline, writes in
+ * that tone, and confirms it, which is the feedback loop the cue budget exists to prevent. This is a boundary, not a
+ * weight. The cues still count at full strength in her mood, and the day's samples (the history row's mood) record
+ * the mood she felt, cues included.
+ *
  * A day closes as soon as the next hour to process samples another logical day (at the 04:00 rollover), and the
  * accumulator then restarts empty for that day. `nowMs` that is not finite or that completes no hour returns the
  * input unchanged. `throughHourMs` is expected on an epoch-hour boundary.
@@ -68,6 +74,7 @@ export function advanceTemperament(
     throughHourMs += skipped * stepMs
   }
 
+  const ownContributions = contributions.filter(contribution => contribution.source !== 'model-cue')
   const completedDays: CompletedTemperamentDay[] = []
   const close = (nextKey: string) => {
     if (day.samples > 0)
@@ -82,10 +89,11 @@ export function advanceTemperament(
       close(key)
 
     const mood = moodAt(contributions, axes, sampleAtMs)
+    const own = moodAt(ownContributions, axes, sampleAtMs)
     axes = {
-      valence: stepAxis(axes.valence, resting.valence, mood.valence, clamp.valence),
-      energy: stepAxis(axes.energy, resting.energy, mood.energy, clamp.energy),
-      tension: stepAxis(axes.tension, resting.tension, mood.tension, clamp.tension),
+      valence: stepAxis(axes.valence, resting.valence, own.valence, clamp.valence),
+      energy: stepAxis(axes.energy, resting.energy, own.energy, clamp.energy),
+      tension: stepAxis(axes.tension, resting.tension, own.tension, clamp.tension),
     }
     day = {
       key: day.key,

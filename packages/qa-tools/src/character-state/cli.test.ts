@@ -91,6 +91,8 @@ describe('simulate', () => {
     expect(result.daily).toHaveLength(30)
     expect(Math.abs(result.daily[29]!.levels.closeness - 0.35)).toBeLessThanOrEqual(0.03)
     expect(result.summary.rejectedEvents).toBe(0)
+    // Touch, replies, and events move her mood here, so the model-only valence bound does not apply.
+    expect(result.summary.modelOnlyValenceBound).toBeNull()
   })
 
   it('is deterministic for a seed', () => {
@@ -104,6 +106,17 @@ describe('simulate', () => {
     expect(result.summary.maxModelOnlyRaw).toBeLessThanOrEqual(0.65)
     // The budget is actually reached, so the bound is exercised rather than trivially met.
     expect(result.summary.maxModelOnlyRaw).toBeGreaterThan(0.5)
+  })
+
+  it('keeps overall valence at or below 0.64 on every day of 30 days of model-cue spam', () => {
+    const { code, result } = simulateJson(['--scenario', 'model-spam', '--days', '30', '--seed', '41'])
+    expect(code).toBe(0)
+    expect(result.violations).toEqual([])
+    expect(result.summary.modelOnlyValenceBound).toBe(0.64)
+    for (const row of result.daily)
+      expect(row.valence.max).toBeLessThanOrEqual(0.64)
+    // The cues still lift her mood well above resting; only her disposition stays put.
+    expect(result.daily[29]!.valence.max).toBeGreaterThan(0.5)
   })
 
   it('turns pointed only once unanswered reach-outs lead the reasons', () => {
