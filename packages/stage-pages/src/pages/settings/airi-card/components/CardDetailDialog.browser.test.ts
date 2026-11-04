@@ -1,9 +1,11 @@
 import en from '@proj-airi/i18n/locales/en'
 import localforage from 'localforage'
 
+import { DEFAULT_CHARACTER_PROFILE, initialCharacterState } from '@proj-airi/stage-shared/character-state'
 import { CHARACTER_CARD_SYNC_FLAG } from '@proj-airi/stage-ui/libs/feature-flags'
 import { exportAiriCardPackage } from '@proj-airi/stage-ui/services/airi-card-import-export'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
+import { characterStateContext, useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
 import { useFeatureFlagsStore } from '@proj-airi/stage-ui/stores/feature-flags'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { createPinia, disposePinia } from 'pinia'
@@ -65,7 +67,7 @@ describe('card detail dialog history tab', () => {
     return { screen, cardId }
   }
 
-  it('exports only the card own persisted memories from a fresh store', async () => {
+  it('exports only the card own persisted memories and its character state from a fresh store', async () => {
     const global = {
       plugins: [pinia, createI18n({ legacy: false, locale: 'en', messages: { en } })],
     }
@@ -80,6 +82,9 @@ describe('card detail dialog history tab', () => {
     const own = { description: 'Favorite game', body: 'Minecraft.' }
     await records.setItem('own', { id: 'own', persona: cardId, updatedAt: 1, ...own })
     await records.setItem('general', { id: 'general', updatedAt: 2, description: 'Shared', body: 'Do not export.' })
+    // The leader owns the record; this window only asks for it.
+    const characterState = initialCharacterState(cardId, DEFAULT_CHARACTER_PROFILE, characterStateContext(Date.now()))
+    const exportRecord = vi.spyOn(useCharacterStateStore(pinia), 'exportRecord').mockResolvedValue(characterState)
 
     const screen = await render(CardDetailDialog, {
       props: { modelValue: true, cardId },
@@ -95,7 +100,10 @@ describe('card detail dialog history tab', () => {
     })
     try {
       await screen.getByRole('button', { name: 'Export', exact: true }).click()
-      expect((await exported).memories).toEqual([own])
+      const args = await exported
+      expect(args.memories).toEqual([own])
+      expect(exportRecord).toHaveBeenCalledWith(cardId)
+      expect(args.characterState).toEqual(characterState)
       expect(exportAiriCardPackage).toHaveBeenCalledTimes(1)
     }
     finally {

@@ -29,6 +29,7 @@ import { SERVER_URL } from '../../libs/server'
 import { wakeWordSchema } from '../../libs/voice/wake-words'
 import { resolveModuleSelection } from '../../services/airi-card-modules'
 import { useAuthStore } from '../auth'
+import { useCharacterStateStore } from '../character-state'
 import { useFeatureFlagsStore } from '../feature-flags'
 import { useMemoryStore } from '../memory'
 import { useProviderConfigStore } from '../providers/config'
@@ -285,6 +286,12 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     const memory = useMemoryStore()
     await memory.ready()
     await Promise.all(memory.entries.filter(entry => entry.persona === id).map(entry => memory.remove(entry)))
+    // NOTICE:
+    // The character store is resolved here, at call time, instead of at store creation.
+    // The card store and the character-state store call each other, so creating either one inside the other's setup would be circular.
+    // The call is routed to the leader, which also drops a pending save that would write the record back (packages/stage-ui/src/stores/character-state).
+    // Removal condition: card delete no longer needs the character store at call time, that is, the card-store <-> character-state call-time cycle is removed.
+    await useCharacterStateStore().forget(id)
 
     const removed = cards.value.delete(id)
     if (!removed)

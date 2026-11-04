@@ -2,7 +2,9 @@ import en from '@proj-airi/i18n/locales/en'
 import localforage from 'localforage'
 
 import { exportToJSON } from '@proj-airi/ccc'
+import { DEFAULT_CHARACTER_PROFILE, initialCharacterState } from '@proj-airi/stage-shared/character-state'
 import { importAiriCardPackage } from '@proj-airi/stage-ui/services/airi-card-import-export'
+import { characterStateContext, useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
 import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { createPinia, disposePinia } from 'pinia'
@@ -49,9 +51,10 @@ afterEach(async () => {
   await records.clear()
 })
 
-it('restores imported memories in order under the newly created card id', async () => {
+it('restores imported memories and character state under the newly created card id', async () => {
   const memories = [{ description: 'First', body: 'Tea.' }, { description: 'Second', body: 'Minecraft.' }]
-  vi.mocked(importAiriCardPackage).mockResolvedValue({ card: exportToJSON({ name: 'Imported Luna', version: '1.0.0' }), memories })
+  const characterState = initialCharacterState('imported-card', DEFAULT_CHARACTER_PROFILE, characterStateContext(Date.now()))
+  vi.mocked(importAiriCardPackage).mockResolvedValue({ card: exportToJSON({ name: 'Imported Luna', version: '1.0.0' }), memories, characterState })
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: AiriCards }] })
   await router.push('/')
   const screen = await render(AiriCards, {
@@ -67,6 +70,11 @@ it('restores imported memories in order under the newly created card id', async 
     if (name === 'addCard')
       after((id) => { newCardId = id })
   })
+  const importedStates: unknown[][] = []
+  useCharacterStateStore(pinia).$onAction(({ name, args }) => {
+    if (name === 'importRecord')
+      importedStates.push(args)
+  })
   let timeout: ReturnType<typeof setTimeout> | undefined
   const imported = new Promise<void>((resolve, reject) => {
     timeout = setTimeout(() => reject(new Error('Import did not finish')), 5000)
@@ -80,6 +88,7 @@ it('restores imported memories in order under the newly created card id', async 
     await imported
     expect(cards.getCard(newCardId)?.name).toBe('Imported Luna')
     expect(memory.entries.map(({ description, body, persona }) => ({ description, body, persona }))).toEqual(memories.map(entry => ({ ...entry, persona: newCardId })))
+    expect(importedStates).toEqual([[newCardId, characterState]])
   }
   finally {
     clearTimeout(timeout)

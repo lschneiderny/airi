@@ -21,6 +21,7 @@ vi.mock('vue-i18n', () => ({
 }))
 
 vi.mock('../../database/repos/memory.repo')
+vi.mock('../../database/repos/character-state.repo')
 
 vi.mock('localforage', () => ({
   default: {

@@ -2,9 +2,10 @@ import type { AdvanceContext, CharacterEvent, CharacterProfile, CharacterReading
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import { errorMessageFrom } from '@moeru/std'
-import { advance, applyEvent, DEFAULT_CHARACTER_PROFILE, initialCharacterState, migrateCharacterState, readCharacter } from '@proj-airi/stage-shared/character-state'
+import { advance, applyEvent, CharacterProfileSchema, DEFAULT_CHARACTER_PROFILE, initialCharacterState, migrateCharacterState, readCharacter } from '@proj-airi/stage-shared/character-state'
 import { LOGICAL_DAY_ROLLOVER_HOUR } from '@proj-airi/stage-shared/situation'
 import { defineStore } from 'pinia'
+import { safeParse } from 'valibot'
 import { computed, shallowRef, watch } from 'vue'
 
 import { characterStateRepo } from '../database/repos/character-state.repo'
@@ -49,13 +50,13 @@ export function characterStateContext(nowMs: number): AdvanceContext {
 }
 
 /**
- * The profile of a card: its resting disposition and starting stage.
- *
- * Cards carry no character profile yet, so every card uses the default one. The card field
- * `extensions.airi.modules.character` replaces this when it lands; a card without it keeps the default.
+ * The character profile a card field `extensions.airi.modules.character` holds: the value when it is a valid profile,
+ * otherwise a copy of {@link DEFAULT_CHARACTER_PROFILE}. Always a new, unfrozen object, so a card can store it.
  */
-function profileFor(_cardId: string): CharacterProfile {
-  return DEFAULT_CHARACTER_PROFILE
+export function characterProfileOf(value: unknown): CharacterProfile {
+  const result = safeParse(CharacterProfileSchema, value)
+  const profile = result.success ? result.output : DEFAULT_CHARACTER_PROFILE
+  return { resting: { ...profile.resting }, startingStage: profile.startingStage }
 }
 
 /**
@@ -87,6 +88,11 @@ export const useCharacterStateStore = defineStore('character-state', () => {
   /** The devtools clock jump, kept in the leader's memory only. */
   const clockOffsetMs = shallowRef(0)
   const cards = useAiriCardStore()
+
+  /** The profile of a card: its resting disposition and starting stage, or the default one without a valid card field. */
+  function profileFor(cardId: string): CharacterProfile {
+    return characterProfileOf(cards.cards.get(cardId)?.extensions.airi.modules.character)
+  }
 
   let profile: CharacterProfile = DEFAULT_CHARACTER_PROFILE
   /** Advances on every promotion and demotion, so a task queued under an earlier leadership is dropped. */

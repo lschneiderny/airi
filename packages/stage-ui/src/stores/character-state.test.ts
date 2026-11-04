@@ -15,12 +15,13 @@ import { useAiriCardStore } from './modules/airi-card'
 
 vi.mock('../database/repos/character-state.repo')
 
-// The store reads only the active card id from the card store, whose real setup needs an i18n application context.
+// The store reads only the active card id and the cards' profiles from the card store, whose real setup needs an i18n
+// application context.
 vi.mock('./modules/airi-card', async () => {
   const { defineStore } = await import('pinia')
   return {
     useAiriCardStore: defineStore('airi-card', {
-      state: () => ({ activeCardId: 'default' }),
+      state: () => ({ activeCardId: 'default', cards: new Map<string, unknown>() }),
     }),
   }
 })
@@ -250,6 +251,27 @@ describe('useCharacterStateStore', () => {
     expect(store.leaderRecord?.appliedEvents.recent.map(applied => applied.id)).toEqual(['other-moment'])
     // Switching saved the previous card's record at once.
     expect((await characterStateRepo.load('default') as CharacterStateRecordV1).appliedEvents.recent.map(applied => applied.id)).toEqual(['moment-1'])
+  })
+
+  it('starts a fresh state from the profile of the card and ignores an invalid one', async () => {
+    const cardProfile = { resting: { valence: -0.3, energy: 0.2, tension: 0.4 }, startingStage: 'close' }
+    const { store } = leaderStore()
+    await store.ready()
+    // The mocked card store holds only what the character-state store reads of a card.
+    const cards: Map<string, unknown> = useAiriCardStore().cards
+    const cardWith = (character: unknown) => ({ extensions: { airi: { modules: { character } } } })
+    cards.set('profiled', cardWith(cardProfile))
+    cards.set('invalid', cardWith({ ...cardProfile, startingStage: 'intimate' }))
+
+    await store.importRecord('profiled', null)
+    await store.importRecord('invalid', null)
+
+    const profiled = await characterStateRepo.load('profiled') as CharacterStateRecordV1
+    expect(profiled.temperament.axes).toEqual(cardProfile.resting)
+    expect(profiled.relationship.stages.closeness).toBe('close')
+    const invalid = await characterStateRepo.load('invalid') as CharacterStateRecordV1
+    expect(invalid.temperament.axes).toEqual(DEFAULT_CHARACTER_PROFILE.resting)
+    expect(invalid.relationship.stages.closeness).toBe('stranger')
   })
 
   it('imports a record, exports it, and forgets everything', async () => {

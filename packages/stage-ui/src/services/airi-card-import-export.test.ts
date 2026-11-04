@@ -1,13 +1,16 @@
 import type { ccv3 } from '@proj-airi/ccc'
+import type { CharacterProfile } from '@proj-airi/stage-shared/character-state'
 
 import type { AiriCard, AiriExtension } from '../types/airiCard'
 
 import JSZip from 'jszip'
 
 import { exportToJSON } from '@proj-airi/ccc'
+import { applyEvent, DEFAULT_CHARACTER_PROFILE, initialCharacterState } from '@proj-airi/stage-shared/character-state'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { characterStateContext } from '../stores/character-state'
 import { DisplayModelFormat, useDisplayModelsStore } from '../stores/display-models'
 import { exportAiriCardPackage, importAiriCardPackage } from './airi-card-import-export'
 
@@ -189,6 +192,87 @@ describe('airi card package import/export', () => {
       file: new File([await zip.generateAsync({ type: 'arraybuffer' })], 'invalid-memories.zip'),
       displayModelsStore: useDisplayModelsStore(),
     })).rejects.toMatchObject({ code: 'invalid-file', message: 'Invalid memories.json' })
+  })
+
+  it('round trips the character profile and the character state record', async () => {
+    const displayModelsStore = useDisplayModelsStore()
+    const profile: CharacterProfile = { resting: { valence: 0.4, energy: -0.2, tension: 0.3 }, startingStage: 'friendly' }
+    const card = createCard()
+    card.extensions.airi.modules.displayModelId = undefined
+    card.extensions.airi.modules.character = profile
+    const context = characterStateContext(Date.now())
+    const state = applyEvent(initialCharacterState('source-card', profile, context), {
+      kind: 'significant-positive',
+      id: 'moment-1',
+      atMs: context.nowMs,
+      reason: 'shared a good moment',
+    }, profile, context)
+
+    const exported = await exportAiriCardPackage({ card, displayModelsStore, characterState: state })
+    const zip = await JSZip.loadAsync(await exported.arrayBuffer())
+    expect(await readJson(zip, 'manifest.json')).toMatchObject({ resources: { characterState: { path: 'character-state.json' } } })
+    expect(airiFrom(await readJson<ccv3.CharacterCardV3>(zip, 'card.json')).modules.character).toEqual(profile)
+
+    const imported = await importAiriCardPackage({ file: new File([exported], 'state.zip'), displayModelsStore })
+    expect(airiFrom(imported.card).modules.character).toEqual(profile)
+    // The record keeps everything but its card id, which the store replaces with the new card's.
+    expect({ ...imported.characterState, cardId: state.cardId }).toEqual(state)
+    expect(imported.characterState?.mood.contributions.map(contribution => contribution.id)).toEqual(['moment-1'])
+  })
+
+  it('imports a package without a profile or state with the default profile and no state record', async () => {
+    const card = createCard()
+    card.extensions.airi.modules.displayModelId = undefined
+    const imported = await importAiriCardPackage({
+      file: await packageFile(exportToJSON(card), { resources: {} }),
+      displayModelsStore: useDisplayModelsStore(),
+    })
+    expect(airiFrom(imported.card).modules.character).toEqual(DEFAULT_CHARACTER_PROFILE)
+    expect(imported.characterState).toBeNull()
+  })
+
+  it('replaces a profile with out-of-range values by the default profile', async () => {
+    const source = exportToJSON(createCard())
+    const airi = airiFrom(source)
+    airi.modules.displayModelId = undefined
+    Object.assign(airi.modules, { character: { resting: { valence: 5, energy: 0, tension: -1 }, startingStage: 'intimate' } })
+    const imported = await importAiriCardPackage({ file: await packageFile(source), displayModelsStore: useDisplayModelsStore() })
+    expect(airiFrom(imported.card).modules.character).toEqual(DEFAULT_CHARACTER_PROFILE)
+  })
+
+  it('imports a card with a corrupted character state entry and no state record', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const card = createCard()
+    card.extensions.airi.modules.displayModelId = undefined
+    const zip = await JSZip.loadAsync(await (await packageFile(exportToJSON(card), {
+      resources: { characterState: { path: 'character-state.json' } },
+    })).arrayBuffer())
+    zip.file('character-state.json', '{"version": 1, "mood": ')
+    const imported = await importAiriCardPackage({
+      file: new File([await zip.generateAsync({ type: 'arraybuffer' })], 'corrupt-state.zip'),
+      displayModelsStore: useDisplayModelsStore(),
+    })
+    expect(imported.card.data.name).toBe('AIRI / Test Card')
+    expect(imported.characterState).toBeNull()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('character state'), expect.stringContaining('JSON'))
+  })
+
+  it('imports a malformed character state record as a fresh state from the imported profile', async () => {
+    const profile: CharacterProfile = { resting: { valence: -0.3, energy: 0.2, tension: 0.4 }, startingStage: 'close' }
+    const card = createCard()
+    card.extensions.airi.modules.displayModelId = undefined
+    card.extensions.airi.modules.character = profile
+    const zip = await JSZip.loadAsync(await (await packageFile(exportToJSON(card), {
+      resources: { characterState: { path: 'character-state.json' } },
+    })).arrayBuffer())
+    zip.file('character-state.json', JSON.stringify({ version: 1, cardId: 42, mood: 'furious', relationship: { levels: 'high' } }))
+    const imported = await importAiriCardPackage({
+      file: new File([await zip.generateAsync({ type: 'arraybuffer' })], 'foreign-state.zip'),
+      displayModelsStore: useDisplayModelsStore(),
+    })
+    expect(imported.characterState?.mood.contributions).toEqual([])
+    expect(imported.characterState?.temperament.axes).toEqual(profile.resting)
+    expect(imported.characterState?.relationship.stages.closeness).toBe('close')
   })
 })
 
