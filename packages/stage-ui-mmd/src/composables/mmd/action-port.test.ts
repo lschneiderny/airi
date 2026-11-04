@@ -192,4 +192,26 @@ describe('mmd action port with the stance director', () => {
     port.dispose()
     expect(await pending).toEqual({ success: false, error: 'The stage went away before the request was answered.' })
   })
+
+  it('fails a pending tool request that another source superseded before the director read it', async () => {
+    const { port, frame, submit } = stage()
+    frame(0)
+
+    const pending = port.perform('moonwalk')
+    // An ACT cue goes through the scene's perform entry, not the port, and takes the single request slot.
+    submit('bow')
+    frame(100)
+
+    expect(await pending).toEqual({ success: false, error: 'A newer action request replaced this one.' })
+  })
+
+  it('reports no label for a performing clip the model may not name', async () => {
+    const { port, frame, submit } = stage()
+    frame(0)
+
+    submit('cartwheel')
+    frame(100)
+
+    expect(port.state()).toEqual({ performing: { label: null, phase: 'playing', endsInSeconds: DANCE_MS / 1000 } })
+  })
 })
