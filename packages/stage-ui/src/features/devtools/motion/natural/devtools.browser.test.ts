@@ -1,6 +1,8 @@
 import type { Live2DTouchDebugSnapshot } from '@proj-airi/stage-ui-live2d/composables/live2d/touch-debug'
 import type { AffectTraceSink, NaturalCaptureResult } from '@proj-airi/stage-ui-live2d/stores'
 
+import type { EmotionPulse, GestureRequest } from '../../../../stores/natural-performance-override'
+
 import en from '@proj-airi/i18n/locales/en'
 
 import { defaultExpressionPerformanceSettings, parseAffectTrace } from '@proj-airi/stage-shared/expression-performance'
@@ -8,9 +10,9 @@ import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d
 import { setAffectTraceSink, setNaturalTraceSink, useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { until } from '@vueuse/core'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
-import { watch } from 'vue'
+import { shallowRef, watch } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import NaturalMotionDevtools from './devtools.vue'
@@ -115,24 +117,31 @@ describe('natural motion lab', () => {
 
   it('plays a gesture with the chosen count while the driver is Natural', async () => {
     const { screen, override } = await renderLab()
+    const requests = shallowRef<GestureRequest[]>([])
+    onTestFinished(override.onGestureRequest((request) => {
+      requests.value = [...requests.value, request]
+    }))
     useSettingsLive2d().live2dMotionDriver = 'natural'
     const nod = screen.getByRole('button', { name: /gestures\.names\.nod/ })
     await expect.element(nod).toBeEnabled()
 
     await screen.getByRole('button', { name: '2', exact: true }).click()
+    const nodded = until(() => requests.value.length).toBe(1, { timeout: 5000, throwOnTimeout: true })
     await nod.click()
-    expect(override.gestureRequest).toEqual({ kind: 'nod', count: 2, seq: 1 })
+    await nodded
+    expect(requests.value).toEqual([{ kind: 'nod', count: 2 }])
 
+    const shrugged = until(() => requests.value.length).toBe(2, { timeout: 5000, throwOnTimeout: true })
     await screen.getByRole('button', { name: /gestures\.names\.shrug/ }).click()
-    expect(override.gestureRequest).toEqual({ kind: 'shrug', count: 1, seq: 2 })
+    await shrugged
+    expect(requests.value).toEqual([{ kind: 'nod', count: 2 }, { kind: 'shrug', count: 1 }])
   })
 
   it.each(['magic', 'universal'] as const)('disables the gesture buttons under %s', async (driver) => {
-    const { screen, override } = await renderLab()
+    const { screen } = await renderLab()
     useSettingsLive2d().live2dMotionDriver = driver
     for (const kind of ['nod', 'shake', 'shrug', 'lean', 'glance'])
       await expect.element(screen.getByRole('button', { name: new RegExp(`gestures\\.names\\.${kind}`) })).toBeDisabled()
-    expect(override.gestureRequest).toBeNull()
   })
 
   it('writes the performance override from its controls', async () => {
@@ -174,15 +183,20 @@ describe('natural motion lab', () => {
 
   it('advances the emotion pulse sequence for each click', async () => {
     const { screen, override } = await renderLab()
+    const pulses = shallowRef<EmotionPulse[]>([])
+    onTestFinished(override.onEmotionPulse((pulse) => {
+      pulses.value = [...pulses.value, pulse]
+    }))
     const happy = screen.getByRole('button', { name: /names\.happy/ })
 
-    const pulsed = until(() => override.emotionPulse?.seq).toBe(2, { timeout: 5000, throwOnTimeout: true })
+    const pulsed = until(() => pulses.value.length).toBe(2, { timeout: 5000, throwOnTimeout: true })
 
     await happy.click()
     await happy.click()
 
     await pulsed
-    expect(override.emotionPulse).toEqual({ name: 'happy', nominal: defaultExpressionPerformanceSettings.intensity.clear, seq: 2 })
+    const clear = { name: 'happy', nominal: defaultExpressionPerformanceSettings.intensity.clear }
+    expect(pulses.value).toEqual([clear, clear])
   })
 
   it('emits the configured clear nominal from the real pulse button', async () => {
@@ -190,12 +204,16 @@ describe('natural motion lab', () => {
     const settings = useExpressionPerformanceSettings()
     expect(await settings.update({ intensity: { clear: 0.7 } })).toEqual({ success: true })
 
-    const pulsed = until(() => override.emotionPulse?.seq).toBe(1, { timeout: 5000, throwOnTimeout: true })
+    const pulses = shallowRef<EmotionPulse[]>([])
+    onTestFinished(override.onEmotionPulse((pulse) => {
+      pulses.value = [...pulses.value, pulse]
+    }))
+    const pulsed = until(() => pulses.value.length).toBe(1, { timeout: 5000, throwOnTimeout: true })
 
     await screen.getByRole('button', { name: /names\.happy/ }).click()
 
     await pulsed
-    expect(override.emotionPulse).toEqual({ name: 'happy', nominal: 0.7, seq: 1 })
+    expect(pulses.value).toEqual([{ name: 'happy', nominal: 0.7 }])
   })
 
   it('starts an affect recording in the stage and saves the exported trace through the sink', async () => {

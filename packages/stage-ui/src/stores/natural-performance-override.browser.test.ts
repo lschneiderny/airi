@@ -1,10 +1,12 @@
 import type { LeadershipMode, SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
+import type { EmotionPulse, GestureRequest } from './natural-performance-override'
+
 import { until } from '@vueuse/core'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createApp } from 'vue'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { createApp, shallowRef } from 'vue'
 
 import { useNaturalPerformanceOverride } from './natural-performance-override'
 
@@ -56,44 +58,88 @@ describe('natural performance override', () => {
     await vi.waitFor(() => expect(stage.performanceOverride).toEqual({ mode: 'listening', energy: 0.8 }))
   })
 
-  it('advances the emotion pulse sequence for each pulse, including repeats', async () => {
+  it('delivers every lab emotion pulse to the stage window, repeats included', async () => {
     const namespace = `natural-override-${Math.random().toString(36).slice(2)}`
 
     const stageWindow = createWindow(namespace, 'leader-only')
     setActivePinia(stageWindow.pinia)
     const stage = useNaturalPerformanceOverride()
+    const pulses = shallowRef<EmotionPulse[]>([])
+    onTestFinished(stage.onEmotionPulse((pulse) => {
+      pulses.value = [...pulses.value, pulse]
+    }))
 
     const labWindow = createWindow(namespace, 'follower-only')
     setActivePinia(labWindow.pinia)
     const lab = useNaturalPerformanceOverride()
 
-    const pulsed = until(() => stage.emotionPulse?.seq).toBe(2, { timeout: 5000, throwOnTimeout: true })
-
+    const pulsed = until(() => pulses.value.length).toBe(2, { timeout: 5000, throwOnTimeout: true })
     lab.pulseEmotion('happy', 1)
     lab.pulseEmotion('happy', 1)
-
     await pulsed
-    expect(stage.emotionPulse).toEqual({ name: 'happy', nominal: 1, seq: 2 })
+
+    expect(pulses.value).toEqual([{ name: 'happy', nominal: 1 }, { name: 'happy', nominal: 1 }])
   })
 
-  it('advances the gesture request sequence for each request, including repeats', async () => {
+  it('delivers every lab gesture request to the stage window, repeats included', async () => {
     const namespace = `natural-override-${Math.random().toString(36).slice(2)}`
 
     const stageWindow = createWindow(namespace, 'leader-only')
     setActivePinia(stageWindow.pinia)
     const stage = useNaturalPerformanceOverride()
+    const requests = shallowRef<GestureRequest[]>([])
+    onTestFinished(stage.onGestureRequest((request) => {
+      requests.value = [...requests.value, request]
+    }))
 
     const labWindow = createWindow(namespace, 'follower-only')
     setActivePinia(labWindow.pinia)
     const lab = useNaturalPerformanceOverride()
 
-    const requested = until(() => stage.gestureRequest?.seq).toBe(2, { timeout: 5000, throwOnTimeout: true })
-
+    const requested = until(() => requests.value.length).toBe(2, { timeout: 5000, throwOnTimeout: true })
     lab.requestGesture('nod', 2)
     lab.requestGesture('nod', 2)
-
     await requested
-    expect(stage.gestureRequest).toEqual({ kind: 'nod', count: 2, seq: 2 })
+
+    expect(requests.value).toEqual([{ kind: 'nod', count: 2 }, { kind: 'nod', count: 2 }])
+  })
+
+  it('never replays an earlier pulse or gesture to a stage window that opens later', async () => {
+    // A replicated command would reach a reloaded stage in its first snapshot and fire again.
+    const namespace = `natural-override-${Math.random().toString(36).slice(2)}`
+
+    const labWindow = createWindow(namespace, 'leader-only')
+    setActivePinia(labWindow.pinia)
+    const lab = useNaturalPerformanceOverride()
+    lab.overrideEnabled = true
+    lab.pulseEmotion('sad', 0.5)
+    lab.requestGesture('shrug', 1)
+
+    const stageWindow = createWindow(namespace, 'follower-only')
+    setActivePinia(stageWindow.pinia)
+    const stage = useNaturalPerformanceOverride()
+    const pulses = shallowRef<EmotionPulse[]>([])
+    const requests = shallowRef<GestureRequest[]>([])
+    onTestFinished(stage.onEmotionPulse((pulse) => {
+      pulses.value = [...pulses.value, pulse]
+    }))
+    onTestFinished(stage.onGestureRequest((request) => {
+      requests.value = [...requests.value, request]
+    }))
+    // The late window has taken the lab's snapshot, so any replicated command would have arrived by now.
+    await vi.waitFor(() => expect(stage.overrideEnabled).toBe(true))
+
+    // Commands from one window arrive in order, so seeing these sentinels proves nothing earlier is still on its way.
+    const sentinels = Promise.all([
+      until(() => pulses.value.length).toBeTruthy({ timeout: 5000, throwOnTimeout: true }),
+      until(() => requests.value.length).toBeTruthy({ timeout: 5000, throwOnTimeout: true }),
+    ])
+    lab.pulseEmotion('happy', 1)
+    lab.requestGesture('nod', 2)
+    await sentinels
+
+    expect(pulses.value).toEqual([{ name: 'happy', nominal: 1 }])
+    expect(requests.value).toEqual([{ kind: 'nod', count: 2 }])
   })
 
   it('restores the defaults on resetState', () => {
@@ -104,15 +150,11 @@ describe('natural performance override', () => {
     store.overrideEnabled = true
     store.overrideMode = 'thinking'
     store.overrideEnergy = 0.2
-    store.pulseEmotion('sad', 0.5)
-    store.requestGesture('shrug', 1)
     store.resetState()
 
     expect(store.overrideEnabled).toBe(false)
     expect(store.overrideMode).toBe('idle')
     expect(store.overrideEnergy).toBeNull()
-    expect(store.emotionPulse).toBeNull()
-    expect(store.gestureRequest).toBeNull()
     expect(store.performanceOverride).toBeNull()
   })
 
