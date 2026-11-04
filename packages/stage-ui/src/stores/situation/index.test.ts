@@ -29,6 +29,17 @@ import { EXCHANGE_QUIET_MS } from './sensors/exchange'
 import { FOREGROUND_SAMPLE_STALE_HIDDEN_MS, FOREGROUND_SAMPLE_STALE_VISIBLE_MS } from './sensors/foreground'
 import { situationTouchObservedEvent } from './touch-bus'
 
+// The situation store feeds the character state, whose store reads the active card id from the card store. The real
+// card store's setup needs an i18n application context.
+vi.mock('../modules/airi-card', async () => {
+  const { defineStore } = await import('pinia')
+  return {
+    useAiriCardStore: defineStore('airi-card', {
+      state: () => ({ activeCardId: 'default' }),
+    }),
+  }
+})
+
 // The real urge gate and reaction policy, wrapped so tests can read their decisions and the memory each one left.
 vi.mock(import('@proj-airi/stage-shared/situation'), async (importOriginal) => {
   const actual = await importOriginal()

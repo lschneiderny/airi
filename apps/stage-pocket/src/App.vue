@@ -5,6 +5,7 @@ import { usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
 import { initializeAnalytics, isAnalyticsAvailableInBuild } from '@proj-airi/stage-ui/libs/product-signals'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
 import { useCharacterOrchestratorStore } from '@proj-airi/stage-ui/stores/character'
+import { useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useModsServerChannelStore } from '@proj-airi/stage-ui/stores/mods/api/channel-server'
 import { useContextBridgeStore } from '@proj-airi/stage-ui/stores/mods/api/context-bridge'
@@ -42,6 +43,7 @@ const onboardingStore = useOnboardingStore()
 const syncedPinia = usePiniaSynced()
 const serverChannelStore = useModsServerChannelStore()
 const characterOrchestratorStore = useCharacterOrchestratorStore()
+const characterStateStore = useCharacterStateStore()
 const situationStore = useSituationStore()
 const settingsAudioDeviceStore = useSettingsAudioDevice()
 const { showingSetup } = storeToRefs(onboardingStore)
@@ -117,6 +119,8 @@ async function loadStartup() {
       void serverChannelStore.initialize({ possibleEvents: ['ui:configure'], connector: getHostWebSocketConnector }).catch(error => console.error('Mods server initialization failed:', error))
       contextBridgeStore.initialize()
       characterOrchestratorStore.initialize()
+      // The situation store feeds the character state, so the character state leads first.
+      characterStateStore.initialize(syncedPinia)
       situationStore.initialize(syncedPinia)
     })
     await startup.run('modelData', () => displayModelsStore.loadDisplayModelsFromIndexedDB())
@@ -145,6 +149,7 @@ watch(() => [startup.resources.find(resource => resource.id === 'modelSelection'
 onUnmounted(() => {
   contextBridgeStore.dispose()
   situationStore.dispose()
+  characterStateStore.dispose()
 })
 
 function continueWithoutModel() {

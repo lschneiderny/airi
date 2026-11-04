@@ -13,6 +13,7 @@ import { initializeAnalytics } from '@proj-airi/stage-ui/libs/product-signals'
 import { isSherpawModelBundled, setSherpawModelAssetHost } from '@proj-airi/stage-ui/libs/providers/providers/sherpaw/model-assets'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
 import { useCharacterOrchestratorStore } from '@proj-airi/stage-ui/stores/character'
+import { useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 import { usePluginHostInspectorStore } from '@proj-airi/stage-ui/stores/devtools/plugin-host-debug'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
@@ -109,6 +110,7 @@ const setLocale = useElectronEventaInvoke(i18nSetLocale)
 const windowContext = resolveRendererWindowContext()
 const initialRoutePath = resolveInitialRendererRoutePath(route.path)
 const chatStore = useChatStore()
+const characterStateStore = useCharacterStateStore()
 const situationStore = useSituationStore()
 const builtinToolsStore = useTamagotchiBuiltinToolsStore()
 const homeAssistantStore = useTamagotchiHomeAssistantStore()
@@ -383,6 +385,8 @@ onMounted(async () => {
   await chatStore.initialize(syncedPinia)
   // The desktop app is the only host whose leader lets the character speak up on her own.
   situationStore.setHostCapabilities({ unprompted: true })
+  // The situation store feeds the character state, so the character state leads first.
+  characterStateStore.initialize(syncedPinia)
   situationStore.initialize(syncedPinia)
 
   await fullStageRuntime?.initialize()
@@ -403,6 +407,7 @@ onUnmounted(() => {
   stopLeadershipListener?.()
   chatStore.dispose()
   situationStore.dispose()
+  characterStateStore.dispose()
   fullStageRuntime?.dispose()
   void chatStreamView?.dispose()
 })

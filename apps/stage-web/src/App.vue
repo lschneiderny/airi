@@ -6,6 +6,7 @@ import { usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
 import { initializeAnalytics, isAnalyticsAvailableInBuild } from '@proj-airi/stage-ui/libs/product-signals'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
 import { useCharacterOrchestratorStore } from '@proj-airi/stage-ui/stores/character'
+import { useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useModsServerChannelStore } from '@proj-airi/stage-ui/stores/mods/api/channel-server'
@@ -45,6 +46,7 @@ const settingsStore = useSettings()
 const settings = storeToRefs(settingsStore)
 const onboardingStore = useOnboardingStore()
 const chatStore = useChatStore()
+const characterStateStore = useCharacterStateStore()
 const situationStore = useSituationStore()
 const syncedPinia = usePiniaSynced()
 const serverChannelStore = useModsServerChannelStore()
@@ -145,6 +147,8 @@ async function loadStartup() {
     })
     await startup.run('chat', async () => {
       await chatStore.initialize(syncedPinia)
+      // The situation store feeds the character state, so the character state leads first.
+      characterStateStore.initialize(syncedPinia)
       situationStore.initialize(syncedPinia)
     })
     await startup.run('services', () => {
@@ -179,6 +183,7 @@ watch(() => [startup.resources.find(resource => resource.id === 'modelSelection'
 onUnmounted(() => {
   chatStore.dispose()
   situationStore.dispose()
+  characterStateStore.dispose()
   contextBridgeStore.dispose()
 })
 

@@ -20,6 +20,17 @@ import { COMPOSER_INPUT_RECENT_MS, GATE_INTERVAL_MS, useSituationStore } from '.
 import { ingestSparkNotify, notifyObservationFrom } from '../../situation/sensors/notify'
 import { useContextBridgeStore } from './context-bridge'
 
+// The situation store feeds the character state, whose store reads the active card id from the card store. The real
+// card store's setup needs an i18n application context.
+vi.mock('../../modules/airi-card', async () => {
+  const { defineStore } = await import('pinia')
+  return {
+    useAiriCardStore: defineStore('airi-card', {
+      state: () => ({ activeCardId: 'default' }),
+    }),
+  }
+})
+
 type SparkNotifyEvent = WebSocketEventOf<'spark:notify'>
 
 // The orchestrator ingests the notify into the situation and remembers its id by topic, as the real store does, and
