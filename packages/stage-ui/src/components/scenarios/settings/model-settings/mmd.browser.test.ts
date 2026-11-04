@@ -1,3 +1,5 @@
+import type { ClipKind, ClipLayer, ClipMetaNote, DerivedClipMeta } from '@proj-airi/stage-ui-mmd'
+
 import type { DesktopStageHost, DesktopStageState } from './desktop-stage'
 import type { ExpressionPanelEntry } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
@@ -439,5 +441,123 @@ describe('mmd model settings motion', () => {
     await screen.getByRole('option', { name: t('settings.mmd.motion.stance.none'), exact: true }).click()
     await vi.waitFor(() => expect(store.stanceSlots[MODEL_ID]).toEqual({ sleep: 'gone' }))
     await expect.element(sit).toHaveValue(t('settings.mmd.motion.stance.none'))
+  })
+})
+
+/** Derived metadata as the scene publishes it after import. */
+function clipMeta(name: string, kind: ClipKind, layer: ClipLayer, durationMs: number, notes: ClipMetaNote[] = []): DerivedClipMeta & { name: string } {
+  return { name, kind, layer, loop: kind === 'stance', durationMs, label: name, notes }
+}
+
+describe('mmd model settings clips', () => {
+  beforeAll(async () => {
+    await Promise.all([
+      import('@proj-airi/stage-ui-mmd'),
+      import('./mmd.vue'),
+      import('virtual:uno.css'),
+    ])
+  }, 60_000)
+
+  afterEach(() => {
+    cleanup()
+    localStorage.clear()
+  })
+
+  const aiMayUse = (name: string) => `${t('settings.mmd.animation.clips.headers.ai-may-use')}: ${name}`
+  const label = (name: string) => `${t('settings.mmd.animation.clips.headers.label')}: ${name}`
+
+  async function renderClipTable() {
+    const [{ useMMD }, { useSettingsStageModel }, { default: MMDSettings }] = await Promise.all([
+      import('@proj-airi/stage-ui-mmd'),
+      import('../../../../stores/settings/stage-model'),
+      import('./mmd.vue'),
+    ])
+    const pinia = createPinia()
+    const store = useMMD(pinia)
+    store.resetState()
+    // The reset's storage write settles on the next tick and would overwrite a seed made in the same tick.
+    await nextTick()
+    useSettingsStageModel(pinia).stageModelSelected = MODEL_ID
+    store.availableMotions = [
+      { id: 'mmd-motion-1', name: 'arms-wave' },
+      { id: 'mmd-motion-2', name: 'legs-step' },
+      { id: 'mmd-motion-3', name: 'dance-long' },
+      { id: 'mmd-motion-4', name: 'empty' },
+    ]
+    store.availableClipMeta = {
+      'arms-wave': clipMeta('arms-wave', 'gesture', 'upper', 2_000),
+      'legs-step': clipMeta('legs-step', 'action', 'full', 3_000),
+      'dance-long': clipMeta('dance-long', 'dance', 'full', 50_000),
+      'empty': clipMeta('empty', 'unusable', 'none', 1_000, ['no-animated-bones']),
+    }
+    const screen = await render(MMDSettings, {
+      props: { palette: [], runtimeSnapshot: localSnapshot },
+      global: { plugins: [pinia, createTestI18n()] },
+    })
+    expect(t('settings.mmd.animation.clips.headers.ai-may-use')).not.toBe('settings.mmd.animation.clips.headers.ai-may-use')
+    await screen.getByText(t('settings.mmd.animation.title'), { exact: true }).click()
+    return { screen, store }
+  }
+
+  it('renders one row per imported clip with the derived kind and layer badges and the unusable note', async () => {
+    const { screen } = await renderClipTable()
+
+    await expect.element(screen.getByRole('row', { name: /arms-wave/ })).toBeVisible()
+    expect(screen.getByRole('row').elements()).toHaveLength(5) // header plus four clips
+    await expect.element(screen.getByText(t('settings.mmd.animation.clips.kinds.gesture'), { exact: true })).toBeVisible()
+    await expect.element(screen.getByText(t('settings.mmd.animation.clips.kinds.action'), { exact: true })).toBeVisible()
+    await expect.element(screen.getByText(t('settings.mmd.animation.clips.kinds.dance'), { exact: true })).toBeVisible()
+    expect(screen.getByText(t('settings.mmd.animation.clips.layers.upper'), { exact: true }).elements()).toHaveLength(1)
+    expect(screen.getByText(t('settings.mmd.animation.clips.layers.full'), { exact: true }).elements()).toHaveLength(2)
+    await expect.element(screen.getByText(t('settings.mmd.animation.clips.kinds.unusable'), { exact: true })).toBeVisible()
+    await expect.element(screen.getByText(t('settings.mmd.animation.clips.notes.no-animated-bones'), { exact: true })).toBeVisible()
+    // The kind select is named per row and starts on Auto.
+    await expect.element(screen.getByRole('combobox', { name: `${t('settings.mmd.animation.clips.headers.kind')}: legs-step` })).toHaveTextContent(t('settings.mmd.animation.clips.kinds.auto'))
+  })
+
+  it('refuses a duplicate or malformed label with an inline error and leaves the store unchanged', async () => {
+    const { screen, store } = await renderClipTable()
+
+    await screen.getByRole('textbox', { name: label('arms-wave') }).fill('wave')
+    await vi.waitFor(() => expect(store.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave'))
+
+    const second = screen.getByRole('textbox', { name: label('legs-step') })
+    await second.fill('wave')
+    await expect.element(screen.getByText(t('settings.mmd.animation.clips.errors.duplicate'), { exact: true })).toBeVisible()
+    expect(store.curationFor(MODEL_ID, 'legs-step').label).toBeNull()
+    expect(Object.values(store.clipCuration[MODEL_ID] ?? {}).filter(curation => curation.label === 'wave')).toHaveLength(1)
+
+    for (const malformed of ['Wave', 'wave!', 'a'.repeat(33)]) {
+      await second.fill(malformed)
+      await expect.element(screen.getByText(t('settings.mmd.animation.clips.errors.invalid'), { exact: true })).toBeVisible()
+      expect(store.curationFor(MODEL_ID, 'legs-step').label).toBeNull()
+    }
+
+    // A valid label clears the error and lands in the store.
+    await second.fill('step')
+    await vi.waitFor(() => expect(store.curationFor(MODEL_ID, 'legs-step').label).toBe('step'))
+    await expect.element(screen.getByText(t('settings.mmd.animation.clips.errors.invalid'), { exact: true })).not.toBeInTheDocument()
+  })
+
+  it('exposes a labeled gesture to the AI through the switch and persists it', async () => {
+    const { screen, store } = await renderClipTable()
+    await screen.getByRole('textbox', { name: label('arms-wave') }).fill('wave')
+    await vi.waitFor(() => expect(store.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave'))
+
+    const exposed = screen.getByRole('switch', { name: aiMayUse('arms-wave') })
+    await expect.element(exposed).not.toBeDisabled()
+    await exposed.click()
+    await nextTick()
+    expect(store.exposedActions(MODEL_ID)).toEqual([{ name: 'arms-wave', label: 'wave', kind: 'gesture', layer: 'upper', exposed: true }])
+    expect(JSON.parse(localStorage.getItem('settings/mmd/clip-curation') ?? 'null')[MODEL_ID]['arms-wave']).toEqual({ label: 'wave', kind: null, loop: null, aiMayUse: true })
+  })
+
+  it('disables the switch for an unlabeled or unusable clip and the loop toggle for a dance', async () => {
+    const { screen } = await renderClipTable()
+
+    await expect.element(screen.getByRole('switch', { name: aiMayUse('legs-step') })).toBeDisabled()
+    await expect.element(screen.getByRole('switch', { name: aiMayUse('empty') })).toBeDisabled()
+    await expect.element(screen.getByRole('switch', { name: `${t('settings.mmd.animation.clips.headers.loop')}: dance-long` })).toBeDisabled()
+    await expect.element(screen.getByRole('switch', { name: `${t('settings.mmd.animation.clips.headers.loop')}: legs-step` })).not.toBeDisabled()
   })
 })

@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import type { MMDGazeMode, MMDMotionDriver, MMDRoamMode, MorphSlot } from '@proj-airi/stage-ui-mmd'
+import type { ClipKind, MMDClipCuration, MMDGazeMode, MMDMotionDriver, MMDRoamMode, MorphSlot } from '@proj-airi/stage-ui-mmd'
 import type { SelectTabOption } from '@proj-airi/ui'
 
 import type { DesktopStageDisplay, DesktopStageMode } from './desktop-stage'
 import type { ExpressionPanelCommand, ExpressionPanelSnapshot, ExpressionPanelSource } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
-import { controlConfig, useMMD, useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
-import { Button, FieldCheckbox, FieldCombobox, FieldRange, GhostButton, SelectTab } from '@proj-airi/ui'
+import { CLIP_LABEL_PATTERN, controlConfig, effectiveLayer, useMMD, useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
+import { Button, Checkbox, FieldCheckbox, FieldCombobox, FieldRange, GhostButton, Input, Select, SelectTab } from '@proj-airi/ui'
 import { useFileDialog } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
@@ -73,6 +73,7 @@ const {
   stanceSlots,
   idleMotionName,
   availableMotions,
+  availableClipMeta,
   availableMorphs,
   availableMaterials,
   materialOpacity,
@@ -264,7 +265,107 @@ vmdDialog.onChange(async (files) => {
 })
 
 function playMotionOnce(name: string) {
-  mmdStore.playOneShotAction(name, false)
+  mmdStore.requestPerform(name, { source: 'debug' })
+}
+
+// === Clip library ===
+/** The kinds a user can set. */
+const KIND_OVERRIDES: readonly ClipKind[] = ['gesture', 'action', 'dance', 'stance']
+/** Option value for "auto" (`null` in the store): the select rejects an empty value, and no kind contains a slash. */
+const KIND_AUTO = '/auto'
+const kindOptions = computed(() => [
+  { label: t('settings.mmd.animation.clips.kinds.auto'), value: KIND_AUTO },
+  ...KIND_OVERRIDES.map(kind => ({ label: t(`settings.mmd.animation.clips.kinds.${kind}`), value: kind })),
+])
+
+interface ClipRow {
+  name: string
+  /** `null` until the scene has derived the clip (model not loaded yet). */
+  derivedKind: ClipKind | null
+  effectiveKind: ClipKind | null
+  layer: 'upper' | 'full' | 'none' | null
+  downgraded: boolean
+  notes: readonly string[]
+  kindOverride: ClipKind | typeof KIND_AUTO
+  loop: boolean
+  loopLocked: boolean
+  label: string | null
+  exposed: boolean
+  exposeHint: string | null
+}
+
+// `curationFor` reads the store's `clipCuration`, so an edit from another window recomputes the rows.
+const clipRows = computed<ClipRow[]>(() => availableMotions.value.map(({ name }) => {
+  const meta = availableClipMeta.value[name]
+  const curation = mmdStore.curationFor(stageModelSelected.value, name)
+  const effectiveKind = curation.kind ?? meta?.kind ?? null
+  const layer = meta ? effectiveLayer(meta, curation.kind) : null
+  const exposeHint = curation.label === null
+    ? t('settings.mmd.animation.clips.hints.needs-label')
+    : effectiveKind === 'stance' || effectiveKind === 'unusable'
+      ? t('settings.mmd.animation.clips.hints.kind-not-usable')
+      : null
+  return {
+    name,
+    derivedKind: meta?.kind ?? null,
+    effectiveKind,
+    layer,
+    downgraded: meta !== undefined && layer !== meta.layer,
+    notes: meta?.notes ?? [],
+    kindOverride: curation.kind ?? KIND_AUTO,
+    loop: curation.loop ?? meta?.loop ?? false,
+    loopLocked: effectiveKind === 'dance',
+    label: curation.label,
+    exposed: curation.aiMayUse,
+    exposeHint,
+  }
+}))
+
+/** What the user typed per clip, so a refused label stays visible next to its error. */
+const labelDrafts = ref<Record<string, string>>({})
+const labelErrors = ref<Record<string, 'invalid' | 'duplicate'>>({})
+
+function labelDraft(row: ClipRow): string {
+  return labelDrafts.value[row.name] ?? row.label ?? ''
+}
+
+function setClipLabel(name: string, value: string | undefined) {
+  const draft = value ?? ''
+  labelDrafts.value = { ...labelDrafts.value, [name]: draft }
+  const { [name]: _, ...otherErrors } = labelErrors.value
+  // An empty input removes the label; the store refuses an empty string, so clear it with `null`.
+  if (draft === '') {
+    mmdStore.setCuration(stageModelSelected.value, name, { label: null, aiMayUse: false })
+    labelErrors.value = otherErrors
+    return
+  }
+  if (!CLIP_LABEL_PATTERN.test(draft)) {
+    labelErrors.value = { ...otherErrors, [name]: 'invalid' }
+    return
+  }
+  labelErrors.value = mmdStore.setCuration(stageModelSelected.value, name, { label: draft })
+    ? otherErrors
+    : { ...otherErrors, [name]: 'duplicate' }
+}
+
+function setClipKind(name: string, value: string | undefined) {
+  if (value === undefined)
+    return
+  const kind = value === KIND_AUTO ? null : value as ClipKind
+  const patch: Partial<MMDClipCuration> = { kind }
+  const meta = availableClipMeta.value[name]
+  // A stance or unusable clip cannot stay exposed.
+  if ((kind ?? meta?.kind) === 'stance' || (kind ?? meta?.kind) === 'unusable')
+    patch.aiMayUse = false
+  mmdStore.setCuration(stageModelSelected.value, name, patch)
+}
+
+function setClipLoop(name: string, loop: boolean) {
+  mmdStore.setCuration(stageModelSelected.value, name, { loop })
+}
+
+function setClipExposed(name: string, aiMayUse: boolean) {
+  mmdStore.setCuration(stageModelSelected.value, name, { aiMayUse })
 }
 
 function removeMotion(id: string) {
@@ -592,6 +693,117 @@ function removeMotion(id: string) {
         </div>
       </div>
     </div>
+    <template v-if="clipRows.length > 0">
+      <div :class="['mt-4', 'text-sm', 'font-medium']">
+        {{ t('settings.mmd.animation.clips.title') }}
+      </div>
+      <p :class="['mb-2', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
+        {{ t('settings.mmd.animation.clips.description') }}
+      </p>
+      <div :class="['overflow-x-auto', 'rounded-lg', 'border-2', 'border-neutral-100', 'dark:border-neutral-800']">
+        <table :class="['w-full', 'text-left', 'text-xs']">
+          <thead :class="['bg-neutral-100/80', 'dark:bg-neutral-800/80', 'text-neutral-500', 'dark:text-neutral-400']">
+            <tr>
+              <th
+                v-for="header in ['name', 'derived', 'label', 'kind', 'loop', 'ai-may-use']"
+                :key="header"
+                scope="col"
+                :class="['px-1.5', 'py-1.5', 'font-medium', 'whitespace-nowrap']"
+              >
+                {{ t(`settings.mmd.animation.clips.headers.${header}`) }}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in clipRows"
+              :key="row.name"
+              :class="['border-t-2', 'border-neutral-100', 'dark:border-neutral-800', 'align-top']"
+            >
+              <td :class="['max-w-28', 'truncate', 'px-1.5', 'py-1.5', 'text-sm', 'text-neutral-900', 'dark:text-neutral-100']" :title="row.name">
+                {{ row.name }}
+              </td>
+              <td :class="['px-1.5', 'py-1.5']">
+                <span v-if="row.derivedKind === null" :class="['text-neutral-500', 'dark:text-neutral-400']">
+                  {{ t('settings.mmd.animation.clips.pending') }}
+                </span>
+                <div v-else :class="['flex', 'flex-wrap', 'items-center', 'gap-1']">
+                  <span
+                    :class="[
+                      'rounded-full px-2 py-0.5',
+                      row.derivedKind === 'unusable'
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                        : 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300',
+                    ]"
+                  >
+                    {{ t(`settings.mmd.animation.clips.kinds.${row.derivedKind}`) }}
+                  </span>
+                  <span
+                    v-if="row.layer && row.layer !== 'none'"
+                    :class="['rounded-full px-2 py-0.5', 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200']"
+                  >
+                    {{ t(`settings.mmd.animation.clips.layers.${row.layer}`) }}
+                  </span>
+                  <span
+                    v-if="row.downgraded"
+                    :title="t('settings.mmd.animation.clips.badges.downgraded-hint')"
+                    :class="['rounded-full px-2 py-0.5', 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300']"
+                  >
+                    {{ t('settings.mmd.animation.clips.badges.downgraded') }}
+                  </span>
+                  <span
+                    v-for="note in row.notes"
+                    :key="note"
+                    :class="['text-neutral-500', 'dark:text-neutral-400']"
+                  >
+                    {{ t(`settings.mmd.animation.clips.notes.${note}`) }}
+                  </span>
+                </div>
+              </td>
+              <td :class="['px-1.5', 'py-1.5', 'w-28']">
+                <Input
+                  :model-value="labelDraft(row)"
+                  :placeholder="t('settings.mmd.animation.clips.label-placeholder')"
+                  :aria-label="`${t('settings.mmd.animation.clips.headers.label')}: ${row.name}`"
+                  :aria-invalid="labelErrors[row.name] !== undefined"
+                  @update:model-value="value => setClipLabel(row.name, value)"
+                />
+                <p v-if="labelErrors[row.name]" :class="['mt-1', 'text-xs', 'text-red-500']">
+                  {{ t(`settings.mmd.animation.clips.errors.${labelErrors[row.name]}`) }}
+                </p>
+              </td>
+              <td :class="['px-1.5', 'py-1.5', 'w-26']">
+                <!-- The select root renders no element, so its accessible name comes from this label. -->
+                <label :class="['block']">
+                  <span :class="['sr-only']">{{ t('settings.mmd.animation.clips.headers.kind') }}: {{ row.name }}</span>
+                  <Select
+                    :model-value="row.kindOverride"
+                    :options="kindOptions"
+                    @update:model-value="value => setClipKind(row.name, value)"
+                  />
+                </label>
+              </td>
+              <td :class="['px-1.5', 'py-1.5']" :title="row.loopLocked ? t('settings.mmd.animation.clips.hints.loop-dance') : undefined">
+                <Checkbox
+                  :model-value="row.loop"
+                  :disabled="row.loopLocked"
+                  :aria-label="`${t('settings.mmd.animation.clips.headers.loop')}: ${row.name}`"
+                  @update:model-value="value => setClipLoop(row.name, value)"
+                />
+              </td>
+              <td :class="['px-1.5', 'py-1.5']" :title="row.exposeHint ?? undefined">
+                <Checkbox
+                  :model-value="row.exposed"
+                  :disabled="row.exposeHint !== null"
+                  :aria-label="`${t('settings.mmd.animation.clips.headers.ai-may-use')}: ${row.name}`"
+                  @update:model-value="value => setClipExposed(row.name, value)"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
   </Section>
 
   <Section

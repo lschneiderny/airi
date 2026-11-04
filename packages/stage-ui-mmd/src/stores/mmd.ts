@@ -19,18 +19,16 @@ import { ref, watch } from 'vue'
 import { EMOTION_ACTION_NAME } from '../constants/actions'
 import { supportedControl, useMMDViewControl } from './view-control'
 
+// The settings window curates clips against these contracts without a dependency on the humanoid package.
+export type { ClipKind, ClipLayer, ClipMetaNote, DerivedClipMeta } from '@proj-airi/motion-driver-humanoid/clip-meta'
+export { CLIP_LABEL_PATTERN, effectiveLayer } from '@proj-airi/motion-driver-humanoid/clip-meta'
+
 type BroadcastChannelEvents
   = | BroadcastChannelEventShouldUpdateView
-    | BroadcastChannelEventPlayOneShot
     | BroadcastChannelEventPerform
 
 interface BroadcastChannelEventShouldUpdateView {
   type: 'mmd-should-update-view'
-}
-
-interface BroadcastChannelEventPlayOneShot {
-  type: 'mmd-play-one-shot'
-  request: MMDOneShotAction
 }
 
 interface BroadcastChannelEventPerform {
@@ -111,17 +109,6 @@ function defaultCuration(): MMDClipCuration {
   return { label: null, kind: null, loop: null, aiMayUse: false }
 }
 
-// NOTICE:
-// `MMDOneShotAction` and `playOneShotAction` stay for two unchecked callers that bypass the body director.
-// `requestPerform` replaces them (plan mmd-actions-library, todos 9, 10, 14).
-// Removal condition: todo 14 deletes both once `MMD.vue` and `model-settings/mmd.vue` call `requestPerform`.
-/** Transient request to play a one-shot motion, bumped per request. */
-export interface MMDOneShotAction {
-  name: string
-  loop: boolean
-  nonce: number
-}
-
 export const useMMD = defineStore('mmd', () => {
   const { post, data } = useBroadcastChannel<BroadcastChannelEvents, BroadcastChannelEvents>({
     name: 'airi-stores-stage-ui-mmd',
@@ -129,14 +116,12 @@ export const useMMD = defineStore('mmd', () => {
   const shouldUpdateViewHooks = ref(new Set<() => void>())
 
   /**
-   * Transient one-shot motion request (fire-and-forget; not persisted).
+   * Transient perform request (fire-and-forget; not persisted).
    *
    * Declared before the broadcast handler that writes to it. Delivered across
    * Electron windows via the BroadcastChannel below — NOT localStorage, whose
    * storage events do not fire reliably between BrowserWindows.
    */
-  const oneShotAction = ref<MMDOneShotAction>()
-  /** Transient perform request (fire-and-forget; not persisted), delivered like `oneShotAction`. */
   const performRequest = ref<MMDPerformRequest>()
 
   const onShouldUpdateView = (hook: () => void) => {
@@ -154,8 +139,6 @@ export const useMMD = defineStore('mmd', () => {
   watch(data, (event) => {
     if (event?.type === 'mmd-should-update-view')
       shouldUpdateViewHooks.value.forEach(hook => hook())
-    else if (event?.type === 'mmd-play-one-shot')
-      oneShotAction.value = event.request
     else if (event?.type === 'mmd-perform')
       performRequest.value = event.request
   })
@@ -392,24 +375,13 @@ export const useMMD = defineStore('mmd', () => {
   const isModelLoaded = ref(false)
 
   /**
-   * Queues a one-shot motion. Applies it in this window and broadcasts it to
-   * the others. The bumped `nonce` makes repeat requests for the same motion
-   * re-trigger the scene's watcher.
-   *
-   * Uses the BroadcastChannel rather than localStorage because this is a
-   * transient trigger that must reach the stage window's animation manager,
-   * and localStorage storage events do not fire reliably across Electron
-   * BrowserWindows (the live stage and settings run as separate processes).
-   */
-  function playOneShotAction(name: string, loop = false) {
-    const request: MMDOneShotAction = { name, loop, nonce: (oneShotAction.value?.nonce ?? 0) + 1 }
-    oneShotAction.value = request
-    post({ type: 'mmd-play-one-shot', request })
-  }
-
-  /**
    * Queues a clip to perform (or `null` to stop the current one). Applies it in this window and
-   * broadcasts it to the others, for the same reason as `playOneShotAction`.
+   * broadcasts it to the others; the bumped `nonce` makes a repeat request for the same clip
+   * re-trigger the scene's watcher. The scene hands every request to the body director.
+   *
+   * Uses the BroadcastChannel rather than localStorage because this is a transient trigger that
+   * must reach the stage window, and localStorage storage events do not fire reliably across
+   * Electron BrowserWindows (the live stage and settings run as separate processes).
    */
   function requestPerform(name: string | null, options: { loop?: boolean, source: string }) {
     const request: MMDPerformRequest = {
@@ -451,7 +423,6 @@ export const useMMD = defineStore('mmd', () => {
     clipCuration.reset()
     availableClipMeta.reset()
     void clearMotions()
-    oneShotAction.value = undefined
     performRequest.value = undefined
     emotionActionMap.reset()
     morphOverrides.reset()
@@ -509,8 +480,6 @@ export const useMMD = defineStore('mmd', () => {
     materialOpacity,
 
     isModelLoaded,
-    oneShotAction,
-    playOneShotAction,
     performRequest,
     requestPerform,
 
