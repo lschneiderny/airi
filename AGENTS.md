@@ -3,13 +3,13 @@
 **Generated:** 2026-10-25T21:49:57Z | **Commit:** fc620aaf6fa71c5aa4b2abcc69e80d1975911cbf | **Branch:** main
 
 ## OVERVIEW
-AIRI is the `moeru-ai/airi` pnpm monorepo for character interaction across web, Electron, and mobile hosts, with a Godot VRM sidecar for Electron.
+AIRI is the `moeru-ai/airi` pnpm monorepo for character interaction across web and Electron hosts, with a Godot VRM sidecar for Electron.
 This personal fork documents account-free clients. Internal hosted/auth adapters do not prove that hosted services or client routes are enabled.
 The Vue apps use Vue 3, Vite, TypeScript, Pinia, VueUse, UnoCSS, Vitest, and ESLint.
 
 ## STRUCTURE
 ```text
-apps/          Web, Electron, Capacitor, and standalone auth UI
+apps/          Web, Electron, and standalone auth UI
 engines/       Godot VRM rendering sidecar that Electron launches
 packages/      Shared UI, orchestration, models, audio, providers, and channel contracts
 server/        Hosted API, independent identity, backend-only packages, local edge and stack
@@ -24,13 +24,13 @@ scripts/       Root dev launcher and dev-tools CLIs behind dev*, verify, wt, dev
 Before working in a directory, read its nested `AGENTS.md`. Read the matching task routing entry before starting.
 | Task | Location | Notes |
 | --- | --- | --- |
-| Host apps | `apps/stage-{web,pocket,tamagotchi}/AGENTS.md` | Web pages: `src/pages`. Electron pages/devtools: `src/renderer/pages`. Mobile uses Capacitor, Kotlin, and Swift. |
+| Host apps | `apps/stage-{web,tamagotchi}/AGENTS.md` | Web pages: `src/pages`. Electron pages/devtools: `src/renderer/pages`. |
 | Godot engine / auth UI | [Godot](engines/stage-tamagotchi-godot/AGENTS.md), [auth UI](apps/ui-server-auth/AGENTS.md) | The Godot engine is the VRM stage sidecar of the Electron app. |
 | Routing / settings | `apps/stage-web/vite.config.ts`, `apps/stage-tamagotchi/electron.vite.config.ts` | Layouts: `packages/stage-layouts/src/layouts/settings.vue` and Electron `src/renderer/layouts/settings.vue`. |
 | Shared business UI | [stage-ui](packages/stage-ui/AGENTS.md) | Definitions: `src/libs/providers/providers/`. Provider records/instances: `src/stores/providers/`. Orchestration: `src/stores/modules/`. |
 | UI composition | `packages/stage-ui/src/{composables,components}` | Single-use business UI: `components/scenarios/`. Stories: `packages/stage-ui/stories`, `histoire.config.ts`, `src/components/misc/Button.story.vue`. |
 | Shared boundaries | [core-agent](packages/core-agent/AGENTS.md), [providers](packages/provider-inference/AGENTS.md), [shared](packages/stage-shared/AGENTS.md), [pages](packages/stage-pages/AGENTS.md), [layouts](packages/stage-layouts/AGENTS.md), [primitives](packages/ui/AGENTS.md) | Pure orchestration stays outside Vue/store integration. |
-| Host adapters | [electron-vueuse](packages/electron-vueuse/AGENTS.md), [cap-vite](packages/cap-vite/AGENTS.md), [Electron scenarios](packages/scenarios-stage-tamagotchi-electron/AGENTS.md) | Electron composables, Capacitor Vite CLI, Vishot flows. |
+| Host adapters | [electron-vueuse](packages/electron-vueuse/AGENTS.md), [Electron scenarios](packages/scenarios-stage-tamagotchi-electron/AGENTS.md) | Electron composables and Vishot flows. |
 | Models / capture | [Three/VRM](packages/stage-ui-three/AGENTS.md), [Live2D](packages/stage-ui-live2d/AGENTS.md), [MMD](packages/stage-ui-mmd/AGENTS.md), [Spine](packages/stage-ui-spine/AGENTS.md), [MediaPipe](packages/model-driver-mediapipe/AGENTS.md), [MAGIC](packages/motion-driver-magic/AGENTS.md) | Read renderer and capture guidance before visual acceptance. |
 | Motion drivers | [Natural](packages/motion-driver-natural/AGENTS.md), [humanoid](packages/motion-driver-humanoid/AGENTS.md) | Renderer-neutral Natural behaviour and humanoid body math shared by Live2D and MMD. No `three`, `vue`, `pinia`, three-mmd, or `@proj-airi/stage-ui*` imports. Architecture: `docs/ai/adr/2026-10-30-3d-character-motion.md`. |
 | Audio / extensions | [pipelines-audio](packages/pipelines-audio/AGENTS.md), [audio](packages/audio/AGENTS.md), [testing-audio](packages/testing-audio/AGENTS.md), [plugin-sdk](packages/plugin-sdk/AGENTS.md), [plugin-protocol](packages/plugin-protocol/src/AGENTS.md), [better-ws](packages/better-ws/AGENTS.md) | Wire contracts live in `@proj-airi/plugin-protocol/types`. |
@@ -112,7 +112,6 @@ Refs are selected LSP counts including the declaration. Repository-wide centrali
 Use workspace `package.json` names with pnpm filters, for example `@proj-airi/stage-tamagotchi`.
 ```bash
 pnpm dev | dev:tamagotchi | dev:ui            # Web, Electron, UI development
-pnpm dev:pocket:ios | dev:pocket:android      # Mobile
 pnpm dev:backend                              # Local backend stack (server/docker-compose.yaml)
 pnpm -F <package-name> typecheck | build | exec vitest run
 pnpm exec vitest run <path>; pnpm test:run
@@ -147,11 +146,12 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Slow/failed chat, speech, audio using saved IO traces | [analyze-io-traces](.agents/skills/analyze-io-traces/SKILL.md) |
 | Local file upload via browser/Electron chooser or input | [Upload reference](.agents/skills/use-agent-browser-for-airi/references/input-file.md), [agent-browser](.agents/skills/agent-browser/SKILL.md). For Electron, also [agent-browser-electron](.agents/skills/agent-browser-electron/SKILL.md). |
 | Screenshots and visual evidence | [use-vishot](.agents/skills/use-vishot/SKILL.md). Load only the matching runtime and scenario references. |
-| Live2D, VRM, MMD import/rendering in web, desktop, mobile | [use-agent-browser-for-airi](.agents/skills/use-agent-browser-for-airi/SKILL.md) |
+| Live2D, VRM, MMD import/rendering in web and desktop | [use-agent-browser-for-airi](.agents/skills/use-agent-browser-for-airi/SKILL.md) |
 | Motion QA, emotion/idle gates, rendered motion runs | [motion-qa](.agents/skills/motion-qa/SKILL.md) |
 
 ## NOTES
 Nested guides own local exceptions and package-specific checks. Historical ADRs/audits and scanner observations are not current runtime acceptance.
 The fork removed the Kirie Godot/CEF desktop host on 2026-10-31. `docs/ai/upstream-watch.md` records when to port it back.
+The fork retired the Pocket native mobile host on 2026-11-04. The same watch list records its port-back condition; mobile browser layouts remain part of the web host.
 Root `pnpm dev*` scripts run through `node scripts/dev.mjs`, which bypasses Windows `.cmd` shims and supports only `&&` chains of plain words.
 Guidance is in local mode: `.git/info/exclude` ignores most nested `AGENTS.md` files, so links resolve locally but those guides do not appear in commits.

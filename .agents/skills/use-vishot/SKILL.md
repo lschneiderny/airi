@@ -1,6 +1,6 @@
 ---
 name: use-vishot
-description: Capture deterministic screenshots with Vishot and return a structured manifest of the generated images. Use for UI inspection, documentation, visual comparison inputs, or any screenshot task across Electron, web, and Capacitor applications; this skill is not specific to pull requests.
+description: Capture deterministic screenshots with Vishot and return a structured manifest of the generated images. Use for UI inspection, documentation, visual comparison inputs, or any screenshot task across Electron and web applications; this skill is not specific to pull requests.
 ---
 
 # Use Vishot
@@ -15,10 +15,9 @@ Use Vishot as the common screenshot interface and load only the reference for th
 4. Select the runtime reference:
    - Read [Electron](references/electron.md) for Electron windows.
    - Read [Web](references/web.md) for browser routes.
-   - Read [Capacitor](references/capacitor.md) for Capacitor WebView or native-shell evidence.
    - Also read [input files](references/input-file.md) when reaching the requested state requires a local file chooser or file input.
    - For AIRI display-model imports, read [AIRI scenarios](references/airi.md).
-5. When developing or debugging the disposable automation, use a locally available `$agent-browser` to inspect web or Capacitor DOM and interaction paths. For Electron window discovery and interaction, also invoke `$agent-browser-electron`. Use these skills as development and validation aids; do not make their availability a prerequisite for Vishot capture.
+5. When developing or debugging the disposable automation, use a locally available `$agent-browser` to inspect web DOM and interaction paths. For Electron window discovery and interaction, also invoke `$agent-browser-electron`. Use these skills as development and validation aids; do not make their availability a prerequisite for Vishot capture.
 6. Produce the final screenshot artifacts with Vishot whenever possible, even when agent-browser helped discover selectors or verify the interaction sequence. Treat a missing product helper as temporary automation work, not as proof that Vishot cannot capture the state; report a Vishot limitation only after reproducing a concrete runtime failure.
 7. Give the capture command an explicit output directory. Directory ownership belongs to the caller; Vishot only writes named capture artifacts into that directory.
 8. Keep locale, theme, data, viewport, and readiness conditions deterministic when captures will be compared.
