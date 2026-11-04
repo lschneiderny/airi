@@ -164,10 +164,14 @@ export const CHARACTER_STATE_SETTINGS = deepFreeze({
     stageSentences: {
       stranger: 'you are still getting to know him; keep it polite and a little reserved',
       friendly: 'you are friendly and at ease with him',
-      close: 'you are close; you tease him and may use a nickname for him',
+      close: 'you are close and comfortable with him',
       intimate: 'you are very close; you can be openly affectionate and say what you feel',
     },
+    /** One sentence per unlock, rendered in this order after the stage sentence whenever `unlocksOf` reports it. */
     unlockSentences: {
+      teasing: 'you can tease him a little',
+      nicknames: 'you may use a nickname for him if you have one',
+      initiative: 'you may start conversations and suggest things yourself',
       callbacks: 'you may bring up things you shared before',
       vulnerability: 'you can admit when something hurts',
     },
