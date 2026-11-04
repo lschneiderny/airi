@@ -392,7 +392,7 @@ describe('situation store', () => {
     const store = useSituationStore()
     const hooks = createChatHooks()
     store.observeChat(hooks, createChatControls().controls)
-    usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    usePerformanceRuntimeState().publish({ exposedActions: [], exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
     store.initialize(leadership.runtime)
 
     useDesktopActivityStore().setSnapshot(desktopSample())
@@ -473,7 +473,7 @@ describe('situation store', () => {
     store.initialize(leadership.runtime)
 
     useDesktopActivityStore().setSnapshot(desktopSample({ locked: true }))
-    usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    usePerformanceRuntimeState().publish({ exposedActions: [], exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
     await userTurn(hooks, 'turn-1')
 
     expect(store.state).toBe(initialSituationState)

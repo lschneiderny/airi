@@ -2071,7 +2071,7 @@ describe('chat store contract', () => {
   })
 
   it('sends the stage contract in the system prompt and the live state only as the situation stage line', async () => {
-    usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    usePerformanceRuntimeState().publish({ exposedActions: [], exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
     leadSituation()
     const systemPrompts: string[] = []
     llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {
@@ -2114,12 +2114,12 @@ describe('chat store contract', () => {
     // A leading situation store renders a timestamped block into every request.
     leadSituation()
 
-    runtimeState.publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    runtimeState.publish({ exposedActions: [], exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
     await store.send({ sessionId: 'session-1', text: 'first turn' })
     const firstContext = ingestContextMessageMock.mock.lastCall?.[0]?.text
 
     // The live state changes between the turns. It reaches the runtime context, not the system message.
-    runtimeState.publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [{ slot: 'face', label: 'smile' }], mood: null })
+    runtimeState.publish({ exposedActions: [], exposed: [{ label: 'smile', kind: 'face' }], active: [{ slot: 'face', label: 'smile' }], mood: null })
     await useExpressionPerformanceSettings().update({ stateFeedback: true })
     await store.send({ sessionId: 'session-1', text: 'second turn' })
 
@@ -2157,7 +2157,7 @@ describe('chat store contract', () => {
   })
 
   it('sends no runtime context, not even the live state, when the situation store was never initialized', async () => {
-    usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [{ slot: 'face', label: 'smile' }], mood: null })
+    usePerformanceRuntimeState().publish({ exposedActions: [], exposed: [{ label: 'smile', kind: 'face' }], active: [{ slot: 'face', label: 'smile' }], mood: null })
     await useExpressionPerformanceSettings().update({ stateFeedback: true })
     let composedMessages: Turn[] = []
     llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, context: Conversation, options: StreamOptions) => {
@@ -2174,7 +2174,7 @@ describe('chat store contract', () => {
   })
 
   it('ingests one situation entry before composing prompt snapshots', async () => {
-    usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    usePerformanceRuntimeState().publish({ exposedActions: [], exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
     leadSituation()
     let composedMessages: Turn[] = []
 
@@ -2468,7 +2468,7 @@ describe('chat store contract', () => {
     }
 
     it('sends no character context at rest, and the feeling and relationship text after a MOOD cue', async () => {
-      usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [{ slot: 'face', label: 'smile' }], mood: { valence: 0.2, arousal: 0.1, tension: 0 } })
+      usePerformanceRuntimeState().publish({ exposedActions: [], exposed: [{ label: 'smile', kind: 'face' }], active: [{ slot: 'face', label: 'smile' }], mood: { valence: 0.2, arousal: 0.1, tension: 0 } })
       await useExpressionPerformanceSettings().update({ stateFeedback: true })
       leadSituation()
       registryFromIngested()

@@ -6,8 +6,9 @@ import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, Expressio
 import type { AffectTraceRequest } from '@proj-airi/stage-shared/expression-performance/affect-trace-diagnostics'
 
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
-import type { ActiveExpression, ExposedExpression, ExposedExpressionGroup, PerformanceMoodSnapshot } from '../../features/performance/runtime-state'
+import type { ActiveExpression, ExposedAction, ExposedExpression, ExposedExpressionGroup, PerformanceMoodSnapshot } from '../../features/performance/runtime-state'
 import type { ExecutableTool } from '../../stores/ai/chat-llm/tools'
+import type { ActionToolPort, ExposedToolAction } from '../../tools/action'
 import type { BodyToolPort } from '../../tools/body'
 import type { ExpressionToolPort } from '../../tools/expression'
 
@@ -23,6 +24,7 @@ import { EMOTION_EmotionMotionName_value, EMOTION_VALUES } from '../../constants
 import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
 import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
+import { createActionToolRegistration } from '../../tools/action'
 import { createBodyTools } from '../../tools/body'
 import { createExpressionTools } from '../../tools/expression'
 
@@ -709,6 +711,23 @@ export function createBodyToolRegistration(host: ExpressionToolsHost) {
   return { sync, dispose }
 }
 
+/** A labeled clip of the active scene's library as the scene lists it; `kind` is the effective clip kind. */
+export interface ListedAction {
+  label: string
+  kind: string
+  exposed: boolean
+}
+
+const exposedActionKinds = ['gesture', 'action', 'dance'] as const satisfies readonly ExposedAction['kind'][]
+
+/** The clips the LLM may name: exposed gestures, actions, and dances, labels and kinds only. */
+export function toExposedActions(clips: readonly ListedAction[]): ExposedAction[] {
+  return clips.flatMap(({ label, kind, exposed }) => {
+    const exposedKind = exposed ? exposedActionKinds.find(value => value === kind) : undefined
+    return exposedKind ? [{ label, kind: exposedKind }] : []
+  })
+}
+
 /** The expression store surface the tool port reads; leases are the performer's slot occupants. */
 export interface ExpressionToolPerformer {
   readonly llmEligibleEntries: readonly CatalogEntry[]
@@ -790,6 +809,10 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
   expressionBackend: () => StageExpressionBackend | undefined
   /** The body tool port of the active scene; undefined when it has no body support (Live2D, classic MMD). */
   bodyPort?: () => BodyToolPort | undefined
+  /** The action tool port of the active scene; undefined when it has no clip library (Live2D). Not stage-gated. */
+  actionPort?: () => ActionToolPort | undefined
+  /** The labeled clips of the active scene, exposed or not; read reactively. */
+  listActions?: () => readonly ListedAction[]
   /** Reads the Natural mood of the mounted model, or `null` when none runs. */
   mood: () => PerformanceMoodSnapshot | null
   /**
@@ -829,6 +852,7 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
   })
 
   const exposed = computed(() => toExposedExpressions(expressions.llmEligibleEntries))
+  const exposedActions = computed(() => toExposedActions(options.listActions?.() ?? []))
   const active = computed(() => activeExpressionsOf(expressions))
   const moodWanted = computed(() => settings.value.stateFeedback && settings.value.mood && options.driver() === 'natural')
   const mood = shallowRef<PerformanceMoodSnapshot | null>(null)
@@ -846,8 +870,8 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
   useIntervalFn(sendFaceBaseline, FACE_BASELINE_SAMPLE_MS)
   sendFaceBaseline()
 
-  watch([exposed, active, mood], () => {
-    runtimeState.publish({ exposed: exposed.value, active: active.value, mood: mood.value })
+  watch([exposed, exposedActions, active, mood], () => {
+    runtimeState.publish({ exposed: exposed.value, exposedActions: exposedActions.value, active: active.value, mood: mood.value })
   }, { immediate: true })
 
   const registration = createExpressionToolRegistration(useLlmToolsStore(), createExpressionToolPort(conductor, expressions))
@@ -858,6 +882,12 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
   watch(() => options.bodyPort?.(), (port) => {
     bodyRegistration.sync(port).catch(error => console.error('[performance-conductor] Body tools failed to register:', errorMessageFrom(error)))
   }, { immediate: true })
+  // The tool enum names actions and dances only; the key changes whenever that set does.
+  const toolActionsKey = computed(() => JSON.stringify(exposedActions.value.filter((entry): entry is ExposedToolAction => entry.kind !== 'gesture')))
+  const actionRegistration = createActionToolRegistration(useLlmToolsStore())
+  watch([() => options.actionPort?.(), toolActionsKey], ([port, key]) => {
+    actionRegistration.sync(port, key).catch(error => console.error('[performance-conductor] Action tools failed to register:', errorMessageFrom(error)))
+  }, { immediate: true })
   const diagnostics = useNaturalMotionDiagnostics()
   watch(() => diagnostics.affectTraceRequest, (request) => {
     if (request && options.renderer() === 'live2d')
@@ -867,6 +897,7 @@ export function useStagePerformanceConductor(options: Pick<StagePerformanceCondu
   onScopeDispose(() => {
     registration.dispose()
     bodyRegistration.dispose()
+    actionRegistration.dispose()
     conductor.dispose()
   })
 
