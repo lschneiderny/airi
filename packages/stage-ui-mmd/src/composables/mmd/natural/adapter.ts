@@ -1,3 +1,4 @@
+import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionVoice } from '@proj-airi/motion-driver-natural/natural-motion'
@@ -123,6 +124,11 @@ export class MMDNaturalAdapter {
 
   impulse(episode: NaturalEpisode): void {
     this.pending.push(episode)
+  }
+
+  /** Sets the resting face target; Natural filters it on its grid and the face mapping reads the result. */
+  setFaceBaseline(baseline: FaceBaseline): void {
+    this.natural.setFaceBaseline(baseline)
   }
 
   setPerformanceSettings(settings: ExpressionPerformanceSettings): void {

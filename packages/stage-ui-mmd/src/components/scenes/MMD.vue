@@ -9,6 +9,7 @@
   * contract Stage.vue expects from every renderer.
 */
 
+import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { ExpressionPerformanceSettings, HoldCommand, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
@@ -985,6 +986,7 @@ defineExpose({
   },
   applySlots: (commands: SlotCommand[], now: number) => expressions.applySlots(commands, now),
   applyHolds: (commands: HoldCommand[], now: number) => natural?.applyHolds(commands, now),
+  setFaceBaseline: (baseline: FaceBaseline) => natural?.setFaceBaseline(baseline),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => {
     expressions.onSpeech(event, turnId, now)
     natural?.onSpeech(event, turnId, now)

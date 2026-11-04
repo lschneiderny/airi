@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
@@ -174,6 +175,7 @@ defineExpose({
   setEmotion: (episode: NaturalEpisode) => live2dModelRef.value?.setEmotion(episode),
   gesture: (kind: CueGestureKind, count: number) => live2dModelRef.value?.gesture(kind, count),
   addMood: (dose: MoodDose) => live2dModelRef.value?.addMood(dose),
+  setFaceBaseline: (baseline: FaceBaseline) => live2dModelRef.value?.setFaceBaseline(baseline),
   applySlots: (commands: SlotCommand[], now: number) => live2dModelRef.value?.applySlots(commands, now),
   applyHolds: (commands: HoldCommand[], now: number) => live2dModelRef.value?.applyHolds(commands, now),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => live2dModelRef.value?.onSpeech(event, turnId, now),

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Application } from '@pixi/app'
 import type { Filter } from '@pixi/core'
+import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalMotionObserver } from '@proj-airi/motion-driver-natural/frame-types'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
@@ -1692,6 +1693,8 @@ defineExpose({
   setEmotion: (episode: NaturalEpisode) => { pendingNaturalEmotions.push(episode) },
   gesture: (kind: CueGestureKind, count: number) => naturalMotion?.gesture(kind, count),
   addMood: (dose: MoodDose) => naturalMotion?.addMood(dose),
+  /** The resting face target; a model that loads later receives it on the stage's next once-per-second update. */
+  setFaceBaseline: (baseline: FaceBaseline) => naturalMotion?.setFaceBaseline(baseline),
   /** Executes decider slot commands; lifetimes are owned by the expression store. */
   applySlots: (commands: SlotCommand[], now: number) => expressionStore.applySlots(commands, now),
   /** Natural only: the performer owns the lease and manual-preview fallback of the held emotion. */
