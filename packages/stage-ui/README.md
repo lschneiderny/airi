@@ -479,6 +479,18 @@ The [nonverbal channels ADR](../../docs/ai/adr/2026-10-31-nonverbal-channels.md)
 Use the inspector to tune the gate and to see why the character spoke or stayed quiet.
 Do not use it as a user-facing settings page.
 
+## Character state
+
+The character-state store in `stores/character-state/` holds the active character's mood, temperament, and relationship. The web, desktop, and pocket shells create it at startup.
+
+Each chat request sends the worded mood and the relationship stage as a per-request runtime context message with the id `system:character`, beside `system:situation`. It is never part of the system prompt, and the model never receives the numeric mood. A MOOD cue in a reply is applied as a bounded contribution that fades within a few hours, so the model cannot push its own mood far in one turn.
+
+The situation bridge feeds touch, reach-out, and extraction events into the state. The situation gate's tick takes the mood factor from the reading's urge factor, so a better mood makes an unprompted turn slightly more likely and a low or tense mood can make it pointed.
+
+The stage drives the resting face from the mood through the Live2D and MMD adapters. A devtools page lets you inspect the current reading.
+
+The [layered character state ADR](../../docs/ai/adr/2026-11-03-layered-character-state.md) records the design and its known gaps.
+
 ## Long-term memory
 
 `useMemoryStore` in `stores/memory.ts` keeps entries in IndexedDB through the localforage instance `airi-memory/entries`. It uses the `airi:memory` BroadcastChannel to reload changes in other windows and stores the toggle at `memory/enabled`.

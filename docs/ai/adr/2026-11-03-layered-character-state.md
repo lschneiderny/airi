@@ -1,7 +1,7 @@
 # Layered character state: moment, mood, temperament, relationship
 
 Date: 2026-11-03
-Status: proposed
+Status: accepted
 
 ## Context
 
@@ -71,3 +71,191 @@ The relationship layer overlaps the closeness state deferred on 2026-10-31. This
 A mood cue changes the stage contract, so `STAGE_CONTRACT_EN_SHA256` changes when the plan lands and model-eval runs record the new version.
 
 Every number in this ADR is a starting value. Appendix A of the plan lists the starting constants and formulas. The constants live in a settings module, not in stored records, so tuning them needs no migration.
+
+## Constants
+
+The starting values live in `packages/stage-shared/src/character-state/settings.ts`. The table below lists every leaf of `CHARACTER_STATE_SETTINGS` as it ships. Durations are in milliseconds: an hour is 3600000 and a day is 86400000. The 81 values that Appendix A of the plan states were checked against the module, and none differs. Values the module sets without an Appendix A entry, such as buffers, row limits, and sentence text, are listed too.
+
+| Constant | Value |
+| --- | --- |
+| `mood.epsilon` | 0.01 |
+| `mood.headroom` | 2.5 |
+| `mood.maxContributions` | 64 |
+| `mood.atanhClamp` | 0.999 |
+| `mood.tensionGain` | 4 |
+| `mood.modelCue.step` | 0.08 |
+| `mood.modelCue.halfLifeMs` | 5400000 |
+| `mood.modelCue.budgetWindowMs` | 3600000 |
+| `mood.modelCue.budgetPerAxis` | 0.24 |
+| `mood.modelCue.maxLogEntries` | 64 |
+| `mood.events.touch-pleasant.delta.valence` | 0.1 |
+| `mood.events.touch-pleasant.delta.energy` | 0.05 |
+| `mood.events.touch-pleasant.delta.tension` | -0.03 |
+| `mood.events.touch-pleasant.halfLifeMs` | 5400000 |
+| `mood.events.touch-unwelcome.delta.valence` | -0.08 |
+| `mood.events.touch-unwelcome.delta.energy` | 0.05 |
+| `mood.events.touch-unwelcome.delta.tension` | 0.08 |
+| `mood.events.touch-unwelcome.halfLifeMs` | 3600000 |
+| `mood.events.reach-out-unanswered-first.delta.valence` | -0.06 |
+| `mood.events.reach-out-unanswered-first.delta.energy` | -0.03 |
+| `mood.events.reach-out-unanswered-first.delta.tension` | 0.06 |
+| `mood.events.reach-out-unanswered-first.halfLifeMs` | 10800000 |
+| `mood.events.reach-out-unanswered-second.delta.valence` | -0.12 |
+| `mood.events.reach-out-unanswered-second.delta.energy` | -0.05 |
+| `mood.events.reach-out-unanswered-second.delta.tension` | 0.1 |
+| `mood.events.reach-out-unanswered-second.halfLifeMs` | 21600000 |
+| `mood.events.late-reply.delta.valence` | 0.06 |
+| `mood.events.late-reply.delta.energy` | 0 |
+| `mood.events.late-reply.delta.tension` | -0.06 |
+| `mood.events.late-reply.halfLifeMs` | 7200000 |
+| `mood.events.significant-positive.delta.valence` | 0.25 |
+| `mood.events.significant-positive.delta.energy` | 0.1 |
+| `mood.events.significant-positive.delta.tension` | 0 |
+| `mood.events.significant-positive.halfLifeMs` | 32400000 |
+| `mood.events.significant-negative.delta.valence` | -0.25 |
+| `mood.events.significant-negative.delta.energy` | -0.1 |
+| `mood.events.significant-negative.delta.tension` | 0.15 |
+| `mood.events.significant-negative.halfLifeMs` | 32400000 |
+| `mood.events.ritual-reciprocated.delta.valence` | 0.05 |
+| `mood.events.ritual-reciprocated.delta.energy` | 0.03 |
+| `mood.events.ritual-reciprocated.delta.tension` | 0 |
+| `mood.events.ritual-reciprocated.halfLifeMs` | 7200000 |
+| `mood.pleasantTouchBudgetPerHour` | 0.3 |
+| `mood.pleasantTouchBudgetWindowMs` | 3600000 |
+| `mood.significantPerDay` | 2 |
+| `mood.return.referenceGapMs` | 43200000 |
+| `mood.return.octaves` | 3 |
+| `mood.return.delta.valence` | 0.15 |
+| `mood.return.delta.energy` | 0.1 |
+| `mood.return.delta.tension` | 0.1 |
+| `mood.return.halfLifeMs` | 14400000 |
+| `temperament.followHalfLifeMs` | 432000000 |
+| `temperament.anchorHalfLifeMs` | 864000000 |
+| `temperament.stepMs` | 3600000 |
+| `temperament.sampleOffsetMs` | 1800000 |
+| `temperament.clamp.valence` | 0.3 |
+| `temperament.clamp.energy` | 0.25 |
+| `temperament.clamp.tension` | 0.15 |
+| `temperament.maxHoursPerCall` | 9600 |
+| `relationship.dailyGain.closeness` | 0.02 |
+| `relationship.dailyGain.trust` | 0.012 |
+| `relationship.dailyGain.familiarity` | 0.03 |
+| `relationship.points.first-real-exchange.closeness` | 0.4 |
+| `relationship.points.first-real-exchange.trust` | 0.2 |
+| `relationship.points.first-real-exchange.familiarity` | 0.4 |
+| `relationship.points.later-user-turn.closeness` | 0.05 |
+| `relationship.points.later-user-turn.trust` | 0 |
+| `relationship.points.later-user-turn.familiarity` | 0.05 |
+| `relationship.points.reach-out-reply.closeness` | 0.2 |
+| `relationship.points.reach-out-reply.trust` | 0.2 |
+| `relationship.points.reach-out-reply.familiarity` | 0 |
+| `relationship.points.disclosure.closeness` | 0.3 |
+| `relationship.points.disclosure.trust` | 0.1 |
+| `relationship.points.disclosure.familiarity` | 0.4 |
+| `relationship.points.kept-promise.closeness` | 0 |
+| `relationship.points.kept-promise.trust` | 0.4 |
+| `relationship.points.kept-promise.familiarity` | 0 |
+| `relationship.points.milestone.closeness` | 0.5 |
+| `relationship.points.milestone.trust` | 0 |
+| `relationship.points.milestone.familiarity` | 0.2 |
+| `relationship.points.touch-pleasant.closeness` | 0.1 |
+| `relationship.points.touch-pleasant.trust` | 0 |
+| `relationship.points.touch-pleasant.familiarity` | 0 |
+| `relationship.points.ritual-reciprocated.closeness` | 0.1 |
+| `relationship.points.ritual-reciprocated.trust` | 0 |
+| `relationship.points.ritual-reciprocated.familiarity` | 0.1 |
+| `relationship.reachOutReplyWindowMs` | 7200000 |
+| `relationship.firstRealExchangeTurn` | 3 |
+| `relationship.negatives.unkind.trustFactor` | 0.95 |
+| `relationship.negatives.unkind.closenessDrop` | 0.01 |
+| `relationship.negatives.unkind.wound` | 0 |
+| `relationship.negatives.hurtful.trustFactor` | 0.85 |
+| `relationship.negatives.hurtful.closenessDrop` | 0.03 |
+| `relationship.negatives.hurtful.wound` | 0.15 |
+| `relationship.negatives.touch-unwelcome-persistent.trustFactor` | 0.97 |
+| `relationship.negatives.touch-unwelcome-persistent.closenessDrop` | 0 |
+| `relationship.negatives.touch-unwelcome-persistent.wound` | 0 |
+| `relationship.persistentUnwelcomeTouchBurst` | 3 |
+| `relationship.maxNegativesPerDay` | 2 |
+| `relationship.maxMilestonesPerDay` | 1 |
+| `relationship.maxMilestoneIds` | 64 |
+| `relationship.woundHalfLifeMs` | 432000000 |
+| `relationship.absence.graceMs` | 259200000 |
+| `relationship.absence.retained` | 0.6 |
+| `relationship.absence.halfLifeMs` | 5184000000 |
+| `relationship.rolloverHour` | 4 |
+| `relationship.stages.closeness.friendly.up` | 0.15 |
+| `relationship.stages.closeness.friendly.down` | 0.1 |
+| `relationship.stages.closeness.close.up` | 0.35 |
+| `relationship.stages.closeness.close.down` | 0.28 |
+| `relationship.stages.closeness.intimate.up` | 0.6 |
+| `relationship.stages.closeness.intimate.down` | 0.52 |
+| `relationship.stages.trust.open.up` | 0.35 |
+| `relationship.stages.trust.open.down` | 0.3 |
+| `relationship.stages.trust.confiding.up` | 0.45 |
+| `relationship.stages.trust.confiding.down` | 0.39 |
+| `relationship.stages.familiarity.knows-you.up` | 0.25 |
+| `relationship.stages.familiarity.knows-you.down` | 0.2 |
+| `relationship.startingStageMargin` | 0.01 |
+| `relationship.unlocks.teasing.closeness` | friendly |
+| `relationship.unlocks.teasing.trust` | open |
+| `relationship.unlocks.nicknames.closeness` | close |
+| `relationship.unlocks.nicknames.familiarity` | knows-you |
+| `relationship.unlocks.initiative.closeness` | close |
+| `relationship.unlocks.vulnerability.closeness` | close |
+| `relationship.unlocks.vulnerability.trust` | confiding |
+| `relationship.unlocks.callbacks.familiarity` | knows-you |
+| `relationship.unlocks.callbacks.minMilestones` | 3 |
+| `history.maxRows` | 400 |
+| `rendering.valence.boundaries` | [-0.45, -0.15, 0.15, 0.45] |
+| `rendering.valence.words` | [upset, low, even, good, bright] |
+| `rendering.energy.boundaries` | [-0.45, -0.15, 0.15, 0.45] |
+| `rendering.energy.words` | [drained, tired, steady, lively, buzzing] |
+| `rendering.tension.boundaries` | [0.22, 0.45] |
+| `rendering.tension.words` | [relaxed, a little on edge, tense] |
+| `rendering.exitHysteresis.valence` | 0.05 |
+| `rendering.exitHysteresis.energy` | 0.05 |
+| `rendering.exitHysteresis.tension` | 0.04 |
+| `rendering.nightFromHour` | 20 |
+| `rendering.reasons.maxShown` | 2 |
+| `rendering.reasons.showWeight` | 0.04 |
+| `rendering.reasons.keepWeight` | 0.03 |
+| `rendering.reasons.keepShareOfBestExcluded` | 0.5 |
+| `rendering.reasons.modelCueWeightFactor` | 0.5 |
+| `rendering.reasons.maxChars` | 60 |
+| `rendering.stageSentences.stranger` | you are still getting to know him; keep it polite and a little reserved |
+| `rendering.stageSentences.friendly` | you are friendly and at ease with him |
+| `rendering.stageSentences.close` | you are close; you tease him and may use a nickname for him |
+| `rendering.stageSentences.intimate` | you are very close; you can be openly affectionate and say what you feel |
+| `rendering.unlockSentences.callbacks` | you may bring up things you shared before |
+| `rendering.unlockSentences.vulnerability` | you can admit when something hurts |
+| `urge.weights.valence` | 0.35 |
+| `urge.weights.energy` | 0.15 |
+| `urge.weights.tension` | 0.2 |
+| `urge.tensionFloor` | 0.3 |
+| `urge.exponent.min` | -0.4 |
+| `urge.exponent.max` | 0.3 |
+| `urge.pointed.maxValence` | -0.2 |
+| `urge.pointed.minTension` | 0.35 |
+| `face.damping.floor` | 0.25 |
+| `face.damping.graceMs` | 120000 |
+| `face.damping.halfLifeMs` | 1200000 |
+| `face.gains.mouthForm` | 0.35 |
+| `face.gains.eyeOpen` | 0.15 |
+| `face.gains.blinkRateOffset` | -0.25 |
+| `face.gains.browAngle` | 0.4 |
+| `face.blinkRateOffsetClamp` | 0.4 |
+| `face.channelRanges.mouthForm` | 2 |
+| `face.channelRanges.eyeOpen` | 1 |
+| `face.channelRanges.browAngle` | 2 |
+| `face.channelShare` | 0.35 |
+| `face.filterTauMs` | 1500 |
+
+## Known gaps
+
+These are constants decisions for the card owner. None of them is a defect, but each changes how the character reads over time. The figures come from the committed `typical-month` run, `pnpm qa:character simulate --scenario typical-month --days 90 --seed 41`, unless a bullet says otherwise.
+
+- **Trust calibration.** The daily trust ceiling of 0.012 is slow. Trust measures 0.0567 at day 30, 0.1239 at day 60, and 0.1869 at day 90. These sit well below the earlier draft's trust targets of 0.33 and 0.42. Raise `relationship.dailyGain.trust` only after a simulator run shows that the trust stages still open at a pace you accept.
+- **Mood tail.** A significant positive keeps its contribution until the weight falls below the epsilon, about 42 hours after the event, which follows from its 9 hour half-life. One significant positive keeps a "good" valence reading for about 205 hours. The 205 hour figure was measured with a script against the shipped core, outside the simulator.
+- **One-word MOOD reason.** A model cue's reason weight is 0.08 times the 0.5 model factor, which is 0.04 at insertion. That equals the show threshold, so the reason falls below it at once. A one-word reason therefore never renders.
+- **Day-30 closeness reads as friendly.** Closeness measures 0.3491 on day 30. It sits just under the close threshold of 0.35, so the prompt says friendly and not close.

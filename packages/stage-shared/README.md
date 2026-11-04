@@ -177,6 +177,12 @@ const { sample } = storeToRefs(useForegroundWindowStore())
 Use this store to pass foreground samples from a host producer to the situation sensor in `@proj-airi/stage-ui`.
 Do not persist or replicate it, because a sample carries a raw window title. Do not sample the foreground window in this package; the host producer owns sampling.
 
+## Character state
+
+The `character-state` module holds the character's inner state on three clocks: mood (hours), temperament (days), and relationship (weeks to months). The moment layer stays in the Natural motion driver. The pure reducer takes explicit time and returns its memory, so the same events at the same times give the same state. `applyEvent` applies one event, `advance` moves the state to a time, `readCharacter` returns the reading the app uses, and `renderCharacterContext` returns the `system:character` text. The stage-ui character-state store is the app's entry point. Rendered text has no digits, and a resting state renders nothing.
+
+The tuning constants live in `src/character-state/settings.ts`. The [layered character state ADR](../../docs/ai/adr/2026-11-03-layered-character-state.md) lists them with the rules that use them and the known gaps in the starting values.
+
 ## Do not use this package
 
 Keep Electron IPC definitions in the Electron application. Keep UI state and actions in `@proj-airi/stage-ui`. Keep Extension runtime and manifest behavior in `@proj-airi/plugin-sdk`.
