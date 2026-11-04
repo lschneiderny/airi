@@ -1,4 +1,4 @@
-import type { StageMode } from './gates'
+import type { StageMode, StageScenario } from './gates'
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -7,16 +7,22 @@ import { parseArgs } from 'node:util'
 import { errorMessageFrom } from '@moeru/std'
 
 import { formatGateResults, readStageEvidence, runStageGates } from './gates'
-import { measureAttached, measurePairs } from './measure'
+import { measureAttached, measurePairs, measureScenario } from './measure'
 
 export const stageUsage = `Usage:
   stage measure --mode <window|desktop> --port <cdp port> [--seconds 60] [--attempts 3] --out <json>
   stage measure --pairs <n> --profile <profile dir> [--seconds 60] [--settle 10] [--attempts 3] --out <json>
+  stage measure --mode <window|desktop> --port <cdp port> --scenario <gesture-walk|action-preempt> --clip <clip name> [--seconds 12] [--attempts 3] --out <json>
   stage gate <json> [<json>...]
 
 measure --port attaches to a running app started with APP_REMOTE_DEBUG=true and an MMD model mounted.
 measure --pairs launches the app per run (window, desktop, window, ...) on a copy of the profile.
-gate prints PASS, FAIL or NO INPUT for stage-walk-skate, stage-arm-penetration and stage-frame-budget.`
+measure --scenario walks her 600 DIP and plays the imported clip over the walk (gesture-walk, looped) or into it
+(action-preempt, with a second goal and a stop after --seconds of playing).
+gate prints PASS, FAIL or NO INPUT for stage-walk-skate, stage-arm-penetration, stage-frame-budget,
+stage-gesture-walk and stage-action-preempt.`
+
+const scenarioNames: readonly StageScenario[] = ['gesture-walk', 'action-preempt']
 
 class UsageError extends Error {}
 
@@ -87,6 +93,8 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
         seconds: { type: 'string' },
         settle: { type: 'string' },
         attempts: { type: 'string' },
+        scenario: { type: 'string' },
+        clip: { type: 'string' },
         out: { type: 'string' },
       },
       strict: true,
@@ -94,7 +102,17 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
     if (!values.out)
       throw new UsageError('--out is required')
     const out = resolve(context.cwd, values.out)
-    const seconds = positiveInteger('seconds', values.seconds, 60)
+    const scenario = values.scenario
+    if (scenario !== undefined && !scenarioNames.includes(scenario as StageScenario))
+      throw new UsageError(`--scenario must be ${scenarioNames.join(' or ')}, got ${scenario}`)
+    if (scenario !== undefined && !values.clip)
+      throw new UsageError('--scenario needs --clip <clip name>')
+    if (scenario === undefined && values.clip !== undefined)
+      throw new UsageError('--clip needs --scenario')
+    if (scenario !== undefined && values.pairs !== undefined)
+      throw new UsageError('--scenario attaches to a running app; drop --pairs')
+    // A scenario's seconds are the walk span with the gesture or the playing time before the stop, not a frame window.
+    const seconds = positiveInteger('seconds', values.seconds, scenario === undefined ? 60 : 12)
     const attempts = positiveInteger('attempts', values.attempts, 3)
 
     if (values.pairs !== undefined) {
@@ -122,7 +140,16 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
     if (!values.port)
       throw new UsageError('--port <cdp port> is required without --pairs')
     const mode: StageMode = values.mode
-    const record = await measureAttached({ port: positiveInteger('port', values.port, 0), mode, seconds, attempts, log })
+    const port = positiveInteger('port', values.port, 0)
+    if (scenario !== undefined) {
+      const record = await measureScenario({ port, mode, scenario: scenario as StageScenario, clip: values.clip!, seconds, attempts, log })
+      writeJson(out, record)
+      console.info(JSON.stringify({ scenario: record.scenario, clip: record.clip, samples: record.series.rows.length, stopAtMs: record.stopAtMs, refusal: record.refusal, p95StageMs: record.measurement?.p95StageMs ?? null, valid: record.valid }))
+      if (!record.valid)
+        log(`qa-tools stage: every attempt was INVALID-CONCURRENT-LOAD; the record is kept with valid: false`)
+      return record.valid ? 0 : 1
+    }
+    const record = await measureAttached({ port, mode, seconds, attempts, log })
     writeJson(out, record)
     console.info(JSON.stringify(record.result))
     if (!record.valid)
