@@ -22,6 +22,7 @@ import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 import type { ExtractionReadPosition } from '../../features/situation/inner-state'
 import type { LlmStream, ThreadExtractionSelection } from '../../features/situation/thread-extraction'
 import type { SituationForgetRequest } from '../../services/speech/bus'
+import type { SituationBridge } from '../character-state/situation-bridge'
 import type { ChatReactionPayload, ChatUnpromptedPayload, ChatUnpromptedResult } from '../chat'
 import type { SituationGateEvaluation } from '../devtools/situation-observability'
 import type { ConversationHookSource } from './sensors/conversation'
@@ -69,6 +70,7 @@ import { localLogicalDayKey, useSituationInnerState } from '../../features/situa
 import { useSituationSettings } from '../../features/situation/settings'
 import { createThreadExtractor } from '../../features/situation/thread-extraction'
 import { chatComposerActivityChangedEvent, getSpeechBusContext, situationForgetRequestedEvent, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
+import { bridgeSituationToCharacter } from '../character-state/situation-bridge'
 import { useMemoryObservabilityStore } from '../devtools/memory-observability'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { startConversationSensor } from './sensors/conversation'
@@ -241,6 +243,10 @@ interface RunningSensors {
  * reaction turn through `submitReaction`. Its outcome settles the policy, never the gate's fire memory: a spoken line
  * starts the gate's floor (`recordExternalSpeech`) and counts as her last line, and a refused send counts as never
  * attempted. The reaction memory, with its own random checkpoint, is saved with the gate's inner state.
+ *
+ * While it leads, the store also feeds the character state (`bridgeSituationToCharacter`): touches, returns,
+ * reach-outs and their replies, turns, and the relationship events of each extraction. Forgetting everything forgets
+ * the character state of every card too.
  */
 export const useSituationStore = defineStore('situation', () => {
   const current = shallowRef<SituationState>(initialSituationState)
@@ -310,6 +316,8 @@ export const useSituationStore = defineStore('situation', () => {
   /** The reaction turn that was submitted and has no result yet. */
   let reacting: { turnId: string } | undefined
   let stopTouchListener: (() => void) | undefined
+  /** Feeds the character state from this leader's observations; see `bridgeSituationToCharacter`. */
+  let characterBridge: SituationBridge | undefined
   const notifySpokenListeners = new Set<(spoken: { topicKey: string, text: string }) => void>()
 
   // Feeds the devtools Situation inspector of this window. Sync flush keeps it equal to the state after every call.
@@ -935,8 +943,10 @@ export const useSituationStore = defineStore('situation', () => {
         // Publishes the new threads to the inspector and saves them with the social memory.
         setGateMemory(gateMemory)
       },
-      // Nothing consumes relationship events yet; the ledger still records them.
-      onEvents: () => {},
+      onEvents: (events, sessionId) => {
+        if (active)
+          void characterBridge?.onExtractedEvents(events, sessionId)
+      },
       onLedger: entry => observability.recordExtraction(entry),
       onInFlight: inFlight => observability.publishExtractionInFlight(inFlight),
       now: Date.now,
@@ -1001,6 +1011,12 @@ export const useSituationStore = defineStore('situation', () => {
     leading.value = true
     leadership += 1
     innerState.claim(leadership)
+    characterBridge = bridgeSituationToCharacter({
+      situation: () => current.value,
+      gate: () => gateMemory,
+      extractedThrough: sessionId => extractedThrough.find(position => position.sessionId === sessionId)?.messageId,
+      messages: sessionId => chat?.sessionMessages(sessionId) ?? [],
+    })
     // Sensors report their current readings at once, so they start after `leading` lets `ingest` through.
     sensors = startSensors()
     startConversation()
@@ -1039,6 +1055,8 @@ export const useSituationStore = defineStore('situation', () => {
     stopTouchListener = undefined
     stopForgetListener?.()
     stopForgetListener = undefined
+    characterBridge?.stop()
+    characterBridge = undefined
     if (ticker !== undefined)
       clearInterval(ticker)
     ticker = undefined
@@ -1134,6 +1152,8 @@ export const useSituationStore = defineStore('situation', () => {
       savedSnapshot = undefined
       if (gateTicker !== undefined)
         gateMemory = promotionUrgeMemory(Date.now(), seedSource())
+      // Also clears the character state of every card; the bridge's own memory of reach-outs and turns goes with it.
+      void characterBridge?.forgetEverything()
     }
     if (gateTicker !== undefined) {
       // An extraction still in flight read the forgotten messages, so its threads must not join the new state.
