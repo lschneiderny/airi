@@ -23,6 +23,7 @@ import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { AnimationClip, SkinnedMesh, Texture } from 'three'
 
 import type { GazeOffset, MMDAnimationManager, MorphController } from '../../composables/mmd'
+import type { ActActionDropReason } from '../../composables/mmd/actions/resolve-act-action'
 import type { MMDOverlayStage } from '../../composables/mmd/overlays'
 import type { MMDStageExtent, MMDStageWorld } from '../../composables/mmd/stage-world'
 import type { MMDStanceWorld } from '../../composables/mmd/stance'
@@ -70,6 +71,7 @@ import {
   useMMDEmote,
   useMMDLipSync,
 } from '../../composables/mmd'
+import { resolveActAction } from '../../composables/mmd/actions/resolve-act-action'
 import { MMDBody } from '../../composables/mmd/body'
 import { MMDBodyToolPort } from '../../composables/mmd/body-tool-port'
 import { resolveBodyPoints, resolveBodyTarget } from '../../composables/mmd/body/attention'
@@ -190,6 +192,12 @@ const requestedKinds = new Map<number, BodyActionKind>()
 const loadedClips = new Map<string, { clip: AnimationClip, mask: ClipBoneMask }>()
 const registeredRevisions = new Map<string, number>()
 const actionDrops = { unknown: 0, notExposed: 0, notGesture: 0, superseded: 0 }
+const ACT_DROP_COUNTER: Record<ActActionDropReason, keyof typeof actionDrops> = {
+  'unknown': 'unknown',
+  'not-exposed': 'notExposed',
+  'not-gesture': 'notGesture',
+  'superseded': 'superseded',
+}
 // Where she stands beside the open chat this frame; the tool port reports her position against it.
 let chatStandSpotX: number | null = null
 let chatVisible: boolean | undefined
@@ -1485,9 +1493,13 @@ defineExpose({
   listMorphs: () => morphs?.availableMorphs ?? [],
   listMotions: () => animation?.availableClips() ?? [],
   listActions: () => loadedModelKey ? mmdStore.labeledClips(loadedModelKey) : [],
-  action: (label: string) => {
-    const clip = loadedModelKey ? mmdStore.exposedActions(loadedModelKey).find(candidate => candidate.label === label) : undefined
-    return clip ? requestPerform(clip.name, { source: 'act' }) : false
+  action: (label: string, gesture?: { kind: string }) => {
+    if (!loadedModelKey)
+      return false
+    const { perform, drops } = resolveActAction(label, gesture, mmdStore.labeledClips(loadedModelKey))
+    for (const drop of drops)
+      actionDrops[ACT_DROP_COUNTER[drop.reason]]++
+    return perform ? requestPerform(perform, { source: 'act' }) : false
   },
   setRootX,
   setDragging,

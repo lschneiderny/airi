@@ -155,8 +155,17 @@ placement, chat target and activity, mouth level and speaking state, and routes
 the stage performance conductor to this scene when the MMD renderer is active
 (`selectStagePerformanceRenderer` in `@proj-airi/stage-ui`). The MMD Natural
 driver is the conductor's `natural` driver and Classic is `universal`. The
-exposed `setEmotion`, `applyHolds`, `applySlots`, `onSpeech`, `setMuted` and
-`getMood` methods form the `StagePerformanceScene` surface. Diagnostics publish
+exposed `setEmotion`, `applyHolds`, `applySlots`, `onSpeech`, `setMuted`,
+`getMood` and `action` methods form the `StagePerformanceScene` surface.
+`action(label, gesture?)` receives an ACT `action` label (under Natural and
+Classic alike) and runs `resolveActAction`
+(`src/composables/mmd/actions/resolve-act-action.ts`) against
+`labeledClips(modelKey)`: the label is compared exactly with the labels the user
+curated and is never used as a clip name. An exposed gesture is queued for the
+director with `source: 'act'`; a label no clip carries counts `unknown`, a
+hidden clip `notExposed`, and an exposed action or dance `notGesture` (those
+play only through `perform_action`). When the label plays, the ACT's cue
+`gesture` counts `superseded`. Diagnostics publish
 the rig profile and Natural event count, requested energy and the head bone's
 local yaw in radians.
 
