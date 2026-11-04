@@ -31,7 +31,7 @@ This personal fork keeps local development workflows, not upstream publishing or
 | `agent-browser` | Version-matched instructions for interactive browser inspection. Requires the CLI. |
 | `agent-browser-electron` | Electron target discovery and window-role preservation. |
 | `use-agent-browser-for-airi` | AIRI model imports. Its references also cover ordinary, detached, and native file inputs. |
-| `use-vishot` | Screenshot evidence. Load the Web, Electron, Capacitor, input-file, or AIRI reference as needed. |
+| `use-vishot` | Screenshot evidence. Load the Web, Electron, input-file, or AIRI reference as needed. |
 | `eventa` | Project event and RPC contracts. Check the installed dependency when API details differ. |
 | `xsai` | Existing xsAI integration work. |
 

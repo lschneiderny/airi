@@ -10,7 +10,7 @@ Treat the stage as a space for the character, with compact floating controls aro
 
 Use translucency to relate floating controls to the stage. Use stable neutral surfaces where users read descriptions, enter values, or compare options.
 
-This guide applies to shared interfaces in `stage-web`, `stage-tamagotchi`, and `stage-pocket`. Its visual patterns come from `packages/ui` and the existing application layouts.
+This guide applies to shared interfaces in `stage-web` and `stage-tamagotchi`. Its visual patterns come from `packages/ui` and the existing application layouts.
 
 For unspecified details, reuse the nearest shared component and layout. Preserve its theme behavior, proportions, and interaction states.
 
