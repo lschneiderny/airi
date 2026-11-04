@@ -2102,6 +2102,99 @@ describe('chat store contract', () => {
     expect(lastUser).not.toContain('base.prompt.emoji')
   })
 
+  it('keeps the system prompt and the situation message byte-identical while no clip is exposed, and adds the clip instruction after the contract only while one is', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 9, 20, 20, 0, 0))
+    onTestFinished(() => {
+      vi.useRealTimers()
+    })
+    const runtimeState = usePerformanceRuntimeState()
+    const publish = (exposedActions: { label: string, kind: 'gesture' | 'action' | 'dance' }[]) => runtimeState.publish({ exposedActions, exposed: [{ label: 'smile', kind: 'face' }], active: [], mood: null })
+    leadSituation()
+    const systemPrompts: string[] = []
+    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {
+      systemPrompts.push((await options.resolveStep!()).systemPrompt ?? '')
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+    const store = useChatStore()
+    const situationTexts = () => ingestContextMessageMock.mock.calls.map(([message]) => message.text as string)
+    const actionsText = `base.prompt.actions-gestures ${JSON.stringify({ gestures: 'wave' })}\nbase.prompt.actions-actions ${JSON.stringify({ actions: 'moonwalk' })}`
+
+    // The first turn has no earlier exchange, so the situation comparison uses the later turns.
+    publish([])
+    await store.send({ sessionId: 'session-1', text: 'first' })
+    await store.send({ sessionId: 'session-1', text: 'second' })
+    publish([{ label: 'wave', kind: 'gesture' }, { label: 'moonwalk', kind: 'dance' }])
+    await store.send({ sessionId: 'session-1', text: 'third' })
+    publish([])
+    await store.send({ sessionId: 'session-1', text: 'fourth' })
+
+    const [, noClips, exposed, unexposed] = systemPrompts
+    expect(systemPrompts).toHaveLength(4)
+    expect(noClips).not.toContain('base.prompt.actions')
+    expect(exposed).toBe(noClips.replace(`${stageContract.value}\n\n`, `${stageContract.value}\n\n${actionsText}\n\n`))
+    expect(unexposed).toBe(noClips)
+    // The situation block carries no clip data, so exposure never changes its bytes.
+    const [, situationBefore, situationExposed, situationAfter] = situationTexts()
+    expect(situationExposed).toBe(situationBefore)
+    expect(situationAfter).toBe(situationBefore)
+    expect(situationExposed).not.toMatch(/wave|moonwalk|perform_action/)
+  })
+
+  it('sends the clip instruction with 30 exposed labels beside a full Windows situation block with an app-switch event and a vision context line', async () => {
+    const MIN = 60_000
+    const T0 = new Date(2026, 9, 20, 20, 0, 0).getTime()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(T0)
+    onTestFinished(() => {
+      vi.useRealTimers()
+    })
+    const gestures = Array.from({ length: 15 }, (_, index) => `gesture-clip-${String(index).padStart(2, '0')}`)
+    const actions = Array.from({ length: 15 }, (_, index) => `action-clip-${String(index).padStart(2, '0')}`)
+    usePerformanceRuntimeState().publish({
+      exposedActions: [...gestures.map(label => ({ label, kind: 'gesture' as const })), ...actions.map(label => ({ label, kind: 'action' as const }))],
+      exposed: [{ label: 'smile', kind: 'face' }],
+      active: [],
+      mood: null,
+    })
+    getContextsSnapshotMock.mockImplementation(() => {
+      const ingested = ingestContextMessageMock.mock.lastCall?.[0]
+      return ingested ? { [ingested.contextId]: [ingested] } : {}
+    })
+    const requests: string[] = []
+    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, context: Conversation, options: StreamOptions) => {
+      requests.push(`${(await options.resolveStep!()).systemPrompt ?? ''}\n${JSON.stringify(context.turns.at(-1))}`)
+      await options.onStreamEvent?.({ type: 'finish' })
+    })
+    const store = useChatStore()
+    leadSituation()
+    const situation = useSituationStore()
+    // The Windows foreground sensor reports the previous and the current app; the switch settles into a `New:` event.
+    situation.ingest({ kind: 'activity', appId: 'eldenring', label: 'Elden Ring', category: 'game', title: null, atMs: T0 })
+    vi.setSystemTime(T0 + 5 * MIN)
+    situation.ingest({ kind: 'conversation', who: 'user', origin: 'user', atMs: T0 + 5 * MIN })
+    vi.setSystemTime(T0 + 10 * MIN)
+    situation.ingest({ kind: 'activity', appId: 'code', label: 'VS Code', category: 'editor', title: 'render.ts', atMs: T0 + 10 * MIN })
+    vi.setSystemTime(T0 + 12 * MIN)
+    situation.ingest({ kind: 'context', sourceKey: 'vision', text: 'A text editor with TypeScript open', atMs: T0 + 12 * MIN })
+    vi.setSystemTime(T0 + 15 * MIN)
+    useDesktopActivityStore().setSnapshot({ idleSeconds: 0, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, systemAudioLevel: null, screenChange: null, sampledAtMs: Date.now() })
+
+    await store.send({ sessionId: 'session-1', text: 'hello' })
+
+    const situationText = ingestContextMessageMock.mock.lastCall?.[0].text as string
+    expect(situationText).toContain('- The user is at the desk')
+    expect(situationText).toContain('- Now: VS Code (editor): render.ts')
+    expect(situationText).toContain('- Before that: Elden Ring')
+    expect(situationText).toContain('- New: switched to VS Code (editor)')
+    expect(requests).toHaveLength(1)
+    for (const label of [...gestures, ...actions])
+      expect(requests[0]).toContain(label)
+    // The mocked `t` returns the key and its parameters, so the instruction text comes from the base.yaml keys.
+    expect(requests[0]).toContain(`base.prompt.actions-gestures ${JSON.stringify({ gestures: gestures.join(', ') })}`)
+    expect(requests[0]).toContain(`base.prompt.actions-actions ${JSON.stringify({ actions: actions.join(', ') })}`)
+  })
+
   it('keeps the system message identical across two consecutive turns', async () => {
     const systemMessages: string[] = []
     llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _context: Conversation, options: StreamOptions) => {

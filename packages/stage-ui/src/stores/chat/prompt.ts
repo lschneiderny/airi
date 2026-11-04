@@ -6,7 +6,7 @@ import { renderRegisterSection } from '@proj-airi/stage-shared/conversation-regi
 import { CODE_BLOCK_SYSTEM_PROMPT, MATH_SYNTAX_SYSTEM_PROMPT } from '@proj-airi/stage-shared/stage-contract'
 import { useI18n } from 'vue-i18n'
 
-import { useStageContractPrompt } from '../../composables/use-airi-runtime-prompt'
+import { useStageActionsPrompt, useStageContractPrompt } from '../../composables/use-airi-runtime-prompt'
 import { useConversationSettings } from '../../features/conversation/settings'
 import { composeMemoryHeader } from '../../tools/memory'
 import { useLlmToolsetPromptsStore } from '../ai/chat-llm/toolset-prompts'
@@ -60,12 +60,13 @@ export function stickerPromptSegment(stickers: readonly { id: string, descriptio
  * - A component or store setup context, because the stage contract reads the locale.
  *
  * Returns:
- * - `buildChatPromptSegments`, which reads the card prompt, register section, stage contract, memory index, and toolset
- *   prompt from the stores, and adds the request-owned parts of its input.
+ * - `buildChatPromptSegments`, which reads the card prompt, the register section, the stage contract, the exposed-clip instruction, the
+ *   memory index, and the toolset prompt from the stores, and adds the request-owned parts of its input.
  */
 export function useChatPrompt() {
   const { t } = useI18n()
   const stageContract = useStageContractPrompt()
+  const stageActions = useStageActionsPrompt()
   const conversationSettings = useConversationSettings()
   const cardStore = useAiriCardStore()
   const memory = useMemoryStore()
@@ -78,6 +79,8 @@ export function useChatPrompt() {
       { id: 'card', text: cardStore.getSystemPrompt(input.characterId) },
       { id: 'register', text: renderRegisterSection(conversationSettings.document.register, conversationSettings.document.textingFlavor, t) },
       { id: 'contract', text: stageContract.value },
+      // Empty while no clip is exposed, so the segment then renders nothing and the prompt keeps its bytes.
+      { id: 'actions', text: stageActions.value },
       memory.enabled
         ? { id: 'memory', header: composeMemoryHeader(memoryEntries.length > 0), text: memoryEntries }
         : { id: 'memory', text: [] },

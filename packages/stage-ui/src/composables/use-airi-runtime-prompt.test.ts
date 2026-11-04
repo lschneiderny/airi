@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 import { toExposedExpressions } from './performance/use-stage-performance-conductor'
-import { useStageContractPrompt, useStageLiveStatePrompt } from './use-airi-runtime-prompt'
+import { useStageActionsPrompt, useStageContractPrompt, useStageLiveStatePrompt } from './use-airi-runtime-prompt'
 
 type Translate = (key: string, params?: Record<string, string>) => string
 
@@ -169,6 +169,43 @@ describe('useStageLiveStatePrompt', () => {
 
     expect(prompt).toContain('- face: anger, pout\n- effect: tear\n- prop: game\n- combo: smile-and-tear')
     expect(prompt).not.toMatch(/expression19|anger-copy/)
+  })
+
+  it('exposed actions render in the actions prompt, not in the live-state block', () => {
+    usePerformanceRuntimeState().publish({
+      exposedActions: [{ label: 'wave', kind: 'gesture' }, { label: 'nod', kind: 'gesture' }, { label: 'moonwalk', kind: 'action' }, { label: 'twirl', kind: 'dance' }],
+      exposed: [],
+      active: [],
+      mood: null,
+    })
+
+    expect(useStageActionsPrompt().value).toBe('base.prompt.actions-gestures\n[gestures]\nwave, nod\nbase.prompt.actions-actions\n[actions]\nmoonwalk, twirl')
+    // Spark notify composes the same system prompt, which carries the actions segment, so its live state omits them.
+    expect(useStageLiveStatePrompt().value).toBe('')
+  })
+
+  it('no actions, no line', () => {
+    usePerformanceRuntimeState().publish({ exposedActions: [], exposed: toExposedExpressions(catalog), active: [], mood: null })
+
+    expect(useStageActionsPrompt().value).toBe('')
+    expect(useStageLiveStatePrompt().value).not.toContain('base.prompt.actions')
+  })
+
+  it('renders each action sentence in English and omits the sentence whose list is empty', async () => {
+    const { createI18n } = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
+    const i18n = createI18n({ legacy: false, locale: 'en', messages, ...createFallbackOptions(() => {}) })
+    i18nMock.t = (key, params) => i18n.global.t(key, params ?? {})
+    const runtimeState = usePerformanceRuntimeState()
+    const prompt = useStageActionsPrompt()
+
+    runtimeState.publish({ exposedActions: [{ label: 'wave', kind: 'gesture' }], exposed: [], active: [], mood: null })
+    expect(prompt.value).toContain('wave')
+    expect(prompt.value).not.toContain('perform_action')
+
+    runtimeState.publish({ exposedActions: [{ label: 'moonwalk', kind: 'action' }], exposed: [], active: [], mood: null })
+    expect(prompt.value).toContain('perform_action')
+    expect(prompt.value).toContain('moonwalk')
+    expect(prompt.value).not.toContain('"action" set to')
   })
 
   it('reports active expressions only while state feedback is on, and never the numeric mood', async () => {

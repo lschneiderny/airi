@@ -39,6 +39,29 @@ export function useStageContractPrompt() {
 }
 
 /**
+ * Returns the instruction for the exposed clips: one sentence for the gestures, which ride on the ACT `action` field,
+ * and one for the actions and dances, which `perform_action` plays. A sentence whose list is empty is omitted, so the
+ * text is empty when no clip is exposed.
+ *
+ * It changes only when the user curates the clips, so every character turn, chat and spark notify alike, sends it as
+ * the budgeted `actions` system-prompt segment (`stores/chat/prompt.ts`), not in the budget-trimmed situation block.
+ */
+export function useStageActionsPrompt() {
+  const { t } = useI18n()
+  const runtimeState = usePerformanceRuntimeState()
+
+  return computed(() => {
+    const gestures = runtimeState.exposedActions.filter(entry => entry.kind === 'gesture').map(entry => entry.label)
+    const actions = runtimeState.exposedActions.filter(entry => entry.kind !== 'gesture').map(entry => entry.label)
+    // One key per sentence, so a sentence whose list is empty is omitted rather than rendered empty.
+    return [
+      ...gestures.length ? [t('base.prompt.actions-gestures', { gestures: gestures.join(', ') })] : [],
+      ...actions.length ? [t('base.prompt.actions-actions', { actions: actions.join(', ') })] : [],
+    ].join('\n')
+  })
+}
+
+/**
  * Returns the live performance state: the exposed expressions and, while state feedback is on, the active
  * expressions. It is empty when neither applies.
  *

@@ -83,6 +83,8 @@ prompt:
     ACT "expression" field, or call the set_expression tool with it. Use no other
     expression names.
     {list}
+  actions-gestures: 'Add "action" set to one of {gestures} inside the ACT JSON for a short gesture while you speak.'
+  actions-actions: 'Call perform_action with one of {actions} for a full-body action; it may be refused while she is busy.'
   expression-state: |
     Current stage state: active expressions: {active}.
   unprompted: "They have not said anything. You are deciding, like a partner who has her own day, whether you would actually reach out right now. Most quiet moments are not worth a reply: then reply only with <{'|'}SILENT{'|'}>. If you do respond, use one or two short sentences in character about what is on your mind or something of your own. Do not describe what is on their screen unless that is the thought. Ask at most one question."

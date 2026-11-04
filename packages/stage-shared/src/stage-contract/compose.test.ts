@@ -33,6 +33,15 @@ describe('composePrompt', () => {
     expect(composed.report.map(entry => entry.id)).toEqual(['card', 'contract', 'memory', 'voice', 'spark'])
   })
 
+  it('places the clip instruction first in the tail, after the contract, and caps it at its budget', () => {
+    const composed = composePrompt([{ id: 'memory', text: ['m1'] }, { id: 'actions', text: 'A' }, { id: 'contract', text: 'C' }])
+    const { maxChars } = PROMPT_SEGMENT_BUDGETS.actions
+
+    expect(composed).toMatchObject({ text: 'C\n\nA\n\nm1', prefix: 'C', tail: 'A\n\nm1' })
+    expect(composePrompt([{ id: 'actions', text: 'a'.repeat(maxChars + 1) }]).report[0]).toMatchObject({ chars: maxChars, truncated: true, overBudget: true })
+    expect(composePrompt([{ id: 'contract', text: 'C' }, { id: 'actions', text: '' }]).text).toBe(composePrompt([{ id: 'contract', text: 'C' }]).text)
+  })
+
   it('joins non-empty segments with two newlines and skips empty ones', () => {
     const composed = composePrompt([
       { id: 'card', text: 'K' },
