@@ -49,6 +49,8 @@ interface BroadcastChannelEventPerform {
 export interface MMDMotionDescriptor {
   id: string
   name: string
+  /** Bumped when the same name is imported again, so a scene that already registered the clip loads the new file. */
+  revision?: number
 }
 
 /** IndexedDB record for a persisted VMD file. */
@@ -310,7 +312,9 @@ export const useMMD = defineStore('mmd', () => {
     const id = existing?.id ?? `${MOTION_STORAGE_PREFIX}${nanoid()}`
 
     await localforage.setItem<PersistedMMDMotion>(id, { id, name, file })
-    if (!existing)
+    if (existing)
+      availableMotions.value = availableMotions.value.map(motion => motion.id === id ? { ...motion, revision: (motion.revision ?? 0) + 1 } : motion)
+    else
       availableMotions.value = [...availableMotions.value, { id, name }]
 
     return { id, name }

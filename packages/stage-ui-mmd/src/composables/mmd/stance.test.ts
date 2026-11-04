@@ -1,3 +1,4 @@
+import type { BodyActionRequest } from '@proj-airi/motion-driver-humanoid/director'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { MMDStanceInteraction, MMDStanceSlots, MMDStanceWorld } from './stance'
@@ -328,5 +329,81 @@ describe('mmd stance director in the stage world', () => {
     frame(director, 100, { ...classic, chatUnfoldSeq: 1, chatX: 5, debugGoal: { seq: 1, x: 6, pace: 'walk' } })
     expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay', pendingGoal: null })
     expect(director.intent?.locomotion.goalX).toBeNull()
+  })
+})
+
+describe('mmd stance director with clip performances', () => {
+  const full: BodyActionRequest = { seq: 1, clipId: 'dance', kind: 'action', layer: 'full', loop: false, durationMs: 3_000, source: 'tool' }
+  const upper: BodyActionRequest = { seq: 1, clipId: 'wave', kind: 'gesture', layer: 'upper', loop: false, durationMs: 2_000, source: 'tool' }
+  const world = (patch: Partial<MMDStanceWorld> = {}): MMDStanceWorld => ({ ...NO_WORLD_BODY_INPUT, ground: { minX: -10, maxX: 10 }, legLength: 1, ...patch })
+
+  function run(director: MMDStanceDirector, atMs: number, interaction: Partial<MMDStanceInteraction>, input?: MMDStanceWorld, baseEligible?: (name: string) => boolean) {
+    return director.update({
+      nowMs: EPOCH_MS + atMs,
+      performance: idle,
+      slots: {},
+      idleMotionName: '',
+      isRegistered: () => true,
+      baseEligible,
+      world: input,
+      interaction: { ...quiet, ...interaction },
+    })
+  }
+
+  it('never uses an ineligible clip as a standing base', () => {
+    const eligible = (name: string) => name !== 'wave'
+    expect(standingBaseMotion('wave', {}, eligible)).toBeNull()
+    expect(standingBaseMotion('breathe', { idle: 'wave' }, eligible)).toBe('breathe')
+    expect(standingBaseMotion('breathe', {}, eligible)).toBe('breathe')
+
+    const director = new MMDStanceDirector()
+    const result = run(director, 0, {}, undefined, eligible)
+    expect(result.motion).toBeNull()
+    director.update({ interaction: quiet, nowMs: EPOCH_MS + 1, performance: idle, slots: { idle: 'wave' }, idleMotionName: 'wave', isRegistered: () => true, baseEligible: eligible })
+    expect(director.baseClips.has('wave')).toBe(false)
+  })
+
+  it('keeps a walk goal across a full action and issues it again after the clip finishes', () => {
+    const director = new MMDStanceDirector()
+    run(director, 0, {}, world())
+    run(director, 100, {}, world({ debugGoal: { seq: 1, x: 6, pace: 'walk' } }))
+    expect(director.diagnostics).toMatchObject({ goalX: 6, reason: 'debug' })
+
+    run(director, 200, { actionRequest: full }, world({ rootX: 1, locomotionMode: 'walking' }))
+    expect(director.diagnostics).toMatchObject({ goalX: null, pendingGoal: { x: 6, reason: 'debug' } })
+    expect(director.intent?.action).toMatchObject({ clipId: 'dance', phase: 'settling' })
+
+    let at = 200
+    while (director.intent?.action?.phase !== 'playing' && at < 20_000) {
+      at += 100
+      run(director, at, { actionRequest: full }, world({ rootX: 1, locomotionMode: 'idle' }))
+    }
+    expect(director.intent?.action).toMatchObject({ seq: 1, phase: 'playing' })
+    expect(director.diagnostics.goalX).toBeNull()
+
+    run(director, at + 100, { actionRequest: full, actionFeedback: { seq: 1, state: 'finished' } }, world({ rootX: 1, locomotionMode: 'idle' }))
+    expect(director.intent?.action).toBeNull()
+    expect(director.diagnostics).toMatchObject({ goalX: 6, reason: 'debug', pendingGoal: null })
+  })
+
+  it('accepts an action request without a world, reaches playing and ends a full clip on a poke', () => {
+    const director = new MMDStanceDirector()
+    run(director, 0, {})
+    run(director, 100, { actionRequest: upper })
+    expect(director.diagnostics).toMatchObject({ lastActionSeq: 1, performing: { clipId: 'wave', layer: 'upper', phase: 'playing' } })
+
+    run(director, 3_000, { actionRequest: upper, actionFeedback: { seq: 1, state: 'finished' } })
+    expect(director.diagnostics.performing).toBeNull()
+
+    const dance = { ...full, seq: 2 }
+    let at = 3_000
+    while (director.intent?.action?.phase !== 'playing' && at < 30_000) {
+      at += 100
+      run(director, at, { actionRequest: dance })
+    }
+    expect(director.intent?.action).toMatchObject({ seq: 2, layer: 'full', phase: 'playing' })
+    run(director, at + 100, { actionRequest: dance, interactionSeq: 1, interactionAtMs: EPOCH_MS + at + 100 })
+    expect(director.intent?.action).toBeNull()
+    expect(director.diagnostics.lastActionSeq).toBe(2)
   })
 })

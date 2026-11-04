@@ -9,6 +9,8 @@
   * contract Stage.vue expects from every renderer.
 */
 
+import type { ClipBoneMask, ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
+import type { BodyActionKind, BodyActionRequest } from '@proj-airi/motion-driver-humanoid/director'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
@@ -18,7 +20,7 @@ import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
-import type { SkinnedMesh, Texture } from 'three'
+import type { AnimationClip, SkinnedMesh, Texture } from 'three'
 
 import type { GazeOffset, MMDAnimationManager, MorphController } from '../../composables/mmd'
 import type { MMDOverlayStage } from '../../composables/mmd/overlays'
@@ -29,6 +31,7 @@ import type { MMDMotionSnapshot } from '../../stores/motion-diagnostics'
 import type { ResolvedMMDModel } from '../../utils/mmd-loader'
 
 import { errorMessageFrom } from '@moeru/std'
+import { deriveClipMeta, effectiveLayer } from '@proj-airi/motion-driver-humanoid/clip-meta'
 import { coverRect } from '@proj-airi/stage-shared'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { screenInwardness } from '@proj-airi/stage-shared/stage-placement'
@@ -77,6 +80,7 @@ import { fnv1a32 } from '../../composables/mmd/natural/seed'
 import { createOverlayLabel } from '../../composables/mmd/overlay-label'
 import { MMDOverlays } from '../../composables/mmd/overlays'
 import { readMMDRigProfile } from '../../composables/mmd/rig'
+import { buildMMDClipMask, mmdClipMaskBones } from '../../composables/mmd/rig/clip-mask'
 import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, stagePixelRatio } from '../../composables/mmd/stage-world'
 import { chatStandX, frameClocks, MMDStanceDirector } from '../../composables/mmd/stance'
 import { buildMMDTouchColliders, MMDTouch, mmdTouchRegionRoots } from '../../composables/mmd/touch'
@@ -174,6 +178,18 @@ watch(() => props.chatActivity?.sentSeq, (next, previous) => {
   }
 })
 const bodyToolPort = new MMDBodyToolPort()
+// Clip performance. The scene queues one request; the director accepts it; the animation manager plays the layer it
+// names. The director decides, this component only obeys.
+const FULL_BODY_GROUPS: readonly ClipMaskGroup[] = ['root', 'leftLegIk', 'rightLegIk']
+let performSeq = 0
+let pendingAction: BodyActionRequest | null = null
+let actionFeedback: { seq: number, state: 'finished' | 'failed' } | null = null
+let playedActionSeq: number | null = null
+let layerClip: string | null = null
+const requestedKinds = new Map<number, BodyActionKind>()
+const loadedClips = new Map<string, { clip: AnimationClip, mask: ClipBoneMask }>()
+const registeredRevisions = new Map<string, number>()
+const actionDrops = { unknown: 0, notExposed: 0, notGesture: 0, superseded: 0 }
 // Where she stands beside the open chat this frame; the tool port reports her position against it.
 let chatStandSpotX: number | null = null
 let chatVisible: boolean | undefined
@@ -204,6 +220,9 @@ const {
   availableMotions,
   stanceSlots,
   oneShotAction,
+  performRequest,
+  clipCuration,
+  availableClipMeta,
   cameraFov,
   ambientColor,
   ambientIntensity,
@@ -621,14 +640,12 @@ function renderLoop(now = performance.now()) {
       points: bodyPoints ?? undefined,
       world: props.stageWorld ? directorWorld(props.stageWorld, loadedModelKey) : undefined,
       // Pokes and drags exist in the classic window too, so the interaction inputs ride outside the world.
-      // NOTICE:
-      // No clip request or feedback reaches the director yet, because the MMD scene has no clip runtime.
-      // The clip runtime and its action port land with the clip-runtime slice (luke/feat/fullscreen-stage ee79cd1dd).
-      // Remove these nulls when that slice wires pendingAction and the layer feedback here.
-      interaction: { interactionSeq, chatSendSeq, interactionAtMs, actionRequest: null, actionFeedback: null, dragging },
+      baseEligible: isBaseEligible,
+      interaction: { interactionSeq, chatSendSeq, interactionAtMs, actionRequest: pendingAction, actionFeedback, dragging },
     })
     if (base.changed)
       animation.setBaseMotion(base.motion)
+    obeyAction()
     if (props.stageWorld) {
       bodyToolPort.observe({
         rootX: stageRootX,
@@ -645,6 +662,7 @@ function renderLoop(now = performance.now()) {
       ? { goalX: locomotion.goalX, pace: locomotion.pace, arriveFacing: locomotion.arriveFacing, reason: locomotion.reason }
       : null)
   }
+  layerClip = animation?.snapshot().layer?.name ?? null
   animation?.update(delta)
   if (touch)
     handleTouchEvents(touch.update(now))
@@ -670,7 +688,9 @@ function renderLoop(now = performance.now()) {
       arms: motionDriver.value === 'natural' ? body?.diagnostics.arms ?? null : null,
       touch: touch && canvasRef.value ? touch.diagnostics(activeCamera, canvasRef.value.getBoundingClientRect()) : null,
       director: stance ? { ...stance.diagnostics, clockOffsetMs: diagnostics.directorClockOffsetMs, centerY: centerModelY() } : null,
-      animation: animation?.snapshot() ?? { idle: null, currentAction: null, actionsStarted: 0 },
+      animation: animation?.snapshot() ?? { idle: null, currentAction: null, actionsStarted: 0, layer: null },
+      action: actionSnapshot(),
+      clips: clipsSnapshot(),
       characterPlacement: characterPlacement.value,
       stageModel: stageModel.value,
       world: worldSnapshot(),
@@ -773,6 +793,13 @@ function disposeModel() {
   }
   resolved?.dispose()
   registeredMotions.clear()
+  registeredRevisions.clear()
+  loadedClips.clear()
+  requestedKinds.clear()
+  pendingAction = null
+  actionFeedback = null
+  playedActionSeq = null
+  layerClip = null
   dragging = false
   modelGroup = undefined
   mesh = undefined
@@ -792,7 +819,7 @@ function disposeModel() {
   characterPlacement.value = null
   stageModel.value = null
   diagnostics.setMetrics(new MMDFrameMetrics())
-  diagnostics.publish({ loadedModelKey: null, rig: null, natural: null, feet: null, lookAt: null, director: null, animation: { idle: null, currentAction: null, actionsStarted: 0 }, characterPlacement: null, stageModel: null, locomotion: null })
+  diagnostics.publish({ loadedModelKey: null, rig: null, natural: null, feet: null, lookAt: null, director: null, animation: { idle: null, currentAction: null, actionsStarted: 0, layer: null }, action: actionSnapshot(), clips: [], characterPlacement: null, stageModel: null, locomotion: null })
   mmdStore.isModelLoaded = false
 }
 
@@ -808,8 +835,12 @@ async function syncMotions() {
   const generation = loadGeneration
   const activeAnimation = animation
   const activeMesh = mesh
+  const activeRig = rig
+  if (!activeRig)
+    return
   for (const descriptor of availableMotions.value) {
-    if (registeredMotions.has(descriptor.name))
+    const revision = descriptor.revision ?? 0
+    if (registeredMotions.has(descriptor.name) && registeredRevisions.get(descriptor.name) === revision)
       continue
     try {
       // The VMD file lives in IndexedDB (shared across windows); build a
@@ -826,9 +857,18 @@ async function syncMotions() {
         const clip = await loadMMDAnimationClip(url, activeMesh)
         if (generation !== loadGeneration)
           return
-        activeAnimation.registerClip(descriptor.name, clip)
-        body?.registerClip(descriptor.name, clip)
+        const mask = buildMMDClipMask(clip, activeRig)
+        const meta = deriveClipMeta(mask, clip.duration * 1000, descriptor.name)
+        loadedClips.set(descriptor.name, { clip, mask })
+        availableClipMeta.value = { ...availableClipMeta.value, [descriptor.name]: { name: descriptor.name, ...meta } }
+        activeAnimation.registerClip(descriptor.name, clip, {
+          layer: meta.layer === 'upper' ? 'upper' : 'full',
+          split: meta.layer !== 'none',
+          animatedBones: mask.animatedBones,
+        })
+        registerBodyClip(descriptor.name)
         registeredMotions.add(descriptor.name)
+        registeredRevisions.set(descriptor.name, revision)
         if (clip.tracks.length === 0) {
           console.warn(
             `[mmd] motion "${descriptor.name}" loaded but has 0 tracks matching this model. `
@@ -847,6 +887,135 @@ async function syncMotions() {
       emit('error', err)
     }
   }
+}
+
+/** Tells the body which groups a clip owns even where its tracks key none of them: a full-body action stops the gait. */
+function registerBodyClip(name: string) {
+  const loaded = loadedClips.get(name)
+  if (!loaded || !body || !loadedModelKey)
+    return
+  const kind = mmdStore.curationFor(loadedModelKey, name).kind ?? availableClipMeta.value[name]?.kind
+  body.registerClip(name, loaded.clip, { forceGroups: kind === 'action' || kind === 'dance' ? FULL_BODY_GROUPS : undefined })
+}
+
+/**
+ * Whether a clip may loop as a standing base. An exposed action never does. A clip the user put in a stance slot is
+ * their explicit choice and stands whatever its derived kind; any other clip needs the `stance` kind.
+ */
+function isBaseEligible(name: string): boolean {
+  const key = loadedModelKey
+  if (!key)
+    return true
+  if (mmdStore.exposedActions(key).some(clip => clip.name === name))
+    return false
+  const slots = stanceSlots.value[key] ?? {}
+  if (name === slots.idle || name === slots.sit || name === slots.sleep)
+    return true
+  const kind = mmdStore.curationFor(key, name).kind ?? availableClipMeta.value[name]?.kind
+  return kind === undefined || kind === 'stance'
+}
+
+/**
+ * Queues a clip for the director (or a stop with `null`). Returns false when the clip is not usable on this model.
+ * Kind, layer and loop come from the derived metadata and the user's curation; an unknown clip defaults to an upper gesture.
+ */
+function requestPerform(name: string | null, options: { loop?: boolean, source: BodyActionRequest['source'] }): boolean {
+  if (!stance || !loadedModelKey)
+    return false
+  // A request the director has not read yet gives way to this one.
+  if (pendingAction && pendingAction.seq > stance.diagnostics.lastActionSeq)
+    actionDrops.superseded++
+  const seq = ++performSeq
+  if (name === null || name === '') {
+    pendingAction = { seq, clipId: '', kind: 'action', layer: 'full', loop: false, durationMs: 0, source: options.source === 'act' ? 'debug' : options.source }
+    return true
+  }
+  if (!registeredMotions.has(name)) {
+    actionDrops.unknown++
+    console.warn(`[mmd] perform skipped: "${name}" is not registered on this model`)
+    return false
+  }
+  const meta = availableClipMeta.value[name]
+  const curation = mmdStore.curationFor(loadedModelKey, name)
+  const kind = curation.kind ?? meta?.kind ?? 'gesture'
+  if (kind === 'unusable') {
+    console.warn(`[mmd] perform skipped: "${name}" is unusable`)
+    return false
+  }
+  const layer = meta ? effectiveLayer(meta, curation.kind) : 'upper'
+  const actionKind: BodyActionKind = kind === 'stance' ? 'action' : kind
+  pendingAction = {
+    seq,
+    clipId: name,
+    kind: actionKind,
+    layer: layer === 'full' ? 'full' : 'upper',
+    loop: options.loop ?? curation.loop ?? meta?.loop ?? false,
+    durationMs: meta?.durationMs ?? 0,
+    source: options.source,
+  }
+  requestedKinds.set(seq, actionKind)
+  if (requestedKinds.size > 16)
+    requestedKinds.delete(requestedKinds.keys().next().value as number)
+  return true
+}
+
+/** Plays the layer the director accepted and ends it when the director lets go. */
+function obeyAction() {
+  if (!animation || !stance)
+    return
+  const action = stance.intent?.action ?? null
+  if (action?.phase === 'playing') {
+    if (playedActionSeq !== action.seq) {
+      playedActionSeq = action.seq
+      animation.playLayer(action.clipId, {
+        seq: action.seq,
+        layer: action.layer,
+        loop: action.loop,
+        kind: requestedKinds.get(action.seq) === 'dance' ? 'dance' : 'action',
+      })
+    }
+    return
+  }
+  // No performance, or one still settling: a layer of an earlier performance ends now.
+  if (playedActionSeq !== null && playedActionSeq !== action?.seq) {
+    animation.stopLayer(playedActionSeq)
+    playedActionSeq = null
+  }
+}
+
+function actionSnapshot(): MMDMotionSnapshot['action'] {
+  const diagnostics = stance?.diagnostics
+  return {
+    performing: diagnostics?.performing ? { name: diagnostics.performing.clipId, layer: diagnostics.performing.layer, phase: diagnostics.performing.phase, seq: diagnostics.performing.seq } : null,
+    lastActionSeq: diagnostics?.lastActionSeq ?? 0,
+    refusal: diagnostics?.actionRefusal ?? null,
+    retryAfterMs: diagnostics?.actionRetryAfterMs ?? null,
+    drops: { ...actionDrops },
+  }
+}
+
+function clipsSnapshot(): MMDMotionSnapshot['clips'] {
+  const key = loadedModelKey
+  if (!key)
+    return []
+  const clips: MMDMotionSnapshot['clips'] = []
+  for (const { name } of availableMotions.value) {
+    const meta = availableClipMeta.value[name]
+    if (!meta || !registeredMotions.has(name))
+      continue
+    const curation = mmdStore.curationFor(key, name)
+    const layer = effectiveLayer(meta, curation.kind)
+    clips.push({
+      name,
+      kind: curation.kind ?? meta.kind,
+      layer,
+      loop: curation.loop ?? meta.loop,
+      label: curation.label,
+      exposed: curation.aiMayUse && curation.label !== null,
+      downgraded: layer !== meta.layer,
+    })
+  }
+  return clips
 }
 
 async function loadModel(src: string) {
@@ -906,7 +1075,12 @@ async function loadModel(src: string) {
       quaternion: { x: bone.quaternion.x, y: bone.quaternion.y, z: bone.quaternion.z, w: bone.quaternion.w },
     }))
 
-    animation = createMMDAnimationManager(resolved.mmd, { physicsEnabled: physicsEnabled.value })
+    animation = createMMDAnimationManager(resolved.mmd, { physicsEnabled: physicsEnabled.value, maskBones: mmdClipMaskBones(rig) })
+    animation.onLayerEvent((event) => {
+      // The director reads only the end of a performance; `playing` needs no answer.
+      if (event.state !== 'playing')
+        actionFeedback = { seq: event.seq, state: event.state }
+    })
     body = new MMDBody(resolved.mmd, rig, {
       modelKey,
       input: () => {
@@ -921,6 +1095,8 @@ async function loadModel(src: string) {
           ...diagnostics.debugFlags,
           stanceClips: activeStance.baseClips,
           dragging,
+          layerClip,
+          fullLayerPlaying: activeStance.intent?.action?.phase === 'playing' && activeStance.intent.action.layer === 'full',
         }
       },
       // Per-frame root motion: no physics reset on this path, so Ammo feels the travel.
@@ -1064,7 +1240,7 @@ function setClassicEmotion(emotion: string, intensity = 1) {
 
   const actionName = emotionActionMap.value[value]
   if (actionName && registeredMotions.has(actionName))
-    animation?.playAction(actionName, { loop: false })
+    requestPerform(actionName, { source: 'act' })
 }
 
 let resizeObserver: ResizeObserver | undefined
@@ -1224,11 +1400,21 @@ watch(morphOverrides, (overrides) => {
     morphs.override(slot as Parameters<MorphController['override']>[0], name ?? '')
 }, { deep: true })
 
-// One-shot motion requests from tools/the act bus.
+// One-shot motion requests from the lab and the settings window go through the director like every other clip.
+watch(performRequest, (request) => {
+  if (request)
+    requestPerform(request.name, { loop: request.loop || undefined, source: 'debug' })
+})
 watch(oneShotAction, (request) => {
   if (request)
-    animation?.playAction(request.name, { loop: request.loop })
+    requestPerform(request.name, { loop: request.loop || undefined, source: 'debug' })
 })
+
+// A curated kind decides whether the body treats a clip as full-body, so re-register the body's view of every clip.
+watch(clipCuration, () => {
+  for (const name of loadedClips.keys())
+    registerBodyClip(name)
+}, { deep: true })
 
 // Newly imported VMD motions: load and register them against the live model.
 watch(availableMotions, () => {
@@ -1280,7 +1466,7 @@ defineExpose({
     natural?.impulse(episode)
     const actionName = emotionActionMap.value[episode.emotion]
     if (actionName && registeredMotions.has(actionName))
-      animation?.playAction(actionName)
+      requestPerform(actionName, { source: 'act' })
   },
   applySlots: (commands: SlotCommand[], now: number) => expressions.applySlots(commands, now),
   applyHolds: (commands: HoldCommand[], now: number) => natural?.applyHolds(commands, now),
@@ -1298,6 +1484,11 @@ defineExpose({
   getMood: () => natural?.mood ?? null,
   listMorphs: () => morphs?.availableMorphs ?? [],
   listMotions: () => animation?.availableClips() ?? [],
+  listActions: () => loadedModelKey ? mmdStore.labeledClips(loadedModelKey) : [],
+  action: (label: string) => {
+    const clip = loadedModelKey ? mmdStore.exposedActions(loadedModelKey).find(candidate => candidate.label === label) : undefined
+    return clip ? requestPerform(clip.name, { source: 'act' }) : false
+  },
   setRootX,
   setDragging,
   characterPlacement,

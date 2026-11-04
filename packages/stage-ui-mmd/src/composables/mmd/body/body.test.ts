@@ -360,6 +360,23 @@ describe('mmd full-body stages', () => {
     expect(body.diagnostics.feet.contact).toBe(1)
   })
 
+  it('keeps foot contact under a stance clip that keys センター, and ducks it under the same clip as a one-shot', () => {
+    const contactUnder = (stance: boolean) => {
+      const { pipeline, body, mixer, setInput } = bodyFixture(0, Math.PI, { arms: true })
+      const sit = new AnimationClip('sit', 2, [new VectorKeyframeTrack('.bones[センター].position', [0, 2], [0, -3, 0, 0, -3, 0])])
+      pipeline.registerClip(sit.name, sit)
+      body.registerClip(sit.name, sit)
+      pipeline.enqueue(() => mixer.clipAction(sit).play())
+      setInput({ stanceClips: new Set(stance ? [sit.name] : []) })
+      for (let frame = 0; frame < 90; frame++)
+        pipeline.step(1 / 60)
+      expect(body.ownership().root).toBe(1)
+      return body.diagnostics.feet.contact
+    }
+    expect(contactUnder(true)).toBe(1)
+    expect(contactUnder(false)).toBeLessThan(1)
+  })
+
   it('keeps breath and sway under a finger-only clip', () => {
     const sway = (withClip: boolean) => {
       const { pipeline, body, mixer, bone } = bodyFixture(0, Math.PI, { arms: true })
