@@ -106,6 +106,35 @@ export default defineConfig({
     }],
   },
 }, {
+  // The eager Live2D path may import only the three-free 3D subpaths; scenes load through `import()`.
+  // Pocket installs Tres globally and waits on its host-scope decision. See docs/ai/adr/2026-11-04-lazy-3d-renderers.md.
+  name: 'airi/lazy-3d-renderers',
+  files: [
+    'packages/{stage-ui,stage-layouts,stage-pages}/src/**/*.{ts,vue}',
+    'apps/stage-{tamagotchi,web}/src/**/*.{ts,vue}',
+  ],
+  ignores: ['**/*.test.ts', '**/pages/devtools/**'],
+  rules: {
+    'ts/no-restricted-imports': ['error', {
+      paths: ['@proj-airi/stage-ui-mmd', '@proj-airi/stage-ui-three'].map(name => ({
+        name,
+        allowTypeImports: true,
+        message: 'The package root loads the 3D scene. Import a three-free subpath, or load the scene with defineAsyncComponent.',
+      })),
+      // Regular expressions, because gitignore-style groups cannot re-include a subpath of an excluded directory.
+      patterns: [{
+        regex: '^(?:three|@moeru/three-mmd|@pixiv/three-vrm|@tresjs/)',
+        allowTypeImports: true,
+        message: 'This library belongs to the 3D renderers. Load the code that needs it with a dynamic import().',
+      }, {
+        // The allowed subpaths are the three-free stores, constants, and helpers.
+        regex: '^@proj-airi/stage-ui-(?:mmd|three)/(?!stores(?:/|$)|constants/|assets/|composables/mmd/overlay-flags$|composables/hit-test$)',
+        allowTypeImports: true,
+        message: 'This module loads three on the eager Live2D path. Load it with a dynamic import() instead.',
+      }],
+    }],
+  },
+}, {
   files: ['server/apps/api/**/*.ts'],
   rules: {
     'no-restricted-syntax': [

@@ -7,6 +7,7 @@ Root commands for working on this repository with many worktrees and parallel ag
 | `pnpm verify` | Typechecks changed packages and their dependents, lints changed files, and runs related tests. Skips a step that already passed on the same working tree. |
 | `pnpm wt ls \| new \| rm \| gc` | Lists, creates, removes, and garbage-collects worktrees. |
 | `pnpm dev:top` | Shows dev process memory and CPU per worktree, flags orphans, and stops one worktree's processes. |
+| `pnpm check:bundle` | Builds the Electron app and fails if the main window loads three, three-mmd, three-vrm, or Tres at startup. |
 | `pnpm test:run` | Runs the root Vitest config and then each package suite (`test-stage-tamagotchi:run`, `test-stage-web:run`, `test-stage-pages:run`, `test-ui:run`, `test-stage-ui-live2d:run`, `test-model-driver-lipsync:run`, `test-stage-ui-three:run`, `test-stage-ui-mmd:run`). Every suite runs even after a failure. It prints a per-suite summary and exits 1 if any suite failed. |
 
 ## When to use
@@ -14,6 +15,7 @@ Root commands for working on this repository with many worktrees and parallel ag
 - Use `pnpm verify` before finishing a task, instead of root `pnpm lint` and `pnpm typecheck`.
 - Use `pnpm wt` to create and remove worktrees, so installs use the shared store and removal survives Windows path limits.
 - Use `pnpm dev:top` when the machine is slow, to see which worktree and tool is responsible.
+- Use `pnpm check:bundle` after changing how the stage, settings, or hosts import a renderer package.
 
 ## When not to use
 
@@ -41,6 +43,15 @@ Changed files are those that differ between the merge base and the working tree,
 A passing step is recorded under `<git common dir>/airi-verify/`, keyed by the working tree hash, the exact command, the Node.js version, and the platform. Every worktree reads the same store. A rerun on an identical tree reports `cached` without running anything. Failures are never stored. A pass is not stored if files changed while the step ran. Entries older than 30 days are pruned.
 
 Exit codes: 0 every step passed, 1 a step failed, 2 usage error.
+
+## `pnpm check:bundle`
+
+```bash
+pnpm check:bundle                        # build the Electron app, then check it
+pnpm exec tsx scripts/dev-tools/bundle-check.ts   # check the existing build in apps/stage-tamagotchi/out
+```
+
+The check starts from the module script in `out/renderer/index.html` and follows static `import` and `export ... from` statements through the emitted chunks. It skips dynamic `import()`, which loads only when a 3D model is selected. No chunk it reaches may contain three, which it recognizes by the `__THREE__` property that three sets when it loads. three-mmd, three-vrm, and Tres all import three, so the same marker covers them. The build writes no sourcemaps, so the check cannot name modules directly. It prints how many chunks and megabytes the main window loads at startup. The [lazy 3D renderers ADR](../../docs/ai/adr/2026-11-04-lazy-3d-renderers.md) records why. The `airi/lazy-3d-renderers` ESLint rule catches the same mistake earlier, in the editor and in `pnpm verify`. The check is a separate command because it needs an Electron build.
 
 ## `pnpm wt`
 

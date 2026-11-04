@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { MMDOverlayFlags } from '@proj-airi/stage-ui-mmd/composables/mmd'
+import type { MMDOverlayFlags } from '@proj-airi/stage-ui-mmd/composables/mmd/overlay-flags'
 
-import { mmdOverlayColors, mmdOverlayFlagNames } from '@proj-airi/stage-ui-mmd/composables/mmd'
+import { mmdOverlayColors, mmdOverlayFlagNames } from '@proj-airi/stage-ui-mmd/composables/mmd/overlay-flags'
 import { useMMDMotionDiagnostics } from '@proj-airi/stage-ui-mmd/stores'
 import { FieldCheckbox } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'

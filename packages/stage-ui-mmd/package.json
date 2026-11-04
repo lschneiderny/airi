@@ -20,6 +20,7 @@
     "./components/scenes": "./src/components/scenes/index.ts",
     "./components/scenes/MMD.vue": "./src/components/scenes/MMD.vue",
     "./composables/mmd": "./src/composables/mmd/index.ts",
+    "./composables/mmd/overlay-flags": "./src/composables/mmd/overlay-flags.ts",
     "./constants/emotions": "./src/constants/emotions.ts",
     "./stores": "./src/stores/index.ts",
     "./stores/mmd": "./src/stores/mmd.ts",
