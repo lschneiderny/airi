@@ -319,11 +319,11 @@ const live2dExpressionBackend = useLive2DExpressionBackend()
 const mmdExpressionBackend = useMMDExpressionBackend()
 const performanceRenderer = computed(() => selectStagePerformanceRenderer(stageModelRenderer.value, {
   scene: live2dSceneRef.value,
-  driver: live2dMotionDriver.value,
+  driver: live2dMotionDriver.value === 'natural' ? 'natural' : 'basic',
   expressionBackend: live2dExpressionBackend,
 }, {
   scene: mmdSceneRef.value,
-  driver: mmdMotionDriver.value === 'natural' ? 'natural' : 'universal',
+  driver: mmdMotionDriver.value === 'natural' ? 'natural' : 'basic',
   expressionBackend: mmdExpressionBackend,
 }))
 const { conductor: performanceConductor, settings: performanceSettings } = useStagePerformanceConductor({

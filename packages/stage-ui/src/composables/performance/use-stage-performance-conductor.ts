@@ -4,7 +4,6 @@ import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { CharacterReading } from '@proj-airi/stage-shared/character-state'
 import type { AffectSignal, AffectTrace, CatalogEntry, DeciderContext, ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceDecision, PerformanceProfile, SlotCommand, TimingEvent, TouchAffectInput } from '@proj-airi/stage-shared/expression-performance'
 import type { AffectTraceRequest } from '@proj-airi/stage-shared/expression-performance/affect-trace-diagnostics'
-import type { Live2DMotionDriver } from '@proj-airi/stage-ui-live2d'
 
 import type { StageExpressionBackend } from '../../features/performance/expression-backend'
 import type { ActiveExpression, ExposedExpression, ExposedExpressionGroup, PerformanceMoodSnapshot } from '../../features/performance/runtime-state'
@@ -115,11 +114,17 @@ export interface StagePerformanceScene {
   setFaceBaseline?: (baseline: FaceBaseline) => void
 }
 
+/**
+ * How the scene performs. `natural` is Live2D or MMD under the Natural driver. `basic` is every
+ * other driver (Live2D Universal and MAGIC, MMD Classic), which plays motion groups instead of episodes.
+ */
+export type StagePerformanceDriver = 'natural' | 'basic'
+
 export interface StagePerformanceConductorOptions {
   /** Undefined while no performance scene is mounted; decisions still advance the decider state. */
   scene: () => StagePerformanceScene | undefined
-  driver: () => Live2DMotionDriver
-  /** Plays a motion group for the Universal and MAGIC drivers. */
+  driver: () => StagePerformanceDriver
+  /** Plays a motion group under a basic driver. */
   playMotion: (group: string) => void
   settings: () => ExpressionPerformanceSettings
   catalog: () => readonly CatalogEntry[]
@@ -170,7 +175,7 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  *
  * Routing per driver:
  * - Natural: decided episodes go to `scene.setEmotion` and decided holds to `scene.applyHolds`.
- * - Universal and MAGIC: every recognized emotion plays its motion group, repeats and
+ * - Basic (Live2D Universal and MAGIC, MMD Classic): every recognized emotion plays its motion group, repeats and
  *   `neutral` (`Idle`) included, independently of episode filtering.
  *   The decider context reports `heldEmotions` off there, so explicit expressions derive no
  *   reaction state and later slot decisions match the held-emotion-free behavior.

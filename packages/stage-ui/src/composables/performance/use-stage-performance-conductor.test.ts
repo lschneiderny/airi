@@ -1,7 +1,6 @@
 import type { AffectSignal, AffectTrace, CatalogEntry, ExpressionPerformanceSettings, PerformanceProfile, SlotCommand, TimingEvent } from '@proj-airi/stage-shared/expression-performance'
-import type { Live2DMotionDriver } from '@proj-airi/stage-ui-live2d'
 
-import type { StagePerformanceScene } from './use-stage-performance-conductor'
+import type { StagePerformanceDriver, StagePerformanceScene } from './use-stage-performance-conductor'
 
 import { createDecider, createPickerDecider, defaultExpressionPerformanceSettings, initialTouchAffectMemory, parseAffectTrace, parseExpressionPerformanceSettings, replayAffectTrace, touchAffect } from '@proj-airi/stage-shared/expression-performance'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
@@ -52,7 +51,7 @@ function fakeScene() {
   }
 }
 
-function createConductor(driver: Live2DMotionDriver, scene: StagePerformanceScene = fakeScene(), settings: ExpressionPerformanceSettings = defaultExpressionPerformanceSettings, profile?: PerformanceProfile, entries: readonly CatalogEntry[] = catalog) {
+function createConductor(driver: StagePerformanceDriver, scene: StagePerformanceScene = fakeScene(), settings: ExpressionPerformanceSettings = defaultExpressionPerformanceSettings, profile?: PerformanceProfile, entries: readonly CatalogEntry[] = catalog) {
   let now = 10
   const playMotion = vi.fn<(group: string) => void>()
   const conductor = new StagePerformanceConductor({
@@ -238,7 +237,7 @@ describe('stage performance conductor', () => {
     expect(playMotion).not.toHaveBeenCalled()
   })
 
-  it.each(['universal', 'magic'] as const)('plays a motion group for every recognized emotion under %s and still applies slots', (driver) => {
+  it.each(['basic'] as const)('plays a motion group for every recognized emotion under %s and still applies slots', (driver) => {
     const scene = fakeScene()
     const { conductor, playMotion, advance } = createConductor(driver, scene)
 
@@ -262,7 +261,7 @@ describe('stage performance conductor', () => {
 
   it('plays the fallback motion group for love, flustered, and sleepy under Universal', () => {
     // Non-Natural drivers play the group unconditionally, so no clock advance is needed.
-    const { conductor, playMotion } = createConductor('universal')
+    const { conductor, playMotion } = createConductor('basic')
 
     for (const emotion of ['love', 'flustered', 'sleepy'])
       conductor.emotion(emotion, 0.6, 'act', 'turn-a')
@@ -270,7 +269,7 @@ describe('stage performance conductor', () => {
     expect(playMotion.mock.calls).toEqual([['Happy'], ['Awkward'], ['Idle']])
   })
 
-  it.each(['universal', 'magic'] as const)('skips the emotion motion group under %s when an ACT already played its motion, and still applies slots', (driver) => {
+  it.each(['basic'] as const)('skips the emotion motion group under %s when an ACT already played its motion, and still applies slots', (driver) => {
     const scene = fakeScene()
     const { conductor, playMotion } = createConductor(driver, scene)
 
@@ -311,7 +310,7 @@ describe('stage performance conductor', () => {
 
   it('drops expressions that are not exposed to the LLM and emotions it does not know', () => {
     const scene = fakeScene()
-    const { conductor, playMotion } = createConductor('universal', scene)
+    const { conductor, playMotion } = createConductor('basic', scene)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     conductor.expression('anger', undefined, 'act', 'turn-a')
@@ -449,7 +448,7 @@ describe('stage performance conductor', () => {
       expect(scene.applySlots).not.toHaveBeenCalled()
     })
 
-    it.each(['universal', 'magic'] as const)('never doses mood or plays a motion group for a touch under %s', (driver) => {
+    it.each(['basic'] as const)('never doses mood or plays a motion group for a touch under %s', (driver) => {
       const scene = fakeScene()
       const { conductor, playMotion } = createConductor(driver, scene)
 
@@ -461,8 +460,8 @@ describe('stage performance conductor', () => {
       expect(scene.setEmotion).not.toHaveBeenCalled()
     })
 
-    it('plays an ACT cue gesture on the scene under Natural and ignores it under Universal and MAGIC', () => {
-      const played = (['natural', 'universal', 'magic'] as const).map((driver) => {
+    it('plays an ACT cue gesture on the scene under Natural and ignores it under a basic driver', () => {
+      const played = (['natural', 'basic'] as const).map((driver) => {
         const scene = fakeScene()
         createConductor(driver, scene).conductor.gesture('nod', 2)
         return [driver, scene.gesture.mock.calls]
@@ -470,8 +469,7 @@ describe('stage performance conductor', () => {
 
       expect(played).toEqual([
         ['natural', [['nod', 2]]],
-        ['universal', []],
-        ['magic', []],
+        ['basic', []],
       ])
     })
 
@@ -620,7 +618,7 @@ describe('stage performance conductor', () => {
       expect(scene.setMuted.mock.invocationCallOrder[0]).toBeLessThan(scene.applyHolds.mock.invocationCallOrder[0])
     })
 
-    it.each(['universal', 'magic'] as const)('dispatches no holds or episodes under %s', (driver) => {
+    it.each(['basic'] as const)('dispatches no holds or episodes under %s', (driver) => {
       const scene = fakeScene()
       const { conductor } = createConductor(driver, scene, defaultExpressionPerformanceSettings, undefined, heldCatalog)
 
@@ -631,7 +629,7 @@ describe('stage performance conductor', () => {
       expect(scene.setEmotion).not.toHaveBeenCalled()
     })
 
-    it.each(['universal', 'magic'] as const)('keeps the held-emotion-free slot history under %s after a mapped expression', (driver) => {
+    it.each(['basic'] as const)('keeps the held-emotion-free slot history under %s after a mapped expression', (driver) => {
       const run = (settings: ExpressionPerformanceSettings) => {
         const scene = fakeScene()
         const { conductor, advance } = createConductor(driver, scene, settings, undefined, heldCatalog)
