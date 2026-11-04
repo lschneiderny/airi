@@ -87,10 +87,10 @@ export function frameClocks(nowMs: number, directorOffsetMs: number): { naturalS
  * this model's sit or sleep slot never plays while standing, even when it is
  * also the idle slot or the global idle (the import handler auto-selects the
  * first imported VMD). Such a candidate is skipped; with none left the model
- * stands in its rest pose.
+ * stands in its rest pose. `baseEligible` rejects clips that must never loop as a base, such as an exposed action.
  */
-export function standingBaseMotion(idleMotionName: string, slots: MMDStanceSlots): string | null {
-  const standable = (name: string | undefined) => !!name && name !== slots.sit && name !== slots.sleep
+export function standingBaseMotion(idleMotionName: string, slots: MMDStanceSlots, baseEligible: (name: string) => boolean = () => true): string | null {
+  const standable = (name: string | undefined) => !!name && name !== slots.sit && name !== slots.sleep && baseEligible(name)
   if (standable(slots.idle))
     return slots.idle ?? null
   if (standable(idleMotionName))
@@ -122,6 +122,8 @@ export class MMDStanceDirector {
     slots: MMDStanceSlots
     idleMotionName: string
     isRegistered: (name: string) => boolean
+    /** Rejects a clip as a standing base; absent accepts every clip. */
+    baseEligible?: (name: string) => boolean
     /** Target points in model units; absent points leave the matching attention without a target. */
     points?: { cursor: Vec3 | null, chat: Vec3 | null, camera: Vec3 | null }
     /** Omitted in classic mode: no ground, so no goal is ever issued. */
@@ -158,7 +160,7 @@ export class MMDStanceDirector {
     this.lastIntent = intent
     this.startMs ??= memory.nowMs
 
-    const standing = standingBaseMotion(input.idleMotionName, input.slots)
+    const standing = standingBaseMotion(input.idleMotionName, input.slots, input.baseEligible)
     this.candidates = new Set([standing, input.slots.sit, input.slots.sleep].filter((name): name is string => !!name))
     const wanted = intent.stance === 'sit'
       ? input.slots.sit

@@ -41,6 +41,11 @@ export interface MMDBodyInput {
   readonly dragging: boolean
   /** The clip the animation manager reports on its layer (`snapshot().layer.name`); `performing()` reads its weight. */
   readonly layerClip?: string | null
+  /**
+   * The director's full-layer action is in its `playing` phase. It owns root and leg IK from that frame on, because the
+   * clip's weight is still 0 on the frame the manager creates the layer.
+   */
+  readonly fullLayerPlaying?: boolean
 }
 
 export interface MMDRegisterClipOptions {
@@ -264,7 +269,7 @@ export class MMDBody {
     // A clip that keys the root or a leg IK bone owns the body's travel and stops the gait. Clips that animate only
     // arms, fingers or the head, such as an idle-slot VMD, leave walking on.
     const { root, leftLegIk, rightLegIk } = this.owned
-    this.gaitEnabled = input.rootMotion && this.root !== undefined && root === 0 && leftLegIk === 0 && rightLegIk === 0
+    this.gaitEnabled = input.rootMotion && this.root !== undefined && root === 0 && leftLegIk === 0 && rightLegIk === 0 && !input.fullLayerPlaying
     if (!this.gaitEnabled)
       this.goal = null
     this.gait = this.locomotion.step(dt, {

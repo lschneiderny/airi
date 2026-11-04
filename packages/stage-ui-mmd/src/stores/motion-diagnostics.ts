@@ -1,4 +1,5 @@
 import type { BroadcastChannelEmitOptions } from '@moeru/eventa/adapters/broadcast-channel'
+import type { ClipKind, ClipLayer } from '@proj-airi/motion-driver-humanoid/clip-meta'
 import type { LocomotionFrame } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { BodyLocomotionReason, LocomotionPace } from '@proj-airi/motion-driver-humanoid/types'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
@@ -36,7 +37,20 @@ export interface MMDMotionSnapshot {
   /** `centerY` is the センター bone's Y in model units (mesh space), independent of the view scale. */
   director: (MMDStanceDiagnostics & { clockOffsetMs: number, centerY: number | null }) | null
   touch: { lastRegion: string | null, hitBody: boolean, petActive: boolean, headScreenPoint: { x: number, y: number } | null, events: number } | null
-  animation: { idle: string | null, currentAction: string | null, actionsStarted: number }
+  animation: { idle: string | null, currentAction: string | null, actionsStarted: number, layer: { seq: number, name: string, state: 'playing' | 'finished' } | null }
+  /**
+   * The action layer. `performing` is the clip the director accepted (`name` is its clip name), `refusal` and
+   * `retryAfterMs` the last refused request, and `drops` count ACT action labels the scene did not play.
+   */
+  action: {
+    performing: { name: string, layer: 'full' | 'upper', phase: 'settling' | 'playing', seq: number } | null
+    lastActionSeq: number
+    refusal: MMDStanceDiagnostics['actionRefusal']
+    retryAfterMs: number | null
+    drops: { unknown: number, notExposed: number, notGesture: number, superseded: number }
+  }
+  /** The imported clips of the loaded model with their effective kind and layer; `downgraded` marks a gesture override that forced a full clip onto the upper layer. */
+  clips: Array<{ name: string, kind: ClipKind, layer: ClipLayer, loop: boolean, label: string | null, exposed: boolean, downgraded: boolean }>
   /** Stage mode only: the character's projected rect in work-area DIP, with the root at its current x. */
   characterPlacement: PlacementRect | null
   /** Stage mode only: the measured model height and foot baseline in model units, which the host calibrates the camera from. */
@@ -145,7 +159,9 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     lookAt: null,
     director: null,
     touch: null,
-    animation: { idle: null, currentAction: null, actionsStarted: 0 },
+    animation: { idle: null, currentAction: null, actionsStarted: 0, layer: null },
+    action: { performing: null, lastActionSeq: 0, refusal: null, retryAfterMs: null, drops: { unknown: 0, notExposed: 0, notGesture: 0, superseded: 0 } },
+    clips: [],
     characterPlacement: null,
     stageModel: null,
     measurement: null,

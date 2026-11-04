@@ -166,8 +166,8 @@ export class MMDFootContact {
       this.planner.setAnchors({ left: toMeshAnchor(planted.left, root), right: toMeshAnchor(planted.right, root) })
     }
     const previous = this.result
-    // One-shots duck this layer even without IK tracks; stance clips duck it
-    // only through clipFootTrackWeight, so feet stay planted while sitting down.
+    // `duck` is the body's `contactDuck`, from non-stance clip ownership only: a one-shot owning the root, a leg IK
+    // or the lower body ducks it. A stance clip never does, even when it keys センター; it acts only through clipFootTrackWeight.
     this.result = this.planner.step({
       pelvisOffset: input.offset,
       feet: samples,

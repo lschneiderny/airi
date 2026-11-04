@@ -262,7 +262,9 @@ running (no model, the Classic driver, or the classic window).
 | `lookAt { target, yaw, pitch, turning, turns }` | The world-space look target, head yaw and pitch in radians, whether the center bone is turning, and the turn count. |
 | `director` | The body director (below). |
 | `touch { lastRegion, hitBody, petActive, headScreenPoint, events }` | The touch classifier state; `headScreenPoint` is in canvas client pixels. |
-| `animation { idle, currentAction, actionsStarted }` | The looping base clip, the one-shot in progress and the one-shot count. |
+| `animation { idle, currentAction, actionsStarted, layer }` | The looping base clip, the one-shot in progress, the one-shot count and the layered clip (`{ seq, name, state }` or null). |
+| `action { performing, lastActionSeq, refusal, retryAfterMs, drops }` | The action layer: the clip the director accepted (`{ name, layer, phase, seq }` or null), the last request it read, the last refusal (`refractory`, `busy`, `asleep`, `dragging`) with its retry time, and the ACT drop counters (`unknown`, `notExposed`, `notGesture`, `superseded`). |
+| `clips [{ name, kind, layer, loop, label, exposed, downgraded }]` | The imported clips of the loaded model with the effective kind and layer; `downgraded` marks a gesture override that forced a full-body clip onto the upper layer. |
 | `characterPlacement { x, y, width, height }` | Stage mode: the character's projected rect in work-area DIP with the root at its current x. |
 | `stageModel { height, footBaselineY }` | Stage mode: the measured model height and foot baseline in model units, which the host calibrates the camera from. |
 | `world { unitsPerDip, floorRowDip, ground { minX, maxX }, homeX, characterHeightDip }` | Stage mode: the calibration the world was built from. `unitsPerDip` converts work-area DIP to model units on the floor line, `floorRowDip` is the floor line's row, `ground` the reachable root x range, `homeX` the resting root x and `characterHeightDip` the configured height (`stageModel.height / unitsPerDip`). |
