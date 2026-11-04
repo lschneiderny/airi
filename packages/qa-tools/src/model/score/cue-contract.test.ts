@@ -4,7 +4,7 @@ import { cueContractFixtures, replayReply } from '@proj-airi/core-agent'
 import { STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'
 import { describe, expect, it } from 'vitest'
 
-import { cueContractScorer } from './cue-contract'
+import { CUE_CONTRACT_SCORER, cueContractScorer } from './cue-contract'
 
 function record(text: string, thinkingText = '', toolCalls: ReplyTranscriptRecord['reply']['toolCalls'] = []): ReplyTranscriptRecord {
   return {
@@ -274,5 +274,87 @@ describe('cue contract scorer', () => {
     const score = await cueContractScorer.score(record('<|LOOK screen|>'.repeat(7)), context)
     expect(score.stageRejected).toBe(7)
     expect(score.stageRejectedTokens).toHaveLength(5)
+  })
+})
+
+describe('action scoring', () => {
+  const exposed = [{ label: 'wave', kind: 'gesture' }, { label: 'moonwalk', kind: 'dance' }, { label: 'step', kind: 'action' }] as const
+  const withExposed = { ...context, exposedActions: exposed }
+  const actText = (action: string) => `<|ACT {"emotion":"happy","action":"${action}"}|>Hi!`
+  const performAction = (action: unknown) => ({ name: 'perform_action', arguments: { action } })
+
+  it('pins the scorer version at 4', () => {
+    expect(CUE_CONTRACT_SCORER).toEqual({ id: 'cue-contract-score', version: 4 })
+  })
+
+  it.each([
+    ['wave', 'accepted'],
+    ['Wave', 'accepted'],
+    ['moonwalk', 'not-gesture'],
+    ['step', 'not-gesture'],
+    ['cartwheel', 'unknown'],
+    ['constructor', 'unknown'],
+  ])('resolves the ACT action %j to %s against the exposed set', async (action, disposition) => {
+    const score = await cueContractScorer.score(record(actText(action)), withExposed)
+
+    expect(score.acts[0].action).toBe(action.toLowerCase())
+    expect(score.acts[0].actionDisposition).toBe(disposition)
+  })
+
+  it('reports no action and no disposition for an ACT without the field', async () => {
+    const score = await cueContractScorer.score(record('<|ACT {"emotion":"happy"}|>Hi!'), withExposed)
+
+    expect(score.acts[0]).toMatchObject({ action: null, actionDisposition: null })
+  })
+
+  it('leaves the disposition null when the score options carry no exposed set', async () => {
+    const score = await cueContractScorer.score(record(actText('wave')), context)
+
+    expect(score.acts[0]).toMatchObject({ action: 'wave', actionDisposition: null })
+    expect(score).toMatchObject({ actionToolCalls: 0, actionToolUnknown: 0 })
+  })
+
+  it('treats every label as unknown when the exposed set is empty', async () => {
+    const score = await cueContractScorer.score(record(actText('wave')), { ...context, exposedActions: [] })
+
+    expect(score.acts[0].actionDisposition).toBe('unknown')
+  })
+
+  it('counts perform_action calls and the labels outside the exposed action and dance set', async () => {
+    const score = await cueContractScorer.score(record('Sure.', '', [
+      performAction('moonwalk'),
+      performAction('step'),
+      performAction('stop'),
+      performAction('cartwheel'),
+      performAction('wave'),
+      performAction(7),
+      { name: 'perform_action', arguments: null },
+      { name: 'lookup', arguments: { action: 'cartwheel' } },
+    ]), withExposed)
+
+    // Two exposed, one stop, and four unknown: a gesture label is not a tool action, a number and a null are no label.
+    expect(score).toMatchObject({ actionToolCalls: 7, actionToolUnknown: 4 })
+  })
+
+  it('reads JSON-string tool arguments and treats unparsable ones as an unknown label', async () => {
+    const score = await cueContractScorer.score(record('Sure.', '', [
+      { name: 'perform_action', arguments: '{"action":"moonwalk"}' },
+      { name: 'perform_action', arguments: '{broken' },
+    ]), withExposed)
+
+    expect(score).toMatchObject({ actionToolCalls: 2, actionToolUnknown: 1 })
+  })
+
+  it('counts tool calls but no unknowns without an exposed set', async () => {
+    const score = await cueContractScorer.score(record('Sure.', '', [performAction('cartwheel')]), context)
+
+    expect(score).toMatchObject({ actionToolCalls: 1, actionToolUnknown: 0 })
+  })
+
+  it('compares an injected label as data and never evaluates it', async () => {
+    const hostile = '__proto__"; process.exit(1); //'
+    const score = await cueContractScorer.score(record('Sure.', '', [performAction(hostile), performAction('__proto__')]), withExposed)
+
+    expect(score).toMatchObject({ actionToolCalls: 2, actionToolUnknown: 2 })
   })
 })

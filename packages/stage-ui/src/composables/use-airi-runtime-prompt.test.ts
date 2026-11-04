@@ -1,6 +1,8 @@
 import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
 
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import messages from '@proj-airi/i18n/locales'
 
@@ -189,6 +191,22 @@ describe('useStageLiveStatePrompt', () => {
 
     expect(useStageActionsPrompt().value).toBe('')
     expect(useStageLiveStatePrompt().value).not.toContain('base.prompt.actions')
+  })
+
+  // NOTICE:
+  // qa-tools cannot import stage-ui, so its `buildSystemPrompt({ exposedActions })` renders the actions section itself;
+  // this test pins the fixture it compares against to the output of the stage-ui renderer.
+  // Source: packages/qa-tools/src/model/exposed-actions.test.ts.
+  // Removal condition: qa-tools can import the stage-ui renderer.
+  it('renders the text that the qa-tools fixture pins for the same exposed actions', async () => {
+    const { createI18n } = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
+    const i18n = createI18n({ legacy: false, locale: 'en', messages, ...createFallbackOptions(() => {}) })
+    i18nMock.t = (key, params) => i18n.global.t(key, params ?? {})
+    const pinned = JSON.parse(readFileSync(join(import.meta.dirname, '../../../qa-tools/fixtures/model/actions-prompt.json'), 'utf8')) as { exposedActions: { label: string, kind: 'gesture' | 'action' | 'dance' }[], text: string }
+
+    usePerformanceRuntimeState().publish({ exposedActions: pinned.exposedActions, exposed: [], active: [], mood: null })
+
+    expect(useStageActionsPrompt().value).toBe(pinned.text)
   })
 
   it('renders each action sentence in English and omits the sentence whose list is empty', async () => {

@@ -11,10 +11,12 @@ import { runScoreCli } from './score/command'
 export const modelUsage = `Usage: pnpm qa:model <command> [options]
 
 Commands:
-  score <transcripts.jsonl> [--set <id>] [--label <l>]   score a transcript file with the real runtime replay
-  prompt [--locale en] [--card <file>] [--full <fixture>] [--json]  print the system prompt the app sends and its hashes
+  score <transcripts.jsonl> [--set <id>] [--label <l>] [--exposed-actions <label:kind,...>]  score a transcript file with the real runtime replay
+  prompt [--locale en] [--card <file>] [--full <fixture>] [--exposed-actions <label:kind,...>] [--json]  print the system prompt the app sends and its hashes
   import-ollama-bench <dir> --set <id>                   convert legacy ollama-bench results into transcripts
   help                                                   print this usage
+
+Kinds are gesture, action, and dance.
 
 Exit codes: 0 success, 1 command failure, 2 invalid arguments.
 `

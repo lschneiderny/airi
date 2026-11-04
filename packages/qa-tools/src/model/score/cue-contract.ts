@@ -1,7 +1,7 @@
 import type { CueComplianceOutcome, ReplyReplay } from '@proj-airi/core-agent'
 import type { StreamingControlEmotion, StreamingControlGestureKind, StreamingControlLook } from '@proj-airi/pipelines-audio'
 
-import type { ReplyScorer } from './scorer'
+import type { ReplyScorer, ScoreContext } from './scorer'
 
 import { createStreamingCategorizer, cueComplianceOutcome, replayReply, useLlmmarkerParser } from '@proj-airi/core-agent'
 import { createStreamingControlParser, normalizeActPayload, tokenAct } from '@proj-airi/pipelines-audio'
@@ -46,6 +46,13 @@ export interface ReplyScore {
     lookDropped: boolean
     /** The normalized gesture; `dropped` marks a written `gesture` the normalizer refused, with `kind` null. */
     gesture: { kind: StreamingControlGestureKind | null, count: number | null, dropped: boolean }
+    /** The normalized `action` label of the ACT, or null when it wrote none. */
+    action: string | null
+    /**
+     * Whether the label is an exposed gesture (`accepted`), an exposed action or dance that belongs on `perform_action`
+     * (`not-gesture`), or not exposed (`unknown`). Null without an action, or when the score options carry no exposed set.
+     */
+    actionDisposition: 'accepted' | 'unknown' | 'not-gesture' | null
     inert: boolean
     placeholderEcho: string[]
   }[]
@@ -74,6 +81,36 @@ export interface ReplyScore {
   /** No speech, no SILENT before speech, and no tool call: the reply said nothing and did not decline. */
   blank: boolean
   toolCallsWithoutSpeech: boolean
+  /** `perform_action` tool calls, and those whose label is not an exposed action or dance (and not `stop`). */
+  actionToolCalls: number
+  actionToolUnknown: number
+}
+
+/** The `perform_action` stop label ends the running performance, so it is never unknown. */
+const ACTION_TOOL_STOP = 'stop'
+
+/** Resolves an ACT action label against the exposed set. The label is data from the model and is only compared. */
+function resolveActionDisposition(action: string | null, exposed: ScoreContext['exposedActions']): ReplyScore['acts'][number]['actionDisposition'] {
+  if (action === null || exposed === undefined)
+    return null
+  const entry = exposed.find(candidate => candidate.label === action)
+  return entry === undefined ? 'unknown' : entry.kind === 'gesture' ? 'accepted' : 'not-gesture'
+}
+
+/** Reads the `action` label of a `perform_action` call; arguments may be an object or a JSON string. */
+function toolActionLabel(args: unknown): string | null {
+  let value = args
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value)
+    }
+    catch {
+      return null
+    }
+  }
+  if (typeof value !== 'object' || value === null || !('action' in value))
+    return null
+  return typeof value.action === 'string' ? value.action : null
 }
 
 function projection(replay: ReplyReplay) {
@@ -87,7 +124,7 @@ function projection(replay: ReplyReplay) {
 
 export const cueContractScorer: ReplyScorer<ReplyScore> = {
   ...CUE_CONTRACT_SCORER,
-  async score(record, { stage }) {
+  async score(record, { stage, exposedActions }) {
     const input = {
       text: record.reply.text,
       stage,
@@ -269,6 +306,8 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
           count: normalized.gesture?.count ?? null,
           dropped: payload.gesture !== undefined && normalized.gesture === undefined,
         },
+        action: normalized.action ?? null,
+        actionDisposition: resolveActionDisposition(normalized.action ?? null, exposedActions),
         inert: stageParsed && Object.keys(normalized).length === 0,
         placeholderEcho: Object.entries(payload).filter(([, value]) => typeof value === 'string' && /^<[^<>]+>$/.test(value)).map(([field]) => field),
       })
@@ -277,6 +316,13 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
     const cueStats = { act: whole.cueStats.act, recovered: whole.cueStats.recovered, stripped: whole.cueStats.rejected }
     const spokenText = whole.literals.join('')
     const noSpeech = spokenText.trim() === ''
+    const actionCalls = record.reply.toolCalls.filter(toolCall => toolCall.name === 'perform_action')
+    const actionToolUnknown = exposedActions === undefined
+      ? 0
+      : actionCalls.filter((toolCall) => {
+        const label = toolActionLabel(toolCall.arguments)
+        return label !== ACTION_TOOL_STOP && !exposedActions.some(entry => entry.label === label && entry.kind !== 'gesture')
+      }).length
     return {
       schema: 'airi.cue-contract-score.reply/v1',
       chunkInvariant: projection(whole) === projection(perChar),
@@ -303,6 +349,8 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
       storedSpeech: whole.speech ?? null,
       blank: noSpeech && !silent.beforeSpeech && record.reply.toolCalls.length === 0,
       toolCallsWithoutSpeech: noSpeech && record.reply.toolCalls.length > 0,
+      actionToolCalls: actionCalls.length,
+      actionToolUnknown,
     }
   },
 }

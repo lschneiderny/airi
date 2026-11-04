@@ -1,6 +1,8 @@
 import type { ConversationRegister, TextingFlavor } from '@proj-airi/stage-shared/conversation-register'
 import type { PromptSegment } from '@proj-airi/stage-shared/stage-contract'
 
+import type { ExposedAction } from './exposed-actions'
+
 import { createHash } from 'node:crypto'
 
 import messages from '@proj-airi/i18n/locales'
@@ -9,6 +11,8 @@ import { createFallbackOptions } from '@proj-airi/i18n'
 import { renderRegisterSection } from '@proj-airi/stage-shared/conversation-register'
 import { CODE_BLOCK_SYSTEM_PROMPT, composePrompt, MATH_SYNTAX_SYSTEM_PROMPT, renderStageContract } from '@proj-airi/stage-shared/stage-contract'
 import { createI18n } from 'vue-i18n'
+
+import { renderActionsSection } from './exposed-actions'
 
 /** Extracts spoken examples using the same rule as the rendered contract. */
 export function extractExampleLines(text: string): string[] {
@@ -46,25 +50,28 @@ export function buildStageContract(locale = 'en') {
  * it; the contract, and so `contract.sha256`, does not depend on the register. Without one, no section is added.
  * Without `segments` the result is the cacheable prefix alone. With them, the tail segments follow in the composer's
  * order, as the production chat prompt builds them.
+ * With `exposedActions`, the `actions` segment joins them through the same i18n keys and gesture versus action split as
+ * stage-ui's `useStageActionsPrompt`; it follows the contract, so `contract.sha256` does not change. An empty list adds nothing.
  */
-export function buildSystemPrompt({ locale = 'en', cardPrompt, register, textingFlavor = 'plain', segments = [] }: {
+export function buildSystemPrompt({ locale = 'en', cardPrompt, register, textingFlavor = 'plain', segments = [], exposedActions = [] }: {
   locale?: string
   cardPrompt: string
   register?: ConversationRegister
   textingFlavor?: TextingFlavor
   segments?: readonly PromptSegment[]
+  exposedActions?: readonly ExposedAction[]
 }) {
   const contract = buildStageContract(locale)
-  let registerSection = ''
-  if (register !== undefined) {
-    const { global } = createPromptI18n(locale, contract.warnings)
-    registerSection = renderRegisterSection(register, textingFlavor, (key, params) => params ? global.t(key, params) : global.t(key))
-  }
+  const { global } = createPromptI18n(locale, contract.warnings)
+  const t = (key: string, params?: Record<string, string>) => params ? global.t(key, params) : global.t(key)
+  const registerSection = register === undefined ? '' : renderRegisterSection(register, textingFlavor, t)
+  const actionsSection = renderActionsSection(exposedActions, t)
   const composed = composePrompt([
     { id: 'format', text: CODE_BLOCK_SYSTEM_PROMPT + MATH_SYNTAX_SYSTEM_PROMPT },
     { id: 'card', text: cardPrompt },
     { id: 'register', text: registerSection },
     { id: 'contract', text: contract.text },
+    ...actionsSection === '' ? [] : [{ id: 'actions' as const, text: actionsSection }],
     ...segments,
   ])
   const text = composed.text

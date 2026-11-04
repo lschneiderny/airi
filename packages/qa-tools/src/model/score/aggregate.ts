@@ -32,6 +32,12 @@ export interface RunScore {
   forms: { bare: number, colon: number, json: number }
   intensity: { slight: number, clear: number, strong: number, number: number, none: number, unrecognized: number }
   fields: { expression: number, motion: number, look: number, lookDropped: number, placeholderEcho: number }
+  /** ACT action labels that are exposed gestures or not exposed at all; both stay 0 unless the run supplied an exposed set. */
+  actionsAccepted: number
+  actionsUnknown: number
+  /** `perform_action` calls, and those outside the exposed actions and dances. */
+  actionToolCalls: number
+  actionToolUnknown: number
   delay: { count: number, valid: number }
   call: { count: number, valid: number }
   stripped: number
@@ -97,6 +103,10 @@ export function aggregateRun(
       forms: { bare: 0, colon: 0, json: 0 },
       intensity: { slight: 0, clear: 0, strong: 0, number: 0, none: 0, unrecognized: 0 },
       fields: { expression: 0, motion: 0, look: 0, lookDropped: 0, placeholderEcho: 0 },
+      actionsAccepted: 0,
+      actionsUnknown: 0,
+      actionToolCalls: 0,
+      actionToolUnknown: 0,
       delay: { count: 0, valid: 0 },
       call: { count: 0, valid: 0 },
       stripped: 0,
@@ -158,7 +168,11 @@ export function aggregateRun(
         run.fields.look += Number(act.look !== null)
         run.fields.lookDropped += Number(act.lookDropped)
         run.fields.placeholderEcho += act.placeholderEcho.length
+        run.actionsAccepted += Number(act.actionDisposition === 'accepted')
+        run.actionsUnknown += Number(act.actionDisposition === 'unknown')
       }
+      run.actionToolCalls += cue.actionToolCalls
+      run.actionToolUnknown += cue.actionToolUnknown
       run.delay.count += cue.delay.count
       run.delay.valid += cue.delay.valid
       run.call.count += cue.call.count
