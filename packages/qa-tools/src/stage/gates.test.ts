@@ -181,6 +181,13 @@ describe('stage-gesture-walk', () => {
     expect(check(result, 'gw walk span')).toMatchObject({ pass: false, detail: expect.stringContaining('5.8 s walking') })
   })
 
+  it('fails a record measured with a 3 s span whose walk is only 3 s long', () => {
+    const result = gestureWalk(gestureRows().slice(0, 31), { seconds: 3 })
+
+    expect(check(result, 'gw walk span')).toMatchObject({ pass: false, detail: expect.stringContaining('3 s walking') })
+    expect(result.verdict).toBe('FAIL')
+  })
+
   it('fails a record measured under concurrent load', () => {
     expect(check(gestureWalk(gestureRows(), { valid: false }), 'gw load')).toMatchObject({ pass: false, detail: 'INVALID-CONCURRENT-LOAD' })
   })

@@ -26,6 +26,8 @@ export const stageGateThresholds = {
   readbackMaxDeltaMsMax: 1,
   /** Share of the gesture-walk samples in which the clip plays on the upper layer, inclusive. */
   gesturePresenceMin: 0.8,
+  /** The walk span with the clip on the upper layer, whatever the record's own seconds field says, inclusive. */
+  gestureWalkMinMs: 10_000,
   /** Time from `action.performing` clearing to the held goal being issued, inclusive. */
   goalResumeMaxMs: 3_000,
 } as const
@@ -427,7 +429,7 @@ function loadCheck(record: ScenarioEvidence): GateCheck {
 /**
  * `stage-gesture-walk`: an upper clip looped over a walk. The window is every sample after the playClip post up to the
  * stopClip post. Each sample in mode `walking` with the clip on the upper layer adds the time since the previous sample
- * to the walk span, which must reach the record's scenario `seconds` (the plan's run asks for at least 10 s). Skate and
+ * to the walk span, which must reach the larger of the record's scenario `seconds` and `gestureWalkMinMs` (10 s). Skate and
  * feet error are judged over the non-idle samples with the walk-skate limits, the gait must stay enabled on every
  * sample, and the clip must be on the upper layer in at least `gesturePresenceMin` of them.
  */
@@ -444,10 +446,11 @@ export function gateGestureWalk(evidence: readonly StageEvidence[]): GateResult 
     }
     const onUpper = (sample: ScenarioSample) => sample.performing?.name === clip && sample.performing.layer === 'upper'
     const spanMs = window.reduce((sum, row) => row > 0 && samples[row].mode === 'walking' && onUpper(samples[row]) ? sum + samples[row].t - samples[row - 1].t : sum, 0)
+    const requiredMs = Math.max(record.seconds * 1000, limits.gestureWalkMinMs)
     checks.push({
       name: `${source} walk span`,
-      pass: spanMs >= record.seconds * 1000,
-      detail: `${format(spanMs / 1000)} s walking with ${clip} on the upper layer (scenario span ${record.seconds} s)`,
+      pass: spanMs >= requiredMs,
+      detail: `${format(spanMs / 1000)} s walking with ${clip} on the upper layer (required ${format(requiredMs / 1000)} s: scenario span ${record.seconds} s, floor ${limits.gestureWalkMinMs / 1000} s)`,
     })
     const moving = window.filter(row => samples[row].mode !== 'idle')
     const skate = moving.length === 0 ? 0 : maxOf(moving.map(row => samples[row].skate))
