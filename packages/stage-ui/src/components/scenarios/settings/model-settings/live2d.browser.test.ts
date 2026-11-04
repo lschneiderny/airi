@@ -110,7 +110,7 @@ async function renderNaturalEmotionStrength(pinia: Pinia, errorHandler?: (error:
   })
   await screen.getByText(t('settings.live2d.animation.title'), { exact: true }).click()
   await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
-  await screen.getByRole('button', { name: t('settings.live2d.animation.natural-emotion-strength.title') }).click()
+  await screen.getByRole('button', { name: t('settings.natural.emotion-strength.title') }).click()
   return { screen, settings }
 }
 
@@ -235,8 +235,8 @@ describe('live2D model settings', () => {
       expressionEntry({ id: 'c', label: 'Cheeks Pale', kind: 'face', group }),
       expressionEntry({ id: 'b', label: 'Hat', kind: 'outfit' }),
     ], { showAll: true })
-    for (const key of ['kinds.face', 'kinds.outfit', 'emotions.angry', 'emotions.flustered', 'group-members'])
-      expect(t(`settings.live2d.expressions.${key}`)).not.toBe(`settings.live2d.expressions.${key}`)
+    for (const key of ['settings.live2d.expressions.kinds.face', 'settings.live2d.expressions.kinds.outfit', 'settings.emotions.angry', 'settings.emotions.flustered', 'settings.live2d.expressions.group-members'])
+      expect(t(key)).not.toBe(key)
     // The group row carries the readable name, never the stored group id.
     await expect.element(rowInEverythingElse(screen, 'Cheeks')).toBeVisible()
     await expect.poll(() => inEverythingElse(screen, group)).toBe(0)
@@ -246,7 +246,7 @@ describe('live2D model settings', () => {
 
     await screen.getByRole('button', { name: t('settings.live2d.expressions.group-members'), exact: true }).click()
     await expect.element(rowInEverythingElse(screen, 'Cheeks Blush')).toBeVisible()
-    await expect.element(rowInEverythingElse(screen, `${t('settings.live2d.expressions.emotions.angry')}, ${t('settings.live2d.expressions.emotions.flustered')}`)).toBeVisible()
+    await expect.element(rowInEverythingElse(screen, `${t('settings.emotions.angry')}, ${t('settings.emotions.flustered')}`)).toBeVisible()
     await expect.poll(() => inEverythingElse(screen, t('settings.live2d.expressions.kinds.face'))).toBe(0)
     await expect.poll(() => inEverythingElse(screen, t('settings.live2d.expressions.kinds.outfit'))).toBe(0)
     await expect.element(screen.getByRole('switch', { name: `${t('settings.live2d.expressions.llm-exposed')}: Cheeks Blush` })).toBeVisible()
@@ -862,8 +862,8 @@ describe('live2D model settings', () => {
     const stageModel = useSettingsStageModel(pinia)
     const { screen, settings } = await renderNaturalEmotionStrength(pinia)
     const key = 'settings/live2d/natural-emotion-strength'
-    const love = screen.getByRole('slider', { name: t('settings.live2d.expressions.emotions.love') })
-    const reset = screen.getByRole('button', { name: t('settings.live2d.animation.natural-emotion-strength.reset'), exact: true })
+    const love = screen.getByRole('slider', { name: t('settings.emotions.love') })
+    const reset = screen.getByRole('button', { name: t('settings.natural.emotion-strength.reset'), exact: true })
     await expect.element(love).toBeVisible()
     await expect.element(fieldOf(love).getByText('1.00×', { exact: true })).toBeVisible()
     await expect.element(reset).toBeDisabled()
@@ -896,8 +896,8 @@ describe('live2D model settings', () => {
   it('reads a stored Love strength of "x" as 1 without an error', async () => {
     const handledErrors: unknown[] = []
     const { screen, settings } = await renderNaturalEmotionStrength(createPinia(), error => handledErrors.push(error))
-    const love = screen.getByRole('slider', { name: t('settings.live2d.expressions.emotions.love') })
-    const sad = screen.getByRole('slider', { name: t('settings.live2d.expressions.emotions.sad') })
+    const love = screen.getByRole('slider', { name: t('settings.emotions.love') })
+    const sad = screen.getByRole('slider', { name: t('settings.emotions.sad') })
     const key = 'settings/live2d/natural-emotion-strength'
     const oldValue = localStorage.getItem(key)
     const newValue = '{"preset-live2d-1":{"love":"x","sad":1.5}}'
@@ -1019,8 +1019,8 @@ describe('live2D model settings', () => {
     document.body.className = 'bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 p-4'
     const { screen } = await renderNaturalEmotionStrength(createPinia())
     const emotions = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'love', 'flustered', 'sleepy']
-    const sliders = emotions.map(emotion => screen.getByRole('slider', { name: t(`settings.live2d.expressions.emotions.${emotion}`) }))
-    const reset = screen.getByRole('button', { name: t('settings.live2d.animation.natural-emotion-strength.reset'), exact: true })
+    const sliders = emotions.map(emotion => screen.getByRole('slider', { name: t(`settings.emotions.${emotion}`) }))
+    const reset = screen.getByRole('button', { name: t('settings.natural.emotion-strength.reset'), exact: true })
     for (const control of [...sliders, reset]) {
       await expect.element(control).toBeVisible()
       const bounds = control.element().getBoundingClientRect()

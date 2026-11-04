@@ -80,7 +80,7 @@ function boothEntries(): ExpressionEntry[] {
 const emotionOrder = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'love', 'flustered', 'sleepy']
 
 function emotion(key: string) {
-  return t(`settings.live2d.expressions.emotions.${key}`)
+  return t(`settings.emotions.${key}`)
 }
 function k(key: string, params: Record<string, string> = {}) {
   return t(`settings.live2d.expressions.reactions.${key}`, params)

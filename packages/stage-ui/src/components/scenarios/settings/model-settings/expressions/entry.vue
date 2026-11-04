@@ -49,7 +49,7 @@ const groupOptions = computed(() => [
   ...props.groups.map(group => ({ value: group.name, label: groupDisplayName(group.labels) })),
 ])
 const mappedEmotions = computed(() => [...new Set(props.entry.mappings.map(mapping => mapping.emotion))]
-  .map(emotion => t(`settings.live2d.expressions.emotions.${emotion}`))
+  .map(emotion => t(`settings.emotions.${emotion}`))
   .join(', '))
 const switchValue = computed(() => props.entry.inverted ? !props.entry.active : props.entry.active)
 

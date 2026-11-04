@@ -31,7 +31,7 @@ function memberChip(member: ComboMember) {
 }
 function mappedEmotions(combo: Entry) {
   return [...new Set(combo.mappings.map(mapping => mapping.emotion))]
-    .map(emotion => t(`settings.live2d.expressions.emotions.${emotion}`))
+    .map(emotion => t(`settings.emotions.${emotion}`))
     .join(', ')
 }
 function isManualOnly(combo: Entry) {

@@ -88,6 +88,6 @@ Tuning in `motion-driver-natural` reaches MMD unchanged, and MMD now performs ev
 
 - Done on 2026-11-04: the touch classifier is `NaturalTouchGestures` in `motion-driver-natural/src/touch-gestures.ts`, and both renderers use it, so a pet or poke tuning change is made once. Hit-testing stays per renderer.
 - Add per-model amplitude gains (head, body, face) if MMD reads weaker or stronger than Live2D in Luke's QA.
-- Remove the remaining Live2D vocabulary from shared code: the conductor's `Live2DMotionDriver` type, the exp3 parser in `stage-shared`, the `live2d`-namespaced diagnostics event ids, and the `settings.live2d.*` i18n keys that shared panels read.
+- Remove the remaining Live2D vocabulary from shared code. Done on 2026-11-04: the conductor takes `StagePerformanceDriver` (`'natural' | 'basic'`), the emotion strength panel reads `settings.natural.emotion-strength.*`, and emotion labels live under `settings.emotions.*`. Still open: the rest of the shared expression panel reads `settings.live2d.expressions.*`; the exp3 parser stays in `stage-shared` until that package is split; and only the Live2D stage answers affect-trace requests, which keep their `live2d`-namespaced event ids.
 - When `luke/feat/fullscreen-stage` lands, keep the ACT `gesture` branch in `Stage.vue` ungated beside the MMD `action` branch. This resolves the clip actions ADR follow-up that asked how gesture kinds should reach MMD.
 - VRM joins the Natural tier through the M5 adapter.

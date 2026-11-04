@@ -242,8 +242,8 @@ describe('mmd model settings motion', () => {
 
   it('writes the per-model emotion strength under Natural, in the shape Live2D uses', async () => {
     const { screen, store } = await renderMotionSection()
-    await screen.getByRole('button', { name: t('settings.live2d.animation.natural-emotion-strength.title') }).click()
-    const happy = screen.getByRole('slider', { name: t('settings.live2d.expressions.emotions.happy') })
+    await screen.getByRole('button', { name: t('settings.natural.emotion-strength.title') }).click()
+    const happy = screen.getByRole('slider', { name: t('settings.emotions.happy') })
     await expect.element(happy).toBeVisible()
     happy.element().focus()
     for (let step = 0; step < 10; step++)
@@ -251,7 +251,7 @@ describe('mmd model settings motion', () => {
     await vi.waitFor(() => expect(store.naturalEmotionStrength).toEqual({ [MODEL_ID]: { happy: 1.5 } }))
     expect(JSON.parse(localStorage.getItem('settings/mmd/natural-emotion-strength') ?? 'null')).toEqual({ [MODEL_ID]: { happy: 1.5 } })
 
-    await screen.getByRole('button', { name: t('settings.live2d.animation.natural-emotion-strength.reset'), exact: true }).click()
+    await screen.getByRole('button', { name: t('settings.natural.emotion-strength.reset'), exact: true }).click()
     await vi.waitFor(() => expect(store.naturalEmotionStrength).toEqual({}))
   })
 

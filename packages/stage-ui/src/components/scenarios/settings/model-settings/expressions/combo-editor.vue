@@ -44,7 +44,7 @@ function initialLabel() {
   if (props.combo)
     return props.combo.label
   if (props.initialEmotion)
-    return t('settings.live2d.expressions.combos.default-label', { emotion: t(`settings.live2d.expressions.emotions.${props.initialEmotion}`) })
+    return t('settings.live2d.expressions.combos.default-label', { emotion: t(`settings.emotions.${props.initialEmotion}`) })
   return ''
 }
 

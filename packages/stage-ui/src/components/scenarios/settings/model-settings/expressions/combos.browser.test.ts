@@ -115,7 +115,7 @@ describe('live2D expression combos', () => {
     await expect.element(screen.getByText('Happy look', { exact: true })).toBeVisible()
     await expect.element(screen.getByText('Blush', { exact: true })).toBeVisible()
     await expect.element(screen.getByText('Sparkle 50%', { exact: true })).toBeVisible()
-    await expect.element(screen.getByText(t('settings.live2d.expressions.emotions.happy'), { exact: true })).toBeVisible()
+    await expect.element(screen.getByText(t('settings.emotions.happy'), { exact: true })).toBeVisible()
     await expect.element(screen.getByText(k('marker-ai'), { exact: true })).toBeVisible()
     await expect.element(screen.getByText(k('marker-default'), { exact: true })).toBeVisible()
     await expect.element(screen.getByText(k('manual-only'), { exact: true })).not.toBeInTheDocument()

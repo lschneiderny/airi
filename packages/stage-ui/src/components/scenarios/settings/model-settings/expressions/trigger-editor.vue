@@ -29,7 +29,7 @@ const { t } = useI18n()
 const emotions: EmotionMapping['emotion'][] = ['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'love', 'flustered', 'sleepy']
 const bands: EmotionMapping['minBand'][] = ['slight', 'clear', 'strong']
 
-const emotionOptions = computed(() => emotions.map(emotion => ({ value: emotion, label: t(`settings.live2d.expressions.emotions.${emotion}`) })))
+const emotionOptions = computed(() => emotions.map(emotion => ({ value: emotion, label: t(`settings.emotions.${emotion}`) })))
 const bandOptions = computed(() => bands.map(band => ({ value: band, label: t(`settings.live2d.expressions.bands.${band}`) })))
 
 function weightError(weight: number | undefined) {

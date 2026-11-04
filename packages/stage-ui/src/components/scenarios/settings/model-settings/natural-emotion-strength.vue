@@ -57,10 +57,10 @@ function formatScale(value: number) {
       >
         <div :class="['flex-1']">
           <div :class="['flex items-center gap-1 text-sm font-medium']">
-            {{ t('settings.live2d.animation.natural-emotion-strength.title') }}
+            {{ t('settings.natural.emotion-strength.title') }}
           </div>
           <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-            {{ t('settings.live2d.animation.natural-emotion-strength.description') }}
+            {{ t('settings.natural.emotion-strength.description') }}
           </div>
         </div>
         <div
@@ -81,7 +81,7 @@ function formatScale(value: number) {
         :min="0"
         :max="naturalEmotionStrengthMax"
         :step="0.05"
-        :label="t(`settings.live2d.expressions.emotions.${emotion}`)"
+        :label="t(`settings.emotions.${emotion}`)"
         :format-value="formatScale"
         @update:model-value="setStrength(emotion, $event)"
       />
@@ -90,7 +90,7 @@ function formatScale(value: number) {
         :disabled="!customized"
         @click="reset"
       >
-        {{ t('settings.live2d.animation.natural-emotion-strength.reset') }}
+        {{ t('settings.natural.emotion-strength.reset') }}
       </Button>
     </div>
   </Collapsible>

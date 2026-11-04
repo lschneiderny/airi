@@ -45,7 +45,7 @@ function caption(entry: Entry) {
   return entry.area ? t(`settings.live2d.expressions.areas.${entry.area}`) : t(`settings.live2d.expressions.kinds.${entry.kind}`)
 }
 function emotionLabel(emotion: Emotion) {
-  return t(`settings.live2d.expressions.emotions.${emotion}`)
+  return t(`settings.emotions.${emotion}`)
 }
 
 /** Only entries an emotion can switch on: faces, effects and combos that resolved to at least one slot. */
