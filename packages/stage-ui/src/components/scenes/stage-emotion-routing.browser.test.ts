@@ -336,6 +336,17 @@ describe('stage emotion routing on Live2D', () => {
     expect(gestures.value).toEqual([])
   })
 
+  it('hands no ACT action label to the conductor under Live2D', async () => {
+    const action = vi.spyOn(StagePerformanceConductor.prototype, 'action')
+    const { episodes } = await renderStage('natural')
+
+    const decided = until(() => episodes.value.length, count => count > 0)
+    await useLlmStreamingControlStore().dispatchWith('<|ACT {"emotion":"happy","action":"wave"}|>')
+    await decided
+
+    expect(action).not.toHaveBeenCalled()
+  })
+
   it('doses mood from a scene touch under Natural and forwards the poke to the situation leader', async () => {
     const { scene, moods } = await renderStage('natural')
     const observations = shallowRef<TouchObservation[]>([])

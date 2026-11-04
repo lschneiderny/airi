@@ -474,6 +474,37 @@ describe('stage performance conductor', () => {
       ])
     })
 
+    it('forwards an ACT action label and its cue gesture to the scene under every driver', () => {
+      const forwarded = (['natural', 'basic'] as const).map((driver) => {
+        const scene = { ...fakeScene(), action: vi.fn<NonNullable<StagePerformanceScene['action']>>() }
+        const { conductor } = createConductor(driver, scene)
+        conductor.action('wave')
+        conductor.action('bow', { kind: 'nod', count: 2 })
+        return [driver, scene.action.mock.calls]
+      })
+
+      expect(forwarded).toEqual((['natural', 'basic'] as const).map(driver => [driver, [['wave', undefined], ['bow', { kind: 'nod', count: 2 }]]]))
+    })
+
+    it('drops an ACT action label without a scene or with a scene that plays no clips', () => {
+      const clipless = fakeScene()
+      const withoutScene = new StagePerformanceConductor({
+        scene: () => undefined,
+        driver: () => 'natural',
+        playMotion: vi.fn(),
+        settings: () => defaultExpressionPerformanceSettings,
+        catalog: () => catalog,
+        seed: 7,
+        clock: () => 10,
+        profile: () => undefined,
+        modelId: () => 'rig',
+      })
+
+      expect(() => withoutScene.action('wave')).not.toThrow()
+      expect(() => createConductor('natural', clipless).conductor.action('wave')).not.toThrow()
+      expect(clipless.gesture).not.toHaveBeenCalled()
+    })
+
     it('gives every episode of a moodless turn a zero mood gain and leaves other turns alone', () => {
       const scene = fakeScene()
       const { conductor, advance } = createConductor('natural', scene)
