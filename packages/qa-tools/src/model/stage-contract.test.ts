@@ -127,3 +127,30 @@ describe('buildSystemPrompt', () => {
     expect(new Set([talking.sha256, texting.sha256, discord.sha256, buildSystemPrompt({ cardPrompt }).sha256]).size).toBe(4)
   })
 })
+
+describe('buildSystemPrompt exposedActions', () => {
+  const exposedActions = [{ label: 'wave', kind: 'gesture' }, { label: 'moonwalk', kind: 'dance' }] as const
+  const section = 'Add "action" set to one of wave inside the ACT JSON for a short gesture while you speak.\nCall perform_action with one of moonwalk for a full-body action; it may be refused while she is busy.'
+
+  it('keeps the contract hash and the prefix equal with and without actions', () => {
+    const plain = buildSystemPrompt({ cardPrompt: 'Card.' })
+    const withActions = buildSystemPrompt({ cardPrompt: 'Card.', exposedActions })
+
+    expect(withActions.contract.sha256).toBe(STAGE_CONTRACT_EN_SHA256)
+    expect(withActions.contract.sha256).toBe(plain.contract.sha256)
+    expect(withActions.text.startsWith(plain.text)).toBe(true)
+    expect(withActions.text).toBe(`${plain.text}\n\n${section}`)
+  })
+
+  it('places the actions section after the contract and before the other tail segments', () => {
+    const prompt = buildSystemPrompt({ cardPrompt: '', exposedActions, segments: [{ id: 'toolset', text: 'Tools.' }, { id: 'memory', text: ['- m1: fact.'] }] })
+
+    expect(prompt.report.map(entry => entry.id)).toEqual(['format', 'card', 'register', 'contract', 'actions', 'memory', 'toolset'])
+    expect(prompt.text.indexOf(section)).toBeGreaterThan(prompt.text.indexOf(prompt.contract.text))
+    expect(prompt.text.indexOf(section)).toBeLessThan(prompt.text.indexOf('- m1: fact.'))
+  })
+
+  it('adds no section for an empty list', () => {
+    expect(buildSystemPrompt({ cardPrompt: '', exposedActions: [] }).text).toBe(buildSystemPrompt({ cardPrompt: '' }).text)
+  })
+})

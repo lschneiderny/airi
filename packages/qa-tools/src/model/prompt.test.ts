@@ -81,4 +81,37 @@ describe('runPromptCli', () => {
     expect(stdout).toEqual([])
     expect(stderr.join('')).not.toBe('')
   })
+
+  it('prints the actions section in plain mode without changing the contract hash', async () => {
+    expect(await run(['--exposed-actions', 'wave:gesture,moonwalk:dance'])).toBe(0)
+
+    const plain = buildSystemPrompt({ cardPrompt: '' })
+    const prompt = buildSystemPrompt({ cardPrompt: '', exposedActions: [{ label: 'wave', kind: 'gesture' }, { label: 'moonwalk', kind: 'dance' }] })
+    expect(stdout.join('')).toBe(prompt.text)
+    expect(stdout.join('')).toContain('perform_action with one of moonwalk')
+    expect(stderr.join('')).toContain(`contractSha256 ${plain.contract.sha256}`)
+    expect(stderr.join('')).toContain(`promptSha256 ${prompt.sha256}`)
+  })
+
+  it('includes the section in --json output without --full and keeps contractSha256 identical', async () => {
+    expect(await run(['--json'])).toBe(0)
+    const without = JSON.parse(stdout.join(''))
+    stdout = []
+    expect(await run(['--json', '--exposed-actions', 'wave:gesture,moonwalk:dance'])).toBe(0)
+    const withActions = JSON.parse(stdout.join(''))
+
+    expect(withActions.contractSha256).toBe(without.contractSha256)
+    expect(withActions.contractVersion).toBe(without.contractVersion)
+    expect(withActions.text).toContain('Add "action" set to one of wave inside the ACT JSON')
+    expect(without.text).not.toContain('perform_action')
+    // The prompt hash covers the composed text, so it changes with the section; only the contract hash is stable.
+    expect(withActions.promptSha256).not.toBe(without.promptSha256)
+    expect(stderr).toEqual([])
+  })
+
+  it.each(['wave', 'wave:jig', 'wave:gesture,,nod:gesture', 'Wave!:gesture', ''])('rejects the malformed --exposed-actions %j with exit 2 and no stdout', async (value) => {
+    expect(await run(['--exposed-actions', value])).toBe(2)
+    expect(stdout).toEqual([])
+    expect(stderr.join('')).toContain('qa-tools model prompt: invalid --exposed-actions')
+  })
 })

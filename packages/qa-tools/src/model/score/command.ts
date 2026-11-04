@@ -18,6 +18,7 @@ import { STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'
 
 import { createRun } from '../../evidence/run'
 import { sha256Bytes } from '../../motion/cache/key'
+import { parseExposedActions } from '../exposed-actions'
 import { renderSummaryMarkdown } from '../report/markdown'
 import { buildStageContract, extractExampleLines } from '../stage-contract'
 import { readTranscript } from '../transcript/jsonl'
@@ -77,6 +78,7 @@ export async function runScoreCli(
         'set': { type: 'string' },
         'example-lines-from': { type: 'string' },
         'json': { type: 'boolean', default: false },
+        'exposed-actions': { type: 'string' },
       },
     })
     if (positionals.length !== 1)
@@ -86,6 +88,15 @@ export async function runScoreCli(
     for (const [name, value] of [['label', label], ['set', values.set]]) {
       if (value !== undefined && (!/^[\w.-]+$/.test(value) || value.includes('..')))
         throw new Error(`invalid ${name}: use letters, digits, '.', '_' and '-' only`)
+    }
+    let exposedActions: ScoreContext['exposedActions']
+    if (values['exposed-actions'] !== undefined) {
+      try {
+        exposedActions = parseExposedActions(values['exposed-actions'])
+      }
+      catch (error) {
+        throw new Error(`invalid --exposed-actions: ${errorMessageFrom(error) ?? 'unreadable'}`)
+      }
     }
     input = resolve(repoRoot, positionals[0])
     if (!(await stat(input)).isFile())
@@ -117,6 +128,7 @@ export async function runScoreCli(
           : extractExampleLines(await readFile(resolve(repoRoot, values['example-lines-from']), 'utf8')),
       },
       stage: STAGE_RUNTIME_CONFIG,
+      exposedActions,
     }
     const absolutePaths = SCORE_CLOSURE_FILES.map(path => resolve(repoRoot, path))
     for (const path of absolutePaths) {

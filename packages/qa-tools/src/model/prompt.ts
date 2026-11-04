@@ -9,6 +9,7 @@ import { parseArgs } from 'node:util'
 import { errorMessageFrom } from '@moeru/std'
 import { array, object, optional, parse, strictObject, string } from 'valibot'
 
+import { parseExposedActions } from './exposed-actions'
 import { buildSystemPrompt } from './stage-contract'
 
 const listSegmentSchema = strictObject({ header: optional(string()), entries: array(string()) })
@@ -64,10 +65,11 @@ export async function runPromptCli(
     values = parseArgs({
       args: argv,
       options: {
-        locale: { type: 'string', default: 'en' },
-        card: { type: 'string' },
-        json: { type: 'boolean' },
-        full: { type: 'string' },
+        'locale': { type: 'string', default: 'en' },
+        'card': { type: 'string' },
+        'json': { type: 'boolean' },
+        'full': { type: 'string' },
+        'exposed-actions': { type: 'string' },
       },
       strict: true,
       allowPositionals: false,
@@ -76,6 +78,17 @@ export async function runPromptCli(
   catch (error) {
     stderr(`qa-tools model prompt: ${errorMessageFrom(error) ?? 'invalid arguments'}\n`)
     return 2
+  }
+
+  let exposedActions: ReturnType<typeof parseExposedActions> = []
+  if (values['exposed-actions'] !== undefined) {
+    try {
+      exposedActions = parseExposedActions(values['exposed-actions'])
+    }
+    catch (error) {
+      stderr(`qa-tools model prompt: invalid --exposed-actions: ${errorMessageFrom(error) ?? 'unreadable'}\n`)
+      return 2
+    }
   }
 
   let cardPrompt = ''
@@ -107,7 +120,7 @@ export async function runPromptCli(
     }
   }
 
-  const prompt = buildSystemPrompt({ locale: values.locale, cardPrompt, segments })
+  const prompt = buildSystemPrompt({ locale: values.locale, cardPrompt, segments, exposedActions })
   const metadata = {
     promptSha256: prompt.sha256,
     contractSha256: prompt.contract.sha256,

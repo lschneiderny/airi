@@ -58,6 +58,8 @@ function score(overrides: Partial<ReplyScore> = {}): ReplyScore {
     storedSpeech: 'hello',
     blank: false,
     toolCallsWithoutSpeech: false,
+    actionToolCalls: 0,
+    actionToolUnknown: 0,
     ...overrides,
   }
 }
@@ -94,6 +96,8 @@ describe('aggregateRun', () => {
       look: null,
       lookDropped: true,
       gesture: { kind: null, count: null, dropped: false },
+      action: null,
+      actionDisposition: null,
       inert: true,
       placeholderEcho: ['expression', 'motion'],
     }
@@ -139,6 +143,10 @@ describe('aggregateRun', () => {
       forms: { bare: 1, colon: 1, json: 1 },
       intensity: { slight: 0, clear: 0, strong: 1, number: 1, none: 1, unrecognized: 0 },
       fields: { expression: 2, motion: 2, look: 1, lookDropped: 2, placeholderEcho: 4 },
+      actionsAccepted: 0,
+      actionsUnknown: 0,
+      actionToolCalls: 0,
+      actionToolUnknown: 0,
       delay: { valid: 1, count: 2 },
       call: { valid: 2, count: 3 },
       stripped: 3,
@@ -197,6 +205,8 @@ describe('aggregateRun', () => {
       look: null,
       lookDropped: false,
       gesture: { kind: null, count: null, dropped: false },
+      action: null,
+      actionDisposition: null,
       inert: false,
       placeholderEcho: [],
     }
@@ -223,11 +233,39 @@ describe('aggregateRun', () => {
         look: null,
         lookDropped: false,
         gesture: { kind: null, count: null, dropped: false },
+        action: null,
+        actionDisposition: null,
         inert: false,
         placeholderEcho: [],
       }],
     })], [style], provenance)
     expect(run.invalidEmotion).toBe(0)
     expect(run.inventedEmotions).toEqual([])
+  })
+
+  it('counts accepted and unknown ACT actions and perform_action calls, and ignores the rest', () => {
+    const act: ReplyScore['acts'][number] = {
+      form: 'json',
+      recoveredFrom: null,
+      stageParsed: true,
+      emotion: 'happy',
+      emotionWritten: 'happy',
+      intensity: { kind: 'none' },
+      expression: null,
+      motion: null,
+      look: null,
+      lookDropped: false,
+      gesture: { kind: null, count: null, dropped: false },
+      action: 'wave',
+      actionDisposition: 'accepted',
+      inert: false,
+      placeholderEcho: [],
+    }
+    const [run] = aggregateRun([record(), record()], [
+      score({ acts: [act, { ...act, action: 'cartwheel', actionDisposition: 'unknown' }, { ...act, action: 'moonwalk', actionDisposition: 'not-gesture' }, { ...act, action: null, actionDisposition: null }], actionToolCalls: 3, actionToolUnknown: 1 }),
+      score({ acts: [{ ...act, action: 'cartwheel', actionDisposition: 'unknown' }], actionToolCalls: 1, actionToolUnknown: 1 }),
+    ], [style, style], provenance)
+
+    expect(run).toMatchObject({ actionsAccepted: 1, actionsUnknown: 2, actionToolCalls: 4, actionToolUnknown: 2 })
   })
 })

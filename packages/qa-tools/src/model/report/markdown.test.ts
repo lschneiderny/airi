@@ -29,6 +29,10 @@ function run(runKey = 'b'): RunScore {
     forms: { bare: 1, colon: 2, json: 3 },
     intensity: { slight: 1, clear: 2, strong: 3, number: 4, none: 5, unrecognized: 6 },
     fields: { expression: 2, motion: 3, look: 4, lookDropped: 5, placeholderEcho: 6 },
+    actionsAccepted: 7,
+    actionsUnknown: 8,
+    actionToolCalls: 9,
+    actionToolUnknown: 10,
     delay: { valid: 2, count: 3 },
     call: { valid: 1, count: 4 },
     stripped: 2,
@@ -46,14 +50,14 @@ describe('renderSummaryMarkdown', () => {
     const runs = [run('b'), { ...run('a'), model: 'first' }]
     const text = renderSummaryMarkdown(runs)
     const lines = text.split('\n')
-    const columns = '| Model | Config | replies | errors | blank | toolNoSpeech | parsed% | recovered% | rejected% | none% | leadCue% | acts | actsInert | invalidEmotion | inventedEmotions | forms b/c/j | intensity s/c/st/n/-/? | fields e/m/l/ld/pe | delay valid/count | call valid/count | stripped | stageRejected | unknownMarkers | chunkVariant | emoji | stageDir | firstLower% | personaFace% | aiBreak | exampleEcho | meanWords | timing replies | meanTtftMs | meanTotalMs | genTps |'
+    const columns = '| Model | Config | replies | errors | blank | toolNoSpeech | parsed% | recovered% | rejected% | none% | leadCue% | acts | actsInert | invalidEmotion | inventedEmotions | forms b/c/j | intensity s/c/st/n/-/? | fields e/m/l/ld/pe | actions acc/unk | action tools unk/calls | delay valid/count | call valid/count | stripped | stageRejected | unknownMarkers | chunkVariant | emoji | stageDir | firstLower% | personaFace% | aiBreak | exampleEcho | meanWords | timing replies | meanTtftMs | meanTotalMs | genTps |'
     expect(lines).toContain(columns)
     expect(text).toContain('**Contract**')
     expect(text).toContain('**Heuristic**')
     expect(text).toContain('**Timing**')
     expect(text.indexOf('**Contract**')).toBeLessThan(text.indexOf('**Heuristic**'))
     expect(text.indexOf('**Heuristic**')).toBeLessThan(text.indexOf('**Timing**'))
-    expect(lines).toContain('| model | defaults | 5 | 1 | 1 | 1 | 50% | 50% | 0% | 0% | 50% | 6 | 2 | 4 | pouting: 3, zany: 2, alien: 1 | 1/2/3 | 1/2/3/4/5/6 | 2/3/4/5/6 | 2/3 | 1/4 | 2 | 3 | LOOK: 3, OTHER: 2, X: 1 | 2 | 1 | 2 | 50% | 100% | 1 | 2 | 12.5 | 2 | 100 | 2000 | 30 |')
+    expect(lines).toContain('| model | defaults | 5 | 1 | 1 | 1 | 50% | 50% | 0% | 0% | 50% | 6 | 2 | 4 | pouting: 3, zany: 2, alien: 1 | 1/2/3 | 1/2/3/4/5/6 | 2/3/4/5/6 | 7/8 | 10/9 | 2/3 | 1/4 | 2 | 3 | LOOK: 3, OTHER: 2, X: 1 | 2 | 1 | 2 | 50% | 100% | 1 | 2 | 12.5 | 2 | 100 | 2000 | 30 |')
     expect(text.indexOf('| first |')).toBeLessThan(text.indexOf('| model |'))
     expect(text).toContain('closure-hash')
     expect(text).toContain('25/25')
@@ -88,7 +92,7 @@ describe('renderSummaryMarkdown', () => {
     expect(line).toBeDefined()
     expect(line).toContain('m&#124;&#96;name&#96;<br>next')
     expect(line).toContain('&lt;&#124;LOOK screen&#124;&gt;: 2')
-    expect(line.split('|')).toHaveLength(37)
+    expect(line.split('|')).toHaveLength(39)
   })
 
   it('renders all-declined rates as zero without division by zero and separates sets', () => {

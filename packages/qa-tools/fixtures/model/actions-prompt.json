@@ -1,0 +1,21 @@
+{
+  "exposedActions": [
+    {
+      "label": "wave",
+      "kind": "gesture"
+    },
+    {
+      "label": "nod",
+      "kind": "gesture"
+    },
+    {
+      "label": "moonwalk",
+      "kind": "action"
+    },
+    {
+      "label": "twirl",
+      "kind": "dance"
+    }
+  ],
+  "text": "Add \"action\" set to one of wave, nod inside the ACT JSON for a short gesture while you speak.\nCall perform_action with one of moonwalk, twirl for a full-body action; it may be refused while she is busy."
+}

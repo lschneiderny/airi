@@ -267,4 +267,49 @@ describe('score command', () => {
     const replies = (await readFile(join(JSON.parse(c.stdout).runDir, 'replies.jsonl'), 'utf8')).trim().split('\n')
     expect(replies.map(line => JSON.parse(line).replyId)).toEqual(Array.from({ length: 200 }, (_, index) => String(index)))
   })
+
+  describe('--exposed-actions', () => {
+    const transcript = resolve(repoRoot, 'packages/qa-tools/fixtures/model/actions-transcript.jsonl')
+
+    async function scored(flag: string) {
+      const c = cli()
+      expect(await c.run([transcript, '--exposed-actions', flag])).toBe(0)
+      const { runDir } = JSON.parse(c.stdout)
+      const summary: RunScore[] = JSON.parse(await readFile(join(runDir, 'summary.json'), 'utf8'))
+      const replies = (await readFile(join(runDir, 'replies.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+      return { summary: summary[0], reply: replies[0], markdown: await readFile(join(runDir, 'summary.md'), 'utf8') }
+    }
+
+    it('accepts an exposed gesture label from the ACT action field', async () => {
+      const { summary, reply, markdown } = await scored('wave:gesture')
+
+      expect(summary).toMatchObject({ actionsAccepted: 1, actionsUnknown: 0, actionToolCalls: 0, actionToolUnknown: 0 })
+      expect(reply.cue.acts[0]).toMatchObject({ action: 'wave', actionDisposition: 'accepted' })
+      expect(markdown).toContain('| 1/0 | 0/0 |')
+    })
+
+    it('reports a label outside the exposed set as unknown', async () => {
+      const { summary, reply } = await scored('moonwalk:dance')
+
+      expect(summary).toMatchObject({ actionsAccepted: 0, actionsUnknown: 1 })
+      expect(reply.cue.acts[0]).toMatchObject({ action: 'wave', actionDisposition: 'unknown' })
+    })
+
+    it('scores identically to a run without the flag apart from the action fields', async () => {
+      const c = cli()
+      expect(await c.run([transcript])).toBe(0)
+      const summary: RunScore[] = JSON.parse(await readFile(join(JSON.parse(c.stdout).runDir, 'summary.json'), 'utf8'))
+      const reply = JSON.parse((await readFile(join(JSON.parse(c.stdout).runDir, 'replies.jsonl'), 'utf8')).trim())
+
+      expect(summary[0]).toMatchObject({ actionsAccepted: 0, actionsUnknown: 0 })
+      expect(reply.cue.acts[0].actionDisposition).toBeNull()
+    })
+
+    it.each(['wave', 'wave:jig', 'wave:gesture,wave:dance'])('refuses the malformed flag %j before creating evidence', async (flag) => {
+      const c = cli()
+      expect(await c.run([transcript, '--exposed-actions', flag])).toBe(2)
+      expect(c.stdout).toBe('')
+      expect(c.stderr).toContain('qa-tools model score: invalid --exposed-actions')
+    })
+  })
 })
