@@ -217,6 +217,125 @@ devtools:
           declined: Declined
           engaged: Engaged
           ignored: Ignored
+    character-state:
+      title: Character
+      description: Inspect the character's mood, temperament, and relationship, and move the clock to watch them change
+      source:
+        title: Source
+        this-window: 'This window: {role}'
+        leader: leader
+        follower: follower
+        leader-clock: 'Leader clock: {clock}'
+        jumped: '(jumped {offset})'
+        refreshed: Refreshed {clock}
+        waiting: Waiting for the leader window to answer.
+        not-leading: The window that answered does not lead, so it holds no character state.
+        no-card: The leader has not loaded a card yet.
+        leading: This window is the leader. The values below are its live record of the active card, read at its clock.
+        following: This window is a follower and keeps no record of its own. Everything below comes from the leader window, read at the leader's clock.
+        error: 'Could not read the leader window: {error}'
+      mood:
+        title: Mood
+        axes: Axes
+        axis-names:
+          valence: Valence
+          energy: Energy
+          tension: Tension
+        columns:
+          axis: Axis
+          mood: Mood
+          raw: Raw
+          resting: Resting
+          temperament: Temperament
+          bucket: Word
+        text: Rendered text
+        text-note: The system:character block as the leader renders it at its clock. Empty at rest.
+        at-rest: At rest, so no block is sent.
+        reasons: Shown reasons
+        no-reasons: No reason is shown.
+        urge-factor: Reach-out factor
+        pointed: Pointed
+        last-interaction: Last interaction
+      contributions:
+        title: Contributions
+        note: Live pushes on the mood, oldest first. The remaining weight halves every half-life; a push below the epsilon expires.
+        empty: No contribution is live.
+        columns:
+          when: When
+          source: Source
+          reason: Reason
+          delta: Delta (v / e / t)
+          half-life: Half-life
+          remaining: Remaining
+      temperament:
+        title: Temperament
+        note: Follows the hourly mood over days and is pulled back to the resting disposition. Clamped per axis around rest.
+        through-hour: Processed through
+      relationship:
+        title: Relationship
+        dimensions:
+          closeness: Closeness
+          trust: Trust
+          familiarity: Familiarity
+        columns:
+          dimension: Dimension
+          level: Level
+          stage: Stage
+          pending: Pending at rollover
+        unlocks: Unlocks
+        no-unlocks: None yet.
+        wound: Wound
+        wound-none: none
+        active-days: Active days
+        milestones: Milestones
+        last-seen: Last seen
+      history:
+        title: History
+        note: One row per completed logical day, newest first; the newest {count} are shown.
+        empty: No day has completed yet.
+        columns:
+          day: Day
+          mood: Mean mood (v / e / t)
+          temperament: Temperament (v / e / t)
+          levels: Levels (c / t / f)
+          stages: Stages
+      controls:
+        title: Clock and test events
+        jump: Jump the leader clock
+        jump-note: Moves the leader's character clock forward and brings the state to the new time. The offset lives in the leader's memory until it loses leadership; it does not change the wall clock or any other module.
+        jump-hour: +1 h
+        jump-day: +1 d
+        jump-week: +7 d
+        offset: 'Current offset: {offset}'
+        jumped: Jumped to {clock}.
+        apply: Apply a test event
+        apply-note: Applies the chosen event at the leader's clock with a fresh id. Daily caps and budgets still hold.
+        event: Event
+        apply-action: Apply
+        applied: Applied {kind} at {clock}.
+        ignored: The leader ignored {kind} (a cap, a budget, or no active card).
+        invalid: 'The leader rejected the event: {error}'
+        reset: Reset this card
+        reset-note: Forgets the stored state of the active card. It starts again from the card's profile. The clock offset stays.
+        reset-action: Reset
+        reset-done: The card's state was reset at {clock}.
+        failed: 'The leader did not answer: {error}'
+        event-kinds:
+          touch-pleasant: Pleasant touch
+          touch-unwelcome: Unwelcome touch
+          reach-out-unanswered: Reach-out unanswered (first)
+          late-reply: Late reply
+          reach-out-reply: Reply to a reach-out
+          return: Return after a day away
+          ritual-reciprocated: Ritual reciprocated
+          user-turn: User turn (first real exchange)
+          disclosure: Disclosure
+          kept-promise: Kept promise
+          milestone: Milestone
+          significant-positive: Significant positive
+          significant-negative: Significant negative
+          unkind: Unkind
+          hurtful: Hurtful
     presence-bubble:
       title: Presence Bubble
       description: Drive the bubble above the character and watch it in the main window
