@@ -225,6 +225,25 @@ export interface TemperamentState {
   readonly day: TemperamentDay
 }
 
+/** Upper bound of {@link AppliedEvents.recent}. */
+export const MAX_APPLIED_EVENT_IDS = 256
+
+export interface AppliedEventRef {
+  readonly id: string
+  readonly atMs: number
+}
+
+/**
+ * Ids of recently applied events, so replaying an event is a no-op even after the mood refused or pruned its
+ * contribution. Events at or before `evictedThroughMs`, the newest `atMs` that left the bounded ring, are rejected,
+ * because their id may no longer be listed.
+ */
+export interface AppliedEvents {
+  /** Oldest first, newest {@link MAX_APPLIED_EVENT_IDS} kept. */
+  readonly recent: readonly AppliedEventRef[]
+  readonly evictedThroughMs: number | null
+}
+
 /**
  * The stored state of one character card. Plain JSON; tuning constants live in {@link CHARACTER_STATE_SETTINGS} and
  * are never copied here.
@@ -241,6 +260,7 @@ export interface CharacterStateRecordV1 {
   readonly relationship: RelationshipState
   /** Newest 400 kept, oldest first. */
   readonly history: readonly DailySummary[]
+  readonly appliedEvents: AppliedEvents
 }
 
 /**
@@ -260,6 +280,10 @@ export const CharacterStateRecordSchema = strictObject({
   temperament: strictObject({ axes: MoodAxesSchema, throughHourMs: time, day: TemperamentDaySchema }),
   relationship: RelationshipStateSchema,
   history: pipe(array(DailySummarySchema), maxLength(CHARACTER_STATE_SETTINGS.history.maxRows)),
+  appliedEvents: strictObject({
+    recent: pipe(array(strictObject({ id, atMs: time })), maxLength(MAX_APPLIED_EVENT_IDS)),
+    evictedThroughMs: nullable(time),
+  }),
 }) satisfies GenericSchema<unknown, CharacterStateRecordV1>
 
 /** Direction of one axis in a model cue. */

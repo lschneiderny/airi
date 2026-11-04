@@ -284,6 +284,7 @@ describe('insertContribution', () => {
         pendingStageUps: { closeness: null, trust: null, familiarity: null },
       },
       history: [],
+      appliedEvents: { recent: [], evictedThroughMs: null },
     })
     expect(result.issues).toBeUndefined()
   })
