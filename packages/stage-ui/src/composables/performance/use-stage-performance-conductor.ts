@@ -105,6 +105,12 @@ export interface StagePerformanceScene {
    */
   gesture?: (kind: CueGestureKind, count: number) => void
   /**
+   * Plays the clip the user labeled `label` and exposed as a gesture; the MMD scene resolves the label and counts the
+   * drops. The ACT's cue `gesture`, when set, travels along so the scene can record it as superseded by the clip.
+   * A scene without clips, such as the Live2D scene, omits it and the label is dropped.
+   */
+  action?: (label: string, gesture?: { kind: CueGestureKind, count: number }) => void
+  /**
    * Live2D and MMD Natural: adds a decided mood dose, deduplicated by id. A scene without it, such as a scenario sink,
    * drops the dose; the decider state still advances.
    */
@@ -336,6 +342,14 @@ export class StagePerformanceConductor {
   /** Sets the resting face of the mounted scene; the decider is not involved. */
   faceBaseline(baseline: FaceBaseline) {
     this.options.scene()?.setFaceBaseline?.(baseline)
+  }
+
+  /**
+   * Forwards an ACT action label to the scene under every driver: MMD Natural and Classic both play clips, so unlike
+   * `gesture` there is no driver gate.
+   */
+  action(label: string, gesture?: { kind: CueGestureKind, count: number }) {
+    this.options.scene()?.action?.(label, gesture)
   }
 
   /** Every episode decided for `turnId` from now on carries `moodGain` 0. Marking a turn again keeps it marked. */
