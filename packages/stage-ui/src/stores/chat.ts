@@ -17,6 +17,7 @@ import { fileSource } from '@proj-airi/audio/encoding'
 import { createChatOrchestratorRuntime, renderConversationPreview } from '@proj-airi/core-agent'
 import { ContextUpdateStrategy } from '@proj-airi/server-sdk'
 import { IOAttributes, IOEvents, IOSpanNames, IOSubsystems } from '@proj-airi/stage-shared'
+import { renderCharacterContext } from '@proj-airi/stage-shared/character-state'
 import { renderRegisterSection } from '@proj-airi/stage-shared/conversation-register'
 import { TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
 import { composePrompt, REPLY_MAX_TOKENS, STAGE_RUNTIME_CONFIG } from '@proj-airi/stage-shared/stage-contract'
@@ -46,6 +47,7 @@ import { createWakeWordTool } from '../tools/wake-words'
 import { useLLM } from './ai/chat-llm/llm'
 import { resolveLlmTools } from './ai/chat-llm/tool-resolver'
 import { useLlmToolsStore } from './ai/chat-llm/tools'
+import { characterStateContext, useCharacterStateStore } from './character-state'
 import { useChatContextStore } from './chat/context-store'
 import { describeChatImages, replaceToolResultImages } from './chat/image-projection'
 import { stickerPromptSegment, useChatPrompt } from './chat/prompt'
@@ -138,6 +140,9 @@ export interface ChatReactionPayload {
   /** Situation event of the touch. The turn ID is `reaction:<eventId>`, so a repeated call joins the pending turn. */
   eventId: string
 }
+
+/** The context id and registry source key of the character runtime context entry. */
+const CHARACTER_CONTEXT_ID = 'system:character'
 
 /** The outcome of one unprompted turn. A turn that the model declined, or that a user turn replaced, spoke nothing. */
 export type ChatUnpromptedResult
@@ -299,6 +304,7 @@ export const useChatStore = defineStore('chat', () => {
   const stageContractPrompt = useStageContractPrompt()
   const conversationSettings = useConversationSettings()
   const situationStore = useSituationStore()
+  const characterState = useCharacterStateStore()
   const llmStore = useLLM()
   const llmToolsStore = useLlmToolsStore()
   const { buildChatPromptSegments } = useChatPrompt()
@@ -334,7 +340,7 @@ export const useChatStore = defineStore('chat', () => {
   watch(registerPrompt, text => chatSession.setRegisterPrompt(text), { immediate: true })
 
   /**
-   * Builds the only runtime context entry of a request: the leader's situation block.
+   * Builds the situation runtime context entry of a request: the leader's situation block.
    * It stays in the per-request runtime context, never in the system prompt, because it changes every turn.
    * It is undefined when there is nothing to send, for example in a host that never initialized the situation store.
    */
@@ -351,6 +357,31 @@ export const useChatStore = defineStore('chat', () => {
       strategy: ContextUpdateStrategy.ReplaceSelf,
       text,
       createdAt: now,
+    }
+  }
+
+  /**
+   * Builds the character runtime context entry of a request: how she feels and where the two of them stand, from the
+   * replicated character-state reading. Its own source key keeps it from replacing the situation entry.
+   *
+   * At rest, or before a reading exists, the text is empty. The context registry keeps a ReplaceSelf entry until it is
+   * replaced, so when the registry still holds earlier text, an empty entry replaces it; the request renderer drops
+   * blank entries (`joinContextTexts`). Otherwise there is nothing to send.
+   */
+  function characterContextMessage(): ContextMessage | undefined {
+    const reading = characterState.reading
+    const now = Date.now()
+    const text = reading ? renderCharacterContext(reading, characterStateContext(now)) : ''
+    if (!text && !chatContext.getContextsSnapshot()[CHARACTER_CONTEXT_ID]?.some(message => message.text !== ''))
+      return undefined
+
+    return {
+      id: nanoid(),
+      contextId: CHARACTER_CONTEXT_ID,
+      strategy: ContextUpdateStrategy.ReplaceSelf,
+      text,
+      createdAt: now,
+      metadata: { source: { id: CHARACTER_CONTEXT_ID } },
     }
   }
 
@@ -782,7 +813,7 @@ export const useChatStore = defineStore('chat', () => {
     },
     getActiveSessionId: () => activeSessionId.value,
     getActiveProvider: () => activeProvider.value,
-    runtimeContextProviders: [situationContextMessage],
+    runtimeContextProviders: [situationContextMessage, characterContextMessage],
     createId: nanoid,
     unwrapMessage: message => toRaw(message),
     onStateChange: syncRuntimeState,
@@ -871,6 +902,8 @@ export const useChatStore = defineStore('chat', () => {
     },
     stream: llmStore.stream,
   })
+  // MOOD cues of the replies become character-state events on the leader.
+  characterState.observeChat(runtime.hooks)
 
   // One request owns preparation and generation. Cancellation cannot miss asynchronous startup.
   const requests = new Map<string, {
@@ -1187,6 +1220,11 @@ export const useChatStore = defineStore('chat', () => {
     return request.accepted
   }
 
+  /** An unprompted instruction, followed by the pointed sentence while her mood is pointed. */
+  function unpromptedInstruction(instruction: string): string {
+    return characterState.reading?.pointed ? `${instruction.trimEnd()}\n${t('base.prompt.unprompted-pointed')}` : instruction
+  }
+
   /**
    * Starts a turn without user input in the leader's active session and resolves with its outcome.
    *
@@ -1207,7 +1245,7 @@ export const useChatStore = defineStore('chat', () => {
 
     return startUnprompted(payload.messageId ?? nanoid(), t('base.prompt.unprompted-trigger', { reason: payload.topicText }), {
       trigger: { topicKey: payload.topicKey, text: payload.topicText, kind: reason.kind },
-      instruction: t(payload.force ? 'base.prompt.unprompted-forced' : unpromptedInstructionKeys[reason.category]),
+      instruction: unpromptedInstruction(t(payload.force ? 'base.prompt.unprompted-forced' : unpromptedInstructionKeys[reason.category])),
       supplement: payload.supplement,
     })
   }

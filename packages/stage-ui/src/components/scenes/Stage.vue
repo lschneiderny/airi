@@ -20,6 +20,7 @@ import { createLive2DLipSync } from '@proj-airi/model-driver-lipsync'
 import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import { normalizeActPayload, Playback } from '@proj-airi/pipelines-audio'
 import { presenceBubbleIdle, presenceBubbleThinking } from '@proj-airi/stage-shared'
+import { MOOD_CUE_MARKER } from '@proj-airi/stage-shared/character-state'
 import { isMotionQaBridgeEnabled } from '@proj-airi/stage-shared/motion-scenario/flag'
 import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
 import { TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
@@ -838,6 +839,10 @@ chatHookCleanups.push(onTokenLiteral(async (literal, context) => {
 }))
 
 chatHookCleanups.push(onTokenSpecial(async (special, context) => {
+  // MOOD cues belong to the character-state store, which reads them from the chat hooks. They are no stage cue, so
+  // they never reach the streaming-control controller, which would reject them.
+  if (MOOD_CUE_MARKER.test(special))
+    return
   if (speechMuted.value)
     await playSpecialToken(special, { turnId: context.turnId })
   else

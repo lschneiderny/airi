@@ -29,7 +29,7 @@ describe('stage situation sensor', () => {
     expect(observations).toEqual([])
   })
 
-  it('reports the exposed expressions by kind, and the active expressions and mood only with state feedback', async () => {
+  it('reports the exposed expressions by kind, and the active expressions only with state feedback', async () => {
     const runtimeState = usePerformanceRuntimeState()
     runtimeState.publish({
       exposed: [{ label: 'smile', kind: 'face' }, { label: 'wink', kind: 'face' }, { label: 'tear', kind: 'effect' }],
@@ -42,8 +42,8 @@ describe('stage situation sensor', () => {
     await useExpressionPerformanceSettings().update({ stateFeedback: true })
 
     expect(observations).toEqual([
-      { kind: 'stage', exposed: 'face: smile, wink / effect: tear', active: '', mood: '', atMs: T0 },
-      { kind: 'stage', exposed: 'face: smile, wink / effect: tear', active: 'face smile', mood: 'valence 0.2, arousal 0.1, tension 0', atMs: T0 + 1_000 },
+      { kind: 'stage', exposed: 'face: smile, wink / effect: tear', active: '', atMs: T0 },
+      { kind: 'stage', exposed: 'face: smile, wink / effect: tear', active: 'face smile', atMs: T0 + 1_000 },
     ])
   })
 
@@ -58,8 +58,8 @@ describe('stage situation sensor', () => {
     runtimeState.publish({ exposed: [], active: [], mood: null })
 
     expect(observations).toEqual([
-      { kind: 'stage', exposed: 'face: smile', active: '', mood: '', atMs: T0 },
-      { kind: 'stage', exposed: '', active: '', mood: '', atMs: T0 + 1_000 },
+      { kind: 'stage', exposed: 'face: smile', active: '', atMs: T0 },
+      { kind: 'stage', exposed: '', active: '', atMs: T0 + 1_000 },
     ])
   })
 

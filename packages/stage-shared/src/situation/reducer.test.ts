@@ -350,27 +350,26 @@ describe('reduceSituation conversation, context, notify, stage, busy', () => {
   })
 
   it('ignores a stage observation whose fields are not strings', () => {
-    const base = run([{ kind: 'stage', exposed: 'a', active: 'b', mood: 'calm', atMs: T0 }])
+    const base = run([{ kind: 'stage', exposed: 'a', active: 'b', atMs: T0 }])
     const bad: unknown[] = [
-      { kind: 'stage', exposed: null, active: 'b', mood: 'calm', atMs: T0 + SEC },
-      { kind: 'stage', exposed: 'a', active: undefined, mood: 'calm', atMs: T0 + SEC },
-      { kind: 'stage', exposed: 'a', active: 'b', mood: { x: 1 }, atMs: T0 + SEC },
+      { kind: 'stage', exposed: null, active: 'b', atMs: T0 + SEC },
+      { kind: 'stage', exposed: 'a', active: undefined, atMs: T0 + SEC },
     ]
 
     for (const observation of bad) {
       const state = reduceSituation(base, observation as Observation, T0 + SEC)
-      expect(state.stage).toEqual({ exposed: 'a', active: 'b', mood: 'calm', atMs: T0 })
+      expect(state.stage).toEqual({ exposed: 'a', active: 'b', atMs: T0 })
     }
     expect(reduceSituation(initialSituationState, bad[0] as Observation, T0).stage).toBeNull()
   })
 
   it('replaces stage and busy without events', () => {
     const state = run([
-      { kind: 'stage', exposed: 'a', active: 'b', mood: 'calm', atMs: T0 },
+      { kind: 'stage', exposed: 'a', active: 'b', atMs: T0 },
       { kind: 'busy', state: 'fullscreen', atMs: T0 },
     ])
 
-    expect(state.stage).toEqual({ exposed: 'a', active: 'b', mood: 'calm', atMs: T0 })
+    expect(state.stage).toEqual({ exposed: 'a', active: 'b', atMs: T0 })
     expect(state.busy).toEqual({ state: 'fullscreen', atMs: T0 })
     expect(state.events).toEqual([])
   })

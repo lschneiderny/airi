@@ -36,6 +36,7 @@ import { useSpeechStore } from '../../stores/modules/speech'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
 import { situationTouchObservedEvent } from '../../stores/situation/touch-bus'
+import { useSpeechOutputControlStore } from '../../stores/speech-output-control'
 import { ChatHistory } from '../scenarios/chat'
 
 /** Walks the rendered tree under `vnode` for the first instance of `type`, through child components, fragments and slots. */
@@ -423,6 +424,26 @@ describe('stage emotion routing on Live2D', () => {
 
     requests.value[1].release()
     await user
+  })
+
+  it('consumes a MOOD cue before the streaming-control controller, so it is never dispatched or rejected', async () => {
+    await renderStage('universal')
+    useSpeechOutputControlStore().speechMuted = true
+    const control = useLlmStreamingControlStore()
+    const dispatchWith = vi.spyOn(control, 'dispatchWith')
+    const rejected: string[] = []
+    onTestFinished(control.onRejected(({ special }) => {
+      rejected.push(special)
+    }))
+    const context = { sessionId: 'session-1', turnId: 'mood-1', message: { role: 'user' as const, content: 'hello' }, contexts: {}, composedMessage: [] }
+
+    await useChatStore().emitTokenSpecialHooks('<|MOOD brighter: you came back|>', context)
+    await useChatStore().emitTokenSpecialHooks('<|MOOD happy|>', context)
+    // A stage cue of the same turn still reaches the controller, so the checks below can fail.
+    await useChatStore().emitTokenSpecialHooks('<|ACT {"emotion":{"name":"happy","intensity":0.7}}|>', context)
+
+    expect(dispatchWith.mock.calls.map(([special]) => special)).toEqual(['<|ACT {"emotion":{"name":"happy","intensity":0.7}}|>'])
+    expect(rejected).toEqual([])
   })
 
   it('drops the deferred caption reset of a held unprompted turn that is cancelled', async () => {

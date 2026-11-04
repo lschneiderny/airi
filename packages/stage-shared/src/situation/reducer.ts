@@ -462,10 +462,10 @@ function applyObservation(draft: Draft, observation: Observation, now: number, o
       break
     case 'stage': {
       const stage = draft.stage
-      if (typeof observation.exposed !== 'string' || typeof observation.active !== 'string' || typeof observation.mood !== 'string')
+      if (typeof observation.exposed !== 'string' || typeof observation.active !== 'string')
         break
       if (!stage || at >= stage.atMs)
-        draft.stage = { exposed: observation.exposed, active: observation.active, mood: observation.mood, atMs: at }
+        draft.stage = { exposed: observation.exposed, active: observation.active, atMs: at }
       break
     }
     case 'busy':
