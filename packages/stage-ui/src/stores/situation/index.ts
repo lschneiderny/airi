@@ -70,6 +70,7 @@ import { localLogicalDayKey, useSituationInnerState } from '../../features/situa
 import { useSituationSettings } from '../../features/situation/settings'
 import { createThreadExtractor } from '../../features/situation/thread-extraction'
 import { chatComposerActivityChangedEvent, getSpeechBusContext, situationForgetRequestedEvent, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
+import { useCharacterStateStore } from '../character-state'
 import { bridgeSituationToCharacter } from '../character-state/situation-bridge'
 import { useMemoryObservabilityStore } from '../devtools/memory-observability'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
@@ -717,6 +718,12 @@ export const useSituationStore = defineStore('situation', () => {
       heldTopics,
       signals,
       settings: gateSettings(),
+      // NOTICE:
+      // The character store is looked up on every tick instead of once when this store is created.
+      // The card store behind it needs an i18n context, and windows which never run the gate lack that context at creation time.
+      // A window with no reading yet leaves the timing as it was (packages/stage-ui/src/stores/character-state).
+      // Removal condition: the character store no longer has to be resolved inside the tick, that is, the store-creation order is fixed.
+      moodFactor: useCharacterStateStore().reading?.urgeFactor ?? 1,
       forceTiming,
     }, gateMemory)
     // Recording the decision publishes this memory to the inspector too.

@@ -88,6 +88,9 @@ describe('situation gate panel', () => {
     expect(decisionRow).not.toContain(gateText('reason-kinds.suppressor'))
     expect(screen.getByTestId('situation-gate-hazards').element().querySelector('[data-hazard="total"]')?.textContent).toMatch(/total\s*0\.375/)
     expect(screen.getByTestId('situation-gate-multipliers').element().querySelector('[data-multiplier="damping"]')?.textContent).toMatch(/damping\s*0\.500/)
+    const moodRow = screen.getByTestId('situation-gate-multipliers').element().querySelector('[data-multiplier="mood"]')?.textContent
+    expect(moodRow).toContain(gateText('multiplier-names.mood'))
+    expect(moodRow).toMatch(/1\.000/)
     await expect.element(screen.getByTestId('situation-gate-history').getByRole('row').nth(1)).toHaveTextContent(/hold\s*-\s*awaiting-reply/)
   })
 
