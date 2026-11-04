@@ -150,6 +150,8 @@ export const CHARACTER_STATE_SETTINGS = deepFreeze({
     energy: { boundaries: [-0.45, -0.15, 0.15, 0.45], words: ['drained', 'tired', 'steady', 'lively', 'buzzing'] },
     tension: { boundaries: [0.22, 0.45], words: ['relaxed', 'a little on edge', 'tense'] },
     exitHysteresis: { valence: 0.05, energy: 0.05, tension: 0.04 },
+    /** Local hour from which an event of the previous logical day reads as "last night" rather than "yesterday". */
+    nightFromHour: 20,
     reasons: {
       maxShown: 2,
       showWeight: 0.04,
@@ -184,6 +186,8 @@ export const CHARACTER_STATE_SETTINGS = deepFreeze({
     damping: { floor: 0.25, graceMs: 2 * MINUTE_MS, halfLifeMs: 20 * MINUTE_MS },
     gains: { mouthForm: 0.35, eyeOpen: 0.15, blinkRateOffset: -0.25, browAngle: 0.4 },
     blinkRateOffsetClamp: 0.4,
+    /** Span of each channel the share applies to: mouth form and brow angle in [-1, 1], eye openness in [0, 1]. */
+    channelRanges: { mouthForm: 2, eyeOpen: 1, browAngle: 2 },
     /** Each offset stays within this share of its channel range. */
     channelShare: 0.35,
     filterTauMs: 1_500,
