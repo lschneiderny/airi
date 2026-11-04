@@ -386,6 +386,37 @@ describe('mmd stance director with clip performances', () => {
     expect(director.diagnostics).toMatchObject({ goalX: 6, reason: 'debug', pendingGoal: null })
   })
 
+  it('keeps a full one-shot playing across a sent chat message with the goal pending, but a poke still ends it', () => {
+    const director = new MMDStanceDirector()
+    run(director, 0, {}, world())
+    run(director, 100, {}, world({ debugGoal: { seq: 1, x: 6, pace: 'walk' } }))
+    run(director, 200, { actionRequest: full }, world({ rootX: 1, locomotionMode: 'walking' }))
+    let at = 200
+    while (director.intent?.action?.phase !== 'playing' && at < 20_000) {
+      at += 100
+      run(director, at, { actionRequest: full }, world({ rootX: 1, locomotionMode: 'idle' }))
+    }
+    expect(director.intent?.action).toMatchObject({ seq: 1, phase: 'playing' })
+
+    run(director, at + 100, { actionRequest: full, chatSendSeq: 1, interactionAtMs: EPOCH_MS + at + 100 }, world({ rootX: 1 }))
+    expect(director.intent?.action).toMatchObject({ seq: 1, phase: 'playing' })
+    expect(director.diagnostics).toMatchObject({ goalX: null, pendingGoal: { x: 6, reason: 'debug' } })
+
+    run(director, at + 200, { actionRequest: full, chatSendSeq: 1, actionFeedback: { seq: 1, state: 'finished' } }, world({ rootX: 1 }))
+    expect(director.intent?.action).toBeNull()
+    expect(director.diagnostics).toMatchObject({ goalX: 6, pendingGoal: null })
+
+    const poked = new MMDStanceDirector()
+    run(poked, 0, {})
+    let pokedAt = 0
+    while (poked.intent?.action?.phase !== 'playing' && pokedAt < 20_000) {
+      pokedAt += 100
+      run(poked, pokedAt, { actionRequest: full })
+    }
+    run(poked, pokedAt + 100, { actionRequest: full, interactionSeq: 1 })
+    expect(poked.intent?.action).toBeNull()
+  })
+
   it('accepts an action request without a world, reaches playing and ends a full clip on a poke', () => {
     const director = new MMDStanceDirector()
     run(director, 0, {})
