@@ -9,6 +9,7 @@ import {
   CharacterProfileSchema,
   CharacterStateRecordSchema,
   DEFAULT_CHARACTER_PROFILE,
+  MAX_APPLIED_EVENT_IDS,
   TemperamentDaySchema,
 } from '.'
 
@@ -67,6 +68,7 @@ function record(): CharacterStateRecordV1 {
       pendingStageUps: { closeness: 'close', trust: null, familiarity: null },
     },
     history: [summary(0)],
+    appliedEvents: { recent: [{ id: 'touch-0', atMs: START_MS }], evictedThroughMs: null },
   }
 }
 
@@ -133,6 +135,15 @@ describe('characterStateRecordSchema', () => {
     const at = (count: number) => ({ ...record(), history: Array.from({ length: count }, (_, index) => summary(index)) })
     expect(safeParse(CharacterStateRecordSchema, at(400)).success).toBe(true)
     expect(safeParse(CharacterStateRecordSchema, at(401)).success).toBe(false)
+  })
+
+  it('accepts the applied event id cap and rejects one more', () => {
+    const at = (count: number) => ({
+      ...record(),
+      appliedEvents: { recent: Array.from({ length: count }, (_, index) => ({ id: `event-${index}`, atMs: START_MS + index })), evictedThroughMs: START_MS },
+    })
+    expect(safeParse(CharacterStateRecordSchema, at(MAX_APPLIED_EVENT_IDS)).success).toBe(true)
+    expect(safeParse(CharacterStateRecordSchema, at(MAX_APPLIED_EVENT_IDS + 1)).success).toBe(false)
   })
 
   it('rejects a level outside [0, 1], an unknown stage, and an unknown field', () => {

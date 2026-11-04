@@ -1,4 +1,6 @@
+export * from './migrate'
 export * from './mood'
+export * from './reducer'
 export * from './relationship'
 export * from './settings'
 export * from './temperament'
