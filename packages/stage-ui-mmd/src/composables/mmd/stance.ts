@@ -38,8 +38,11 @@ export interface MMDStanceDiagnostics {
   lastToolSeq: number
   toolRefused: boolean
   toolRetryAfterMs: number | null
-  /** The accepted clip performance, or null when none runs. */
-  performing: { seq: number, clipId: string, layer: 'full' | 'upper', loop: boolean, phase: 'settling' | 'playing' } | null
+  /**
+   * The accepted clip performance, or null when none runs. `sinceMs` is the director-clock start of the phase and
+   * `durationMs` the clip length, so a reader can tell when a non-looping clip ends.
+   */
+  performing: { seq: number, clipId: string, layer: 'full' | 'upper', loop: boolean, phase: 'settling' | 'playing', sinceMs: number, durationMs: number } | null
   lastActionSeq: number
   actionRefusal: BodyDirectorMemory['actionRefusal']
   actionRetryAfterMs: number | null
@@ -232,6 +235,8 @@ export class MMDStanceDirector {
         layer: this.memory.performing.request.layer,
         loop: this.memory.performing.request.loop,
         phase: this.memory.performing.phase,
+        sinceMs: this.memory.performing.sinceMs,
+        durationMs: this.memory.performing.request.durationMs,
       },
       lastActionSeq: this.memory.lastActionSeq,
       actionRefusal: this.memory.actionRefusal,

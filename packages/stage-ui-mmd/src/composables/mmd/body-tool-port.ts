@@ -30,7 +30,7 @@ export interface MMDBodyToolFrame {
   locomotionMode: string
   /** Director-clock time of the frame, in milliseconds. */
   directorMs: number
-  diagnostics: Pick<MMDStanceDiagnostics, 'goalX' | 'lastToolSeq' | 'toolRefused' | 'toolRetryAfterMs' | 'moveRefractoryUntilMs'>
+  diagnostics: Pick<MMDStanceDiagnostics, 'goalX' | 'lastToolSeq' | 'toolRefused' | 'toolRetryAfterMs' | 'toolRefusalReason' | 'moveRefractoryUntilMs'>
 }
 
 interface PendingRequest {
@@ -86,7 +86,7 @@ export class MMDBodyToolPort {
     const pending = this.pending
     if (!pending || frame.diagnostics.lastToolSeq < pending.request.seq)
       return
-    this.settle(pending, frame.diagnostics.toolRefused ? refusal(frame, pending.request.kind) : { success: true, state: this.state() })
+    this.settle(pending, frame.diagnostics.toolRefused ? refusal(frame) : { success: true, state: this.state() })
   }
 
   /** Fails the pending request and withdraws it, for a scene that goes away before the director answers. */
@@ -126,12 +126,15 @@ export class MMDBodyToolPort {
   }
 }
 
-function refusal(frame: MMDBodyToolFrame, kind: BodyToolRequest['kind']): MMDBodyToolResult {
-  const retryMs = frame.diagnostics.toolRetryAfterMs
-  if (retryMs !== null && retryMs > 0)
-    return { success: false, error: 'The character is not ready for that yet.', retryAfterSeconds: Math.ceil(retryMs / 1000) }
-  // A voice request can arrive while the chat is folded; naming the chat lets the reply say why she did not come.
-  if (kind === 'come-here' && frame.standX === null)
-    return { success: false, error: 'The chat window is closed, so there is no spot beside it to walk to.' }
-  return { success: false, error: 'The character cannot walk on this stage now.' }
+function refusal(frame: MMDBodyToolFrame): MMDBodyToolResult {
+  switch (frame.diagnostics.toolRefusalReason) {
+    case 'refractory':
+      return { success: false, error: 'The character is not ready for that yet.', retryAfterSeconds: Math.ceil(Math.max(0, frame.diagnostics.toolRetryAfterMs ?? 0) / 1000) }
+    // A voice request can arrive while the chat is folded; naming the chat lets the reply say why she did not come.
+    case 'chat-closed':
+      return { success: false, error: 'The chat window is closed, so there is no spot beside it to walk to.' }
+    case 'no-world':
+    case null:
+      return { success: false, error: 'The character cannot walk on this stage now.' }
+  }
 }

@@ -71,6 +71,7 @@ import {
   useMMDEmote,
   useMMDLipSync,
 } from '../../composables/mmd'
+import { MMDActionPort } from '../../composables/mmd/action-port'
 import { resolveActAction } from '../../composables/mmd/actions/resolve-act-action'
 import { MMDBody } from '../../composables/mmd/body'
 import { MMDBodyToolPort } from '../../composables/mmd/body-tool-port'
@@ -276,6 +277,17 @@ let rafHandle = 0
 let previousFrameTime: number | undefined
 let lastDiagnosticsTime = 0
 let loadedModelKey: string | null = null
+// The same key, reactive, so a reader of the clip library (`listActions`, the action port) follows a model load.
+const libraryModelKey = shallowRef<string | null>(null)
+// perform_action queues through `requestPerform` like every other clip, so the director reads one request queue.
+const actionPort = new MMDActionPort({
+  clips: () => libraryModelKey.value ? mmdStore.labeledClips(libraryModelKey.value) : [],
+  submit: name => requestPerform(name, { source: 'tool' }) ? performSeq : null,
+  withdraw: (seq) => {
+    if (pendingAction?.seq === seq)
+      pendingAction = null
+  },
+})
 let loadGeneration = 0
 // Stage mode: the character's root-relative extent and foot baseline, measured once per load, and the live root x.
 let stageExtent: MMDStageExtent | undefined
@@ -653,6 +665,8 @@ function renderLoop(now = performance.now()) {
     if (base.changed)
       animation.setBaseMotion(base.motion)
     obeyAction()
+    // Outside the stage-world block: perform_action answers in the classic window too.
+    actionPort.observe({ directorMs: clocks.directorMs, diagnostics: stance.diagnostics })
     if (props.stageWorld) {
       bodyToolPort.observe({
         rootX: stageRootX,
@@ -820,6 +834,7 @@ function disposeModel() {
   gaze = undefined
   resolved = undefined
   loadedModelKey = null
+  libraryModelKey.value = null
   stageExtent = undefined
   stageFootBaselineY = 0
   stageRootYaw = 0
@@ -1222,6 +1237,7 @@ async function loadModel(src: string) {
 
     mmdStore.isModelLoaded = true
     loadedModelKey = modelKey
+    libraryModelKey.value = modelKey
     componentState.value = 'mounted'
 
     // Bind any motions imported before this model mounted.
@@ -1266,6 +1282,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   bodyToolPort.dispose()
+  actionPort.dispose()
   cancelAnimationFrame(rafHandle)
   resizeObserver?.disconnect()
   disposeModel()
@@ -1487,7 +1504,7 @@ defineExpose({
   getMood: () => natural?.mood ?? null,
   listMorphs: () => morphs?.availableMorphs ?? [],
   listMotions: () => animation?.availableClips() ?? [],
-  listActions: () => loadedModelKey ? mmdStore.labeledClips(loadedModelKey) : [],
+  listActions: () => libraryModelKey.value ? mmdStore.labeledClips(libraryModelKey.value) : [],
   action: (label: string, gesture?: { kind: string }) => {
     if (!loadedModelKey)
       return false
@@ -1500,6 +1517,7 @@ defineExpose({
   setDragging,
   characterPlacement,
   bodyPort: computed(() => props.stageWorld ? bodyToolPort : null),
+  actionPort,
 })
 </script>
 
