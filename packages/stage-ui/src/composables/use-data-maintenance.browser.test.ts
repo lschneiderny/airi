@@ -14,6 +14,7 @@ import { createI18n } from 'vue-i18n'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 import { useSituationSettings } from '../features/situation/settings'
 import { injectKeyPiniaSynced } from '../libs/pinia/synced-context'
+import { useCharacterStateStore } from '../stores/character-state'
 import { useMemoryStore } from '../stores/memory'
 import { useModsServerChannelStore } from '../stores/mods/api/channel-server'
 import { useConsciousnessStore } from '../stores/modules/consciousness'
@@ -163,6 +164,25 @@ it('forgets derived conversation state, presence, expression, and MMD settings w
   expect(situationSettings.document.shareForegroundWindow).toBe(true)
   expect(expressionSettings.document.bands).toBe(true)
   expect(mmd.physicsEnabled).toBe(true)
+})
+
+it('empties the character state of every card when all data is deleted', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
+  const records = localforage.createInstance({ name: 'airi-character-state', storeName: 'cards' })
+  const { pinia, runtime, maintenance } = mountMaintenance(`maintenance:${crypto.randomUUID()}`, 'leader-only')
+  await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
+  const characterState = useCharacterStateStore(pinia)
+  characterState.initialize(runtime)
+  cleanups.push(() => characterState.dispose())
+  await characterState.ready()
+  await characterState.importRecord('default', null)
+  await characterState.importRecord('another-card', null)
+  await expect(records.length()).resolves.toBe(2)
+
+  await maintenance.deleteAllData()
+
+  await expect(records.length()).resolves.toBe(0)
+  expect(characterState.reading?.reasons).toEqual([])
 })
 
 it('forgets what the character learned when modules reset', async () => {
