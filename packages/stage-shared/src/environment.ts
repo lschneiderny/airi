@@ -1,6 +1,5 @@
 export enum StageEnvironment {
   Web = 'web',
-  Capacitor = 'capacitor',
   Tamagotchi = 'tamagotchi',
 }
 
@@ -14,10 +13,6 @@ export function isStageWeb(): boolean {
   return !import.meta.env.RUNTIME_ENVIRONMENT || import.meta.env.RUNTIME_ENVIRONMENT === 'browser'
 }
 
-export function isStageCapacitor(): boolean {
-  return import.meta.env.RUNTIME_ENVIRONMENT === 'capacitor'
-}
-
 export function isStageTamagotchi(): boolean {
   return import.meta.env.RUNTIME_ENVIRONMENT === 'electron'
 }
@@ -25,9 +20,6 @@ export function isStageTamagotchi(): boolean {
 export function getStage() {
   if (isStageTamagotchi())
     return StageEnvironment.Tamagotchi
-
-  if (isStageCapacitor())
-    return StageEnvironment.Capacitor
 
   return StageEnvironment.Web
 }

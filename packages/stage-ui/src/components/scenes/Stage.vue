@@ -70,12 +70,12 @@ const props = withDefaults(defineProps<{
   cursorPosition?: { x: number, y: number }
   /**
    * Displays and this window's content bounds in Electron DIP screen coordinates. Natural scenes read them,
-   * for Natural screen placement; hosts without window bounds (web, pocket) leave it undefined.
+   * for Natural screen placement; hosts without window bounds (web) leave it undefined.
    */
   screenPlacement?: { displays: PlacementRect[], windowBounds: PlacementRect }
   /**
    * The host's chat window: shown or not, and its bounds in the same DIP space as `screenPlacement`. Natural
-   * scenes read it for chat attention; hosts without a chat window target (web, pocket) leave it undefined,
+   * scenes read it for chat attention; hosts without a chat window target (web) leave it undefined,
    * which also keeps the chat activity inert there.
    */
   chatTarget?: { visible: boolean, bounds: PlacementRect | null }
@@ -577,7 +577,7 @@ function updatePerformance() {
 
 // --- Chat activity for the Natural motion driver: typing timing and typed-send counters, never text.
 
-// Same-page composers also reach this listener. Web and pocket stay inert because they pass no `chatTarget`,
+// Same-page composers also reach this listener. Web stays inert because it passes no `chatTarget`,
 // so Natural's chat input is null there.
 
 /** Latest report per composer that holds a draft; a composer that reports no draft is dropped. */

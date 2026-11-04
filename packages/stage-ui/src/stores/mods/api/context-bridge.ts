@@ -1111,7 +1111,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
           //
           // SharedWorker solution was considered but it's completely disabled in Chromium based Android browsers
           // (which is a big portion of mobile Stage Web users as stage-ui serves as the unified / universal
-          // api wrapper for most of the shared logic across Web, Pocket, and Tamagotchi).
+          // api wrapper for most of the shared logic across Web and Tamagotchi).
           //
           // Read more here:
           // - https://chromestatus.com/feature/6265472244514816

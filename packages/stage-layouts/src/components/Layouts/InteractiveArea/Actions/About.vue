@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isStageCapacitor, isStageTamagotchi } from '@proj-airi/stage-shared'
+import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { AboutContent, AboutDialog } from '@proj-airi/stage-ui/components'
 import { useBuildInfo } from '@proj-airi/stage-ui/composables'
 import { useI18n } from 'vue-i18n'
@@ -22,9 +22,7 @@ const aboutLinks = [
 
 const edition = isStageTamagotchi()
   ? t('base.edition.desktop')
-  : isStageCapacitor()
-    ? t('base.edition.mobile')
-    : t('base.edition.web')
+  : t('base.edition.web')
 </script>
 
 <template>

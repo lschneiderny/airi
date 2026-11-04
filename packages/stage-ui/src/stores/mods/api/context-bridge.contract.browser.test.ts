@@ -741,7 +741,7 @@ describe('context bridge contract', () => {
   it('keeps a remote stream visible locally without publishing chat authority state for Issue #2085', async () => {
     // ROOT CAUSE:
     //
-    // Stage Pocket uses plain Pinia, so remote stream tokens update only the
+    // Plain Pinia consumers have remote stream tokens update only the
     // local stream store. The history requires a sending flag, but writing
     // that flag to the synchronized chat store would let a follower overwrite
     // the elected authority's stream snapshot.
@@ -1296,10 +1296,10 @@ describe('context bridge contract', () => {
   })
 
   // https://github.com/moeru-ai/airi/pull/2086#discussion_r3755711154
-  it('reloads a completed remote stream when its Pocket session becomes active for Issue #2085', async () => {
+  it('reloads a completed remote stream when its plain-Pinia session becomes active for Issue #2085', async () => {
     // ROOT CAUSE:
     //
-    // A plain-Pinia Pocket tab discarded a completed background stream.
+    // A plain-Pinia tab discarded a completed background stream.
     // Its loaded-session cache then prevented a later IndexedDB refresh.
     activeSessionIdRef.value = 'session-1'
     const store = useContextBridgeStore()

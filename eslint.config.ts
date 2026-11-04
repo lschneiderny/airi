@@ -23,8 +23,6 @@ export default defineConfig({
     'apps/stage-tamagotchi-electron/src/renderer/bindings/**',
     '**/flatpak/**',
     '**/flatpak-repo/**',
-    'apps/stage-pocket/ios/**',
-    'apps/stage-pocket/android/**',
     '**/drizzle/**',
     '**/.astro/**',
     'docs/superpowers/**',
@@ -107,7 +105,7 @@ export default defineConfig({
   },
 }, {
   // The eager Live2D path may import only the three-free 3D subpaths; scenes load through `import()`.
-  // Pocket installs Tres globally and waits on its host-scope decision. See docs/ai/adr/2026-11-04-lazy-3d-renderers.md.
+  // Pocket was retired. See docs/ai/adr/2026-11-04-lazy-3d-renderers.md.
   name: 'airi/lazy-3d-renderers',
   files: [
     'packages/{stage-ui,stage-layouts,stage-pages}/src/**/*.{ts,vue}',

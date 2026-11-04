@@ -1,7 +1,7 @@
 import type { ControlsIslandAction } from '../libs/product-signals/events/controls-island'
 import type { SpeechOutputStopReason } from '../stores/speech-output-control'
 
-import { isStageCapacitor, isStageTamagotchi } from '@proj-airi/stage-shared'
+import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -13,7 +13,7 @@ import { useSettingsGeneral } from '../stores/settings/general'
 /**
  * User-facing chat surfaces that can emit product analytics.
  */
-export type ConversationAnalyticsSurface = 'web' | 'mobile' | 'electron'
+export type ConversationAnalyticsSurface = 'web' | 'electron'
 
 /**
  * Low-cardinality source names for conversation action events.
@@ -104,9 +104,6 @@ interface ConversationBaseProperties {
 export function getConversationAnalyticsSurface(): ConversationAnalyticsSurface {
   if (isStageTamagotchi())
     return 'electron'
-
-  if (isStageCapacitor())
-    return 'mobile'
 
   return 'web'
 }

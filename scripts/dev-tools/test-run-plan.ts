@@ -50,7 +50,6 @@ export const vitestConfigCoverage: Readonly<Record<string, VitestConfigCoverage>
   'integrations/telegram-bot/vitest.config.ts': { runBy: ['root'], note: 'the root config holds an inline project' },
   'packages/audio/vitest.config.ts': { runBy: ['root', 'test-audio-browser:run'], note: 'the root config holds an inline node project' },
   'packages/better-ws/vitest.config.ts': { runBy: ['root'] },
-  'packages/cap-vite/vitest.config.ts': { runBy: ['root'] },
   'packages/ccc/vitest.config.ts': { runBy: ['root'] },
   'packages/core-agent/vitest.config.ts': { runBy: ['root'] },
   'packages/cpu-slots/test/fixtures/vitest-wrapper/vitest.bundled-project.config.ts': { runBy: [], note: 'A fixture that the cpu-slots tests feed to Vitest. It holds no suite.' },

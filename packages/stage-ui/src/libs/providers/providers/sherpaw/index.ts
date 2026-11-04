@@ -3,7 +3,6 @@ import workerURL from '@sherpaw/xsai-transcription/worker?worker&url'
 
 import { resolveSupportedLocale } from '@proj-airi/i18n'
 import { createSherpawTranscriptionDefinition } from '@proj-airi/provider-inference'
-import { isStageCapacitor } from '@proj-airi/stage-shared'
 
 import { defineProvider } from '../registry'
 import { fetchSherpawModel } from './model-assets'
@@ -17,7 +16,7 @@ function getInterfaceLanguage(): string {
 }
 
 function isMobile(): boolean {
-  return isStageCapacitor() || (globalThis.matchMedia?.('(max-width: 767px)').matches ?? false)
+  return globalThis.matchMedia?.('(max-width: 767px)').matches ?? false
 }
 
 export const providerSherpawTranscription = defineProvider({

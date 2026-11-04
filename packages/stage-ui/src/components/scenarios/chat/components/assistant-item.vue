@@ -4,7 +4,7 @@ import type { ChatAssistantMessage, ChatHistoryItem, ChatSlices, ChatSlicesText,
 import type { ChatHistoryReplyPayload } from '../reply'
 import type { ChatToolCallRendererRegistry } from './tool-call-renderer'
 
-import { isStageCapacitor, isStageWeb } from '@proj-airi/stage-shared'
+import { isStageWeb } from '@proj-airi/stage-shared'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import ChatReplyQuote from './reply-quote.vue'
@@ -199,7 +199,7 @@ const copyText = computed(() => getChatHistoryItemCopyText(props.message as Chat
               'h-unset <sm:h-fit',
               'shadow-sm shadow-primary-200/50 dark:shadow-none',
               boxClasses,
-              (isStageWeb() || isStageCapacitor()) && props.variant === 'mobile' ? 'select-none sm:select-auto' : '',
+              isStageWeb() && props.variant === 'mobile' ? 'select-none sm:select-auto' : '',
             ]"
           >
             <template v-if="bubbleIndex === 0">

@@ -19,8 +19,6 @@
     "dev:web:https": "node scripts/dev.mjs apps/stage-web dev:https",
     "dev:server-auth": "node scripts/dev.mjs apps/ui-server-auth dev",
     "dev:backend": "docker compose -f server/docker-compose.yaml up --build",
-    "dev:pocket:ios": "pnpm -rF @proj-airi/stage-pocket run dev:ios",
-    "dev:pocket:android": "pnpm -rF @proj-airi/stage-pocket run dev:android",
     "dev:server": "node scripts/dev.mjs packages/server-runtime dev",
     "dev:tamagotchi": "node scripts/dev.mjs apps/stage-tamagotchi dev",
     "dev:tamagotchi:xwayland": "node scripts/dev.mjs apps/stage-tamagotchi dev:xwayland",
@@ -52,7 +50,6 @@
     "test-stage-ui-mmd:run": "vitest run --config packages/stage-ui-mmd/vitest.config.ts --project browser",
     "lint": "moeru-lint .",
     "lint:fix": "moeru-lint --fix .",
-    "lint:swift": "pnpm -rF @proj-airi/stage-pocket run lint:swift",
     "capture:tamagotchi": "tsx packages/cpu-slots/src/cli.ts run --class exclusive -- pnpm exec vishot capture --target electron ./packages/scenarios-stage-tamagotchi-electron/src/scenarios/demo-controls-settings-chat-websocket/index.ts --app-entrypoint ./apps/stage-tamagotchi/out/main/index.js --cwd . --output-dir ./packages/scenarios-stage-tamagotchi-browser/artifacts/raw --format avif",
     "typecheck": "tsx packages/cpu-slots/src/cli.ts run --class typecheck -- turbo run typecheck -F=\"./packages/*\" -F=\"./apps/*\" -F=\"./server/**\" -F=\"./services/*\" \"--concurrency={grant}\"",
     "typecheck:engines": "tsx packages/cpu-slots/src/cli.ts run --class build -- pnpm -rF=\"./engines/*\" --parallel typecheck",
@@ -62,7 +59,6 @@
     "dev:top": "tsx scripts/dev-tools/top.ts",
     "up": "taze -w -r -I && pnpm prune && pnpm dedupe",
     "nolyfill": "pnpm dlx nolyfill",
-    "open:ios": "pnpm -rF @proj-airi/stage-pocket run open:ios",
     "knip": "knip"
   },
   "devDependencies": {

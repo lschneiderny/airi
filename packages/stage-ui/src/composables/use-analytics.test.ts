@@ -5,7 +5,6 @@ import { useAnalytics } from './use-analytics'
 
 const analyticsMocks = vi.hoisted(() => ({
   ensureAnalyticsInitializedMock: vi.fn(() => true),
-  isStageCapacitorMock: vi.fn(() => false),
   isStageTamagotchiMock: vi.fn(() => false),
   isAnalyticsAvailableInBuildMock: vi.fn(() => true),
   recordFirstMessageMock: vi.fn(() => true),
@@ -15,10 +14,7 @@ const analyticsMocks = vi.hoisted(() => ({
 vi.mock('@proj-airi/stage-shared', () => ({
   getStage: () => analyticsMocks.isStageTamagotchiMock()
     ? 'tamagotchi'
-    : analyticsMocks.isStageCapacitorMock()
-      ? 'capacitor'
-      : 'web',
-  isStageCapacitor: analyticsMocks.isStageCapacitorMock,
+    : 'web',
   isStageTamagotchi: analyticsMocks.isStageTamagotchiMock,
 }))
 
@@ -61,9 +57,7 @@ describe('useAnalytics conversation product events', () => {
     analyticsMocks.captureMock.mockClear()
     analyticsMocks.recordFirstMessageMock.mockClear()
     analyticsMocks.ensureAnalyticsInitializedMock.mockClear()
-    analyticsMocks.isStageCapacitorMock.mockReset()
     analyticsMocks.isStageTamagotchiMock.mockReset()
-    analyticsMocks.isStageCapacitorMock.mockReturnValue(false)
     analyticsMocks.isStageTamagotchiMock.mockReturnValue(false)
     analyticsMocks.isAnalyticsAvailableInBuildMock.mockClear()
   })
@@ -93,24 +87,6 @@ describe('useAnalytics conversation product events', () => {
       app_surface: 'web',
       muted: true,
       was_speaking: true,
-    })
-  })
-
-  it('infers the mobile surface for capacitor conversation actions', () => {
-    analyticsMocks.isStageCapacitorMock.mockReturnValue(true)
-    const analytics = useAnalytics()
-
-    analytics.trackChatSessionSelected({
-      source: 'sessions_drawer',
-      message_count: 4,
-      cloud_synced: true,
-    })
-
-    expect(analyticsMocks.captureMock).toHaveBeenCalledWith('chat_session_selected', {
-      app_surface: 'mobile',
-      source: 'sessions_drawer',
-      message_count: 4,
-      cloud_synced: true,
     })
   })
 

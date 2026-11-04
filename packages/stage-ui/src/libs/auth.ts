@@ -152,7 +152,7 @@ export async function signInOIDC(params: OIDCFlowParams) {
  *
  * Expects:
  * - `auth-config.ts` provides `OIDC_CLIENT_ID` and `OIDC_REDIRECT_URI` for
- *   the current app (web vs. tamagotchi vs. pocket).
+ *   the current app (web vs. tamagotchi).
  *
  * Returns:
  * - Resolves after the browser has been navigated. In practice the page

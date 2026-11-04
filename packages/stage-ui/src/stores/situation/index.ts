@@ -1216,7 +1216,7 @@ export const useSituationStore = defineStore('situation', () => {
 
   /**
    * Declares what the host can do. Only a host that sets `unprompted` runs the gate loop, so the character speaks up
-   * on her own there and nowhere else (the Electron app sets it; web and Pocket never do).
+   * on her own there and nowhere else (the Electron app sets it; web never does).
    */
   function setHostCapabilities(capabilities: { unprompted: boolean }) {
     hostSupportsUnprompted.value = capabilities.unprompted

@@ -51,11 +51,18 @@ The upstream review of 2026-10-26 created this list. Commits that the fork took 
 - **Revisit when:** Upstream ships Kirie as a packaged desktop release, the Windows CEF exit crash (GAP-015 in its `MIGRATION.md`) is fixed, and the deferred server channel, plugin host, and model-rendering acceptance are done.
 - **Search terms:** `kirie`, `godot-kirie`, `tamagotchi-kirie`, `cef`.
 
+## Pocket mobile host
+
+- **Upstream:** `apps/stage-pocket`, the Capacitor Android and iOS host, and its `packages/cap-vite` development wrapper.
+- **Fork decision (2026-11-04):** Retired under H2 in the [architecture boundaries audit](audits/2026-10-31-architecture-boundaries.md). Neither package serves the desktop companion. Their native builds, scripts, and shared host branches imposed maintenance on every routing change.
+- **Revisit when:** The owner chooses to support a native mobile host again, with maintained Android and iOS build and device validation. Port the host and its adapters together against the current shared contracts; do not restore the old routing exclusions blindly. Mobile browser layouts remain supported by the web host.
+- **Search terms:** `stage-pocket`, `cap-vite`, `capacitor`, `android`, `ios`.
+
 ## Chat actions in the tab that has the Stage
 
 - **Upstream:** `599336d03` ([#3101](https://github.com/moeru-ai/airi/pull/3101)), 2026-10-24. 7 files, and a `pinia-plugin-synced` bump from 0.1.5 to 0.1.6 for synced roles.
 - **What it adds:** A context that mounts a Stage claims a speech-player role, and every chat action runs in a speech player. Without one, the leader runs them silently.
-- **Why it matters here:** On stage-web with several tabs, a tab without a Stage can win the leader election. Replies then generate in that tab, and nothing speaks them. The desktop app is not affected: only the main window mounts a Stage, and it is the only window that can lead. Pocket runs one webview.
+- **Why it matters here:** On stage-web with several tabs, a tab without a Stage can win the leader election. Replies then generate in that tab, and nothing speaks them. The desktop app is not affected: only the main window mounts a Stage, and it is the only window that can lead.
 - **Fork conflicts (2026-10-26):** 2 files, `Stage.vue` and `chat.ts`. The change also moves chat actions away from the leader, while the fork's presence turns rely on the leader running them.
 - **Revisit when:** Stage-web is used in several tabs, or upstream settles which Stage tab speaks. Upstream's own review note says that with several Stage tabs, an arbitrary one speaks and a cancel can miss its turn.
 - **Search terms:** `speech player`, `syncedRoles`, `pinia-plugin-synced`, `Stage tab`.

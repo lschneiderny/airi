@@ -52,7 +52,6 @@ What each kind of work needs beyond that:
 | --- | --- |
 | Web app, desktop app, packages | Nothing more |
 | Godot VRM stage sidecar | `cd engines/stage-tamagotchi-godot && mise trust && mise install` installs the Godot Mono version that the root [`global.json`](../global.json) pins. Before `pnpm dev:tamagotchi`, point `GODOT4` at it: `export GODOT4="$(cd engines/stage-tamagotchi-godot && mise which godot)"`. |
-| iOS app | Full Xcode from the App Store, selected with `sudo xcode-select -s /Applications/Xcode.app`. The project uses Swift Package Manager, so CocoaPods is not needed. `pnpm lint:swift` needs `brew install swiftlint`. |
 | Packaged desktop app | Xcode 26 or later builds the `.icon` app icon. With an older Xcode, the build uses `.icns` and prints a warning. |
 | Local backend | Docker Desktop or another Docker engine for `pnpm dev:backend` |
 
@@ -102,17 +101,6 @@ pnpm dev:tamagotchi
 ```shell
 pnpm dev
 ```
-
-### Mobile (Stage Pocket)
-
-The mobile app is inherited from upstream and is not tested in this fork.
-
-```shell
-pnpm dev:pocket:ios --target "<DEVICE_ID_OR_SIMULATOR_NAME>"
-pnpm dev:pocket:android
-```
-
-Quote the target, because simulator names such as `iPhone 16 Pro` contain spaces. To list devices, run `pnpm -F @proj-airi/stage-pocket exec cap run ios --list`. See [`apps/stage-pocket/README.md`](../apps/stage-pocket/README.md) for more.
 
 ### Integrations
 

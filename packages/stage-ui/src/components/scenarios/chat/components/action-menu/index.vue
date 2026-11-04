@@ -3,7 +3,7 @@ import type { ComponentPublicInstance, ComputedRef, ShallowRef } from 'vue'
 
 import type { ChatActionMenuAction } from '.'
 
-import { errorMessageFromValue, isStageCapacitor, isStageWeb } from '@proj-airi/stage-shared'
+import { errorMessageFromValue, isStageWeb } from '@proj-airi/stage-shared'
 import { useElementVisibility, useEventListener } from '@vueuse/core'
 import { animate } from 'animejs'
 import { clamp } from 'es-toolkit'
@@ -89,7 +89,7 @@ const bottomSentinelVisible = useElementVisibility(bottomSentinelRef, {
 const { trigger } = useWebHaptics()
 const { isMobile } = useBreakpoints()
 const { t } = useI18n()
-const shouldDisableDropdownMenu = computed(() => (isStageWeb() || isStageCapacitor()) && isMobile.value)
+const shouldDisableDropdownMenu = computed(() => isStageWeb() && isMobile.value)
 const pressFeedbackEnabled = computed(() => props.pressFeedbackEnabled)
 const copyFeedbackActive = shallowRef(false)
 

@@ -114,25 +114,6 @@
       status: preferred
       context: Desktop ver. (known as stage-tamagotchi internally)
 
-- id: pocket
-  subject: product
-  translatable: false
-  definition: The internal codename of the mobile edition, whose package is stage-pocket.
-  note: >
-    Keep the Latin letters, write "Mobile ver." in anything an end user reads, and never
-    write "Stage Pocket" with a space.
-  terms:
-    - text: Pocket
-      part-of-speech: proper noun
-      status: preferred
-      context: Mobile ver. (known as stage-pocket internally)
-      note: Correct for a developer audience, wrong in the interface.
-    - text: Stage Pocket
-      part-of-speech: proper noun
-      status: deprecated
-      type: variant
-      note: Neither the codename nor the name a user sees.
-
 # ---------------------------------------------------------------------------------------
 # Payment
 # ---------------------------------------------------------------------------------------

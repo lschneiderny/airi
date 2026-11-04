@@ -9,7 +9,7 @@ import { defineInvoke, defineInvokeHandler } from '@moeru/eventa'
 import { startAnalyser as startTemporaAnalyser } from '@nekopaw/tempora'
 import { setupElectronScreenCapture } from '@proj-airi/electron-screen-capture/renderer'
 
-import { isStageCapacitor, isStageTamagotchi, isStageWeb, StageEnvironment } from '../environment'
+import { isStageTamagotchi, isStageWeb, StageEnvironment } from '../environment'
 import { isElectronWindow } from '../window'
 import {
   beatSyncBeatSignaledInvokeEventa,
@@ -40,7 +40,6 @@ export interface BeatSyncDetector {
 export type CreateBeatSyncDetectorOptions
   = | { env: StageEnvironment.Tamagotchi }
     | { env: StageEnvironment.Web }
-    | { env: StageEnvironment.Capacitor }
 
 export function createBeatSyncDetector(options: CreateBeatSyncDetectorOptions): BeatSyncDetector {
   let context: AudioContext | undefined
@@ -250,27 +249,9 @@ function getDetector() {
 
 let context: ReturnType<typeof createContext> | undefined
 
-function installCapacitorHandlers(context: ReturnType<typeof createContext>) {
-  defineInvokeHandler(context, beatSyncToggleInvokeEventa, async (enabled) => {
-    if (enabled)
-      throw new Error('Beat Sync is not available in Stage Pocket')
-  })
-  defineInvokeHandler(context, beatSyncGetStateInvokeEventa, async () => ({ isActive: false }))
-  defineInvokeHandler(context, beatSyncUpdateParametersInvokeEventa, async () => {})
-  defineInvokeHandler(context, beatSyncGetInputByteFrequencyDataInvokeEventa, async () => {
-    return new Uint8Array(inputAnalyserFFTSize / 2)
-  })
-}
-
 function getContext() {
-  if (!context) {
+  if (!context)
     context = createContext()
-
-    // Capacitor cannot capture system audio. Register every request handler so
-    // callers receive deterministic inactive results instead of pending forever.
-    if (isStageCapacitor())
-      installCapacitorHandlers(context)
-  }
 
   return context
 }
@@ -290,7 +271,7 @@ export function toggleBeatSync(enabled: boolean) {
     }
   }
 
-  if (isStageTamagotchi() || isStageCapacitor()) {
+  if (isStageTamagotchi()) {
     const toggleFn = defineInvoke(getContext(), beatSyncToggleInvokeEventa)
     return toggleFn(enabled)
   }
@@ -303,7 +284,7 @@ export async function getBeatSyncState() {
     return getDetector().state
   }
 
-  if (isStageTamagotchi() || isStageCapacitor()) {
+  if (isStageTamagotchi()) {
     return defineInvoke(getContext(), beatSyncGetStateInvokeEventa)()
   }
 
@@ -315,7 +296,7 @@ export function updateBeatSyncParameters(params: Partial<AnalyserWorkletParamete
     return getDetector().updateParameters(params)
   }
 
-  if (isStageTamagotchi() || isStageCapacitor()) {
+  if (isStageTamagotchi()) {
     return defineInvoke(getContext(), beatSyncUpdateParametersInvokeEventa)(params)
   }
 
@@ -327,7 +308,7 @@ export function listenBeatSyncStateChange(listener: (state: BeatSyncDetectorStat
     return getDetector().on('stateChange', listener)
   }
 
-  if (isStageTamagotchi() || isStageCapacitor()) {
+  if (isStageTamagotchi()) {
     return defineInvokeHandler(getContext(), beatSyncStateChangedInvokeEventa, listener)
   }
 
@@ -339,7 +320,7 @@ export function listenBeatSyncBeatSignal(listener: (e: AnalyserBeatEvent) => voi
     return getDetector().on('beat', listener)
   }
 
-  if (isStageTamagotchi() || isStageCapacitor()) {
+  if (isStageTamagotchi()) {
     return defineInvokeHandler(getContext(), beatSyncBeatSignaledInvokeEventa, listener)
   }
 
@@ -351,7 +332,7 @@ export async function getBeatSyncInputByteFrequencyData() {
     return getDetector().getInputByteFrequencyData()
   }
 
-  if (isStageTamagotchi() || isStageCapacitor()) {
+  if (isStageTamagotchi()) {
     return defineInvoke(getContext(), beatSyncGetInputByteFrequencyDataInvokeEventa)()
   }
 
