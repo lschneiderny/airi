@@ -238,6 +238,7 @@ Pre-existing gaps that this design does not fix:
 - **A model bookkeeping marker.** Asking the model to mark what it mentioned is unreliable on weak models. Code sets `shownAtMs` and `addressedAtMs`.
 - **Synced actions for the inspector.** The first inspector polled the synced action `inspect` every second. pinia-plugin-synced keeps each action result in the shared domain state for its 5-minute call timeout and rebroadcasts it, so the state grew from about 41 KB to 1.36 MB, and one long reply moved 27 MB between windows. Eventa invokes on a BroadcastChannel retain nothing.
 - **Tools on unprompted turns.** An unprompted turn may only speak or decline. A tool call, including a hosted web search, would act before the turn is decided, so unprompted requests carry no tools.
+  Amendment (2026-11-01): this rejects tools with effects only. Read-only tools in `unpromptedTools`, today `builtIn_readMemory`, are allowed; see the amendment under the unprompted turn rules above.
 - **A synced or persisted situation.** Only the leader sends chat requests, and window titles must not persist. The situation stays in the leader's memory.
 
 ## Amendment (2026-11-01): supplement composition
