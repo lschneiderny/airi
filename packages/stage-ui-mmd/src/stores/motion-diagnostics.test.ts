@@ -42,6 +42,7 @@ describe('mmd motion diagnostics channel', () => {
           arms: null,
           overlays: { ik: false, colliders: false, feet: false, lookAt: false, floorLine: false, groundLine: false, home: false, goal: false, armCapsules: false },
           world: null,
+          ownership: null,
         },
       })
     }
@@ -250,6 +251,41 @@ describe('mmd motion diagnostics channel', () => {
     }
     finally {
       warning.mockRestore()
+      disposePinia(pinia)
+    }
+  })
+
+  it('queues a clip play with an optional loop and a stop from another window, and rejects malformed plays with one warning', async () => {
+    const pinia = createPinia()
+    const store = useMMDMotionDiagnostics(pinia)
+    const peer = new BroadcastChannel('airi-stores-stage-ui-mmd-motion-diagnostics')
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const played = new Promise<void>((resolve, reject) => {
+        const signal = AbortSignal.timeout(2000)
+        const stop = watch(() => store.clipRequest, () => resolve(), { once: true, flush: 'sync' })
+        signal.addEventListener('abort', () => {
+          stop()
+          reject(signal.reason)
+        }, { once: true })
+      })
+      peer.postMessage({ type: 'command', name: 'playClip', value: { name: 'dance-long' } })
+      await played
+      expect(store.clipRequest).toEqual({ seq: 1, name: 'dance-long', loop: undefined })
+
+      store.command({ type: 'command', name: 'playClip', value: { name: 'wave', loop: true } })
+      expect(store.clipRequest).toEqual({ seq: 2, name: 'wave', loop: true })
+      for (const value of [{ name: '' }, { name: 3 }, { name: 'wave', loop: 'yes' }, null, 'wave', undefined])
+        store.command({ type: 'command', name: 'playClip', value } as unknown as MMDMotionCommand)
+      expect(store.clipRequest).toEqual({ seq: 2, name: 'wave', loop: true })
+      expect(warning).toHaveBeenCalledTimes(1)
+
+      store.command({ type: 'command', name: 'stopClip' })
+      expect(store.clipRequest).toEqual({ seq: 3, name: null, loop: undefined })
+    }
+    finally {
+      warning.mockRestore()
+      peer.close()
       disposePinia(pinia)
     }
   })

@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 
 import ArmsPanel from './components/arms-panel.vue'
 import BodyReadouts from './components/body-readouts.vue'
+import ClipsPanel from './components/clips-panel.vue'
 import DirectorPanel from './components/director-panel.vue'
 import LocomotionPanel from './components/locomotion-panel.vue'
 import OverlayControls from './components/overlay-controls.vue'
@@ -23,6 +24,7 @@ const { t } = useI18n()
     <LocomotionPanel />
     <DirectorPanel />
     <ArmsPanel />
+    <ClipsPanel />
     <BodyReadouts />
     <TimingsPanel />
     <RigReport />

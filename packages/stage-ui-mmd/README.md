@@ -273,13 +273,14 @@ running (no model, the Classic driver, or the classic window).
 | `touch { lastRegion, hitBody, petActive, headScreenPoint, events }` | The touch classifier state; `headScreenPoint` is in canvas client pixels. |
 | `animation { idle, currentAction, actionsStarted, layer }` | The looping base clip, the one-shot in progress, the one-shot count and the layered clip (`{ seq, name, state }` or null). |
 | `action { performing, lastActionSeq, refusal, retryAfterMs, drops }` | The action layer: the clip the director accepted (`{ name, layer, phase, seq }` or null), the last request it read, the last refusal (`refractory`, `busy`, `asleep`, `dragging`) with its retry time, and the ACT drop counters (`unknown`, `notExposed`, `notGesture`, `superseded`). |
-| `clips [{ name, kind, layer, loop, label, exposed, downgraded }]` | The imported clips of the loaded model with the effective kind and layer; `downgraded` marks a gesture override that forced a full-body clip onto the upper layer. |
+| `clips [{ name, kind, layer, loop, label, exposed, downgraded, notes }]` | The imported clips of the loaded model with the effective kind and layer; `downgraded` marks a gesture override that forced a full-body clip onto the upper layer, and `notes` are the derivation notes (`no-animated-bones`, `bad-duration`, and so on). |
 | `characterPlacement { x, y, width, height }` | Stage mode: the character's projected rect in work-area DIP with the root at its current x. |
 | `stageModel { height, footBaselineY }` | Stage mode: the measured model height and foot baseline in model units, which the host calibrates the camera from. |
 | `world { unitsPerDip, floorRowDip, ground { minX, maxX }, homeX, characterHeightDip }` | Stage mode: the calibration the world was built from. `unitsPerDip` converts work-area DIP to model units on the floor line, `floorRowDip` is the floor line's row, `ground` the reachable root x range, `homeX` the resting root x and `characterHeightDip` the configured height (`stageModel.height / unitsPerDip`). |
 | `locomotion { mode, position { x, z }, yaw, goalX, reason, pace, speed, phase, weight, skate, leashClamps, enabled }` | The gait in world units: `mode` (`idle`, `turning`, `walking`, `stopping`), the root position and yaw, the body's goal and its reason and pace, the speed and gait phase, the gait weight, `skate` (the largest per-frame horizontal world movement of a planted ankle; 0 when the feet stay planted), `leashClamps` (ticks on which the reach leash shortened root travel) and `enabled` (false while a clip owns the root or a leg IK bone). |
 | `arms { weight, owned, penetration { left, right }, clothContact { left, right }, hangDeg, handBelowHip }` | The arm rest layer: `weight` is one minus the larger arm ownership, `owned` the clip ownership per group (`leftArm`, `rightArm`, `leftFingers`, `rightFingers`, 0-1), `penetration` the deepest arm capsule-radius overlap of a kinematic body per side in model units (the gate: 0), `clothContact` the deepest centerline overlap of a dynamic cloth body (information only), `hangDeg` the rest hang in effect and `handBelowHip` whether both hands sit below the hips bone. |
 | `overlays` | The `MMDOverlayFlags` the stage draws. |
+| `ownership` | The body's clip ownership per mask group (`root`, `leftLegIk`, `rightLegIk`, `lowerBody`, `leftArm`, `rightArm`, `leftFingers`, `rightFingers`, `upperBody`, `head`; 0-1) while the Natural driver runs. |
 
 The `director` block carries `MMDStanceDiagnostics` plus `clockOffsetMs` (the
 `advanceDirectorClock` total) and `centerY` (the センター bone's Y in model
@@ -307,6 +308,8 @@ request must wait, `null` when it was accepted).
 | `requestGoal` | `{ x, pace: 'stroll' \| 'walk' }` | The director's `debugGoal`: walks her to `x` on the ground line, clamped to `ground`. Any other pace is rejected with one warning. |
 | `setHome` | `{ x }` | Moves the resting root x the director returns to. |
 | `setRoamMode` | `{ mode: 'stay' \| 'roam' }` | Writes `roamMode` (`settings/mmd/roam-mode`) from the lab. |
+| `playClip` | `{ name, loop? }` | Queues the clip on the director as a `debug` request. The asleep, dragging, refractory and busy rules apply; `loop: true` skips only the gesture repeat cooldown. `loop` unset keeps the clip's curated or derived loop. An empty or non-string name is rejected with one warning. |
+| `stopClip` | none | Stops the running performance (a `debug` stop request). |
 
 A malformed command is ignored with one `console.warn` per store; later valid
 commands are still applied.
@@ -415,7 +418,11 @@ stage and toggles its overlays. Its World card shows the `world` calibration,
 `locomotion` fields with the director's `reason`, `pace`, `goalX` and
 `pendingGoal`, posts `requestGoal` ("Walk here", a DIP offset from the
 root along the floor line), `setHome` and `setRoamMode`; its Arms card shows
-the `arms` fields; the Director card keeps `stanceReason`.
+the `arms` fields; its Clips card lists `clips` with a Play button per row
+(`playClip`, disabled with the derivation notes as its title for an `unusable`
+clip) and a Stop button on the performing row (`stopClip`), reads out `action`
+and `animation.layer`, and draws the `ownership` groups as a bar row; the
+Director card keeps `stanceReason`.
 
 ### Checks
 

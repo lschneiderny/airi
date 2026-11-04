@@ -715,6 +715,7 @@ function renderLoop(now = performance.now()) {
       characterPlacement: characterPlacement.value,
       stageModel: stageModel.value,
       world: worldSnapshot(),
+      ownership: motionDriver.value === 'natural' && body ? { ...body.ownership() } : null,
     })
   }
 }
@@ -840,7 +841,7 @@ function disposeModel() {
   characterPlacement.value = null
   stageModel.value = null
   diagnostics.setMetrics(new MMDFrameMetrics())
-  diagnostics.publish({ loadedModelKey: null, rig: null, natural: null, feet: null, lookAt: null, director: null, animation: { idle: null, currentAction: null, actionsStarted: 0, layer: null }, action: actionSnapshot(), clips: [], characterPlacement: null, stageModel: null, locomotion: null })
+  diagnostics.publish({ loadedModelKey: null, rig: null, natural: null, feet: null, lookAt: null, director: null, animation: { idle: null, currentAction: null, actionsStarted: 0, layer: null }, action: actionSnapshot(), clips: [], characterPlacement: null, stageModel: null, locomotion: null, ownership: null })
   mmdStore.isModelLoaded = false
 }
 
@@ -1036,6 +1037,7 @@ function clipsSnapshot(): MMDMotionSnapshot['clips'] {
       label: curation.label,
       exposed: curation.aiMayUse && curation.label !== null,
       downgraded: layer !== meta.layer,
+      notes: [...meta.notes],
     })
   }
   return clips
@@ -1382,6 +1384,13 @@ watch(() => diagnostics.overlays, (flags) => {
 watch(() => diagnostics.roamModeRequest, (request) => {
   if (request)
     roamMode.value = request.mode
+})
+
+// Lab Play and Stop are debug requests: the director's busy, asleep and dragging rules apply, and a loop skips the
+// gesture repeat cooldown so QA can replay a gesture.
+watch(() => diagnostics.clipRequest, (request) => {
+  if (request)
+    requestPerform(request.name, { source: 'debug', loop: request.loop })
 })
 
 useEventListener(canvasRef, ['pointerdown', 'pointermove', 'pointerup', 'pointerleave', 'pointercancel'], (event: PointerEvent) => {

@@ -1,5 +1,6 @@
 import type { BroadcastChannelEmitOptions } from '@moeru/eventa/adapters/broadcast-channel'
-import type { ClipKind, ClipLayer } from '@proj-airi/motion-driver-humanoid/clip-meta'
+import type { ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
+import type { ClipKind, ClipLayer, ClipMetaNote } from '@proj-airi/motion-driver-humanoid/clip-meta'
 import type { LocomotionFrame } from '@proj-airi/motion-driver-humanoid/locomotion'
 import type { BodyLocomotionReason, LocomotionPace } from '@proj-airi/motion-driver-humanoid/types'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
@@ -49,8 +50,11 @@ export interface MMDMotionSnapshot {
     retryAfterMs: number | null
     drops: { unknown: number, notExposed: number, notGesture: number, superseded: number }
   }
-  /** The imported clips of the loaded model with their effective kind and layer; `downgraded` marks a gesture override that forced a full clip onto the upper layer. */
-  clips: Array<{ name: string, kind: ClipKind, layer: ClipLayer, loop: boolean, label: string | null, exposed: boolean, downgraded: boolean }>
+  /**
+   * The imported clips of the loaded model with their effective kind and layer; `downgraded` marks a gesture override
+   * that forced a full clip onto the upper layer, and `notes` are the derivation notes (why a clip is `unusable`).
+   */
+  clips: Array<{ name: string, kind: ClipKind, layer: ClipLayer, loop: boolean, label: string | null, exposed: boolean, downgraded: boolean, notes: ClipMetaNote[] }>
   /** Stage mode only: the character's projected rect in work-area DIP, with the root at its current x. */
   characterPlacement: PlacementRect | null
   /** Stage mode only: the measured model height and foot baseline in model units, which the host calibrates the camera from. */
@@ -98,6 +102,8 @@ export interface MMDMotionSnapshot {
    * units, `homeX` the resting root x and `characterHeightDip` the configured character height.
    */
   world: { unitsPerDip: number, floorRowDip: number, ground: { minX: number, maxX: number }, homeX: number, characterHeightDip: number } | null
+  /** The body's clip ownership per mask group (0-1) while the Natural driver runs; `arms.owned` repeats the arm groups. */
+  ownership: Record<ClipMaskGroup, number> | null
 }
 
 export type MMDMotionCommand
@@ -108,6 +114,8 @@ export type MMDMotionCommand
     | { type: 'command', name: 'requestGoal', value: { x: number, pace: LocomotionPace } }
     | { type: 'command', name: 'setHome', value: { x: number } }
     | { type: 'command', name: 'setRoamMode', value: { mode: MMDRoamMode } }
+    | { type: 'command', name: 'playClip', value: { name: string, loop?: boolean } }
+    | { type: 'command', name: 'stopClip', value?: undefined }
 
 function isRoamMode(value: unknown): value is MMDRoamMode {
   return value === 'stay' || value === 'roam'
@@ -146,6 +154,11 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
   const homeX = ref<number | null>(null)
   /** The roam mode the lab asked for; the stage writes it to the `mmd` store's `roamMode` setting. */
   const roamModeRequest = shallowRef<{ seq: number, mode: MMDRoamMode } | null>(null)
+  /**
+   * The latest lab clip request; a new `seq` marks a new request, and `name: null` is a stop. The stage queues it on the
+   * director as a `debug` request; `loop` unset keeps the clip's own loop setting.
+   */
+  const clipRequest = shallowRef<{ seq: number, name: string | null, loop: boolean | undefined } | null>(null)
   /** Set once this window's stage publishes; a stage window never mirrors another window's snapshots. */
   let publisher = false
   const snapshot = shallowRef<MMDMotionSnapshot>({
@@ -169,6 +182,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     arms: null,
     overlays: { ...mmdOverlaysOff },
     world: null,
+    ownership: null,
   })
 
   function warn() {
@@ -251,6 +265,22 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
         roamModeRequest.value = { seq: (roamModeRequest.value?.seq ?? 0) + 1, mode: value.mode }
         break
       }
+      case 'playClip': {
+        if (typeof value !== 'object' || value === null || !('name' in value) || typeof value.name !== 'string' || value.name === '') {
+          warn()
+          return
+        }
+        const loop = 'loop' in value ? value.loop : undefined
+        if (loop !== undefined && typeof loop !== 'boolean') {
+          warn()
+          return
+        }
+        clipRequest.value = { seq: (clipRequest.value?.seq ?? 0) + 1, name: value.name, loop }
+        break
+      }
+      case 'stopClip':
+        clipRequest.value = { seq: (clipRequest.value?.seq ?? 0) + 1, name: null, loop: undefined }
+        break
       default:
         warn()
     }
@@ -326,6 +356,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     goalRequest,
     homeX,
     roamModeRequest,
+    clipRequest,
     publish,
     command,
     setOverlays,

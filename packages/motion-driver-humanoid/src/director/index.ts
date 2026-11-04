@@ -416,7 +416,8 @@ export function decideBody(
     else if (input.dragging) {
       refuse('dragging', null)
     }
-    else if (isGesture && gestureCooldown !== null && gestureCooldown.clipId === requested.clipId && nowMs < gestureCooldown.untilMs) {
+    // A looping debug request (the lab, QA gates) repeats a gesture on demand; it still meets the busy rule below.
+    else if (isGesture && (requested.source !== 'debug' || !requested.loop) && gestureCooldown !== null && gestureCooldown.clipId === requested.clipId && nowMs < gestureCooldown.untilMs) {
       // ACT has no answer channel: the gesture is dropped without a retry time.
       refuse('refractory', null)
     }

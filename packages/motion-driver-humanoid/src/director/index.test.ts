@@ -680,6 +680,25 @@ describe('body director actions', () => {
     expect(again.memory.lastActionSeq).toBe(4)
   })
 
+  it('lets a looping debug gesture repeat inside the per-clip cooldown and keeps the busy and dragging rules', () => {
+    const first = decide(world({ actionRequest: gesture(1, { source: 'debug', loop: true }) }))
+    const stopped = decide(world({ nowMs: 1_000, actionRequest: gesture(2, { clipId: '', source: 'debug' }) }), first.memory)
+    const again = decide(world({ nowMs: 1_500, actionRequest: gesture(3, { source: 'debug', loop: true }) }), stopped.memory)
+    const oneShot = decide(world({ nowMs: 1_500, actionRequest: gesture(3, { source: 'debug' }) }), stopped.memory)
+    const toolLoop = decide(world({ nowMs: 1_500, actionRequest: gesture(3, { loop: true }) }), stopped.memory)
+    const busy = decide(world({ nowMs: 2_000, actionRequest: gesture(4, { clipId: 'nod', source: 'debug', loop: true }) }), again.memory)
+    const dragged = decide(world({ nowMs: 1_500, dragging: true, actionRequest: gesture(3, { source: 'debug', loop: true }) }), stopped.memory)
+
+    expect(stopped.intent.action).toBeNull()
+    expect(again.memory).toMatchObject({ lastActionSeq: 3, actionRefusal: null })
+    expect(again.intent.action).toMatchObject({ seq: 3, clipId: 'wave', loop: true, phase: 'playing' })
+    expect(oneShot.memory).toMatchObject({ lastActionSeq: 3, actionRefusal: 'refractory' })
+    expect(toolLoop.memory).toMatchObject({ lastActionSeq: 3, actionRefusal: 'refractory' })
+    expect(busy.memory).toMatchObject({ lastActionSeq: 4, actionRefusal: 'busy' })
+    expect(busy.intent.action?.seq).toBe(3)
+    expect(dragged.memory).toMatchObject({ lastActionSeq: 3, actionRefusal: 'dragging' })
+  })
+
   it('(h) holds a full action in settling while she speaks, with no timeout, but plays a gesture at once', () => {
     const speaking = { speaking: true, performance: performance('talking') }
     const held = decide(world({ ...speaking, actionRequest: action(1) }))
