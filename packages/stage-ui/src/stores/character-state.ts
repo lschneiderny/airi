@@ -1,8 +1,9 @@
+import type { ChatHookRegistry } from '@proj-airi/core-agent'
 import type { AdvanceContext, CharacterEvent, CharacterProfile, CharacterReading, CharacterStateRecordV1 } from '@proj-airi/stage-shared/character-state'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import { errorMessageFrom } from '@moeru/std'
-import { advance, applyEvent, CharacterProfileSchema, DEFAULT_CHARACTER_PROFILE, initialCharacterState, migrateCharacterState, readCharacter } from '@proj-airi/stage-shared/character-state'
+import { advance, applyEvent, CharacterProfileSchema, DEFAULT_CHARACTER_PROFILE, initialCharacterState, migrateCharacterState, moodCueBody, parseMoodCue, readCharacter } from '@proj-airi/stage-shared/character-state'
 import { LOGICAL_DAY_ROLLOVER_HOUR } from '@proj-airi/stage-shared/situation'
 import { defineStore } from 'pinia'
 import { safeParse } from 'valibot'
@@ -31,6 +32,18 @@ export interface CharacterStateSnapshot {
   readonly revision: number
   /** `updatedAtMs` of the record the reading came from. */
   readonly updatedAtMs: number
+}
+
+/** The chat hooks the store listens to for MOOD cues. The chat store hands them over through `observeChat`. */
+export type CharacterStateChatHooks = Pick<ChatHookRegistry, 'onTokenSpecial'>
+
+/**
+ * The id of the `model-cue` event of a turn. Every MOOD cue of a turn gets the same id, so the reducer applies the
+ * first well-formed one and drops any later cue with that turn id as a replay while the id is in its applied-event list.
+ * A UI retry starts a new turn with a new id, so its cue counts as a new turn.
+ */
+export function moodCueEventId(turnId: string): string {
+  return `model-cue:${turnId}`
 }
 
 /** Which records {@link useCharacterStateStore} `forget` removes: one card's, or every card's. */
@@ -104,6 +117,7 @@ export const useCharacterStateStore = defineStore('character-state', () => {
   let stopCardWatch: (() => void) | undefined
   let stopHide: (() => void) | undefined
   let stopLeadershipListener: (() => void) | undefined
+  let stopChatHooks: (() => void) | undefined
 
   // Writes only this window's unreplicated copy, so a remote snapshot never produces a proposal.
   watch(replicated, (next) => {
@@ -318,6 +332,22 @@ export const useCharacterStateStore = defineStore('character-state', () => {
     return applyNow({ ...event, atMs: now() })
   }
 
+  /**
+   * Applies the MOOD cues of the chat replies of this window: each `<|MOOD ...|>` special token that `parseMoodCue`
+   * accepts becomes one `model-cue` event, at most one per turn (see {@link moodCueEventId}). A malformed cue applies
+   * nothing. The chat store calls it once from its setup; the first source wins. The event goes straight to the leader
+   * queue (`applyNow`, not the synced `apply` action), so only a leading window applies it and a follower drops it.
+   */
+  function observeChat(hooks: CharacterStateChatHooks) {
+    stopChatHooks ??= hooks.onTokenSpecial(async (special, context) => {
+      const body = moodCueBody(special)
+      const cue = body === null ? null : parseMoodCue(body)
+      if (!cue)
+        return
+      await applyNow({ kind: 'model-cue', id: moodCueEventId(context.turnId), atMs: now(), turnId: context.turnId, directions: cue.directions, reason: cue.reason })
+    })
+  }
+
   /** Resolves after the leader work queued before the call, for example the first load after gaining leadership. */
   function ready(): Promise<void> {
     return queue.then(() => {}, () => {})
@@ -379,6 +409,8 @@ export const useCharacterStateStore = defineStore('character-state', () => {
   function dispose() {
     stopLeadershipListener?.()
     stopLeadershipListener = undefined
+    stopChatHooks?.()
+    stopChatHooks = undefined
     stopLeading()
   }
 
@@ -399,6 +431,7 @@ export const useCharacterStateStore = defineStore('character-state', () => {
     exportRecord,
     devtoolsJump,
     devtoolsApply,
+    observeChat,
     ready,
     initialize,
     dispose,

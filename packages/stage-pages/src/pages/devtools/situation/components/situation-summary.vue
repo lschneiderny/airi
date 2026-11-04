@@ -69,10 +69,8 @@ const cards = computed<SummaryCard[]>(() => {
     {
       id: 'stage',
       title: 'Stage',
-      value: stage ? (stage.mood || '-') : 'none',
-      details: stage
-        ? [`On stage: ${stage.exposed || '-'}`, `Active: ${stage.active || '-'}`]
-        : [],
+      value: stage ? (stage.active || '-') : 'none',
+      details: stage ? [`On stage: ${stage.exposed || '-'}`] : [],
     },
   ]
 })

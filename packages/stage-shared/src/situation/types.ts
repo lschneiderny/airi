@@ -93,12 +93,11 @@ export interface NotifyObservation {
   readonly atMs: number
 }
 
-/** What the stage currently shows: exposed and active performance slots and the mood line. */
+/** What the stage currently shows: exposed and active performance slots. */
 export interface StageObservation {
   readonly kind: 'stage'
   readonly exposed: string
   readonly active: string
-  readonly mood: string
   readonly atMs: number
 }
 
@@ -217,7 +216,6 @@ export interface SituationContext {
 export interface SituationStage {
   readonly exposed: string
   readonly active: string
-  readonly mood: string
   readonly atMs: number
 }
 

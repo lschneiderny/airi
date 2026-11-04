@@ -171,7 +171,7 @@ describe('useStageLiveStatePrompt', () => {
     expect(prompt).not.toMatch(/expression19|anger-copy/)
   })
 
-  it('reports active expressions and mood only while state feedback is on', async () => {
+  it('reports active expressions only while state feedback is on, and never the numeric mood', async () => {
     const runtimeState = usePerformanceRuntimeState()
     runtimeState.publish({ exposed: toExposedExpressions(catalog), active: [{ slot: 'face', label: 'anger' }], mood: { valence: -0.2, arousal: 0.3, tension: 0.4 } })
     const prompt = useStageLiveStatePrompt()
@@ -179,6 +179,7 @@ describe('useStageLiveStatePrompt', () => {
 
     await useExpressionPerformanceSettings().update({ stateFeedback: true })
 
-    expect(prompt.value).toContain('base.prompt.expression-state\n[active]\nface anger\n[mood]\nvalence -0.2, arousal 0.3, tension 0.4')
+    expect(prompt.value).toContain('base.prompt.expression-state\n[active]\nface anger')
+    expect(prompt.value).not.toMatch(/mood|valence|arousal/)
   })
 })

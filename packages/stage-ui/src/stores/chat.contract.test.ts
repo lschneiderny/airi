@@ -10,6 +10,7 @@ import type { LlmStreamOptions } from './ai/chat-llm/llm'
 import { errorMessageFrom } from '@moeru/std'
 import { SpanStatusCode } from '@opentelemetry/api'
 import { IOAttributes, IOSpanNames } from '@proj-airi/stage-shared'
+import { applyEvent, DEFAULT_CHARACTER_PROFILE, initialCharacterState, readCharacter, renderCharacterContext } from '@proj-airi/stage-shared/character-state'
 import { ASCII_FACES } from '@proj-airi/stage-shared/conversation-register'
 import { notifyTopicKey } from '@proj-airi/stage-shared/situation'
 import { composeSystemPrompt, REPLY_MAX_TOKENS } from '@proj-airi/stage-shared/stage-contract'
@@ -22,6 +23,7 @@ import { computed, createApp, nextTick, reactive, ref, toRaw } from 'vue'
 
 import * as coreAgent from '@proj-airi/core-agent'
 
+import { characterStateRepo } from '../database/repos/character-state.repo'
 import { memoryRepo } from '../database/repos/memory.repo'
 import { useConversationSettings } from '../features/conversation/settings'
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
@@ -34,7 +36,9 @@ import {
 } from '../libs/product-signals/headers'
 import { getSpeechBusContext, voiceGenerationEnded } from '../services/speech/bus'
 import { composeMemoryPrompt } from '../tools/memory'
+import { getEventSourceKey } from '../utils/event-source'
 import { resolveCustomTools } from './ai/chat-llm/tool-resolver'
+import { characterStateContext, useCharacterStateStore } from './character-state'
 import { useChatStore } from './chat'
 import { useContextObservabilityStore } from './devtools/context-observability'
 import { useSituationObservabilityStore } from './devtools/situation-observability'
@@ -199,6 +203,7 @@ vi.mock('./chat/context-store', () => ({
 // IndexedDB is a browser boundary. Browser tests exercise the real sticker repository.
 vi.mock('../database/repos/chat-assets.repo')
 vi.mock('../database/repos/memory.repo')
+vi.mock('../database/repos/character-state.repo')
 
 vi.mock('../database/repos/stickers.repo', () => ({
   stickersRepo: { read: async () => ({ records: [], images: [] }) },
@@ -328,6 +333,9 @@ vi.mock('./modules/consciousness', () => ({
 vi.mock('./modules/airi-card', () => ({
   useAiriCardStore: () => ({
     activeCard: undefined,
+    activeCardId: 'alice',
+    // No card carries a character profile, so the character-state store uses the default one.
+    cards: new Map(),
     getCard: () => undefined,
     getSystemPrompt: (id: string) => cardPrompts.get(id) ?? 'system prompt',
     getModules: (id: string) => ({
@@ -2183,7 +2191,7 @@ describe('chat store contract', () => {
 
     expect(firstContext).toMatch(/^\[Situation \d\d:\d\d\]/)
     expect(firstContext).toContain('- Stage - on stage: face: smile')
-    expect(ingestContextMessageMock.mock.lastCall?.[0]?.text).toContain('- Stage - on stage: face: smile; active: face smile; mood: unknown')
+    expect(ingestContextMessageMock.mock.lastCall?.[0]?.text).toMatch(/- Stage - on stage: face: smile; active: face smile$/)
     expect(systemMessages).toHaveLength(2)
     expect(systemMessages[0]).toContain('base.prompt.emotion')
     expect(systemMessages[0]).toContain('base.prompt.register-talking')
@@ -2509,6 +2517,192 @@ describe('chat store contract', () => {
     })
     // The send commits its user message to the forked session.
     expect(persistSessionMessagesMock).toHaveBeenCalledWith('session-forked')
+  })
+
+  describe('character context and MOOD cues', () => {
+    /** Makes this window the character-state leader of card `alice` for one test, loaded from an empty repository. */
+    async function leadCharacterState() {
+      await characterStateRepo.clear()
+      const store = useCharacterStateStore()
+      store.initialize(createLeaderRuntime())
+      onTestFinished(() => store.dispose())
+      await store.ready()
+      return store
+    }
+
+    /** Replicates a reading of card `alice` with one live MOOD reason, as a follower window receives it. */
+    function replicateReading(pointed: boolean) {
+      // One instant for every call, so the cue is neither in the future of the reading nor of the state.
+      const nowMs = Date.now()
+      const context = characterStateContext(nowMs)
+      const initial = initialCharacterState('alice', DEFAULT_CHARACTER_PROFILE, context)
+      const cued = applyEvent(initial, { kind: 'model-cue', id: 'cue-1', atMs: nowMs, turnId: 'turn-0', directions: { valence: 1, energy: 1, tension: 0 }, reason: 'you came back' }, DEFAULT_CHARACTER_PROFILE, context)
+      const reading = readCharacter(cued, DEFAULT_CHARACTER_PROFILE, null, context)
+      useCharacterStateStore().replicated = { cardId: 'alice', reading: { ...reading, pointed }, revision: 1, updatedAtMs: cued.updatedAtMs }
+    }
+
+    /** Backs the mocked context store with the real registry and source keys, so entries can replace each other. */
+    function registryFromIngested() {
+      const registry = coreAgent.createContextRegistry({ getSourceKey: getEventSourceKey })
+      ingestContextMessageMock.mockImplementation(message => registry.ingest(message))
+      getContextsSnapshotMock.mockImplementation(() => registry.snapshot())
+    }
+
+    /** Streams `text` as one delta, then finishes, and records each provider request as JSON. */
+    function replyWith(text: string, requests: string[]) {
+      return async (_model: string, _provider: GenerationProvider, messages: Conversation, options: StreamOptions) => {
+        requests.push(JSON.stringify(messages))
+        await options.onStreamEvent?.({ type: 'text-delta', text })
+        await options.onStreamEvent?.({ type: 'finish' })
+      }
+    }
+
+    function characterEntries() {
+      return ingestContextMessageMock.mock.calls.map(([message]) => message).filter(message => message.contextId === 'system:character')
+    }
+
+    function modelCueIds(store: ReturnType<typeof useCharacterStateStore>) {
+      return store.leaderRecord?.appliedEvents.recent.map(entry => entry.id).filter(id => id.startsWith('model-cue:')) ?? []
+    }
+
+    it('sends no character context at rest, and the feeling and relationship text after a MOOD cue', async () => {
+      usePerformanceRuntimeState().publish({ exposed: [{ label: 'smile', kind: 'face' }], active: [{ slot: 'face', label: 'smile' }], mood: { valence: 0.2, arousal: 0.1, tension: 0 } })
+      await useExpressionPerformanceSettings().update({ stateFeedback: true })
+      leadSituation()
+      registryFromIngested()
+      const characterState = await leadCharacterState()
+      const requests: string[] = []
+      // Two words: the reason of a one-word cue sits at the show threshold and drops below it within milliseconds.
+      llmStreamMock.mockImplementation(replyWith('Hi<|MOOD brighter livelier: you came back|>', requests))
+      const store = useChatStore()
+
+      await store.send({ sessionId: 'session-1', text: 'first turn' })
+      expect(characterEntries()).toEqual([])
+      expect(requests[0]).not.toContain('Feeling:')
+
+      await characterState.ready()
+      await store.send({ sessionId: 'session-1', text: 'second turn' })
+
+      expect(characterEntries()).toEqual([expect.objectContaining({
+        contextId: 'system:character',
+        strategy: 'replace-self',
+        text: expect.stringMatching(/^Feeling: [^\n]*\(you came back earlier today\)\.\nYou two: [^\n]+\.$/),
+      })])
+      expect(characterEntries()[0].text).not.toMatch(/\d/)
+      expect(requests[1]).toContain('you came back earlier today')
+      // Both entries reach the request: the character entry has its own registry bucket.
+      expect(requests[1]).toContain('[Situation ')
+      const situation = ingestContextMessageMock.mock.calls.map(([message]) => message).filter(message => message.contextId === 'system:situation')
+      expect(situation.at(-1)?.text).toMatch(/- Stage - on stage: face: smile; active: face smile$/)
+      for (const text of [...requests, ...ingestContextMessageMock.mock.calls.map(([message]) => message.text)]) {
+        expect(text).not.toContain('mood:')
+        expect(text).not.toMatch(/valence \d/)
+      }
+    })
+
+    it('sends no stale feeling text once she is back at rest after a MOOD cue', async () => {
+      leadSituation()
+      registryFromIngested()
+      const characterState = await leadCharacterState()
+      const requests: string[] = []
+      llmStreamMock.mockImplementation(replyWith('Hi<|MOOD brighter livelier: you came back|>', requests))
+      const store = useChatStore()
+
+      await store.send({ sessionId: 'session-1', text: 'first turn' })
+      await characterState.ready()
+      await store.send({ sessionId: 'session-1', text: 'second turn' })
+      expect(requests[1]).toContain('Feeling: ')
+
+      // Forgetting the card's state starts it again from the profile, so she is at rest.
+      llmStreamMock.mockImplementation(replyWith('Hi', requests))
+      await characterState.forget('alice')
+      expect(renderCharacterContext(characterState.reading!, characterStateContext(Date.now()))).toBe('')
+      await store.send({ sessionId: 'session-1', text: 'third turn' })
+
+      expect(requests).toHaveLength(3)
+      expect(requests[2]).not.toContain('Feeling: ')
+      expect(requests[2]).not.toContain('You two: ')
+      expect(requests[2]).toContain('[Situation ')
+      expect(getContextsSnapshotMock()['system:character']).toMatchObject([{ text: '' }])
+    })
+
+    it('applies one MOOD cue per turn, also when the turn repeats its cue', async () => {
+      const characterState = await leadCharacterState()
+      llmStreamMock.mockImplementation(replyWith('<|MOOD brighter: you came back|> Hi <|MOOD tenser: worried|>', []))
+      const store = useChatStore()
+
+      await store.send({ sessionId: 'session-1', messageId: 'turn-1', text: 'hello' })
+      await characterState.ready()
+      expect(modelCueIds(characterState)).toEqual(['model-cue:turn-1'])
+      const record = characterState.leaderRecord
+
+      // A later cue with the same turn id, as a re-delivery of the turn's tokens would carry, is a replay.
+      await store.emitTokenSpecialHooks('<|MOOD lower: you left|>', { sessionId: 'session-1', turnId: 'turn-1', message: { role: 'user', content: 'hello' }, contexts: {}, composedMessage: [] })
+      await characterState.ready()
+
+      expect(characterState.leaderRecord).toBe(record)
+      expect(characterState.leaderRecord?.mood.contributions.filter(contribution => contribution.source === 'model-cue').map(contribution => contribution.reason)).toEqual(['you came back'])
+    })
+
+    it.each([
+      ['an unknown word', '<|MOOD happy: x|>'],
+      ['no reason', '<|MOOD brighter|>'],
+      ['a contradictory pair', '<|MOOD brighter lower: mixed|>'],
+      ['three words', '<|MOOD brighter livelier calmer: much|>'],
+      ['a missing colon', '<|MOOD brighter you came back|>'],
+    ])('applies nothing for a MOOD cue with %s', async (_name, cue) => {
+      const characterState = await leadCharacterState()
+      registryFromIngested()
+      llmStreamMock.mockImplementation(replyWith(`Hi${cue}`, []))
+      const store = useChatStore()
+      const record = characterState.leaderRecord
+
+      await store.send({ sessionId: 'session-1', text: 'first turn' })
+      await characterState.ready()
+      await store.send({ sessionId: 'session-1', text: 'second turn' })
+
+      expect(characterState.leaderRecord).toBe(record)
+      expect(modelCueIds(characterState)).toEqual([])
+      expect(characterEntries()).toEqual([])
+    })
+
+    it('renders a MOOD reason without the marker text the model wrote into it', async () => {
+      const characterState = await leadCharacterState()
+      registryFromIngested()
+      llmStreamMock.mockImplementation(replyWith('Hi', []))
+      const store = useChatStore()
+
+      await store.emitTokenSpecialHooks('<|MOOD brighter livelier: you <|SILENT|> came <<||back|>', { sessionId: 'session-1', turnId: 'turn-inject', message: { role: 'user', content: 'hello' }, contexts: {}, composedMessage: [] })
+      await characterState.ready()
+      await store.send({ sessionId: 'session-1', text: 'hello' })
+
+      const [entry] = characterEntries()
+      expect(entry?.text).toContain('you SILENT came back earlier today')
+      expect(entry?.text).not.toMatch(/<\||\|>/)
+    })
+
+    it('adds the pointed sentence and the character context to an unprompted turn while her mood is pointed', async () => {
+      replicateReading(true)
+      const requests: string[] = []
+      llmStreamMock.mockImplementation(replyWith('Hey.', requests))
+
+      await useChatStore().submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-1' })
+
+      expect(requests[0]).toContain('base.prompt.unprompted\\nbase.prompt.unprompted-pointed')
+      expect(characterEntries()).toEqual([expect.objectContaining({ text: expect.stringContaining('you came back earlier today') })])
+    })
+
+    it('adds no pointed sentence to an unprompted turn while her mood is not pointed', async () => {
+      replicateReading(false)
+      const requests: string[] = []
+      llmStreamMock.mockImplementation(replyWith('Hey.', requests))
+
+      await useChatStore().submitUnprompted({ topicKey: 'qa', topicText: 'QA topic', messageId: 'unprompted-1' })
+
+      expect(requests[0]).toContain('base.prompt.unprompted')
+      expect(requests[0]).not.toContain('base.prompt.unprompted-pointed')
+      expect(characterEntries()).toHaveLength(1)
+    })
   })
 
   describe('unprompted turns', () => {

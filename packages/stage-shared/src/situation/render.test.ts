@@ -44,7 +44,7 @@ const fullState = stateWith({
   recentActivities: [{ appId: 'game', label: 'Elden Ring', category: 'game', sinceMs: T0, endedAtMs: T0 + 10 * MIN }],
   conversation: { lastUserAtMs: T0 + 5 * MIN, lastCharacterAtMs: T0 + 6 * MIN, lastUnpromptedAtMs: T0 + 2 * MIN, lastUnpromptedTopic: 'the boss fight' },
   contexts: { vision: { text: 'A text editor with TypeScript open', atMs: T0 + 12 * MIN } },
-  stage: { exposed: 'smile, wave', active: 'idle', mood: 'calm', atMs: T0 },
+  stage: { exposed: 'smile, wave', active: 'idle', atMs: T0 },
   events: [event({ atMs: T0 + 14 * MIN })],
 })
 
@@ -66,7 +66,7 @@ describe('renderSituation', () => {
       '- New: switched to game (1 min ago)',
       '- You two last talked 9 min ago. You last spoke up on your own 15 min ago, about the boss fight.',
       '- A text editor with TypeScript open',
-      '- Stage - on stage: smile, wave; active: idle; mood: calm',
+      '- Stage - on stage: smile, wave; active: idle',
     ])
     expect(shownEventIds).toEqual(['e1'])
   })

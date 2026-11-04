@@ -26,10 +26,6 @@ function formatActive(active: PerformanceRuntimeSnapshot['active']) {
   return active.length ? active.map(entry => `${entry.slot} ${entry.label}`).join(', ') : 'none'
 }
 
-function formatMood(mood: PerformanceRuntimeSnapshot['mood']) {
-  return mood ? `valence ${mood.valence}, arousal ${mood.arousal}, tension ${mood.tension}` : 'unknown'
-}
-
 /**
  * Returns the stable stage contract: the cue rules, the emotion list, the emoji rule, and the reply-shape rules.
  *
@@ -44,7 +40,7 @@ export function useStageContractPrompt() {
 
 /**
  * Returns the live performance state: the exposed expressions and, while state feedback is on, the active
- * expressions and mood. It is empty when neither applies.
+ * expressions. It is empty when neither applies.
  *
  * It changes during a conversation, so callers send it with the request rather than in the system prompt.
  */
@@ -58,7 +54,7 @@ export function useStageLiveStatePrompt() {
     if (runtimeState.exposed.length)
       parts.push(t('base.prompt.expressions', { list: formatExposedList(runtimeState.exposed) }))
     if (performanceSettings.document.stateFeedback)
-      parts.push(t('base.prompt.expression-state', { active: formatActive(runtimeState.active), mood: formatMood(runtimeState.mood) }))
+      parts.push(t('base.prompt.expression-state', { active: formatActive(runtimeState.active) }))
 
     return parts.join('\n\n')
   })
@@ -70,8 +66,6 @@ export interface StageLiveState {
   readonly exposed: string
   /** Active expressions (`face smile`, or `none`), only while state feedback is on. */
   readonly active: string
-  /** The Natural mood (`valence 0.1, arousal 0.2, tension 0`, or `unknown`), only while state feedback is on. */
-  readonly mood: string
 }
 
 /**
@@ -88,7 +82,6 @@ export function useStageLiveState() {
     return {
       exposed: exposedByKind(runtimeState.exposed).map(({ kind, labels }) => `${kind}: ${labels.join(', ')}`).join(' / '),
       active: feedback ? formatActive(runtimeState.active) : '',
-      mood: feedback ? formatMood(runtimeState.mood) : '',
     }
   })
 }

@@ -177,7 +177,6 @@ function stageBullet(state: SituationState): string | null {
   const parts = [
     ['on stage', stage.exposed],
     ['active', stage.active],
-    ['mood', stage.mood],
   ]
     .map(([name, value]) => [name, oneLine(value)])
     .filter(([, value]) => value !== '')
