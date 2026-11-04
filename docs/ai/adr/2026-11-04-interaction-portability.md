@@ -36,7 +36,7 @@ The optional methods on `StagePerformanceScene` stay optional only so that scena
 
 ### Shared vocabulary
 
-- **ACT `gesture`** is the renderer-neutral procedural vocabulary (`motion-driver-natural/src/cue-gestures.ts`), and every Natural renderer plays it. The conductor gates it on the Natural driver only, and `Stage.vue` no longer checks the renderer. **ACT `action`** is the 3D clip library layered on top ([clip actions ADR](2026-11-03-mmd-clip-actions.md) on `luke/feat/fullscreen-stage`). **ACT `motion`** stays the Live2D motion-group field for Universal and MAGIC.
+- **ACT `gesture`** is the renderer-neutral procedural vocabulary (`motion-driver-natural/src/cue-gestures.ts`), and every Natural renderer plays it. The conductor gates it on the Natural driver only, and `Stage.vue` no longer checks the renderer. **ACT `action`** is the 3D clip library layered on top ([clip actions ADR](2026-11-03-mmd-clip-actions.md)). **ACT `motion`** stays the Live2D motion-group field for Universal and MAGIC.
 - **Touch.** `NaturalTouchGesture` (`poke` with a region and a region-relative point, `pet-start`, `pet-end` with a duration) is the one event type. `Live2DTouchEvent` and `MMDTouchEvent` are aliases of it. `Stage.vue` hands either scene's `touch` event to `useStageTouchStore`, so a pet or poke doses mood through the decider, reaches the situation as a `TouchObservation`, and can lead to a reaction turn on both renderers.
 - **Per-model emotion strengths.** `NaturalEmotionStrengthsByModel` and `parseNaturalEmotionStrengths` live in `motion-driver-natural/src/emotion-strengths.ts`. Live2D stores them under `settings/live2d/natural-emotion-strength` and MMD under `settings/mmd/natural-emotion-strength`, in the same shape and range (0 to 2). Both settings pages use the shared panel `packages/stage-ui/src/components/scenarios/settings/model-settings/natural-emotion-strength.vue`. The MMD adapter applies the strengths at the start of each frame, before queued episodes start, as the Live2D adapter does.
 
@@ -65,7 +65,7 @@ State on `main` after this change. "Branch" means `luke/feat/fullscreen-stage`.
 | Held emotions | Yes | Yes | No | No | No |
 | Expression catalog, slots, and panel | Yes | Yes | No | No | No |
 | ACT `gesture` | Yes | Yes | No | No | No |
-| ACT `action` (clips) | No | Branch | No | No | No |
+| ACT `action` (clips) | No | Yes | No | No | No |
 | ACT `motion` (motion groups) | Universal and MAGIC | No | No | No | No |
 | Fast mood | Yes | Yes | No | No | No |
 | Slow mood face baseline | Yes | Yes | No | No | No |
@@ -89,5 +89,5 @@ Tuning in `motion-driver-natural` reaches MMD unchanged, and MMD now performs ev
 - Done on 2026-11-04: the touch classifier is `NaturalTouchGestures` in `motion-driver-natural/src/touch-gestures.ts`, and both renderers use it, so a pet or poke tuning change is made once. Hit-testing stays per renderer.
 - Add per-model amplitude gains (head, body, face) if MMD reads weaker or stronger than Live2D in Luke's QA.
 - Remove the remaining Live2D vocabulary from shared code. Done on 2026-11-04: the conductor takes `StagePerformanceDriver` (`'natural' | 'basic'`), the emotion strength panel reads `settings.natural.emotion-strength.*`, and emotion labels live under `settings.emotions.*`. Still open: the rest of the shared expression panel reads `settings.live2d.expressions.*`; the exp3 parser stays in `stage-shared` until that package is split; and only the Live2D stage answers affect-trace requests, which keep their `live2d`-namespaced event ids.
-- When `luke/feat/fullscreen-stage` lands, keep the ACT `gesture` branch in `Stage.vue` ungated beside the MMD `action` branch. This resolves the clip actions ADR follow-up that asked how gesture kinds should reach MMD.
+- Done when the clip runtime landed: the ACT `gesture` branch in `Stage.vue` stays ungated beside the MMD `action` branch. This resolves the clip actions ADR follow-up that asked how gesture kinds should reach MMD.
 - VRM joins the Natural tier through the M5 adapter.

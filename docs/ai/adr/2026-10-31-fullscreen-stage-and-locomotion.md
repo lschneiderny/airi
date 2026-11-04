@@ -106,7 +106,8 @@ The hit-test readback passes its gate with a thin margin. The frame rate on this
 ## Follow-ups
 
 - Display hand-off: walking from one display to another, and moving the stage window with her. Today she lives on one home display at a time.
-- Terrain: windows as surfaces she can stand on or perch on.
+- Terrain: windows as surfaces she can stand on or perch on. The env-gated Windows window-rect sensor spike that M4 needs was measured on 2026-11-04 (`apps/stage-tamagotchi/src/main/services/electron/window-rects-spike.md`); [the clip actions ADR](2026-11-03-mmd-clip-actions.md) lists its gates. [The 3D character roadmap](../3d-character-roadmap.md) tracks M4.
+- Landed: the gesture and dance clip library and the `perform_action` tool, which this ADR left out. [The clip actions ADR](2026-11-03-mmd-clip-actions.md) records them.
 - Remove the classic window mode after roaming, chat anchoring, and display hand-off ship and one feedback cycle on the desktop stage has passed. The removal condition is recorded in the `// NOTICE:` block of `apps/stage-tamagotchi/src/main/windows/stage/mode.ts`. The Linux branch keeps its own removal condition.
 - Replace the GPU readback with a CPU silhouette mask if `stage-frame-budget` fails its readback-max criterion again. Do not change the threshold.
 - Landed: the second wander on arrival. A wander deadline that fell due while another goal was walking stayed due, so the wander fired in the frame the goal ended. `decideBody` now draws a new deadline from the arrival instead.
