@@ -19,6 +19,8 @@ Live2D keeps its adapter (`natural-motion-adapter.ts`) and the Natural tooling t
 
 `packages/motion-driver-humanoid` holds canonical humanoid types with VRM bone names (`./types`), look-at distribution with body-turn hysteresis (`./look-at`), foot contact with leg reach and knee pre-bend (`./foot-contact`), seeded weight shift (`./weight-shift`), and the stance and attention director (`./director`). Every function takes explicit time in seconds or milliseconds and seeded randomness, and returns rest-relative rotations or mesh-local positions.
 
+Contract amendment (2026-11-03): the clip mask (`./clip-mask`) gained a `lowerBody` group (hips and the FK leg bones, plus caller-listed helper bones such as the MMD D bones) and treats `全ての親` and `master` as root names. The new `./clip-meta` subpath derives a clip's kind, layer and label from that mask, and the director performs clips. [The clip actions ADR](2026-11-03-mmd-clip-actions.md) records both.
+
 Neither package may import `three`, `vue`, `pinia`, `@moeru/three-mmd`, or `@proj-airi/stage-ui*`. The `no-restricted-imports` block for `packages/motion-driver-{natural,humanoid}/src/**` in `eslint.config.ts` enforces this. Both run as Node Vitest projects listed in the root `vitest.config.ts`.
 
 ### The MMD frame pipeline owns a clean pose
@@ -85,7 +87,7 @@ MMD gains the same expression tools, ACT expressions, and panel as Live2D. Lip-s
 ## Follow-ups
 
 - Milestone M2 locomotion is recorded in [the full-screen stage and locomotion ADR](2026-10-31-fullscreen-stage-and-locomotion.md): the character walks on a desktop stage instead of following a window. The desktop host reaches `main` behind an off-by-default experimental setting. Display hand-off and terrain remain its follow-ups.
-- Milestones M3 to M5: an action and gesture library with `perform_action` and `go_to` tools, dance to the beat, perching on windows, drag dangle, props, and the VRM adapter.
+- Milestone M3 landed with [the clip actions ADR](2026-11-03-mmd-clip-actions.md): a curated clip library, layered gestures, full-body actions and dances that the director performs, the ACT `action` field and the `perform_action` tool. M4 (windows as terrain, perching, drag dangle, pointing) and M5 (the VRM adapter) remain, together with dance to the beat, props, and a `go_to` tool. [The 3D character roadmap](../3d-character-roadmap.md) tracks them.
 - Ask upstream three-mmd-physics-ammo for an impulse API, so touch can push rigid bodies directly instead of only moving bones before physics.
 - Texture, sphere, and toon tint uniforms already render in the current three-mmd toon material. Confirm each tint visually on a real model that uses it, and record the result in the runtime notes.
 - Move the touch gesture classifier into `packages/motion-driver-natural`. `packages/stage-ui-mmd/src/composables/mmd/touch/gestures.ts` duplicates the rules and thresholds of Live2D's `touch-gestures.ts`, because stage-ui-mmd must not import stage-ui-live2d. Resolved on 2026-11-04: both renderers use `NaturalTouchGestures` from `packages/motion-driver-natural/src/touch-gestures.ts`.

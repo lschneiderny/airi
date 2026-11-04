@@ -14,8 +14,13 @@ reaching feature parity with the Live2D and VRM renderers:
 - **IK** (CCD solver) and **append-bone ("grant")** propagation for standard
   and custom rigs.
 - **Importable, mappable motions**: import VMD clips (persisted to IndexedDB,
-  synced across windows), set one as the looping idle, preview any as a
-  one-shot, remove them, and map AIRI emotions to gesture motions.
+  synced across windows), set one as the looping idle, play any through the
+  body director, remove them, and map AIRI emotions to clips (Neutral and
+  Sleepy map to no clip).
+- **Clip library**: every imported clip gets a derived kind and layer, and the
+  user gives it a label and an "AI may use" switch per model. Gestures layer
+  over idle, sitting and walking; full-body actions and dances pre-empt the
+  walk through the director. See [Clip library and actions](#clip-library-and-actions).
 - **Stance slots**: assign imported motions to a model's `idle`, `sit` and
   `sleep` slots (`stanceSlots` in the `mmd` store). The body director sits
   the model after two minutes idle and sleeps it while the user is away, with
@@ -69,7 +74,9 @@ import { MMDScene, useMMD } from '@proj-airi/stage-ui-mmd'
 ```
 
 The component exposes `canvasElement()`, `captureFrame()`,
-`setEmotion(name, intensity)`, `listMorphs()`, and `listMotions()`.
+`setEmotion(name, intensity)`, `listMorphs()`, `listMotions()`, the clip
+library surface `listActions()`, `action(label)` and `actionPort`, and, for
+the desktop stage host, `setRootX(x, { teleport })` and `setDragging(on)`.
 
 Runtime configuration (physics/IK/grant toggles, gaze tracking, scale,
 morph overrides, emotion→motion mapping) lives in the `useMMD` Pinia store and
@@ -314,6 +321,54 @@ request must wait, `null` when it was accepted).
 A malformed command is ignored with one `console.warn` per store; later valid
 commands are still applied.
 
+### Clip library and actions
+
+At import, `syncMotions` in `MMD.vue` builds the clip's bone mask
+(`buildMMDClipMask`), derives its meta with `deriveClipMeta` from
+`@proj-airi/motion-driver-humanoid/clip-meta` (kind `gesture`, `action`,
+`dance`, `stance` or `unusable`; layer `upper`, `full` or `none`), publishes it
+as `availableClipMeta`, and registers the clip with the animation manager and
+the body. Action and dance clips are registered with `forceGroups` `root`,
+`leftLegIk` and `rightLegIk`, so they stop the gait even when their mask keys
+only the upper body. A clip that is removed and imported again under the same
+name is derived and registered again without a model reload
+(`composables/mmd/motion-registrations.ts`).
+
+The `useMMD` store keeps the user's curation per model in `clipCuration`
+(`settings/mmd/clip-curation`: `label`, `kind` override, `loop` override and
+`aiMayUse`, which defaults to off). `setCuration` refuses a label that fails
+`CLIP_LABEL_PATTERN` or that another clip of the model already uses.
+`labeledClips(modelKey)` lists every clip with a label and a gesture, action or
+dance kind, and `exposedActions(modelKey)` the exposed ones. `removeMotion`
+drops the clip's curation and meta. Derived data is never persisted as user
+state; the scene recomputes it on load.
+
+Every one-shot goes through one entry, `requestPerform`, which turns a clip
+name into a `BodyActionRequest` for the director: the emotion map (`source:
+'act'`), ACT `action` labels (`'act'`), `perform_action` (`'tool'`, through
+`MMDActionPort`), and the Motion Lab and settings play buttons (`'debug'`).
+The director accepts or refuses it, and the scene obeys `intent.action`: it
+calls `animation.playLayer` when the request reaches `playing` and
+`stopLayer` when the intent clears, and feeds the layer events back as
+`actionFeedback`. An exposed action is never chosen as a standing base.
+
+`playLayer` (`composables/mmd/animation-manager.ts`) plays a second layer
+without replacing the base. Each usable clip is registered with `#upper` and
+`#lower` partitions (`rig/clip-split.ts`). An `upper` layer plays the clip's
+upper partition and splits the running base by the bones that partition keys:
+those base tracks ease out, every other base track keeps full weight, and the
+base recombines when the layer ends (in 0.25 s, out 0.3 s). A `full` layer
+eases the whole clip in over 0.4 s, or 0.6 s for a dance. Dances never loop,
+because the frame pipeline resets physics on every mixer loop; `playLayer`
+ignores `loop` for a dance and reports `loop-ignored`.
+
+`MMDActionPort` (`composables/mmd/action-port.ts`) answers `perform_action`. It
+submits the request and settles when the director's `lastActionSeq` reaches
+it: success, or the refusal text for `refractory` (with `retryAfterSeconds`),
+`busy`, `asleep` or `dragging`. The scene observes it every frame in both host
+modes, so the tool works in the classic window. The design is recorded in
+[the clip actions ADR](../../docs/ai/adr/2026-11-03-mmd-clip-actions.md).
+
 ### Touch
 
 While Natural drives the model, the scene turns canvas pointer input into pokes
@@ -408,7 +463,11 @@ unknown expression id and warns once per model.
 
 The MMD model settings expose the motion driver, Natural energy
 (`settings/mmd/natural-energy`), the touch toggles and the per-model stance
-slots (`settings/mmd/stance-slots`). The expression section is the shared
+slots (`settings/mmd/stance-slots`). Below the motion import list, a curation
+table shows one row per clip with its derived kind and layer badge (plus
+`downgraded` and `unusable` badges), a label input with an inline duplicate
+error, a kind select, a loop toggle and the "AI may use" switch; its label
+drafts are kept per model. The expression section is the shared
 expression panel from `@proj-airi/stage-ui`, fed by `useMMDExpressionStore`;
 MMD publishes no free parameters, so custom switches do not appear. In the
 Electron app, Settings > System > Developer > MMD Motion Lab

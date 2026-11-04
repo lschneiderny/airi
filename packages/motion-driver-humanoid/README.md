@@ -149,10 +149,19 @@ mode the scene supplies the ground, root, home, clip ownership, speech, chat,
 cursor, tool and leg-length inputs.
 
 The director also performs clips. A `BodyActionRequest` (`gesture`, `action` or
-`dance`, layer `full` or `upper`) is accepted or refused in a fixed order: asleep,
-dragging, refractory (`ACTION_REFRACTORY_MS`, `DANCE_REFRACTORY_MS`,
-`GESTURE_REPEAT_MS` per clip; a looping `debug` request skips only this
-cooldown), busy, then the stand, walk and speaking settles.
+`dance`, layer `full` or `upper`, source `act`, `tool` or `debug`) is decided in
+a fixed order, first match wins: an empty `clipId` from `tool` or `debug` stops
+the running performance; then `asleep` (away or sleeping), `dragging`, the
+gesture repeat cooldown (`GESTURE_REPEAT_MS`, 4 s per clip, refused without a
+retry time), the action and dance refractories (`ACTION_REFRACTORY_MS` 15 s and
+`DANCE_REFRACTORY_MS` 60 s from the end of the last one), and `busy` (a full clip
+runs, or a gesture arrives while any clip runs). A request whose source is
+`debug` and whose `loop` is true skips the gesture repeat cooldown and no other
+rule, so the Motion Lab and the QA gates can keep a gesture playing. An action
+or dance replaces a running upper clip. A gesture plays at once, also while she
+sits, walks or speaks; an action or dance waits in `settling` until she has
+stood for `STAND_SETTLE_MS` and locomotion is idle, or for `SETTLE_TIMEOUT_MS`,
+and without a timeout while she speaks.
 A refusal still advances `lastActionSeq` and names `actionRefusal` with
 `actionRetryAfterMs`. An accepted clip is `BodyIntent.action`, `settling` until
 the body is clear and then `playing`; the adapter echoes `actionFeedback`, and
@@ -168,7 +177,9 @@ defaults them.
 consumers. The architecture is recorded in
 [the 3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md);
 locomotion, rest pose and clip masks in
-[the full-screen stage and locomotion ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md).
+[the full-screen stage and locomotion ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md);
+clip metadata and clip performances in
+[the clip actions ADR](../../docs/ai/adr/2026-11-03-mmd-clip-actions.md).
 
 ## Arm rest pose and clip masks
 

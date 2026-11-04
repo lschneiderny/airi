@@ -467,6 +467,14 @@ MMD Natural currently ignores gestures, touch mood doses, and touch reactions; M
 The conductor's `action(label, gesture?)` forwards an ACT `action` label to the scene under every driver. `Stage.vue` routes an action label, with its cue gesture, only while the MMD renderer is active, and the MMD scene resolves the label against the clips the user exposed. A Live2D scene never receives one.
 The [nonverbal channels ADR](../../docs/ai/adr/2026-10-31-nonverbal-channels.md) records the design and its consequences.
 
+### Stage action tool
+
+`tools/action.ts` defines `perform_action`, registered as `action:perform_action` beside the body tools (`tools/body.ts`: `come_here`, `go_home`, `look_at`). Its `action` argument is an enum of the exposed action and dance labels plus `stop`, so the model can name only clips the user exposed with **AI may use**; gestures are not tool actions and ride on the ACT `action` field instead. `createActionToolRegistration` rebuilds the tool when the exposed set changes and removes it when the set is empty or the scene has no action port. `Stage.vue` passes the MMD scene's `actionPort` and `listActions()` to the conductor whenever the MMD renderer is active, with or without the desktop stage, so the tool works in the classic window too.
+
+The body director decides every request. The result mirrors the body tools: `{ success, state, error?, retryAfterSeconds? }`, where a refusal names the reason (`refractory` with the seconds to wait, `busy`, `asleep`, or `dragging`), and a label outside the enum answers with the exposed labels. Tool executors live only in the renderer that registers them, which is the synced leader (the stage window on the desktop stage); a chat-window turn reaches them because the composer's `chatStore.send` runs the turn in the leader.
+
+The exposed labels also reach the system prompt through `useStageActionsPrompt` (`composables/use-airi-runtime-prompt.ts`), as the `actions` tail segment that `stores/chat/prompt.ts` adds after the stage contract. The [clip actions ADR](../../docs/ai/adr/2026-11-03-mmd-clip-actions.md) records both channels.
+
 ### Situation inspector
 
 **Settings > System > Developer > Situation** shows the live situation, event table, last rendered block, urge and hazard trace, phase and expected wait, ripe reasons and their weights, thread ripeness and expiry, pick trace, ritual state, per-reason outcomes, extraction ledger, spend, and ACT compliance.
