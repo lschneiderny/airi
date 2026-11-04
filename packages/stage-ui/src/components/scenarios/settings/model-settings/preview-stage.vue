@@ -2,13 +2,12 @@
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
 import { Live2DScene } from '@proj-airi/stage-ui-live2d'
-import { MMDScene } from '@proj-airi/stage-ui-mmd'
 import { SpineScene } from '@proj-airi/stage-ui-spine'
 import { TachieScene } from '@proj-airi/stage-ui-tachie'
-import { ThreeScene, useModelStore } from '@proj-airi/stage-ui-three'
+import { useModelStore } from '@proj-airi/stage-ui-three/stores/model-store'
 import { useMouse } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 
 import { useSettings } from '../../../../stores/settings'
 import {
@@ -27,6 +26,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'runtimeSnapshotChanged', value: ModelSettingsRuntimeSnapshot): void
 }>()
+
+// Loaded only when the selected model needs them, like the main stage.
+const MMDScene = defineAsyncComponent(() => import('@proj-airi/stage-ui-mmd/components/scenes/MMD.vue'))
+const ThreeScene = defineAsyncComponent(() => import('@proj-airi/stage-ui-three/components/ThreeScene.vue'))
 
 const settingsStore = useSettings()
 const modelStore = useModelStore()

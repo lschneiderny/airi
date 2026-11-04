@@ -26,11 +26,9 @@ import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage
 import { TOUCH_TOPIC_KEY } from '@proj-airi/stage-shared/situation'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { defaultLive2DMotionControlDynamics, Live2DScene, useLive2DMotionControl, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
-import { MMDScene } from '@proj-airi/stage-ui-mmd'
 import { useMMD } from '@proj-airi/stage-ui-mmd/stores'
 import { SpineScene } from '@proj-airi/stage-ui-spine'
 import { TachieScene } from '@proj-airi/stage-ui-tachie'
-import { ThreeScene } from '@proj-airi/stage-ui-three'
 import { animations } from '@proj-airi/stage-ui-three/assets/vrm'
 import { createQueue } from '@proj-airi/stream-kit'
 import { Callout } from '@proj-airi/ui'
@@ -39,7 +37,7 @@ import { useBroadcastChannel, useDocumentVisibility, useEventListener, useInterv
 // import embedWorkerURL from '@xsai-transformers/embed/worker?worker&url'
 // import { embed } from '@xsai/embed'
 import { storeToRefs } from 'pinia'
-import { computed, getCurrentScope, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, defineAsyncComponent, getCurrentScope, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue'
 
 import StageRenderError from './stage-render-error.vue'
 
@@ -94,6 +92,11 @@ const emit = defineEmits<{
   reset: []
 }>()
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
+
+// The 3D scenes load only when their renderer is selected, so a Live2D stage never downloads or parses
+// three-mmd, three-vrm, or the Tres scene graph.
+const MMDScene = defineAsyncComponent(() => import('@proj-airi/stage-ui-mmd/components/scenes/MMD.vue'))
+const ThreeScene = defineAsyncComponent(() => import('@proj-airi/stage-ui-three/components/ThreeScene.vue'))
 
 // NOTICE: disabled together with the DuckDB start on mount below.
 // const { getDb } = useDuckDb()

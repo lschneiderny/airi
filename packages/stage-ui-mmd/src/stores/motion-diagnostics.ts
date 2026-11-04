@@ -1,7 +1,7 @@
 import type { BroadcastChannelEmitOptions } from '@moeru/eventa/adapters/broadcast-channel'
 
 import type { FrameMeasurement, StageTiming } from '../composables/mmd/frame-metrics'
-import type { MMDOverlayFlags } from '../composables/mmd/overlays'
+import type { MMDOverlayFlags } from '../composables/mmd/overlay-flags'
 import type { MMDRigProfile } from '../composables/mmd/rig'
 
 import { createContext, defineEventa } from '@moeru/eventa'
@@ -10,7 +10,7 @@ import { defineStore } from 'pinia'
 import { onScopeDispose, ref, shallowRef } from 'vue'
 
 import { MMDFrameMetrics } from '../composables/mmd/frame-metrics'
-import { isMMDOverlayFlags, mmdOverlaysOff } from '../composables/mmd/overlays'
+import { isMMDOverlayFlags, mmdOverlaysOff } from '../composables/mmd/overlay-flags'
 
 /** The lab turns stage overlays on or off in every window. Not persisted: a reloaded stage starts with them off. */
 export const mmdOverlaySetEvent = defineEventa<Partial<MMDOverlayFlags>>('eventa:event:mmd:motion-diagnostics:overlay:set')

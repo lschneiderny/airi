@@ -5,7 +5,7 @@ import { useSettingsScreenAmbientLight } from '@proj-airi/stage-shared/stores/sc
 import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useLive2dParams } from '@proj-airi/stage-ui-live2d/stores/model-parameters'
 import { useMMD } from '@proj-airi/stage-ui-mmd/stores/mmd'
-import { useModelStore } from '@proj-airi/stage-ui-three'
+import { useModelStore } from '@proj-airi/stage-ui-three/stores/model-store'
 
 import { useLive2DMotionMagicSettings } from '../features/motions/live2d'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'

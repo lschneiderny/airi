@@ -1,7 +1,6 @@
 import type { Plugin } from 'vue'
 import type { Router, RouteRecordRaw } from 'vue-router'
 
-import Tres from '@tresjs/core'
 import NProgress from 'nprogress'
 
 import { autoAnimatePlugin } from '@formkit/auto-animate/vue'
@@ -69,7 +68,6 @@ createApp(App)
   .use(pinia)
   .use(PiniaColada)
   .use(i18n)
-  .use(Tres)
   .use(trackButtonPlugin)
   // NOTICE:
   // Push to Talk holds Space, but no Web API reports a hardware keyboard.

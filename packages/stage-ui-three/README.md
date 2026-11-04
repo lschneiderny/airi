@@ -18,6 +18,7 @@ Three.js runtime components, stores, composables, and diagnostics used by AIRI s
 - `@proj-airi/stage-ui-three/composables/vrm`: VRM loading and animation helpers.
 - `@proj-airi/stage-ui-three/utils/vrm-preview`: one-off VRM preview rendering.
 - `composables/hit-test` and `composables/render-target`: renderer readback helpers.
+- `@proj-airi/stage-ui-three/components/ThreeScene.vue`, `/stores/model-store`, `/stores/view-control`, and `/composables/hit-test`: direct subpaths for code that must not load the VRM scene. The package root re-exports `ThreeScene`, so importing anything from the root loads three-vrm and the Tres scene graph. Stores and hit-test helpers on a Live2D path use these subpaths, and hosts load `ThreeScene.vue` with `defineAsyncComponent`.
 
 ## VRM Lifecycle
 

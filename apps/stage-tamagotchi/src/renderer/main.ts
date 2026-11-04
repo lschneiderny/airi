@@ -1,8 +1,6 @@
 import type { Plugin } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
 
-import Tres from '@tresjs/core'
-
 import { autoAnimatePlugin } from '@formkit/auto-animate/vue'
 import { errorMessageFrom } from '@moeru/std'
 import { PiniaColada } from '@pinia/colada'
@@ -91,7 +89,6 @@ function mount() {
     .use(pinia)
     .use(PiniaColada)
     .use(i18n)
-    .use(Tres)
     .use(trackButtonPlugin)
     // The stage window registers a global hold shortcut. Every window shares this app, so the settings window offers the mode too.
     .provide(pushToTalkTriggerKey, true)

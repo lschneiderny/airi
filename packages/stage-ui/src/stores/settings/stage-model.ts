@@ -95,7 +95,8 @@ export const useSettingsStageModel = defineStore('settings-stage-model', () => {
 
     // The Three.js store is browser-only. Load it only during browser startup so
     // Node consumers of the shared settings store do not evaluate rendering APIs.
-    legacyModelIdentityResetPromise ??= import('@proj-airi/stage-ui-three').then(({ useModelStore }) => {
+    // Import the store subpath: the package root also loads the VRM scene.
+    legacyModelIdentityResetPromise ??= import('@proj-airi/stage-ui-three/stores/model-store').then(({ useModelStore }) => {
       useModelStore().resetLegacyModelIdentity()
     })
 

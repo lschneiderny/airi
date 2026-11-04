@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import { useModelStore } from '@proj-airi/stage-ui-three/stores/model-store'
 import {
   defaultControlConfig as threeControlConfig,
   formatter as threeFormatter,
-  useModelStore,
   useThreeViewControl,
-} from '@proj-airi/stage-ui-three'
+} from '@proj-airi/stage-ui-three/stores/view-control'
 import { RoundRange } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, onUnmounted } from 'vue'

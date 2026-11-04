@@ -3,7 +3,8 @@ import type { MMDTouchCollider } from './touch'
 import { Bone, BufferGeometry, Group, Matrix4, Mesh, MeshBasicMaterial, Object3D, Scene, Skeleton, SkinnedMesh, Vector3 } from 'three'
 import { describe, expect, it, vi } from 'vitest'
 
-import { MMDOverlays, mmdOverlaysOff } from './overlays'
+import { mmdOverlaysOff } from './overlay-flags'
+import { MMDOverlays } from './overlays'
 
 function createSource() {
   const names = ['センター', '左足ＩＫ', '左足首', '右足ＩＫ', '右足首', '頭']

@@ -17,7 +17,8 @@ import {
 } from '@proj-airi/electron-vueuse'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
-import { useModelStore, useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three'
+import { useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three/composables/hit-test'
+import { useModelStore } from '@proj-airi/stage-ui-three/stores/model-store'
 import { HearingStatus, HoloCoupon } from '@proj-airi/stage-ui/components'
 import {
   createEmptyModelSettingsRuntimeSnapshot,

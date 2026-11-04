@@ -762,10 +762,9 @@ describe('stage performance routing on MMD', () => {
     }), {
       global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: {} } })] },
     })
-    await nextTick()
-    const scene = findInstance(host?.subTree, MMDScene)!
-    expect(scene).toBeDefined()
-    return scene
+    // Stage and PreviewStage load MMDScene on demand, so the instance appears once its import resolves.
+    await expect.poll(() => findInstance(host?.subTree, MMDScene)).toBeDefined()
+    return findInstance(host?.subTree, MMDScene)!
   }
 
   it('dispatches an ACT happy expression and Natural episode through the MMD scene', async () => {

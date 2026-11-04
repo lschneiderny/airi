@@ -5,7 +5,7 @@ import type { SelectTabOption } from '@proj-airi/ui'
 import type { ExpressionPanelCommand, ExpressionPanelSnapshot, ExpressionPanelSource } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
-import { controlConfig, useMMD, useMMDExpressionStore } from '@proj-airi/stage-ui-mmd'
+import { controlConfig, useMMD, useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
 import { Button, FieldCheckbox, FieldCombobox, FieldRange, GhostButton, SelectTab } from '@proj-airi/ui'
 import { useFileDialog } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
