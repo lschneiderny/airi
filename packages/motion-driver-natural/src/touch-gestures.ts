@@ -1,37 +1,38 @@
-import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
+import type { NaturalTouchGesture, NaturalTouchRegion } from './frame-types'
 
-import type { Live2DModelCanvasRect } from './head-anchor'
-
-/** Where a pointer sample lands on the model; `null` is outside the measured model. */
-export type Live2DTouchRegion = 'head' | 'body'
+/** An axis-aligned box in the renderer's canvas space, such as the measured head. */
+export interface NaturalTouchRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 /**
- * One pointer observation in model canvas space.
+ * One pointer observation in the renderer's canvas space; `region` is `null` outside the model.
  *
  * `scale` is the length the thresholds are measured against: the head width while the
  * model states a head, otherwise the model width. Measuring in model units keeps the
  * gesture independent of how large the character is drawn.
  */
-export interface Live2DTouchSample {
+export interface NaturalTouchSample {
   /** Milliseconds on one monotonic clock shared by every call. */
   timeMs: number
   x: number
   y: number
-  region: Live2DTouchRegion | null
+  region: NaturalTouchRegion | null
   scale: number
   /** Offset from the scaled head center, x right and y down, in head widths. */
   head?: { x: number, y: number, halfHeight: number }
 }
 
-export type Live2DTouchEvent = NaturalTouchGesture
-
-/** What the classifier measures now; the touch-region debug overlay shows it beside {@link live2DPetThresholds}. */
-export interface Live2DTouchGestureInspection {
+/** What the classifier measures now; the touch-region debug overlay shows it beside {@link naturalPetThresholds}. */
+export interface NaturalTouchGestureInspection {
   petting: boolean
   requireHold: boolean
   /** Whether the latest moved sample lay in the zone that counts toward a pet: the start margin, or the wider exit margin once petting. */
   inZone: boolean
-  /** The pet-window trail in model canvas space; `inHead` marks points inside the true head box. */
+  /** The pet-window trail in canvas space; `inHead` marks points inside the true head box. */
   trail: { x: number, y: number, inHead: boolean }[]
   /** Share of trail time inside the true head box, or `null` before the trail spans any time. */
   inHeadShare: number | null
@@ -44,7 +45,7 @@ export interface Live2DTouchGestureInspection {
   offHeadMs: number | null
 }
 
-export interface Live2DTouchGestureOptions {
+export interface NaturalTouchGestureOptions {
   /** Pets count only while the primary button is held. @default false */
   requireHold?: boolean
 }
@@ -78,7 +79,7 @@ const petIdleMs = 600
 const petLeaveMs = 250
 
 /** The limits a pet must reach to start, and the timeouts that end it. Reversals apply only to hover pets. */
-export const live2DPetThresholds = {
+export const naturalPetThresholds = {
   travel: petStartTravel,
   inHeadShare: minInHeadShare,
   reversals: 1,
@@ -87,7 +88,7 @@ export const live2DPetThresholds = {
   leaveMs: petLeaveMs,
 } as const
 
-function marginRect(head: Live2DModelCanvasRect, margin: typeof headMargin): Live2DModelCanvasRect {
+function marginRect(head: NaturalTouchRect, margin: typeof headMargin): NaturalTouchRect {
   const unit = head.width
   return {
     x: head.x - margin.side * unit,
@@ -98,12 +99,12 @@ function marginRect(head: Live2DModelCanvasRect, margin: typeof headMargin): Liv
 }
 
 /** The margin zone around `head` where pet strokes may overshoot, in the same space as `head`. */
-export function live2DPetZoneRect(head: Live2DModelCanvasRect): Live2DModelCanvasRect {
+export function naturalPetZoneRect(head: NaturalTouchRect): NaturalTouchRect {
   return marginRect(head, headMargin)
 }
 
 /** The wider zone that keeps a started pet alive, in the same space as `head`. */
-export function live2DPetExitZoneRect(head: Live2DModelCanvasRect): Live2DModelCanvasRect {
+export function naturalPetExitZoneRect(head: NaturalTouchRect): NaturalTouchRect {
   return marginRect(head, headExitMargin)
 }
 
@@ -114,7 +115,7 @@ interface Point {
 }
 
 /**
- * Classifies pointer input over a Live2D model into pokes and pets.
+ * Classifies pointer input over a model into pokes and pets, for every Natural renderer.
  *
  * Use when:
  * - A scene forwards press, move, release, and cancel samples already mapped into model space
@@ -135,10 +136,10 @@ interface Point {
  * anchor refreshes the idle clock at any pointer rate. With `requireHold`, only held
  * movement counts, and a press that becomes a pet never also becomes a poke.
  */
-export class Live2DTouchGestures {
+export class NaturalTouchGestures {
   requireHold: boolean
   /** The press that may still become a poke; cleared once it turns into a pet. */
-  private press: (Point & { region: Live2DTouchRegion, scale: number }) | undefined
+  private press: (Point & { region: NaturalTouchRegion, scale: number }) | undefined
   /** Whether a press that started over the model is still held. */
   private held = false
   private trail: (Point & { inHead: boolean })[] = []
@@ -146,11 +147,11 @@ export class Live2DTouchGestures {
   private petStartedAtMs: number | undefined
   private lastHeadMoveAtMs = 0
   private leftHeadAtMs: number | undefined
-  /** The latest moved sample's scale and zone, kept for {@link Live2DTouchGestures.inspect}. */
+  /** The latest moved sample's scale and zone, kept for {@link NaturalTouchGestures.inspect}. */
   private lastScale = 1
   private lastInZone = false
 
-  constructor(options: Live2DTouchGestureOptions = {}) {
+  constructor(options: NaturalTouchGestureOptions = {}) {
     this.requireHold = options.requireHold ?? false
   }
 
@@ -162,7 +163,7 @@ export class Live2DTouchGestures {
     return this.held && this.press !== undefined
   }
 
-  pressed(sample: Live2DTouchSample): Live2DTouchEvent[] {
+  pressed(sample: NaturalTouchSample): NaturalTouchGesture[] {
     this.press = sample.region === null ? undefined : { ...sample, region: sample.region }
     this.held = sample.region !== null
     // A held pet starts from this press, so earlier hover movement does not count toward it.
@@ -173,7 +174,7 @@ export class Live2DTouchGestures {
     return []
   }
 
-  moved(sample: Live2DTouchSample): Live2DTouchEvent[] {
+  moved(sample: NaturalTouchSample): NaturalTouchGesture[] {
     if (this.press && Math.hypot(sample.x - this.press.x, sample.y - this.press.y) / this.press.scale > pokeMaxTravel)
       this.press = undefined
     const counts = !this.requireHold || this.held
@@ -216,8 +217,8 @@ export class Live2DTouchGestures {
     return this.update(sample.timeMs)
   }
 
-  released(sample: Live2DTouchSample): Live2DTouchEvent[] {
-    const events: Live2DTouchEvent[] = []
+  released(sample: NaturalTouchSample): NaturalTouchGesture[] {
+    const events: NaturalTouchGesture[] = []
     const press = this.press
     this.press = undefined
     this.held = false
@@ -235,7 +236,7 @@ export class Live2DTouchGestures {
    * a pointer off the head, so a brush past the canvas edge does not end it; `update` ends it
    * once the grace runs out.
    */
-  cancelled(timeMs: number): Live2DTouchEvent[] {
+  cancelled(timeMs: number): NaturalTouchGesture[] {
     this.press = undefined
     this.held = false
     this.lastInZone = false
@@ -249,7 +250,7 @@ export class Live2DTouchGestures {
   }
 
   /** Ends any gesture at once, for a model swap or disabled touch. */
-  reset(timeMs: number): Live2DTouchEvent[] {
+  reset(timeMs: number): NaturalTouchGesture[] {
     this.press = undefined
     this.held = false
     this.lastInZone = false
@@ -259,7 +260,7 @@ export class Live2DTouchGestures {
   }
 
   /** Reports the trail measurements and pet timers at `timeMs` without changing any state. */
-  inspect(timeMs: number): Live2DTouchGestureInspection {
+  inspect(timeMs: number): NaturalTouchGestureInspection {
     const measured = this.trail.length > 1 ? this.measureTrail(this.lastScale) : undefined
     return {
       petting: this.petting,
@@ -275,7 +276,7 @@ export class Live2DTouchGestures {
   }
 
   /** Ends a pet whose pointer stopped moving or left the head. */
-  update(timeMs: number): Live2DTouchEvent[] {
+  update(timeMs: number): NaturalTouchGesture[] {
     const press = this.press
     if (!this.requireHold && this.pressPending && press && timeMs - press.timeMs >= pokeCommitMs && !this.petting) {
       this.press = undefined
@@ -284,7 +285,7 @@ export class Live2DTouchGestures {
     return this.expire(timeMs)
   }
 
-  private expire(timeMs: number): Live2DTouchEvent[] {
+  private expire(timeMs: number): NaturalTouchGesture[] {
     if (!this.petting)
       return []
     const idle = timeMs - this.lastHeadMoveAtMs > petIdleMs
@@ -292,7 +293,7 @@ export class Live2DTouchGestures {
     return idle || left ? [this.endPet(timeMs)] : []
   }
 
-  private endPet(timeMs: number): Live2DTouchEvent {
+  private endPet(timeMs: number): NaturalTouchGesture {
     const durationMs = timeMs - (this.petStartedAtMs ?? timeMs)
     this.petStartedAtMs = undefined
     this.leftHeadAtMs = undefined

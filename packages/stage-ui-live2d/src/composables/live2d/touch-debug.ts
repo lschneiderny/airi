@@ -1,10 +1,12 @@
 import type { Matrix } from '@pixi/math'
+import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
+import type { NaturalTouchGestureInspection } from '@proj-airi/motion-driver-natural/touch-gestures'
 
 import type { Live2DModelCanvasRect } from './head-anchor'
-import type { Live2DTouchGestureInspection, Live2DTouchRegion } from './touch-gestures'
+
+import { naturalPetExitZoneRect, naturalPetThresholds, naturalPetZoneRect } from '@proj-airi/motion-driver-natural/touch-gestures'
 
 import { live2DCanvasRectToViewport } from './head-anchor'
-import { live2DPetExitZoneRect, live2DPetThresholds, live2DPetZoneRect } from './touch-gestures'
 import { live2DTouchRegionAt } from './touch-regions'
 
 interface Live2DTouchDebugPoint {
@@ -45,11 +47,11 @@ export interface Live2DTouchDebugSnapshot {
   model: Live2DTouchDebugRegions
   viewport: Live2DTouchDebugRegions
   /** The latest canvas pointer sample, mapped into model space and back to the viewport. */
-  pointer: { model: Live2DTouchDebugPoint, viewport: Live2DTouchDebugPoint, region: Live2DTouchRegion | null, ageMs: number } | null
+  pointer: { model: Live2DTouchDebugPoint, viewport: Live2DTouchDebugPoint, region: NaturalTouchRegion | null, ageMs: number } | null
   /** The host cursor position that drives gaze when no fresh pointer sample exists. */
   hostCursor: { viewport: Live2DTouchDebugPoint } | null
-  gesture: Live2DTouchGestureInspection
-  thresholds: typeof live2DPetThresholds
+  gesture: NaturalTouchGestureInspection
+  thresholds: typeof naturalPetThresholds
   transforms: {
     /** `[a, b, c, d, tx, ty]` of the internal model's layout transform. */
     internalModelLocal: number[]
@@ -67,7 +69,7 @@ export interface Live2DTouchDebugOverlay {
   pointer: Live2DTouchDebugPoint | null
   hostCursor: Live2DTouchDebugPoint | null
   /** The region under the pointer, filled in the overlay. */
-  hovered: Live2DTouchRegion | null
+  hovered: NaturalTouchRegion | null
   petting: boolean
 }
 
@@ -87,7 +89,7 @@ export interface Live2DTouchDebugInput {
   pointer: (Live2DTouchDebugPoint & { atMs: number }) | undefined
   /** The host cursor in the renderer's global (backing-store) pixels, or `null` when none drives gaze. */
   hostCursorGlobal: Live2DTouchDebugPoint | null
-  gesture: Live2DTouchGestureInspection
+  gesture: NaturalTouchGestureInspection
   internalModelLocalTransform: Matrix
   modelWorldTransform: Matrix
   canvasClient: { left: number, top: number, width: number, height: number }
@@ -128,8 +130,8 @@ export function buildLive2DTouchDebug(input: Live2DTouchDebugInput): { snapshot:
 
   const model: Live2DTouchDebugRegions = {
     touch: input.touch ?? null,
-    zone: input.touch ? live2DPetZoneRect(input.touch) : null,
-    exitZone: input.touch ? live2DPetExitZoneRect(input.touch) : null,
+    zone: input.touch ? naturalPetZoneRect(input.touch) : null,
+    exitZone: input.touch ? naturalPetExitZoneRect(input.touch) : null,
     cursorUnit: input.cursorUnit ?? null,
     body: input.body ?? null,
     eyeAnchor: input.eyeAnchor ?? null,
@@ -172,7 +174,7 @@ export function buildLive2DTouchDebug(input: Live2DTouchDebugInput): { snapshot:
       pointer,
       hostCursor,
       gesture: input.gesture,
-      thresholds: live2DPetThresholds,
+      thresholds: naturalPetThresholds,
       transforms: {
         internalModelLocal: matrixValues(input.internalModelLocalTransform),
         modelWorld: matrixValues(input.modelWorldTransform),

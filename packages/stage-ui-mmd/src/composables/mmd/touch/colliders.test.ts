@@ -1,10 +1,10 @@
 import type { MMDTouchSource } from './colliders'
 
+import { NaturalTouchGestures } from '@proj-airi/motion-driver-natural/touch-gestures'
 import { Matrix4, Quaternion, Ray, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 
 import { buildMMDTouchColliders, mmdTouchRegionOf, raycastMMDTouchColliders } from './colliders'
-import { MMDTouchGestures } from './gestures'
 
 const SPHERE = 0
 const BOX = 1
@@ -161,13 +161,13 @@ describe('mmd touch gestures', () => {
   const sample = (timeMs: number, x: number, region: 'head' | 'body' | null = 'head') => ({ timeMs, x, y: 100, region, scale: 100, head: { x: (x - 100) / 100, y: 0, halfHeight: 0.5 } })
 
   it('turns a short still click on the head into a poke', () => {
-    const gestures = new MMDTouchGestures()
+    const gestures = new NaturalTouchGestures()
     gestures.pressed(sample(0, 100))
     expect(gestures.released(sample(50, 100))).toEqual([{ kind: 'poke', region: 'head', x: 100, y: 100 }])
   })
 
   it('emits nothing for a click on empty canvas', () => {
-    const gestures = new MMDTouchGestures()
+    const gestures = new NaturalTouchGestures()
     const empty = { timeMs: 0, x: 900, y: 900, region: null, scale: 100 }
     expect(gestures.pressed(empty)).toEqual([])
     expect(gestures.update(200)).toEqual([])
@@ -175,7 +175,7 @@ describe('mmd touch gestures', () => {
   })
 
   it('starts a hover pet after stroking back and forth over the head', () => {
-    const gestures = new MMDTouchGestures()
+    const gestures = new NaturalTouchGestures()
     const events = []
     for (let step = 0; step <= 40; step++) {
       const phase = step % 20

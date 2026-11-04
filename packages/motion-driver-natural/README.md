@@ -15,7 +15,9 @@ The root exports the controller, frame contracts, rig traits, touch regions,
 emotion episodes, and speech onset detector. `./frame-types` also holds
 `NaturalTouchGesture`, the touch event every renderer's classifier emits, and
 `./emotion-strengths` holds the per-model emotion strength record and its
-storage parser, which every Natural renderer's settings use. Individual layers are available
+storage parser, which every Natural renderer's settings use. `./touch-gestures`
+holds `NaturalTouchGestures`, the poke and pet classifier both renderers feed
+with pointer samples; each renderer keeps its own hit-testing. Individual layers are available
 through source subpaths, such as `@proj-airi/motion-driver-natural/gaze`.
 Times are monotonic seconds; seeded inputs preserve deterministic output.
 

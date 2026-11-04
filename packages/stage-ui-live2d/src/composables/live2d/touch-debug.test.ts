@@ -1,10 +1,10 @@
 import type { Live2DTouchDebugInput } from './touch-debug'
 
 import { Matrix } from '@pixi/math'
+import { naturalPetExitZoneRect, naturalPetThresholds, naturalPetZoneRect, NaturalTouchGestures } from '@proj-airi/motion-driver-natural/touch-gestures'
 import { describe, expect, it } from 'vitest'
 
 import { buildLive2DTouchDebug } from './touch-debug'
-import { live2DPetExitZoneRect, live2DPetThresholds, live2DPetZoneRect, Live2DTouchGestures } from './touch-gestures'
 
 function input(overrides: Partial<Live2DTouchDebugInput> = {}): Live2DTouchDebugInput {
   return {
@@ -20,7 +20,7 @@ function input(overrides: Partial<Live2DTouchDebugInput> = {}): Live2DTouchDebug
     eyeAnchor: { x: 200, y: 260 },
     pointer: { x: 150, y: 150, atMs: 960 },
     hostCursorGlobal: { x: 400, y: 200 },
-    gesture: new Live2DTouchGestures().inspect(1000),
+    gesture: new NaturalTouchGestures().inspect(1000),
     // Model canvas -> layout halves, then layout -> world doubles and shifts by (10, 20).
     internalModelLocalTransform: new Matrix(0.5, 0, 0, 0.5, 0, 0),
     modelWorldTransform: new Matrix(2, 0, 0, 2, 10, 20),
@@ -38,9 +38,9 @@ describe('live2d touch debug', () => {
     // Canvas (100, 100) -> layout (50, 50) -> world (110, 120) -> CSS (55, 60) + client origin.
     expect(snapshot.viewport.touch).toEqual({ x: 60, y: 67, width: 100, height: 150 })
     expect(snapshot.viewport.eyeAnchor).toEqual({ x: 110, y: 147 })
-    expect(snapshot.model.zone).toEqual(live2DPetZoneRect({ x: 100, y: 100, width: 200, height: 300 }))
+    expect(snapshot.model.zone).toEqual(naturalPetZoneRect({ x: 100, y: 100, width: 200, height: 300 }))
     expect(snapshot.viewport.zone).toEqual({ x: 10, y: 17, width: 200, height: 215 })
-    expect(snapshot.model.exitZone).toEqual(live2DPetExitZoneRect({ x: 100, y: 100, width: 200, height: 300 }))
+    expect(snapshot.model.exitZone).toEqual(naturalPetExitZoneRect({ x: 100, y: 100, width: 200, height: 300 }))
     expect(snapshot.viewport.exitZone).toEqual({ x: -40, y: -33, width: 300, height: 310 })
     expect(overlay.regions).toEqual(snapshot.viewport)
   })
@@ -68,13 +68,13 @@ describe('live2d touch debug', () => {
   })
 
   it('produces a snapshot that survives JSON, as the clipboard and the channel need', () => {
-    const gestures = new Live2DTouchGestures()
+    const gestures = new NaturalTouchGestures()
     gestures.moved({ timeMs: 900, x: 150, y: 150, region: 'head', scale: 200 })
     gestures.moved({ timeMs: 950, x: 170, y: 150, region: 'head', scale: 200 })
     const { snapshot, overlay } = buildLive2DTouchDebug(input({ gesture: gestures.inspect(1000) }))
 
     expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot)
-    expect(snapshot.thresholds).toEqual(live2DPetThresholds)
+    expect(snapshot.thresholds).toEqual(naturalPetThresholds)
     expect(snapshot.transforms).toEqual({
       internalModelLocal: [0.5, 0, 0, 0.5, 0, 0],
       modelWorld: [2, 0, 0, 2, 10, 20],

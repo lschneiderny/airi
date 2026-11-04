@@ -250,7 +250,7 @@ A second setting, `settings/live2d/natural-touch-pet-requires-hold`, counts stro
 A third setting, Head area for petting, scales the touch head box around its center for the selected model, from 0.5× to 2×. This box uses an authored head or face hit area, otherwise the face-feature measure expanded by `faceToHeadScale` (1.6) and extended up to the top of the physics-inclusive head box, otherwise the physics-inclusive head box. The setting is stored per stage model id in `settings/live2d/natural-touch-head-scale`.
 The settings page shows these settings only while Natural is selected. Touch does nothing under Universal or MAGIC, and nothing while the stage is paused.
 
-`Live2DTouchGestures` classifies pointer input on the Live2D canvas, mapped into model canvas space:
+`NaturalTouchGestures` from `@proj-airi/motion-driver-natural/touch-gestures` classifies pointer input on the Live2D canvas, mapped into model canvas space. The MMD scene uses the same classifier, so the rules below hold on both renderers:
 
 - A hover poke commits at 90 ms while the press is held and remains eligible, or on an earlier eligible release within 400 ms and 5% of the scale. With the held-button setting, a poke commits only on an eligible release within 400 ms and 5% of the scale. Before commit, travel beyond 5% permanently rejects the press as a drag, even if the pointer returns.
 - A pet is at least 0.35 head widths of travel within 1.5 seconds, with at least half of the trail time inside the true head box. The trail allows overshoot into a margin zone around the head. Without a held button, travel must reverse direction at least once, so a cursor passing over the head is not a pet.

@@ -171,7 +171,8 @@ cylinder height along Y), posed from bone matrices through a body-to-bone offset
 stored at load; the Ammo world is never read. Bodies under 頭/首 are `head`, and
 bodies under 上半身/上半身2/上半身3/下半身 are `body`. A model without usable rigid
 bodies falls back to a skinned mesh raycast and the hit face's heaviest bone.
-Gesture rules mirror the Live2D classifier. Pokes and pets feed
+`NaturalTouchGestures` from `@proj-airi/motion-driver-natural/touch-gestures`,
+the classifier Live2D uses, turns the samples into pokes and pets. They feed
 `NaturalMotion`, so the response is pre-physics head and body motion.
 `settings/mmd/natural-touch` (default on) and
 `settings/mmd/natural-touch-pet-requires-hold` (default off) match the Live2D

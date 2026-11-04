@@ -1,7 +1,7 @@
+import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
 import type { Bounds } from 'pixi-live2d-display/cubism4'
 
 import type { Live2DModelCanvasRect } from './head-anchor'
-import type { Live2DTouchRegion } from './touch-gestures'
 
 /**
  * What the visible-bounds measurement reads from a model.
@@ -67,7 +67,7 @@ function contains(rect: Live2DModelCanvasRect | undefined, point: { x: number, y
 export function live2DTouchRegionAt(
   point: { x: number, y: number },
   regions: { head: Live2DModelCanvasRect | undefined, body: Live2DModelCanvasRect | undefined },
-): Live2DTouchRegion | null {
+): NaturalTouchRegion | null {
   if (contains(regions.head, point))
     return 'head'
   return contains(regions.body, point) ? 'body' : null

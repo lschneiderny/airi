@@ -12,6 +12,7 @@
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
+import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
@@ -20,7 +21,6 @@ import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { SkinnedMesh, Texture } from 'three'
 
 import type { GazeOffset, MMDAnimationManager, MorphController } from '../../composables/mmd'
-import type { MMDTouchEvent } from '../../composables/mmd/touch'
 import type { SpeechEvent } from '../../stores/expression-slots'
 import type { ResolvedMMDModel } from '../../utils/mmd-loader'
 
@@ -117,7 +117,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (e: 'error', err: unknown): void
-  (e: 'touch', event: MMDTouchEvent): void
+  (e: 'touch', event: NaturalTouchGesture): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -834,7 +834,7 @@ watch(() => props.modelSrc, (src) => {
 // Pokes and pets are a Natural reaction, so touch runs only while Natural drives the model.
 const touchActive = computed(() => naturalTouch.value && motionDriver.value === 'natural' && !props.paused)
 
-function handleTouchEvents(events: MMDTouchEvent[]) {
+function handleTouchEvents(events: NaturalTouchGesture[]) {
   if (!touch)
     return
   for (const poke of touch.takePokes())

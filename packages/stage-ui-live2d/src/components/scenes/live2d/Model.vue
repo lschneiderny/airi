@@ -3,9 +3,10 @@ import type { Application } from '@pixi/app'
 import type { Filter } from '@pixi/core'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
-import type { NaturalMotionObserver } from '@proj-airi/motion-driver-natural/frame-types'
+import type { NaturalMotionObserver, NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
+import type { NaturalTouchSample } from '@proj-airi/motion-driver-natural/touch-gestures'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceEmotion, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type {
@@ -25,11 +26,11 @@ import type { NaturalChatActivity, NaturalChatTarget } from '../../../composable
 import type { Live2DNaturalMotionAttention } from '../../../composables/live2d/natural-motion-adapter'
 import type { PhysicsRigLike } from '../../../composables/live2d/natural-motion/rig-profile'
 import type { Live2DTouchDebugOverlay, Live2DTouchDebugSource } from '../../../composables/live2d/touch-debug'
-import type { Live2DTouchEvent, Live2DTouchSample } from '../../../composables/live2d/touch-gestures'
 import type { NaturalCaptureRequest } from '../../../stores'
 
 import { errorMessageFrom } from '@moeru/std'
 import { Point } from '@pixi/math'
+import { NaturalTouchGestures } from '@proj-airi/motion-driver-natural/touch-gestures'
 import { listenBeatSyncBeatSignal } from '@proj-airi/stage-shared/beat-sync'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { ambientLightDefaults, ambientLightNeutralEnvironment, ambientLightPerceptualLevel, wholeWindowRectangle } from '@proj-airi/stage-shared/screen-ambient-light'
@@ -75,7 +76,6 @@ import { manualControlParameterIds, readLive2DRigProfile } from '../../../compos
 import { NaturalTraceRecorder } from '../../../composables/live2d/natural-motion/trace'
 import { chatTargetOffset, headScreenX, ScreenPlacement } from '../../../composables/live2d/screen-placement'
 import { buildLive2DTouchDebug } from '../../../composables/live2d/touch-debug'
-import { Live2DTouchGestures } from '../../../composables/live2d/touch-gestures'
 import { live2DTouchRegionAt, live2DVisibleBounds, scaleLive2DRect } from '../../../composables/live2d/touch-regions'
 import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { ScreenAmbientLightFilter } from '../../../filters/screen-ambient-light'
@@ -174,7 +174,7 @@ const emits = defineEmits<{
   (e: 'modelLoaded'): void
   (e: 'error', error: Error): void
   /** A poke or pet the Natural driver reacted to; nothing else consumes it yet. */
-  (e: 'touch', event: Live2DTouchEvent): void
+  (e: 'touch', event: NaturalTouchGesture): void
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
@@ -210,7 +210,7 @@ const pendingNaturalEmotions: NaturalEpisode[] = []
 const pendingNaturalPokes: Live2DNaturalMotionAttention['pendingPokes'] = []
 /** Hand position relative to the head center while the user pets it, read on every composition. */
 let naturalPetHand: { x: number, y: number } | null = null
-const touchGestures = new Live2DTouchGestures({ requireHold: live2dNaturalTouchPetRequiresHold.value })
+const touchGestures = new NaturalTouchGestures({ requireHold: live2dNaturalTouchPetRequiresHold.value })
 const touchPoint = new Point()
 /** Head and body boxes in model canvas space, re-measured at most every 100 ms while the pointer moves. */
 let touchRegions: { head: Live2DModelCanvasRect | undefined, unscaledHead: Live2DModelCanvasRect | undefined, eyeAnchor: { x: number, y: number } | undefined, body: Live2DModelCanvasRect | undefined, source: Live2DTouchDebugSource, measuredAtMs: number } | undefined
@@ -1517,7 +1517,7 @@ function modelPointFrom(event: PointerEvent, canvas: HTMLCanvasElement) {
   return touchPoint
 }
 
-function touchSampleFrom(event: PointerEvent, canvas: HTMLCanvasElement): Live2DTouchSample | undefined {
+function touchSampleFrom(event: PointerEvent, canvas: HTMLCanvasElement): NaturalTouchSample | undefined {
   const current = model.value
   const regions = current && readTouchRegions(event.timeStamp)
   if (!current || !regions)
@@ -1541,7 +1541,7 @@ function touchSampleFrom(event: PointerEvent, canvas: HTMLCanvasElement): Live2D
   }
 }
 
-function handleTouchEvents(events: Live2DTouchEvent[]) {
+function handleTouchEvents(events: NaturalTouchGesture[]) {
   for (const event of events) {
     if (event.kind === 'poke') {
       const box = event.region === 'head' ? touchRegions?.head : touchRegions?.body

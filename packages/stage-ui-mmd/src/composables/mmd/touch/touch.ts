@@ -1,16 +1,16 @@
-import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
+import type { NaturalTouchGesture, NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
+import type { NaturalTouchSample } from '@proj-airi/motion-driver-natural/touch-gestures'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { Camera, SkinnedMesh } from 'three'
 
 import type { MMDRigProfile } from '../rig'
 import type { MMDTouchCollider, MMDTouchRegionRoots, MMDTouchSource } from './colliders'
-import type { MMDTouchEvent, MMDTouchSample } from './gestures'
 
+import { NaturalTouchGestures } from '@proj-airi/motion-driver-natural/touch-gestures'
 import { Raycaster, Vector2, Vector3 } from 'three'
 
 import { projectMMDHead } from '../natural/adapter'
 import { buildMMDTouchColliders, mmdTouchColliderCenter, mmdTouchRegionOf, mmdTouchRegionRoots, raycastMMDTouchColliders } from './colliders'
-import { MMDTouchGestures } from './gestures'
 
 export interface MMDTouchPointer {
   type: string
@@ -40,7 +40,7 @@ const clampUnit = (value: number) => Math.max(-1, Math.min(1, value))
  * pre-physics head and body motion that physics then carries into hair and cloth.
  */
 export class MMDTouch {
-  readonly gestures: MMDTouchGestures
+  readonly gestures: NaturalTouchGestures
   readonly colliders: MMDTouchCollider[]
   private readonly roots: MMDTouchRegionRoots
   private readonly headBoneIndex: number
@@ -62,14 +62,14 @@ export class MMDTouch {
     rig: Pick<MMDRigProfile, 'bones'>,
     options: { requireHold?: boolean } = {},
   ) {
-    this.gestures = new MMDTouchGestures(options)
+    this.gestures = new NaturalTouchGestures(options)
     this.roots = mmdTouchRegionRoots(rig)
     this.colliders = buildMMDTouchColliders(source, mesh.skeleton.boneInverses, mesh.bindMatrix, this.roots)
     this.headBoneIndex = rig.bones.head ? mesh.skeleton.bones.findIndex(bone => bone.name === rig.bones.head) : -1
     this.headCollider = this.colliders.find(collider => collider.boneIndex === this.headBoneIndex)
   }
 
-  pointer(event: MMDTouchPointer, camera: Camera, viewport: PlacementRect): MMDTouchEvent[] {
+  pointer(event: MMDTouchPointer, camera: Camera, viewport: PlacementRect): NaturalTouchGesture[] {
     if (event.type === 'pointerleave' || event.type === 'pointercancel')
       return this.handle(this.gestures.cancelled(event.timeStamp))
     const sample = this.sample(event, camera, viewport)
@@ -85,11 +85,11 @@ export class MMDTouch {
   }
 
   /** Commits held pokes and ends resting pets; call once per frame while either is pending. */
-  update(timeMs: number): MMDTouchEvent[] {
+  update(timeMs: number): NaturalTouchGesture[] {
     return this.gestures.petting || this.gestures.pressPending ? this.handle(this.gestures.update(timeMs)) : []
   }
 
-  reset(timeMs: number): MMDTouchEvent[] {
+  reset(timeMs: number): NaturalTouchGesture[] {
     const events = this.handle(this.gestures.reset(timeMs))
     this.pokes = []
     this.pet = null
@@ -126,7 +126,7 @@ export class MMDTouch {
     }
   }
 
-  private handle(events: MMDTouchEvent[]): MMDTouchEvent[] {
+  private handle(events: NaturalTouchGesture[]): NaturalTouchGesture[] {
     for (const event of events) {
       this.events++
       if (event.kind === 'poke') {
@@ -141,7 +141,7 @@ export class MMDTouch {
     return events
   }
 
-  private sample(event: MMDTouchPointer, camera: Camera, viewport: PlacementRect): MMDTouchSample | null {
+  private sample(event: MMDTouchPointer, camera: Camera, viewport: PlacementRect): NaturalTouchSample | null {
     if (viewport.width <= 0 || viewport.height <= 0)
       return null
     const head = projectMMDHead(this.mesh, camera, viewport)

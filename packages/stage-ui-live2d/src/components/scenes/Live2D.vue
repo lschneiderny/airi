@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
+import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
@@ -10,7 +11,6 @@ import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { Live2DEyeFocusSource } from '../../composables/live2d'
 import type { SpeechEvent } from '../../composables/live2d/expression/slots'
 import type { NaturalChatActivity, NaturalChatTarget } from '../../composables/live2d/natural-chat-input'
-import type { Live2DTouchEvent } from '../../composables/live2d/touch-gestures'
 
 import { presenceBubbleIdle } from '@proj-airi/stage-shared'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
@@ -73,7 +73,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   error: [error: Error]
   /** A poke or pet the Natural driver reacted to, for consumers such as a future chat reaction. */
-  touch: [event: Live2DTouchEvent]
+  touch: [event: NaturalTouchGesture]
 }>()
 
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })

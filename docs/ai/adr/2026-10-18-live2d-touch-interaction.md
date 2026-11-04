@@ -15,6 +15,7 @@ The chat model does not react to touch yet. The scene emits a `touch` event so t
 This ADR records the contracts that cross component and package boundaries:
 
 - the gesture classifier `Live2DTouchGestures` and its event type;
+  Superseded in part by [2026-11-04-interaction-portability](2026-11-04-interaction-portability.md): the classifier is `NaturalTouchGestures` in `packages/motion-driver-natural/src/touch-gestures.ts`, unchanged in rules and thresholds, and both Live2D and MMD use it;
 - the touch regions and how they are measured;
 - the adapter inputs `pendingPokes` and `pet`, and the controller methods `poke` and `setPet`;
 - the `touch` event of `Live2DScene`;

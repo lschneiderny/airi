@@ -1,6 +1,7 @@
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalFaceOutput } from '@proj-airi/motion-driver-natural/face'
+import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionOptions, NaturalMotionPose } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { PostureHome } from '@proj-airi/motion-driver-natural/posture'
@@ -11,7 +12,6 @@ import type { EmotionHold } from './expression/hold'
 import type { Live2DMotionDriver } from './live2d'
 import type { PixiLive2DInternalModel } from './motion-manager'
 import type { Live2DRigProfile, NaturalChannel } from './natural-motion/rig-profile'
-import type { Live2DTouchRegion } from './touch-gestures'
 
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 
@@ -63,7 +63,7 @@ export interface Live2DNaturalMotionAttention {
    */
   chat: NaturalChatInput | null
   /** Host poke queue, `x` and `y` relative to the touched region's center (-1..1, y down); emptied like `pendingEmotions`. */
-  pendingPokes: { region: Live2DTouchRegion, x: number, y: number }[]
+  pendingPokes: { region: NaturalTouchRegion, x: number, y: number }[]
   /** Hand position relative to the head center (-1..1, y down) while the user pets the head, otherwise `null`. */
   pet: { x: number, y: number } | null
 }

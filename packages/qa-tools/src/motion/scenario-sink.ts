@@ -1,6 +1,8 @@
 import type { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
+import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { PostureHome } from '@proj-airi/motion-driver-natural/posture'
+import type { NaturalTouchSample } from '@proj-airi/motion-driver-natural/touch-gestures'
 import type { CatalogEntry, ExpressionPerformanceSettings, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { MotionScenario, MotionScenarioLevel } from '@proj-airi/stage-shared/motion-scenario'
 import type { PerformanceMode, PerformanceState } from '@proj-airi/stage-shared/performance-state'
@@ -8,9 +10,9 @@ import type { SpeechEvent } from '@proj-airi/stage-ui-live2d/composables/live2d/
 import type { Live2DNaturalMotionAttention } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
 import type { readLive2DRigProfile } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/rig-profile'
 import type { NaturalTrace, NaturalTraceRecorder } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
-import type { Live2DTouchEvent, Live2DTouchSample } from '@proj-airi/stage-ui-live2d/composables/live2d/touch-gestures'
 import type { StagePerformanceScene } from '@proj-airi/stage-ui/composables/performance/use-stage-performance-conductor'
 
+import { NaturalTouchGestures } from '@proj-airi/motion-driver-natural/touch-gestures'
 import { normalizeActPayload, tokenAct } from '@proj-airi/pipelines-audio'
 import { parseExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { createScenarioPlayer, MotionScenarioSchema, nextScenarioChatInput } from '@proj-airi/stage-shared/motion-scenario'
@@ -18,7 +20,6 @@ import { EmotionHoldPerformer } from '@proj-airi/stage-ui-live2d/composables/liv
 import { lipSyncHandoffHoldMs, lipSyncReleaseMs } from '@proj-airi/stage-ui-live2d/composables/live2d/lipsync-handoff'
 import { Live2DNaturalMotionAdapter } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
 import { syllableFixture } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/speech-fixture'
-import { Live2DTouchGestures } from '@proj-airi/stage-ui-live2d/composables/live2d/touch-gestures'
 import { eyeAnchorShare } from '@proj-airi/stage-ui-live2d/composables/live2d/touch-regions'
 import { StagePerformanceConductor } from '@proj-airi/stage-ui/composables/performance/use-stage-performance-conductor'
 import { createPinia, setActivePinia } from 'pinia'
@@ -41,7 +42,7 @@ const clampUnit = (value: number) => Math.max(-1, Math.min(1, value))
 const headHand = (point: { x: number, y: number }) => ({ x: clampUnit(point.x / 0.5), y: clampUnit(point.y / t1HeadHalfHeight) })
 
 /** A pointer event as the touch classifier sees it: head-width space, so the classifier scale is 1. */
-function touchSample(event: { at: number, x: number, y: number }): Live2DTouchSample {
+function touchSample(event: { at: number, x: number, y: number }): NaturalTouchSample {
   const { x, y } = event
   const inHead = Math.abs(x) <= 0.5 && Math.abs(y) <= t1HeadHalfHeight
   const region = inHead ? 'head' : Math.abs(x) <= t1Body.halfWidth && y <= t1Body.bottom ? 'body' : null
@@ -83,7 +84,7 @@ export interface ScenarioSinkOptions {
   /** Emotion table seam of the Natural controller, for scorer mutation runs. @default naturalEmotions */
   emotionTable?: typeof naturalEmotions
   /** Receives every touch the stage's classifier reports from `pointer` events, at the sim time it fired. */
-  onTouch?: (touch: Live2DTouchEvent, simTime: number) => void
+  onTouch?: (touch: NaturalTouchGesture, simTime: number) => void
 }
 
 /** Simulated timers fire in due order, ties in arming order; canceled native handles only identify them. */
@@ -187,10 +188,10 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
     const clipOwnedIds = new Set<string>()
     const pendingPokes: Live2DNaturalMotionAttention['pendingPokes'] = []
     // The stage classifies hover pets; held-only pets are a user setting the scenarios do not exercise.
-    const gestures = new Live2DTouchGestures({ requireHold: false })
+    const gestures = new NaturalTouchGestures({ requireHold: false })
     let pointer: { x: number, y: number } | null = null
     let pet: Live2DNaturalMotionAttention['pet'] = null
-    const applyTouch = (events: Live2DTouchEvent[]) => {
+    const applyTouch = (events: NaturalTouchGesture[]) => {
       for (const touch of events) {
         options.onTouch?.(touch, simTime)
         if (touch.kind === 'poke')
