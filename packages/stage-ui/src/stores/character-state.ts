@@ -5,6 +5,7 @@ import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 import { errorMessageFrom } from '@moeru/std'
 import { advance, applyEvent, CharacterProfileSchema, DEFAULT_CHARACTER_PROFILE, initialCharacterState, migrateCharacterState, moodCueBody, parseMoodCue, readCharacter } from '@proj-airi/stage-shared/character-state'
 import { LOGICAL_DAY_ROLLOVER_HOUR } from '@proj-airi/stage-shared/situation'
+import { isEqual } from 'es-toolkit'
 import { defineStore } from 'pinia'
 import { safeParse } from 'valibot'
 import { computed, shallowRef, watch } from 'vue'
@@ -79,7 +80,8 @@ export function characterProfileOf(value: unknown): CharacterProfile {
  * `airi-character-state`, owned by the leader window. On gaining leadership ({@link initialize}) the leader loads the
  * active card's record through `migrateCharacterState`, brings it forward with `advance`, and every
  * {@link CHARACTER_STATE_ADVANCE_INTERVAL_MS} reads it again. It saves {@link CHARACTER_STATE_SAVE_DEBOUNCE_MS} after
- * each change and when the page hides. An active-card switch saves the old record and loads the new one.
+ * each change and when the page hides. An active-card switch saves the old record and loads the new one, and a saved
+ * edit of the active card's profile field (the card editor) is read again at once.
  *
  * Only {@link CharacterStateSnapshot} replicates: the reading, never the record or its events. Every mutating action is
  * leader-routed; its body returns at once outside the leader, so a follower never writes storage. A window ignores a
@@ -115,6 +117,7 @@ export const useCharacterStateStore = defineStore('character-state', () => {
   let saveTimer: ReturnType<typeof setTimeout> | undefined
   let ticker: ReturnType<typeof setInterval> | undefined
   let stopCardWatch: (() => void) | undefined
+  let stopProfileWatch: (() => void) | undefined
   let stopHide: (() => void) | undefined
   let stopLeadershipListener: (() => void) | undefined
   let stopChatHooks: (() => void) | undefined
@@ -214,6 +217,21 @@ export const useCharacterStateStore = defineStore('character-state', () => {
       if (stored !== null)
         scheduleSave()
       publish(record.value, nowMs)
+    })
+  }
+
+  /** Reads the active card's profile again after its card field changed, and brings the state forward under it. */
+  function reloadProfile() {
+    return leaderTask(() => {
+      const current = record.value
+      if (!current)
+        return
+      const next = profileFor(current.cardId)
+      if (isEqual(next, profile))
+        return
+      profile = next
+      refresh()
+      scheduleSave()
     })
   }
 
@@ -361,6 +379,10 @@ export const useCharacterStateStore = defineStore('character-state', () => {
     stopCardWatch = watch(() => cards.activeCardId, (cardId) => {
       void activate(cardId)
     }, { immediate: true })
+    // The card store replaces the card object on every update, so the getter's value changes with the field.
+    stopProfileWatch = watch(() => cards.cards.get(cards.activeCardId)?.extensions.airi.modules.character, () => {
+      void reloadProfile()
+    })
     ticker = setInterval(refresh, CHARACTER_STATE_ADVANCE_INTERVAL_MS)
     if (typeof document !== 'undefined') {
       const onVisibility = () => {
@@ -388,6 +410,8 @@ export const useCharacterStateStore = defineStore('character-state', () => {
     ticker = undefined
     stopCardWatch?.()
     stopCardWatch = undefined
+    stopProfileWatch?.()
+    stopProfileWatch = undefined
     stopHide?.()
     stopHide = undefined
     leading.value = false
