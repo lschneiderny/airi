@@ -93,6 +93,8 @@ A scenario file is JSON with `name`, `description`, `days`, optional `startDate`
 
 `render` prints the text the app would send for a stage preset: `friendly` pairs with trust `open`, `close` with `open` and `knows-you`, and `intimate` with `confiding`, `knows-you`, and three milestones. Without `--mood` the buckets rest at the default resting disposition, so `stranger` prints nothing (the app sends no character text at rest). `model-eval/fixtures/character-stages/<stage>.json` holds `{ stage, text }` for each stage for a later live model run (M2); the tests keep them equal to `render`.
 
+The starting values in the ADR's Known gaps depend on the trust and closeness pace. After you change a constant, run `pnpm qa:character simulate --scenario typical-month --days 90` and read the day-30, day-60, and day-90 rows before you change a stage threshold.
+
 ## Levels
 
 | Level | What it proves | What it cannot prove |
