@@ -1,7 +1,8 @@
-import type { CharacterEvent, CharacterStateRecordV1 } from '@proj-airi/stage-shared/character-state'
+import type { CharacterEvent, CharacterProfile, CharacterStateRecordV1 } from '@proj-airi/stage-shared/character-state'
 import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { CharacterStateSnapshot } from './character-state'
+import type { AiriCard } from './modules/airi-card'
 
 import { advance, applyEvent, DEFAULT_CHARACTER_PROFILE, initialCharacterState, readCharacter } from '@proj-airi/stage-shared/character-state'
 import { createPinia, setActivePinia } from 'pinia'
@@ -55,6 +56,22 @@ function createLeadership(initiallyLeader: boolean) {
       isLeader = next
       for (const listener of listeners)
         listener(next)
+    },
+  }
+}
+
+/** A minimal card whose profile field is `character`; the store reads nothing else of it. */
+function cardWith(character: CharacterProfile | Record<string, unknown>): AiriCard {
+  const inherit = { provider: '', model: '' }
+  return {
+    name: 'Luna',
+    version: '1.0.0',
+    extensions: {
+      airi: {
+        // The field is read through the schema, so an invalid value is as plain data as a valid one.
+        modules: { character: character as CharacterProfile, consciousness: inherit, vision: inherit, speech: { ...inherit, voice_id: '' } },
+        agents: {},
+      },
     },
   }
 }
@@ -340,5 +357,34 @@ describe('useCharacterStateStore across windows', () => {
     expect(follower.store.leaderRecord).toBeNull()
     // The follower only received snapshots; it never mutated the replicated state itself.
     expect(proposals.every(type => type === 'patch function')).toBe(true)
+  })
+
+  it('reads the active card profile again when its card field changes', async () => {
+    const { store } = leaderStore()
+    await store.ready()
+    expect(store.reading?.resting).toEqual(profile.resting)
+    const revision = store.revision
+    const cards = useAiriCardStore()
+
+    // The card editor saves the active card; the card store replaces the card object.
+    const edited = { resting: { valence: -0.6, energy: 0.4, tension: 0.7 }, startingStage: 'friendly' as const }
+    cards.cards.set('default', cardWith(edited))
+    await nextTick()
+    await store.ready()
+    expect(store.reading?.resting).toEqual(edited.resting)
+    expect(store.revision).toBeGreaterThan(revision)
+
+    // A field outside the schema is not a profile; the default one applies.
+    cards.cards.set('default', cardWith({ ...edited, resting: { ...edited.resting, valence: 5 } }))
+    await nextTick()
+    await store.ready()
+    expect(store.reading?.resting).toEqual(profile.resting)
+
+    // Another card's field does not touch the active reading.
+    const afterReset = store.revision
+    cards.cards.set('other', cardWith(edited))
+    await nextTick()
+    await store.ready()
+    expect(store.revision).toBe(afterReset)
   })
 })

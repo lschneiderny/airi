@@ -704,6 +704,21 @@ pages:
       moodGainScale: Mood strength
       moodDecayScale: Mood length
       mapping_help: Mapping weights cannot be edited here yet. They can be imported with the character card. Unset controls use 1.
+    character_profile:
+      title: Personality
+      help: Where her mood settles when nothing is happening, and how close you two start. Her live feelings build on this and are not shown here.
+      valence: Gloomy to cheerful
+      valence_help: Whether she tends to see the bright side or the dark one.
+      energy: Calm to energetic
+      energy_help: How much drive she has at rest.
+      tension: Relaxed to tense
+      tension_help: How wound up she is by default.
+      starting_stage: Starting relationship
+      starting_stage_help: How well she already knows you when this card is first used.
+      stages:
+        stranger: Stranger
+        friendly: Friendly
+        close: Close
     name_asc: Name (A-Z)
     name_desc: Name (Z-A)
     no_cards: No cards yet. Click the button above to upload one!

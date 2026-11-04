@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 角色卡编辑页的核心表单，路由壳只负责把卡片 ID 和当前分区传进来。
 import type { Card } from '@proj-airi/ccc'
+import type { CharacterProfile, MoodAxes, StartingStage } from '@proj-airi/stage-shared/character-state'
 import type { PerformanceProfile } from '@proj-airi/stage-shared/expression-performance'
 import type { AiriExtension } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import type { VoiceInfo } from '@proj-airi/stage-ui/stores/providers/provider'
@@ -12,14 +13,15 @@ import { useAnalytics } from '@proj-airi/stage-ui/composables'
 import { DEFAULT_ARTISTRY_WIDGET_INSTRUCTION } from '@proj-airi/stage-ui/constants/prompts/artistry-instruction'
 import { applyAiriCardEditorModules, getAiriCardEditorModuleSettings, safeParseAiriCardDraft } from '@proj-airi/stage-ui/services/airi-card-editor'
 import { resolveModuleSelection } from '@proj-airi/stage-ui/services/airi-card-modules'
+import { characterProfileOf } from '@proj-airi/stage-ui/stores/character-state'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
 import { useConsciousnessStore } from '@proj-airi/stage-ui/stores/modules/consciousness'
 import { useVisionStore } from '@proj-airi/stage-ui/stores/modules/vision'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
-import { Button, FieldInput, FieldRange, FieldValues, GhostButton, IconButton } from '@proj-airi/ui'
+import { Button, FieldInput, FieldRange, FieldSelect, FieldValues, GhostButton, IconButton } from '@proj-airi/ui'
 import { ComboboxSelect } from '@proj-airi/ui/components/form'
-import { isEqual } from 'es-toolkit'
+import { clamp, isEqual } from 'es-toolkit'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -99,6 +101,47 @@ const performanceFields = [
 
 function setPerformanceField(key: typeof performanceFields[number]['key'], value: number) {
   selectedPerformance.value = { ...selectedPerformance.value, [key]: value }
+}
+
+// Character profile: her resting disposition and starting relationship. The ranges are those of `CharacterProfileSchema`.
+const selectedCharacter = ref<CharacterProfile>(characterProfileOf(undefined))
+const characterRestingFields = [
+  { key: 'valence', min: -1, max: 1 },
+  { key: 'energy', min: -1, max: 1 },
+  { key: 'tension', min: 0, max: 1 },
+] as const satisfies ReadonlyArray<{ key: keyof MoodAxes, min: number, max: number }>
+const characterRestingStep = 0.05
+const startingStages = ['stranger', 'friendly', 'close'] as const satisfies readonly StartingStage[]
+
+/** A profile inside the schema ranges. A slider cannot leave its range, but a value set through the model can. */
+function clampCharacterProfile(profile: CharacterProfile): CharacterProfile {
+  const resting = { ...profile.resting }
+  for (const field of characterRestingFields)
+    resting[field.key] = clamp(profile.resting[field.key], field.min, field.max)
+  return { resting, startingStage: profile.startingStage }
+}
+
+function setCharacterRestingField(key: keyof MoodAxes, value: number) {
+  selectedCharacter.value = clampCharacterProfile({
+    ...selectedCharacter.value,
+    resting: { ...selectedCharacter.value.resting, [key]: value },
+  })
+}
+
+const startingStageSelection = computed({
+  get: () => selectedCharacter.value.startingStage,
+  set: (startingStage: StartingStage) => {
+    selectedCharacter.value = { ...selectedCharacter.value, startingStage }
+  },
+})
+
+const startingStageOptions = computed(() => startingStages.map(stage => ({
+  value: stage,
+  label: t(`settings.pages.card.character_profile.stages.${stage}`),
+})))
+
+function formatRestingValue(value: number) {
+  return value.toFixed(2)
 }
 
 // NOTICE:
@@ -465,6 +508,7 @@ function initializeCard(): Card {
   selectedSpeechVoiceId.value = moduleSettings.speech.voice_id
   selectedDisplayModelId.value = moduleSettings.displayModelId ?? ''
   selectedPerformance.value = moduleSettings.performance ? structuredClone(toRaw(moduleSettings.performance)) : undefined
+  selectedCharacter.value = characterProfileOf(airiExt?.modules?.character)
 
   // NOTICE: keep legacy `extensions.airi.artistry` fallback so existing cards continue to load.
   const artistrySettings = airiExt?.modules?.artistry || airiExt?.artistry
@@ -496,6 +540,7 @@ const initialSnapshot = shallowRef<EditorSnapshot>()
 
 interface EditorSnapshot {
   performance?: PerformanceProfile
+  character: CharacterProfile
   card: Card
   consciousness: {
     provider: string
@@ -526,6 +571,7 @@ interface EditorSnapshot {
 function createEditorSnapshot(): EditorSnapshot {
   return structuredClone({
     performance: selectedPerformance.value ? JSON.parse(JSON.stringify(selectedPerformance.value)) as PerformanceProfile : undefined,
+    character: JSON.parse(JSON.stringify(selectedCharacter.value)) as CharacterProfile,
     // JSON 序列化会读取每个响应式字段，确保字段变更能触发未保存状态。
     card: JSON.parse(JSON.stringify(card.value)) as Card,
     consciousness: {
@@ -693,6 +739,8 @@ async function handleSave(activate: boolean) {
         autonomousThreshold: selectedArtistryAutonomousThreshold.value,
       },
     })
+    // The editor owns this module field; `applyAiriCardEditorModules` keeps every other extension field as it was.
+    cardWithModules.extensions.airi.modules.character = clampCharacterProfile(toRaw(selectedCharacter.value))
 
     let savedCardId: string
     if (isEditMode.value && props.cardId) {
@@ -944,6 +992,37 @@ function handleBack() {
                   <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
                     {{ t('settings.pages.card.performance.mapping_help') }}
                   </p>
+                </div>
+              </section>
+
+              <!-- Character profile -->
+              <section :class="moduleSectionClasses" data-card-editor-character-profile>
+                <div :class="moduleSectionHeaderClasses">
+                  <div i-solar:heart-bold-duotone :class="['text-base text-primary-500 dark:text-primary-400']" />
+                  {{ t('settings.pages.card.character_profile.title') }}
+                </div>
+                <div :class="['flex flex-col gap-5']">
+                  <p :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+                    {{ t('settings.pages.card.character_profile.help') }}
+                  </p>
+                  <FieldRange
+                    v-for="field in characterRestingFields"
+                    :key="field.key"
+                    :model-value="selectedCharacter.resting[field.key]"
+                    :min="field.min"
+                    :max="field.max"
+                    :step="characterRestingStep"
+                    :label="t(`settings.pages.card.character_profile.${field.key}`)"
+                    :description="t(`settings.pages.card.character_profile.${field.key}_help`)"
+                    :format-value="formatRestingValue"
+                    @update:model-value="setCharacterRestingField(field.key, $event)"
+                  />
+                  <FieldSelect
+                    v-model="startingStageSelection"
+                    :label="t('settings.pages.card.character_profile.starting_stage')"
+                    :description="t('settings.pages.card.character_profile.starting_stage_help')"
+                    :options="startingStageOptions"
+                  />
                 </div>
               </section>
 
