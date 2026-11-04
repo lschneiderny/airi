@@ -6,6 +6,7 @@ import en from '@proj-airi/i18n/locales/en'
 import { createPinia } from 'pinia'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from 'vitest-browser-vue'
+import { userEvent } from 'vitest/browser'
 import { nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
@@ -237,6 +238,21 @@ describe('mmd model settings motion', () => {
     expect(store.naturalTouch).toBe(false)
     expect(localStorage.getItem('settings/mmd/natural-touch')).toBe('false')
     await expect.element(hold).not.toBeInTheDocument()
+  })
+
+  it('writes the per-model emotion strength under Natural, in the shape Live2D uses', async () => {
+    const { screen, store } = await renderMotionSection()
+    await screen.getByRole('button', { name: t('settings.live2d.animation.natural-emotion-strength.title') }).click()
+    const happy = screen.getByRole('slider', { name: t('settings.live2d.expressions.emotions.happy') })
+    await expect.element(happy).toBeVisible()
+    happy.element().focus()
+    for (let step = 0; step < 10; step++)
+      await userEvent.keyboard('{ArrowRight}')
+    await vi.waitFor(() => expect(store.naturalEmotionStrength).toEqual({ [MODEL_ID]: { happy: 1.5 } }))
+    expect(JSON.parse(localStorage.getItem('settings/mmd/natural-emotion-strength') ?? 'null')).toEqual({ [MODEL_ID]: { happy: 1.5 } })
+
+    await screen.getByRole('button', { name: t('settings.live2d.animation.natural-emotion-strength.reset'), exact: true }).click()
+    await vi.waitFor(() => expect(store.naturalEmotionStrength).toEqual({}))
   })
 
   it('writes the stance slot for the selected stage model and shows None for a removed motion', async () => {

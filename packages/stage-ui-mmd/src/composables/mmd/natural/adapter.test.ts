@@ -16,7 +16,10 @@ const input = {
   cursor: { x: 4, y: 0 },
   chat: null,
   placement: null,
+  emotionStrengths: {},
 } as const
+
+const happy = { id: 'happy', emotion: 'happy', nominal: 0.7, intensity: 0.7, band: 'clear', escalation: false } as const
 
 function fixture() {
   const mmd = createModel()
@@ -45,6 +48,42 @@ function output(value: number): NaturalMotionFrame {
 }
 
 describe('mmd Natural adapter', () => {
+  it('performs no emotion whose per-model strength is 0', () => {
+    const { adapter } = fixture()
+    const silenced = { ...input, emotionStrengths: { happy: 0 } }
+    adapter.impulse(happy)
+    adapter.advance(2 / 120, silenced, 100)
+    adapter.advance(2 / 120, silenced, 100 + 2 / 120)
+    expect(adapter.mood.valence).toBe(0)
+    const { adapter: standard } = fixture()
+    standard.impulse(happy)
+    standard.advance(2 / 120, input, 100)
+    standard.advance(2 / 120, input, 100 + 2 / 120)
+    expect(standard.mood.valence).toBeGreaterThan(0)
+  })
+
+  it('adds a decided mood dose at the next frame', () => {
+    const { adapter } = fixture()
+    adapter.addMood({ id: 'touch-1-pet', valence: 0.4, arousal: 0, tension: 0 })
+    expect(adapter.mood.valence).toBe(0)
+    adapter.advance(2 / 120, input, 100)
+    adapter.advance(2 / 120, input, 100 + 2 / 120)
+    expect(adapter.mood.valence).toBeGreaterThan(0)
+  })
+
+  it('plays a cue gesture through the head pose it writes', () => {
+    const { adapter } = fixture()
+    const { adapter: control } = fixture()
+    adapter.gesture('nod', 2)
+    let largest = 0
+    for (let step = 1; step <= 60; step++) {
+      adapter.advance(2 / 120, input, 100 + step * 2 / 120)
+      control.advance(2 / 120, input, 100 + step * 2 / 120)
+      largest = Math.max(largest, Math.abs(adapter.bodyFrame.frame.pose.headY - control.bodyFrame.frame.pose.headY))
+    }
+    expect(largest).toBeGreaterThan(0.05)
+  })
+
   it('queues episodes until settings reach the next frame and exposes the resulting mood', () => {
     const { adapter } = fixture()
     adapter.setPerformanceSettings({ ...defaultExpressionPerformanceSettings, moodDynamics: { ...defaultExpressionPerformanceSettings.moodDynamics, clearGain: 0 } })

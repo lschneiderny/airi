@@ -1,5 +1,5 @@
+import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
 import type { TouchObservation } from '@proj-airi/stage-shared/situation'
-import type { Live2DTouchEvent } from '@proj-airi/stage-ui-live2d/composables/live2d/touch-gestures'
 
 import type { StagePerformanceConductor } from '../composables/performance/use-stage-performance-conductor'
 
@@ -13,9 +13,10 @@ import { situationTouchObservedEvent } from './situation/touch-bus'
 type TouchConductor = Pick<StagePerformanceConductor, 'touch'>
 
 /**
- * Routes the touches of a rendered Live2D stage. Lives in the stage window: `Stage.vue` hands each scene `touch` event
- * here together with its own conductor. Only the Natural driver classifies touches, so Universal and MAGIC never
- * reach this store.
+ * Routes the touches of a rendered stage. Lives in the stage window: `Stage.vue` hands each Live2D and MMD scene
+ * `touch` event here together with its own conductor, so a pet or poke reaches mood and the situation the same way on
+ * both renderers. Only the Natural driver classifies touches, so Universal, MAGIC, and MMD Classic never reach this
+ * store.
  *
  * Every event becomes a `touch` affect signal on that conductor, whose decider owns pacing and habituation and whose
  * mood doses reach the Natural scene. A finished pet and a poke are also forwarded to the leader's situation store as
@@ -27,7 +28,7 @@ type TouchConductor = Pick<StagePerformanceConductor, 'touch'>
  * often as touching one, and the leader receives one observation per touch from each of them.
  */
 export const useStageTouchStore = defineStore('stage-touch', () => {
-  function touch(event: Live2DTouchEvent, conductor: TouchConductor) {
+  function touch(event: NaturalTouchGesture, conductor: TouchConductor) {
     if (event.kind === 'pet-start') {
       conductor.touch({ touch: 'pet-start', region: 'head' })
       return

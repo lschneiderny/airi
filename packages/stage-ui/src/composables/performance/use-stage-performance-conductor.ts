@@ -99,13 +99,13 @@ export interface StagePerformanceScene {
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => void
   setMuted: (muted: boolean) => void
   /**
-   * Live2D Natural only: plays an ACT cue gesture. A scene that renders no cue gestures, such as a scenario sink or
-   * the MMD scene, omits it and the gesture is dropped.
+   * Live2D and MMD Natural: plays an ACT cue gesture. A scene that renders no cue gestures, such as a scenario sink,
+   * omits it and the gesture is dropped.
    */
   gesture?: (kind: CueGestureKind, count: number) => void
   /**
-   * Live2D Natural only: adds a decided mood dose, deduplicated by id. A scene without it, such as the MMD scene, drops
-   * the dose; the decider state still advances.
+   * Live2D and MMD Natural: adds a decided mood dose, deduplicated by id. A scene without it, such as a scenario sink,
+   * drops the dose; the decider state still advances.
    */
   addMood?: (dose: MoodDose) => void
   /**
@@ -175,9 +175,8 @@ const browserTimers: Required<StagePerformanceConductorOptions>['timers'] = {
  *   The decider context reports `heldEmotions` off there, so explicit expressions derive no
  *   reaction state and later slot decisions match the held-emotion-free behavior.
  * - Slot commands go to `scene.applySlots` for every driver.
- * - Touch mood doses go to `scene.addMood` and ACT cue gestures to `scene.gesture`, both under Live2D Natural only.
- *   Universal and MAGIC have no touch path and ignore the gesture field. MMD Natural currently ignores gestures, touch
- *   mood doses, and touch reactions (follow-up).
+ * - Touch mood doses go to `scene.addMood` and ACT cue gestures to `scene.gesture`, both under the Natural driver of
+ *   Live2D and MMD. Universal, MAGIC, and MMD Classic have no touch path and ignore the gesture field.
  * - The resting face baseline goes to `scene.setFaceBaseline` for every driver. Natural composes it only while it
  *   drives the face, so Universal and MAGIC hold it without writing.
  *
@@ -304,7 +303,8 @@ export class StagePerformanceConductor {
 
   /**
    * Doses mood from a classified touch. The decider owns pacing and habituation (see `touchAffect`); the doses reach
-   * `scene.addMood` under Live2D Natural only, and Universal, MAGIC, and MMD never receive one. A touch belongs to no
+   * `scene.addMood` under the Natural driver of Live2D and MMD, and Universal, MAGIC, and MMD Classic never receive one.
+   * A touch belongs to no
    * turn, so it is decided under the active card's profile.
    */
   touch(input: Omit<TouchAffectInput, 'at'>) {
@@ -318,7 +318,7 @@ export class StagePerformanceConductor {
   }
 
   /**
-   * Plays an ACT cue gesture under Live2D Natural; Universal, MAGIC, and MMD Natural ignore it (MMD is a follow-up).
+   * Plays an ACT cue gesture under the Natural driver of Live2D and MMD; Universal, MAGIC, and MMD Classic ignore it.
    * The decider is not involved.
    */
   gesture(kind: CueGestureKind, count: number) {

@@ -9,6 +9,7 @@ Channel ownership is defined in the [living parameter-ownership document](../liv
 
 The user can poke the Live2D character and pet its head with the desktop cursor, and the Natural motion driver reacts at once.
 Touch is a Natural reaction only. Universal and MAGIC ignore it, because the rigs this fork targets declare no hit areas and no tap motions, so a fallback would have nothing to play.
+Superseded in part by [2026-11-04-interaction-portability](2026-11-04-interaction-portability.md): touch is a reaction of every Natural renderer. MMD Natural emits the same `NaturalTouchGesture` events, and `Stage.vue` routes both scenes' touches to mood and the situation.
 The chat model does not react to touch yet. The scene emits a `touch` event so that a later change can send it through `spark:notify`.
 
 This ADR records the contracts that cross component and package boundaries:

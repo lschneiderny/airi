@@ -6,6 +6,7 @@ Status: accepted
 ## Context
 
 Natural's resting pose and peripheral glances did not account for where the Live2D model sits among the user's displays. Screen attention also used a fixed desk point, and Natural had no chat target or chat cues. The change is limited to Live2D Natural. It does not alter Universal, MAGIC, VRM, web, or pocket behavior.
+Superseded in part by [2026-10-30-3d-character-motion](2026-10-30-3d-character-motion.md) and [2026-11-04-interaction-portability](2026-11-04-interaction-portability.md): the placement and chat-attention layers moved to `packages/motion-driver-natural`, and MMD Natural feeds them the same inputs.
 
 The placement reference is the horizontal center of the union of the bottom-layer displays. Upper displays do not move that reference. The model's head position is measured in Electron DIP screen coordinates, with y increasing downward. A centered model has no inward bias.
 

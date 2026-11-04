@@ -10,9 +10,11 @@
 */
 
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
+import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
+import type { NaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
-import type { ExpressionPerformanceSettings, HoldCommand, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, SlotCommand } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { SkinnedMesh, Texture } from 'three'
@@ -140,6 +142,7 @@ const {
   naturalEnergy,
   naturalTouch,
   naturalTouchPetRequiresHold,
+  naturalEmotionStrength,
   position,
   scale,
   rotationY,
@@ -159,6 +162,8 @@ const {
   albedoGlow,
   renderScale,
 } = storeToRefs(mmdStore)
+/** A model without saved strengths performs every emotion at 1. */
+const defaultEmotionStrengths: NaturalEmotionStrengths = {}
 
 const canvasRef = ref<HTMLCanvasElement>()
 
@@ -689,6 +694,7 @@ async function loadModel(src: string) {
             : placement && dipScale > 0
               ? screenInwardness(placement.displays, placement.windowBounds.x + head.x * dipScale)
               : mmdScreenInwardness(rect, head.x),
+          emotionStrengths: naturalEmotionStrength.value[props.modelId ?? ''] ?? defaultEmotionStrengths,
         }, naturalSeconds)
         natural.applyPose(clean, true)
         // Channels must be prepared before bone-morph evaluation. Their surface
@@ -986,6 +992,8 @@ defineExpose({
   },
   applySlots: (commands: SlotCommand[], now: number) => expressions.applySlots(commands, now),
   applyHolds: (commands: HoldCommand[], now: number) => natural?.applyHolds(commands, now),
+  gesture: (kind: CueGestureKind, count: number) => natural?.gesture(kind, count),
+  addMood: (dose: MoodDose) => natural?.addMood(dose),
   setFaceBaseline: (baseline: FaceBaseline) => natural?.setFaceBaseline(baseline),
   onSpeech: (event: SpeechEvent, turnId: string, now: number) => {
     expressions.onSpeech(event, turnId, now)

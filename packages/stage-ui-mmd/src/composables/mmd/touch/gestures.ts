@@ -1,4 +1,4 @@
-import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
+import type { NaturalTouchGesture, NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
 
 // Gesture rules and thresholds follow `stage-ui-live2d/src/composables/live2d/touch-gestures.ts`
 // (Live2DTouchGestures); stage-ui-mmd must not import stage-ui-live2d.
@@ -18,10 +18,7 @@ export interface MMDTouchSample {
   head?: { x: number, y: number, halfHeight: number }
 }
 
-export type MMDTouchEvent
-  = | { kind: 'poke', region: NaturalTouchRegion, x: number, y: number }
-    | { kind: 'pet-start' }
-    | { kind: 'pet-end', durationMs: number }
+export type MMDTouchEvent = NaturalTouchGesture
 
 const pokeMaxMs = 400
 const pokeMaxTravel = 0.05

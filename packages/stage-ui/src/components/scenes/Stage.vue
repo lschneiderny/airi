@@ -2,11 +2,11 @@
 import type { SpeechClip, SpeechClipEnd } from '@proj-airi/core-agent'
 import type { Live2DLipSync, Live2DLipSyncOptions } from '@proj-airi/model-driver-lipsync'
 import type { Profile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
+import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
 import type { StreamingControlLook } from '@proj-airi/pipelines-audio'
 import type { CaptionChannelEvent, PresenceBubbleState } from '@proj-airi/stage-shared'
 import type { PerformanceCueAttention, PerformanceState, ResolverMemory } from '@proj-airi/stage-shared/performance-state'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
-import type { Live2DTouchEvent } from '@proj-airi/stage-ui-live2d/composables/live2d/touch-gestures'
 import type { TachieEmotion } from '@proj-airi/stage-ui-tachie'
 import type { VrmInteractionTarget } from '@proj-airi/stage-ui-three'
 
@@ -341,8 +341,8 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
 
 const stageTouch = useStageTouchStore()
 
-/** A pet or poke on the Live2D scene; the scene only classifies touches under the Natural driver. */
-function onTouch(event: Live2DTouchEvent) {
+/** A pet or poke on the Live2D or MMD scene; each scene classifies touches only under its Natural driver. */
+function onTouch(event: NaturalTouchGesture) {
   stageTouch.touch(event, performanceConductor)
 }
 
@@ -486,9 +486,8 @@ chatHookCleanups.push(streamingControl.onSignal(async (signal, context) => {
     const motion = stageModelRenderer.value === 'live2d' && act.motion ? act.motion : undefined
     if (motion)
       currentMotion.value = { group: motion }
-    // The conductor plays it under Live2D Natural only; Universal and MAGIC ignore the gesture field.
-    // MMD Natural currently ignores gestures, touch mood doses, and touch reactions (follow-up).
-    if (act.gesture && stageModelRenderer.value === 'live2d')
+    // The conductor plays it under the Natural driver of Live2D and MMD; Universal, MAGIC, and MMD Classic ignore it.
+    if (act.gesture)
       performanceConductor.gesture(act.gesture.kind, act.gesture.count)
     const emotion = act.emotion ? toStageEmotionPayload(act.emotion) : undefined
     if (emotion || act.expression) {
@@ -631,7 +630,7 @@ watch(() => emotionPulse.value?.seq, () => {
 // The lab's gesture buttons play through the conductor, which ignores them outside Natural.
 watch(() => gestureRequest.value?.seq, () => {
   const request = gestureRequest.value
-  if (request && stageModelRenderer.value === 'live2d')
+  if (request)
     performanceConductor.gesture(request.kind, request.count)
 })
 
@@ -1082,6 +1081,7 @@ defineExpose({
         :audio-context="audioContext"
         :current-audio-source="currentAudioSource"
         @error="reportStageRenderError"
+        @touch="onTouch"
       />
       <div
         v-if="stageModelRenderer === 'godot'"

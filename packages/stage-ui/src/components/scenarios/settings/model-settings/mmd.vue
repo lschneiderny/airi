@@ -13,6 +13,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import ExpressionPanel from './expressions/panel.vue'
+import NaturalEmotionStrength from './natural-emotion-strength.vue'
 
 import { useSettingsStageModel } from '../../../../stores/settings/stage-model'
 import { Container, PropertyColor, PropertyNumber } from '../../../data-pane'
@@ -66,6 +67,7 @@ const {
   naturalEnergy,
   naturalTouch,
   naturalTouchPetRequiresHold,
+  naturalEmotionStrength,
   stanceSlots,
   idleMotionName,
   availableMotions,
@@ -375,6 +377,11 @@ function removeMotion(id: string) {
       :label="t('settings.mmd.motion.natural-touch-pet-requires-hold.title')"
       :description="t('settings.mmd.motion.natural-touch-pet-requires-hold.description')"
       placement="right"
+    />
+    <NaturalEmotionStrength
+      v-if="motionDriver === 'natural'"
+      v-model="naturalEmotionStrength"
+      :model-id="stageModelSelected"
     />
     <p :class="['mt-2', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
       {{ t('settings.mmd.motion.stance.description') }}

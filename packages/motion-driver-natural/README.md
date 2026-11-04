@@ -12,7 +12,10 @@ const frame = motion.advance(0)
 ```
 
 The root exports the controller, frame contracts, rig traits, touch regions,
-emotion episodes, and speech onset detector. Individual layers are available
+emotion episodes, and speech onset detector. `./frame-types` also holds
+`NaturalTouchGesture`, the touch event every renderer's classifier emits, and
+`./emotion-strengths` holds the per-model emotion strength record and its
+storage parser, which every Natural renderer's settings use. Individual layers are available
 through source subpaths, such as `@proj-airi/motion-driver-natural/gaze`.
 Times are monotonic seconds; seeded inputs preserve deterministic output.
 
@@ -28,7 +31,9 @@ Two adapters consume the controller. `Live2DNaturalMotionAdapter` in
 in `@proj-airi/stage-ui-mmd` writes MMD bones and morph-runtime layers. Live2D
 keeps the trace recorder, rig profile, scorers and QA gates, because they
 read Live2D parameters. The architecture is recorded in
-[the 3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md).
+[the 3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md),
+and what each renderer performs is in
+[the interaction portability ADR](../../docs/ai/adr/2026-11-04-interaction-portability.md).
 
 ## Checks
 

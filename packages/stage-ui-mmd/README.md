@@ -175,7 +175,12 @@ Gesture rules mirror the Live2D classifier. Pokes and pets feed
 `NaturalMotion`, so the response is pre-physics head and body motion.
 `settings/mmd/natural-touch` (default on) and
 `settings/mmd/natural-touch-pet-requires-hold` (default off) match the Live2D
-settings, and the scene emits `touch` events like `Live2DScene`. Diagnostics
+settings, and the scene emits `touch` events like `Live2DScene`. `Stage.vue`
+routes them to the stage touch store, so a pet or poke doses mood, reaches the
+situation, and can start a reaction turn as on Live2D. The scene also plays ACT
+cue gestures (`gesture`) and takes mood doses (`addMood`), and
+`settings/mmd/natural-emotion-strength` holds per-model emotion strengths in the
+Live2D shape. Diagnostics
 publish `touch` with `lastRegion`, `hitBody`, `petActive`, `events`, and
 `headScreenPoint` in canvas client pixels.
 

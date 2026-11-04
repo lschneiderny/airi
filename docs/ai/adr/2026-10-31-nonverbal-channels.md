@@ -45,6 +45,7 @@ A dose is measured in band units, where one unit is the band's profile-resolved 
 
 Under Live2D Natural only, the stage conductor sends each dose to the scene's `addMood`, which adds it to `NaturalMood` with the same clamps as emotion episodes and ignores a repeated dose id. Universal and MAGIC never receive a dose, and the Natural `mood` switch still disables mood.
 MMD Natural currently ignores gestures, touch mood doses, and touch reactions; MMD support is a follow-up.
+Superseded by [2026-11-04-interaction-portability](2026-11-04-interaction-portability.md): MMD Natural receives mood doses through `addMood`, and its touches reach the same touch path.
 Touch creates no emotion episode. The Natural flinch, glance, and pet layer behave as before.
 A reaction turn about a touch must not dose mood again from its own cues. When a turn's trigger has the `touch` topic key, `Stage.vue` calls `markMoodless(turnId)` on its conductor, and every episode of that turn carries a mood gain of 0.
 
@@ -94,7 +95,7 @@ Under Natural, `NaturalCueGestures` plays each gesture as a time-shaped clip on 
 - A glance moves only the eyes aside for 0.6 s and back.
 
 A gesture that is still active is not restarted. A conflicting gesture waits in a one-slot queue for up to 1.5 s, and a newer conflicting gesture replaces it. While a cue gesture owns the head, emotion recipe clips do not start. The `heldEmotions` switch does not gate cue gestures.
-The cue gesture kind `CueGestureKind` is separate from the emotion clip kinds, whose `shake` is unchanged. Only Live2D Natural plays the field; Universal, MAGIC, and MMD Natural ignore it. The amplitudes are starting values that are tuned on screen. The [stage-ui-live2d README](../../../packages/stage-ui-live2d/README.md) lists the shapes.
+The cue gesture kind `CueGestureKind` is separate from the emotion clip kinds, whose `shake` is unchanged. Only Live2D Natural plays the field; Universal, MAGIC, and MMD Natural ignore it. Superseded in part by [2026-11-04-interaction-portability](2026-11-04-interaction-portability.md): every Natural renderer plays the field, MMD Natural included. The amplitudes are starting values that are tuned on screen. The [stage-ui-live2d README](../../../packages/stage-ui-live2d/README.md) lists the shapes.
 
 ### BREAK splits one reply into bubbles (D8)
 
@@ -156,7 +157,7 @@ The work ships on the branch `luke/feat/nonverbal-channels` as atomic commits th
 - DELAY does not pause the speech track.
 - The qa-tools aggregate report does not total the scorer version 3 fields.
 - The qa-tools 3-poke scenario evaluates the reaction policy itself, because the leader's evaluation is internal to the situation store.
-- MMD Natural ignores cue gestures, touch mood doses, and touch reactions, because the stage gates gestures on the Live2D renderer, `MMDScene` has no `gesture` or `addMood`, and `Stage.vue` routes touch only from `Live2DScene`. MMD touch events are not routed yet (follow-up).
+- MMD Natural ignores cue gestures, touch mood doses, and touch reactions, because the stage gates gestures on the Live2D renderer, `MMDScene` has no `gesture` or `addMood`, and `Stage.vue` routes touch only from `Live2DScene`. MMD touch events are not routed yet (follow-up). Resolved by [2026-11-04-interaction-portability](2026-11-04-interaction-portability.md).
 - Reaction odds, the refractory, and gesture amplitudes are starting values that are tuned from real use and the inspector.
 
 ## Validation

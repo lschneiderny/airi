@@ -1,8 +1,10 @@
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
+import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
+import type { NaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
 import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionVoice } from '@proj-airi/motion-driver-natural/natural-motion'
-import type { ExpressionPerformanceSettings, HoldCommand, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
+import type { ExpressionPerformanceSettings, HoldCommand, MoodDose, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { Camera, SkinnedMesh } from 'three'
@@ -31,6 +33,8 @@ export interface MMDNaturalInput {
   readonly cursor: { x: number, y: number } | null
   readonly chat: NaturalChatInput | null
   readonly placement: number | null
+  /** This model's per-emotion strengths; the same setting shape as Live2D's. */
+  readonly emotionStrengths: NaturalEmotionStrengths
 }
 
 /** Projects bind head geometry, not the already posed head (which would feed gaze back into itself). */
@@ -71,6 +75,8 @@ export class MMDNaturalAdapter {
   private placement: number | null = null
   private frame: NaturalMotionFrame
   private readonly pending: NaturalEpisode[] = []
+  private readonly pendingGestures: { kind: CueGestureKind, count: number }[] = []
+  private readonly pendingMoods: MoodDose[] = []
   private hold: { emotion: PerformanceEmotion, strength: number, lease: SlotLease } | null = null
   private readonly activeSpeech = new Map<string, { lastClipEndAt: number | null }>()
   private muted = false
@@ -92,11 +98,18 @@ export class MMDNaturalAdapter {
   advance(dt: number, input: MMDNaturalInput, now = this.time + dt): void {
     this.input = input
     this.time += dt
+    // Strengths first, as in the Live2D adapter: the setters below advance time and can start a queued episode,
+    // which must see this frame's per-model strengths.
+    this.natural.setEmotionStrengths(input.emotionStrengths)
     if (this.hold && now >= leaseReleaseAt(this.hold.lease, this.muted, this.settings.slots))
       this.hold = null
     this.natural.setHeldEmotion(this.hold, this.time)
     for (const episode of this.pending.splice(0))
       this.natural.impulse(episode, this.time)
+    for (const { kind, count } of this.pendingGestures.splice(0))
+      this.natural.gesture(kind, count, this.time)
+    for (const dose of this.pendingMoods.splice(0))
+      this.natural.addMood(dose, this.time)
     this.energy = input.energy
     this.natural.setVoice(input.voice)
     this.natural.setPerformance(input.performance, input.energy, this.time)
@@ -124,6 +137,16 @@ export class MMDNaturalAdapter {
 
   impulse(episode: NaturalEpisode): void {
     this.pending.push(episode)
+  }
+
+  /** An ACT cue gesture, played at the next frame like an episode. */
+  gesture(kind: CueGestureKind, count: number): void {
+    this.pendingGestures.push({ kind, count })
+  }
+
+  /** A decided mood dose, such as a touch; Natural ignores a repeated dose id. */
+  addMood(dose: MoodDose): void {
+    this.pendingMoods.push({ ...dose })
   }
 
   /** Sets the resting face target; Natural filters it on its grid and the face mapping reads the result. */

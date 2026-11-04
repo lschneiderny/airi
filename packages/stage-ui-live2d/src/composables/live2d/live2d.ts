@@ -1,12 +1,11 @@
-import type { PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
+import type { NaturalEmotionStrengthsByModel } from '@proj-airi/motion-driver-natural/emotion-strengths'
 
+import { parseNaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
 import { useLocalStorageManualReset, useVersionedLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
-import { clamp, isPlainObject } from 'es-toolkit'
+import { clamp } from 'es-toolkit'
 import { defineStore } from 'pinia'
 
 export type Live2DMotionDriver = 'magic' | 'natural' | 'universal'
-/** Natural strength per emotion, by stage model id. A missing model or emotion means 1. */
-export type Live2DNaturalEmotionStrengths = Record<string, Partial<Record<PerformanceEmotion, number>>>
 
 const live2dMotionDriver = useLocalStorageManualReset<Live2DMotionDriver>('settings/live2d/motion-driver', 'universal')
 const live2dEyeTracking = useLocalStorageManualReset<boolean>('settings/live2d/eye-tracking', true)
@@ -23,42 +22,14 @@ const live2dNaturalTouchPetRequiresHold = useLocalStorageManualReset<boolean>('s
  * watch it by identity.
  */
 const live2dNaturalTouchHeadScale = useLocalStorageManualReset<Record<string, number>>('settings/live2d/natural-touch-head-scale', {})
-const naturalEmotionStrengthMax = 2
-/**
- * localStorage is outside the app's control, so a stored entry that is not a
- * finite number is dropped on read, an out-of-range one is clamped, and a model
- * left without entries is dropped with it.
- */
-function readNaturalEmotionStrengths(raw: string): Live2DNaturalEmotionStrengths {
-  let stored: unknown
-  try {
-    stored = JSON.parse(raw)
-  }
-  catch {
-    return {}
-  }
-  if (!isPlainObject(stored))
-    return {}
-
-  const strengths: Live2DNaturalEmotionStrengths = {}
-  for (const [modelId, entry] of Object.entries(stored)) {
-    if (!isPlainObject(entry))
-      continue
-    const values = Object.entries(entry)
-      .flatMap(([emotion, value]) => typeof value === 'number' && Number.isFinite(value) ? [[emotion, clamp(value, 0, naturalEmotionStrengthMax)] as const] : [])
-    if (values.length > 0)
-      strengths[modelId] = Object.fromEntries(values)
-  }
-  return strengths
-}
 /**
  * How strongly Natural performs each emotion for a stage model, from 0 (that
  * emotion is not performed) to 2. Replace the record on write; consumers watch
  * it by identity.
  */
-const live2dNaturalEmotionStrength = useLocalStorageManualReset<Live2DNaturalEmotionStrengths>('settings/live2d/natural-emotion-strength', {}, {
+const live2dNaturalEmotionStrength = useLocalStorageManualReset<NaturalEmotionStrengthsByModel>('settings/live2d/natural-emotion-strength', {}, {
   serializer: {
-    read: readNaturalEmotionStrengths,
+    read: parseNaturalEmotionStrengths,
     write: value => JSON.stringify(value),
   },
 })

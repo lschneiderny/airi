@@ -1,3 +1,5 @@
+import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
+
 import type { Live2DModelCanvasRect } from './head-anchor'
 
 /** Where a pointer sample lands on the model; `null` is outside the measured model. */
@@ -21,10 +23,7 @@ export interface Live2DTouchSample {
   head?: { x: number, y: number, halfHeight: number }
 }
 
-export type Live2DTouchEvent
-  = | { kind: 'poke', region: Live2DTouchRegion, x: number, y: number }
-    | { kind: 'pet-start' }
-    | { kind: 'pet-end', durationMs: number }
+export type Live2DTouchEvent = NaturalTouchGesture
 
 /** What the classifier measures now; the touch-region debug overlay shows it beside {@link live2DPetThresholds}. */
 export interface Live2DTouchGestureInspection {

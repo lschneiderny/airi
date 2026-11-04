@@ -1,9 +1,12 @@
+import type { NaturalEmotionStrengthsByModel } from '@proj-airi/motion-driver-natural/emotion-strengths'
+
 import type { MMDStanceSlots } from '../composables/mmd/stance'
 import type { Emotion } from '../constants/emotions'
 import type { MorphSlot } from '../constants/morphs'
 
 import localforage from 'localforage'
 
+import { parseNaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { useBroadcastChannel } from '@vueuse/core'
 import { clamp } from 'es-toolkit'
@@ -142,6 +145,16 @@ export const useMMD = defineStore('mmd', () => {
   const naturalTouch = useLocalStorageManualReset<boolean>('settings/mmd/natural-touch', true)
   /** Count only strokes made with the primary button held as pets, so passing the cursor over the head never pets it. */
   const naturalTouchPetRequiresHold = useLocalStorageManualReset<boolean>('settings/mmd/natural-touch-pet-requires-hold', false)
+  /**
+   * How strongly Natural performs each emotion, by stage model id, in the same shape and range as the Live2D setting.
+   * Replace the record on write; consumers watch it by identity.
+   */
+  const naturalEmotionStrength = useLocalStorageManualReset<NaturalEmotionStrengthsByModel>('settings/mmd/natural-emotion-strength', {}, {
+    serializer: {
+      read: parseNaturalEmotionStrengths,
+      write: value => JSON.stringify(value),
+    },
+  })
 
   // === Scene: camera ===
   /** Vertical field of view in degrees. */
@@ -299,6 +312,7 @@ export const useMMD = defineStore('mmd', () => {
     naturalEnergy.reset()
     naturalTouch.reset()
     naturalTouchPetRequiresHold.reset()
+    naturalEmotionStrength.reset()
     cameraFov.reset()
     ambientColor.reset()
     ambientIntensity.reset()
@@ -333,6 +347,7 @@ export const useMMD = defineStore('mmd', () => {
     naturalEnergy,
     naturalTouch,
     naturalTouchPetRequiresHold,
+    naturalEmotionStrength,
 
     cameraFov,
     ambientColor,

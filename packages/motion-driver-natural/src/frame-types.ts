@@ -9,6 +9,15 @@ import type { RandomStream } from './random'
 
 export type NaturalTouchRegion = 'head' | 'body'
 
+/**
+ * A touch gesture as every renderer's touch classifier reports it. A poke point is region-relative, X right and Y down.
+ * The stage routes these to the conductor and the situation, so a pet or poke means the same on every renderer.
+ */
+export type NaturalTouchGesture
+  = | { kind: 'poke', region: NaturalTouchRegion, x: number, y: number }
+    | { kind: 'pet-start' }
+    | { kind: 'pet-end', durationMs: number }
+
 export interface NaturalRigTraits {
   bodyFromHeadPhysics: { x: boolean, y: boolean, z: boolean }
 }

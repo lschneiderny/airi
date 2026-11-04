@@ -767,6 +767,55 @@ describe('stage performance routing on MMD', () => {
     return findInstance(host?.subTree, MMDScene)!
   }
 
+  /** Records the gestures and mood doses the stage hands the MMD scene, through the exposed object it calls. */
+  function recordMMDScene(scene: ComponentInternalInstance) {
+    const exposed = scene.exposed as {
+      gesture: NonNullable<StagePerformanceScene['gesture']>
+      addMood: NonNullable<StagePerformanceScene['addMood']>
+    }
+    const forwardGesture = exposed.gesture
+    const gestures = shallowRef<Array<Parameters<typeof forwardGesture>>>([])
+    exposed.gesture = (kind, count) => {
+      gestures.value = [...gestures.value, [kind, count]]
+      forwardGesture(kind, count)
+    }
+    const forwardMood = exposed.addMood
+    const moods = shallowRef<MoodDose[]>([])
+    exposed.addMood = (dose) => {
+      moods.value = [...moods.value, dose]
+      forwardMood(dose)
+    }
+    return { gestures, moods }
+  }
+
+  it('plays a gesture-only ACT cue on the MMD Natural scene', async () => {
+    const { gestures } = recordMMDScene(await renderMMD())
+
+    const played = until(() => gestures.value.length, count => count === 1)
+    await useLlmStreamingControlStore().dispatchWith('<|ACT {"gesture":{"kind":"shake","count":3}}|>')
+    await played
+
+    expect(gestures.value).toEqual([['shake', 3]])
+  })
+
+  it('doses mood from an MMD scene touch and forwards the poke to the situation leader', async () => {
+    const scene = await renderMMD()
+    const { moods } = recordMMDScene(scene)
+    const observations = shallowRef<TouchObservation[]>([])
+    onTestFinished(getSpeechBusContext().on(situationTouchObservedEvent, ({ body }) => {
+      if (body)
+        observations.value = [...observations.value, body]
+    }))
+
+    const dosed = until(() => moods.value.length, count => count === 1)
+    const forwarded = until(() => observations.value.length, count => count === 1)
+    scene.emit('touch', { kind: 'poke', region: 'head', x: 0, y: 0 })
+    await Promise.all([dosed, forwarded])
+
+    expect(moods.value).toEqual([expect.objectContaining({ id: 'touch-1-poke' })])
+    expect(observations.value).toEqual([{ kind: 'touch', gesture: 'poke', region: 'head', atMs: expect.any(Number) }])
+  })
+
   it('dispatches an ACT happy expression and Natural episode through the MMD scene', async () => {
     const scene = await renderMMD()
     const expressions = useMMDExpressionStore()
