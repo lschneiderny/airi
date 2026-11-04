@@ -78,6 +78,7 @@ import { MMDBodyToolPort } from '../../composables/mmd/body-tool-port'
 import { resolveBodyPoints, resolveBodyTarget } from '../../composables/mmd/body/attention'
 import { ARM_SWING_REACH, resolveFrameBounds } from '../../composables/mmd/camera-bounds'
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
+import { MotionRegistrations } from '../../composables/mmd/motion-registrations'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
 import { fnv1a32 } from '../../composables/mmd/natural/seed'
 import { createOverlayLabel } from '../../composables/mmd/overlay-label'
@@ -191,7 +192,6 @@ let playedActionSeq: number | null = null
 let layerClip: string | null = null
 const requestedKinds = new Map<number, BodyActionKind>()
 const loadedClips = new Map<string, { clip: AnimationClip, mask: ClipBoneMask }>()
-const registeredRevisions = new Map<string, number>()
 const actionDrops = { unknown: 0, notExposed: 0, notGesture: 0, superseded: 0 }
 const ACT_DROP_COUNTER: Record<ActActionDropReason, keyof typeof actionDrops> = {
   'unknown': 'unknown',
@@ -272,7 +272,7 @@ let overlays: MMDOverlays | undefined
 // Natural's clock for the current frame; the director clock offset never reaches it.
 let naturalSeconds = performance.now() / 1000
 // Motion names already bound to the current model runtime.
-const registeredMotions = new Set<string>()
+const registeredMotions = new MotionRegistrations()
 let rafHandle = 0
 let previousFrameTime: number | undefined
 let lastDiagnosticsTime = 0
@@ -814,7 +814,6 @@ function disposeModel() {
   }
   resolved?.dispose()
   registeredMotions.clear()
-  registeredRevisions.clear()
   loadedClips.clear()
   requestedKinds.clear()
   pendingAction = null
@@ -860,9 +859,12 @@ async function syncMotions() {
   const activeRig = rig
   if (!activeRig)
     return
+  // A removed motion must not keep its binding: a later import under the same name is a different file.
+  for (const name of registeredMotions.prune(availableMotions.value.map(descriptor => descriptor.name)))
+    loadedClips.delete(name)
   for (const descriptor of availableMotions.value) {
     const revision = descriptor.revision ?? 0
-    if (registeredMotions.has(descriptor.name) && registeredRevisions.get(descriptor.name) === revision)
+    if (registeredMotions.isCurrent(descriptor.name, revision))
       continue
     try {
       // The VMD file lives in IndexedDB (shared across windows); build a
@@ -889,8 +891,7 @@ async function syncMotions() {
           animatedBones: mask.animatedBones,
         })
         registerBodyClip(descriptor.name)
-        registeredMotions.add(descriptor.name)
-        registeredRevisions.set(descriptor.name, revision)
+        registeredMotions.mark(descriptor.name, revision)
         if (clip.tracks.length === 0) {
           console.warn(
             `[mmd] motion "${descriptor.name}" loaded but has 0 tracks matching this model. `
