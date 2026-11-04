@@ -11,6 +11,7 @@ import { useLive2DMotionMagicSettings } from '../features/motions/live2d'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 import { useSituationSettings } from '../features/situation/settings'
 import { clearSherpawModelAssets } from '../libs/providers/providers/sherpaw/model-assets'
+import { useCharacterStateStore } from '../stores/character-state'
 import { useChatStore } from '../stores/chat'
 import { useChatSessionStore } from '../stores/chat/session-store'
 import { useDisplayModelsStore } from '../stores/display-models'
@@ -73,6 +74,7 @@ export function useDataMaintenance() {
   const mcpStore = useMcpStore()
   const onboardingStore = useOnboardingStore()
   const airiCardStore = useAiriCardStore()
+  const characterStateStore = useCharacterStateStore()
 
   async function deleteAllModels() {
     await displayModelsStore.resetDisplayModels()
@@ -94,6 +96,8 @@ export function useDataMaintenance() {
       () => speechStore.resetState(),
       // Memories hold what the character learned about the owner.
       () => memoryStore.resetState(),
+      // Her mood, temperament, and relationship with the owner, for every card.
+      () => characterStateStore.resetState(),
       () => consciousnessStore.resetState(),
       () => consciousnessSettingsStore.resetState(),
       () => twitterStore.resetState(),
