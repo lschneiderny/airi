@@ -343,6 +343,8 @@ const { conductor: performanceConductor, settings: performanceSettings } = useSt
   driver: () => performanceRenderer.value.driver,
   expressionBackend: () => performanceRenderer.value.expressionBackend,
   bodyPort: () => stageModelRenderer.value === 'mmd' ? mmdSceneRef.value?.bodyPort ?? undefined : undefined,
+  actionPort: () => stageModelRenderer.value === 'mmd' ? mmdSceneRef.value?.actionPort : undefined,
+  listActions: () => stageModelRenderer.value === 'mmd' ? mmdSceneRef.value?.listActions() ?? [] : [],
   playMotion: (group) => { currentMotion.value = { group } },
   mood: () => stageModelRenderer.value === 'mmd' ? mmdSceneRef.value?.getMood() ?? null : live2dSceneRef.value?.getMood() ?? null,
   profile: performanceProfileOf,
