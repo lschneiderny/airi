@@ -19,15 +19,16 @@ Every character-turn system prompt is built by `composePrompt` in `@proj-airi/st
 | 2 | `card` (character prompt) | prefix | warn | 8000 |
 | 3 | `register` (conversation register section) | prefix | fixed | - |
 | 4 | `contract` (stage contract) | prefix | fixed | - |
-| 5 | `memory` (memory index) | tail | drop-oldest | 40 entries, 6000 |
-| 6 | `toolset` | tail | warn | 2000 |
-| 7 | `account` | tail | warn | 2000 |
-| 8 | `voice` | tail | truncate | 1000 |
-| 9 | `control` | tail | truncate | 1500 |
-| 10 | `unprompted` | tail | fixed | - |
-| 11 | `plugin` | tail | truncate | 2000 |
-| 12 | `stickers` | tail | drop-oldest | 12 entries |
-| 13 | `spark` | tail | fixed | - |
+| 5 | `actions` (exposed clip instruction) | tail | truncate | 1500 |
+| 6 | `memory` (memory index) | tail | drop-oldest | 40 entries, 6000 |
+| 7 | `toolset` | tail | warn | 2000 |
+| 8 | `account` | tail | warn | 2000 |
+| 9 | `voice` | tail | truncate | 1000 |
+| 10 | `control` | tail | truncate | 1500 |
+| 11 | `unprompted` | tail | fixed | - |
+| 12 | `plugin` | tail | truncate | 2000 |
+| 13 | `stickers` | tail | drop-oldest | 12 entries |
+| 14 | `spark` | tail | fixed | - |
 
 The composer orders segments by this table, not by input order. Non-empty segments are joined by a blank line (`\n\n`). The only exception is `format`, which ends with its own newline and is followed directly by the card. This keeps the prefix byte-identical to `composeSystemPrompt` before the composer existed, so the provider's prompt cache and the contract fingerprint are unaffected. The contract still renders last in the prefix, as the [reply-shape ADR](2026-10-31-reply-shape-contract.md) requires. `composeSystemPrompt` is now `composePrompt([format, card, contract]).prefix`. The `register` segment carries the register section of the conversation settings. It belongs to the character prompt, so it renders after the card and before the contract, and the contract text never depends on the register. With a register section, the prefix equals `composeSystemPrompt` of the card and the section joined by a blank line, which is the stored session system message.
 
@@ -65,6 +66,12 @@ core-agent holds no stage prompt text after this change. The exception is `cue-c
 `packages/stage-shared/src/stage-contract/compose.test.ts` checks segment order, the join, each overflow policy, the report fields, the thrown errors, and that the prefix keeps the SHA-256 of the pre-composer `composeSystemPrompt` output for six card and contract fixtures.
 
 ## Amendments
+
+### 2026-11-04: Exposed clip instruction segment
+
+- **`actions`.** The instruction for the exposed MMD clips (the gesture labels for the ACT `action` field and the `perform_action` labels) is the `actions` tail segment, which `useStageActionsPrompt` renders from the `base.prompt.actions-gestures` and `base.prompt.actions-actions` keys. It is empty while no clip is exposed, so the prompt then keeps its bytes.
+- **Why not the situation block.** The situation block keeps only a prefix of its bullets within 6 lines and 500 chars, so on Windows the activity, event, and context bullets routinely pushed a clip bullet out of the request. A system-prompt segment has its own budget and reaches every character turn, chat and Spark Notify alike.
+- **Placement.** It leads the tail because the exposed clips change only when the user curates them, so the cacheable span before the per-turn segments stays as long as possible. The `truncate` cap of 1500 chars holds the two sentences and about 80 labels; past it the report flags `overBudget`.
 
 ### 2026-11-01: Spark Notify and ingest
 

@@ -1,9 +1,10 @@
 /**
  * Segment order of a character turn's system prompt. The prefix tier (`format`, `card`, `register`, `contract`) changes
  * only when the card, the conversation register, or the contract changes, so it stays first and cacheable. The register
- * section belongs to the character prompt, so the contract text never depends on it. The tail tier follows in this order.
+ * section belongs to the character prompt, so the contract text never depends on it. The tail tier follows in this order;
+ * `actions` leads it because the exposed clips change only when the user curates them.
  */
-export const PROMPT_SEGMENT_ORDER = ['format', 'card', 'register', 'contract', 'memory', 'toolset', 'account', 'voice', 'control', 'unprompted', 'plugin', 'stickers', 'spark'] as const
+export const PROMPT_SEGMENT_ORDER = ['format', 'card', 'register', 'contract', 'actions', 'memory', 'toolset', 'account', 'voice', 'control', 'unprompted', 'plugin', 'stickers', 'spark'] as const
 
 export type PromptSegmentId = typeof PROMPT_SEGMENT_ORDER[number]
 export type PromptTier = 'prefix' | 'tail'
@@ -28,6 +29,8 @@ export const PROMPT_SEGMENT_BUDGETS = {
   card: { tier: 'prefix', policy: 'warn', maxChars: 8000 },
   register: { tier: 'prefix', policy: 'fixed' },
   contract: { tier: 'prefix', policy: 'fixed' },
+  // The instruction for the exposed clips. Its label lists grow with the curation, so its size is capped.
+  actions: { tier: 'tail', policy: 'truncate', maxChars: 1500 },
   memory: { tier: 'tail', policy: 'drop-oldest', maxEntries: 40, maxChars: 6000 },
   toolset: { tier: 'tail', policy: 'warn', maxChars: 2000 },
   account: { tier: 'tail', policy: 'warn', maxChars: 2000 },
