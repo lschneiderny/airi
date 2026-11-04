@@ -36,7 +36,17 @@ pnpm qa:motion validate-scorer --level t1
 pnpm qa:report <runDir>
 ```
 
-For the MMD desktop stage, `pnpm qa:stage measure` records window/desktop frame-budget pairs and `pnpm qa:stage gate <json>...` judges `stage-walk-skate`, `stage-arm-penetration`, and `stage-frame-budget`. A measurement moves the real OS cursor and needs a quiet, undisturbed desktop. See the Stage gates section of the qa-tools README.
+For the MMD desktop stage, `pnpm qa:stage measure` records window/desktop frame-budget pairs and `pnpm qa:stage gate <json>...` judges `stage-walk-skate`, `stage-arm-penetration`, `stage-frame-budget`, `stage-gesture-walk`, and `stage-action-preempt`. A measurement moves the real OS cursor and needs a quiet, undisturbed desktop. See the Stage gates section of the qa-tools README.
+
+The clip gates use two scenarios against an app attached with `--port`, with the clip imported for the mounted model: `pnpm qa:stage measure --mode desktop --port <cdp port> --scenario gesture-walk --clip <upper clip> --out <json>` loops an upper clip over a walk (at least 10 s of walking with the clip, whatever `--seconds` says), and `--scenario action-preempt --clip <full clip>` plays a full-body clip while a goal is pending. The committed records are `packages/qa-tools/fixtures/stage/task-16-gesture-walk-chisa.json` and `task-16-action-preempt-chisa.json`. Model-eval scores clip actions with `pnpm qa:model score <transcripts.jsonl> --exposed-actions <label:kind,...>`.
+
+Clip QA kit for a real-surface MMD run:
+
+- A fresh profile has no stance slots. To test sitting, import a sit clip and assign it to the model's `sit` slot first; otherwise the director reports `no-sit-slot`.
+- Clips start unexposed and unlabeled. Label and expose them (settings table, or `setCuration` in the `mmd` store) before testing ACT `action` or `perform_action`.
+- A QA override of the desktop activity sensor must read idle without away: use an `idleSeconds` value such as 60. A value under 10 s counts as active input (`watching`), so the director never sits; a value over 300 s reads away, and the director refuses every action as `asleep`.
+- CDP input (`Input.dispatchMouseEvent`) does not reset the OS idle timer. On an untouched host, keep the activity sensor fresh with the override, or long runs drift into away.
+- Chat-window probes must use the real send path: type into the `#/chat-floating` composer or call `useChatStore().send` in that renderer. Never use `chat.ingest` or a tool's `execute` there. Those are renderer-local; the composer's `send` routes the turn to the synced leader (the stage window on the desktop stage), which owns the tool executors and the ACT listener. A probe that skips the leader reports a false failure.
 
 The `builtin:t3-touch` scenario pets, pokes, and triggers the touch blush with the real OS pointer. `builtin:t3-touch-pass` verifies that a passing cursor does not start a pet. The T1 touch suite covers deterministic touch behavior. T3 touch runs move the real OS cursor and need an undisturbed desktop; the runner refuses paths outside the virtual screen and stops when the reported head is implausible.
 
