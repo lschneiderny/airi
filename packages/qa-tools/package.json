@@ -13,6 +13,7 @@
   "scripts": {
     "doctor": "tsx bin/doctor.ts",
     "evidence": "tsx bin/evidence.ts",
+    "character": "tsx src/character-state/main.ts",
     "model": "tsx bin/model.ts",
     "motion": "tsx bin/motion.ts",
     "report": "tsx bin/report.ts",
