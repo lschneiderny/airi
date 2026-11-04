@@ -2791,6 +2791,47 @@ mmd:
       Import VMD motion files, set one as the looping idle, or play any as a
       one-shot gesture. Map emotions to motions to play gestures alongside
       facial expressions.
+    clips:
+      title: Clip library
+      description: >-
+        Each imported clip gets a kind from the bones it moves and its length.
+        Give a clip a short label and switch on "AI may use" to let the AI
+        play it by that label.
+      headers:
+        name: Clip
+        derived: Derived
+        label: Label
+        kind: Kind
+        loop: Loop
+        ai-may-use: AI may use
+      kinds:
+        auto: Auto
+        gesture: Gesture
+        action: Action
+        dance: Dance
+        stance: Stance
+        unusable: Unusable
+      layers:
+        upper: Upper body
+        full: Full body
+      badges:
+        downgraded: Downgraded
+        downgraded-hint: Plays on the upper body only, because its kind is set to gesture.
+      notes:
+        no-animated-bones: No animated bones
+        bad-duration: No duration
+        stance-name: Named like a stance
+        loop-name: Named like a loop
+        non-ascii-name: No Latin letters in the name
+      pending: Load the model to derive this clip.
+      label-placeholder: wave
+      errors:
+        invalid: Use 1 to 32 lowercase letters, digits or hyphens, starting with a letter or digit.
+        duplicate: Another clip already uses this label.
+      hints:
+        loop-dance: Dances play once.
+        needs-label: Give the clip a label first.
+        kind-not-usable: Stances and unusable clips cannot be exposed.
   expressions:
     title: Expressions
     description: >-

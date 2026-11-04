@@ -183,12 +183,6 @@ describe('mmd clip curation store', () => {
     expect(sender.performRequest).toEqual({ name: null, loop: false, source: 'lab', nonce: 2 })
   })
 
-  it('keeps the kept one-shot API working', () => {
-    const store = freshStore()
-    store.playOneShotAction('wave', true)
-    expect(store.oneShotAction).toEqual({ name: 'wave', loop: true, nonce: 1 })
-  })
-
   it('records what a corrupted clip-curation value does', () => {
     storageMap.set('settings/mmd/clip-curation', '{not json')
     const reported = vi.spyOn(console, 'error').mockImplementation(() => {})

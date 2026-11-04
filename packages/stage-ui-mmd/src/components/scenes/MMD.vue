@@ -227,7 +227,6 @@ const {
   idleMotionName,
   availableMotions,
   stanceSlots,
-  oneShotAction,
   performRequest,
   clipCuration,
   availableClipMeta,
@@ -1410,10 +1409,6 @@ watch(morphOverrides, (overrides) => {
 
 // One-shot motion requests from the lab and the settings window go through the director like every other clip.
 watch(performRequest, (request) => {
-  if (request)
-    requestPerform(request.name, { loop: request.loop || undefined, source: 'debug' })
-})
-watch(oneShotAction, (request) => {
   if (request)
     requestPerform(request.name, { loop: request.loop || undefined, source: 'debug' })
 })
