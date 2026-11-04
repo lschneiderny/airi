@@ -1,3 +1,5 @@
+import type { ClosenessStage, Unlock } from './types'
+
 const MINUTE_MS = 60_000
 const HOUR_MS = 60 * MINUTE_MS
 const DAY_MS = 24 * HOUR_MS
@@ -166,7 +168,7 @@ export const CHARACTER_STATE_SETTINGS = deepFreeze({
       friendly: 'you are friendly and at ease with him',
       close: 'you are close and comfortable with him',
       intimate: 'you are very close; you can be openly affectionate and say what you feel',
-    },
+    } satisfies Record<ClosenessStage, string>,
     /** One sentence per unlock, rendered in this order after the stage sentence whenever `unlocksOf` reports it. */
     unlockSentences: {
       teasing: 'you can tease him a little',
@@ -174,7 +176,7 @@ export const CHARACTER_STATE_SETTINGS = deepFreeze({
       initiative: 'you may start conversations and suggest things yourself',
       callbacks: 'you may bring up things you shared before',
       vulnerability: 'you can admit when something hurts',
-    },
+    } satisfies Record<Unlock, string>,
   },
   /** A8: how mood scales the reach-out urge. */
   urge: {
