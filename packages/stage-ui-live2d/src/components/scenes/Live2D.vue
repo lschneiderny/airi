@@ -94,7 +94,7 @@ const {
   live2dForceIdleEyeAnimation,
   live2dAutoBlinkEnabled,
   live2dForceAutoBlinkEnabled,
-  live2dExpressionEnabled,
+  live2dExpressionActive,
   live2dMaxFps,
   live2dRenderScale,
   live2dShadowEnabled,
@@ -225,7 +225,7 @@ defineExpose({
         :screen-placement="props.screenPlacement"
         :chat-target="props.chatTarget"
         :chat-activity="props.chatActivity"
-        :live2d-expression-enabled="live2dExpressionEnabled"
+        :live2d-expression-enabled="live2dExpressionActive"
         :live2d-shadow-enabled="live2dShadowEnabled"
         :screen-ambient-light-active="screenAmbientLightEnabled && screenAmbientLightActive"
         :screen-ambient-light-filter-options="screenAmbientLightFilterOptions"

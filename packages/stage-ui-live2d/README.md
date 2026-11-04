@@ -17,7 +17,7 @@ ZIP imports and OPFS-restored archives discover every `.exp3.json`, including fi
 Each expression keeps its own activation and composes in activation order with its file's blend modes and fade times. Missing or invalid fade times use one second.
 Save expression defaults stores the manually active expressions, including combos, as the model's rest set. Reset all expressions returns to that set.
 Rest sets use `expression-rest:${modelId}` with `{ version: 1, active: string[] }`. Previous parameter defaults are not loaded; save the desired defaults once again.
-The Expression system setting, stored as `settings/live2d/expression-enabled`, turns this runtime on. A fresh profile starts with the Expression system on. While it is off, the model keeps the SDK expression manager and eye blink, the catalog stays empty, and no expression fires automatically or reaches the LLM.
+The Expression system setting, stored as `settings/live2d/expression-enabled`, turns this runtime on for the Universal and MAGIC drivers. The Natural driver always runs it, because its eyelid and expression ownership assume it, so the settings page hides the toggle under Natural and `live2dExpressionActive` reports the state in effect. A fresh profile starts with the Expression system on. While it is off under Universal or MAGIC, the model keeps the SDK expression manager and eye blink, the catalog stays empty, and no expression fires automatically or reaches the LLM.
 
 The [expression performance ADR](../../docs/ai/adr/2026-10-18-expression-performance.md) records the contracts below. The [expression combos and reactions ADR](../../docs/ai/adr/2026-10-24-expression-combos-and-reactions.md) records combos, areas, duplicates, masks, and the claims model, and it supersedes the passages that these sections replace.
 The [Natural emotion revamp ADR](../../docs/ai/adr/2026-10-19-natural-emotion-revamp.md) records held emotions, gestures, and the per-model emotion strength.
@@ -111,6 +111,7 @@ Natural never writes these channels:
 
 Head, body, and eye posture fades out while manual or spring motion control is active or an exclusive owner holds the model.
 On a channel that an explicit clip animates, posture keeps only 10% of its offset.
+Under the Natural driver, Natural owns the posture channels: at full posture weight the adapter writes its head and body value outright, replacing what motions, expressions, or beat sync left on that channel this frame. Face channels compose instead. This is the supported precedence, not a gap; an expression or beat that needs to move the head must do it through Natural (a gesture, hold, or impulse), not by writing the parameter.
 Eyelids that an expression closes stay closed, and a blink closes open eyelids fully.
 While Natural is selected, the SDK blink plugin is off and Natural's own blink scheduler replaces it.
 

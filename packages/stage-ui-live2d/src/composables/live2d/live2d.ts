@@ -4,6 +4,7 @@ import { parseNaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/e
 import { useLocalStorageManualReset, useVersionedLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { clamp } from 'es-toolkit'
 import { defineStore } from 'pinia'
+import { computed } from 'vue'
 
 export type Live2DMotionDriver = 'magic' | 'natural' | 'universal'
 
@@ -101,7 +102,14 @@ function resetState() {
 }
 
 export const useSettingsLive2d = defineStore('settings-live2d', () => {
+  /**
+   * Whether the expression system runs. The Natural driver always runs it, because its eyelid and
+   * expression ownership assume it; `live2dExpressionEnabled` applies only to Universal and MAGIC.
+   */
+  const live2dExpressionActive = computed(() => live2dExpressionEnabled.value || live2dMotionDriver.value === 'natural')
+
   return {
+    live2dExpressionActive,
     live2dMotionDriver,
     live2dEyeTracking,
     live2dNaturalCursorAttention,

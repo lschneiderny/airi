@@ -56,6 +56,7 @@ const {
   live2dAutoBlinkEnabled,
   live2dForceAutoBlinkEnabled,
   live2dExpressionEnabled,
+  live2dExpressionActive,
   live2dShadowEnabled,
   live2dMaxFps,
   live2dRenderScale,
@@ -862,7 +863,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
     size="sm"
     :expand="false"
   >
-    <div flex items-center justify-between>
+    <div v-if="live2dMotionDriver !== 'natural'" flex items-center justify-between>
       <span text-sm text-neutral-600 dark:text-neutral-400>{{ t('settings.live2d.expressions.override-toggle') }}</span>
       <Checkbox v-model="live2dExpressionEnabled" />
     </div>
@@ -870,7 +871,7 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       v-model:search="expressionSearch"
       v-model:show-all="showAllExpressions"
       :snapshot="expressionSettingsSnapshot"
-      :enabled="live2dExpressionEnabled"
+      :enabled="live2dExpressionActive"
       @command="applyExpressionSettingsCommand"
       @custom-command="applyExpressionSettingsCommand"
     >

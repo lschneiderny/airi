@@ -97,7 +97,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       modelLoaded: modelId !== null && diagnostics.loadedModelId === modelId,
       driver: live2d.live2dMotionDriver,
       cursorAttention: live2d.live2dNaturalCursorAttention,
-      expressionEnabled: live2d.live2dExpressionEnabled,
+      expressionEnabled: live2d.live2dExpressionActive,
       heldEmotions: performanceSettings.document.heldEmotions,
       naturalActive: snapshot?.naturalActive ?? false,
       hold: snapshot?.hold ? { emotion: snapshot.hold.emotion, strength: snapshot.hold.strength } : null,

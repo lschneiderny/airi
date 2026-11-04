@@ -24,6 +24,23 @@ describe('useSettingsLive2d', () => {
     setActivePinia(createPinia())
   })
 
+  it('always runs the expression system under Natural, and follows the setting under Universal and MAGIC', async () => {
+    const { useSettingsLive2d } = await import('./live2d')
+    const settings = useSettingsLive2d()
+
+    settings.live2dExpressionEnabled = false
+    settings.live2dMotionDriver = 'universal'
+    expect(settings.live2dExpressionActive).toBe(false)
+    settings.live2dMotionDriver = 'magic'
+    expect(settings.live2dExpressionActive).toBe(false)
+    settings.live2dMotionDriver = 'natural'
+    expect(settings.live2dExpressionActive).toBe(true)
+
+    settings.live2dExpressionEnabled = true
+    settings.live2dMotionDriver = 'universal'
+    expect(settings.live2dExpressionActive).toBe(true)
+  })
+
   it('defaults the motion driver to Universal', async () => {
     const { useSettingsLive2d } = await import('./live2d')
 
