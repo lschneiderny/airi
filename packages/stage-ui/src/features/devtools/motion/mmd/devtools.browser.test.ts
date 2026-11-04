@@ -255,6 +255,58 @@ describe('mmd motion lab', () => {
     disposePinia(stagePinia)
   })
 
+  it('lists the clips with the performing state and ownership, plays and stops a row, and keeps an unusable row unplayable', async () => {
+    const stagePinia = createPinia()
+    setActivePinia(stagePinia)
+    const stage = useMMDMotionDiagnostics()
+    const { screen } = await renderLab()
+    const { t } = createTestI18n().global
+    await expect.element(screen.getByTestId('mmd-clips')).toHaveTextContent(t(`${prefix}.clips.empty`))
+
+    stage.publish({
+      ...fixture,
+      clips: [
+        { name: 'dance-long', kind: 'dance', layer: 'full', loop: false, label: 'dance', exposed: true, downgraded: false, notes: [] },
+        { name: 'arms-wave', kind: 'gesture', layer: 'upper', loop: false, label: null, exposed: false, downgraded: true, notes: [] },
+        { name: 'empty', kind: 'unusable', layer: 'none', loop: false, label: null, exposed: false, downgraded: false, notes: ['no-animated-bones'] },
+      ],
+      action: { performing: { name: 'dance-long', layer: 'full', phase: 'playing', seq: 4 }, lastActionSeq: 4, refusal: 'busy', retryAfterMs: 1_500, drops: { unknown: 1, notExposed: 2, notGesture: 0, superseded: 3 } },
+      animation: { idle: 'idle', currentAction: null, actionsStarted: 2, layer: { seq: 4, name: 'dance-long', state: 'playing' } },
+      ownership: { root: 1, leftLegIk: 1, rightLegIk: 0.5, lowerBody: 0, leftArm: 0.25, rightArm: 0.75, leftFingers: 0, rightFingers: 0, upperBody: 1, head: 0 },
+    })
+
+    const dance = screen.getByTestId('mmd-clip-dance-long')
+    await expect.element(dance).toHaveTextContent('dance-long')
+    await expect.element(dance).toHaveTextContent(t('settings.mmd.animation.clips.kinds.dance'))
+    await expect.element(dance).toHaveTextContent(t('settings.mmd.animation.clips.layers.full'))
+    await expect.element(screen.getByTestId('mmd-clip-arms-wave')).toHaveTextContent(t('settings.mmd.animation.clips.badges.downgraded'))
+    const action = screen.getByTestId('mmd-action')
+    await expect.element(action.getByTestId('readout-performing')).toHaveTextContent('dance-long (full, playing, #4)')
+    await expect.element(action.getByTestId('readout-refusal')).toHaveTextContent('busy (1.5 s)')
+    await expect.element(action.getByTestId('readout-drops')).toHaveTextContent('1 / 2 / 0 / 3')
+    await expect.element(action.getByTestId('readout-layer')).toHaveTextContent('dance-long (playing, #4)')
+    await expect.element(screen.getByTestId('ownership-legs')).toHaveTextContent('1.00')
+    await expect.element(screen.getByTestId('ownership-arms')).toHaveTextContent('0.75')
+    await expect.element(screen.getByTestId('ownership-head')).toHaveTextContent('0.00')
+
+    const unusable = screen.getByTestId('mmd-clip-play-empty')
+    await expect.element(unusable).toBeDisabled()
+    await expect.element(unusable).toHaveAttribute('title', t('settings.mmd.animation.clips.notes.no-animated-bones'))
+    await expect.element(screen.getByTestId('mmd-clip-stop-arms-wave')).toBeDisabled()
+    expect(stage.clipRequest).toBeNull()
+
+    const played = until(() => stage.clipRequest).toMatch(request => request !== null, { timeout: 5000, throwOnTimeout: true })
+    await screen.getByTestId('mmd-clip-play-dance-long').click()
+    await played
+    expect(stage.clipRequest).toEqual({ seq: 1, name: 'dance-long', loop: undefined })
+
+    const stopped = until(() => stage.clipRequest?.seq).toBe(2, { timeout: 5000, throwOnTimeout: true })
+    await screen.getByTestId('mmd-clip-stop-dance-long').click()
+    await stopped
+    expect(stage.clipRequest).toEqual({ seq: 2, name: null, loop: undefined })
+    disposePinia(stagePinia)
+  })
+
   it('advances the stage director clock by the entered milliseconds', async () => {
     const stagePinia = createPinia()
     setActivePinia(stagePinia)

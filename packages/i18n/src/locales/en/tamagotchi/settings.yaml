@@ -733,6 +733,39 @@ devtools:
           cloth-contact-right: Cloth contact right
           hang: Hang angle
           hand-below-hip: Hands below hips
+      clips:
+        title: Clips
+        empty: No clips. Import VMD motions for this model in the MMD model settings.
+        'yes': 'Yes'
+        'no': 'No'
+        play: Play
+        stop: Stop
+        unusable: This clip cannot play on this model.
+        headers:
+          name: Name
+          kind: Kind
+          layer: Layer
+          loop: Loops
+          label: Label
+          exposed: AI may use
+          actions: Actions
+        action:
+          rows:
+            performing: Performing (layer, phase, seq)
+            last-seq: Last request read
+            refusal: Last refusal (retry after)
+            drops: ACT drops (unknown / not exposed / not gesture / superseded)
+            layer: Layered clip (state, seq)
+        ownership:
+          title: Clip ownership
+          groups:
+            root: Root
+            legs: Legs
+            lowerBody: Lower body
+            arms: Arms
+            fingers: Fingers
+            upperBody: Upper body
+            head: Head
       director:
         title: Body director
         empty: No director is running. Load an MMD model in the main window.

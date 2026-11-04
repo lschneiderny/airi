@@ -151,7 +151,8 @@ cursor, tool and leg-length inputs.
 The director also performs clips. A `BodyActionRequest` (`gesture`, `action` or
 `dance`, layer `full` or `upper`) is accepted or refused in a fixed order: asleep,
 dragging, refractory (`ACTION_REFRACTORY_MS`, `DANCE_REFRACTORY_MS`,
-`GESTURE_REPEAT_MS` per clip), busy, then the stand, walk and speaking settles.
+`GESTURE_REPEAT_MS` per clip; a looping `debug` request skips only this
+cooldown), busy, then the stand, walk and speaking settles.
 A refusal still advances `lastActionSeq` and names `actionRefusal` with
 `actionRetryAfterMs`. An accepted clip is `BodyIntent.action`, `settling` until
 the body is clear and then `playing`; the adapter echoes `actionFeedback`, and
