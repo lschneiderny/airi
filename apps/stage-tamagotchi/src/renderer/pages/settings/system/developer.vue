@@ -90,6 +90,12 @@ const menu = computed(() => [
     to: '/devtools/situation',
   },
   {
+    title: t('tamagotchi.settings.devtools.pages.character-state.title'),
+    description: t('tamagotchi.settings.devtools.pages.character-state.description'),
+    icon: 'i-solar:heart-pulse-bold-duotone',
+    to: '/devtools/character-state',
+  },
+  {
     title: t('tamagotchi.settings.devtools.pages.memory.title'),
     description: t('tamagotchi.settings.devtools.pages.memory.description'),
     icon: 'i-solar:notebook-bookmark-bold-duotone',

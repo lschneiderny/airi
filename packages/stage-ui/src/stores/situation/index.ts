@@ -72,6 +72,7 @@ import { createThreadExtractor } from '../../features/situation/thread-extractio
 import { chatComposerActivityChangedEvent, getSpeechBusContext, situationForgetRequestedEvent, situationNotifyObservedEvent, speechInputUserSpeakingChangedEvent, voiceRequestSnapshot, voiceRequestTurns, voiceSnapshotChanged, voiceTurnsChanged, watchVoiceHostEnd } from '../../services/speech/bus'
 import { useCharacterStateStore } from '../character-state'
 import { bridgeSituationToCharacter } from '../character-state/situation-bridge'
+import { useCharacterStateObservabilityStore } from '../devtools/character-state-observability'
 import { useMemoryObservabilityStore } from '../devtools/memory-observability'
 import { useSituationObservabilityStore } from '../devtools/situation-observability'
 import { startConversationSensor } from './sensors/conversation'
@@ -269,6 +270,7 @@ export const useSituationStore = defineStore('situation', () => {
   let stopLeadershipListener: (() => void) | undefined
   const observability = useSituationObservabilityStore()
   const memoryObservability = useMemoryObservabilityStore()
+  const characterStateObservability = useCharacterStateObservabilityStore()
   const settings = useSituationSettings()
   const desktopActivity = useDesktopActivityStore()
   const foregroundWindow = useForegroundWindowStore()
@@ -323,8 +325,11 @@ export const useSituationStore = defineStore('situation', () => {
 
   // Feeds the devtools Situation inspector of this window. Sync flush keeps it equal to the state after every call.
   watch([leading, current], ([isLeading, state]) => observability.publishLiveState(isLeading, state), { flush: 'sync', immediate: true })
-  // The leader window runs chat, so it serves the devtools Memory inspector too.
-  watch(leading, isLeading => memoryObservability.setLeading(isLeading), { flush: 'sync', immediate: true })
+  // The leader window runs chat and holds the character record, so it serves the devtools Memory and Character inspectors too.
+  watch(leading, (isLeading) => {
+    memoryObservability.setLeading(isLeading)
+    characterStateObservability.setLeading(isLeading)
+  }, { flush: 'sync', immediate: true })
 
   // The foreground sensor stops reporting by itself; what it reported earlier must leave the state too, so the next
   // prompt carries no app or title. Followers hold the initial state, and the situation is neither synced nor
