@@ -1,0 +1,59 @@
+{
+  "name": "invariant-violation",
+  "description": "An ordinary day with a bogus contribution of raw delta 5 injected around the reducer at noon; the raw headroom check must fail.",
+  "days": 2,
+  "routines": [
+    {
+      "events": [
+        {
+          "at": "08:00",
+          "kind": "user-turn"
+        },
+        {
+          "at": "08:01",
+          "kind": "ritual-reciprocated"
+        },
+        {
+          "at": "20:00",
+          "kind": "user-turn"
+        },
+        {
+          "at": "20:02",
+          "kind": "user-turn"
+        },
+        {
+          "at": "20:04",
+          "kind": "user-turn",
+          "repeat": {
+            "count": 24,
+            "everyMinutes": 3
+          }
+        },
+        {
+          "at": "20:30",
+          "kind": "touch-pleasant"
+        }
+      ]
+    },
+    {
+      "days": {
+        "only": [
+          1
+        ]
+      },
+      "events": [
+        {
+          "at": "12:00",
+          "kind": "fault-contribution",
+          "delta": {
+            "valence": 5,
+            "energy": 0,
+            "tension": 0
+          },
+          "halfLifeMinutes": 90,
+          "reason": "bogus event"
+        }
+      ]
+    }
+  ]
+}

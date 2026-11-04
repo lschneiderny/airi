@@ -32,6 +32,7 @@
     "build:apps": "tsx packages/cpu-slots/src/cli.ts run --class build -- turbo run build -F=\"./apps/*\" \"--concurrency={grant}\"",
     "build:packages": "tsx packages/cpu-slots/src/cli.ts run --class build -- turbo run build -F=\"./packages/*\" \"--concurrency={grant}\"",
     "build:engines": "tsx packages/cpu-slots/src/cli.ts run --class build -- turbo run build -F=\"./engines/*\" \"--concurrency={grant}\"",
+    "qa:character": "pnpm --silent -F @proj-airi/qa-tools run --silent character",
     "qa:doctor": "pnpm -F @proj-airi/qa-tools run doctor",
     "qa:model": "pnpm --silent -F @proj-airi/qa-tools run --silent model",
     "qa:motion": "pnpm -F @proj-airi/qa-tools run motion",

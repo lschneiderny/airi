@@ -1,0 +1,172 @@
+{
+  "name": "hurt",
+  "description": "A week of ordinary days, then a bad day (day 8: a hurtful remark, a significant negative, three unwelcome poke bursts, lowering and tensing model cues, reach-outs unanswered into the evening), then a lonely day (day 9: reach-outs every ninety minutes go unanswered until the evening). Shows whether and when the reading turns pointed with the default constants.",
+  "days": 11,
+  "routines": [
+    {
+      "days": {
+        "to": 7
+      },
+      "events": [
+        {
+          "at": "08:00",
+          "kind": "user-turn"
+        },
+        {
+          "at": "08:01",
+          "kind": "ritual-reciprocated"
+        },
+        {
+          "at": "20:00",
+          "kind": "user-turn"
+        },
+        {
+          "at": "20:02",
+          "kind": "user-turn"
+        },
+        {
+          "at": "20:04",
+          "kind": "user-turn",
+          "repeat": {
+            "count": 24,
+            "everyMinutes": 3
+          }
+        },
+        {
+          "at": "20:30",
+          "kind": "touch-pleasant"
+        }
+      ]
+    },
+    {
+      "days": {
+        "only": [
+          8
+        ]
+      },
+      "events": [
+        {
+          "at": "08:00",
+          "kind": "user-turn"
+        },
+        {
+          "at": "08:05",
+          "kind": "hurtful",
+          "reason": "he mocked you"
+        },
+        {
+          "at": "08:06",
+          "kind": "model-cue",
+          "cue": "lower tenser: his words stung"
+        },
+        {
+          "at": "08:30",
+          "kind": "touch-unwelcome",
+          "repeat": {
+            "count": 3,
+            "everyMinutes": 10
+          }
+        },
+        {
+          "at": "09:00",
+          "kind": "significant-negative",
+          "reason": "he called you annoying"
+        },
+        {
+          "at": "09:01",
+          "kind": "model-cue",
+          "cue": "lower tenser: you feel pushed away"
+        },
+        {
+          "at": "10:30",
+          "kind": "reach-out-unanswered"
+        },
+        {
+          "at": "13:00",
+          "kind": "reach-out-unanswered"
+        },
+        {
+          "at": "13:01",
+          "kind": "model-cue",
+          "cue": "lower tenser: he still has not answered"
+        },
+        {
+          "at": "16:00",
+          "kind": "reach-out-unanswered"
+        },
+        {
+          "at": "18:30",
+          "kind": "reach-out-unanswered"
+        },
+        {
+          "at": "20:00",
+          "kind": "reach-out-unanswered"
+        }
+      ]
+    },
+    {
+      "days": {
+        "only": [
+          9
+        ]
+      },
+      "events": [
+        {
+          "at": "08:00",
+          "kind": "user-turn"
+        },
+        {
+          "at": "10:00",
+          "kind": "reach-out-unanswered",
+          "repeat": {
+            "count": 6,
+            "everyMinutes": 90
+          }
+        },
+        {
+          "at": "20:00",
+          "kind": "user-turn"
+        },
+        {
+          "at": "20:01",
+          "kind": "late-reply"
+        }
+      ]
+    },
+    {
+      "days": {
+        "from": 10
+      },
+      "events": [
+        {
+          "at": "08:00",
+          "kind": "user-turn"
+        },
+        {
+          "at": "08:01",
+          "kind": "ritual-reciprocated"
+        },
+        {
+          "at": "20:00",
+          "kind": "user-turn"
+        },
+        {
+          "at": "20:02",
+          "kind": "user-turn"
+        },
+        {
+          "at": "20:04",
+          "kind": "user-turn",
+          "repeat": {
+            "count": 24,
+            "everyMinutes": 3
+          }
+        },
+        {
+          "at": "20:30",
+          "kind": "touch-pleasant"
+        }
+      ]
+    }
+  ]
+}

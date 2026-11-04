@@ -1,0 +1,75 @@
+{
+  "name": "absence",
+  "description": "Ten ordinary days, then twenty days away (the reach-outs go unanswered), then a return: familiarity erodes toward its retained share, closeness and trust stay, and the return lifts the mood.",
+  "days": 40,
+  "awayDays": [
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30
+  ],
+  "routines": [
+    {
+      "events": [
+        {
+          "at": "08:00",
+          "kind": "user-turn"
+        },
+        {
+          "at": "08:01",
+          "kind": "ritual-reciprocated"
+        },
+        {
+          "at": "20:00",
+          "kind": "user-turn"
+        },
+        {
+          "at": "20:02",
+          "kind": "user-turn"
+        },
+        {
+          "at": "20:04",
+          "kind": "user-turn",
+          "repeat": {
+            "count": 24,
+            "everyMinutes": 3
+          }
+        },
+        {
+          "at": "20:30",
+          "kind": "touch-pleasant"
+        }
+      ]
+    },
+    {
+      "days": {
+        "from": 1,
+        "to": 10,
+        "every": 2
+      },
+      "events": [
+        {
+          "at": "21:00",
+          "kind": "disclosure",
+          "reason": "he told you about his day"
+        }
+      ]
+    }
+  ]
+}

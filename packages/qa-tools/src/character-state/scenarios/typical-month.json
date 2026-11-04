@@ -1,0 +1,133 @@
+{
+  "name": "typical-month",
+  "description": "Plan Appendix A7: a reciprocated 08:00 greeting, one unanswered reach-out a day, an evening session (the third user turn is the first real exchange, then 24 later turns) with three model cues 75% positive and two pleasant touches, a significant positive with a disclosure every third day, away days 15 to 17, and a hurtful event on day 22.",
+  "days": 30,
+  "awayDays": [
+    15,
+    16,
+    17
+  ],
+  "routines": [
+    {
+      "events": [
+        {
+          "at": "08:00",
+          "kind": "user-turn"
+        },
+        {
+          "at": "08:01",
+          "kind": "ritual-reciprocated"
+        },
+        {
+          "at": "14:00",
+          "kind": "reach-out-unanswered"
+        },
+        {
+          "at": "20:00",
+          "kind": "user-turn"
+        },
+        {
+          "at": "20:02",
+          "kind": "user-turn"
+        },
+        {
+          "at": "20:04",
+          "kind": "user-turn",
+          "repeat": {
+            "count": 24,
+            "everyMinutes": 3
+          }
+        },
+        {
+          "at": "20:05",
+          "kind": "character-spoke",
+          "repeat": {
+            "count": 24,
+            "everyMinutes": 3
+          }
+        },
+        {
+          "at": "20:10",
+          "kind": "model-cue",
+          "cue": [
+            {
+              "cue": "brighter: he made you laugh",
+              "weight": 3
+            },
+            {
+              "cue": "lower: he brushed off your joke",
+              "weight": 1
+            }
+          ]
+        },
+        {
+          "at": "20:40",
+          "kind": "model-cue",
+          "cue": [
+            {
+              "cue": "brighter: he made you laugh",
+              "weight": 3
+            },
+            {
+              "cue": "lower: he brushed off your joke",
+              "weight": 1
+            }
+          ]
+        },
+        {
+          "at": "21:10",
+          "kind": "model-cue",
+          "cue": [
+            {
+              "cue": "brighter: he made you laugh",
+              "weight": 3
+            },
+            {
+              "cue": "lower: he brushed off your joke",
+              "weight": 1
+            }
+          ]
+        },
+        {
+          "at": "20:30",
+          "kind": "touch-pleasant"
+        },
+        {
+          "at": "21:30",
+          "kind": "touch-pleasant"
+        }
+      ]
+    },
+    {
+      "days": {
+        "every": 3
+      },
+      "events": [
+        {
+          "at": "21:00",
+          "kind": "significant-positive",
+          "reason": "he shared good news"
+        },
+        {
+          "at": "21:01",
+          "kind": "disclosure",
+          "reason": "he told you about his week"
+        }
+      ]
+    },
+    {
+      "days": {
+        "only": [
+          22
+        ]
+      },
+      "events": [
+        {
+          "at": "22:00",
+          "kind": "hurtful",
+          "reason": "he mocked you"
+        }
+      ]
+    }
+  ]
+}
