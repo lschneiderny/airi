@@ -191,7 +191,7 @@ export async function runWindowRectsCli(argv: readonly string[], root: string = 
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
-  // NOTICE: `pnpm exec` runs in the package directory and does not set INIT_CWD, so paths never use the cwd.
+  // `pnpm exec` runs in the package directory and does not set INIT_CWD, so paths never use the cwd.
   void runWindowRectsCli(process.argv.slice(2)).then((code) => {
     process.exitCode = code
   })
