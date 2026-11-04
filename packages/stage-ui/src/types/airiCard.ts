@@ -1,4 +1,5 @@
 import type { Card } from '@proj-airi/ccc'
+import type { CharacterProfile } from '@proj-airi/stage-shared/character-state'
 import type { PerformanceProfile } from '@proj-airi/stage-shared/expression-performance'
 
 import type { WakeWord } from '../libs/voice/wake-words'
@@ -14,6 +15,8 @@ export interface AiriExtension {
   wakeWords?: WakeWord[]
   modules: {
     performance?: PerformanceProfile
+    /** Her resting disposition and starting relationship; a card without a valid one uses `DEFAULT_CHARACTER_PROFILE`. */
+    character?: CharacterProfile
     consciousness: {
       provider: string
       model: string

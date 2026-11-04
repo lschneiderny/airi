@@ -8,6 +8,7 @@ import { useDownload } from '@proj-airi/stage-ui/composables/download'
 import { exportAiriCardPackage } from '@proj-airi/stage-ui/services/airi-card-import-export'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
 import { useBackgroundStore } from '@proj-airi/stage-ui/stores/background'
+import { useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
@@ -46,6 +47,7 @@ const cardStore = useAiriCardStore()
 const backgroundStore = useBackgroundStore()
 const displayModelsStore = useDisplayModelsStore()
 const memory = useMemoryStore()
+const characterState = useCharacterStateStore()
 
 const { removeCard } = cardStore
 const { activeCardId, cloudSyncEnabled } = storeToRefs(cardStore)
@@ -133,6 +135,7 @@ async function handleExportCard() {
         memories: memory.entries
           .filter(entry => entry.persona === props.cardId)
           .map(({ description, body }) => ({ description, body })),
+        characterState: await characterState.exportRecord(props.cardId),
       }),
       `${selectedCard.value.name.trim()}.zip`,
     ).download()

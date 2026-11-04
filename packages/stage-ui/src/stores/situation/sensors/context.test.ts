@@ -9,13 +9,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useSituationStore } from '..'
 import { contextObservationFrom, ingestContextMessage } from './context'
 
-// The situation store feeds the character state, whose store reads the active card id from the card store. The real
-// card store's setup needs an i18n application context.
+// The situation store feeds the character state, whose store reads the active card id and its profile from the card
+// store. The real card store's setup needs an i18n application context.
 vi.mock('../../modules/airi-card', async () => {
   const { defineStore } = await import('pinia')
   return {
     useAiriCardStore: defineStore('airi-card', {
-      state: () => ({ activeCardId: 'default' }),
+      state: () => ({ activeCardId: 'default', cards: new Map<string, unknown>() }),
     }),
   }
 })

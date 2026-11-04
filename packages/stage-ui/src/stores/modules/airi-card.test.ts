@@ -1,10 +1,15 @@
+import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
+
 import type { AiriCard } from './airi-card'
 
+import { DEFAULT_CHARACTER_PROFILE, initialCharacterState } from '@proj-airi/stage-shared/character-state'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { characterStateRepo } from '../../database/repos/character-state.repo'
 import { memoryRepo } from '../../database/repos/memory.repo'
 import { splitCard } from '../../libs/character-card-sync'
+import { characterStateContext, useCharacterStateStore } from '../character-state'
 import { useProviderStore } from '../providers/provider'
 import { useSettingsStageModel } from '../settings/stage-model'
 import { useAiriCardStore } from './airi-card'
@@ -32,6 +37,7 @@ vi.mock('localforage', () => ({
 }))
 
 vi.mock('../../database/repos/memory.repo')
+vi.mock('../../database/repos/character-state.repo')
 
 vi.mock('./artistry', async () => {
   const { defineStore } = await import('pinia')
@@ -608,6 +614,59 @@ describe('airi-card store', () => {
     expect(await cardStore.removeCard('x')).toBe(true)
 
     expect((await memoryRepo.list()).map(entry => entry.id)).toEqual(['general'])
+  })
+
+  it('forgets the character state of a deleted card and keeps the other cards\' state', async () => {
+    const context = characterStateContext(Date.now())
+    await characterStateRepo.clear()
+    await characterStateRepo.save(initialCharacterState('x', DEFAULT_CHARACTER_PROFILE, context))
+    await characterStateRepo.save(initialCharacterState('y', DEFAULT_CHARACTER_PROFILE, context))
+    const cardStore = useAiriCardStore()
+    await cardStore.initialize()
+    cardStore.cards.set('x', { ...cardStore.builtInCard, name: 'X' })
+    // Card deletion routes the removal to the leader, so this window leads.
+    const characterState = useCharacterStateStore()
+    const runtime: SyncedPiniaRuntime = {
+      dispose: vi.fn(),
+      getLeaderId: vi.fn(),
+      getParticipantCount: vi.fn(() => 1),
+      isLeader: () => true,
+      onCoordinationChange: vi.fn(() => vi.fn()),
+      onLeadershipChange: vi.fn((listener: (isLeader: boolean) => void) => {
+        listener(true)
+        return vi.fn()
+      }),
+      participantId: 'airi-card-test',
+      plugin: vi.fn(),
+    }
+    characterState.initialize(runtime)
+
+    try {
+      expect(await cardStore.removeCard('x')).toBe(true)
+      await characterState.ready()
+
+      expect(await characterStateRepo.load('x')).toBeNull()
+      expect(await characterStateRepo.load('y')).not.toBeNull()
+    }
+    finally {
+      characterState.dispose()
+    }
+  })
+
+  it('keeps the character profile and unknown AIRI extension fields of an added card', async () => {
+    const cardStore = useAiriCardStore()
+    await cardStore.initialize()
+    const character = { resting: { valence: 0.3, energy: 0.1, tension: 0.2 }, startingStage: 'friendly' as const }
+    const cardId = await cardStore.addCard({
+      name: 'Profiled',
+      version: '1.0.0',
+      extensions: { airi: { futureField: { keep: true }, modules: { character, futureModule: 'kept' } } },
+    }, 'import')
+
+    expect(cardStore.cards.get(cardId)?.extensions.airi).toMatchObject({
+      futureField: { keep: true },
+      modules: { character, futureModule: 'kept' },
+    })
   })
 
   it('keeps every memory when the built-in card deletion is refused', async () => {

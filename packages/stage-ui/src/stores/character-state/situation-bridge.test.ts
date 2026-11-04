@@ -25,13 +25,13 @@ import { bridgeSituationToCharacter, REACH_OUT_UNANSWERED_AFTER_MS } from './sit
 vi.mock('../../database/repos/character-state.repo')
 vi.mock('../../database/repos/memory.repo')
 
-// The character state reads only the active card id from the card store, whose real setup needs an i18n application
-// context.
+// The character state reads only the active card id and the cards (for their profiles) from the card store, whose real
+// setup needs an i18n application context.
 vi.mock('../modules/airi-card', async () => {
   const { defineStore } = await import('pinia')
   return {
     useAiriCardStore: defineStore('airi-card', {
-      state: () => ({ activeCardId: 'default' }),
+      state: () => ({ activeCardId: 'default', cards: new Map<string, unknown>() }),
     }),
   }
 })

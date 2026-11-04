@@ -1,4 +1,5 @@
 import type { Card, ccv3 } from '@proj-airi/ccc'
+import type { CharacterStateRecordV1 } from '@proj-airi/stage-shared/character-state'
 import type { GenericSchema, InferOutput } from 'valibot'
 
 import type { DisplayModel, useDisplayModelsStore } from '../stores/display-models'
@@ -7,10 +8,13 @@ import type { MemoryWrite } from '../types/memory'
 
 import JSZip from 'jszip'
 
+import { errorMessageFrom } from '@moeru/std'
 import { exportToJSON } from '@proj-airi/ccc'
+import { migrateCharacterState } from '@proj-airi/stage-shared/character-state'
 import { array, literal, object, optional, parse, picklist, record, string, unknown as unknownSchema } from 'valibot'
 
 import { wakeWordSchema } from '../libs/voice/wake-words'
+import { characterProfileOf, characterStateContext } from '../stores/character-state'
 import { DisplayModelFormat } from '../stores/display-models'
 
 const FORMAT = 'airi-character-card'
@@ -18,6 +22,12 @@ const VERSION = 1
 const CARD_PATH = 'card.json'
 const MANIFEST_PATH = 'manifest.json'
 const MEMORIES_PATH = 'memories.json'
+const CHARACTER_STATE_PATH = 'character-state.json'
+/**
+ * The card id an imported state record carries until the card exists. `importRecord` of the character-state store
+ * migrates the record again under the new card's id.
+ */
+const IMPORTED_CARD_ID = 'imported-card'
 const MODEL_EXT: Partial<Record<DisplayModelFormat, string>> = {
   [DisplayModelFormat.Live2dZip]: 'zip',
   [DisplayModelFormat.SpineZip]: 'zip',
@@ -39,6 +49,7 @@ const manifestSchema = object({
       name: string(),
     })),
     memories: optional(object({ path: literal(MEMORIES_PATH) })),
+    characterState: optional(object({ path: literal(CHARACTER_STATE_PATH) })),
   })),
 })
 
@@ -80,11 +91,12 @@ export class AiriCardPackageError extends Error {
  *
  * This format is intentionally not a lossless backup. It includes fields the
  * creation editor lets the sender review, a sanitized AIRI module subset, and
- * the selected display model, and the card's own memories, never shared ones.
+ * the selected display model, the card's own memories, never shared ones, and
+ * the card's character state (mood, temperament, relationship) when given.
  * Unreviewed CCv3 metadata, custom extensions,
  * agent prompts, and machine-local runtime references are omitted.
  */
-export async function exportAiriCardPackage({ card, displayModelsStore, memories }: { card: AiriCard, displayModelsStore: DisplayModelsStore, memories?: MemoryWrite[] }): Promise<Blob> {
+export async function exportAiriCardPackage({ card, displayModelsStore, memories, characterState }: { card: AiriCard, displayModelsStore: DisplayModelsStore, memories?: MemoryWrite[], characterState?: CharacterStateRecordV1 | null }): Promise<Blob> {
   const exportableCard = cardFromAiriCard(card)
   const displayModel = await exportDisplayModel(exportableCard, displayModelsStore)
   const manifest = {
@@ -95,6 +107,7 @@ export async function exportAiriCardPackage({ card, displayModelsStore, memories
     resources: {
       ...(displayModel ? { displayModel: displayModel.manifest } : {}),
       ...(memories?.length ? { memories: { path: MEMORIES_PATH } } : {}),
+      ...(characterState ? { characterState: { path: CHARACTER_STATE_PATH } } : {}),
     },
   }
   const zip = new JSZip()
@@ -103,6 +116,8 @@ export async function exportAiriCardPackage({ card, displayModelsStore, memories
   zip.file(CARD_PATH, JSON.stringify(exportToJSON(exportableCard), null, 2))
   if (memories?.length)
     zip.file(MEMORIES_PATH, JSON.stringify(memories, null, 2))
+  if (characterState)
+    zip.file(CHARACTER_STATE_PATH, JSON.stringify(characterState, null, 2))
   if (displayModel)
     zip.file(displayModel.manifest.path, displayModel.data)
 
@@ -115,8 +130,13 @@ export async function exportAiriCardPackage({ card, displayModelsStore, memories
  * The returned CCv3 object is safe to pass through the normal card creation
  * path: package authors cannot smuggle custom extensions, agent prompts, or
  * machine-local references into persisted AIRI state.
+ *
+ * `characterState` is the packaged state record through `migrateCharacterState`,
+ * or `null` when the package has none or its entry cannot be read; the caller
+ * then starts the card's state fresh from its profile. A damaged state entry
+ * never fails the import.
  */
-export async function importAiriCardPackage({ file, displayModelsStore }: { file: File, displayModelsStore: DisplayModelsStore }): Promise<{ card: ccv3.CharacterCardV3, memories: MemoryWrite[] }> {
+export async function importAiriCardPackage({ file, displayModelsStore }: { file: File, displayModelsStore: DisplayModelsStore }): Promise<{ card: ccv3.CharacterCardV3, memories: MemoryWrite[], characterState: CharacterStateRecordV1 | null }> {
   const zip = await loadZip(file)
   const manifest = await readJsonFile(zip, MANIFEST_PATH, manifestSchema)
   const cardJson = await readJsonFile(zip, manifest.card.path, characterCardV3Schema)
@@ -124,8 +144,27 @@ export async function importAiriCardPackage({ file, displayModelsStore }: { file
     ? await readJsonFile(zip, manifest.resources.memories.path, memoriesFileSchema)
     : []
   const displayModelId = await importDisplayModel(zip, manifest, displayModelsStore)
+  const card = cardFromCharacterCard(cardJson, displayModelId)
+  const characterState = manifest.resources?.characterState
+    ? await readCharacterState(zip, manifest.resources.characterState.path, card.extensions.airi)
+    : null
 
-  return { card: exportToJSON(cardFromCharacterCard(cardJson, displayModelId)), memories }
+  return { card: exportToJSON(card), memories, characterState }
+}
+
+/** The packaged state record through `migrateCharacterState`, or `null` with a warning when the entry is missing or not JSON. */
+async function readCharacterState(zip: JSZip, path: string, airi: AiriExtension): Promise<CharacterStateRecordV1 | null> {
+  try {
+    const file = zip.file(path)
+    if (!file)
+      throw new Error(`Missing ${path}`)
+    const value: unknown = JSON.parse(await file.async('string'))
+    return migrateCharacterState(value, IMPORTED_CARD_ID, characterProfileOf(airi.modules.character), characterStateContext(Date.now()))
+  }
+  catch (cause) {
+    console.warn('[airi-card-import-export] Ignoring the unreadable character state:', errorMessageFrom(cause) ?? 'unknown error')
+    return null
+  }
 }
 
 async function exportDisplayModel(card: ShareableAiriCard, store: DisplayModelsStore) {
@@ -239,6 +278,7 @@ function sanitizeAiri(value: unknown, displayModelIdOverride?: string): AiriExte
   return {
     ...(source.wakeWords === undefined ? {} : { wakeWords: parse(array(wakeWordSchema), source.wakeWords) }),
     modules: {
+      character: characterProfileOf(modules.character),
       consciousness: providerModel(modules.consciousness),
       vision: providerModel(modules.vision),
       speech: {

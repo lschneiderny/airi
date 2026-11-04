@@ -2,6 +2,7 @@
 import { Alert } from '@proj-airi/stage-ui/components'
 import { AiriCardPackageError, importAiriCardPackage } from '@proj-airi/stage-ui/services/airi-card-import-export'
 import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
+import { useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
 import { useDisplayModelsStore } from '@proj-airi/stage-ui/stores/display-models'
 import { useMemoryStore } from '@proj-airi/stage-ui/stores/memory'
 import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules/airi-card'
@@ -25,6 +26,7 @@ const { t, locale } = useI18n()
 const cardStore = useAiriCardStore()
 const displayModelsStore = useDisplayModelsStore()
 const memory = useMemoryStore()
+const characterState = useCharacterStateStore()
 const { addCard, removeCard } = cardStore
 const { cards, activeCardId, cardSyncStates, cloudSyncEnabled } = storeToRefs(cardStore)
 const { isAuthenticated } = storeToRefs(useAuthStore())
@@ -62,8 +64,10 @@ watch(inputFiles, async (newFiles) => {
     return
 
   try {
-    const { card, memories } = await importAiriCardPackage({ file, displayModelsStore })
+    const { card, memories, characterState: stateRecord } = await importAiriCardPackage({ file, displayModelsStore })
     const newCardId = await addCard(card, 'import')
+    // A package without a state record starts the card's state fresh from its profile.
+    await characterState.importRecord(newCardId, stateRecord)
     for (const entry of memories)
       await memory.write(entry, newCardId)
     toast(t('settings.pages.card.imported'))
