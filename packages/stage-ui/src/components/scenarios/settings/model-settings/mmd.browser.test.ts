@@ -477,7 +477,8 @@ describe('mmd model settings clips', () => {
     store.resetState()
     // The reset's storage write settles on the next tick and would overwrite a seed made in the same tick.
     await nextTick()
-    useSettingsStageModel(pinia).stageModelSelected = MODEL_ID
+    const stageModel = useSettingsStageModel(pinia)
+    stageModel.stageModelSelected = MODEL_ID
     store.availableMotions = [
       { id: 'mmd-motion-1', name: 'arms-wave' },
       { id: 'mmd-motion-2', name: 'legs-step' },
@@ -496,7 +497,7 @@ describe('mmd model settings clips', () => {
     })
     expect(t('settings.mmd.animation.clips.headers.ai-may-use')).not.toBe('settings.mmd.animation.clips.headers.ai-may-use')
     await screen.getByText(t('settings.mmd.animation.title'), { exact: true }).click()
-    return { screen, store }
+    return { screen, store, stageModel }
   }
 
   it('renders one row per imported clip with the derived kind and layer badges and the unusable note', async () => {
@@ -537,6 +538,22 @@ describe('mmd model settings clips', () => {
     await second.fill('step')
     await vi.waitFor(() => expect(store.curationFor(MODEL_ID, 'legs-step').label).toBe('step'))
     await expect.element(screen.getByText(t('settings.mmd.animation.clips.errors.invalid'), { exact: true })).not.toBeInTheDocument()
+  })
+
+  it('shows an empty label input for a same-named clip after the loaded model changes', async () => {
+    const { screen, store, stageModel } = await renderClipTable()
+    const input = screen.getByRole('textbox', { name: label('arms-wave') })
+    await input.fill('wave')
+    await vi.waitFor(() => expect(store.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave'))
+
+    stageModel.stageModelSelected = 'mmd-other-model'
+    await vi.waitFor(() => expect(store.curationFor('mmd-other-model', 'arms-wave').label).toBeNull())
+    await expect.element(input).toHaveValue('')
+    expect(store.curationFor(MODEL_ID, 'arms-wave').label).toBe('wave')
+
+    // Switching back shows model A's stored label again.
+    stageModel.stageModelSelected = MODEL_ID
+    await expect.element(input).toHaveValue('wave')
   })
 
   it('exposes a labeled gesture to the AI through the switch and persists it', async () => {

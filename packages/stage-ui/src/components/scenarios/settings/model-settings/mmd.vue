@@ -321,18 +321,30 @@ const clipRows = computed<ClipRow[]>(() => availableMotions.value.map(({ name })
   }
 }))
 
-/** What the user typed per clip, so a refused label stays visible next to its error. */
+/**
+ * What the user typed per clip, so a refused label stays visible next to its error.
+ * Keyed by model and clip name: this component survives a model switch, and a same-named clip of another model must not inherit the draft.
+ */
 const labelDrafts = ref<Record<string, string>>({})
 const labelErrors = ref<Record<string, 'invalid' | 'duplicate'>>({})
 
+function draftKey(name: string): string {
+  return JSON.stringify([stageModelSelected.value, name])
+}
+
 function labelDraft(row: ClipRow): string {
-  return labelDrafts.value[row.name] ?? row.label ?? ''
+  return labelDrafts.value[draftKey(row.name)] ?? row.label ?? ''
+}
+
+function labelError(name: string): 'invalid' | 'duplicate' | undefined {
+  return labelErrors.value[draftKey(name)]
 }
 
 function setClipLabel(name: string, value: string | undefined) {
   const draft = value ?? ''
-  labelDrafts.value = { ...labelDrafts.value, [name]: draft }
-  const { [name]: _, ...otherErrors } = labelErrors.value
+  const key = draftKey(name)
+  labelDrafts.value = { ...labelDrafts.value, [key]: draft }
+  const { [key]: _, ...otherErrors } = labelErrors.value
   // An empty input removes the label; the store refuses an empty string, so clear it with `null`.
   if (draft === '') {
     mmdStore.setCuration(stageModelSelected.value, name, { label: null, aiMayUse: false })
@@ -340,12 +352,12 @@ function setClipLabel(name: string, value: string | undefined) {
     return
   }
   if (!CLIP_LABEL_PATTERN.test(draft)) {
-    labelErrors.value = { ...otherErrors, [name]: 'invalid' }
+    labelErrors.value = { ...otherErrors, [key]: 'invalid' }
     return
   }
   labelErrors.value = mmdStore.setCuration(stageModelSelected.value, name, { label: draft })
     ? otherErrors
-    : { ...otherErrors, [name]: 'duplicate' }
+    : { ...otherErrors, [key]: 'duplicate' }
 }
 
 function setClipKind(name: string, value: string | undefined) {
@@ -765,11 +777,11 @@ function removeMotion(id: string) {
                   :model-value="labelDraft(row)"
                   :placeholder="t('settings.mmd.animation.clips.label-placeholder')"
                   :aria-label="`${t('settings.mmd.animation.clips.headers.label')}: ${row.name}`"
-                  :aria-invalid="labelErrors[row.name] !== undefined"
+                  :aria-invalid="labelError(row.name) !== undefined"
                   @update:model-value="value => setClipLabel(row.name, value)"
                 />
-                <p v-if="labelErrors[row.name]" :class="['mt-1', 'text-xs', 'text-red-500']">
-                  {{ t(`settings.mmd.animation.clips.errors.${labelErrors[row.name]}`) }}
+                <p v-if="labelError(row.name)" :class="['mt-1', 'text-xs', 'text-red-500']">
+                  {{ t(`settings.mmd.animation.clips.errors.${labelError(row.name)}`) }}
                 </p>
               </td>
               <td :class="['px-1.5', 'py-1.5', 'w-26']">
