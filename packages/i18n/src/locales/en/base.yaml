@@ -1,6 +1,5 @@
 edition:
   desktop: Desktop ver.
-  mobile: Mobile ver.
   web: Web ver.
 prompt:
   prefix: |

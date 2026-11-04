@@ -2,7 +2,7 @@
 import type { ChatHistoryItem } from '../../../../types/chat'
 import type { ChatHistoryReplyPayload } from '../reply'
 
-import { isStageCapacitor, isStageWeb } from '@proj-airi/stage-shared'
+import { isStageWeb } from '@proj-airi/stage-shared'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -116,7 +116,7 @@ const copyText = computed(() => getChatHistoryItemCopyText(props.message))
             'h-unset <sm:h-fit',
             'shadow-sm shadow-neutral-200/50 dark:shadow-none',
             boxClasses,
-            (isStageWeb() || isStageCapacitor()) && props.variant === 'mobile' ? 'select-none sm:select-auto' : '',
+            isStageWeb() && props.variant === 'mobile' ? 'select-none sm:select-auto' : '',
           ]"
         >
           <ChatReplyQuote v-if="replyTarget" :target="replyTarget" />

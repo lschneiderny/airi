@@ -1,7 +1,7 @@
 import type { AnalyticsAdapter, AnalyticsAdapterOptions } from './client'
 
 import { OpenPanel } from '@openpanel/web'
-import { isStageCapacitor, isStageTamagotchi } from '@proj-airi/stage-shared'
+import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { OPENPANEL_CONFIG } from '@proj-airi/stage-shared/analytics/openpanel'
 
 const deviceStorageKey = 'airi:openpanel-device-id'
@@ -56,7 +56,7 @@ export function createOpenpanelAdapter(options: AnalyticsAdapterOptions): Analyt
     trackAttributes: false,
   })
   panel.setGlobalProperties({
-    app_surface: isStageTamagotchi() ? 'electron' : isStageCapacitor() ? 'mobile' : 'web',
+    app_surface: isStageTamagotchi() ? 'electron' : 'web',
     __deviceId: deviceId,
   })
 

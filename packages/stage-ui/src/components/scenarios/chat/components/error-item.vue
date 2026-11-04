@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ChatHistoryItem, ErrorMessage } from '../../../../types/chat'
 
-import { isStageCapacitor, isStageWeb } from '@proj-airi/stage-shared'
+import { isStageWeb } from '@proj-airi/stage-shared'
 import { BasicButton, IconButton } from '@proj-airi/ui'
 import { computed, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -84,7 +84,7 @@ const copyText = computed(() => getChatHistoryItemCopyText(props.message as Chat
             'min-w-20 flex flex-col rounded-xl',
             'h-unset <sm:h-fit',
             'shadow-sm shadow-violet-200/50 dark:shadow-none',
-            (isStageWeb() || isStageCapacitor()) && props.variant === 'mobile' ? 'select-none sm:select-auto' : '',
+            isStageWeb() && props.variant === 'mobile' ? 'select-none sm:select-auto' : '',
           ]"
         >
           <div :class="[variant === 'mobile' ? 'px-2 py-2' : 'px-3 py-3']">

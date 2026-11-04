@@ -1,7 +1,7 @@
 import type { AnalyticsCaptureOptions } from './client'
 import type { AnalyticsEvent, InferAnalyticsEventPayload } from './utils/dsl'
 
-import { isStageCapacitor, isStageTamagotchi } from '@proj-airi/stage-shared'
+import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { watch } from 'vue'
 
 import { useBuildInfo } from '../../composables/use-build-info'
@@ -42,12 +42,10 @@ export interface AnalyticsRecorder {
   recordFirstMessage: () => boolean
 }
 
-function analyticsSurface(): 'web' | 'desktop' | 'mobile' {
+function analyticsSurface(): 'web' | 'desktop' {
   return isStageTamagotchi()
     ? 'desktop'
-    : isStageCapacitor()
-      ? 'mobile'
-      : 'web'
+    : 'web'
 }
 
 /**

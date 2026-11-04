@@ -6,7 +6,7 @@ Shared core for stage
 
 This fork uses local data and direct or local inference providers. The clients do not offer AIRI sign-in or hosted providers.
 Startup removes saved AIRI account credentials without contacting the account server. Direct provider credentials remain unchanged.
-Account, billing, and official-provider routes are excluded from the web, Pocket, and Electron clients.
+Account, billing, and official-provider routes are excluded from the web and Electron clients.
 Cloud sync requires an account and stays inactive. Internal hosted adapters remain available for saved-provider cleanup.
 
 ## OpenCode Go desktop transport
@@ -54,7 +54,7 @@ Cloud sync carries content only. A burst syncs as its content, so another device
 The apps register the complete resource list before work starts. Their startup flows report each module's result through the store.
 The app roots reset the store before registration. This also stops an old load from updating a new registration after hot reload.
 `StartupOverlay` reads the store and shows splash, progress, or an error with a retry action.
-`useStartupResourceTimeout` fails a resource that stays loading past its deadline. Web and Pocket apply it to character model loading.
+`useStartupResourceTimeout` fails a resource that stays loading past its deadline. Web applies it to character model loading.
 The optional Mods server connects outside the tracked startup work. Its connection does not block onboarding.
 Each app's HTML shows the first splash before Vue mounts. CSS hides it when Vue renders into `#app`.
 The home page reports when its character model is ready or fails. A failed model keeps the overlay visible.
@@ -124,7 +124,6 @@ The mode does not fall back to `always-on`, because that opens the microphone al
 | --- | --- |
 | stage-tamagotchi | Yes. All windows share one app, so the settings window offers the mode too. |
 | stage-web | Only with a fine pointer, `(any-pointer: fine)`. Space is the only trigger, and no Web API reports a hardware keyboard. |
-| stage-pocket | No. It provides nothing. |
 
 ### Wake words
 
@@ -295,7 +294,7 @@ compare gesture presentation, not conversation storage behavior.
 
 Select **Sherpaw** in Hearing settings. Choose a language to see models that support it, then choose a model.
 For a new Sherpaw configuration, the interface language sets the filter and selects a compatible model.
-Chinese and English start with X-ASR on desktop and Paraformer on mobile Web or Stage Pocket.
+Chinese and English start with X-ASR on desktop and Paraformer on mobile Web.
 An existing model selection stays in place. Choosing a language switches to a compatible model when needed.
 The model detects one of its supported languages. Changing the model saves
 the Provider configuration and replaces its runtime.
@@ -305,7 +304,7 @@ Hosts must enable `@proj-airi/vite-plugin-sherpaw` to expose model assets.
 `provider-inference` owns recognition and Worker cleanup. `stage-ui` supplies model URLs, local asset fetching, the Worker URL, and the Hearing view.
 The Provider is unavailable when the host does not include models.
 Use this Provider for local streaming recognition without API credentials.
-It requires Workers and WebAssembly. Web and Pocket store selected remote models in OPFS.
+It requires Workers and WebAssembly. Web stores selected remote models in OPFS.
 Desktop development stores selected models in the app user data directory.
 Desktop releases bundle X-ASR and store other models in the user data directory.
 Sherpaw settings show download state and let users install or remove remote models.
@@ -416,11 +415,11 @@ Do not send ambient context to the model in any other way: the situation block i
 
 `useSituationSettings` in `features/situation/settings` stores one document at `settings/situation`: `unpromptedEnabled`, `chattiness` (0 to 1, default 0.5), `dontDisturb`, `shareForegroundWindow` (default true), `shareBrowserActivity` (default true), `quietApps`, `titleDenylist`, `showUnpromptedCue`, and `speakDuringGames`.
 An invalid field falls back to its default. The leader routes `update` and `reset`.
-**Settings > Presence** edits it in the Electron app. Web and Pocket exclude the page, because they run no unprompted turns.
+**Settings > Presence** edits it in the Electron app. Web excludes the page, because it runs no unprompted turns.
 
 Use these settings to control the mean rate of unprompted turns and which foreground details the model may see.
 Turning `shareForegroundWindow` off also stops unprompted speech, because the gate needs a fresh foreground sample. Replies to the user still work.
-Turning `shareBrowserActivity` off removes the web extension's page and video titles, links, subtitles, and video notifications from the situation. It does not affect foreground sharing or the gate. Web and Pocket have no control for it, so the extension always reaches the situation there.
+Turning `shareBrowserActivity` off removes the web extension's page and video titles, links, subtitles, and video notifications from the situation. It does not affect foreground sharing or the gate. Web has no control for it, so the extension always reaches the situation there.
 Do not read them in the Electron main process.
 
 ### Conversation settings
@@ -481,7 +480,7 @@ Do not use it as a user-facing settings page.
 
 ## Character state
 
-The character-state store in `stores/character-state/` holds the active character's mood, temperament, and relationship. The web, desktop, and pocket shells create it at startup.
+The character-state store in `stores/character-state/` holds the active character's mood, temperament, and relationship. The web and desktop shells create it at startup.
 
 Each chat request sends the worded mood and the relationship stage as a per-request runtime context message with the id `system:character`, beside `system:situation`. It is never part of the system prompt, and the model never receives the numeric mood. A MOOD cue in a reply is applied as a bounded contribution that fades within a few hours, so the model cannot push its own mood far in one turn.
 

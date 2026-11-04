@@ -103,10 +103,10 @@ The main process serves these URLs from the renderer package. Renderer `fetch()`
 ## Development loading
 
 The plugin downloads only configured `developmentModels` before the Vite development server starts. Existing cache files are reused.
-AIRI Electron and Stage Pocket use the repository's `.cache/sherpaw/<model-id>/<revision>/` directory for the keyword spotting pack.
+AIRI Electron uses the repository's `.cache/sherpaw/<model-id>/<revision>/` directory for the keyword spotting pack.
 
 Vite converts the generated URL imports into local development URLs. Files outside the application root use Vite's `/@fs/` route. Sherpaw reads the selected model through that server when recognition starts. Basemove runs only during production builds.
 
 All AIRI hosts keep the transcription presets remote in development. The host model asset service installs them when recognition needs them.
 Desktop release workflows bundle X-ASR. Ordinary CI builds keep all transcription presets remote.
-Electron and Pocket always bundle the keyword spotting pack. Web keeps it remote. The renderer model asset repository installs it in OPFS when wake word detection first prepares.
+Electron always bundles the keyword spotting pack. Web keeps it remote. The renderer model asset repository installs it in OPFS when wake word detection first prepares.

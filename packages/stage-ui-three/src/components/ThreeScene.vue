@@ -86,7 +86,6 @@ const props = withDefaults(defineProps<{
    * | --- | --- | --- |
    * | stage-web desktop | `true` | Mouse orbit is the primary camera control. |
    * | stage-web mobile | `false` | Touch input is reserved for mobile view controls and chat UI. |
-   * | stage-pocket mobile | `false` | Touch input is reserved for mobile view controls and chat UI. |
    * | stage-tamagotchi | `true` | The transparent desktop stage has no mobile view-control overlay. |
    */
   enableOrbitControls?: boolean

@@ -24,7 +24,7 @@ Loading rules:
 
 Enforcement:
 
-- The ESLint rule `airi/lazy-3d-renderers` in `eslint.config.ts` rejects static value imports of the package roots, of other subpaths, and of three, three-mmd, three-vrm, and Tres, in `stage-ui`, `stage-layouts`, `stage-pages`, and the Electron and web hosts. Tests and devtools pages are exempt. Pocket still installs Tres globally and stays out of scope until its host-scope decision.
+- The ESLint rule `airi/lazy-3d-renderers` in `eslint.config.ts` rejects static value imports of the package roots, of other subpaths, and of three, three-mmd, three-vrm, and Tres, in `stage-ui`, `stage-layouts`, `stage-pages`, and the Electron and web hosts. Tests and devtools pages are exempt. Pocket was retired on 2026-11-04 under audit item H2.
 - `pnpm check:bundle` builds the Electron app and fails if any chunk the main window loads at startup contains three. It recognizes three by the `__THREE__` property that three sets when it loads, which also covers three-mmd, three-vrm, and Tres because they import three. It needs a build, so it is not part of `pnpm verify`.
 
 ## Consequences
