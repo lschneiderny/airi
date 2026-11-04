@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { advance, applyEvent, DEFAULT_CHARACTER_PROFILE, initialCharacterState } from '.'
 import { nextRandom, seedRng } from '../situation/rng'
 import { readCharacter } from './reading'
-import { renderCharacterContext } from './render'
+import { characterRenderKey, renderCharacterContext } from './render'
 
 const MINUTE_MS = 60_000
 const HOUR_MS = 60 * MINUTE_MS
@@ -15,6 +15,11 @@ const NOW_MS = Date.UTC(2026, 10, 3, 15)
 const PROFILE = DEFAULT_CHARACTER_PROFILE
 const SEEDS = Array.from({ length: 200 }, (_, index) => 5_003 + index * 19)
 const STRANGER = 'You two: you are still getting to know him; keep it polite and a little reserved.'
+const TEASING = 'you can tease him a little'
+const NICKNAMES = 'you may use a nickname for him if you have one'
+const INITIATIVE = 'you may start conversations and suggest things yourself'
+const CALLBACKS = 'you may bring up things you shared before'
+const VULNERABILITY = 'you can admit when something hurts'
 
 function logicalDayStartOf(ms: number): number {
   return Math.floor((ms - ROLLOVER_MS) / DAY_MS) * DAY_MS + ROLLOVER_MS
@@ -57,11 +62,48 @@ describe('renderCharacterContext', () => {
     expect(render(stateWith(PROFILE.resting, [], { closeness: 'friendly', trust: 'guarded', familiarity: 'new' })))
       .toBe('You two: you are friendly and at ease with him.')
     expect(render(stateWith(PROFILE.resting, [], { closeness: 'close', trust: 'open', familiarity: 'new' })))
-      .toBe('You two: you are close; you tease him and may use a nickname for him.')
+      .toBe(`You two: you are close and comfortable with him; ${TEASING}; ${INITIATIVE}.`)
     expect(render(stateWith(PROFILE.resting, [], { closeness: 'intimate', trust: 'confiding', familiarity: 'knows-you' }, 3)))
-      .toBe('You two: you are very close; you can be openly affectionate and say what you feel; you may bring up things you shared before; you can admit when something hurts.')
+      .toBe(`You two: you are very close; you can be openly affectionate and say what you feel; ${TEASING}; ${NICKNAMES}; ${INITIATIVE}; ${CALLBACKS}; ${VULNERABILITY}.`)
     expect(render(stateWith(PROFILE.resting, [], { closeness: 'intimate', trust: 'guarded', familiarity: 'knows-you' }, 2)))
-      .toBe('You two: you are very close; you can be openly affectionate and say what you feel.')
+      .toBe(`You two: you are very close; you can be openly affectionate and say what you feel; ${NICKNAMES}; ${INITIATIVE}.`)
+  })
+
+  it('shows no tease or nickname wording when close without open trust or knowing him', () => {
+    const text = render(stateWith(PROFILE.resting, [], { closeness: 'close', trust: 'guarded', familiarity: 'new' }))
+    expect(text).toBe(`You two: you are close and comfortable with him; ${INITIATIVE}.`)
+    expect(text).not.toMatch(/teas|nickname/)
+  })
+
+  it('shows the teasing sentence at friendly with open trust and not with guarded trust', () => {
+    expect(render(stateWith(PROFILE.resting, [], { closeness: 'friendly', trust: 'open', familiarity: 'new' })))
+      .toBe(`You two: you are friendly and at ease with him; ${TEASING}.`)
+    expect(render(stateWith(PROFILE.resting, [], { closeness: 'friendly', trust: 'guarded', familiarity: 'knows-you' })))
+      .not
+      .toMatch(/teas/)
+  })
+
+  it('shows the nickname sentence at close once she knows him', () => {
+    expect(render(stateWith(PROFILE.resting, [], { closeness: 'close', trust: 'guarded', familiarity: 'knows-you' })))
+      .toBe(`You two: you are close and comfortable with him; ${NICKNAMES}; ${INITIATIVE}.`)
+  })
+
+  it('shows the initiative sentence from close and not below it', () => {
+    expect(render(stateWith(PROFILE.resting, [], { closeness: 'close', trust: 'guarded', familiarity: 'new' }))).toContain(INITIATIVE)
+    expect(render(stateWith(PROFILE.resting, [], { closeness: 'friendly', trust: 'confiding', familiarity: 'knows-you' }, 3))).not.toContain(INITIATIVE)
+  })
+
+  it('changes the render key when any one unlock changes', () => {
+    const keyOf = (stages: RelationshipStages, milestones = 0) => characterRenderKey(readCharacter(stateWith(PROFILE.resting, [], stages, milestones), PROFILE, null, contextAt(NOW_MS)), contextAt(NOW_MS))
+    // Each pair differs in exactly one unlock and keeps the closeness stage.
+    const pairs: Array<[RelationshipStages, number, RelationshipStages, number]> = [
+      [{ closeness: 'friendly', trust: 'guarded', familiarity: 'new' }, 0, { closeness: 'friendly', trust: 'open', familiarity: 'new' }, 0],
+      [{ closeness: 'close', trust: 'guarded', familiarity: 'new' }, 0, { closeness: 'close', trust: 'guarded', familiarity: 'knows-you' }, 0],
+      [{ closeness: 'close', trust: 'open', familiarity: 'new' }, 0, { closeness: 'close', trust: 'confiding', familiarity: 'new' }, 0],
+      [{ closeness: 'friendly', trust: 'guarded', familiarity: 'knows-you' }, 2, { closeness: 'friendly', trust: 'guarded', familiarity: 'knows-you' }, 3],
+    ]
+    for (const [before, beforeMilestones, after, afterMilestones] of pairs)
+      expect(keyOf(after, afterMilestones)).not.toBe(keyOf(before, beforeMilestones))
   })
 
   it('renders a hurt, unanswered feeling with the stranger line', () => {
@@ -72,7 +114,7 @@ describe('renderCharacterContext', () => {
 
   it('renders a bright lively feeling without a tension word when relaxed', () => {
     expect(render(stateWith({ valence: 0.5, energy: 0.3, tension: 0.1 }, [], { closeness: 'friendly', trust: 'open', familiarity: 'new' })))
-      .toBe('Feeling: bright, lively.\nYou two: you are friendly and at ease with him.')
+      .toBe(`Feeling: bright, lively.\nYou two: you are friendly and at ease with him; ${TEASING}.`)
   })
 
   it('names a live reason even when every bucket rests', () => {

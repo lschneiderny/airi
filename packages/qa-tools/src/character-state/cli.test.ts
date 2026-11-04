@@ -140,6 +140,6 @@ describe('render', () => {
   })
 
   it('renders the named mood buckets', () => {
-    expect(cli(['render', '--stage', 'friendly', '--mood', 'low,tense']).out).toBe('Feeling: low, steady, tense.\nYou two: you are friendly and at ease with him.\n')
+    expect(cli(['render', '--stage', 'friendly', '--mood', 'low,tense']).out).toBe('Feeling: low, steady, tense.\nYou two: you are friendly and at ease with him; you can tease him a little.\n')
   })
 })

@@ -76,6 +76,8 @@ Every number in this ADR is a starting value. Appendix A of the plan lists the s
 
 The starting values live in `packages/stage-shared/src/character-state/settings.ts`. The table below lists every leaf of `CHARACTER_STATE_SETTINGS` as it ships. Durations are in milliseconds: an hour is 3600000 and a day is 86400000. The 81 values that Appendix A of the plan states were checked against the module, and none differs. Values the module sets without an Appendix A entry, such as buffers, row limits, and sentence text, are listed too.
 
+The stage and unlock sentences below supersede the wording in Appendix A6 of the plan: the `close` stage sentence names closeness only, and teasing, nicknames, and initiative each have their own unlock sentence, so each one appears only when its unlock is reached.
+
 | Constant | Value |
 | --- | --- |
 | `mood.epsilon` | 0.01 |
@@ -225,8 +227,11 @@ The starting values live in `packages/stage-shared/src/character-state/settings.
 | `rendering.reasons.maxChars` | 60 |
 | `rendering.stageSentences.stranger` | you are still getting to know him; keep it polite and a little reserved |
 | `rendering.stageSentences.friendly` | you are friendly and at ease with him |
-| `rendering.stageSentences.close` | you are close; you tease him and may use a nickname for him |
+| `rendering.stageSentences.close` | you are close and comfortable with him |
 | `rendering.stageSentences.intimate` | you are very close; you can be openly affectionate and say what you feel |
+| `rendering.unlockSentences.teasing` | you can tease him a little |
+| `rendering.unlockSentences.nicknames` | you may use a nickname for him if you have one |
+| `rendering.unlockSentences.initiative` | you may start conversations and suggest things yourself |
 | `rendering.unlockSentences.callbacks` | you may bring up things you shared before |
 | `rendering.unlockSentences.vulnerability` | you can admit when something hurts |
 | `urge.weights.valence` | 0.35 |
