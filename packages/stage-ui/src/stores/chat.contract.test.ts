@@ -28,12 +28,6 @@ import { memoryRepo } from '../database/repos/memory.repo'
 import { useConversationSettings } from '../features/conversation/settings'
 import { usePerformanceRuntimeState } from '../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
-import { isCloudSyncableMessage } from '../libs/chat-sync'
-import {
-  AIRI_CHAT_APP_SURFACE_HEADER,
-  AIRI_CHAT_ROUND_ID_HEADER,
-  AIRI_CHAT_SESSION_ID_HEADER,
-} from '../libs/product-signals/headers'
 import { getSpeechBusContext, voiceGenerationEnded } from '../services/speech/bus'
 import { composeMemoryPrompt } from '../tools/memory'
 import { getEventSourceKey } from '../utils/event-source'
@@ -105,16 +99,12 @@ const redundantChatAnalyticsMocks = vi.hoisted(() => ({
 }))
 const ingestContextMessageMock = vi.fn()
 const getContextsSnapshotMock = vi.fn()
-const createUserAccountContextMock = vi.fn()
 const persistSessionMessagesMock = vi.fn()
 const forkSessionMock = vi.fn()
 const loadSessionMock = vi.fn()
 const deleteSessionMock = vi.fn()
 const initializeSessionMock = vi.fn()
-const disposeSessionMock = vi.fn()
-const ensureCurrentSessionMock = vi.fn()
 const getChatProviderInstanceMock = vi.fn()
-const pushMessageToCloudMock = vi.fn()
 /** Control records that the chat store asked the session store to persist. */
 const controlRecords: unknown[] = []
 const getToolsByNamesMock = vi.fn<(names: string[]) => Tool[]>()
@@ -179,10 +169,6 @@ vi.mock('../composables/use-io-tracer', () => ({
   startSpan: ioTracerMocks.startSpanMock,
   takeVoiceTurnParent: ioTracerMocks.takeVoiceTurnParent,
   takeComposerVoiceParent: ioTracerMocks.takeComposerVoiceParent,
-}))
-
-vi.mock('./chat/context-providers', () => ({
-  createUserAccountContext: () => createUserAccountContextMock(),
 }))
 
 vi.mock('vue-i18n', () => ({
@@ -267,17 +253,12 @@ vi.mock('./chat/session-store', () => ({
     loadSession: loadSessionMock,
     deleteSession: deleteSessionMock,
     initialize: initializeSessionMock,
-    dispose: disposeSessionMock,
-    ensureCurrentSession: ensureCurrentSessionMock,
     persistSessionMessages: persistSessionMessagesMock,
     getSessionGeneration: () => currentGeneration,
     forkSession: forkSessionMock,
     deleteMessage: async ({ sessionId, messageId }: { sessionId: string, messageId: string }) => {
       sessionMessages[sessionId] = (sessionMessages[sessionId] ?? []).filter(message => message.id !== messageId)
     },
-    // Cloud sync surface used by `chat.ts performSend`. Mocked as a no-op so
-    // the orchestrator contract tests do not need a real WS / cloud mapper.
-    pushMessageToCloud: pushMessageToCloudMock,
     recordInterruption: async (event: unknown) => {
       controlRecords.push(event)
       return { status: 'queued' }
@@ -465,16 +446,12 @@ describe('chat store contract', () => {
     ingestContextMessageMock.mockReset()
     getContextsSnapshotMock.mockReset()
     getContextsSnapshotMock.mockReturnValue({})
-    createUserAccountContextMock.mockReset().mockReturnValue(null)
     persistSessionMessagesMock.mockReset()
     forkSessionMock.mockReset()
     loadSessionMock.mockReset().mockResolvedValue(true)
     deleteSessionMock.mockReset().mockResolvedValue(undefined)
     initializeSessionMock.mockReset().mockResolvedValue(undefined)
-    disposeSessionMock.mockReset()
-    ensureCurrentSessionMock.mockReset().mockResolvedValue('session-1')
     getChatProviderInstanceMock.mockReset().mockResolvedValue(provider)
-    pushMessageToCloudMock.mockReset().mockResolvedValue(undefined)
     controlRecords.length = 0
     getToolsByNamesMock.mockReset().mockImplementation(names => names.map(name => ({
       type: 'function',
@@ -692,7 +669,7 @@ describe('chat store contract', () => {
 
     // The message is in the chat at once. The text-only model waits for its transcript.
     expect(sessionMessages['session-1'].some(message => message.id === 'voice-1')).toBe(true)
-    await new Promise(resolve => setTimeout(resolve, 10))
+    await nextTick()
     expect(llmStreamMock).not.toHaveBeenCalled()
 
     await store.settleAudioTranscript({ sessionId: 'session-1', messageId: 'voice-1', transcript: 'hello there' })
@@ -778,7 +755,7 @@ describe('chat store contract', () => {
     llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _messages: Conversation, options: StreamOptions) => {
       steps.push(await options.resolveStep!())
       // A tool round edits the character before the next model request.
-      cardSelections.set('alice', { provider: 'official-provider', model: 'chat-auto' })
+      cardSelections.set('alice', { provider: 'another-provider', model: 'chat-auto' })
       cardPrompts.set('alice', 'Edited Alice prompt')
       steps.push(await options.resolveStep!())
       await options.onStreamEvent?.({ type: 'finish' })
@@ -787,13 +764,10 @@ describe('chat store contract', () => {
     await store.send({ sessionId: 'session-1', text: 'Use a tool' })
 
     expect(steps[0]).toMatchObject({ model: 'alice-model', providerId: 'alice-provider', systemPrompt: `${composeSystemPrompt(['Alice prompt', registerPrompt.value].filter(Boolean).join('\n\n'), stageContract.value)}\n\nPlugin toolset guidance.` })
-    expect(steps[0]?.headers).not.toHaveProperty(AIRI_CHAT_SESSION_ID_HEADER)
-    expect(steps[1]).toMatchObject({ model: 'chat-auto', providerId: 'official-provider', systemPrompt: `${composeSystemPrompt(['Edited Alice prompt', registerPrompt.value].filter(Boolean).join('\n\n'), stageContract.value)}\n\nPlugin toolset guidance.` })
-    expect(steps[1]?.headers).toMatchObject({
-      [AIRI_CHAT_SESSION_ID_HEADER]: 'session-1',
-      [AIRI_CHAT_ROUND_ID_HEADER]: expect.any(String),
-    })
-    expect(getChatProviderInstanceMock).toHaveBeenLastCalledWith('official-provider', { reasoning: 'disabled' })
+    expect(steps[0]?.headers).toEqual({})
+    expect(steps[1]).toMatchObject({ model: 'chat-auto', providerId: 'another-provider', systemPrompt: `${composeSystemPrompt(['Edited Alice prompt', registerPrompt.value].filter(Boolean).join('\n\n'), stageContract.value)}\n\nPlugin toolset guidance.` })
+    expect(steps[1]?.headers).toEqual({})
+    expect(getChatProviderInstanceMock).toHaveBeenLastCalledWith('another-provider', { reasoning: 'disabled' })
   })
 
   it('projects stored audio again when a tool step changes to a text-only model', async () => {
@@ -1486,50 +1460,10 @@ describe('chat store contract', () => {
     })).rejects.toThrow('Select this tool before running it again.')
   })
 
-  // https://github.com/moeru-ai/airi/pull/2394#discussion_r3883162024
-  it('restarts chat consumers when this renderer becomes the leader', async () => {
-    // ROOT CAUSE:
-    //
-    // The application stopped observing chat leadership changes. If the Web
-    // leader closed, the promoted renderer kept the replicated session state
-    // but did not start a new cloud WebSocket.
-    //
-    // The chat store now owns the leadership subscription. It starts the
-    // session consumers after promotion and stops local consumers after
-    // demotion or disposal.
-    let leadershipListener: ((isLeader: boolean) => void) | undefined
-    const stopLeadershipListener = vi.fn()
-    const syncedPinia: SyncedPiniaRuntime = {
-      dispose: vi.fn(),
-      getLeaderId: vi.fn(),
-      getParticipantCount: vi.fn(() => 1),
-      isLeader: vi.fn(() => false),
-      onCoordinationChange: vi.fn(() => vi.fn()),
-      onLeadershipChange: vi.fn((listener) => {
-        leadershipListener = listener
-        listener(false)
-        return stopLeadershipListener
-      }),
-      participantId: 'chat-test',
-      plugin: vi.fn(),
-    }
-    const store = useChatStore()
-
-    await store.initialize(syncedPinia)
+  it('initializes local sessions through the session store', async () => {
+    await useChatStore().initialize()
 
     expect(initializeSessionMock).toHaveBeenCalledOnce()
-    expect(disposeSessionMock).toHaveBeenCalledOnce()
-    expect(ensureCurrentSessionMock).not.toHaveBeenCalled()
-
-    leadershipListener?.(true)
-    await vi.waitFor(() => expect(ensureCurrentSessionMock).toHaveBeenCalledOnce())
-
-    leadershipListener?.(false)
-    expect(disposeSessionMock).toHaveBeenCalledTimes(2)
-
-    store.dispose()
-    expect(stopLeadershipListener).toHaveBeenCalledOnce()
-    expect(disposeSessionMock).toHaveBeenCalledTimes(3)
   })
 
   it('passes the current consciousness reasoning option to the chat provider', async () => {
@@ -1640,8 +1574,10 @@ describe('chat store contract', () => {
     expect(chatAnalyticsMocks.trackMessageRound).toHaveBeenCalledWith(expect.objectContaining(correlation))
   })
 
-  it('keeps custom and official provider usage in completed message rounds', async () => {
-    llmStreamMock.mockImplementation(async (_model: string, _chatProvider: GenerationProvider, _messages: Conversation, options: any) => {
+  it('keeps direct provider usage in completed message rounds', async () => {
+    llmStreamMock.mockImplementation(async (_model: string, _chatProvider: GenerationProvider, _messages: Conversation, options: LlmStreamOptions) => {
+      if (!options.onStreamEvent || !options.onUsage)
+        throw new Error('Chat stream handlers are required')
       await options.onStreamEvent({ type: 'text-delta', text: 'ok' })
       await options.onStreamEvent({ type: 'finish' })
       await options.onUsage({
@@ -1667,8 +1603,8 @@ describe('chat store contract', () => {
       total_tokens: 20,
     }))
 
-    activeProviderRef.value = 'official-provider'
-    await store.ingest('official turn', {
+    activeProviderRef.value = 'another-provider'
+    await store.ingest('another direct turn', {
       model: 'chat-auto',
       chatProvider: provider,
     })
@@ -1678,11 +1614,7 @@ describe('chat store contract', () => {
       model: 'chat-auto',
       total_tokens: 20,
     }))
-    expect(llmStreamMock.mock.calls[1]?.[3]?.headers).toEqual({
-      [AIRI_CHAT_APP_SURFACE_HEADER]: 'web',
-      [AIRI_CHAT_SESSION_ID_HEADER]: 'session-1',
-      [AIRI_CHAT_ROUND_ID_HEADER]: expect.any(String),
-    })
+    expect(llmStreamMock.mock.calls[1]?.[3]?.headers).toEqual({})
   })
 
   it('keeps the OpenCode Go session header stable across turns', async () => {
@@ -1704,8 +1636,10 @@ describe('chat store contract', () => {
   })
 
   it('uses turn_index on message_sent instead of a second-turn alias', async () => {
-    activeProviderRef.value = 'official-provider'
-    llmStreamMock.mockImplementation(async (_model: string, _chatProvider: GenerationProvider, _messages: Conversation, options: any) => {
+    activeProviderRef.value = 'another-provider'
+    llmStreamMock.mockImplementation(async (_model: string, _chatProvider: GenerationProvider, _messages: Conversation, options: LlmStreamOptions) => {
+      if (!options.onStreamEvent)
+        throw new Error('Chat stream handler is required')
       await options.onStreamEvent({ type: 'text-delta', text: 'ok' })
       await options.onStreamEvent({ type: 'finish' })
     })
@@ -2275,38 +2209,6 @@ describe('chat store contract', () => {
     })
   })
 
-  it('adds account context only to the signed-in request without retaining it in the registry', async () => {
-    const account = {
-      id: 'account',
-      contextId: 'system:user-account',
-      strategy: 'replace-self',
-      text: 'Account display name: "Alice". Edit it at /settings/account.',
-      createdAt: 123,
-    }
-    const registry = {}
-    getContextsSnapshotMock.mockReturnValue(registry)
-    createUserAccountContextMock.mockReturnValue(account)
-    const prompts: string[] = []
-    llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, messages: Conversation, options: StreamOptions) => {
-      prompts.push(JSON.stringify(messages))
-      await options.onStreamEvent?.({ type: 'finish' })
-    })
-    const store = useChatStore()
-    await store.ingest('hello', { model: 'gpt-test', chatProvider: provider })
-    expect(prompts[0]).toContain('Alice')
-    expect(prompts[0]).toContain('/settings/account')
-    // The account rides in the system supplement of this request, not in the runtime context of the user turn.
-    expect(prompts[0]).not.toContain('system:user-account')
-    expect(registry).toEqual({})
-    expect(ingestContextMessageMock).not.toHaveBeenCalledWith(account)
-
-    createUserAccountContextMock.mockReturnValue(null)
-    await store.ingest('hello again', { model: 'gpt-test', chatProvider: provider })
-    expect(prompts[1]).not.toContain('system:user-account')
-    expect(prompts[1]).not.toContain('Alice')
-    expect(prompts[1]).not.toContain('/settings/account')
-  })
-
   it('rejects cancelled queued sends before they start', async () => {
     let releaseFirstSend: (() => void) | undefined
     llmStreamMock.mockImplementationOnce(async () => {
@@ -2746,8 +2648,6 @@ describe('chat store contract', () => {
         { role: 'user', id: 'unprompted-1', origin: 'unprompted', trigger: { topicKey: 'qa', text: 'QA topic' } },
         { role: 'assistant', content: expect.stringContaining('Oh, a QA topic!') },
       ])
-      // Neither the trigger nor its reply is mirrored to the cloud.
-      expect(pushMessageToCloudMock).not.toHaveBeenCalled()
       expect(controlRecords).toEqual([])
     })
 
@@ -2975,7 +2875,7 @@ describe('chat store contract', () => {
       expect(await store.submitUnprompted({ topicKey: 'notify:widget:e-2', topicText: 'QA widget 2', force: true, messageId: 'spark:widget-2' })).toMatchObject({ status: 'spoken' })
     })
 
-    it('declines on SILENT without changing history, syncing, or opening a voice turn that never ends', async () => {
+    it('declines on SILENT without changing history or opening a voice turn that never ends', async () => {
       llmStreamMock.mockImplementation(replyWith(['<|SILENT|>']))
       const ended: unknown[] = []
       const off = getSpeechBusContext().on(voiceGenerationEnded, ({ body }) => ended.push(body))
@@ -2987,7 +2887,6 @@ describe('chat store contract', () => {
 
       expect(result).toEqual({ status: 'declined' })
       expect(sessionMessages['session-1']).toHaveLength(messageCount)
-      expect(pushMessageToCloudMock).not.toHaveBeenCalled()
       expect(controlRecords).toEqual([{
         eventId: expect.any(String),
         turn: { sessionId: 'session-1', turnId: 'unprompted-2' },
@@ -3103,11 +3002,6 @@ describe('chat store contract', () => {
 
       expect(await store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic' })).toEqual({ status: 'failed', error: 'provider down' })
       expect(sessionMessages['session-1']).toHaveLength(messageCount)
-    })
-
-    it('marks unprompted trigger messages as not cloud-syncable', () => {
-      expect(isCloudSyncableMessage({ role: 'user', content: '(A quiet moment.)', origin: 'unprompted', trigger: { topicKey: 'qa', text: 'QA topic' } })).toBe(false)
-      expect(isCloudSyncableMessage({ role: 'user', content: 'hello' })).toBe(true)
     })
 
     it('runs an unprompted turn that a follower window submits in the leader', async () => {

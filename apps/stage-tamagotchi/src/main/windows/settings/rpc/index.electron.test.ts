@@ -31,7 +31,6 @@ vi.mock('electron', async () => {
 
 vi.mock('../../shared/window', () => ({ setupBaseWindowElectronInvokes: vi.fn() }))
 vi.mock('../../shared/display', () => ({ centerWindowOnDisplay: vi.fn() }))
-vi.mock('../../../services/airi/auth', () => ({ createAuthService: vi.fn() }))
 vi.mock('../../../services/airi/godot-stage', () => ({ createGodotStageService: vi.fn() }))
 vi.mock('../../../services/airi/mcp-servers', () => ({ createMcpServersService: vi.fn() }))
 vi.mock('../../../services/airi/widgets', () => ({ createWidgetsService: vi.fn() }))

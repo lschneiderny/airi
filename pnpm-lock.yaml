@@ -48,9 +48,6 @@ catalogs:
     '@better-auth/oauth-provider':
       specifier: 1.6.25
       version: 1.6.25
-    '@better-fetch/fetch':
-      specifier: ^1.3.1
-      version: 1.3.1
     '@date-fns/utc':
       specifier: ^2.1.1
       version: 2.1.1
@@ -381,9 +378,6 @@ catalogs:
     '@proj-airi/unplugin-live2d-sdk':
       specifier: ^0.1.7
       version: 0.1.7
-    '@revenuecat/purchases-js':
-      specifier: ^1.15.0
-      version: 1.68.0
     '@rive-app/canvas-lite':
       specifier: ^2.40.1
       version: 2.40.1
@@ -2355,193 +2349,6 @@ importers:
         specifier: 'catalog:'
         version: 3.3.11(typescript@6.0.3)
 
-  apps/ui-server-auth:
-    dependencies:
-      '@date-fns/utc':
-        specifier: 'catalog:'
-        version: 2.1.1
-      '@fontsource-variable/nunito':
-        specifier: 'catalog:'
-        version: 5.3.0
-      '@formkit/auto-animate':
-        specifier: 'catalog:'
-        version: 0.10.0(vue@3.5.41(typescript@6.0.3))
-      '@moeru/eventa':
-        specifier: 'catalog:'
-        version: 1.0.2(electron@43.4.1(supports-color@10.2.2))(h3@2.0.1-rc.29(crossws@0.4.12(srvx@0.12.7)))(hono@4.13.3)(web-worker@1.5.0)
-      '@moeru/std':
-        specifier: 'catalog:'
-        version: 0.1.0-beta.17
-      '@openpanel/web':
-        specifier: 'catalog:'
-        version: 1.4.1
-      '@proj-airi/font-chillroundm':
-        specifier: workspace:^
-        version: link:../../packages/font-chillroundm
-      '@proj-airi/font-cjkfonts-allseto':
-        specifier: workspace:^
-        version: link:../../packages/font-cjkfonts-allseto
-      '@proj-airi/font-xiaolai':
-        specifier: workspace:^
-        version: link:../../packages/font-xiaolai
-      '@proj-airi/i18n':
-        specifier: workspace:^
-        version: link:../../packages/i18n
-      '@proj-airi/stage-layouts':
-        specifier: workspace:^
-        version: link:../../packages/stage-layouts
-      '@proj-airi/stage-shared':
-        specifier: workspace:^
-        version: link:../../packages/stage-shared
-      '@proj-airi/stage-ui':
-        specifier: workspace:^
-        version: link:../../packages/stage-ui
-      '@proj-airi/ui':
-        specifier: workspace:^
-        version: link:../../packages/ui
-      '@vueuse/core':
-        specifier: 'catalog:'
-        version: 14.4.0(vue@3.5.41(typescript@6.0.3))
-      '@vueuse/shared':
-        specifier: 'catalog:'
-        version: 14.4.0(vue@3.5.41(typescript@6.0.3))
-      animejs:
-        specifier: 'catalog:'
-        version: 4.5.0(@types/three@0.185.4)(three@0.185.1)
-      better-auth:
-        specifier: 'catalog:'
-        version: 1.6.25(@opentelemetry/api@1.9.1)(@prisma/client@5.22.0)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.6)(@opentelemetry/api@1.9.1)(@prisma/client@5.22.0)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0)(postgres@3.4.9))(pg@8.23.0)(vitest@4.1.11)(vue@3.5.41(typescript@6.0.3))
-      colorjs.io:
-        specifier: 'catalog:'
-        version: 0.7.1
-      culori:
-        specifier: 'catalog:'
-        version: 4.0.2
-      date-fns:
-        specifier: 'catalog:'
-        version: 4.4.0
-      nanoid:
-        specifier: 'catalog:'
-        version: 6.0.1
-      nprogress:
-        specifier: 'catalog:'
-        version: 0.2.0
-      pinia:
-        specifier: 'catalog:'
-        version: 4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.41(typescript@6.0.3))
-      uuid:
-        specifier: 'catalog:'
-        version: 14.0.2
-      valibot:
-        specifier: 'catalog:'
-        version: 1.4.2(typescript@6.0.3)
-      vaul-vue:
-        specifier: 'catalog:'
-        version: 0.4.1(reka-ui@2.10.3(vue@3.5.41(typescript@6.0.3)))(vue@3.5.41(typescript@6.0.3))
-      vue:
-        specifier: 'catalog:'
-        version: 3.5.41(typescript@6.0.3)
-      vue-i18n:
-        specifier: 'catalog:'
-        version: 11.4.9(vue@3.5.41(typescript@6.0.3))
-      vue-router:
-        specifier: 'catalog:'
-        version: 5.2.0(@pinia/colada@1.4.2(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.41(typescript@6.0.3)))(vue@3.5.41(typescript@6.0.3)))(@vue/compiler-sfc@3.5.41)(esbuild@0.28.2)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.41(typescript@6.0.3)))(rolldown@1.2.5)(rollup@4.62.5)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))(vue@3.5.41(typescript@6.0.3))
-      vue-sonner:
-        specifier: 'catalog:'
-        version: 2.0.9(@nuxt/kit@3.21.11(magicast@0.5.4))(vue@3.5.41(typescript@6.0.3))
-    devDependencies:
-      '@iconify-json/carbon':
-        specifier: 'catalog:'
-        version: 1.2.25
-      '@iconify-json/eos-icons':
-        specifier: 'catalog:'
-        version: 1.2.4
-      '@iconify-json/logos':
-        specifier: 'catalog:'
-        version: 1.2.13
-      '@iconify-json/lucide':
-        specifier: 'catalog:'
-        version: 1.2.125
-      '@iconify-json/mingcute':
-        specifier: 'catalog:'
-        version: 1.2.8
-      '@iconify-json/ph':
-        specifier: 'catalog:'
-        version: 1.2.2
-      '@iconify-json/simple-icons':
-        specifier: 'catalog:'
-        version: 1.2.93
-      '@iconify-json/solar':
-        specifier: 'catalog:'
-        version: 1.2.9
-      '@iconify-json/svg-spinners':
-        specifier: 'catalog:'
-        version: 1.2.4
-      '@iconify-json/tabler':
-        specifier: 'catalog:'
-        version: 1.2.38
-      '@iconify-json/vscode-icons':
-        specifier: 'catalog:'
-        version: 1.2.74
-      '@intlify/unplugin-vue-i18n':
-        specifier: 'catalog:'
-        version: 11.2.5(@vue/compiler-dom@3.5.41)(eslint@10.9.0(jiti@2.7.0)(supports-color@10.2.2))(rollup@4.62.5)(supports-color@10.2.2)(typescript@6.0.3)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))(vue-i18n@11.4.9(vue@3.5.41(typescript@6.0.3)))(vue@3.5.41(typescript@6.0.3))
-      '@proj-airi/cpu-slots':
-        specifier: workspace:^
-        version: link:../../packages/cpu-slots
-      '@proj-airi/iconify-meteocons':
-        specifier: 'catalog:'
-        version: 0.1.5
-      '@proj-airi/lobe-icons':
-        specifier: 'catalog:'
-        version: 1.0.19
-      '@shikijs/markdown-it':
-        specifier: 'catalog:'
-        version: 4.4.3
-      '@types/culori':
-        specifier: 'catalog:'
-        version: 4.0.1
-      '@types/nprogress':
-        specifier: 'catalog:'
-        version: 0.2.3
-      '@types/splitpanes':
-        specifier: 'catalog:'
-        version: 2.2.6
-      '@unocss/reset':
-        specifier: 'catalog:'
-        version: 66.7.5
-      '@vitejs/plugin-vue':
-        specifier: 'catalog:'
-        version: 6.0.8(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))(vue@3.5.41(typescript@6.0.3))
-      '@vue-macros/volar':
-        specifier: 'catalog:'
-        version: 3.1.4(typescript@6.0.3)(vue-tsc@3.3.11(typescript@6.0.3))(vue@3.5.41(typescript@6.0.3))
-      '@vueuse/motion':
-        specifier: 'catalog:'
-        version: 3.0.3(magicast@0.5.4)(vue@3.5.41(typescript@6.0.3))
-      unplugin-info:
-        specifier: 'catalog:'
-        version: 1.3.2(@nuxt/kit@3.21.11(magicast@0.5.4))(esbuild@0.28.2)(rollup@4.62.5)(supports-color@10.2.2)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))
-      unplugin-yaml:
-        specifier: 'catalog:'
-        version: 4.2.1(@nuxt/kit@3.21.11(magicast@0.5.4))(esbuild@0.28.2)(rolldown@1.2.5)(rollup@4.62.5)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))
-      vite:
-        specifier: 'catalog:'
-        version: 8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0)
-      vite-plugin-vue-devtools:
-        specifier: 'catalog:'
-        version: 8.2.1(@nuxt/kit@3.21.11(magicast@0.5.4))(supports-color@10.2.2)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))(vue@3.5.41(typescript@6.0.3))
-      vite-plugin-vue-layouts:
-        specifier: 'catalog:'
-        version: 0.11.0(supports-color@10.2.2)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))(vue-router@5.2.0(@pinia/colada@1.4.2(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.41(typescript@6.0.3)))(vue@3.5.41(typescript@6.0.3)))(@vue/compiler-sfc@3.5.41)(esbuild@0.28.2)(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.41(typescript@6.0.3)))(rolldown@1.2.5)(rollup@4.62.5)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))(vue@3.5.41(typescript@6.0.3)))(vue@3.5.41(typescript@6.0.3))
-      vue-macros:
-        specifier: 'catalog:'
-        version: 3.1.4(@vueuse/core@14.4.0(vue@3.5.41(typescript@6.0.3)))(esbuild@0.28.2)(rolldown@1.2.5)(rollup@4.62.5)(typescript@6.0.3)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.0(supports-color@10.2.2))(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))(vue-tsc@3.3.11(typescript@6.0.3))(vue@3.5.41(typescript@6.0.3))
-      vue-tsc:
-        specifier: 'catalog:'
-        version: 3.3.11(typescript@6.0.3)
-
   engines/stage-tamagotchi-godot: {}
 
   integrations/discord-bot:
@@ -4070,9 +3877,6 @@ importers:
 
   packages/stage-ui:
     dependencies:
-      '@better-fetch/fetch':
-        specifier: 'catalog:'
-        version: 1.3.1
       '@date-fns/utc':
         specifier: 'catalog:'
         version: 2.1.1
@@ -4157,9 +3961,6 @@ importers:
       '@proj-airi/server-sdk':
         specifier: workspace:^
         version: link:../server-sdk
-      '@proj-airi/server-sdk-shared':
-        specifier: workspace:^
-        version: link:../../server/packages/server-sdk-shared
       '@proj-airi/stage-shared':
         specifier: workspace:^
         version: link:../stage-shared
@@ -4187,9 +3988,6 @@ importers:
       '@proj-airi/vite-plugin-sherpaw':
         specifier: workspace:^
         version: link:../vite-plugin-sherpaw
-      '@revenuecat/purchases-js':
-        specifier: 'catalog:'
-        version: 1.68.0
       '@sherpaw/kws':
         specifier: 'catalog:'
         version: 0.2.1(electron@43.4.1(supports-color@10.2.2))(hono@4.13.3)(web-worker@1.5.0)
@@ -4268,9 +4066,6 @@ importers:
       async-mutex:
         specifier: 'catalog:'
         version: 0.5.0
-      better-auth:
-        specifier: 'catalog:'
-        version: 1.6.25(@opentelemetry/api@1.9.1)(@prisma/client@5.22.0)(better-sqlite3@12.11.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.6)(@opentelemetry/api@1.9.1)(@prisma/client@5.22.0)(@types/pg@8.23.1)(better-sqlite3@12.11.1)(kysely@0.29.5)(pg@8.23.0)(postgres@3.4.9))(pg@8.23.0)(vitest@4.1.11)(vue@3.5.41(typescript@6.0.3))
       culori:
         specifier: 'catalog:'
         version: 4.0.2
@@ -4298,9 +4093,6 @@ importers:
       gpuu:
         specifier: 'catalog:'
         version: 1.0.7
-      hono:
-        specifier: 4.13.3
-        version: 4.13.3
       html2canvas:
         specifier: 'catalog:'
         version: 1.4.1
@@ -4485,9 +4277,6 @@ importers:
       '@pinia/testing':
         specifier: 'catalog:'
         version: 2.0.1(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.41(typescript@6.0.3)))
-      '@proj-airi/api-server':
-        specifier: workspace:*
-        version: link:../../server/apps/api
       '@proj-airi/cpu-slots':
         specifier: workspace:^
         version: link:../cpu-slots
@@ -10499,9 +10288,6 @@ packages:
 
   '@quansync/fs@1.0.0':
     resolution: {integrity: sha512-4TJ3DFtlf1L5LDMaM6CanJ/0lckGNtJcMjQ1NAV6zDmA0tEHKZtxNKin8EgPaVX1YzljbxckyT2tJrpQKAtngQ==}
-
-  '@revenuecat/purchases-js@1.68.0':
-    resolution: {integrity: sha512-1z8S2PWp2EJNljxZbrxY7hU+JrAgEl1kYKZ/xF82t6LVuLQFJrlTSihjC44Zp16i5A6LR4SB8FLANN2UIh9Fvg==}
 
   '@rive-app/canvas-lite@2.40.1':
     resolution: {integrity: sha512-gnlvjeI344tC9vBqYW8lV9o9g8FJPtaTq6UjmFmn4q9wLXloN/u3XqdXHsdU/5uBgCd8G6fFFQh7TqtnwzRSfA==}
@@ -24290,8 +24076,6 @@ snapshots:
   '@quansync/fs@1.0.0':
     dependencies:
       quansync: 1.0.0
-
-  '@revenuecat/purchases-js@1.68.0': {}
 
   '@rive-app/canvas-lite@2.40.1': {}
 

@@ -230,11 +230,9 @@ async function renderStage(routePath: string, search: string) {
     const leaderPinia = createPinia()
     const leaderSynced = setupSynced({ leadership: 'leader-only' })
     leaderPinia.use(leaderSynced.pinia)
-    let disposeLeaderChat: (() => void) | undefined
     const leaderApp = createApp(defineComponent({
       setup() {
-        const chat = useChatStore()
-        disposeLeaderChat = () => chat.dispose()
+        useChatStore()
         // Card actions run in this leader. Create their module stores during
         // setup so their i18n consumers retain a component context.
         useSpeechStore()
@@ -249,7 +247,6 @@ async function renderStage(routePath: string, search: string) {
       .use(createI18n({ legacy: false, locale: 'en', messages: { en: {} }, missingWarn: false, fallbackWarn: false }))
     disposeLeader = () => {
       leaderApp.unmount()
-      disposeLeaderChat?.()
       disposePinia(leaderPinia)
     }
     leaderApp.mount(document.createElement('div'))

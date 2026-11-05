@@ -8,7 +8,6 @@ import './apple-vision'
 import './sherpaw'
 import './local-audio'
 import './kokoro-local'
-import './official'
 import './prompt-api'
 
 // Keep shared runtime adapters while limiting this fork's app catalog.
@@ -49,10 +48,6 @@ const removedProviderIds = new Set([
 ])
 
 registerProviders(portableProviderDefinitions.filter(definition => !removedProviderIds.has(definition.id)))
-
-export {
-  OFFICIAL_TRANSCRIPTION_PROVIDER_ID,
-} from './official'
 
 export {
   getDefinedProvider,

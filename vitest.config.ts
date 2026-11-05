@@ -8,7 +8,6 @@ export default withCpuSlots(defineConfig({
     projects: [
       'server/apps/auth',
       'server/apps/api',
-      'apps/ui-server-auth',
       'apps/stage-tamagotchi/vitest.node.config.ts',
       'packages/ccc',
       'packages/core-agent',

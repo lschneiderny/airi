@@ -17,7 +17,6 @@
     "dev:ui": "node scripts/dev.mjs packages/stage-ui story:dev",
     "dev:web": "node scripts/dev.mjs apps/stage-web dev",
     "dev:web:https": "node scripts/dev.mjs apps/stage-web dev:https",
-    "dev:server-auth": "node scripts/dev.mjs apps/ui-server-auth dev",
     "dev:backend": "docker compose -f server/docker-compose.yaml up --build",
     "dev:server": "node scripts/dev.mjs packages/server-runtime dev",
     "dev:tamagotchi": "node scripts/dev.mjs apps/stage-tamagotchi dev",

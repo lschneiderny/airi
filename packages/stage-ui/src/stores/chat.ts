@@ -4,7 +4,6 @@ import type { WebSocketEventInputs } from '@proj-airi/server-sdk'
 import type { ReactionKind, ReasonCategory, ReasonKind } from '@proj-airi/stage-shared/situation'
 import type { PromptSegment } from '@proj-airi/stage-shared/stage-contract'
 import type { Message } from '@xsai/shared-chat'
-import type { SyncedPiniaRuntime } from 'pinia-plugin-synced'
 
 import type { ChatHistoryItem, ChatToolReference, ContextMessage } from '../types/chat'
 import type { StoredUnpromptedDecline, StoredVoiceInterruption } from '../types/chat-session'
@@ -27,20 +26,14 @@ import { defineStore, getActivePinia, storeToRefs } from 'pinia'
 import { computed, shallowRef, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { getConversationAnalyticsSurface } from '../composables'
 import { useStageContractPrompt } from '../composables/use-airi-runtime-prompt'
 import { registerTurnSpan, startSpan, takeComposerVoiceParent, takeVoiceTurnParent } from '../composables/use-io-tracer'
 import { useChatVision } from '../composables/vision/use-chat-vision'
 import { useVisionInference } from '../composables/vision/use-vision-inference'
 import { useConversationSettings } from '../features/conversation/settings'
 import { chatAssetIdFrom, inlineConversationAssets, storeChatAttachments } from '../libs/chat-assets'
-import { extractMessageText, isCloudSyncableMessage } from '../libs/chat-sync'
-import { createChatAnalyticsHooks, getProviderMode } from '../libs/product-signals/events/chat'
-import {
-  AIRI_CHAT_APP_SURFACE_HEADER,
-  AIRI_CHAT_ROUND_ID_HEADER,
-  AIRI_CHAT_SESSION_ID_HEADER,
-} from '../libs/product-signals/headers'
+import { extractMessageText } from '../libs/chat-message'
+import { createChatAnalyticsHooks } from '../libs/product-signals/events/chat'
 import { getSpeechBusContext, voiceGenerationEnded } from '../services/speech/bus'
 import { createMemoryTools, READ_MEMORY_TOOL_NAME } from '../tools/memory'
 import { createWakeWordTool } from '../tools/wake-words'
@@ -408,35 +401,13 @@ export const useChatStore = defineStore('chat', () => {
    * Concurrent sessions each own one trace. `onSendSettled` ends the span of its own turn only.
    */
   const ownedTurnSpans = new Map<string, { span: ReturnType<typeof startSpan>, unregister: () => void }>()
-  let stopLeadershipListener: (() => void) | undefined
   const analyticsHooks = createChatAnalyticsHooks({
     getSessionMessages: sessionId => chatSession.getSessionMessages(sessionId),
   })
 
-  /**
-   * Initializes chat state and binds local consumers to synchronized leadership.
-   * A promoted renderer restarts the leader-owned cloud consumer.
-   */
-  async function initialize(syncedPinia: SyncedPiniaRuntime) {
-    stopLeadershipListener ??= syncedPinia.onLeadershipChange((isLeader) => {
-      if (!isLeader) {
-        chatSession.dispose()
-        return
-      }
-
-      void chatSession.ensureCurrentSession().catch((error) => {
-        console.error('[chat] Failed to start chat consumers after leader promotion:', error)
-      })
-    })
-
+  /** Initializes the local session through its leader-routed persistence action. */
+  async function initialize() {
     await chatSession.initialize()
-  }
-
-  /** Stops chat consumers that belong to this window. */
-  function dispose() {
-    stopLeadershipListener?.()
-    stopLeadershipListener = undefined
-    chatSession.dispose()
   }
 
   /**
@@ -488,16 +459,11 @@ export const useChatStore = defineStore('chat', () => {
       : undefined
 
     // Build headers for the provider selected for each request.
-    // Only the official provider receives analytics correlation.
     function requestHeaders(providerId: string | undefined) {
       const headers = { ...options?.headers }
       if (providerConfigStore.getProvider(providerId ?? activeProvider.value)?.definitionId === 'opencode-go' && options?.requestCorrelation?.conversationId)
         headers['x-opencode-session'] = options.requestCorrelation.conversationId
-      if (getProviderMode(providerId ?? activeProvider.value) === 'official' && options?.requestCorrelation) {
-        headers[AIRI_CHAT_SESSION_ID_HEADER] = options.requestCorrelation.conversationId
-        headers[AIRI_CHAT_ROUND_ID_HEADER] = options.requestCorrelation.turnId
-        headers[AIRI_CHAT_APP_SURFACE_HEADER] = getConversationAnalyticsSurface()
-      }
+
       return headers
     }
 
@@ -843,36 +809,6 @@ export const useChatStore = defineStore('chat', () => {
     ...analyticsHooks,
     onLifecycle: record => contextObservability.recordLifecycle(record),
     onPromptProjection: payload => contextObservability.capturePromptProjection(payload),
-    onUserMessageAppended: ({ sessionId, message, messageText, source, model, provider, roundId, turnIndex }) => {
-      analyticsHooks.onUserMessageAppended?.({
-        sessionId,
-        message,
-        messageText,
-        source,
-        model,
-        provider,
-        roundId,
-        turnIndex,
-      })
-      if (isCloudSyncableMessage(message)) {
-        void chatSession.pushMessageToCloud(sessionId, {
-          id: message.id,
-          role: 'user',
-          content: messageText,
-          replyToMessageId: message.replyToMessageId,
-        })
-      }
-    },
-    onAssistantMessageAppended: ({ sessionId, message, roundId }) => {
-      const source = chatSession.getSessionMessages(sessionId).find(message => message.role === 'user' && message.id === roundId)
-      if (source && isCloudSyncableMessage(source) && isCloudSyncableMessage(message) && message.id) {
-        void chatSession.pushMessageToCloud(sessionId, {
-          id: message.id,
-          role: 'assistant',
-          content: extractMessageText(message),
-        })
-      }
-    },
     onUserTurnReady: ({ sessionId, messageText, sessionMessages }) => {
       const autonomousTarget = sessionCard(sessionId)?.extensions?.airi?.modules?.artistry?.autonomousTarget || 'user'
       if (autonomousTarget === 'user')
@@ -1533,7 +1469,6 @@ export const useChatStore = defineStore('chat', () => {
     pendingQueuedSendCount,
 
     initialize,
-    dispose,
     cleanup,
     deleteSession,
     ingest,
