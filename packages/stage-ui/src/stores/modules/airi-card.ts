@@ -12,7 +12,7 @@ import { PerformanceProfileSchema } from '@proj-airi/stage-shared/expression-per
 import { StorageSerializers, useDocumentVisibility, watchDebounced } from '@vueuse/core'
 import { isEqual } from 'es-toolkit'
 import { nanoid } from 'nanoid'
-import { defineStore, storeToRefs } from 'pinia'
+import { defineStore, getActivePinia, storeToRefs } from 'pinia'
 import { array, looseObject, object, parse, safeParse, string } from 'valibot'
 import { computed, getCurrentScope, onScopeDispose, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -88,6 +88,9 @@ function resolveSystemPrompt(card: AiriCard | undefined): string {
 }
 
 export const useAiriCardStore = defineStore('airi-card', () => {
+  // A watcher or an await runs outside the setup of this store. The active
+  // Pinia can then be another one, so keep the Pinia that owns this store.
+  const pinia = getActivePinia()
   const { t } = useI18n()
   const { userId } = storeToRefs(useAuthStore())
   const featureFlagsStore = useFeatureFlagsStore()
@@ -116,11 +119,11 @@ export const useAiriCardStore = defineStore('airi-card', () => {
   const activeCard = computed(() => cards.value.get(activeCardId.value))
   function useRuntimeModuleStores() {
     return {
-      artistry: useArtistryStore(),
-      consciousness: useConsciousnessStore(),
-      speech: useSpeechStore(),
-      stageModel: useSettingsStageModel(),
-      vision: useVisionStore(),
+      artistry: useArtistryStore(pinia),
+      consciousness: useConsciousnessStore(pinia),
+      speech: useSpeechStore(pinia),
+      stageModel: useSettingsStageModel(pinia),
+      vision: useVisionStore(pinia),
     }
   }
 
@@ -250,7 +253,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
   /** Loads the effective auth-owned voice catalog after card setup finishes. */
   async function loadAuthenticatedSpeechVoices(): Promise<void> {
     const { speech } = useRuntimeModuleStores()
-    const provider = useProviderConfigStore().providers[speech.activeSpeechProvider]
+    const provider = useProviderConfigStore(pinia).providers[speech.activeSpeechProvider]
     if (provider?.configuredBy !== 'authentication')
       return
 
@@ -283,7 +286,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     // The memory store starts empty and reads IndexedDB asynchronously. Wait for
     // that read so a fresh window cannot delete the card before its memories are
     // known. General entries have no persona and stay.
-    const memory = useMemoryStore()
+    const memory = useMemoryStore(pinia)
     await memory.ready()
     await Promise.all(memory.entries.filter(entry => entry.persona === id).map(entry => memory.remove(entry)))
     // NOTICE:
@@ -291,7 +294,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     // The card store and the character-state store call each other, so creating either one inside the other's setup would be circular.
     // The call is routed to the leader, which also drops a pending save that would write the record back (packages/stage-ui/src/stores/character-state).
     // Removal condition: card delete no longer needs the character store at call time, that is, the card-store <-> character-state call-time cycle is removed.
-    await useCharacterStateStore().forget(id)
+    await useCharacterStateStore(pinia).forget(id)
 
     const removed = cards.value.delete(id)
     if (!removed)
@@ -388,11 +391,11 @@ export const useAiriCardStore = defineStore('airi-card', () => {
    */
   async function selectActiveCardVisionProvider(provider: string) {
     await pendingAuthenticationSetup
-    const vision = useVisionStore()
+    const vision = useVisionStore(pinia)
     vision.activeProvider = provider
     vision.resetModelSelection()
     await vision.loadModelsForProvider(provider)
-    const model = useProviderStore().getDefaultModelForProvider(provider) ?? ''
+    const model = useProviderStore(pinia).getDefaultModelForProvider(provider) ?? ''
     return await updateActiveCardVision({ provider, model })
   }
 
@@ -989,7 +992,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       },
       displayModelId: modules.displayModelId || defaults.displayModelId,
     }
-    const providers = useProviderConfigStore().providers
+    const providers = useProviderConfigStore(pinia).providers
     for (const module of ['consciousness', 'vision', 'speech'] as const) {
       const provider = providers[resolved[module].provider]
       // Logout disables authenticated providers without deleting card choices.
@@ -1011,7 +1014,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     rememberInheritedSettings()
     // The runtime holds a mix of two cards until the write completes. See followInheritedSettings.
     appliedModules = undefined
-    const artistry = useArtistryStore()
+    const artistry = useArtistryStore(pinia)
 
     artistry.resetToGlobal()
 
