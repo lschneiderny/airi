@@ -18,10 +18,14 @@ import {
   unknown,
 } from 'valibot'
 
+import { normalizeContextWindow } from '../types/airiCard'
+
 export type AiriCardDraftValidationError = 'name' | 'version' | 'invalid_artistry_json'
 
 /** Module settings owned by the AIRI Card editor form. */
 interface AiriCardEditorModules {
+  /** Stored at the extension level, not under `modules`. */
+  contextWindow?: number
   performance?: AiriExtension['modules']['performance']
   consciousness: AiriExtension['modules']['consciousness']
   vision: AiriExtension['modules']['vision']
@@ -47,10 +51,12 @@ interface AiriCardEditorModules {
  */
 export function getAiriCardEditorModuleSettings(
   card: Card | undefined,
-): Pick<AiriCardEditorModules, 'consciousness' | 'vision' | 'speech' | 'displayModelId' | 'performance'> {
+): Pick<AiriCardEditorModules, 'consciousness' | 'vision' | 'speech' | 'displayModelId' | 'performance'> & { contextWindow: number } {
   const modules = getAiriCardModules(card?.extensions?.airi)
+  const extension = card?.extensions?.airi
 
   return {
+    contextWindow: normalizeContextWindow(isRecord(extension) ? extension.contextWindow : undefined),
     ...(modules?.performance === undefined ? {} : { performance: parse(PerformanceProfileSchema, modules.performance) }),
     consciousness: {
       provider: getModuleString(modules?.consciousness, 'provider'),
@@ -160,6 +166,7 @@ export function applyAiriCardEditorModules(
   const existing = isAiriExtension(card.extensions?.airi)
     ? card.extensions.airi
     : undefined
+  const { contextWindow, ...editedModules } = edited
 
   return {
     ...card,
@@ -167,9 +174,10 @@ export function applyAiriCardEditorModules(
       ...card.extensions,
       airi: {
         ...existing,
+        ...(contextWindow === undefined ? {} : { contextWindow: normalizeContextWindow(contextWindow) }),
         modules: {
           ...existing?.modules,
-          ...edited,
+          ...editedModules,
           ...(edited.performance === undefined
             ? {}
             : {

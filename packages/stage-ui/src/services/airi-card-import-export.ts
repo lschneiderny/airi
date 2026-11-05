@@ -16,6 +16,7 @@ import { array, literal, object, optional, parse, picklist, record, string, unkn
 import { wakeWordSchema } from '../libs/voice/wake-words'
 import { characterProfileOf, characterStateContext } from '../stores/character-state'
 import { DisplayModelFormat } from '../stores/display-models'
+import { normalizeContextWindow } from '../types/airiCard'
 
 const FORMAT = 'airi-character-card'
 const VERSION = 1
@@ -276,6 +277,7 @@ function sanitizeAiri(value: unknown, displayModelIdOverride?: string): AiriExte
   const displayModelId = displayModelIdOverride ?? stringValue(modules.displayModelId)
 
   return {
+    contextWindow: normalizeContextWindow(source.contextWindow),
     ...(source.wakeWords === undefined ? {} : { wakeWords: parse(array(wakeWordSchema), source.wakeWords) }),
     modules: {
       character: characterProfileOf(modules.character),

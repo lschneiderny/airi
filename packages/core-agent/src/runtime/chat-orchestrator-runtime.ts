@@ -389,6 +389,11 @@ export interface ChatOrchestratorRuntimeDeps {
   getActiveSessionId: () => string
   /** Returns the currently active provider ID for categorization policy. */
   getActiveProvider: () => string | undefined
+  /**
+   * Returns the conversation turn limit, including the current input's turn. A turn contains a user group and its assistant/tool group.
+   * `-1` keeps all history. `0` sends only current input. System messages are exempt.
+   */
+  getContextWindow?: (sessionId: string) => number | undefined
   /** Runtime context providers ingested immediately before prompt composition. */
   runtimeContextProviders?: Array<() => ContextMessage | null | undefined>
   /** Clock used for persisted message timestamps. @default Date.now */
@@ -584,6 +589,9 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     message?: StreamingAssistantMessage
   }>()
   const sendQueues = new Map<string, ReturnType<typeof createQueue<QueuedSend>>>()
+  // Runtime-only cuts belong to sessions. A stable start permits prefix cache reuse between trims.
+  // Changed limits, session generations, or removed anchors invalidate the cut. Session cancellation releases it.
+  const historyCuts = new Map<string, { limit: number, generation: number, start: ChatHistoryItem }>()
   const hooks = createChatHooks()
   const now = deps.now ?? (() => Date.now())
   const monotonicNow = deps.monotonicNow ?? (() => globalThis.performance?.now?.() ?? Date.now())
@@ -695,6 +703,57 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
       return chatMessagesToTurns(source.role === 'assistant' && source.providerTranscript?.length ? source.providerTranscript : [source], message.id ?? `history-${historyIndex}`)
     })
     return { turns }
+  }
+
+  function trimConversationHistory(sessionId: string, generation: number, history: ChatHistoryItem[], contextWindow: number | undefined) {
+    if (contextWindow === undefined || !Number.isInteger(contextWindow) || contextWindow < 0) {
+      historyCuts.delete(sessionId)
+      return history
+    }
+
+    const systemMessages = history.filter(message => message.role === 'system')
+    if (contextWindow === 0) {
+      historyCuts.delete(sessionId)
+      const currentInput = history.findLast(message => message.role === 'user')
+      return currentInput ? [...systemMessages, currentInput] : systemMessages
+    }
+
+    const previous = historyCuts.get(sessionId)
+    const anchor = previous?.limit === contextWindow && previous.generation === generation ? previous.start : undefined
+    const turnStarts: number[] = []
+    let userStart: number | undefined
+    let reachedAnchor = false
+
+    // Scan newest turns only, up to the cached boundary or one turn beyond the limit.
+    // Deletions can join role groups across that boundary, so finish the whole user group before stopping.
+    for (let index = history.length - 1; index >= 0; index--) {
+      const message = history[index]!
+      if (message.role === 'user') {
+        userStart = index
+        if (anchor && (anchor.id ? message.id === anchor.id : message === anchor))
+          reachedAnchor = true
+      }
+      else if ((message.role === 'assistant' || message.role === 'tool') && userStart !== undefined) {
+        turnStarts.push(userStart)
+        userStart = undefined
+        if (reachedAnchor || turnStarts.length > contextWindow)
+          break
+      }
+    }
+    if (userStart !== undefined)
+      turnStarts.push(userStart)
+
+    // Round up to keep small windows full. Only complete turns leave the retained prefix.
+    const retainedTurns = Math.ceil(contextWindow * 0.9)
+    const start = turnStarts.length > contextWindow
+      ? turnStarts[retainedTurns - 1]!
+      : turnStarts.at(-1) ?? history.length
+    const nextAnchor = history[start]
+    if (nextAnchor)
+      historyCuts.set(sessionId, { limit: contextWindow, generation, start: nextAnchor })
+    else
+      historyCuts.delete(sessionId)
+    return [...systemMessages, ...history.slice(start).filter(message => message.role !== 'system')]
   }
 
   async function performSend(
@@ -1239,7 +1298,10 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         ],
       })
 
-      const context = buildContext(sessionMessagesForSend, declineMarkerText)
+      const context = buildContext(
+        trimConversationHistory(sessionId, generation, sessionMessagesForSend, deps.getContextWindow?.(sessionId)),
+        declineMarkerText,
+      )
       // The first request uses the step resolved here, so the display projection below carries the system prompt that
       // the provider receives. Each adapter puts a resolved prompt in place of the system message the same way.
       const resolveOwnerStep = options.resolveStep
@@ -1698,6 +1760,11 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
   }
 
   function cancelPendingSends(sessionId?: string) {
+    if (sessionId)
+      historyCuts.delete(sessionId)
+    else
+      historyCuts.clear()
+
     for (const [activeSessionId, active] of activeSends) {
       if (!sessionId || sessionId === activeSessionId)
         active.controller.abort(new Error('Chat session send was cancelled'))

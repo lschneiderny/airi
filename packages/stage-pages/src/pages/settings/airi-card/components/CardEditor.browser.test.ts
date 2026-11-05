@@ -137,6 +137,20 @@ describe('card editor character profile', () => {
     expect(saved.extensions.airi.agents).toEqual({ planner: { prompt: 'Plan.' } })
   })
 
+  it('shows All for an existing card and saves a turn limit, zero, and All', async () => {
+    const cardId = await createCard()
+    const screen = await render(CardEditor, { props: { cardId, initialSection: 'settings' }, global: { plugins: [pinia, i18n] } })
+
+    const input = screen.getByRole('spinbutton', { name: t('settings.pages.card.context_window') })
+    await expect.element(input).toHaveValue(null)
+    await expect.element(input).toHaveAttribute('placeholder', t('settings.pages.card.context_window_all'))
+    for (const [text, expected] of [['20', 20], ['0', 0], ['', -1]] as const) {
+      await input.fill(text)
+      await screen.getByRole('button', { name: t('settings.pages.card.save'), exact: true }).first().click()
+      await expect.poll(() => useAiriCardStore(pinia).cards.get(cardId)?.extensions.airi.contextWindow).toBe(expected)
+    }
+  })
+
   it('loads the stored profile and clamps a value forced through the model to the schema range', async () => {
     const stored = { resting: { valence: 0.3, energy: -0.2, tension: 0.5 }, startingStage: 'friendly' }
     const cardId = await createCard(stored)

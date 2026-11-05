@@ -813,6 +813,8 @@ export const useChatStore = defineStore('chat', () => {
     },
     getActiveSessionId: () => activeSessionId.value,
     getActiveProvider: () => activeProvider.value,
+    // The limit belongs to the character that owns the session, so a card switch never trims another session.
+    getContextWindow: sessionId => (sessionCard(sessionId) ?? cardStore.activeCard)?.extensions.airi.contextWindow ?? -1,
     runtimeContextProviders: [situationContextMessage, characterContextMessage],
     createId: nanoid,
     unwrapMessage: message => toRaw(message),

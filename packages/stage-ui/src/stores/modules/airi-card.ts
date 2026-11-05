@@ -28,6 +28,7 @@ import { captureAnalyticsEvent } from '../../libs/product-signals'
 import { SERVER_URL } from '../../libs/server'
 import { wakeWordSchema } from '../../libs/voice/wake-words'
 import { resolveModuleSelection } from '../../services/airi-card-modules'
+import { normalizeContextWindow } from '../../types/airiCard'
 import { useAuthStore } from '../auth'
 import { useCharacterStateStore } from '../character-state'
 import { useFeatureFlagsStore } from '../feature-flags'
@@ -467,6 +468,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     // Return default if no extension exists
     if (!existingExtension) {
       return {
+        contextWindow: -1,
         modules: defaultModules,
         agents: {},
       }
@@ -475,6 +477,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     // Fill known fields without discarding settings owned by imported extensions.
     return {
       ...existingExtension,
+      contextWindow: normalizeContextWindow(existingExtension.contextWindow),
       ...(existingExtension.wakeWords === undefined ? {} : { wakeWords: parse(array(wakeWordSchema), existingExtension.wakeWords) }),
       modules: {
         ...existingExtension.modules,
