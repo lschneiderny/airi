@@ -273,9 +273,11 @@ const lipSyncStarted = ref(false)
 const lipSyncLoopId = ref<number>()
 const live2dLipSync = ref<Live2DLipSync>()
 const live2dLipSyncOptions: Live2DLipSyncOptions = { mouthUpdateIntervalMs: 50, mouthLerpWindowMs: 50 }
+let playingCount = 0
 
 function resetAssistantSpeechSurface(source: string) {
-  nowSpeaking.value = false
+  if (playingCount === 0)
+    nowSpeaking.value = false
   mouthOpenSize.value = 0
   assistantCaption.value = ''
 
@@ -653,7 +655,6 @@ const playback = new Playback(new BrowserPlayback(audioContext, {
   destination: speechDestination,
   onSource: (source) => { currentAudioSource.value = source },
 }))
-let playingCount = 0
 
 function resetSpeakingState() {
   nowSpeaking.value = false
@@ -1018,6 +1019,7 @@ defineExpose({
         :enable-orbit-controls="props.enableOrbitControls"
         :audio-context="audioContext"
         :current-audio-source="currentAudioSource"
+        :speech-active="nowSpeaking"
         @error="reportStageRenderError"
         @vrm-interact="onVRMInteract"
       />

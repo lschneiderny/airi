@@ -65,6 +65,8 @@ const props = withDefaults(defineProps<{
   /** The context that owns `currentAudioSource`. */
   audioContext?: AudioContext
   currentAudioSource?: AudioBufferSourceNode
+  /** Whether speech is currently audible. When it turns false, the lip sync releases the mouth. */
+  speechActive?: boolean
   cursorPosition?: { x: number, y: number }
   /**
    * Scene painted behind the model, inside this canvas rather than under it, so one
@@ -1077,6 +1079,7 @@ defineExpose({
         ref="modelRef"
         :audio-context="props.audioContext"
         :current-audio-source="props.currentAudioSource"
+        :speech-active="props.speechActive"
         :cursor-position="props.cursorPosition"
         :last-committed-model-id="lastCommittedModelId"
         :model-id="requestedModelIdentity?.modelId ?? props.modelId"
