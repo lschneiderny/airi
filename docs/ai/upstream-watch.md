@@ -66,3 +66,16 @@ The upstream review of 2026-10-26 created this list. Commits that the fork took 
 - **Fork conflicts (2026-10-26):** 2 files, `Stage.vue` and `chat.ts`. The change also moves chat actions away from the leader, while the fork's presence turns rely on the leader running them.
 - **Revisit when:** Stage-web is used in several tabs, or upstream settles which Stage tab speaks. Upstream's own review note says that with several Stage tabs, an arbitrary one speaks and a cancel can miss its turn.
 - **Search terms:** `speech player`, `syncedRoles`, `pinia-plugin-synced`, `Stage tab`.
+
+## Speech text transformation
+
+- **Upstream:**
+  - `5c51c4a92` ([#3014](https://github.com/moeru-ai/airi/pull/3014)), markdown removed from speech text.
+  - `464d15ceb` ([#3054](https://github.com/moeru-ai/airi/pull/3054)), formula, math, and chemistry speech. 173 files, about 17k lines, with new `speech-transformer-*` packages, evals, and dependencies. `5588946fb` ([#3058](https://github.com/moeru-ai/airi/pull/3058)) cleans up its eval.
+  - `b80db302e` ([#3332](https://github.com/moeru-ai/airi/pull/3332)), web addresses and Obsidian links read as words.
+  - `876a9fbf3` ([#3381](https://github.com/moeru-ai/airi/pull/3381)), emphasis rendered next to CJK punctuation, in chat and in speech text.
+- **What it adds:** A `speech-transformation` stage in core-agent rewrites reply text before TTS, so the voice reads formulas, links, and paths as words instead of symbols.
+- **Why it matters here:** The character reads replies aloud. Raw URLs, markdown, and formulas sound wrong in speech.
+- **Fork conflicts (2026-11-05):** #3332 and #3381 build on the `speech-transformation` module that #3054 adds. The fork has neither #3014 nor #3054, so both conflict in every speech-transformation file. #3355 (Chinese list items in one TTS chunk) did not need them and was ported on 2026-11-05.
+- **Revisit when:** Spoken replies read symbols, links, or markdown aloud often enough to matter, or upstream splits the transformer so it can be taken without the formula eval packages. Judge #3014 and #3054 together, then take #3332 and #3381 on top.
+- **Search terms:** `speech-transformation`, `speech text`, `formula`, `speech-transformer`, `obsidian`.
