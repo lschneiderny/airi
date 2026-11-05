@@ -12,6 +12,12 @@ import type { WakeWord } from '../libs/voice/wake-words'
  * losing each other's configuration.
  */
 export interface AiriExtension {
+  /**
+   * Conversation turn limit, including the current input's turn. Each turn contains a user group and its assistant/tool group.
+   * Missing or `-1` keeps all history. `0` sends only current input. System messages are exempt.
+   */
+  contextWindow?: number
+
   wakeWords?: WakeWord[]
   modules: {
     performance?: PerformanceProfile
@@ -73,6 +79,19 @@ export interface AiriExtension {
     prompt: string
     enabled?: boolean
   }>
+}
+
+/**
+ * Normalizes a character card context window.
+ *
+ * @example
+ * normalizeContextWindow(undefined)
+ * // => -1
+ */
+export function normalizeContextWindow(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= -1
+    ? value
+    : -1
 }
 
 /** Character card normalized with the AIRI extension required by the runtime. */

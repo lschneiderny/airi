@@ -168,6 +168,7 @@ describe('airi card editor validation', () => {
       },
     }, {
       performance: { moodGainScale: 0.5 },
+      contextWindow: 42,
       consciousness: { provider: 'new-chat', model: 'new-chat-model' },
       vision: { provider: 'new-vision', model: 'new-vision-model' },
       speech: { provider: 'new-speech', model: 'new-speech-model', voice_id: 'new-voice' },
@@ -188,6 +189,9 @@ describe('airi card editor validation', () => {
 
     expect(result.extensions.thirdParty).toEqual({ keep: true })
     expect(extension).toHaveProperty('futureRootField', { keep: true })
+    expect(extension.contextWindow).toBe(42)
+    expect(extension.modules).not.toHaveProperty('contextWindow')
+    expect(getAiriCardEditorModuleSettings(result).contextWindow).toBe(42)
     expect(extension.modules.consciousness).toEqual({ provider: 'new-chat', model: 'new-chat-model' })
     expect(extension.modules.vision).toEqual({ provider: 'new-vision', model: 'new-vision-model' })
     expect(extension.modules.speech).toEqual({
