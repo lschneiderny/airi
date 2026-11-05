@@ -166,12 +166,7 @@ export default defineConfig({
       ],
       exclude: [
         '**/components/**',
-        '**/auth/**',
-        '**/settings/account/**',
-        '**/settings/flux.vue',
-        '**/settings/capacitor.vue',
         '**/settings/presence/**',
-        '**/settings/providers/**/official-provider*.vue',
       ],
     }),
 

@@ -4,10 +4,9 @@ Shared core for stage
 
 ## Account-free clients
 
-This fork uses local data and direct or local inference providers. The clients do not offer AIRI sign-in or hosted providers.
-Startup removes saved AIRI account credentials without contacting the account server. Direct provider credentials remain unchanged.
-Account, billing, and official-provider routes are excluded from the web and Electron clients.
-Cloud sync requires an account and stays inactive. Internal hosted adapters remain available for saved-provider cleanup.
+This fork uses local data and direct or local inference providers. Accounts, hosted providers, billing, and cloud synchronization have been retired.
+Startup removes saved AIRI account credentials without contacting a server. Direct provider credentials remain unchanged.
+The local-only provider cleanup removes retired hosted records and resets their module selections. Cards that still name those providers inherit the local defaults; their other fields and local chat histories remain intact. No hosted adapter is needed to load existing local data.
 
 ## OpenCode Go desktop transport
 
@@ -15,18 +14,6 @@ Cloud sync requires an account and stays inactive. Internal hosted adapters rema
 The host supplies credential availability and a restricted fetch transport. The definition contains no Electron imports.
 The Electron app installs this definition before provider stores start. Main owns encrypted keys, request routing, and cancellation.
 Web clients keep the portable definition. Desktop setup and verification are described in `docs/assets/ai/adr/2026-10-15-opencode-go-desktop-network.md`.
-
-## Experimental features
-
-Register flags in `libs/feature-flags.ts`. Read their state through `useFeatureFlagsStore().isEnabled(key)`.
-Set `availability` to `local` or `cloud`. Local flags expose device switches without Cloud access.
-Cloud decides whether each granted Cloud flag allows account opt-in or uses direct control. Client registrations do not duplicate this mode.
-`cloud-opt-in` flags expose switches only after Cloud grants access to a verified account. They start disabled and retain choices per account on this device.
-`cloud-controlled` flags follow Cloud grants directly and never expose a switch.
-Missing Cloud grants disable Cloud features. Refresh failures and account changes clear grants, not local choices.
-`useCloudFetch()` in `composables/cloud.ts` shares the Cloud origin and authenticated fetch boundary. The store reads `GET /v1/feature-flags`.
-Set `VITE_CLOUD_URL` for a custom Cloud origin. Deploy its migration and API before the client.
-Keep authorization checks on the server.
 
 ## Message times
 
@@ -46,7 +33,7 @@ An assistant message with break slices renders one bubble per run of slices betw
 
 A wordless or silent reply (an assistant message with `wordless`) renders as a small chip outside any bubble, such as "reacted - nodded" or "stayed quiet". It has no copy text and no reply action.
 
-Cloud sync carries content only. A burst syncs as its content, so another device shows one bubble. A wordless reply stays local like an unprompted trigger. Both are supported policy; cloud sync is inactive in this fork.
+Chat bursts, wordless replies, and unprompted turns stay in local history.
 
 ## Startup progress
 
@@ -74,7 +61,7 @@ Consumers subscribe to the microphone input with their own abort signal. The las
 - `VoiceComposer` is the touch voice control of mobile composers. Hold it to record, slide left to cancel, and slide up to lock. A voice message is sent on release.
 - `useVoiceMessagesStore` owns voice message recordings and their attachment submission.
 - Hearing selects providers and converts captured PCM to each provider's upload format. It does not open the microphone.
-- Speech preserves existing chunked synthesis and bidirectional provider output. Chunked synthesis never speaks the ASCII faces of the texting register and pauses the speech track at each `<|BREAK|>`; the speech pipeline in `@proj-airi/pipelines-audio` owns both. Bidirectional providers stream through `streamSpeech` in `libs/speech/streaming-pipeline`, which bypasses the chunker, so they get neither.
+- Speech uses direct or local provider output. Chunked synthesis never speaks the ASCII faces of the texting register and pauses the speech track at each `<|BREAK|>`; the speech pipeline in `@proj-airi/pipelines-audio` owns both.
 - `createVoiceRephrasePlugin` rewrites final transcripts with a chat model through a checked transcript patch. The raw text stays in the transcript history. Each segment gets its own rewrite, so segment boundaries stay for later speaker labels. A reply with another segment count leaves the text unchanged.
 - `createVoiceEndJudgePlugin` ends a paused input early when a chat model reads its transcript as a finished message. The model is the rephrase model, or the chat model when no rephrase provider is set.
 
@@ -90,7 +77,7 @@ A recording is sent only when its control asks for it with `finish` and `send: t
 While a control records or dictates, the host publishes the microphone level on `voiceInputLevel`.
 Native audio requires declared model support and Chat Completions. Other models transcribe the recording with the configured Hearing provider.
 Each model request makes this decision again. A tool step that changes the model also changes the audio projection.
-Local history keeps the audio and cached transcription. Audio turns remain local because cloud text records cannot preserve their media.
+Local history keeps the audio and cached transcription. Audio turns remain local with their media.
 
 ### Hearing input mode
 
@@ -175,7 +162,7 @@ Choose a provider and model in **Settings → Modules → Vision** and enable
 the selected chat model replies. This flow runs when the chat provider does not
 report image input for the selected model. Most providers do not report it.
 Local history keeps the images. Provider prompts replace images with descriptions,
-including images from earlier turns and retries. Cloud history currently stores only message text.
+including images from earlier turns and retries.
 A failed read of an image in the current turn fails the send. The leader keeps a
 failed read of an earlier image in memory for its session and vision selection,
 so later turns do not read that image again.
@@ -198,10 +185,8 @@ The card store owns three distinct states:
 - Each card stores explicit overrides. An empty string means inherit.
 - Module stores expose the resolved runtime selections used by the application.
 
-Use `configureForAuthentication` for login and logout. It updates global
-defaults, then reapplies the active card without saving defaults into that card.
-Use card commands for activation and explicit edits. Settings pages must not
-save cards from watchers: authentication and remote snapshots also trigger them.
+Startup initializes device-local module defaults and clears retired hosted selections.
+Use card commands for activation and explicit edits. Settings pages must not save cards from watchers: replicated snapshots also trigger them.
 The synchronization leader owns these commands; followers receive snapshots.
 
 Models inherit only within the same provider. Voices also require the same

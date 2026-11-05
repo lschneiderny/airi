@@ -18,15 +18,16 @@ import { generateTranscription } from '@xsai/generate-transcription'
 import { defineStore, storeToRefs } from 'pinia'
 import { computed, ref, toRaw, watch } from 'vue'
 
-import { useAnalytics } from '../../composables/use-analytics'
+import { getConversationAnalyticsSurface } from '../../composables/use-analytics'
 import { createHearingTranscriber } from '../../libs/audio/hearing-transcriber'
-import { OFFICIAL_TRANSCRIPTION_PROVIDER_ID } from '../../libs/providers'
+import { captureAnalyticsEvent, enableAnalytics } from '../../libs/product-signals'
 import { APPLE_SPEECH_TRANSCRIPTION_PROVIDER_ID, executeAppleSpeechStream } from '../../libs/providers/providers/apple-speech'
 import { executeSherpawStream, SHERPAW_TRANSCRIPTION_PROVIDER_ID } from '../../libs/providers/providers/sherpaw'
 import { streamTranscription } from '../../libs/providers/stream-transcription'
 import { useAudioContext } from '../audio'
 import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
+import { useSettingsAnalytics } from '../settings/analytics'
 
 type TranscriptionAnalyticsErrorCode = 'permission_denied' | 'device_unavailable' | 'input_unavailable' | 'provider_error' | 'unknown'
 
@@ -202,7 +203,6 @@ const STREAM_TRANSCRIPTION_EXECUTORS: Record<string, StreamTranscription> = {
   'aliyun-nls-transcription': streamTranscription,
   [SHERPAW_TRANSCRIPTION_PROVIDER_ID]: executeSherpawStream,
   [APPLE_SPEECH_TRANSCRIPTION_PROVIDER_ID]: executeAppleSpeechStream,
-  [OFFICIAL_TRANSCRIPTION_PROVIDER_ID]: streamTranscription,
   // Web Speech API is handled specially in transcribeForMediaStream since it works directly with MediaStream
 }
 
@@ -314,12 +314,13 @@ export const useHearingStore = defineStore('hearing-store', () => {
   const providersStore = useProviderStore()
   const providerStore = useProviderConfigStore()
   const { allAudioTranscriptionProvidersMetadata } = storeToRefs(providersStore)
-  const {
-    trackMicrophonePermissionDenied,
-    trackSttFailed,
-    trackSttSucceeded,
-    trackVoiceInputStarted,
-  } = useAnalytics()
+  const analyticsSettings = useSettingsAnalytics()
+
+  // Hearing can be created by an async startup command. Its event recorder needs consent, not a component's i18n scope.
+  function capture(name: string, properties: object) {
+    if (analyticsSettings.analyticsEnabled && enableAnalytics())
+      captureAnalyticsEvent(name, properties)
+  }
 
   // Pinia synchronization owns live cross-window state. localStorage only
   // loads and saves durable values for this synchronized store.
@@ -436,10 +437,10 @@ export const useHearingStore = defineStore('hearing-store', () => {
     const streamExecutor = resolveStreamTranscriptionExecutor(providerId)
 
     const sttStartedAt = performance.now()
-    trackVoiceInputStarted({ stt_provider_id: providerId })
+    capture('voice_input_started', { stt_provider_id: providerId, app_surface: getConversationAnalyticsSurface(), trigger_method: 'voice', trigger_type: 'user_action' })
 
     function emitSucceeded(charCount: number, stream: boolean) {
-      trackSttSucceeded({
+      capture('stt_succeeded', {
         provider: providerId,
         latency_ms: Math.round(performance.now() - sttStartedAt),
         char_count: charCount,
@@ -448,9 +449,12 @@ export const useHearingStore = defineStore('hearing-store', () => {
     }
     function emitFailed(err: unknown) {
       const errorCode = transcriptionAnalyticsErrorCode(err)
-      trackSttFailed({ provider: providerId, error_code: errorCode })
+      capture('stt_failed', { provider: providerId, error_code: errorCode })
       if (errorCode === 'permission_denied') {
-        trackMicrophonePermissionDenied({
+        capture('microphone_permission_denied', {
+          app_surface: getConversationAnalyticsSurface(),
+          trigger_method: 'voice',
+          trigger_type: 'user_flow_result',
           stt_provider_id: providerId,
           error_code: errorCode,
         })

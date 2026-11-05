@@ -13,12 +13,6 @@ import type {
   providerBrowserLocalAudioSpeech,
   providerBrowserLocalAudioTranscription,
 } from './local-audio'
-import type {
-  providerOfficialChat,
-  providerOfficialSpeech,
-  providerOfficialSpeechStreaming,
-  providerOfficialTranscription,
-} from './official'
 import type { providerSherpawTranscription } from './sherpaw'
 
 import { orderBy } from 'es-toolkit'
@@ -35,10 +29,6 @@ type StageOnlyProviderId
     | typeof providerBrowserLocalAudioSpeech.id
     | typeof providerBrowserLocalAudioTranscription.id
     | typeof providerKokoroLocal.id
-    | typeof providerOfficialChat.id
-    | typeof providerOfficialSpeech.id
-    | typeof providerOfficialSpeechStreaming.id
-    | typeof providerOfficialTranscription.id
 
 /** IDs of definitions registered by stage-ui, including portable definitions. */
 export type StageProviderId = PortableProviderId | StageOnlyProviderId

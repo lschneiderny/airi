@@ -1,11 +1,9 @@
-import type { Session, User } from 'better-auth'
+import type { SpeechProvider } from '@xsai-ext/providers/utils'
 
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, watch } from 'vue'
 
-import { OFFICIAL_SPEECH_PROVIDER_ID, OFFICIAL_SPEECH_STREAMING_PROVIDER_ID, pickOfficialSpeechVoice } from '../../libs/providers/providers/official'
-import { useAuthStore } from '../auth'
 import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
 import { toSignedPercent, useSpeechStore } from './speech'
@@ -20,27 +18,6 @@ vi.mock('vue-i18n', () => ({
     t: (_key: string, fallback?: string) => fallback ?? _key,
   }),
 }))
-
-/** Configures the authenticated state required by official provider requests. */
-function authenticateOfficialProvider(): void {
-  const user: User = {
-    id: 'user-1',
-    name: 'AIRI User',
-    email: 'user@example.com',
-    emailVerified: true,
-    createdAt: new Date('2026-01-01T00:00:00.000Z'),
-    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-  }
-  const session: Session = {
-    id: 'session-1',
-    token: 'server-session-token',
-    userId: user.id,
-    expiresAt: new Date('2026-12-01T00:00:00.000Z'),
-    createdAt: new Date('2026-01-01T00:00:00.000Z'),
-    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-  }
-  useAuthStore().$patch({ session, token: 'restored-access-token', user })
-}
 
 describe('speech store helpers', () => {
   beforeEach(() => {
@@ -65,6 +42,28 @@ describe('speech store helpers', () => {
     expect(toSignedPercent(0)).toBe('0%')
   })
 
+  it('synthesizes with plain providers and forwards typed extra provider options', async () => {
+    const audio = new Uint8Array([1, 2, 3])
+    const fetch = vi.fn(async () => new Response(audio))
+    vi.stubGlobal('fetch', fetch)
+    const plain: SpeechProvider<string> = {
+      speech: model => ({ baseURL: 'https://speech.example.test/v1/', model }),
+    }
+    const withOptions = {
+      speech: vi.fn((model: string, options?: { region: string }) => ({
+        baseURL: 'https://speech.example.test/v1/',
+        model,
+        ...options,
+      })),
+    }
+    const speech = useSpeechStore()
+
+    expect(new Uint8Array(await speech.speech(plain, 'model', 'Hello', 'voice'))).toEqual(audio)
+    expect(new Uint8Array(await speech.speech(withOptions, 'model', 'Hello', 'voice', { region: 'eastasia' }))).toEqual(audio)
+    expect(withOptions.speech).toHaveBeenCalledWith('model', { region: 'eastasia' })
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
   // ROOT CAUSE:
   //
   // The speech store watched its model-list projection even when no UI used
@@ -77,7 +76,7 @@ describe('speech store helpers', () => {
     const providersStore = useProviderStore()
     vi.spyOn(providersStore, 'listProviderVoices').mockResolvedValue([])
     const speechStore = useSpeechStore()
-    speechStore.activeSpeechProvider = OFFICIAL_SPEECH_PROVIDER_ID
+    speechStore.activeSpeechProvider = 'microsoft-speech'
     await nextTick()
 
     let modelQueries = 0
@@ -104,10 +103,10 @@ describe('speech store helpers', () => {
     const providersStore = useProviderStore()
     vi.spyOn(providersStore, 'listProviderVoices').mockResolvedValue([])
     const speechStore = useSpeechStore()
-    speechStore.activeSpeechProvider = OFFICIAL_SPEECH_PROVIDER_ID
+    speechStore.activeSpeechProvider = 'microsoft-speech'
     speechStore.activeSpeechVoiceId = 'missing-voice'
     speechStore.activeSpeechVoice = undefined
-    await speechStore.loadVoicesForProvider(OFFICIAL_SPEECH_PROVIDER_ID)
+    await speechStore.loadVoicesForProvider('microsoft-speech')
     await nextTick()
     // The startup watcher now enters through the deferred public action.
     await vi.waitFor(() => expect(speechStore.isLoadingSpeechProviderVoices).toBe(false))
@@ -115,7 +114,7 @@ describe('speech store helpers', () => {
     let mutations = 0
     speechStore.$subscribe(() => mutations += 1, { flush: 'sync' })
 
-    await speechStore.loadVoicesForProvider(OFFICIAL_SPEECH_PROVIDER_ID)
+    await speechStore.loadVoicesForProvider('microsoft-speech')
     await nextTick()
 
     expect(mutations).toBe(0)
@@ -187,7 +186,7 @@ describe('speech store helpers', () => {
     const voice = {
       id: 'voice-1',
       name: 'Voice 1',
-      provider: OFFICIAL_SPEECH_PROVIDER_ID,
+      provider: 'microsoft-speech',
       languages: [{ code: 'en-US', title: 'English' }],
       gender: 'neutral',
     }
@@ -208,22 +207,16 @@ describe('speech store helpers', () => {
    * @example
    * speechStore.resolveSpeechInput({ text, voice, forceSSML: true, supportsSSML: false })
    */
-  it('keeps official adapter-backed speech input as plain text when global SSML is enabled', () => {
+  it('keeps speech input plain when its provider does not support SSML', () => {
     const speechStore = useSpeechStore()
     const voice = {
       id: 'voice-1',
       name: 'Voice 1',
-      provider: OFFICIAL_SPEECH_PROVIDER_ID,
+      provider: 'microsoft-speech',
       languages: [{ code: 'en-US', title: 'English' }],
       gender: 'neutral',
     }
 
-    // ROOT CAUSE:
-    //
-    // Auto TTS can enable global SSML before the server routes the official
-    // speech provider to DashScope CosyVoice. DashScope rejects `<speak>...`
-    // payloads with `SSML text is not supported at the moment!`, so providers
-    // that apply prosody through adapter options must keep the text field plain.
     const request = speechStore.resolveSpeechInput({
       text: 'hello',
       voice,
@@ -234,263 +227,6 @@ describe('speech store helpers', () => {
 
     expect(request.input).toBe('hello')
     expect(request.input).not.toContain('<speak')
-  })
-
-  /**
-   * @example
-   * await speechStore.loadVoicesForProvider(OFFICIAL_SPEECH_STREAMING_PROVIDER_ID, 'volcengine/seed-tts-2.0')
-   */
-  it('does not load streaming voices before server availability is confirmed', async () => {
-    const providersStore = useProviderStore()
-    const speechStore = useSpeechStore()
-    // Let the initial no-speech request finish before observing streaming calls.
-    await nextTick()
-    await vi.waitFor(() => expect(speechStore.isLoadingSpeechProviderVoices).toBe(false))
-    const listVoices = vi.spyOn(providersStore, 'listProviderVoices')
-    providersStore.setProviderUnconfigured(OFFICIAL_SPEECH_STREAMING_PROVIDER_ID)
-
-    const voices = await speechStore.loadVoicesForProvider(
-      OFFICIAL_SPEECH_STREAMING_PROVIDER_ID,
-      'volcengine/seed-tts-2.0',
-    )
-
-    expect(voices).toEqual([])
-    expect(listVoices).not.toHaveBeenCalled()
-  })
-
-  // ROOT CAUSE:
-  //
-  // Streaming discovery kept its default model in one renderer's module
-  // variable. Another renderer received the synchronized models but selected
-  // the first entry instead of the operator default.
-  //
-  // Before: read getDefaultStreamingModel() from renderer-local memory.
-  //
-  // We fixed this by storing the default beside the synchronized model catalog.
-  it('selects the synchronized streaming default instead of the first model', async () => {
-    const providersStore = useProviderStore()
-    vi.spyOn(providersStore, 'listProviderVoices').mockResolvedValue([])
-    const speechStore = useSpeechStore()
-    await providersStore.initializeProvider(OFFICIAL_SPEECH_STREAMING_PROVIDER_ID)
-    providersStore.providerRuntimeState[OFFICIAL_SPEECH_STREAMING_PROVIDER_ID] = {
-      models: [
-        { id: 'volcengine/seed-tts-1.0', name: 'Seed TTS 1.0', provider: OFFICIAL_SPEECH_STREAMING_PROVIDER_ID },
-        { id: 'volcengine/seed-tts-2.0', name: 'Seed TTS 2.0', provider: OFFICIAL_SPEECH_STREAMING_PROVIDER_ID },
-      ],
-      defaultModel: 'volcengine/seed-tts-2.0',
-      modelStatus: 'ready',
-      modelError: null,
-    }
-    speechStore.activeSpeechProvider = OFFICIAL_SPEECH_STREAMING_PROVIDER_ID
-    speechStore.activeSpeechModel = ''
-
-    speechStore.ensureActiveSpeechModel()
-
-    expect(speechStore.activeSpeechModel).toBe('volcengine/seed-tts-2.0')
-  })
-
-  // https://github.com/moeru-ai/airi/pull/2490#discussion_r3967949224
-  // ROOT CAUSE: The consumer read a realm-local default instead of the received snapshot.
-  it('selects the HTTP default from a provider snapshot', async () => {
-    const providers = useProviderStore()
-    const speech = useSpeechStore()
-    await providers.initializeProvider(OFFICIAL_SPEECH_PROVIDER_ID)
-    providers.providerRuntimeState[OFFICIAL_SPEECH_PROVIDER_ID] = {
-      models: ['first', 'snapshot-default'].map(id => ({ id, name: id, provider: OFFICIAL_SPEECH_PROVIDER_ID })),
-      defaultModel: 'snapshot-default',
-      modelStatus: 'ready',
-      modelError: null,
-    }
-    await speech.selectProviderModel(OFFICIAL_SPEECH_PROVIDER_ID, '')
-    expect(speech.activeSpeechModel).toBe('snapshot-default')
-  })
-
-  /**
-   * @example
-   * speechStore.ensureActiveSpeechModel()
-   */
-  it('keeps a real Voice Pack TTS model selected for the regular official provider', async () => {
-    const providersStore = useProviderStore()
-    const speechStore = useSpeechStore()
-    speechStore.activeSpeechProvider = OFFICIAL_SPEECH_PROVIDER_ID
-    speechStore.activeSpeechModel = 'volcengine/pool-a'
-    speechStore.activeSpeechVoiceId = 'voice-a'
-    await providersStore.initializeProvider(OFFICIAL_SPEECH_PROVIDER_ID)
-    providersStore.providerRuntimeState[OFFICIAL_SPEECH_PROVIDER_ID].models = [
-      { id: 'volcengine/pool-a', name: 'volcengine/pool-a', provider: OFFICIAL_SPEECH_PROVIDER_ID },
-      { id: 'microsoft/v1', name: 'microsoft/v1', provider: OFFICIAL_SPEECH_PROVIDER_ID },
-    ]
-
-    speechStore.ensureActiveSpeechModel()
-
-    expect(speechStore.activeSpeechModel).toBe('volcengine/pool-a')
-    expect(speechStore.activeSpeechVoiceId).toBe('voice-a')
-  })
-
-  /**
-   * @example
-   * speechStore.ensureActiveSpeechModel()
-   */
-  it('resets stale streaming model to the server default when the regular official speech provider is active', async () => {
-    vi.stubGlobal('localStorage', {
-      getItem: vi.fn(() => null),
-      setItem: vi.fn(),
-      removeItem: vi.fn(),
-    })
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      const url = input.toString()
-      if (url.includes('/api/v1/audio/models')) {
-        return new Response(JSON.stringify({
-          models: [
-            { id: 'alibaba/cosyvoice-v2', name: 'alibaba/cosyvoice-v2' },
-            { id: 'microsoft/v1', name: 'microsoft/v1' },
-          ],
-          default: 'microsoft/v1',
-        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
-      }
-      return new Response(JSON.stringify({ voices: [], recommended: {} }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }) as typeof fetch)
-
-    const providersStore = useProviderStore()
-    const speechStore = useSpeechStore()
-    speechStore.activeSpeechProvider = OFFICIAL_SPEECH_PROVIDER_ID
-    speechStore.activeSpeechModel = 'volcengine/seed-tts-2.0'
-    speechStore.activeSpeechVoiceId = 'zh_female_x'
-    speechStore.activeSpeechVoice = {
-      id: 'zh_female_x',
-      name: 'X',
-      provider: OFFICIAL_SPEECH_STREAMING_PROVIDER_ID,
-      languages: [],
-    }
-    try {
-      await providersStore.initializeProvider(OFFICIAL_SPEECH_PROVIDER_ID)
-      await providersStore.fetchModelsForProvider(OFFICIAL_SPEECH_PROVIDER_ID)
-
-      speechStore.ensureActiveSpeechModel()
-
-      expect(speechStore.activeSpeechModel).toBe('microsoft/v1')
-      expect(speechStore.activeSpeechVoiceId).toBe('')
-      expect(speechStore.activeSpeechVoice).toBeUndefined()
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  /**
-   * @example
-   * await speechStore.loadVoicesForProvider(OFFICIAL_SPEECH_PROVIDER_ID, 'microsoft/v1')
-   */
-  it('uses the server recommended voice when the persisted official voice is stale', async () => {
-    vi.stubGlobal('localStorage', {
-      getItem: vi.fn(() => null),
-      setItem: vi.fn(),
-      removeItem: vi.fn(),
-    })
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      const url = input.toString()
-      if (url.includes('/api/v1/audio/models')) {
-        return new Response(JSON.stringify({
-          models: [{ id: 'microsoft/v1', name: 'microsoft/v1' }],
-          default: 'microsoft/v1',
-        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
-      }
-      return new Response(JSON.stringify({
-        voices: [
-          {
-            id: 'en-US-JennyNeural',
-            name: 'Jenny',
-            languages: [{ code: 'en-US', title: 'English' }],
-          },
-          {
-            id: 'en-US-AvaMultilingualNeural',
-            name: 'Ava',
-            languages: [{ code: 'en-US', title: 'English' }],
-          },
-        ],
-        recommended: { 'en-US': 'en-US-AvaMultilingualNeural' },
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
-    }) as typeof fetch)
-    authenticateOfficialProvider()
-
-    const providersStore = useProviderStore()
-    const speechStore = useSpeechStore()
-    speechStore.activeSpeechProvider = OFFICIAL_SPEECH_PROVIDER_ID
-    speechStore.activeSpeechModel = 'old-model'
-    speechStore.activeSpeechVoiceId = 'old-model-voice'
-
-    try {
-      await providersStore.initializeProvider(OFFICIAL_SPEECH_PROVIDER_ID)
-      await providersStore.fetchModelsForProvider(OFFICIAL_SPEECH_PROVIDER_ID)
-
-      speechStore.ensureActiveSpeechModel()
-      await speechStore.loadVoicesForProvider(OFFICIAL_SPEECH_PROVIDER_ID, speechStore.activeSpeechModel)
-
-      expect(speechStore.activeSpeechModel).toBe('microsoft/v1')
-      await vi.waitFor(() => expect(speechStore.activeSpeechVoiceId).toBe('en-US-AvaMultilingualNeural'))
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  /**
-   * @example
-   * await speechStore.loadVoicesForProvider(OFFICIAL_SPEECH_PROVIDER_ID, 'microsoft/v1')
-   */
-  it('uses another server recommended voice when the current locale has no recommendation', async () => {
-    i18nState.locale.value = 'ko-KR'
-    vi.stubGlobal('localStorage', {
-      getItem: vi.fn(() => null),
-      setItem: vi.fn(),
-      removeItem: vi.fn(),
-    })
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      const url = input.toString()
-      if (url.includes('/api/v1/audio/models')) {
-        return new Response(JSON.stringify({
-          models: [{ id: 'microsoft/v1', name: 'microsoft/v1' }],
-          default: 'microsoft/v1',
-        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
-      }
-      return new Response(JSON.stringify({
-        voices: [
-          {
-            id: 'ko-KR-SunHiNeural',
-            name: 'SunHi',
-            languages: [{ code: 'ko-KR', title: 'Korean' }],
-          },
-          {
-            id: 'zh-CN-XiaochenNeural',
-            name: 'Xiaochen',
-            languages: [{ code: 'zh-CN', title: 'Chinese' }],
-          },
-        ],
-        recommended: { 'zh-CN': 'zh-CN-XiaochenNeural' },
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
-    }) as typeof fetch)
-    authenticateOfficialProvider()
-
-    const providersStore = useProviderStore()
-    const speechStore = useSpeechStore()
-    speechStore.activeSpeechProvider = OFFICIAL_SPEECH_PROVIDER_ID
-
-    try {
-      await providersStore.initializeProvider(OFFICIAL_SPEECH_PROVIDER_ID)
-      await providersStore.fetchModelsForProvider(OFFICIAL_SPEECH_PROVIDER_ID)
-
-      speechStore.ensureActiveSpeechModel()
-      await speechStore.loadVoicesForProvider(OFFICIAL_SPEECH_PROVIDER_ID, speechStore.activeSpeechModel)
-
-      expect(speechStore.activeSpeechModel).toBe('microsoft/v1')
-      await vi.waitFor(() => expect(speechStore.activeSpeechVoiceId).toBe('zh-CN-XiaochenNeural'))
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
   })
 })
 
@@ -599,13 +335,13 @@ describe('vOICEVOX provider defaults', () => {
     const providers = useProviderStore()
     const loads = vi.spyOn(providers, 'listProviderVoices').mockResolvedValue([])
     const speech = useSpeechStore()
-    speech.activeSpeechProvider = OFFICIAL_SPEECH_PROVIDER_ID
+    speech.activeSpeechProvider = 'microsoft-speech'
     speech.activeSpeechModel = 'model-a'
     // The watcher reloads asynchronously, so wait for each reload instead of a fixed delay.
-    await vi.waitFor(() => expect(loads).toHaveBeenCalledWith(OFFICIAL_SPEECH_PROVIDER_ID, 'model-a', expect.anything()), { timeout: 5000 })
+    await vi.waitFor(() => expect(loads).toHaveBeenCalledWith('microsoft-speech', 'model-a', expect.anything()), { timeout: 5000 })
     loads.mockClear()
     speech.activeSpeechModel = 'model-b'
-    await vi.waitFor(() => expect(loads).toHaveBeenCalledWith(OFFICIAL_SPEECH_PROVIDER_ID, 'model-b', expect.anything()), { timeout: 5000 })
+    await vi.waitFor(() => expect(loads).toHaveBeenCalledWith('microsoft-speech', 'model-b', expect.anything()), { timeout: 5000 })
   })
 
   // https://github.com/moeru-ai/airi/pull/2490#discussion_r3964660980
@@ -647,7 +383,7 @@ describe('vOICEVOX provider defaults', () => {
     expect(speech.configured).toBe(true)
   })
 
-  it('invalidates cached voices when configuration changes or the provider session expires', async () => {
+  it('invalidates cached voices when configuration changes', async () => {
     const providers = useProviderStore()
     const voices = [{ id: 'cached', name: 'Cached', languages: [], provider: 'microsoft-speech' }]
     const loads = vi.spyOn(providers, 'listProviderVoices').mockResolvedValue(voices)
@@ -660,50 +396,6 @@ describe('vOICEVOX provider defaults', () => {
     expect(speech.availableVoices['microsoft-speech']).toEqual([])
     loads.mockResolvedValue(voices)
     await speech.loadVoiceCatalog('microsoft-speech', 'model-a', changed)
-    loads.mockResolvedValue(undefined)
-    await speech.loadVoiceCatalog('microsoft-speech', 'model-a', changed)
-    expect(speech.availableVoices['microsoft-speech']).toEqual([])
-    expect(speech.voiceCatalogIdentities['microsoft-speech']).toBeUndefined()
-  })
-
-  // https://github.com/moeru-ai/airi/pull/2490#discussion_r3964866479
-  // ROOT CAUSE: Completed catalogs outlived their owner because only pending
-  // requests observed session invalidation. Logout must invalidate cached data.
-  it('clears completed owned catalogs on logout while preserving user-provider catalogs', async () => {
-    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ flux: 0 })))
-    authenticateOfficialProvider()
-    const providers = useProviderStore()
-    const voices = [{ id: 'old-owner', name: 'Old owner', languages: [], provider: OFFICIAL_SPEECH_PROVIDER_ID }]
-    const loads = vi.spyOn(providers, 'listProviderVoices').mockResolvedValue(voices)
-    const speech = useSpeechStore()
-    await speech.loadVoicesForProvider(OFFICIAL_SPEECH_PROVIDER_ID, 'model-a')
-    await speech.loadVoicesForProvider('microsoft-speech', 'model-a')
-    useAuthStore().$patch({ user: null, session: null, token: null })
-    await vi.waitFor(() => expect(speech.availableVoices[OFFICIAL_SPEECH_PROVIDER_ID]).toEqual([]))
-    expect(speech.availableVoices['microsoft-speech']).toEqual(voices)
-    authenticateOfficialProvider()
-    useAuthStore().user = { ...useAuthStore().user!, id: 'new-owner' }
-    loads.mockRejectedValue(new Error('new account unavailable'))
-    await speech.loadVoicesForProvider(OFFICIAL_SPEECH_PROVIDER_ID, 'model-a')
-    expect(speech.availableVoices[OFFICIAL_SPEECH_PROVIDER_ID]).toEqual([])
-  })
-
-  // https://github.com/moeru-ai/airi/pull/2490#discussion_r3964866488
-  it('retains completed catalogs across token renewal and same-ID session objects', async () => {
-    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ flux: 0 })))
-    authenticateOfficialProvider()
-    const providers = useProviderStore()
-    const voices = [{ id: 'retained', name: 'Retained', languages: [], provider: OFFICIAL_SPEECH_PROVIDER_ID }]
-    vi.spyOn(providers, 'listProviderVoices').mockResolvedValue(voices)
-    const speech = useSpeechStore()
-    await speech.loadVoicesForProvider(OFFICIAL_SPEECH_PROVIDER_ID, 'model-a')
-    const identity = speech.voiceCatalogIdentities[OFFICIAL_SPEECH_PROVIDER_ID]
-    const auth = useAuthStore()
-    auth.$patch({ token: 'renewed-token', user: { ...auth.user! }, session: { ...auth.session! } })
-    await nextTick()
-    await speech.invalidateVoiceCatalogs()
-    expect(speech.availableVoices[OFFICIAL_SPEECH_PROVIDER_ID]).toEqual(voices)
-    expect(speech.voiceCatalogIdentities[OFFICIAL_SPEECH_PROVIDER_ID]).toEqual(identity)
   })
 
   it('discards a request reset while its configuration fingerprint is pending', async () => {
@@ -742,67 +434,14 @@ describe('vOICEVOX provider defaults', () => {
     expect(state).not.toContain('private-sample')
   })
 
-  // ROOT CAUSE: The adapter wrote recommendations before the store discarded stale responses.
-  it('rejects old recommendation side effects together with the old catalog', async () => {
-    authenticateOfficialProvider()
-    const speech = useSpeechStore()
-    const { promise: oldResponse, resolve: finishOld } = Promise.withResolvers<Response>()
-    const voices = [
-      { id: 'old', name: 'Old', languages: [{ code: 'en-US', title: 'English' }] },
-      { id: 'new', name: 'New', languages: [{ code: 'en-US', title: 'English' }] },
-    ]
-    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input) => {
-      if (String(input).includes('model=model-a'))
-        return oldResponse
-      return Response.json({ voices, recommended: { 'en-US': 'new' } })
-    }))
-    const oldLoad = speech.loadVoicesForProvider(OFFICIAL_SPEECH_PROVIDER_ID, 'model-a')
-    await new Promise(resolve => setTimeout(resolve, 20))
-    await speech.loadVoicesForProvider(OFFICIAL_SPEECH_PROVIDER_ID, 'model-b')
-    finishOld(Response.json({ voices, recommended: { 'en-US': 'old' } }))
-    await oldLoad
-    expect(pickOfficialSpeechVoice({
-      activeSpeechProvider: OFFICIAL_SPEECH_PROVIDER_ID,
-      activeSpeechVoiceId: '',
-      availableVoices: speech.availableVoices,
-      uiLocale: 'en-US',
-    })).toBe('new')
-  })
-  // ROOT CAUSE: Clearing a card's voice could auto-pick from the previous model while its replacement loaded.
-  it('does not auto-pick from the old model while loading the new catalog', async () => {
-    const providers = useProviderStore()
-    const loads = vi.spyOn(providers, 'listProviderVoices').mockResolvedValue([])
-    const speech = useSpeechStore()
-    speech.activeSpeechProvider = OFFICIAL_SPEECH_PROVIDER_ID
-    speech.activeSpeechModel = 'model-a'
-    await new Promise(resolve => setTimeout(resolve, 20))
-    loads.mockResolvedValue([
-      { id: 'old', name: 'Old', languages: [], provider: OFFICIAL_SPEECH_PROVIDER_ID, recommendedFor: ['en-US'] },
-    ])
-    await speech.loadVoicesForProvider(OFFICIAL_SPEECH_PROVIDER_ID, 'model-a')
-    await speech.ensureActiveSpeechVoice()
-    let finish!: () => void
-    loads.mockImplementation(() => new Promise((resolve) => {
-      finish = () => resolve([])
-    }))
-    speech.activeSpeechModel = 'model-b'
-    speech.activeSpeechVoiceId = ''
-    try {
-      await vi.waitFor(() => expect(finish).toBeDefined())
-      expect(speech.activeSpeechVoiceId).toBe('')
-    }
-    finally {
-      finish?.()
-    }
-  })
   // https://github.com/moeru-ai/airi/pull/2490#discussion_r3963756330
   // ROOT CAUSE: A background provider's newer request hid the active provider's pending state and error.
   it('keeps active provider status when another provider finishes first', async () => {
     const providers = useProviderStore()
     const loads = vi.spyOn(providers, 'listProviderVoices').mockResolvedValue([])
     const speech = useSpeechStore()
-    speech.activeSpeechProvider = 'microsoft-speech'
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await speech.selectProviderModel('microsoft-speech', '')
+    await speech.loadVoicesForProvider('microsoft-speech')
     let rejectActive!: (error: Error) => void
     loads.mockImplementation(async (provider) => {
       if (provider === 'microsoft-speech') {

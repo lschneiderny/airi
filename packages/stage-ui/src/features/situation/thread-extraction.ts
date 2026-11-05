@@ -12,7 +12,7 @@ import { THREAD_CUE_MAX_CHARS, THREAD_SUMMARY_MAX_CHARS } from '@proj-airi/stage
 
 import * as v from 'valibot'
 
-import { extractMessageText } from '../../libs/chat-sync/wire-message'
+import { extractMessageText } from '../../libs/chat-message'
 import { situationContextText } from '../../stores/situation/sensors/context-text'
 
 /** The newest unread chat messages, user and assistant, that one extraction reads. */
