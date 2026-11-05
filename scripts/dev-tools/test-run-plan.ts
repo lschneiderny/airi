@@ -45,7 +45,6 @@ export const vitestConfigCoverage: Readonly<Record<string, VitestConfigCoverage>
   'apps/stage-tamagotchi/vitest.config.ts': { runBy: ['test-stage-tamagotchi:run'] },
   'apps/stage-tamagotchi/vitest.node.config.ts': { runBy: ['root'] },
   'apps/stage-web/vitest.config.ts': { runBy: ['test-stage-web:run'], note: 'its unit project matches no file' },
-  'apps/ui-server-auth/vitest.config.ts': { runBy: ['root'] },
   'integrations/minecraft/vitest.config.ts': { runBy: ['root'] },
   'integrations/telegram-bot/vitest.config.ts': { runBy: ['root'], note: 'the root config holds an inline project' },
   'packages/audio/vitest.config.ts': { runBy: ['root', 'test-audio-browser:run'], note: 'the root config holds an inline node project' },

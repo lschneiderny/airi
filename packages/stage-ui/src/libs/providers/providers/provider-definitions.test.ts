@@ -43,7 +43,7 @@ describe('migrated provider definitions', () => {
 
   it('exposes a closed provider id union to stage-ui consumers', () => {
     expectTypeOf<'openai'>().toExtend<StageProviderId>()
-    expectTypeOf<'official-provider'>().toExtend<StageProviderId>()
+    expectTypeOf<'official-provider'>().not.toExtend<StageProviderId>()
     expectTypeOf<'apple-vision'>().toExtend<StageProviderId>()
     expectTypeOf<string>().not.toExtend<StageProviderId>()
   })
@@ -83,6 +83,10 @@ describe('migrated provider definitions', () => {
   })
 
   it.each([
+    'official-provider',
+    'official-provider-speech',
+    'official-provider-speech-streaming',
+    'official-provider-transcription',
     '302-ai',
     'aihubmix',
     'amazon-bedrock',

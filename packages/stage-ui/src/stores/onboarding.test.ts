@@ -7,19 +7,6 @@ import { nextTick } from 'vue'
 import { useOnboardingStore } from './onboarding'
 import { useProviderConfigStore } from './providers/config'
 
-vi.mock('./auth', async () => {
-  const { defineStore } = await import('pinia')
-
-  return {
-    useAuthStore: defineStore('auth', {
-      state: () => ({
-        isAuthenticated: false,
-        token: null,
-      }),
-    }),
-  }
-})
-
 vi.mock('./providers/config', async () => {
   const { defineStore } = await import('pinia')
 

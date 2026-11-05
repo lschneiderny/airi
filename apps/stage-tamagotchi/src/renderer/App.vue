@@ -11,7 +11,7 @@ import { useSituationSettings } from '@proj-airi/stage-ui/features/situation/set
 import { usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
 import { initializeAnalytics } from '@proj-airi/stage-ui/libs/product-signals'
 import { isSherpawModelBundled, setSherpawModelAssetHost } from '@proj-airi/stage-ui/libs/providers/providers/sherpaw/model-assets'
-import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
+import { removeRetiredAccountCredentials } from '@proj-airi/stage-ui/libs/retired-account'
 import { useCharacterOrchestratorStore } from '@proj-airi/stage-ui/stores/character'
 import { useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
@@ -154,7 +154,6 @@ const stopLeadershipListener = syncedPinia.onLeadershipChange((isLeader) => {
 })
 
 function createFullStageRuntime() {
-  const authStore = useAuthStore()
   const contextBridgeStore = useContextBridgeStore()
   const displayModelsStore = useDisplayModelsStore()
   const serverChannelSettingsStore = useServerChannelSettingsStore()
@@ -171,13 +170,6 @@ function createFullStageRuntime() {
   useSpeechStore()
   useSettingsStageModel()
   useVisionStore()
-
-  async function removeAuthenticationProviderConfiguration() {
-    if (!syncedPinia.isLeader())
-      return
-
-    await cardStore.configureForAuthentication(false)
-  }
 
   const { activeProvider, artistryGlobals, activeModel, defaultPromptPrefix, providerOptions } = storeToRefs(artistryStore)
   const getServerChannelConfig = useElectronEventaInvoke(electronGetServerChannelConfig)
@@ -285,10 +277,9 @@ function createFullStageRuntime() {
   return {
     async initialize() {
       initializeAnalytics()
-      await authStore.initialize()
+      removeRetiredAccountCredentials()
       await displayModelsStore.initialize()
       await cardStore.initialize()
-      await removeAuthenticationProviderConfiguration()
 
       await displayModelsStore.loadDisplayModelsFromIndexedDB()
       await settingsStore.initializeStageModel()
@@ -382,7 +373,7 @@ onMounted(async () => {
   // https://github.com/moeru-ai/airi/issues/1658
   await restoreLocale()
 
-  await chatStore.initialize(syncedPinia)
+  await chatStore.initialize()
   // The desktop app is the only host whose leader lets the character speak up on her own.
   situationStore.setHostCapabilities({ unprompted: true })
   // The situation store feeds the character state, so the character state leads first.
@@ -405,7 +396,6 @@ onUnmounted(() => {
   stopIOTraceHubBridge()
   stopModelAssetStatus()
   stopLeadershipListener?.()
-  chatStore.dispose()
   situationStore.dispose()
   characterStateStore.dispose()
   fullStageRuntime?.dispose()

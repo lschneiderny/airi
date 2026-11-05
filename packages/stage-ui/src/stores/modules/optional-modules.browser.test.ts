@@ -8,7 +8,6 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
-import { OFFICIAL_SPEECH_PROVIDER_ID, OFFICIAL_SPEECH_STREAMING_PROVIDER_ID } from '../../libs/providers/providers/official'
 import { useProviderConfigStore } from '../providers/config'
 import { useHearingStore } from './hearing'
 import { useSpeechStore } from './speech'
@@ -104,17 +103,18 @@ it('replicates disabled states without a follower proposal', async () => {
 
 // https://github.com/moeru-ai/airi/issues/3153
 // ROOT CAUSE:
-// The official source card represents two providers. Re-enabling must retain the saved streaming provider and model.
-it('issue #3153: restores the streaming selection through the official source card', async () => {
+// Re-enabling a saved source must retain its provider, model, and voice.
+it('issue #3153: restores the saved speech selection after selecting None', async () => {
   const { speech } = createContext()
-  speech.activeSpeechProvider = OFFICIAL_SPEECH_STREAMING_PROVIDER_ID
-  speech.activeSpeechModel = 'saved-streaming-model'
+  const provider = 'openai-compatible-audio-speech'
+  speech.activeSpeechProvider = provider
+  speech.activeSpeechModel = 'saved-speech-model'
   speech.activeSpeechVoiceId = 'saved-voice'
   await speech.selectSource('speech-noop')
   expect(speech.enabled).toBe(false)
-  const selection = await speech.selectSource(OFFICIAL_SPEECH_PROVIDER_ID)
+  const selection = await speech.selectSource(provider)
   expect(speech.enabled).toBe(true)
-  expect(selection).toEqual({ provider: OFFICIAL_SPEECH_STREAMING_PROVIDER_ID, model: 'saved-streaming-model', voice_id: 'saved-voice' })
+  expect(selection).toEqual({ provider, model: 'saved-speech-model', voice_id: 'saved-voice' })
 })
 
 // https://github.com/moeru-ai/airi/issues/3153

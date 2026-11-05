@@ -4,7 +4,7 @@ import { useInferencePreload } from '@proj-airi/stage-ui/composables'
 import { useStartupResourceTimeout } from '@proj-airi/stage-ui/composables/use-startup-resource-timeout'
 import { usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
 import { initializeAnalytics, isAnalyticsAvailableInBuild } from '@proj-airi/stage-ui/libs/product-signals'
-import { useAuthStore } from '@proj-airi/stage-ui/stores/auth'
+import { removeRetiredAccountCredentials } from '@proj-airi/stage-ui/libs/retired-account'
 import { useCharacterOrchestratorStore } from '@proj-airi/stage-ui/stores/character'
 import { useCharacterStateStore } from '@proj-airi/stage-ui/stores/character-state'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
@@ -37,7 +37,6 @@ import { usePWAStore } from './stores/pwa'
 usePWAStore()
 
 const contextBridgeStore = useContextBridgeStore()
-const authStore = useAuthStore()
 const i18n = useI18n()
 const router = useRouter()
 const activeRouteTransitionName = ref('')
@@ -61,13 +60,6 @@ useHearingStore()
 useSpeechStore()
 useSettingsStageModel()
 useVisionStore()
-
-async function removeAuthenticationProviderConfiguration() {
-  if (!syncedPinia.isLeader())
-    return
-
-  await cardStore.configureForAuthentication(false)
-}
 
 const inferencePreload = useInferencePreload()
 const startup = useStartupResourcesStore()
@@ -140,14 +132,13 @@ watch(settings.themeColorsHueDynamic, () => {
 async function loadStartup() {
   try {
     initializeAnalytics()
-    await authStore.initialize()
+    removeRetiredAccountCredentials()
     await startup.run('modelIndex', () => displayModelsStore.initialize())
     await startup.run('card', async () => {
       await cardStore.initialize()
-      await removeAuthenticationProviderConfiguration()
     })
     await startup.run('chat', async () => {
-      await chatStore.initialize(syncedPinia)
+      await chatStore.initialize()
       // The situation store feeds the character state, so the character state leads first.
       characterStateStore.initialize(syncedPinia)
       situationStore.initialize(syncedPinia)
@@ -182,7 +173,6 @@ watch(() => [startup.resources.find(resource => resource.id === 'modelSelection'
 })
 
 onUnmounted(() => {
-  chatStore.dispose()
   situationStore.dispose()
   characterStateStore.dispose()
   contextBridgeStore.dispose()
