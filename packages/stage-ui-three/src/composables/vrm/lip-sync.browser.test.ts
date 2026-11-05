@@ -59,7 +59,7 @@ function waitForMouthLevel(readLevel: () => number): Promise<number> {
 describe('useVRMLipSync', () => {
   it.each([48_000, 192_000])('opens the mouth for a tone at %i Hz', { timeout: 15_000 }, async (sampleRate) => {
     const { context, source } = await createToneSource(sampleRate)
-    const lipSync = useVRMLipSync(shallowRef<AudioContext | undefined>(context), shallowRef<AudioBufferSourceNode | undefined>(source))
+    const lipSync = useVRMLipSync(shallowRef<AudioContext | undefined>(context), shallowRef<AudioBufferSourceNode | undefined>(source), shallowRef(true))
     const { vrm, readLevel: readWeight } = createRecordingVrm()
     const readLevel = () => {
       lipSync.update(vrm as never, 0.016)
@@ -68,5 +68,39 @@ describe('useVRMLipSync', () => {
     source.start()
 
     expect(await waitForMouthLevel(readLevel)).toBeGreaterThan(0)
+  })
+
+  it('does not touch the mouth when lip sync never owned it', () => {
+    const names: string[] = []
+    const vrm = { expressionManager: { setValue: (name: string) => names.push(name) } }
+    const lipSync = useVRMLipSync(shallowRef<AudioContext | undefined>(undefined), shallowRef<AudioBufferSourceNode | undefined>(undefined), shallowRef(false))
+
+    lipSync.update(vrm as never, 0.016)
+
+    expect(names).toEqual([])
+  })
+
+  it('zeroes every viseme once speech stops after lip sync opened the mouth', { timeout: 15_000 }, async () => {
+    // ROOT CAUSE:
+    //
+    // The wLipSync node keeps its last weights after the speech source ends, so the
+    // VRM mouth stayed open on the last vowel until the next reply.
+    const { context, source } = await createToneSource(48_000)
+    const speechActive = shallowRef(true)
+    const lipSync = useVRMLipSync(shallowRef<AudioContext | undefined>(context), shallowRef<AudioBufferSourceNode | undefined>(source), speechActive)
+    const { vrm, readLevel: readWeight } = createRecordingVrm()
+    source.start()
+    await waitForMouthLevel(() => {
+      lipSync.update(vrm as never, 0.016)
+      return readWeight()
+    })
+
+    const writes = new Map<string, number>()
+    const released = { expressionManager: { setValue: (name: string, weight: number) => writes.set(name, weight) } }
+    speechActive.value = false
+    lipSync.update(released as never, 0.016)
+
+    expect(Object.fromEntries(writes)).toEqual({ aa: 0, ee: 0, ih: 0, oh: 0, ou: 0 })
+    expect(lipSync.isLipSyncActive.value).toBe(false)
   })
 })
