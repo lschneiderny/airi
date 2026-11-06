@@ -143,9 +143,10 @@ glance. The boundary is fixed: the director chooses goals and never moves the
 root; locomotion integrates the position, gait phase, step targets, arm swing
 and root yaw, and never chooses a goal.
 
-`NO_WORLD_BODY_INPUT` supplies inert world inputs for the classic window.
-The existing MMD callers use it without enabling locomotion; stage-world
-integration supplies actual ground, root, and event inputs.
+`NO_WORLD_BODY_INPUT` supplies inert world inputs for the classic window. The
+MMD stance director spreads it only when the scene has no stage world; in stage
+mode the scene supplies the ground, root, home, clip ownership, speech, chat,
+cursor, tool and leg-length inputs.
 
 The director also performs clips. A `BodyActionRequest` (`gesture`, `action` or
 `dance`, layer `full` or `upper`) is accepted or refused in a fixed order: asleep,
@@ -164,7 +165,9 @@ defaults them.
 
 `MMDBody` and `MMDStanceDirector` in `@proj-airi/stage-ui-mmd` are the first
 consumers. The architecture is recorded in
-[the 3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md).
+[the 3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md);
+locomotion, rest pose and clip masks in
+[the full-screen stage and locomotion ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md).
 
 ## Arm rest pose and clip masks
 
