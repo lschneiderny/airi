@@ -1,4 +1,4 @@
-import type { ArmBoneName, HumanoidBoneName, HumanoidFingerBoneName } from './index'
+import type { ArmBoneName, BodyIntent, BodyLocomotionReason, HumanoidBoneName, HumanoidFingerBoneName } from './index'
 
 import { describe, expect, it } from 'vitest'
 
@@ -75,5 +75,20 @@ describe('rest-relative rotation order', () => {
 
   it('mirrors yaw and roll', () => {
     expect(mirrorRotation({ yaw: 0.2, pitch: 0.3, roll: -0.4 })).toEqual({ yaw: -0.2, pitch: 0.3, roll: 0.4 })
+  })
+})
+
+describe('body locomotion intent', () => {
+  it('carries a locomotion intent with a closed set of reasons and paces', () => {
+    const reasons: BodyLocomotionReason[] = ['stay', 'return-home', 'wander', 'approach-chat', 'approach-cursor', 'tool', 'debug']
+    const intent: BodyIntent = {
+      stance: 'stand',
+      attention: { kind: 'camera', point: null },
+      facingYaw: 0,
+      locomotion: { homeX: 0, goalX: null, pace: 'stroll', arriveFacing: 0, reason: reasons[0] },
+    }
+
+    expect(new Set(reasons).size).toBe(reasons.length)
+    expect(intent.locomotion.goalX).toBeNull()
   })
 })

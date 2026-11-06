@@ -2,7 +2,7 @@ import type { Camera, SkinnedMesh } from 'three'
 
 import type { MMDNaturalAdapter } from '../natural/adapter'
 
-import { decideBody, initialBodyDirectorMemory } from '@proj-airi/motion-driver-humanoid/director'
+import { decideBody, initialBodyDirectorMemory, NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
 import { Plane, Raycaster, Vector2, Vector3 } from 'three'
 
 import { projectMMDHead } from '../natural/adapter'
@@ -40,6 +40,7 @@ export function resolveBodyTarget(
     chatPoint,
     cameraPoint,
     slots: { sit: false, sleep: false },
+    ...NO_WORLD_BODY_INPUT,
   }, initialBodyDirectorMemory)
   return intent.attention.point ? new Vector3().copy(intent.attention.point) : null
 }
