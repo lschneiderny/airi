@@ -10,8 +10,9 @@ import { env } from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import { is } from '@electron-toolkit/utils'
+import { errorMessageFrom } from '@moeru/std'
 import { initScreenCaptureForWindow } from '@proj-airi/electron-screen-capture/main'
-import { app, BrowserWindow as ElectronBrowserWindow, screen } from 'electron'
+import { app, dialog, BrowserWindow as ElectronBrowserWindow, screen } from 'electron'
 
 import icon from '../../../../resources/icon.png?asset'
 
@@ -23,6 +24,7 @@ import { protectPrivilegedWindowNavigation } from '../shared'
 import { defaultStageConfig, resolveHomeDisplay } from './config'
 import { bindStageWindowToHomeDisplay, readStageDisplays } from './displays'
 import { markStageWindow } from './identity'
+import { offerClassicWindowRelaunch } from './leave-mmd-notice'
 import { setupStageWindowInvokes } from './rpc/index.electron'
 import { applyStageInputIsolation, createStageWindowOptions } from './window-contract'
 
@@ -127,6 +129,10 @@ export async function setupStageWindow(
     running: 'desktop',
     relaunch: relaunchApp,
     broadcast: params.broadcast,
+    onLeaveMmd: () => {
+      offerClassicWindowRelaunch({ dialog, i18n: params.i18n, relaunch: relaunchApp })
+        .catch(error => console.error('[stage] Failed to show the relaunch notice:', errorMessageFrom(error)))
+    },
   })
   const { applyHomeBounds } = bindStageWindowToHomeDisplay({ screen, window, getConfig, onDisplaysChanged: params.broadcast.emitAll })
 

@@ -1,0 +1,9 @@
+leave-mmd-notice:
+  title: Desktop stage
+  message: The desktop stage supports MMD models only.
+  detail: >-
+    The desktop stage keeps running until AIRI restarts. Relaunch to show the new
+    model in the classic window. An unsent chat draft is not carried across the
+    relaunch.
+  relaunch: Relaunch into the classic window
+  keep: Not now
