@@ -2,7 +2,7 @@ import type { PerformanceState } from '@proj-airi/stage-shared/performance-state
 
 import type { MMDStanceInteraction, MMDStanceSlots, MMDStanceWorld } from './stance'
 
-import { NO_WORLD_BODY_INPUT } from '@proj-airi/motion-driver-humanoid/director'
+import { NO_WORLD_BODY_INPUT, WANDER_MIN_MS } from '@proj-airi/motion-driver-humanoid/director'
 import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
 
@@ -282,6 +282,30 @@ describe('mmd stance director in the stage world', () => {
     expect(wander('roam')).toMatchObject({ reason: 'wander' })
     expect(wander('roam').goalX).not.toBeNull()
     expect(wander('stay')).toMatchObject({ goalX: null, reason: 'stay', nextWanderAtMs: null })
+  })
+
+  it('does not wander again on arrival when the next wander came due during the walk', () => {
+    const director = new MMDStanceDirector()
+    const roam = (patch: Partial<MMDStanceWorld> = {}) => world({ roamMode: 'roam', seed: 7, ...patch })
+    frame(director, 0, roam())
+    let offsetMs = director.diagnostics.nextWanderAtMs! - EPOCH_MS + 1_000
+    frame(director, 100, roam(), idle, offsetMs)
+    const first = director.diagnostics
+    expect(first.reason).toBe('wander')
+    const goalX = first.goalX!
+
+    // The debug clock skips past the rescheduled wander while she is still walking to the first one.
+    offsetMs += first.nextWanderAtMs! - (EPOCH_MS + 2_000 + offsetMs) + 1_000
+    frame(director, 2_000, roam({ rootX: goalX / 2, locomotionMode: 'walking' }), idle, offsetMs)
+    expect(director.diagnostics).toMatchObject({ reason: 'wander', goalX })
+
+    frame(director, 4_000, roam({ rootX: goalX, locomotionMode: 'idle' }), idle, offsetMs)
+    const arrivedAtMs = director.diagnostics.nowMs
+    expect(director.diagnostics).toMatchObject({ goalX: null, reason: 'stay' })
+    expect(director.diagnostics.nextWanderAtMs).toBeGreaterThanOrEqual(arrivedAtMs + WANDER_MIN_MS)
+
+    frame(director, 4_100, roam({ rootX: goalX, locomotionMode: 'idle' }), idle, offsetMs)
+    expect(director.diagnostics.goalX).toBeNull()
   })
 
   it('drops its goal and held goal when the host places her, and waits before walking home', () => {
