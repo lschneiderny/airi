@@ -25,7 +25,7 @@ interface Setup {
 function stage({ rootX, homeX }: Setup) {
   const director = new MMDStanceDirector()
   const port = new MMDBodyToolPort()
-  const standX = chatStandX(chat, rootX, homeX, halfWidth, legLength)
+  const standX = chatStandX(chat, rootX, homeX, halfWidth, legLength, { minX: -80, maxX: 80 })
   function frame(atMs: number, patch: Partial<MMDStanceWorld> = {}) {
     const world: MMDStanceWorld = {
       ...NO_WORLD_BODY_INPUT,
@@ -42,7 +42,7 @@ function stage({ rootX, homeX }: Setup) {
     port.observe({
       rootX,
       homeX,
-      standX: standX + Math.sign(homeX - standX) * legLength,
+      standX: world.chatX === null ? null : standX + Math.sign(homeX - standX) * legLength,
       locomotionMode: world.locomotionMode,
       directorMs,
       diagnostics: director.diagnostics,
@@ -110,6 +110,17 @@ describe('mmd body tool port with the stance director', () => {
     const look = port.lookAt('cursor')
     frame(11_100)
     expect((await look).success).toBe(true)
+  })
+
+  it('refuses come_here while the chat is folded and names the chat', async () => {
+    const { director, port, frame } = stage({ rootX: 30, homeX: 40 })
+    frame(0, { chatX: null })
+
+    const answer = port.comeHere()
+    frame(100, { chatX: null })
+
+    expect(await answer).toEqual({ success: false, error: 'The chat window is closed, so there is no spot beside it to walk to.' })
+    expect(director.diagnostics.goalX).toBeNull()
   })
 
   it('reports where she stands and how long the movement tools are blocked', async () => {

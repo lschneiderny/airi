@@ -47,16 +47,20 @@ export const CHAT_STAND_GAP_LEGS = 0.25
  * The `chatX` the director should see so that she stops beside the chat, not over it.
  *
  * Her stand spot is the chat's near edge (the edge facing her root) pushed out by half her body width plus
- * `CHAT_STAND_GAP_LEGS`. The director then offsets `chatX` by one leg length toward home, whichever side of the chat
+ * `CHAT_STAND_GAP_LEGS`. When that spot is off the ground line (`ground`, root x) she uses the other side. The director then offsets `chatX` by one leg length toward home, whichever side of the chat
  * home is on, so this subtracts that leg toward home and she arrives exactly at the stand spot. All values are ground
  * x in model units.
  */
-export function chatStandX(chat: { minX: number, maxX: number }, rootX: number, homeX: number, halfWidth: number, legLength: number): number {
+export function chatStandX(chat: { minX: number, maxX: number }, rootX: number, homeX: number, halfWidth: number, legLength: number, ground: { minX: number, maxX: number }): number {
   const centre = (chat.minX + chat.maxX) / 2
-  const side = rootX >= centre ? 1 : -1
   const towardHome = homeX >= centre ? 1 : -1
-  const stand = (side > 0 ? chat.maxX : chat.minX) + side * (halfWidth + CHAT_STAND_GAP_LEGS * legLength)
-  return stand - towardHome * legLength
+  const standOn = (side: number) => (side > 0 ? chat.maxX : chat.minX) + side * (halfWidth + CHAT_STAND_GAP_LEGS * legLength)
+  const onGround = (x: number) => x >= ground.minX && x <= ground.maxX
+  let side = rootX >= centre ? 1 : -1
+  // A chat near the work-area edge can leave no ground beside it on her side; standing there would put her over it.
+  if (!onGround(standOn(side)) && onGround(standOn(-side)))
+    side = -side
+  return standOn(side) - towardHome * legLength
 }
 
 /**

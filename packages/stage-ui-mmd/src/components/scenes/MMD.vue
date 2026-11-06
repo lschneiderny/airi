@@ -698,7 +698,7 @@ function directorWorld(world: MMDStageWorld, modelKey: string): MMDStanceWorld {
   const edges = chat && placement && dipScale > 0
     ? [chat.x, chat.x + chat.width].map(x => dipToPlane(calibration, { x: (x - placement.windowBounds.x) / dipScale, y: calibration.floorRowDip }, 0).x)
     : null
-  const chatX = edges ? chatStandX({ minX: edges[0], maxX: edges[1] }, stageRootX, world.homeX, halfWidth, legLength) : null
+  const chatX = edges ? chatStandX({ minX: edges[0], maxX: edges[1] }, stageRootX, world.homeX, halfWidth, legLength, world.ground) : null
   chatStandSpotX = chatX === null ? null : chatX + Math.sign(world.homeX - chatX) * legLength
   const cursor = props.cursorPosition
   const owned = body?.ownership()
