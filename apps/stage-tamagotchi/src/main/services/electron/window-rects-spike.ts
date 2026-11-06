@@ -14,6 +14,8 @@ import { errorMessageFrom } from '@moeru/std'
 // Source: `.omo/plans/mmd-actions-library.md`, todo 6.
 // Removal condition: the M4 plan replaces or deletes it.
 
+// The 2026-11-04 measurements are in `window-rects-spike.md` beside this file.
+
 // No runtime Electron import: the worker entry imports the walk from here, and Electron modules
 // are unavailable in worker threads. The main process passes `app`, `screen` and `BrowserWindow` in.
 
