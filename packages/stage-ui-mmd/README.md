@@ -108,7 +108,10 @@ in front of her and uses the calibration eye as the camera point.
 that pose before queued playback commands and mixer sampling, then captures
 the clip pose before registered pose stages, IK, grants, and physics. Surface
 stages apply expressions, blink, and lip-sync after physics. Model transforms
-and animation loops request a physics reset.
+and animation loops request a physics reset. During a measurement,
+`measurement.physicsResets` counts the resets that callers requested
+(`requestPhysicsReset`, for example a stage teleport); loop wraps are not
+counted.
 
 The scene registers these pose stages in order: `natural`, `weight-shift`,
 `foot-contact`, `look-at`, `eyes`, `classic-gaze`, `classic-face`, `lip-sync`

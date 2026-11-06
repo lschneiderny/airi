@@ -179,6 +179,8 @@ export const useMMD = defineStore('mmd', () => {
   const albedoGlow = useLocalStorageManualReset<number>('settings/mmd/albedo-glow', 0.45)
   /** Device-pixel-ratio multiplier for render resolution. */
   const renderScale = useLocalStorageManualReset<number>('settings/mmd/render-scale', 1)
+  /** On-screen character height in DIP on the desktop stage; the stage page calibrates its camera from it. */
+  const stageCharacterHeight = useLocalStorageManualReset<number>('settings/mmd/stage-character-height', 560)
 
   // === Animation ===
   /** Name of the persistent idle motion; empty means none/static. */
@@ -321,6 +323,7 @@ export const useMMD = defineStore('mmd', () => {
     directionalPosition.reset()
     albedoGlow.reset()
     renderScale.reset()
+    stageCharacterHeight.reset()
     idleMotionName.reset()
     stanceSlots.reset()
     void clearMotions()
@@ -357,6 +360,7 @@ export const useMMD = defineStore('mmd', () => {
     directionalPosition,
     albedoGlow,
     renderScale,
+    stageCharacterHeight,
 
     idleMotionName,
     availableMotions,

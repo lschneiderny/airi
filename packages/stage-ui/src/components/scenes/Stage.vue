@@ -93,6 +93,8 @@ const emit = defineEmits<{
   error: [error: Error]
   /** The stage dropped a render error and starts a new load. */
   reset: []
+  /** The MMD character's projected rect in work-area DIP changed; only emitted while `stageWorld` is set. */
+  placement: [rect: PlacementRect]
 }>()
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
 
@@ -967,6 +969,8 @@ defineExpose({
    */
   captureFrame: captureCharacterFrame,
   readRenderTargetRegionAtClientPoint,
+  /** Moves the MMD root along the stage floor line; see `setRootX` on the MMD scene. A no-op without `stageWorld`. */
+  setStageRootX: (x: number, options: { teleport: boolean }) => mmdSceneRef.value?.setRootX(x, options),
   setExpression: async (expression: string, intensity = 1) => {
     if (stageModelRenderer.value === 'vrm') {
       await vrmViewerRef.value?.setExpression(expression, intensity)
@@ -1082,6 +1086,7 @@ defineExpose({
         :current-audio-source="currentAudioSource"
         @error="reportStageRenderError"
         @touch="onTouch"
+        @placement="emit('placement', $event)"
       />
       <div
         v-if="stageModelRenderer === 'godot'"
