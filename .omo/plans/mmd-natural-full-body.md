@@ -1,5 +1,8 @@
 # mmd-natural-full-body - Work Plan
 
+> **Audited 2026-11-06.** The checklist had never been ticked. Todos 1-22 are on `main`; each row names the commit found by its planned subject. Todo 23 (cross-model real-surface QA and the frame budget check) and F1-F4 have no recorded evidence and stay open for Luke's QA.
+
+
 ## TL;DR (For humans)
 <!-- Fill this LAST, after the detailed plan below is written, so it summarizes the REAL plan. -->
 <!-- Plain English for a non-engineer: NO file paths, NO todo numbers, NO wave/agent/tool names. -->
@@ -149,7 +152,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
 ## Todos
 > Implementation + Test = ONE todo. Never separate.
 <!-- APPEND TASK BATCHES BELOW THIS LINE WITH edit/apply_patch - never rewrite the headers above. -->
-- [ ] 1. Capture Natural baseline hashes and decouple the controller from Live2D types in place
+- [x] 1. Capture Natural baseline hashes and decouple the controller from Live2D types in place (landed on main: 8c7a2011d)
   What to do / Must NOT do:
   - Preflight (Commit strategy branch guard): `git branch --show-current` prints `luke/feat/mmd-natural-full-body` (or a wave branch based on it) and `git merge-base --is-ancestor main HEAD` exits 0; otherwise stop and report.
   - Before any edit, write `$RUN_TMP/natural-trace-hash.ts` (K2) importing `Live2DNaturalMotion` from `packages/stage-ui-live2d/src/composables/live2d/natural-motion.ts` (read its public methods for advance, performance, cursor, voice, emotion episode inputs) and write `$RUN_TMP/natural-baseline.json`.
@@ -170,7 +173,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | refactor(stage-ui-live2d): decouple Natural controller from Live2D rig and touch types
   Recommended task executor category: deep-low - mechanical edits whose correctness hinges on a determinism probe the worker can run.
 
-- [ ] 2. Scaffold motion-driver-humanoid with canonical humanoid types and import guard
+- [x] 2. Scaffold motion-driver-humanoid with canonical humanoid types and import guard (landed on main: e2957cbb0)
   What to do / Must NOT do:
   - Create `packages/motion-driver-humanoid` mirroring `packages/motion-driver-magic` structure but with SOURCE exports (like `packages/stage-shared/package.json:17-29`): `package.json` (`@proj-airi/motion-driver-humanoid`, private, type module, exports `./types`, `./look-at`, `./foot-contact`, `./weight-shift`, `./director` -> `./src/<name>/index.ts`; scripts `test: vitest run`, `typecheck: tsc --noEmit`; deps `@proj-airi/stage-shared` workspace; devDeps `@proj-airi/cpu-slots`, `vitest`), `tsconfig.json`, `vitest.config.ts` (`withCpuSlots`, Node, `src/**/*.test.ts`), `README.md` (purpose, usage, when to use, when not to use), `AGENTS.md` + `CLAUDE.md` containing only `@AGENTS.md`.
   - `src/types/index.ts`: `HumanoidBoneName` union of VRM humanoid names used here (hips, spine, chest, upperChest, neck, head, leftEye, rightEye, leftUpperLeg, leftLowerLeg, leftFoot, leftToes, right* equivalents, leftShoulder, leftUpperArm, leftLowerArm, leftHand, right* equivalents); `Vec3 = { x, y, z }`; `RestRelativeRotation = { yaw, pitch, roll }` in radians in the bone's parent frame; `RigTraits` (legLength, footBaselineY, kneeBendSign: 1 | -1, eyeYawLimit, eyePitchLimit, presentBones: HumanoidBoneName[]); `BodyIntent { stance: 'stand' | 'sit' | 'sleep', attention: { kind: 'camera' | 'cursor' | 'chat' | 'screen' | 'aside', point: Vec3 | null }, facingYaw: number }`. Doc comments state units (model units, radians, seconds).
@@ -188,7 +191,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(motion-driver-humanoid): add canonical humanoid types package
   Recommended task executor category: quick - scaffold following an existing package pattern.
 
-- [ ] 3. Build the PMX morph runtime (pure core TDD + three appliers)
+- [x] 3. Build the PMX morph runtime (pure core TDD + three appliers) (landed on main: 1e2c5e6c1)
   What to do / Must NOT do:
   - New dir `packages/stage-ui-mmd/src/composables/mmd/morph-runtime/`.
   - `expand.ts` (pure, TDD first): input = PMX morph list shape (`type`, group `indices`/`ratios`, bone/material/uv elements) + per-morph requested weights; output = effective weights per morph type. Group own vertex weight stays on its own morph target (three-mmd bakes group vertex children, dist index.js ~L2062-2075); bone/material/UV children get `own + sum(group_w * ratio)` (ratios may be negative, no clamp); nested groups refused once at load with `console.warn`; Flip and Impulse morphs ignored with one warning.
@@ -208,7 +211,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(stage-ui-mmd): add PMX morph runtime for group, bone, material and UV morphs
   Recommended task executor category: deep-low - several interacting rules the worker can settle from the dist code and audit.
 
-- [ ] 4. Replace updateWithMixer with an MMD frame pipeline that owns a clean pose snapshot
+- [x] 4. Replace updateWithMixer with an MMD frame pipeline that owns a clean pose snapshot (landed on main: 8ebb7fab6)
   What to do / Must NOT do:
   - New `packages/stage-ui-mmd/src/composables/mmd/frame-pipeline.ts`: class `MMDFramePipeline` constructed with `{ mmd, mixer }` and named stage hooks `poseStages: Array<{ id, run(ctx) }>` and `surfaceStages`.
   - Per frame (`step(dt)`): `dt = Math.min(dt, 1/20)`; `mmd.beforeUpdate()`; restore every bone position/quaternion from the clean snapshot (preallocated arrays initialised from bind pose at load) and `mesh.morphTargetInfluences.fill(0)`; flush queued mixer commands (play/fadeIn/fadeOut/setIdle queued by the manager instead of executed immediately); `mixer.update(dt)`; `mmd.updateAnimation(mixer)`; capture clean snapshot (bones + clip morph influences + per-clip effective weights); run pose stages in registration order; `mmd.beforePhysics(opts)`; `physics.reset()` when a looping action wrapped this frame or `requestPhysicsReset()` was called (teleport/model transform change); `physics.update(dt)` when physics enabled; `mmd.afterPhysics(opts)`; run surface stages.
@@ -229,7 +232,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | two commits: feat(stage-ui-mmd): run MMD frames through a pipeline with a clean pose snapshot; fix(stage-ui-mmd): compose classic gaze with clip head motion before physics
   Recommended task executor category: deep-high - correctness is argued from three-mmd snapshot invariants across mixer, IK and physics.
 
-- [ ] 5. Move the pure Natural modules into motion-driver-natural
+- [x] 5. Move the pure Natural modules into motion-driver-natural (landed on main: 5525c064f)
   What to do / Must NOT do:
   - Create `packages/motion-driver-natural` (source exports `.` -> `./src/index.ts` and `./*` -> `./src/*.ts`; scripts test/typecheck; deps `@proj-airi/stage-shared`, `@moeru/std`, `es-toolkit` only as actually imported; `vitest.config.ts` Node with `withCpuSlots`; README; AGENTS.md + CLAUDE.md `@AGENTS.md`). Already covered by todo 2's eslint override glob.
   - `git mv` into `packages/motion-driver-natural/src/`: `natural-motion.ts` -> `natural-motion.ts`, and `natural-motion/{blink,body,breath,cursor-attention,emotions,energy,face,face-hints,frame-types,gaze,gestures,hold,impulses,interpolation,mood,mood-modulation,pending-actions,placement,posture,processes,random,speech-emphasis,touch}.ts` with their `*.test.ts` files.
@@ -251,7 +254,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | refactor(motion-driver-natural): move pure Natural motion into a shared package
   Recommended task executor category: deep-low - wide mechanical move whose proof is the trace hash and suites.
 
-- [ ] 6. Implement humanoid look-at distribution and body-turn hysteresis (TDD)
+- [x] 6. Implement humanoid look-at distribution and body-turn hysteresis (TDD) (landed on main: 02f179735)
   What to do / Must NOT do:
   - `packages/motion-driver-humanoid/src/look-at/index.ts`: `createLookAt(options)` with `step(input, dt)`; input = target yaw/pitch (radians, in the stance frame), current facing yaw; output = per-bone `RestRelativeRotation` for spine, chest, neck, head plus eye targets and `facingYaw` command.
   - Distribution defaults (yaw share / limit deg, pitch share / up-down limit deg): spine .10/10, .05/5-5; chest .15/10, .10/8-8; neck .30/25, .35/20-25; head .45/35, .50/25-30. Critically damped springs omega torso 3, neck 5, head 7 rad/s.
@@ -268,7 +271,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(motion-driver-humanoid): add look-at distribution with body-turn hysteresis
   Recommended task executor category: deep-low - algorithm with clear invariants.
 
-- [ ] 7. Implement foot contact, leg reach and knee pre-bend planning (TDD)
+- [x] 7. Implement foot contact, leg reach and knee pre-bend planning (TDD) (landed on main: e93c5c948)
   What to do / Must NOT do:
   - `src/foot-contact/index.ts`: per foot anchors in mesh-local space (position + yaw), contact weight `c` eased over 0.3 s, re-anchor when `c` rises from 0 at the last solved ankle position with Y snapped to `RigTraits.footBaselineY`; `c = enabled * (1 - clipFootTrackWeight) * duck`.
   - Leg reach: `L = |hip-knee| + |knee-ankle|`, `rMax = 0.985 L`; required drop `d = max(0, (h.y - g.y) - sqrt(rMax^2 - rho^2))`; when `rho > rMax` scale lateral shift down; applied drop `max(dL, dR, smoothed)` capped at `0.06 L`.
@@ -285,7 +288,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(motion-driver-humanoid): add foot contact and leg reach planning
   Recommended task executor category: deep-low - geometric planner with explicit invariants.
 
-- [ ] 8. Implement seeded weight shift (TDD)
+- [x] 8. Implement seeded weight shift (TDD) (landed on main: 8e1d12912)
   What to do / Must NOT do:
   - `src/weight-shift/index.ts`: `createWeightShift({ seed })`, support states left/both/right, dwell 6-18 s log-uniform, transitions 1.2-2.0 s smootherstep; output `s` in [-1,1] and derived pelvis lateral offset `0.45 s * (hipY / 11.5)`, lower-body roll `-4 deg * s`, yaw `3 deg * s`, base drop `0.06 |s|`, upper-body counter-roll `+2.5 deg * s`, chest `+1 deg * s`; ambient sway lateral `0.04 sin(2pi .23 t) + 0.025 sin(2pi .37 t)`, fore-aft `0.03 sin(2pi .19 t)`; `duck` multiplier input.
   - Composition helper with Natural body: Natural body x 10 deg split 0.6 spine / 0.4 chest; Natural low-pass body roll feeds pelvis lateral at 0.15 units per normalized unit; breath to chest pitch +-0.6 deg.
@@ -300,7 +303,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(motion-driver-humanoid): add seeded weight shift
   Recommended task executor category: quick - formula module with listed constants.
 
-- [ ] 9. Implement the stance and attention director (TDD)
+- [x] 9. Implement the stance and attention director (TDD) (landed on main: a5f3ccd8a)
   What to do / Must NOT do:
   - `src/director/index.ts`: pure `decideBody(input, memory) -> { intent: BodyIntent, memory }`; input `{ nowMs, performance: { mode, attention, away }, cursorPoint, chatPoint, cameraPoint, slots: { sit: boolean, sleep: boolean } }`.
   - Stance: sleep while `away` and sleep slot present; sit after 120 000 ms continuous `mode === 'idle'` and sit slot present; stand on any other mode; minimum dwell 3 000 ms between stance changes; missing slot keeps stand.
@@ -316,7 +319,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(motion-driver-humanoid): add stance and attention director
   Recommended task executor category: quick - small pure decider with listed rules.
 
-- [ ] 10. Add the MMD rig adapter and rig profile reader
+- [x] 10. Add the MMD rig adapter and rig profile reader (landed on main: 561461a07)
   What to do / Must NOT do:
   - `packages/stage-ui-mmd/src/composables/mmd/rig/`: `bone-map.ts` canonical `HumanoidBoneName` -> ordered MMD candidates (hips: 下半身 driven via センター/グルーブ for translation; spine 上半身; chest 上半身2; neck 首; head 頭; eyes 左目/右目 (fallback 両目); legs 左足/左ひざ/左足首/左つま先 and right; leg IK 左足ＩＫ/右足ＩＫ with half-width IK fallback; toe IK 左つま先ＩＫ/右つま先ＩＫ; arms 左肩/左腕/左ひじ/左手首 and right).
   - `rig-profile.ts` (pure part tested in Node with PMX-shaped fixtures): reads `mmd.pmx` (post-parse) to produce `MMDRigProfile`: present/missing canonical bones, leg IK chains with knee limit sign (from link limits; M5/M7/M10 differ), leg length from bind positions, footBaselineY from ankle bind Y, rest arm angle, eye bone source, physics-owned bones (bones of rigid bodies with physicsMode 1/2) and mode-2 helper bones, missing waist-cancel flag; converts to humanoid `RigTraits`.
@@ -333,7 +336,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(stage-ui-mmd): add MMD rig profile and humanoid bone map
   Recommended task executor category: unspecified-high - multi-file adapter grounded in the audit.
 
-- [ ] 11. Route the stage performance conductor to the active renderer's scene and expression backend
+- [x] 11. Route the stage performance conductor to the active renderer's scene and expression backend (landed on main: f22598402)
   What to do / Must NOT do:
   - In `packages/stage-ui/src/composables/performance/use-stage-performance-conductor.ts` replace the direct `useExpressionStore()` reads (lines ~650-679) with an `expressionBackend: () => StageExpressionBackend | undefined` option (catalog, modelId, eligible/active expressions, performer commands) and make `scene` and `driver` renderer-aware.
   - Define `StageExpressionBackend` in `packages/stage-ui/src/features/performance/` with the exact members the conductor uses today; implement it for Live2D by wrapping `useExpressionStore` (same behaviour).
@@ -350,7 +353,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | refactor(stage-ui): select the performance scene and expression backend by renderer
   Recommended task executor category: deep-low - cross-module refactor with an existing test suite as the contract.
 
-- [ ] 12. Add the MMD Natural adapter
+- [x] 12. Add the MMD Natural adapter (landed on main: f54b25c96)
   What to do / Must NOT do:
   - `packages/stage-ui-mmd/src/composables/mmd/natural/adapter.ts`: owns a `NaturalMotion` instance constructed with `{ seed: fnv1a32(modelKey) }` (32-bit FNV-1a over the UTF-16 code units of the stage model id; helper in the same folder with a Node test), advances it each frame with monotonic seconds, feeds performance, voice (speaking, speechActiveOrRecent, level), chat input, cursor (head-width units computed from the projected head bone span: head-top estimate from 頭 bind position + 1.5 x neck-to-head length), placement inwardness (via `@proj-airi/stage-shared/stage-placement`), touch.
   - Pose stage `natural`: head deltas split neck 0.4 / head 0.6 at +-30 deg span, body to spine/chest at +-10 deg span (rest-relative, absolute from clean); eyes left for todo 13's eye stage when look-at is active, otherwise eyes at Natural span; breath to chest pitch.
@@ -368,7 +371,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(stage-ui-mmd): drive MMD models with the shared Natural motion
   Recommended task executor category: deep-low - adapter mapping with clear source pattern.
 
-- [ ] 13. Wire full-body layers: weight shift, foot contact, look-at chain and eyes
+- [x] 13. Wire full-body layers: weight shift, foot contact, look-at chain and eyes (landed on main: c0dfdecda)
   What to do / Must NOT do:
   - `packages/stage-ui-mmd/src/composables/mmd/body/`: pose stages registered after `natural` in order `weight-shift` -> `foot-contact` -> `look-at` -> `eyes`.
   - weight-shift: write グルーブ position (lateral, drop, fore-aft) and 下半身 roll/yaw absolutely from clean; upper-body counter-roll composed with Natural body; resolve sign conventions from bone world axes at load (three-mmd Z flip).
@@ -387,7 +390,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(stage-ui-mmd): add planted feet, weight shift and 3D look-at to MMD models
   Recommended task executor category: deep-high - several coupled stages whose correctness depends on IK/physics ordering invariants.
 
-- [ ] 14. Derive an MMD expression catalog and expression store
+- [x] 14. Derive an MMD expression catalog and expression store (landed on main: c35f62b29)
   What to do / Must NOT do:
   - `packages/stage-ui-mmd/src/stores/expression-store.ts` + `src/utils/expression-catalog/derive.ts`: one `CatalogEntry` per PMX morph (id = `mmd:<morph index>:<name>`, label = morph name, `fileName` = morph name, `parameterIds` = [morph name], `area` from PMX panel (eyebrow/eye -> 'eyes' or 'whole-look' heuristics: eyebrow+eye -> eyes, mouth -> mouth, other -> effects for material/UV morphs, hidden panel 0 -> hidden), `kind` defaults: vowels/blink/wink -> system (not LLM-eligible), material/UV morphs -> effect, others -> face; emotion mappings from name tokens reusing `packages/stage-ui-live2d/src/utils/expression-catalog/tokens.ts` semantics where applicable (import the shared helper only if it lives in stage-shared; otherwise implement the MMD token table locally).
   - Curated overrides and persistence use the SAME key strings and serialized shape as Live2D: `expression-catalog:${modelId}` and `expression-rest:${modelId}` (`packages/stage-ui-live2d/src/stores/expression-catalog-persistence.ts:24-31`), parsed with the shared `CuratedOverrideSchema` / merge helpers from `@proj-airi/stage-shared/expression-performance`; stage model ids are unique across renderers (`display-model-*`), so the shared panel (todo 19) needs no renderer branch. Implement the read/write locally in stage-ui-mmd (no import from stage-ui-live2d).
@@ -405,7 +408,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(stage-ui-mmd): derive an expression catalog from PMX morphs
   Recommended task executor category: unspecified-high - store and derivation following the Live2D pattern.
 
-- [ ] 15. Frame the camera from skeleton bounds
+- [x] 15. Frame the camera from skeleton bounds (landed on main: 026f09e1f)
   What to do / Must NOT do:
   - `MMD.vue` `frameCamera()`: compute bounds from the rig profile (foot baseline Y from ankle/toe bones, head top from 頭 world position + 1.5 x neck-head length, width from shoulder span x 2.2) instead of `Box3.setFromObject(modelGroup)`; fall back to Box3 only when the rig lacks 頭 or ankles.
   - Keep the 1.2 margin and both-axis fit.
@@ -419,7 +422,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | fix(stage-ui-mmd): frame MMD models from their skeleton instead of the mesh bounds
   Recommended task executor category: quick - one function plus a small helper.
 
-- [ ] 16. Implement StagePerformanceScene for MMD and pass the Live2D stage inputs to MMDScene
+- [x] 16. Implement StagePerformanceScene for MMD and pass the Live2D stage inputs to MMDScene (landed on main: 4b0aa1f67)
   What to do / Must NOT do:
   - `MMD.vue` props: add `performance`, `naturalEnergy`, `performanceSettings`, `screenPlacement`, `chatTarget`, `chatActivity`, `mouthOpenSize`, `nowSpeaking` with the same types as `Live2DScene`, ALL optional with the defaults `Live2DScene` uses (preview-stage passes none); feed them to the Natural adapter.
   - `defineExpose` adds `setEmotion(episode)` for Natural episodes (keep the existing `(name, intensity)` behaviour for the Classic path as `setClassicEmotion` and update Stage.vue's call), `applySlots`, `applyHolds`, `onSpeech`, `setMuted`, `getMood` matching `StagePerformanceScene`.
@@ -439,7 +442,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(stage-ui): drive MMD scenes through the stage performance conductor
   Recommended task executor category: deep-low - integration across Stage and scene with known contracts.
 
-- [ ] 17. Add rigid-body touch regions with physical response
+- [x] 17. Add rigid-body touch regions with physical response (landed on main: 0b50767d4)
   What to do / Must NOT do:
   - `packages/stage-ui-mmd/src/composables/mmd/touch/`: build colliders from `mmd.pmx.rigidBodies` (post-parse; shapes sphere/box/capsule with `shapeSize`, `shapePosition`, `shapeRotation`, bound to `boneIndex`): store body-to-bone offset at load; at pointer events compute world transforms from bone matrices and raycast (three `Ray` against analytic shapes); region head = bodies on 頭/首 or their children chains, body = 上半身/上半身2/下半身 chains; fallback: mesh raycast + bone weight lookup.
   - Feed Natural `poke(region, x, y, now)` and pet (hover by default, `settings/mmd/natural-touch-pet-requires-hold`), master toggle `settings/mmd/natural-touch` (default true), mirroring `packages/stage-ui-live2d/src/composables/live2d/live2d.ts:17-25` semantics; emit `touch` event from MMDScene like Live2DScene.
@@ -455,7 +458,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(stage-ui-mmd): add poke and pet touch on MMD models via rigid-body colliders
   Recommended task executor category: unspecified-high - geometry plus wiring across known modules.
 
-- [ ] 18. Add stance clip slots driven by the director
+- [x] 18. Add stance clip slots driven by the director (landed on main: e36ad053b)
   What to do / Must NOT do:
   - `src/stores/mmd.ts`: per-model record ref `stanceSlots` persisted at `settings/mmd/stance-slots` `{ [modelId]: { idle?: motionName, sit?: motionName, sleep?: motionName } }` (motion names from the imported VMD list).
   - Base layer in the animation manager: stance actions loop, cross-fade 0.6 s; idle slot replaces `idleMotionName` per model when set.
@@ -473,7 +476,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(stage-ui-mmd): add sit and sleep stance slots driven by the body director
   Recommended task executor category: unspecified-high - store, manager and director wiring.
 
-- [ ] 19. Generalize the expression panel for Live2D and MMD
+- [x] 19. Generalize the expression panel for Live2D and MMD (landed on main: 4986429cf)
   What to do / Must NOT do:
   - Extract the renderer-neutral panel from `Live2dExpressionsSection` into `packages/stage-ui/src/components/scenarios/settings/model-settings/expressions/` with a `ExpressionPanelSource` contract (snapshot: entries, groups, active ids, rest ids; commands: curate, set active/rest, create combo, reset) implemented by Live2D's store and the MMD store from todo 14; keep the emotion-first layout.
   - Live2D settings use the shared panel with identical behaviour; MMD settings (`mmd.vue`) gain the panel.
@@ -490,7 +493,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | refactor(stage-ui): share the expression panel between Live2D and MMD
   Recommended task executor category: visual-engineering - UI extraction with screenshot verification.
 
-- [ ] 20. Add MMD motion settings and English strings
+- [x] 20. Add MMD motion settings and English strings (landed on main: d8c9a3199)
   What to do / Must NOT do:
   - `packages/stage-ui/src/components/scenarios/settings/model-settings/mmd.vue`: section "Motion" with driver radio (Natural default, Classic), Natural energy slider (shared `settings/expression-performance` energy or an MMD key mirroring `settings/live2d/natural-energy`: use `settings/mmd/natural-energy`, default equal to Live2D default), touch toggles (`settings/mmd/natural-touch`, `settings/mmd/natural-touch-pet-requires-hold`), stance slot pickers (idle/sit/sleep selects over imported motions).
   - Strings in `packages/i18n/src/locales/en/settings.yaml` under `settings.mmd.motion.*`; run `pnpm -F @proj-airi/i18n build` if consumers read dist (memory note).
@@ -505,7 +508,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(stage-ui): add MMD motion settings
   Recommended task executor category: visual-engineering - settings UI.
 
-- [ ] 21. Add the MMD Motion Lab devtools page with overlays
+- [x] 21. Add the MMD Motion Lab devtools page with overlays (landed on main: 7a9d1937b)
   What to do / Must NOT do:
   - `packages/stage-ui/src/features/devtools/motion/mmd/devtools.vue` (+ `index.ts`) mirroring `features/devtools/motion/natural/devtools.vue`: rig report table, director/lookAt/feet/touch/timings panels from the `mmd-motion-diagnostics` store, overlay toggles sent over `@moeru/eventa` events (IK helper via `mmd.ikSolver.createHelper()`, collider wireframes, foot anchors, look-at target), a `debugAdvanceMs` control for the director.
   - Overlays rendered by MMD.vue into its scene only while enabled.
@@ -522,7 +525,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | feat(stage-ui): add an MMD Motion Lab devtools page
   Recommended task executor category: visual-engineering - devtools UI and overlays.
 
-- [ ] 22. Document the new packages, boundaries and architecture
+- [x] 22. Document the new packages, boundaries and architecture (landed on main: 8b9d2959f)
   What to do / Must NOT do:
   - ADR `docs/ai/adr/2026-10-30-3d-character-motion.md`: context, decisions (Natural extraction, humanoid package, pipeline snapshot rule, morph runtime policy, touch without Ammo internals, stance slots, Natural default), consequences, follow-ups (M2-M5, Ammo impulse API upstream, texture/sphere/toon tint uniforms).
   - Update `packages/stage-ui-live2d/AGENTS.md` and `README.md` (Natural now lives in motion-driver-natural), `packages/stage-ui-mmd/AGENTS.md` and `README.md` (pipeline order, morph runtime, rig, natural, body, touch, diagnostics, checks), `packages/qa-tools/AGENTS.md`/`README.md` gate paths, `.agents/skills/motion-qa/SKILL.md:61` path, root `AGENTS.md` WHERE TO LOOK rows for the two packages; READMEs of both new packages complete.
@@ -537,7 +540,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | docs: record the 3D character motion architecture (agent guidance updates in a separate `docs(agents)` commit per AGENTS.md)
   Recommended task executor category: writing - docs and ADR.
 
-- [ ] 23. Run cross-model real-surface QA and the frame budget check
+- [ ] 23. Run cross-model real-surface QA and the frame budget check (OPEN: no QA evidence found at the 2026-11-06 audit; pending Luke's QA)
   What to do / Must NOT do:
   - Electron (K6) with standard Chisa: for each driver (Natural, then Classic) post `startMeasurement`, run 60 s (measured by the snapshot's `measurement.durationMs` reaching 60000 while running), post `stopMeasurement`, read `measurement`; acceptance uses `measurement.stages[*].p95Ms` over the full interval for every AIRI stage (all except physics.update and render) and `measurement.fps` Natural / Classic; compare Classic with the todo 4 baseline (`task-4-chisa-baseline.json`).
   - Electron with Ellen, Vivian, long-skirt Elysia: 60 s each with cursor sweeps, one poke, a sit stance (K4 VMD): record `feet.maxError`, look-at turns, touch events, framing check, console errors.
@@ -557,16 +560,16 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
 
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
-- [ ] F1. Plan compliance audit
+- [ ] F1. Plan compliance audit (OPEN: no QA evidence found at the 2026-11-06 audit; pending Luke's QA)
   Every todo's acceptance criteria and evidence files exist; Must NOT have list verified by `git diff --stat main...HEAD` and `rg` checks (no assets, no Ammo internals, no shims, no other locales); branch guard verified: `git branch --contains <each plan commit>` lists `luke/feat/mmd-natural-full-body` and `git log --oneline origin/main..main` shows no plan commit (nothing landed on `main`).
   Recommended task executor category: unspecified-high
-- [ ] F2. Code quality review
+- [ ] F2. Code quality review (OPEN: no QA evidence found at the 2026-11-06 audit; pending Luke's QA)
   `pnpm verify` green; review against `.agents/skills/enforce-rules-for-typescript`, `enforce-rules-for-vitest`, `enforce-rules-for-unocss`; no `any`, no suppressed errors; import guard on motion-driver-* holds.
   Recommended task executor category: unspecified-high
-- [ ] F3. Real manual QA
+- [ ] F3. Real manual QA (OPEN: no QA evidence found at the 2026-11-06 audit; pending Luke's QA)
   Fresh Electron run (K6) on Ellen and standard Chisa: idle 2 min, cursor sweeps, poke/pet, ACT emotion + expression, sit slot, Classic toggle; screenshots and diagnostics; Live2D model smoke (Natural lab loads, expression panel works).
   Recommended task executor category: unspecified-high
-- [ ] F4. Ideal-state fidelity
+- [ ] F4. Ideal-state fidelity (OPEN: no QA evidence found at the 2026-11-06 audit; pending Luke's QA)
   Check IS-1..IS-16 one by one against evidence; any shortfall becomes a new numbered todo.
   Recommended task executor category: unspecified-high
 
