@@ -382,6 +382,34 @@ describe('body director home, goals, roam and tools', () => {
     expect(b.due).toEqual(a.due)
   })
 
+  it('wanders at the default height on a 1440 DIP work area, where three legs fit on neither side of home', () => {
+    // Measured on the real surface (task-16-chisa-4.json): standard Chisa at 560 DIP, root at home.
+    const ground = { minX: 5.87, maxX: 44.41 }
+    const homeX = 19.13
+    const legLength = 9.7
+    const frame = (nowMs: number) => world({ nowMs, ground, rootX: homeX, homeX, legLength, roamMode: 'roam', seed: 7, slots: { sit: false, sleep: false } })
+    const started = decide(frame(0))
+    const dueMs = started.memory.nextWanderAtMs as number
+    const due = decide(frame(dueMs), started.memory)
+    const goalX = due.intent.locomotion.goalX as number
+
+    expect(due.intent.locomotion).toMatchObject({ pace: 'stroll', reason: 'wander' })
+    expect(goalX).toBeGreaterThanOrEqual(ground.minX)
+    expect(goalX).toBeLessThanOrEqual(ground.maxX)
+    expect(Math.abs(goalX - homeX)).toBeGreaterThanOrEqual(legLength)
+    expect(due.memory.nextWanderAtMs).toBeGreaterThanOrEqual(dueMs + WANDER_MIN_MS)
+  })
+
+  it('does not wander when neither side of her has one leg length of ground', () => {
+    const frame = (nowMs: number) => world({ nowMs, ground: { minX: 0, maxX: 15 }, rootX: 7.5, homeX: 7.5, legLength: 9.7, roamMode: 'roam', seed: 7, slots: { sit: false, sleep: false } })
+    const started = decide(frame(0))
+    const dueMs = started.memory.nextWanderAtMs as number
+    const due = decide(frame(dueMs), started.memory)
+
+    expect(due.intent.locomotion.goalX).toBeNull()
+    expect(due.memory.nextWanderAtMs).toBeGreaterThanOrEqual(dueMs + WANDER_MIN_MS)
+  })
+
   it('does not wander in stay mode, and waits for idle mode when roaming', () => {
     const stay = run([world({ seed: 7 }), world({ nowMs: 2_000_000, seed: 7 })])
     const started = decide(world({ roamMode: 'roam', seed: 7 }))

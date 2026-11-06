@@ -43,8 +43,14 @@ export const PENDING_GOAL_TTL_MS = 30_000
 /** Distance, in world units, within which the root counts as at a point. */
 const ARRIVAL_TOLERANCE = 0.1
 
-/** Minimum wander distance in leg lengths. */
+/** Preferred minimum wander distance in leg lengths. */
 const WANDER_MIN_LEGS = 3
+
+/**
+ * Smallest wander distance in leg lengths. When three legs fit on neither side, as for a tall character on a narrow
+ * work area, the minimum shrinks to half the longer free side, but never below this.
+ */
+const WANDER_FLOOR_LEGS = 1
 
 /** Target of a look-at tool request. */
 export type BodyLookTarget = 'camera' | 'cursor' | 'chat' | 'away'
@@ -310,7 +316,8 @@ export function decideBody(
     : null
 
   // A goal in progress ends once the body has settled on it.
-  if (goalX !== null && input.locomotionMode === 'idle' && Math.abs(input.rootX - goalX) <= ARRIVAL_TOLERANCE) {
+  const arrived = goalX !== null && input.locomotionMode === 'idle' && Math.abs(input.rootX - goalX) <= ARRIVAL_TOLERANCE
+  if (arrived) {
     goalX = null
     reason = 'stay'
   }
@@ -416,7 +423,9 @@ export function decideBody(
     rngState = draw.state
     nextWanderAtMs = nowMs + WANDER_MIN_MS * (WANDER_MAX_MS / WANDER_MIN_MS) ** draw.value
   }
-  if (ground !== null && input.roamMode === 'roam' && nextWanderAtMs === null)
+  // A wander that fell due while a goal was walking is drawn again from the arrival, so she never wanders on arrival.
+  const dueOnArrival = arrived && nextWanderAtMs !== null && nowMs >= nextWanderAtMs
+  if (ground !== null && input.roamMode === 'roam' && (nextWanderAtMs === null || dueOnArrival))
     scheduleWander()
   if (
     ground !== null
@@ -427,7 +436,10 @@ export function decideBody(
     && goalX === null
     && canIssue()
   ) {
-    const minDistance = WANDER_MIN_LEGS * leg
+    const longestSide = Math.max(input.rootX - ground.minX, ground.maxX - input.rootX)
+    const minDistance = longestSide > WANDER_MIN_LEGS * leg
+      ? WANDER_MIN_LEGS * leg
+      : Math.max(WANDER_FLOOR_LEGS * leg, longestSide / 2)
     const leftLength = Math.max(0, input.rootX - minDistance - ground.minX)
     const rightLength = Math.max(0, ground.maxX - (input.rootX + minDistance))
     if (leftLength + rightLength > 0) {

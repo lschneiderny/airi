@@ -133,7 +133,10 @@ On a stage with a ground line, `decideBody` also owns where she goes:
 pace. She approaches the chat when it unfolds, chases the cursor for
 `CHASE_WINDOW_MS` after a poke, pet, drag or sent message, returns home
 `RETURN_HOME_DELAY_MS` after the last reason, and wanders between
-`WANDER_MIN_MS` and `WANDER_MAX_MS` apart in roam mode only. A goal waits while
+`WANDER_MIN_MS` and `WANDER_MAX_MS` apart in roam mode only. A wander goes at
+least three leg lengths, or, where three legs fit on neither side, half the
+longer free side but never less than one leg length. A wander that falls due
+while another goal is walking is rescheduled from the arrival. A goal waits while
 she speaks and is dropped after `PENDING_GOAL_TTL_MS`. Tool requests share
 `MOVE_TOOL_REFRACTORY_MS` for movement and use `LOOK_TOOL_REFRACTORY_MS` for a
 glance. The boundary is fixed: the director chooses goals and never moves the
