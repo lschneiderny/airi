@@ -321,7 +321,7 @@ interface StagePress {
   rootX: number
 }
 const press = shallowRef<StagePress | null>(null)
-/** Counts user interactions with her body; the director's chase rule reads it (plan todo 12). */
+/** Counts drag releases; the scene feeds it to the director, whose chase window starts like it does after a poke. */
 const interactionSeq = shallowRef(0)
 
 useEventListener(window, 'pointerdown', (event: PointerEvent) => {
@@ -348,6 +348,8 @@ useEventListener(window, 'pointermove', (event: PointerEvent) => {
     return
   const cursorX = dipToPlane(world.calibration, { x: event.clientX, y: event.clientY }, 0).x
   const x = clamp(current.rootStartX + cursorX - current.worldStartX, world.ground.minX, world.ground.maxX)
+  if (!current.dragging)
+    widgetStageRef.value?.setStageDragging(true)
   press.value = { ...current, dragging: true, rootX: x }
   rootX.value = x
   widgetStageRef.value?.setStageRootX(x, { teleport: false })
@@ -357,6 +359,8 @@ function endPress(event: PointerEvent) {
   if (!current || event.pointerId !== current.pointerId)
     return
   press.value = null
+  if (current.dragging)
+    widgetStageRef.value?.setStageDragging(false)
   const world = stageWorld.value
   const display = homeDisplay.value
   if (!current.dragging || !world || !display)
@@ -446,8 +450,10 @@ useRafFn(({ timestamp }) => {
       :screen-placement="screenPlacement"
       :chat-target="stageChatTarget"
       :stage-world="stageWorld"
+      :interaction-seq="interactionSeq"
       :paused="stagePaused"
       @placement="placementRect = $event"
+      @root="rootX = $event"
     />
     <div
       v-if="controlsAnchorStyle"
