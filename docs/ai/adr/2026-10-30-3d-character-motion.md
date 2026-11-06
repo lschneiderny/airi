@@ -32,7 +32,7 @@ Neither package may import `three`, `vue`, `pinia`, `@moeru/three-mmd`, or `@pro
 5. `beforePhysics` (IK and grants), `physics.reset` when requested, `physics.update`, `afterPhysics`.
 6. Surface stages: `body-diagnostics` (foot error measured after the real IK and physics), then `morphs` (material, UV, and vertex surfaces).
 
-`render` is measured outside the pipeline by the diagnostics store. A mixer loop event and every model transform change request a physics reset.
+`render` is measured outside the pipeline by the diagnostics store. A mixer loop event and every user edit of the model transform request a physics reset. [The full-screen stage and locomotion ADR](2026-10-31-fullscreen-stage-and-locomotion.md) splits this rule: per-frame root motion from locomotion and a drag never reset physics, and a teleport resets it once.
 
 The binding rule is that a pose stage reads `context.clean` and writes absolute transforms derived from it, and never writes the snapshot. Every bone write therefore happens before `mmd.beforePhysics()`, so hair and cloth react to procedural motion and nothing compounds across frames. Pose stages skip bones that the rig profile reports as physics-owned. Classic gaze became a pose stage that composes with the clip's head rotation instead of replacing it.
 
@@ -84,7 +84,8 @@ MMD gains the same expression tools, ACT expressions, and panel as Live2D. Lip-s
 
 ## Follow-ups
 
-- Milestones M2 to M5: locomotion and window following, an action and gesture library with `perform_action` and `go_to` tools, dance to the beat, perching on windows, drag dangle, props, and the VRM adapter.
+- Milestone M2 locomotion is recorded in [the full-screen stage and locomotion ADR](2026-10-31-fullscreen-stage-and-locomotion.md): the character walks on a desktop stage instead of following a window. The desktop host reaches `main` behind an off-by-default experimental setting. Display hand-off and terrain remain its follow-ups.
+- Milestones M3 to M5: an action and gesture library with `perform_action` and `go_to` tools, dance to the beat, perching on windows, drag dangle, props, and the VRM adapter.
 - Ask upstream three-mmd-physics-ammo for an impulse API, so touch can push rigid bodies directly instead of only moving bones before physics.
 - Texture, sphere, and toon tint uniforms already render in the current three-mmd toon material. Confirm each tint visually on a real model that uses it, and record the result in the runtime notes.
 - Move the touch gesture classifier into `packages/motion-driver-natural`. `packages/stage-ui-mmd/src/composables/mmd/touch/gestures.ts` duplicates the rules and thresholds of Live2D's `touch-gestures.ts`, because stage-ui-mmd must not import stage-ui-live2d. Resolved on 2026-11-04: both renderers use `NaturalTouchGestures` from `packages/motion-driver-natural/src/touch-gestures.ts`.

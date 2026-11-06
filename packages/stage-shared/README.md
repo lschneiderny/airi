@@ -179,7 +179,17 @@ Do not persist or replicate it, because a sample carries a raw window title. Do 
 
 ### Stage world
 
-The `stage-world` entrypoint owns the pure camera calibration (`calibrateCamera`, `worldToDip`, `dipToPlane`) and ground-line helpers (`groundLineOf`, `defaultHomeDipX`) that map work-area DIP to a character's world x. Do not use it for rendering: it imports no `three`, `vue`, or `pinia`.
+The `stage-world` entrypoint owns the pure camera calibration (`calibrateCamera`, `worldToDip`, `dipToPlane`) and ground-line helpers (`groundLineOf`, `defaultHomeDipX`, `homeDipToWorldX`, `worldToHomeDipX`) that map work-area DIP to a character's world x. Do not use it for rendering: it imports no `three`, `vue`, or `pinia`, and the `eslint.config.ts` purity block enforces that.
+
+```ts
+import { calibrateCamera, groundLineOf, homeDipToWorldX } from '@proj-airi/stage-shared/stage-world'
+
+const calibration = calibrateCamera({ workArea, modelHeight, characterHeightDip: 560, floorRowDip: workArea.height - 8 })
+const ground = groundLineOf(workArea, calibration, halfWidthUnits)
+const homeX = homeDipToWorldX(calibration, homeDipX, calibration.floorRowDip)
+```
+
+World units are model units, right-handed with +Y up: x = 0 is the work area's left edge, y = 0 is the floor, and the character stands on z = 0. The camera has zero pitch and an off-axis frustum, so the z = 0 plane maps to the window by a pure scale. `unitsPerDip` is the model height over the character height in DIP, raised when the model would exceed 90 % of the space above the floor. The camera stands `5 * modelHeight` in front of the plane at eye height `0.5 * modelHeight` (`distanceInModelHeights`, `eyeHeightInModelHeights`). Homes are stored as DIP x on the floor row, so they survive a change of character height; convert them with `homeDipToWorldX` and `worldToHomeDipX`. The decision is recorded in [the full-screen stage ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md).
 
 ## Character state
 

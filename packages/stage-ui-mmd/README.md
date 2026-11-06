@@ -77,6 +77,9 @@ is edited through the model settings panel.
 
 The architecture, its boundaries and its open follow-ups are recorded in
 [the 3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md).
+Stage mode, locomotion, the arm rest layer and the split physics-reset rule
+are recorded in
+[the full-screen stage and locomotion ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md).
 
 ### Model loading
 
@@ -116,8 +119,11 @@ in front of her and uses the calibration eye as the camera point.
 `MMDFramePipeline` owns a clean, pre-solver pose for each model. It restores
 that pose before queued playback commands and mixer sampling, then captures
 the clip pose before registered pose stages, IK, grants, and physics. Surface
-stages apply expressions, blink, and lip-sync after physics. Model transforms
-and animation loops request a physics reset. During a measurement,
+stages apply expressions, blink, and lip-sync after physics. User edits of the
+model transform and animation loops request a physics reset. In stage mode the
+rule is split: per-frame root motion from the `locomotion` stage and a drag
+(`setRootX` with `teleport: false`) never reset physics, so hair and skirts
+feel the travel, and a teleport resets it once. During a measurement,
 `measurement.physicsResets` counts the resets that callers requested
 (`requestPhysicsReset`, for example a stage teleport); loop wraps are not
 counted.
