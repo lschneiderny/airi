@@ -111,8 +111,9 @@ Metacarpal output.
 animated when a key differs from identity, or from the first key, by more than
 0.5 degrees. A position track counts when a key is more than 0.01 units from the
 origin or from the first key. Identity-keyed tracks own nothing. Groups are `root`,
-`leftLegIk`/`rightLegIk`, `leftArm`/`rightArm` (plus bones listed under
+`leftLegIk`/`rightLegIk`, `lowerBody` (hips, FK legs, and caller-listed helper bones), `leftArm`/`rightArm` (plus bones listed under
 `bones.helpers`), `leftFingers`/`rightFingers`, `upperBody`, and `head`.
+The all-parent bone (`全ての親` or `master`) belongs to `root`.
 
 ## Checks
 

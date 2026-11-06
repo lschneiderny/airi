@@ -4,7 +4,7 @@ const degreesPerRadian = 180 / Math.PI
 const rotationThresholdDegrees = 0.5
 const positionThreshold = 0.01
 
-export type ClipMaskGroup = 'root' | 'leftLegIk' | 'rightLegIk' | 'leftArm' | 'rightArm' | 'leftFingers' | 'rightFingers' | 'upperBody' | 'head'
+export type ClipMaskGroup = 'root' | 'leftLegIk' | 'rightLegIk' | 'lowerBody' | 'leftArm' | 'rightArm' | 'leftFingers' | 'rightFingers' | 'upperBody' | 'head'
 
 /** One animated track of a clip, reduced to its bone name and flattened key values. */
 export interface ClipTrackSummary {
@@ -22,10 +22,10 @@ export interface ClipBoneMask {
 
 /** Canonical bone to rig bone name map, plus extra rig bones (MMD twist and shoulder-P bones) per group. */
 export type ClipMaskBones = Readonly<Partial<Record<HumanoidBoneName | HumanoidFingerBoneName, string>>> & {
-  readonly helpers?: Readonly<Partial<Record<'leftArm' | 'rightArm' | 'leftFingers' | 'rightFingers', readonly string[]>>>
+  readonly helpers?: Readonly<Partial<Record<'leftArm' | 'rightArm' | 'leftFingers' | 'rightFingers' | 'lowerBody', readonly string[]>>>
 }
 
-const rootNames = new Set(['センター', 'グルーブ', 'center', 'groove'])
+const rootNames = new Set(['センター', 'グルーブ', '全ての親', 'center', 'groove', 'master'])
 const legIkPattern = /^([左右])(?:足|つま先)ik親?$/
 const armBones = ['Shoulder', 'UpperArm', 'LowerArm', 'Hand'] as const
 const fingerKinds = ['Thumb', 'Index', 'Middle', 'Ring', 'Little'] as const
@@ -87,6 +87,10 @@ function groupNames(bones: ClipMaskBones) {
     add('upperBody', bones[bone])
   for (const bone of ['neck', 'head'] as const)
     add('head', bones[bone])
+  for (const bone of ['hips', 'leftUpperLeg', 'rightUpperLeg', 'leftLowerLeg', 'rightLowerLeg', 'leftFoot', 'rightFoot'] as const)
+    add('lowerBody', bones[bone])
+  for (const name of bones.helpers?.lowerBody ?? [])
+    add('lowerBody', name)
   return groups
 }
 
@@ -100,6 +104,7 @@ export function buildClipBoneMask(tracks: readonly ClipTrackSummary[], bones: Cl
     root: false,
     leftLegIk: false,
     rightLegIk: false,
+    lowerBody: false,
     leftArm: false,
     rightArm: false,
     leftFingers: false,

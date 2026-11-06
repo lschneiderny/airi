@@ -18,7 +18,13 @@ const bones = {
   rightUpperArm: '右腕',
   leftIndexProximal: '左人指１',
   rightIndexProximal: '右人指１',
-  helpers: { leftArm: ['左腕捩', '左肩P'] },
+  leftUpperLeg: '左足',
+  rightUpperLeg: '右足',
+  leftLowerLeg: '左ひざ',
+  rightLowerLeg: '右ひざ',
+  leftFoot: '左足首',
+  rightFoot: '右足首',
+  helpers: { leftArm: ['左腕捩', '左肩P'], lowerBody: ['左足D', '左ひざD', '左足首D'] },
 }
 
 function quat(boneName: string, degrees: number[]): ClipTrackSummary {
@@ -90,5 +96,48 @@ describe('buildClipBoneMask', () => {
     const mask = buildClipBoneMask([quat('ボーン不明', [0, 90])], bones)
     expect(mask.groups.leftArm).toBe(false)
     expect(mask.animatedBones).toEqual(['ボーン不明'])
+  })
+
+  it('lets an FK leg track own lowerBody without leg IK', () => {
+    const mask = buildClipBoneMask([quat('左足', [0, 30])], bones)
+    expect(mask.groups.lowerBody).toBe(true)
+    expect(mask.groups.leftLegIk).toBe(false)
+    expect(mask.groups.root).toBe(false)
+  })
+
+  it('counts hips and caller-listed D bones toward lowerBody', () => {
+    expect(buildClipBoneMask([quat('下半身', [0, 20])], bones).groups.lowerBody).toBe(true)
+    expect(buildClipBoneMask([quat('左ひざD', [0, 20])], bones).groups.lowerBody).toBe(true)
+  })
+
+  it('treats the all-parent bone as root', () => {
+    const track: ClipTrackSummary = { boneName: '全ての親', property: 'position', values: [0, 0, 0, 0, 1, 0] }
+    expect(buildClipBoneMask([track], bones).groups.root).toBe(true)
+    expect(buildClipBoneMask([{ ...track, boneName: 'master' }], bones).groups.root).toBe(true)
+  })
+
+  it('gives no ownership to identity keys on the new bones', () => {
+    const mask = buildClipBoneMask(
+      ['下半身', '左足', '右足', '左ひざ', '右ひざ', '左足首', '右足首', '左足D', '全ての親'].map(identityKeys),
+      bones,
+    )
+    expect(mask.animatedBones).toEqual([])
+    expect(Object.values(mask.groups).every(v => !v)).toBe(true)
+  })
+
+  it('keeps the groups of an arms-wave clip', () => {
+    const mask = buildClipBoneMask([quat('左腕', [0, -60, 0]), quat('左ひじ', [0, -40])], bones)
+    expect(mask.groups).toEqual({
+      root: false,
+      leftLegIk: false,
+      rightLegIk: false,
+      lowerBody: false,
+      leftArm: true,
+      rightArm: false,
+      leftFingers: false,
+      rightFingers: false,
+      upperBody: false,
+      head: false,
+    })
   })
 })
