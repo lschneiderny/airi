@@ -21,7 +21,7 @@ An MMD character can live on a full-screen desktop stage instead of the classic 
 
 `selectHostMode` (`src/main/windows/stage/mode.ts`) picks the host once per launch:
 
-1. `AIRI_STAGE_HOST=window` or `AIRI_STAGE_HOST=desktop` overrides everything. Use it for QA runs, for example `pnpm qa:stage measure`.
+1. In a development build (`import.meta.env.DEV`, for example `pnpm dev:tamagotchi`), `AIRI_STAGE_HOST=window` or `AIRI_STAGE_HOST=desktop` overrides everything. Use it for QA runs, for example `pnpm qa:stage measure`. A production build ignores it and obeys the setting.
 2. While the **Experimental 3D stage** setting is off (the default), the classic window. A Live2D user who never turns it on keeps the classic window and its input.
 3. Linux always gets the classic window, because Wayland does not forward click-through.
 4. A stage model that is not MMD, or that has never been reported, gets the classic window.

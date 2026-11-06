@@ -25,7 +25,7 @@ A spike measured a full-screen transparent stage window before any behaviour wor
 
 `apps/stage-tamagotchi/src/main/windows/stage/` builds the desktop stage: one full-screen window over the work area of the home display. The classic window module, `apps/stage-tamagotchi/src/main/windows/main/index.ts`, is unchanged. `selectHostMode` (`apps/stage-tamagotchi/src/main/windows/stage/mode.ts`) picks the host once per launch:
 
-1. `AIRI_STAGE_HOST=window|desktop` overrides everything, for QA runs.
+1. In a development build (`import.meta.env.DEV`), `AIRI_STAGE_HOST=window|desktop` overrides everything, for QA runs. A production build ignores it.
 2. While the Experimental 3D stage setting (`experimental` in the stage config, default off) is off, the classic window.
 3. Linux always gets the classic window, because Wayland has no forwarded click-through.
 4. A stage model that is not MMD, or that has never been reported, gets the classic window.

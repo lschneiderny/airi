@@ -363,7 +363,7 @@ app.whenReady().then(async () => {
   const stageConfig = createStageConfig()
   stageConfig.setup()
   const stageStateBroadcast = createStageStateBroadcast()
-  const hostMode = selectHostMode(stageConfig.get() ?? defaultStageConfig, platform, env)
+  const hostMode = selectHostMode(stageConfig.get() ?? defaultStageConfig, platform, env, { development: import.meta.env.DEV })
   log.log(`Building the ${hostMode === 'desktop' ? 'desktop stage' : 'classic window'} host`)
 
   const settingsWindow = injeca.provide('windows:settings', {
