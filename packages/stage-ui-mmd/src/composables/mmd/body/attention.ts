@@ -42,6 +42,7 @@ export function resolveBodyTarget(
     slots: { sit: false, sleep: false },
     ...NO_WORLD_BODY_INPUT,
     interactionSeq: 0,
+    chatSendSeq: 0,
     interactionAtMs: null,
     actionRequest: null,
     actionFeedback: null,

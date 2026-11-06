@@ -84,6 +84,7 @@ export class MMDStanceDirector {
       slots: available,
       ...NO_WORLD_BODY_INPUT,
       interactionSeq: 0,
+      chatSendSeq: 0,
       interactionAtMs: null,
       actionRequest: null,
       actionFeedback: null,

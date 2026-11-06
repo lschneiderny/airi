@@ -157,8 +157,8 @@ the body is clear and then `playing`; the adapter echoes `actionFeedback`, and
 `PERFORM_WATCHDOG_MS` ends a one-shot that never reports. A full clip closes the
 locomotion gate, parks the goal in progress as the pending goal, and hands the
 pending goal a fresh time to live when it ends. A poke, a drag, going away, a
-chat unfold (loops only) or a move tool (loops only) ends it. Every host supplies
-`interactionSeq`, `interactionAtMs`, `actionRequest`, `actionFeedback` and
+chat unfold (loops only), a sent chat message (`chatSendSeq`, loops only) or a move tool (loops only) ends it. Every host supplies
+`interactionSeq`, `chatSendSeq`, `interactionAtMs`, `actionRequest`, `actionFeedback` and
 `dragging`, with or without a stage world; `NO_WORLD_BODY_INPUT` no longer
 defaults them.
 

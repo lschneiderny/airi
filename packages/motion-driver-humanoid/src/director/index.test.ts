@@ -50,6 +50,7 @@ function input(overrides: Partial<DirectorInput> = {}): DirectorInput {
     chatUnfoldSeq: 0,
     chatX: null,
     interactionSeq: 0,
+    chatSendSeq: 0,
     interactionAtMs: null,
     actionRequest: null,
     actionFeedback: null,
@@ -240,6 +241,7 @@ describe('body director home, goals, roam and tools', () => {
       slots: { sit: true, sleep: true },
       ...NO_WORLD_BODY_INPUT,
       interactionSeq: 0,
+      chatSendSeq: 0,
       interactionAtMs: null,
       actionRequest: null,
       actionFeedback: null,
@@ -835,8 +837,40 @@ describe('body director actions', () => {
     })
   })
 
+  describe('a sent chat message', () => {
+    const goal = { seq: 1, x: 10, pace: 'walk' as const }
+    const start = (request: BodyActionRequest) => {
+      const walking = decide(world({ debugGoal: goal }))
+      const accepted = decide(world({ nowMs: 5_000, rootX: 4, locomotionMode: 'walking', debugGoal: goal, actionRequest: request }), walking.memory)
+      return decide(world({ nowMs: 6_000, rootX: 4, debugGoal: goal, actionRequest: request }), accepted.memory)
+    }
+
+    it('keeps a full one-shot playing with the goal pending, issues it after the clip, while a poke still ends it', () => {
+      const request = dance(1)
+      const playing = start(request)
+      const sent = decide(world({ nowMs: 7_000, rootX: 4, clipOwnsRoot: true, chatSendSeq: 1, actionRequest: request }), playing.memory)
+      const finished = decide(world({ nowMs: 8_000, rootX: 4, clipOwnsRoot: true, chatSendSeq: 1, actionRequest: request, actionFeedback: { seq: 1, state: 'finished' } }), sent.memory)
+      const poked = decide(world({ nowMs: 7_000, rootX: 4, clipOwnsRoot: true, interactionSeq: 1, actionRequest: request }), playing.memory)
+
+      expect(playing.intent.action?.phase).toBe('playing')
+      expect(sent.intent.action).toMatchObject({ seq: 1, phase: 'playing' })
+      expect(sent.memory.pendingGoal).not.toBeNull()
+      expect(finished.intent.action).toBeNull()
+      expect(poked.intent.action).toBeNull()
+    })
+
+    it('ends a looping clip, like a chat unfold', () => {
+      const request = dance(1, { loop: true })
+      const playing = start(request)
+      const sent = decide(world({ nowMs: 7_000, rootX: 4, clipOwnsRoot: true, chatSendSeq: 1, actionRequest: request }), playing.memory)
+
+      expect(playing.intent.action?.phase).toBe('playing')
+      expect(sent.intent.action).toBeNull()
+    })
+  })
+
   it('works without a world: the classic window still performs and ends on a poke', () => {
-    const quiet = { ...NO_WORLD_BODY_INPUT, interactionSeq: 0, interactionAtMs: null, actionRequest: null, actionFeedback: null, dragging: false }
+    const quiet = { ...NO_WORLD_BODY_INPUT, interactionSeq: 0, chatSendSeq: 0, interactionAtMs: null, actionRequest: null, actionFeedback: null, dragging: false }
     const frame = (nowMs: number, patch: Partial<DirectorInput> = {}): DirectorInput => ({
       nowMs,
       performance: performance(),
