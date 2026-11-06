@@ -976,6 +976,8 @@ defineExpose({
   readRenderTargetRegionAtClientPoint,
   /** Moves the MMD root along the stage floor line; see `setRootX` on the MMD scene. A no-op without `stageWorld`. */
   setStageRootX: (x: number, options: { teleport: boolean }) => mmdSceneRef.value?.setRootX(x, options),
+  /** Reports a drag in progress to the MMD scene's body director. A no-op for other renderers. */
+  setStageDragging: (on: boolean) => mmdSceneRef.value?.setDragging(on),
   setExpression: async (expression: string, intensity = 1) => {
     if (stageModelRenderer.value === 'vrm') {
       await vrmViewerRef.value?.setExpression(expression, intensity)

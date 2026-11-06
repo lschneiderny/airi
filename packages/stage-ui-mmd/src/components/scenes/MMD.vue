@@ -151,18 +151,27 @@ const expressions = useMMDExpressionStore()
 // Interactions that start the director's chase window: touch pokes and pets, host drags and sent chat messages.
 let interactionSeq = 0
 let interactionAtMs: number | null = null
+// Sent chat messages count apart from touches: they start the chase window and end looping clips, never a one-shot.
+let chatSendSeq = 0
 let directorNowMs = 0
+// The host reports a drag in progress; the director refuses clips and ends broad ones while it lasts.
+let dragging = false
 function noteInteraction() {
   interactionSeq++
   interactionAtMs = directorNowMs
 }
 watch(() => props.interactionSeq, (next, previous) => {
-  if (next !== undefined && next !== previous)
+  if (next !== undefined && next !== previous) {
     noteInteraction()
+    // A drag release bumps the host's counter; the drag is over whatever the pointer handlers reported.
+    dragging = false
+  }
 })
 watch(() => props.chatActivity?.sentSeq, (next, previous) => {
-  if (next !== undefined && previous !== undefined && next > previous)
-    noteInteraction()
+  if (next !== undefined && previous !== undefined && next > previous) {
+    chatSendSeq++
+    interactionAtMs = directorNowMs
+  }
 })
 const bodyToolPort = new MMDBodyToolPort()
 // Where she stands beside the open chat this frame; the tool port reports her position against it.
@@ -352,6 +361,7 @@ function publishPlacement() {
  * `teleport: false` leaves physics simulating. Locomotion moves the root through the body's root handle instead.
  */
 function setRootX(x: number, options: { teleport: boolean }) {
+  dragging = !options.teleport
   stageRootX = x
   if (!props.stageWorld || !modelGroup || !stageExtent)
     return
@@ -363,6 +373,11 @@ function setRootX(x: number, options: { teleport: boolean }) {
   if (options.teleport)
     animation?.pipeline.requestPhysicsReset()
   publishPlacement()
+}
+
+/** The host's pointer handlers report a drag in progress; the director refuses clips and ends broad ones while it lasts. */
+function setDragging(on: boolean) {
+  dragging = on
 }
 
 const headScratch = new Vector3()
@@ -606,7 +621,11 @@ function renderLoop(now = performance.now()) {
       points: bodyPoints ?? undefined,
       world: props.stageWorld ? directorWorld(props.stageWorld, loadedModelKey) : undefined,
       // Pokes and drags exist in the classic window too, so the interaction inputs ride outside the world.
-      interaction: { interactionSeq, chatSendSeq: 0, interactionAtMs, actionRequest: null, actionFeedback: null, dragging: false },
+      // NOTICE:
+      // No clip request or feedback reaches the director yet, because the MMD scene has no clip runtime.
+      // The clip runtime and its action port land with the clip-runtime slice (luke/feat/fullscreen-stage ee79cd1dd).
+      // Remove these nulls when that slice wires pendingAction and the layer feedback here.
+      interaction: { interactionSeq, chatSendSeq, interactionAtMs, actionRequest: null, actionFeedback: null, dragging },
     })
     if (base.changed)
       animation.setBaseMotion(base.motion)
@@ -754,6 +773,7 @@ function disposeModel() {
   }
   resolved?.dispose()
   registeredMotions.clear()
+  dragging = false
   modelGroup = undefined
   mesh = undefined
   morphs = undefined
@@ -1278,6 +1298,7 @@ defineExpose({
   listMorphs: () => morphs?.availableMorphs ?? [],
   listMotions: () => animation?.availableClips() ?? [],
   setRootX,
+  setDragging,
   characterPlacement,
   bodyPort: computed(() => props.stageWorld ? bodyToolPort : null),
 })
