@@ -26,6 +26,7 @@ import { useExpressionPerformanceSettings } from '../../features/performance/set
 import { getSpeechBusContext } from '../../services/speech/bus'
 import { useLLM } from '../../stores/ai/chat-llm/llm'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
+import { useLlmToolsStore } from '../../stores/ai/chat-llm/tools'
 import { characterStateContext, useCharacterStateStore } from '../../stores/character-state'
 import { useChatStore } from '../../stores/chat'
 import { useChatSessionStore } from '../../stores/chat/session-store'
@@ -848,6 +849,13 @@ describe('stage performance routing on MMD', () => {
     await delivered
     expect(episodes.value).toContainEqual(expect.objectContaining({ emotion: 'happy', band: 'clear' }))
     expect(expressions.leases.face?.expressionId).toBe('mmd:0:smile')
+  })
+
+  it('offers no body port and registers no body tools in the classic window mode', async () => {
+    const scene = await renderMMD()
+
+    expect((scene.exposed as { bodyPort: { value: unknown } }).bodyPort.value).toBeNull()
+    expect(useLlmToolsStore().tools.filter(tool => tool.id.startsWith('body:'))).toEqual([])
   })
 
   it('keeps preview-stage usable without performance inputs', async () => {
