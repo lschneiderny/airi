@@ -501,6 +501,9 @@ chatHookCleanups.push(streamingControl.onSignal(async (signal, context) => {
     // The conductor plays it under the Natural driver of Live2D and MMD; Universal, MAGIC, and MMD Classic ignore it.
     if (act.gesture)
       performanceConductor.gesture(act.gesture.kind, act.gesture.count)
+    // The MMD scene resolves the label against the clips the user exposed; the gesture rides along so it can be superseded.
+    if (act.action && stageModelRenderer.value === 'mmd')
+      performanceConductor.action(act.action, act.gesture)
     const emotion = act.emotion ? toStageEmotionPayload(act.emotion) : undefined
     if (emotion || act.expression) {
       // eslint-disable-next-line no-console

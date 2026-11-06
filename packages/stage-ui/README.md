@@ -464,7 +464,7 @@ The leader folds each observation into the situation and, while its urge gate ru
 A reaction turn's own cues dose no mood, because the touch already did. When a turn's trigger has the `touch` topic key, `Stage.vue` calls `markMoodless(turnId)` on the conductor, and every episode of that turn carries a mood gain of 0.
 The conductor's `gesture(kind, count)` plays an ACT `gesture` field on the scene under Live2D Natural only; Universal and MAGIC ignore it.
 MMD Natural currently ignores gestures, touch mood doses, and touch reactions; MMD support is a follow-up.
-The conductor's `action(label, gesture?)` forwards an ACT `action` label to the scene under every driver. `Stage.vue` does not route action labels yet: routing them to the MMD scene, which resolves a label against the clips the user exposed, lands with the MMD clip runtime. A Live2D scene never receives one.
+The conductor's `action(label, gesture?)` forwards an ACT `action` label to the scene under every driver. `Stage.vue` routes an action label, with its cue gesture, only while the MMD renderer is active. The MMD scene gains its `action` method, which resolves a label against the clips the user exposed, with the MMD clip runtime; until then the conductor drops the label. A Live2D scene never receives one.
 The [nonverbal channels ADR](../../docs/ai/adr/2026-10-31-nonverbal-channels.md) records the design and its consequences.
 
 ### Situation inspector

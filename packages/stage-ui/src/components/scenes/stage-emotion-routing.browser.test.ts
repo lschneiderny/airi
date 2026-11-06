@@ -851,6 +851,21 @@ describe('stage performance routing on MMD', () => {
     expect(expressions.leases.face?.expressionId).toBe('mmd:0:smile')
   })
 
+  it('hands an ACT action label and its cue gesture to the MMD scene', async () => {
+    const scene = await renderMMD()
+    const exposed = scene.exposed as StagePerformanceScene
+    const actions = shallowRef<Array<Parameters<NonNullable<StagePerformanceScene['action']>>>>([])
+    exposed.action = (label, gesture) => {
+      actions.value = [...actions.value, [label, gesture]]
+    }
+
+    const delivered = until(() => actions.value.length, count => count === 1)
+    await useLlmStreamingControlStore().dispatchWith('<|ACT {"emotion":"happy","action":" Wave ","gesture":{"kind":"nod","count":2}}|>')
+    await delivered
+
+    expect(actions.value).toEqual([['wave', { kind: 'nod', count: 2 }]])
+  })
+
   it('offers no body port and registers no body tools in the classic window mode', async () => {
     const scene = await renderMMD()
 
