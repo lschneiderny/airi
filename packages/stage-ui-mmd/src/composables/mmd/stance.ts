@@ -38,6 +38,12 @@ export interface MMDStanceDiagnostics {
   lastToolSeq: number
   toolRefused: boolean
   toolRetryAfterMs: number | null
+  /** The accepted clip performance, or null when none runs. */
+  performing: { seq: number, clipId: string, layer: 'full' | 'upper', loop: boolean, phase: 'settling' | 'playing' } | null
+  lastActionSeq: number
+  actionRefusal: BodyDirectorMemory['actionRefusal']
+  actionRetryAfterMs: number | null
+  toolRefusalReason: BodyDirectorMemory['toolRefusalReason']
 }
 
 /** Gap, in leg lengths, between her body and the chat window's near edge when she stops beside it. */
@@ -218,6 +224,17 @@ export class MMDStanceDirector {
       lastToolSeq: this.memory.lastToolSeq,
       toolRefused: this.memory.toolRefused,
       toolRetryAfterMs: this.memory.toolRetryAfterMs,
+      performing: this.memory.performing && {
+        seq: this.memory.performing.request.seq,
+        clipId: this.memory.performing.request.clipId,
+        layer: this.memory.performing.request.layer,
+        loop: this.memory.performing.request.loop,
+        phase: this.memory.performing.phase,
+      },
+      lastActionSeq: this.memory.lastActionSeq,
+      actionRefusal: this.memory.actionRefusal,
+      actionRetryAfterMs: this.memory.actionRetryAfterMs,
+      toolRefusalReason: this.memory.toolRefusalReason,
     }
   }
 }
