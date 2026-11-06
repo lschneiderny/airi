@@ -6,10 +6,10 @@ import type { StageConfig } from '../config'
 
 import { EventEmitter } from 'node:events'
 
-import { createContext, defineInvoke } from '@moeru/eventa'
+import { createContext, defineInvoke, defineInvokeEventa } from '@moeru/eventa'
 import { describe, expect, it, vi } from 'vitest'
 
-import { electronStageSetActiveRenderer, electronStageSetMode, electronStageStateChanged } from '../../../../shared/eventa'
+import { electronStageSetActiveRenderer, electronStageSetExperimental, electronStageSetMode, electronStageStateChanged } from '../../../../shared/eventa'
 import { defaultStageConfig } from '../config'
 import { createStageStateBroadcast } from '../state-broadcast'
 import { setupStageWindowInvokes } from './index.electron'
@@ -54,7 +54,7 @@ function setup() {
     if (event.body)
       received.push(event.body)
   })
-  return { stageContext: contexts.get(stageWindow)!, settingsContext, settingsWindow, received }
+  return { stageContext: contexts.get(stageWindow)!, settingsContext, settingsWindow, received, getConfig: () => config }
 }
 
 describe('setupStageWindowInvokes state fan-out', () => {
@@ -84,5 +84,26 @@ describe('setupStageWindowInvokes state fan-out', () => {
     await defineInvoke(stageContext, electronStageSetMode)('desktop')
     expect(stageReceived.map(state => state.mode)).toEqual(['window', 'desktop'])
     expect(received.map(state => state.mode)).toEqual(['window'])
+  })
+})
+
+describe('electronStageSetExperimental', () => {
+  it('persists the Experimental 3D stage setting and sends the new state to every window', async () => {
+    const { settingsContext, received, getConfig } = setup()
+
+    const state = await defineInvoke(settingsContext, electronStageSetExperimental)(true)
+
+    expect(state.experimental).toBe(true)
+    expect(getConfig().experimental).toBe(true)
+    expect(received.map(next => next.experimental)).toEqual([true])
+  })
+
+  it('rejects a payload that is not a boolean and leaves the config unchanged', async () => {
+    const { settingsContext, getConfig } = setup()
+
+    // The same contract id with an untyped payload, as a misbehaving renderer could send it.
+    const looseSetExperimental = defineInvokeEventa<StageHostState, unknown>('eventa:invoke:electron:windows:stage:set-experimental')
+    await expect(defineInvoke(settingsContext, looseSetExperimental)('yes')).rejects.toThrow()
+    expect(getConfig().experimental).toBe(false)
   })
 })

@@ -3,7 +3,7 @@
 Date: 2026-10-31
 Status: accepted
 
-This decision was made on `luke/feat/fullscreen-stage`, which lands on `main` in slices under [the lazy 3D renderers ADR](2026-11-04-lazy-3d-renderers.md). On `main` today: the stage-world contract, locomotion, the arm rest pose, clip masks, the MMD stage-world adapter, the body tools, and the asynchronous alpha reader. The desktop stage host, its window contract, click-through, the chat anchor, the Desktop stage settings section, and `pnpm qa:stage` land in a later slice behind an off-by-default experimental setting. Until then the classic window is the only host, and the MMD scene runs its stage-world code only when a host passes `stageWorld`.
+This decision was made on `luke/feat/fullscreen-stage`, which lands on `main` in slices under [the lazy 3D renderers ADR](2026-11-04-lazy-3d-renderers.md). On `main` today: the stage-world contract, locomotion, the arm rest pose, clip masks, the MMD stage-world adapter, the body tools, and the asynchronous alpha reader. The desktop stage host, its window contract, click-through, the chat anchor, the Desktop stage settings section, and `pnpm qa:stage` are on `main` too, behind the off-by-default **Experimental 3D stage** setting. While it is off, the classic window is the only host, and the MMD scene runs its stage-world code only when a host passes `stageWorld`.
 
 ## Context
 
@@ -26,9 +26,10 @@ A spike measured a full-screen transparent stage window before any behaviour wor
 `apps/stage-tamagotchi/src/main/windows/stage/` builds the desktop stage: one full-screen window over the work area of the home display. The classic window module, `apps/stage-tamagotchi/src/main/windows/main/index.ts`, is unchanged. `selectHostMode` (`apps/stage-tamagotchi/src/main/windows/stage/mode.ts`) picks the host once per launch:
 
 1. `AIRI_STAGE_HOST=window|desktop` overrides everything, for QA runs.
-2. Linux always gets the classic window, because Wayland has no forwarded click-through.
-3. A stage model that is not MMD, or that has never been reported, gets the classic window.
-4. Otherwise the saved `mode` in the stage config applies.
+2. While the Experimental 3D stage setting (`experimental` in the stage config, default off) is off, the classic window.
+3. Linux always gets the classic window, because Wayland has no forwarded click-through.
+4. A stage model that is not MMD, or that has never been reported, gets the classic window.
+5. Otherwise the saved `mode` in the stage config applies.
 
 The stage config (`apps/stage-tamagotchi/src/main/windows/stage/config.ts`, persisted as `config.json` in the `stage` directory under the user data directory) holds `mode` (`window` or `desktop`, default `window`), `activeRenderer`, `homeDisplayId`, and per-display homes as `xDip` on the floor row plus a display fingerprint. A mode change applies at the next launch through a **Relaunch to apply** button. Transparency and window flags are fixed at window creation, so a live switch is not possible.
 

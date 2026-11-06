@@ -22,9 +22,12 @@ An MMD character can live on a full-screen desktop stage instead of the classic 
 `selectHostMode` (`src/main/windows/stage/mode.ts`) picks the host once per launch:
 
 1. `AIRI_STAGE_HOST=window` or `AIRI_STAGE_HOST=desktop` overrides everything. Use it for QA runs, for example `pnpm qa:stage measure`.
-2. Linux always gets the classic window, because Wayland does not forward click-through.
-3. A stage model that is not MMD, or that has never been reported, gets the classic window.
-4. Otherwise the saved stage mode applies.
+2. While the **Experimental 3D stage** setting is off (the default), the classic window. A Live2D user who never turns it on keeps the classic window and its input.
+3. Linux always gets the classic window, because Wayland does not forward click-through.
+4. A stage model that is not MMD, or that has never been reported, gets the classic window.
+5. Otherwise the saved stage mode applies.
+
+The setting gates only this host: the transparent full-screen window, click-through, drag, locomotion, home persistence, and floating-chat anchoring. MMD clips, curation, and the MMD body work in the classic window whether it is on or off.
 
 Whichever window is built becomes `userFacingMainWindow`. The desktop stage must never be moved, resized, or focused, so every consumer checks `isStageWindow` (`src/main/windows/stage/identity.ts`):
 
@@ -43,6 +46,7 @@ The architecture and the removal condition for the classic window mode are recor
 
 **Settings > Models** shows a **Desktop stage** section for an MMD model. It edits the stage config (`stage/config.json` under the user data directory) through the stage eventa contracts, which `setupWindowStageInvokes` registers on the settings window as well as on the classic window. Every config change is broadcast as `electronStageStateChanged` to each registered window (`createStageStateBroadcast`), because one window's eventa context emits only to its own renderer.
 
+- **Experimental 3D stage** (`experimental` in the stage config, off by default) is the first control. While it is off, the section shows only this toggle, and `selectHostMode` builds the classic window. It is saved through `electronStageSetExperimental` and applies at the next launch; turning it off while the desktop stage runs shows **Relaunch to apply**.
 - **Stage mode** is saved at once but applies at the next launch. When the saved mode differs from the running host, a **Relaunch to apply** button appears. An unsent chat draft is not carried across the relaunch: drafts live in memory (`windows/chat/index.ts`), and the button's description says so. This is the supported policy, not a gap to close.
 - **Home display** calls `electronStageSetHomeDisplay`, which writes `homeDisplayId`, keeps every saved home x, and re-bounds the desktop stage window to the new display's work area. On a host with one display the control is disabled.
 - **Character height** and **Roam** write the MMD store (`settings/mmd/stage-character-height`, `settings/mmd/roam-mode`); the stage page re-calibrates from them.

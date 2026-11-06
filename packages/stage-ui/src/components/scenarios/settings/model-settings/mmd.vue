@@ -20,7 +20,7 @@ import { useSettingsStageModel } from '../../../../stores/settings/stage-model'
 import { Container, PropertyColor, PropertyNumber } from '../../../data-pane'
 import { Section } from '../../../layouts'
 import { ColorPalette } from '../../../widgets'
-import { useDesktopStageHost } from './desktop-stage'
+import { desktopStageNeedsRelaunch as needsRelaunch, useDesktopStageHost } from './desktop-stage'
 
 const props = withDefaults(defineProps<{
   palette: string[]
@@ -91,14 +91,15 @@ const {
 
 const desktopStage = useDesktopStageHost()
 const desktopStageState = computed(() => desktopStage?.state.value ?? null)
+const desktopStageExperimental = computed<boolean>({
+  get: () => desktopStageState.value?.experimental ?? false,
+  set: (enabled) => { void desktopStage?.setExperimental(enabled) },
+})
 const desktopStageMode = computed<DesktopStageMode>({
   get: () => desktopStageState.value?.mode ?? 'window',
   set: (mode) => { void desktopStage?.setMode(mode) },
 })
-const desktopStageNeedsRelaunch = computed(() => {
-  const state = desktopStageState.value
-  return state !== null && state.mode !== state.running
-})
+const desktopStageNeedsRelaunch = computed(() => desktopStageState.value !== null && needsRelaunch(desktopStageState.value))
 const desktopStageModeOptions = computed<SelectTabOption<DesktopStageMode>[]>(() => [
   {
     value: 'window',
@@ -372,7 +373,7 @@ function removeMotion(id: string) {
         label="Render Scale"
       />
     </div>
-    <p v-if="desktopStage" :class="['px-2', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
+    <p v-if="desktopStageState?.experimental" :class="['px-2', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
       {{ t('settings.mmd.stage.classic-only-note') }}
     </p>
   </Container>
@@ -389,23 +390,12 @@ function removeMotion(id: string) {
     <p :class="['mb-2', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
       {{ t('settings.mmd.stage.description') }}
     </p>
-    <label :class="['flex flex-wrap gap-4']">
-      <div :class="['min-w-0 flex-1 basis-full sm:basis-auto']">
-        <div :class="['flex items-center gap-1 text-sm font-medium']">
-          {{ t('settings.mmd.stage.mode.title') }}
-        </div>
-        <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-          {{ t('settings.mmd.stage.mode.description') }}
-        </div>
-      </div>
-      <SelectTab
-        v-model="desktopStageMode"
-        :options="desktopStageModeOptions"
-        :disabled="desktopStageState === null"
-        size="sm"
-        :class="['shrink-0', 'min-w-72']"
-      />
-    </label>
+    <FieldCheckbox
+      v-model="desktopStageExperimental"
+      :disabled="desktopStageState === null"
+      :label="t('settings.mmd.stage.experimental.title')"
+      :description="t('settings.mmd.stage.experimental.description')"
+    />
     <div
       v-if="desktopStageNeedsRelaunch"
       :class="['flex flex-wrap items-center gap-4']"
@@ -417,39 +407,58 @@ function removeMotion(id: string) {
         {{ t('settings.mmd.stage.relaunch.description') }}
       </p>
     </div>
-    <FieldCombobox
-      :model-value="desktopStageState?.homeDisplayId ?? ''"
-      :options="homeDisplayOptions"
-      :disabled="homeDisplayOptions.length < 2"
-      :label="t('settings.mmd.stage.home-display.title')"
-      :description="t('settings.mmd.stage.home-display.description')"
-      @update:model-value="setHomeDisplay"
-    />
-    <FieldRange
-      v-model="stageCharacterHeight"
-      :min="200"
-      :max="1200"
-      :step="10"
-      :label="t('settings.mmd.stage.character-height.title')"
-      :description="t('settings.mmd.stage.character-height.description')"
-      :format-value="formatCharacterHeight"
-    />
-    <label :class="['flex flex-wrap gap-4']">
-      <div :class="['min-w-0 flex-1 basis-full sm:basis-auto']">
-        <div :class="['flex items-center gap-1 text-sm font-medium']">
-          {{ t('settings.mmd.stage.roam.title') }}
+    <template v-if="desktopStageState?.experimental">
+      <label :class="['flex flex-wrap gap-4']">
+        <div :class="['min-w-0 flex-1 basis-full sm:basis-auto']">
+          <div :class="['flex items-center gap-1 text-sm font-medium']">
+            {{ t('settings.mmd.stage.mode.title') }}
+          </div>
+          <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+            {{ t('settings.mmd.stage.mode.description') }}
+          </div>
         </div>
-        <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
-          {{ t('settings.mmd.stage.roam.description') }}
-        </div>
-      </div>
-      <SelectTab
-        v-model="roamMode"
-        :options="roamModeOptions"
-        size="sm"
-        :class="['shrink-0']"
+        <SelectTab
+          v-model="desktopStageMode"
+          :options="desktopStageModeOptions"
+          :disabled="desktopStageState === null"
+          size="sm"
+          :class="['shrink-0', 'min-w-72']"
+        />
+      </label>
+      <FieldCombobox
+        :model-value="desktopStageState?.homeDisplayId ?? ''"
+        :options="homeDisplayOptions"
+        :disabled="homeDisplayOptions.length < 2"
+        :label="t('settings.mmd.stage.home-display.title')"
+        :description="t('settings.mmd.stage.home-display.description')"
+        @update:model-value="setHomeDisplay"
       />
-    </label>
+      <FieldRange
+        v-model="stageCharacterHeight"
+        :min="200"
+        :max="1200"
+        :step="10"
+        :label="t('settings.mmd.stage.character-height.title')"
+        :description="t('settings.mmd.stage.character-height.description')"
+        :format-value="formatCharacterHeight"
+      />
+      <label :class="['flex flex-wrap gap-4']">
+        <div :class="['min-w-0 flex-1 basis-full sm:basis-auto']">
+          <div :class="['flex items-center gap-1 text-sm font-medium']">
+            {{ t('settings.mmd.stage.roam.title') }}
+          </div>
+          <div :class="['text-xs text-neutral-500 dark:text-neutral-400']">
+            {{ t('settings.mmd.stage.roam.description') }}
+          </div>
+        </div>
+        <SelectTab
+          v-model="roamMode"
+          :options="roamModeOptions"
+          size="sm"
+          :class="['shrink-0']"
+        />
+      </label>
+    </template>
   </Section>
 
   <Section

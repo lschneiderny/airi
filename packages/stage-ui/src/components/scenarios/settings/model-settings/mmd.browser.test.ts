@@ -184,6 +184,9 @@ function fakeDesktopStageHost(initial: DesktopStageState) {
   const state = shallowRef<DesktopStageState | null>(initial)
   const host: DesktopStageHost = {
     state,
+    setExperimental: vi.fn(async (experimental) => {
+      state.value = { ...state.value!, experimental }
+    }),
     setMode: vi.fn(async (mode) => {
       state.value = { ...state.value!, mode }
     }),
@@ -235,8 +238,39 @@ describe('mmd model settings desktop stage', () => {
     await expect.element(screen.getByText(t('settings.mmd.stage.classic-only-note'), { exact: true })).not.toBeInTheDocument()
   })
 
+  it('shows only the off Experimental 3D stage toggle until it is turned on, then the stage controls and a relaunch', async () => {
+    const host = fakeDesktopStageHost({ experimental: false, mode: 'window', running: 'window', homeDisplayId: '1', displays: [builtInDisplay] })
+    const { screen } = await renderWithHost(host)
+    await screen.getByText(t('settings.mmd.stage.title'), { exact: true }).click()
+
+    const toggle = screen.getByRole('switch', { name: t('settings.mmd.stage.experimental.title') })
+    await expect.element(toggle).not.toBeChecked()
+    await expect.element(screen.getByText(t('settings.mmd.stage.mode.title'), { exact: true })).not.toBeInTheDocument()
+    await expect.element(screen.getByText(t('settings.mmd.stage.classic-only-note'), { exact: true })).not.toBeInTheDocument()
+    await expect.element(screen.getByRole('button', { name: t('settings.mmd.stage.relaunch.button'), exact: true })).not.toBeInTheDocument()
+
+    await toggle.click()
+    await vi.waitFor(() => expect(host.setExperimental).toHaveBeenCalledWith(true))
+    await expect.element(screen.getByText(t('settings.mmd.stage.mode.title'), { exact: true })).toBeVisible()
+    // The saved mode is still the classic window, so turning the setting on alone needs no relaunch.
+    await expect.element(screen.getByRole('button', { name: t('settings.mmd.stage.relaunch.button'), exact: true })).not.toBeInTheDocument()
+  })
+
+  it('offers a relaunch when the setting is turned off while the desktop stage runs', async () => {
+    const host = fakeDesktopStageHost({ experimental: true, mode: 'desktop', running: 'desktop', homeDisplayId: '1', displays: [builtInDisplay] })
+    const { screen } = await renderWithHost(host)
+    await screen.getByText(t('settings.mmd.stage.title'), { exact: true }).click()
+    const relaunch = screen.getByRole('button', { name: t('settings.mmd.stage.relaunch.button'), exact: true })
+    await expect.element(relaunch).not.toBeInTheDocument()
+
+    await screen.getByRole('switch', { name: t('settings.mmd.stage.experimental.title') }).click()
+    await vi.waitFor(() => expect(host.setExperimental).toHaveBeenCalledWith(false))
+    await expect.element(relaunch).toBeVisible()
+    await expect.element(screen.getByText(t('settings.mmd.stage.mode.title'), { exact: true })).not.toBeInTheDocument()
+  })
+
   it('renders the saved mode from the host state and shows the relaunch button only while the saved mode differs from the running one', async () => {
-    const host = fakeDesktopStageHost({ mode: 'window', running: 'window', homeDisplayId: '1', displays: [builtInDisplay] })
+    const host = fakeDesktopStageHost({ experimental: true, mode: 'window', running: 'window', homeDisplayId: '1', displays: [builtInDisplay] })
     const { screen } = await renderWithHost(host)
     await expect.element(screen.getByText(t('settings.mmd.stage.classic-only-note'), { exact: true })).toBeVisible()
     await screen.getByText(t('settings.mmd.stage.title'), { exact: true }).click()
@@ -265,7 +299,7 @@ describe('mmd model settings desktop stage', () => {
   })
 
   it('switches the home display through the host and leaves the current one alone', async () => {
-    const host = fakeDesktopStageHost({ mode: 'desktop', running: 'desktop', homeDisplayId: '1', displays: [builtInDisplay, externalDisplay] })
+    const host = fakeDesktopStageHost({ experimental: true, mode: 'desktop', running: 'desktop', homeDisplayId: '1', displays: [builtInDisplay, externalDisplay] })
     const { screen } = await renderWithHost(host)
     await screen.getByText(t('settings.mmd.stage.title'), { exact: true }).click()
 
@@ -279,7 +313,7 @@ describe('mmd model settings desktop stage', () => {
   })
 
   it('writes the character height and the roam mode to the store and persists them', async () => {
-    const host = fakeDesktopStageHost({ mode: 'desktop', running: 'desktop', homeDisplayId: '1', displays: [builtInDisplay] })
+    const host = fakeDesktopStageHost({ experimental: true, mode: 'desktop', running: 'desktop', homeDisplayId: '1', displays: [builtInDisplay] })
     const { screen, store } = await renderWithHost(host)
     await screen.getByText(t('settings.mmd.stage.title'), { exact: true }).click()
 

@@ -2817,6 +2817,11 @@ mmd:
       Let the character stand on the desktop, over every other window, instead of
       living in the classic window.
     classic-only-note: Scale, position and rotation apply in the classic window only.
+    experimental:
+      title: Experimental 3D stage
+      description: >-
+        Off by default. While it is off, the character always stays in the classic
+        window. The setting applies at the next launch.
     mode:
       title: Stage mode
       description: The mode applies at the next launch.
