@@ -1,11 +1,11 @@
 ---
 name: triage
-description: Review the dTuber Obsidian vault inbox at Z:/Obsidian/dTuber, including captures in 00 Inbox and bugs or follow-ups that /vault-sync found in the repository, propose an outcome for each note, and apply the approved outcomes. Use when the user runs /triage, or asks to sort, review, file, or clean up vault inbox captures.
+description: Review the dTuber Obsidian vault inbox at /opt/truenas/Obsidian/dTuber, including captures in 00 Inbox and bugs or follow-ups that /vault-sync found in the repository, propose an outcome for each note, and apply the approved outcomes. Use when the user runs /triage, or asks to sort, review, file, or clean up vault inbox captures.
 ---
 
 # Triage the vault inbox
 
-The dTuber planning vault is a separate git repository at `Z:/Obsidian/dTuber` (`/z/Obsidian/dTuber` in Bash). Its `Home.md` documents the folders, properties, and the status lifecycle: `inbox`, `open`, `next`, `doing`, `fixed`, `done`, `dropped`. Never open `Engineering/ips and keys.md`; it holds personal credentials.
+The dTuber planning vault is a separate git repository at `/opt/truenas/Obsidian/dTuber`, an NFS mount of the TrueNAS `code` share. Search it with `rg --glob '*.md'`, which skips `.git`. Run git there as `git -c safe.directory=/opt/truenas/Obsidian/dTuber -C /opt/truenas/Obsidian/dTuber <command>`, because the share's files belong to another user ID. Its `Home.md` documents the folders, properties, and the status lifecycle: `inbox`, `open`, `next`, `doing`, `fixed`, `done`, `dropped`. Never open `Engineering/ips and keys.md`; it holds personal credentials.
 
 The vault is on a slow network drive. Do not run recursive `grep` or `find` over it from Bash. Use the Grep tool with a `*.md` glob, or read specific files.
 
@@ -53,6 +53,6 @@ Apply only the outcomes the user approves, including edits they make to the tabl
 - Keep or set `area` on every promoted note, so it stays on its area's main note.
 - Archive merged captures to `06 Archive/Captures` with `status: done` and a `Merged into [[Note]]` line.
 - Never delete the only copy of a capture's content.
-- Do not commit. The vault's obsidian-git plugin commits and pushes every 10 minutes while Obsidian is open.
+- Do not commit or push the vault. Its obsidian-git plugin is set to commit and push every 10 minutes while Obsidian is open, but that plugin may not run under the Flatpak; mention it if `git status` shows changes older than a day.
 
 Finish with a short list of what moved where.
