@@ -5,23 +5,25 @@ import type { StageConfig } from './config'
  * Chooses which host this launch builds.
  *
  * Precedence:
- * 1. `AIRI_STAGE_HOST=window|desktop` overrides everything, for QA runs.
+ * 1. In a development build (`development`), `AIRI_STAGE_HOST=window|desktop` overrides everything, for QA runs.
+ *    A production build ignores it and obeys the setting.
  * 2. While the Experimental 3D stage setting (`config.experimental`) is off, the classic window.
  * 3. Linux always gets the classic window.
  * 4. A stage model that is not MMD (or has never been reported, `null`) gets the classic window.
  * 5. Otherwise the saved `config.mode`.
  *
  * @example
- * selectHostMode({ ...defaultStageConfig, experimental: true, mode: 'desktop', activeRenderer: 'mmd' }, 'darwin', {})
+ * selectHostMode({ ...defaultStageConfig, experimental: true, mode: 'desktop', activeRenderer: 'mmd' }, 'darwin', {}, { development: false })
  * // => 'desktop'
  */
 export function selectHostMode(
   config: Pick<StageConfig, 'experimental' | 'mode' | 'activeRenderer'>,
   platform: string,
   environment: Record<string, string | undefined>,
+  build: { development: boolean },
 ): StageHostMode {
   const override = environment.AIRI_STAGE_HOST
-  if (override === 'window' || override === 'desktop')
+  if (build.development && (override === 'window' || override === 'desktop'))
     return override
 
   // The desktop stage changes how the character's window behaves, so it stays behind an off-by-default setting.
