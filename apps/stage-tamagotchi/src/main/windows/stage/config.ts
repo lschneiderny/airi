@@ -2,7 +2,7 @@ import type { InferOutput } from 'valibot'
 
 import type { StageDisplayInfo, StageHostMode, StageHostState } from '../../../shared/eventa'
 
-import { nullable, number, object, optional, picklist, record, string } from 'valibot'
+import { boolean, nullable, number, object, optional, picklist, record, string } from 'valibot'
 
 import { createConfig } from '../../libs/electron/persistence'
 
@@ -13,6 +13,8 @@ const displayFingerprintSchema = object({
 })
 
 export const stageConfigSchema = object({
+  /** The Experimental 3D stage setting. While it is off, every launch builds the classic window. */
+  experimental: optional(boolean(), false),
   mode: optional(picklist(['window', 'desktop']), 'window'),
   activeRenderer: optional(nullable(picklist(['mmd', 'other'])), null),
   homeDisplayId: optional(nullable(string()), null),
@@ -26,6 +28,7 @@ export type StageConfig = InferOutput<typeof stageConfigSchema>
 export type StageDisplayFingerprint = InferOutput<typeof displayFingerprintSchema>
 
 export const defaultStageConfig: StageConfig = {
+  experimental: false,
   mode: 'window',
   activeRenderer: null,
   homeDisplayId: null,
@@ -97,6 +100,7 @@ export function buildStageHostState(params: {
   running: StageHostMode
 }): StageHostState {
   return {
+    experimental: params.config.experimental,
     mode: params.config.mode,
     activeRenderer: params.config.activeRenderer,
     displays: [...params.displays],

@@ -27,7 +27,7 @@ function config(patch: Partial<StageConfig>): StageConfig {
 
 describe('stageConfigSchema', () => {
   it('fills every default from an empty file', () => {
-    expect(parse(stageConfigSchema, {})).toEqual({ mode: 'window', activeRenderer: null, homeDisplayId: null, homes: {} })
+    expect(parse(stageConfigSchema, {})).toEqual({ experimental: false, mode: 'window', activeRenderer: null, homeDisplayId: null, homes: {} })
   })
 
   it('rejects an unknown mode', () => {
@@ -82,6 +82,7 @@ describe('buildStageHostState', () => {
     const state = buildStageHostState({ config: defaultStageConfig, displays: [builtIn, external], running: 'desktop' })
 
     expect(state).toEqual({
+      experimental: false,
       mode: 'window',
       activeRenderer: null,
       displays: [builtIn, external],

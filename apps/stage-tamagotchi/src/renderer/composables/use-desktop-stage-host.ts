@@ -5,11 +5,13 @@ import type { StageHostState } from '../../shared/eventa'
 
 import { errorMessageFrom } from '@moeru/std'
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
+import { desktopStageNeedsRelaunch } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/desktop-stage'
 import { computed, onScopeDispose, shallowRef, watch } from 'vue'
 
 import {
   electronStageGetState,
   electronStageRelaunch,
+  electronStageSetExperimental,
   electronStageSetHomeDisplay,
   electronStageSetMode,
   electronStageStateChanged,
@@ -22,7 +24,7 @@ export interface DesktopStageSettingsHost {
    * already been written back to `window`; the page shows `settings.mmd.stage.non-mmd-notice`.
    */
   nonMmdNotice: Readonly<Ref<boolean>>
-  /** True while the saved mode differs from the running host, so a relaunch is needed to apply it. */
+  /** True while the next launch would build a different host than the running one, so a relaunch is needed. */
   needsRelaunch: Readonly<Ref<boolean>>
 }
 
@@ -37,12 +39,13 @@ export function useDesktopStageHost(): DesktopStageSettingsHost {
   const context = useElectronEventaContext()
   const getState = useElectronEventaInvoke(electronStageGetState)
   const setModeInvoke = useElectronEventaInvoke(electronStageSetMode)
+  const setExperimentalInvoke = useElectronEventaInvoke(electronStageSetExperimental)
   const setHomeDisplayInvoke = useElectronEventaInvoke(electronStageSetHomeDisplay)
   const relaunchInvoke = useElectronEventaInvoke(electronStageRelaunch)
 
   const state = shallowRef<StageHostState | null>(null)
   const nonMmdNotice = computed(() => state.value?.activeRenderer === 'other' && (state.value.mode === 'desktop' || state.value.running === 'desktop'))
-  const needsRelaunch = computed(() => state.value !== null && state.value.mode !== state.value.running)
+  const needsRelaunch = computed(() => state.value !== null && desktopStageNeedsRelaunch(state.value))
 
   onScopeDispose(context.value.on(electronStageStateChanged, (event) => {
     if (event.body)
@@ -66,6 +69,9 @@ export function useDesktopStageHost(): DesktopStageSettingsHost {
   return {
     host: {
       state,
+      setExperimental: async (enabled) => {
+        state.value = await setExperimentalInvoke(enabled)
+      },
       setMode,
       setHomeDisplay: async (displayId) => {
         state.value = await setHomeDisplayInvoke(displayId)

@@ -238,6 +238,8 @@ export interface StageDisplayInfo {
 }
 
 export interface StageHostState {
+  /** The Experimental 3D stage setting. While it is off, the next launch builds the classic window. */
+  experimental: boolean
   /** The saved mode. It applies at the next launch, so it can differ from `running`. */
   mode: StageHostMode
   /** The renderer the stage pages last reported; `null` until one has reported. */
@@ -274,6 +276,8 @@ export const electronStageSetHome = defineInvokeEventa<StageHostState, { display
  * display is kept. Rejects for a display that is not connected.
  */
 export const electronStageSetHomeDisplay = defineInvokeEventa<StageHostState, string>('eventa:invoke:electron:windows:stage:set-home-display')
+/** Persists the Experimental 3D stage setting. It applies at the next launch (see `electronStageRelaunch`). */
+export const electronStageSetExperimental = defineInvokeEventa<StageHostState, boolean>('eventa:invoke:electron:windows:stage:set-experimental')
 /** Persists the host mode. It applies at the next launch (see `electronStageRelaunch`). */
 export const electronStageSetMode = defineInvokeEventa<StageHostState, StageHostMode>('eventa:invoke:electron:windows:stage:set-mode')
 /** Persists the renderer of the stage model. Both stage pages call it whenever the stage model changes. */
