@@ -66,6 +66,7 @@ import {
   useMMDLipSync,
 } from '../../composables/mmd'
 import { MMDBody } from '../../composables/mmd/body'
+import { MMDBodyToolPort } from '../../composables/mmd/body-tool-port'
 import { resolveBodyPoints, resolveBodyTarget } from '../../composables/mmd/body/attention'
 import { ARM_SWING_REACH, resolveFrameBounds } from '../../composables/mmd/camera-bounds'
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
@@ -160,6 +161,9 @@ watch(() => props.chatActivity?.sentSeq, (next, previous) => {
   if (next !== undefined && previous !== undefined && next > previous)
     noteInteraction()
 })
+const bodyToolPort = new MMDBodyToolPort()
+// Where she stands beside the open chat this frame; the tool port reports her position against it.
+let chatStandSpotX: number | null = null
 let chatVisible: boolean | undefined
 let chatUnfoldSeq = 0
 watch(() => props.chatTarget?.visible, (visible) => {
@@ -603,6 +607,16 @@ function renderLoop(now = performance.now()) {
     })
     if (base.changed)
       animation.setBaseMotion(base.motion)
+    if (props.stageWorld) {
+      bodyToolPort.observe({
+        rootX: stageRootX,
+        homeX: props.stageWorld.homeX,
+        standX: chatStandSpotX,
+        locomotionMode: body?.locomotionFrame?.mode ?? 'idle',
+        directorMs: clocks.directorMs,
+        diagnostics: stance.diagnostics,
+      })
+    }
     // Sent every frame: the body drops a goal set while a clip owns the root, so the intent is the only source of truth.
     const locomotion = stance.intent?.locomotion
     body?.setLocomotionGoal(locomotion && locomotion.goalX !== null
@@ -654,6 +668,7 @@ function directorWorld(world: MMDStageWorld, modelKey: string): MMDStanceWorld {
     ? [chat.x, chat.x + chat.width].map(x => dipToPlane(calibration, { x: (x - placement.windowBounds.x) / dipScale, y: calibration.floorRowDip }, 0).x)
     : null
   const chatX = edges ? chatStandX({ minX: edges[0], maxX: edges[1] }, stageRootX, world.homeX, halfWidth, legLength) : null
+  chatStandSpotX = chatX === null ? null : chatX + Math.sign(world.homeX - chatX) * legLength
   const cursor = props.cursorPosition
   const owned = body?.ownership()
   return {
@@ -668,8 +683,7 @@ function directorWorld(world: MMDStageWorld, modelKey: string): MMDStanceWorld {
     chatX,
     cursorX: cursor ? dipToPlane(calibration, cursor, 0).x : null,
     cursorOnStage: !!cursor && cursor.x >= 0 && cursor.y >= 0 && cursor.x <= world.workArea.width && cursor.y <= world.workArea.height,
-    // NOTICE: todo 13 supplies the body tool port; until then no tool request reaches the director.
-    toolRequest: null,
+    toolRequest: bodyToolPort.request,
     debugGoal: diagnostics.goalRequest,
     legLength,
     seed: fnv1a32(modelKey),
@@ -1016,6 +1030,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  bodyToolPort.dispose()
   cancelAnimationFrame(rafHandle)
   resizeObserver?.disconnect()
   disposeModel()
@@ -1226,6 +1241,7 @@ defineExpose({
   listMotions: () => animation?.availableClips() ?? [],
   setRootX,
   characterPlacement,
+  bodyPort: computed(() => props.stageWorld ? bodyToolPort : null),
 })
 </script>
 

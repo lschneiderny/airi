@@ -35,6 +35,7 @@ export interface MMDStanceDiagnostics {
   lookRefractoryUntilMs: number
   lastToolSeq: number
   toolRefused: boolean
+  toolRetryAfterMs: number | null
 }
 
 /** Gap, in leg lengths, between her body and the chat window's near edge when she stops beside it. */
@@ -209,6 +210,7 @@ export class MMDStanceDirector {
       lookRefractoryUntilMs: this.memory.lookRefractoryUntilMs,
       lastToolSeq: this.memory.lastToolSeq,
       toolRefused: this.memory.toolRefused,
+      toolRetryAfterMs: this.memory.toolRetryAfterMs,
     }
   }
 }

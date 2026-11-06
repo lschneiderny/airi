@@ -68,6 +68,7 @@ const fixture: Partial<MMDMotionSnapshot> = {
     lookRefractoryUntilMs: 0,
     lastToolSeq: 0,
     toolRefused: false,
+    toolRetryAfterMs: null,
     clockOffsetMs: 60_000,
     centerY: -6.512,
   },
