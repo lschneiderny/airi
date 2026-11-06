@@ -127,6 +127,23 @@ next memory. It sits after 120 seconds of continuous idle mode
 slot is available, and holds each stance for at least 3 seconds
 (`STANCE_MIN_DWELL_MS`).
 
+On a stage with a ground line, `decideBody` also owns where she goes:
+`BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,
+`approach-cursor`, `return-home`, `wander`, `tool`, `debug` or `stay`) and the
+pace. She approaches the chat when it unfolds, chases the cursor for
+`CHASE_WINDOW_MS` after a poke, pet, drag or sent message, returns home
+`RETURN_HOME_DELAY_MS` after the last reason, and wanders between
+`WANDER_MIN_MS` and `WANDER_MAX_MS` apart in roam mode only. A goal waits while
+she speaks and is dropped after `PENDING_GOAL_TTL_MS`. Tool requests share
+`MOVE_TOOL_REFRACTORY_MS` for movement and use `LOOK_TOOL_REFRACTORY_MS` for a
+glance. The boundary is fixed: the director chooses goals and never moves the
+root; locomotion integrates the position, gait phase, step targets, arm swing
+and root yaw, and never chooses a goal.
+
+`NO_WORLD_BODY_INPUT` supplies inert world inputs for the classic window.
+The existing MMD callers use it without enabling locomotion; stage-world
+integration supplies actual ground, root, and event inputs.
+
 `MMDBody` and `MMDStanceDirector` in `@proj-airi/stage-ui-mmd` are the first
 consumers. The architecture is recorded in
 [the 3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md).
