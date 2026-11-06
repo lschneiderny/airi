@@ -215,6 +215,15 @@ function clampToGround(x: number, ground: { minX: number, maxX: number }): numbe
   return Math.min(Math.max(x, ground.minX), ground.maxX)
 }
 
+/**
+ * Where she stops for the chat anchor `chatX`: one leg length short of it, on the side of home.
+ * The approach-chat reason and the come-here tool share this rule.
+ */
+function chatStandGoal(chatX: number, homeX: number, leg: number, ground: { minX: number, maxX: number }): number {
+  const anchor = clampToGround(chatX, ground)
+  return clampToGround(anchor + Math.sign(homeX - anchor) * leg, ground)
+}
+
 /** Draws one uniform value and returns the advanced seed; no hidden state. */
 function drawRandom(state: number): { value: number, state: number } {
   const stream = createRandomStream(state)
@@ -309,9 +318,8 @@ export function decideBody(
   // Event requests: later sources win (debug over tool over chat).
   let request: BodyGoalRequest | null = null
   if (input.chatUnfoldSeq > previous.lastUnfoldSeq && ground !== null && input.chatX !== null) {
-    const chatX = clampToGround(input.chatX, ground)
     request = {
-      x: clampToGround(chatX + Math.sign(input.homeX - chatX) * leg, ground),
+      x: chatStandGoal(input.chatX, input.homeX, leg, ground),
       pace: 'walk',
       reason: 'approach-chat',
     }
@@ -339,8 +347,11 @@ export function decideBody(
       }
       else if (ground !== null) {
         moveRefractoryUntilMs = nowMs + MOVE_TOOL_REFRACTORY_MS
-        const toolX = tool.kind === 'come-here' ? input.chatX ?? input.homeX : input.homeX
-        request = { x: clampToGround(toolX, ground), pace: 'walk', reason: 'tool' }
+        // Come-here stops where an unfolded chat does: the same stand spot, with the same leg offset.
+        const toolX = tool.kind === 'come-here' && input.chatX !== null
+          ? chatStandGoal(input.chatX, input.homeX, leg, ground)
+          : clampToGround(input.homeX, ground)
+        request = { x: toolX, pace: 'walk', reason: 'tool' }
       }
     }
   }

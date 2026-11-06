@@ -398,7 +398,7 @@ describe('body director home, goals, roam and tools', () => {
     const come = decide(world({ chatX: 6, toolRequest: { seq: 1, kind: 'come-here' } }))
     const home = decide(world({ rootX: 8, homeX: 1, toolRequest: { seq: 1, kind: 'go-home' } }))
 
-    expect(come.intent.locomotion).toMatchObject({ goalX: 6, reason: 'tool', pace: 'walk', arriveFacing: 0 })
+    expect(come.intent.locomotion).toMatchObject({ goalX: 5, reason: 'tool', pace: 'walk', arriveFacing: 0 })
     expect(come.memory).toMatchObject({ lastToolSeq: 1, toolRefused: false, moveRefractoryUntilMs: MOVE_TOOL_REFRACTORY_MS })
     expect(home.intent.locomotion).toMatchObject({ goalX: 1, reason: 'tool', pace: 'walk' })
   })
@@ -409,7 +409,7 @@ describe('body director home, goals, roam and tools', () => {
     const accepted = decide(world({ nowMs: MOVE_TOOL_REFRACTORY_MS, rootX: 6, chatX: 6, toolRequest: { seq: 3, kind: 'go-home' } }), refused.memory)
 
     expect(refused.memory).toMatchObject({ lastToolSeq: 2, toolRefused: true, toolRetryAfterMs: MOVE_TOOL_REFRACTORY_MS - 1_000 })
-    expect(refused.intent.locomotion).toMatchObject({ goalX: 6, reason: 'tool' })
+    expect(refused.intent.locomotion).toMatchObject({ goalX: 5, reason: 'tool' })
     expect(accepted.memory.toolRefused).toBe(false)
     expect(accepted.intent.locomotion.goalX).toBe(0)
   })
