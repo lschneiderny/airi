@@ -53,6 +53,8 @@ export interface StageWindowInvokes {
  * - `config` was set up, and `running` is the host this launch built
  * - `broadcast` is shared by every window of this launch, so a config change made here reaches the other windows
  * - `applyHomeDisplay` re-bounds the desktop stage window when one exists; it runs after the home display changed
+ * - `onLeaveMmd` runs when this window reports that the stage model left MMD while the desktop stage runs; the host stays
+ *   until the next launch
  *
  * Returns:
  * - The state emitter for this window and the placement the renderer published last
@@ -66,6 +68,7 @@ export function setupStageWindowInvokes(params: {
   relaunch: () => void
   broadcast: StageStateBroadcast
   applyHomeDisplay?: () => void
+  onLeaveMmd?: () => void
 }): StageWindowInvokes {
   const { context } = createWindowContext(params.window)
   const getConfig = () => params.config.get() ?? params.defaultConfig
@@ -116,7 +119,10 @@ export function setupStageWindowInvokes(params: {
       throw new TypeError(`electronStageSetActiveRenderer: expected 'mmd' or 'other', got ${JSON.stringify(payload)}`)
     if (getConfig().activeRenderer === parsed.output)
       return getState()
-    return updateConfig({ ...getConfig(), activeRenderer: parsed.output })
+    const state = updateConfig({ ...getConfig(), activeRenderer: parsed.output })
+    if (parsed.output === 'other' && params.running === 'desktop')
+      params.onLeaveMmd?.()
+    return state
   })
   // Policy: the relaunch does not carry an unsent chat draft over. Drafts live in memory (`windows/chat/index.ts`), and
   // the settings page says so next to its Relaunch button (`settings.mmd.stage.relaunch.description`).

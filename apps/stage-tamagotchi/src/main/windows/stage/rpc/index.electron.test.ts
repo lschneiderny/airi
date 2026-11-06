@@ -34,7 +34,7 @@ class FakeWindow extends EventEmitter {
 const builtIn = { id: 1, bounds: { x: 0, y: 0, width: 1440, height: 900 }, workArea: { x: 0, y: 25, width: 1440, height: 801 }, scaleFactor: 2 } as Display
 const screen = { getAllDisplays: () => [builtIn], getPrimaryDisplay: () => builtIn }
 
-function setup() {
+function setup(options: { running?: 'window' | 'desktop', onLeaveMmd?: () => void } = {}) {
   let config: StageConfig = { ...defaultStageConfig, mode: 'desktop', activeRenderer: 'mmd' }
   const store = {
     get: () => config,
@@ -45,8 +45,8 @@ function setup() {
   const broadcast = createStageStateBroadcast()
   const stageWindow = new FakeWindow()
   const settingsWindow = new FakeWindow()
-  const shared = { config: store, defaultConfig: defaultStageConfig, screen, running: 'desktop' as const, relaunch: () => {}, broadcast }
-  setupStageWindowInvokes({ ...shared, window: stageWindow as never })
+  const shared = { config: store, defaultConfig: defaultStageConfig, screen, running: options.running ?? 'desktop', relaunch: () => {}, broadcast }
+  setupStageWindowInvokes({ ...shared, window: stageWindow as never, onLeaveMmd: options.onLeaveMmd })
   setupStageWindowInvokes({ ...shared, window: settingsWindow as never })
   const settingsContext = contexts.get(settingsWindow)!
   const received: StageHostState[] = []
@@ -105,5 +105,32 @@ describe('electronStageSetExperimental', () => {
     const looseSetExperimental = defineInvokeEventa<StageHostState, unknown>('eventa:invoke:electron:windows:stage:set-experimental')
     await expect(defineInvoke(settingsContext, looseSetExperimental)('yes')).rejects.toThrow()
     expect(getConfig().experimental).toBe(false)
+  })
+})
+
+describe('leaving MMD while the desktop stage runs', () => {
+  it('asks once to relaunch when the stage page reports a renderer that is not MMD, and keeps the host', async () => {
+    const onLeaveMmd = vi.fn()
+    const { stageContext, getConfig } = setup({ onLeaveMmd })
+    const setActiveRenderer = defineInvoke(stageContext, electronStageSetActiveRenderer)
+
+    await setActiveRenderer('other')
+    await setActiveRenderer('other')
+
+    expect(onLeaveMmd).toHaveBeenCalledOnce()
+    // The saved mode is untouched: the next launch picks the classic window because the renderer is not MMD.
+    expect(getConfig()).toMatchObject({ mode: 'desktop', activeRenderer: 'other' })
+  })
+
+  it('does not ask while the classic window runs, or when the renderer goes back to MMD', async () => {
+    const classicLeave = vi.fn()
+    const classic = setup({ running: 'window', onLeaveMmd: classicLeave })
+    await defineInvoke(classic.stageContext, electronStageSetActiveRenderer)('other')
+    expect(classicLeave).not.toHaveBeenCalled()
+
+    const desktopLeave = vi.fn()
+    const desktop = setup({ onLeaveMmd: desktopLeave })
+    await defineInvoke(desktop.stageContext, electronStageSetActiveRenderer)('mmd')
+    expect(desktopLeave).not.toHaveBeenCalled()
   })
 })
