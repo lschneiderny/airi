@@ -143,6 +143,8 @@ export interface BodyDirectorInput {
   chatUnfoldSeq: number
   chatX: number | null
   interactionSeq: number
+  /** Count of chat messages the user sent; it ends a looping clip like a chat unfold and leaves a one-shot running. */
+  chatSendSeq: number
   interactionAtMs: number | null
   actionRequest: BodyActionRequest | null
   actionFeedback: BodyActionFeedback | null
@@ -163,7 +165,7 @@ export interface BodyDirectorInput {
  * Spread it under the six legacy fields; every goal rule stays inert. Clips, pokes and drags exist without a world, so
  * every host supplies the interaction and action inputs itself.
  */
-export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'interactionSeq' | 'interactionAtMs' | 'actionRequest' | 'actionFeedback' | 'dragging'> = Object.freeze({
+export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'interactionSeq' | 'chatSendSeq' | 'interactionAtMs' | 'actionRequest' | 'actionFeedback' | 'dragging'> = Object.freeze({
   ground: null,
   rootX: 0,
   homeX: 0,
@@ -199,6 +201,7 @@ export interface BodyDirectorMemory {
   readonly pendingGoal: (BodyGoalRequest & { requestedAtMs: number }) | null
   readonly lastUnfoldSeq: number
   readonly lastInteractionSeq: number
+  readonly lastSendSeq: number
   readonly lastToolSeq: number
   readonly lastDebugSeq: number
   readonly toolRefused: boolean
@@ -238,6 +241,7 @@ export const initialBodyDirectorMemory: BodyDirectorMemory = Object.freeze({
   pendingGoal: null,
   lastUnfoldSeq: 0,
   lastInteractionSeq: 0,
+  lastSendSeq: 0,
   lastToolSeq: 0,
   lastDebugSeq: 0,
   toolRefused: false,
@@ -389,7 +393,7 @@ export function decideBody(
       endPerformance(true)
     else if (broad && (input.dragging || input.interactionSeq > previous.lastInteractionSeq))
       endPerformance(true)
-    else if (performing.request.loop && input.chatUnfoldSeq > previous.lastUnfoldSeq)
+    else if (performing.request.loop && (input.chatUnfoldSeq > previous.lastUnfoldSeq || input.chatSendSeq > previous.lastSendSeq))
       endPerformance(true)
   }
 
@@ -685,6 +689,7 @@ export function decideBody(
       pendingGoal: pending,
       lastUnfoldSeq: Math.max(previous.lastUnfoldSeq, input.chatUnfoldSeq),
       lastInteractionSeq: Math.max(previous.lastInteractionSeq, input.interactionSeq),
+      lastSendSeq: Math.max(previous.lastSendSeq, input.chatSendSeq),
       lastToolSeq: tool !== null ? Math.max(previous.lastToolSeq, tool.seq) : previous.lastToolSeq,
       lastDebugSeq: input.debugGoal !== null ? Math.max(previous.lastDebugSeq, input.debugGoal.seq) : previous.lastDebugSeq,
       toolRefused,
