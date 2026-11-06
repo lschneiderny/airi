@@ -74,6 +74,10 @@ To send no app or title at all, turn off **Share the foreground app and window t
 The AIRI web extension sends page and video titles, links, and subtitles on its own. That switch does not cover it. To keep them from the model, turn off **Share browser activity** in **Settings > Presence**.
 Use this sensor for awareness of the user's foreground app. Do not use it to capture screen content, and do not call koffi from the renderer.
 
+## Window-rect sensor spike
+
+`src/main/services/electron/window-rects-spike.ts` measures what reading the other windows' rectangles costs before the M4 sensor is designed. It runs only on Windows with `AIRI_WINDOW_SENSOR_SPIKE=1`; `AIRI_WINDOW_SENSOR_SPIKE_MODE=main|async|worker` picks its default strategy, and `packages/qa-tools/src/window-rects/measure.ts` drives it. The 2026-11-04 results are in `window-rects-spike.md` beside it: a 4 Hz worker poll takes about 0.75 ms per sample, under 0.5% of one core, and leaves the main thread unaffected.
+
 ## Computer use
 
 The desktop chat composer starts with **Use computer** on. Turn it off to send a request without desktop access.
