@@ -178,6 +178,22 @@ describe('mmd stance director in the stage world', () => {
     expect(director.intent?.locomotion).toMatchObject({ goalX: 4, reason: 'approach-chat' })
   })
 
+  it('stands on the other side of a chat at the ground edge when her side has no ground beside it', () => {
+    const legLength = 9
+    const halfWidth = 4.9
+    const ground = { minX: 5.9, maxX: 88 }
+    // Measured on the real surface: a 380 DIP chat at x 94 DIP, 0.065 units per DIP, her root behind it at x 8.
+    const chat = { minX: 6.1, maxX: 30.9 }
+    const director = new MMDStanceDirector()
+    const input = (patch: Partial<MMDStanceWorld>) => world({ ground, legLength, rootX: 8, homeX: 35.7, ...patch })
+    frame(director, 0, input({}))
+    frame(director, 100, input({ chatUnfoldSeq: 1, chatX: chatStandX(chat, 8, 35.7, halfWidth, legLength, ground) }))
+
+    const goalX = director.diagnostics.goalX!
+    expect(goalX).toBeCloseTo(chat.maxX + halfWidth + CHAT_STAND_GAP_LEGS * legLength)
+    expect(goalX - halfWidth).toBeGreaterThanOrEqual(chat.maxX)
+  })
+
   it('stops beside a 380 DIP chat for either root side and either home side, never over it', () => {
     const unitsPerDip = 1 / 15
     const legLength = 9
@@ -191,7 +207,7 @@ describe('mmd stance director in the stage world', () => {
         const director = new MMDStanceDirector()
         const input = (patch: Partial<MMDStanceWorld>) => world({ ground: { minX: -80, maxX: 80 }, legLength, rootX, homeX, ...patch })
         frame(director, 0, input({}))
-        frame(director, 100, input({ chatUnfoldSeq: 1, chatX: chatStandX(chat, rootX, homeX, halfWidth, legLength) }))
+        frame(director, 100, input({ chatUnfoldSeq: 1, chatX: chatStandX(chat, rootX, homeX, halfWidth, legLength, { minX: -80, maxX: 80 }) }))
         const goalX = director.diagnostics.goalX!
         const edge = rootSide > 0 ? chat.maxX : chat.minX
         const label = `root ${rootSide > 0 ? 'right' : 'left'}, home ${homeSide > 0 ? 'right' : 'left'}`
