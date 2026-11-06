@@ -11,6 +11,8 @@ export interface FrameMeasurement {
   stages: Record<string, { meanMs: number, p95Ms: number, maxMs: number }>
   /** The host's alpha-readback hit test over the last second; absent when the host reported none. */
   readbackMs?: { meanMs: number, maxMs: number }
+  /** Physics resets that a caller requested during the run; resets on an animation loop wrap are not counted. */
+  physicsResets: number
 }
 
 const readbackWindowMs = 1000
@@ -30,6 +32,7 @@ export class MMDFrameMetrics {
   private durationMs = 0
   private state: FrameMeasurement['state'] = 'idle'
   private readonly readbacks: { atMs: number, ms: number }[] = []
+  private physicsResets = 0
 
   measure(id: string, run: () => void): void {
     const start = performance.now()
@@ -73,6 +76,12 @@ export class MMDFrameMetrics {
       this.readbacks.shift()
   }
 
+  /** One physics reset that a caller requested, applied this frame. */
+  recordPhysicsReset(): void {
+    if (this.state === 'running')
+      this.physicsResets += 1
+  }
+
   timings(): Record<string, StageTiming> {
     return Object.fromEntries([...this.stageSamples].map(([id, ring]) => [
       id,
@@ -93,6 +102,7 @@ export class MMDFrameMetrics {
     this.measuredIntervals.length = 0
     this.measuredStages.clear()
     this.durationMs = 0
+    this.physicsResets = 0
     this.state = 'running'
   }
 
@@ -110,6 +120,7 @@ export class MMDFrameMetrics {
       durationMs: this.durationMs,
       frames,
       fps: this.durationMs > 0 ? frames / (this.durationMs / 1000) : 0,
+      physicsResets: this.physicsResets,
       stages: Object.fromEntries([...this.measuredStages].map(([id, samples]) => [
         id,
         {

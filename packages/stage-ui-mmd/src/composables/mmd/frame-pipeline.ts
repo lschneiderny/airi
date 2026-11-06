@@ -44,6 +44,8 @@ export class MMDFramePipeline {
   private readonly clipWeights = new Map<string, number>()
   readonly clean: MMDCleanPose
   private resetPhysics = false
+  /** Set by {@link requestPhysicsReset}; kept apart from loop wraps so diagnostics count only requested resets. */
+  private resetRequested = false
   private readonly onLoop = () => {
     this.resetPhysics = true
   }
@@ -80,7 +82,7 @@ export class MMDFramePipeline {
   }
 
   requestPhysicsReset(): void {
-    this.resetPhysics = true
+    this.resetRequested = true
   }
 
   step(delta: number): void {
@@ -130,9 +132,12 @@ export class MMDFramePipeline {
       this.metrics.measure(stage.id, () => stage.run(context))
     this.metrics.measure('beforePhysics', () => mmd.beforePhysics(this.options))
     this.metrics.measure('physics.reset', () => {
-      if (this.resetPhysics) {
+      if (this.resetPhysics || this.resetRequested) {
         mmd.physics?.reset?.()
+        if (this.resetRequested)
+          this.metrics.recordPhysicsReset()
         this.resetPhysics = false
+        this.resetRequested = false
       }
     })
     this.metrics.measure('physics.update', () => {

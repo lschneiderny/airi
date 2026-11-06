@@ -2,6 +2,7 @@ import { AnimationClip, AnimationMixer, LoopRepeat, NumberKeyframeTrack, Quatern
 import { describe, expect, it, vi } from 'vitest'
 
 import { createModel } from './__fixtures__/model'
+import { MMDFrameMetrics } from './frame-metrics'
 import { MMDFramePipeline } from './frame-pipeline'
 
 function fixture() {
@@ -97,6 +98,34 @@ describe('mmd frame pipeline', () => {
     pipeline.requestPhysicsReset()
     pipeline.step(0.01)
     expect(events).toEqual(['reset', 'physics'])
+  })
+
+  it('counts requested physics resets once per applied reset and never counts a loop wrap', () => {
+    const mmd = createModel()
+    const mixer = new AnimationMixer(mmd.mesh)
+    const metrics = new MMDFrameMetrics()
+    const pipeline = new MMDFramePipeline({ mmd, mixer, metrics })
+    const resets: string[] = []
+    mmd.physics = {
+      createHelper: () => { throw new Error('Unused helper') },
+      reset: () => resets.push('reset'),
+      update: () => {},
+    }
+    const clip = new AnimationClip('loop', 0.1, [
+      new VectorKeyframeTrack('.bones[頭].position', [0, 0.1], [0, 9, 0, 0, 9, 0]),
+    ])
+    pipeline.enqueue(() => mixer.clipAction(clip).setLoop(LoopRepeat, Infinity).play())
+    metrics.startMeasurement()
+    pipeline.step(0.05)
+    pipeline.step(0.05)
+    expect(resets).toEqual(['reset'])
+    expect(metrics.measurement()?.physicsResets).toBe(0)
+
+    pipeline.requestPhysicsReset()
+    pipeline.requestPhysicsReset()
+    pipeline.step(0.01)
+    expect(resets).toEqual(['reset', 'reset'])
+    expect(metrics.measurement()?.physicsResets).toBe(1)
   })
 
   it('clamps time and orders registered pose stages before solvers and surface stages after physics', () => {
