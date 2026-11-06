@@ -9,7 +9,11 @@ export interface FrameMeasurement {
   frames: number
   fps: number
   stages: Record<string, { meanMs: number, p95Ms: number, maxMs: number }>
+  /** The host's alpha-readback hit test over the last second; absent when the host reported none. */
+  readbackMs?: { meanMs: number, maxMs: number }
 }
+
+const readbackWindowMs = 1000
 
 function percentile95(samples: readonly number[]) {
   const sorted = [...samples].sort((a, b) => a - b)
@@ -25,6 +29,7 @@ export class MMDFrameMetrics {
   private readonly measuredStages = new Map<string, number[]>()
   private durationMs = 0
   private state: FrameMeasurement['state'] = 'idle'
+  private readonly readbacks: { atMs: number, ms: number }[] = []
 
   measure(id: string, run: () => void): void {
     const start = performance.now()
@@ -59,6 +64,13 @@ export class MMDFrameMetrics {
       this.measuredIntervals.push(delta)
       this.durationMs += delta * 1000
     }
+  }
+
+  /** One alpha readback that took `ms`, at `atMs` on the caller's clock. Samples older than one second drop out. */
+  recordReadback(ms: number, atMs: number): void {
+    this.readbacks.push({ atMs, ms })
+    while (this.readbacks[0].atMs <= atMs - readbackWindowMs)
+      this.readbacks.shift()
   }
 
   timings(): Record<string, StageTiming> {
@@ -106,6 +118,14 @@ export class MMDFrameMetrics {
           maxMs: samples.reduce((max, value) => Math.max(max, value), 0),
         },
       ])),
+      ...(this.readbacks.length > 0
+        ? {
+            readbackMs: {
+              meanMs: this.readbacks.reduce((sum, sample) => sum + sample.ms, 0) / this.readbacks.length,
+              maxMs: this.readbacks.reduce((max, sample) => Math.max(max, sample.ms), 0),
+            },
+          }
+        : {}),
     }
   }
 }
