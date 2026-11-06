@@ -147,6 +147,21 @@ and root yaw, and never chooses a goal.
 The existing MMD callers use it without enabling locomotion; stage-world
 integration supplies actual ground, root, and event inputs.
 
+The director also performs clips. A `BodyActionRequest` (`gesture`, `action` or
+`dance`, layer `full` or `upper`) is accepted or refused in a fixed order: asleep,
+dragging, refractory (`ACTION_REFRACTORY_MS`, `DANCE_REFRACTORY_MS`,
+`GESTURE_REPEAT_MS` per clip), busy, then the stand, walk and speaking settles.
+A refusal still advances `lastActionSeq` and names `actionRefusal` with
+`actionRetryAfterMs`. An accepted clip is `BodyIntent.action`, `settling` until
+the body is clear and then `playing`; the adapter echoes `actionFeedback`, and
+`PERFORM_WATCHDOG_MS` ends a one-shot that never reports. A full clip closes the
+locomotion gate, parks the goal in progress as the pending goal, and hands the
+pending goal a fresh time to live when it ends. A poke, a drag, going away, a
+chat unfold (loops only) or a move tool (loops only) ends it. Every host supplies
+`interactionSeq`, `interactionAtMs`, `actionRequest`, `actionFeedback` and
+`dragging`, with or without a stage world; `NO_WORLD_BODY_INPUT` no longer
+defaults them.
+
 `MMDBody` and `MMDStanceDirector` in `@proj-airi/stage-ui-mmd` are the first
 consumers. The architecture is recorded in
 [the 3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md).

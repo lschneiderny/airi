@@ -83,6 +83,16 @@ export interface BodyLocomotionIntent {
   reason: BodyLocomotionReason
 }
 
+/** A clip the director has accepted; the adapter plays it and reports back. */
+export interface BodyActionIntent {
+  seq: number
+  clipId: string
+  layer: 'full' | 'upper'
+  loop: boolean
+  /** `settling` while the body clears the way (stand up, stop, finish speaking); `playing` once the clip may start. */
+  phase: 'settling' | 'playing'
+}
+
 /** A renderer-neutral intent for body stance, attention, and facing. */
 export interface BodyIntent {
   stance: 'stand' | 'sit' | 'sleep'
@@ -93,4 +103,6 @@ export interface BodyIntent {
   /** Facing direction in radians. */
   facingYaw: number
   locomotion: BodyLocomotionIntent
+  /** The accepted clip performance, or null when none runs. */
+  action: BodyActionIntent | null
 }

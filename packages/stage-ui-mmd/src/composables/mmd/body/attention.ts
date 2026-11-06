@@ -41,6 +41,11 @@ export function resolveBodyTarget(
     cameraPoint,
     slots: { sit: false, sleep: false },
     ...NO_WORLD_BODY_INPUT,
+    interactionSeq: 0,
+    interactionAtMs: null,
+    actionRequest: null,
+    actionFeedback: null,
+    dragging: false,
   }, initialBodyDirectorMemory)
   return intent.attention.point ? new Vector3().copy(intent.attention.point) : null
 }

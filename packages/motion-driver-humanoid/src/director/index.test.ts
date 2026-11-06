@@ -1,10 +1,13 @@
 import type { PerformanceAttention, PerformanceMode, PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { BodyIntent } from '../types'
+import type { BodyActionRequest } from './index'
 
 import { describe, expect, it } from 'vitest'
 
 import {
+  ACTION_REFRACTORY_MS,
+  DANCE_REFRACTORY_MS,
   decideBody,
   GOAL_MIN_DWELL_MS,
   initialBodyDirectorMemory,
@@ -14,6 +17,7 @@ import {
   NO_WORLD_BODY_INPUT,
   PENDING_GOAL_TTL_MS,
   RETURN_HOME_DELAY_MS,
+  STAND_SETTLE_MS,
   WANDER_MAX_MS,
   WANDER_MIN_MS,
 } from './index'
@@ -47,6 +51,9 @@ function input(overrides: Partial<DirectorInput> = {}): DirectorInput {
     chatX: null,
     interactionSeq: 0,
     interactionAtMs: null,
+    actionRequest: null,
+    actionFeedback: null,
+    dragging: false,
     cursorX: null,
     cursorOnStage: false,
     toolRequest: null,
@@ -232,6 +239,11 @@ describe('body director home, goals, roam and tools', () => {
       cameraPoint,
       slots: { sit: true, sleep: true },
       ...NO_WORLD_BODY_INPUT,
+      interactionSeq: 0,
+      interactionAtMs: null,
+      actionRequest: null,
+      actionFeedback: null,
+      dragging: false,
     })
     const started = decide(legacy(0))
     const sitting = decide(legacy(120_000), started.memory)
@@ -561,5 +573,343 @@ describe('body director twenty minute scenario', () => {
     expect(wander).toBeGreaterThan(home)
     expect(timeline.filter(entry => entry.atMs >= 70_000 && entry.atMs < 80_000)).toEqual([])
     expect(timeline[wander].atMs).toBeGreaterThanOrEqual(WANDER_MIN_MS)
+  })
+})
+
+function action(seq: number, overrides: Partial<BodyActionRequest> = {}): BodyActionRequest {
+  return { seq, clipId: 'clip', kind: 'action', layer: 'full', loop: false, durationMs: 10_000, source: 'tool', ...overrides }
+}
+
+function gesture(seq: number, overrides: Partial<BodyActionRequest> = {}): BodyActionRequest {
+  return action(seq, { clipId: 'wave', kind: 'gesture', layer: 'upper', durationMs: 2_000, ...overrides })
+}
+
+function dance(seq: number, overrides: Partial<BodyActionRequest> = {}): BodyActionRequest {
+  return action(seq, { clipId: 'dance', kind: 'dance', durationMs: 45_000, ...overrides })
+}
+
+describe('body director actions', () => {
+  it('(a) moves the goal to pending for a full action mid-walk, plays once idle and issues the goal again after it', () => {
+    const goal = { seq: 1, x: 10, pace: 'walk' as const }
+    const walking = decide(world({ debugGoal: goal }))
+    const accepted = decide(world({ nowMs: 5_000, rootX: 4, locomotionMode: 'walking', debugGoal: goal, actionRequest: action(1, { durationMs: 60_000 }) }), walking.memory)
+    const stillWalking = decide(world({ nowMs: 5_500, rootX: 4, locomotionMode: 'walking', debugGoal: goal, actionRequest: action(1, { durationMs: 60_000 }) }), accepted.memory)
+    const playing = decide(world({ nowMs: 6_000, rootX: 4, debugGoal: goal, actionRequest: action(1, { durationMs: 60_000 }) }), stillWalking.memory)
+    const fadeTail = decide(world({ nowMs: 40_000, rootX: 4, clipOwnsRoot: true, debugGoal: goal, actionRequest: action(1, { durationMs: 60_000 }), actionFeedback: { seq: 1, state: 'finished' } }), playing.memory)
+    const resumed = decide(world({ nowMs: 41_000, rootX: 4, debugGoal: goal, actionRequest: action(1, { durationMs: 60_000 }), actionFeedback: { seq: 1, state: 'finished' } }), fadeTail.memory)
+
+    expect(walking.intent.locomotion.goalX).toBe(10)
+    expect(accepted.intent.action).toMatchObject({ seq: 1, clipId: 'clip', layer: 'full', phase: 'settling' })
+    expect(accepted.intent.locomotion.goalX).toBeNull()
+    expect(accepted.memory.pendingGoal).toMatchObject({ x: 10, reason: 'debug', requestedAtMs: 5_000 })
+    expect(stillWalking.intent.action?.phase).toBe('settling')
+    expect(playing.intent.action).toMatchObject({ seq: 1, phase: 'playing' })
+    expect(playing.intent.locomotion.goalX).toBeNull()
+    // The pending goal outlives the 30 s time to live while the full clip runs.
+    expect(fadeTail.intent.action).toBeNull()
+    expect(fadeTail.memory.pendingGoal).toMatchObject({ x: 10, requestedAtMs: 40_000 })
+    expect(fadeTail.intent.locomotion.goalX).toBeNull()
+    expect(resumed.intent.locomotion).toMatchObject({ goalX: 10, reason: 'debug' })
+    expect(resumed.memory.pendingGoal).toBeNull()
+  })
+
+  it('(b) keeps a pending approach-chat through a 45 second dance and issues it afterwards', () => {
+    const started = decide(world({ actionRequest: dance(1) }))
+    const unfolded = decide(world({ nowMs: 1_000, chatUnfoldSeq: 1, chatX: 6, actionRequest: dance(1) }), started.memory)
+    const during = decide(world({ nowMs: 40_000, chatUnfoldSeq: 1, chatX: 6, actionRequest: dance(1) }), unfolded.memory)
+    const finished = decide(world({ nowMs: 46_000, chatUnfoldSeq: 1, chatX: 6, actionRequest: dance(1), actionFeedback: { seq: 1, state: 'finished' } }), during.memory)
+
+    expect(started.intent.action).toMatchObject({ phase: 'playing', layer: 'full' })
+    expect(unfolded.memory.pendingGoal).toMatchObject({ reason: 'approach-chat' })
+    expect(unfolded.intent.action).not.toBeNull()
+    expect(during.memory.pendingGoal).toMatchObject({ reason: 'approach-chat' })
+    expect(during.intent.locomotion.goalX).toBeNull()
+    expect(finished.intent.action).toBeNull()
+    expect(finished.intent.locomotion).toMatchObject({ goalX: 5, reason: 'approach-chat' })
+  })
+
+  it('(c) stands a sitting character up for a full action and keeps the sit under an upper gesture', () => {
+    const started = decide(world({ nowMs: 0 }))
+    const sitting = decide(world({ nowMs: 120_000 }), started.memory)
+    // 1 s after the sit, inside the stance dwell: a performance is not held back by it.
+    const requested = decide(world({ nowMs: 121_000, actionRequest: action(1) }), sitting.memory)
+    const early = decide(world({ nowMs: 121_000 + STAND_SETTLE_MS - 1, actionRequest: action(1) }), requested.memory)
+    const settled = decide(world({ nowMs: 121_000 + STAND_SETTLE_MS, actionRequest: action(1) }), early.memory)
+    const waving = decide(world({ nowMs: 121_000, actionRequest: gesture(1) }), sitting.memory)
+    const later = decide(world({ nowMs: 122_000, actionRequest: gesture(1) }), waving.memory)
+
+    expect(sitting.intent.stance).toBe('sit')
+    expect(requested.intent.stance).toBe('stand')
+    expect(requested.intent.action?.phase).toBe('settling')
+    expect(early.intent.action?.phase).toBe('settling')
+    expect(settled.intent.action?.phase).toBe('playing')
+    expect(waving.intent.stance).toBe('sit')
+    expect(waving.intent.action).toMatchObject({ layer: 'upper', phase: 'playing' })
+    expect(later.intent.stance).toBe('sit')
+  })
+
+  it('(d) reports the retry time of a refractory refusal and still advances the sequence', () => {
+    const started = decide(world({ actionRequest: action(1) }))
+    const finished = decide(world({ nowMs: 5_000, actionRequest: action(1), actionFeedback: { seq: 1, state: 'finished' } }), started.memory)
+    const refused = decide(world({
+      nowMs: 6_000,
+      actionRequest: action(2),
+      toolRequest: { seq: 1, kind: 'look-at', target: 'chat' },
+    }), finished.memory)
+    const accepted = decide(world({ nowMs: 5_000 + ACTION_REFRACTORY_MS, actionRequest: action(3) }), refused.memory)
+
+    expect(finished.intent.action).toBeNull()
+    expect(refused.memory).toMatchObject({ lastActionSeq: 2, actionRefusal: 'refractory', actionRetryAfterMs: ACTION_REFRACTORY_MS - 1_000, toolRefused: false })
+    expect(refused.intent.action).toBeNull()
+    expect(accepted.memory).toMatchObject({ lastActionSeq: 3, actionRefusal: null, actionRetryAfterMs: null })
+    expect(accepted.intent.action?.seq).toBe(3)
+  })
+
+  it('(d) drops a repeated gesture inside the per-clip cooldown without a retry time', () => {
+    const first = decide(world({ actionRequest: gesture(1) }))
+    const finished = decide(world({ nowMs: 1_000, actionRequest: gesture(1), actionFeedback: { seq: 1, state: 'finished' } }), first.memory)
+    const repeated = decide(world({ nowMs: 2_000, actionRequest: gesture(2) }), finished.memory)
+    const other = decide(world({ nowMs: 2_500, actionRequest: gesture(3, { clipId: 'nod' }) }), repeated.memory)
+    const again = decide(world({ nowMs: 4_000, actionRequest: gesture(4) }), other.memory)
+
+    expect(repeated.memory).toMatchObject({ lastActionSeq: 2, actionRefusal: 'refractory', actionRetryAfterMs: null })
+    expect(repeated.intent.action).toBeNull()
+    expect(other.intent.action).toMatchObject({ seq: 3, clipId: 'nod' })
+    expect(again.memory.lastActionSeq).toBe(4)
+  })
+
+  it('(h) holds a full action in settling while she speaks, with no timeout, but plays a gesture at once', () => {
+    const speaking = { speaking: true, performance: performance('talking') }
+    const held = decide(world({ ...speaking, actionRequest: action(1) }))
+    const longHeld = decide(world({ ...speaking, nowMs: 60_000, actionRequest: action(1) }), held.memory)
+    const released = decide(world({ nowMs: 61_000, actionRequest: action(1) }), longHeld.memory)
+    const wave = decide(world({ ...speaking, actionRequest: gesture(1) }))
+
+    expect(held.intent.action?.phase).toBe('settling')
+    expect(longHeld.intent.action?.phase).toBe('settling')
+    expect(released.intent.action?.phase).toBe('playing')
+    expect(wave.intent.action).toMatchObject({ layer: 'upper', phase: 'playing' })
+  })
+
+  it('(e) ends a looping dance on a chat unfold and on a move tool, but not a one-shot', () => {
+    const loop = decide(world({ actionRequest: dance(1, { loop: true }) }))
+    const unfolded = decide(world({ nowMs: 1_000, chatUnfoldSeq: 1, chatX: 6, actionRequest: dance(1, { loop: true }) }), loop.memory)
+    const moved = decide(world({ nowMs: 1_000, chatX: 6, actionRequest: dance(1, { loop: true }), toolRequest: { seq: 1, kind: 'come-here' } }), loop.memory)
+    const oneShot = decide(world({ actionRequest: dance(1) }))
+    const oneShotUnfolded = decide(world({ nowMs: 1_000, chatUnfoldSeq: 1, chatX: 6, actionRequest: dance(1) }), oneShot.memory)
+    const oneShotMoved = decide(world({ nowMs: 1_000, chatX: 6, actionRequest: dance(1), toolRequest: { seq: 1, kind: 'come-here' } }), oneShot.memory)
+
+    expect(loop.intent.action?.loop).toBe(true)
+    expect(unfolded.intent.action).toBeNull()
+    expect(unfolded.intent.locomotion).toMatchObject({ goalX: 5, reason: 'approach-chat' })
+    expect(unfolded.memory.actionRefractoryUntilMs.dance).toBe(1_000 + DANCE_REFRACTORY_MS)
+    expect(moved.intent.action).toBeNull()
+    expect(moved.intent.locomotion).toMatchObject({ goalX: 5, reason: 'tool' })
+    expect(oneShotUnfolded.intent.action?.phase).toBe('playing')
+    expect(oneShotUnfolded.memory.pendingGoal).toMatchObject({ reason: 'approach-chat' })
+    expect(oneShotUnfolded.intent.locomotion.goalX).toBeNull()
+    expect(oneShotMoved.intent.action?.phase).toBe('playing')
+    expect(oneShotMoved.memory.pendingGoal).toMatchObject({ reason: 'tool' })
+  })
+
+  it('(e) ends a one-shot that never reports back with the watchdog, two seconds after its duration', () => {
+    const request = action(1, { durationMs: 10_000 })
+    const started = decide(world({ actionRequest: request }))
+    const nearly = decide(world({ nowMs: 11_999, actionRequest: request }), started.memory)
+    const ended = decide(world({ nowMs: 12_000, actionRequest: request }), nearly.memory)
+
+    expect(started.intent.action?.phase).toBe('playing')
+    expect(nearly.intent.action).not.toBeNull()
+    expect(ended.intent.action).toBeNull()
+    expect(ended.memory.actionRefractoryUntilMs.action).toBe(12_000 + ACTION_REFRACTORY_MS)
+  })
+
+  it('ends a failed performance without arming the refractory', () => {
+    const started = decide(world({ actionRequest: action(1) }))
+    const failed = decide(world({ nowMs: 1_000, actionRequest: action(1), actionFeedback: { seq: 1, state: 'failed' } }), started.memory)
+    const again = decide(world({ nowMs: 1_500, actionRequest: action(2) }), failed.memory)
+
+    expect(failed.intent.action).toBeNull()
+    expect(failed.memory.actionRefractoryUntilMs).toEqual({ action: 0, dance: 0 })
+    expect(again.intent.action?.seq).toBe(2)
+  })
+
+  it('stops a performance on an empty clip id from a tool or debug source', () => {
+    const loop = decide(world({ actionRequest: dance(1, { loop: true }) }))
+    const stopped = decide(world({ nowMs: 1_000, actionRequest: action(2, { clipId: '', source: 'debug' }) }), loop.memory)
+
+    expect(stopped.intent.action).toBeNull()
+    expect(stopped.memory.lastActionSeq).toBe(2)
+    expect(stopped.memory.actionRefusal).toBeNull()
+  })
+
+  it('(f) refuses while dragging and ends a full performance or a loop when the drag starts', () => {
+    const refused = decide(world({ dragging: true, actionRequest: action(1) }))
+    const full = decide(world({ actionRequest: action(1) }))
+    const dragged = decide(world({ nowMs: 1_000, dragging: true, actionRequest: action(1) }), full.memory)
+    const upper = decide(world({ actionRequest: gesture(1) }))
+    const upperDragged = decide(world({ nowMs: 500, dragging: true, actionRequest: gesture(1) }), upper.memory)
+    const loop = decide(world({ actionRequest: gesture(1, { loop: true }) }))
+    const loopDragged = decide(world({ nowMs: 500, dragging: true, actionRequest: gesture(1, { loop: true }) }), loop.memory)
+
+    expect(refused.intent.action).toBeNull()
+    expect(refused.memory).toMatchObject({ lastActionSeq: 1, actionRefusal: 'dragging' })
+    expect(dragged.intent.action).toBeNull()
+    expect(upperDragged.intent.action).not.toBeNull()
+    expect(loopDragged.intent.action).toBeNull()
+  })
+
+  it('refuses asleep while away and busy while another clip runs, and lets an action replace a gesture', () => {
+    const away = decide(world({ performance: performance('idle', 'camera', true), actionRequest: action(1) }))
+    const full = decide(world({ actionRequest: action(1, { durationMs: 10_000 }) }))
+    const busy = decide(world({ nowMs: 3_000, actionRequest: action(2, { clipId: 'other' }) }), full.memory)
+    const loopBusy = decide(world({ nowMs: 3_000, actionRequest: gesture(2) }), decide(world({ actionRequest: dance(1, { loop: true }) })).memory)
+    const upper = decide(world({ actionRequest: gesture(1) }))
+    const gestureBusy = decide(world({ nowMs: 500, actionRequest: gesture(2, { clipId: 'nod' }) }), upper.memory)
+    const replaced = decide(world({ nowMs: 500, actionRequest: action(2) }), upper.memory)
+
+    expect(away.memory).toMatchObject({ lastActionSeq: 1, actionRefusal: 'asleep' })
+    expect(busy.memory).toMatchObject({ lastActionSeq: 2, actionRefusal: 'busy', actionRetryAfterMs: 7_000 })
+    expect(busy.intent.action?.seq).toBe(1)
+    expect(loopBusy.memory).toMatchObject({ actionRefusal: 'busy', actionRetryAfterMs: 0 })
+    expect(gestureBusy.memory).toMatchObject({ actionRefusal: 'busy', actionRetryAfterMs: 1_500 })
+    expect(replaced.intent.action?.seq).toBe(2)
+    expect(replaced.intent.action?.layer).toBe('full')
+  })
+
+  it('(g) names why a movement tool was refused', () => {
+    const closed = decide(world({ chatX: null, toolRequest: { seq: 1, kind: 'come-here' } }))
+    const noWorld = decide(input({ toolRequest: { seq: 1, kind: 'go-home' } }))
+    const first = decide(world({ chatX: 6, toolRequest: { seq: 1, kind: 'come-here' } }))
+    const refractory = decide(world({ nowMs: 1_000, chatX: 6, toolRequest: { seq: 2, kind: 'go-home' } }), first.memory)
+    const accepted = decide(world({ nowMs: MOVE_TOOL_REFRACTORY_MS, chatX: 6, toolRequest: { seq: 3, kind: 'go-home' } }), refractory.memory)
+
+    expect(closed.memory).toMatchObject({ toolRefused: true, toolRefusalReason: 'chat-closed' })
+    expect(noWorld.memory).toMatchObject({ toolRefused: true, toolRefusalReason: 'no-world' })
+    expect(first.memory.toolRefusalReason).toBeNull()
+    expect(refractory.memory).toMatchObject({ toolRefused: true, toolRefusalReason: 'refractory' })
+    expect(accepted.memory.toolRefusalReason).toBeNull()
+  })
+
+  describe('cancel and resume', () => {
+    const goal = { seq: 1, x: 10, pace: 'walk' as const }
+    const enders: Array<[string, Partial<DirectorInput>]> = [
+      ['an interaction', { interactionSeq: 1 }],
+      ['a drag', { dragging: true }],
+      ['a chat unfold', { chatUnfoldSeq: 1, chatX: 6 }],
+      ['going away', { performance: performance('idle', 'camera', true) }],
+    ]
+
+    it.each(enders)('refreshes the pending goal time to live when %s ends a performance, then accepts a re-request after the refractory', (_name, ender) => {
+      const request = dance(1, { loop: true })
+      const walking = decide(world({ debugGoal: goal }))
+      const accepted = decide(world({ nowMs: 5_000, rootX: 4, locomotionMode: 'walking', debugGoal: goal, actionRequest: request }), walking.memory)
+      const playing = decide(world({ nowMs: 6_000, rootX: 4, debugGoal: goal, actionRequest: request }), accepted.memory)
+      // 35 s in: older than the time to live, kept alive only because the full clip runs.
+      const ended = decide(world({ nowMs: 40_000, rootX: 4, clipOwnsRoot: true, debugGoal: goal, actionRequest: request, ...ender }), playing.memory)
+      const settled = decide(world({ nowMs: 40_001, rootX: 4, clipOwnsRoot: true, debugGoal: goal, actionRequest: request, ...ender, dragging: false }), ended.memory)
+      const stillHeld = decide(world({ nowMs: 69_999, rootX: 4, clipOwnsRoot: true, debugGoal: goal, actionRequest: request }), settled.memory)
+      const early = decide(world({ nowMs: 40_000 + DANCE_REFRACTORY_MS - 1, rootX: 4, actionRequest: dance(2) }), stillHeld.memory)
+      // A refused request is consumed; the caller asks again with a new sequence number.
+      const again = decide(world({ nowMs: 40_000 + DANCE_REFRACTORY_MS, rootX: 4, actionRequest: dance(3) }), early.memory)
+
+      expect(playing.intent.action?.phase).toBe('playing')
+      expect(playing.memory.pendingGoal).toMatchObject({ requestedAtMs: 5_000 })
+      expect(ended.intent.action).toBeNull()
+      expect(ended.memory.pendingGoal?.requestedAtMs).toBe(40_000)
+      expect(stillHeld.memory.pendingGoal).not.toBeNull()
+      expect(early.memory).toMatchObject({ lastActionSeq: 2, actionRefusal: 'refractory', actionRetryAfterMs: 1 })
+      expect(early.intent.action).toBeNull()
+      expect(again.intent.action).toMatchObject({ seq: 3, clipId: 'dance' })
+      expect(again.memory.actionRefusal).toBeNull()
+    })
+
+    it('ends a full one-shot on an interaction but lets an upper one-shot continue', () => {
+      const full = decide(world({ actionRequest: action(1) }))
+      const fullPoked = decide(world({ nowMs: 1_000, interactionSeq: 1, actionRequest: action(1) }), full.memory)
+      const upper = decide(world({ actionRequest: gesture(1) }))
+      const upperPoked = decide(world({ nowMs: 500, interactionSeq: 1, actionRequest: gesture(1) }), upper.memory)
+
+      expect(fullPoked.intent.action).toBeNull()
+      expect(upperPoked.intent.action).toMatchObject({ layer: 'upper', phase: 'playing' })
+    })
+  })
+
+  it('works without a world: the classic window still performs and ends on a poke', () => {
+    const quiet = { ...NO_WORLD_BODY_INPUT, interactionSeq: 0, interactionAtMs: null, actionRequest: null, actionFeedback: null, dragging: false }
+    const frame = (nowMs: number, patch: Partial<DirectorInput> = {}): DirectorInput => ({
+      nowMs,
+      performance: performance(),
+      cursorPoint,
+      chatPoint,
+      cameraPoint,
+      slots: { sit: true, sleep: true },
+      ...quiet,
+      ...patch,
+    })
+    const started = decide(frame(0, { actionRequest: action(1) }))
+    const poked = decide(frame(1_000, { actionRequest: action(1), interactionSeq: 1 }), started.memory)
+
+    expect(started.intent.action).toMatchObject({ phase: 'playing' })
+    expect(poked.intent.action).toBeNull()
+  })
+})
+
+describe('body director three minute performance scenario', () => {
+  it('walks to the chat, dances through a come_here, resumes it, then a poke ends the second action', () => {
+    const labels: Array<{ atMs: number, label: string }> = []
+    const log = (atMs: number, label: string) => labels.push({ atMs, label })
+    const first = dance(1, { durationMs: 50_000 })
+    const second = action(2, { clipId: 'spin', durationMs: 30_000 })
+    let memory = initialBodyDirectorMemory
+    let rootX = 0
+    let mode: DirectorInput['locomotionMode'] = 'idle'
+
+    for (let nowMs = 0; nowMs <= 180_000; nowMs += 500) {
+      const previous = memory
+      const frame = world({
+        nowMs,
+        rootX,
+        locomotionMode: mode,
+        chatUnfoldSeq: nowMs >= 10_000 ? 1 : 0,
+        chatX: 14,
+        toolRequest: nowMs >= 40_000 ? { seq: 1, kind: 'come-here' } : null,
+        actionRequest: nowMs >= 80_000 ? second : nowMs >= 20_000 ? first : null,
+        actionFeedback: nowMs >= 70_000 ? { seq: 1, state: 'finished' } : null,
+        interactionSeq: nowMs >= 90_000 ? 1 : 0,
+      })
+      const out = decide(frame, previous)
+      memory = out.memory
+
+      if (previous.performing && !memory.performing)
+        log(nowMs, memory.lastInteractionSeq > previous.lastInteractionSeq ? 'ended by interaction' : 'finished')
+      if (memory.goalSinceMs !== previous.goalSinceMs && memory.goalX !== null)
+        log(nowMs, memory.reason === 'tool' ? 'tool issued' : memory.reason)
+      if (memory.performing && memory.performing.phase !== previous.performing?.phase)
+        log(nowMs, `performing ${memory.performing.phase}`)
+      if (memory.pendingGoal?.reason === 'tool' && previous.pendingGoal?.reason !== 'tool')
+        log(nowMs, 'pending tool')
+
+      const { goalX, pace } = out.intent.locomotion
+      if (goalX !== null && Math.abs(goalX - rootX) > 0.1) {
+        rootX += Math.sign(goalX - rootX) * Math.min((pace === 'walk' ? 1 : 0.6) * 0.5, Math.abs(goalX - rootX))
+        mode = 'walking'
+      }
+      else {
+        mode = 'idle'
+      }
+    }
+
+    console.info(labels.map(entry => `scenario t=${(entry.atMs / 1000).toFixed(1)}s ${entry.label}`).join('\n'))
+
+    const order = ['approach-chat', 'performing settling', 'performing playing', 'pending tool', 'finished', 'tool issued', 'performing playing', 'ended by interaction']
+    let cursor = -1
+    for (const label of order) {
+      const index = labels.findIndex((entry, at) => at > cursor && entry.label === label)
+      expect(index, `${label} after position ${cursor}`).toBeGreaterThan(cursor)
+      cursor = index
+    }
+    expect(labels.find(entry => entry.label === 'finished')?.atMs).toBe(70_000)
+    expect(labels.find(entry => entry.label === 'ended by interaction')?.atMs).toBe(90_000)
   })
 })
