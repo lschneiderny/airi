@@ -40,6 +40,24 @@ export const LOOK_OVERRIDE_MS = 8_000
 /** Time in milliseconds a goal blocked by a gate is held before it is dropped. */
 export const PENDING_GOAL_TTL_MS = 30_000
 
+/** Refractory in milliseconds after a full-body action ends, before another action or dance is accepted. */
+export const ACTION_REFRACTORY_MS = 15_000
+
+/** Refractory in milliseconds after a dance ends. */
+export const DANCE_REFRACTORY_MS = 60_000
+
+/** Minimum time in milliseconds before the same gesture clip is accepted again. */
+export const GESTURE_REPEAT_MS = 4_000
+
+/** Time in milliseconds a character must have stood after standing up before a full-body clip starts. */
+export const STAND_SETTLE_MS = 800
+
+/** Longest wait in milliseconds for the body to stand and stop walking before a full-body clip starts anyway. */
+export const SETTLE_TIMEOUT_MS = 2_000
+
+/** A one-shot playing longer than its duration plus this many milliseconds without feedback ends. */
+export const PERFORM_WATCHDOG_MS = 2_000
+
 /** Distance, in world units, within which the root counts as at a point. */
 const ARRIVAL_TOLERANCE = 0.1
 
@@ -60,6 +78,35 @@ export interface BodyToolRequest {
   seq: number
   kind: 'come-here' | 'go-home' | 'look-at'
   target?: BodyLookTarget
+}
+
+/** What a clip is for; it decides the refractory and the refusal rules. */
+export type BodyActionKind = 'gesture' | 'action' | 'dance'
+
+/** `full` owns the whole body; `upper` plays over the base and the walk. */
+export type BodyActionLayer = 'full' | 'upper'
+
+/** Why an action request was refused. */
+export type BodyActionRefusal = 'refractory' | 'busy' | 'asleep' | 'dragging'
+
+/**
+ * An action request; a new `seq` marks a new request. An empty `clipId` from the `tool` or `debug` source stops the
+ * running performance.
+ */
+export interface BodyActionRequest {
+  seq: number
+  clipId: string
+  kind: BodyActionKind
+  layer: BodyActionLayer
+  loop: boolean
+  durationMs: number
+  source: 'act' | 'tool' | 'debug'
+}
+
+/** The adapter's report on the clip the director last accepted. */
+export interface BodyActionFeedback {
+  seq: number
+  state: 'playing' | 'finished' | 'failed'
 }
 
 /** A locomotion goal request before the gates are applied. */
@@ -97,6 +144,10 @@ export interface BodyDirectorInput {
   chatX: number | null
   interactionSeq: number
   interactionAtMs: number | null
+  actionRequest: BodyActionRequest | null
+  actionFeedback: BodyActionFeedback | null
+  /** True while the user drags the character. */
+  dragging: boolean
   cursorX: number | null
   cursorOnStage: boolean
   toolRequest: BodyToolRequest | null
@@ -109,9 +160,10 @@ export interface BodyDirectorInput {
 
 /**
  * Director inputs for hosts without a stage world (classic window mode).
- * Spread it under the six legacy fields; every goal rule stays inert.
+ * Spread it under the six legacy fields; every goal rule stays inert. Clips, pokes and drags exist without a world, so
+ * every host supplies the interaction and action inputs itself.
  */
-export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots'> = Object.freeze({
+export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance' | 'cursorPoint' | 'chatPoint' | 'cameraPoint' | 'slots' | 'interactionSeq' | 'interactionAtMs' | 'actionRequest' | 'actionFeedback' | 'dragging'> = Object.freeze({
   ground: null,
   rootX: 0,
   homeX: 0,
@@ -121,8 +173,6 @@ export const NO_WORLD_BODY_INPUT: Omit<BodyDirectorInput, 'nowMs' | 'performance
   roamMode: 'stay',
   chatUnfoldSeq: 0,
   chatX: null,
-  interactionSeq: 0,
-  interactionAtMs: null,
   cursorX: null,
   cursorOnStage: false,
   toolRequest: null,
@@ -154,6 +204,16 @@ export interface BodyDirectorMemory {
   readonly toolRefused: boolean
   /** Milliseconds until a refused tool may be retried, or null when none was refused. */
   readonly toolRetryAfterMs: number | null
+  /** Why the latest refused tool was refused, or null after an accepted one. */
+  readonly toolRefusalReason: 'refractory' | 'no-world' | 'chat-closed' | null
+  /** The accepted clip performance; `settling` until the body is clear, then `playing`. */
+  readonly performing: { request: BodyActionRequest, phase: 'settling' | 'playing', sinceMs: number } | null
+  readonly lastActionSeq: number
+  readonly actionRefusal: BodyActionRefusal | null
+  /** Milliseconds until a refused action may be retried; null when none applies. */
+  readonly actionRetryAfterMs: number | null
+  readonly actionRefractoryUntilMs: { action: number, dance: number }
+  readonly gestureCooldown: { clipId: string, untilMs: number } | null
   readonly moveRefractoryUntilMs: number
   readonly lookRefractoryUntilMs: number
   /** Latest time a goal reason held, used for the return-home delay. */
@@ -182,6 +242,13 @@ export const initialBodyDirectorMemory: BodyDirectorMemory = Object.freeze({
   lastDebugSeq: 0,
   toolRefused: false,
   toolRetryAfterMs: null,
+  toolRefusalReason: null,
+  performing: null,
+  lastActionSeq: 0,
+  actionRefusal: null,
+  actionRetryAfterMs: null,
+  actionRefractoryUntilMs: Object.freeze({ action: 0, dance: 0 }),
+  gestureCooldown: null,
   moveRefractoryUntilMs: 0,
   lookRefractoryUntilMs: 0,
   lastReasonMs: null,
@@ -250,12 +317,155 @@ export function decideBody(
 ): { intent: BodyIntent, memory: BodyDirectorMemory } {
   const finiteNowMs = Number.isFinite(input.nowMs) ? input.nowMs : previous.nowMs ?? 0
   const nowMs = previous.nowMs === null ? finiteNowMs : Math.max(previous.nowMs, finiteNowMs)
-  const idleSinceMs = input.performance.mode === 'idle'
-    ? previous.idleSinceMs ?? nowMs
-    : null
-
   const { ground } = input
   const atHome = Math.abs(input.rootX - input.homeX) <= ARRIVAL_TOLERANCE
+
+  const leg = input.legLength
+  let rngState = previous.rngState ?? input.seed >>> 0
+  let goalX = ground === null ? null : previous.goalX
+  let goalSinceMs = previous.goalSinceMs
+  let goalPace = previous.goalPace
+  let reason = ground === null ? 'stay' : previous.reason
+  let pending = previous.pendingGoal
+  let lastReasonMs = previous.lastReasonMs ?? nowMs
+  let nextWanderAtMs = previous.nextWanderAtMs
+  let toolRefused = previous.toolRefused
+  let toolRetryAfterMs = previous.toolRetryAfterMs
+  let toolRefusalReason = previous.toolRefusalReason
+  let moveRefractoryUntilMs = previous.moveRefractoryUntilMs
+  let lookRefractoryUntilMs = previous.lookRefractoryUntilMs
+  let lookOverride = previous.lookOverride !== null && nowMs < previous.lookOverride.untilMs
+    ? previous.lookOverride
+    : null
+
+  // A goal in progress ends once the body has settled on it.
+  const arrived = goalX !== null && input.locomotionMode === 'idle' && Math.abs(input.rootX - goalX) <= ARRIVAL_TOLERANCE
+  if (arrived) {
+    goalX = null
+    reason = 'stay'
+  }
+
+  // Performance bookkeeping. The director never starts or names clips: it accepts a request, echoes its `clipId` and
+  // ends the performance on feedback, a watchdog, or a user intent.
+  let performing = previous.performing
+  let lastActionSeq = previous.lastActionSeq
+  let actionRefusal = previous.actionRefusal
+  let actionRetryAfterMs = previous.actionRetryAfterMs
+  let actionRefractoryUntilMs = previous.actionRefractoryUntilMs
+  let gestureCooldown = previous.gestureCooldown
+  let fullEnded = false
+  const endPerformance = (armRefractory: boolean) => {
+    if (performing === null)
+      return
+    const { kind, layer } = performing.request
+    if (layer === 'full')
+      fullEnded = true
+    if (armRefractory && kind === 'action')
+      actionRefractoryUntilMs = { ...actionRefractoryUntilMs, action: nowMs + ACTION_REFRACTORY_MS }
+    if (armRefractory && kind === 'dance')
+      actionRefractoryUntilMs = { ...actionRefractoryUntilMs, dance: nowMs + DANCE_REFRACTORY_MS }
+    performing = null
+  }
+  const remainingMs = () => {
+    if (performing === null || performing.request.loop)
+      return 0
+    return performing.phase === 'playing'
+      ? Math.max(0, performing.request.durationMs - (nowMs - performing.sinceMs))
+      : performing.request.durationMs
+  }
+
+  const feedback = input.actionFeedback
+  if (performing !== null && feedback !== null && feedback.seq === performing.request.seq) {
+    if (feedback.state === 'finished')
+      endPerformance(true)
+    else if (feedback.state === 'failed')
+      endPerformance(false)
+  }
+  if (performing !== null && performing.phase === 'playing' && !performing.request.loop && nowMs - performing.sinceMs >= performing.request.durationMs + PERFORM_WATCHDOG_MS)
+    endPerformance(true)
+  if (performing !== null) {
+    const broad = performing.request.layer === 'full' || performing.request.loop
+    if (input.performance.away)
+      endPerformance(true)
+    else if (broad && (input.dragging || input.interactionSeq > previous.lastInteractionSeq))
+      endPerformance(true)
+    else if (performing.request.loop && input.chatUnfoldSeq > previous.lastUnfoldSeq)
+      endPerformance(true)
+  }
+
+  const requested = input.actionRequest
+  if (requested !== null && requested.seq > lastActionSeq) {
+    lastActionSeq = requested.seq
+    const isGesture = requested.kind === 'gesture'
+    const refractoryKey = requested.kind === 'dance' ? 'dance' : 'action'
+    const refuse = (reason: BodyActionRefusal, retryAfterMs: number | null) => {
+      actionRefusal = reason
+      actionRetryAfterMs = retryAfterMs
+    }
+    if (requested.clipId === '') {
+      if (requested.source !== 'act')
+        endPerformance(true)
+    }
+    else if (input.performance.away || previous.stance === 'sleep') {
+      refuse('asleep', null)
+    }
+    else if (input.dragging) {
+      refuse('dragging', null)
+    }
+    else if (isGesture && gestureCooldown !== null && gestureCooldown.clipId === requested.clipId && nowMs < gestureCooldown.untilMs) {
+      // ACT has no answer channel: the gesture is dropped without a retry time.
+      refuse('refractory', null)
+    }
+    else if (!isGesture && nowMs < actionRefractoryUntilMs[refractoryKey]) {
+      refuse('refractory', actionRefractoryUntilMs[refractoryKey] - nowMs)
+    }
+    else if (performing !== null && (performing.request.layer === 'full' || isGesture)) {
+      refuse('busy', remainingMs())
+    }
+    else {
+      // An upper performance gives way to an action or a dance.
+      performing = null
+      actionRefusal = null
+      actionRetryAfterMs = null
+      if (isGesture) {
+        gestureCooldown = { clipId: requested.clipId, untilMs: nowMs + GESTURE_REPEAT_MS }
+        performing = { request: requested, phase: 'playing', sinceMs: nowMs }
+      }
+      else {
+        // The walk resumes after the clip: the goal in progress waits as a pending goal (a newer pending goal wins).
+        if (goalX !== null) {
+          pending ??= { x: goalX, pace: goalPace, reason, requestedAtMs: nowMs }
+          goalX = null
+          goalSinceMs = null
+          reason = 'stay'
+        }
+        performing = { request: requested, phase: 'settling', sinceMs: nowMs }
+      }
+    }
+  }
+
+  // A full-body clip waits for the body to be clear: standing, not walking, not speaking.
+  if (performing !== null && performing.phase === 'settling') {
+    if (input.speaking || input.performance.mode === 'talking') {
+      // Held without a timeout; the stand and idle timeouts count from the moment she stops.
+      performing = { ...performing, sinceMs: nowMs }
+    }
+    else {
+      const standOk = previous.stance === 'stand' && (previous.stanceSinceMs === null || nowMs - previous.stanceSinceMs >= STAND_SETTLE_MS)
+      const idleOk = input.locomotionMode === 'idle'
+      if ((standOk && idleOk) || nowMs - performing.sinceMs >= SETTLE_TIMEOUT_MS)
+        performing = { ...performing, phase: 'playing', sinceMs: nowMs }
+    }
+  }
+  const forceStand = performing !== null && performing.request.kind !== 'gesture'
+
+  // A full-body clip also holds the idle clock, so the idle-to-sit timer cannot run under a dance.
+  const idleSinceMs = performing?.request.layer === 'full'
+    ? nowMs
+    : input.performance.mode === 'idle'
+      ? previous.idleSinceMs ?? nowMs
+      : null
+
   const mayRest = ground === null || (input.locomotionMode === 'idle' && atHome)
   // A held goal or a due wander stands the character up so the goal can be issued.
   const wakeForGoal = ground !== null
@@ -271,7 +481,10 @@ export function decideBody(
     )
 
   let desiredStance: BodyIntent['stance'] = 'stand'
-  if (input.performance.away) {
+  if (forceStand) {
+    // A performance stands her up and holds the stand.
+  }
+  else if (input.performance.away) {
     if (input.slots.sleep && mayRest)
       desiredStance = 'sleep'
   }
@@ -292,34 +505,11 @@ export function decideBody(
     const currentStanceSlotMissing = (stance === 'sit' && !input.slots.sit)
       || (stance === 'sleep' && !input.slots.sleep)
     const dwellElapsed = stanceSinceMs === null || nowMs - stanceSinceMs >= STANCE_MIN_DWELL_MS
-    if (currentStanceSlotMissing || dwellElapsed) {
+    // A performance is not held back by the stance dwell.
+    if (currentStanceSlotMissing || dwellElapsed || forceStand) {
       stance = desiredStance
       stanceSinceMs = nowMs
     }
-  }
-
-  const leg = input.legLength
-  let rngState = previous.rngState ?? input.seed >>> 0
-  let goalX = ground === null ? null : previous.goalX
-  let goalSinceMs = previous.goalSinceMs
-  let goalPace = previous.goalPace
-  let reason = ground === null ? 'stay' : previous.reason
-  let pending = previous.pendingGoal
-  let lastReasonMs = previous.lastReasonMs ?? nowMs
-  let nextWanderAtMs = previous.nextWanderAtMs
-  let toolRefused = previous.toolRefused
-  let toolRetryAfterMs = previous.toolRetryAfterMs
-  let moveRefractoryUntilMs = previous.moveRefractoryUntilMs
-  let lookRefractoryUntilMs = previous.lookRefractoryUntilMs
-  let lookOverride = previous.lookOverride !== null && nowMs < previous.lookOverride.untilMs
-    ? previous.lookOverride
-    : null
-
-  // A goal in progress ends once the body has settled on it.
-  const arrived = goalX !== null && input.locomotionMode === 'idle' && Math.abs(input.rootX - goalX) <= ARRIVAL_TOLERANCE
-  if (arrived) {
-    goalX = null
-    reason = 'stay'
   }
 
   // Event requests: later sources win (debug over tool over chat).
@@ -340,19 +530,25 @@ export function decideBody(
     if (nowMs < untilMs) {
       toolRefused = true
       toolRetryAfterMs = untilMs - nowMs
+      toolRefusalReason = 'refractory'
     }
     else if (unavailable) {
       toolRefused = true
       toolRetryAfterMs = 0
+      toolRefusalReason = ground === null ? 'no-world' : 'chat-closed'
     }
     else {
       toolRefused = false
       toolRetryAfterMs = null
+      toolRefusalReason = null
       if (isLook) {
         lookRefractoryUntilMs = nowMs + LOOK_TOOL_REFRACTORY_MS
         lookOverride = { target: tool.target ?? 'camera', untilMs: nowMs + LOOK_OVERRIDE_MS }
       }
       else if (ground !== null) {
+        // A move tool is a user intent: it ends a looping clip. A one-shot plays on with the goal pending.
+        if (performing?.request.loop)
+          endPerformance(true)
         moveRefractoryUntilMs = nowMs + MOVE_TOOL_REFRACTORY_MS
         // Come-here stops where an unfolded chat does: the same stand spot, with the same leg offset.
         const toolX = tool.kind === 'come-here' && input.chatX !== null
@@ -369,12 +565,16 @@ export function decideBody(
 
   if (request !== null)
     pending = { ...request, requestedAtMs: nowMs }
-  if (pending !== null && nowMs - pending.requestedAtMs >= PENDING_GOAL_TTL_MS)
+  // A held goal does not age while a full-body clip runs, and a clip that ends hands it a fresh time to live.
+  if (fullEnded && pending !== null)
+    pending = { ...pending, requestedAtMs: nowMs }
+  if (pending !== null && performing?.request.layer !== 'full' && nowMs - pending.requestedAtMs >= PENDING_GOAL_TTL_MS)
     pending = null
 
   const gateOpen = ground !== null
     && stance === 'stand'
     && !input.clipOwnsRoot
+    && performing?.request.layer !== 'full'
     && !input.speaking
     && input.performance.mode !== 'talking'
   let issued = false
@@ -469,6 +669,9 @@ export function decideBody(
       locomotion: ground === null
         ? { homeX: input.homeX, goalX: null, pace: 'walk', arriveFacing: 0, reason: 'stay' }
         : { homeX: input.homeX, goalX, pace: goalPace, arriveFacing, reason },
+      action: performing === null
+        ? null
+        : { seq: performing.request.seq, clipId: performing.request.clipId, layer: performing.request.layer, loop: performing.request.loop, phase: performing.phase },
     },
     memory: {
       nowMs,
@@ -486,6 +689,13 @@ export function decideBody(
       lastDebugSeq: input.debugGoal !== null ? Math.max(previous.lastDebugSeq, input.debugGoal.seq) : previous.lastDebugSeq,
       toolRefused,
       toolRetryAfterMs,
+      toolRefusalReason,
+      performing,
+      lastActionSeq,
+      actionRefusal,
+      actionRetryAfterMs,
+      actionRefractoryUntilMs,
+      gestureCooldown,
       moveRefractoryUntilMs,
       lookRefractoryUntilMs,
       lastReasonMs,

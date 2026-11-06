@@ -83,6 +83,11 @@ export class MMDStanceDirector {
       cameraPoint: null,
       slots: available,
       ...NO_WORLD_BODY_INPUT,
+      interactionSeq: 0,
+      interactionAtMs: null,
+      actionRequest: null,
+      actionFeedback: null,
+      dragging: false,
     }, this.memory)
     this.memory = memory
     this.startMs ??= memory.nowMs
