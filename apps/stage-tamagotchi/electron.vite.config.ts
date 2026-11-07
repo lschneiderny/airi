@@ -129,14 +129,18 @@ export default defineConfig({
 
     optimizeDeps: {
       // The dependency scanner misses these imports on a cold cache: they sit behind
-      // route pages, generated layouts, or the VAD worker. Vite then finds them during
-      // the first page load, re-bundles, answers stale requests with
-      // 504 (Outdated Optimize Dep), and reloads the page.
+      // route pages, generated layouts, the VAD worker, or the lazily loaded MMD scene.
+      // Vite then finds them during the first page load or the first MMD model load,
+      // re-bundles, answers stale requests with 504 (Outdated Optimize Dep), and
+      // reloads every renderer window.
       include: [
         'colorjs.io',
         '@moeru/eventa/adapters/webworkers',
         '@proj-airi/stage-ui-live2d > @pixi/constants',
         '@proj-airi/stage-ui-live2d > @pixi/math',
+        '@proj-airi/stage-ui-mmd > @moeru/three-mmd-physics-ammo',
+        '@proj-airi/stage-ui-mmd > @moeru/three-mmd/materials',
+        '@proj-airi/stage-ui-mmd > three-stdlib',
       ],
       exclude: [
         // Internal Packages
