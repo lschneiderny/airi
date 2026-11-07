@@ -1,7 +1,11 @@
 import type {
   MotionQaAwaitCaptureInput,
   MotionQaAwaitCaptureResult,
+  MotionQaChatSendInput,
+  MotionQaChatSendResult,
   MotionQaConfigureInput,
+  MotionQaEventsInput,
+  MotionQaEventsResult,
   MotionQaImportModelInput,
   MotionQaImportModelResult,
   MotionQaRunScenarioInput,
@@ -15,7 +19,9 @@ import type { GenericSchema } from 'valibot'
 import { errorMessageFrom } from '@moeru/std'
 import {
   MotionQaAwaitCaptureResultSchema,
+  MotionQaChatSendResultSchema,
   MotionQaCommandSchema,
+  MotionQaEventsResultSchema,
   MotionQaImportModelResultSchema,
   MotionQaRunScenarioResultSchema,
   MotionQaStartCaptureResultSchema,
@@ -29,6 +35,8 @@ export interface RendererEvaluator {
 }
 
 interface MotionQaCommands {
+  chatSend: { input: MotionQaChatSendInput, result: MotionQaChatSendResult }
+  events: { input: MotionQaEventsInput, result: MotionQaEventsResult }
   state: { input: undefined, result: MotionQaState }
   configure: { input: MotionQaConfigureInput, result: MotionQaState }
   importModelFromInput: { input: MotionQaImportModelInput, result: MotionQaImportModelResult }
@@ -39,6 +47,8 @@ interface MotionQaCommands {
 export type MotionQaCommandName = keyof MotionQaCommands
 
 const resultSchemas: Record<MotionQaCommandName, GenericSchema> = {
+  chatSend: MotionQaChatSendResultSchema,
+  events: MotionQaEventsResultSchema,
   state: MotionQaStateSchema,
   configure: MotionQaStateSchema,
   importModelFromInput: MotionQaImportModelResultSchema,

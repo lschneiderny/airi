@@ -63,6 +63,8 @@ export interface CreateRunOptions {
   tool: string
   label: string
   repoRoot: string
+  /** Explicit destination for a CLI --out; must not already exist. */
+  outDir?: string
   gate?: RunGate
   cache?: RunCache
   /** Injectable for tests. Defaults to the current time. */
@@ -131,7 +133,7 @@ export function createRun(options: CreateRunOptions): RunHandle {
 
   const startedAt = (options.now ?? (() => new Date()))()
   const runId = `${formatRunTimestamp(startedAt)}-${options.tool}-${options.label}`
-  const dir = resolve(options.repoRoot, '.temp', 'qa', runId)
+  const dir = options.outDir ? resolve(options.outDir) : resolve(options.repoRoot, '.temp', 'qa', runId)
   const { gitSha, dirty } = (options.readGitState ?? readGitStateFromRepo)(options.repoRoot)
 
   mkdirSync(join(dir, '..'), { recursive: true })

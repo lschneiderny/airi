@@ -1,4 +1,5 @@
 import type { CdpClient } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
+import type { MotionQaImportModelInput } from '@proj-airi/stage-shared/motion-scenario'
 
 import type { MotionQaBridgeClient } from './bridge-client'
 
@@ -34,7 +35,7 @@ export async function zipRig(modelDir: string, zipPath: string): Promise<{ files
  * Puts `zipPath` into a hidden `<input type=file id=qa-rig>` through `DOM.setFileInputFiles` and imports it with the
  * bridge's `importModelFromInput`, which resolves once the stage reports the model loaded.
  */
-export async function importRig(stage: CdpClient, bridge: MotionQaBridgeClient, zipPath: string, timeoutMs: number): Promise<{ modelId: string }> {
+export async function importRig(stage: CdpClient, bridge: MotionQaBridgeClient, zipPath: string, timeoutMs: number, kind?: MotionQaImportModelInput['kind']): Promise<{ modelId: string }> {
   const created = await stage.send('Runtime.evaluate', {
     expression: `(() => {
       document.getElementById('${rigInputId}')?.remove()
@@ -50,5 +51,5 @@ export async function importRig(stage: CdpClient, bridge: MotionQaBridgeClient, 
   if (typeof remote?.objectId !== 'string')
     throw new Error('Could not create the rig file input in the stage page')
   await stage.send('DOM.setFileInputFiles', { files: [zipPath], objectId: remote.objectId }, 30_000)
-  return await bridge.call('importModelFromInput', { inputId: rigInputId }, timeoutMs)
+  return await bridge.call('importModelFromInput', { inputId: rigInputId, kind }, timeoutMs)
 }
