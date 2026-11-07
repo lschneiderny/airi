@@ -17,6 +17,22 @@
     "@proj-airi/electron-vueuse#build": {
       "dependsOn": ["@proj-airi/electron-eventa#build"],
       "outputs": ["dist/**"]
+    },
+    "@proj-airi/api-server#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@proj-airi/auth-server#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@proj-airi/stage-tamagotchi#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["out/**"]
+    },
+    "@proj-airi/stage-ui#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
     }
   }
 }
