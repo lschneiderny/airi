@@ -15,6 +15,7 @@ import { computed, hasInjectionContext, inject, onScopeDispose, toRaw, watch } f
 import { toXml } from 'xast-util-to-xml'
 import { x } from 'xastscript'
 
+import { speechStorageKeys } from '../../constants/settings-storage'
 import { injectKeyPiniaSynced } from '../../libs/pinia/synced-context'
 import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
@@ -71,8 +72,8 @@ export const useSpeechStore = defineStore('speech', () => {
   const persistenceOptions = { listenToStorageChanges: false }
 
   // State
-  const activeSpeechProvider = useLocalStorageManualReset<string>('settings/speech/active-provider', 'speech-noop', persistenceOptions)
-  const enabled = useLocalStorageManualReset('settings/speech/enabled', true, persistenceOptions)
+  const activeSpeechProvider = useLocalStorageManualReset<string>(speechStorageKeys.provider, 'speech-noop', persistenceOptions)
+  const enabled = useLocalStorageManualReset(speechStorageKeys.enabled, true, persistenceOptions)
   // Disabling invalidates synthesis captured by an open response, including requests that have not started yet.
   let synthesis = new AbortController()
   watch(enabled, (value) => {
@@ -82,13 +83,13 @@ export const useSpeechStore = defineStore('speech', () => {
       synthesis.abort(new DOMException('Speech is disabled', 'AbortError'))
   }, { immediate: true, flush: 'sync' })
   onScopeDispose(() => synthesis.abort())
-  const activeSpeechModel = useLocalStorageManualReset<string>('settings/speech/active-model', '', persistenceOptions)
-  const activeSpeechVoiceId = useLocalStorageManualReset<string>('settings/speech/voice', '', persistenceOptions)
+  const activeSpeechModel = useLocalStorageManualReset<string>(speechStorageKeys.model, '', persistenceOptions)
+  const activeSpeechVoiceId = useLocalStorageManualReset<string>(speechStorageKeys.voice, '', persistenceOptions)
   const activeSpeechVoice = refManualReset<VoiceInfo | undefined>(undefined)
 
   const pitch = useLocalStorageManualReset<number>('settings/speech/pitch', 0, persistenceOptions)
   const rate = useLocalStorageManualReset<number>('settings/speech/rate', 1, persistenceOptions)
-  const ssmlEnabled = useLocalStorageManualReset<boolean>('settings/speech/ssml-enabled', false, persistenceOptions)
+  const ssmlEnabled = useLocalStorageManualReset<boolean>(speechStorageKeys.ssml, false, persistenceOptions)
   // Each provider owns its latest request status. Settings for the active
   // provider and background provider editors must not consume each other's IO.
   const isLoadingSpeechProviderVoices = computed(() => voiceCatalogStatus.value[activeSpeechProvider.value]?.loading ?? false)

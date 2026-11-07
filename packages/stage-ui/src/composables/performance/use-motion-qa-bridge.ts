@@ -1,6 +1,7 @@
 import type { MotionQaRunScenarioResult, MotionQaState, MotionScenario, ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 
 import type { EmotionPayload } from '../../constants/emotions'
+import type { MotionQaChatHooks } from './use-motion-qa-events'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { errorMessageFrom } from '@moeru/std'
@@ -9,7 +10,9 @@ import {
   createMotionQaContext,
   createScenarioPlayer,
   motionQaAwaitCaptureInvokeEventa,
+  motionQaChatSendInvokeEventa,
   motionQaConfigureInvokeEventa,
+  motionQaEventsInvokeEventa,
   motionQaImportModelFromInputInvokeEventa,
   motionQaRunScenarioInvokeEventa,
   motionQaStartCaptureInvokeEventa,
@@ -25,6 +28,7 @@ import { useExpressionPerformanceSettings } from '../../features/performance/set
 import { DisplayModelFormat, useDisplayModelsStore } from '../../stores/display-models'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
 import { useSettingsStageModel } from '../../stores/settings/stage-model'
+import { useMotionQaEvents } from './use-motion-qa-events'
 
 /** The frame source that paces a scenario. */
 export interface MotionQaFrames {
@@ -35,6 +39,13 @@ export interface MotionQaFrames {
 }
 
 export interface MotionQaBridgeOptions {
+  chat: MotionQaChatHooks
+  /** Must call useChatStore().send, preserving the elected leader's ownership of the turn. */
+  sendChat: (text: string) => Promise<void>
+  speaking: () => boolean
+  /** Shared scene lifecycle: true after the selected renderer reports mounted. */
+  modelLoaded?: () => boolean
+  prepareModelImport?: () => void
   /** The stage's emotion queue. Bridge emotions enter it exactly like devtools lab pulses. */
   emotionsQueue: { enqueue: (cue: { emotion: EmotionPayload, source: 'act' | 'devtools' }) => void }
   /** Dispatches a raw special token through the streaming-control parser, as speech output does; resolves whether it parsed. */
@@ -79,6 +90,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
   const override = useNaturalPerformanceOverride()
   const expressions = useExpressionStore()
   const context = createMotionQaContext()
+  const eventLog = useMotionQaEvents(options)
   /** Captures this bridge started, so `awaitCapture` can tell an unknown id from a failed capture. */
   const startedCaptures = new Set<string>()
   /** Rejects whatever still waits when the stage goes away. */
@@ -94,7 +106,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
     const modelId = stageModel.stageModelSelected || null
     return {
       modelId,
-      modelLoaded: modelId !== null && diagnostics.loadedModelId === modelId,
+      modelLoaded: modelId !== null && (options.modelLoaded?.() ?? diagnostics.loadedModelId === modelId),
       driver: live2d.live2dMotionDriver,
       cursorAttention: live2d.live2dNaturalCursorAttention,
       expressionEnabled: live2d.live2dExpressionActive,
@@ -260,6 +272,11 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
   }
 
   const disposers = [
+    defineInvokeHandler(context, motionQaChatSendInvokeEventa, async ({ text }) => {
+      await options.sendChat(text)
+      return { sent: true as const }
+    }),
+    defineInvokeHandler(context, motionQaEventsInvokeEventa, ({ sinceSeq }) => eventLog.read(sinceSeq)),
     defineInvokeHandler(context, motionQaStateInvokeEventa, () => readState()),
     defineInvokeHandler(context, motionQaConfigureInvokeEventa, async (input) => {
       if (input.driver)
@@ -277,17 +294,22 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       }
       return readState()
     }),
-    defineInvokeHandler(context, motionQaImportModelFromInputInvokeEventa, async ({ inputId }) => {
+    defineInvokeHandler(context, motionQaImportModelFromInputInvokeEventa, async ({ inputId, kind }) => {
       const input = document.getElementById(inputId)
       const file = input instanceof HTMLInputElement ? input.files?.[0] : undefined
       if (!file)
         throw new Error(`#${inputId} is not a file input with a selected file`)
       // The settings model picker's import: add the display model, select it, and publish it to the stage.
-      const model = await displayModels.addDisplayModel(DisplayModelFormat.Live2dZip, file)
+      const format = kind === 'vrm' ? DisplayModelFormat.VRM : kind === 'mmd' ? DisplayModelFormat.PMXZip : DisplayModelFormat.Live2dZip
+      const model = await displayModels.addDisplayModel(format, file)
+      // Clear the previous renderer's mounted state before selecting the new model.
+      // nextTick lets the shared scene lifecycle publish loading for this selection.
+      options.prepareModelImport?.()
       stageModel.stageModelSelected = model.id
       await stageModel.updateStageModel()
+      await nextTick()
       return waitFor(() => {
-        if (diagnostics.loadedModelId === model.id)
+        if (stageModel.stageModelSelected === model.id && readState().modelLoaded)
           return { modelId: model.id }
         const error = options.renderError()
         if (error)
