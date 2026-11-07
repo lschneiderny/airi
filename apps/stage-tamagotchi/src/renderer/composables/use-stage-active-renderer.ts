@@ -14,7 +14,14 @@ export function useStageActiveRenderer(): void {
   const { stageModelRenderer } = storeToRefs(useSettings())
   const setActiveRenderer = useElectronEventaInvoke(electronStageSetActiveRenderer)
 
-  watch(() => stageModelRenderer.value === 'mmd' ? 'mmd' : 'other', (renderer) => {
+  watch(() => {
+    // Undefined is the store's unresolved state; an empty selection resolves to 'disabled'.
+    if (stageModelRenderer.value === undefined)
+      return undefined
+    return stageModelRenderer.value === 'mmd' ? 'mmd' : 'other'
+  }, (renderer) => {
+    if (renderer === undefined)
+      return
     setActiveRenderer(renderer)
       .catch(error => console.warn('[Stage] Failed to record the active renderer:', errorMessageFrom(error)))
   }, { immediate: true })
