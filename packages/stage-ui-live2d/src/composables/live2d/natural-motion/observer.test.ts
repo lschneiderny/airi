@@ -10,13 +10,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // SHA-256 per seed over each frame's serialized output; pins come from Node Vitest.
 // Pins reflect face low-pass, boost removal, duck, laugh, slow-head eye compensation, and the idle reshape
 // (continuous retune, human holds, activity spells, realigning postponement, talking amplitude 1.4).
-// The darwin-arm64 pins below predate the idle reshape and must be re-pinned on an Apple-silicon Mac.
+// The darwin-arm64 pins were re-pinned for the idle reshape on an M2 Mac (Node 26.11.1) on 2026-11-07.
 // Darwin x64 and arm64 libm differ in the last bit; arm64 measurements: task-1-observer-rootcause.txt.
 const idleHashes = process.platform === 'darwin' && process.arch === 'arm64'
   ? [
-      'b9d8e0ce32926707d9f3bc9f67c9e88fb3d28e43fab548d89d70b61e166a3d36',
-      'db5869b255e5251b6fa2952a08e1df30bffbe6a976a29031569fe747b643ed3a',
-      '77212d070b2b422f3cbeae0573e151b15488136f503c6c786fc33ca42cfe90fd',
+      'e37af22e8490c0c659418326f19d218b8d0a7347c8a0564272c5cf2f5acb61f8',
+      'fd8addaebb260b5ed3fd7642f04c502c6e9c64d92e81f12331778713a51ec433',
+      '6bdb3ba1007b8e22881ffe2dc43f98c1ee015b80e3d4584b9f27b31812248b20',
     ]
   : [
       '1f1f413dbdd2026b06c32385d2948395b8d53557b6e459aa188eb1df95e08b1c',
@@ -25,9 +25,9 @@ const idleHashes = process.platform === 'darwin' && process.arch === 'arm64'
     ]
 const emotionHashes = process.platform === 'darwin' && process.arch === 'arm64'
   ? [
-      '6e01715d3eeb59189fc0be55dea2746d350424c46937f13763dba90414b6a79b',
-      '32fe6b7c2871a7b15de4698bb287b89ccbd86d0af694a3b4d199cb29b3ab6b1f',
-      '026172f02f55146739a283cc7636b2fd6bdc262763ebca804c7eb0eb1bb63c1a',
+      '70d0b16f596f5dbcfeb2974f3b2daa2213e72d0425476c529876f98d9dc6bdf7',
+      'f849923ad033e2ba9c607894adc1f72517267cc70cde3e2f91a015f4861c73fd',
+      '83cc7947d9bae3b972fb754bf3d22a8d6baae597125823fc6d7c9a64d7bd3fdd',
     ]
   : [
       '590cdad69d46134b262a97e38749cdb03188de066450eea37b427a50fb80bd40',
