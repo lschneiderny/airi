@@ -540,7 +540,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
   Commit: Y | docs: record the 3D character motion architecture (agent guidance updates in a separate `docs(agents)` commit per AGENTS.md)
   Recommended task executor category: writing - docs and ADR.
 
-- [ ] 23. Run cross-model real-surface QA and the frame budget check (OPEN: no QA evidence found at the 2026-11-06 audit; pending Luke's QA)
+- [ ] 23. Run cross-model real-surface QA and the frame budget check (AGENT QA PASS 2026-11-07, session 01a1b3c9, `.omo/evidence/qa-2026-11-07/g3-acceptance.md`: Chisa AIRI-stage p95 <= 0.9 ms under both drivers, fps ratio 0.9997; Ellen/Vivian/Elysia feet, look-at, touch and sit PASS; 0 uncaught console errors; stage-web smoke PASS (`g3-web.md`). The stand-to-sit feet spike (0.24) was a real foot pop, fixed in 053f99dd3; every transition frame now stays under 0.007 on all three rigs (`fx-sit-feet.md`, `fx-sit-feet-elysia.md`). Left unticked for Luke's okay.)
   What to do / Must NOT do:
   - Electron (K6) with standard Chisa: for each driver (Natural, then Classic) post `startMeasurement`, run 60 s (measured by the snapshot's `measurement.durationMs` reaching 60000 while running), post `stopMeasurement`, read `measurement`; acceptance uses `measurement.stages[*].p95Ms` over the full interval for every AIRI stage (all except physics.update and render) and `measurement.fps` Natural / Classic; compare Classic with the todo 4 baseline (`task-4-chisa-baseline.json`).
   - Electron with Ellen, Vivian, long-skirt Elysia: 60 s each with cursor sweeps, one poke, a sit stance (K4 VMD): record `feet.maxError`, look-at turns, touch events, framing check, console errors.
@@ -560,16 +560,16 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
 
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
-- [ ] F1. Plan compliance audit (amended 2026-11-07; OPEN: waits on todo 23)
+- [ ] F1. Plan compliance audit (amended 2026-11-07; OPEN: todo 23 agent QA passed 2026-11-07; the audit itself has not been run)
   The per-todo evidence files under `.omo/evidence/mmd-natural-full-body/` do not exist and are no longer required. For todos 1-22, the proof is the `main` commit each row names: `git merge-base --is-ancestor <commit> origin/main` exits 0. Todo 23 is proven by the evidence it produces. The Must NOT have list is verified by `rg` checks on `main` (no assets, no Ammo internals, no shims, no other locales). The branch guard no longer applies: the plan landed on `main`, not on `luke/feat/mmd-natural-full-body`.
   Recommended task executor category: unspecified-high
 - [x] F2. Code quality review (APPROVE 2026-11-07, no blockers: `.omo/evidence/mmd-natural-full-body/f2-code-quality.md`. Every touched package typechecks and its suite passes on `main` at `4daece2bb`; the motion-driver import guard holds. The review saw 7 `stage-ui` tests in `mmd.browser.test.ts` fail with raw i18n keys; after `pnpm -F @proj-airi/i18n build` the file passes 16 of 16, so the cause was a stale i18n `dist/`, not code.)
   `pnpm verify` green; review against `.agents/skills/enforce-rules-for-typescript`, `enforce-rules-for-vitest`, `enforce-rules-for-unocss`; no `any`, no suppressed errors; import guard on motion-driver-* holds.
   Recommended task executor category: unspecified-high
-- [ ] F3. Real manual QA (OPEN: no QA evidence found at the 2026-11-06 audit; pending Luke's QA)
+- [ ] F3. Real manual QA (AGENT QA PASS 2026-11-07, `g3-acceptance.md` check C plus `g4-session.md`: 2-minute idle, cursor sweeps, poke and pet, ACT emotion and expression, sit slot, Classic toggle, Live2D Natural lab and expression panel on ForBOOTH. Left unticked for Luke's okay.)
   Fresh Electron run (K6) on Ellen and standard Chisa: idle 2 min, cursor sweeps, poke/pet, ACT emotion + expression, sit slot, Classic toggle; screenshots and diagnostics; Live2D model smoke (Natural lab loads, expression panel works).
   Recommended task executor category: unspecified-high
-- [ ] F4. Ideal-state fidelity (OPEN: no QA evidence found at the 2026-11-06 audit; pending Luke's QA)
+- [ ] F4. Ideal-state fidelity (OPEN: the QA evidence exists as of 2026-11-07; the IS-row check has not been run)
   Check IS-1..IS-16 one by one against evidence; any shortfall becomes a new numbered todo.
   Recommended task executor category: unspecified-high
 
