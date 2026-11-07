@@ -7,6 +7,7 @@ import { nanoid } from 'nanoid'
 import { defineStore } from 'pinia'
 import { computed } from 'vue'
 
+import { providerStorageKeys } from '../../constants/settings-storage'
 import { getDefinedProvider } from '../../libs/providers'
 
 const providerStorageOptions = {
@@ -17,8 +18,8 @@ const providerStorageOptions = {
 } as const
 
 export const useProviderConfigStore = defineStore('provider-config', () => {
-  const providers = useLocalStorage<Record<string, InferenceServiceProvider>>('settings/providers/configured', {}, providerStorageOptions)
-  const addedProviders = useLocalStorage<Record<string, boolean>>('settings/providers/added', {}, providerStorageOptions)
+  const providers = useLocalStorage<Record<string, InferenceServiceProvider>>(providerStorageKeys.configured, {}, providerStorageOptions)
+  const addedProviders = useLocalStorage<Record<string, boolean>>(providerStorageKeys.added, {}, providerStorageOptions)
   const legacyConfigs = useLocalStorage<Record<string, Record<string, unknown>>>('settings/credentials/providers', {}, providerStorageOptions)
 
   // Import the previous provider configuration shape once. Provider ids remain

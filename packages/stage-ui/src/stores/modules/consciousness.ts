@@ -5,6 +5,7 @@ import { refManualReset } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, watch } from 'vue'
 
+import { consciousnessStorageKeys } from '../../constants/settings-storage'
 import { useProviderStore } from '../providers/provider'
 import { useConsciousnessSettingsStore } from './consciousness-settings'
 
@@ -18,9 +19,9 @@ export const useConsciousnessStore = defineStore('consciousness', () => {
   const persistenceOptions = { listenToStorageChanges: false }
 
   // State
-  const activeProvider = useLocalStorageManualReset<string>('settings/consciousness/active-provider', '', persistenceOptions)
-  const activeModel = useLocalStorageManualReset<string>('settings/consciousness/active-model', '', persistenceOptions)
-  const activeCustomModelName = useLocalStorageManualReset<string>('settings/consciousness/active-custom-model', '', persistenceOptions)
+  const activeProvider = useLocalStorageManualReset<string>(consciousnessStorageKeys.provider, '', persistenceOptions)
+  const activeModel = useLocalStorageManualReset<string>(consciousnessStorageKeys.model, '', persistenceOptions)
+  const activeCustomModelName = useLocalStorageManualReset<string>(consciousnessStorageKeys.customModel, '', persistenceOptions)
   const expandedDescriptions = refManualReset<Record<string, boolean>>(() => ({}))
   const modelSearchQuery = refManualReset<string>('')
 

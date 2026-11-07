@@ -4,14 +4,16 @@ import type { NaturalCaptureResult } from '@proj-airi/stage-ui-live2d/stores'
 import type { MotionQaFrames } from './use-motion-qa-bridge'
 
 import { defineInvoke } from '@moeru/eventa'
+import { createChatHooks } from '@proj-airi/core-agent'
 import { normalizeActPayload } from '@proj-airi/pipelines-audio'
 import { createMotionQaContext, createMotionQaDispatcher, motionQaRunScenarioInvokeEventa } from '@proj-airi/stage-shared/motion-scenario'
 import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, watch } from 'vue'
+import { effectScope, ref, watch } from 'vue'
 
+import { usePerformanceRuntimeState } from '../../features/performance/runtime-state'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
 import { useLlmStreamingControlStore } from '../../stores/ai/chat-llm/streaming-control'
 import { useNaturalPerformanceOverride } from '../../stores/natural-performance-override'
@@ -74,6 +76,8 @@ describe('useMotionQaBridge', () => {
   let log: string[]
   let clock: ReturnType<typeof controlledFrames>
   let dispatch: (command: unknown) => Promise<{ ok: boolean, result?: unknown, error?: string, issues?: { path: string }[] }>
+  let chat: ReturnType<typeof createChatHooks>
+  const speaking = ref(false)
 
   /** Stands in for the capture that Model.vue runs: scenario events stamped into it land in the log. */
   function recordCaptureMarks() {
@@ -86,6 +90,8 @@ describe('useMotionQaBridge', () => {
     setActivePinia(pinia)
     log = []
     clock = controlledFrames()
+    chat = createChatHooks()
+    speaking.value = false
     const streaming = useLlmStreamingControlStore()
     const dispatcher = createMotionQaDispatcher()
     dispatch = async command => JSON.parse(await dispatcher(JSON.stringify(command)))
@@ -98,12 +104,61 @@ describe('useMotionQaBridge', () => {
       })
       watch(() => useNaturalPerformanceOverride().overrideMode, mode => log.push(`mode:${mode}`), { flush: 'sync' })
       useMotionQaBridge({
+        chat,
+        sendChat: async (text) => { log.push(`send:${text}`) },
+        speaking: () => speaking.value,
         emotionsQueue: { enqueue: cue => log.push(`queue:${cue.emotion.name}:${cue.source}:${cue.emotion.intensity}`) },
         dispatchAct: marker => streaming.dispatchWith(marker),
         renderError: () => undefined,
         frames: clock.frames,
       })
     })
+  })
+
+  it('sends user text through the supplied real send boundary', async () => {
+    expect(await dispatch({ name: 'chatSend', input: { text: 'hello' } })).toEqual({ ok: true, result: { sent: true } })
+    expect(log).toEqual(['send:hello'])
+  })
+
+  it('records turn boundaries and truncates assistant text', async () => {
+    const context = { sessionId: 'session', turnId: 'turn', message: { role: 'user' as const, content: 'hello' }, contexts: {}, composedMessage: [] }
+    await chat.emitBeforeMessageComposedHooks('hello', context)
+    await chat.emitChatTurnCompleteHooks({ output: { role: 'assistant', content: 'reply', slices: [], tool_results: [] }, outputText: 'r'.repeat(700), toolCalls: [] }, context)
+    expect(await dispatch({ name: 'events', input: {} })).toMatchObject({
+      result: { events: [
+        { kind: 'turn', payload: { phase: 'start', turnId: 'turn' } },
+        { kind: 'turn', payload: { phase: 'end', turnId: 'turn', text: 'r'.repeat(500) } },
+      ] },
+    })
+  })
+
+  it('records parsed ACT, applied expressions and playback transitions with cursors', async () => {
+    await useLlmStreamingControlStore().dispatchWith('<|ACT {"emotion":"happy","gesture":"nod"}|>')
+    const runtime = usePerformanceRuntimeState()
+    runtime.publish({ exposed: [], exposedActions: [], active: [{ slot: 'face', label: 'smile' }], mood: null })
+    speaking.value = true
+    speaking.value = false
+    expect(await dispatch({ name: 'events', input: {} })).toMatchObject({
+      ok: true,
+      result: { lastSeq: 4, dropped: 0, events: [
+        { seq: 1, kind: 'act', payload: { emotion: 'happy', gesture: 'nod' } },
+        { seq: 2, kind: 'expression', payload: { phase: 'start', label: 'smile' } },
+        { seq: 3, kind: 'tts', payload: { phase: 'start' } },
+        { seq: 4, kind: 'tts', payload: { phase: 'end' } },
+      ] },
+    })
+    expect(await dispatch({ name: 'events', input: { sinceSeq: 3 } })).toMatchObject({ result: { events: [{ seq: 4 }] } })
+  })
+
+  it('evicts old records from its bounded window and removes subscriptions on disposal', async () => {
+    for (let index = 0; index < 514; index++)
+      speaking.value = !speaking.value
+    const reply = await dispatch({ name: 'events', input: {} })
+    expect(reply).toMatchObject({ result: { lastSeq: 514, dropped: 2, events: expect.arrayContaining([{ seq: 3, time: expect.any(Number), kind: 'tts', payload: { phase: 'start' } }]) } })
+    expect((reply.result as { events: unknown[] }).events).toHaveLength(512)
+    scope.stop()
+    speaking.value = !speaking.value
+    expect(await dispatch({ name: 'events', input: {} })).toMatchObject({ ok: false })
   })
 
   afterEach(() => {

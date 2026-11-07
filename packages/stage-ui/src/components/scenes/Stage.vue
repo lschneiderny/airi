@@ -655,6 +655,14 @@ if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
       // The stage may unmount before the module arrives; a stopped scope must not gain handlers.
       if (scope?.active) {
         scope.run(() => module.useMotionQaBridge({
+          chat: useChatStore(),
+          sendChat: async (text) => {
+            const sessionId = await useChatSessionStore().ensureCurrentSession()
+            await useChatStore().send({ sessionId, text })
+          },
+          speaking: () => nowSpeaking.value,
+          modelLoaded: () => componentState.value === 'mounted',
+          prepareModelImport: () => { componentState.value = 'pending' },
           emotionsQueue,
           dispatchAct: marker => streamingControl.dispatchWith(marker),
           renderError: () => stageRenderError.value,
