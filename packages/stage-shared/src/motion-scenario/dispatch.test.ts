@@ -1,7 +1,7 @@
 import { defineInvokeEventa, defineInvokeHandler } from '@moeru/eventa'
 import { describe, expect, it, onTestFinished } from 'vitest'
 
-import { buildEmotionTrial, claimMotionQaHandlers, createMotionQaContext, createMotionQaDispatcher, motionQaRunScenarioInvokeEventa, motionQaStateInvokeEventa } from '.'
+import { buildEmotionTrial, claimMotionQaHandlers, createMotionQaContext, createMotionQaDispatcher, motionQaChatSendInvokeEventa, motionQaEventsInvokeEventa, motionQaRunScenarioInvokeEventa, motionQaStateInvokeEventa } from '.'
 
 const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: null, captureActive: false, head: null, screen: { x: 0, y: 0, devicePixelRatio: 1 }, screenAwareness: true, placement: null, placementYawBias: 0, chat: null }
 
@@ -17,6 +17,31 @@ async function dispatch(command: unknown) {
 }
 
 describe('createMotionQaDispatcher', () => {
+  it('routes chat sends and event cursors through their invoke contracts', async () => {
+    claim()
+    let sent = ''
+    onTestFinished(defineInvokeHandler(createMotionQaContext(), motionQaChatSendInvokeEventa, ({ text }) => {
+      sent = text
+      return { sent: true as const }
+    }))
+    onTestFinished(defineInvokeHandler(createMotionQaContext(), motionQaEventsInvokeEventa, ({ sinceSeq }) => ({
+      events: sinceSeq === 3 ? [{ seq: 4, time: 123, kind: 'act' as const, payload: { emotion: 'happy' } }] : [],
+      lastSeq: 4,
+      dropped: 0,
+    })))
+    expect(await dispatch({ name: 'chatSend', input: { text: 'hello' } })).toEqual({ ok: true, result: { sent: true } })
+    expect(sent).toBe('hello')
+    expect(await dispatch({ name: 'events', input: { sinceSeq: 3 } })).toMatchObject({ ok: true, result: { events: [{ seq: 4, kind: 'act' }] } })
+  })
+
+  it.each([
+    { name: 'chatSend', input: { text: '' } },
+    { name: 'events', input: { sinceSeq: -1 } },
+    { name: 'events', input: { sinceSeq: 1.5 } },
+  ])('rejects invalid experience commands before invoking: %j', async (command) => {
+    expect(await dispatch(command)).toMatchObject({ ok: false, issues: expect.any(Array) })
+  })
+
   it('answers a command through the registered handler', async () => {
     claim()
     onTestFinished(defineInvokeHandler(createMotionQaContext(), motionQaStateInvokeEventa, () => state))
