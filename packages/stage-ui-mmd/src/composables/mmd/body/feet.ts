@@ -67,7 +67,7 @@ export class MMDFootContact {
       const lower = new Vector3().copy(geometry.ankle).sub(geometry.knee)
       const axis = new Vector3(1, 0, 0).applyQuaternion(knee.getWorldQuaternion(new Quaternion())).applyQuaternion(pose.mmd.mesh.getWorldQuaternion(new Quaternion()).invert())
       const restBend = Math.atan2(upper.clone().cross(lower).dot(axis), upper.dot(lower))
-      return [{ side, chain, hip, knee, ankle, ik, geometry, upperLength: upper.length(), lowerLength: lower.length(), restBend }]
+      return [{ side, chain, hip, knee, ankle, ik, geometry, upperLength: upper.length(), lowerLength: lower.length(), restBend, bindKnee: knee.quaternion.clone() }]
     })
     const left = this.legs.find(leg => leg.side === 'left')?.geometry ?? this.legs[0]?.geometry
     const right = this.legs.find(leg => leg.side === 'right')?.geometry ?? left
@@ -135,7 +135,7 @@ export class MMDFootContact {
     const sample = (side: Foot) => {
       const chain = this.pose.rig.legIk[side]
       let clipFootTrackWeight = 0
-      let kneeAnimated = false
+      let kneeTrackWeight = 0
       for (const [name, weight] of clean.clipWeights) {
         if (weight <= 0)
           continue
@@ -143,14 +143,15 @@ export class MMDFootContact {
           if (track.name === `.bones[${chain?.ikBone}].position`)
             clipFootTrackWeight += weight
           if (track.name === `.bones[${chain?.knee}].quaternion`)
-            kneeAnimated = true
+            kneeTrackWeight += weight
         }
       }
       return {
         position: this.last[side],
         yaw: this.planted[side]?.yaw ?? 0,
         clipFootTrackWeight: Math.min(1, clipFootTrackWeight),
-        kneeAnimated,
+        kneeAnimated: kneeTrackWeight > 0,
+        kneeTrackWeight: Math.min(1, kneeTrackWeight),
       }
     }
     const samples = { left: sample('left'), right: sample('right') }
@@ -210,7 +211,8 @@ export class MMDFootContact {
       // updateAnimation may have disabled this chain through a VMD property track.
       mmd.ikSolver.setEnabled(chain.ikBoneIndex, true)
       const kneeIndex = this.pose.indices.get(knee.name)
-      if (kneeIndex !== undefined && !samples[side].kneeAnimated) {
+      const kneeWeight = samples[side].kneeTrackWeight
+      if (kneeIndex !== undefined && kneeWeight < 1 && (!samples[side].kneeAnimated || contact.c >= 1)) {
         const hipIndex = this.pose.indices.get(leg.hip.name)
         if (hipIndex !== undefined)
           leg.hip.quaternion.copy(clean.quaternions[hipIndex])
@@ -224,13 +226,19 @@ export class MMDFootContact {
         const bend = this.pose.rig.kneeBendSign * Math.max(Math.abs(contact.kneePreBend), Math.abs(flexion))
         const limit = chain.kneeLimit
         const pitch = limit ? Math.max(limit.min[0], Math.min(limit.max[0], bend)) : bend
-        knee.quaternion.copy(clean.quaternions[kneeIndex]).multiply(new Quaternion().setFromEuler(new Euler(pitch, 0, 0)))
+        // A newly weighted knee track is still almost straight, so CCD still needs
+        // the planted seed. Hand it back continuously with the track's weight;
+        // a fully weighted clip keeps its original bend plane and solved pose.
+        knee.quaternion.copy(samples[side].kneeAnimated ? leg.bindKnee : clean.quaternions[kneeIndex]).multiply(new Quaternion().setFromEuler(new Euler(pitch, 0, 0)))
+        if (samples[side].kneeAnimated)
+          knee.quaternion.slerp(clean.quaternions[kneeIndex], kneeWeight)
         knee.updateWorldMatrix(true, true)
         const hipWorld = leg.hip.getWorldPosition(new Vector3())
         const from = leg.ankle.getWorldPosition(new Vector3()).sub(hipWorld).normalize()
         const to = mmd.mesh.localToWorld(new Vector3().copy(anchor.position)).sub(hipWorld).normalize()
         const parent = leg.hip.parent?.getWorldQuaternion(new Quaternion()) ?? new Quaternion()
         const align = new Quaternion().setFromUnitVectors(from, to)
+        align.slerp(new Quaternion(), kneeWeight)
         const local = parent.clone().invert().multiply(align).multiply(parent)
         leg.hip.quaternion.premultiply(local)
         leg.hip.updateWorldMatrix(false, true)
