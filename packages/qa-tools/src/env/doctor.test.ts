@@ -15,6 +15,8 @@ const cubismPaths = [
 
 function healthyProbes(overrides: Partial<DoctorProbes> = {}): DoctorProbes {
   return {
+    platform: () => 'win32',
+    sessionType: () => undefined,
     nodeVersion: () => 'v26.7.3',
     readToolVersions: () => 'nodejs 26.7.0\npnpm   11.24.0\n',
     resolvePnpm: () => ({ version: '11.24.0', entry: '/pnpm/bin/pnpm.mjs' }),
@@ -45,8 +47,8 @@ describe('runDoctor', () => {
   it('reports every check in order and all ok for a healthy checkout', async () => {
     const rows = await runDoctor(healthyProbes())
 
-    expect(rows.map(row => row.id)).toEqual(['node-version', 'pnpm', 'install', 'built-packages', 'cubism-core', 'playwright', 'rigs', 'stray-electron'])
-    expect(rows.map(row => row.status)).toEqual(Array.from({ length: 8 }).fill('ok'))
+    expect(rows.map(row => row.id)).toEqual(['node-version', 'pnpm', 'install', 'built-packages', 'cubism-core', 'playwright', 'rigs', 'pointer-platform', 'stray-electron'])
+    expect(rows.map(row => row.status)).toEqual(Array.from({ length: 9 }).fill('ok'))
   })
 
   it('node-version fails on a major.minor mismatch or a missing pin', async () => {
@@ -162,7 +164,27 @@ describe('runDoctor', () => {
     } }))
 
     expect(rows.find(row => row.id === 'built-packages')).toMatchObject({ status: 'fail', detail: 'probe threw: EACCES packages' })
-    expect(rows).toHaveLength(8)
+    expect(rows).toHaveLength(9)
+  })
+
+  it.each(['darwin', 'linux'])('pointer-platform warns about separate pointer limitations on %s', async (platform) => {
+    const row = await rowOf('pointer-platform', healthyProbes({ platform: () => platform }))
+
+    expect(row.status).toBe('warn')
+    expect(row.detail).toContain('pointer-platform-unsupported')
+    expect(row.detail).toContain('cursorAttention off')
+    expect(row.detail).toContain('stage-frame-budget readback is unmeasured')
+    expect(row.detail).not.toContain('#2521')
+    expect(row.fix).toBe('Run rendered pointer QA on Windows.')
+  })
+
+  it('pointer-platform names Wayland limitations only on Linux Wayland', async () => {
+    const row = await rowOf('pointer-platform', healthyProbes({ platform: () => 'linux', sessionType: () => 'wayland' }))
+
+    expect(row.status).toBe('warn')
+    expect(row.detail).toContain('classic window only')
+    expect(row.detail).toContain('click-through is disabled')
+    expect(row.detail).toContain('polled cursor can stick stale (#2521)')
   })
 
   describe('with a hung probe', () => {

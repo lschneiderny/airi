@@ -40,6 +40,8 @@ export interface ProcessEntry {
  * implements them against the real repository, filesystem and process table.
  */
 export interface DoctorProbes {
+  platform: () => string
+  sessionType: () => string | undefined
   nodeVersion: () => string
   /** Contents of `.tool-versions`, or undefined when the file is missing. */
   readToolVersions: () => string | undefined
@@ -98,7 +100,7 @@ function distTargets(exports: unknown): string[] {
   return []
 }
 
-/** Builds the eight preflight checks, in report order, on top of the given probes. */
+/** Builds preflight checks in report order on top of the given probes. */
 function createDoctorChecks(probes: DoctorProbes): DoctorCheck[] {
   return [
     {
@@ -206,6 +208,22 @@ function createDoctorChecks(probes: DoctorProbes): DoctorCheck[] {
         if (unset.length > 0)
           return { status: 'warn', detail: [`${unset.join(', ')} unset`, ...found].join('; '), fix: `Set ${unset.join(' / ')} to a Live2D rig directory for rendered QA runs.` }
         return ok(found.join('; '))
+      },
+    },
+    {
+      id: 'pointer-platform',
+      run: () => {
+        const platform = probes.platform()
+        if (platform === 'win32')
+          return ok('Windows supports real-pointer rendered QA and cursor parking')
+        const limits = [
+          `${platform}: real-pointer T3 touch scenarios exit pointer-platform-unsupported`,
+          'cursor parking is not implemented, so T3 liveliness/emotion runs use cursorAttention off instead of a parked cursor (a different condition)',
+          'qa:stage measure falls back to CDP pointer moves, which never trigger the hit-test readback, so stage-frame-budget readback is unmeasured',
+        ]
+        if (platform === 'linux' && probes.sessionType()?.toLowerCase() === 'wayland')
+          limits.push('Linux Wayland: classic window only, click-through is disabled and the polled cursor can stick stale (#2521)')
+        return { status: 'warn', detail: limits.join('; '), fix: 'Run rendered pointer QA on Windows.' }
       },
     },
     {
@@ -397,6 +415,8 @@ function listProcesses(timeoutMs: number): Promise<ProcessEntry[]> {
 export function createSystemProbes(repoRoot: string, env: Record<string, string | undefined> = processEnv): DoctorProbes {
   const abs = (path: string) => resolve(repoRoot, path)
   return {
+    platform: () => platform,
+    sessionType: () => env.XDG_SESSION_TYPE ?? (env.WAYLAND_DISPLAY ? 'wayland' : undefined),
     nodeVersion: () => processVersion,
     readToolVersions: () => existsSync(abs('.tool-versions')) ? readFileSync(abs('.tool-versions'), 'utf8') : undefined,
     resolvePnpm: () => resolvePnpm({ repoRoot, env }),

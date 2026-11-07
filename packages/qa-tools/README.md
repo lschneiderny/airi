@@ -51,6 +51,15 @@ AIRI_QA_RIG_FORBOOTH="/path/to/rig"
 
 Doctor, motion, stage, t2-probe, and qa:test load this file before reading QA settings or recording their environment. Only `AIRI_QA_*` keys apply, and existing shell variables (including empty values) take precedence. A missing file is silent. Malformed input produces a warning and applies no values; unrelated keys produce warnings and are ignored. Doctor names the source file and loaded keys in its rigs row.
 
+## Pointer platform preflight
+
+Doctor's `pointer-platform` row is OK on Windows and WARN elsewhere. Run rendered pointer QA on Windows. On other platforms:
+
+- Real-pointer T3 touch scenarios exit `pointer-platform-unsupported`.
+- Cursor parking is not implemented. T3 liveliness/emotion runs turn `cursorAttention` off instead of parking the cursor; this measures a different condition.
+- `qa:stage measure` falls back to CDP pointer moves, which never trigger hit-test readback. The `stage-frame-budget` readback is therefore unmeasured.
+- On Linux Wayland, the app uses the classic window only, disables click-through, and its polled cursor can stick stale (#2521). See `apps/stage-tamagotchi/src/renderer/pages/index.vue` and the [fullscreen stage ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md).
+
 ## Model evaluation
 
 Model evaluation separates deterministic fixtures, offline replay, future live runs, future persona judging, and Luke's own reading. Contract metrics and style heuristics stay separate; heuristic columns are not a model score.
