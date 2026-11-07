@@ -422,7 +422,11 @@ export function scoreLiveliness(trace: LivelinessTrace, ranges: ParameterRanges,
   return { metrics, hardFailures, warnings, score, pass: hardFailures.length === 0 && !Object.values(metrics).some(metric => metric.pass === false) && rows.size > 0 }
 }
 
-/** Relative-only talking criteria; no reference talking segment has been recorded. */
+/**
+ * Relative-only talking criteria; no reference talking segment has been recorded. Onset enrichment is report-only
+ * (null band, no verdict) since talking gate version 2: with idle shifts about once a second it cannot separate
+ * onset-locked motion from idle motion (Luke, 2026-11-07).
+ */
 export function scoreTalkingRelative(talking: LivelinessTrace, idle: LivelinessTrace, onsetsSeconds: number[]) {
   const talk = headMotion(resample(talking))
   const rest = headMotion(resample(idle))
@@ -436,6 +440,6 @@ export function scoreTalkingRelative(talking: LivelinessTrace, idle: LivelinessT
   const onsetEnrichment = onset !== null && shifted !== null && shifted > 0 ? onset / shifted : null
   return {
     speedRatio: { value: speedRatio, ...referenceStats.talking.speedRatio, pass: speedRatio === null ? null : speedRatio >= 1.15 && speedRatio <= 1.7 },
-    onsetEnrichment: { value: onsetEnrichment, ...referenceStats.talking.onsetEnrichment, pass: onsetEnrichment === null ? null : onsetEnrichment > 1.2 },
+    onsetEnrichment: { value: onsetEnrichment, band: null, provisional: false, pass: null },
   }
 }

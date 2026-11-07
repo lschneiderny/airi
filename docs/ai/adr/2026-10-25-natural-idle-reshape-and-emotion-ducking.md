@@ -1,7 +1,7 @@
 # Natural idle reshape and emotion ducking
 
 Date: 2026-10-25
-Status: accepted for the delivered parts. Luke chose option (a) for the gate band on 2026-11-07. The idle reshape is held: on today's code it fails other gated metrics.
+Status: accepted. The idle reshape was built and adjusted on 2026-11-07 (see Idle reshape on today's code); naturalness still needs Luke's visual review.
 
 ## Context
 
@@ -51,7 +51,17 @@ Luke chose option (a). `naturalIdleLivelinessGate` is now version 2. Generated s
 
 A null band also removes both metrics from the composite liveliness score, so score values move even where no gated verdict changes. Version 1 reports and version 2 reports therefore do not compare score for score.
 
-The reshape (arm R4: continuous retune, human holds, activity regime) was then built on today's code and still fails the version 2 gate. Seed 2 fails `angleXp95` (14.33 against 4.8 to 12.8), and the talking gate fails on seeds 1 and 2: the talking-to-silence speed ratio is 1.10 and 1.13 against a 1.15 floor, and onset enrichment is 0.96 and 1.05 against a 1.2 floor. No subset of the three steps passes. The R4 packet was measured on 2026-10-25, before the speech-onset and gesture features that now share the posture shift schedule. Luke held the reshape on 2026-11-07; re-validating R4 on today's code is the follow-up.
+## Idle reshape on today's code (2026-11-07)
+
+R4 as first built (continuous retune, human holds, activity regime) passed the median-based T1 liveliness gate but not every seed, failed the talking gate, and broke same-seed comparison tests. Luke chose the adjustments below.
+
+- Postponed shifts give the delay back from the following holds, and the regime is read at each shift's nominal time, so a postponement no longer moves the whole later schedule. Before this, a gesture permanently desynchronized two same-seed runs.
+- The yaw shift gain is 1.05 (was 1.15) and the regime's amplitude log SD is 0.45 (was 0.6). Every seed then passes the version 2 liveliness gate; the tightest margins are angleXp95 on seed 2 (about 12.6 against 12.8) and angleXp5 on seed 3 (about -16.8 against -16.1).
+- The talking preset's amplitude is 1.4 (was 1.15). Idle now shifts about 55 times a minute, so the old preset's extra shift rate barely showed; the talking-to-silence speed ratio is about 1.31 to 1.37.
+- `natural-talking` is version 2: onset enrichment is reported without a verdict. At this shift density it measured 1.01 to 1.15 and cannot separate onset-locked motion from idle shifts.
+- Same-seed comparison tests hold idle shifts in both runs (`withPostureShiftsHeld` in `motion-driver-natural`), because gestures and reactions change shift timing only in their own run.
+
+These numbers tune motion and gates to pass, which the qa-tools guide forbids without the owner's decision; each was Luke's explicit choice. The darwin-arm64 observer hashes still predate the reshape and need re-pinning on an Apple-silicon Mac.
 
 ## Consequences
 

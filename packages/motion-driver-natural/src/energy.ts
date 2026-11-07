@@ -16,7 +16,7 @@ const presets: Record<PerformanceMode, Preset> = {
   watching: { amplitude: 0.8, shiftRate: 0.7, cameraFixation: 0.25 },
   listening: { amplitude: 0.75, shiftRate: 0.6, cameraFixation: 0.85 },
   thinking: { amplitude: 1, shiftRate: 1.1, cameraFixation: 0.3 },
-  talking: { amplitude: 1.15, shiftRate: 1.3, cameraFixation: 0.65 },
+  talking: { amplitude: 1.4, shiftRate: 1.3, cameraFixation: 0.65 },
 }
 
 /** Fixed overlay for the seconds after a desktop reaction or a poke. Emotion episodes do not use it: their weight comes from the band tables. */

@@ -63,7 +63,7 @@ describe('natural performance energy', () => {
   })
 
   it('settles on each preset', () => {
-    const presets = { watching: [0.8, 0.7, 0.25], listening: [0.75, 0.6, 0.85], thinking: [1, 1.1, 0.3], talking: [1.15, 1.3, 0.65] } as const
+    const presets = { watching: [0.8, 0.7, 0.25], listening: [0.75, 0.6, 0.85], thinking: [1, 1.1, 0.3], talking: [1.4, 1.3, 0.65] } as const
     for (const [mode, [amplitude, shiftRate, camera]] of Object.entries(presets)) {
       const energy = new NaturalPerformanceEnergy()
       energy.setState(state(mode as keyof typeof presets), 0.5)
@@ -79,11 +79,11 @@ describe('natural performance energy', () => {
     energy.setState(state('talking'), 0.5)
     settle(energy, 0.7)
     // One time constant covers 1 - 1/e of the distance.
-    expect(energy.amplitudeScale).toBeCloseTo(1 + 0.15 * (1 - Math.exp(-1)), 3)
+    expect(energy.amplitudeScale).toBeCloseTo(1 + 0.4 * (1 - Math.exp(-1)), 3)
     settle(energy, 30)
     energy.setState(state('idle'), 0.5)
     settle(energy, 1.5)
-    expect(energy.amplitudeScale).toBeCloseTo(1 + 0.15 * Math.exp(-1), 3)
+    expect(energy.amplitudeScale).toBeCloseTo(1 + 0.4 * Math.exp(-1), 3)
     settle(energy, 30)
     energy.setState(state('listening'), 0.5)
     settle(energy, 1)

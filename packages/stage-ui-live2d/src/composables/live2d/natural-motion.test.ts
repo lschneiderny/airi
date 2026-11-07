@@ -8,6 +8,7 @@ import { NaturalGazeLayer } from '@proj-airi/motion-driver-natural/gaze'
 import { NaturalHoldLayer } from '@proj-airi/motion-driver-natural/hold'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { NaturalPostureLayers } from '@proj-airi/motion-driver-natural/posture'
+import { withPostureShiftsHeld } from '@proj-airi/motion-driver-natural/posture-shift-hold'
 import { NaturalSpeechEmphasis } from '@proj-airi/motion-driver-natural/speech-emphasis'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { describe, expect, it, vi } from 'vitest'
@@ -723,7 +724,7 @@ describe('continuous cursor attention and touch', () => {
     expect(events.filter(event => event.kind === 'touch').map(event => event.touch)).toEqual(['pet-start', 'pet-end'])
   })
 
-  it('(d) tucks monotonically as a hand descends from above and rests near the head', () => {
+  it('(d) tucks monotonically as a hand descends from above and rests near the head', () => withPostureShiftsHeld(() => {
     const { motion } = observed(41)
     const baseline = new NaturalMotion({ seed: 41 })
     baseline.advance(0)
@@ -745,7 +746,7 @@ describe('continuous cursor attention and touch', () => {
     }
     expect(largestRise).toBeLessThanOrEqual(1e-3)
     expect(nearMaximum).toBeLessThanOrEqual(0)
-  })
+  }))
 
   it('(d2) pulls the head less at nine head widths than at three after engagement', () => {
     // The same attention stream decides engagement in both runs; the seed also keeps
@@ -854,7 +855,8 @@ describe('continuous cursor attention and touch', () => {
     expect(point.y).toBeLessThan(-0.05)
   })
 
-  it('(i) lowers head pitch when poked at the top of the head', () => {
+  it('(i) lowers head pitch when poked at the top of the head', () => withPostureShiftsHeld(() => {
+    // The poke's reaction overlay changes the shift rate only in the poked run, so shifts are held in both runs.
     const { motion, events } = observed(61)
     const baseline = new NaturalMotion({ seed: 61 })
     baseline.advance(0)
@@ -866,7 +868,7 @@ describe('continuous cursor attention and touch', () => {
     }
     expect(lowest).toBeLessThan(-0.03)
     expect(events.filter(event => event.kind === 'touch')).toEqual([{ kind: 'touch', at: 2, touch: 'poke', region: 'head' }])
-  })
+  }))
 
   it('(j) keeps sixty seconds of dismissed null cursor identical with no attention draws', () => {
     const create = random.createRandomStream
@@ -1363,7 +1365,11 @@ describe('held Natural composition', () => {
     // Subtract the unchanged held path so independent face micro-motion does not masquerade as a switch jump.
     for (const key of ['browY', 'browAngle', 'browLY', 'browRY', 'browLAngle', 'browRAngle', 'eyeSmile', 'mouthForm', 'cheek'] as const)
       expect(Math.abs(next.face[key] - unchanged.face[key])).toBeLessThan(2 / 120 / 0.25 * 1.8)
-    expect(motion.advance(7).face.mouthForm).toBeLessThan(-0.7)
+    // Averaged over a second, so face micro-motion at one instant does not decide whether the glide reached sad.
+    let mouthForm = 0
+    for (let frame = 0; frame <= 120; frame++)
+      mouthForm += motion.advance(6.5 + frame / 120).face.mouthForm / 121
+    expect(mouthForm).toBeLessThan(-0.7)
   })
 
   it.each(['happy', 'question', 'surprised'] as const)('gives pet priority over actual overlapping %s channels', (emotion) => {

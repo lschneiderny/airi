@@ -58,7 +58,7 @@ Natural is composed of independent layers. Each layer draws from its own seeded 
 The `NaturalMotion` controller from `@proj-airi/motion-driver-natural` advances every layer on a fixed 120 Hz grid and interpolates between grid states, so the frame rate does not change the motion.
 The controller and its pure layers live in `packages/motion-driver-natural`, shared with the MMD renderer. This package keeps the Live2D adapter (`natural-motion-adapter.ts`) and, under `src/composables/live2d/natural-motion/`, the rig profile, trace recorder, scorers, reference stats, and QA gates. The [3D character motion ADR](../../docs/ai/adr/2026-10-30-3d-character-motion.md) records the split.
 
-- Posture moves the head through a slow home drift, continuous sub-second motion whose activity waxes and wanes, and occasional heavy-tailed posture shifts along min-jerk paths. Activity changes only while a shift moves, so a held pose never starts shivering mid-hold.
+- Posture moves the head through a slow home drift, slow continuous motion whose activity waxes and wanes, and heavy-tailed posture shifts along min-jerk paths. The holds between shifts follow Luke's desk recordings (median about 0.3 s), and slow activity spells make shifts sooner and larger for tens of seconds, then calmer. Activity changes only while a shift moves, so a held pose never starts shivering mid-hold. A shift that a gesture or gaze postpones gives the delay back from the following holds, so the shift rate is unchanged.
 - Gaze picks fixation targets (camera, desk, and peripheral points) independently of the head and compensates the eyes for the slow head pose (posture shifts, drift, cursor bias, plus emphasis, impulse, pet, hold, and gesture heads), not for the sub-second continuous wobble.
 - Body follows the head with a lag of 150 to 300 milliseconds, drawn again at each posture shift.
 - Face adds slow brow, mouth-form, and eyelid micro-activity, plus occasional silent mouth openings. Mouth-form and eyelid micro-activity are low-passed (0.3 s), so they do not flicker frame to frame.
@@ -316,7 +316,7 @@ For the QA levels, their limits, commands, evidence and accepted scorer limits, 
 | Gate | Id | What it judges |
 | --- | --- | --- |
 | `naturalIdleLivelinessGate` | `natural-idle-liveliness` | Idle liveliness metrics in generated mode, seeds 1-3, 180 s warm-up, 1800 s scored. |
-| `naturalTalkingGate` | `natural-talking` | Talking head speed relative to silence and onset enrichment. |
+| `naturalTalkingGate` | `natural-talking` | Talking head speed relative to silence; onset enrichment is reported, not gated. |
 | `emotionGate` | `natural-emotion` | Emotion direction, size relative to the recipe, release, and detectability above idle noise. |
 | `naturalEmotionT3Gate` | `natural-emotion-t3` | Rendered transfer on ForBOOTH, session-stratified placebo null, visibility, T3-to-T1 face-effect ratio, and gross release regression. |
 | `naturalEmotionT3Gate` | `natural-emotion-t3` | Rendered transfer on one rig: angry strong, sad clear, love clear and sleepy strong, 10 pulses each, scored unpaired with the `emotionGate` windows against the placebo windows of each trial's own capture session (v2: session-stratified, `stratifiedUnpairedPValue`). Visibility hits, `E_T3 / E_T1` per face channel, and gross release only; posture is reported. |

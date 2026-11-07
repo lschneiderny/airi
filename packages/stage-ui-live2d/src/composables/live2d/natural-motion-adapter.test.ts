@@ -6,6 +6,7 @@ import type { Live2DRigProfile, PhysicsRigLike } from './natural-motion/rig-prof
 
 import { mapCursor } from '@proj-airi/motion-driver-natural/cursor-attention'
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
+import { withPostureShiftsHeld } from '@proj-airi/motion-driver-natural/posture-shift-hold'
 import { createPinia, setActivePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -189,7 +190,7 @@ describe('natural motion adapter', () => {
     control.adapter.dispose()
   })
 
-  it('composes scene gestures and mood doses through the Natural adapter', () => {
+  it('composes scene gestures and mood doses through the Natural adapter', () => withPostureShiftsHeld(() => {
     const actual = fixture()
     const control = fixture()
     for (const f of [actual, control]) {
@@ -208,7 +209,7 @@ describe('natural motion adapter', () => {
     expect(actual.adapter.mood.valence).toBeGreaterThan(0)
     actual.adapter.dispose()
     control.adapter.dispose()
-  })
+  }))
 
   it('hands the face baseline to Natural, and a neutral baseline leaves every commanded frame unchanged', () => {
     const actual = fixture()
@@ -430,7 +431,8 @@ describe('natural motion adapter', () => {
       f.adapter.dispose()
   })
 
-  it('skips missing IDs and zero width ranges without synthetic indices', () => {
+  it('skips missing IDs and zero width ranges without synthetic indices', () => withPostureShiftsHeld(() => {
+    // Shifts are held so the cursor, not an idle shift, decides the yaw at 1 s.
     const f = fixture({ omit: 'ParamAngleY', fixed: 'ParamBodyAngleZ' })
     f.state.eligible = true
     f.state.cursor = { x: -1, y: -1 }
@@ -442,7 +444,7 @@ describe('natural motion adapter', () => {
     expect(commanded.every(Number.isFinite)).toBe(true)
     expect(commanded[0]).toBeLessThan(2)
     f.adapter.dispose()
-  })
+  }))
 
   it('leaves missing SDK focus parameters untouched at full Natural ownership', () => {
     const f = fixture({ omit: 'ParamAngleX' })
@@ -590,7 +592,7 @@ describe('natural motion adapter', () => {
       const f = fixture()
       f.state.eligible = true
       let silentOpenings = 0
-      let openingsInsideOldWindow = 0
+      let mouthWritesInsideOldWindow = 0
       for (let index = 0; index <= 400 * 30; index++) {
         const time = index / 30
         const phase = time % 20
@@ -603,17 +605,19 @@ describe('natural motion adapter', () => {
         if (f.state.voice.lipSyncOwnsMouth) {
           expect(written.has('ParamMouthOpenY')).toBe(false)
         }
-        else if (commanded[mouth] > base[mouth]) {
-          silentOpenings++
-          if (phase <= 6.7)
-            openingsInsideOldWindow++
+        else {
+          if (commanded[mouth] > base[mouth])
+            silentOpenings++
+          if (phase <= 6.7 && written.has('ParamMouthOpenY'))
+            mouthWritesInsideOldWindow++
         }
       }
       // The schedule leaves silence long enough for the 1/40 s opening rate to show.
       expect(silentOpenings).toBeGreaterThan(0)
-      // A short lipsync tail hands the mouth back before the old adapter-side 0.7 s window ended.
+      // A short lipsync tail hands the mouth back before the old adapter-side 0.7 s window ended. The handoff is
+      // checked through the adapter's own write, not a silent opening, which lands there only by chance.
       if (tail < 0.7)
-        expect(openingsInsideOldWindow).toBeGreaterThan(0)
+        expect(mouthWritesInsideOldWindow).toBeGreaterThan(0)
       f.adapter.dispose()
     }
   })

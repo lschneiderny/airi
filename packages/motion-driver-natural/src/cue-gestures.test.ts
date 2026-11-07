@@ -7,7 +7,7 @@ import { NaturalCueGestures } from './cue-gestures'
 import { NaturalGazeLayer } from './gaze'
 import { NaturalGestures } from './gestures'
 import { NaturalMotion } from './natural-motion'
-import { NaturalPostureLayers } from './posture'
+import { withPostureShiftsHeld } from './posture-shift-hold'
 import { createRandomStream } from './random'
 
 const dt = 1 / 120
@@ -21,17 +21,9 @@ function layer(seed = 41) {
   return { cues, gaze, random }
 }
 
-/**
- * Same-seed, idle-subtracted facade capture. Remove only continuous posture wobble from both
- * runs to measure the clip rather than its idle duck; the duck has separate coverage below.
- */
+/** Same-seed, idle-subtracted facade capture, with continuous wobble removed and idle shifts held in both runs. */
 function capture(kind: CueGestureKind, count: number, seconds: number, placement = 0) {
-  const step = NaturalPostureLayers.prototype.step
-  const quiet = vi.spyOn(NaturalPostureLayers.prototype, 'step').mockImplementation(function (this: NaturalPostureLayers, ...args) {
-    this.continuousScale = 0
-    return step.apply(this, args)
-  })
-  try {
+  return withPostureShiftsHeld(() => {
     const motion = new NaturalMotion({ seed: 41 })
     const idle = new NaturalMotion({ seed: 41 })
     for (const controller of [motion, idle]) {
@@ -57,10 +49,7 @@ function capture(kind: CueGestureKind, count: number, seconds: number, placement
         fixation: a.fixation.x,
       }
     })
-  }
-  finally {
-    quiet.mockRestore()
-  }
+  }, { quietContinuous: true })
 }
 
 describe('cue gesture shapes at the facade', () => {
@@ -225,7 +214,7 @@ describe('cue gesture arbitration', () => {
     }
   })
 
-  it('compensates the eyes for a cue head while ignoring continuous wobble', () => {
+  it('compensates the eyes for a cue head while ignoring continuous wobble', () => withPostureShiftsHeld(() => {
     const motion = new NaturalMotion({ seed: 41 })
     const idle = new NaturalMotion({ seed: 41 })
     const cue = layer()
@@ -242,7 +231,7 @@ describe('cue gesture arbitration', () => {
       const delta = NaturalGazeLayer.eye({ x: 0, y: 0 }, { x: 0, y: headY })
       expect(a.pose.eyeY - b.pose.eyeY).toBeCloseTo(delta.y, 8)
     }
-  })
+  }))
 
   it('refuses emotion recipe clips during a cue head clip, without changing the recipe stream', () => {
     const recipe = vi.spyOn(NaturalGestures.prototype, 'trigger')

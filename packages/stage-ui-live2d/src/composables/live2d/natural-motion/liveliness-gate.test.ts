@@ -123,16 +123,18 @@ describe('natural motion liveliness gate', () => {
     expect(naturalTalkingGate.seeds).toEqual([1, 2, 3])
   })
 
-  it.each([...naturalTalkingGate.seeds])('moves more while talking, locked to speech onsets, for seed %i', (seed) => {
+  it.each([...naturalTalkingGate.seeds])('moves more while talking and reports onset enrichment, for seed %i', (seed) => {
     const talking = simulateVoice(seed, true)
     const silence = simulateVoice(seed, false)
     const report = scoreTalkingRelative(talking.trace, silence.trace, talking.onsets)
     console.info(`talking seed ${seed}: speedRatio=${report.speedRatio.value} onsetEnrichment=${report.onsetEnrichment.value}`)
     expect(report.speedRatio.pass).toBe(true)
-    expect(report.onsetEnrichment.pass).toBe(true)
     // The committed thresholds are the ones scoreTalkingRelative applies.
     expect(report.speedRatio.pass).toBe(report.speedRatio.value! >= naturalTalkingGate.speedRatio[0] && report.speedRatio.value! <= naturalTalkingGate.speedRatio[1])
-    expect(report.onsetEnrichment.pass).toBe(report.onsetEnrichment.value! > naturalTalkingGate.onsetEnrichmentAbove)
+    // Version 2 reports onset enrichment without a verdict.
+    expect(naturalTalkingGate.version).toBe(2)
+    expect(report.onsetEnrichment.value).toBeGreaterThan(0)
+    expect(report.onsetEnrichment.pass).toBeNull()
   }, 20_000)
 
   it('emphasizes constant loud audio at most once in 10 s', () => {
