@@ -563,7 +563,7 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
 - [ ] F1. Plan compliance audit (amended 2026-11-07; OPEN: waits on todo 23)
   The per-todo evidence files under `.omo/evidence/mmd-natural-full-body/` do not exist and are no longer required. For todos 1-22, the proof is the `main` commit each row names: `git merge-base --is-ancestor <commit> origin/main` exits 0. Todo 23 is proven by the evidence it produces. The Must NOT have list is verified by `rg` checks on `main` (no assets, no Ammo internals, no shims, no other locales). The branch guard no longer applies: the plan landed on `main`, not on `luke/feat/mmd-natural-full-body`.
   Recommended task executor category: unspecified-high
-- [ ] F2. Code quality review (OPEN: no QA evidence found at the 2026-11-06 audit; pending Luke's QA)
+- [x] F2. Code quality review (APPROVE 2026-11-07, no blockers: `.omo/evidence/mmd-natural-full-body/f2-code-quality.md`. Every touched package typechecks and its suite passes on `main` at `4daece2bb`; the motion-driver import guard holds. The review saw 7 `stage-ui` tests in `mmd.browser.test.ts` fail with raw i18n keys; after `pnpm -F @proj-airi/i18n build` the file passes 16 of 16, so the cause was a stale i18n `dist/`, not code.)
   `pnpm verify` green; review against `.agents/skills/enforce-rules-for-typescript`, `enforce-rules-for-vitest`, `enforce-rules-for-unocss`; no `any`, no suppressed errors; import guard on motion-driver-* holds.
   Recommended task executor category: unspecified-high
 - [ ] F3. Real manual QA (OPEN: no QA evidence found at the 2026-11-06 audit; pending Luke's QA)

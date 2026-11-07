@@ -1,7 +1,7 @@
 # Natural idle reshape and emotion ducking
 
 Date: 2026-10-25
-Status: accepted for the delivered parts. Luke chose option (a) for the gate band on 2026-11-07, which unblocks the idle reshape.
+Status: accepted for the delivered parts. Luke chose option (a) for the gate band on 2026-11-07. The idle reshape is held: on today's code it fails other gated metrics.
 
 ## Context
 
@@ -50,6 +50,8 @@ The evidence for the reshape is arm R4. Its quick yaw reversals, counted per sec
 Luke chose option (a). `naturalIdleLivelinessGate` is now version 2. Generated scoring reports `jitter` and `speedPeakLogAsymmetry` with a null band (`generatedHeadReportOnlyBands` in `liveliness.ts`), and the gate no longer lists them. Reference mode keeps both recording bands. Every other version 1 metric, including `still05` and `still2`, keeps its band.
 
 A null band also removes both metrics from the composite liveliness score, so score values move even where no gated verdict changes. Version 1 reports and version 2 reports therefore do not compare score for score.
+
+The reshape (arm R4: continuous retune, human holds, activity regime) was then built on today's code and still fails the version 2 gate. Seed 2 fails `angleXp95` (14.33 against 4.8 to 12.8), and the talking gate fails on seeds 1 and 2: the talking-to-silence speed ratio is 1.10 and 1.13 against a 1.15 floor, and onset enrichment is 0.96 and 1.05 against a 1.2 floor. No subset of the three steps passes. The R4 packet was measured on 2026-10-25, before the speech-onset and gesture features that now share the posture shift schedule. Luke held the reshape on 2026-11-07; re-validating R4 on today's code is the follow-up.
 
 ## Consequences
 
