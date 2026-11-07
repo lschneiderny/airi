@@ -1,10 +1,10 @@
-import type { MessageBoxOptions, MessageBoxReturnValue } from 'electron'
+import type { BrowserWindow, MessageBoxOptions, MessageBoxReturnValue } from 'electron'
 
 import type { I18n } from '../../libs/i18n'
 
 /** The part of Electron's `dialog` the notice uses, so tests can answer it. */
 export interface LeaveMmdNoticeDialog {
-  showMessageBox: (options: MessageBoxOptions) => Promise<Pick<MessageBoxReturnValue, 'response'>>
+  showMessageBox: (window: BrowserWindow, options: MessageBoxOptions) => Promise<Pick<MessageBoxReturnValue, 'response'>>
 }
 
 const relaunchButton = 0
@@ -22,11 +22,13 @@ const keepButton = 1
  * - Whether the user chose to relaunch; `relaunch` has been called then
  */
 export async function offerClassicWindowRelaunch(params: {
+  window: BrowserWindow
   dialog: LeaveMmdNoticeDialog
   i18n: Pick<I18n, 't'>
   relaunch: () => void
 }): Promise<boolean> {
-  const { response } = await params.dialog.showMessageBox({
+  // On macOS an unparented message box blocks main even through the promise API.
+  const { response } = await params.dialog.showMessageBox(params.window, {
     type: 'info',
     title: params.i18n.t('tamagotchi.electron.stage.leave-mmd-notice.title'),
     message: params.i18n.t('tamagotchi.electron.stage.leave-mmd-notice.message'),

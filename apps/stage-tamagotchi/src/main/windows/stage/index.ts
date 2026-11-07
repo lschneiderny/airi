@@ -130,7 +130,7 @@ export async function setupStageWindow(
     relaunch: relaunchApp,
     broadcast: params.broadcast,
     onLeaveMmd: () => {
-      offerClassicWindowRelaunch({ dialog, i18n: params.i18n, relaunch: relaunchApp })
+      offerClassicWindowRelaunch({ window, dialog, i18n: params.i18n, relaunch: relaunchApp })
         .catch(error => console.error('[stage] Failed to show the relaunch notice:', errorMessageFrom(error)))
     },
   })
