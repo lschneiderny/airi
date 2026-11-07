@@ -27,7 +27,7 @@ function phraseLevel(time: number) {
 /** Steps posture and emphasis like the facade for `seconds`; returns onset and shift-start times. */
 function simulateOnsetShifts(seed: number, seconds: number, locked: boolean) {
   const stream = (layer: number) => createRandomStream(deriveSeed(seed, layer))
-  const posture = new NaturalPostureLayers([0, -0.1, 0], { drift: stream(0), continuous: stream(1), gain: stream(2), shift: stream(3) })
+  const posture = new NaturalPostureLayers([0, -0.1, 0], { drift: stream(0), continuous: stream(1), gain: stream(2), shift: stream(3), regime: stream(16) })
   const emphasis = new NaturalSpeechEmphasis(stream(10))
   const onsetShifts = new SpeechOnsetShifts()
   const onsets: number[] = []
@@ -60,7 +60,7 @@ describe('natural speech emphasis', () => {
   })
 
   it('ignores onsets while not speaking', () => {
-    const posture = new NaturalPostureLayers([0, 0, 0], { drift: createRandomStream(1), continuous: createRandomStream(2), gain: createRandomStream(3), shift: createRandomStream(4) })
+    const posture = new NaturalPostureLayers([0, 0, 0], { drift: createRandomStream(1), continuous: createRandomStream(2), gain: createRandomStream(3), shift: createRandomStream(4), regime: createRandomStream(16) })
     const emphasis = new NaturalSpeechEmphasis(createRandomStream(5))
     const onsetShifts = new SpeechOnsetShifts()
     for (let i = 0; i < 30 / step; i++) {

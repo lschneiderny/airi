@@ -109,9 +109,9 @@ export class NaturalSpeechEmphasis {
 /**
  * Phrase-onset locking of posture shifts while speaking.
  *
- * It exists to meet the liveliness gate's talking criterion `onsetEnrichment > 1.2`. Emphasis nods alone (0.02-0.05 at ~25% acceptance) lift head
- * speed in the 0.4 s after a phrase onset by only about 0-5% against the ~6 units/s talking
- * baseline, so a larger onset-locked motion is needed. It follows the blink-advance pattern:
+ * It adds onset-locked head motion that emphasis nods alone (0.02-0.05 at ~25% acceptance) cannot:
+ * they lift head speed in the 0.4 s after a phrase onset by only about 0-5% against the talking baseline.
+ * The talking gate reports the resulting onset enrichment without gating it since its version 2. It follows the blink-advance pattern:
  * when an onset is detected (before acceptance sampling) and a posture shift is already due
  * within 1 s, that shift starts at the onset. Shifts move earlier and are never added;
  * `advanceShift` returns the advanced time to the next hold, so the shift rate is unchanged.

@@ -52,7 +52,7 @@ export interface NaturalChatInput {
 
 // Layer stream indices for `deriveSeed`. Appending layers keeps existing sequences stable.
 // Index 4 belonged to the v1 fixation rule and now seeds the gaze layer that replaces it.
-const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12, cursorAttention: 13, chat: 14, cueGestures: 15 }
+const streamIndex = { drift: 0, continuous: 1, gain: 2, shift: 3, gaze: 4, attention: 5, body: 6, face: 7, blink: 8, breath: 9, emphasis: 10, impulses: 11, gestures: 12, cursorAttention: 13, chat: 14, cueGestures: 15, regime: 16 }
 
 // Fixed integration grid. Processes advance only in whole steps and the output is
 // interpolated between the two grid states around the current time, so frame
@@ -206,6 +206,7 @@ export class NaturalMotion {
       continuous: stream('continuous'),
       gain: stream('gain'),
       shift: stream('shift'),
+      regime: stream('regime'),
     })
     this.chatRandom = stream('chat')
     this.gaze = new NaturalGazeLayer(stream('gaze'), this.chatRandom, (point, hold, at) => {

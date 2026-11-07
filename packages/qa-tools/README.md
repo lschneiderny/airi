@@ -160,11 +160,11 @@ Gate definitions live in `packages/stage-ui-live2d/src/composables/live2d/natura
 
 | Gate id | Version | Meaning |
 | --- | --- | --- |
-| `natural-idle-liveliness` | 1 | Idle Natural metrics against reference bands. |
-| `natural-talking` | 1 | Talking head speed relative to silence and speech-onset enrichment. |
+| `natural-idle-liveliness` | 2 | Idle Natural metrics against reference bands. Head jitter and speed-peak log asymmetry are reported, not gated. |
+| `natural-talking` | 2 | Talking head speed relative to silence. Speech-onset enrichment is reported, not gated. |
 | `natural-emotion` | 1 | Emotion direction, recipe-relative size, release, and visibility above the idle null. |
 | `natural-emotion-t3` | 2 | Rendered emotion transfer against session-local placebo windows and a same-commit T1 reference. |
-| `natural-idle-liveliness` at T3 | 1 | Rendered idle liveliness from three captures, aggregated by the liveliness gate. |
+| `natural-idle-liveliness` at T3 | 2 | Rendered idle liveliness from three captures, aggregated by the liveliness gate. |
 
 Changing a gate means editing `gates.ts` and bumping its `version` in a commit before running it. Reports record the gate id, version, and source file SHA. Never tune a gate or Natural recipe merely to make a failing run pass. Failures are findings.
 

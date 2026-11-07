@@ -8,7 +8,9 @@ import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/ex
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 // SHA-256 per seed over each frame's serialized output; pins come from Node Vitest.
-// Pins reflect face low-pass, boost removal, duck, laugh and slow-head eye compensation.
+// Pins reflect face low-pass, boost removal, duck, laugh, slow-head eye compensation, and the idle reshape
+// (continuous retune, human holds, activity spells, realigning postponement, talking amplitude 1.4).
+// The darwin-arm64 pins below predate the idle reshape and must be re-pinned on an Apple-silicon Mac.
 // Darwin x64 and arm64 libm differ in the last bit; arm64 measurements: task-1-observer-rootcause.txt.
 const idleHashes = process.platform === 'darwin' && process.arch === 'arm64'
   ? [
@@ -17,9 +19,9 @@ const idleHashes = process.platform === 'darwin' && process.arch === 'arm64'
       '77212d070b2b422f3cbeae0573e151b15488136f503c6c786fc33ca42cfe90fd',
     ]
   : [
-      '2dbac2b1fb9f26c9e8124eaa604f993e1c9cb2b750bdb8cd1251543cdae18918',
-      '787f42a7888a341a0517e1ed9683479f61b992d5f164eb75eb63cfe58f7983e5',
-      '311836fb977667c41d845e0b1ac188409d93ce80559bac4504914a6bcf6d6764',
+      '1f1f413dbdd2026b06c32385d2948395b8d53557b6e459aa188eb1df95e08b1c',
+      '86aef4d07d8f2094cdfa223c4a9807a23a1549577930e7e1cd7b8a4800c884b8',
+      'b462b2f9f881b2a6c3168fa7f8accddc9abb24a30d6ee1247fe655c833003f72',
     ]
 const emotionHashes = process.platform === 'darwin' && process.arch === 'arm64'
   ? [
@@ -28,9 +30,9 @@ const emotionHashes = process.platform === 'darwin' && process.arch === 'arm64'
       '026172f02f55146739a283cc7636b2fd6bdc262763ebca804c7eb0eb1bb63c1a',
     ]
   : [
-      '8ffeabecaaa8ce790e8e5f24c43a11dff8beada90a010f68df5d1c65ce8726cc',
-      '4527dbaa28d18e3e6005948b37440e9cb4299843816ce924542ee83d50680f80',
-      'ec6fa2cd923d0738fb75935a6c02ba29aff9071191545e82e93e2e6235437589',
+      '590cdad69d46134b262a97e38749cdb03188de066450eea37b427a50fb80bd40',
+      'e81f99030586d9090f8c9edac82006de8430c5c273b6760c12834226ee0b34c1',
+      '00ffb326c8313f9722d799101672654cd8528cb7d199106e4a9b4aec56e86b81',
     ]
 
 const rate = 120

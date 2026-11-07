@@ -100,7 +100,7 @@ describe('natural gaze', () => {
   })
 
   it('leads about 30% of posture shifts by 30-80 ms', () => {
-    const posture = new NaturalPostureLayers([0, 0, 0], { drift: silent, continuous: silent, gain: silent, shift: createRandomStream(1) })
+    const posture = new NaturalPostureLayers([0, 0, 0], { drift: silent, continuous: silent, gain: silent, shift: createRandomStream(1), regime: silent })
     const gaze = new NaturalGazeLayer(createRandomStream(2))
     const attention = new NaturalAttentionShifts(createRandomStream(3))
     const head: number[][] = [[0, 0, 0]]

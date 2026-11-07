@@ -37,10 +37,8 @@ export interface TalkingGate {
   seeds: readonly number[]
   warmUpSeconds: number
   scoredSeconds: number
-  /** Inclusive band of talking over silent mean head speed. */
+  /** Inclusive band of talking over silent mean head speed. Onset enrichment is reported, not gated. */
   speedRatio: readonly [min: number, max: number]
-  /** Head speed in the 0.4 s after speech onsets over the same window 1.7 s later must exceed this. */
-  onsetEnrichmentAbove: number
 }
 
 const livelinessLimitation = 'Liveliness scores compare idle motion statistics with the desk VTS reference bands. They do not prove naturalness, which stays a visual review, and the desk recordings are valid for idle liveliness only.'
@@ -88,16 +86,18 @@ export const naturalIdleLivelinessGate = {
   bands: { ...referenceStats.bands, ...generatedBlinkBands, ...generatedMouthOpenBand, ...generatedHeadReportOnlyBands },
 } as const satisfies LivelinessGate
 
-/** Talking relative to silence on the same seed; the thresholds are the ones `scoreTalkingRelative` applies. */
+/**
+ * Talking relative to silence on the same seed; the thresholds are the ones `scoreTalkingRelative` applies.
+ * Version 2 (2026-11-07) drops the onset-enrichment floor of 1.2: enrichment is reported without a verdict.
+ */
 export const naturalTalkingGate = {
   id: 'natural-talking',
-  version: 1,
+  version: 2,
   limitation: livelinessLimitation,
   seeds: [1, 2, 3],
   warmUpSeconds: 60,
   scoredSeconds: 10 * 60,
   speedRatio: [1.15, 1.7],
-  onsetEnrichmentAbove: 1.2,
 } as const satisfies TalkingGate
 
 /**

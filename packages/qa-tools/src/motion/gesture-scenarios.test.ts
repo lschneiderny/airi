@@ -2,7 +2,7 @@ import type { NaturalMotionFrame } from '@proj-airi/motion-driver-natural/frame-
 import type { MotionScenario, ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 
 import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
-import { NaturalPostureLayers } from '@proj-airi/motion-driver-natural/posture'
+import { withPostureShiftsHeld } from '@proj-airi/motion-driver-natural/posture-shift-hold'
 import { MotionScenarioSchema } from '@proj-airi/stage-shared/motion-scenario'
 import { safeParse } from 'valibot'
 import { describe, expect, it, vi } from 'vitest'
@@ -44,15 +44,12 @@ function framesOf(input: MotionScenario) {
 /**
  * Runs the scenario and its twin with each gesture replaced by a marker, through the full T1 sink, and returns the
  * per-frame difference from the gesture's start (`rel` 0). Continuous posture wobble is silenced in both runs, as in
- * the stage-ui-live2d facade tests, so the difference is the clip rather than its idle duck.
+ * the stage-ui-live2d facade tests, so the difference is the clip rather than its idle duck. Idle posture shifts are
+ * held off in both runs too: a gesture postpones a due shift only in its own run, and with human-length holds
+ * (median about 0.3 s) a shift is due inside almost every gesture window.
  */
 function capture(events: ScenarioEvent[], durationSeconds: number, start = at) {
-  const step = NaturalPostureLayers.prototype.step
-  const quiet = vi.spyOn(NaturalPostureLayers.prototype, 'step').mockImplementation(function (this: NaturalPostureLayers, ...args) {
-    this.continuousScale = 0
-    return step.apply(this, args)
-  })
-  try {
+  return withPostureShiftsHeld(() => {
     const twin = events.map((event): ScenarioEvent => event.kind === 'gesture' ? { kind: 'marker', at: event.at, label: `no-${event.gesture}` } : event)
     const actual = framesOf(scenario('gesture', events, durationSeconds))
     const idle = framesOf(scenario('gesture-idle', twin, durationSeconds))
@@ -68,10 +65,7 @@ function capture(events: ScenarioEvent[], durationSeconds: number, start = at) {
         fixation: a.fixation.x,
       }
     })
-  }
-  finally {
-    quiet.mockRestore()
-  }
+  }, { seconds: durationSeconds + 60, quietContinuous: true })
 }
 
 type Frame = ReturnType<typeof capture>[number]
