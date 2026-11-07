@@ -22,6 +22,10 @@ Root commands for working on this repository with many worktrees and parallel ag
 - Use root `pnpm typecheck`, `pnpm lint`, or `pnpm test:run` for a release or a whole-repository sweep. `pnpm verify` only covers what changed since the base.
 - `pnpm verify` does not run QA gates or Electron builds.
 
+## Quiet dev output
+
+Use `AIRI_DEV_QUIET=1 pnpm dev` (or another `dev:*` command routed through `scripts/dev.mjs`) to keep full child output in `.temp/dev/<package>-<script>-<timestamp>.log`. Set `AIRI_DEV_LOG=<path>` to choose a file; relative paths start at the repository root. The console shows the log path, one `[dev] ready <url>` line, error-looking lines, and the exit status. Ctrl+C and SIGTERM still stop the child tree. Without quiet mode, output is unchanged.
+
 ## `pnpm verify`
 
 ```bash
