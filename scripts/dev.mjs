@@ -9,11 +9,12 @@
 import process from 'node:process'
 
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeSync } from 'node:fs'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { createInterface } from 'node:readline'
 
 // eslint-disable-next-line no-restricted-syntax -- Plain Node.js ESM resolves a relative import only with its extension.
-import { createCommandEnv, createScriptEnv, LauncherError, parseScript, resolveCommand, sessionExitCode } from './dev-launcher.mjs'
+import { classifyDevLine, createCommandEnv, createScriptEnv, LauncherError, parseScript, planDevLogPath, resolveCommand, sessionExitCode } from './dev-launcher.mjs'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const IS_WINDOWS = process.platform === 'win32'
@@ -59,6 +60,15 @@ catch (error) {
 }
 
 const { packageDir, manifest, scriptName, forwardedArgs, commands, scriptEnv } = session
+const quiet = process.env.AIRI_DEV_QUIET === '1'
+let logFd
+let readyPrinted = false
+if (quiet) {
+  const logPath = planDevLogPath({ rootDir: ROOT, packageName: manifest.name, scriptName, timestamp: new Date().toISOString(), override: process.env.AIRI_DEV_LOG })
+  mkdirSync(dirname(logPath), { recursive: true })
+  logFd = openSync(logPath, 'w')
+  console.info(`[dev] log ${logPath}`)
+}
 
 let child
 let stopSignal
@@ -68,6 +78,8 @@ function forceStop() {
     return
   if (IS_WINDOWS)
     spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' })
+  else if (quiet)
+    process.kill(-child.pid, 'SIGKILL')
   else
     child.kill('SIGKILL')
 }
@@ -81,10 +93,17 @@ function stop(signal) {
 
   // On Windows, the console already delivered Ctrl+C to every attached process.
   // A closed console window (SIGHUP) terminates this process within seconds, so stop the tree now.
-  if (IS_WINDOWS && signal === 'SIGHUP')
+  if (IS_WINDOWS && signal === 'SIGHUP') {
     forceStop()
-  else if (!IS_WINDOWS)
-    child?.kill(signal)
+  }
+  else if (!IS_WINDOWS) {
+    if (quiet && child?.pid) {
+      process.kill(-child.pid, signal)
+    }
+    else {
+      child?.kill(signal)
+    }
+  }
 
   setTimeout(forceStop, FORCE_STOP_AFTER_MS).unref()
 }
@@ -105,12 +124,32 @@ function runCommand([name, ...args], extraArgs) {
   }
 
   return new Promise((resolveExit) => {
-    child = spawn(command.file, [...command.args, ...args, ...extraArgs], { cwd: packageDir, env: createCommandEnv(scriptEnv, command), stdio: 'inherit' })
+    child = spawn(command.file, [...command.args, ...args, ...extraArgs], {
+      cwd: packageDir,
+      env: createCommandEnv(scriptEnv, command),
+      stdio: quiet ? ['inherit', 'pipe', 'pipe'] : 'inherit',
+      ...(quiet && !IS_WINDOWS ? { detached: true } : {}),
+    })
+    if (quiet) {
+      for (const stream of [child.stdout, child.stderr]) {
+        stream.on('data', chunk => writeSync(logFd, chunk))
+        createInterface({ input: stream, crlfDelay: Infinity }).on('line', (line) => {
+          const result = classifyDevLine(line)
+          if (result.readyUrl && !readyPrinted) {
+            readyPrinted = true
+            console.info(`[dev] ready ${result.readyUrl}`)
+          }
+          else if (result.error) {
+            console.error(result.error)
+          }
+        })
+      }
+    }
     child.once('error', (error) => {
       console.error(`[dev] Could not start "${name}": ${error.message}`)
       resolveExit({ code: 1 })
     })
-    child.once('exit', (code, signal) => resolveExit({ code, signal }))
+    child.once(quiet ? 'close' : 'exit', (code, signal) => resolveExit({ code, signal }))
   })
 }
 
@@ -127,4 +166,8 @@ for (const [index, words] of commands.entries()) {
   }
 }
 
+if (quiet) {
+  closeSync(logFd)
+  console.info(`[dev] exit ${exitCode}`)
+}
 process.exit(exitCode)

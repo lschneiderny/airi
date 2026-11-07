@@ -2,7 +2,8 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { constants } from 'node:os'
-import { delimiter, join } from 'node:path'
+import { delimiter, join, resolve } from 'node:path'
+import { stripVTControlCharacters } from 'node:util'
 
 /** An expected launcher failure. The entry point prints its message without a stack trace. */
 export class LauncherError extends Error {}
@@ -118,4 +119,23 @@ export function sessionExitCode({ code, signal, stopSignal }) {
   if (stopSignal === 'SIGINT')
     return 0
   return code ?? 128 + (constants.signals[signal] ?? 0)
+}
+
+/** Selects only ready URLs and error-looking lines for a quiet session's console. */
+export function classifyDevLine(line) {
+  const text = stripVTControlCharacters(line).trim()
+  const readyUrl = /(?:\bLocal:\s*|\brenderer dev[- ]server.*?)(https?:\/\/\S+)/i.exec(text)?.[1]
+  if (readyUrl)
+    return { readyUrl }
+  if (/\b(?:error|fatal|exception)(?=[:\]\s]|$)|\b\w+Error:|\bfailed\b/i.test(text))
+    return { error: text }
+  return {}
+}
+
+/** Keeps default filenames portable, with overrides relative to the repository root. */
+export function planDevLogPath({ rootDir, packageName, scriptName, timestamp, override }) {
+  if (override)
+    return resolve(rootDir, override)
+  const name = `${packageName}-${scriptName}-${timestamp}`.replace(/^@/, '').replace(/[^\w.-]/g, '-')
+  return join(rootDir, '.temp', 'dev', `${name}.log`)
 }
