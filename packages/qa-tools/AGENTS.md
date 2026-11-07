@@ -9,7 +9,9 @@ Follow the [root guide](../../AGENTS.md) and its motion-qa task routing. `README
 
 | Task | Location | Notes |
 | --- | --- | --- |
-| CLI entrypoints | `bin/` | `doctor`, `motion`, `report`, `test`, `evidence`, `t2-probe`, `check-prod-bundle` |
+| CLI entrypoints | `bin/` | `doctor`, `motion`, `report`, `test`, `evidence`, `t2-probe`, `check-prod-bundle`, `setup`, `llm`, `app` |
+| Experience session driver | `src/app/` | `pnpm qa:app run`: temporary profile, seeded replay provider and model, chat send, named bridge events, JSON summary |
+| Replay chat and speech server | `src/llm/` | `pnpm qa:llm serve`: scripted OpenAI-compatible replies and WAV speech, JSONL request log |
 | Model evaluation CLI | `bin/model.ts` | Dispatches `prompt`, `score`, `import-ollama-bench`, and `help` |
 | Model evaluation implementation | `src/model/` | Prompt rendering, transcript import, runtime scoring, provenance, and summaries |
 | Committed model datasets | `model-eval/sets/` | One directory per set id, including the separate legacy Mac M2 benchmark |
@@ -23,7 +25,7 @@ Follow the [root guide](../../AGENTS.md) and its motion-qa task routing. `README
 | Known-failure baseline | `known-failures.json`, `src/known-failures/` | Package, project, file, and full test name key |
 | Review report | `src/report/` | Self-contained HTML; `limitations.ts` text is quoted verbatim |
 | Run directories and archives | `src/evidence/` | `.temp/qa/` runs, `.omo/evidence/<slug>` archives |
-| Doctor probes | `src/env/` | Pinned pnpm, processes, stray Electron detection |
+| Doctor probes and setup | `src/env/` | Pinned pnpm, processes, stray Electron, pointer platform; `.env.qa` loading; `qa:setup cubism` |
 
 ## CONVENTIONS
 

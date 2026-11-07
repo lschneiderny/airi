@@ -5,7 +5,9 @@ description: Run motion, emotion, or idle QA, including deterministic gates, hea
 
 # Motion QA
 
-Run `pnpm qa:doctor` first. Resolve reported failures before starting a check. Doctor reports setup problems and never fixes them.
+Run `pnpm qa:doctor` first. Resolve reported failures before starting a check. Doctor reports setup problems and never fixes them. In a fresh worktree, run `pnpm qa:setup cubism` first: it downloads Cubism Core into both apps without launching them.
+
+Check doctor's `pointer-platform` row before rendered pointer QA. Run real-pointer touch and stage hit-test readback acceptance on Windows. On other platforms, touch scenarios refuse with `pointer-platform-unsupported`, T3 runs use cursor attention off instead of a parked cursor (a different condition), and CDP pointer moves do not measure the stage hit-test readback. On Linux Wayland the app uses the classic window with click-through disabled, and the polled cursor can stick stale (#2521). Do not present these degraded conditions as Windows pointer acceptance.
 
 ## Choose a level
 
@@ -36,7 +38,7 @@ pnpm qa:motion validate-scorer --level t1
 pnpm qa:report <runDir>
 ```
 
-For the MMD desktop stage, `pnpm qa:stage measure` records window/desktop frame-budget pairs and `pnpm qa:stage gate <json>...` judges `stage-walk-skate`, `stage-arm-penetration`, `stage-frame-budget`, `stage-gesture-walk`, and `stage-action-preempt`. A measurement moves the real OS cursor and needs a quiet, undisturbed desktop. See the Stage gates section of the qa-tools README.
+For the MMD desktop stage, `pnpm qa:stage measure` records window/desktop frame-budget pairs and `pnpm qa:stage gate <json>...` judges `stage-walk-skate`, `stage-arm-penetration`, `stage-frame-budget`, `stage-gesture-walk`, and `stage-action-preempt`. A measurement moves the real OS cursor and needs a quiet, undisturbed desktop. See the Stage gates section of the qa-tools README. MMD has no headless level yet; `docs/ai/audits/2026-11-07-headless-3d-motion-spike.md` records that the production pipeline, IK, and Ammo physics step deterministically in Node and proposes a T2-3D runner.
 
 The clip gates use two scenarios against an app attached with `--port`, with the clip imported for the mounted model: `pnpm qa:stage measure --mode desktop --port <cdp port> --scenario gesture-walk --clip <upper clip> --out <json>` loops an upper clip over a walk (at least 10 s of walking with the clip, whatever `--seconds` says), and `--scenario action-preempt --clip <full clip>` plays a full-body clip while a goal is pending. The committed records are `packages/qa-tools/fixtures/stage/task-16-gesture-walk-chisa.json` and `task-16-action-preempt-chisa.json`. Model-eval scores clip actions with `pnpm qa:model score <transcripts.jsonl> --exposed-actions <label:kind,...>`.
 
@@ -46,11 +48,11 @@ Clip QA kit for a real-surface MMD run:
 - Clips start unexposed and unlabeled. Label and expose them (settings table, or `setCuration` in the `mmd` store) before testing ACT `action` or `perform_action`.
 - A QA override of the desktop activity sensor must read idle without away: use an `idleSeconds` value such as 60. A value under 10 s counts as active input (`watching`), so the director never sits; a value over 300 s reads away, and the director refuses every action as `asleep`.
 - CDP input (`Input.dispatchMouseEvent`) does not reset the OS idle timer. On an untouched host, keep the activity sensor fresh with the override, or long runs drift into away.
-- Chat-window probes must use the real send path: type into the `#/chat-floating` composer or call `useChatStore().send` in that renderer. Never use `chat.ingest` or a tool's `execute` there. Those are renderer-local; the composer's `send` routes the turn to the synced leader (the stage window on the desktop stage), which owns the tool executors and the ACT listener. A probe that skips the leader reports a false failure.
+- Chat-window probes must use the real send path: type into the `#/chat-floating` composer or call `useChatStore().send` in that renderer. Never use `chat.ingest` or a tool's `execute` there. Those are renderer-local; the composer's `send` routes the turn to the synced leader (the stage window on the desktop stage), which owns the tool executors and the ACT listener. A probe that skips the leader reports a false failure. Prefer `pnpm qa:app run --model <path> --script <replay json> --say <text> --expect act,tts` over hand-written CDP glue: it launches a temporary profile, seeds onboarding and the `qa:llm` replay provider, sends through the composer or the bridge `chatSend`, waits for named bridge events (`act`, `expression`, `tts`, `turn`; `clip` is not recorded yet), and prints one JSON summary. Use `--dry-run` to inspect the plan without launching.
 
 The `builtin:t3-touch` scenario pets, pokes, and triggers the touch blush with the real OS pointer. `builtin:t3-touch-pass` verifies that a passing cursor does not start a pet. The T1 touch suite covers deterministic touch behavior. T3 touch runs move the real OS cursor and need an undisturbed desktop; the runner refuses paths outside the virtual screen and stops when the reported head is implausible.
 
-Set `AIRI_QA_RIG_FORBOOTH` to the local ForBOOTH rig directory for T2 and T3. Set `AIRI_QA_CUBISM_CORE` when the core is not at the current checkout's default path. `AIRI_QA_RIG_BEAR` is an optional doctor input; Luke's rule says acceptance on one rig counts for the other. The bridge is enabled only when the build is development and both `APP_REMOTE_DEBUG=true` and `APP_MOTION_QA_BRIDGE=true` are set. T3 uses `APP_USER_DATA_PATH` for a temporary profile and manages its remote-debug port internally. Do not reuse a personal Electron profile.
+Set `AIRI_QA_RIG_FORBOOTH` to the local ForBOOTH rig directory for T2 and T3. Keep local `AIRI_QA_*` values in the ignored repo-root `.env.qa`; every qa-tools command loads it, and shell values take precedence. Set `AIRI_QA_CUBISM_CORE` when the core is not at the current checkout's default path. `AIRI_QA_RIG_BEAR` is an optional doctor input; Luke's rule says acceptance on one rig counts for the other. The bridge is enabled only when the build is development and both `APP_REMOTE_DEBUG=true` and `APP_MOTION_QA_BRIDGE=true` are set. T3 uses `APP_USER_DATA_PATH` for a temporary profile and manages its remote-debug port internally. Do not reuse a personal Electron profile.
 
 Gate selection and environment values are recorded in the run manifest. A reduced `--seeds` run is not the full committed gate.
 
