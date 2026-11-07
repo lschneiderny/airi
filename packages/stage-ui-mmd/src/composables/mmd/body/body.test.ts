@@ -19,6 +19,43 @@ function holdClip(name: string, bone: string, rotation: Euler, duration = 2) {
 }
 
 describe('mmd full-body stages', () => {
+  it('keeps solved ankles planted through the first weighted sit frame', () => {
+    const { pipeline, body, mixer, bone, setInput } = bodyFixture()
+    const duration = 2
+    const clip = new AnimationClip('sit', duration, [
+      new VectorKeyframeTrack('.bones[センター].position', [0, duration], [0, 3.5, 0, 0, 3.5, 0]),
+      ...['左', '右'].flatMap((side) => {
+        const hip = new Quaternion().setFromEuler(new Euler(-80 * Math.PI / 180, 0, 0)).toArray()
+        const knee = new Quaternion().setFromEuler(new Euler(80 * Math.PI / 180, 0, 0)).toArray()
+        return [
+          new QuaternionKeyframeTrack(`.bones[${side}足].quaternion`, [0, duration], [...hip, ...hip]),
+          new QuaternionKeyframeTrack(`.bones[${side}ひざ].quaternion`, [0, duration], [...knee, ...knee]),
+        ]
+      }),
+    ])
+    pipeline.registerClip(clip.name, clip)
+    body.registerClip(clip.name, clip)
+    setInput({ stanceClips: new Set([clip.name]) })
+    for (let frame = 0; frame < 120; frame++)
+      pipeline.step(1 / 60)
+    const ankles = ['左足首', '右足首'].map(name => bone(name).getWorldPosition(new Vector3()))
+    pipeline.enqueue(() => mixer.clipAction(clip).reset().fadeIn(0.6).play())
+    for (let frame = 0; frame < 90; frame++) {
+      pipeline.step(1 / 60)
+      expect(body.diagnostics.feet.maxError, `sit frame ${frame}`).toBeLessThan(0.05)
+      for (const [index, name] of ['左足首', '右足首'].entries())
+        expect(bone(name).getWorldPosition(new Vector3()).distanceTo(ankles[index]), `ankle ${name} frame ${frame}`).toBeLessThan(0.05)
+    }
+    const steady = ['左足', '右足', '左ひざ', '右ひざ'].map(name => bone(name).getWorldQuaternion(new Quaternion()))
+    // At full clip weight the ordinary clip + real IK solve is the reference.
+    // Removing the procedural contact stage must not change its bend plane.
+    const contactStage = pipeline.poseStages.findIndex(stage => stage.id === 'foot-contact')
+    pipeline.poseStages.splice(contactStage, 1)
+    pipeline.step(1 / 60)
+    for (const [index, name] of ['左足', '右足', '左ひざ', '右ひざ'].entries())
+      expect(bone(name).getWorldQuaternion(new Quaternion()).angleTo(steady[index])).toBeLessThan(1e-5)
+  })
+
   it('plants actual ankles through 600 frames of weight shift in a transformed IK parent', () => {
     const { pipeline, body, bone } = bodyFixture()
     const anchors = [new Vector3(1, 1, 0), new Vector3(-1, 1, 0)]
