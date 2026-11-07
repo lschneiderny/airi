@@ -7,6 +7,10 @@ import { parseArgs } from 'node:util'
 import { errorMessageFrom } from '@moeru/std'
 
 import { createSystemProbes, runDoctor, runWarm, spawnWarmRun } from '../src/env/doctor'
+import { loadQaEnv } from '../src/env/load'
+
+const repoRoot = resolve(import.meta.dirname, '..', '..', '..')
+const qaEnv = loadQaEnv(repoRoot)
 
 const usage = `Usage: pnpm qa:doctor [--json] [--warm]
 
@@ -44,8 +48,12 @@ if (flags.help) {
 }
 
 async function main(options: { json?: boolean, warm?: boolean }) {
-  const repoRoot = resolve(import.meta.dirname, '..', '..', '..')
   const rows = await runDoctor(createSystemProbes(repoRoot))
+  if (qaEnv.loaded.length > 0) {
+    const rigs = rows.find(row => row.id === 'rigs')
+    if (rigs)
+      rigs.detail += `; ${qaEnv.file} supplied ${qaEnv.loaded.join(', ')} (shell variables take precedence)`
+  }
   if (options.warm)
     rows.push(await runWarm(() => spawnWarmRun(repoRoot)))
 

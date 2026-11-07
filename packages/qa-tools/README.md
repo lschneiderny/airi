@@ -41,6 +41,16 @@ Both app Vite configs register `DownloadLive2DSDK()` from `@proj-airi/unplugin-l
 
 Cubism Core has its own Live2D license; see the root [license note](../../README.md#license-and-credits) and the [local QA license decision](../../docs/ai/adr/2026-10-20-motion-qa-levels.md#t2-license-decision). Do not commit the SDK or rig assets.
 
+## Local QA environment
+
+Put local defaults in the repository root's ignored `.env.qa`, for example:
+
+```dotenv
+AIRI_QA_RIG_FORBOOTH="/path/to/rig"
+```
+
+Doctor, motion, stage, t2-probe, and qa:test load this file before reading QA settings or recording their environment. Only `AIRI_QA_*` keys apply, and existing shell variables (including empty values) take precedence. A missing file is silent. Malformed input produces a warning and applies no values; unrelated keys produce warnings and are ignored. Doctor names the source file and loaded keys in its rigs row.
+
 ## Model evaluation
 
 Model evaluation separates deterministic fixtures, offline replay, future live runs, future persona judging, and Luke's own reading. Contract metrics and style heuristics stay separate; heuristic columns are not a model score.

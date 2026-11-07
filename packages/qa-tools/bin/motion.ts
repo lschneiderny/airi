@@ -4,9 +4,11 @@ import { resolve } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
 
+import { loadQaEnv } from '../src/env/load'
 import { ClosureHooks } from '../src/motion/cache/closure-hooks'
 
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..')
+loadQaEnv(repoRoot)
 const closure = new ClosureHooks(repoRoot, import.meta.url)
 
 async function main(argv: string[]): Promise<number> {
