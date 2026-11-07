@@ -44,6 +44,16 @@ function hasFlagEnableMkcert(): boolean {
 
 export default defineConfig({
   optimizeDeps: {
+    // The dependency scanner misses these imports on a cold cache: they sit behind
+    // route pages, generated layouts, or the VAD worker. Vite then finds them during
+    // the first page load, re-bundles, answers stale requests with
+    // 504 (Outdated Optimize Dep), and reloads the page.
+    include: [
+      'colorjs.io',
+      '@moeru/eventa/adapters/webworkers',
+      '@proj-airi/stage-ui-live2d > @pixi/constants',
+      '@proj-airi/stage-ui-live2d > @pixi/math',
+    ],
     exclude: [
       // Internal Packages
       '@proj-airi/stage-ui/*',
