@@ -4,7 +4,7 @@ import type { PerformanceEmotion } from '../expression-performance/types'
 
 import { defineInvokeEventa } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/event-target'
-import { array, boolean, finite, literal, looseObject, maxValue, minLength, minValue, nullable, number, optional, picklist, pipe, strictObject, string, variant } from 'valibot'
+import { array, boolean, finite, integer, literal, looseObject, maxLength, maxValue, minLength, minValue, nullable, number, optional, picklist, pipe, record, strictObject, string, union, variant } from 'valibot'
 
 import { MotionScenarioSchema } from './schema'
 
@@ -53,8 +53,37 @@ export const MotionQaConfigureInputSchema = strictObject({
   screenAwareness: optional(boolean()),
 })
 
-export const MotionQaImportModelInputSchema = strictObject({ inputId: nonEmpty })
+export const MotionQaImportModelInputSchema = strictObject({ inputId: nonEmpty, kind: optional(picklist(['live2d', 'mmd', 'vrm'])) })
 export const MotionQaImportModelResultSchema = strictObject({ modelId: nonEmpty })
+
+/**
+ * Calls the stage window's useChatStore().send, which routes to the synced leader owning tools and ACT listeners.
+ * Ingest and direct tool execution are renderer-local and do not exercise the real user send path.
+ */
+export const MotionQaChatSendInputSchema = strictObject({ text: pipe(nonEmpty, maxLength(32_000)) })
+export const MotionQaChatSendResultSchema = strictObject({ sent: literal(true) })
+const sequence = pipe(number(), finite(), integer(), minValue(0))
+export const MotionQaEventSchema = strictObject({
+  seq: sequence,
+  /** Unix epoch milliseconds from the recording renderer. */
+  time: pipe(number(), finite()),
+  kind: picklist(['act', 'expression', 'clip', 'tts', 'turn']),
+  /** Bounded scalar fields only; reply text is truncated to 500 characters by the recorder. */
+  payload: record(string(), union([pipe(string(), maxLength(500)), number(), boolean(), nullable(string())])),
+})
+export type MotionQaEvent = InferOutput<typeof MotionQaEventSchema>
+export const MotionQaEventsInputSchema = strictObject({ sinceSeq: optional(sequence) })
+export const MotionQaEventsResultSchema = strictObject({
+  events: pipe(array(MotionQaEventSchema), maxLength(512)),
+  /** Last issued sequence, including records evicted from the 512-entry window-local ring. */
+  lastSeq: sequence,
+  /** Total evictions; clients can detect a gap using the first returned sequence. */
+  dropped: sequence,
+})
+export type MotionQaChatSendInput = InferOutput<typeof MotionQaChatSendInputSchema>
+export type MotionQaChatSendResult = InferOutput<typeof MotionQaChatSendResultSchema>
+export type MotionQaEventsInput = InferOutput<typeof MotionQaEventsInputSchema>
+export type MotionQaEventsResult = InferOutput<typeof MotionQaEventsResultSchema>
 
 export const MotionQaStartCaptureInputSchema = strictObject({
   durationSeconds: pipe(number(), finite(), minValue(1), maxValue(600)),
@@ -84,6 +113,8 @@ export type MotionQaAwaitCaptureInput = InferOutput<typeof MotionQaAwaitCaptureI
 export type MotionQaAwaitCaptureResult = InferOutput<typeof MotionQaAwaitCaptureResultSchema>
 
 export const motionQaStateInvokeEventa = defineInvokeEventa<MotionQaState>('eventa:invoke:motion-qa:state')
+export const motionQaChatSendInvokeEventa = defineInvokeEventa<MotionQaChatSendResult, MotionQaChatSendInput>('eventa:invoke:motion-qa:chat-send')
+export const motionQaEventsInvokeEventa = defineInvokeEventa<MotionQaEventsResult, MotionQaEventsInput>('eventa:invoke:motion-qa:events')
 export const motionQaConfigureInvokeEventa = defineInvokeEventa<MotionQaState, MotionQaConfigureInput>('eventa:invoke:motion-qa:configure')
 export const motionQaImportModelFromInputInvokeEventa = defineInvokeEventa<MotionQaImportModelResult, MotionQaImportModelInput>('eventa:invoke:motion-qa:import-model-from-input')
 export const motionQaStartCaptureInvokeEventa = defineInvokeEventa<MotionQaStartCaptureResult, MotionQaStartCaptureInput>('eventa:invoke:motion-qa:start-capture')
@@ -93,6 +124,8 @@ export const motionQaAwaitCaptureInvokeEventa = defineInvokeEventa<MotionQaAwait
 /** One JSON command as the renderer dispatcher receives it: `{ "name": "state" }` or `{ "name": "configure", "input": {...} }`. */
 export const MotionQaCommandSchema = variant('name', [
   strictObject({ name: literal('state') }),
+  strictObject({ name: literal('chatSend'), input: MotionQaChatSendInputSchema }),
+  strictObject({ name: literal('events'), input: MotionQaEventsInputSchema }),
   strictObject({ name: literal('configure'), input: MotionQaConfigureInputSchema }),
   strictObject({ name: literal('importModelFromInput'), input: MotionQaImportModelInputSchema }),
   strictObject({ name: literal('startCapture'), input: MotionQaStartCaptureInputSchema }),

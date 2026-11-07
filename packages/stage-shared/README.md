@@ -133,6 +133,15 @@ const pulse = createScenarioPlayer(scenario).eventsBetween(19.9, 20.1)
 Use this entrypoint to describe, build, and replay QA inputs, and to type the bridge between a QA tool and the app.
 Do not use it to run a scenario or to read clocks or randomness: the runners in `@proj-airi/qa-tools` and the app own execution. The bridge contracts do nothing unless the app enables the bridge.
 
+The development bridge also supports experience QA:
+
+- `chatSend`, with `{ text }`, calls the stage window's `useChatStore().send` through the elected leader. This is the real user send path: renderer-local ingestion or direct tool execution would bypass the leader's tools and ACT listener. It returns `{ sent: true }` after the send completes, or a normal bridge error.
+- `events`, with `{ sinceSeq? }`, returns `{ events, lastSeq, dropped }` from a window-local ring of at most 512 entries. Sequence numbers start at 1; `sinceSeq` is exclusive and defaults to zero. Entries carry epoch millisecond `time`, `kind`, and scalar `payload` fields whose strings are at most 500 characters. `dropped` counts evictions. A renderer reload starts a new sequence.
+- The event kinds are `act`, `expression`, `clip`, `tts`, and `turn`. The stage-ui recorder currently wires parsed ACT signals, applied expression slots, speech playback transitions, and chat turn start/completion. Clip lifecycle recording has no clean shared hook and is omitted. Parsed ACT does not assert that the renderer performed the cue; a speech end can be a gap between sentences.
+- `importModelFromInput` additionally accepts `kind: 'live2d' | 'mmd' | 'vrm'` (omitted means Live2D). Live2D/MMD inputs are ZIPs; VRM is a file. The generic display-model importer selects the real model and waits for its renderer to report mounted.
+
+Reply text is development diagnostics only. These commands and their recording subscriptions remain behind the existing development build, remote debug, and motion bridge flags, reached through lazy imports in the Electron startup and shared stage. Production builds must not include them.
+
 ### Situation
 
 The `situation` entrypoint owns the pure core of situational presence: observation and state types, the reducer, situation block renderer, urge gate, touch reaction policy, reason sources, and window-title helpers.

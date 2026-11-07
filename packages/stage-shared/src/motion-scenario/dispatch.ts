@@ -9,8 +9,12 @@ import {
   hasMotionQaHandlers,
   motionQaAwaitCaptureInvokeEventa,
   MotionQaAwaitCaptureResultSchema,
+  motionQaChatSendInvokeEventa,
+  MotionQaChatSendResultSchema,
   MotionQaCommandSchema,
   motionQaConfigureInvokeEventa,
+  motionQaEventsInvokeEventa,
+  MotionQaEventsResultSchema,
   motionQaImportModelFromInputInvokeEventa,
   MotionQaImportModelResultSchema,
   motionQaRunScenarioInvokeEventa,
@@ -57,6 +61,8 @@ function invalid(error: string, issues: MotionQaIssue[]): MotionQaResponse {
 export function createMotionQaDispatcher(context = createMotionQaContext()) {
   const invokes = {
     state: defineInvoke(context, motionQaStateInvokeEventa),
+    chatSend: defineInvoke(context, motionQaChatSendInvokeEventa),
+    events: defineInvoke(context, motionQaEventsInvokeEventa),
     configure: defineInvoke(context, motionQaConfigureInvokeEventa),
     importModelFromInput: defineInvoke(context, motionQaImportModelFromInputInvokeEventa),
     startCapture: defineInvoke(context, motionQaStartCaptureInvokeEventa),
@@ -83,6 +89,10 @@ export function createMotionQaDispatcher(context = createMotionQaContext()) {
     switch (command.name) {
       case 'state':
         return { name: command.name, schema: MotionQaStateSchema, result: await invokes.state() }
+      case 'chatSend':
+        return { name: command.name, schema: MotionQaChatSendResultSchema, result: await invokes.chatSend(command.input) }
+      case 'events':
+        return { name: command.name, schema: MotionQaEventsResultSchema, result: await invokes.events(command.input) }
       case 'configure':
         return { name: command.name, schema: MotionQaStateSchema, result: await invokes.configure(command.input) }
       case 'importModelFromInput':
