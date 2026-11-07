@@ -12,12 +12,12 @@ import { NaturalSpeechEmphasis } from '@proj-airi/motion-driver-natural/speech-e
 import { describe, expect, it } from 'vitest'
 
 import { naturalIdleLivelinessGate, naturalTalkingGate } from './gates'
-import { generatedBlinkBands, generatedMouthOpenBand, scoreLiveliness, scoreTalkingRelative } from './liveliness'
+import { generatedBlinkBands, generatedHeadReportOnlyBands, generatedMouthOpenBand, scoreLiveliness, scoreTalkingRelative } from './liveliness'
 import { referenceStats } from './reference-stats'
 import { syllableFixture } from './speech-fixture'
 
-// The gated metric list before it moved into `naturalIdleLivelinessGate`; the gate must keep exactly this meaning.
-const previousGatedMetrics = [
+// The version 1 gated metric list, from before it moved into `naturalIdleLivelinessGate`.
+const version1GatedMetrics = [
   'sd:ParamAngleX',
   'sd:ParamAngleY',
   'sd:ParamAngleZ',
@@ -46,6 +46,8 @@ const previousGatedMetrics = [
   'sd:ParamBrowLY',
   'sd:ParamMouthForm',
 ]
+// Version 2 (Luke, 2026-11-07) reports jitter and speed-peak log asymmetry for generated motion without gating them.
+const reportOnlyInVersion2 = ['jitter', 'speedPeakLogAsymmetry']
 const gatedMetrics = naturalIdleLivelinessGate.metrics
 
 const simulationRate = 120
@@ -113,10 +115,11 @@ function simulateVoice(seed: number, talking: boolean) {
 
 describe('natural motion liveliness gate', () => {
   it('reads the gated metrics, seeds, and timings from the committed gates', () => {
-    expect(naturalIdleLivelinessGate.metrics).toEqual(previousGatedMetrics)
+    expect(naturalIdleLivelinessGate.version).toBe(2)
+    expect(naturalIdleLivelinessGate.metrics).toEqual(version1GatedMetrics.filter(id => !reportOnlyInVersion2.includes(id)))
     expect(naturalIdleLivelinessGate.seeds).toEqual([1, 2, 3])
     expect([naturalIdleLivelinessGate.warmUpSeconds, naturalIdleLivelinessGate.scoredSeconds]).toEqual([180, 1800])
-    expect(naturalIdleLivelinessGate.bands).toEqual({ ...referenceStats.bands, ...generatedBlinkBands, ...generatedMouthOpenBand })
+    expect(naturalIdleLivelinessGate.bands).toEqual({ ...referenceStats.bands, ...generatedBlinkBands, ...generatedMouthOpenBand, ...generatedHeadReportOnlyBands })
     expect(naturalTalkingGate.seeds).toEqual([1, 2, 3])
   })
 

@@ -7,7 +7,7 @@ import type { MetricReference } from './liveliness'
 import { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
 
 import { scoredChannels } from './emotion-score'
-import { generatedBlinkBands, generatedMouthOpenBand } from './liveliness'
+import { generatedBlinkBands, generatedHeadReportOnlyBands, generatedMouthOpenBand } from './liveliness'
 import { referenceStats } from './reference-stats'
 
 /**
@@ -45,10 +45,15 @@ export interface TalkingGate {
 
 const livelinessLimitation = 'Liveliness scores compare idle motion statistics with the desk VTS reference bands. They do not prove naturalness, which stays a visual review, and the desk recordings are valid for idle liveliness only.'
 
-/** The idle liveliness gate: the desk fixture simulated at 120 Hz, scored in generated mode. */
+/**
+ * The idle liveliness gate: the desk fixture simulated at 120 Hz, scored in generated mode.
+ *
+ * Version 2 (2026-11-07) stops gating `jitter` and `speedPeakLogAsymmetry`: generated scoring reports them without a
+ * band (`generatedHeadReportOnlyBands`). Every other version 1 metric keeps its band.
+ */
 export const naturalIdleLivelinessGate = {
   id: 'natural-idle-liveliness',
-  version: 1,
+  version: 2,
   limitation: livelinessLimitation,
   metrics: [
     'sd:ParamAngleX',
@@ -63,12 +68,9 @@ export const naturalIdleLivelinessGate = {
     'minuteAngleYRange',
     'angleXp5',
     'angleXp95',
-    'jitter',
     'nearLimitOccupancy',
-    // Shift-amplitude dispersion: spread rejects constant sizes; log asymmetry rejects the uniform sizes
-    // [0.1, 0.5] and [0.15, 0.45] but not every tail-less spread.
+    // Shift-amplitude dispersion: spread rejects constant sizes. Log asymmetry is report-only since version 2.
     'speedPeakP90P50',
-    'speedPeakLogAsymmetry',
     // Gaze layer: independent fixations with partial head counter-rotation.
     'sd:ParamEyeBallX',
     'sd:ParamEyeBallY',
@@ -83,7 +85,7 @@ export const naturalIdleLivelinessGate = {
   seeds: [1, 2, 3],
   warmUpSeconds: 3 * 60,
   scoredSeconds: 30 * 60,
-  bands: { ...referenceStats.bands, ...generatedBlinkBands, ...generatedMouthOpenBand },
+  bands: { ...referenceStats.bands, ...generatedBlinkBands, ...generatedMouthOpenBand, ...generatedHeadReportOnlyBands },
 } as const satisfies LivelinessGate
 
 /** Talking relative to silence on the same seed; the thresholds are the ones `scoreTalkingRelative` applies. */

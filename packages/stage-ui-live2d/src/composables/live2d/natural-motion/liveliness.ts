@@ -114,6 +114,19 @@ export const generatedMouthOpenBand: Record<'sd:ParamMouthOpenY', MetricReferenc
   'sd:ParamMouthOpenY': { band: null, provisional: false },
 }
 
+/**
+ * Head jitter and speed-peak log asymmetry are report-only for generated traces. Reference mode keeps the measured bands.
+ *
+ * Both bands are heuristic multiples of the first desk session (jitter x0.6-1.6, asymmetry x0.7-1.4), and it is
+ * unresolved whether the recordings' head content above 5 Hz is tracker noise. If it is, the jitter band is stricter
+ * than the motion warrants. Luke chose report-only on 2026-11-07 (natural-motion-quality todo 9); the stillness
+ * bands stay gated. A null band also drops both metrics from the composite liveliness score.
+ */
+export const generatedHeadReportOnlyBands: Record<'jitter' | 'speedPeakLogAsymmetry', MetricReference> = {
+  jitter: { band: null, provisional: false },
+  speedPeakLogAsymmetry: { band: null, provisional: false },
+}
+
 const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length
 function sd(v: number[]) {
   const center = mean(v)
@@ -295,7 +308,7 @@ function headMotion(spans: Span[]) {
  */
 export function scoreLiveliness(trace: LivelinessTrace, ranges: ParameterRanges, options: { mode?: 'generated' | 'reference' } = {}): LivelinessReport {
   const mode = options.mode ?? 'generated'
-  const references = mode === 'generated' ? { ...referenceStats.bands, ...generatedBlinkBands, ...generatedMouthOpenBand } : referenceStats.bands
+  const references = mode === 'generated' ? { ...referenceStats.bands, ...generatedBlinkBands, ...generatedMouthOpenBand, ...generatedHeadReportOnlyBands } : referenceStats.bands
   const warnings: string[] = []
   if (trace.t.length < 2 || Object.values(trace.channels).some(v => v.length !== trace.t.length) || (trace.valid && trace.valid.length !== trace.t.length))
     throw new Error('Trace must contain at least two timestamps and equally sized channels/valid arrays.')

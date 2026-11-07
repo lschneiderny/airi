@@ -136,6 +136,20 @@ describe('liveliness score', () => {
     expect(reference.band).toEqual(referenceStats.bands['sd:ParamMouthOpenY'].band)
   })
 
+  it('reports generated head jitter and speed-peak asymmetry without a band and keeps the reference bands', () => {
+    // Three incommensurate sines give over twenty speed peaks of varied height, so both metrics have values.
+    const trace = signal(30, 120, t => 5 * Math.sin(t) + 2 * Math.sin(2.3 * t) + Math.sin(5.1 * t))
+    const generated = scoreLiveliness(trace, ranges, { mode: 'generated' }).metrics
+    const reference = scoreLiveliness(trace, ranges, { mode: 'reference' }).metrics
+    for (const id of ['jitter', 'speedPeakLogAsymmetry']) {
+      expect(generated[id].value).not.toBeNull()
+      expect(generated[id].band).toBeNull()
+      expect(generated[id].pass).toBeNull()
+      expect(reference[id].value).toBe(generated[id].value)
+      expect(reference[id].band).toEqual(referenceStats.bands[id].band)
+    }
+  })
+
   it('measures jitter on the detrended span, so a linear drift does not change it', () => {
     // A whole-span linear ramp adds an end-to-end step that the FFT would wrap into broadband power.
     const motion = (t: number) => 3 * Math.sin(2 * Math.PI * 0.2 * t) + 0.05 * Math.sin(2 * Math.PI * 8 * t)
@@ -200,11 +214,13 @@ describe('liveliness score', () => {
       return { t, channels: { ParamAngleX: x, ParamAngleY: t.map(() => 0), ParamAngleZ: t.map(() => 0) } }
     }
     const gaussian = () => Math.sqrt(-2 * Math.log(random())) * Math.cos(2 * Math.PI * random())
-    const constant = scoreLiveliness(shifts(() => 8), ranges).metrics
+    // Reference mode keeps the recording band for log asymmetry, which generated mode reports without one.
+    const score = (trace: LivelinessTrace) => scoreLiveliness(trace, ranges, { mode: 'reference' }).metrics
+    const constant = score(shifts(() => 8))
     // Uniform [2.7, 13.3] has wide spread and no tail.
-    const uniform = scoreLiveliness(shifts(() => 8 * (1 / 3 + (4 / 3) * random())), ranges).metrics
+    const uniform = score(shifts(() => 8 * (1 / 3 + (4 / 3) * random())))
     // An offset lognormal is right-skewed in log space, like the recordings.
-    const heavy = scoreLiveliness(shifts(() => 4 + 8 * Math.exp(0.9 * gaussian())), ranges).metrics
+    const heavy = score(shifts(() => 4 + 8 * Math.exp(0.9 * gaussian())))
     expect(constant.speedPeakP90P50.value).toBeCloseTo(1, 9)
     expect(constant.speedPeakP90P50.pass).toBe(false)
     expect(constant.speedPeakLogAsymmetry.value).toBeNull()

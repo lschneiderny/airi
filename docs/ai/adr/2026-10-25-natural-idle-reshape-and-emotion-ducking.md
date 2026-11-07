@@ -1,7 +1,7 @@
 # Natural idle reshape and emotion ducking
 
 Date: 2026-10-25
-Status: accepted for the delivered parts. The idle reshape is held, not decided. The gate-band decision is open.
+Status: accepted for the delivered parts. Luke chose option (a) for the gate band on 2026-11-07, which unblocks the idle reshape.
 
 ## Context
 
@@ -44,6 +44,12 @@ Option (a) reports jitter and speedPeakLogAsymmetry without gating them, under g
 Option (b) keeps the gate as it is. Under this option, only idle steps (todos 11 to 13) whose metric packet passes every gated liveliness metric land. R4 as measured fails jitter and speedPeakLogAsymmetry, so the full reshape is unlikely to land under option (b).
 
 The evidence for the reshape is arm R4. Its quick yaw reversals, counted per second for swings of at least 0.25 degrees of amplitude, come to 1.447 times the recordings. Today's code sits at 3.88 times. The recordings measure 0.436 reversals per second, R4 measures 0.631, and the current code measures 1.691. R4 raises CV60 to 0.451, against 0.147 today and 0.775 in the recordings. At the median of seeds 1 to 3, R4 fails jitter and speedPeakLogAsymmetry.
+
+## Gate decision (2026-11-07)
+
+Luke chose option (a). `naturalIdleLivelinessGate` is now version 2. Generated scoring reports `jitter` and `speedPeakLogAsymmetry` with a null band (`generatedHeadReportOnlyBands` in `liveliness.ts`), and the gate no longer lists them. Reference mode keeps both recording bands. Every other version 1 metric, including `still05` and `still2`, keeps its band.
+
+A null band also removes both metrics from the composite liveliness score, so score values move even where no gated verdict changes. Version 1 reports and version 2 reports therefore do not compare score for score.
 
 ## Consequences
 
