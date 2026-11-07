@@ -86,6 +86,32 @@ describe('resolvePnpm', () => {
     expect(resolvePnpm({ repoRoot: root, env: { PNPM_HOME: home, npm_execpath: same } }).entry).toBe(same)
     expect(() => resolvePnpm({ repoRoot: root, env: { PNPM_HOME: home, npm_execpath: other } })).toThrow(/Expected entry/)
   })
+
+  it('falls back to the dist/pnpm.mjs beside a standalone pnpm executable of the same version', () => {
+    writeRoot('pnpm@11.24.0')
+    const home = join(root, 'empty')
+    mkdirSync(home)
+    const make = (dir: string, version: string) => {
+      const installDir = join(root, dir)
+      mkdirSync(join(installDir, 'dist'), { recursive: true })
+      const binary = join(installDir, 'pnpm')
+      writeFileSync(binary, '')
+      const entry = join(installDir, 'dist', 'pnpm.mjs')
+      writeFileSync(entry, `console.log(${JSON.stringify(version)})`)
+      return { binary, entry }
+    }
+    const same = make('standalone-same', '11.24.0')
+    const other = make('standalone-other', '10.0.0')
+
+    expect(resolvePnpm({ repoRoot: root, env: { PNPM_HOME: home, npm_execpath: same.binary } }))
+      .toEqual({ version: '11.24.0', node: execPath, entry: same.entry })
+    expect(() => resolvePnpm({ repoRoot: root, env: { PNPM_HOME: home, npm_execpath: other.binary } })).toThrow(/Expected entry/)
+
+    // A nested `pnpm` call leaves npm_execpath as the bare word `pnpm`; npm_config_node_gyp still points inside dist.
+    const nodeGyp = (installEntry: string) => join(installEntry, '..', 'node_modules', 'node-gyp', 'bin', 'node-gyp.js')
+    expect(resolvePnpm({ repoRoot: root, env: { PNPM_HOME: home, npm_execpath: 'pnpm', npm_config_node_gyp: nodeGyp(same.entry) } }).entry).toBe(same.entry)
+    expect(() => resolvePnpm({ repoRoot: root, env: { PNPM_HOME: home, npm_execpath: 'pnpm', npm_config_node_gyp: nodeGyp(other.entry) } })).toThrow(/Expected entry/)
+  })
 })
 
 describe('resolveVitestEntry', () => {
