@@ -106,17 +106,13 @@ describe('runDoctor', () => {
     expect(missing.status).toBe('fail')
   })
 
-  it('cubism-core fails per missing copy and names the downloading plugin', async () => {
+  it('cubism-core fails per missing copy and gives the window-free setup command', async () => {
     for (const absent of cubismPaths) {
       const row = await rowOf('cubism-core', healthyProbes({ exists: path => path !== absent }))
 
       expect(row.status).toBe('fail')
       expect(row.detail).toContain(absent)
-      expect(row.fix).toContain('DownloadLive2DSDK')
-      const app = absent.split('/')[1]
-      const otherApp = app === 'stage-web' ? 'stage-tamagotchi' : 'stage-web'
-      expect(row.fix).toContain(`pnpm -F @proj-airi/${app} dev`)
-      expect(row.fix).not.toContain(`pnpm -F @proj-airi/${otherApp} dev`)
+      expect(row.fix).toContain('pnpm qa:setup cubism')
     }
   })
 
