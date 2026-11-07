@@ -115,6 +115,27 @@ export function useLive2DMotionManagerUpdate(options: UseLive2DMotionManagerUpda
   const prePlugins: MotionManagerPlugin[] = []
   const postPlugins: MotionManagerPlugin[] = []
   const finalPlugins: MotionManagerPlugin[] = []
+  let clipOwnedIds: ReadonlySet<string> = new Set<string>()
+
+  motionManager.on('motionStart', (group: string, index: number) => {
+    // NOTICE:
+    // Cubism exposes the animated parameter ids only through its internal motion data.
+    // Source: pixi-live2d-display 0.4.0 CubismMotion._motionData.
+    // Remove when the SDK exposes a public animated-parameter API.
+    const curves: { id: string }[] = motionManager.motionGroups[group]?.[index]?._motionData.curves ?? []
+    clipOwnedIds = new Set(curves.map(curve => curve.id))
+  })
+  motionManager.on('motionFinish', () => {
+    clipOwnedIds = new Set<string>()
+  })
+
+  function getClipOwnedIds() {
+    // stopAllMotions resets the SDK state without emitting motionFinish. IdleDisable can
+    // then skip the SDK update indefinitely, so its authoritative state also releases ownership.
+    if (motionManager.state.currentGroup === undefined && clipOwnedIds.size > 0)
+      clipOwnedIds = new Set<string>()
+    return clipOwnedIds
+  }
 
   function register(plugin: MotionManagerPlugin, stage: 'pre' | 'post' | 'final' = 'pre') {
     if (stage === 'pre')
@@ -183,6 +204,7 @@ export function useLive2DMotionManagerUpdate(options: UseLive2DMotionManagerUpda
   return {
     register,
     hookUpdate,
+    getClipOwnedIds,
   }
 }
 

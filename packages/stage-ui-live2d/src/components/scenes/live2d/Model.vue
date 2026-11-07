@@ -219,8 +219,6 @@ const touchRegionsMaxAgeMs = 100
 let latestPointer: { x: number, y: number, atMs: number } | undefined
 /** A pointer sample younger than this drives Natural attention instead of the host cursor mapping. */
 const pointerFreshMs = 100
-/** Parameter ids the playing explicit clip animates; Natural masks them. Empty while no clip plays. */
-let clipOwnedIds: ReadonlySet<string> = new Set<string>()
 /** Whether the lipsync plugin wrote `ParamMouthOpenY` this frame; Natural leaves the mouth to it. */
 let lipSyncOwnsMouth = false
 
@@ -631,7 +629,6 @@ async function performModelLoad() {
     // Remove when pixi-live2d-display exposes the parsed physics rig through a public API.
     const readRigProfile = () => readLive2DRigProfile(coreModel.getModel().parameters, internalModel.physics?._physicsRig, (internalModel.settings as { _cdiData?: unknown })._cdiData)
     lipSyncOwnsMouth = false
-    clipOwnedIds = new Set<string>()
     pendingNaturalEmotions.length = 0
     pendingNaturalPokes.length = 0
     releaseHeldEmotion()
@@ -688,7 +685,7 @@ async function performModelLoad() {
           voice: { speaking: nowSpeaking.value, level: naturalVoiceLevel(mouthOpenSize.value), lipSyncOwnsMouth },
           autoBlink: props.naturalAutoBlink,
           manualBreathActive: manualBreathControl.value.active,
-          clipOwnedIds,
+          clipOwnedIds: motionManagerUpdate.getClipOwnedIds(),
           pendingEmotions: pendingNaturalEmotions,
           heldEmotion: holdPerformer.current(holdClock()),
           emotionStrengths: props.naturalEmotionStrength ?? defaultEmotionStrengths,
@@ -737,18 +734,10 @@ async function performModelLoad() {
 
     motionManager.on('motionStart', (group, index) => {
       localCurrentMotion.value = { group, index }
-      // NOTICE:
-      // Natural masks the channels the explicit clip animates, and the curve ids are only
-      // reachable through the framework-internal `_motionData` (same access as the idle eyeball patch above).
-      // Source: pixi-live2d-display 0.4.0 CubismMotion._motionData.
-      // Remove when pixi-live2d-display exposes a motion's animated parameter ids.
-      const curves: { id: string }[] = motionManager.motionGroups[group]?.[index]?._motionData.curves ?? []
-      clipOwnedIds = new Set(curves.map(curve => curve.id))
     })
 
     // Listen for motion finish to restart runtime motion for looping
     motionManager.on('motionFinish', () => {
-      clipOwnedIds = new Set<string>()
       const selectedMotionGroup = localStorage.getItem('selected-runtime-motion-group')
       const selectedMotionIndex = localStorage.getItem('selected-runtime-motion-index')
 

@@ -1,6 +1,7 @@
 import type { Live2DBreathControlState } from '../../stores/motion-control'
 import type { MotionManagerPluginContext, PixiLive2DInternalModel } from './motion-manager'
 
+import { EventEmitter } from '@pixi/utils'
 import { describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
@@ -8,6 +9,7 @@ import { neutralLive2DMotionControlPose } from '../../stores/motion-control'
 import { createLive2DMotionSpring } from './motion-control-spring'
 import {
   disableLive2DSdkBreath,
+  useLive2DMotionManagerUpdate,
   useMotionUpdatePluginAutoEyeBlink,
   useMotionUpdatePluginBreathControl,
   useMotionUpdatePluginIdleDisable,
@@ -75,6 +77,42 @@ function createContext(overrides: Partial<MotionManagerPluginContext> = {}): Mot
 }
 
 describe('live2d motion manager plugins', () => {
+  it('releases cancelled idle clip channels without waiting for the SDK motionFinish update', () => {
+    const ctx = createContext({
+      live2dIdleAnimationEnabled: ref(false),
+    })
+    const manager = Object.assign(new EventEmitter(), ctx.motionManager, {
+      state: { currentGroup: 'Idle' as string | undefined, currentIndex: 0 as number | undefined },
+      groups: { idle: 'Idle' },
+      motionGroups: {
+        Idle: [{ _motionData: { curves: ['ParamEyeLOpen', 'ParamEyeLSmile', 'ParamMouthForm', 'ParamBreath', 'ParamAngleX'].map(id => ({ id })) } }],
+      },
+      // SDK stopAllMotions resets state but does not emit motionFinish.
+      stopAllMotions() {
+        this.state.currentGroup = undefined
+        this.state.currentIndex = undefined
+      },
+    })
+    ctx.motionManager = manager
+    const update = useLive2DMotionManagerUpdate({ ...ctx, lastUpdateTime: ref(0) })
+    manager.emit('motionStart', 'Idle', 0)
+    expect(update.getClipOwnedIds().size).toBe(5)
+
+    manager.stopAllMotions()
+    // Natural's disabled idle plugin handles the frame, so the SDK cannot deliver motionFinish.
+    useMotionUpdatePluginIdleDisable()(ctx)
+    expect(ctx.handled).toBe(true)
+    expect(update.getClipOwnedIds().size).toBe(0)
+
+    // Returning to Universal starts the selected idle again and reacquires its channels.
+    manager.state.currentGroup = 'Idle'
+    manager.state.currentIndex = 0
+    manager.emit('motionStart', 'Idle', 0)
+    expect(update.getClipOwnedIds().size).toBe(5)
+    manager.emit('motionFinish')
+    expect(update.getClipOwnedIds().size).toBe(0)
+  })
+
   it('keeps SDK breath from changing AIRI-owned idle parameters', () => {
     const updateParameters = vi.fn()
     const internalModel = {
