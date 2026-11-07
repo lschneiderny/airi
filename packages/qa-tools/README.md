@@ -151,7 +151,7 @@ The desktop stage gates live in `src/stage/gates.ts`; `src/stage/measure.ts` pro
 - The director refuses every action as `asleep` while the desktop activity sensor reports a long idle time. On a host where nobody touches the input devices during the run, keep the activity sensor fresh, or the scenario only records the refusal.
 - Keep the desktop undisturbed during a measurement: the frame rate is the measured value.
 - Tests: `pnpm -F @proj-airi/qa-tools exec vitest run --project node src/stage`. The fixtures in `fixtures/stage/` are minimal copies of the plan's real evidence, and each names its `source`.
-- `measure --pairs` launches the app through the same pnpm resolver as T3, which expects pnpm's own `.tools` layout under `PNPM_HOME`. A standalone pnpm binary, such as the one mise installs, does not have that layout. On such a machine, attach with `measure --port` instead.
+- `measure --pairs` launches the app through the same pnpm resolver as T3 and doctor. The resolver finds pnpm's own `.tools` layout under `PNPM_HOME`, a JS `npm_execpath`, or a standalone pnpm binary of the pinned version, such as the one mise installs, through the `dist/pnpm.mjs` beside it.
 - `stage-frame-budget` passes its readback-max criterion with little margin, because the asynchronous read's buffer copy still stalls occasionally. If it fails again, the next fix is a CPU silhouette mask, not a threshold change. The gates and the stage architecture are recorded in [the full-screen stage ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md).
 
 ## Gates

@@ -1,7 +1,7 @@
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { cwd, execPath, platform, env as processEnv, stderr } from 'node:process'
 import { fileURLToPath } from 'node:url'
 
@@ -52,13 +52,44 @@ function pnpmVersionOfEntry(entry: string): string | undefined {
 }
 
 /**
+ * Finds the JS entry of a standalone pnpm executable (the layout mise installs): `<install>/pnpm` with `<install>/dist/pnpm.mjs` and no package.json.
+ * The dist directory comes from an absolute `npm_execpath`, or, in a nested `pnpm` call where `npm_execpath` is the bare word `pnpm`,
+ * from `npm_config_node_gyp` (`<dist>/node_modules/node-gyp/bin/node-gyp.js`), which pnpm sets for every script.
+ * The version is asked from the entry itself; an entry that cannot answer is not a match.
+ */
+function standalonePnpmEntry(env: Record<string, string | undefined>, version: string): string | undefined {
+  const distDirs: string[] = []
+  const execpath = env.npm_execpath
+  if (execpath && isAbsolute(execpath) && !jsEntryPattern.test(execpath))
+    distDirs.push(join(dirname(execpath), 'dist'))
+  const nodeGyp = env.npm_config_node_gyp
+  if (nodeGyp && isAbsolute(nodeGyp))
+    distDirs.push(dirname(dirname(dirname(dirname(nodeGyp)))))
+
+  for (const distDir of distDirs) {
+    const entry = join(distDir, 'pnpm.mjs')
+    if (!existsSync(entry))
+      continue
+    try {
+      if (execFileSync(execPath, [entry, '--version'], { encoding: 'utf8' }).trim() === version)
+        return entry
+    }
+    catch {
+      // Not a runnable pnpm entry; try the next candidate. The caller's error names the expected path.
+    }
+  }
+  return undefined
+}
+
+/**
  * Resolves the pinned pnpm to a `node <entry>` pair so no `.cmd` shim is involved.
  *
  * Use when:
  * - A QA script spawns pnpm and must not depend on regenerated `PNPM_HOME` shims.
  *
  * Expects:
- * - The pinned version is installed under `<PNPM_HOME>/.tools/pnpm/<version>/`, or `npm_execpath` is a JS file of that version.
+ * - The pinned version is installed under `<PNPM_HOME>/.tools/pnpm/<version>/`, or `npm_execpath` is a JS file of that version,
+ *   or the running pnpm is a standalone executable of that version with `dist/pnpm.mjs` beside it.
  *
  * Returns:
  * - `{ version, node, entry }`; throws with the expected path and the fix when neither exists.
@@ -76,6 +107,10 @@ export function resolvePnpm(options: ResolvePnpmOptions): ResolvedPnpm {
   const execpath = env.npm_execpath
   if (execpath && jsEntryPattern.test(execpath) && existsSync(execpath) && pnpmVersionOfEntry(execpath) === version)
     return { version, node: execPath, entry: resolve(execpath) }
+
+  const standaloneEntry = standalonePnpmEntry(env, version)
+  if (standaloneEntry)
+    return { version, node: execPath, entry: standaloneEntry }
 
   throw new Error([
     `qa-tools: pnpm ${version} (pinned by packageManager in ${join(options.repoRoot, 'package.json')}) was not found.`,
