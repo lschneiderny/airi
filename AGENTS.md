@@ -154,4 +154,4 @@ Nested guides own local exceptions and package-specific checks. Historical ADRs/
 The fork removed the Kirie Godot/CEF desktop host on 2026-10-31. `docs/ai/upstream-watch.md` records when to port it back.
 The fork retired the Pocket native mobile host on 2026-11-04. The same watch list records its port-back condition; mobile browser layouts remain part of the web host.
 Root `pnpm dev*` scripts run through `node scripts/dev.mjs`, which bypasses Windows `.cmd` shims and supports only `&&` chains of plain words.
-Nested `AGENTS.md` and `CLAUDE.md` files are committed, so an agent on any machine gets the same guidance from a fresh clone. Do not add them to `.git/info/exclude`. If you rerun init-deep, use its tracked mode, not local mode.
+Nested `AGENTS.md` and `CLAUDE.md` files are committed, so an agent on any machine gets the same guidance from a fresh clone. Do not add them to `.git/info/exclude`. If you rerun init-deep, choose its committed mode, not local mode.
