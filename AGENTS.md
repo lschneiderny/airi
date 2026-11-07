@@ -116,6 +116,9 @@ pnpm dev:backend                              # Local backend stack (server/dock
 pnpm -F <package-name> typecheck | build | exec vitest run
 pnpm exec vitest run <path>; pnpm test:run
 pnpm qa:doctor | qa:test | qa:motion | qa:report
+pnpm qa:setup cubism | qa:llm serve            # Cubism Core download, scripted replay provider
+pnpm qa:app run --dry-run ...                 # Rendered app session: seed, send chat, wait for events, summary
+AIRI_DEV_QUIET=1 pnpm dev                     # Agent dev session: log file, ready URL, and errors only
 pnpm typecheck; pnpm lint | lint:fix          # ESLint also formats
 pnpm verify                                   # Changed-file typecheck, lint, and related tests
 pnpm wt ls; pnpm dev:top; pnpm slots status   # Worktrees, per-worktree CPU/memory, CPU slot budget
