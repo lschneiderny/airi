@@ -7,33 +7,20 @@ import { NaturalMotion } from '@proj-airi/motion-driver-natural/natural-motion'
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-// SHA-256 per seed over each frame's serialized output; pins come from Node Vitest.
-// Pins reflect face low-pass, boost removal, duck, laugh, slow-head eye compensation, and the idle reshape
-// (continuous retune, human holds, activity spells, realigning postponement, talking amplitude 1.4).
-// The darwin-arm64 pins were re-pinned for the idle reshape on an M2 Mac (Node 26.11.1) on 2026-11-07.
-// Darwin x64 and arm64 libm differ in the last bit; arm64 measurements: task-1-observer-rootcause.txt.
-const idleHashes = process.platform === 'darwin' && process.arch === 'arm64'
-  ? [
-      'e37af22e8490c0c659418326f19d218b8d0a7347c8a0564272c5cf2f5acb61f8',
-      'fd8addaebb260b5ed3fd7642f04c502c6e9c64d92e81f12331778713a51ec433',
-      '6bdb3ba1007b8e22881ffe2dc43f98c1ee015b80e3d4584b9f27b31812248b20',
-    ]
-  : [
-      '1f1f413dbdd2026b06c32385d2948395b8d53557b6e459aa188eb1df95e08b1c',
-      '86aef4d07d8f2094cdfa223c4a9807a23a1549577930e7e1cd7b8a4800c884b8',
-      'b462b2f9f881b2a6c3168fa7f8accddc9abb24a30d6ee1247fe655c833003f72',
-    ]
-const emotionHashes = process.platform === 'darwin' && process.arch === 'arm64'
-  ? [
-      '70d0b16f596f5dbcfeb2974f3b2daa2213e72d0425476c529876f98d9dc6bdf7',
-      'f849923ad033e2ba9c607894adc1f72517267cc70cde3e2f91a015f4861c73fd',
-      '83cc7947d9bae3b972fb754bf3d22a8d6baae597125823fc6d7c9a64d7bd3fdd',
-    ]
-  : [
-      '590cdad69d46134b262a97e38749cdb03188de066450eea37b427a50fb80bd40',
-      'e81f99030586d9090f8c9edac82006de8430c5c273b6760c12834226ee0b34c1',
-      '00ffb326c8313f9722d799101672654cd8528cb7d199106e4a9b4aec56e86b81',
-    ]
+// SHA-256 per seed over frames rounded to four decimals (0.0001 resolution).
+// Propagated +/-1 ULP Math sweeps change raw hashes but preserve these pins;
+// six decimals still change idle pins. A 1% held-emotion amplitude change
+// changes all emotion pins. Mac confirmation is pending.
+const idleHashes = [
+  '27003ffd1065f986a82cef80b2309b456fb7e5719e11ee32c8e94e2ba528d61a',
+  'd3ba7a9d052f4a6a9a3bfbbc7b36dcc13e6a42c2ac271af5c0a45c29c66214d2',
+  '88e38d2409f558cce05a7304a46f34f048eb1db1d8545eec38590da837c7dc55',
+]
+const emotionHashes = [
+  '9139707c3b0af7352dbaafaf783bc2272f5ee5ad40547f6f906eab51831df883',
+  '074f07d37ed0e04bc8df625aed8bc496fdc3ee65af37151ce1110bb0a0205f8d',
+  '309cfe3ceba5d56b44c3d414c57b90d094b6e9db35070562505a588b538e82cc',
+]
 
 const rate = 120
 const step = 1 / rate
@@ -64,7 +51,7 @@ function run(seed: number, seconds: number, timeline: Timeline, options: { obser
     const t = frame / rate
     timeline[frame]?.(motion, t)
     const { pose, fixation, face, blink, breath } = motion.advance(t)
-    hash.update(`${JSON.stringify({ pose, fixation, face, blink, breath })}\n`)
+    hash.update(`${JSON.stringify({ pose, fixation, face, blink, breath }, (_key, value: unknown) => typeof value === 'number' ? Number(value.toFixed(4)) : value)}\n`)
   }
   return hash.digest('hex')
 }
@@ -95,14 +82,14 @@ function browAsymmetry(seed: number, at: number, from: number, to: number, input
 }
 
 describe('natural motion observer', () => {
-  it.each([1, 2, 3])('keeps interleaved null chat bit-identical to idleHashes for seed %i', (seed) => {
+  it.each([1, 2, 3])('keeps interleaved null chat quantized hashes identical to idleHashes for seed %i', (seed) => {
     const timeline: Timeline = {}
     for (let second = 0; second <= 600; second++)
       timeline[second * rate] = (motion, t) => motion.setChat(null, t)
     expect(run(seed, 600, timeline)).toBe(idleHashes[seed - 1])
   }, 30_000)
 
-  it.each([1, 2, 3])('keeps interleaved null and centered placement bit-identical to idleHashes for seed %i', (seed) => {
+  it.each([1, 2, 3])('keeps interleaved null and centered placement quantized hashes identical to idleHashes for seed %i', (seed) => {
     const timeline: Timeline = {}
     for (let second = 0; second <= 600; second++)
       timeline[second * rate] = (motion, t) => motion.setPlacement(second % 2 === 0 ? null : 0, t)
@@ -133,7 +120,7 @@ describe('natural motion observer', () => {
     vi.restoreAllMocks()
   })
 
-  it.each([1, 2, 3])('keeps 600 s of idle frames bit-identical with and without an observer for seed %i', (seed) => {
+  it.each([1, 2, 3])('keeps 600 s of idle frame quantized hashes identical with and without an observer for seed %i', (seed) => {
     const { events, observer } = recorder()
 
     expect(run(seed, 600, {})).toBe(idleHashes[seed - 1])
@@ -141,7 +128,7 @@ describe('natural motion observer', () => {
     expect(events).toEqual([])
   }, 30_000)
 
-  it.each([1, 2, 3])('keeps the emotion timeline bit-identical with and without an observer for seed %i', (seed) => {
+  it.each([1, 2, 3])('keeps the emotion timeline quantized hashes identical with and without an observer for seed %i', (seed) => {
     const { events, observer } = recorder()
 
     expect(run(seed, 60, emotionTimeline)).toBe(emotionHashes[seed - 1])
