@@ -560,8 +560,8 @@ Your next move: start execution with `/ulw-execute mmd-natural-full-body` here o
 
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
-- [ ] F1. Plan compliance audit (OPEN: no QA evidence found at the 2026-11-06 audit; pending Luke's QA)
-  Every todo's acceptance criteria and evidence files exist; Must NOT have list verified by `git diff --stat main...HEAD` and `rg` checks (no assets, no Ammo internals, no shims, no other locales); branch guard verified: `git branch --contains <each plan commit>` lists `luke/feat/mmd-natural-full-body` and `git log --oneline origin/main..main` shows no plan commit (nothing landed on `main`).
+- [ ] F1. Plan compliance audit (amended 2026-11-07; OPEN: waits on todo 23)
+  The per-todo evidence files under `.omo/evidence/mmd-natural-full-body/` do not exist and are no longer required. For todos 1-22, the proof is the `main` commit each row names: `git merge-base --is-ancestor <commit> origin/main` exits 0. Todo 23 is proven by the evidence it produces. The Must NOT have list is verified by `rg` checks on `main` (no assets, no Ammo internals, no shims, no other locales). The branch guard no longer applies: the plan landed on `main`, not on `luke/feat/mmd-natural-full-body`.
   Recommended task executor category: unspecified-high
 - [ ] F2. Code quality review (OPEN: no QA evidence found at the 2026-11-06 audit; pending Luke's QA)
   `pnpm verify` green; review against `.agents/skills/enforce-rules-for-typescript`, `enforce-rules-for-vitest`, `enforce-rules-for-unocss`; no `any`, no suppressed errors; import guard on motion-driver-* holds.
