@@ -1,0 +1,15 @@
+[
+  {
+    "match": "hello",
+    "content": "<|ACT {\"emotion\":\"happy\",\"gesture\":{\"kind\":\"nod\",\"count\":1}}|>Hello! I'm ready for our replay.",
+    "usage": { "prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20 }
+  },
+  {
+    "match": { "regex": "stop|action", "flags": "i" },
+    "content": "I'll stop the current action.",
+    "toolCalls": [{ "name": "perform_action", "arguments": { "action": "stop" } }]
+  },
+  {
+    "content": "The action is finished."
+  }
+]

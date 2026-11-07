@@ -43,6 +43,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@vitejs/plugin-vue": "catalog:",
+    "@xsai/stream-text": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:vitest"
