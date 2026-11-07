@@ -33,6 +33,7 @@
     "qa:character": "pnpm --silent -F @proj-airi/qa-tools run --silent character",
     "qa:doctor": "pnpm -F @proj-airi/qa-tools run doctor",
     "qa:llm": "node --import tsx packages/qa-tools/bin/llm.ts",
+    "qa:app": "node --import tsx packages/qa-tools/bin/app.ts",
     "qa:model": "pnpm --silent -F @proj-airi/qa-tools run --silent model",
     "qa:motion": "pnpm -F @proj-airi/qa-tools run motion",
     "qa:report": "pnpm -F @proj-airi/qa-tools run report",

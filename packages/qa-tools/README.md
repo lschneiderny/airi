@@ -166,6 +166,43 @@ Run the pure replay and real xsai transport tests with:
 pnpm -F @proj-airi/qa-tools exec vitest run --project node src/llm
 ```
 
+## App experience sessions
+
+`qa:app` runs a disposable Electron experience session with the same replay script format as `qa:llm`. It starts `ReplayServer` in process on loopback port 0, takes an exclusive CPU lease, and reuses T3 launch, CDP, model import, screenshot and ownership-checked teardown helpers.
+
+```bash
+# Inspect the entire plan without opening Electron or requiring this path to exist.
+pnpm qa:app run --dry-run --model /models/character.zip --say hello --expect act,tts
+
+# Use the qa:llm example script in an app session. qa:app owns its replay server.
+pnpm qa:app run --model /models/character.zip \
+  --script packages/qa-tools/fixtures/llm/example.json \
+  --say hello --expect act,tts --timeout 60
+
+# The same fixture can also be inspected separately with qa:llm.
+pnpm qa:llm serve --script packages/qa-tools/fixtures/llm/example.json --port 0
+```
+
+`--say` repeats in order. `--script <json|jsonl>` and `--set <model-eval set id>` are mutually exclusive; neither flag selects the committed example. Set mode uses all transcript rows, as in `qa:llm` without `--run-key`. `--expect` is a comma-separated list of `act`, `expression`, `clip`, `tts`, or `turn` (default `turn`). Every message also waits for a completed assistant turn before sending the next. Each message gets a fresh event sequence cursor and one `--timeout` budget in seconds (default 60, maximum 3600) covering send and event collection. Startup, bridge readiness, and model import have separate T3 bounds.
+
+`--model` accepts a Live2D ZIP or directory, MMD ZIP or PMX/PMD, and VRM. `.vrm` infers VRM and `.pmx`/`.pmd` infer MMD; ZIPs and directories default to Live2D, so pass `--kind mmd` for an MMD ZIP or directory. Directories are zipped in the run directory. A PMX/PMD input packages its parent directory with its resources; use a directory containing one model. Model bytes remain local and the temporary archive is removed at teardown. Import uses the real display-model store and waits for the shared scene's mounted lifecycle.
+
+The fresh `APP_USER_DATA_PATH` profile receives provider records and active chat/speech selections through their stores' exported persistence keys, followed by onboarding completion and a leader reload. VueUse strings stay raw; objects and booleans use JSON. This makes the stores read the seed during initialization instead of mutating an already synchronized snapshot. The selected display model is an IndexedDB file record created by `importModelFromInput`, selected through `useSettingsStageModel().updateStageModel()`. The seed selects OpenAI Compatible Chat Completions, `airi-replay`, speech provider `openai-compatible-audio-speech`, `airi-replay-tts`, custom voice `alloy`, enabled speech, and SSML off. The replay speech endpoint returns WAV silence. Saved API keys are the placeholder `replay`; plan output redacts them.
+
+When an open `#/chat-floating` target has a visible, editable textarea, the driver focuses it and uses CDP `Input.insertText` and Enter. Otherwise `chatSend` calls `useChatStore().send` in the stage window. Both paths reach the synced leader that owns tool execution and ACT handling. The driver never uses `chat.ingest` or a tool's `execute`, and never resends through another path after typing has started.
+
+The dev-only event ring records parsed ACT cues, applied performer expression slot changes, local speech playback start/end, and assistant turn start/completion with at most 500 reply characters. ACT means parsed, not successfully performed. Speech end is a playback segment end and may occur between sentences. Expressions require a mapping that actually occupies a performer slot; an unmapped emotion can produce ACT without expression. Clip/action start/end is currently **not wired**: the shared stage has no renderer-neutral clip lifecycle subscription, so `--expect clip` times out. VRM has no performer expression slot events. There is no synthetic success event for these gaps.
+
+`--out <dir>` must name a new directory; otherwise the existing run helper creates `.temp/qa/<timestamp>-app-experience`. `--keep-open` retains Electron, the replay server, and CPU lease until interruption, then tears down. SIGINT/SIGTERM exit 130, including during keep-open. The driver forces the development window stage host, keeps its temporary profile separate from personal settings, and refuses another Electron session in the same worktree.
+
+Stdout contains one compact JSON summary line (`ok`, `runDir`, `model`, `sendPath`, event counts, `missing`, `screenshot`, `diagnostics`, `durationMs`); use `pnpm --silent qa:app` to suppress pnpm's lifecycle banner. `sendPath` is `composer`, `chatSend`, `mixed`, or null before sending. Diagnostics include bridge state, per-message cursors, missing kinds, event timestamps, replay request log, timings, and teardown receipts. A broken run exits 1 and still attempts screenshot/diagnostics and teardown. Invalid arguments or refused setup exit 2; success exits 0. Dry run prints the full JSON plan, creates no run, takes no lease, starts no server or app, and does not read model/script files.
+
+No live Electron acceptance was run for this feature. The owner must verify profile initialization across windows, all model formats, composer focus/Enter, leader routing, ACT and speech delivery, screenshot pixels, interruption, and process cleanup. Unit tests and dry run do not prove those behaviors.
+
+```bash
+pnpm -F @proj-airi/qa-tools exec vitest run --project node src/app
+```
+
 ## Character state simulator
 
 `qa:character` exercises the layered character state in `@proj-airi/stage-shared/character-state` without the app, a model, or a clock. It does not import `stage-ui` and makes no model calls.
