@@ -9,8 +9,11 @@ import { parseArgs } from 'node:util'
 import { errorMessageFrom } from '@moeru/std'
 import { buildEmotionTrial } from '@proj-airi/stage-shared/motion-scenario'
 
+import { loadQaEnv } from '../src/env/load'
 import { T2SetupError } from '../src/t2/errors'
 import { loadT2Runtime, runT2 } from '../src/t2/runner'
+
+loadQaEnv(join(import.meta.dirname, '../../..'))
 
 const usage = `Usage: tsx bin/t2-probe.ts [--emotion angry] [--band strong] [--seed 1] [--identity]
 

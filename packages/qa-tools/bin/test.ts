@@ -13,6 +13,7 @@ import { parseArgs } from 'node:util'
 import { errorMessageFrom } from '@moeru/std'
 import { acquire } from '@proj-airi/cpu-slots'
 
+import { loadQaEnv } from '../src/env/load'
 import { resolveVitestEntry } from '../src/env/pnpm'
 import { createRun } from '../src/evidence/run'
 import { parseKnownFailureRegistry } from '../src/known-failures/schema'
@@ -25,6 +26,7 @@ Runs each selected Vitest suite with the JSON reporter and compares failures wit
 Exit 1: a NEW failure, or a suite that timed out, crashed, or wrote no report. Exit 2: bad arguments or registry.`
 
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..')
+loadQaEnv(repoRoot)
 const defaultRegistry = resolve(import.meta.dirname, '..', 'known-failures.json')
 const defaultTimeoutSeconds = 1800
 
