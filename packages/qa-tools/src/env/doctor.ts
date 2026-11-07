@@ -162,11 +162,10 @@ function createDoctorChecks(probes: DoctorProbes): DoctorCheck[] {
         const missing = cubismCorePaths.filter(path => !probes.exists(path))
         if (missing.length === 0)
           return ok('Cubism core exists for stage-tamagotchi and stage-web')
-        const commands = missing.map(path => `\`pnpm -F @proj-airi/${path.split('/')[1]} dev\``)
         return {
           status: 'fail',
           detail: `missing ${missing.join(', ')}`,
-          fix: `From this worktree's root, run ${commands.join(' and ')}. The DownloadLive2DSDK() Vite configResolved hook downloads CubismSdkForWeb-5-r.3 into each app's public/. Stop each app after the download completes, then rerun pnpm qa:doctor. Installing dependencies alone does not download Cubism Core.`,
+          fix: 'From this worktree\'s root, run pnpm qa:setup cubism, then rerun pnpm qa:doctor. Installing dependencies alone does not download Cubism Core.',
         }
       },
     },
