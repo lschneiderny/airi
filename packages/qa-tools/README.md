@@ -84,6 +84,68 @@ When any scorer definition changes, bump `CUE_CONTRACT_SCORER.version` in the sa
 
 Use `pnpm --silent qa:model prompt --json` when stderr must remain empty. pnpm's lifecycle banner otherwise goes to stderr; on pnpm 11.24.0, the `-s` script option alone does not suppress the outer pnpm lifecycle banner.
 
+## Chat and speech replay server
+
+`qa:llm` is a development-only OpenAI-compatible HTTP server for testing chat, ACT cues, tool calls, and speech playback without provider tokens. It uses `node:http`, makes no provider calls, and never launches Electron.
+
+```bash
+pnpm qa:llm serve --script packages/qa-tools/fixtures/llm/example.json --port 0 --log .temp/qa/replay-requests.jsonl
+pnpm qa:llm serve --set legacy-2026-10-27-mac-m2 --run-key dolphin3:8b/bench
+```
+
+The server prints one JSON ready line to stdout with `ready`, `baseURL`, `model`, `speechModel`, `script`, `entries`, and `log`. The default host is `127.0.0.1`, the default port is `0` (choose a free port), and the default script is the committed example. For machine capture without pnpm's lifecycle banner on stderr, use `pnpm --silent qa:llm serve`. Relative script and log paths resolve from the calling directory. SIGINT and SIGTERM close listening and active connections and exit 0. Invalid arguments or setup exit 2. Do not expose this unauthenticated server or send it real conversation data: its request log contains complete prompts and tool definitions.
+
+A `.json` script contains an array; `.jsonl` contains one entry per nonblank line:
+
+```json
+[
+  {
+    "content": "<|ACT {\"emotion\":\"happy\"}|>Hello!",
+    "usage": { "prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20 }
+  },
+  {
+    "match": { "regex": "stop|action", "flags": "i" },
+    "content": "I'll stop the current action.",
+    "toolCalls": [
+      { "name": "perform_action", "arguments": { "action": "stop" } }
+    ]
+  },
+  { "content": "The action is finished." }
+]
+```
+
+Each entry is consumed once. The first unused entry whose `match` matches the last user message takes precedence; otherwise the first unused entry is consumed, even if it has a match. A string `match` is a case-sensitive substring; an object uses `regex` and optional JavaScript regex `flags`. Text content parts in the last user message are concatenated for matching. A preferred later entry does not discard earlier entries. `content` defaults to an empty string and `toolCalls` defaults to an empty array. Tool `arguments` can be a JSON object or a string encoding a JSON object. ACT cues are replayed verbatim, including across chunk boundaries. Invalid scripts and regexes fail before listening.
+
+Tool replies end with `finish_reason: "tool_calls"`. AIRI can then send another request containing the tool result, so include a final text entry after a tool entry. The example's `perform_action` uses `{"action":"stop"}`, which does not require importing a particular animation. To play a clip instead, use an action label exposed for the active model. Provider validation may itself issue a completion and consume an entry; inspect the log and restart the server before a deterministic scenario.
+
+`--set` and `--script` are mutually exclusive. Set mode reads validated `airi.reply-transcript/v1` rows from `model-eval/sets/<id>/transcripts.jsonl`, optionally filters by exact `--run-key`, and replays `reply.text` in file order. It does not replay recorded tools, thinking, errors, or usage. An empty selection fails at startup.
+
+`--chunk-chars N` (default 16, range 1-1048576) splits content and tool arguments by Unicode code point. `--delay-ms N` (default 0, range 0-60000) delays each SSE chunk. Streaming requests receive OpenAI chunks followed by `data: [DONE]`; nonstreaming requests receive a completion JSON object. Exhaustion returns HTTP 409 with the source filename and zero-based next index; malformed JSON or invalid request shapes return 400. Unknown routes return 404 JSON. Browser CORS preflight is supported.
+
+Point AIRI at the `baseURL` printed by this run, including `/v1/` and the trailing slash:
+
+| Setting | Value |
+| --- | --- |
+| Chat provider | OpenAI Compatible (`openai-compatible`) |
+| API protocol | Chat Completions (`chat-completions`) |
+| Base URL, both providers | `http://127.0.0.1:<printed port>/v1/` |
+| API key, both providers | `replay` (nonempty placeholder; ignored by the server) |
+| Chat model | `airi-replay` |
+| Speech provider | OpenAI Compatible (`openai-compatible-audio-speech`) |
+| Speech model | `airi-replay-tts` |
+| Speech voice | Custom voice `alloy` |
+| Speech options | SSML off; speed 1; response format `wav` if exposed |
+
+`GET /v1/models` advertises both model IDs. The speech ID includes `tts` because AIRI's compatible speech model discovery filters for that substring. Its provider has no voice catalog, so enter a custom voice ID. `POST /v1/audio/speech` accepts AIRI's `model`, `input`, and `voice` fields plus optional speech options; it always returns `audio/wav` regardless of the requested format or speed. The response is valid 24 kHz mono 16-bit PCM silence: 50 ms per input code point, with a minimum of 0.25 s and maximum of 30 s. It exercises decoding, playback timing, and completion; silence does not exercise amplitude-driven lip sync or voice quality.
+
+Every HTTP request appends one JSON line to `--log` (default `.temp/qa/llm-requests.jsonl`) with `method`, `path`, the original parsed `body`, `selectedEntryIndex` (null outside a selected completion), `status`, and an ISO `timestamp`. Malformed JSON has a null body. Authorization headers are not logged. The log appends across restarts; choose a fresh path per scenario.
+
+Run the pure replay and real xsai transport tests with:
+
+```bash
+pnpm -F @proj-airi/qa-tools exec vitest run --project node src/llm
+```
+
 ## Character state simulator
 
 `qa:character` exercises the layered character state in `@proj-airi/stage-shared/character-state` without the app, a model, or a clock. It does not import `stage-ui` and makes no model calls.
