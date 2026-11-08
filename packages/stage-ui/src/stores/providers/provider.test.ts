@@ -224,6 +224,12 @@ describe('provider store synchronization boundary', () => {
     expect(second).not.toBe(first)
   })
 
+  it.each(['microsoft-speech', 'openai-audio-speech', 'openrouter-audio-speech'])('leaves the voice catalog empty for unconfigured %s', async (providerId) => {
+    const store = useProviderStore()
+
+    await expect(store.listProviderVoices(providerId)).resolves.toEqual([])
+  })
+
   it('shares concurrent direct-provider voice catalog requests', async () => {
     const store = useProviderStore()
     const { promise: response, resolve: finish } = Promise.withResolvers<Response>()

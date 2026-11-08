@@ -597,13 +597,20 @@ export const useProviderStore = defineStore('provider', () => {
   }
 
   async function listProviderVoices(providerId: string, model?: string, configuration?: VoiceCatalogConfiguration): Promise<VoiceInfo[]> {
+    await waitForProviderMetadata()
     const request = configuration ?? getVoiceCatalogConfiguration(providerId)
     const definition = getProviderDefinition(request.definitionId)
     const listVoices = definition.extraMethods?.listVoices
     if (!listVoices)
       return []
 
-    const config = request.config
+    const config = { ...getDefaultProviderConfig(request.definitionId), ...request.config }
+    // Credential-free engines may deliberately opt out of automatic validation.
+    if (definition.requiresCredentials !== false && definition.validationRequiredWhen
+      && !await definition.validationRequiredWhen(config)) {
+      return []
+    }
+
     const requestKey = JSON.stringify([providerId, request.definitionId, model ?? null, config])
     const pending = providerVoiceListInFlight.get(requestKey)
     if (pending)
