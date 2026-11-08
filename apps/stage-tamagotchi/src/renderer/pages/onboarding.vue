@@ -19,13 +19,15 @@ const extraSteps = computed(() => {
     : []
 })
 
+// These synced actions run on the leader window. Closing this window before they answer disposes the sync runtime
+// and rejects the pending call.
 async function handleSkipped() {
-  onboardingStore.markSetupSkipped()
+  await onboardingStore.markSetupSkipped()
   await closeWindow()
 }
 
 async function handleConfigured() {
-  onboardingStore.markSetupCompleted()
+  await onboardingStore.markSetupCompleted()
   await closeWindow()
 }
 </script>
