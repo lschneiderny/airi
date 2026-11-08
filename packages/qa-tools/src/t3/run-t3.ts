@@ -297,7 +297,7 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
       sleep,
     },
     [zipPath],
-  )
+  ).finally(() => app?.releaseLease())
   stage?.close()
   writeJson(run, 'teardown.json', report)
   if (!report.ok) {

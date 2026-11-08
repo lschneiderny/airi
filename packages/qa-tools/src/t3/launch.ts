@@ -36,6 +36,8 @@ export interface LaunchedApp {
   waitExit: (timeoutMs: number) => Promise<boolean>
   /** Rejects when the dev session prints a fatal startup error (Electron keeps running without a window after one). */
   fatal: Promise<never>
+  /** Releases this launch's lease reference after teardown has stopped its entire workload. */
+  releaseLease: () => void
 }
 
 /** Startup errors after which Electron stays alive but never opens the remote debug endpoint or a window. */
@@ -48,63 +50,67 @@ export const fatalStartupPattern = /App threw an error during load[^\n]*\n?[^\n]
 export async function launchStageTamagotchi(options: { repoRoot: string, profileDir: string, logFile: string, list: ProcessLister, env?: Record<string, string> }): Promise<LaunchedApp> {
   const port = await findAvailablePort()
   const env = { ...t3LaunchEnv(options.profileDir, port), ...options.env }
-  // The caller (`runT3Cli`, `gate --level t3`) already holds the exclusive lease, so this reuses it in-process and only
-  // reads its env. A direct caller without one queues here and gives the lease back when the app exits.
+  // In-process reuse retains a reference even though it reports `inherited`. Every launch must release its
+  // reference after teardown; only an env-inherited handle has a no-op release.
   const lease = await acquire({ class: 'exclusive', command: `stage-tamagotchi dev (T3, ${options.repoRoot})`, cwd: options.repoRoot })
-  const child = spawnPnpm(['--dir', options.repoRoot, '-F', '@proj-airi/stage-tamagotchi', 'dev'], {
-    repoRoot: options.repoRoot,
-    env: { ...processEnv, ...env, ...lease.env },
-    stdio: 'pipe',
-    detached: platform !== 'win32',
-  })
-  const log = createWriteStream(options.logFile)
-  child.stdout?.pipe(log, { end: false })
-  child.stderr?.pipe(log, { end: false })
-  let tail = ''
-  const fatal = new Promise<never>((_, reject) => {
-    const watch = (chunk: Buffer | string) => {
-      tail = `${tail}${String(chunk)}`.slice(-4_000)
-      const match = fatalStartupPattern.exec(tail)
-      if (match)
-        reject(new Error(`The dev session reported a fatal startup error: ${match[0].trim()}`))
-    }
-    child.stdout?.on('data', watch)
-    child.stderr?.on('data', watch)
-  })
-  fatal.catch(() => {})
-  const exited = new Promise<number | null>((resolveExit) => {
-    child.once('exit', (code) => {
-      if (!lease.inherited)
-        lease.release()
-      log.end()
-      resolveExit(code)
+  try {
+    const child = spawnPnpm(['--dir', options.repoRoot, '-F', '@proj-airi/stage-tamagotchi', 'dev'], {
+      repoRoot: options.repoRoot,
+      env: { ...processEnv, ...env, ...lease.env },
+      stdio: 'pipe',
+      detached: platform !== 'win32',
     })
-    child.once('error', () => {
-      if (!lease.inherited)
-        lease.release()
-      resolveExit(null)
+    const log = createWriteStream(options.logFile)
+    child.stdout?.pipe(log, { end: false })
+    child.stderr?.pipe(log, { end: false })
+    let tail = ''
+    const fatal = new Promise<never>((_, reject) => {
+      const watch = (chunk: Buffer | string) => {
+        tail = `${tail}${String(chunk)}`.slice(-4_000)
+        const match = fatalStartupPattern.exec(tail)
+        if (match)
+          reject(new Error(`The dev session reported a fatal startup error: ${match[0].trim()}`))
+      }
+      child.stdout?.on('data', watch)
+      child.stderr?.on('data', watch)
     })
-  })
-  if (child.pid === undefined)
-    throw new Error(`Could not start the stage-tamagotchi dev session: ${(await exited) ?? 'no exit code'}`)
-  const pid = child.pid
-  lease.addWorkload(pid)
-  const live: LiveProcess | undefined = (await options.list()).find(entry => entry.pid === pid)
-  const root: OwnedProcess = { pid, created: live?.created, commandLine: live?.commandLine ?? child.spawnargs.join(' ') }
-  return {
-    child,
-    root,
-    port,
-    env,
-    exited,
-    fatal,
-    waitExit: timeoutMs => new Promise<boolean>((resolveWait) => {
-      const timer = setTimeout(resolveWait, timeoutMs, false)
-      void exited.then(() => {
-        clearTimeout(timer)
-        resolveWait(true)
+    fatal.catch(() => {})
+    const exited = new Promise<number | null>((resolveExit) => {
+      child.once('exit', (code) => {
+        log.end()
+        resolveExit(code)
       })
-    }),
+      child.once('error', () => {
+        log.end()
+        resolveExit(null)
+      })
+    })
+    if (child.pid === undefined)
+      throw new Error(`Could not start the stage-tamagotchi dev session: ${(await exited) ?? 'no exit code'}`)
+    const pid = child.pid
+    lease.addWorkload(pid)
+    const live: LiveProcess | undefined = (await options.list()).find(entry => entry.pid === pid)
+    const root: OwnedProcess = { pid, created: live?.created, commandLine: live?.commandLine ?? child.spawnargs.join(' ') }
+    return {
+      child,
+      root,
+      port,
+      env,
+      exited,
+      fatal,
+      releaseLease: () => lease.release(),
+      waitExit: timeoutMs => new Promise<boolean>((resolveWait) => {
+        const timer = setTimeout(resolveWait, timeoutMs, false)
+        void exited.then(() => {
+          clearTimeout(timer)
+          resolveWait(true)
+        })
+      }),
+    }
+  }
+  catch (error) {
+    lease.release()
+    throw error
   }
 }
 
