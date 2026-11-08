@@ -98,6 +98,7 @@ describe('card editor character profile', () => {
   }
 
   it('shows the default profile of a card without one and saves the edited profile', async () => {
+    await page.viewport(1280, 960)
     const cardId = await createCard()
     const screen = await renderEditor(cardId)
 
@@ -117,7 +118,6 @@ describe('card editor character profile', () => {
     await expect.element(screen.getByText(t('settings.pages.card.unsaved.badge'))).toBeVisible()
 
     // Evidence for the plan: the group at a desktop width, in both color modes.
-    await page.viewport(1280, 960)
     const group = page.elementLocator(document.querySelector('[data-card-editor-character-profile]')!)
     await group.screenshot({ path: evidencePath('task-13-editor.png') })
     document.documentElement.classList.add('dark')
