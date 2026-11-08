@@ -663,7 +663,7 @@ async function launchAndMeasure(options: { repoRoot: string, profile: string, mo
         removeDir: path => rmSync(path, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }),
         sleep,
       },
-    )
+    ).finally(() => app.releaseLease())
     if (!report.ok)
       options.log(`qa-tools stage: teardown of ${options.mode} pair ${options.n} left ${report.leftovers.length} processes${report.refused.length ? `; ${report.refused.join('; ')}` : ''}`)
   }
