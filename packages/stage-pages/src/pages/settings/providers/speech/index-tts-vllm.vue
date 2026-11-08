@@ -9,7 +9,7 @@ import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProviderConfigStore } from '@proj-airi/stage-ui/stores/providers/config'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 import { Callout } from '@proj-airi/ui'
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -32,10 +32,6 @@ const availableVoices = computed(() => {
 })
 
 onMounted(async () => {
-  await speechStore.loadVoicesForProvider(providerId)
-})
-
-watch([apiKeyConfigured], async () => {
   await speechStore.loadVoicesForProvider(providerId)
 })
 
