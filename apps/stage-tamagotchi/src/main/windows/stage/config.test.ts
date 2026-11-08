@@ -79,7 +79,7 @@ describe('resolveHome', () => {
 
 describe('buildStageHostState', () => {
   it('reports the resolved home display and null homes on a fresh config', () => {
-    const state = buildStageHostState({ config: defaultStageConfig, displays: [builtIn, external], running: 'desktop' })
+    const state = buildStageHostState({ config: defaultStageConfig, displays: [builtIn, external], running: 'desktop', next: 'window' })
 
     expect(state).toEqual({
       experimental: false,
@@ -89,6 +89,7 @@ describe('buildStageHostState', () => {
       homeDisplayId: '1',
       homes: { 1: null, 7: null },
       running: 'desktop',
+      next: 'window',
     })
   })
 })

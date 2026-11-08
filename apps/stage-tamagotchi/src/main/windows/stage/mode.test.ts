@@ -34,6 +34,7 @@ describe('selectHostMode', () => {
 
   it('keeps the classic window on Linux', () => {
     expect(selectHostMode(desktopMmd, 'linux', {}, dev)).toBe('window')
+    expect(selectHostMode(desktopMmd, 'linux', { AIRI_STAGE_HOST: 'desktop' }, production)).toBe('window')
   })
 
   it('keeps the classic window for a model that is not MMD or was never reported', () => {

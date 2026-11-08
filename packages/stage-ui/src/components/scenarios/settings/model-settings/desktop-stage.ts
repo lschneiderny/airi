@@ -18,6 +18,8 @@ export interface DesktopStageState {
   mode: DesktopStageMode
   /** The host this launch built. */
   running: DesktopStageMode
+  /** The host selected by the native launch policy for the next launch. */
+  next: DesktopStageMode
   homeDisplayId: string
   displays: DesktopStageDisplay[]
 }
@@ -39,11 +41,10 @@ export interface DesktopStageHost {
 
 /**
  * Whether the next launch builds a different host than the running one, so a relaunch is needed to apply the settings.
- * With the Experimental 3D stage setting off, the next launch builds the classic window whatever the saved mode is.
+ * The native host owns launch policy, including platform restrictions and development overrides.
  */
-export function desktopStageNeedsRelaunch(state: Pick<DesktopStageState, 'experimental' | 'mode' | 'running'>): boolean {
-  const next = state.experimental ? state.mode : 'window'
-  return next !== state.running
+export function desktopStageNeedsRelaunch(state: Pick<DesktopStageState, 'next' | 'running'>): boolean {
+  return state.next !== state.running
 }
 
 export const desktopStageHostKey: InjectionKey<DesktopStageHost> = Symbol('@proj-airi/desktop-stage-host')

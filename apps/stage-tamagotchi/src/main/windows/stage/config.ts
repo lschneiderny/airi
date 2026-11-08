@@ -98,6 +98,7 @@ export function buildStageHostState(params: {
   config: StageConfig
   displays: readonly StageDisplayInfo[]
   running: StageHostMode
+  next: StageHostMode
 }): StageHostState {
   return {
     experimental: params.config.experimental,
@@ -107,6 +108,7 @@ export function buildStageHostState(params: {
     homeDisplayId: resolveHomeDisplay(params.displays, params.config).id,
     homes: Object.fromEntries(params.displays.map(display => [display.id, resolveHome(display, params.config)])),
     running: params.running,
+    next: params.next,
   }
 }
 
