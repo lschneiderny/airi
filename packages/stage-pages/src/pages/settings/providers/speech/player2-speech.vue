@@ -56,9 +56,6 @@ onMounted(async () => {
   if ((await providersStore.validateProviderConfig(providerId, configSnapshot)).valid) {
     await speechStore.loadVoicesForProvider(providerId)
   }
-  else {
-    console.error('Failed to validate provider config', providerConfig)
-  }
   try {
     const baseUrl = (providerConfig.baseUrl as string | undefined) ?? ''
     const res = await fetch(`${baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl}/health`, {
