@@ -2,9 +2,10 @@
 import type { DisplayModel } from '../../../../stores/display-models'
 
 import { useResizeObserver, useScreenSafeArea } from '@vueuse/core'
-import { DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DialogTrigger, VisuallyHidden } from 'reka-ui'
-import { DrawerContent, DrawerHandle, DrawerOverlay, DrawerPortal, DrawerRoot, DrawerTrigger } from 'vaul-vue'
+import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, DialogTrigger, VisuallyHidden } from 'reka-ui'
+import { DrawerContent, DrawerDescription, DrawerHandle, DrawerOverlay, DrawerPortal, DrawerRoot, DrawerTitle, DrawerTrigger } from 'vaul-vue'
 import { onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import ModelManager from './model-selector.vue'
 
@@ -18,6 +19,7 @@ const emits = defineEmits<{
 }>()
 const showDialog = defineModel('show', { type: Boolean, default: false, required: false })
 const { isDesktop } = useBreakpoints()
+const { t } = useI18n()
 const screenSafeArea = useScreenSafeArea()
 
 useResizeObserver(document.documentElement, () => screenSafeArea.update())
@@ -33,7 +35,8 @@ onMounted(() => screenSafeArea.update())
       <DialogOverlay class="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm data-[state=closed]:animate-fadeOut data-[state=open]:animate-fadeIn" />
       <DialogContent class="fixed left-1/2 top-1/2 z-[9999] max-h-full max-w-5xl w-[92dvw] transform overflow-y-scroll rounded-2xl bg-white p-6 shadow-xl outline-none backdrop-blur-md scrollbar-none -translate-x-1/2 -translate-y-1/2 data-[state=closed]:animate-contentHide data-[state=open]:animate-contentShow dark:bg-neutral-900">
         <VisuallyHidden>
-          <DialogTitle>Models</DialogTitle>
+          <DialogTitle>{{ t('settings.model-select.select-model.title') }}</DialogTitle>
+          <DialogDescription>{{ t('settings.model-select.select-model.description') }}</DialogDescription>
         </VisuallyHidden>
         <ModelManager :selected-model="props.selectedModel" @close="showDialog = false" @pick="value => emits('pick', value)" />
       </DialogContent>
@@ -57,6 +60,10 @@ onMounted(() => screenSafeArea.update())
         :style="{ paddingBottom: `${Math.max(Number.parseFloat(screenSafeArea.bottom.value.replace('px', '')), 24)}px` }"
       >
         <DrawerHandle />
+        <VisuallyHidden>
+          <DrawerTitle>{{ t('settings.model-select.select-model.title') }}</DrawerTitle>
+          <DrawerDescription>{{ t('settings.model-select.select-model.description') }}</DrawerDescription>
+        </VisuallyHidden>
         <ModelManager :selected-model="props.selectedModel" @close="showDialog = false" @pick="value => emits('pick', value)" />
       </DrawerContent>
     </DrawerPortal>
