@@ -94,7 +94,7 @@ The web host writes no snapshot, so `desktop` is `null`.
 
 `packages/electron-eventa` defines the invoke `electron.powerMonitor.getSystemIdleTime` as `defineInvokeEventa<number | null>('eventa:invoke:electron:power-monitor:get-system-idle-time')`.
 It returns whole seconds since the last keyboard or mouse input anywhere on the desktop, or `null` when the host cannot measure idle time.
-The main service `createDesktopActivityService` answers it with `powerMonitor.getSystemIdleTime()`, or with `null` on a Linux Wayland session (see Linux and Wayland degradation). The handler is window-scoped and is removed when the window closes or the app quits.
+The main service `createDesktopActivityService` answers it with `powerMonitor.getSystemIdleTime()`, or with `null` under XWayland (see Linux and Wayland degradation). The handler is window-scoped and is removed when the window closes or the app quits.
 The main process never polls on its own; the renderer polls only while the stage is visible.
 
 `packages/stage-ui/src/services/speech/bus.ts` defines `speechInputUserSpeakingChangedEvent` as `defineEventa<{ speaking: boolean }>('eventa:audio:speech:input:user-speaking-changed')`.
@@ -154,10 +154,11 @@ On the web host, `desktop` is `null`.
 When a signal is unknown, the producer reports `null`, and a `null` field never selects `watching`. The resolver test covers an all-null snapshot.
 On the Wayland Ozone backend, Electron cannot read the cursor position reliably. If the stage never receives pointer moves, `cursorMovedAtMs` stays `null` and does not count as activity.
 
-On a Linux Wayland session, Electron can report a constant idle time of 0 because it cannot measure desktop idle time there. The resolver would read that 0 as recent input and select `watching` while the stage is visible.
-So the Electron main process answers idle time as `null` when `process.platform` is `linux` and `XDG_SESSION_TYPE` is `wayland`, whether Electron runs on the Wayland Ozone backend or under XWayland. The snapshot then carries `idleSeconds: null`, and the resolver falls back to `idle`.
-On Windows, macOS, and Linux X11, the producer passes the measured value through, and 0 means recent input.
-The constant 0 on Wayland has not been observed on a real Wayland session in this work.
+Under XWayland (the X11 Ozone backend inside a Wayland session), Chromium reads desktop idle time through the X11 screen saver extension and reports a constant 0 ([electron#34826](https://github.com/electron/electron/issues/34826)). The resolver would read that 0 as recent input and select `watching` while the stage is visible.
+So the Electron main process answers idle time as `null` when `process.platform` is `linux`, the session is Wayland (`WAYLAND_DISPLAY` or `XDG_SESSION_TYPE=wayland`), and the Ozone backend is not Wayland (`resolveIsWayland` in `src/main/app/ozone.ts`). The snapshot then carries `idleSeconds: null`, and the resolver falls back to `idle`.
+The native Wayland Ozone backend measures idle time through ext-idle-notify, `org_kde_kwin_idle`, or Mutter's IdleMonitor (Chromium `ui/ozone/platform/wayland/host/wayland_screen.cc`, `CalculateIdleTime`). Each provider reports 0 until 5 seconds without input, then the true idle time, which is accurate enough for the 10-second watching and 300-second away thresholds. A compositor with none of these providers still reads a constant 0.
+On Windows, macOS, Linux X11, and native Wayland, the producer passes the measured value through, and 0 means recent input.
+The 2026-10-17 version of this section nulled idle time on every Wayland session, including native Wayland, which kept a Linux character in `idle` during normal desktop use. That reading was never observed on a real session; it was corrected on 2026-11-08 from the Chromium source.
 
 ## Energy
 
