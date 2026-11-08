@@ -14,7 +14,7 @@ import { electron } from '../../../shared/eventa'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
 import { createDarwinSampler, loadDarwinBinding } from './foreground-window-darwin'
 import { createWin32Sampler, loadWin32Binding } from './foreground-window-win32'
-import { reportForegroundBindingFailed } from './host-capabilities'
+import { getCurrentHostCapabilities, reportForegroundBindingFailed } from './host-capabilities'
 
 /**
  * Answers the renderer's foreground window reads through native calls over koffi.
@@ -63,6 +63,9 @@ export function createForegroundWindowService(params: {
   }
 
   const offSample = defineInvokeHandler(params.context, electron.foregroundWindow.sample, async () => {
+    // A degraded snapshot (untrusted macOS window titles) still samples; an unavailable one never does.
+    if (getCurrentHostCapabilities().signals.foregroundWindow.kind === 'unavailable')
+      return null
     const sample = await getSampler()
     return sample?.() ?? null
   })
