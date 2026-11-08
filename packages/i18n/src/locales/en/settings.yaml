@@ -2858,6 +2858,7 @@ mmd:
       Let the character stand on the desktop, over every other window, instead of
       living in the classic window.
     classic-only-note: Scale, position and rotation apply in the classic window only.
+    classic-host-notice: This platform or model keeps the classic window on the next launch.
     experimental:
       title: Experimental 3D stage
       description: >-

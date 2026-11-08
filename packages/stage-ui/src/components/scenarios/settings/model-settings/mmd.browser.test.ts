@@ -182,15 +182,15 @@ const builtInDisplay: DesktopStageState['displays'][number] = { id: '1', primary
 const externalDisplay: DesktopStageState['displays'][number] = { id: '7', primary: false, workArea: { x: 1440, y: 0, width: 2560, height: 1415 }, scaleFactor: 1 }
 
 /** A host whose writes land in its own state, as the Electron page does after each invoke resolves. */
-function fakeDesktopStageHost(initial: DesktopStageState) {
-  const state = shallowRef<DesktopStageState | null>(initial)
+function fakeDesktopStageHost(initial: Omit<DesktopStageState, 'next'> & Partial<Pick<DesktopStageState, 'next'>>) {
+  const state = shallowRef<DesktopStageState | null>({ ...initial, next: initial.next ?? (initial.experimental ? initial.mode : 'window') })
   const host: DesktopStageHost = {
     state,
     setExperimental: vi.fn(async (experimental) => {
-      state.value = { ...state.value!, experimental }
+      state.value = { ...state.value!, experimental, next: experimental ? state.value!.mode : 'window' }
     }),
     setMode: vi.fn(async (mode) => {
-      state.value = { ...state.value!, mode }
+      state.value = { ...state.value!, mode, next: state.value!.experimental ? mode : 'window' }
     }),
     setHomeDisplay: vi.fn(async (homeDisplayId) => {
       state.value = { ...state.value!, homeDisplayId }
@@ -298,6 +298,15 @@ describe('mmd model settings desktop stage', () => {
     await classic.click()
     await vi.waitFor(() => expect(host.setMode).toHaveBeenLastCalledWith('window'))
     await expect.element(relaunch).not.toBeInTheDocument()
+  })
+
+  it('explains a restricted desktop host without offering a relaunch that cannot change it', async () => {
+    const host = fakeDesktopStageHost({ experimental: true, mode: 'desktop', running: 'window', next: 'window', homeDisplayId: '1', displays: [builtInDisplay] })
+    const { screen } = await renderWithHost(host)
+    await screen.getByText(t('settings.mmd.stage.title'), { exact: true }).click()
+
+    await expect.element(screen.getByText(t('settings.mmd.stage.classic-host-notice'), { exact: true })).toBeVisible()
+    await expect.element(screen.getByRole('button', { name: t('settings.mmd.stage.relaunch.button'), exact: true })).not.toBeInTheDocument()
   })
 
   it('switches the home display through the host and leaves the current one alone', async () => {

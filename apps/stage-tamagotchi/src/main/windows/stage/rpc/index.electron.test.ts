@@ -5,12 +5,14 @@ import type { createWindowContext } from '../../../libs/electron/window-context'
 import type { StageConfig } from '../config'
 
 import { EventEmitter } from 'node:events'
+import { env, platform } from 'node:process'
 
 import { createContext, defineInvoke, defineInvokeEventa } from '@moeru/eventa'
 import { describe, expect, it, vi } from 'vitest'
 
 import { electronStageSetActiveRenderer, electronStageSetExperimental, electronStageSetMode, electronStageStateChanged } from '../../../../shared/eventa'
 import { defaultStageConfig } from '../config'
+import { selectHostMode } from '../mode'
 import { createStageStateBroadcast } from '../state-broadcast'
 import { setupStageWindowInvokes } from './index.electron'
 
@@ -65,7 +67,7 @@ describe('setupStageWindowInvokes state fan-out', () => {
 
     expect(state.activeRenderer).toBe('other')
     expect(received).toHaveLength(1)
-    expect(received[0]).toMatchObject({ activeRenderer: 'other', mode: 'desktop', running: 'desktop' })
+    expect(received[0]).toMatchObject({ activeRenderer: 'other', mode: 'desktop', running: 'desktop', next: 'window' })
   })
 
   it('emits the state on the stage window when the settings window saves the mode, and stops after the settings window closes', async () => {
@@ -96,6 +98,7 @@ describe('electronStageSetExperimental', () => {
     expect(state.experimental).toBe(true)
     expect(getConfig().experimental).toBe(true)
     expect(received.map(next => next.experimental)).toEqual([true])
+    expect(state.next).toBe(selectHostMode(getConfig(), platform, env, { development: import.meta.env.DEV }))
   })
 
   it('rejects a payload that is not a boolean and leaves the config unchanged', async () => {

@@ -876,6 +876,8 @@ pass through to the underlying `BasicButton`.
 
 ## Model settings expression panel
 
+The MMD settings desktop section receives `DesktopStageHost` through `provideDesktopStageHost` (`model-settings/desktop-stage.ts`). Its state includes the saved `mode`, the `running` host, and `next`, computed by Electron's `selectHostMode` with the current config, platform, environment, and build. Relaunch is offered only when `next !== running`. A saved desktop mode that resolves to the classic window shows an explanatory notice. `desktop-stage.story.vue` illustrates the launch decisions.
+
 `packages/stage-ui/src/components/scenarios/settings/model-settings/expressions/panel.vue` is the renderer-neutral expression panel. The Live2D and MMD settings components (`live2d.vue`, `mmd.vue`) mount it; it never imports a renderer store.
 
 **Contract** (`expressions/source.ts`): `ExpressionPanelSnapshot` carries `entries`, `groups` (choose-one sets), `activeIds`, `restIds` and, for renderers with custom switches, `freeParameters`. `ExpressionPanelCommand` covers curate (`update-entry`, `reset-entry`), active and rest state (`toggle`, `set-active`, `save-defaults`, `reset-all`) and combos (`create-combo`, `update-combo`, `delete-combo`). `ExpressionPanelSource` is `{ settingsSnapshot, applySettingsCommand }`; `useExpressionStore` (Live2D) and `useMMDExpressionStore` (MMD) satisfy it structurally.

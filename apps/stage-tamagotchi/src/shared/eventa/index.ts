@@ -255,6 +255,8 @@ export interface StageHostState {
   homes: Record<string, { xDip: number } | null>
   /** The host this process built at launch. */
   running: StageHostMode
+  /** The host the next launch will build, including platform, model, and development overrides. */
+  next: StageHostMode
 }
 
 /** Where the character is drawn, published by the stage renderer. Rectangles are Electron DIP screen coordinates. */

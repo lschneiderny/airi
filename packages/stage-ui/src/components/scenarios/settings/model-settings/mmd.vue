@@ -521,6 +521,12 @@ function removeMotion(id: string) {
       </p>
     </div>
     <template v-if="desktopStageState?.experimental">
+      <p
+        v-if="desktopStageState.mode === 'desktop' && desktopStageState.next === 'window'"
+        :class="['text-xs text-neutral-500 dark:text-neutral-400']"
+      >
+        {{ t('settings.mmd.stage.classic-host-notice') }}
+      </p>
       <label :class="['flex flex-wrap gap-4']">
         <div :class="['min-w-0 flex-1 basis-full sm:basis-auto']">
           <div :class="['flex items-center gap-1 text-sm font-medium']">
