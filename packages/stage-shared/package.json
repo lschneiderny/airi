@@ -30,6 +30,7 @@
     "./motion-scenario/flag": "./src/motion-scenario/flag.ts",
     "./perf/io-trace": "./src/perf/io-trace.ts",
     "./performance-state": "./src/performance-state/index.ts",
+    "./host-capabilities": "./src/host-capabilities/index.ts",
     "./plugin-host": "./src/plugin-host.ts",
     "./screen-ambient-light": "./src/screen-ambient-light/index.ts",
     "./server-channel-qr": "./src/server-channel-qr.ts",
