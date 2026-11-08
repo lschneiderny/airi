@@ -1,13 +1,13 @@
 import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import type { HostCapabilities, HostFacts } from '@proj-airi/stage-shared/host-capabilities'
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow, Point } from 'electron'
 
 import process from 'node:process'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { getHostCapabilities, hostCapabilitiesChanged } from '@proj-airi/electron-eventa'
-import { HostReasons, idleAdvances, resolveHostCapabilities } from '@proj-airi/stage-shared/host-capabilities'
-import { app } from 'electron'
+import { acceptCursorReading, HostReasons, idleAdvances, resolveHostCapabilities } from '@proj-airi/stage-shared/host-capabilities'
+import { app, screen } from 'electron'
 
 import { resolveIsWayland } from '../../app/ozone'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
@@ -51,6 +51,13 @@ export function getCurrentHostCapabilities(): HostCapabilities {
   }
   current = resolveHostCapabilities(facts, Date.now())
   return current
+}
+
+/** Native readings are sampled only while the current host can vouch for them. */
+export function readTrustedCursor(): Point | null {
+  return acceptCursorReading(getCurrentHostCapabilities().signals.cursorScreenPoint)
+    ? screen.getCursorScreenPoint()
+    : null
 }
 
 function updateSnapshot() {

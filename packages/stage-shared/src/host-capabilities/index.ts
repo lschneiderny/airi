@@ -29,6 +29,11 @@ export type SignalStatus
     | { kind: 'degraded', reason: HostReason }
     | { kind: 'unavailable', reason: HostReason }
 
+/** Only a live host guarantee makes a screen cursor reading trustworthy. */
+export function acceptCursorReading(cursor: SignalStatus): boolean {
+  return cursor.kind === 'live'
+}
+
 export type HostSignal
   = | 'cursorScreenPoint'
     | 'windowOrigin'

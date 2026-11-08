@@ -5,7 +5,7 @@ import type { ChatDraftHandover } from '../../shared/eventa'
 import { defineInvoke } from '@moeru/eventa'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
-import { defineComponent } from 'vue'
+import { defineComponent, ref } from 'vue'
 
 import { electronChatWindowCollectDraft, electronChatWindowTakeDraft } from '../../shared/eventa'
 import { useChatDraftHandover } from './use-chat-draft-handover'
@@ -25,6 +25,7 @@ vi.mock('@proj-airi/electron-vueuse', async () => {
   const { createContext } = await import('@moeru/eventa')
   mocks.context = createContext()
   return {
+    useElectronCursorAvailable: () => ref(true),
     getElectronEventaContext: () => mocks.context,
     useElectronEventaInvoke: (event: unknown) => event === electronChatWindowTakeDraft ? mocks.takeDraft : mocks.settleDraft,
   }

@@ -14,7 +14,10 @@ const mocks = vi.hoisted(() => ({ emit: vi.fn() }))
 // Removal condition: browser tests running inside an Electron renderer.
 vi.mock('@proj-airi/electron-vueuse', async () => {
   const { shallowRef } = await import('vue')
-  return { useElectronEventaContext: () => shallowRef({ emit: mocks.emit }) }
+  return {
+    useElectronCursorAvailable: () => shallowRef(true),
+    useElectronEventaContext: () => shallowRef({ emit: mocks.emit }),
+  }
 })
 
 function placementAt(x: number, overrides: Partial<StageCharacterPlacement> = {}): StageCharacterPlacement {

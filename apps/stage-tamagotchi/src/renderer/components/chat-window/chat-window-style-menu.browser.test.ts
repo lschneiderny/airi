@@ -3,6 +3,7 @@ import type { ChatWindowPreferences } from '../../../shared/eventa'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { page } from 'vitest/browser'
+import { ref } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import ChatWindowStyleMenu from './chat-window-style-menu.vue'
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@proj-airi/electron-vueuse', async () => {
   const { electronChatWindowGetPreferences } = await import('../../../shared/eventa')
   return {
+    useElectronCursorAvailable: () => ref(true),
     useElectronEventaInvoke: (event: unknown) => event === electronChatWindowGetPreferences ? mocks.getPreferences : mocks.setPreferences,
   }
 })

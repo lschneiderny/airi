@@ -1,11 +1,11 @@
-import type { BrowserWindow, IpcMain, IpcMainEvent, IpcRendererEvent, WebContents } from 'electron'
+import type { BrowserWindow, IpcMain, IpcMainEvent, IpcRendererEvent, Point, WebContents } from 'electron'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext as createMainContext } from '@moeru/eventa/adapters/electron/main'
-import { cursorScreenPoint, startLoopGetCursorScreenPoint } from '@proj-airi/electron-eventa'
-import { getElectronEventaContext, useElectronMouse } from '@proj-airi/electron-vueuse'
-import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { effectScope } from 'vue'
+import { bounds, cursorScreenPoint, startLoopGetBounds, startLoopGetCursorScreenPoint } from '@proj-airi/electron-eventa'
+import { getElectronEventaContext, useElectronCursorAvailable, useElectronMouse, useElectronMouseEventTarget, useElectronRelativeMouse } from '@proj-airi/electron-vueuse'
+import { afterAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { createApp, nextTick } from 'vue'
 
 type RendererIpc = NonNullable<Parameters<typeof getElectronEventaContext>[0]>
 type RendererListener = Parameters<RendererIpc['on']>[1]
@@ -54,25 +54,106 @@ function connectMain() {
   }
   const main = createMainContext(ipcMain as IpcMain, browserWindow as BrowserWindow)
   getElectronEventaContext(ipcRenderer as RendererIpc)
-  onTestFinished(() => main.dispose())
+  afterAll(() => main.dispose())
 
   return main.context
 }
 
+// The package owns one context and mouse subscription for the renderer's lifetime.
+const main = connectMain()
+defineInvokeHandler(main, startLoopGetCursorScreenPoint, () => {})
+defineInvokeHandler(main, startLoopGetBounds, () => {})
+
+function mountMouse() {
+  let state: {
+    mouse: ReturnType<typeof useElectronMouse>
+    relative: ReturnType<typeof useElectronRelativeMouse>
+    available: ReturnType<typeof useElectronCursorAvailable>
+  } | undefined
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = createApp({
+    setup() {
+      state = {
+        mouse: useElectronMouse(),
+        relative: useElectronRelativeMouse(),
+        available: useElectronCursorAvailable(),
+      }
+      return () => null
+    },
+  })
+  app.mount(host)
+  onTestFinished(() => {
+    app.unmount()
+    host.remove()
+  })
+  if (!state)
+    throw new Error('Mouse host did not mount')
+  return state
+}
+
+/** Await the exact renderer delivery, including nulls that must not dispatch a mousemove. */
+async function sendCursor(point: Point | null) {
+  const received = Promise.withResolvers<void>()
+  getElectronEventaContext().once(cursorScreenPoint, () => received.resolve())
+  await main.emit(cursorScreenPoint, point)
+  await received.promise
+  await nextTick()
+}
+
+beforeEach(async () => {
+  useElectronCursorAvailable()
+  await sendCursor(null)
+})
+
 describe('useElectronMouse', () => {
   it('gives a consumer that mounts while the cursor stays still the last position', async () => {
-    const main = connectMain()
-    defineInvokeHandler(main, startLoopGetCursorScreenPoint, () => {})
-    const scope = effectScope()
-    onTestFinished(() => scope.stop())
-    const first = scope.run(() => useElectronMouse())!
+    const { mouse: first } = mountMouse()
 
     // The main process sends a position only when it changes, so no message follows while the cursor stays still.
-    main.emit(cursorScreenPoint, { x: 10, y: 20 })
-    await vi.waitFor(() => expect(first.x.value).toBe(10))
+    await sendCursor({ x: 10, y: 20 })
+    expect(first.x.value).toBe(10)
 
-    const late = scope.run(() => useElectronMouse())!
+    const { mouse: late, available } = mountMouse()
     expect(late.x.value).toBe(10)
     expect(late.y.value).toBe(20)
+    expect(available.value).toBe(true)
+  })
+
+  it('marks a null body unavailable without moving either screen or relative coordinates', async () => {
+    const { mouse, relative, available } = mountMouse()
+    const receivedBounds = Promise.withResolvers<void>()
+    getElectronEventaContext().once(bounds, () => receivedBounds.resolve())
+    await main.emit(bounds, { x: 100, y: 200, width: 500, height: 500 })
+    await receivedBounds.promise
+    await sendCursor({ x: 140, y: 260 })
+    expect(relative.available.value).toBe(true)
+    expect([relative.x.value, relative.y.value]).toEqual([40, 60])
+    const mousemove = vi.fn()
+    const target = useElectronMouseEventTarget().value
+    target.addEventListener('mousemove', mousemove)
+    onTestFinished(() => target.removeEventListener('mousemove', mousemove))
+
+    await sendCursor(null)
+
+    expect(available.value).toBe(false)
+    expect(relative.available.value).toBe(false)
+    expect([mouse.x.value, mouse.y.value]).toEqual([140, 260])
+    expect([relative.x.value, relative.y.value]).toEqual([40, 60])
+    expect(mousemove).not.toHaveBeenCalled()
+    const late = mountMouse()
+    expect(late.available.value).toBe(false)
+    expect([late.mouse.x.value, late.mouse.y.value]).toEqual([140, 260])
+  })
+
+  it('restores availability and coordinates when a trusted point arrives again', async () => {
+    const { mouse, available } = mountMouse()
+    await sendCursor({ x: 10, y: 20 })
+    await sendCursor(null)
+
+    await sendCursor({ x: -30, y: 40 })
+
+    expect(available.value).toBe(true)
+    expect([mouse.x.value, mouse.y.value]).toEqual([-30, 40])
   })
 })

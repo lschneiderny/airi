@@ -8,7 +8,7 @@ import { useVoiceStore } from '@proj-airi/stage-ui/stores/voice'
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
-import { defineComponent } from 'vue'
+import { defineComponent, ref } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import { electronShortcutRegister, electronShortcutTriggered } from '../../shared/eventa'
@@ -28,6 +28,7 @@ vi.mock('@proj-airi/electron-vueuse', async () => {
   const { createContext } = await import('@moeru/eventa')
   mocks.context = createContext()
   return {
+    useElectronCursorAvailable: () => ref(true),
     getElectronEventaContext: () => mocks.context,
     useElectronEventaInvoke: (event: unknown) => event === electronShortcutRegister ? mocks.register : mocks.unregister,
   }

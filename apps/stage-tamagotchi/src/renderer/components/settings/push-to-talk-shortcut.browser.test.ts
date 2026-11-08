@@ -4,6 +4,7 @@ import { createPinia, disposePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { userEvent } from 'vitest/browser'
+import { ref } from 'vue'
 import { createI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 
@@ -17,6 +18,7 @@ const listShortcuts = vi.hoisted(() => vi.fn<() => Promise<ShortcutBinding[]>>()
 // The shortcut list comes from the Electron main process. The double answers with the bindings that each test registers.
 // Removal condition: browser tests running inside an Electron renderer.
 vi.mock('@proj-airi/electron-vueuse', () => ({
+  useElectronCursorAvailable: () => ref(true),
   getElectronEventaContext: vi.fn(),
   useElectronEventaInvoke: () => listShortcuts,
 }))
