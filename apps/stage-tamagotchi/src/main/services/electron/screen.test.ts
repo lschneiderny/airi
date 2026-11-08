@@ -1,4 +1,4 @@
-import type { Point } from 'electron'
+import type { Point, Rectangle } from 'electron'
 
 import { EventEmitter } from 'node:events'
 
@@ -19,6 +19,8 @@ vi.mock('electron', () => ({
     getCursorScreenPoint: vi.fn(),
     dipToScreenPoint: vi.fn((point: Point) => ({ x: point.x * 2, y: point.y * 2 })),
     screenToDipPoint: vi.fn((point: Point) => ({ x: point.x / 2, y: point.y / 2 })),
+    dipToScreenRect: vi.fn((_window: unknown, rect: Rectangle) => ({ ...rect, width: rect.width * 2 })),
+    screenToDipRect: vi.fn((_window: unknown, rect: Rectangle) => ({ ...rect, width: rect.width / 2 })),
   },
 }))
 
@@ -179,6 +181,21 @@ describe('screen service', () => {
     await expect(defineInvoke(context, electron.screen.dipToScreenPoint)(undefined)).resolves.toBeNull()
     await expect(defineInvoke(context, electron.screen.screenToDipPoint)(undefined)).resolves.toBeNull()
     expect(screen.getCursorScreenPoint).not.toHaveBeenCalled()
+  })
+
+  it.each(['windows', 'linux-wayland'] as const)('uses only trusted bounds for omitted rectangle invokes on %s', async (host) => {
+    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost(host))
+    const { context, window } = setupScreen()
+    const getBounds = vi.spyOn(window, 'getBounds')
+    const expected = host === 'windows' ? { x: 0, y: 0, width: 500, height: 500 } : null
+
+    await expect(defineInvoke(context, electron.screen.dipToScreenRect)(undefined)).resolves.toEqual(expected)
+    await expect(defineInvoke(context, electron.screen.screenToDipRect)(undefined)).resolves.toEqual(expected)
+    expect(getBounds).toHaveBeenCalledTimes(host === 'windows' ? 2 : 0)
+
+    const rect = { x: -10, y: 20, width: 300, height: 400 }
+    await expect(defineInvoke(context, electron.screen.dipToScreenRect)(rect)).resolves.toEqual({ ...rect, width: 600 })
+    await expect(defineInvoke(context, electron.screen.screenToDipRect)(rect)).resolves.toEqual({ ...rect, width: 150 })
   })
 
   it.each(['windows', 'macos'] as const)('keeps omitted-point invoke values identical on %s', async (host) => {

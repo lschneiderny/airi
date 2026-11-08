@@ -9,7 +9,7 @@ import { screen } from 'electron'
 
 import { electron } from '../../../shared/eventa'
 import { onAppBeforeQuit, onAppWindowAllClosed } from '../../libs/bootkit/lifecycle'
-import { readTrustedCursor } from './host-capabilities'
+import { readTrustedCursor, windowOriginTrusted } from './host-capabilities'
 
 export function createScreenService(params: { context: ReturnType<typeof createContext>['context'], window: BrowserWindow }) {
   // The last position that the renderer received. The renderer keeps it, so a cursor that did not move needs no
@@ -54,8 +54,8 @@ export function createScreenService(params: { context: ReturnType<typeof createC
   defineInvokeHandler(params.context, electron.screen.getAllDisplays, () => screen.getAllDisplays())
   defineInvokeHandler(params.context, electron.screen.getPrimaryDisplay, () => screen.getPrimaryDisplay())
   defineInvokeHandler(params.context, electron.screen.dipToScreenPoint, point => point ? screen.dipToScreenPoint(point) : readTrustedCursor())
-  defineInvokeHandler(params.context, electron.screen.dipToScreenRect, rect => rect ? screen.dipToScreenRect(params.window, rect) : params.window.getBounds())
+  defineInvokeHandler(params.context, electron.screen.dipToScreenRect, rect => rect ? screen.dipToScreenRect(params.window, rect) : windowOriginTrusted() ? params.window.getBounds() : null)
   defineInvokeHandler(params.context, electron.screen.screenToDipPoint, point => point ? screen.screenToDipPoint(point) : readTrustedCursor())
-  defineInvokeHandler(params.context, electron.screen.screenToDipRect, rect => rect ? screen.screenToDipRect(params.window, rect) : params.window.getBounds())
+  defineInvokeHandler(params.context, electron.screen.screenToDipRect, rect => rect ? screen.screenToDipRect(params.window, rect) : windowOriginTrusted() ? params.window.getBounds() : null)
   defineInvokeHandler(params.context, electron.screen.getCursorScreenPoint, readTrustedCursor)
 }

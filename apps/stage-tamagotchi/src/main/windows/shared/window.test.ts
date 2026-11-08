@@ -1,6 +1,8 @@
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { describe, expect, it, vi } from 'vitest'
 
-import { resizeBoundsByDelta, setWindowAlwaysOnTop } from './window'
+import { getCurrentHostCapabilities } from '../../services/electron/host-capabilities'
+import { resizeBoundsByDelta, resizeWindowByDelta, setWindowAlwaysOnTop } from './window'
 
 const mocks = vi.hoisted(() => ({
   isMacOS: false,
@@ -8,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('electron', () => ({
+  app: { isReady: () => true, commandLine: { getSwitchValue: () => 'x11' } },
   shell: {
     openExternal: vi.fn(),
   },
@@ -86,6 +89,27 @@ describe('setWindowAlwaysOnTop', () => {
 })
 
 describe('resizeBoundsByDelta', () => {
+  it.each([
+    ['windows', 'w', { x: 80, y: 100, width: 420, height: 500 }],
+    ['windows', 'n', { x: 100, y: 70, width: 400, height: 530 }],
+    ['linux-wayland', 'w', { x: 80, y: 100, width: 420, height: 500 }],
+    ['linux-wayland', 'n', { x: 100, y: 70, width: 400, height: 530 }],
+  ] as const)('resizes %s edge %s using only the origin the host can report', (host, direction, expected) => {
+    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost(host))
+    const setBounds = vi.fn()
+    const setSize = vi.fn()
+    const window = { getBounds: () => ({ x: 100, y: 100, width: 400, height: 500 }), setBounds, setSize }
+    resizeWindowByDelta({ window: window as never, direction, deltaX: -20, deltaY: -30 })
+    if (host === 'windows') {
+      expect(setBounds).toHaveBeenCalledWith(expected)
+      expect(setSize).not.toHaveBeenCalled()
+    }
+    else {
+      expect(setSize).toHaveBeenCalledWith(expected.width, expected.height)
+      expect(setBounds).not.toHaveBeenCalled()
+    }
+  })
+
   it('keeps the opposite corner still while a corner grip is dragged', () => {
     const bounds = { x: 100, y: 100, width: 400, height: 500 }
 

@@ -1,8 +1,10 @@
 import type { Rectangle } from 'electron'
 
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { screen } from 'electron'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { getCurrentHostCapabilities } from '../../services/electron/host-capabilities'
 import {
   centerWindowOnDisplay,
   computeCenteredWindowBounds,
@@ -18,6 +20,7 @@ import {
 // apps/stage-tamagotchi/src/main/windows/shared/display.test.ts
 // Can be safely deleted if unit tests are executed inside an Electron-based test runner.
 vi.mock('electron', () => ({
+  app: { isReady: () => true, commandLine: { getSwitchValue: () => 'x11' } },
   screen: {
     getDisplayMatching: vi.fn(),
   },
@@ -207,6 +210,17 @@ describe('computeCenteredWindowBounds', () => {
  * centerWindowOnDisplay(window)
  */
 describe('centerWindowOnDisplay', () => {
+  beforeEach(() => Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('windows')))
+
+  it('only reveals a window whose origin is hidden', () => {
+    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('linux-wayland'))
+    const setBounds = vi.fn()
+    const show = vi.fn()
+    centerWindowOnDisplay({ getBounds: () => ({ x: 0, y: 0, width: 450, height: 600 }), isDestroyed: () => false, setBounds, show })
+    expect(setBounds).not.toHaveBeenCalled()
+    expect(show).toHaveBeenCalledOnce()
+  })
+
   /**
    * @example
    * The recovered window receives centered bounds and becomes visible.

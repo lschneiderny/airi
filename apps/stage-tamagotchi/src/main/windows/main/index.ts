@@ -33,6 +33,7 @@ import { electronStartDraggingWindow } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
+import { windowOriginTrusted } from '../../services/electron/host-capabilities'
 import { protectPrivilegedWindowNavigation, setWindowAlwaysOnTop, transparentWindowConfig } from '../shared'
 import { hideOnClose } from './hide-on-close'
 import { mainWindowQuery } from './query'
@@ -130,8 +131,7 @@ export async function setupMainWindow(params: {
       config.windows.push({
         title: 'AIRI',
         tag: 'main',
-        x: newBounds.x,
-        y: newBounds.y,
+        ...windowOriginTrusted() ? { x: newBounds.x, y: newBounds.y } : {},
         width: newBounds.width,
         height: newBounds.height,
       })
@@ -139,8 +139,10 @@ export async function setupMainWindow(params: {
     else {
       const mainWindowConfig = defu(config.windows[existingConfigIndex], { title: 'AIRI', tag: 'main' })
 
-      mainWindowConfig.x = newBounds.x
-      mainWindowConfig.y = newBounds.y
+      if (windowOriginTrusted()) {
+        mainWindowConfig.x = newBounds.x
+        mainWindowConfig.y = newBounds.y
+      }
       mainWindowConfig.width = newBounds.width
       mainWindowConfig.height = newBounds.height
 

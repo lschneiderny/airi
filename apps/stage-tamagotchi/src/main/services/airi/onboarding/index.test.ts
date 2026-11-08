@@ -2,10 +2,12 @@ import type { BrowserWindow } from 'electron'
 
 import type { OnboardingWindowManager } from '../../../windows/onboarding'
 
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { electronOpenOnboarding } from '../../../../shared/eventa'
 import { markStageWindow } from '../../../windows/stage/identity'
+import { getCurrentHostCapabilities } from '../../electron/host-capabilities'
 import { createOnboardingService } from './index'
 
 const mocks = vi.hoisted(() => ({
@@ -20,7 +22,11 @@ vi.mock('@moeru/eventa', async importOriginal => ({
   },
 }))
 vi.mock('electron', () => ({
-  screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 25, width: 1440, height: 801 } }) },
+  app: { isReady: () => true, commandLine: { getSwitchValue: () => 'x11' } },
+  screen: {
+    getDisplayMatching: () => ({ workArea: { x: 0, y: 25, width: 1440, height: 801 } }),
+    getPrimaryDisplay: () => ({ workArea: { x: 0, y: 25, width: 1440, height: 801 } }),
+  },
 }))
 vi.mock('../../../windows/shared/animator', () => ({
   Animator: class {
@@ -36,6 +42,7 @@ vi.mock('../../../windows/shared/window', () => ({ toggleWindowShow: vi.fn() }))
 function createMainWindow(bounds: { x: number, y: number, width: number, height: number }) {
   return Object.assign({} as BrowserWindow, {
     getBounds: vi.fn(() => bounds),
+    setSize: vi.fn(),
     on: vi.fn(),
     removeListener: vi.fn(),
     isDestroyed: vi.fn(() => false),
@@ -54,6 +61,17 @@ describe('electronOpenOnboarding', () => {
   beforeEach(() => {
     mocks.handlers.clear()
     mocks.animateTo.mockClear()
+    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('windows'))
+  })
+
+  it('applies only size when the main window cannot be placed beside onboarding', async () => {
+    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('linux-wayland'))
+    const mainWindow = createMainWindow({ x: 0, y: 0, width: 450, height: 600 })
+    createOnboardingService({ context: {} as never, onboardingWindowManager: createOnboardingManager(), mainWindow })
+    await mocks.handlers.get(electronOpenOnboarding)?.()
+    expect(mainWindow.setSize).toHaveBeenCalledWith(450, 600)
+    expect(mocks.animateTo).not.toHaveBeenCalled()
+    expect(mainWindow.on).not.toHaveBeenCalled()
   })
 
   it('slides the classic main window beside the onboarding window', async () => {

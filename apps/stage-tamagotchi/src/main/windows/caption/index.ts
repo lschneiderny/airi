@@ -23,6 +23,7 @@ import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
+import { windowOriginTrusted } from '../../services/electron/host-capabilities'
 import { showWindowOnAllWorkspaces } from '../shared/app-icon'
 import { mapForBreakpoints, resolutionBreakpoints, widthFrom } from '../shared/display'
 import { protectPrivilegedWindowNavigation, setupBaseWindowElectronInvokes, setWindowAlwaysOnTop, transparentWindowConfig } from '../shared/window'
@@ -31,8 +32,8 @@ const captionConfigSchema = object({
   isFollowing: boolean(),
   matrices: record(string(), object({
     bounds: object({
-      x: number(),
-      y: number(),
+      x: optional(number()),
+      y: optional(number()),
       width: number(),
       height: number(),
     }),
@@ -55,9 +56,9 @@ function computeDisplayMatrixHash(): string {
   return createHash('sha256').update(signature).digest('hex').slice(0, 16)
 }
 
-function computeInitialCaptionBounds(params: { mainWindow: BrowserWindow, captionOptions?: Partial<Rectangle> }): Rectangle {
-  const mainBounds = params.mainWindow.getBounds()
-  const displayWorkArea = screen.getDisplayMatching(mainBounds).workArea
+function computeInitialCaptionBounds(params: { mainWindow: BrowserWindow, captionOptions?: Partial<Rectangle> }): Pick<Rectangle, 'width' | 'height'> & Partial<Rectangle> {
+  const mainBounds = windowOriginTrusted() ? params.mainWindow.getBounds() : undefined
+  const displayWorkArea = mainBounds ? screen.getDisplayMatching(mainBounds).workArea : screen.getPrimaryDisplay().workArea
 
   // Base sizing from display width with sensible caps
   const width = mapForBreakpoints(
@@ -71,6 +72,9 @@ function computeInitialCaptionBounds(params: { mainWindow: BrowserWindow, captio
     { breakpoints: resolutionBreakpoints },
   )
   const height = Math.max(Math.floor(width / 3.2), 120)
+
+  if (!mainBounds)
+    return { width, height }
 
   const margin = 16
   // Prefer to the right of main window, else to the left, else bottom centered
@@ -174,6 +178,8 @@ export function setupCaptionWindowManager(params: {
   }
 
   function followMainWindow(win: BrowserWindow) {
+    if (!windowOriginTrusted())
+      return
     const cfg = getConfig() ?? { isFollowing, matrices: {} }
     const initialOffset = cfg?.matrices?.[matrixHash]?.relativeToMain ?? computeRelativeOffset(win)
 
@@ -186,7 +192,7 @@ export function setupCaptionWindowManager(params: {
     const state = { x: 0, y: 0 }
 
     const settleTo = (toX: number, toY: number) => {
-      if (win.isDestroyed())
+      if (win.isDestroyed() || !windowOriginTrusted())
         return
       if (!Number.isFinite(toX) || !Number.isFinite(toY))
         return
@@ -202,7 +208,7 @@ export function setupCaptionWindowManager(params: {
         ease: 'outCubic',
         modifier: utils.round(0),
         onRender: () => {
-          if (win.isDestroyed())
+          if (win.isDestroyed() || !windowOriginTrusted())
             return
           if (!Number.isFinite(state.x) || !Number.isFinite(state.y))
             return
@@ -221,7 +227,7 @@ export function setupCaptionWindowManager(params: {
     let lastAppliedTy = Number.NaN
 
     const moveThrottled = throttle(() => {
-      if (win.isDestroyed())
+      if (win.isDestroyed() || !windowOriginTrusted())
         return
 
       const stored = getConfig()?.matrices[matrixHash]?.relativeToMain ?? initialOffset
@@ -312,22 +318,28 @@ export function setupCaptionWindowManager(params: {
     const cfg = getConfig()
     const saved = cfg?.matrices?.[matrixHash]?.bounds
 
-    if (saved) {
-      const workArea = screen.getDisplayMatching(saved).workArea
-      const clamped = clampBoundsWithinRect(saved, workArea)
+    if (!windowOriginTrusted()) {
+      const size = saved ?? computeInitialCaptionBounds({ mainWindow: params.mainWindow })
+      window.setSize(size.width, size.height)
+    }
+    else if (saved && saved.x !== undefined && saved.y !== undefined) {
+      const workArea = screen.getDisplayMatching({ ...saved, x: saved.x, y: saved.y }).workArea
+      const clamped = clampBoundsWithinRect({ ...saved, x: saved.x, y: saved.y }, workArea)
       window.setBounds(clamped)
     }
     else {
       const initialBounds = computeInitialCaptionBounds({ mainWindow: params.mainWindow })
-      window.setBounds(initialBounds)
+      window.setBounds({ ...initialBounds, ...saved })
     }
 
     const persistBounds = () => {
       const config = getConfig() ?? { isFollowing, matrices: {} }
       const b = window.getBounds()
-      config.matrices[matrixHash] = { ...config.matrices[matrixHash], bounds: b }
+      const stored = config.matrices[matrixHash]
+      const bounds = windowOriginTrusted() ? b : { ...stored?.bounds, width: b.width, height: b.height }
+      config.matrices[matrixHash] = { ...stored, bounds }
       config.isFollowing = isFollowing
-      if (isFollowing && Date.now() - lastProgrammaticMoveAt > 100) {
+      if (windowOriginTrusted() && isFollowing && Date.now() - lastProgrammaticMoveAt > 100) {
         const rel = computeRelativeOffset(window)
         config.matrices[matrixHash] = { ...config.matrices[matrixHash], bounds: b, relativeToMain: rel }
       }
@@ -384,7 +396,7 @@ export function setupCaptionWindowManager(params: {
 
     applyIgnoreMouseEvents(window, isFollowing)
 
-    if (isFollowing) {
+    if (isFollowing && windowOriginTrusted()) {
       const rel = computeRelativeOffset(window)
       const config = getConfig() ?? { isFollowing, matrices: {} }
       config.isFollowing = isFollowing
@@ -430,11 +442,23 @@ export function setupCaptionWindowManager(params: {
     // Prevent user-move persistence from overwriting our programmatic move
     lastProgrammaticMoveAt = Date.now()
     const initialBounds = computeInitialCaptionBounds({ mainWindow: params.mainWindow })
-    window.setBounds(initialBounds)
+    if (windowOriginTrusted())
+      window.setBounds(initialBounds)
+    else
+      window.setSize(initialBounds.width, initialBounds.height)
 
     // Persist new bounds and a clean relative offset so follow uses it
     const config = getConfig() ?? { isFollowing, matrices: {} }
     const b = window.getBounds()
+    if (!windowOriginTrusted()) {
+      config.matrices[matrixHash] = {
+        ...config.matrices[matrixHash],
+        bounds: { ...config.matrices[matrixHash]?.bounds, width: b.width, height: b.height },
+      }
+      config.isFollowing = isFollowing
+      updateConfig(config)
+      return
+    }
 
     const rel = computeRelativeOffset(window)
     config.matrices[matrixHash] = { ...config.matrices[matrixHash], bounds: b, relativeToMain: rel }

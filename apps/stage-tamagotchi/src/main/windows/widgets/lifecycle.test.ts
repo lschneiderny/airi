@@ -1,7 +1,9 @@
 import type { BrowserWindow, Rectangle } from 'electron'
 
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { getCurrentHostCapabilities } from '../../services/electron/host-capabilities'
 import { setupWidgetsWindowManager } from './index'
 
 const mocks = vi.hoisted(() => {
@@ -32,6 +34,10 @@ const mocks = vi.hoisted(() => {
       this.bounds = { ...bounds }
     })
 
+    readonly setSize = vi.fn((width: number, height: number) => {
+      Object.assign(this.bounds, { width, height })
+    })
+
     readonly setFullScreenable = vi.fn()
     readonly setMaximumSize = vi.fn()
     readonly setMinimumSize = vi.fn()
@@ -54,7 +60,7 @@ const mocks = vi.hoisted(() => {
       return this
     }
 
-    private emit(event: string) {
+    emit(event: string) {
       for (const listener of this.listeners.get(event) ?? [])
         listener()
     }
@@ -66,12 +72,13 @@ const mocks = vi.hoisted(() => {
       windows.length = 0
     },
     windows,
+    config: {} as { bounds?: { x?: number, y?: number, width: number, height: number } },
   }
 })
 
 vi.mock('electron', () => ({
   // No Dock on this platform: the test runs with `isMacOS: false`.
-  app: {},
+  app: { isReady: () => true, commandLine: { getSwitchValue: () => 'x11' } },
   BrowserWindow: mocks.FakeBrowserWindow,
   ipcMain: {
     off: vi.fn(),
@@ -112,9 +119,9 @@ vi.mock('../../libs/electron/location', () => ({
 
 vi.mock('../../libs/electron/persistence', () => ({
   createConfig: vi.fn(() => ({
-    get: vi.fn(() => ({})),
+    get: vi.fn(() => mocks.config),
     setup: vi.fn(),
-    update: vi.fn(),
+    update: vi.fn(next => mocks.config = next),
   })),
 }))
 
@@ -141,6 +148,46 @@ describe('widget window lifecycle', () => {
     vi.clearAllMocks()
     vi.useFakeTimers()
     mocks.reset()
+    mocks.config = {}
+    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('windows'))
+  })
+
+  it.each(['windows', 'linux-wayland'] as const)('persists only known coordinates and clamps widget size on %s', async (host) => {
+    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost(host))
+    mocks.config = { bounds: { x: 200, y: 100, width: 450, height: 600 } }
+    const manager = createManager()
+    const window = await manager.getWindow()
+    const target = mocks.windows[0]
+    if (host === 'linux-wayland') {
+      expect(target.setSize).toHaveBeenCalledWith(450, 600)
+      expect(target.setBounds).not.toHaveBeenCalled()
+    }
+    window.setSize(500, 650)
+    target.emit('resize')
+    expect(mocks.config.bounds).toEqual({ x: 200, y: 100, width: 500, height: 650 })
+    await manager.pushWidget({ componentName: 'weather', windowSize: { width: 2500, height: 1200 } })
+    const widget = mocks.windows[1]
+    if (host === 'linux-wayland') {
+      expect(widget.setSize).toHaveBeenLastCalledWith(1920, 1080)
+      expect(widget.setBounds).not.toHaveBeenCalled()
+    }
+    else {
+      expect(widget.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 1920, height: 1080 })
+    }
+    await manager.clearWidgets()
+  })
+
+  it('keeps the live anchor reading from before size limits move the widget', async () => {
+    const manager = createManager()
+    const id = await manager.pushWidget({ componentName: 'weather', windowSize: { width: 400, height: 300 } })
+    const window = mocks.windows[0]
+    const before = window.getBounds()
+    window.setMinimumSize.mockImplementation(() => window.setBounds({ ...before, x: before.x + 100 }))
+
+    await manager.updateWidget({ id, windowSize: { width: 500, height: 400 } })
+
+    expect(window.setBounds).toHaveBeenLastCalledWith({ ...before, width: 500, height: 400 })
+    await manager.clearWidgets()
   })
 
   it('destroys the widget window when its TTL expires', async () => {

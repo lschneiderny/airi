@@ -2,10 +2,12 @@ import type { Rectangle } from 'electron'
 
 import type { ChatAnchor } from './anchor'
 
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { electronChatFloatingContentHidden } from '../../../shared/eventa'
-import { createCharacterAnchor } from './anchor'
+import { getCurrentHostCapabilities } from '../../services/electron/host-capabilities'
+import { createCharacterAnchor, createMainWindowAnchor } from './anchor'
 import { setupFloatingChatWindow } from './floating'
 
 const mocks = await vi.hoisted(async () => {
@@ -27,6 +29,10 @@ const mocks = await vi.hoisted(async () => {
       this.bounds = { ...bounds }
       this.emit('move')
     }
+
+    setSize = vi.fn((width: number, height: number) => {
+      Object.assign(this.bounds, { width, height })
+    })
 
     isVisible = () => this.visible
     isMinimized = () => false
@@ -66,6 +72,7 @@ const mocks = await vi.hoisted(async () => {
 })
 
 vi.mock('electron', () => ({
+  app: { isReady: () => true, commandLine: { getSwitchValue: () => 'x11' } },
   BrowserWindow: mocks.FakeBrowserWindow,
   screen: {
     getDisplayMatching: () => ({ workArea: mocks.workArea }),
@@ -144,6 +151,33 @@ function setup(anchor: () => ChatAnchor | undefined) {
 describe('floating chat attached to an anchor', () => {
   beforeEach(() => {
     mocks.handlers.clear()
+    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('windows'))
+  })
+
+  it('does not place attached chat from a hidden origin, including a runtime status flip', async () => {
+    const main = new mocks.FakeBrowserWindow()
+    main.bounds = homeAt(800)
+    const anchor = createMainWindowAnchor(main as never)
+    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('linux-wayland'))
+    const { floating } = setup(() => anchor)
+    await floating.open()
+    const target = floating.getOpenWindow()
+    if (!target)
+      throw new Error('Expected open chat')
+    const setBounds = vi.spyOn(target, 'setBounds')
+    expect(anchor.getRect()).toBeNull()
+    expect(target.getBounds()).toEqual({ x: 0, y: 0, ...chatSize })
+    main.emit('move')
+    expect(setBounds).not.toHaveBeenCalled()
+
+    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('windows'))
+    main.emit('move')
+    expect(setBounds).toHaveBeenCalledWith({ x: 420, y: 258, ...chatSize })
+    setBounds.mockClear()
+    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('linux-wayland'))
+    main.emit('resize')
+    expect(setBounds).not.toHaveBeenCalled()
+    floating.close()
   })
 
   it('sits flush left of a home at the bottom-right of the work area', async () => {
