@@ -30,10 +30,6 @@ function toggleCapture() {
   else
     stressStore.startCapture()
 }
-
-function toggleMode() {
-  stressStore.toggleMockMode()
-}
 </script>
 
 <template>
@@ -48,7 +44,7 @@ function toggleMode() {
         <ButtonBar
           class="w-full sm:w-auto"
           icon="i-solar:magic-stick-bold-duotone"
-          text="Preview"
+          text="tamagotchi.settings.devtools.pages.markdown-stress.controls.preview"
           @click="stressStore.generatePreview()"
         >
           Generate payload preview
@@ -56,7 +52,7 @@ function toggleMode() {
         <ButtonBar
           class="w-full sm:w-auto"
           icon="i-solar:play-circle-bold-duotone"
-          :text="runState === 'running' ? 'Abort run' : runState === 'scheduled' ? 'Unschedule' : 'Replay'"
+          :text="runState === 'running' ? 'tamagotchi.settings.devtools.pages.markdown-stress.controls.abort' : runState === 'scheduled' ? 'tamagotchi.settings.devtools.pages.markdown-stress.controls.unschedule' : 'tamagotchi.settings.devtools.pages.markdown-stress.controls.replay'"
           :disabled="!isMock && !stressStore.canRunOnline"
           @click="stressStore.scheduleRun()"
         >
@@ -65,7 +61,7 @@ function toggleMode() {
         <ButtonBar
           class="w-full sm:w-auto"
           :icon="capturing ? 'i-solar:stop-circle-bold-duotone' : 'i-solar:recive-bold-duotone'"
-          text="Capture"
+          text="tamagotchi.settings.devtools.pages.markdown-stress.controls.capture"
           @click="toggleCapture"
         >
           {{ capturing ? 'Stop capture' : 'Start capture' }}
@@ -73,7 +69,7 @@ function toggleMode() {
         <ButtonBar
           class="w-full sm:w-auto"
           icon="i-solar:export-bold-duotone"
-          text="Export"
+          text="tamagotchi.settings.devtools.pages.markdown-stress.controls.export"
           :disabled="!lastRun?.events.length"
           @click="stressStore.exportCsv()"
         >
@@ -82,8 +78,8 @@ function toggleMode() {
         <ButtonBar
           class="w-full sm:w-auto"
           :icon="isMock ? 'i-solar:simplerockets-bold-duotone' : 'i-solar:cloud-bold-duotone'"
-          :text="isMock ? 'Mode: Mock' : 'Mode: Live'"
-          @click="toggleMode"
+          :text="isMock ? 'tamagotchi.settings.devtools.pages.markdown-stress.controls.mode-mock' : 'tamagotchi.settings.devtools.pages.markdown-stress.controls.mode-live'"
+          @click="stressStore.toggleMockMode()"
         >
           {{ isMock ? 'Switch to live provider' : 'Switch to mock stream' }}
         </ButtonBar>
