@@ -62,7 +62,7 @@ const baseUrl = ref('')
 
 // Voice settings as reactive objects to allow for different provider settings
 const voiceSettings = ref<Record<string, any>>({})
-let settingsInitialized = false
+const settingsInitialized = ref(false)
 let pendingPatch: Record<string, unknown> | undefined
 let inFlightPatch: Record<string, unknown> | undefined
 let pendingProviderConfigUpdate: Promise<void> | undefined
@@ -124,7 +124,7 @@ onMounted(async () => {
   // Initial assignments must not become writes. Catalog loading can remain
   // pending while the form is interactive, so it must not gate persistence.
   await nextTick()
-  settingsInitialized = true
+  settingsInitialized.value = true
 
   if (providerStore.configuredProviders[props.providerId]) {
     await speechStore.loadVoicesForProvider(props.providerId)
@@ -194,7 +194,7 @@ function reportSaveError(error: unknown) {
 }
 
 async function scheduleProviderConfigUpdate(patch: Record<string, unknown>) {
-  if (!settingsInitialized || applyingSnapshot)
+  if (!settingsInitialized.value || applyingSnapshot)
     return
 
   // Accumulate only edited fields. Sending every local draft would restore
@@ -256,7 +256,7 @@ function handleResetVoiceSettings() {
           </h2>
           <div flex="~ col gap-4">
             <!-- Common voice settings with ranges -->
-            <slot name="voice-settings" :voice-settings="voiceSettings" />
+            <slot v-if="settingsInitialized" name="voice-settings" :voice-settings="voiceSettings" />
           </div>
         </div>
 

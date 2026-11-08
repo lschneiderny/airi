@@ -77,6 +77,7 @@ async function expectVoiceSettingsPersistence(providerId: 'voicevox' | 'aivis-sp
 
   const screen = await mountSettings(pinia, providerId)
   const providerConfig = useProviderConfigStore(pinia)
+  await expect.poll(() => screen.getByRole('slider').all().length).toBe(4)
   const sliders = screen.getByRole('slider').all()
 
   await sliders[0].fill('15000')
@@ -92,8 +93,19 @@ async function expectVoiceSettingsPersistence(providerId: 'voicevox' | 'aivis-sp
 
 describe('voicevox family settings', () => {
   afterEach(() => {
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
     localStorage.clear()
+  })
+
+  it.each(['voicevox', 'aivis-speech'])('renders numeric controls only after %s defaults are ready', async (providerId) => {
+    stubReachableEngine()
+    const warnings = vi.spyOn(console, 'warn')
+
+    const screen = await mountSettings(createPinia(), providerId)
+    await expect.poll(() => screen.getByRole('slider').all().length).toBe(4)
+
+    expect(warnings.mock.calls.filter(args => String(args[0]).includes('modelValue'))).toEqual([])
   })
 
   // ROOT CAUSE:
