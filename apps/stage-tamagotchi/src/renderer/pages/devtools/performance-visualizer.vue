@@ -51,7 +51,7 @@ function formatCount(value?: number) {
     <div :class="['flex items-center gap-2']">
       <ButtonBar
         :icon="tracing ? 'i-solar:stop-circle-bold-duotone' : 'i-solar:play-circle-bold-duotone'"
-        :text="tracing ? 'Stage Three Runtime tracing enabled' : 'Stage Three Runtime tracing disabled'"
+        :text="tracing ? 'tamagotchi.settings.devtools.pages.performance-visualizer.tracing.enabled' : 'tamagotchi.settings.devtools.pages.performance-visualizer.tracing.disabled'"
         @click="tracing ? diagnostics.stopTracing() : diagnostics.startTracing()"
       >
         {{ tracing ? 'Stop tracing' : 'Start tracing' }}

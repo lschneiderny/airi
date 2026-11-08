@@ -1096,6 +1096,9 @@ devtools:
     performance-visualizer:
       title: Performance Visualizer
       description: Inspect live performance metrics and runtime diagnostics
+      tracing:
+        enabled: Stage Three Runtime tracing enabled
+        disabled: Stage Three Runtime tracing disabled
       resource-events:
         title: Recent resource events
         description: Newest received event first. Time is milliseconds since the source renderer started.
@@ -1153,6 +1156,15 @@ devtools:
     markdown-stress:
       title: Markdown Stress
       description: Stress markdown parsing and rendering with heavy chat payloads
+      controls:
+        preview: Preview
+        abort: Abort run
+        unschedule: Unschedule
+        replay: Replay
+        capture: Capture
+        export: Export
+        mode-mock: 'Mode: Mock'
+        mode-live: 'Mode: Live'
     io-tracer:
       title: IO Tracer
       collection:
