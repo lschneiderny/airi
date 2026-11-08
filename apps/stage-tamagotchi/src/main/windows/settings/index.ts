@@ -18,6 +18,7 @@ import icon from '../../../../resources/icon.png?asset'
 
 import { electronSettingsNavigate } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { ignoreWindowClosedDuringCreation } from '../../libs/electron/window-closed'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { protectPrivilegedWindowNavigation, toggleWindowShow } from '../shared'
 import { setupWindowStageInvokes } from '../stage'
@@ -104,7 +105,9 @@ export function setupSettingsWindowReusableFunc(params: {
       currentRoute = route
     }
 
-    const window = await reusable.getWindow()
+    const window = await reusable.getWindow().catch(ignoreWindowClosedDuringCreation)
+    if (!window)
+      return
 
     if (route && settingsContext) {
       settingsContext.emit(electronSettingsNavigate, { route })

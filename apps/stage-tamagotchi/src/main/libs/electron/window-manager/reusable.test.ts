@@ -31,6 +31,17 @@ function createDeferredReusableWindow() {
 }
 
 describe('createReusableWindow', () => {
+  it('rejects an already closed creation and allows the next open to create again', async () => {
+    const closed = new BrowserWindow()
+    vi.mocked(closed.isDestroyed).mockReturnValue(true)
+    const replacement = new BrowserWindow()
+    const setup = vi.fn().mockResolvedValueOnce(closed).mockResolvedValueOnce(replacement)
+    const reusable = createReusableWindow(setup)
+
+    await expect(reusable.getWindow()).rejects.toThrow('Window closed during creation')
+    await expect(reusable.getWindow()).resolves.toBe(replacement)
+  })
+
   it('closes a window whose creation a close overtook, and creates a new one on the next open', async () => {
     const { reusable, created, finishSetup } = createDeferredReusableWindow()
 

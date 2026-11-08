@@ -2,6 +2,8 @@ import type { BrowserWindow } from 'electron'
 
 import { isRendererUnavailable } from '@proj-airi/electron-vueuse/main'
 
+import { WindowClosedDuringCreationError } from '../window-closed'
+
 /** One window that is created on demand and created again after it closes. */
 export interface ReusableWindow {
   /** Returns the open window, creating it first when there is none. */
@@ -33,9 +35,10 @@ export function createReusableWindow(setupFn: () => BrowserWindow | Promise<Brow
     const setupGeneration = generation
     windowSetupFnPromise = Promise.resolve(setupFn()).then((created) => {
       windowSetupFnPromise = undefined
-      if (setupGeneration !== generation) {
-        created.close()
-        throw new Error('Window closed during creation')
+      if (setupGeneration !== generation || created.isDestroyed()) {
+        if (!created.isDestroyed())
+          created.close()
+        throw new WindowClosedDuringCreationError()
       }
 
       window = created

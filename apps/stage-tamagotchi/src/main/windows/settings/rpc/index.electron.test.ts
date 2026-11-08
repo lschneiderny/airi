@@ -1,7 +1,8 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { electronCenterMainWindow } from '../../../../shared/eventa'
+import { electronCenterMainWindow, electronOpenDevtoolsWindow } from '../../../../shared/eventa'
+import { WindowClosedDuringCreationError } from '../../../libs/electron/window-closed'
 import { centerWindowOnDisplay } from '../../shared/display'
 import { markStageWindow } from '../../stage/identity'
 import { setupSettingsWindowInvokes } from './index.electron'
@@ -55,7 +56,7 @@ vi.mock('../../../services/airi/io-trace-recording/register', () => ({
   registerIOTraceRecording: vi.fn(() => vi.fn()),
 }))
 
-async function setup(window: BrowserWindow, getMainWindow?: () => BrowserWindow | undefined) {
+async function setup(window: BrowserWindow, getMainWindow?: () => BrowserWindow | undefined, openDevtoolsWindow = vi.fn(async () => new BrowserWindow())) {
   type Params = Parameters<typeof setupSettingsWindowInvokes>[0]
   return setupSettingsWindowInvokes({
     settingsWindow: window,
@@ -67,7 +68,7 @@ async function setup(window: BrowserWindow, getMainWindow?: () => BrowserWindow 
     },
     widgetsManager: {} as Params['widgetsManager'],
     autoUpdater: {} as Params['autoUpdater'],
-    devtoolsWindow: {} as Params['devtoolsWindow'],
+    devtoolsWindow: { openWindow: openDevtoolsWindow },
     serverChannel: {} as Params['serverChannel'],
     godotStageManager: {} as Params['godotStageManager'],
     mcpManager: {} as Params['mcpManager'],
@@ -80,6 +81,23 @@ async function setup(window: BrowserWindow, getMainWindow?: () => BrowserWindow 
 describe('settings IPC lifetime', () => {
   afterEach(() => {
     ipcMain.removeAllListeners()
+  })
+
+  it('resolves an open command when the devtools window closes during creation', async () => {
+    const settings = new BrowserWindow()
+    await setup(settings, undefined, vi.fn().mockRejectedValue(new WindowClosedDuringCreationError()))
+
+    await expect(invokeHandlers.get(electronOpenDevtoolsWindow)?.({ key: 'motion' })).resolves.toBeUndefined()
+    settings.close()
+  })
+
+  it('preserves real failures from the devtools open command', async () => {
+    const failure = new Error('renderer failed')
+    const settings = new BrowserWindow()
+    await setup(settings, undefined, vi.fn().mockRejectedValue(failure))
+
+    await expect(invokeHandlers.get(electronOpenDevtoolsWindow)?.({ key: 'motion' })).rejects.toBe(failure)
+    settings.close()
   })
 
   it('removes IPC listeners when Settings closes', async () => {
