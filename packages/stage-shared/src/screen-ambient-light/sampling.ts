@@ -19,6 +19,7 @@ import {
   linearToSrgb,
   relativeLuminance,
   srgbToLinear,
+  wholeWindowRectangle,
 } from './environment'
 
 export interface PixelFrame {
@@ -168,7 +169,7 @@ interface ResampledField {
  */
 export function sampleScreenAmbientLight(
   frame: PixelFrame,
-  region: SampleRegion,
+  region: SampleRegion | undefined,
   options: AmbientLightSamplingOptions,
 ): ScreenAmbientLightSamplingResult {
   const subject = subjectOf(region)
@@ -289,7 +290,10 @@ interface WorkingGrid {
 }
 
 /** The rectangle the maps are placed around, which is the window until a renderer says otherwise. */
-function subjectOf(region: SampleRegion): NormalizedRectangle {
+function subjectOf(region: SampleRegion | undefined): NormalizedRectangle {
+  // Without a trustworthy window position, maps cover the frame and no window is excluded.
+  if (!region)
+    return wholeWindowRectangle
   const subject = region.subject
   if (!subject || subject.width <= 0 || subject.height <= 0)
     return region.exclude
@@ -436,10 +440,12 @@ export function ambientLightSampleFromHex(color: string): AmbientLightSample | u
  * desktop showing through. Without a mask the two cannot be told apart, so the
  * whole rectangle counts as painted.
  */
-function classifyPixel(frame: PixelFrame, region: SampleRegion, x: number, y: number): 'transparent' | 'painted' | 'see-through' | 'desktop' {
+function classifyPixel(frame: PixelFrame, region: SampleRegion | undefined, x: number, y: number): 'transparent' | 'painted' | 'see-through' | 'desktop' {
   const index = y * frame.width + x
   if (frame.data[index * 4 + 3] === 0)
     return 'transparent'
+  if (!region)
+    return 'desktop'
 
   const normalizedX = (x + 0.5) / frame.width
   const normalizedY = (y + 0.5) / frame.height
@@ -464,7 +470,7 @@ function classifyPixel(frame: PixelFrame, region: SampleRegion, x: number, y: nu
  * and counting it would let the character raise its own exposure until it
  * clipped. A fully transparent pixel carries no light.
  */
-function displayLuminanceOf(frame: PixelFrame, region: SampleRegion): number {
+function displayLuminanceOf(frame: PixelFrame, region: SampleRegion | undefined): number {
   let total = 0
   let count = 0
 

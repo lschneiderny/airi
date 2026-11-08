@@ -1,8 +1,14 @@
+import type { ScreenAmbientLightDiagnosticsSnapshot } from '../../shared/screen-ambient-light-diagnostics'
+
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
+import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useSettingsScreenAmbientLight } from '@proj-airi/stage-shared/stores/screen-ambient-light'
 import { createPinia, setActivePinia } from 'pinia'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, ref } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { render } from 'vitest-browser-vue'
+import { defineComponent, ref } from 'vue'
 
+import { screenAmbientLightDiagnosticsChannelName } from '../../shared/screen-ambient-light-diagnostics'
 import { useScreenAmbientLight } from './use-screen-ambient-light'
 
 /**
@@ -20,6 +26,7 @@ const bounds = { x: ref(windowBounds.x), y: ref(windowBounds.y), width: ref(wind
 
 /** Records which display each capture was opened for. */
 const selectedDisplayIds = vi.hoisted(() => [] as string[])
+const captureCanvases: HTMLCanvasElement[] = []
 /** Sources the main process offers; each case sets what it needs. */
 const offeredSources = vi.hoisted(() => ({ list: [] as { id: string, display_id: string }[] }))
 
@@ -29,6 +36,7 @@ vi.mock('@proj-airi/electron-vueuse', () => ({
   useElectronCursorAvailable: () => ref(true),
   getElectronEventaContext: () => ({}),
   useElectronAllDisplays: () => displayList,
+  useElectronEventaInvoke: () => async () => displays[1],
   useElectronWindowBounds: () => bounds,
 }))
 
@@ -46,42 +54,92 @@ vi.mock('@proj-airi/electron-screen-capture/vue', () => ({
       canvas.width = 64
       canvas.height = 40
       canvas.getContext('2d')!.fillRect(0, 0, 64, 40)
+      captureCanvases.push(canvas)
       return canvas.captureStream(5)
     },
   }),
 }))
 
-const scopes: ReturnType<typeof effectScope>[] = []
+const views: Awaited<ReturnType<typeof render>>[] = []
 
 beforeEach(() => {
   vi.stubGlobal('electron', { ipcRenderer: {} })
   vi.stubGlobal('platform', 'linux')
   setActivePinia(createPinia())
+  useHostCapabilitiesStore().set(capabilitiesForHost('windows'))
   selectedDisplayIds.length = 0
+  captureCanvases.length = 0
   offeredSources.list = displays.map(display => ({ id: `screen:${display.id}:0`, display_id: String(display.id) }))
   bounds.x.value = windowBounds.x
   bounds.y.value = windowBounds.y
+  bounds.width.value = windowBounds.width
+  bounds.height.value = windowBounds.height
   displayList.value = displays
   const settings = useSettingsScreenAmbientLight()
   settings.screenAmbientLightEnabled = true
   settings.screenAmbientLightSource = 'screen-capture'
 })
 
-afterEach(() => {
-  scopes.splice(0).forEach(scope => scope.stop())
+afterEach(async () => {
+  for (const view of views.splice(0))
+    await view.unmount()
   useSettingsScreenAmbientLight().screenAmbientLightEnabled = false
   vi.unstubAllGlobals()
 })
 
-function mount() {
-  const scope = effectScope()
-  scopes.push(scope)
-  scope.run(() => useScreenAmbientLight())
+async function mount() {
+  views.push(await render(defineComponent({
+    setup() {
+      useScreenAmbientLight()
+      return () => null
+    },
+  })))
 }
 
 describe('screen ambient light capture', () => {
+  it('captures the primary display without position-derived regions when the window origin is unavailable', async () => {
+    useHostCapabilitiesStore().set(capabilitiesForHost('linux-wayland'))
+    // Fabricated zero origin points at display 17; the primary is display 18.
+    bounds.x.value = 0
+    bounds.y.value = 0
+    displayList.value = []
+    const channel = new BroadcastChannel(screenAmbientLightDiagnosticsChannelName)
+    onTestFinished(() => channel.close())
+    let snapshot: ScreenAmbientLightDiagnosticsSnapshot | undefined
+    let requested = false
+    channel.onmessage = (event) => {
+      requested = true
+      if (event.data.type === 'snapshot' && event.data.snapshot.status === 'capturing')
+        snapshot = event.data.snapshot
+    }
+    let frameCallback: VideoFrameRequestCallback | undefined
+    const scheduleFrame = vi.spyOn(HTMLVideoElement.prototype, 'requestVideoFrameCallback').mockImplementation((callback) => {
+      frameCallback = callback
+      return 1
+    })
+    onTestFinished(() => scheduleFrame.mockRestore())
+    await mount()
+    await vi.waitFor(() => expect(selectedDisplayIds).toEqual(['screen:18:0']))
+    await vi.waitFor(() => expect(scheduleFrame).toHaveBeenCalled())
+    channel.postMessage({ type: 'request-current' })
+    await vi.waitFor(() => expect(requested).toBe(true))
+    const captureContext = captureCanvases[0].getContext('2d')
+    if (!captureContext)
+      throw new Error('Capture canvas context missing')
+    captureContext.fillStyle = 'white'
+    captureContext.fillRect(0, 0, 64, 40)
+    const now = performance.now()
+    frameCallback?.(now, { presentationTime: now, expectedDisplayTime: now, width: 64, height: 40, mediaTime: 0, presentedFrames: 1, processingDuration: 0 })
+
+    await vi.waitFor(() => expect(snapshot?.status).toBe('capturing'))
+    expect(snapshot?.excludedRegion).toBeUndefined()
+    expect(snapshot?.subjectRegion).toBeUndefined()
+    expect(snapshot?.windowBounds).toEqual({ x: null, y: null, width: 400, height: 500 })
+    expect(snapshot?.sampling?.excludedPixelCount).toBe(0)
+  })
+
   it('captures the display the window sits on', async () => {
-    mount()
+    await mount()
 
     await vi.waitFor(() => expect(selectedDisplayIds).toEqual(['screen:17:0']))
   })
@@ -93,7 +151,7 @@ describe('screen ambient light capture', () => {
     // source restarted the capture. A window dragged onto another display kept
     // the old stream, and each sample normalized the new position against the
     // old bounds. The capture now restarts once the dominant display changes.
-    mount()
+    await mount()
     await vi.waitFor(() => expect(selectedDisplayIds).toEqual(['screen:17:0']))
 
     bounds.x.value = 1600 + 100
@@ -107,7 +165,7 @@ describe('screen ambient light capture', () => {
     // The restart compared display ids only. Rotating or rescaling a display
     // keeps its id and changes its bounds, so the capture kept constraints
     // and normalization from the old geometry. The bounds are compared too.
-    mount()
+    await mount()
     await vi.waitFor(() => expect(selectedDisplayIds).toEqual(['screen:17:0']))
 
     displayList.value = [{ id: 17, bounds: { x: 0, y: 0, width: 1280, height: 800 } }, displays[1]]
@@ -119,7 +177,7 @@ describe('screen ambient light capture', () => {
     // A Wayland portal returns one source with no display id. With one screen
     // the choice is forced, so the capture starts on it.
     offeredSources.list = [{ id: 'screen:0:0', display_id: '' }]
-    mount()
+    await mount()
 
     await vi.waitFor(() => expect(selectedDisplayIds).toEqual(['screen:0:0']))
   })
@@ -133,7 +191,7 @@ describe('screen ambient light capture', () => {
     // the start, which switches the feature off with an error.
     offeredSources.list = [{ id: 'screen:0:0', display_id: '' }, { id: 'screen:1:0', display_id: '' }]
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mount()
+    await mount()
 
     await vi.waitFor(() => expect(useSettingsScreenAmbientLight().screenAmbientLightEnabled).toBe(false))
     expect(selectedDisplayIds).toEqual([])
@@ -145,7 +203,7 @@ describe('screen ambient light capture', () => {
     // A window dragged across the seam and back within the settle time has not
     // moved displays. Restarting a capture costs a new getDisplayMedia call and
     // a gap in the light, so a short excursion must not trigger it.
-    mount()
+    await mount()
     await vi.waitFor(() => expect(selectedDisplayIds).toEqual(['screen:17:0']))
 
     bounds.x.value = 1600 + 100

@@ -7,8 +7,9 @@ import type {
 } from '../../shared/screen-ambient-light-diagnostics'
 
 import { errorMessageFrom } from '@moeru/std'
+import { electron } from '@proj-airi/electron-eventa'
 import { useElectronScreenCapture } from '@proj-airi/electron-screen-capture/vue'
-import { getElectronEventaContext, useElectronAllDisplays, useElectronWindowBounds } from '@proj-airi/electron-vueuse'
+import { getElectronEventaContext, useElectronAllDisplays, useElectronEventaInvoke, useElectronWindowBounds } from '@proj-airi/electron-vueuse'
 import {
   ambientLightSampleFromHex,
   sampleScreenAmbientLight,
@@ -16,6 +17,7 @@ import {
   uniformAmbientLightEnvironment,
   wholeWindowRectangle,
 } from '@proj-airi/stage-shared/screen-ambient-light'
+import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useScreenAmbientLightEnvironment, useSettingsScreenAmbientLight } from '@proj-airi/stage-shared/stores/screen-ambient-light'
 import { until, useBroadcastChannel, watchDebounced } from '@vueuse/core'
 import { clamp } from 'es-toolkit'
@@ -99,6 +101,10 @@ export function useScreenAmbientLight(sources: {
   const ambientLight = useScreenAmbientLightEnvironment()
   const displays = useElectronAllDisplays()
   const windowBounds = useElectronWindowBounds()
+  const hostCapabilities = useHostCapabilitiesStore()
+  const windowOriginLive = computed(() => hostCapabilities.status('windowOrigin')?.kind === 'live')
+  const getPrimaryDisplay = useElectronEventaInvoke(electron.screen.getPrimaryDisplay)
+  const primaryDisplay = shallowRef<(typeof displays.value)[number]>()
   const capturedDisplay = shallowRef<(typeof displays.value)[number]>()
   const activeStream = shallowRef<MediaStream>()
   const video = document.createElement('video')
@@ -146,7 +152,11 @@ export function useScreenAmbientLight(sources: {
   // opens, and `undefined` means the answer is not known yet: the display list
   // and the window bounds both arrive over IPC after mount.
   const dominantDisplay = computed(() => {
-    if (!hasWindowBounds.value || displays.value.length === 0)
+    if (!hasWindowBounds.value)
+      return undefined
+    if (!windowOriginLive.value)
+      return displays.value.find(display => display.id === primaryDisplay.value?.id) ?? primaryDisplay.value
+    if (displays.value.length === 0)
       return undefined
     return findDominantDisplayArea(currentWindowBounds(), displays.value)
   })
@@ -245,15 +255,18 @@ export function useScreenAmbientLight(sources: {
         await requestMacOSPermission()
     }
 
-    if (displays.value.length === 0)
+    if (windowOriginLive.value && displays.value.length === 0)
       await until(displays).toMatch(currentDisplays => currentDisplays.length > 0)
     if (!hasWindowBounds.value)
       await until(hasWindowBounds).toBe(true)
     if (version !== startVersion)
       return
 
-    const bounds = currentWindowBounds()
-    const display = findDominantDisplayArea(bounds, displays.value)
+    if (!windowOriginLive.value)
+      primaryDisplay.value = await getPrimaryDisplay()
+    if (version !== startVersion)
+      return
+    const display = dominantDisplay.value
     if (!display)
       throw new Error('No display is available for screen ambient light')
 
@@ -392,22 +405,26 @@ export function useScreenAmbientLight(sources: {
     context.drawImage(video, 0, 0, canvas.width, canvas.height)
     const frame = context.getImageData(0, 0, canvas.width, canvas.height)
     const now = performance.now()
-    const excludedWindow = normalizeWindowBounds(display.bounds, currentWindowBounds())
-    const painted = paintedMask.maskFor(excludedWindow, now)
+    const excludedWindow = windowOriginLive.value ? normalizeWindowBounds(display.bounds, currentWindowBounds()) : undefined
+    const painted = excludedWindow ? paintedMask.maskFor(excludedWindow, now) : undefined
     const subjectInWindow = painted?.subject ?? wholeWindowRectangle
     // The mask measures the subject inside the window; the sampler places its
     // maps on the display, so the rectangle changes frame here.
-    const subjectOnDisplay = {
-      x: excludedWindow.x + subjectInWindow.x * excludedWindow.width,
-      y: excludedWindow.y + subjectInWindow.y * excludedWindow.height,
-      width: subjectInWindow.width * excludedWindow.width,
-      height: subjectInWindow.height * excludedWindow.height,
-    }
-    const result = sampleScreenAmbientLight(frame, {
-      exclude: excludedWindow,
-      subject: subjectOnDisplay,
-      paintedAlpha: painted?.alpha,
-    }, samplingOptions.value)
+    const subjectOnDisplay = excludedWindow
+      ? {
+          x: excludedWindow.x + subjectInWindow.x * excludedWindow.width,
+          y: excludedWindow.y + subjectInWindow.y * excludedWindow.height,
+          width: subjectInWindow.width * excludedWindow.width,
+          height: subjectInWindow.height * excludedWindow.height,
+        }
+      : undefined
+    const result = sampleScreenAmbientLight(frame, excludedWindow
+      ? {
+          exclude: excludedWindow,
+          subject: subjectOnDisplay,
+          paintedAlpha: painted?.alpha,
+        }
+      : undefined, samplingOptions.value)
 
     const nextEnvironment = ambientLight.active
       ? smoothAmbientLightEnvironment(ambientLight.environment, result.environment, now - lastSampleTime, screenAmbientLightResponseMs.value)
@@ -493,7 +510,11 @@ export function useScreenAmbientLight(sources: {
             bounds: { ...display.bounds },
           }
         : undefined,
-      windowBounds: currentWindowBounds(),
+      windowBounds: {
+        ...currentWindowBounds(),
+        x: windowOriginLive.value ? windowBounds.x.value : null,
+        y: windowOriginLive.value ? windowBounds.y.value : null,
+      },
       videoSize: video.videoWidth > 0 && video.videoHeight > 0
         ? { width: video.videoWidth, height: video.videoHeight }
         : undefined,

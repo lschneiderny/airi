@@ -2,6 +2,7 @@
 import type { ControlsIslandDock, ControlsIslandMotionPhase, ControlsIslandPlacement } from './use-controls-island-placement'
 
 import { useElectronAllDisplays, useElectronWindowBounds } from '@proj-airi/electron-vueuse'
+import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { refDebounced, usePreferredReducedMotion, useTimeoutFn } from '@vueuse/core'
 import { computed, provide, shallowRef, watch } from 'vue'
 
@@ -20,6 +21,7 @@ defineSlots<{
 
 const displays = useElectronAllDisplays()
 const windowBounds = useElectronWindowBounds()
+const hostCapabilities = useHostCapabilitiesStore()
 const preferredMotion = usePreferredReducedMotion()
 const dock = shallowRef<ControlsIslandDock>('top-right')
 const pendingDock = shallowRef<ControlsIslandDock>()
@@ -86,12 +88,14 @@ function relocate(nextDock: ControlsIslandDock) {
   finishLeave()
 }
 
-const liveWindowBounds = computed(() => ({
-  x: windowBounds.x.value,
-  y: windowBounds.y.value,
-  width: windowBounds.width.value,
-  height: windowBounds.height.value,
-}))
+const liveWindowBounds = computed(() => hostCapabilities.status('windowOrigin')?.kind === 'live'
+  ? {
+      x: windowBounds.x.value,
+      y: windowBounds.y.value,
+      width: windowBounds.width.value,
+      height: windowBounds.height.value,
+    }
+  : { x: 0, y: 0, width: 0, height: 0 })
 const settledWindowBounds = refDebounced(liveWindowBounds, placementSettleDelayMs)
 const candidateDock = computed(() => resolveControlsIslandDock({
   displays: displays.value,

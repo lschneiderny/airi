@@ -45,7 +45,12 @@ export interface ScreenAmbientLightDiagnosticsSnapshot {
     id: number
     bounds: DisplayPixelRectangle
   }
-  windowBounds?: DisplayPixelRectangle
+  windowBounds?: {
+    x: number | null
+    y: number | null
+    width: number
+    height: number
+  }
   /** Size of the frames that the capture stream delivers, after constraints. */
   videoSize?: {
     width: number

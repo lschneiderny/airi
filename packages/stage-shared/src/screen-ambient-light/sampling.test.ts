@@ -20,6 +20,22 @@ const samplingOptions = ambientLightDefaults.sampling
 const centeredWindow = { x: 0.375, y: 0.25, width: 0.25, height: 0.5 }
 
 describe('screen ambient light sampling', () => {
+  it('samples the whole frame when no window region is known', () => {
+    const frame = createFrame(5, 1, [255, 255, 255, 255])
+    setPixel(frame, 1, 0, [255, 255, 255, 0])
+
+    const result = sampleScreenAmbientLight(frame, undefined, samplingOptions)
+
+    expect(result.diagnostics).toEqual({
+      totalPixelCount: 5,
+      excludedPixelCount: 0,
+      transparentPixelCount: 1,
+      acceptedPixelCount: 4,
+      seeThroughPixelCount: 0,
+    })
+    expect(result.environment.displayLuminance).toBe(1)
+  })
+
   it('counts painted, transparent, and accepted pixels in the region it reads', () => {
     const frame = createFrame(5, 1, [100, 50, 200, 255])
     setPixel(frame, 1, 0, [100, 50, 200, 0])
