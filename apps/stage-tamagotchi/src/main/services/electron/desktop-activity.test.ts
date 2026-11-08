@@ -6,6 +6,7 @@ import { createDesktopActivityService } from './desktop-activity'
 
 const host = vi.hoisted(() => ({
   isLinux: false,
+  switches: {} as Record<string, string>,
 }))
 
 const powerMonitorMock = vi.hoisted(() => ({
@@ -13,6 +14,7 @@ const powerMonitorMock = vi.hoisted(() => ({
 }))
 
 vi.mock('electron', () => ({
+  app: { commandLine: { getSwitchValue: (name: string) => host.switches[name] ?? '' } },
   powerMonitor: powerMonitorMock,
 }))
 
@@ -25,6 +27,8 @@ vi.mock('std-env', () => ({
 describe('createDesktopActivityService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    host.switches = {}
+    vi.stubEnv('WAYLAND_DISPLAY', '')
   })
 
   afterEach(() => {
@@ -37,13 +41,28 @@ describe('createDesktopActivityService', () => {
     return defineInvoke(context, electron.powerMonitor.getSystemIdleTime)()
   }
 
-  it('reports unknown idle time on a Linux Wayland session, even when Electron reads 0', async () => {
+  it('reports unknown idle time under XWayland, even when Electron reads 0', async () => {
     host.isLinux = true
+    host.switches = { 'ozone-platform': 'x11' }
     vi.stubEnv('XDG_SESSION_TYPE', 'wayland')
+    vi.stubEnv('WAYLAND_DISPLAY', 'wayland-0')
     powerMonitorMock.getSystemIdleTime.mockReturnValue(0)
 
     await expect(readIdleSeconds()).resolves.toBeNull()
     expect(powerMonitorMock.getSystemIdleTime).not.toHaveBeenCalled()
+  })
+
+  it('passes the measured idle time through on the native Wayland backend, including 0', async () => {
+    host.isLinux = true
+    host.switches = { 'ozone-platform-hint': 'auto' }
+    vi.stubEnv('XDG_SESSION_TYPE', 'wayland')
+    vi.stubEnv('WAYLAND_DISPLAY', 'wayland-0')
+
+    powerMonitorMock.getSystemIdleTime.mockReturnValue(0)
+    await expect(readIdleSeconds()).resolves.toBe(0)
+
+    powerMonitorMock.getSystemIdleTime.mockReturnValue(42)
+    await expect(readIdleSeconds()).resolves.toBe(42)
   })
 
   it('passes the measured idle time through on a Linux X11 session, including 0', async () => {

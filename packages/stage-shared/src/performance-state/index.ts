@@ -53,7 +53,7 @@ export interface PerformanceState {
  * the renderer store). Web hosts never write one, so the resolver receives `null`.
  *
  * A `null` field means the host cannot measure that signal, for example idle
- * time and cursor position under Wayland. The resolver never treats an unknown
+ * time under XWayland and cursor position under Wayland. The resolver never treats an unknown
  * signal as activity.
  *
  * Timestamps share the epoch clock of {@link PerformanceInputs.nowMs}.
