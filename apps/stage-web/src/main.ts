@@ -1,26 +1,8 @@
-import type { Plugin } from 'vue'
-import type { Router, RouteRecordRaw } from 'vue-router'
-
-import NProgress from 'nprogress'
-
-import { autoAnimatePlugin } from '@formkit/auto-animate/vue'
-import { PiniaColada } from '@pinia/colada'
-import { isEnvTruthy } from '@proj-airi/stage-shared'
-import { pushToTalkTriggerKey } from '@proj-airi/stage-ui/composables/push-to-talk-trigger'
-import { trackButtonPlugin } from '@proj-airi/stage-ui/directives/track-button'
-import { piniaPluginTracing, setupSynced } from '@proj-airi/stage-ui/libs/pinia'
 import { configureAnalyticsAdapter } from '@proj-airi/stage-ui/libs/product-signals'
-import { useMediaQuery } from '@vueuse/core'
-import { MotionPlugin } from '@vueuse/motion'
-import { createPinia } from 'pinia'
-import { setupLayouts } from 'virtual:generated-layouts'
-import { createApp } from 'vue'
-import { createRouter, createWebHashHistory, createWebHistory } from 'vue-router'
-import { routes } from 'vue-router/auto-routes'
 
 import App from './App.vue'
 
-import { i18n } from './modules/i18n'
+import { createStageWebApp } from './modules/create-stage-web-app'
 
 import '@proj-airi/font-cjkfonts-allseto/index.css'
 import '@proj-airi/font-xiaolai/index.css'
@@ -35,47 +17,7 @@ configureAnalyticsAdapter(async (options) => {
   return createOpenpanelAdapter(options)
 })
 
-const pinia = createPinia()
-const synced = setupSynced()
-pinia.use(synced.pinia)
-if (import.meta.env.DEV)
-  pinia.use(piniaPluginTracing)
-
-// TODO: vite-plugin-vue-layouts is long deprecated, replace with another layout solution
-const routeRecords = setupLayouts(routes as RouteRecordRaw[])
-
-let router: Router
-if (isEnvTruthy(import.meta.env.VITE_APP_TARGET_HUGGINGFACE_SPACE))
-  router = createRouter({ routes: routeRecords, history: createWebHashHistory() })
-else
-  router = createRouter({ routes: routeRecords, history: createWebHistory() })
-
-router.beforeEach((to, from) => {
-  if (to.path !== from.path)
-    NProgress.start()
-})
-
-router.afterEach(() => {
-  NProgress.done()
-})
-
-createApp(App)
-  .use(synced.vue)
-  .use(MotionPlugin)
-  // TODO: Fix autoAnimatePlugin type error
-  .use(autoAnimatePlugin as unknown as Plugin)
-  .use(router)
-  .use(pinia)
-  .use(PiniaColada)
-  .use(i18n)
-  .use(trackButtonPlugin)
-  // NOTICE:
-  // Push to Talk holds Space, but no Web API reports a hardware keyboard.
-  // A fine pointer (mouse or trackpad) is the closest live signal. Phones and touch-only tablets lack it.
-  // Source: https://www.w3.org/TR/mediaqueries-4/#any-input
-  // Remove when stage-web gets a touch hold control.
-  .provide(pushToTalkTriggerKey, useMediaQuery('(any-pointer: fine)'))
-  .mount('#app')
+createStageWebApp(App).app.mount('#app')
 
 if (import.meta.env.DEV && !import.meta.env.SSR) {
   function captureEvents(el: HTMLElement) {
