@@ -3,6 +3,8 @@ import type { ForegroundWindowSample } from '@proj-airi/electron-eventa'
 import { Buffer } from 'node:buffer'
 import { posix } from 'node:path'
 
+import { reportForegroundTitleTrust } from './host-capabilities'
+
 // Native references, prototypes, and output buffers stay in this module.
 type NativeRef = unknown
 
@@ -121,6 +123,7 @@ function coversDisplay(windows: NonNullable<ReturnType<DarwinBinding['readWindow
 }
 
 let bindingPromise: Promise<DarwinBinding> | undefined
+let lastTitleTrust: boolean | undefined
 
 /** Loads lazily once; framework handles and constant CFStrings live until process exit. */
 export async function loadDarwinBinding(): Promise<DarwinBinding> {
@@ -388,7 +391,12 @@ export function createDarwinSampler(binding: DarwinBinding, isOwnProcess: (pid: 
       }
 
       let title = ''
-      if (!ownProcess && performance.now() >= backoffUntil && binding.isProcessTrusted()) {
+      const trusted = Boolean(binding.isProcessTrusted())
+      if (trusted !== lastTitleTrust) {
+        lastTitleTrust = trusted
+        reportForegroundTitleTrust(trusted)
+      }
+      if (!ownProcess && performance.now() >= backoffUntil && trusted) {
         const value = readTitle(pid, performance.now() + AX_BUDGET_MS)
         title = value.title
         if (value.timedOut)

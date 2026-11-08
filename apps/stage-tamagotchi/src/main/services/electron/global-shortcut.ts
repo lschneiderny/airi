@@ -19,6 +19,7 @@ import {
   electronShortcutUnregisterAll,
 } from '../../../shared/eventa'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
+import { reportGlobalInputHookFailure } from './host-capabilities'
 
 export type EventaContext = ReturnType<typeof createContext>['context']
 
@@ -107,6 +108,7 @@ export function setupGlobalShortcutService(): GlobalShortcutService {
         uiohookDriver = createUiohookDriver({ broadcastTriggered, logger: log })
       }
       catch (error) {
+        reportGlobalInputHookFailure('load')
         log.withError(error).warn('uiohook driver is unavailable on this system')
         return { id: binding.id, ok: false, reason: ShortcutFailureReasons.Unsupported }
       }

@@ -11,7 +11,7 @@ import { isMacOS, isWindows } from 'std-env'
 
 import { createServerChannelService } from '../../services/airi/channel-server'
 import { createI18nService } from '../../services/airi/i18n'
-import { createAppService, createAppVersionService, createDesktopActivityService, createForegroundWindowService, createPowerMonitorService, createScreenService, createSystemPreferencesService, createWindowService } from '../../services/electron'
+import { createAppService, createAppVersionService, createDesktopActivityService, createForegroundWindowService, createHostCapabilitiesService, createPowerMonitorService, createScreenService, createSystemPreferencesService, createWindowService } from '../../services/electron'
 
 export function toggleWindowShow(window?: BrowserWindow | null): void {
   if (!window) {
@@ -180,6 +180,7 @@ export async function setupBaseWindowElectronInvokes(params: {
   // The count is fixed per window, so a window legitimately passes Node's default warning limit of 10.
   params.window.setMaxListeners(32)
 
+  createHostCapabilitiesService({ context: params.context, window: params.window })
   createScreenService({ context: params.context, window: params.window })
   createWindowService({ context: params.context, window: params.window })
   createAppService({ context: params.context, window: params.window })

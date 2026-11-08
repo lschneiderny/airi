@@ -14,6 +14,7 @@ import { electron } from '../../../shared/eventa'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
 import { createDarwinSampler, loadDarwinBinding } from './foreground-window-darwin'
 import { createWin32Sampler, loadWin32Binding } from './foreground-window-win32'
+import { reportForegroundBindingFailed } from './host-capabilities'
 
 /**
  * Answers the renderer's foreground window reads through native calls over koffi.
@@ -54,6 +55,7 @@ export function createForegroundWindowService(params: {
       : isMacOS
         ? loadDarwinBinding().then(binding => createDarwinSampler(binding, isOwnProcess))
         : Promise.resolve(null)).catch((error) => {
+      reportForegroundBindingFailed()
       log.withError(error).warn(`foreground window sampling is unavailable: ${errorMessageFrom(error) ?? 'koffi failed to load'}`)
       return null
     })
