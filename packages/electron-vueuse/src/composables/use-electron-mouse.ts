@@ -11,6 +11,7 @@ let sharedEventTarget: EventTarget | undefined
 // The main process sends a position only when it changes. A consumer that mounts while the cursor stays still starts
 // from this position, because no later message brings it one.
 let lastPosition: Position | undefined
+const cursorAvailable = ref(false)
 let startedTracking = false
 
 export function useElectronMouseEventTarget() {
@@ -20,9 +21,11 @@ export function useElectronMouseEventTarget() {
     sharedEventTarget = new EventTarget()
 
     context.on(cursorScreenPoint, (event) => {
-      if (event.body)
-        lastPosition = { x: event.body.x, y: event.body.y }
-      const e = new MouseEvent('mousemove', { screenX: event.body?.x, screenY: event.body?.y })
+      cursorAvailable.value = event.body != null
+      if (!event.body)
+        return
+      lastPosition = { x: event.body.x, y: event.body.y }
+      const e = new MouseEvent('mousemove', { screenX: event.body.x, screenY: event.body.y })
       sharedEventTarget?.dispatchEvent(e)
     })
   }
@@ -38,4 +41,10 @@ export function useElectronMouseEventTarget() {
 export function useElectronMouse(options?: UseMouseOptions) {
   const eventTarget = useElectronMouseEventTarget()
   return useMouse({ ...options, initialValue: lastPosition ?? options?.initialValue, target: eventTarget, type: 'screen' })
+}
+
+/** False until a trusted point arrives, and after a withheld reading. Coordinates stay cached. */
+export function useElectronCursorAvailable() {
+  useElectronMouseEventTarget()
+  return cursorAvailable
 }

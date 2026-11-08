@@ -25,8 +25,9 @@ vi.mock('@proj-airi/electron-vueuse', async () => {
   const { shallowRef } = await import('vue')
   mocks.cursor = { x: shallowRef(40), y: shallowRef(40) }
   return {
+    useElectronCursorAvailable: () => shallowRef(true),
     useElectronMouse: () => mocks.cursor,
-    useElectronRelativeMouse: () => mocks.cursor,
+    useElectronRelativeMouse: () => ({ ...mocks.cursor, available: shallowRef(true) }),
     useElectronEventaInvoke: (event: unknown) => event === electronAppIsWayland ? () => Promise.resolve(mocks.isWayland) : mocks.setIgnoreMouseEvents,
   }
 })

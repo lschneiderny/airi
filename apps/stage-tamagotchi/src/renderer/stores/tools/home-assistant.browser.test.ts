@@ -5,7 +5,7 @@ import { useLlmToolsStore } from '@proj-airi/stage-ui/stores/ai/chat-llm/tools'
 import { useHomeAssistantStore } from '@proj-airi/stage-ui/stores/modules/home-assistant'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp } from 'vue'
+import { createApp, ref } from 'vue'
 
 import { useTamagotchiHomeAssistantStore } from './home-assistant'
 
@@ -18,6 +18,7 @@ const invokeMocks = vi.hoisted(() => ({
 
 // The renderer reaches the main process through these, and no call here needs it.
 vi.mock('@proj-airi/electron-vueuse', () => ({
+  useElectronCursorAvailable: () => ref(true),
   useElectronEventaInvoke: () => invokeMocks.getConfig,
 }))
 

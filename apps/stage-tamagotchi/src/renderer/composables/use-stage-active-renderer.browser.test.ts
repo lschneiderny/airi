@@ -2,7 +2,7 @@ import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { createPinia } from 'pinia'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
-import { defineComponent, nextTick } from 'vue'
+import { defineComponent, nextTick, ref } from 'vue'
 
 import { electronStageSetActiveRenderer } from '../../shared/eventa'
 import { useStageActiveRenderer } from './use-stage-active-renderer'
@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 
 // Electron IPC is outside the browser test; keep the real settings store and watcher.
 vi.mock('@proj-airi/electron-vueuse', () => ({
+  useElectronCursorAvailable: () => ref(true),
   useElectronEventaInvoke: mocks.useInvoke,
 }))
 

@@ -37,6 +37,7 @@ vi.mock('@proj-airi/electron-vueuse', async () => {
     [electronAppIsWayland, () => Promise.resolve(isWayland.value)],
   ])
   return {
+    useElectronCursorAvailable: () => shallowRef(true),
     useElectronEventaInvoke: (eventa: unknown) => invokes.get(eventa) ?? setIgnoreMouseEvents,
     getElectronEventaContext: () => ({
       on: (_eventa: unknown, listener: Parameters<typeof shortcutListeners.add>[0]) => {
@@ -48,7 +49,7 @@ vi.mock('@proj-airi/electron-vueuse', async () => {
     useElectronRelativeMouse: () => {
       cursor.x = shallowRef(-1)
       cursor.y = shallowRef(-1)
-      return cursor
+      return { ...cursor, available: shallowRef(true) }
     },
   }
 })

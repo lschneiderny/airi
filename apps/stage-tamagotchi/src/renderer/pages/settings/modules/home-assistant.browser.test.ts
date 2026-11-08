@@ -5,7 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { page } from 'vitest/browser'
-import { isProxy } from 'vue'
+import { isProxy, ref } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import HomeAssistantSettings from './home-assistant.vue'
@@ -20,6 +20,7 @@ const invokeMocks = vi.hoisted(() => ({
 
 vi.mock('@proj-airi/electron-vueuse', async importOriginal => ({
   ...await importOriginal<typeof import('@proj-airi/electron-vueuse')>(),
+  useElectronCursorAvailable: () => ref(true),
   useElectronEventaInvoke: (event: { receiveEvent?: { id?: string } }) => {
     if (event?.receiveEvent?.id === 'eventa:invoke:home-assistant:get-config-receive')
       return invokeMocks.getConfig

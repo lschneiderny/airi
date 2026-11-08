@@ -31,6 +31,7 @@ const isOutside = ref(false)
 const openSettings = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('@proj-airi/electron-vueuse', () => ({
+  useElectronCursorAvailable: () => ref(true),
   useElectronEventaContext: () => ref({ on: vi.fn(() => vi.fn()), emit: vi.fn() }),
   useElectronEventaInvoke: (event: unknown) => event === electronOpenSettings ? openSettings : vi.fn().mockResolvedValue(false),
   useElectronMouseInElement: () => ({ isOutside }),

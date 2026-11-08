@@ -25,6 +25,7 @@ import { isSafeSpotlightAccelerator } from '../../../shared/spotlight-shortcut'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
+import { readTrustedCursor } from '../../services/electron/host-capabilities'
 import { excludeWindowFromTaskbar } from '../shared/app-icon'
 import { protectPrivilegedWindowNavigation, setupBaseWindowElectronInvokes, transparentWindowConfig } from '../shared/window'
 
@@ -40,8 +41,8 @@ export interface SpotlightWindowManager {
 }
 
 function resolveSpotlightBounds() {
-  const cursorPoint = screen.getCursorScreenPoint()
-  const display = screen.getDisplayNearestPoint(cursorPoint)
+  const cursorPoint = readTrustedCursor()
+  const display = cursorPoint ? screen.getDisplayNearestPoint(cursorPoint) : screen.getPrimaryDisplay()
   const { x, y, width } = display.workArea
 
   return {
