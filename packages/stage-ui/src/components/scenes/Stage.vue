@@ -367,13 +367,9 @@ function onTouch(event: NaturalTouchGesture) {
 function performanceProfileOf(turnId: string | undefined) {
   const sessionId = turnId === undefined ? undefined : voice.activeTurns.find(turn => turn.turnId === turnId)?.sessionId
   const characterId = (sessionId === undefined ? undefined : chatSession.sessionMetas[sessionId]?.characterId) ?? cards.activeCardId
-  try {
-    return cards.getModules(characterId).performance
-  }
-  catch (error) {
-    console.warn('[Stage] The performance profile is unavailable, so none applies:', errorMessageFrom(error))
-    return undefined
-  }
+  // The stage mounts before cards initialize. A profile is optional and needs
+  // only the card, not the initialized inference module defaults.
+  return cards.getCard(characterId)?.extensions.airi.modules.performance
 }
 
 /** A performance cue with its origin; the turn id keeps speech-bound expressions inside their turn. */
