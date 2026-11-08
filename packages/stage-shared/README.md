@@ -63,6 +63,34 @@ const { snapshot } = storeToRefs(useDesktopActivityStore())
 Use this store to pass desktop samples from a host producer to the stage.
 Do not persist or replicate it: it is runtime state, and each renderer reads only its own host's samples. Do not sample desktop signals in this package; the host producer owns sampling.
 
+### Host capabilities
+
+The `host-capabilities` entrypoint owns the pure host capability contract: `HostCapabilities`, `HostSignal`, `SignalStatus`, `HostReasons`, the resolver `resolveHostCapabilities`, the deterministic QA profiles `capabilitiesForHost`, `idleAdvances`, and `presenceNoticeKey`.
+It states per host which signals are live, degraded, or unavailable, and why.
+
+```ts
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
+
+const caps = capabilitiesForHost('linux-wayland')
+```
+
+Use this entrypoint when a producer or consumer needs to know whether a host can supply a signal.
+Do not sample signals or read clocks here: the resolver takes facts and a timestamp from the caller, and the host producer owns sampling.
+
+### Host capabilities store
+
+The `stores/host-capabilities` entrypoint owns `useHostCapabilitiesStore`, which holds this window's latest `HostCapabilities` snapshot.
+A host writes it with `set` and clears it with `reset`. `status(signal)` returns the `SignalStatus` for a signal, or `null` before any host has written a snapshot.
+
+```ts
+import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
+
+const status = useHostCapabilitiesStore().status('cursorScreenPoint')
+```
+
+Use this store to read the host's signal guarantees in a renderer.
+Do not persist or replicate it, and do not add `synced`: it is per-window runtime state, and each window receives its own snapshot from its host.
+
 ### Expression performance
 
 The `expression-performance` entrypoint owns the pure decision layer for character expression performance:
