@@ -492,6 +492,19 @@ describe('stage emotion routing on Live2D', () => {
     expect(await delivered).toEqual(['sentinel'])
   })
 
+  it('uses global performance settings without warnings before cards initialize', async () => {
+    const warn = vi.spyOn(console, 'warn')
+    const { scene } = await renderStage('natural')
+
+    expect(scene.props.performanceSettings).toMatchObject({
+      moodDynamics: defaultExpressionPerformanceSettings.moodDynamics,
+    })
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('[Stage] The performance profile is unavailable'),
+      expect.anything(),
+    )
+  })
+
   it('passes the performance settings document to the Live2D scene', async () => {
     const { scene } = await renderStage('natural')
 
