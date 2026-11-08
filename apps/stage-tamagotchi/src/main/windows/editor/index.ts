@@ -10,6 +10,7 @@ import { BrowserWindow as ElectronBrowserWindow } from 'electron'
 import icon from '../../../../resources/icon.png?asset'
 
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { ignoreWindowClosedDuringCreation } from '../../libs/electron/window-closed'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { protectPrivilegedWindowNavigation, toggleWindowShow } from '../shared'
 import { setupEditorWindowInvokes } from './rpc/index.electron'
@@ -66,7 +67,7 @@ export function setupEditorWindowManager(params: {
   })
 
   async function openWindow() {
-    toggleWindowShow(await reusable.getWindow())
+    toggleWindowShow(await reusable.getWindow().catch(ignoreWindowClosedDuringCreation))
   }
 
   return {

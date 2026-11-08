@@ -21,6 +21,7 @@ import {
   electronSpotlightShortcutGet,
   electronSpotlightShortcutSet,
 } from '../../../../shared/eventa'
+import { ignoreWindowClosedDuringCreation } from '../../../libs/electron/window-closed'
 import { createWindowContext } from '../../../libs/electron/window-context'
 import { createGodotStageService } from '../../../services/airi/godot-stage'
 import { registerIOTraceRecording } from '../../../services/airi/io-trace-recording/register'
@@ -75,7 +76,7 @@ export async function setupSettingsWindowInvokes(params: {
 
   defineInvokeHandler(context, electronOpenSettingsDevtools, async () => params.settingsWindow.webContents.openDevTools({ mode: 'detach' }))
   defineInvokeHandler(context, electronOpenDevtoolsWindow, async (payload) => {
-    await params.devtoolsWindow.openWindow(payload)
+    await params.devtoolsWindow.openWindow(payload).catch(ignoreWindowClosedDuringCreation)
   })
 
   return context

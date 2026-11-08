@@ -5,6 +5,8 @@ import { env } from 'node:process'
 
 import { is } from '@electron-toolkit/utils'
 
+import { WindowClosedDuringCreationError } from './window-closed'
+
 let electronMainDirname: string = ''
 
 export function setElectronMainDirname(dirname: string) {
@@ -34,6 +36,14 @@ export function baseUrl(parentOfIndexHtml: string, filename?: string) {
 }
 
 export async function load(window: BrowserWindow, url: string | { url: string, options?: LoadURLOptions } | { file: string, options?: LoadFileOptions }) {
+  // Closing a window mid-load rejects the load before isDestroyed() turns true, so the close itself is recorded.
+  // A prevented close, such as hide-on-close, keeps the window loading and is not a cancellation.
+  let closing = false
+  const markClosing = (event: { defaultPrevented: boolean }) => {
+    closing = !event.defaultPrevented
+  }
+  window.once('close', markClosing)
+
   try {
     if (typeof url === 'object' && 'url' in url) {
       return await window.loadURL(url.url, url.options)
@@ -54,6 +64,8 @@ export async function load(window: BrowserWindow, url: string | { url: string, o
     if (!('code' in error) || !('errno' in error)) {
       throw error
     }
+    if ((closing || window.isDestroyed()) && ((error.code === 'ERR_FAILED' && error.errno === -2) || (error.code === 'ERR_ABORTED' && error.errno === -3)))
+      throw new WindowClosedDuringCreationError()
     if (error.code === 'ERR_ABORTED' && error.errno === -3) {
       if (typeof url === 'object' && 'url' in url) {
         const parsedURL = new URL(url.url)
@@ -87,7 +99,10 @@ export async function load(window: BrowserWindow, url: string | { url: string, o
     throw error
   }
   finally {
-    window.webContents.removeAllListeners('did-start-navigation')
+    if (!window.isDestroyed()) {
+      window.removeListener('close', markClosing)
+      window.webContents.removeAllListeners('did-start-navigation')
+    }
   }
 }
 
