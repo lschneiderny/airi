@@ -75,9 +75,6 @@ async function loadVoicesWhenConfigured() {
   if ((await providersStore.validateProviderConfig(providerId, configSnapshot)).valid) {
     await speechStore.loadVoicesForProvider(providerId)
   }
-  else {
-    console.error('Failed to validate provider config', providerConfig)
-  }
 }
 
 watch(pitch, async () => {
