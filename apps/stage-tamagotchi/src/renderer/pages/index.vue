@@ -79,11 +79,11 @@ const onboardingStore = useOnboardingStore()
 const openOnboarding = useElectronEventaInvoke(electronOpenOnboarding)
 
 const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
-// The island already pairs its cursor signal with a DOM one and owns that decision, so
+// The island already selects the available cursor signal for hit-testing, so
 // read its answer rather than mounting a second set of listeners over the same element.
 const isOutside = computed(() => controlsIslandRef.value?.isOutside ?? true)
 const isOutsideFor250Ms = refDebounced(isOutside, 250)
-const { x: relativeMouseX, y: relativeMouseY } = useElectronRelativeMouse()
+const { x: relativeMouseX, y: relativeMouseY, available: cursorAvailable } = useElectronRelativeMouse()
 // NOTICE: In real-world use cases of Fade on Hover feature, the cursor may move around the edge of the
 // model rapidly, causing flickering effects when checking pixel transparency strictly.
 // Here we use render-target pixel sampling to keep detection aligned with the actual render output.
@@ -436,10 +436,9 @@ onMounted(() => {
     openOnboarding()
 })
 
-const cursorPosition = computed(() => ({
-  x: relativeMouseX.value,
-  y: relativeMouseY.value,
-}))
+const cursorPosition = computed(() => cursorAvailable.value
+  ? { x: relativeMouseX.value, y: relativeMouseY.value }
+  : undefined)
 
 const allDisplays = useElectronAllDisplays()
 const { x: windowX, y: windowY, width: windowWidth, height: windowHeight } = useElectronWindowBounds()
