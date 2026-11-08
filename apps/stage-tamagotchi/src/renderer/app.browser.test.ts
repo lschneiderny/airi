@@ -13,6 +13,7 @@ import { electron } from '@proj-airi/electron-eventa'
 import { getElectronEventaContext, resetElectronEventaContextForTesting } from '@proj-airi/electron-vueuse'
 import { parseEvent, stringifyEvent } from '@proj-airi/server-sdk'
 import { artistrySyncConfig } from '@proj-airi/stage-shared'
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { setupSynced, usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia'
 import { useCharacterOrchestratorStore } from '@proj-airi/stage-ui/stores/character'
 import { useChatStore } from '@proj-airi/stage-ui/stores/chat'
@@ -180,6 +181,7 @@ async function renderStage(routePath: string, search: string) {
   defineInvokeHandler(bridge.main, i18nGetLocale, () => 'en')
   defineInvokeHandler(bridge.main, i18nSetLocale, () => {})
   defineInvokeHandler(bridge.main, electron.app.isWindows, () => false)
+  defineInvokeHandler(bridge.main, electron.hostCapabilities.get, () => capabilitiesForHost('windows'))
   defineInvokeHandler(bridge.main, artistrySyncConfig, () => {})
   const getWindowLifecycleState = vi.fn(() => ({
     focused: true,

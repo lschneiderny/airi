@@ -2,6 +2,9 @@
 
 import type { Display, Rectangle } from 'electron'
 
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
+import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
+import { createPinia, disposePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, nextTick, shallowRef } from 'vue'
 
@@ -57,12 +60,18 @@ function mountRoot() {
       })
     },
   })
+  const pinia = createPinia()
+  useHostCapabilitiesStore(pinia).set(capabilitiesForHost('windows'))
+  app.use(pinia)
 
   document.body.appendChild(host)
   app.mount(host)
   mountedApps.push({
     host,
-    unmount: () => app.unmount(),
+    unmount: () => {
+      app.unmount()
+      disposePinia(pinia)
+    },
   })
 
   return { frozen, host }

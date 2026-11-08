@@ -5,7 +5,6 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { defineComponent, h, nextTick, shallowRef, vShow, withDirectives } from 'vue'
 
-import { electronAppIsWayland } from '../../shared/eventa'
 import { dismissOverlays, useChatFloatingClickThrough } from './use-chat-floating-click-through'
 
 const mocks = vi.hoisted(() => ({
@@ -28,9 +27,15 @@ vi.mock('@proj-airi/electron-vueuse', async () => {
     useElectronCursorAvailable: () => shallowRef(true),
     useElectronMouse: () => mocks.cursor,
     useElectronRelativeMouse: () => ({ ...mocks.cursor, available: shallowRef(true) }),
-    useElectronEventaInvoke: (event: unknown) => event === electronAppIsWayland ? () => Promise.resolve(mocks.isWayland) : mocks.setIgnoreMouseEvents,
+    useElectronEventaInvoke: () => mocks.setIgnoreMouseEvents,
   }
 })
+
+vi.mock('@proj-airi/stage-shared/stores/host-capabilities', () => ({
+  useHostCapabilitiesStore: () => ({
+    status: () => ({ kind: mocks.isWayland ? 'unavailable' : 'live' }),
+  }),
+}))
 
 /** Mounts a transparent page with a 100px white box under the cursor, hidden until `shown`. */
 async function renderPage() {

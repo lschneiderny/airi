@@ -16,6 +16,7 @@ import {
   useElectronWindowBounds,
 } from '@proj-airi/electron-vueuse'
 import { calibrateCamera, defaultHomeDipX, dipToPlane, groundLineOf, homeDipToWorldX, worldToHomeDipX } from '@proj-airi/stage-shared/stage-world'
+import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useMMD, useMMDExpressionStore, useMMDMotionDiagnostics } from '@proj-airi/stage-ui-mmd/stores'
 import {
   createEmptyModelSettingsRuntimeSnapshot,
@@ -39,7 +40,6 @@ import ControlsIsland from '../components/stage-islands/controls-island/index.vu
 
 import { defaultFloatingChatWidthDip } from '../../shared/chat-floating'
 import {
-  electronAppIsWayland,
   electronChatAttentionTargetChanged,
   electronGetChatAttentionTarget,
   electronOpenInlay,
@@ -159,10 +159,13 @@ const { x: relativeMouseX, y: relativeMouseY, available: cursorAvailable } = use
 const cursorPosition = computed(() => cursorAvailable.value ? { x: relativeMouseX.value, y: relativeMouseY.value } : undefined)
 const allDisplays = useElectronAllDisplays()
 const { x: windowX, y: windowY, width: windowWidth, height: windowHeight } = useElectronWindowBounds()
-const screenPlacement = computed(() => ({
-  displays: allDisplays.value.map(display => display.bounds),
-  windowBounds: { x: windowX.value, y: windowY.value, width: windowWidth.value, height: windowHeight.value },
-}))
+const hostCapabilities = useHostCapabilitiesStore()
+const screenPlacement = computed(() => hostCapabilities.status('windowOrigin')?.kind === 'live'
+  ? {
+      displays: allDisplays.value.map(display => display.bounds),
+      windowBounds: { x: windowX.value, y: windowY.value, width: windowWidth.value, height: windowHeight.value },
+    }
+  : undefined)
 const eventaContext = useElectronEventaContext()
 const chatTarget = shallowRef<ChatAttentionTarget | null>(null)
 let chatTargetChanged = false
@@ -377,14 +380,7 @@ useEventListener(window, 'pointercancel', endPress)
 
 // Click-through: no readback outside her padded rect; inside, one readback per frame (`resolveStageClickThrough`).
 
-// NOTICE:
-// Wayland cursor polling can stick stale (#2521) and Linux lacks the `forward` flag, so click-through never returns.
-// Keep the window interactive there. `selectHostMode` never builds this stage on Linux unless forced by env.
-// Removal: reliable Wayland cursor reporting or Linux `forward` support.
-const isWayland = shallowRef(false)
-useElectronEventaInvoke(electronAppIsWayland)()
-  .then(value => isWayland.value = value)
-  .catch(error => console.warn('[Stage] Failed to detect Wayland; click-through stays on:', errorMessageFrom(error)))
+const clickThroughAvailable = computed(() => hostCapabilities.status('clickThroughForward')?.kind === 'live')
 
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
 let clickThrough = createStageClickThroughState()
@@ -439,7 +435,7 @@ let hitRead = createStageHitReadState()
 useRafFn(({ timestamp }) => {
   const cursor = cursorPosition.value ?? null
   const rect = placementRect.value
-  const forceCapture = !cursor || stagePaused.value || isWayland.value || press.value !== null || controlsHoldPointer.value
+  const forceCapture = !cursor || stagePaused.value || !clickThroughAvailable.value || press.value !== null || controlsHoldPointer.value
   const plan = planStageHitRead(hitRead, { nowMs: timestamp, cursor, rect, forceCapture })
   hitRead = plan.state
   const hit = cursor ? readHit(cursor, plan.read) : undefined

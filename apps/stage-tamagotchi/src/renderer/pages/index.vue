@@ -15,6 +15,7 @@ import {
   useElectronRelativeMouse,
   useElectronWindowBounds,
 } from '@proj-airi/electron-vueuse'
+import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
 import { useMMDExpressionStore, useMMDMotionDiagnostics } from '@proj-airi/stage-ui-mmd/stores'
 import { useThreeSceneIsTransparentAtPoint } from '@proj-airi/stage-ui-three/composables/hit-test'
@@ -40,7 +41,7 @@ import ControlsIslandRoot from '../components/stage-islands/controls-island/cont
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
 
-import { electronAppIsWayland, electronChatAttentionTargetChanged, electronGetChatAttentionTarget, electronOpenInlay, electronOpenOnboarding } from '../../shared/eventa'
+import { electronChatAttentionTargetChanged, electronGetChatAttentionTarget, electronOpenInlay, electronOpenOnboarding } from '../../shared/eventa'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
 import { usePushToTalkShortcut } from '../composables/use-push-to-talk-shortcut'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
@@ -208,15 +209,10 @@ const isTransparentForMouseEvents = computed(() => {
 const { isNearAnyBorder: isAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 10 })
 const isAroundWindowBorderFor250Ms = refDebounced(isAroundWindowBorder, 250)
 
-// The controls Island hides while the cursor is away from the window. The edge
-// band counts as the window, because a resize holds the cursor there. On
-// Wayland the cursor signal can stick outside (#2521), so the Island stays.
-const isWayland = ref(true)
-// A failed probe keeps `true`, so the Island stays shown as before this feature.
-useElectronEventaInvoke(electronAppIsWayland)()
-  .then(value => isWayland.value = value)
-  .catch(error => console.warn('[Main Page] Failed to detect Wayland; the controls Island stays shown:', errorMessageFrom(error)))
-const cursorAwayFromWindow = computed(() => !isWayland.value && isOutsideWindow.value && !isAroundWindowBorder.value)
+// Only a live cursor can hide the Island. The edge band keeps it visible during resizing.
+const hostCapabilities = useHostCapabilitiesStore()
+const clickThroughAvailable = computed(() => hostCapabilities.status('clickThroughForward')?.kind === 'live')
+const cursorAwayFromWindow = computed(() => hostCapabilities.status('cursorScreenPoint')?.kind === 'live' && isOutsideWindow.value && !isAroundWindowBorder.value)
 
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
 
@@ -367,13 +363,7 @@ function handleFadeOnHoverInteractionChange() {
     const interaction = resolveFadeOnHoverInteraction({
       alwaysOnTop: alwaysOnTop.value,
       cursorInsideWindow: !isOutsideWindow.value,
-      // NOTICE:
-      // On native Wayland the polled cursor position can stick stale (#2521),
-      // and Electron's setIgnoreMouseEvents `forward` flag is unsupported on
-      // Linux. A click-through window there never gets pointer events back,
-      // so the controls menu can never open. Keep the window interactive.
-      // Removal: reliable Wayland cursor reporting or Linux `forward` support.
-      clickThroughAvailable: !isWayland.value,
+      clickThroughAvailable: clickThroughAvailable.value,
       enabled: fadeOnHoverEnabled.value,
       transparentForFade: isTransparent.value,
       transparentForPointer: isTransparentForMouseEvents.value,
@@ -386,7 +376,7 @@ function handleFadeOnHoverInteractionChange() {
 }
 
 watch(
-  [outsideHearingStatus, isOutside, isOutsideFor250Ms, isPointerOverStageCanvas, isAroundWindowBorder, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, isTransparentForMouseEvents, controlsOverlayActive, fadeOnHoverEnabled, alwaysOnTop, stagePaused, isWayland],
+  [outsideHearingStatus, isOutside, isOutsideFor250Ms, isPointerOverStageCanvas, isAroundWindowBorder, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, isTransparentForMouseEvents, controlsOverlayActive, fadeOnHoverEnabled, alwaysOnTop, stagePaused, clickThroughAvailable],
   handleFadeOnHoverInteractionChange,
   { immediate: true },
 )
@@ -443,10 +433,12 @@ const cursorPosition = computed(() => cursorAvailable.value
 const allDisplays = useElectronAllDisplays()
 const { x: windowX, y: windowY, width: windowWidth, height: windowHeight } = useElectronWindowBounds()
 // Natural turns the character toward the screen interior from where this window sits among the displays.
-const screenPlacement = computed(() => ({
-  displays: allDisplays.value.map(display => display.bounds),
-  windowBounds: { x: windowX.value, y: windowY.value, width: windowWidth.value, height: windowHeight.value },
-}))
+const screenPlacement = computed(() => hostCapabilities.status('windowOrigin')?.kind === 'live'
+  ? {
+      displays: allDisplays.value.map(display => display.bounds),
+      windowBounds: { x: windowX.value, y: windowY.value, width: windowWidth.value, height: windowHeight.value },
+    }
+  : undefined)
 
 // Natural looks at the chat window. The main process sends only the rectangle and visibility, never chat content.
 // `null` until the first answer, which Natural reads as a hidden chat rather than a missing host feature.
