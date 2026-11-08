@@ -268,7 +268,7 @@ export default defineConfig({
               '**/settings/providers/chat/\\[providerId\\].vue',
               '**/settings/providers/vision/\\[providerId\\].vue',
               '**/devtools/index.vue',
-              '**/settings/index.vue',
+              resolve(import.meta.dirname, '..', '..', 'packages', 'stage-pages', 'src', 'pages', 'settings', 'index.vue'),
             ],
           },
           resolve(import.meta.dirname, 'src', 'renderer', 'pages'),
