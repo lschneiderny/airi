@@ -1,6 +1,8 @@
 export {
   bounds,
   cursorScreenPoint,
+  getHostCapabilities,
+  hostCapabilitiesChanged,
   startLoopGetBounds,
   startLoopGetCursorScreenPoint,
 } from './electron/index'

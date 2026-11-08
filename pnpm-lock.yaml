@@ -2927,6 +2927,9 @@ importers:
       '@moeru/eventa':
         specifier: 'catalog:'
         version: 1.0.2(electron@43.4.1(supports-color@10.2.2))(h3@2.0.1-rc.29(crossws@0.4.12(srvx@0.12.7)))(hono@4.13.3)(web-worker@1.5.0)
+      '@proj-airi/stage-shared':
+        specifier: workspace:^
+        version: link:../stage-shared
       builder-util-runtime:
         specifier: 'catalog:'
         version: 9.7.0(supports-color@10.2.2)
@@ -2992,6 +2995,9 @@ importers:
       '@proj-airi/electron-eventa':
         specifier: workspace:^
         version: link:../electron-eventa
+      '@proj-airi/stage-shared':
+        specifier: workspace:^
+        version: link:../stage-shared
       vue:
         specifier: 'catalog:'
         version: 3.5.41(typescript@6.0.3)
