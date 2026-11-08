@@ -103,6 +103,7 @@ async function handleGenerateSpeech(input: string, voiceId: string, _useSSML: bo
 }
 
 onMounted(async () => {
+  await providersStore.initializeProvider(providerId)
   // Check WebGPU support
   // NOTICE: Uses synchronous check for initial render. The cached result from
   // detectWebGPU() is populated by the providers store during initialization.
@@ -147,6 +148,7 @@ watch(model, async (newValue) => {
     try {
       voicesLoading.value = true
 
+      await providersStore.initializeProvider(providerId)
       const config = providerStore.getProviderConfig(providerId)
       // Clone nested reactive values before the synchronized action sends its arguments.
       const configSnapshot = cloneDeep(config)

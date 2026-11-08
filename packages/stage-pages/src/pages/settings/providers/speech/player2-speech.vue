@@ -49,6 +49,7 @@ async function handleGenerateSpeech(input: string, voiceId: string, _useSSML: bo
 }
 const hasPlayer2 = ref(true)
 onMounted(async () => {
+  await providersStore.initializeProvider(providerId)
   const providerConfig = providerStore.getProviderConfig(providerId)
   // Clone nested reactive values before the synchronized action sends its arguments.
   const configSnapshot = cloneDeep(providerConfig)

@@ -13,6 +13,8 @@ import { sharedUnoConfig } from '../../uno.config'
 
 export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
+  // Follower-window tests must not reload while their election is starting.
+  optimizeDeps: { include: ['pinia-plugin-synced'] },
   plugins: [
     Info(),
     Vue(),
