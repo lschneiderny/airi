@@ -548,8 +548,9 @@ const disposeUserSpeakingListener = getSpeechBusContext().on(speechInputUserSpea
 const userSpeaking = computed(() => voice.userSpeaking || remoteUserSpeaking.value)
 /** Epoch milliseconds of the last pointer move the stage received, or `null` before the first one. */
 const cursorMovedAtMs = shallowRef<number | null>(null)
-watch(() => props.cursorPosition, () => {
-  cursorMovedAtMs.value = Date.now()
+watch(() => props.cursorPosition, (position) => {
+  if (position !== undefined)
+    cursorMovedAtMs.value = Date.now()
 })
 const { snapshot: desktopActivity } = storeToRefs(useDesktopActivityStore())
 const visibility = useDocumentVisibility()

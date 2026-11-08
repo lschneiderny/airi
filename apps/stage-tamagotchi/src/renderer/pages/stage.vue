@@ -155,8 +155,8 @@ useModelSettingsRuntimeOwner({
 })
 
 // Natural inputs, as on the classic page: the cursor, where this window sits among the displays, and the chat window.
-const { x: relativeMouseX, y: relativeMouseY } = useElectronRelativeMouse()
-const cursorPosition = computed(() => ({ x: relativeMouseX.value, y: relativeMouseY.value }))
+const { x: relativeMouseX, y: relativeMouseY, available: cursorAvailable } = useElectronRelativeMouse()
+const cursorPosition = computed(() => cursorAvailable.value ? { x: relativeMouseX.value, y: relativeMouseY.value } : undefined)
 const allDisplays = useElectronAllDisplays()
 const { x: windowX, y: windowY, width: windowWidth, height: windowHeight } = useElectronWindowBounds()
 const screenPlacement = computed(() => ({
@@ -300,7 +300,7 @@ const controlsHoldPointer = computed(() =>
   (controlsIslandRef.value?.overlayActive ?? false) || !isOutsideControls.value || !isOutsideControlsFor250Ms.value,
 )
 const cursorAwayFromCharacter = computed(() =>
-  isOutsideControls.value && !isInsidePaddedRect(cursorPosition.value, placementRect.value),
+  cursorAvailable.value && isOutsideControls.value && !isInsidePaddedRect(cursorPosition.value ?? null, placementRect.value),
 )
 // The anchor is a zero-height strip on her top edge: the Island's fixed position resolves against it (the transform
 // makes it the containing block), and her body stays canvas for the hit test's `elementFromPoint`.
@@ -437,12 +437,12 @@ function readHit(cursor: { x: number, y: number }, request: boolean): boolean | 
 let hitRead = createStageHitReadState()
 
 useRafFn(({ timestamp }) => {
-  const cursor = cursorPosition.value
+  const cursor = cursorPosition.value ?? null
   const rect = placementRect.value
-  const forceCapture = stagePaused.value || isWayland.value || press.value !== null || controlsHoldPointer.value
+  const forceCapture = !cursor || stagePaused.value || isWayland.value || press.value !== null || controlsHoldPointer.value
   const plan = planStageHitRead(hitRead, { nowMs: timestamp, cursor, rect, forceCapture })
   hitRead = plan.state
-  const hit = readHit(cursor, plan.read)
+  const hit = cursor ? readHit(cursor, plan.read) : undefined
   const result = resolveStageClickThrough(clickThrough, { nowMs: timestamp, cursor, rect, forceCapture, hit })
   clickThrough = result.state
   if (result.changed)

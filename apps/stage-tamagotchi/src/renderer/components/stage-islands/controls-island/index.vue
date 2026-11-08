@@ -5,7 +5,7 @@ import { IS_DEV } from '@proj-airi/stage-shared'
 import { HearingConfigDialog } from '@proj-airi/stage-ui/components'
 import { useSettings, useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
 import { ScrollableArea, useTheme } from '@proj-airi/ui'
-import { refDebounced, useFocusWithin, useIntervalFn, useMouseInElement, useMousePressed } from '@vueuse/core'
+import { refDebounced, useFocusWithin, useIntervalFn, useMousePressed } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { computed, reactive, ref, useId, useTemplateRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -162,21 +162,12 @@ async function toggleMicrophone() {
   }
 }
 
-// NOTICE: On native Wayland, `isOutsideByCursor` can get permanently stuck
-// because it is driven by Electron's screen.getCursorScreenPoint(), which
-// Chromium's Ozone/Wayland backend cannot query reliably the way X11 does.
-// Source: https://github.com/moeru-ai/airi/issues/2521 (CachyOS + KDE
-// Plasma, Flatpak). OR it with the DOM-based `isOutsideByDom`
-// (useMouseInElement), which self-corrects on every pointermove and needs
-// no OS-level cursor query, so a broken cursor signal cannot force a false
-// collapse. The stage reads this paired result for click-through hit
-// testing, where DOM events may not reach the renderer at all.
-// Removal condition: once Ozone/Wayland reports the absolute
-// cursor position reliably upstream, or the click-through hit-testing no
-// longer depends on this composable.
-const { isOutside: isOutsideByCursor } = useElectronMouseInElement(islandElement)
-const { isOutside: isOutsideByDom } = useMouseInElement(islandElement)
-const isOutside = computed(() => isOutsideByCursor.value && isOutsideByDom.value)
+// NOTICE:
+// Wayland cannot reliably report the global cursor, so hover must use DOM hit-testing there.
+// The shared composable selects DOM only while Electron withholds the cursor.
+// Source: https://github.com/moeru-ai/airi/issues/2521 and use-electron-mouse-in-element.ts.
+// Removal condition: the host can vouch for global cursor readings on Wayland.
+const { isOutside } = useElectronMouseInElement(islandElement)
 const isOutsideAfter2seconds = refDebounced(isOutside, 1500)
 
 // A user who works in the menu, in a dialog, or with the keyboard keeps the

@@ -3,9 +3,9 @@ import type { BrowserWindow, IpcMain, IpcMainEvent, IpcRendererEvent, Point, Web
 import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext as createMainContext } from '@moeru/eventa/adapters/electron/main'
 import { bounds, cursorScreenPoint, startLoopGetBounds, startLoopGetCursorScreenPoint } from '@proj-airi/electron-eventa'
-import { getElectronEventaContext, useElectronCursorAvailable, useElectronMouse, useElectronMouseEventTarget, useElectronRelativeMouse } from '@proj-airi/electron-vueuse'
+import { getElectronEventaContext, useElectronCursorAvailable, useElectronMouse, useElectronMouseEventTarget, useElectronMouseInElement, useElectronRelativeMouse } from '@proj-airi/electron-vueuse'
 import { afterAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
-import { createApp, nextTick } from 'vue'
+import { createApp, h, nextTick, ref } from 'vue'
 
 type RendererIpc = NonNullable<Parameters<typeof getElectronEventaContext>[0]>
 type RendererListener = Parameters<RendererIpc['on']>[1]
@@ -155,5 +155,112 @@ describe('useElectronMouse', () => {
 
     expect(available.value).toBe(true)
     expect([mouse.x.value, mouse.y.value]).toEqual([-30, 40])
+  })
+})
+
+async function mountHitTest() {
+  const target = ref<HTMLElement>()
+  let state: ReturnType<typeof useElectronMouseInElement> | undefined
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = createApp({
+    setup() {
+      state = useElectronMouseInElement(target)
+      return () => h('div', { ref: target, style: 'position:fixed;left:100px;top:100px;width:100px;height:100px' })
+    },
+  })
+  app.mount(host)
+  onTestFinished(() => {
+    app.unmount()
+    host.remove()
+  })
+  await nextTick()
+  if (!state || !target.value)
+    throw new Error('Hit-test host did not mount')
+  return { state, target: target.value }
+}
+
+describe('useElectronMouseInElement', () => {
+  it('retains pointer-only entry when native availability is withdrawn mid-hover', async () => {
+    await sendCursor({ x: 900, y: 900 })
+    const { state, target } = await mountHitTest()
+    target.dispatchEvent(new PointerEvent('pointerenter', { clientX: 130, clientY: 140 }))
+    await nextTick()
+    expect(state.isOutside.value).toBe(true)
+
+    await sendCursor(null)
+
+    expect(state.isOutside.value).toBe(false)
+  })
+
+  it('uses a DOM pointerenter while withheld without changing Electron coordinates', async () => {
+    const { state, target } = await mountHitTest()
+    expect(state.isOutside.value).toBe(true)
+    const position = [state.x.value, state.y.value]
+
+    target.dispatchEvent(new PointerEvent('pointerenter', { clientX: 130, clientY: 140 }))
+    await nextTick()
+
+    expect(state.isOutside.value).toBe(false)
+    expect([state.x.value, state.y.value]).toEqual(position)
+    target.dispatchEvent(new PointerEvent('pointerleave'))
+    await nextTick()
+    expect(state.isOutside.value).toBe(true)
+  })
+
+  it('keeps native hit-testing authoritative while DOM reports inside', async () => {
+    await sendCursor({ x: 900, y: 900 })
+    const { state, target } = await mountHitTest()
+
+    target.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 130, clientY: 140 }))
+    target.dispatchEvent(new PointerEvent('pointerenter', { clientX: 130, clientY: 140 }))
+    await nextTick()
+
+    expect(state.isOutside.value).toBe(true)
+
+    await sendCursor(null)
+    expect(state.isOutside.value).toBe(false)
+  })
+
+  it('returns to native hit-testing when availability resumes mid-hover', async () => {
+    const { state, target } = await mountHitTest()
+    target.dispatchEvent(new PointerEvent('pointerenter', { clientX: 130, clientY: 140 }))
+    await nextTick()
+    expect(state.isOutside.value).toBe(false)
+
+    await sendCursor({ x: 900, y: 900 })
+
+    expect(state.isOutside.value).toBe(true)
+  })
+
+  it('retains pointer exit while native availability is still live', async () => {
+    await sendCursor({ x: 900, y: 900 })
+    const { state, target } = await mountHitTest()
+    target.dispatchEvent(new PointerEvent('pointerenter', { clientX: 130, clientY: 140 }))
+    await nextTick()
+    await sendCursor(null)
+    expect(state.isOutside.value).toBe(false)
+    await sendCursor({ x: 900, y: 900 })
+
+    target.dispatchEvent(new PointerEvent('pointerleave'))
+    await nextTick()
+    await sendCursor(null)
+
+    expect(state.isOutside.value).toBe(true)
+  })
+
+  it('selects the current hit-test when availability flips during a DOM hover', async () => {
+    await sendCursor({ x: 900, y: 900 })
+    const { state, target } = await mountHitTest()
+    target.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 130, clientY: 140 }))
+    await nextTick()
+    expect(state.isOutside.value).toBe(true)
+
+    await sendCursor(null)
+    expect(state.isOutside.value).toBe(false)
+
+    // The same cached native point becomes trusted again without a new DOM move.
+    await sendCursor({ x: 900, y: 900 })
+    expect(state.isOutside.value).toBe(true)
   })
 })
