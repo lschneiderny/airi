@@ -126,6 +126,7 @@ model-select:
       while Grok Ani (in Grok Companion) uses 3D model driven by VRM / MMD open formats.
   select-model:
     title: Model Selector
+    description: Select a model or import one from your files.
     button: Select model
     select: Pick
     import: Import

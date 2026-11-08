@@ -4,7 +4,7 @@ import type { Live2DValidationReport } from '@proj-airi/stage-ui-live2d'
 import { Button } from '@proj-airi/ui'
 import { useMediaQuery, useResizeObserver, useScreenSafeArea } from '@vueuse/core'
 import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
-import { DrawerContent, DrawerHandle, DrawerOverlay, DrawerPortal, DrawerRoot } from 'vaul-vue'
+import { DrawerContent, DrawerDescription, DrawerHandle, DrawerOverlay, DrawerPortal, DrawerRoot, DrawerTitle } from 'vaul-vue'
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -92,12 +92,12 @@ function handleClose() {
         <DrawerHandle />
         <div class="mb-4 flex items-start justify-between gap-3">
           <div>
-            <div class="text-lg text-neutral-900 font-semibold dark:text-neutral-100">
+            <DrawerTitle :class="['text-lg text-neutral-900 font-semibold dark:text-neutral-100']">
               {{ t('settings.model-select.live2d-report.title') }}
-            </div>
-            <div class="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+            </DrawerTitle>
+            <DrawerDescription :class="['mt-0.5 text-sm text-neutral-500 dark:text-neutral-400']">
               {{ t('settings.model-select.live2d-report.description-short') }}
-            </div>
+            </DrawerDescription>
           </div>
           <Button size="sm" @click="handleClose">
             {{ t('settings.model-select.live2d-report.close') }}
