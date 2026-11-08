@@ -10,6 +10,7 @@ import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
 import OpenAICompatibleSpeechPage from './openai-compatible-audio-speech.vue'
+import Player2SpeechPage from './player2-speech.vue'
 
 import 'virtual:uno.css'
 
@@ -46,6 +47,20 @@ describe('speech provider configuration persistence', () => {
     disposePinia(pinia)
     vi.unstubAllGlobals()
     localStorage.clear()
+  })
+
+  it('checks Player2 health with its initialized configuration on a fresh profile', async () => {
+    const healthChecked = Promise.withResolvers<void>()
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      if (input === 'http://localhost:4315/v1/health')
+        healthChecked.resolve()
+      return Response.json({ voices: [] })
+    })
+
+    await renderPage(Player2SpeechPage)
+
+    await healthChecked.promise
+    expect(useProviderConfigStore(pinia).getProviderConfig('player2-speech')?.baseUrl).toBe('http://localhost:4315/v1/')
   })
 
   // ROOT CAUSE:
