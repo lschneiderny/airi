@@ -176,6 +176,10 @@ export async function setupBaseWindowElectronInvokes(params: {
   /** The Godot stage sidecar's pid, for windows that own the sidecar; see `createForegroundWindowService`. */
   getSidecarPid?: () => number | null
 }) {
+  // Each window service below owns one `closed` cleanup listener, on top of the listeners window creation adds.
+  // The count is fixed per window, so a window legitimately passes Node's default warning limit of 10.
+  params.window.setMaxListeners(32)
+
   createScreenService({ context: params.context, window: params.window })
   createWindowService({ context: params.context, window: params.window })
   createAppService({ context: params.context, window: params.window })
