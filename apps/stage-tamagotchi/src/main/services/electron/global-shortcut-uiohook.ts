@@ -14,6 +14,8 @@ import { ShortcutFailureReasons } from '@proj-airi/stage-shared/global-shortcut'
 import { systemPreferences } from 'electron'
 import { uIOhook, UiohookKey } from 'uiohook-napi'
 
+import { reportGlobalInputHookFailure } from './host-capabilities'
+
 type Logger = ReturnType<ReturnType<typeof useLogg>['useGlobalConfig']>
 
 interface ModifierMask {
@@ -220,6 +222,7 @@ export function createUiohookDriver(options: UiohookDriverOptions): UiohookDrive
       started = true
     }
     catch (error) {
+      reportGlobalInputHookFailure('start')
       logger.withError(error).warn('Failed to start uIOhook')
     }
   }
@@ -278,8 +281,10 @@ export function createUiohookDriver(options: UiohookDriverOptions): UiohookDrive
       return { id: binding.id, ok: false, reason: ShortcutFailureReasons.Unsupported }
     }
 
-    if (!isMacAccessibilityTrusted(platform, true))
+    if (!isMacAccessibilityTrusted(platform, true)) {
+      reportGlobalInputHookFailure('accessibility-denied')
       return { id: binding.id, ok: false, reason: ShortcutFailureReasons.Denied }
+    }
 
     const built = buildPredicate(binding.accelerator, platform)
     if (built === undefined) {
@@ -295,6 +300,8 @@ export function createUiohookDriver(options: UiohookDriverOptions): UiohookDrive
     })
     ensureListeners()
     startIfNeeded()
+    if (started)
+      reportGlobalInputHookFailure('none')
     return { id: binding.id, ok: true }
   }
 
