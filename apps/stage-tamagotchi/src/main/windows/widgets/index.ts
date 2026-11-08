@@ -27,6 +27,7 @@ import { normalizeWidgetWindowSize } from '../../../shared/utils/electron/window
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
+import { displayForWindow, windowOriginTrusted } from '../../services/electron/host-capabilities'
 import { showWindowOnAllWorkspaces } from '../shared/app-icon'
 import { protectPrivilegedWindowNavigation, setWindowAlwaysOnTop, spotlightLikeWindowConfig, transparentWindowConfig } from '../shared/window'
 import { createWidgetIframeRequestCoordinator } from './iframe-request-coordinator'
@@ -189,8 +190,8 @@ export interface WidgetsWindowManager {
 
 const widgetsWindowConfigSchema = object({
   bounds: optional(object({
-    x: number(),
-    y: number(),
+    x: optional(number()),
+    y: optional(number()),
     width: number(),
     height: number(),
   })),
@@ -385,13 +386,21 @@ export function setupWidgetsWindowManager(params: {
 
   function applyStoredOrDefaultBounds(window: BrowserWindow) {
     const saved = getConfig().bounds
+    if (!windowOriginTrusted()) {
+      const work = screen.getPrimaryDisplay().workArea
+      const size = saved ?? computeDefaultBounds()
+      window.setSize(Math.min(size.width, work.width), Math.min(size.height, work.height))
+      return
+    }
     if (saved) {
-      const work = screen.getDisplayMatching(saved).workArea
+      const work = saved.x !== undefined && saved.y !== undefined
+        ? screen.getDisplayMatching({ ...saved, x: saved.x, y: saved.y }).workArea
+        : screen.getPrimaryDisplay().workArea
       const width = Math.min(saved.width, work.width)
       const height = Math.min(saved.height, work.height)
       const clamped: Rectangle = {
-        x: clamp(saved.x, work.x, work.x + work.width - width),
-        y: clamp(saved.y, work.y, work.y + work.height - height),
+        x: clamp(saved.x ?? computeDefaultBounds().x, work.x, work.x + work.width - width),
+        y: clamp(saved.y ?? computeDefaultBounds().y, work.y, work.y + work.height - height),
         width,
         height,
       }
@@ -403,7 +412,7 @@ export function setupWidgetsWindowManager(params: {
   }
 
   function applyWindowLayout(windowContext: WidgetWindowContext, window: BrowserWindow, snapshot?: Pick<WidgetSnapshot, 'windowSize'>) {
-    const display = screen.getDisplayMatching(window.getBounds())
+    const display = displayForWindow(window)
     const work = display.workArea
     const windowSize = normalizeWidgetWindowSize(snapshot?.windowSize)
 
@@ -422,10 +431,13 @@ export function setupWidgetsWindowManager(params: {
     const maxHeight = clamp(windowSize.maxHeight ?? work.height, minHeight, work.height)
     const width = clamp(windowSize.width ?? minWidth, minWidth, maxWidth)
     const height = clamp(windowSize.height ?? minHeight, minHeight, maxHeight)
-    const currentBounds = window.getBounds()
-
+    const currentBounds = windowOriginTrusted() ? window.getBounds() : undefined
     window.setMinimumSize(minWidth, minHeight)
     window.setMaximumSize(maxWidth, maxHeight)
+    if (!currentBounds) {
+      window.setSize(width, height)
+      return
+    }
     window.setBounds({
       x: clamp(currentBounds.x, work.x, work.x + work.width - width),
       y: clamp(currentBounds.y, work.y, work.y + work.height - height),
@@ -477,8 +489,10 @@ export function setupWidgetsWindowManager(params: {
     applyStoredOrDefaultBounds(window)
 
     const persist = () => {
-      if (windowContext.persistBounds)
-        update({ bounds: window.getBounds() })
+      if (windowContext.persistBounds) {
+        const bounds = window.getBounds()
+        update({ bounds: windowOriginTrusted() ? bounds : { ...getConfig().bounds, width: bounds.width, height: bounds.height } })
+      }
     }
     window.on('resize', persist)
     window.on('move', persist)

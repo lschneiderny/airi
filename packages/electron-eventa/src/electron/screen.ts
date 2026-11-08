@@ -1,4 +1,4 @@
-import type { Display, screen as electronScreen, Point } from 'electron'
+import type { Display, screen as electronScreen, Point, Rectangle } from 'electron'
 
 import { defineEventa, defineInvokeEventa } from '@moeru/eventa'
 
@@ -10,9 +10,9 @@ const getAllDisplays = defineInvokeEventa<Display[]>('eventa:invoke:electron:scr
 const getPrimaryDisplay = defineInvokeEventa<Display>('eventa:invoke:electron:screen:get-primary-display')
 const getCursorScreenPoint = defineInvokeEventa<Point | null>('eventa:invoke:electron:screen:get-cursor-screen-point')
 const dipToScreenPoint = defineInvokeEventa<Point | null, Parameters<typeof electronScreen.dipToScreenPoint>[0] | undefined>('eventa:invoke:electron:screen:dip-to-screen-point')
-const dipToScreenRect = defineInvokeEventa<ReturnType<typeof electronScreen.dipToScreenRect>, Parameters<typeof electronScreen.dipToScreenRect>[1]>('eventa:invoke:electron:screen:dip-to-screen-rect')
+const dipToScreenRect = defineInvokeEventa<Rectangle | null, Parameters<typeof electronScreen.dipToScreenRect>[1] | undefined>('eventa:invoke:electron:screen:dip-to-screen-rect')
 const screenToDipPoint = defineInvokeEventa<Point | null, Parameters<typeof electronScreen.screenToDipPoint>[0] | undefined>('eventa:invoke:electron:screen:screen-to-dip-point')
-const screenToDipRect = defineInvokeEventa<ReturnType<typeof electronScreen.screenToDipRect>, Parameters<typeof electronScreen.screenToDipRect>[1]>('eventa:invoke:electron:screen:screen-to-dip-rect')
+const screenToDipRect = defineInvokeEventa<Rectangle | null, Parameters<typeof electronScreen.screenToDipRect>[1] | undefined>('eventa:invoke:electron:screen:screen-to-dip-rect')
 
 export const screen = {
   getAllDisplays,

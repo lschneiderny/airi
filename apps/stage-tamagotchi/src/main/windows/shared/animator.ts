@@ -2,6 +2,8 @@ import type { BrowserWindow, Rectangle } from 'electron'
 
 import { animate, utils } from 'animejs'
 
+import { windowOriginTrusted } from '../../services/electron/host-capabilities'
+
 type AnimatableWindow = Pick<BrowserWindow, 'getBounds' | 'isDestroyed' | 'setPosition' | 'setSize'>
 
 /** Options for one window bounds animation. */
@@ -28,6 +30,11 @@ export class Animator {
     if (this.window.isDestroyed())
       return
 
+    if (!windowOriginTrusted()) {
+      this.window.setSize(target.width, target.height)
+      return
+    }
+
     const current = this.window.getBounds()
 
     if (current.width !== target.width || current.height !== target.height)
@@ -41,7 +48,7 @@ export class Animator {
       ease: 'outCubic',
       modifier: utils.round(0),
       onRender: () => {
-        if (!this.window.isDestroyed())
+        if (!this.window.isDestroyed() && windowOriginTrusted())
           this.window.setPosition(Math.round(state.x), Math.round(state.y))
       },
     })

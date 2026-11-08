@@ -4,6 +4,8 @@ import { EventEmitter } from 'node:events'
 
 import { createContext, defineInvoke } from '@moeru/eventa'
 import { getHostCapabilities, hostCapabilitiesChanged } from '@proj-airi/electron-eventa'
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
+import { screen } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import nativeWaylandIdle from '../../../../../../packages/stage-shared/src/host-capabilities/__fixtures__/native-wayland-idle.json'
@@ -17,6 +19,10 @@ const host = vi.hoisted(() => ({
 }))
 
 vi.mock('electron', () => ({
+  screen: {
+    getPrimaryDisplay: vi.fn(() => ({ id: 1 })),
+    getDisplayMatching: vi.fn(() => ({ id: 2 })),
+  },
   app: {
     isReady: () => host.ready,
     commandLine: { getSwitchValue: host.getSwitchValue },
@@ -74,6 +80,27 @@ describe('host capability service', () => {
     service.createHostCapabilitiesService({ context: context as never, window: window as never })
     return { context, window, changes, read: defineInvoke(context, getHostCapabilities) }
   }
+
+  it.each(['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland'] as const)('chooses the display from the current %s origin status', (name) => {
+    Object.assign(service.getCurrentHostCapabilities(), capabilitiesForHost(name))
+    const getBounds = vi.fn(() => ({ x: 10, y: 20, width: 300, height: 400 }))
+
+    expect(service.displayForWindow({ getBounds }).id).toBe(name === 'linux-wayland' ? 1 : 2)
+    expect(getBounds).toHaveBeenCalledTimes(name === 'linux-wayland' ? 0 : 1)
+  })
+
+  it('rechecks origin trust after status loss and recovery', () => {
+    const snapshot = service.getCurrentHostCapabilities()
+    const getBounds = vi.fn(() => ({ x: 10, y: 20, width: 300, height: 400 }))
+    Object.assign(snapshot, capabilitiesForHost('windows'))
+    expect(service.displayForWindow({ getBounds }).id).toBe(2)
+    Object.assign(snapshot, capabilitiesForHost('linux-wayland'))
+    expect(service.displayForWindow({ getBounds }).id).toBe(1)
+    expect(getBounds).toHaveBeenCalledTimes(1)
+    Object.assign(snapshot, capabilitiesForHost('windows'))
+    expect(service.displayForWindow({ getBounds }).id).toBe(2)
+    expect(screen.getDisplayMatching).toHaveBeenCalledTimes(2)
+  })
 
   it('withholds native Wayland window origins and starts idle unverified', async () => {
     const reader = registerWindow()

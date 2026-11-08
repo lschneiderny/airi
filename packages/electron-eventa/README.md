@@ -20,3 +20,7 @@ Use them to learn which signals the host supplies. Do not derive host guarantees
 reading. An unchanged live cursor produces no event. `electron.screen.getCursorScreenPoint`
 returns the same nullable result. Calling `dipToScreenPoint` or `screenToDipPoint` without
 a point reads that trusted cursor; supplying a point keeps the native conversion behavior.
+
+Calling `dipToScreenRect` or `screenToDipRect` without a rectangle returns the
+window bounds only while the host reports a live window origin, otherwise `null`.
+Supplying a rectangle keeps the native conversion behavior.

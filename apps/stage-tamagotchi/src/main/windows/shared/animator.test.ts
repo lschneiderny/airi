@@ -1,8 +1,15 @@
 import type { BrowserWindow, Rectangle } from 'electron'
 
-import { describe, expect, it, vi } from 'vitest'
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { getCurrentHostCapabilities } from '../../services/electron/host-capabilities'
 import { Animator } from './animator'
+
+vi.mock('electron', () => ({
+  app: { isReady: () => true, commandLine: { getSwitchValue: () => 'x11' } },
+  screen: {},
+}))
 
 function createWindow(initialBounds: Rectangle) {
   const bounds = { ...initialBounds }
@@ -26,6 +33,20 @@ function waitForAnimation(): Promise<void> {
 }
 
 describe('window bounds animator', () => {
+  beforeEach(() => Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('windows')))
+
+  it('applies only size on Wayland without reading or animating the origin', () => {
+    const window = createWindow({ x: 10, y: 20, width: 300, height: 400 })
+    const animator = new Animator(window)
+    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('linux-wayland'))
+
+    animator.windowBoundsAnimateTo({ x: 100, y: 200, width: 450, height: 600 })
+
+    expect(window.setSize).toHaveBeenCalledWith(450, 600)
+    expect(window.getBounds).not.toHaveBeenCalled()
+    expect(window.setPosition).not.toHaveBeenCalled()
+  })
+
   it('animates position after it applies the target size', async () => {
     const window = createWindow({ x: 10, y: 20, width: 300, height: 400 })
     const animator = new Animator(window)

@@ -1,5 +1,6 @@
 import type { MenuItemConstructorOptions, Rectangle } from 'electron'
 
+import { windowOriginTrusted } from '../services/electron/host-capabilities'
 import { isStageWindow } from '../windows/stage/identity'
 
 export const RECOMMENDED_WIDTH = 450
@@ -91,16 +92,18 @@ export function windowLayoutMenuItems(options: {
         { label: label('full_screen'), type: 'checkbox', checked: isSizeMatch(window, areaWidth, areaHeight), click: () => resize(areaWidth, areaHeight, areaX, areaY) },
       ],
     },
-    {
-      label: label('align_to'),
-      submenu: [
-        alignItem('center', 'center'),
-        { type: 'separator' },
-        alignItem('top_left', 'top-left'),
-        alignItem('top_right', 'top-right'),
-        alignItem('bottom_left', 'bottom-left'),
-        alignItem('bottom_right', 'bottom-right'),
-      ],
-    },
+    ...windowOriginTrusted()
+      ? [{
+        label: label('align_to'),
+        submenu: [
+          alignItem('center', 'center'),
+          { type: 'separator' },
+          alignItem('top_left', 'top-left'),
+          alignItem('top_right', 'top-right'),
+          alignItem('bottom_left', 'bottom-left'),
+          alignItem('bottom_right', 'bottom-right'),
+        ],
+      } satisfies MenuItemConstructorOptions]
+      : [],
   ]
 }

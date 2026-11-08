@@ -1,6 +1,6 @@
 import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import type { HostCapabilities, HostFacts } from '@proj-airi/stage-shared/host-capabilities'
-import type { BrowserWindow, Point } from 'electron'
+import type { BrowserWindow, Display, Point } from 'electron'
 
 import process from 'node:process'
 
@@ -58,6 +58,16 @@ export function readTrustedCursor(): Point | null {
   return acceptCursorReading(getCurrentHostCapabilities().signals.cursorScreenPoint)
     ? screen.getCursorScreenPoint()
     : null
+}
+
+/** Global positions are usable only while the host reports a live window origin. */
+export function windowOriginTrusted(): boolean {
+  return getCurrentHostCapabilities().signals.windowOrigin.kind === 'live'
+}
+
+/** A hidden origin cannot identify the window's display. */
+export function displayForWindow(window: Pick<BrowserWindow, 'getBounds'>): Display {
+  return windowOriginTrusted() ? screen.getDisplayMatching(window.getBounds()) : screen.getPrimaryDisplay()
 }
 
 function updateSnapshot() {

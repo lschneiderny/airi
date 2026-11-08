@@ -10,6 +10,7 @@ import { electronOpenOnboarding } from '../../../../shared/eventa'
 import { Animator } from '../../../windows/shared/animator'
 import { computeAdjacentPosition } from '../../../windows/shared/display'
 import { isStageWindow } from '../../../windows/stage/identity'
+import { displayForWindow, windowOriginTrusted } from '../../electron/host-capabilities'
 
 const ANIMATION_DURATION = 350
 
@@ -29,6 +30,17 @@ export function createOnboardingService(params: {
     if (isStageWindow(params.mainWindow))
       return
 
+    if (!windowOriginTrusted()) {
+      const work = displayForWindow(onboardingWindow).workArea
+      params.mainWindow.setSize(Math.min(savedBounds.width, work.width), Math.min(savedBounds.height, work.height))
+      cleanupOnClosed?.()
+      cleanupOnClosed = params.onboardingWindowManager.onClosed(() => {
+        if (!params.mainWindow.isDestroyed())
+          params.mainWindow.setSize(savedBounds.width, savedBounds.height)
+        cleanupOnClosed = undefined
+      })
+      return
+    }
     const onboardingBounds = onboardingWindow.getBounds()
     const display = screen.getDisplayMatching(onboardingBounds)
 

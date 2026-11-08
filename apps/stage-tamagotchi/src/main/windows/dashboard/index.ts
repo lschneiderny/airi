@@ -24,6 +24,7 @@ import { electronStartDraggingWindow } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
+import { windowOriginTrusted } from '../../services/electron/host-capabilities'
 import { protectPrivilegedWindowNavigation } from '../shared'
 import { setupDashboardWindowElectronInvokes } from './rpc/index.electron'
 
@@ -102,8 +103,7 @@ export async function setupDashboardWindow(params: {
       config.windows.push({
         title: 'AIRI Dashboard',
         tag: 'dashboard',
-        x: newBounds.x,
-        y: newBounds.y,
+        ...windowOriginTrusted() ? { x: newBounds.x, y: newBounds.y } : {},
         width: newBounds.width,
         height: newBounds.height,
       })
@@ -111,8 +111,10 @@ export async function setupDashboardWindow(params: {
     else {
       const windowConfig = defu(config.windows[existingConfigIndex], { title: 'AIRI Dashboard', tag: 'dashboard' })
 
-      windowConfig.x = newBounds.x
-      windowConfig.y = newBounds.y
+      if (windowOriginTrusted()) {
+        windowConfig.x = newBounds.x
+        windowConfig.y = newBounds.y
+      }
       windowConfig.width = newBounds.width
       windowConfig.height = newBounds.height
 
