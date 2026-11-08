@@ -1,15 +1,13 @@
 import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import type { BrowserWindow } from 'electron'
 
-import process from 'node:process'
-
 import { defineInvokeHandler } from '@moeru/eventa'
-import { app, powerMonitor } from 'electron'
-import { isLinux } from 'std-env'
+import { HostReasons } from '@proj-airi/stage-shared/host-capabilities'
+import { powerMonitor } from 'electron'
 
 import { electron } from '../../../shared/eventa'
-import { resolveIsWayland } from '../../app/ozone'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
+import { getCurrentHostCapabilities, recordWaylandIdleSample } from './host-capabilities'
 
 /**
  * Answers the renderer's desktop activity polls with built-in Electron data.
@@ -28,18 +26,18 @@ export function createDesktopActivityService(params: { context: ReturnType<typeo
   // already reach the renderer through the power monitor service.
 
   // NOTICE:
-  // XWayland answers `null` (unknown): Chromium's X11 path reads a constant 0 there, which would read as recent input.
-  // Native Wayland measures idle time through compositor protocols, so its readings pass through.
+  // Idle time answers `null` unless the snapshot says `systemIdleTime` is live.
+  // XWayland reads a constant 0, so it is never read there; native Wayland feeds the verifier each poll.
   // Source: docs/ai/adr/2026-10-17-natural-motion-v2-performance-state.md, https://github.com/electron/electron/issues/34826.
   // Removal condition: Chromium's X11 Ozone backend measures idle time under XWayland.
-  const waylandSession = resolveIsWayland({ env: process.env })
-  const waylandOzone = resolveIsWayland({
-    explicitOzonePlatform: app.commandLine.getSwitchValue('ozone-platform'),
-    ozonePlatformHint: app.commandLine.getSwitchValue('ozone-platform-hint'),
-    env: process.env,
+  const offGetSystemIdleTime = defineInvokeHandler(params.context, electron.powerMonitor.getSystemIdleTime, () => {
+    const idle = getCurrentHostCapabilities().signals.systemIdleTime
+    if (idle.kind === 'live')
+      return powerMonitor.getSystemIdleTime()
+    if (idle.kind === 'unavailable' && idle.reason === HostReasons.WaylandIdleUnverified)
+      recordWaylandIdleSample(powerMonitor.getSystemIdleTime(), Date.now())
+    return null
   })
-  const idleTimeUnknown = isLinux && waylandSession && !waylandOzone
-  const offGetSystemIdleTime = defineInvokeHandler(params.context, electron.powerMonitor.getSystemIdleTime, () => idleTimeUnknown ? null : powerMonitor.getSystemIdleTime())
 
   const offBeforeQuit = onAppBeforeQuit(offGetSystemIdleTime)
   params.window.once('closed', () => {

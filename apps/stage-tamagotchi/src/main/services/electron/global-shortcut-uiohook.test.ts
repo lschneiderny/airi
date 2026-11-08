@@ -1,5 +1,6 @@
 import type { ShortcutBinding } from '@proj-airi/stage-shared/global-shortcut'
 
+import { useLogg } from '@guiiai/logg'
 import { ShortcutFailureReasons } from '@proj-airi/stage-shared/global-shortcut'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -52,7 +53,7 @@ function event(partial: Partial<KeyboardEvent> & Pick<KeyboardEvent, 'keycode'>)
  *   const driver = m.createUiohookDriver({ ... })
  *   m.fire('keydown', event({ keycode: 37 }))
  */
-async function setupMocks() {
+async function setupMocks(hostPlatform?: NodeJS.Platform) {
   const onMock = vi.fn()
   const removeListenerMock = vi.fn()
   const startMock = vi.fn()
@@ -94,10 +95,27 @@ async function setupMocks() {
   }))
 
   vi.doMock('electron', () => ({
+    app: {
+      isReady: () => true,
+      commandLine: { getSwitchValue: () => '' },
+    },
     systemPreferences: {
       isTrustedAccessibilityClient: isTrustedAccessibilityClientMock,
     },
   }))
+
+  if (hostPlatform) {
+    vi.doMock('node:process', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:process')>()
+      return {
+        default: {
+          ...actual,
+          platform: hostPlatform,
+          getSystemVersion: () => '14.2.0',
+        },
+      }
+    })
+  }
 
   const { createUiohookDriver } = await import('./global-shortcut-uiohook')
 
@@ -121,6 +139,26 @@ async function setupMocks() {
     return { driver, broadcastTriggered, logger }
   }
 
+  /** Builds a driver with no injected host, so the Wayland refusal comes from the snapshot. */
+  async function createSnapshotDriver() {
+    const { createHostCapabilitiesService, getCurrentHostCapabilities } = await import('./host-capabilities')
+    const { hostCapabilitiesChanged } = await import('@proj-airi/electron-eventa')
+    const { createContext } = await import('@moeru/eventa')
+    const { EventEmitter } = await import('node:events')
+    const context = createContext()
+    const changes: Array<ReturnType<typeof getCurrentHostCapabilities>> = []
+    context.on(hostCapabilitiesChanged, ({ body }) => {
+      if (body)
+        changes.push(body)
+    })
+    createHostCapabilitiesService({ context: context as never, window: new EventEmitter() as never })
+    const driver = createUiohookDriver({
+      broadcastTriggered: vi.fn(),
+      logger: useLogg('uiohook-test').useGlobalConfig(),
+    })
+    return { driver, changes, globalKeyUp: () => getCurrentHostCapabilities().signals.globalKeyUp }
+  }
+
   return {
     onMock,
     removeListenerMock,
@@ -129,6 +167,7 @@ async function setupMocks() {
     isTrustedAccessibilityClientMock,
     fire,
     createDriver,
+    createSnapshotDriver,
   }
 }
 
@@ -137,6 +176,7 @@ describe('createUiohookDriver', () => {
     vi.resetModules()
     vi.clearAllMocks()
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
   })
 
   it('starts the OS hook lazily and installs keydown/keyup listeners on first registration', async () => {
@@ -316,6 +356,64 @@ describe('createUiohookDriver', () => {
     expect(result).toEqual({ id: 'ptt', ok: false, reason: ShortcutFailureReasons.Denied })
     expect(m.isTrustedAccessibilityClientMock).toHaveBeenCalledWith(true)
     expect(m.startMock).not.toHaveBeenCalled()
+  })
+
+  it('reports the Accessibility grant, denial, and grant cycle through the snapshot, one change per flip', async () => {
+    const m = await setupMocks('darwin')
+    const { driver, changes, globalKeyUp } = await m.createSnapshotDriver()
+    expect(globalKeyUp()).toEqual({ kind: 'live' })
+
+    m.isTrustedAccessibilityClientMock.mockReturnValue(false)
+    expect(driver.tryRegister(exampleBinding('first'))).toEqual({ id: 'first', ok: false, reason: ShortcutFailureReasons.Denied })
+    expect(globalKeyUp()).toEqual({ kind: 'unavailable', reason: 'macos-accessibility-denied' })
+    expect(changes).toHaveLength(1)
+
+    driver.tryRegister(exampleBinding('again'))
+    expect(changes).toHaveLength(1)
+
+    m.isTrustedAccessibilityClientMock.mockReturnValue(true)
+    expect(driver.tryRegister(exampleBinding('second'))).toEqual({ id: 'second', ok: true })
+    expect(globalKeyUp()).toEqual({ kind: 'live' })
+    expect(changes).toHaveLength(2)
+
+    driver.unregisterAll()
+    m.isTrustedAccessibilityClientMock.mockReturnValue(false)
+    driver.tryRegister(exampleBinding('third'))
+    expect(globalKeyUp()).toEqual({ kind: 'unavailable', reason: 'macos-accessibility-denied' })
+    m.isTrustedAccessibilityClientMock.mockReturnValue(true)
+    expect(driver.tryRegister(exampleBinding('fourth'))).toEqual({ id: 'fourth', ok: true })
+    expect(globalKeyUp()).toEqual({ kind: 'live' })
+    expect(changes).toHaveLength(4)
+  })
+
+  it('reports a failed hook start and the later successful start through the snapshot', async () => {
+    const m = await setupMocks('win32')
+    const { driver, changes, globalKeyUp } = await m.createSnapshotDriver()
+    m.startMock.mockImplementationOnce(() => {
+      throw new Error('hook failed')
+    })
+
+    driver.tryRegister(exampleBinding('first', ['shift'], 'KeyK'))
+    expect(globalKeyUp()).toEqual({ kind: 'unavailable', reason: 'global-input-hook-start-failed' })
+    expect(changes).toHaveLength(1)
+
+    expect(driver.tryRegister(exampleBinding('second', ['shift'], 'KeyA'))).toEqual({ id: 'second', ok: true })
+    expect(m.startMock).toHaveBeenCalledTimes(2)
+    expect(globalKeyUp()).toEqual({ kind: 'live' })
+    expect(changes).toHaveLength(2)
+  })
+
+  it('refuses every registration on linux-wayland facts and never starts the hook', async () => {
+    vi.stubEnv('WAYLAND_DISPLAY', 'wayland-0')
+    vi.stubEnv('XDG_SESSION_TYPE', 'wayland')
+    const m = await setupMocks('linux')
+    const { driver, changes, globalKeyUp } = await m.createSnapshotDriver()
+
+    expect(driver.tryRegister(exampleBinding('first'))).toEqual({ id: 'first', ok: false, reason: ShortcutFailureReasons.Unsupported })
+    expect(driver.tryRegister(exampleBinding('second', ['shift'], 'KeyA'))).toEqual({ id: 'second', ok: false, reason: ShortcutFailureReasons.Unsupported })
+    expect(m.startMock).not.toHaveBeenCalled()
+    expect(globalKeyUp()).toEqual({ kind: 'unavailable', reason: 'wayland-no-global-input-hook' })
+    expect(changes).toHaveLength(0)
   })
 
   it('skips the Accessibility check entirely on non-darwin', async () => {

@@ -11,10 +11,11 @@ import type { UiohookKeyboardEvent } from 'uiohook-napi'
 import process from 'node:process'
 
 import { ShortcutFailureReasons } from '@proj-airi/stage-shared/global-shortcut'
+import { HostReasons } from '@proj-airi/stage-shared/host-capabilities'
 import { systemPreferences } from 'electron'
 import { uIOhook, UiohookKey } from 'uiohook-napi'
 
-import { reportGlobalInputHookFailure } from './host-capabilities'
+import { getCurrentHostCapabilities, reportGlobalInputHookFailure } from './host-capabilities'
 
 type Logger = ReturnType<ReturnType<typeof useLogg>['useGlobalConfig']>
 
@@ -128,7 +129,7 @@ function buildPredicate(acc: ShortcutAccelerator, platform: NodeJS.Platform): { 
   return { predicate, expectedKeycode }
 }
 
-function isNativeWayland(platform: NodeJS.Platform, sessionType: string | undefined): boolean {
+function isInjectedWaylandHost(platform: NodeJS.Platform, sessionType: string | undefined): boolean {
   return platform === 'linux' && sessionType === 'wayland'
 }
 
@@ -154,10 +155,9 @@ export interface UiohookDriverOptions {
    */
   platform?: NodeJS.Platform
   /**
-   * `XDG_SESSION_TYPE` value used for the Wayland refusal check;
-   * injected for the same reason as `platform`.
-   *
-   * @default process.env.XDG_SESSION_TYPE
+   * Session type for the Wayland refusal check. Tests only:
+   * when either this or `platform` is injected, the refusal uses these values;
+   * production reads the host capability snapshot instead.
    */
   sessionType?: string
 }
@@ -193,8 +193,16 @@ export function createUiohookDriver(options: UiohookDriverOptions): UiohookDrive
     broadcastTriggered,
     logger,
     platform = process.platform,
-    sessionType = process.env.XDG_SESSION_TYPE,
+    sessionType,
   } = options
+  const injectedHost = options.platform !== undefined || sessionType !== undefined
+
+  function refusedByHost(): boolean {
+    if (injectedHost)
+      return isInjectedWaylandHost(platform, sessionType)
+    const globalKeyUp = getCurrentHostCapabilities().signals.globalKeyUp
+    return globalKeyUp.kind === 'unavailable' && globalKeyUp.reason === HostReasons.WaylandNoGlobalInputHook
+  }
   const entries = new Map<string, UiohookEntry>()
   let started = false
   let listenersInstalled = false
@@ -274,7 +282,7 @@ export function createUiohookDriver(options: UiohookDriverOptions): UiohookDrive
     if (entries.has(binding.id))
       return { id: binding.id, ok: false, reason: ShortcutFailureReasons.DuplicateId }
 
-    if (isNativeWayland(platform, sessionType)) {
+    if (refusedByHost()) {
       // libuiohook hooks install but never receive events under
       // native Wayland. Refuse rather than register a binding that
       // would silently no-op.

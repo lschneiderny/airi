@@ -24,6 +24,18 @@ vi.mock('./foreground-window-darwin', () => ({
   createDarwinSampler: darwin.createSampler,
 }))
 
+/** The process-wide foreground status; the real snapshot is covered in foreground-window.trust.test.ts. */
+const snapshot = vi.hoisted(() => ({ foregroundUnavailable: false }))
+
+vi.mock('./host-capabilities', () => ({
+  getCurrentHostCapabilities: () => ({
+    signals: { foregroundWindow: snapshot.foregroundUnavailable ? { kind: 'unavailable' } : { kind: 'live' } },
+  }),
+  reportForegroundBindingFailed: () => {
+    snapshot.foregroundUnavailable = true
+  },
+}))
+
 const appMock = vi.hoisted(() => ({
   getAppMetrics: vi.fn<() => { pid: number }[]>(),
 }))
@@ -109,6 +121,7 @@ describe('createForegroundWindowService', () => {
     vi.clearAllMocks()
     host.isWindows = true
     host.isMacOS = false
+    snapshot.foregroundUnavailable = false
     darwin.load.mockResolvedValue({})
     darwin.createSampler.mockReturnValue(darwin.sample)
     darwin.sample.mockReturnValue({
@@ -333,9 +346,10 @@ describe('createForegroundWindowService', () => {
     expect(logMock.withError).toHaveBeenCalledExactlyOnceWith(failure)
     expect(logMock.warn).toHaveBeenCalledExactlyOnceWith('foreground window sampling is unavailable: AppKit failed to load')
 
+    // The failure is process-wide: a fresh reader answers null from the snapshot without loading again.
     darwin.load.mockResolvedValue({})
-    await expect(createReader()()).resolves.toMatchObject({ exeName: 'Safari.app' })
-    expect(darwin.load).toHaveBeenCalledTimes(2)
+    await expect(createReader()()).resolves.toBeNull()
+    expect(darwin.load).toHaveBeenCalledOnce()
     expect(logMock.warn).toHaveBeenCalledOnce()
   })
 

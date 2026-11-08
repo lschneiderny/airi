@@ -31,8 +31,8 @@ export function selectHostMode(
     return 'window'
 
   // NOTICE:
-  // Linux keeps the classic window: the stage needs per-pixel click-through, which Wayland lacks.
-  // `setIgnoreMouseEvents(true, { forward: true })` does not forward there (Wayland branch in `pages/index.vue`).
+  // Linux keeps the classic window: the stage needs forwarded click-through, which Wayland lacks
+  // (`linux-no-click-through-forward`).
   // Source: https://github.com/electron/electron/issues/37789; plan fullscreen-stage-locomotion IS-9.
   // Removal condition: forwarded click-through works on Wayland and the stage is verified on Linux.
   if (platform === 'linux')
