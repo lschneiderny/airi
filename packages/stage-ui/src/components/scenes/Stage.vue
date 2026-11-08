@@ -663,6 +663,7 @@ if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
           emotionsQueue,
           dispatchAct: marker => streamingControl.dispatchWith(marker),
           renderError: () => stageRenderError.value,
+          performanceMode: () => performance.value.mode,
         }))
       }
     })

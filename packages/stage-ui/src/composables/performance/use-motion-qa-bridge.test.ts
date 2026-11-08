@@ -1,4 +1,5 @@
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
+import type { PerformanceMode } from '@proj-airi/stage-shared/performance-state'
 import type { NaturalCaptureResult } from '@proj-airi/stage-ui-live2d/stores'
 
 import type { MotionQaFrames } from './use-motion-qa-bridge'
@@ -6,7 +7,10 @@ import type { MotionQaFrames } from './use-motion-qa-bridge'
 import { defineInvoke } from '@moeru/eventa'
 import { createChatHooks } from '@proj-airi/core-agent'
 import { normalizeActPayload } from '@proj-airi/pipelines-audio'
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { createMotionQaContext, createMotionQaDispatcher, motionQaRunScenarioInvokeEventa } from '@proj-airi/stage-shared/motion-scenario'
+import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
+import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
@@ -78,6 +82,7 @@ describe('useMotionQaBridge', () => {
   let dispatch: (command: unknown) => Promise<{ ok: boolean, result?: unknown, error?: string, issues?: { path: string }[] }>
   let chat: ReturnType<typeof createChatHooks>
   const speaking = ref(false)
+  const mode = ref<PerformanceMode>('idle')
 
   /** Stands in for the capture that Model.vue runs: scenario events stamped into it land in the log. */
   function recordCaptureMarks() {
@@ -92,6 +97,7 @@ describe('useMotionQaBridge', () => {
     clock = controlledFrames()
     chat = createChatHooks()
     speaking.value = false
+    mode.value = 'idle'
     const streaming = useLlmStreamingControlStore()
     const dispatcher = createMotionQaDispatcher()
     dispatch = async command => JSON.parse(await dispatcher(JSON.stringify(command)))
@@ -110,6 +116,7 @@ describe('useMotionQaBridge', () => {
         emotionsQueue: { enqueue: cue => log.push(`queue:${cue.emotion.name}:${cue.source}:${cue.emotion.intensity}`) },
         dispatchAct: marker => streaming.dispatchWith(marker),
         renderError: () => undefined,
+        performanceMode: () => mode.value,
         frames: clock.frames,
       })
     })
@@ -214,6 +221,21 @@ describe('useMotionQaBridge', () => {
 
     diagnostics.reportChat(null)
     expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { chat: null } })
+  })
+
+  it('reads the host snapshot, desktop idle and resolved mode from the live stores on every call', async () => {
+    expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { host: null, desktopIdleSeconds: null, performanceMode: 'idle' } })
+
+    const host = capabilitiesForHost('linux-xwayland')
+    useHostCapabilitiesStore().set(host)
+    useDesktopActivityStore().setSnapshot({ idleSeconds: 42, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, systemAudioLevel: null, screenChange: null, sampledAtMs: 0 })
+    mode.value = 'watching'
+    expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { host, desktopIdleSeconds: 42, performanceMode: 'watching' } })
+
+    useDesktopActivityStore().setSnapshot({ idleSeconds: 43, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, systemAudioLevel: null, screenChange: null, sampledAtMs: 0 })
+    useHostCapabilitiesStore().reset()
+    mode.value = 'talking'
+    expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { host: null, desktopIdleSeconds: 43, performanceMode: 'talking' } })
   })
 
   it('reports the stage face-feature head unit without applying another scale', async () => {

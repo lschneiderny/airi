@@ -1,11 +1,14 @@
 import type { InferOutput } from 'valibot'
 
 import type { PerformanceEmotion } from '../expression-performance/types'
+import type { HostCapabilities, HostId, HostSignal } from '../host-capabilities'
+import type { PerformanceMode } from '../performance-state'
 
 import { defineInvokeEventa } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/event-target'
 import { array, boolean, finite, integer, literal, looseObject, maxLength, maxValue, minLength, minValue, nullable, number, optional, picklist, pipe, record, strictObject, string, union, variant } from 'valibot'
 
+import { HostReasons } from '../host-capabilities'
 import { MotionScenarioSchema } from './schema'
 
 export { isMotionQaBridgeEnabled } from './flag'
@@ -19,6 +22,34 @@ const nonEmpty = pipe(string(), minLength(1))
 // Source: expression-performance/types.ts.
 // Removal condition: the union becomes an exported value array in its owning module.
 const emotion = picklist(['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral', 'love', 'flustered', 'sleepy'] as const satisfies readonly PerformanceEmotion[])
+
+// NOTICE:
+// These lists duplicate the `HostId`, `HostSignal` and `PerformanceMode` unions, which are not exported as values.
+// `SameMembers` checks each list against its union both ways.
+// Source: host-capabilities/index.ts, performance-state/index.ts.
+// Removal condition: the owning modules export value arrays.
+type SameMembers<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never
+const hostIds = ['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland', 'web'] as const
+const hostSignals = ['cursorScreenPoint', 'windowOrigin', 'displayOrigins', 'systemIdleTime', 'screenLock', 'foregroundWindow', 'globalKeyUp', 'clickThroughForward', 'alwaysOnTop', 'systemAudioCapture'] as const
+const performanceModes = ['idle', 'watching', 'listening', 'thinking', 'talking'] as const
+const _listsMatch: [SameMembers<typeof hostIds[number], HostId>, SameMembers<typeof hostSignals[number], HostSignal>, SameMembers<typeof performanceModes[number], PerformanceMode>] = [true, true, true]
+void _listsMatch
+const hostId = picklist(hostIds)
+const performanceMode = picklist(performanceModes)
+const hostReason = picklist(Object.values(HostReasons))
+const signalStatus = variant('kind', [
+  strictObject({ kind: literal('live') }),
+  strictObject({ kind: literal('degraded'), reason: hostReason }),
+  strictObject({ kind: literal('unavailable'), reason: hostReason }),
+])
+const hostCapabilities = strictObject({
+  host: hostId,
+  signals: strictObject(Object.fromEntries(hostSignals.map(signal => [signal, signalStatus])) as Record<HostSignal, typeof signalStatus>),
+  resolvedAtMs: pipe(number(), finite()),
+})
+// Compile-time check that the schema output is the `HostCapabilities` the stores hold.
+const _hostCapabilitiesMatches: InferOutput<typeof hostCapabilities> extends HostCapabilities ? (HostCapabilities extends InferOutput<typeof hostCapabilities> ? true : never) : never = true
+void _hostCapabilitiesMatches
 
 export const MotionQaStateSchema = strictObject({
   modelId: nullable(string()),
@@ -42,6 +73,12 @@ export const MotionQaStateSchema = strictObject({
   placementYawBias: pipe(number(), finite()),
   /** The chat input the stage last handed to Natural as flags and counters, or null when it had no chat signal. Never text. */
   chat: nullable(strictObject({ hasTarget: boolean(), typing: boolean(), sentSeq: number(), unfoldSeq: number() })),
+  /** The window's host capability snapshot, or null before a host wrote one. */
+  host: nullable(hostCapabilities),
+  /** Seconds since the last desktop input from the latest desktop activity sample, or null when the host reports none. */
+  desktopIdleSeconds: nullable(pipe(number(), finite())),
+  /** The performance mode the stage resolved, or null while no stage reports one. */
+  performanceMode: nullable(performanceMode),
 })
 export type MotionQaState = InferOutput<typeof MotionQaStateSchema>
 

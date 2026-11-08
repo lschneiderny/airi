@@ -3,8 +3,9 @@ import { safeParse } from 'valibot'
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 
 import { buildEmotionTrial, claimMotionQaHandlers, createMotionQaContext, hasMotionQaHandlers, isMotionQaBridgeEnabled, MotionQaAwaitCaptureResultSchema, MotionQaCommandSchema, MotionQaConfigureInputSchema, MotionQaRunScenarioInputSchema, MotionQaRunScenarioResultSchema, MotionQaStartCaptureInputSchema, motionQaStateInvokeEventa, MotionQaStateSchema } from '.'
+import { capabilitiesForHost } from '../host-capabilities'
 
-const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 }, screenAwareness: true, placement: -0.75, placementYawBias: -0.08, chat: { hasTarget: true, typing: false, sentSeq: 2, unfoldSeq: 1 } } as const
+const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 }, screenAwareness: true, placement: -0.75, placementYawBias: -0.08, chat: { hasTarget: true, typing: false, sentSeq: 2, unfoldSeq: 1 }, host: capabilitiesForHost('linux-wayland'), desktopIdleSeconds: 12.5, performanceMode: 'watching' } as const
 
 describe('motion QA bridge schemas', () => {
   it('requires usable screen scale and positive head geometry, while accepting an unavailable head', () => {
@@ -31,6 +32,29 @@ describe('motion QA bridge schemas', () => {
     expect(safeParse(MotionQaStateSchema, { ...state, chat: { ...state.chat, typing: 'yes' } }).success).toBe(false)
     const { chat: _, ...withoutChat } = state
     expect(safeParse(MotionQaStateSchema, withoutChat).success).toBe(false)
+  })
+
+  it('accepts the host snapshot, idle reading and resolved mode, each null while unreported', () => {
+    expect(safeParse(MotionQaStateSchema, state).success).toBe(true)
+    expect(safeParse(MotionQaStateSchema, { ...state, host: null, desktopIdleSeconds: null, performanceMode: null }).success).toBe(true)
+  })
+
+  it('rejects a state missing the host, or with a wrong-shaped host, idle reading or mode', () => {
+    const { host: _, ...withoutHost } = state
+    expect(safeParse(MotionQaStateSchema, withoutHost).success).toBe(false)
+    const { desktopIdleSeconds: __, ...withoutIdle } = state
+    expect(safeParse(MotionQaStateSchema, withoutIdle).success).toBe(false)
+    const { performanceMode: ___, ...withoutMode } = state
+    expect(safeParse(MotionQaStateSchema, withoutMode).success).toBe(false)
+
+    const { cursorScreenPoint: ____, ...signalsWithoutCursor } = state.host.signals
+    expect(safeParse(MotionQaStateSchema, { ...state, host: { ...state.host, signals: signalsWithoutCursor } }).success).toBe(false)
+    expect(safeParse(MotionQaStateSchema, { ...state, host: { ...state.host, host: 'beos' } }).success).toBe(false)
+    expect(safeParse(MotionQaStateSchema, { ...state, host: { ...state.host, signals: { ...state.host.signals, systemIdleTime: { kind: 'unavailable', reason: 'made-up' } } } }).success).toBe(false)
+    expect(safeParse(MotionQaStateSchema, { ...state, host: { ...state.host, signals: { ...state.host.signals, systemIdleTime: { kind: 'live', reason: 'wayland-idle-unverified' } } } }).success).toBe(false)
+    expect(safeParse(MotionQaStateSchema, { ...state, host: 'linux-wayland' }).success).toBe(false)
+    expect(safeParse(MotionQaStateSchema, { ...state, desktopIdleSeconds: Number.NaN }).success).toBe(false)
+    expect(safeParse(MotionQaStateSchema, { ...state, performanceMode: 'sleeping' }).success).toBe(false)
   })
 
   it('round-trips each payload through JSON', () => {

@@ -1,4 +1,5 @@
 import type { MotionQaRunScenarioResult, MotionQaState, MotionScenario, ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
+import type { PerformanceMode } from '@proj-airi/stage-shared/performance-state'
 
 import type { EmotionPayload } from '../../constants/emotions'
 import type { MotionQaChatHooks } from './use-motion-qa-events'
@@ -19,9 +20,11 @@ import {
   motionQaStateInvokeEventa,
   nextScenarioChatInput,
 } from '@proj-airi/stage-shared/motion-scenario'
+import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
+import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useExpressionStore, useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
-import { nextTick, onScopeDispose, watch } from 'vue'
+import { nextTick, onScopeDispose, toRaw, watch } from 'vue'
 
 import { EMOTION_VALUES } from '../../constants/emotions'
 import { useExpressionPerformanceSettings } from '../../features/performance/settings'
@@ -52,6 +55,8 @@ export interface MotionQaBridgeOptions {
   dispatchAct: (marker: string) => Promise<boolean>
   /** The stage's render error for the selected model, if it reported one. */
   renderError: () => Error | undefined
+  /** The performance mode the stage currently resolves; read on every `state` call. */
+  performanceMode: () => PerformanceMode
   /** Defaults to `performance.now()` and `requestAnimationFrame`. */
   frames?: MotionQaFrames
 }
@@ -88,6 +93,8 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
   const displayModels = useDisplayModelsStore()
   const diagnostics = useNaturalMotionDiagnostics()
   const override = useNaturalPerformanceOverride()
+  const hostCapabilities = useHostCapabilitiesStore()
+  const desktopActivity = useDesktopActivityStore()
   const expressions = useExpressionStore()
   const context = createMotionQaContext()
   const eventLog = useMotionQaEvents(options)
@@ -120,6 +127,9 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       placement: diagnostics.lastPlacement,
       placementYawBias: diagnostics.lastPlacementYawBias,
       chat: diagnostics.lastChat && { ...diagnostics.lastChat },
+      host: hostCapabilities.snapshot && structuredClone(toRaw(hostCapabilities.snapshot)),
+      desktopIdleSeconds: desktopActivity.snapshot?.idleSeconds ?? null,
+      performanceMode: options.performanceMode(),
     }
   }
 

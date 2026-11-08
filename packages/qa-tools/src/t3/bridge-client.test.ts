@@ -1,10 +1,11 @@
 import type { RendererEvaluator } from './bridge-client'
 
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { describe, expect, it } from 'vitest'
 
 import { MotionQaBridgeClient, MotionQaBridgeError } from './bridge-client'
 
-const state = { modelId: null, modelLoaded: false, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: false, hold: null, captureActive: false, head: null, screen: { x: 0, y: 0, devicePixelRatio: 1 }, screenAwareness: true, placement: null, placementYawBias: 0, chat: null }
+const state = { modelId: null, modelLoaded: false, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: false, hold: null, captureActive: false, head: null, screen: { x: 0, y: 0, devicePixelRatio: 1 }, screenAwareness: true, placement: null, placementYawBias: 0, chat: null, host: null, desktopIdleSeconds: null, performanceMode: null }
 
 function evaluatorFrom(replies: (() => unknown)[]) {
   const expressions: string[] = []
@@ -69,6 +70,18 @@ describe('motionQaBridgeClient', () => {
 
     await expect(client.waitForBridge({ timeoutMs: 10_000, now: clock.now, sleep: clock.sleep })).resolves.toEqual(state)
     expect(clock.sleeps).toEqual([100, 200, 400])
+  })
+
+  it('waitForBridge returns a state that carries the host snapshot, idle reading and resolved mode', async () => {
+    const reported = { ...state, host: capabilitiesForHost('windows'), desktopIdleSeconds: 42, performanceMode: 'idle' }
+    const client = new MotionQaBridgeClient(evaluatorFrom([() => JSON.stringify({ ok: true, result: reported })]).evaluator)
+    await expect(client.waitForBridge({ timeoutMs: 5_000 })).resolves.toEqual(reported)
+  })
+
+  it('waitForBridge rejects a state that omits the host', async () => {
+    const { host: _, ...withoutHost } = state
+    const client = new MotionQaBridgeClient(evaluatorFrom([() => JSON.stringify({ ok: true, result: withoutHost })]).evaluator)
+    await expect(client.waitForBridge({ timeoutMs: 5_000 })).rejects.toThrow(/breaks the contract/)
   })
 
   it('waitForBridge times out with the last reason when the bridge never answers', async () => {
