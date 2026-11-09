@@ -1,3 +1,5 @@
+import type { KwinProbe } from '../t3/pointer-kwin'
+
 import { execFile, spawn } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -6,6 +8,7 @@ import { execPath, platform, env as processEnv, version as processVersion } from
 
 import { errorMessageFrom } from '@moeru/std'
 
+import { parseKwinProbe, runKwinHelper } from '../t3/pointer-kwin'
 import { resolvePnpm, resolveVitestEntry } from './pnpm'
 import { commandLineContainsPath, killOwnedTree, killTree, listLiveProcesses } from './processes'
 
@@ -59,6 +62,8 @@ export interface DoctorProbes {
   env: Record<string, string | undefined>
   listRig: (dir: string) => RigListing
   listProcesses: () => Promise<ProcessEntry[]>
+  /** Runs the KWin pointer helper's probe in the current session; called only inside a `pnpm qa:display` session. */
+  kwinPointer: () => Promise<KwinProbe>
   /** The checkout the doctor checks; `stray-electron` reports only processes of this worktree. */
   repoRoot: string
 }
@@ -212,18 +217,40 @@ function createDoctorChecks(probes: DoctorProbes): DoctorCheck[] {
     },
     {
       id: 'pointer-platform',
-      run: () => {
+      run: async () => {
         const platform = probes.platform()
         if (platform === 'win32')
           return ok('Windows supports real-pointer rendered QA and cursor parking')
+        const measure = 'qa:stage measure falls back to CDP pointer moves, which never trigger the hit-test readback, so stage-frame-budget readback is unmeasured'
+        const wayland = platform === 'linux' && probes.sessionType()?.toLowerCase() === 'wayland'
+          ? ['Linux Wayland: classic window only, click-through is disabled and the polled cursor can stick stale (#2521)']
+          : []
+        const display = platform === 'linux' ? probes.env.AIRI_QA_DISPLAY : undefined
+        if (display) {
+          const probe = await probes.kwinPointer()
+          if (probe.ok) {
+            const output = probe.screen ? ` on a ${probe.screen.width}x${probe.screen.height} output` : ''
+            return ok([`QA display "${display}": real-pointer T3 touch runs inject input through KWin EIS${output} and park the session cursor`, 'runs without pointer events inject no input, so T3 liveliness/emotion runs still use cursorAttention off instead of a parked cursor', measure, ...wayland].join('; '))
+          }
+          return {
+            status: 'warn',
+            detail: [`QA display "${display}": the KWin EIS pointer backend is unavailable (${probe.missing.join('; ')}), so real-pointer T3 touch scenarios will fail`, measure, ...wayland].join('; '),
+            fix: 'Install python3-gobject and libei, and use a KWin that exports org.kde.KWin.EIS.RemoteDesktop.',
+          }
+        }
         const limits = [
-          `${platform}: real-pointer T3 touch scenarios exit pointer-platform-unsupported`,
+          platform === 'linux'
+            ? 'linux outside the QA display: real-pointer T3 touch scenarios exit pointer-platform-unsupported'
+            : `${platform}: real-pointer T3 touch scenarios exit pointer-platform-unsupported`,
           'cursor parking is not implemented, so T3 liveliness/emotion runs use cursorAttention off instead of a parked cursor (a different condition)',
-          'qa:stage measure falls back to CDP pointer moves, which never trigger the hit-test readback, so stage-frame-budget readback is unmeasured',
+          measure,
+          ...wayland,
         ]
-        if (platform === 'linux' && probes.sessionType()?.toLowerCase() === 'wayland')
-          limits.push('Linux Wayland: classic window only, click-through is disabled and the polled cursor can stick stale (#2521)')
-        return { status: 'warn', detail: limits.join('; '), fix: 'Run rendered pointer QA on Windows.' }
+        return {
+          status: 'warn',
+          detail: limits.join('; '),
+          fix: platform === 'linux' ? 'Run rendered pointer QA inside `pnpm qa:display run -- ...`, or on Windows.' : 'Run rendered pointer QA on Windows, or on Linux inside `pnpm qa:display run -- ...`.',
+        }
       },
     },
     {
@@ -433,6 +460,14 @@ export function createSystemProbes(repoRoot: string, env: Record<string, string 
     env,
     listRig: listRigModels,
     listProcesses: () => listProcesses(10_000),
+    kwinPointer: async () => {
+      try {
+        return parseKwinProbe(await runKwinHelper('probe', { timeoutMs: 10_000 }))
+      }
+      catch (error) {
+        return { ok: false, missing: [errorMessageFrom(error) ?? 'the KWin pointer probe failed'] }
+      }
+    },
     repoRoot,
   }
 }
