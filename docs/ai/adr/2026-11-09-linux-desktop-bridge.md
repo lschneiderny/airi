@@ -20,13 +20,13 @@ optional: its absence leaves ScreenSaver on the session bus available.
 Detection checks Hyprland's instance signature, sway's socket, KDE, GNOME,
 then X11 and finally `none`, in that order. Socket evidence takes precedence
 over inherited desktop names. The factory's `backends` map registers KWin,
-sway and Hyprland. The X11 EWMH module remains unregistered and resolves to
-`none` until its integration todo lands. GNOME remains reason-only.
+X11 EWMH, sway and Hyprland. GNOME remains reason-only.
 KWin confirms the current owner of `org.kde.KWin` before loading a script.
 
 | Backend | Selected when | Explicit input from `env` | Ready after | Readings | Failure |
 | --- | --- | --- | --- | --- | --- |
 | `kwin` | KDE desktop name | Session bus, `XDG_RUNTIME_DIR` | Supported Hello | Pushed active window, own windows, cursor stream | Owner loss, unsupported API, two-second Hello deadline |
+| `x11-ewmh` | X11 session only, never XWayland | `DISPLAY` | One display connection opened | Active window read on demand from `_NET_ACTIVE_WINDOW`; Electron keeps cursor, origin and displays | Display unavailable, or a failed read |
 | `sway` | `SWAYSOCK` | `SWAYSOCK` | Subscription and first tree | Pushed active window and own-window geometry; no cursor (`sway-cursor-unreported`) | Socket missing, closed, malformed or timed out |
 | `hyprland` | `HYPRLAND_INSTANCE_SIGNATURE` | `XDG_RUNTIME_DIR`, `HYPRLAND_INSTANCE_SIGNATURE` | Event socket and first replies | Pushed active window and own-window geometry; cursor once per `requestCursor` tick | Missing or escaping signature, socket closed, reply too large or timed out |
 

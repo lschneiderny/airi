@@ -96,7 +96,7 @@ describe('linux desktop bridge', () => {
   }
 
   it.each([
-    [{ XDG_SESSION_TYPE: 'x11', DISPLAY: ':91' }, 'none'],
+    [{ XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1' }, 'none'],
     [{ XDG_CURRENT_DESKTOP: 'GNOME' }, 'gnome'],
   ] as const)('keeps desktop %j without a window source reason-only', async (env, backend) => {
     create(env)

@@ -13,12 +13,26 @@ import { pid } from 'node:process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { encodeFrame } from './backends/sway/ipc'
+import { X11BackendError } from './backends/x11/binding'
 import { createLinuxDesktopBridge } from './index'
 import { PrivateBus } from './session/private-bus.test-helper'
 
 const facts = vi.hoisted(() => vi.fn())
+const x11 = vi.hoisted(() => ({ options: [] as unknown[], start: vi.fn(), active: vi.fn() }))
 vi.mock('../electron/host-capabilities', () => ({ reportLinuxDesktop: facts }))
 vi.mock('electron', () => ({ app: { getAppMetrics: () => [{ pid }] } }))
+// The fake keeps the bridge test off libX11; the real binding has its own suite.
+vi.mock('./backends/x11', () => ({
+  X11EwmhBackend: class {
+    constructor(options: unknown) {
+      x11.options.push(options)
+    }
+
+    start() { return x11.start() }
+    stop() { return Promise.resolve() }
+    activeWindow() { return x11.active() }
+  },
+}))
 
 const rect = { x: 0, y: 0, width: 800, height: 600 }
 
@@ -34,6 +48,9 @@ describe('linux desktop backend registration', () => {
     await bus.start()
     directory = await mkdtemp(join(tmpdir(), 'airi-registration-'))
     facts.mockReset()
+    x11.options.length = 0
+    x11.start.mockReset()
+    x11.active.mockReset()
   })
 
   afterEach(async () => {
@@ -78,6 +95,51 @@ describe('linux desktop backend registration', () => {
   }
 
   const lastFailure = () => facts.mock.calls.filter(([patch]) => patch.bridge === 'failed').at(-1)?.[0]
+
+  describe('x11-ewmh', () => {
+    it('opens the injected display and reads the active window on demand', async () => {
+      x11.start.mockResolvedValue(undefined)
+      x11.active.mockReturnValue({ caption: 'Shell', resourceClass: 'konsole', pid: 7, fullScreen: true })
+      const bridge = create({ XDG_SESSION_TYPE: 'x11', DISPLAY: ':91' })
+      await bridge.start()
+      expect(x11.options).toEqual([{ sessionType: 'x11', display: ':91' }])
+      expect(facts).toHaveBeenCalledWith(expect.objectContaining({ backend: 'x11-ewmh', bridge: 'ready' }))
+      const pushed = vi.fn()
+      bridge.onActive(pushed)
+      expect(bridge.activeWindow()).toEqual({ caption: 'Shell', resourceClass: 'konsole', desktopFileName: '', pid: 7, fullScreen: true })
+      expect(bridge.activeWindow()).toMatchObject({ pid: 7 })
+      expect(pushed).toHaveBeenCalledOnce()
+    })
+
+    it('never constructs the X11 backend on XWayland', async () => {
+      const bridge = create({ XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1', DISPLAY: ':91' })
+      await bridge.start()
+      expect(bridge.backend).toBe('none')
+      expect(x11.options).toEqual([])
+    })
+
+    it('fails with the reason when the display is missing', async () => {
+      x11.start.mockRejectedValue(new X11BackendError('display-unavailable'))
+      const bridge = create({ XDG_SESSION_TYPE: 'x11' })
+      await bridge.start()
+      expect(x11.options).toEqual([{ sessionType: 'x11', display: '' }])
+      expect(lastFailure()).toMatchObject({ backend: 'x11-ewmh', bridgeFailure: 'other', foregroundVerified: false })
+      expect(bridge.activeWindow()).toBeNull()
+    })
+
+    it('revokes readiness when a read fails instead of keeping the last window', async () => {
+      x11.start.mockResolvedValue(undefined)
+      x11.active.mockReturnValueOnce({ caption: 'Shell', resourceClass: 'konsole', pid: 7, fullScreen: false })
+      const bridge = create({ XDG_SESSION_TYPE: 'x11', DISPLAY: ':91' })
+      await bridge.start()
+      expect(bridge.activeWindow()).toMatchObject({ pid: 7 })
+      x11.active.mockImplementation(() => {
+        throw new Error('connection lost')
+      })
+      expect(bridge.activeWindow()).toBeNull()
+      expect(lastFailure()).toMatchObject({ backend: 'x11-ewmh', bridge: 'failed' })
+    })
+  })
 
   describe('sway', () => {
     const tree = { id: 1, type: 'root', rect, nodes: [{ id: 9, type: 'con', pid, name: 'AIRI', app_id: 'airi', rect, focused: true }] }

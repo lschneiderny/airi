@@ -102,8 +102,13 @@ export class X11Binding {
         return null
       if (actualType[0] !== requestedType || !Number.isSafeInteger(count[0]) || count[0] < 0 || count[0] > (format[0] === 32 ? 1024 : 4096) || (!data[0] && count[0] !== 0))
         throw new X11BackendError('property-invalid')
-      if (format[0] === 8)
-        return { format: 8, data: count[0] === 0 ? new Uint8Array() : new Uint8Array(this.koffi.view(data[0], count[0])).slice() }
+      if (format[0] === 8) {
+        // Copy with decode: Electron's V8 memory cage rejects koffi.view's external buffer and aborts the process.
+        const bytes: unknown = count[0] === 0 ? new Uint8Array() : this.koffi.decode(data[0], 'uint8_t', count[0])
+        if (bytes instanceof Uint8Array && bytes.length === count[0])
+          return { format: 8, data: bytes }
+        throw new X11BackendError('property-invalid')
+      }
       if (format[0] === 32) {
         // On LP64, each format-32 item occupies sizeof(unsigned long), not 4.
         const decoded: unknown = count[0] === 0 ? [] : this.koffi.decode(data[0], 'unsigned long', count[0])
