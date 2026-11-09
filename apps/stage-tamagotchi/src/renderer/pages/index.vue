@@ -43,6 +43,7 @@ import ResourceStatusIsland from '../components/stage-islands/resource-status-is
 
 import { electronChatAttentionTargetChanged, electronGetChatAttentionTarget, electronOpenInlay, electronOpenOnboarding } from '../../shared/eventa'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
+import { usePresenceNotice } from '../composables/use-presence-notice'
 import { usePushToTalkShortcut } from '../composables/use-push-to-talk-shortcut'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
 import { useStageActiveRenderer } from '../composables/use-stage-active-renderer'
@@ -400,6 +401,7 @@ onScopeDispose(voice.connectTools(() => toolSelection.requestTools))
 const openInlay = useElectronEventaInvoke(electronOpenInlay)
 useVoiceListening()
 usePushToTalkShortcut()
+usePresenceNotice('index')
 // The inlay stays shown from startup and draws a capsule when any capture starts.
 // This call shows it again after the user hid it. A failed begin never reaches `capturing`.
 watch(

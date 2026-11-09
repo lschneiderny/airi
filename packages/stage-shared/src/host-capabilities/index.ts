@@ -194,12 +194,18 @@ export function idleAdvances(samples: Array<{ atMs: number, seconds: number | nu
     && last.seconds >= 5
 }
 
-/** Stable dismissal key for presence limitations; idle verification alone never prompts a notice. */
-export function presenceNoticeKey(caps: HostCapabilities): string | null {
-  const presenceSignals = ['cursorScreenPoint', 'windowOrigin', 'systemIdleTime', 'foregroundWindow', 'globalKeyUp'] as const
-  const reasons = presenceSignals.flatMap((signal) => {
+const presenceSignals = ['cursorScreenPoint', 'windowOrigin', 'systemIdleTime', 'foregroundWindow', 'globalKeyUp'] as const
+
+/** Presence signals worth telling the user about; idle verification alone never prompts a notice. */
+export function presenceLimitations(caps: HostCapabilities): Array<{ signal: HostSignal, reason: HostReason }> {
+  return presenceSignals.flatMap((signal) => {
     const status = caps.signals[signal]
-    return status.kind === 'live' || status.reason === HostReasons.WaylandIdleUnverified ? [] : [status.reason]
-  }).sort()
+    return status.kind === 'live' || status.reason === HostReasons.WaylandIdleUnverified ? [] : [{ signal, reason: status.reason }]
+  })
+}
+
+/** Stable dismissal key for presence limitations. */
+export function presenceNoticeKey(caps: HostCapabilities): string | null {
+  const reasons = presenceLimitations(caps).map(limitation => limitation.reason).sort()
   return reasons.length === 0 ? null : `${caps.host}:${reasons.join(',')}`
 }

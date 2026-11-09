@@ -50,6 +50,7 @@ import {
 } from '../../shared/eventa'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
 import { createStageClickThroughState, createStageHitReadState, isInsidePaddedRect, planStageHitRead, resolveStageClickThrough } from '../composables/stage-click-through'
+import { usePresenceNotice } from '../composables/use-presence-notice'
 import { usePushToTalkShortcut } from '../composables/use-push-to-talk-shortcut'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
 import { useStageActiveRenderer } from '../composables/use-stage-active-renderer'
@@ -101,6 +102,7 @@ onScopeDispose(voice.connectTools(() => toolSelection.requestTools))
 const openInlay = useElectronEventaInvoke(electronOpenInlay)
 useVoiceListening()
 usePushToTalkShortcut()
+usePresenceNotice('stage')
 watch(() => voice.state?.phase === 'capturing', (capturing) => {
   if (capturing)
     void openInlay()

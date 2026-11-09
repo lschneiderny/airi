@@ -85,6 +85,7 @@ vi.mock('../composables/use-stage-active-renderer', () => ({ useStageActiveRende
 vi.mock('../composables/use-stage-placement-publisher', () => ({ useStagePlacementPublisher: () => {} }))
 vi.mock('../composables/use-screen-ambient-light', () => ({ useScreenAmbientLight: () => {} }))
 vi.mock('../composables/use-push-to-talk-shortcut', () => ({ usePushToTalkShortcut: () => {} }))
+vi.mock('../composables/use-presence-notice', () => ({ usePresenceNotice: () => {} }))
 vi.mock('../composables/model-settings-runtime-owner', () => ({ useModelSettingsRuntimeOwner: () => {} }))
 vi.mock('../components/stage-islands/controls-island/controls-island-root.vue', () => ({ default: () => null }))
 vi.mock('../components/stage-islands/controls-island/index.vue', () => ({ default: () => null }))
