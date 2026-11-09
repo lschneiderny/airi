@@ -62,6 +62,8 @@ export function createLinuxDesktopBridge(options: {
       const backend = new SwayBackend({ socketPath: env.SWAYSOCK ?? '', ownPids, onFailure })
       backend.onActive(payload => onMessage({ method: 'Active', payload }))
       backend.onOwnWindows(payload => onMessage({ method: 'OwnWindows', payload: [...payload] }))
+      // Sway's layout coordinates are logical pixels with a per-output scale, the same space KWin's Outputs use.
+      backend.onOutputs(payload => onMessage({ method: 'Outputs', payload: [...payload] }))
       return {
         start: async () => {
           await backend.start()
