@@ -5,6 +5,8 @@ import { isDeepStrictEqual } from 'node:util'
 
 import { HostReasons, idleAdvances } from '@proj-airi/stage-shared/host-capabilities'
 
+import { isWaylandSession } from './wayland-session'
+
 /** Runner facts describe a healthy host; runtime binding failures must fail the comparison. */
 export function expectedHostFacts(input: {
   platform: HostFacts['platform']
@@ -12,8 +14,7 @@ export function expectedHostFacts(input: {
   xwayland: boolean
   macosVersion: string | null
 }): HostFacts {
-  const waylandSession = input.platform === 'linux'
-    && (Boolean(input.env.WAYLAND_DISPLAY) || input.env.XDG_SESSION_TYPE?.toLowerCase() === 'wayland')
+  const waylandSession = input.platform === 'linux' && isWaylandSession(input.env)
   const version = input.macosVersion?.match(/^(\d+)\.(\d+)(?:\.\d+)?$/)
   if (input.platform === 'darwin' && !version)
     throw new Error('macosVersion must contain the sw_vers product version')
@@ -38,7 +39,16 @@ export interface HostSample {
 export interface SmokeResult {
   readonly exitCode: 0 | 1
   readonly idleOutcome: 'idle-verified' | 'idle-unverified' | 'idle-unavailable' | 'idle-failed'
-  readonly failures: readonly string[]
+  readonly failures: readonly SmokeFailure[]
+}
+
+/** A smoke failure: tests and tooling branch on `code` and `signal`; `message` is for people. */
+export interface SmokeFailure {
+  readonly code: 'observation-too-short' | 'snapshot-missing' | 'host-mismatch' | 'signal-mismatch' | 'wayland-idle-invalid' | 'idle-outcome-mismatch' | 'idle-not-advancing' | 'idle-reading-unexpected'
+  readonly signal: HostSignal | 'host'
+  readonly message: string
+  readonly expected?: unknown
+  readonly received?: unknown
 }
 
 function unverified(status: SignalStatus): boolean {
@@ -52,17 +62,18 @@ export function evaluateHostSmoke(input: {
   samples: readonly HostSample[]
 }): SmokeResult {
   const { expected, samples } = input
-  const failures = new Set<string>()
+  const found = new Map<string, SmokeFailure>()
+  const fail = (failure: SmokeFailure) => void found.set(failure.message, failure)
   if (samples.length < 2 || samples[samples.length - 1].atMs - samples[0].atMs < 180_000)
-    failures.add('systemIdleTime: observation did not span 180 seconds')
+    fail({ code: 'observation-too-short', signal: 'systemIdleTime', message: 'systemIdleTime: observation did not span 180 seconds' })
   for (const sample of samples) {
     const actual = sample.host
     if (!actual) {
-      failures.add('host: bridge snapshot is null')
+      fail({ code: 'snapshot-missing', signal: 'host', message: 'host: bridge snapshot is null' })
       continue
     }
     if (actual.host !== expected.host)
-      failures.add(`host: expected ${expected.host}, received ${actual.host}`)
+      fail({ code: 'host-mismatch', signal: 'host', message: `host: expected ${expected.host}, received ${actual.host}`, expected: expected.host, received: actual.host })
     for (const signal of Object.keys(expected.signals) as HostSignal[]) {
       const status = actual.signals[signal]
       if (signal === 'systemIdleTime' && expected.host === 'linux-wayland') {
@@ -72,7 +83,7 @@ export function evaluateHostSmoke(input: {
       else if (isDeepStrictEqual(status, expected.signals[signal])) {
         continue
       }
-      failures.add(`${signal}: expected ${JSON.stringify(expected.signals[signal])}, received ${JSON.stringify(status)}`)
+      fail({ code: 'signal-mismatch', signal, message: `${signal}: expected ${JSON.stringify(expected.signals[signal])}, received ${JSON.stringify(status)}`, expected: expected.signals[signal], received: status })
     }
   }
 
@@ -91,20 +102,20 @@ export function evaluateHostSmoke(input: {
       && advancing
     idleOutcome = verified ? 'idle-verified' : allUnverified && samples.every(sample => sample.desktopIdleSeconds === null) ? 'idle-unverified' : 'idle-failed'
     if (idleOutcome === 'idle-failed')
-      failures.add('systemIdleTime: invalid Wayland transition or idle readings did not advance while live')
+      fail({ code: 'wayland-idle-invalid', signal: 'systemIdleTime', message: 'systemIdleTime: invalid Wayland transition or idle readings did not advance while live' })
     if (input.expectIdle && idleOutcome !== `idle-${input.expectIdle}`)
-      failures.add(`systemIdleTime: expected idle-${input.expectIdle}, received ${idleOutcome}`)
+      fail({ code: 'idle-outcome-mismatch', signal: 'systemIdleTime', message: `systemIdleTime: expected idle-${input.expectIdle}, received ${idleOutcome}`, expected: `idle-${input.expectIdle}`, received: idleOutcome })
   }
   else if (expected.signals.systemIdleTime.kind === 'live') {
     idleOutcome = advancing ? 'idle-verified' : 'idle-failed'
     if (!advancing)
-      failures.add('systemIdleTime: live idle readings did not advance')
+      fail({ code: 'idle-not-advancing', signal: 'systemIdleTime', message: 'systemIdleTime: live idle readings did not advance' })
   }
   else if (samples.some(sample => sample.desktopIdleSeconds !== null)) {
     idleOutcome = 'idle-failed'
-    failures.add('systemIdleTime: unavailable idle signal emitted a reading')
+    fail({ code: 'idle-reading-unexpected', signal: 'systemIdleTime', message: 'systemIdleTime: unavailable idle signal emitted a reading' })
   }
-  return { exitCode: failures.size ? 1 : 0, idleOutcome, failures: [...failures] }
+  return { exitCode: found.size ? 1 : 0, idleOutcome, failures: [...found.values()] }
 }
 
 /** Observes without driving input. The clock and bridge are external boundaries, stubbed in unit tests. */

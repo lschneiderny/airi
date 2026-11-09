@@ -1,4 +1,21 @@
-export type HostId = 'windows' | 'macos' | 'linux-x11' | 'linux-xwayland' | 'linux-wayland' | 'web'
+/** The one list of host ids; schemas, CLIs and the `HostId` union all derive from it. */
+export const HOST_IDS = ['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland', 'web'] as const
+export type HostId = typeof HOST_IDS[number]
+
+/** The one list of host signals, in display order; schemas, UIs and the `HostSignal` union all derive from it. */
+export const HOST_SIGNALS = [
+  'cursorScreenPoint',
+  'windowOrigin',
+  'displayOrigins',
+  'systemIdleTime',
+  'screenLock',
+  'foregroundWindow',
+  'globalKeyUp',
+  'clickThroughForward',
+  'alwaysOnTop',
+  'systemAudioCapture',
+] as const
+export type HostSignal = typeof HOST_SIGNALS[number]
 
 export const HostReasons = Object.freeze({
   WaylandCursorUnreported: 'wayland-cursor-unreported',
@@ -24,6 +41,9 @@ export const HostReasons = Object.freeze({
 
 export type HostReason = typeof HostReasons[keyof typeof HostReasons]
 
+/** Every reason code, for schemas that validate one. */
+export const HOST_REASONS: readonly HostReason[] = Object.values(HostReasons)
+
 export type SignalStatus
   = | { kind: 'live' }
     | { kind: 'degraded', reason: HostReason }
@@ -33,18 +53,6 @@ export type SignalStatus
 export function acceptCursorReading(cursor: SignalStatus): boolean {
   return cursor.kind === 'live'
 }
-
-export type HostSignal
-  = | 'cursorScreenPoint'
-    | 'windowOrigin'
-    | 'displayOrigins'
-    | 'systemIdleTime'
-    | 'screenLock'
-    | 'foregroundWindow'
-    | 'globalKeyUp'
-    | 'clickThroughForward'
-    | 'alwaysOnTop'
-    | 'systemAudioCapture'
 
 export interface HostCapabilities {
   host: HostId

@@ -31,6 +31,8 @@ origins are untrusted, so the app does not use them for placement or persist
 coordinates it cannot know. The Linux window-placement policy uses the primary
 display when an origin is unavailable and leaves placement to the compositor.
 
+Persisted caption and widget placement schemas accept an entry whose `x` and `y` are missing, because a host that cannot know an origin must not invent one to save. Where the origin is untrusted, the caption and widget windows persist and restore only their size and leave placement to the compositor. Where it is trusted and a saved entry has no coordinates, the caption places itself relative to the main window on that window's display, and the widget window uses its default position on the primary display.
+
 Native Wayland idle time becomes live only after the running sensor is verified
 to advance. XWayland idle remains unavailable because its reading is
 constant-zero. The performance resolver keeps `unknown -> idle`; no substitute

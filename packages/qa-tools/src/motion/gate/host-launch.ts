@@ -2,13 +2,15 @@ import type { HostId } from '@proj-airi/stage-shared/host-capabilities'
 
 import process from 'node:process'
 
+import { isWaylandSession } from '../../host/wayland-session'
+
 /**
  * Match the runner session before taking a lease or starting Electron.
  * XWayland is an explicit launch choice within a Wayland desktop session.
  */
 export function resolveT3HostLaunch(host: HostId | undefined, env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform):
   { ok: true, script: 'dev' | 'dev:xwayland' } | { ok: false, message: string } {
-  const wayland = Boolean(env.WAYLAND_DISPLAY) || env.XDG_SESSION_TYPE?.toLowerCase() === 'wayland'
+  const wayland = isWaylandSession(env)
   const script = host === 'linux-xwayland' ? 'dev:xwayland' : 'dev'
   const detected = platform === 'win32'
     ? 'windows'

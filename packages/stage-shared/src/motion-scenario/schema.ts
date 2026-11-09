@@ -1,12 +1,12 @@
 import type { InferOutput } from 'valibot'
 
 import type { Band } from '../expression-performance/types'
-import type { HostId } from '../host-capabilities'
 import type { PerformanceMode } from '../performance-state'
 
 import { array, boolean, check, finite, integer, literal, maxValue, minLength, minValue, nullable, number, optional, picklist, pipe, rawCheck, strictObject, string, unknown, variant } from 'valibot'
 
 import { PERFORMANCE_EMOTIONS } from '../expression-performance/types'
+import { HOST_IDS } from '../host-capabilities'
 import { hostProfileViolations } from './host-profile'
 
 /** The QA levels a scenario can run at: T1 simulated pipeline, T2 headless rig, T3 rendered app. */
@@ -14,7 +14,7 @@ export const motionScenarioLevels = ['t1', 't2', 't3'] as const
 export type MotionScenarioLevel = typeof motionScenarioLevels[number]
 
 /** Host profiles accepted by both scenario files and the gate CLI. */
-export const motionScenarioHosts = ['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland', 'web'] as const satisfies readonly HostId[]
+export const motionScenarioHosts = HOST_IDS
 
 // NOTICE:
 // These picklists duplicate unions that stage-shared owns elsewhere (or, for `PostureHome`, that stage-ui-live2d owns,

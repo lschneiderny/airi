@@ -1,14 +1,14 @@
 import type { InferOutput } from 'valibot'
 
 import type { PerformanceEmotion } from '../expression-performance/types'
-import type { HostCapabilities, HostId, HostSignal } from '../host-capabilities'
+import type { HostCapabilities, HostSignal } from '../host-capabilities'
 import type { PerformanceMode } from '../performance-state'
 
 import { defineInvokeEventa } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/event-target'
 import { array, boolean, finite, integer, literal, looseObject, maxLength, maxValue, minLength, minValue, nullable, number, optional, picklist, pipe, record, strictObject, string, union, variant } from 'valibot'
 
-import { HostReasons } from '../host-capabilities'
+import { HOST_IDS, HOST_REASONS, HOST_SIGNALS } from '../host-capabilities'
 import { MotionScenarioSchema } from './schema'
 
 export { isMotionQaBridgeEnabled } from './flag'
@@ -24,19 +24,17 @@ const nonEmpty = pipe(string(), minLength(1))
 const emotion = picklist(['happy', 'sad', 'angry', 'think', 'surprised', 'awkward', 'question', 'curious', 'neutral', 'love', 'flustered', 'sleepy'] as const satisfies readonly PerformanceEmotion[])
 
 // NOTICE:
-// These lists duplicate the `HostId`, `HostSignal` and `PerformanceMode` unions, which are not exported as values.
-// `SameMembers` checks each list against its union both ways.
-// Source: host-capabilities/index.ts, performance-state/index.ts.
-// Removal condition: the owning modules export value arrays.
+// This list duplicates the `PerformanceMode` union, which is not exported as a value.
+// `SameMembers` checks the list against the union both ways.
+// Source: performance-state/index.ts.
+// Removal condition: performance-state exports a value array.
 type SameMembers<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never
-const hostIds = ['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland', 'web'] as const
-const hostSignals = ['cursorScreenPoint', 'windowOrigin', 'displayOrigins', 'systemIdleTime', 'screenLock', 'foregroundWindow', 'globalKeyUp', 'clickThroughForward', 'alwaysOnTop', 'systemAudioCapture'] as const
 const performanceModes = ['idle', 'watching', 'listening', 'thinking', 'talking'] as const
-const _listsMatch: [SameMembers<typeof hostIds[number], HostId>, SameMembers<typeof hostSignals[number], HostSignal>, SameMembers<typeof performanceModes[number], PerformanceMode>] = [true, true, true]
-void _listsMatch
-const hostId = picklist(hostIds)
+const _modesMatch: SameMembers<typeof performanceModes[number], PerformanceMode> = true
+void _modesMatch
+const hostId = picklist(HOST_IDS)
 const performanceMode = picklist(performanceModes)
-const hostReason = picklist(Object.values(HostReasons))
+const hostReason = picklist(HOST_REASONS)
 const signalStatus = variant('kind', [
   strictObject({ kind: literal('live') }),
   strictObject({ kind: literal('degraded'), reason: hostReason }),
@@ -44,7 +42,7 @@ const signalStatus = variant('kind', [
 ])
 const hostCapabilities = strictObject({
   host: hostId,
-  signals: strictObject(Object.fromEntries(hostSignals.map(signal => [signal, signalStatus])) as Record<HostSignal, typeof signalStatus>),
+  signals: strictObject(Object.fromEntries(HOST_SIGNALS.map(signal => [signal, signalStatus])) as Record<HostSignal, typeof signalStatus>),
   resolvedAtMs: pipe(number(), finite()),
 })
 // Compile-time check that the schema output is the `HostCapabilities` the stores hold.

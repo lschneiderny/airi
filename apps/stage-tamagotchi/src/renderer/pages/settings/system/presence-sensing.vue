@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { HostSignal, SignalStatus } from '@proj-airi/stage-shared/host-capabilities'
+import type { SignalStatus } from '@proj-airi/stage-shared/host-capabilities'
 
+import { HOST_SIGNALS } from '@proj-airi/stage-shared/host-capabilities'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
@@ -11,18 +12,7 @@ const tt = (key: string) => t(`tamagotchi.settings.pages.system.presence-sensing
 const { snapshot } = storeToRefs(useHostCapabilitiesStore())
 
 /** Display order; `Record<HostSignal, SignalStatus>` carries no order of its own. */
-const signals: HostSignal[] = [
-  'cursorScreenPoint',
-  'windowOrigin',
-  'displayOrigins',
-  'systemIdleTime',
-  'screenLock',
-  'foregroundWindow',
-  'globalKeyUp',
-  'clickThroughForward',
-  'alwaysOnTop',
-  'systemAudioCapture',
-]
+const signals = HOST_SIGNALS
 
 const statusTone: Record<SignalStatus['kind'], string> = {
   live: 'bg-green-500/15 text-green-700 dark:text-green-300',

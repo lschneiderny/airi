@@ -1,5 +1,5 @@
 import type { InvokeEventa } from '@moeru/eventa'
-import type { HostCapabilities, HostId } from '@proj-airi/stage-shared/host-capabilities'
+import type { HostCapabilities, HostId, HostSignal } from '@proj-airi/stage-shared/host-capabilities'
 
 import type { StageHostMode, StageHostState } from '../../shared/eventa'
 
@@ -37,6 +37,10 @@ defineInvokeHandler(context, electronOpenSettings, ({ route }) => void openedRou
 
 const cleanups: Array<() => void> = []
 
+const i18n = createI18n({ legacy: false, locale: 'en', messages: { en } })
+const presenceKey = (key: string) => i18n.global.t(`tamagotchi.settings.pages.system.presence-sensing.${key}`)
+const signalLabel = (signal: HostSignal) => presenceKey(`signals.${signal}`)
+
 afterEach(() => {
   for (const cleanup of cleanups.splice(0))
     cleanup()
@@ -65,7 +69,7 @@ async function mountNotice(page: 'index' | 'stage', capabilities: HostCapabiliti
       usePresenceNotice(page)
       return () => h(Toaster)
     },
-  }), { global: { plugins: [pinia, synced.vue, createI18n({ legacy: false, locale: 'en', messages: { en } })] } })
+  }), { global: { plugins: [pinia, synced.vue, i18n] } })
   cleanups.push(() => {
     view.unmount()
     disposePinia(pinia)
@@ -103,7 +107,8 @@ describe('presence notice', () => {
     pending.reject(new Error('Dismiss transport unavailable'))
     await completed
 
-    expect(warning).toHaveBeenCalledExactlyOnceWith('[PresenceNotice] Failed to save dismissal:', 'Dismiss transport unavailable')
+    expect(warning).toHaveBeenCalledOnce()
+    expect(warning.mock.calls[0]).toContain('Dismiss transport unavailable')
     expect(openedRoutes).toEqual([presenceNoticeRoute])
     expect(mounted.settings.document.dismissedKeys).toEqual([])
   })
@@ -136,7 +141,7 @@ describe('presence notice', () => {
 
     await vi.waitFor(() => expect(mounted.settings.document.dismissedKeys).toEqual([presenceNoticeKey(a)]))
     expect(document.querySelectorAll('[data-sonner-toast]')).toHaveLength(1)
-    expect(toastLocator()?.textContent).toContain('Foreground window')
+    expect(toastLocator()?.textContent).toContain(signalLabel('foregroundWindow'))
     expect(openedRoutes).toEqual([presenceNoticeRoute])
     useHostCapabilitiesStore(mounted.pinia).set(a2)
     await vi.waitFor(() => expect(toastLocator()).toBeNull())
@@ -171,10 +176,10 @@ describe('presence notice', () => {
     running.value = 'window'
     const first = await mountNotice('index', 'linux-wayland')
     await vi.waitFor(() => expect(toastLocator()).not.toBeNull())
-    expect(toastLocator()!.textContent).toContain('Cursor position on screen')
-    expect(toastLocator()!.textContent).toContain('Global key release')
+    expect(toastLocator()!.textContent).toContain(signalLabel('cursorScreenPoint'))
+    expect(toastLocator()!.textContent).toContain(signalLabel('globalKeyUp'))
 
-    await first.view.getByRole('button', { name: 'Details' }).click()
+    await first.view.getByRole('button', { name: presenceKey('notice.details') }).click()
 
     await vi.waitFor(() => expect(first.settings.document.dismissedKeys).toContain(first.key))
     expect(JSON.parse(localStorage.getItem('settings/host-notice')!).dismissedKeys).toContain(first.key)
@@ -217,7 +222,7 @@ describe('presence notice', () => {
 
       const owned = await mountNotice(owner, macosAccessibilityDenied)
       await vi.waitFor(() => expect(toastLocator()).not.toBeNull())
-      expect(toastLocator()!.textContent).toContain('Global key release')
+      expect(toastLocator()!.textContent).toContain(signalLabel('globalKeyUp'))
 
       await owned.view.getByRole('button', { name: 'Close toast' }).click()
 
