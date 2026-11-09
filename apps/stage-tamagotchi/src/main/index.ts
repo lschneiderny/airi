@@ -52,6 +52,7 @@ import { setupGlobalShortcutService } from './services/electron/global-shortcut'
 import { setupPermissionHandlers } from './services/electron/media-permissions'
 import { setupSherpawModelAssets } from './services/electron/sherpaw-model-assets'
 import { isWindowRectsSpikeEnabled, setupWindowRectsSpike } from './services/electron/window-rects-spike'
+import { createLinuxDesktopBridge } from './services/linux-desktop'
 import { setupTray } from './tray'
 import { setupAboutWindowReusable } from './windows/about'
 import { setupBeatSync } from './windows/beat-sync'
@@ -173,6 +174,7 @@ if (shouldStartMainProcess) {
 
 let fileLogger: FileLoggerHandle = nullFileLoggerHandle
 let skipFileLogging = false
+let appExiting = false
 
 app.whenReady().then(async () => {
   if (!shouldStartMainProcess) {
@@ -194,6 +196,23 @@ app.whenReady().then(async () => {
   })
 
   injeca.setLogger(createLoggLogger(useLogg('injeca').useGlobalConfig()))
+
+  if (isLinux) {
+    const linuxDesktop = injeca.provide('services:linux-desktop', () => createLinuxDesktopBridge({
+      env,
+      tempDir: env.XDG_RUNTIME_DIR ?? app.getPath('temp'),
+    }))
+    const { bridge } = await injeca.resolve({ bridge: linuxDesktop })
+    if (appExiting) {
+      await bridge.stop()
+      return
+    }
+    onAppBeforeQuit(() => bridge.stop())
+    // The bridge bounds startup, including bus connection and Hello, to 2 s.
+    await bridge.start()
+    if (appExiting)
+      return
+  }
 
   const appConfig = injeca.provide('configs:app', () => createGlobalAppConfig())
   const goNetwork = injeca.provide('services:opencode-go', () => {
@@ -479,8 +498,6 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
-
-let appExiting = false
 
 // Clean up server and intervals when app quits
 async function handleAppExit() {

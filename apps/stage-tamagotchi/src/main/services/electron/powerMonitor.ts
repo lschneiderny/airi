@@ -1,12 +1,15 @@
 import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import type { BrowserWindow } from 'electron'
 
+import type { LinuxDesktopBridge } from '../linux-desktop'
+
 import { electronEvents } from '@proj-airi/electron-eventa'
 import { powerMonitor } from 'electron'
+import { isLinux } from 'std-env'
 
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
 
-export function createPowerMonitorService(params: { context: ReturnType<typeof createContext>['context'], window: BrowserWindow }) {
+export function createPowerMonitorService(params: { context: ReturnType<typeof createContext>['context'], window: BrowserWindow, bridge?: Pick<LinuxDesktopBridge, 'onLock'> }) {
   const onSuspend = () => params.context.emit(electronEvents.powerMonitor.suspended, undefined)
   const onResume = () => params.context.emit(electronEvents.powerMonitor.resumed, undefined)
   const onLockScreen = () => params.context.emit(electronEvents.powerMonitor.lockScreen, undefined)
@@ -14,14 +17,18 @@ export function createPowerMonitorService(params: { context: ReturnType<typeof c
 
   powerMonitor.on('suspend', onSuspend)
   powerMonitor.on('resume', onResume)
-  powerMonitor.on('lock-screen', onLockScreen)
-  powerMonitor.on('unlock-screen', onUnlockScreen)
+  const offLock = isLinux ? params.bridge?.onLock(locked => locked ? onLockScreen() : onUnlockScreen()) : undefined
+  if (!isLinux) {
+    powerMonitor.on('lock-screen', onLockScreen)
+    powerMonitor.on('unlock-screen', onUnlockScreen)
+  }
 
   function remove() {
     powerMonitor.off('suspend', onSuspend)
     powerMonitor.off('resume', onResume)
     powerMonitor.off('lock-screen', onLockScreen)
     powerMonitor.off('unlock-screen', onUnlockScreen)
+    offLock?.()
   }
 
   // The listeners live on the app-wide power monitor, so they go with the

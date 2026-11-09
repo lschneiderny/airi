@@ -21,7 +21,7 @@ export class LockSource {
   private starting: Promise<'logind' | 'screensaver' | null> | undefined
 
   constructor(private readonly options: {
-    readonly systemBus: DbusTransport
+    readonly systemBus: DbusTransport | null
     readonly sessionBus: DbusTransport
     readonly onLock: (locked: boolean) => void
   }) {}
@@ -42,7 +42,7 @@ export class LockSource {
   private async connect(generation: number): Promise<'logind' | 'screensaver' | null> {
     const { systemBus, sessionBus } = this.options
     const path = await this.read(async () => {
-      if (await systemBus.getNameOwner(login) === null)
+      if (!systemBus || await systemBus.getNameOwner(login) === null)
         return null
       return systemBus.call<unknown>({
         destination: login,
@@ -55,7 +55,7 @@ export class LockSource {
     })
     if (generation !== this.generation)
       return null
-    if (typeof path === 'string' && /^\/(?:\w+\/)*\w+$/.test(path)) {
+    if (systemBus && typeof path === 'string' && /^\/(?:\w+\/)*\w+$/.test(path)) {
       const read = () => systemBus.getProperty<unknown>(login, path, loginSession, 'LockedHint')
       this.unsubscribe = systemBus.onSignal({ sender: login, path, interface: properties, member: 'PropertiesChanged' }, ([iface, changed, invalidated]) => {
         if (iface !== loginSession || generation !== this.generation)

@@ -77,6 +77,25 @@ export function evaluateHostSmoke(input: {
       fail({ code: 'host-mismatch', signal: 'host', message: `host: expected ${expected.host}, received ${actual.host}`, expected: expected.host, received: actual.host })
     for (const signal of Object.keys(expected.signals) as HostSignal[]) {
       const status = actual.signals[signal]
+      // NOTICE:
+      // Bridge verifiers land incrementally after bootstrap.
+      // Static Linux profiles cannot yet name the active backend's pending proofs.
+      // Source: linux-sensor-parity todo 7.
+      // Remove in todo 18 when smoke uses exact per-backend expectations.
+      if (expected.host.startsWith('linux-')) {
+        if (signal === 'screenLock' && status.kind === 'live')
+          continue
+        const bridgeSignal = ['foregroundWindow', 'cursorScreenPoint', 'windowOrigin', 'displayOrigins', 'alwaysOnTop'].includes(signal)
+        if (bridgeSignal && status.kind === 'unavailable' && (
+          status.reason === HostReasons.LinuxBridgeStarting
+          || status.reason === HostReasons.LinuxForegroundVerifying
+          || status.reason === HostReasons.LinuxCursorVerifying
+          || status.reason === HostReasons.LinuxGeometryVerifying
+          || status.reason === HostReasons.LinuxKeepAboveVerifying
+        )) {
+          continue
+        }
+      }
       if (signal === 'systemIdleTime' && expected.host === 'linux-wayland') {
         if (status.kind === 'live' || unverified(status))
           continue

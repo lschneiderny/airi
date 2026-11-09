@@ -1,13 +1,16 @@
 import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import type { ResizeDirection } from '@proj-airi/electron-eventa'
 import type { BrowserWindow, BrowserWindowConstructorOptions, Rectangle } from 'electron'
+import type { ProvidedBy } from 'injeca'
 
 import type { I18n } from '../../libs/i18n'
 import type { ServerChannel } from '../../services/airi/channel-server'
+import type { LinuxDesktopBridge } from '../../services/linux-desktop'
 
 import { isRendererUnavailable } from '@proj-airi/electron-vueuse/main'
 import { shell } from 'electron'
-import { isMacOS, isWindows } from 'std-env'
+import { injeca } from 'injeca'
+import { isLinux, isMacOS, isWindows } from 'std-env'
 
 import { createServerChannelService } from '../../services/airi/channel-server'
 import { createI18nService } from '../../services/airi/i18n'
@@ -190,7 +193,10 @@ export async function setupBaseWindowElectronInvokes(params: {
   createWindowService({ context: params.context, window: params.window })
   createAppService({ context: params.context, window: params.window })
   createAppVersionService({ window: params.window })
-  createPowerMonitorService({ context: params.context, window: params.window })
+  const { bridge } = isLinux
+    ? await injeca.resolve({ bridge: 'services:linux-desktop' as ProvidedBy<LinuxDesktopBridge> })
+    : { bridge: undefined }
+  createPowerMonitorService({ context: params.context, window: params.window, bridge })
   createDesktopActivityService({ context: params.context, window: params.window })
   createForegroundWindowService({ context: params.context, window: params.window, getSidecarPid: params.getSidecarPid })
   createSystemPreferencesService({ context: params.context, window: params.window })
