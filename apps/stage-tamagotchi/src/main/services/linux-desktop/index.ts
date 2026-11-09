@@ -10,6 +10,8 @@ import { reportLinuxDesktop } from '../electron/host-capabilities'
 import { HyprlandBackend } from './backends/hyprland'
 import { KwinBackend } from './backends/kwin'
 import { SwayBackend } from './backends/sway'
+import { X11EwmhBackend } from './backends/x11'
+import { X11BackendError } from './backends/x11/binding'
 import { LinuxDesktopBridge } from './bridge'
 import { DbusTransport } from './dbus/transport'
 import { detectLinuxDesktop } from './detect'
@@ -29,12 +31,34 @@ export function createLinuxDesktopBridge(options: {
   const systemAddress = env.DBUS_SYSTEM_BUS_ADDRESS ?? 'unix:path=/var/run/dbus/system_bus_socket'
   const ownPids = () => [...new Set([pid, ...app.getAppMetrics().map(metric => metric.pid)])]
   type Factory = (bus: DbusTransport, callbacks: BridgeCallbacks) => DesktopDriver | undefined
-  const { candidate } = detectLinuxDesktop(env)
-  // Each backend receives its socket or runtime directory from `env` only;
-  // a missing value fails startup with the backend's reason.
+  const { session, candidate } = detectLinuxDesktop(env)
+  // Each backend receives its display, socket or runtime directory from `env`
+  // only; a missing value fails startup with the backend's reason. Detection
+  // selects `x11-ewmh` only for X11 sessions, never XWayland.
   const backends: Partial<Record<LinuxDesktopBackend, Factory>> = {
-    kwin: (transport, callbacks) => new KwinBackend({ transport, tempDir, ownPids, ...callbacks }),
-    sway: (_bus, { onMessage, onFailure, onState }) => {
+    'kwin': (transport, callbacks) => new KwinBackend({ transport, tempDir, ownPids, ...callbacks }),
+    'x11-ewmh': (_bus, { onFailure, onState }) => {
+      const backend = new X11EwmhBackend({ sessionType: session, display: env.DISPLAY ?? '' })
+      return {
+        start: async () => {
+          await backend.start()
+          onState('ready')
+        },
+        stop: () => backend.stop(),
+        readActive: () => {
+          try {
+            const active = backend.activeWindow()
+            return active && { ...active, desktopFileName: '' }
+          }
+          catch (error) {
+            void backend.stop()
+            onFailure(error instanceof X11BackendError ? error.reason : 'transport-failed')
+            return null
+          }
+        },
+      }
+    },
+    'sway': (_bus, { onMessage, onFailure, onState }) => {
       const backend = new SwayBackend({ socketPath: env.SWAYSOCK ?? '', ownPids, onFailure })
       backend.onActive(payload => onMessage({ method: 'Active', payload }))
       backend.onOwnWindows(payload => onMessage({ method: 'OwnWindows', payload: [...payload] }))
@@ -47,7 +71,7 @@ export function createLinuxDesktopBridge(options: {
       }
     },
     // Todo 9 owns the renderer-paced cursor tick that calls `requestCursor`.
-    hyprland: (_bus, { onMessage, onFailure, onState }) => {
+    'hyprland': (_bus, { onMessage, onFailure, onState }) => {
       const backend = new HyprlandBackend({
         env: { XDG_RUNTIME_DIR: env.XDG_RUNTIME_DIR, HYPRLAND_INSTANCE_SIGNATURE: env.HYPRLAND_INSTANCE_SIGNATURE },
         ownPids,
@@ -65,8 +89,8 @@ export function createLinuxDesktopBridge(options: {
     },
     // Reason-only desktops: no driver, so the bridge reports ready at once with no samples.
     // GNOME would need a Shell extension, which AIRI neither ships nor downloads.
-    gnome: () => undefined,
-    none: () => undefined,
+    'gnome': () => undefined,
+    'none': () => undefined,
   }
   const factory = backends[candidate]
   return new LinuxDesktopBridge({

@@ -91,16 +91,19 @@ const ffi = vi.hoisted(() => {
       return id
     },
     unregister: (id: bigint) => callbacks.delete(id),
-    view: (pointer: bigint) => {
-      const value = allocated.get(pointer)?.data
-      if (!(value instanceof Uint8Array))
-        throw new Error('Expected byte property')
-      return new Uint8Array(value).buffer
+    // Electron's V8 memory cage rejects external buffers, so koffi.view aborts the main process there.
+    view: () => {
+      throw new Error('External buffers are not allowed')
     },
-    decode: (pointer: bigint, type: string) => {
+    decode: (pointer: bigint, type: string, count: number) => {
+      const data = allocated.get(pointer)?.data
+      if (type === 'uint8_t') {
+        if (!(data instanceof Uint8Array))
+          throw new Error('Expected byte property')
+        return data.slice(0, count)
+      }
       if (type !== 'unsigned long')
         throw new Error('Xlib format-32 must use native unsigned long stride')
-      const data = allocated.get(pointer)?.data
       return Array.isArray(data) ? new BigUint64Array(data.map(BigInt)) : data
     },
   }
