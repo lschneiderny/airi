@@ -1,0 +1,11 @@
+{
+  "address": "0xabc",
+  "mapped": true,
+  "hidden": false,
+  "at": [-100, 20],
+  "size": [800, 600],
+  "class": "org.kde.konsole",
+  "title": "Untrusted >> title, keep as data",
+  "pid": 42,
+  "fullscreen": 2
+}

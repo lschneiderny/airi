@@ -1,0 +1,4 @@
+activewindowv2>>abc
+windowtitlev2>>abc,Untrusted >> title, keep as data
+fullscreen>>1
+activewindowv2>>

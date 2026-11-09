@@ -1,0 +1,22 @@
+[
+  {
+    "address": "0xdef",
+    "mapped": true,
+    "at": [-10, 50],
+    "size": [400, 500],
+    "class": "airi",
+    "title": "airi-bind-1",
+    "pid": 100,
+    "fullscreen": 0
+  },
+  {
+    "address": "0xabc",
+    "mapped": true,
+    "at": [0, 0],
+    "size": [1920, 1080],
+    "class": "browser",
+    "title": "Private other window",
+    "pid": 42,
+    "fullscreen": 2
+  }
+]
