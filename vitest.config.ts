@@ -1,7 +1,8 @@
 import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
-import { providerInferenceProjects } from './packages/provider-inference/vitest.config'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { providerInferenceProjects } from './packages/provider-inference/vitest.config.ts'
 
 export default withCpuSlots(defineConfig({
   test: {

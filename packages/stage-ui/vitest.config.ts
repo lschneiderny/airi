@@ -12,8 +12,10 @@ import { mergeConfigs } from 'unocss'
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
-import { sharedUnoConfig } from '../../uno.config'
-import { domStorageExecArgv } from '../../vitest.dom-storage'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { sharedUnoConfig } from '../../uno.config.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { domStorageExecArgv } from '../../vitest.dom-storage.ts'
 
 // Vitest's default browser viewport, stated explicitly because the Playwright page below must match it.
 const testViewport = { width: 414, height: 896 }

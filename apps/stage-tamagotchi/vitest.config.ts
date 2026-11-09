@@ -11,7 +11,8 @@ import { playwright } from '@vitest/browser-playwright'
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
-import unoConfig from './uno.config'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import unoConfig from './uno.config.ts'
 
 export default withCpuSlots(defineConfig({
   root: import.meta.dirname,

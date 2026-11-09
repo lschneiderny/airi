@@ -9,7 +9,8 @@ import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
 
-import { sharedUnoConfig } from '../../uno.config'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { sharedUnoConfig } from '../../uno.config.ts'
 
 export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
