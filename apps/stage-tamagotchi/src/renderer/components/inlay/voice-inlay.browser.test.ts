@@ -12,8 +12,9 @@ import VoiceInlay from './voice-inlay.vue'
 
 import 'virtual:uno.css'
 
-const { returnHome, setIgnoreMouseEvents, registerShortcut, unregisterShortcut, shortcutListeners, cursor, isWayland } = vi.hoisted(() => ({
+const { returnHome, setPresent, setIgnoreMouseEvents, registerShortcut, unregisterShortcut, shortcutListeners, cursor, isWayland } = vi.hoisted(() => ({
   returnHome: vi.fn(),
+  setPresent: vi.fn(),
   setIgnoreMouseEvents: vi.fn(),
   registerShortcut: vi.fn(async () => ({ ok: true })),
   unregisterShortcut: vi.fn(async () => {}),
@@ -28,9 +29,10 @@ const { returnHome, setIgnoreMouseEvents, registerShortcut, unregisterShortcut, 
 // The inlay talks to its Electron window through these IPC composables. The cursor starts outside the page.
 vi.mock('@proj-airi/electron-vueuse', async () => {
   const { shallowRef } = await import('vue')
-  const { electronInlayReturnHome, electronShortcutRegister, electronShortcutUnregister } = await import('../../../shared/eventa')
+  const { electronInlayReturnHome, electronInlaySetPresent, electronShortcutRegister, electronShortcutUnregister } = await import('../../../shared/eventa')
   const invokes = new Map<unknown, unknown>([
     [electronInlayReturnHome, returnHome],
+    [electronInlaySetPresent, setPresent],
     [electronShortcutRegister, registerShortcut],
     [electronShortcutUnregister, unregisterShortcut],
   ])
@@ -64,6 +66,7 @@ afterEach(() => {
   cleanups.splice(0).reverse().forEach(cleanup => cleanup())
   isWayland.value = false
   returnHome.mockReset()
+  setPresent.mockReset()
   setIgnoreMouseEvents.mockReset()
   registerShortcut.mockClear()
   unregisterShortcut.mockClear()
@@ -129,6 +132,38 @@ describe('voice inlay', () => {
 
     await expect.poll(() => setIgnoreMouseEvents.mock.calls.at(-1)).toEqual([[false, { forward: true }]])
     expect(inlayView()).toBe('hidden')
+  })
+
+  it('hides on Wayland while it paints nothing, and appears for speech, so an empty window never takes clicks', async () => {
+    isWayland.value = true
+    renderInlay()
+    await expect.poll(() => setPresent.mock.calls.at(-1)).toEqual([{ present: false }])
+
+    publish({ drafts: [], input: { ...capturing, text: '', segments: [] } })
+    await expect.poll(inlayView).toBe('capsule')
+    expect(setPresent.mock.calls.at(-1)).toEqual([{ present: true }])
+
+    publish({ drafts: [] })
+    await expect.poll(inlayView, { timeout: 3000 }).toBe('hidden')
+    await expect.poll(() => setPresent.mock.calls.at(-1)).toEqual([{ present: false }])
+  })
+
+  it('hides again on Wayland when the main window shows it before any content arrives', async () => {
+    isWayland.value = true
+    renderInlay()
+    await expect.poll(() => setPresent.mock.calls.length).toBe(1)
+
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(setPresent.mock.calls).toEqual([[{ present: false }], [{ present: false }]])
+  })
+
+  it('stays shown on hosts that forward mouse events, so the first speech appears without delay', async () => {
+    renderInlay()
+    publish({ drafts: [], input: { ...capturing, text: '', segments: [] } })
+    await expect.poll(inlayView).toBe('capsule')
+    publish({ drafts: [] })
+    await expect.poll(inlayView, { timeout: 3000 }).toBe('hidden')
+    expect(setPresent).not.toHaveBeenCalled()
   })
 
   it('shows a capsule when capture starts, and grows into the card when text arrives', async () => {

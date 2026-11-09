@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
+import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { RewriteText } from '@proj-airi/stage-ui/components'
 import { VoiceDrafts } from '@proj-airi/stage-ui/components/scenarios/chat'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
@@ -9,7 +10,7 @@ import { useEventListener, useTimeoutFn } from '@vueuse/core'
 import { computed, nextTick, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { electronInlayReturnHome } from '../../../shared/eventa'
+import { electronInlayReturnHome, electronInlaySetPresent } from '../../../shared/eventa'
 import { useChatFloatingClickThrough } from '../../composables/use-chat-floating-click-through'
 import { useGlobalEscape } from '../../composables/use-global-escape'
 
@@ -113,6 +114,30 @@ const shown = computed<InlayView>(() => view.value === 'hidden' && sending.value
 watch(shown, () => nextTick(() => hitTest()), { flush: 'post' })
 
 // Speech or a draft keeps the inlay where the user dragged it. Only an idle inlay returns home.
+/**
+ * Whether the window must leave the screen while it paints nothing. A host that cannot forward mouse events to a
+ * click-through window, such as native Wayland, keeps the window interactive so that the card stays usable. An
+ * empty window there would take every click over its area, above every other app. So the inlay hides while it shows
+ * nothing and appears without focus when content arrives. A host that forwards mouse events keeps the window shown,
+ * so the first speech appears without delay.
+ */
+const hostCapabilities = useHostCapabilitiesStore()
+const setPresent = useElectronEventaInvoke(electronInlaySetPresent)
+const hidesWhenEmpty = computed(() => {
+  const status = hostCapabilities.status('clickThroughForward')?.kind
+  return status !== undefined && status !== 'live'
+})
+function syncPresence() {
+  if (hidesWhenEmpty.value)
+    void setPresent({ present: shown.value !== 'hidden' })
+}
+watch([shown, hidesWhenEmpty], syncPresence, { immediate: true })
+// The main window shows the inlay at startup and when speech starts. An inlay that has nothing to show yet hides again.
+useEventListener(document, 'visibilitychange', () => {
+  if (document.visibilityState === 'visible')
+    syncPresence()
+})
+
 const homeTimer = useTimeoutFn(() => void returnHome(), RETURN_HOME_DELAY_MS, { immediate: false })
 watch(shown, (value) => {
   if (value === 'hidden')

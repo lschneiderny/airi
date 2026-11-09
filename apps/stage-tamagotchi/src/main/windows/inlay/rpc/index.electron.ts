@@ -7,7 +7,7 @@ import type { GlobalShortcutService } from '../../../services/electron/global-sh
 import { defineInvokeHandler } from '@moeru/eventa'
 import { ipcMain } from 'electron'
 
-import { electronInlayReturnHome } from '../../../../shared/eventa'
+import { electronInlayReturnHome, electronInlaySetPresent } from '../../../../shared/eventa'
 import { createWindowContext } from '../../../libs/electron/window-context'
 import { setupBaseWindowElectronInvokes } from '../../shared/window'
 
@@ -39,5 +39,15 @@ export async function setupInlayWindowInvokes(params: {
   defineInvokeHandler(context, electronInlayReturnHome, (_, options) => {
     if (params.inlayWindow.webContents.id === options?.raw.ipcMainEvent.sender.id)
       params.returnHome()
+  })
+
+  defineInvokeHandler(context, electronInlaySetPresent, (request, options) => {
+    const window = params.inlayWindow
+    if (window.isDestroyed() || window.webContents.id !== options?.raw.ipcMainEvent.sender.id)
+      return
+    if (!request?.present)
+      window.hide()
+    else if (!window.isVisible())
+      window.showInactive()
   })
 }

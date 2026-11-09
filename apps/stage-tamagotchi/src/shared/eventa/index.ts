@@ -43,6 +43,11 @@ export const electronOpenSettings = defineInvokeEventa<void, { route?: string }>
 export const electronOpenInlay = defineInvokeEventa<void>('eventa:invoke:electron:windows:inlay:open')
 /** Moves a dragged inlay back to the bottom center of the primary display. The inlay calls it when it has been idle. */
 export const electronInlayReturnHome = defineInvokeEventa<void>('eventa:invoke:electron:windows:inlay:return-home')
+/**
+ * Shows the inlay without focus, or hides it. The inlay calls it on hosts that cannot forward mouse events to a
+ * click-through window, where an empty but shown inlay would take every click over its area.
+ */
+export const electronInlaySetPresent = defineInvokeEventa<void, { present: boolean }>('eventa:invoke:electron:windows:inlay:set-present')
 export const electronSettingsNavigate = defineEventa<{ route: string }>('eventa:event:electron:windows:settings:navigate')
 export const electronOpenChat = defineInvokeEventa('eventa:invoke:electron:windows:chat:open')
 
