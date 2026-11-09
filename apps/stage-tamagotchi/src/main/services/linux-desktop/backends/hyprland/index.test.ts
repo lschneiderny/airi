@@ -32,7 +32,7 @@ describe('hyprland socket backend', () => {
     const path = join(directory, 'hypr', 'test')
     await mkdir(path, { recursive: true })
     replies = Object.fromEntries(await Promise.all(
-      [['j/activewindow', 'activewindow'], ['j/clients', 'clients'], ['j/cursorpos', 'cursorpos']].map(async ([command, name]) =>
+      [['j/activewindow', 'activewindow'], ['j/clients', 'clients'], ['j/cursorpos', 'cursorpos'], ['j/monitors', 'monitors']].map(async ([command, name]) =>
         [command, await readFile(new URL(`./__fixtures__/${name}.json`, import.meta.url), 'utf8')]),
     ))
     requests = []
@@ -95,7 +95,7 @@ describe('hyprland socket backend', () => {
     return next.promise
   }
 
-  it('refreshes Active after a split event and writes only the three read requests', async () => {
+  it('refreshes Active after a split event and writes only the four read requests', async () => {
     await backend.start()
     expect(backend.ownWindows()).toEqual([{ id: '0xdef', pid: 100, caption: 'airi-bind-1', x: -10, y: 50, width: 400, height: 500 }])
     replies['j/activewindow'] = replies['j/activewindow'].replace('org.kde.konsole', 'new.app')
@@ -107,8 +107,38 @@ describe('hyprland socket backend', () => {
     await backend.requestCursor()
     expect(backend.cursor()).toEqual({ x: -120, y: 340 })
     // This guards the read-only compositor protocol boundary.
-    expect(requests.every(command => ['j/activewindow', 'j/clients', 'j/cursorpos'].includes(command))).toBe(true)
-    expect(new Set(requests)).toEqual(new Set(['j/activewindow', 'j/clients', 'j/cursorpos']))
+    expect(requests.every(command => ['j/activewindow', 'j/clients', 'j/cursorpos', 'j/monitors'].includes(command))).toBe(true)
+    expect(new Set(requests)).toEqual(new Set(['j/activewindow', 'j/clients', 'j/cursorpos', 'j/monitors']))
+  })
+
+  it('publishes monitors as Outputs before the first snapshot completes and refreshes them on monitor events', async () => {
+    await backend.start()
+    const expected = [
+      { name: 'DP-1', x: 0, y: 0, width: 1920, height: 1080, scale: 1 },
+      { name: 'HDMI-A-1', x: 1920, y: -100, width: 2560, height: 1440, scale: 1.5 },
+    ]
+    expect(backend.outputs()).toEqual(expected)
+    expect(messages.filter(message => message.method === 'Outputs')).toEqual([{ method: 'Outputs', payload: expected }])
+    expect(messages.findIndex(message => message.method === 'Outputs')).toBeLessThan(messages.findIndex(message => message.method === 'Active'))
+    for (const event of ['monitoradded>>HDMI-A-1\n', 'monitorremovedv2>>1,HDMI-A-1,Vendor Panel\n']) {
+      replies['j/monitors'] = JSON.stringify([{ ...JSON.parse(replies['j/monitors'])[0], width: 2560, height: 1440 }])
+      const changed = Promise.withResolvers<HyprlandMessage>()
+      receive = (message) => {
+        if (message.method === 'Outputs')
+          changed.resolve(message)
+      }
+      eventSocket.write(event)
+      expect(await changed.promise).toEqual({ method: 'Outputs', payload: [{ name: 'DP-1', x: 0, y: 0, width: 2560, height: 1440, scale: 1 }] })
+    }
+    expect(failures).not.toHaveBeenCalled()
+  })
+
+  it('fails closed without publishing Outputs when the monitors reply is malformed', async () => {
+    replies['j/monitors'] = 'private-name is not JSON'
+    await expect(backend.start()).rejects.toMatchObject({ bridgeFailure: 'transport-failed' })
+    expect(failures).toHaveBeenCalledExactlyOnceWith('transport-failed')
+    expect(messages.some(message => message.method === 'Outputs')).toBe(false)
+    expect(backend.outputs()).toBeNull()
   })
 
   it('publishes null without throwing for malformed activewindow replies', async () => {
@@ -130,7 +160,7 @@ describe('hyprland socket backend', () => {
   it('keeps cursor requests off until streaming and coalesces overlapping ticks', async () => {
     await backend.start()
     await backend.requestCursor()
-    expect(requests).toEqual(['j/activewindow', 'j/clients'])
+    expect(requests).toEqual(['j/activewindow', 'j/clients', 'j/monitors'])
     await backend.setCursorStreaming(true)
     held = 'j/cursorpos'
     const first = backend.requestCursor()
@@ -159,7 +189,7 @@ describe('hyprland socket backend', () => {
     eventSocket.end()
     await failed.promise
     expect(failures).toHaveBeenCalledExactlyOnceWith('transport-failed')
-    expect([backend.activeWindow(), backend.ownWindows(), backend.cursor()]).toEqual([null, null, null])
+    expect([backend.activeWindow(), backend.ownWindows(), backend.cursor(), backend.outputs()]).toEqual([null, null, null, null])
     await backend.requestCursor()
   })
 

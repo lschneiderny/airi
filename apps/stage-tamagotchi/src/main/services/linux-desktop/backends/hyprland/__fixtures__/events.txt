@@ -2,3 +2,7 @@ activewindowv2>>abc
 windowtitlev2>>abc,Untrusted >> title, keep as data
 fullscreen>>1
 activewindowv2>>
+monitoradded>>HDMI-A-1
+monitoraddedv2>>1,HDMI-A-1,Vendor Panel (HDMI-A-1)
+monitorremoved>>HDMI-A-1
+monitorremovedv2>>1,HDMI-A-1,Vendor Panel (HDMI-A-1)
