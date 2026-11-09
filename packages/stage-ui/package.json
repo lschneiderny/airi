@@ -32,6 +32,7 @@
     "./features/devtools/motion/live2d": "./src/features/devtools/motion/live2d/index.ts",
     "./features/devtools/motion/mmd": "./src/features/devtools/motion/mmd/index.ts",
     "./features/devtools/motion/natural": "./src/features/devtools/motion/natural/index.ts",
+    "./features/host-capabilities/notice-settings": "./src/features/host-capabilities/notice-settings.ts",
     "./features/motions/live2d": "./src/features/motions/live2d/index.ts",
     "./features/situation/settings": "./src/features/situation/settings.ts",
     "./libs/inference/adapters/*": "./src/libs/inference/adapters/*.ts",

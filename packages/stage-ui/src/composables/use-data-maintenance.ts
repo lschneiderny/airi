@@ -7,6 +7,7 @@ import { useLive2dParams } from '@proj-airi/stage-ui-live2d/stores/model-paramet
 import { useMMD } from '@proj-airi/stage-ui-mmd/stores/mmd'
 import { useModelStore } from '@proj-airi/stage-ui-three/stores/model-store'
 
+import { useHostNoticeSettings } from '../features/host-capabilities/notice-settings'
 import { useLive2DMotionMagicSettings } from '../features/motions/live2d'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 import { useSituationSettings } from '../features/situation/settings'
@@ -60,6 +61,7 @@ export function useDataMaintenance() {
   const situationStore = useSituationStore()
   const situationSettingsStore = useSituationSettings()
   const expressionPerformanceSettingsStore = useExpressionPerformanceSettings()
+  const hostNoticeSettingsStore = useHostNoticeSettings()
   const hearingStore = useHearingStore()
   const homeAssistantStore = useHomeAssistantStore()
   const memoryStore = useMemoryStore()
@@ -149,6 +151,7 @@ export function useDataMaintenance() {
     mmdStore.resetState()
     await situationSettingsStore.reset()
     await expressionPerformanceSettingsStore.reset()
+    await hostNoticeSettingsStore.reset()
     mcpStore.resetState()
     onboardingStore.resetSetupState()
     airiCardStore.resetState()

@@ -11,6 +11,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createApp, nextTick, toRaw } from 'vue'
 import { createI18n } from 'vue-i18n'
 
+import { useHostNoticeSettings } from '../features/host-capabilities/notice-settings'
 import { useExpressionPerformanceSettings } from '../features/performance/settings'
 import { useSituationSettings } from '../features/situation/settings'
 import { injectKeyPiniaSynced } from '../libs/pinia/synced-context'
@@ -333,7 +334,7 @@ it('removes downloaded speech models when all data is deleted', async () => {
   await expect(origin.getDirectoryHandle('airi-model-assets')).rejects.toThrow()
 })
 
-it('forgets derived conversation state, presence, expression, and MMD settings when all data is deleted', async () => {
+it('forgets derived conversation state, presence, expression, host notice, and MMD settings when all data is deleted', async () => {
   vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
   localStorage.setItem('settings/situation-inner', JSON.stringify({ v: 1, threads: [], savedAtMs: 1 }))
   // Documents of a model that is not loaded must go too.
@@ -343,9 +344,12 @@ it('forgets derived conversation state, presence, expression, and MMD settings w
   await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
   const situationSettings = useSituationSettings(pinia)
   const expressionSettings = useExpressionPerformanceSettings(pinia)
+  const hostNotice = useHostNoticeSettings(pinia)
   const mmd = useMMD(pinia)
   await situationSettings.update({ shareForegroundWindow: false })
   await expressionSettings.update({ bands: false })
+  await hostNotice.dismiss('linux-wayland:wayland-cursor-unreported')
+  expect(JSON.parse(localStorage.getItem('settings/host-notice')!).dismissedKeys).toEqual(['linux-wayland:wayland-cursor-unreported'])
   mmd.physicsEnabled = false
 
   await maintenance.deleteAllData()
@@ -354,6 +358,8 @@ it('forgets derived conversation state, presence, expression, and MMD settings w
   expect(Object.keys(localStorage).filter(key => key.startsWith('expression-'))).toEqual([])
   expect(situationSettings.document.shareForegroundWindow).toBe(true)
   expect(expressionSettings.document.bands).toBe(true)
+  expect(hostNotice.document.dismissedKeys).toEqual([])
+  expect(JSON.parse(localStorage.getItem('settings/host-notice')!).dismissedKeys).toEqual([])
   expect(mmd.physicsEnabled).toBe(true)
 })
 

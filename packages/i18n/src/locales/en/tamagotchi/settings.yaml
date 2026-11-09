@@ -112,6 +112,10 @@ pages:
         macos-capture-audio-requires-14-2: System audio capture needs macOS 14.2 or newer.
         web-sandbox: The browser sandbox does not expose this signal.
         web-page-pointer-only: The browser reports the pointer only while it is over the page.
+      notice:
+        title: AIRI cannot sense everything on this system
+        body: 'Unavailable here: {signals}. She may not notice when you step away or come back.'
+        details: Details
 devtools:
   title: Developer
   pages:
