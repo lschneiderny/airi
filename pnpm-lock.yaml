@@ -3353,6 +3353,9 @@ importers:
 
   packages/qa-tools:
     dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: 'catalog:'
+        version: 1.30.0(supports-color@10.2.2)(zod@4.4.3)
       '@moeru/std':
         specifier: 'catalog:'
         version: 0.1.0-beta.17
@@ -3401,6 +3404,9 @@ importers:
       vue-i18n:
         specifier: 'catalog:'
         version: 11.4.9(vue@3.5.41(typescript@6.0.3))
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

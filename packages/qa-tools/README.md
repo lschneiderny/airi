@@ -21,6 +21,7 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 | `pnpm qa:host smoke [--xwayland] [--expect-idle verified\|unverified]` | Launch a temporary Electron profile and compare host signals with the runner's capabilities, then observe idle delivery every 5 seconds for 180 seconds. |
 | `pnpm qa:smoke [--model <path>] [--settle <seconds>] [--allow <json>] [--out <dir>]` | Start the app from a fresh profile and fail on any renderer exception, `console.error`, browser error, or main-process error in any window. See [Clean-start smoke](#clean-start-smoke). |
 | `pnpm qa:app run --model <path> --say <text> [options]` | Run a disposable experience session: replayed chat and speech, real model import, events, and a screenshot. See [App experience sessions](#app-experience-sessions). |
+| `pnpm qa:mcp` | Serve the `airi-qa` MCP server over stdio, so an agent can start the app, chat, screenshot, and read errors through tools. See [Agent MCP server](#agent-mcp-server). |
 | `pnpm qa:motion validate-scorer --level t1 [--sections aa,zero,mutations,unmutated,determinism] [--seeds N] [--workers N] [--timeout-minutes N]` | Evaluate scorer false positives, mutation detection, unmutated gate power, and determinism. A missed validation threshold exits 1 by design. |
 | `pnpm qa:report <runDir> [<runDir>...] [--out <file>]` | Combine gate, T3, and test-run evidence into a self-contained HTML review page. |
 | `pnpm qa:stage measure --mode <window\|desktop> --port <cdp port> [--seconds 60] [--attempts 3] --out <json>` | Measure the MMD frame budget of a running app in one host mode. See [Stage gates](#stage-gates). |
@@ -236,6 +237,25 @@ Live acceptance so far covers one configuration: on 2026-11-09, on Linux in `qa:
 ```bash
 pnpm -F @proj-airi/qa-tools exec vitest run --project node src/app
 ```
+
+## Agent MCP server
+
+`pnpm qa:mcp` serves the `airi-qa` MCP server over stdio. It drives one disposable app session with the same launch, seed, onboarding, import, send, screenshot, and teardown helpers as `qa:app`, and the error collector of `qa:smoke`. The repository's `.mcp.json` registers it for Claude Code. For another client, register the command `pnpm --silent qa:mcp` with the repository as its working directory; for example, `codex mcp add airi-qa -- pnpm --silent --dir <repo> qa:mcp`.
+
+| Tool | Does |
+| --- | --- |
+| `airi_start` | Launches the development app with a fresh temporary profile, the in-process replay LLM and speech server, and onboarding complete, then waits for the bridge. Optional `model` (and `kind`) imports and selects a model; optional `script` loads a `qa:llm` replay script. |
+| `airi_send` | Sends a chat message through the real chat path and waits for a completed turn plus the `expect` kinds. `reply` queues the assistant reply for this turn; without a script, every send needs one. |
+| `airi_state`, `airi_events` | Read the bridge state and the event log. |
+| `airi_import_model` | Imports and selects another model. |
+| `airi_screenshot` | Returns the stage window as an image and saves it in the run directory. |
+| `airi_errors` | Lists renderer errors from every window and main-process error lines since `airi_start`. |
+| `airi_eval` | Evaluates an expression in the stage window. |
+| `airi_stop` | Tears the session down and returns the teardown report. |
+
+On Linux outside a QA display, `airi_start` starts `qa:display` session `mcp` and launches the app there; `airi_stop` stops it again. A server that itself runs inside a QA display uses that one. Starting the server costs nothing; the app, its exclusive CPU lease, and the display exist only between `airi_start` and `airi_stop`. `airi_start` can wait in the CPU slot queue behind builds and other QA runs. Closing the client, SIGINT, and SIGTERM tear a running session down. Each session writes `.temp/qa/<timestamp>-mcp-session/` with `app.log`, `requests.jsonl`, and the screenshots.
+
+On 2026-11-09 a stdio client on Linux started a session outside a QA display with the ForBOOTH Live2D directory, sent a message with a scripted ACT reply and received `act`, `turn`, and `tts` events, took a screenshot, evaluated an expression, listed errors, and stopped with a clean teardown that also stopped the `mcp` display.
 
 ## Character state simulator
 
