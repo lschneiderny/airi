@@ -19,10 +19,22 @@ optional: its absence leaves ScreenSaver on the session bus available.
 
 Detection checks Hyprland's instance signature, sway's socket, KDE, GNOME,
 then X11 and finally `none`, in that order. Socket evidence takes precedence
-over inherited desktop names. The factory's `backends` map currently registers
-only KWin. X11 EWMH, sway and Hyprland modules remain unregistered and resolve
+over inherited desktop names. The factory's `backends` map registers KWin
+and Hyprland. The X11 EWMH and sway modules remain unregistered and resolve
 to `none` until their integration todos land. GNOME remains reason-only.
 KWin confirms the current owner of `org.kde.KWin` before loading a script.
+
+| Backend | Selected when | Explicit input from `env` | Ready after | Readings | Failure |
+| --- | --- | --- | --- | --- | --- |
+| `kwin` | KDE desktop name | Session bus, `XDG_RUNTIME_DIR` | Supported Hello | Pushed active window, own windows, cursor stream | Owner loss, unsupported API, two-second Hello deadline |
+| `hyprland` | `HYPRLAND_INSTANCE_SIGNATURE` | `XDG_RUNTIME_DIR`, `HYPRLAND_INSTANCE_SIGNATURE` | Event socket and first replies | Pushed active window and own-window geometry; cursor once per `requestCursor` tick | Missing or escaping signature, socket closed, reply too large or timed out |
+
+Every failure clears the readings and publishes `failed` with
+`bridgeFailure: other` and its fixed reason in the log; the bridge never
+keeps a reading from a dead connection. Own-window geometry from Hyprland is
+delivered through `ownWindows()`; todo 9's coordinate provider
+owns how it is used. No caller drives Hyprland's `requestCursor` yet; todo 9's
+renderer-paced cursor tick owns that call.
 
 ## Facts and evidence
 
@@ -84,7 +96,7 @@ origins but no global cursor; native Wayland has no trusted window origin.
 
 | Signal | KWin | X11 EWMH | sway | Hyprland | GNOME | none | Evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Foreground | L | L | L | L | U, needs extension | U, unsupported | Focus/pid correlation and sampler integration, todo 8; backend registration for later desktops |
+| Foreground | L | L | L | L | U, needs extension | U, unsupported | Focus/pid correlation and sampler integration, todo 8, over each registered backend's active window |
 | Cursor | L on Wayland/XWayland; E on X11 | E | U, cursor unreported | L | U, needs extension | E | Coordinate provider and two distinct samples, todo 9 |
 | Window origin | L on native Wayland; E otherwise | E | L on native Wayland; E on XWayland | L on native Wayland; E on XWayland | U on native Wayland; E otherwise | E | Bound own window and matching dimensions, todo 9 |
 | Display origins | L on native Wayland; E otherwise | E | L on native Wayland; E on XWayland | L on native Wayland; E on XWayland | E | E | Output identity, size and scale agreement, todo 9 |
