@@ -377,6 +377,8 @@ The diagnostics store's local `postureHome` defaults to `product`. At `runScenar
 
 Rendered T3 gates require an UNDISTURBED desktop. Mouse movement can fail cursor parking. Focus changes or window occlusion can throttle frames and corrupt long captures. Warn the user before starting a long capture, then keep the desktop, app focus, and window visibility unchanged until it ends.
 
+On Linux, run T3 inside the headless QA display: `pnpm qa:display run -- pnpm qa:motion t3 ...` (see [`scripts/dev-tools/README.md`](../../scripts/dev-tools/README.md#pnpm-qadisplay)). The app then renders on the host GPU in its own KWin session, so the user's mouse, focus, and windows cannot park, throttle, or occlude it, and the user can keep working during long captures. CPU and GPU load from the user's work still competes with the capture, and the `exclusive` CPU slot still applies. Real-pointer scenarios such as `builtin:t3-touch` drive the Windows cursor and still need a Windows desktop.
+
 `qa:motion t3` runs one motion scenario in the real Electron app and captures what Natural performed:
 
 ```bash
