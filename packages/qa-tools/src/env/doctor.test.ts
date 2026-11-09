@@ -161,6 +161,15 @@ describe('runDoctor', () => {
     expect(row.status).toBe('ok')
   })
 
+  it('stray-electron warns that it did not check when the process listing refuses outside a QA display', async () => {
+    const row = await rowOf('stray-electron', healthyProbes({ listProcesses: async () => {
+      throw new Error('Refusing to list processes on the host: AIRI_QA_DISPLAY_SESSION is not set.')
+    } }))
+
+    expect(row).toMatchObject({ status: 'warn', detail: 'not checked: Refusing to list processes on the host: AIRI_QA_DISPLAY_SESSION is not set.' })
+    expect(row.fix).toContain('pnpm qa:display run -- pnpm qa:doctor')
+  })
+
   it('turns a throwing probe into a fail row and still runs later checks', async () => {
     const rows = await runDoctor(healthyProbes({ packageManifests: () => {
       throw new Error('EACCES packages')

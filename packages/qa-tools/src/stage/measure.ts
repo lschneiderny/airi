@@ -22,8 +22,8 @@ import { stageScenarioColumns } from './gates'
  * The K6 measurement of todo 1, productised: it reads the MMD frame measurement through the motion diagnostics
  * BroadcastChannel of the stage target while the OS cursor circles over the character, so the synchronous hit-test
  * readback is part of the measured frames. Both host pages take the cursor from the main process, not from DOM
- * events, so the real cursor must move. A 1 Hz sidecar records the load average and any concurrent heavyweight
- * check (Vitest, tsc, vue-tsc); a run with a hit is INVALID-CONCURRENT-LOAD and is repeated.
+ * events, so the real cursor must move. A 1 Hz sidecar records the load average and, on macOS, any concurrent
+ * heavyweight check (Vitest, tsc, vue-tsc); a run with a hit is INVALID-CONCURRENT-LOAD and is repeated.
  */
 
 const stageTargetPatterns: Record<StageMode, RegExp> = {
@@ -97,16 +97,26 @@ function run(command: string, args: string[], timeoutMs = 5_000): Promise<string
   })
 }
 
-async function heavyweightProcesses(): Promise<string | null> {
-  if (platform === 'win32')
-    return null
-  return (await run('pgrep', ['-fl', heavyweightPattern])).trim()
+/**
+ * Whether the quiet-machine sidecar may read the host process table. Only macOS does: Windows has no `pgrep`, and on
+ * Linux agent QA must not read the user's processes (todo 27), so there the load average is the only quiet signal.
+ */
+function readsHostProcesses(os: NodeJS.Platform): boolean {
+  return os === 'darwin'
 }
 
-async function topCpu(): Promise<string[] | null> {
-  if (platform === 'win32')
+/** Heavyweight checks running on the host, or `null` where the host process table is not read. */
+export async function heavyweightProcesses(os: NodeJS.Platform = platform, exec: typeof run = run): Promise<string | null> {
+  if (!readsHostProcesses(os))
     return null
-  const listing = await run('ps', ['-A', '-o', '%cpu=,comm='])
+  return (await exec('pgrep', ['-fl', heavyweightPattern])).trim()
+}
+
+/** The eight busiest host processes, or `null` where the host process table is not read. */
+export async function topCpu(os: NodeJS.Platform = platform, exec: typeof run = run): Promise<string[] | null> {
+  if (!readsHostProcesses(os))
+    return null
+  const listing = await exec('ps', ['-A', '-o', '%cpu=,comm='])
   return listing.split('\n').map(line => line.trim()).filter(Boolean).sort((a, b) => Number.parseFloat(b) - Number.parseFloat(a)).slice(0, 8)
 }
 
@@ -223,8 +233,8 @@ function startOsWiggle(pointer: { cx: number, cy: number, r: number, origin: { x
 }
 
 /**
- * Starts the 1 Hz concurrent-load sidecar of one attempt (load average, heavyweight checks, one `ps` listing halfway
- * through `seconds`). `stop` ends it and sets the verdict.
+ * Starts the 1 Hz concurrent-load sidecar of one attempt (load average and, on macOS, heavyweight checks and one
+ * `ps` listing halfway through `seconds`). `stop` ends it and sets the verdict.
  */
 async function startLoadWatch(seconds: number): Promise<{ attempt: StageMeasureAttempt, stop: () => void }> {
   const attempt: StageMeasureAttempt = {

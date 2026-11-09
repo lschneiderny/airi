@@ -1,5 +1,10 @@
+import process, { platform } from 'node:process'
+
 import { execFile } from 'node:child_process'
-import { platform } from 'node:process'
+import { readdirSync, readFileSync } from 'node:fs'
+import { promisify } from 'node:util'
+
+import { isQaDisplayRunScope, isQaDisplaySessionName, qaDisplayPaths, qaDisplayRunScopePattern } from '../../../../scripts/dev-tools/qa-display-plan'
 
 /** One row of the live process table. `created` identifies the process together with `pid`, since PIDs are reused. */
 export interface LiveProcess {
@@ -145,9 +150,171 @@ export function parsePosixProcessListing(stdout: string): LiveProcess[] {
 
 const windowsListScript = 'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine,@{n=\'Created\';e={$_.CreationDate.ToFileTimeUtc()}} | ConvertTo-Json -Compress'
 
-/** Lists every live process with its parent and command line. Bounded by `timeoutMs`. */
-export function listLiveProcesses(timeoutMs = 20_000): Promise<LiveProcess[]> {
-  const [command, args] = platform === 'win32'
+/** What Linux session-scoped discovery reads; injected so tests decide the scope without a real session. */
+export interface SessionProcessReaders {
+  /** `systemctl --user show -p Id -p ActiveState -p ControlGroup <units...>` on the user's own manager. */
+  showUnits: (units: readonly string[]) => Promise<string>
+  /** `cgroup.procs` of a cgroup path such as `/user.slice/.../x.service`, or `null` when it is gone. */
+  readCgroupProcs: (cgroup: string) => string | null
+  /** Names of the child cgroups of a cgroup path. */
+  listCgroupChildren: (cgroup: string) => string[]
+  /** The contents of every `/proc/<pid>/task/<tid>/children` file of one process; empty when it is gone. */
+  readTaskChildren: (pid: number) => string[]
+  /** `/proc/<pid>/stat`, or `null` when the process is gone. */
+  readStat: (pid: number) => string | null
+  /** `/proc/<pid>/cmdline`, or `null` when the process is gone. */
+  readCmdline: (pid: number) => string | null
+}
+
+const cgroupPattern = /^\/[\w@:.\-\\/]*$/
+
+function parsePidList(text: string): number[] {
+  return text.split(/\s+/).filter(Boolean).map((word) => {
+    if (!/^\d+$/.test(word))
+      throw new Error(`Unexpected PID ${JSON.stringify(word)} in a process list`)
+    return Number(word)
+  })
+}
+
+/** Parses `systemctl show` output for several units: blocks of `key=value` lines separated by blank lines. */
+export function parseUnitShow(stdout: string): Record<string, string>[] {
+  return stdout.split(/\n\s*\n/).map(block => Object.fromEntries(block.split('\n').flatMap((line) => {
+    const at = line.indexOf('=')
+    return at > 0 ? [[line.slice(0, at), line.slice(at + 1).trim()]] : []
+  }))).filter(block => Object.keys(block).length > 0)
+}
+
+/**
+ * The cgroups of a live `pnpm qa:display` session: the session unit's cgroup and the cgroups of its `qa:display run`
+ * scopes. Throws when the session is not running or systemd reports a cgroup that is not a plain absolute path.
+ */
+export function sessionCgroups(name: string, show: string): string[] {
+  const service = qaDisplayPaths(name, '').unit
+  const blocks = parseUnitShow(show)
+  const unit = blocks.find(block => block.Id === service)
+  if (!unit || unit.ActiveState !== 'active')
+    throw new Error(`the qa:display session "${name}" is not running (${service} is ${unit?.ActiveState || 'unknown'})`)
+  const cgroups: string[] = []
+  for (const block of blocks) {
+    if (block.Id !== service && !isQaDisplayRunScope(name, block.Id ?? ''))
+      continue
+    const cgroup = block.ControlGroup ?? ''
+    if (cgroup === '' && block.Id !== service)
+      continue
+    if (!cgroupPattern.test(cgroup) || cgroup.split('/').includes('..'))
+      throw new Error(`systemd reported an unusable ControlGroup for ${block.Id}: ${JSON.stringify(cgroup)}`)
+    cgroups.push(cgroup)
+  }
+  return cgroups
+}
+
+/** Parses `/proc/<pid>/stat` into the parent PID; the command name in parentheses may hold spaces and parentheses. */
+export function parseProcStatParent(stat: string): number | null {
+  const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
+  return /^\d+$/.test(fields[1] ?? '') ? Number(fields[1]) : null
+}
+
+/**
+ * The live processes of the `pnpm qa:display` session named by `AIRI_QA_DISPLAY_SESSION`, on Linux: every process in
+ * the session unit's cgroup and its run scopes (child cgroups included), plus the descendants of `selfPid` found
+ * through `/proc/<pid>/task/<tid>/children`. It never lists other processes of the host, and refuses without a session.
+ */
+export async function listSessionProcesses(env: NodeJS.ProcessEnv, selfPid: number, readers: SessionProcessReaders): Promise<LiveProcess[]> {
+  const name = env.AIRI_QA_DISPLAY_SESSION
+  if (!name)
+    throw new Error('Refusing to list processes on the host: AIRI_QA_DISPLAY_SESSION is not set. On Linux, process discovery reads only a qa:display session; run this command as pnpm qa:display run -- <command>')
+  if (!isQaDisplaySessionName(name))
+    throw new Error(`Refusing to list processes: AIRI_QA_DISPLAY_SESSION=${name} is not a qa:display session name`)
+  const cgroups = sessionCgroups(name, await readers.showUnits([qaDisplayPaths(name, '').unit, qaDisplayRunScopePattern(name)]))
+
+  const pids = new Set<number>()
+  const visitCgroup = (cgroup: string) => {
+    const procs = readers.readCgroupProcs(cgroup)
+    if (procs === null)
+      return
+    for (const pid of parsePidList(procs))
+      pids.add(pid)
+    for (const child of readers.listCgroupChildren(cgroup))
+      visitCgroup(`${cgroup}/${child}`)
+  }
+  for (const cgroup of cgroups)
+    visitCgroup(cgroup)
+
+  const queue = [selfPid]
+  const seen = new Set<number>(queue)
+  while (queue.length > 0) {
+    for (const text of readers.readTaskChildren(queue.shift()!)) {
+      for (const child of parsePidList(text)) {
+        if (seen.has(child))
+          continue
+        seen.add(child)
+        pids.add(child)
+        queue.push(child)
+      }
+    }
+  }
+
+  return [...pids].sort((a, b) => a - b).flatMap((pid) => {
+    const stat = readers.readStat(pid)
+    const cmdline = readers.readCmdline(pid)
+    const parentPid = stat === null ? null : parseProcStatParent(stat)
+    if (parentPid === null || cmdline === null)
+      return []
+    return [{ pid, parentPid, commandLine: cmdline.split('\0').filter(Boolean).join(' ') }]
+  })
+}
+
+function readOrNull(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf8')
+  }
+  catch {
+    return null
+  }
+}
+
+function listOrEmpty(path: string): string[] {
+  try {
+    return readdirSync(path, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => entry.name)
+  }
+  catch {
+    return []
+  }
+}
+
+const execFileAsync = promisify(execFile)
+
+/** Readers over the real `/proc`, `/sys/fs/cgroup`, and the user's systemd manager. */
+export function linuxSessionReaders(env: NodeJS.ProcessEnv, timeoutMs: number): SessionProcessReaders {
+  return {
+    showUnits: async (units) => {
+      // Inside a session, XDG_RUNTIME_DIR and the bus are the session's private ones; systemctl needs the user's own.
+      const host = env.AIRI_QA_HOST_RUNTIME_DIR
+      if (!host)
+        throw new Error('Refusing to list processes: AIRI_QA_HOST_RUNTIME_DIR is not set, so the qa:display session cannot be checked')
+      const { stdout } = await execFileAsync('systemctl', ['--user', 'show', '-p', 'Id', '-p', 'ActiveState', '-p', 'ControlGroup', ...units], {
+        env: { ...env, XDG_RUNTIME_DIR: host, DBUS_SESSION_BUS_ADDRESS: `unix:path=${host}/bus` },
+        timeout: timeoutMs,
+      })
+      return stdout
+    },
+    readCgroupProcs: cgroup => readOrNull(`/sys/fs/cgroup${cgroup}/cgroup.procs`),
+    listCgroupChildren: cgroup => listOrEmpty(`/sys/fs/cgroup${cgroup}`),
+    readTaskChildren: pid => listOrEmpty(`/proc/${pid}/task`).flatMap(tid => readOrNull(`/proc/${pid}/task/${tid}/children`) ?? []),
+    readStat: pid => readOrNull(`/proc/${pid}/stat`),
+    readCmdline: pid => readOrNull(`/proc/${pid}/cmdline`),
+  }
+}
+
+/**
+ * Lists live processes with their parent and command line. Bounded by `timeoutMs`. On Linux it lists only the processes
+ * of the current `pnpm qa:display` session and the caller's descendants (`listSessionProcesses`), so agent QA never
+ * reads the user's desktop processes; elsewhere it lists every process.
+ */
+export function listLiveProcesses(timeoutMs = 20_000, os: NodeJS.Platform = platform, env: NodeJS.ProcessEnv = process.env): Promise<LiveProcess[]> {
+  if (os === 'linux')
+    return listSessionProcesses(env, process.pid, linuxSessionReaders(env, timeoutMs))
+  const [command, args] = os === 'win32'
     ? ['powershell', ['-NoProfile', '-NonInteractive', '-Command', windowsListScript]] as const
     : ['ps', ['-eo', 'pid=,ppid=,args=']] as const
   return new Promise((resolveList, reject) => {
@@ -157,7 +324,7 @@ export function listLiveProcesses(timeoutMs = 20_000): Promise<LiveProcess[]> {
         return
       }
       try {
-        resolveList(platform === 'win32' ? parseWindowsProcessListing(stdout) : parsePosixProcessListing(stdout))
+        resolveList(os === 'win32' ? parseWindowsProcessListing(stdout) : parsePosixProcessListing(stdout))
       }
       catch (parseError) {
         reject(parseError)

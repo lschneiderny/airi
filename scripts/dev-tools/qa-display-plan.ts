@@ -83,6 +83,46 @@ sink airi_qa. --host-audio links your own PipeWire and Pulse sockets instead; ag
 /** Unit, socket, and directory names accept only characters that are safe in all three. */
 const namePattern = /^[a-z0-9][a-z0-9-]{0,31}$/
 
+export function isQaDisplaySessionName(name: string): boolean {
+  return namePattern.test(name)
+}
+
+/**
+ * The scope unit that `pnpm qa:display run` starts its command in, so the command, and any process it leaves behind,
+ * stays in a cgroup that belongs to the session. Session names hold no `.`, so the `.run-` part cannot be confused
+ * with another session's name.
+ */
+export function qaDisplayRunScopeUnit(name: string, pid: number): string {
+  return `airi-qa-display-${name}.run-${pid}.scope`
+}
+
+/** A `systemctl` pattern that matches every run scope of the session. */
+export function qaDisplayRunScopePattern(name: string): string {
+  return `airi-qa-display-${name}.run-*.scope`
+}
+
+/**
+ * The `systemctl --user` arguments that `down` runs first, even when the session unit already stopped: they stop every
+ * run scope of the session, so a process a `run` command left behind does not outlive the session.
+ */
+export function qaDisplayRunScopeStopArgs(name: string): string[] {
+  return ['stop', qaDisplayRunScopePattern(name)]
+}
+
+export function isQaDisplayRunScope(name: string, unit: string): boolean {
+  const prefix = `airi-qa-display-${name}.run-`
+  return unit.startsWith(prefix) && /^\d+\.scope$/.test(unit.slice(prefix.length))
+}
+
+/**
+ * `systemd-run` arguments that run `argv` in the session's run scope. `systemd-run` talks to the user's own manager, so
+ * it gets the host runtime directory and bus; `env` then restores the session's values for the command.
+ */
+export function qaDisplayRunArgs(name: string, pid: number, client: NodeJS.ProcessEnv, argv: readonly string[]): string[] {
+  const restore = ['XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS'].flatMap(key => client[key] === undefined ? ['-u', key] : [`${key}=${client[key]}`])
+  return ['--user', '--scope', '--quiet', '--collect', `--unit=${qaDisplayRunScopeUnit(name, pid)}`, '--', 'env', ...restore, ...argv]
+}
+
 export function parseQaDisplayArgs(argv: readonly string[]): QaDisplayArgs | { error: string } {
   const separator = argv.indexOf('--')
   const own = separator === -1 ? argv : argv.slice(0, separator)

@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as remoteDebug from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 
-import { measurePairs } from './measure'
+import { heavyweightProcesses, measurePairs, topCpu } from './measure'
 
 import * as brokerProcesses from '../../../cpu-slots/src/processes'
 import * as pnpm from '../env/pnpm'
@@ -173,5 +173,23 @@ describe('measurePairs lease lifecycle', () => {
 
     expect(killed).toEqual([800_003, 800_005])
     expect(readdirSync(join(scratch, 'broker', 'leases'))).toEqual([])
+  })
+})
+
+describe('quiet-machine host probes', () => {
+  it('never reads the host process table on Linux or Windows', async () => {
+    const exec = vi.fn(async () => '12.0 Xorg\n')
+    for (const os of ['linux', 'win32'] as const) {
+      expect(await heavyweightProcesses(os, exec)).toBeNull()
+      expect(await topCpu(os, exec)).toBeNull()
+    }
+    expect(exec).not.toHaveBeenCalled()
+  })
+
+  it('keeps the macOS pgrep and ps probes', async () => {
+    const exec = vi.fn(async (command: string) => command === 'pgrep' ? '42 vitest\n' : '1.0 a\n9.5 b\n')
+    expect(await heavyweightProcesses('darwin', exec)).toBe('42 vitest')
+    expect(await topCpu('darwin', exec)).toEqual(['9.5 b', '1.0 a'])
+    expect(exec.mock.calls.map(([command]) => command)).toEqual(['pgrep', 'ps'])
   })
 })

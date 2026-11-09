@@ -12,7 +12,7 @@ import { errorMessageFrom } from '@moeru/std'
 
 import { run } from './lib/exec'
 import { procStat } from './qa-display-guard'
-import { clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseAudioPids, parseQaDisplayArgs, parseSessionEnv, parseSystemBusPid, pointerCommand, qaDisplayPaths, qaDisplayUnitArgs, qaDisplayUsage, requiredBinaries, sessionMountTargets, sessionProcessRunning, shellExports, swayConfig, swayProbeScript, systemBusConfig, wireplumberNoDevicesConf } from './qa-display-plan'
+import { clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseAudioPids, parseQaDisplayArgs, parseSessionEnv, parseSystemBusPid, pointerCommand, qaDisplayPaths, qaDisplayRunArgs, qaDisplayRunScopeStopArgs, qaDisplayUnitArgs, qaDisplayUsage, requiredBinaries, sessionMountTargets, sessionProcessRunning, shellExports, swayConfig, swayProbeScript, systemBusConfig, wireplumberNoDevicesConf } from './qa-display-plan'
 
 const startTimeoutMs = 20_000
 /** Extra startup time for `--private-audio`, whose own waits add up to 20 seconds at most. */
@@ -37,6 +37,12 @@ function failRaw(message: string, code: number): never {
 function systemdEnv(): NodeJS.ProcessEnv {
   const host = process.env.AIRI_QA_HOST_RUNTIME_DIR
   return host ? { ...process.env, XDG_RUNTIME_DIR: host, DBUS_SESSION_BUS_ADDRESS: `unix:path=${host}/bus` } : process.env
+}
+
+/** The runtime directory and bus of the user's own manager, for a `systemd-run --user` started with a session env. */
+function systemdEnvKeys(): NodeJS.ProcessEnv {
+  const env = systemdEnv()
+  return { XDG_RUNTIME_DIR: env.XDG_RUNTIME_DIR, DBUS_SESSION_BUS_ADDRESS: env.DBUS_SESSION_BUS_ADDRESS }
 }
 
 function systemctl(args: string[], stdio: 'inherit' | 'ignore' = 'ignore') {
@@ -207,6 +213,7 @@ async function main() {
       await up(args, false)
       return
     case 'down':
+      systemctl(qaDisplayRunScopeStopArgs(args.name), 'inherit')
       if (!isActive(paths.unit)) {
         console.info(`qa:display: "${args.name}" is not running.`)
         return
@@ -239,8 +246,10 @@ async function main() {
       return
     case 'run': {
       const session = await up(args, true)
-      const [command, ...rest] = args.argv
-      process.exitCode = await run(command, rest, { cwd: process.cwd(), env: clientEnv(process.env, session.env, args.name) })
+      // The command runs in a scope unit of the session, so qa-tools process discovery, which reads only the
+      // session's cgroups, also sees what the command leaves behind after its parent exits.
+      const env = clientEnv(process.env, session.env, args.name)
+      process.exitCode = await run('systemd-run', qaDisplayRunArgs(args.name, process.pid, env, args.argv), { cwd: process.cwd(), env: { ...env, ...systemdEnvKeys() } })
       return
     }
     case 'shot': {
