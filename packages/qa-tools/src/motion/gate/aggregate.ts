@@ -1,3 +1,4 @@
+import type { HostId } from '@proj-airi/stage-shared/host-capabilities'
 import type { EmotionGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
 import type { LivelinessGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
 import type { LivelinessReport } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/liveliness'
@@ -24,6 +25,7 @@ export interface AggregateContext {
   /** Git blob SHA of `gates.ts`, the file that holds the gate's rules. */
   fileSha: string
   level: GateLevel
+  host?: HostId
 }
 
 const sha256 = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex')
@@ -107,6 +109,7 @@ export function aggregateLiveliness(context: AggregateContext, gate: LivelinessG
     nullStats: {},
     results,
     simulation: { seeds: gate.seeds, warmUpSeconds: gate.warmUpSeconds, scoredSeconds: gate.scoredSeconds },
+    ...(context.host === undefined ? {} : { host: context.host }),
   })
 }
 

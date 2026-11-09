@@ -158,6 +158,15 @@ describe('natural performance override', () => {
     expect(store.performanceOverride).toBeNull()
   })
 
+  it('keeps an empty mode inactive even when a replicated enabled flag is still true', () => {
+    const window = createWindow(`natural-override-${Math.random().toString(36).slice(2)}`, 'leader-only')
+    setActivePinia(window.pinia)
+    const store = useNaturalPerformanceOverride()
+    store.overrideEnabled = true
+    store.overrideMode = null
+    expect(store.performanceOverride).toBeNull()
+  })
+
   it('takes a leader snapshot without proposing one back', async () => {
     // A remote snapshot runs the local watchers, and a store that answered one
     // by writing its own state would send a proposal back for every change the
@@ -183,8 +192,8 @@ describe('natural performance override', () => {
     lab.$subscribe(() => labMutations++, { flush: 'sync' })
     lab.$onAction(() => labActions++)
 
-    stage.overrideMode = 'watching'
-    await vi.waitFor(() => expect(lab.overrideMode).toBe('watching'))
+    stage.overrideMode = null
+    await vi.waitFor(() => expect(lab.overrideMode).toBeNull())
 
     // Each window's messages arrive in order, so an echo the lab proposed in
     // answer to that snapshot reaches the stage before this sentinel does.

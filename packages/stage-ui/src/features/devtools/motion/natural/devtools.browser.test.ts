@@ -144,12 +144,14 @@ describe('natural motion lab', () => {
       await expect.element(screen.getByRole('button', { name: new RegExp(`gestures\\.names\\.${kind}`) })).toBeDisabled()
   })
 
-  it('writes the performance override from its controls', async () => {
+  it.each(['idle', null] as const)('writes the performance override from its controls after mode %s', async (mode) => {
     const { screen, override } = await renderLab()
+    override.overrideMode = mode
 
     const enabled = until(() => override.overrideEnabled).toBe(true, { timeout: 5000, throwOnTimeout: true })
     await screen.getByRole('switch').nth(0).click()
     await enabled
+    expect(override.performanceOverride).toEqual({ mode: 'idle', energy: null })
 
     const talking = until(() => override.overrideMode).toBe('talking', { timeout: 5000, throwOnTimeout: true })
     await screen.getByRole('radio', { name: /options\.talking/ }).click()

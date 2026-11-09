@@ -1,4 +1,5 @@
 import type { Band, ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
+import type { HostId } from '@proj-airi/stage-shared/host-capabilities'
 import type { MotionScenario, ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
 import type { EmotionGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
 import type { EmotionT3Gate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
@@ -394,7 +395,7 @@ export function t3SessionHeaderMismatch(scenario: MotionScenario, header: T3Sess
 }
 
 /** One idle capture of the T3 liveliness gate: no inputs, a marker each minute so the trace carries scenario events. */
-export function buildT3IdleScenario(index: number, durationSeconds: number): MotionScenario {
+export function buildT3IdleScenario(index: number, durationSeconds: number, host?: HostId): MotionScenario {
   const markers = Array.from({ length: Math.floor(durationSeconds / 60) }, (_, minute) => ({ kind: 'marker' as const, at: (minute + 1) * 60, label: `idle-minute-${minute + 1}` }))
     .filter(marker => marker.at <= durationSeconds)
   return parse(MotionScenarioSchema, {
@@ -404,7 +405,7 @@ export function buildT3IdleScenario(index: number, durationSeconds: number): Mot
     durationSeconds,
     home: 'desk',
     levels: ['t1', 't3'],
-    settings: { heldEmotions: true, cursorAttention: false, expressionEnabled: true },
+    settings: { heldEmotions: true, cursorAttention: false, expressionEnabled: true, ...(host === undefined ? {} : { host }) },
     screenshotsAt: [60, Math.round(durationSeconds / 2), durationSeconds - 9],
     events: markers,
   })

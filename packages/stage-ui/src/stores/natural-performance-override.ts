@@ -39,7 +39,7 @@ export const naturalLabGestureEvent = defineEventa<GestureRequest>('eventa:event
  */
 export const useNaturalPerformanceOverride = defineStore('natural-performance-override', () => {
   const overrideEnabled = ref(false)
-  const overrideMode = ref<PerformanceMode>('idle')
+  const overrideMode = ref<PerformanceMode | null>('idle')
   /** Energy forced on the Natural driver, 0..1, or `null` to keep the user's Energy setting. */
   const overrideEnergy = ref<number | null>(null)
 
@@ -59,7 +59,7 @@ export const useNaturalPerformanceOverride = defineStore('natural-performance-ov
    * resolve the mode from the real signals.
    */
   const performanceOverride = computed<PerformanceOverride | null>(() => {
-    if (!overrideEnabled.value)
+    if (!overrideEnabled.value || overrideMode.value === null)
       return null
 
     return {

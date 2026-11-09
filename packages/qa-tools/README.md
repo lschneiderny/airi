@@ -302,6 +302,10 @@ Changing a gate means editing `gates.ts` and bumping its `version` in a commit b
 
 T1 is the deterministic controller simulation. T2 uses the real headless rig and the shared scorer. The idle liveliness gate keeps its original seeds, warm-up, scored duration, and metric list.
 
+Liveliness accepts `--host windows|macos|linux-x11|linux-xwayland|linux-wayland|web`. For example, `pnpm qa:motion gate liveliness --level t1 --host linux-wayland --fresh` simulates an unattended host with its unavailable cursor, placement and desktop idle signals left unknown. Host-profile simulations resolve performance on every step; unprofiled scenarios retain their scripted idle behavior. The option is rejected for emotion gates.
+
+At T3 the runner refuses a host mismatch before launching, and `linux-xwayland` selects `dev:xwayland` within a Wayland session. The bridge verifies the live host, clears earlier performance overrides and leaves real placement and chat inputs enabled. Liveliness fails with `mode-left-idle` if a scored frame leaves idle at T1/T2 or a ten-second bridge sample leaves idle at T3. T3 mode samples are recorded in the capture's `bridge.json`. A report produced by T1 does not establish rendered T2/T3 acceptance.
+
 ## Evidence
 
 After argument and environment checks pass, `pnpm qa:test`, `pnpm qa:motion gate` at T1, T2, or T3, direct `pnpm qa:motion t3`, and `pnpm qa:motion validate-scorer` create unique runs under `.temp/qa/<timestamp>-<tool>-<label>/`. Each run's `run.json` records its command, source SHA, dirty state, relevant `APP_*` and `AIRI_QA_*` environment values, gate provenance when applicable, artifact hashes, and result. A T3 gate also creates one run per capture session. An emotion `--rescore` creates its new run only after the archive passes validation; a refusal exits 2 before creating it. The standalone `t2:probe` prints a JSON summary and creates no run directory.

@@ -4,6 +4,7 @@ import type { ScenarioRunner } from '../src/motion/gate/trials'
 
 import process from 'node:process'
 
+import { motionScenarioHosts } from '@proj-airi/stage-shared/motion-scenario'
 import { beforeAll, describe, it } from 'vitest'
 
 import catalogJson from '../fixtures/forbooth-catalog.json'
@@ -22,7 +23,7 @@ let runScenario: ScenarioRunner | undefined
 beforeAll(async () => {
   if (level === 't2') {
     const runtime = await loadT2Runtime()
-    runScenario = scenario => runT2(scenario, runtime, { catalog: catalogJson as CatalogEntry[] })
+    runScenario = (scenario, options) => runT2(scenario, runtime, { catalog: catalogJson as CatalogEntry[], ...options })
   }
 }, 60_000)
 
@@ -91,12 +92,15 @@ export function defineValidationShard(): void {
 
 /** The idle liveliness gate's three desk traces, warm-up dropped. */
 export function defineLivelinessGate(): void {
+  const host = motionScenarioHosts.find(host => host === process.env.QA_HOST)
+  if (process.env.QA_HOST && host === undefined)
+    throw new Error(`[qa-tools] Unknown QA_HOST: ${process.env.QA_HOST}`)
   const runDir = requireRunDir()
   const boundMs = Math.max(trialBoundMs(process.env), 900_000)
   describe('liveliness gate: idle traces', () => {
     for (const seed of naturalIdleLivelinessGate.seeds) {
       it(`seed ${seed}`, () => {
-        writePartial(runDir, livelinessPartialName(seed), { kind: 'liveliness-trace', seed, trace: runIdleTrace(seed, naturalIdleLivelinessGate, boundMs, runScenario) })
+        writePartial(runDir, livelinessPartialName(seed), { kind: 'liveliness-trace', seed, trace: runIdleTrace(seed, naturalIdleLivelinessGate, boundMs, runScenario, host) })
       })
     }
   })

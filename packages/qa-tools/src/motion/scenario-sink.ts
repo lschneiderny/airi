@@ -15,7 +15,9 @@ import type { StagePerformanceScene } from '@proj-airi/stage-ui/composables/perf
 import { NaturalTouchGestures } from '@proj-airi/motion-driver-natural/touch-gestures'
 import { normalizeActPayload, tokenAct } from '@proj-airi/pipelines-audio'
 import { parseExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
-import { createScenarioPlayer, MotionScenarioSchema, nextScenarioChatInput } from '@proj-airi/stage-shared/motion-scenario'
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
+import { createScenarioPlayer, hostProfileViolations, MotionScenarioSchema, nextScenarioChatInput } from '@proj-airi/stage-shared/motion-scenario'
+import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
 import { EmotionHoldPerformer } from '@proj-airi/stage-ui-live2d/composables/live2d/expression/hold'
 import { lipSyncHandoffHoldMs, lipSyncReleaseMs } from '@proj-airi/stage-ui-live2d/composables/live2d/lipsync-handoff'
 import { Live2DNaturalMotionAdapter } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion-adapter'
@@ -85,6 +87,8 @@ export interface ScenarioSinkOptions {
   emotionTable?: typeof naturalEmotions
   /** Receives every touch the stage's classifier reports from `pointer` events, at the sim time it fired. */
   onTouch?: (touch: NaturalTouchGesture, simTime: number) => void
+  /** Liveliness gates only: refuse any non-idle frame from this scored-window start. */
+  idleAfterSeconds?: number
 }
 
 /** Simulated timers fire in due order, ties in arming order; canceled native handles only identify them. */
@@ -176,6 +180,9 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
     })
 
     let performance: PerformanceState = { mode: 'idle', attention: 'camera', away: false, reactSeq: 0, reactKind: 'none' }
+    const capabilities = scenario.settings?.host === undefined ? null : capabilitiesForHost(scenario.settings.host)
+    let resolverMemory = initialResolverMemory
+    let cursorMovedAtMs: number | null = null
     let energy = 0.5
     let cursor: { x: number, y: number } | null = null
     const cursorAttention = scenario.settings?.cursorAttention ?? true
@@ -253,6 +260,9 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
           conductor.turnEnd(turnId)
         }
         for (const event of player.eventsBetween(step === 0 ? Number.NEGATIVE_INFINITY : previous, simTime)) {
+          const violations = hostProfileViolations({ settings: scenario.settings, events: [event] })
+          if (violations.length)
+            throw new Error(`[qa-tools] ${violations.join('; ')}`)
           recorder.mark(simTime, 'scenario', event)
           switch (event.kind) {
             case 'emotion':
@@ -278,9 +288,11 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
               break
             }
             case 'cursor':
+              cursorMovedAtMs = event.at * 1000
               cursor = event.clear ? null : { x: event.x!, y: event.y! }
               break
             case 'pointer': {
+              cursorMovedAtMs = event.at * 1000
               const sample = touchSample(event)
               pointer = { x: event.x, y: event.y }
               if (event.phase === 'move') {
@@ -330,6 +342,36 @@ export function runScenarioSink(input: MotionScenario, options: ScenarioSinkOpti
               break
           }
         }
+        if (capabilities) {
+          const nowMs = simTime * 1000
+          const resolution = resolvePerformanceState({
+            nowMs,
+            cursorMovedAtMs,
+            desktop: capabilities.signals.systemIdleTime.kind === 'live'
+              ? {
+                  idleSeconds: (nowMs - (cursorMovedAtMs ?? 0)) / 1000,
+                  locked: false,
+                  suspendedAtMs: null,
+                  resumedAtMs: null,
+                  unlockedAtMs: null,
+                  systemAudioLevel: null,
+                  screenChange: null,
+                  sampledAtMs: nowMs,
+                }
+              : null,
+            speaking: false,
+            userSpeaking: false,
+            generating: false,
+            visible: true,
+            override: null,
+            cueAttention: null,
+            foregroundCategory: null,
+          }, resolverMemory)
+          performance = resolution.state
+          resolverMemory = resolution.memory
+        }
+        if (options.idleAfterSeconds !== undefined && simTime >= options.idleAfterSeconds && performance.mode !== 'idle')
+          throw new Error(`[qa-tools] mode-left-idle at ${simTime} s: ${performance.mode}`)
         applyTouch(gestures.update(simTime * 1000))
         pet = gestures.petting && pointer ? headHand(pointer) : null
         conductor.sampleVoiceLevel(speechLevel())
