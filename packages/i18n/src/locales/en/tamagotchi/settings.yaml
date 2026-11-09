@@ -108,9 +108,9 @@ pages:
         linux-geometry-verifying: The desktop bridge is verifying window and display positions.
         linux-keep-above-verifying: The desktop bridge is verifying that AIRI stays above other windows.
         linux-click-through-emulated: AIRI emulates click-through using verified cursor and window positions.
-        gnome-needs-extension: GNOME needs a separately installed Shell extension to expose this signal.
+        gnome-needs-extension: GNOME needs a Shell extension to share the focused window and cursor; AIRI does not ship one yet.
         sway-cursor-unreported: sway does not report the global cursor position through its IPC.
-        linux-desktop-unsupported: This desktop has no supported foreground window reader.
+        linux-desktop-unsupported: This desktop does not offer a way for AIRI to read the focused window.
         kwin-api-unsupported: This KWin version does not expose a supported scripting API.
         linux-portal-shortcut-unbound: The shortcut portal is connected, but no key release shortcut is bound.
         wayland-cursor-unreported: Wayland does not report the cursor position outside the window.

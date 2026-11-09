@@ -26,16 +26,20 @@ export function createLinuxDesktopBridge(options: {
   const sessionAddress = env.DBUS_SESSION_BUS_ADDRESS ?? `unix:path=${tempDir}/bus`
   const systemAddress = env.DBUS_SYSTEM_BUS_ADDRESS ?? 'unix:path=/var/run/dbus/system_bus_socket'
   const ownPids = () => [...new Set([pid, ...app.getAppMetrics().map(metric => metric.pid)])]
-  type Factory = (bus: DbusTransport, callbacks: Pick<KwinBackendOptions, 'onMessage' | 'onFailure' | 'onState'>) => KwinBackend
+  type Factory = (bus: DbusTransport, callbacks: Pick<KwinBackendOptions, 'onMessage' | 'onFailure' | 'onState'>) => KwinBackend | undefined
   // Later desktop implementations register here only when their consumers and
   // runtime verifiers land together. Merely importing a module grants nothing.
   const backends: Partial<Record<LinuxDesktopBackend, Factory>> = {
     kwin: (transport, callbacks) => new KwinBackend({ transport, tempDir, ownPids, ...callbacks }),
+    // Reason-only desktops: no driver, so the bridge reports ready at once with no samples.
+    // GNOME would need a Shell extension, which AIRI neither ships nor downloads.
+    gnome: () => undefined,
+    none: () => undefined,
   }
   const { candidate } = detectLinuxDesktop(env)
   const factory = backends[candidate]
   return new LinuxDesktopBridge({
-    backend: factory ? candidate : candidate === 'gnome' ? 'gnome' : 'none',
+    backend: factory ? candidate : 'none',
     ownPids,
     report: reportLinuxDesktop,
     createBackend: (bus, callbacks) => factory?.(bus, callbacks),

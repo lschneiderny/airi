@@ -13,6 +13,8 @@ describe('detectLinuxDesktop', () => {
     { name: 'Wayland with Xwayland', env: { DISPLAY: ':1', WAYLAND_DISPLAY: 'wayland-1' }, session: 'wayland', candidate: 'none' },
     { name: 'KDE on X11', env: { XDG_CURRENT_DESKTOP: 'KDE', XDG_SESSION_TYPE: 'x11' }, session: 'x11', candidate: 'kwin' },
     { name: 'case insensitive desktop list', env: { XDG_CURRENT_DESKTOP: 'ubuntu:gnome', WAYLAND_DISPLAY: 'wayland-1' }, session: 'wayland', candidate: 'gnome' },
+    { name: 'GNOME on native Wayland', env: { XDG_CURRENT_DESKTOP: 'GNOME', XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'w' }, session: 'wayland', candidate: 'gnome' },
+    { name: 'distribution-prefixed GNOME list', env: { XDG_CURRENT_DESKTOP: 'ubuntu:GNOME' }, session: 'wayland', candidate: 'gnome' },
     { name: 'KDE precedes GNOME', env: { XDG_CURRENT_DESKTOP: 'GNOME:KDE' }, session: 'wayland', candidate: 'kwin' },
     { name: 'GNOME precedes X11 fallback', env: { XDG_CURRENT_DESKTOP: 'GNOME', DISPLAY: ':1' }, session: 'x11', candidate: 'gnome' },
     { name: 'sway socket overrides inherited KDE', env: { ...inheritedKde, SWAYSOCK: '/run/user/1000/sway.sock' }, session: 'wayland', candidate: 'sway' },
