@@ -11,7 +11,8 @@ import { fileURLToPath } from 'node:url'
 import { errorMessageFrom } from '@moeru/std'
 
 import { run } from './lib/exec'
-import { audioProcessRunning, clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseAudioPids, parseQaDisplayArgs, parseSessionEnv, pointerCommand, qaDisplayPaths, qaDisplayUnitArgs, qaDisplayUsage, requiredBinaries, sessionMountTargets, shellExports, swayConfig, swayProbeScript, wireplumberNoDevicesConf } from './qa-display-plan'
+import { procStat } from './qa-display-guard'
+import { clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseAudioPids, parseQaDisplayArgs, parseSessionEnv, parseSystemBusPid, pointerCommand, qaDisplayPaths, qaDisplayUnitArgs, qaDisplayUsage, requiredBinaries, sessionMountTargets, sessionProcessRunning, shellExports, swayConfig, swayProbeScript, systemBusConfig, wireplumberNoDevicesConf } from './qa-display-plan'
 
 const startTimeoutMs = 20_000
 /** Extra startup time for `--private-audio`, whose own waits add up to 20 seconds at most. */
@@ -57,21 +58,18 @@ function readSession(envFile: string): QaSession | null {
   return existsSync(envFile) ? parseSessionEnv(readFileSync(envFile, 'utf8')) : null
 }
 
-function procStat(pid: number): string | null {
-  try {
-    return readFileSync(`/proc/${pid}/stat`, 'utf8')
-  }
-  catch {
-    return null
-  }
-}
-
 /** The private audio processes that are gone; all of them when the pid file itself is missing. */
 function deadAudioProcesses(pidFile: string): string[] {
   const processes = existsSync(pidFile) ? parseAudioPids(readFileSync(pidFile, 'utf8')) : []
   if (processes.length === 0)
     return ['pipewire', 'wireplumber', 'pipewire-pulse']
-  return processes.filter(entry => !audioProcessRunning(entry.name, procStat(entry.pid))).map(entry => `${entry.name} (pid ${entry.pid})`)
+  return processes.filter(entry => !sessionProcessRunning(entry.name, procStat(entry.pid))).map(entry => `${entry.name} (pid ${entry.pid})`)
+}
+
+/** The pid of the session's private system bus while it runs; `null` when the pid file is missing or the daemon exited. */
+function runningSystemBusPid(pidFile: string): number | null {
+  const pid = existsSync(pidFile) ? parseSystemBusPid(readFileSync(pidFile, 'utf8')) : null
+  return pid !== null && sessionProcessRunning('dbus-daemon', procStat(pid)) ? pid : null
 }
 
 function describeSession(session: Pick<QaSession, 'compositor' | 'portals' | 'audio'>): string {
@@ -111,6 +109,8 @@ async function up(args: Pick<QaDisplayArgs, 'name' | 'width' | 'height' | 'windo
   if (running) {
     if ((args.compositor && args.compositor !== running.compositor) || (args.portals && !running.portals) || (args.audio !== 'none' && args.audio !== running.audio))
       fail(`"${args.name}" already runs ${describeSession(running)}. Stop it first with: pnpm qa:display down --name ${args.name}`)
+    if (runningSystemBusPid(paths.systemBusPid) === null)
+      fail(`the private system bus of "${args.name}" is not running. Restart the session: pnpm qa:display down --name ${args.name} && pnpm qa:display up --name ${args.name}`)
     if (running.audio === 'private') {
       const dead = deadAudioProcesses(paths.audioPids)
       if (dead.length > 0)
@@ -132,6 +132,7 @@ async function up(args: Pick<QaDisplayArgs, 'name' | 'width' | 'height' | 'windo
   mkdirSync(paths.runtime, { recursive: true, mode: 0o700 })
   mkdirSync(paths.data, { recursive: true })
   mkdirSync(paths.config, { recursive: true })
+  writeFileSync(paths.systemBusConf, systemBusConfig(paths.systemBusSocket))
   if (args.portals)
     writeFileSync(join(paths.config, 'kglobalshortcutsrc'), kglobalShortcutsSeed())
   if (args.audio === 'private') {
@@ -211,6 +212,14 @@ async function main() {
         return
       }
       systemctl(['stop', paths.unit], 'inherit')
+      {
+        // The unit stop kills its whole cgroup, the forked system bus included; this only confirms it.
+        const pid = runningSystemBusPid(paths.systemBusPid)
+        if (pid !== null) {
+          process.kill(pid, 'SIGTERM')
+          console.warn(`qa:display: the private system bus (pid ${pid}) outlived the unit stop and was sent SIGTERM.`)
+        }
+      }
       removeSessionDir(paths.dir)
       console.info(`qa:display: stopped "${args.name}".`)
       return
@@ -220,6 +229,8 @@ async function main() {
         console.info(`qa:display: "${args.name}" is not running.`)
         process.exit(1)
       }
+      if (runningSystemBusPid(paths.systemBusPid) === null)
+        fail(`"${args.name}" runs, but its private system bus is not running. Restart the session: pnpm qa:display down --name ${args.name} && pnpm qa:display up --name ${args.name}`)
       console.info(`qa:display: "${args.name}" is running as ${paths.unit} (${describeSession(session)}).\n${shellExports(session.env, args.name)}`)
       return
     }

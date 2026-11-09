@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { audioProcessRunning, clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseAudioPids, parseQaDisplayArgs, parseSessionEnv, pointerCommand, qaDisplayGuard, qaDisplayPaths, qaDisplayUnitArgs, requiredBinaries, sessionMountTargets, shellExports, swayConfig, swayProbeScript, takeAllowHostSession, wireplumberNoDevicesConf } from './qa-display-plan'
+import { clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseAudioPids, parseQaDisplayArgs, parseSessionEnv, parseSystemBusPid, pointerCommand, qaDisplayGuard, qaDisplayPaths, qaDisplayUnitArgs, requiredBinaries, sessionMountTargets, sessionProcessRunning, shellExports, swayConfig, swayProbeScript, systemBusConfig, takeAllowHostSession, wireplumberNoDevicesConf } from './qa-display-plan'
 
 describe('qa display arguments', () => {
   it('defaults to a 1920x1080 headless session named qa without portals or audio', () => {
@@ -100,6 +100,9 @@ describe('qa display unit', () => {
       swayProbe: '/run/user/1000/airi-qa-display/qa/sway-probe.sh',
       audioPids: '/run/user/1000/airi-qa-display/qa/audio.pids',
       wireplumberConf: '/run/user/1000/airi-qa-display/qa/config/wireplumber/wireplumber.conf.d/90-airi-qa-no-devices.conf',
+      systemBusConf: '/run/user/1000/airi-qa-display/qa/system-bus.conf',
+      systemBusSocket: '/run/user/1000/airi-qa-display/qa/runtime/system_bus_socket',
+      systemBusPid: '/run/user/1000/airi-qa-display/qa/system-bus.pid',
     })
   })
 
@@ -127,6 +130,48 @@ describe('qa display unit', () => {
     expect(steps[1]).toBe(`export XDG_RUNTIME_DIR="$AIRI_QA_DIR/runtime" XDG_DATA_HOME="$AIRI_QA_DIR/data" XDG_CONFIG_HOME="$AIRI_QA_DIR/config" XDG_CURRENT_DESKTOP=${desktop} XDG_SESSION_TYPE=${type}`)
     expect(bus).toBe(2)
     expect(steps.slice(bus).some(step => /XDG_(?:RUNTIME_DIR|DATA_HOME|CONFIG_HOME)=/.test(step))).toBe(false)
+  })
+
+  it.each([
+    ['kwin', kwin, 'exec kwin_wayland'],
+    ['kwin with private audio', { ...kwin, audio: 'private' }, 'XDG_STATE_HOME="$AIRI_QA_DIR/state" pipewire >'],
+    ['x11', { ...kwin, compositor: 'x11', x11Display: 90 }, 'Xvfb :90'],
+    ['sway', { ...kwin, compositor: 'sway' }, 'sway -c'],
+  ] as const)('%s starts a private system bus from the generated config and exports it before the session bus and %s', (_, options, next) => {
+    const steps = qaDisplayUnitArgs(options, paths, host).at(-1)!.split(' && ')
+    const at = (needle: string) => steps.findIndex(step => step.includes(needle))
+    const order = [
+      at('export XDG_RUNTIME_DIR="$AIRI_QA_DIR/runtime"'),
+      steps.indexOf('dbus-daemon --config-file="$AIRI_QA_DIR/system-bus.conf" --fork --print-pid >"$AIRI_QA_DIR/system-bus.pid"'),
+      steps.indexOf('export DBUS_SYSTEM_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/system_bus_socket"'),
+      at('dbus-daemon --session'),
+      at('export DBUS_SESSION_BUS_ADDRESS'),
+      at('UpdateActivationEnvironment a{ss} 1 DBUS_SYSTEM_BUS_ADDRESS'),
+      at(next),
+    ]
+    expect(order.every(index => index >= 0)).toBe(true)
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    expect(steps.filter(step => step.startsWith('export DBUS_SYSTEM_BUS_ADDRESS'))).toHaveLength(1)
+    expect(steps.join(' && ')).not.toContain('/run/dbus/system_bus_socket')
+  })
+
+  it('writes a system bus config that listens only inside the private runtime directory and activates nothing', () => {
+    const config = systemBusConfig(paths.systemBusSocket)
+    expect(config).toContain('<type>system</type>')
+    expect(config.match(/<listen>[^<]*<\/listen>/g)).toEqual(['<listen>unix:path=/run/user/1000/airi-qa-display/qa/runtime/system_bus_socket</listen>'])
+    expect(config).toContain('<allow own="*"/>')
+    for (const tag of ['<servicedir', '<standard_system_servicedirs', '<includedir', '<include>', '<user>', '<pidfile>', '<syslog'])
+      expect(config).not.toContain(tag)
+  })
+
+  it.each([
+    ['one pid', '4242\n', 4242],
+    ['one pid without a newline', '4242', 4242],
+    ['an empty file', '', null],
+    ['two pids', '4242\n4243\n', null],
+    ['garbage', 'dbus-daemon 4242\n', null],
+  ] as const)('reads the system bus pid file with %s', (_, text, pid) => {
+    expect(parseSystemBusPid(text)).toBe(pid)
   })
 
   describe('audio', () => {
@@ -310,8 +355,10 @@ describe('qa display binaries', () => {
     ['a dead task', 'pipewire', '101 (pipewire) X 1 2 3', false],
     ['a pid reused by another command', 'pipewire', '101 (bash) S 1 2 3', false],
     ['a pid without /proc entry', 'pipewire', null, false],
+    ['a running private system bus', 'dbus-daemon', '4242 (dbus-daemon) S 3168 2 3', true],
+    ['a crashed private system bus left as a zombie', 'dbus-daemon', '4242 (dbus-daemon) Z 3168 2 3', false],
   ] as const)('counts %s as running: %s', (_, name, stat, running) => {
-    expect(audioProcessRunning(name, stat)).toBe(running)
+    expect(sessionProcessRunning(name, stat)).toBe(running)
   })
 
   it('finds the global accelerator as a KWin plugin or a standalone executable', () => {
@@ -328,9 +375,10 @@ describe('qa display binaries', () => {
 describe('qa display session environment', () => {
   const bus = 'unix:path=/run/user/1000/airi-qa-display/qa/bus'
   const rt = '/run/user/1000/airi-qa-display/qa/runtime'
-  const own = `XDG_RUNTIME_DIR=${rt}\nAIRI_QA_HOST_RUNTIME_DIR=/run/user/1000\nAIRI_QA_AUDIO=none\n`
+  const systemBus = `unix:path=${rt}/system_bus_socket`
+  const own = `XDG_RUNTIME_DIR=${rt}\nAIRI_QA_HOST_RUNTIME_DIR=/run/user/1000\nAIRI_QA_AUDIO=none\nDBUS_SYSTEM_BUS_ADDRESS=${systemBus}\n`
   const noAudio = { PULSE_SERVER: '', PIPEWIRE_REMOTE: '', PIPEWIRE_RUNTIME_DIR: '' }
-  const ownEnv = { XDG_RUNTIME_DIR: rt, AIRI_QA_HOST_RUNTIME_DIR: '/run/user/1000' }
+  const ownEnv = { XDG_RUNTIME_DIR: rt, AIRI_QA_HOST_RUNTIME_DIR: '/run/user/1000', DBUS_SYSTEM_BUS_ADDRESS: systemBus }
   const kwinText = `HOME=/home/u\n${own}AIRI_QA_COMPOSITOR=kwin\nAIRI_QA_PORTALS=0\nWAYLAND_DISPLAY=wayland-airi-qa-qa\nDISPLAY=:2\nXAUTHORITY=\nDBUS_SESSION_BUS_ADDRESS=${bus}\nXDG_SESSION_TYPE=wayland\n`
   const kdeHost = { PATH: '/bin', XDG_CURRENT_DESKTOP: 'KDE', KDE_FULL_SESSION: 'true', WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0', XDG_SESSION_TYPE: 'wayland' }
 
@@ -367,6 +415,10 @@ describe('qa display session environment', () => {
     ['sway without SWAYSOCK', `${own}AIRI_QA_COMPOSITOR=sway\nWAYLAND_DISPLAY=wayland-1\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`],
     ['no compositor', `${own}WAYLAND_DISPLAY=w\nDISPLAY=:2\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`],
     ['an unknown compositor', `${own}AIRI_QA_COMPOSITOR=gnome\nWAYLAND_DISPLAY=w\nDISPLAY=:2\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`],
+    ['no system bus, as a session from before the private system bus wrote it', kwinText.replace(`DBUS_SYSTEM_BUS_ADDRESS=${systemBus}\n`, '')],
+    ['an empty system bus', kwinText.replace(`DBUS_SYSTEM_BUS_ADDRESS=${systemBus}`, 'DBUS_SYSTEM_BUS_ADDRESS=')],
+    ['the host system bus', kwinText.replace(`DBUS_SYSTEM_BUS_ADDRESS=${systemBus}`, 'DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket')],
+    ['a system bus outside its private runtime directory', kwinText.replace(`DBUS_SYSTEM_BUS_ADDRESS=${systemBus}`, 'DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/user/1000/airi-qa-display/other/runtime/system_bus_socket')],
   ])('treats a file with %s as not ready', (_, text) => {
     expect(parseSessionEnv(text)).toBeNull()
   })
@@ -377,7 +429,7 @@ describe('qa display session environment', () => {
     ['sway with Xwayland', `${own}AIRI_QA_COMPOSITOR=sway\nWAYLAND_DISPLAY=wayland-1\nSWAYSOCK=/run/user/1000/sway-ipc.1000.7.sock\nDISPLAY=:3\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`, { PATH: '/bin', AIRI_QA_DISPLAY: 'qa', AIRI_QA_DISPLAY_SESSION: 'qa', XDG_CURRENT_DESKTOP: 'sway', XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1', SWAYSOCK: '/run/user/1000/sway-ipc.1000.7.sock', DISPLAY: ':3', DBUS_SESSION_BUS_ADDRESS: bus, ...ownEnv }],
     ['sway without Xwayland', `${own}AIRI_QA_COMPOSITOR=sway\nWAYLAND_DISPLAY=wayland-1\nSWAYSOCK=/run/user/1000/sway-ipc.1000.7.sock\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`, { PATH: '/bin', AIRI_QA_DISPLAY: 'qa', AIRI_QA_DISPLAY_SESSION: 'qa', XDG_CURRENT_DESKTOP: 'sway', XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1', SWAYSOCK: '/run/user/1000/sway-ipc.1000.7.sock', DBUS_SESSION_BUS_ADDRESS: bus, ...ownEnv }],
   ])('turns an inherited KDE host environment into the exact %s client environment', (_, text, expected) => {
-    expect(clientEnv({ ...kdeHost, XDG_RUNTIME_DIR: '/run/user/1000', XAUTHORITY: '/run/user/1000/xauth_x', SWAYSOCK: '/x', HYPRLAND_INSTANCE_SIGNATURE: 'h', KDE_SESSION_VERSION: '6', PULSE_SERVER: 'unix:/run/user/1000/pulse/native', PIPEWIRE_REMOTE: 'pipewire-0', PIPEWIRE_RUNTIME_DIR: '/run/user/1000' }, parseSessionEnv(text)!.env, 'qa')).toEqual(expected)
+    expect(clientEnv({ ...kdeHost, DBUS_SYSTEM_BUS_ADDRESS: 'unix:path=/run/dbus/system_bus_socket', XDG_RUNTIME_DIR: '/run/user/1000', XAUTHORITY: '/run/user/1000/xauth_x', SWAYSOCK: '/x', HYPRLAND_INSTANCE_SIGNATURE: 'h', KDE_SESSION_VERSION: '6', PULSE_SERVER: 'unix:/run/user/1000/pulse/native', PIPEWIRE_REMOTE: 'pipewire-0', PIPEWIRE_RUNTIME_DIR: '/run/user/1000' }, parseSessionEnv(text)!.env, 'qa')).toEqual(expected)
   })
 
   it('prints shell exports that unset deleted keys', () => {
@@ -389,6 +441,7 @@ describe('qa display session environment', () => {
       'export WAYLAND_DISPLAY=wayland-airi-qa-qa',
       'export DISPLAY=:2',
       `export DBUS_SESSION_BUS_ADDRESS=${bus}`,
+      `export DBUS_SYSTEM_BUS_ADDRESS=${systemBus}`,
       `export XDG_RUNTIME_DIR=${rt}`,
       'export AIRI_QA_HOST_RUNTIME_DIR=/run/user/1000',
       'unset SWAYSOCK',
@@ -403,11 +456,11 @@ describe('qa display session environment', () => {
 
 describe('qa display host session guard', () => {
   const bus = 'unix:path=/run/user/1000/airi-qa-display/lsp/bus'
-  const kwinText = `XDG_RUNTIME_DIR=/run/user/1000/airi-qa-display/lsp/runtime\nAIRI_QA_HOST_RUNTIME_DIR=/run/user/1000\nAIRI_QA_COMPOSITOR=kwin\nAIRI_QA_AUDIO=none\nAIRI_QA_PORTALS=0\nWAYLAND_DISPLAY=wayland-airi-qa-lsp\nDISPLAY=:2\nDBUS_SESSION_BUS_ADDRESS=${bus}\nXDG_SESSION_TYPE=wayland\n`
+  const kwinText = `XDG_RUNTIME_DIR=/run/user/1000/airi-qa-display/lsp/runtime\nDBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/user/1000/airi-qa-display/lsp/runtime/system_bus_socket\nAIRI_QA_HOST_RUNTIME_DIR=/run/user/1000\nAIRI_QA_COMPOSITOR=kwin\nAIRI_QA_AUDIO=none\nAIRI_QA_PORTALS=0\nWAYLAND_DISPLAY=wayland-airi-qa-lsp\nDISPLAY=:2\nDBUS_SESSION_BUS_ADDRESS=${bus}\nXDG_SESSION_TYPE=wayland\n`
   const session = parseSessionEnv(kwinText)!
-  const kdeHost = { PATH: '/bin', XDG_CURRENT_DESKTOP: 'KDE', WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0', XDG_SESSION_TYPE: 'wayland', XDG_RUNTIME_DIR: '/run/user/1000', DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus' }
+  const kdeHost = { PATH: '/bin', XDG_CURRENT_DESKTOP: 'KDE', WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0', XDG_SESSION_TYPE: 'wayland', XDG_RUNTIME_DIR: '/run/user/1000', DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus', DBUS_SYSTEM_BUS_ADDRESS: 'unix:path=/run/dbus/system_bus_socket' }
   const inside = clientEnv(kdeHost, session.env, 'lsp')
-  const guard = (overrides: Partial<Parameters<typeof qaDisplayGuard>[0]>) => qaDisplayGuard({ command: 'qa:smoke', platform: 'linux', env: inside, allowHostSession: false, session, unitActive: true, ...overrides })
+  const guard = (overrides: Partial<Parameters<typeof qaDisplayGuard>[0]>) => qaDisplayGuard({ command: 'qa:smoke', platform: 'linux', env: inside, allowHostSession: false, session, unitActive: true, systemBusRunning: true, ...overrides })
 
   it('lets a command run inside the live session it names', () => {
     expect(guard({})).toEqual({ ok: true })
@@ -426,6 +479,9 @@ describe('qa display host session guard', () => {
     ['the host bus inside the session', { env: { ...inside, DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus' } }, 'DBUS_SESSION_BUS_ADDRESS does not match'],
     ['no bus inherited inside the session', { env: { ...inside, DBUS_SESSION_BUS_ADDRESS: undefined } }, 'DBUS_SESSION_BUS_ADDRESS does not match'],
     ['a host sway socket leaking into a kwin session', { env: { ...inside, SWAYSOCK: '/run/user/1000/sway.sock' } }, 'SWAYSOCK does not match'],
+    ['a crashed private system bus', { systemBusRunning: false }, 'the private system bus of the qa:display session "lsp" is not running'],
+    ['the host system bus inside the session', { env: { ...inside, DBUS_SYSTEM_BUS_ADDRESS: 'unix:path=/run/dbus/system_bus_socket' } }, 'DBUS_SYSTEM_BUS_ADDRESS does not match'],
+    ['no system bus inside the session, so clients would fall back to the host one', { env: { ...inside, DBUS_SYSTEM_BUS_ADDRESS: undefined } }, 'DBUS_SYSTEM_BUS_ADDRESS does not match'],
     ['a host pulse server leaking into the session', { env: { ...inside, PULSE_SERVER: 'unix:/run/user/1000/pulse/native' } }, 'PULSE_SERVER does not match'],
   ])('refuses on Linux with %s and names qa:display run', (_, overrides, reason) => {
     const verdict = guard(overrides)
@@ -435,7 +491,7 @@ describe('qa display host session guard', () => {
   })
 
   it('lets the explicit escape hatch and other platforms through without a session', () => {
-    expect(guard({ env: kdeHost, session: null, unitActive: false, allowHostSession: true })).toEqual({ ok: true })
+    expect(guard({ env: kdeHost, session: null, unitActive: false, systemBusRunning: false, allowHostSession: true })).toEqual({ ok: true })
     expect(guard({ env: kdeHost, session: null, unitActive: false, platform: 'win32' })).toEqual({ ok: true })
     expect(guard({ env: kdeHost, session: null, unitActive: false, platform: 'darwin' })).toEqual({ ok: true })
   })
