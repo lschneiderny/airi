@@ -39,6 +39,7 @@
     "qa:host": "node --import tsx packages/qa-tools/bin/host.ts",
     "qa:report": "pnpm -F @proj-airi/qa-tools run report",
     "qa:setup": "node --import tsx packages/qa-tools/bin/setup.ts",
+    "qa:smoke": "node --import tsx packages/qa-tools/bin/smoke.ts",
     "qa:stage": "pnpm -F @proj-airi/qa-tools run stage",
     "qa:test": "pnpm -F @proj-airi/qa-tools run test:qa",
     "test": "vitest --coverage",

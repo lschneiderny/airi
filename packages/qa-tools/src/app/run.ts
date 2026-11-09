@@ -18,6 +18,7 @@ import { killTree, listLiveProcesses } from '../env/processes'
 import { createRun } from '../evidence/run'
 import { loadScript } from '../llm/script'
 import { ReplayServer } from '../llm/server'
+import { PageErrorCollector } from '../smoke/page-errors'
 import { MotionQaBridgeClient } from '../t3/bridge-client'
 import { importRig, zipRig } from '../t3/import-rig'
 import { connectStage, failOnExit, launchStageTamagotchi } from '../t3/launch'
@@ -51,6 +52,7 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
   let bridge: MotionQaBridgeClient | undefined
   let tracked: OwnedProcess[] = []
   let server: ReplayServer | undefined
+  let collector: PageErrorCollector | undefined
   let screenshot: string | null = null
   let failed = false
   let exitCode = 1
@@ -78,6 +80,8 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
     stage = connected.stage
     browserUrl = connected.browserUrl
     tracked = trackTree(await listLiveProcesses(), app.root)
+    collector = new PageErrorCollector(app.port)
+    await bounded(collector.start())
     details.launch = { env: app.env, targetUrl: connected.targetUrl }
     const page = stage
     await bounded(page.evaluate(`(() => {
@@ -161,6 +165,7 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
   }
   finally {
     signal.removeEventListener('abort', onAbort)
+    await collector?.stop()
     const browser = browserUrl
     try {
       const teardown = await teardownRun({ repoRoot, profileDir, root: app?.root, tracked, selfPids }, {
@@ -194,10 +199,12 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
   }
   details.events = events
   details.sendPaths = sendPaths
+  details.pageErrors = collector?.errors ?? []
+  details.pageErrorWindows = collector?.targets ?? []
   details.durationMs = Date.now() - startedAt
   details.requests = existsSync(run.path('requests.jsonl')) ? readFileSync(run.path('requests.jsonl'), 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : []
   json('diagnostics.json', details)
-  const summary = buildSummary({ runDir: run.dir, model: options.model, sendPaths, events, missing, screenshot, diagnostics: run.path('diagnostics.json'), durationMs: Date.now() - startedAt, failed })
+  const summary = buildSummary({ runDir: run.dir, model: options.model, sendPaths, events, missing, screenshot, diagnostics: run.path('diagnostics.json'), durationMs: Date.now() - startedAt, failed, pageErrors: collector?.errors.length ?? 0 })
   json('summary.json', summary)
   for (const name of ['diagnostics.json', 'summary.json', 'requests.jsonl', 'stage.png', 'app.log']) {
     if (existsSync(run.path(name)))

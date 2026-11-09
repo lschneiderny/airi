@@ -19,6 +19,8 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 | `pnpm qa:motion gate <emotion\|liveliness> --level t2 --rig forbooth [options]` | Run the selected gate against the headless ForBOOTH rig and Cubism Core. Set `AIRI_QA_RIG_FORBOOTH`; set `AIRI_QA_CUBISM_CORE` when the core is not at the checkout's default path. |
 | `pnpm qa:motion t3 --rig forbooth --scenario <builtin:name\|file.json> [--keep-open]` | Drive a scenario in the rendered Electron app and collect a Natural trace and screenshots. |
 | `pnpm qa:host smoke [--xwayland] [--expect-idle verified\|unverified]` | Launch a temporary Electron profile and compare host signals with the runner's capabilities, then observe idle delivery every 5 seconds for 180 seconds. |
+| `pnpm qa:smoke [--model <path>] [--settle <seconds>] [--allow <json>] [--out <dir>]` | Start the app from a fresh profile and fail on any renderer exception, `console.error`, browser error, or main-process error in any window. See [Clean-start smoke](#clean-start-smoke). |
+| `pnpm qa:app run --model <path> --say <text> [options]` | Run a disposable experience session: replayed chat and speech, real model import, events, and a screenshot. See [App experience sessions](#app-experience-sessions). |
 | `pnpm qa:motion validate-scorer --level t1 [--sections aa,zero,mutations,unmutated,determinism] [--seeds N] [--workers N] [--timeout-minutes N]` | Evaluate scorer false positives, mutation detection, unmutated gate power, and determinism. A missed validation threshold exits 1 by design. |
 | `pnpm qa:report <runDir> [<runDir>...] [--out <file>]` | Combine gate, T3, and test-run evidence into a self-contained HTML review page. |
 | `pnpm qa:stage measure --mode <window\|desktop> --port <cdp port> [--seconds 60] [--attempts 3] --out <json>` | Measure the MMD frame budget of a running app in one host mode. See [Stage gates](#stage-gates). |
@@ -179,6 +181,23 @@ Run the pure replay and real xsai transport tests with:
 pnpm -F @proj-airi/qa-tools exec vitest run --project node src/llm
 ```
 
+## Clean-start smoke
+
+`qa:smoke` proves that the app starts without errors. It launches the development app with a fresh `APP_USER_DATA_PATH` profile and the exclusive CPU lease, completes onboarding, waits for the motion QA bridge, optionally imports `--model` (the same formats and `--kind` rules as `qa:app`), waits `--settle` seconds (default 20), screenshots the stage, and tears down.
+
+```bash
+pnpm qa:smoke                                              # Linux: pnpm qa:display run -- pnpm --silent qa:smoke
+pnpm qa:smoke --model /models/character.zip --settle 10
+```
+
+While the app runs, a CDP collector attaches to every window, including windows opened later, and records uncaught exceptions, unhandled rejections, `console.error` and failed `console.assert` calls, and browser error log entries such as failed resource loads. Enabling the domains replays what V8 buffered before the attach, so errors from the first paint count. After teardown, the main-process log is scanned for app logger `[error]` lines, uncaught exceptions, and unhandled rejections. Chromium's own `:ERROR:` lines and the renderer errors that Vite echoes as `[vite] (client)` are excluded.
+
+Any error that does not match an entry in `fixtures/smoke/allowed-errors.json` (or `--allow <json>`) fails the run, and so does a window the collector could not attach to. Each allowlist entry names its `kind` (`exception`, `console`, `log`, or `main`), a regular-expression `pattern`, a `reason`, the date it was `added`, and when to remove it (`removeWhen`). Add an entry only for a concrete, understood cause, as in the known-failures registry; an unexplained error is a finding.
+
+Stdout is one JSON line: `ok`, `runDir`, `failure`, the watched `windows`, counts of unexpected `errors` and `mainErrors`, `allowed`, `unwatchedWindows`, the `firstErrors`, and the `screenshot`. The run directory keeps `errors.json` (every error with its window, kind, text, and source), `diagnostics.json`, `stage.png`, and `app.log`. Exit 0 means a clean start, 1 means an unexpected error or a broken run, 2 means invalid arguments or setup, and 130 means interruption.
+
+On 2026-11-09 a run on Linux in `qa:display` watched the stage, `#/inlay`, and beat-sync windows and found no errors. With a probe that threw an early exception, logged `console.error`, and rejected a promise in the renderer entry, it failed and reported all three in both app windows.
+
 ## App experience sessions
 
 `qa:app` runs a disposable Electron experience session with the same replay script format as `qa:llm`. It starts `ReplayServer` in process on loopback port 0, takes an exclusive CPU lease, and reuses T3 launch, CDP, model import, screenshot and ownership-checked teardown helpers.
@@ -210,7 +229,9 @@ The dev-only event ring records parsed ACT cues, applied performer expression sl
 
 Stdout contains one compact JSON summary line (`ok`, `runDir`, `model`, `sendPath`, event counts, `missing`, `screenshot`, `diagnostics`, `durationMs`); use `pnpm --silent qa:app` to suppress pnpm's lifecycle banner. `sendPath` is `composer`, `chatSend`, `mixed`, or null before sending. Diagnostics include bridge state, per-message cursors, missing kinds, event timestamps, replay request log, timings, and teardown receipts. A broken run exits 1 and still attempts screenshot/diagnostics and teardown. Invalid arguments or refused setup exit 2; success exits 0. Dry run prints the full JSON plan, creates no run, takes no lease, starts no server or app, and does not read model/script files.
 
-No live Electron acceptance was run for this feature. The owner must verify profile initialization across windows, all model formats, composer focus/Enter, leader routing, ACT and speech delivery, screenshot pixels, interruption, and process cleanup. Unit tests and dry run do not prove those behaviors.
+The summary also reports `pageErrors`, the number of renderer errors the clean-start collector recorded in any window, and `diagnostics.json` lists them. They do not change `ok`; use `qa:smoke` to gate on errors.
+
+Live acceptance so far covers one configuration: on 2026-11-09, on Linux in `qa:display`, a ForBOOTH Live2D directory with the example script and `--say hello --expect act,tts` passed in 47 seconds through the `chatSend` path, with ACT, expression, TTS, and turn events, a rendered character in the screenshot, and a clean teardown. The owner must still verify the composer path, MMD and VRM, interruption, and Windows and macOS. Unit tests and dry run do not prove those behaviors.
 
 ```bash
 pnpm -F @proj-airi/qa-tools exec vitest run --project node src/app
