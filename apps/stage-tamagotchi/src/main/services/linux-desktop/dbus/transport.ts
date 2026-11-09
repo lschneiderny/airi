@@ -45,8 +45,8 @@ export class DbusTransport {
     return DbusTransport.connect(() => dbus.sessionBus({ busAddress: address }), address ?? 'session bus')
   }
 
-  static async system(): Promise<DbusTransport> {
-    return DbusTransport.connect(() => dbus.systemBus(), env.DBUS_SYSTEM_BUS_ADDRESS || 'unix:path=/var/run/dbus/system_bus_socket')
+  static async system(address = env.DBUS_SYSTEM_BUS_ADDRESS || 'unix:path=/var/run/dbus/system_bus_socket'): Promise<DbusTransport> {
+    return DbusTransport.connect(() => dbus.sessionBus({ busAddress: address }), address)
   }
 
   private static async connect(create: () => dbus.MessageBus, address: string): Promise<DbusTransport> {

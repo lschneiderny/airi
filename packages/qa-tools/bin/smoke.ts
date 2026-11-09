@@ -5,6 +5,7 @@ import { resolve } from 'node:path'
 import { errorMessageFrom } from '@moeru/std'
 import { acquire } from '@proj-airi/cpu-slots'
 
+import { requireQaDisplaySession } from '../../../scripts/dev-tools/qa-display-guard'
 import { loadQaEnv } from '../src/env/load'
 import { parseSmokeArgs } from '../src/smoke/args'
 import { runSmoke } from '../src/smoke/run'
@@ -13,7 +14,7 @@ const repoRoot = resolve(import.meta.dirname, '../../..')
 loadQaEnv(repoRoot)
 
 async function main(): Promise<number> {
-  const options = parseSmokeArgs(process.argv.slice(2), process.env.INIT_CWD ?? process.cwd())
+  const options = parseSmokeArgs(requireQaDisplaySession('qa:smoke', process.argv.slice(2)), process.env.INIT_CWD ?? process.cwd())
   const controller = new AbortController()
   const stop = () => controller.abort(new Error('interrupted'))
   process.on('SIGINT', stop)

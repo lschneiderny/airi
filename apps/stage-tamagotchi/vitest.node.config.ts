@@ -17,5 +17,6 @@ export default withCpuSlots(defineProject({
     exclude: ['src/**/*.browser.test.ts', '**/node_modules/**', '**/.git/**'],
     fileParallelism: false,
     maxWorkers: 1,
+    setupFiles: ['../../scripts/dev-tools/vitest-isolate-host-session.ts'],
   },
 }))

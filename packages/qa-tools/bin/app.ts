@@ -6,6 +6,8 @@ import { resolve } from 'node:path'
 import { errorMessageFrom } from '@moeru/std'
 import { acquire } from '@proj-airi/cpu-slots'
 
+import { assertQaDisplaySession } from '../../../scripts/dev-tools/qa-display-guard'
+import { takeAllowHostSession } from '../../../scripts/dev-tools/qa-display-plan'
 import { parseAppArgs } from '../src/app/args'
 import { buildPlan } from '../src/app/plan'
 import { runApp } from '../src/app/run'
@@ -16,12 +18,14 @@ const repoRoot = resolve(import.meta.dirname, '../../..')
 loadQaEnv(repoRoot)
 
 async function main(): Promise<number> {
-  const options = parseAppArgs(process.argv.slice(2), process.env.INIT_CWD ?? process.cwd())
+  const { argv, allowHostSession } = takeAllowHostSession(process.argv.slice(2))
+  const options = parseAppArgs(argv, process.env.INIT_CWD ?? process.cwd())
   if (options.dryRun) {
     const runDir = options.out ?? resolve(repoRoot, '.temp/qa', `${formatRunTimestamp(new Date())}-app-experience`)
     process.stdout.write(`${JSON.stringify(buildPlan(options, runDir))}\n`)
     return 0
   }
+  assertQaDisplaySession('qa:app', allowHostSession)
   statSync(options.model)
   const controller = new AbortController()
   const stop = () => controller.abort(new Error('interrupted'))

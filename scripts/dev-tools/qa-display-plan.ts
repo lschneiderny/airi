@@ -61,7 +61,7 @@ Commands:
 --compositor defaults to kwin. --portals adds xdg-desktop-portal and KDE global shortcuts (kwin only).`
 
 /** Unit, socket, and directory names accept only characters that are safe in all three. */
-export const namePattern = /^[a-z0-9][a-z0-9-]{0,31}$/
+const namePattern = /^[a-z0-9][a-z0-9-]{0,31}$/
 
 export function parseQaDisplayArgs(argv: readonly string[]): QaDisplayArgs | { error: string } {
   const separator = argv.indexOf('--')
@@ -437,7 +437,7 @@ export function parseSessionEnv(text: string): QaSession | null {
 
 /** The host environment with the session keys replaced. An empty value removes the key, so host display keys cannot leak in. */
 export function clientEnv(host: NodeJS.ProcessEnv, session: Record<string, string>, name: string): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...host, AIRI_QA_DISPLAY: name }
+  const env: NodeJS.ProcessEnv = { ...host, AIRI_QA_DISPLAY: name, AIRI_QA_DISPLAY_SESSION: name }
   for (const [key, value] of Object.entries(session)) {
     if (value)
       env[key] = value
@@ -461,8 +461,53 @@ export function sessionMountTargets(mountinfo: string, sessionDir: string): stri
     .sort((a, b) => b.length - a.length)
 }
 
+export const allowHostSessionFlag = '--allow-host-session'
+
+/** Removes every `--allow-host-session` from a command's arguments and reports whether one was there. */
+export function takeAllowHostSession(argv: readonly string[]): { argv: string[], allowHostSession: boolean } {
+  const rest = argv.filter(arg => arg !== allowHostSessionFlag)
+  return { argv: rest, allowHostSession: rest.length !== argv.length }
+}
+
+export type QaDisplayGuardVerdict = { ok: true } | { ok: false, message: string }
+
+/**
+ * Whether an agent QA command that opens windows or reads desktop sensors may start. On Linux it must run inside a
+ * live `pnpm qa:display` session: `AIRI_QA_DISPLAY_SESSION` names the session, the session's unit is active and its env file
+ * parses, and the client environment matches that session, so a stale export or a hand-set marker cannot reach the
+ * user's desktop. Other platforms have no QA display, and `--allow-host-session` is the explicit escape hatch.
+ */
+export function qaDisplayGuard(input: {
+  command: string
+  platform: NodeJS.Platform
+  env: NodeJS.ProcessEnv
+  allowHostSession: boolean
+  /** The parsed env file of the session `AIRI_QA_DISPLAY_SESSION` names, or null when it is missing or incomplete. */
+  session: QaSession | null
+  unitActive: boolean
+}): QaDisplayGuardVerdict {
+  if (input.platform !== 'linux' || input.allowHostSession)
+    return { ok: true }
+  const refuse = (reason: string): QaDisplayGuardVerdict => ({
+    ok: false,
+    message: `${input.command}: refusing to run on the host desktop session: ${reason}. Run it inside a QA display: pnpm qa:display run -- pnpm ${input.command} ...`,
+  })
+  const name = input.env.AIRI_QA_DISPLAY_SESSION
+  if (!name)
+    return refuse('AIRI_QA_DISPLAY_SESSION is not set')
+  if (!namePattern.test(name))
+    return refuse(`AIRI_QA_DISPLAY_SESSION=${name} is not a qa:display session name`)
+  if (!input.unitActive || !input.session)
+    return refuse(`the qa:display session "${name}" is not running`)
+  for (const [key, value] of Object.entries(input.session.env)) {
+    if ((input.env[key] ?? '') !== value)
+      return refuse(`${key} does not match the qa:display session "${name}"`)
+  }
+  return { ok: true }
+}
+
 export function shellExports(session: Record<string, string>, name: string): string {
-  const lines = [`export AIRI_QA_DISPLAY=${shellQuote(name)}`]
+  const lines = [`export AIRI_QA_DISPLAY=${shellQuote(name)}`, `export AIRI_QA_DISPLAY_SESSION=${shellQuote(name)}`]
   for (const [key, value] of Object.entries(session))
     lines.push(value ? `export ${key}=${shellQuote(value)}` : `unset ${key}`)
   return lines.join('\n')

@@ -37,9 +37,13 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 
 `--seeds N` reduces a run and the report records that selection. It does not change the committed gate. Exit code 0 means the requested check passed, 1 means a check failed or a run broke, and 2 means invalid arguments or setup; T3 also uses 130 for interruption.
 
+## Linux host session guard
+
+On Linux, `pnpm qa:smoke`, `pnpm qa:app run` (except `--dry-run`), `pnpm qa:host smoke`, and `pnpm qa:kwin-probe` (unless it gets an explicit `--bus`) start only inside a live `pnpm qa:display` session, so their windows and desktop sensors never reach the user's own desktop. Outside one they exit 2 before taking a CPU lease or launching Electron, and the message names `pnpm qa:display run --`. The guard accepts a session only when `AIRI_QA_DISPLAY_SESSION` names it, its systemd unit is active, its env file exists, and the display, bus, and runtime variables match that env file, so a stale export from a stopped session or a hand-set marker is refused. `--allow-host-session` skips the guard for a person who deliberately tests on their own desktop; agents never pass it. Windows and macOS have no QA display and are not guarded. The shared check is `requireQaDisplaySession` in `scripts/dev-tools/qa-display-guard.ts`.
+
 ## Host signal smoke
 
-Run `pnpm qa:host smoke` on Windows, macOS, or Linux X11. On native Wayland, `--expect-idle verified|unverified` is required: choose the result established by the machine's idle probe. For this machine, run `pnpm qa:host smoke --expect-idle verified`. Run `pnpm qa:host smoke --xwayland` for XWayland.
+Run `pnpm qa:host smoke` on Windows, macOS, or Linux X11. On Linux, run it as `pnpm qa:display run -- pnpm qa:host smoke ...` (see the host session guard above). On native Wayland, `--expect-idle verified|unverified` is required: choose the result established by the machine's idle probe. For this machine, run `pnpm qa:host smoke --expect-idle verified`. Run `pnpm qa:host smoke --xwayland` for XWayland.
 
 The command prints a JSON report and saves `report.json` and `app.log` under the reported `.temp/qa/` run directory. Every sample includes its elapsed time, raw host snapshot, idle reading, and resolved performance mode. A live idle sensor must advance; native Wayland may stay unverified with null idle readings or promote once to live and then advance. Runtime hook or foreground binding failures fail the signal comparison and name their reason.
 
@@ -199,7 +203,7 @@ pnpm -F @proj-airi/qa-tools exec vitest run --project node src/llm
 `qa:smoke` proves that the app starts without errors. It launches the development app with a fresh `APP_USER_DATA_PATH` profile and the exclusive CPU lease, completes onboarding, waits for the motion QA bridge, optionally imports `--model` (the same formats and `--kind` rules as `qa:app`), waits `--settle` seconds (default 20), screenshots the stage, and tears down.
 
 ```bash
-pnpm qa:smoke                                              # Linux: pnpm qa:display run -- pnpm --silent qa:smoke
+pnpm qa:smoke                                              # Linux: pnpm qa:display run -- pnpm --silent qa:smoke (required; see Linux host session guard)
 pnpm qa:smoke --model /models/character.zip --settle 10
 ```
 

@@ -47,6 +47,7 @@ export default withCpuSlots(defineConfig({
         test: {
           name: 'dev-tools',
           include: ['scripts/dev-tools/**/*.test.ts'],
+          setupFiles: ['scripts/dev-tools/vitest-isolate-host-session.ts'],
         },
       },
       // The browser extension's background logic. The extension builds with WXT and has no test config of its own.
