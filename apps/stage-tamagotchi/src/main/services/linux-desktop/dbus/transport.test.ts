@@ -134,6 +134,67 @@ describe('dbusTransport on a private daemon', () => {
     expect(features).toContain('ActivatableServicesChanged')
   })
 
+  it('emits a service signal from one connection to a matching subscriber', async () => {
+    const events = new EventTarget()
+    const received = vi.fn((body: unknown[]) => {
+      events.dispatchEvent(new CustomEvent('received', { detail: body }))
+    })
+    const sender = await second.getNameOwner(destination)
+    if (sender === null)
+      throw new Error('Private service has no owner')
+    const unsubscribe = second.onSignal({ sender, path, interface: iface, member: 'Changed' }, received)
+    try {
+      await second.call({ destination: busName, path: busPath, interface: busName, member: 'GetId' })
+      const delivered = once(events, 'received', { signal: AbortSignal.timeout(2000) })
+      first.emitSignal(path, iface, 'Changed', 'sb', ['locked', true])
+      await delivered
+      expect(received).toHaveBeenCalledExactlyOnceWith(['locked', true])
+    }
+    finally {
+      unsubscribe()
+    }
+  })
+
+  it('exports read-only properties through Get and GetAll and rejects unknown properties', async () => {
+    let count = 7
+    const propertyPath = `${path}/Properties`
+    const unexport = first.exportReadOnlyProperties(propertyPath, iface, {
+      Count: { signature: 'i', get: () => count },
+      Inhibited: { signature: 'b', get: () => false },
+    })
+    try {
+      expect(await second.getProperty(destination, propertyPath, iface, 'Count')).toBe(7)
+      count = 9
+      expect(await second.getProperty(destination, propertyPath, iface, 'Count')).toBe(9)
+      const all = await second.call<unknown>({
+        destination,
+        path: propertyPath,
+        interface: 'org.freedesktop.DBus.Properties',
+        member: 'GetAll',
+        signature: 's',
+        body: [iface],
+      })
+      expect(all).toEqual({ Count: 9, Inhibited: false })
+      await expect(second.getProperty(destination, propertyPath, iface, 'Missing')).rejects.toMatchObject({
+        dbusName: 'org.freedesktop.DBus.Error.UnknownProperty',
+      })
+      await expect(second.call({
+        destination,
+        path: propertyPath,
+        interface: 'org.freedesktop.DBus.Properties',
+        member: 'Set',
+        signature: 'ssv',
+        body: [iface, 'Count', ['i', 10]],
+      })).rejects.toMatchObject({ dbusName: 'org.freedesktop.DBus.Error.PropertyReadOnly' })
+    }
+    finally {
+      unexport()
+    }
+    await expect(second.getProperty(destination, propertyPath, iface, 'Count')).rejects.toMatchObject({
+      dbusName: 'org.freedesktop.DBus.Error.UnknownObject',
+    })
+  })
+
   it('returns null when a well-known name has no owner', async () => {
     expect(await first.getNameOwner('ai.airi.Absent')).toBeNull()
   })
