@@ -47,6 +47,7 @@ export function getCurrentHostCapabilities(): HostCapabilities {
       env: process.env,
     }),
     macosMajorMinor: platform === 'darwin' ? [major, minor] : null,
+    linuxDesktop: null,
     ...runtimeFacts,
   }
   current = resolveHostCapabilities(facts, Date.now())

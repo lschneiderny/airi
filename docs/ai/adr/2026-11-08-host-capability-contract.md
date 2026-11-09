@@ -130,8 +130,15 @@ is still pending.
 
 ## Follow-ups
 
-- Add compositor-provided sensors when their contracts are documented and
-  available without host-specific extensions.
+- Compositor-provided sensors qualify when their contracts are documented and
+  ship inside the compositor or its IPC, including KWin scripting, sway IPC,
+  and Hyprland IPC. Shell extensions the user must install, including GNOME
+  Shell extensions, do not qualify.
+  The Linux desktop facts contract now records the selected backend and
+  process-local proofs for foreground, cursor, geometry, keep-above, lock,
+  shortcut bindings, click-through toggling, and system audio. Static profiles
+  in the matrix above stay unchanged until a running producer supplies those
+  proofs. Pending verification does not trigger a presence limitation notice.
 - Upgrade Electron when the fix for electron#52456 is available and can be
   adopted without changing the supported host contract.
 - Run live smoke checks on Windows and macOS; those host checks have not been

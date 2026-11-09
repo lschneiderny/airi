@@ -1,3 +1,14 @@
+import type { LinuxDesktopBackend, LinuxDesktopFacts } from './linux-desktop'
+import type { HostReason } from './reasons'
+
+import { applyLinuxDesktopCapabilities } from './linux-desktop'
+import { HostReasons } from './reasons'
+
+export { LINUX_DESKTOP_BACKENDS } from './linux-desktop'
+export type { LinuxDesktopBackend, LinuxDesktopFacts } from './linux-desktop'
+export { HOST_REASONS, HostReasons } from './reasons'
+export type { HostReason } from './reasons'
+
 /** The one list of host ids; schemas, CLIs and the `HostId` union all derive from it. */
 export const HOST_IDS = ['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland', 'web'] as const
 export type HostId = typeof HOST_IDS[number]
@@ -17,33 +28,6 @@ export const HOST_SIGNALS = [
 ] as const
 export type HostSignal = typeof HOST_SIGNALS[number]
 
-export const HostReasons = Object.freeze({
-  WaylandCursorUnreported: 'wayland-cursor-unreported',
-  WaylandWindowOriginHidden: 'wayland-window-origin-hidden',
-  WaylandDisplayOriginUnverified: 'wayland-display-origin-unverified',
-  XwaylandIdleConstantZero: 'xwayland-idle-constant-zero',
-  WaylandIdleUnverified: 'wayland-idle-unverified',
-  LinuxLockEventsUndocumented: 'linux-lock-events-undocumented',
-  PlatformNoForegroundBinding: 'platform-no-foreground-binding',
-  ForegroundBindingLoadFailed: 'foreground-binding-load-failed',
-  WaylandNoGlobalInputHook: 'wayland-no-global-input-hook',
-  GlobalInputHookLoadFailed: 'global-input-hook-load-failed',
-  GlobalInputHookStartFailed: 'global-input-hook-start-failed',
-  MacosAccessibilityDenied: 'macos-accessibility-denied',
-  MacosWindowTitlesUntrusted: 'macos-window-titles-untrusted',
-  LinuxNoClickThroughForward: 'linux-no-click-through-forward',
-  WaylandNoZOrder: 'wayland-no-z-order',
-  LinuxCaptureAudioUnverified: 'linux-capture-audio-unverified',
-  MacosCaptureAudioRequires14_2: 'macos-capture-audio-requires-14-2',
-  WebSandbox: 'web-sandbox',
-  WebPagePointerOnly: 'web-page-pointer-only',
-} as const)
-
-export type HostReason = typeof HostReasons[keyof typeof HostReasons]
-
-/** Every reason code, for schemas that validate one. */
-export const HOST_REASONS: readonly HostReason[] = Object.values(HostReasons)
-
 export type SignalStatus
   = | { kind: 'live' }
     | { kind: 'degraded', reason: HostReason }
@@ -56,6 +40,7 @@ export function acceptCursorReading(cursor: SignalStatus): boolean {
 
 export interface HostCapabilities {
   host: HostId
+  linuxDesktopBackend: LinuxDesktopBackend | null
   signals: Record<HostSignal, SignalStatus>
   /** Explicit producer time in epoch milliseconds; canonical QA profiles use zero. */
   resolvedAtMs: number
@@ -71,6 +56,7 @@ export interface HostFacts {
   foregroundTitlesTrusted: boolean | null
   /** Evidence from the running host, never a persisted machine assumption. */
   waylandIdleVerified: boolean
+  linuxDesktop: LinuxDesktopFacts | null
 }
 
 /** Resolves host guarantees and runtime failures without sampling signals or reading clocks. */
@@ -127,6 +113,7 @@ export function resolveHostCapabilities(facts: HostFacts, nowMs: number): HostCa
     case 'web':
       return {
         host: 'web',
+        linuxDesktopBackend: null,
         signals: {
           cursorScreenPoint: { kind: 'degraded', reason: HostReasons.WebPagePointerOnly },
           windowOrigin: { kind: 'unavailable', reason: HostReasons.WebSandbox },
@@ -163,11 +150,15 @@ export function resolveHostCapabilities(facts: HostFacts, nowMs: number): HostCa
     }
   }
 
-  return { host, signals, resolvedAtMs: nowMs }
+  // Compositor and portal proofs supersede failures from the older native bindings.
+  if (facts.platform === 'linux' && facts.linuxDesktop !== null)
+    applyLinuxDesktopCapabilities(host, facts.linuxDesktop, signals)
+
+  return { host, linuxDesktopBackend: facts.platform === 'linux' ? facts.linuxDesktop?.backend ?? null : null, signals, resolvedAtMs: nowMs }
 }
 
 /** Deterministic QA facts; native Wayland idle remains unavailable until verified at runtime. */
-export function capabilitiesForHost(host: HostId): HostCapabilities {
+export function capabilitiesForHost(host: HostId, linuxDesktop?: LinuxDesktopFacts): HostCapabilities {
   const platforms = {
     'windows': 'win32',
     'macos': 'darwin',
@@ -185,6 +176,7 @@ export function capabilitiesForHost(host: HostId): HostCapabilities {
     globalInputHookFailure: 'none',
     foregroundTitlesTrusted: null,
     waylandIdleVerified: false,
+    linuxDesktop: platforms[host] === 'linux' ? linuxDesktop ?? null : null,
   }, 0)
 }
 
@@ -203,12 +195,21 @@ export function idleAdvances(samples: Array<{ atMs: number, seconds: number | nu
 }
 
 const presenceSignals = ['cursorScreenPoint', 'windowOrigin', 'systemIdleTime', 'foregroundWindow', 'globalKeyUp'] as const
+const transientReasons = new Set<HostReason>([
+  HostReasons.WaylandIdleUnverified,
+  HostReasons.LinuxBridgeStarting,
+  HostReasons.LinuxForegroundVerifying,
+  HostReasons.LinuxCursorVerifying,
+  HostReasons.LinuxGeometryVerifying,
+  HostReasons.LinuxKeepAboveVerifying,
+  HostReasons.LinuxPortalShortcutUnbound,
+])
 
 /** Presence signals worth telling the user about; idle verification alone never prompts a notice. */
 export function presenceLimitations(caps: HostCapabilities): Array<{ signal: HostSignal, reason: HostReason }> {
   return presenceSignals.flatMap((signal) => {
     const status = caps.signals[signal]
-    return status.kind === 'live' || status.reason === HostReasons.WaylandIdleUnverified ? [] : [{ signal, reason: status.reason }]
+    return status.kind === 'live' || transientReasons.has(status.reason) ? [] : [{ signal, reason: status.reason }]
   })
 }
 

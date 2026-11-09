@@ -76,6 +76,14 @@ pages:
       title: Presence sensing
       description: See which signals this system lets AIRI sense, and why one is limited or unavailable.
       host: Host
+      backend: Desktop backend
+      backends:
+        kwin: KDE KWin
+        x11-ewmh: X11 EWMH
+        sway: sway
+        hyprland: Hyprland
+        gnome: GNOME
+        none: No supported desktop backend
       pending: AIRI has not read what this system can sense yet.
       status:
         live: Live
@@ -93,6 +101,18 @@ pages:
         alwaysOnTop: Always on top
         systemAudioCapture: System audio capture
       reasons:
+        linux-bridge-starting: The desktop bridge is starting.
+        linux-bridge-failed: The desktop bridge failed.
+        linux-foreground-verifying: The desktop bridge is verifying the foreground window.
+        linux-cursor-verifying: The desktop bridge is verifying the cursor position.
+        linux-geometry-verifying: The desktop bridge is verifying window and display positions.
+        linux-keep-above-verifying: The desktop bridge is verifying that AIRI stays above other windows.
+        linux-click-through-emulated: AIRI emulates click-through using verified cursor and window positions.
+        gnome-needs-extension: GNOME needs a separately installed Shell extension to expose this signal.
+        sway-cursor-unreported: sway does not report the global cursor position through its IPC.
+        linux-desktop-unsupported: This desktop has no supported foreground window reader.
+        kwin-api-unsupported: This KWin version does not expose a supported scripting API.
+        linux-portal-shortcut-unbound: The shortcut portal is connected, but no key release shortcut is bound.
         wayland-cursor-unreported: Wayland does not report the cursor position outside the window.
         wayland-window-origin-hidden: Wayland hides where the window sits on the screen.
         wayland-display-origin-unverified: Display positions under Wayland are not verified on this system.

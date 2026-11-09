@@ -14,6 +14,7 @@ function facts(overrides: Partial<HostFacts> = {}): HostFacts {
     globalInputHookFailure: 'none',
     foregroundTitlesTrusted: null,
     waylandIdleVerified: false,
+    linuxDesktop: null,
     ...overrides,
   }
 }
@@ -86,7 +87,7 @@ const hostRows: Array<{ host: HostId, facts: HostFacts, signals: Record<HostSign
 
 describe('resolveHostCapabilities', () => {
   it.each(hostRows)('resolves every signal for $host', ({ host, facts, signals }) => {
-    expect(resolveHostCapabilities(facts, 1234)).toEqual({ host, signals, resolvedAtMs: 1234 })
+    expect(resolveHostCapabilities(facts, 1234)).toEqual({ host, linuxDesktopBackend: null, signals, resolvedAtMs: 1234 })
   })
 
   it('enables native Wayland idle only with runtime verification', () => {
@@ -177,7 +178,7 @@ describe('resolveHostCapabilities', () => {
 
 describe('capabilitiesForHost', () => {
   it.each(hostRows)('provides the canonical $host profile without verified idle', ({ host, signals }) => {
-    expect(capabilitiesForHost(host)).toEqual({ host, signals, resolvedAtMs: 0 })
+    expect(capabilitiesForHost(host)).toEqual({ host, linuxDesktopBackend: null, signals, resolvedAtMs: 0 })
   })
 })
 
@@ -216,7 +217,7 @@ describe('presenceNoticeKey', () => {
   })
 
   it('returns null when only the transient idle status is unavailable', () => {
-    expect(presenceNoticeKey({ host: 'linux-wayland', signals: { ...allLive, systemIdleTime: waylandSignals.systemIdleTime }, resolvedAtMs: 0 })).toBeNull()
+    expect(presenceNoticeKey({ host: 'linux-wayland', linuxDesktopBackend: null, signals: { ...allLive, systemIdleTime: waylandSignals.systemIdleTime }, resolvedAtMs: 0 })).toBeNull()
   })
 
   it('ignores non-presence audio degradation on macOS', () => {
