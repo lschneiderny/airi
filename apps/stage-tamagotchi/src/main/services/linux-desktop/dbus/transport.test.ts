@@ -204,6 +204,20 @@ describe('dbusTransport on a private daemon', () => {
     expect(await second.requestName(destination)).toBe(false)
   })
 
+  it('distinguishes remote error names from similarly shaped local failures', async () => {
+    const error = await first.call({
+      destination: busName,
+      path: busPath,
+      interface: busName,
+      member: 'MissingMethod',
+    }).catch((error: unknown) => error)
+
+    expect(DbusTransport.errorName(error)).toBe('org.freedesktop.DBus.Error.UnknownMethod')
+    const local = Object.assign(new Error('Local failure'), { dbusName: 'org.freedesktop.DBus.Error.UnknownMethod' })
+    expect(DbusTransport.errorName(local)).toBeUndefined()
+    expect(DbusTransport.errorName(undefined)).toBeUndefined()
+  })
+
   it('fires NameOwnerChanged when the second connection closes', async () => {
     const events = new EventTarget()
     const changed = vi.fn((oldOwner: string, newOwner: string) => {
