@@ -1,6 +1,6 @@
 import type { MaybeElementRef, MouseInElementOptions } from '@vueuse/core'
 
-import { defaultWindow, tryOnMounted, unrefElement, useEventListener, useMouseInElement, useMutationObserver, useResizeObserver } from '@vueuse/core'
+import { defaultWindow, tryOnMounted, unrefElement, useEventListener, useMutationObserver, useResizeObserver } from '@vueuse/core'
 import { computed, shallowRef, watch } from 'vue'
 
 import { useElectronRelativeMouse } from './use-electron-relative-mouse'
@@ -34,9 +34,11 @@ export function useElectronMouseInElement(
   const elementHeight = shallowRef(0)
   const elementWidth = shallowRef(0)
   const isOutside = shallowRef(true)
-  // Only hit-testing falls back to DOM events. The returned coordinates stay Electron-owned.
-  const dom = useMouseInElement(target, options)
-  const outside = computed(() => available.value ? isOutside.value : dom.isOutside.value)
+  // Unknown is not hover. Only delivered DOM events can establish fallback entry;
+  // hit-testing default DOM coordinates on mount would invent hover at (0, 0).
+  // The returned coordinates stay Electron-owned.
+  const domOutside = shallowRef(true)
+  const outside = computed(() => available.value ? isOutside.value : domOutside.value)
 
   function update() {
     if (!window)
@@ -73,7 +75,7 @@ export function useElectronMouseInElement(
     }
   }
 
-  const stopFnList: Array<() => void> = [dom.stop]
+  const stopFnList: Array<() => void> = []
   function stop() {
     stopFnList.forEach(fn => fn())
     stopFnList.length = 0
@@ -85,11 +87,11 @@ export function useElectronMouseInElement(
 
   if (window) {
     // Keep entry and exit current before the first move and across availability changes.
-    stopFnList.push(useEventListener(() => unrefElement(targetRef), 'pointerenter', () => {
-      dom.isOutside.value = false
+    stopFnList.push(useEventListener(() => unrefElement(targetRef), ['pointerenter', 'mousemove'], () => {
+      domOutside.value = false
     }))
     stopFnList.push(useEventListener(() => unrefElement(targetRef), 'pointerleave', () => {
-      dom.isOutside.value = true
+      domOutside.value = true
     }))
     const {
       stop: stopResizeObserver,
@@ -111,12 +113,15 @@ export function useElectronMouseInElement(
       stopWatch,
     )
 
-    useEventListener(
-      document,
+    stopFnList.push(useEventListener(
+      window.document,
       'mouseleave',
-      () => isOutside.value = true,
+      () => {
+        isOutside.value = true
+        domOutside.value = true
+      },
       { passive: true },
-    )
+    ))
 
     if (windowScroll) {
       stopFnList.push(
