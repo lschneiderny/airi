@@ -2,6 +2,7 @@ import type { Server, Socket } from 'node:net'
 
 import type { LinuxDesktopFacts } from '@proj-airi/stage-shared/host-capabilities'
 
+import { Buffer } from 'node:buffer'
 import { once } from 'node:events'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
@@ -11,12 +12,15 @@ import { pid } from 'node:process'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { encodeFrame } from './backends/sway/ipc'
 import { createLinuxDesktopBridge } from './index'
 import { PrivateBus } from './session/private-bus.test-helper'
 
 const facts = vi.hoisted(() => vi.fn())
 vi.mock('../electron/host-capabilities', () => ({ reportLinuxDesktop: facts }))
 vi.mock('electron', () => ({ app: { getAppMetrics: () => [{ pid }] } }))
+
+const rect = { x: 0, y: 0, width: 800, height: 600 }
 
 describe('linux desktop backend registration', () => {
   let bus: PrivateBus
@@ -74,6 +78,48 @@ describe('linux desktop backend registration', () => {
   }
 
   const lastFailure = () => facts.mock.calls.filter(([patch]) => patch.bridge === 'failed').at(-1)?.[0]
+
+  describe('sway', () => {
+    const tree = { id: 1, type: 'root', rect, nodes: [{ id: 9, type: 'con', pid, name: 'AIRI', app_id: 'airi', rect, focused: true }] }
+
+    async function compositor(path: string) {
+      await listen(path, (socket) => {
+        let buffered = Buffer.alloc(0)
+        socket.on('data', (chunk: Buffer) => {
+          buffered = Buffer.concat([buffered, chunk])
+          while (buffered.length >= 14 && buffered.length >= 14 + buffered.readUInt32LE(6)) {
+            const type = buffered.readUInt32LE(10)
+            buffered = buffered.subarray(14 + buffered.readUInt32LE(6))
+            socket.write(type === 2 ? encodeFrame(2, { success: true }) : encodeFrame(4, tree))
+          }
+        })
+      })
+    }
+
+    it('connects to the injected socket, delivers readings, and fails when sway exits', async () => {
+      const path = join(directory, 'sway.sock')
+      await compositor(path)
+      const bridge = create({ SWAYSOCK: path })
+      await bridge.start()
+      expect(facts).toHaveBeenCalledWith(expect.objectContaining({ backend: 'sway', bridge: 'ready' }))
+      expect(bridge.activeWindow()).toEqual({ caption: 'AIRI', resourceClass: 'airi', desktopFileName: 'airi', pid, fullScreen: false })
+      expect(bridge.ownWindows()).toEqual([expect.objectContaining({ id: '9', pid, ...rect })])
+      const failed = nextFact(patch => patch.bridge === 'failed')
+      for (const socket of sockets)
+        socket.destroy()
+      await failed
+      expect(lastFailure()).toMatchObject({ backend: 'sway', bridgeFailure: 'other', foregroundVerified: false })
+      expect(bridge.activeWindow()).toBeNull()
+      expect(bridge.ownWindows()).toBeNull()
+    })
+
+    it('fails startup when the injected socket does not exist', async () => {
+      const bridge = create({ SWAYSOCK: join(directory, 'missing.sock') })
+      await bridge.start()
+      expect(lastFailure()).toMatchObject({ backend: 'sway', bridgeFailure: 'other' })
+      expect(bridge.activeWindow()).toBeNull()
+    })
+  })
 
   describe('hyprland', () => {
     const window = { address: '0xabc', at: [0, 0], size: [800, 600], class: 'konsole', title: 'Shell', pid: 42, fullscreen: 0 }
