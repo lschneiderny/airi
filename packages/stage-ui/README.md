@@ -287,6 +287,64 @@ compare gesture presentation, not conversation storage behavior.
 1. If a story is bound to a specific component, it can be placed beside the component in the `src` folder. e.g., `MyComponent.story.vue`
 2. If a story is not bound to a specific component, then it should be placed in the `stories` folder. e.g., `MyStory.story.vue`
 
+## Visual baselines
+
+Visual baseline tests compare screenshots of shared components with committed reference images. They use Vitest's built-in `expect.element(locator).toMatchScreenshot(name)` in the `browser` project, with the pixelmatch comparator.
+
+`src/components/misc/shared-components.visual.browser.test.ts` covers `Button`, `Callout`, `Checkbox`, and `Input` from `@proj-airi/ui`, and the stage-ui `Alert`. Each test renders the component states once on a light panel and once on a dark panel. Because these tests import `@proj-airi/ui`, `pnpm verify` runs them when a file of that package changes.
+
+### Where the files live
+
+- References: `<test directory>/__visual-baselines__/<test file>/<name>-<browser>-<platform>.png`, for example `src/components/misc/__visual-baselines__/shared-components.visual.browser.test.ts/button-chromium-linux.png`. Commit them.
+- Actual and diff images of a failed comparison: `.vitest-attachments/<test directory>/<test file>/<name>-actual-<browser>-<platform>.png` and `<name>-diff-<browser>-<platform>.png`. Git ignores this directory.
+- `__screenshots__` holds Vitest's failure screenshots of any browser test. Git ignores it, so references must not live there.
+
+### Platforms
+
+Fonts and anti-aliasing differ between operating systems, so each platform has its own references. `<platform>` is the Vitest server's `process.platform`, such as `linux` or `win32`. `referencePlatforms` in `src/test/visual-baseline.ts` lists the platforms whose references are committed. It contains only `linux`.
+
+| Run | Reference for this platform | Result |
+| --- | --- | --- |
+| Listed platform | Present | Compares. A difference beyond the tolerance fails the test and writes actual and diff images. |
+| Listed platform | Missing | Fails. Vitest writes the new reference beside the test and asks you to review it. The next run compares against it. |
+| Unlisted platform, such as Windows | Not consulted | Reports the test as skipped with the note `no committed chromium-<platform> visual references`. It neither fails nor passes. |
+| Any platform with `--update` | Present or missing | Writes the reference when it is missing or differs, then passes. |
+
+To add a platform, run the update command below on it, review the new images, and add the platform to `referencePlatforms` in the same commit as the images.
+
+### Determinism
+
+- Text uses the bundled `DM Sans Variable` font. The test fails if the font does not load instead of falling back to a system font.
+- The frame is 360 CSS pixels wide, and the Playwright page matches the 414x896 viewport, so screenshots are not scaled.
+- Vitest disables CSS animations and hides the text caret while it captures. It also retakes the screenshot until two captures match.
+- Content must not depend on time, network, or random input. Leave out animated states such as spinners.
+- Icon collections resolve from this package directory, so a run from the repository root (`pnpm verify`) renders the same icons as a run from the package.
+- Classes and icons must come from scanned `.vue` files or the UnoCSS safelist. The test frame (`src/test/visual-baseline-frame.vue`) owns the layout classes for this reason.
+
+### Tolerance
+
+`browser.expect.toMatchScreenshot.comparatorOptions` in `vitest.config.ts` applies to every visual test. It ignores anti-aliased pixels, treats a YIQ color distance up to 0.1 as unchanged, and allows 0.1% of the frame to differ. A color, size, or spacing change of a covered component fails. A change confined to anti-aliased edges, such as a smaller corner radius on a low-contrast border, passes. Do not pass per-test comparator options; change the shared setting and its comment instead.
+
+### Update references
+
+Update references only when a visual change is intended, and commit them with that change:
+
+```shell
+pnpm -F @proj-airi/stage-ui exec vitest run --project browser --update visual.browser
+```
+
+The `visual.browser` filter selects every `*.visual.browser.test.ts` file. Add a file path to update one file. Review each changed image before you commit it, for example with `git diff --stat` and an image viewer.
+
+### Review a failure
+
+1. Open the reference, actual, and diff paths that the failure message prints. Red pixels in the diff image changed; yellow pixels are anti-aliasing that the comparator ignored.
+2. A dimension mismatch, such as `Expected image dimensions to be 360×392px, but received 360×380px`, means the layout changed size. No diff image is written in that case.
+3. If the change is intended, run the update command and commit the new references with the change. If it is not, fix the component.
+
+### Add a visual test
+
+Name the file `*.visual.browser.test.ts`. Render through `renderVisualBaseline(context, () => content, { layout })` from `src/test/visual-baseline.ts` so the platform rule, font loading, and frame apply. Then assert `await expect.element(frame).toMatchScreenshot('<name>')` with a unique name per test file.
+
 ## Local Hearing with Sherpaw
 
 Select **Sherpaw** in Hearing settings. Choose a language to see models that support it, then choose a model.
