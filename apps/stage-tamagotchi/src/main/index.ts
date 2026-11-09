@@ -70,7 +70,7 @@ import { setupNoticeWindowManager } from './windows/notice'
 import { setupOnboardingWindowManager } from './windows/onboarding'
 import { setupSettingsWindowReusableFunc } from './windows/settings'
 import { setupSpotlightWindowManager } from './windows/spotlight'
-import { createStageConfig, createStageStateBroadcast, defaultStageConfig, selectHostMode, setupStageWindow, setupWindowStageInvokes } from './windows/stage'
+import { createStageConfig, createStageStateBroadcast, defaultStageConfig, isLinuxStageEligible, selectHostMode, setupStageWindow, setupWindowStageInvokes } from './windows/stage'
 import { setupWidgetsWindowManager } from './windows/widgets'
 
 // TODO: once we refactored eventa to support window-namespaced contexts,
@@ -408,8 +408,10 @@ app.whenReady().then(async () => {
   const stageConfig = createStageConfig()
   stageConfig.setup()
   const stageStateBroadcast = createStageStateBroadcast()
-  const hostMode = selectHostMode(stageConfig.get() ?? defaultStageConfig, platform, env, { development: import.meta.env.DEV })
-  log.log(`Building the ${hostMode === 'desktop' ? 'desktop stage' : 'classic window'} host`)
+  // A launch gate, not a capability claim: the stage still waits for usable click-through before it captures input.
+  const linuxStageEligible = isLinux && isLinuxStageEligible(env, process.versions.electron)
+  const hostMode = selectHostMode(stageConfig.get() ?? defaultStageConfig, platform, env, { development: import.meta.env.DEV }, linuxStageEligible)
+  log.log(`Building the ${hostMode === 'desktop' ? 'desktop stage' : 'classic window'} host${isLinux ? ` (Linux desktop stage eligible: ${linuxStageEligible})` : ''}`)
 
   const settingsWindow = injeca.provide('windows:settings', {
     dependsOn: { widgetsManager, beatSync, autoUpdater, devtoolsWindow: devtoolsMarkdownStressWindow, serverChannel, godotStageManager, mcpManager, i18n, globalShortcut, spotlightWindow, ioTraceRecording, goNetwork },

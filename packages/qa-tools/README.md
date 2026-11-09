@@ -19,7 +19,7 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 | `pnpm qa:motion gate <emotion\|liveliness> --level t2 --rig forbooth [options]` | Run the selected gate against the headless ForBOOTH rig and Cubism Core. Set `AIRI_QA_RIG_FORBOOTH`; set `AIRI_QA_CUBISM_CORE` when the core is not at the checkout's default path. |
 | `pnpm qa:motion t3 --rig forbooth --scenario <builtin:name\|file.json> [--keep-open]` | Drive a scenario in the rendered Electron app and collect a Natural trace and screenshots. |
 | `pnpm qa:host smoke [--xwayland] [--expect-idle verified\|unverified] [--expect-backend <backend>] [--expect-verified <proofs>]` | Launch a temporary Electron profile and compare host signals with the runner's capabilities, then observe idle delivery every 5 seconds for 180 seconds. On Linux, also check the desktop backend and the signals it verifies. |
-| `pnpm qa:smoke [--model <path>] [--settle <seconds>] [--allow <json>] [--out <dir>]` | Start the app from a fresh profile and fail on any renderer exception, `console.error`, browser error, or main-process error in any window. See [Clean-start smoke](#clean-start-smoke). |
+| `pnpm qa:smoke [--model <path>] [--stage-host window\|desktop] [--settle <seconds>] [--allow <json>] [--out <dir>]` | Start the app from a fresh profile and fail on any renderer exception, `console.error`, browser error, or main-process error in any window. See [Clean-start smoke](#clean-start-smoke). |
 | `pnpm qa:app run --model <path> --say <text> [options]` | Run a disposable experience session: replayed chat and speech, real model import, events, and a screenshot. See [App experience sessions](#app-experience-sessions). |
 | `pnpm qa:mcp` | Serve the `airi-qa` MCP server over stdio, so an agent can start the app, chat, screenshot, and read errors through tools. See [Agent MCP server](#agent-mcp-server). |
 | `pnpm qa:motion validate-scorer --level t1 [--sections aa,zero,mutations,unmutated,determinism] [--seeds N] [--workers N] [--timeout-minutes N]` | Evaluate scorer false positives, mutation detection, unmutated gate power, and determinism. A missed validation threshold exits 1 by design. |
@@ -220,7 +220,10 @@ pnpm -F @proj-airi/qa-tools exec vitest run --project node src/llm
 ```bash
 pnpm qa:smoke                                              # Linux: pnpm qa:display run -- pnpm --silent qa:smoke (required; see Linux host session guard)
 pnpm qa:smoke --model /models/character.zip --settle 10
+pnpm qa:smoke --model /models/miku/miku.pmx --stage-host desktop   # the full-screen desktop stage instead of the classic window
 ```
+
+By default the smoke forces the classic window (`AIRI_STAGE_HOST=window`). `--stage-host desktop` instead saves the Experimental 3D stage setting, the desktop mode, and an MMD renderer in the temporary profile's `stage-config.json`, so the launch goes through `selectHostMode` and its platform gate, and attaches to the `#/stage` page. It needs an MMD `--model`. On a platform where the gate keeps the classic window, the run fails because no `#/stage` page appears.
 
 While the app runs, a CDP collector attaches to every window, including windows opened later, and records uncaught exceptions, unhandled rejections, `console.error` and failed `console.assert` calls, and browser error log entries such as failed resource loads. Enabling the domains replays what V8 buffered before the attach, so errors from the first paint count. After teardown, the main-process log is scanned for app logger `[error]` lines, uncaught exceptions, and unhandled rejections. Chromium's own `:ERROR:` lines and the renderer errors that Vite echoes as `[vite] (client)` are excluded.
 

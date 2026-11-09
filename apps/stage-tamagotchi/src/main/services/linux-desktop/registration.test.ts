@@ -20,7 +20,7 @@ import { createLinuxDesktopBridge } from './index'
 import { PrivateBus } from './session/private-bus.test-helper'
 
 const facts = vi.hoisted(() => vi.fn())
-const x11 = vi.hoisted(() => ({ options: [] as unknown[], start: vi.fn(), active: vi.fn() }))
+const x11 = vi.hoisted(() => ({ options: [] as unknown[], start: vi.fn(), active: vi.fn(), pointer: vi.fn() }))
 vi.mock('../electron/host-capabilities', () => ({ reportLinuxDesktop: facts }))
 vi.mock('electron', () => ({ app: { getAppMetrics: () => [{ pid }] } }))
 // The fake keeps the bridge test off libX11; the real binding has its own suite.
@@ -33,6 +33,7 @@ vi.mock('./backends/x11', () => ({
     start() { return x11.start() }
     stop() { return Promise.resolve() }
     activeWindow() { return x11.active() }
+    pointer() { return x11.pointer() }
   },
 }))
 
@@ -53,6 +54,7 @@ describe('linux desktop backend registration', () => {
     x11.options.length = 0
     x11.start.mockReset()
     x11.active.mockReset()
+    x11.pointer.mockReset()
   })
 
   afterEach(async () => {
@@ -111,6 +113,23 @@ describe('linux desktop backend registration', () => {
       expect(bridge.activeWindow()).toEqual({ caption: 'Shell', resourceClass: 'konsole', desktopFileName: '', pid: 7, fullScreen: true })
       expect(bridge.activeWindow()).toMatchObject({ pid: 7 })
       expect(pushed).toHaveBeenCalledOnce()
+    })
+
+    it('reads the pointer from the server on each cursor read, and fails when that read fails', async () => {
+      x11.start.mockResolvedValue(undefined)
+      x11.pointer.mockReturnValueOnce({ x: 5, y: 6 }).mockReturnValueOnce({ x: 7, y: 8 })
+      const bridge = create({ XDG_SESSION_TYPE: 'x11', DISPLAY: ':91' })
+      await bridge.start()
+      expect(bridge.cursor()).toEqual({ x: 5, y: 6 })
+      expect(bridge.cursor()).toEqual({ x: 7, y: 8 })
+
+      x11.pointer.mockImplementation(() => {
+        throw new X11BackendError('display-unavailable')
+      })
+      expect(bridge.cursor()).toBeNull()
+      expect(lastFailure()).toMatchObject({ backend: 'x11-ewmh', bridge: 'failed', bridgeFailure: 'other' })
+      expect(bridge.cursor()).toBeNull()
+      expect(x11.pointer).toHaveBeenCalledTimes(3)
     })
 
     it('never constructs the X11 backend on XWayland', async () => {

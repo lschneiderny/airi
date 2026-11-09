@@ -21,6 +21,8 @@ const ffi = vi.hoisted(() => {
   let handler = 77n
   let next = 100n
   let failedProperty: number | undefined
+  /** The server's pointer, or `null` while it is on another screen. */
+  const pointer = { value: { x: 0, y: 0 } as { x: number, y: number } | null }
   const atom = (name: string) => {
     const existing = atoms.get(name)
     if (existing !== undefined)
@@ -54,7 +56,14 @@ const ffi = vi.hoisted(() => {
       handler = value
       return previous
     }),
-    XFree: vi.fn((pointer: bigint) => allocated.delete(pointer)),
+    XQueryPointer: vi.fn((_display: bigint, _window: number, _root: [number], _child: [number], rootX: [number], rootY: [number]) => {
+      if (!pointer.value)
+        return 0
+      rootX[0] = pointer.value.x
+      rootY[0] = pointer.value.y
+      return 1
+    }),
+    XFree: vi.fn((data: bigint) => allocated.delete(data)),
     XCloseDisplay: vi.fn(() => 0),
   }
   const functions = new Map<string, unknown>(Object.entries(native))
@@ -74,6 +83,7 @@ const ffi = vi.hoisted(() => {
     atom,
     set,
     properties,
+    pointer,
     allocated,
     callbacks,
     fail: (name: string) => { failedProperty = atom(name) },
@@ -82,6 +92,7 @@ const ffi = vi.hoisted(() => {
       allocated.clear()
       callbacks.clear()
       failedProperty = undefined
+      pointer.value = { x: 0, y: 0 }
       handler = 77n
     },
     handler: () => handler,
@@ -156,6 +167,24 @@ describe('x11 EWMH native boundary', () => {
     await backend.stop()
     expect(ffi.native.XCloseDisplay).toHaveBeenCalledTimes(1)
     expect(backend.activeWindow()).toBeNull()
+  })
+
+  // Electron's X11 cursor is a cache that only its own windows' events refresh, so the backend asks the server.
+  it('reads the root pointer from the server on every call', async () => {
+    expect(backend.pointer()).toBeNull()
+    await backend.start()
+    ffi.pointer.value = { x: 300, y: 400 }
+    expect(backend.pointer()).toEqual({ x: 300, y: 400 })
+    ffi.pointer.value = { x: 10, y: 20 }
+    expect(backend.pointer()).toEqual({ x: 10, y: 20 })
+    expect(ffi.native.XQueryPointer).toHaveBeenCalledTimes(2)
+    expect(ffi.native.XQueryPointer.mock.calls[0]?.slice(0, 2)).toEqual([10n, 1])
+  })
+
+  it('reports no pointer while it is on another screen', async () => {
+    await backend.start()
+    ffi.pointer.value = null
+    expect(backend.pointer()).toBeNull()
   })
 
   it('closes the connection when stopped during startup', async () => {

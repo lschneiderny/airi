@@ -31,7 +31,7 @@ An MMD character can live on a full-screen desktop stage instead of the classic 
 
 1. In a development build (`import.meta.env.DEV`, for example `pnpm dev:tamagotchi`), `AIRI_STAGE_HOST=window` or `AIRI_STAGE_HOST=desktop` overrides everything. Use it for QA runs, for example `pnpm qa:stage measure`. A production build ignores it and obeys the setting.
 2. While the **Experimental 3D stage** setting is off (the default), the classic window. A Live2D user who never turns it on keeps the classic window and its input.
-3. Linux uses the classic window because its host capabilities report click-through forwarding as unavailable. X11 and XWayland still report window origins; native Wayland does not, so placement there is left to the compositor. Cursor readings are withheld on both Wayland hosts.
+3. Linux uses the classic window unless `isLinuxStageEligible` holds: KWin (Wayland, XWayland or X11) or an EWMH X11 session, with Electron 43.7.6 or later. Linux has no forwarded click-through, so the stage page captures the pointer only while the desktop bridge emulates it (`clickThroughForward` is `degraded(linux-click-through-emulated)`), and lets every click through otherwise. Main offers once to relaunch into the classic window (`src/main/windows/stage/click-through-fallback.ts`) when the desktop bridge fails, when emulation is revoked, or when emulation is still not usable 15 seconds after the pointer first moves; an untouched pointer gets no offer.
 4. A stage model that is not MMD, or that has never been reported, gets the classic window.
 5. Otherwise the saved stage mode applies.
 

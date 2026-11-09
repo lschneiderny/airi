@@ -7,16 +7,23 @@ export interface LeaveMmdNoticeDialog {
   showMessageBox: (window: BrowserWindow, options: MessageBoxOptions) => Promise<Pick<MessageBoxReturnValue, 'response'>>
 }
 
+/**
+ * Why the notice offers the classic window: the stage model left MMD (`leave-mmd-notice`), or the desktop stage
+ * cannot use click-through on this desktop (`click-through-notice`).
+ */
+export type ClassicWindowNotice = 'leave-mmd-notice' | 'click-through-notice'
+
 const relaunchButton = 0
 const keepButton = 1
 
 /**
- * Tells the user that the desktop stage keeps running after the stage model left MMD, and offers to relaunch into the
+ * Tells the user that the desktop stage cannot serve them for the rest of this launch, and offers to relaunch into the
  * classic window.
  *
  * Use when:
  * - The desktop stage runs and its page reports a renderer that is not MMD. The host is fixed for this launch, so the
  *   new model only gets the classic window after a relaunch.
+ * - The desktop stage runs but click-through is not usable, so it ignores the pointer (`click-through-notice`)
  *
  * Returns:
  * - Whether the user chose to relaunch; `relaunch` has been called then
@@ -26,16 +33,18 @@ export async function offerClassicWindowRelaunch(params: {
   dialog: LeaveMmdNoticeDialog
   i18n: Pick<I18n, 't'>
   relaunch: () => void
+  notice: ClassicWindowNotice
 }): Promise<boolean> {
+  const { notice } = params
   // On macOS an unparented message box blocks main even through the promise API.
   const { response } = await params.dialog.showMessageBox(params.window, {
     type: 'info',
-    title: params.i18n.t('tamagotchi.electron.stage.leave-mmd-notice.title'),
-    message: params.i18n.t('tamagotchi.electron.stage.leave-mmd-notice.message'),
-    detail: params.i18n.t('tamagotchi.electron.stage.leave-mmd-notice.detail'),
+    title: params.i18n.t(`tamagotchi.electron.stage.${notice}.title`),
+    message: params.i18n.t(`tamagotchi.electron.stage.${notice}.message`),
+    detail: params.i18n.t(`tamagotchi.electron.stage.${notice}.detail`),
     buttons: [
-      params.i18n.t('tamagotchi.electron.stage.leave-mmd-notice.relaunch'),
-      params.i18n.t('tamagotchi.electron.stage.leave-mmd-notice.keep'),
+      params.i18n.t(`tamagotchi.electron.stage.${notice}.relaunch`),
+      params.i18n.t(`tamagotchi.electron.stage.${notice}.keep`),
     ],
     defaultId: relaunchButton,
     cancelId: keepButton,

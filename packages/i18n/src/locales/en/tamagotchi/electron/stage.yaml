@@ -7,3 +7,13 @@ leave-mmd-notice:
     relaunch.
   relaunch: Relaunch into the classic window
   keep: Not now
+click-through-notice:
+  title: Desktop stage
+  message: The desktop stage cannot pass clicks through on this desktop.
+  detail: >-
+    AIRI could not verify the cursor and window positions it needs, so the stage
+    lets every click through to your desktop and the character cannot be clicked.
+    Relaunch to use the classic window instead. An unsent chat draft is not
+    carried across the relaunch.
+  relaunch: Relaunch into the classic window
+  keep: Not now

@@ -12,7 +12,7 @@ import VoiceInlay from './voice-inlay.vue'
 
 import 'virtual:uno.css'
 
-const { returnHome, setPresent, setIgnoreMouseEvents, registerShortcut, unregisterShortcut, shortcutListeners, cursor, isWayland } = vi.hoisted(() => ({
+const { returnHome, setPresent, setIgnoreMouseEvents, registerShortcut, unregisterShortcut, shortcutListeners, cursor, isWayland, clickThroughStatus } = vi.hoisted(() => ({
   returnHome: vi.fn(),
   setPresent: vi.fn(),
   setIgnoreMouseEvents: vi.fn(),
@@ -24,6 +24,8 @@ const { returnHome, setPresent, setIgnoreMouseEvents, registerShortcut, unregist
   cursor: {} as { x?: { value: number }, y?: { value: number } },
   /** Whether the mocked platform is Wayland. Most tests cover the click-through platforms. */
   isWayland: { value: false },
+  /** A click-through status that replaces the platform default, such as Linux emulation. */
+  clickThroughStatus: { value: null as { kind: 'degraded', reason: string } | null },
 }))
 
 // The inlay talks to its Electron window through these IPC composables. The cursor starts outside the page.
@@ -56,15 +58,25 @@ vi.mock('@proj-airi/electron-vueuse', async () => {
 
 vi.mock('@proj-airi/stage-shared/stores/host-capabilities', () => ({
   useHostCapabilitiesStore: () => ({
-    status: () => ({ kind: isWayland.value ? 'unavailable' : 'live' }),
+    status: () => clickThroughStatus.value ?? { kind: isWayland.value ? 'unavailable' : 'live' },
   }),
 }))
 
 const cleanups: (() => void)[] = []
 
+/** Fails with a clear message instead of hanging when the awaited boundary call never happens. */
+function within<T>(promise: Promise<T>, what: string, ms = 5000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms waiting for ${what}`)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 afterEach(() => {
   cleanups.splice(0).reverse().forEach(cleanup => cleanup())
   isWayland.value = false
+  clickThroughStatus.value = null
   returnHome.mockReset()
   setPresent.mockReset()
   setIgnoreMouseEvents.mockReset()
@@ -146,6 +158,27 @@ describe('voice inlay', () => {
     publish({ drafts: [] })
     await expect.poll(inlayView, { timeout: 3000 }).toBe('hidden')
     await expect.poll(() => setPresent.mock.calls.at(-1)).toEqual([{ present: false }])
+  })
+
+  // Only the desktop stage consumes emulated click-through; the inlay keeps its behavior for hosts without forwarding.
+  it('hides while it paints nothing under Linux emulated click-through', async () => {
+    clickThroughStatus.value = { kind: 'degraded', reason: 'linux-click-through-emulated' }
+    const hid = Promise.withResolvers<void>()
+    const tookClicks = Promise.withResolvers<void>()
+    setPresent.mockImplementation((arg: { present: boolean }) => {
+      if (!arg.present)
+        hid.resolve()
+    })
+    setIgnoreMouseEvents.mockImplementation(([ignore]: [boolean, { forward: boolean }]) => {
+      if (!ignore)
+        tookClicks.resolve()
+    })
+    renderInlay()
+
+    await within(Promise.all([hid.promise, tookClicks.promise]), 'the inlay to hide and keep taking clicks')
+    expect(setPresent.mock.calls.at(-1)).toEqual([{ present: false }])
+    expect(setIgnoreMouseEvents.mock.calls.at(-1)).toEqual([[false, { forward: true }]])
+    expect(inlayView()).toBe('hidden')
   })
 
   it('hides again on Wayland when the main window shows it before any content arrives', async () => {

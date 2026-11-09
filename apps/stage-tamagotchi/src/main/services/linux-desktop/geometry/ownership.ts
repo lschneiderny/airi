@@ -16,11 +16,16 @@ const electronOwned: CoordinateOwners = { cursor: 'electron', windowRect: 'elect
  *
  * `backend` is `null` without a ready bridge. Only the returned owner may be
  * read, so Electron and compositor coordinates never meet in one computation.
- * Native X11 keeps Electron for every reading because its origins are already
- * global; XWayland gains only the compositor cursor; native Wayland takes the
- * cursor, window rectangles and display origins from the compositor.
+ * Native X11 keeps Electron's window rectangles and displays because its
+ * origins are already global, but its cursor comes from the X server through
+ * the EWMH backend: Electron's X11 cursor is a cache that only events on its
+ * own windows refresh. XWayland gains only the compositor cursor; native
+ * Wayland takes the cursor, window rectangles and display origins from the
+ * compositor.
  */
 export function coordinateOwners(host: HostId, backend: LinuxDesktopBackend | null): CoordinateOwners {
+  if (host === 'linux-x11' && backend === 'x11-ewmh')
+    return { cursor: 'bridge', windowRect: 'electron', displays: 'electron' }
   if (backend === null || (host !== 'linux-xwayland' && host !== 'linux-wayland'))
     return electronOwned
   const space = host === 'linux-wayland' ? 'bridge' : 'electron'

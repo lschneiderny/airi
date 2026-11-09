@@ -35,6 +35,8 @@ vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: () => host.windows },
   screen: {
     getCursorScreenPoint: vi.fn(() => ({ x: 7, y: 8 })),
+    // A scale of 2 keeps X11 server pixels and DIP apart in assertions.
+    screenToDipPoint: vi.fn((point: { x: number, y: number }) => ({ x: point.x / 2, y: point.y / 2 })),
     getAllDisplays: vi.fn(() => electronDisplays),
     getPrimaryDisplay: vi.fn(() => electronDisplays[0]),
     getDisplayMatching: vi.fn(() => electronDisplays[1]),
@@ -218,7 +220,23 @@ describe('coordinate provider', () => {
   })
 
   describe('ownership rows with a ready bridge', () => {
-    it.each(['x11-ewmh', 'gnome', 'none'] as const)('leaves every %s reading byte-for-byte equal to Electron', async (backend) => {
+    it('reads the X11 cursor from the server, in DIP, and keeps Electron geometry', async () => {
+      session('linux-x11')
+      const bridge = new FakeBridge('x11-ewmh')
+      bridge.point = { x: 900, y: 500 }
+      const window = new FakeWindow({ x: 1, y: 2, width: 300, height: 400 }, { x: 50, y: 60, width: 300, height: 400 }, bridge, 'w1')
+      attach(bridge, window)
+      verify('x11-ewmh')
+      await flush()
+      expect(window.title).toBe('AIRI')
+      expect(coordinates.readCursor()).toEqual({ x: 450, y: 250 })
+      expect(electron.screen.getCursorScreenPoint).not.toHaveBeenCalled()
+      expect(coordinates.readWindowRect(window)).toEqual({ x: 1, y: 2, width: 300, height: 400 })
+      expect(coordinates.readDisplays()).toBe(electronDisplays)
+      expect(coordinates.readPrimaryDisplay()).toBe(electronDisplays[0])
+    })
+
+    it.each(['gnome', 'none'] as const)('leaves every %s reading byte-for-byte equal to Electron', async (backend) => {
       session('linux-x11')
       const bridge = new FakeBridge(backend)
       bridge.point = { x: 900, y: 500 }
@@ -227,7 +245,7 @@ describe('coordinate provider', () => {
       verify(backend)
       await flush()
       expect(window.title).toBe('AIRI')
-      // GNOME withholds the cursor by status; the other rows read Electron's native X11 cursor.
+      // GNOME withholds the cursor by status; `none` reads Electron's native X11 cursor.
       expect(coordinates.readCursor()).toEqual(backend === 'gnome' ? null : { x: 7, y: 8 })
       expect(coordinates.readWindowRect(window)).toEqual({ x: 1, y: 2, width: 300, height: 400 })
       expect(coordinates.readDisplays()).toBe(electronDisplays)

@@ -420,11 +420,22 @@ export function readCursor(): Point | null {
   switch (owners().cursor) {
     case 'electron':
       return screen.getCursorScreenPoint()
-    case 'bridge':
-      return linux?.bridge.cursor() ?? null
+    case 'bridge': {
+      const point = linux?.bridge.cursor() ?? null
+      // X11 reports server pixels; Electron's window rectangles, which X11 keeps, are DIP.
+      return point && linux?.bridge.backend === 'x11-ewmh' ? screen.screenToDipPoint(point) : point
+    }
     case 'none':
       return null
   }
+}
+
+/**
+ * Calls `listener` with each compositor cursor reading, ungated by verification, while a Linux bridge is attached.
+ * Use it only as a sign that the user moves the pointer, never as a position. Returns the function that stops it.
+ */
+export function onCompositorCursor(listener: (point: Point | null) => void): () => void {
+  return linux?.bridge.onCursor(listener) ?? (() => {})
 }
 
 /** Global positions are usable only while the host reports a live window origin. */

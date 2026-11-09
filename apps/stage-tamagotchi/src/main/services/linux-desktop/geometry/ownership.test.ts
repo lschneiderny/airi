@@ -6,7 +6,7 @@ const electron = { cursor: 'electron', windowRect: 'electron', displays: 'electr
 
 describe('coordinateOwners', () => {
   it.each([
-    ['x11-ewmh', 'linux-x11', electron],
+    ['x11-ewmh', 'linux-x11', { cursor: 'bridge', windowRect: 'electron', displays: 'electron' }],
     ['x11-ewmh', 'linux-xwayland', electron],
     ['x11-ewmh', 'linux-wayland', electron],
     ['gnome', 'linux-xwayland', electron],

@@ -11,6 +11,7 @@ import { app } from 'electron'
 
 import { resolveIsWayland } from '../../app/ozone'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
+import { hasLinuxClickThroughToggle } from '../linux-desktop/detect'
 
 type EventaContext = ReturnType<typeof createContext>['context']
 type PointerSampleSink = (window: BrowserWindow, sample: { clientX: number, clientY: number, atMs: number }) => void
@@ -31,7 +32,6 @@ let facts: HostFacts | undefined
 let current: HostCapabilities | undefined
 
 function initialLinuxDesktopFacts(): LinuxDesktopFacts {
-  const [major = 0, minor = 0, patch = 0] = (process.versions.electron ?? '').split('.').map(Number)
   return {
     backend: 'none',
     bridge: 'starting',
@@ -42,7 +42,7 @@ function initialLinuxDesktopFacts(): LinuxDesktopFacts {
     lockSource: null,
     portalShortcuts: 'absent',
     bridgeFailure: null,
-    clickThroughToggle: major > 43 || (major === 43 && (minor > 7 || (minor === 7 && patch >= 6))),
+    clickThroughToggle: hasLinuxClickThroughToggle(process.versions.electron),
     systemAudioVerified: false,
   }
 }

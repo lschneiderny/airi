@@ -23,7 +23,7 @@ function dialogAnswering(response: number) {
 describe('offerClassicWindowRelaunch', () => {
   it('parents the asynchronous message box so macOS does not block the main process', async () => {
     const showMessageBox = vi.fn(async (..._args: unknown[]) => ({ response: 1 }))
-    const params = { window, dialog: { showMessageBox }, i18n, relaunch: vi.fn() }
+    const params = { window, dialog: { showMessageBox }, i18n, relaunch: vi.fn(), notice: 'leave-mmd-notice' as const }
 
     await offerClassicWindowRelaunch(params)
 
@@ -34,7 +34,7 @@ describe('offerClassicWindowRelaunch', () => {
     const { dialog, shown } = dialogAnswering(0)
     const relaunch = vi.fn()
 
-    await expect(offerClassicWindowRelaunch({ window, dialog, i18n, relaunch })).resolves.toBe(true)
+    await expect(offerClassicWindowRelaunch({ window, dialog, i18n, relaunch, notice: 'leave-mmd-notice' })).resolves.toBe(true)
 
     expect(relaunch).toHaveBeenCalledOnce()
     expect(shown[0]?.buttons).toEqual([
@@ -48,8 +48,19 @@ describe('offerClassicWindowRelaunch', () => {
     const { dialog } = dialogAnswering(1)
     const relaunch = vi.fn()
 
-    await expect(offerClassicWindowRelaunch({ window, dialog, i18n, relaunch })).resolves.toBe(false)
+    await expect(offerClassicWindowRelaunch({ window, dialog, i18n, relaunch, notice: 'leave-mmd-notice' })).resolves.toBe(false)
 
     expect(relaunch).not.toHaveBeenCalled()
+  })
+
+  it('names the click-through notice when the stage cannot use click-through', async () => {
+    const { dialog, shown } = dialogAnswering(1)
+
+    await offerClassicWindowRelaunch({ window, dialog, i18n, relaunch: vi.fn(), notice: 'click-through-notice' })
+
+    expect(shown[0]).toMatchObject({
+      title: 'tamagotchi.electron.stage.click-through-notice.title',
+      buttons: ['tamagotchi.electron.stage.click-through-notice.relaunch', 'tamagotchi.electron.stage.click-through-notice.keep'],
+    })
   })
 })
