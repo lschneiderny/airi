@@ -1,28 +1,75 @@
 import type { LinuxDesktopBackend, LinuxDesktopFacts } from '@proj-airi/stage-shared/host-capabilities'
 
-import type { KwinBackend, KwinBackendOptions, KwinFailure } from './backends/kwin'
+import type { HyprlandMessage } from './backends/hyprland/protocol'
+import type { HyprlandFailure } from './backends/hyprland/socket'
+import type { KwinFailure } from './backends/kwin'
 import type { KwinMessage } from './backends/kwin/protocol'
+import type { SwayFailure } from './backends/sway'
 import type { DbusTransport } from './dbus/transport'
 
 import { EventEmitter } from 'node:events'
 
 import { useLogg } from '@guiiai/logg'
 
+import { HyprlandBackendError } from './backends/hyprland/socket'
 import { KwinBackendError } from './backends/kwin'
+import { SwayBackendError } from './backends/sway'
+import { X11BackendError } from './backends/x11/binding'
 import { BusySource } from './session/busy'
 import { LockSource } from './session/lock'
 
 type Active = Extract<KwinMessage, { method: 'Active' }>['payload']
-type OwnWindows = Extract<KwinMessage, { method: 'OwnWindows' }>['payload'] | null
+type OwnWindow = NonNullable<Extract<KwinMessage | HyprlandMessage, { method: 'OwnWindows' }>['payload']>[number]
+type OwnWindows = readonly OwnWindow[] | null
 type Cursor = Extract<KwinMessage, { method: 'Cursor' }>['payload'] | null
 type Outputs = Extract<KwinMessage, { method: 'Outputs' }>['payload'] | null
 export type LinuxDesktopBridgeState = 'starting' | 'ready' | 'failed' | 'stopped'
+
+export type BridgeMessage = KwinMessage | HyprlandMessage
+export type BridgeFailure = KwinFailure | SwayFailure | HyprlandFailure | X11BackendError['reason']
+
+export interface BridgeCallbacks {
+  readonly onMessage: (message: BridgeMessage) => void
+  readonly onFailure: (reason: BridgeFailure) => void
+  readonly onState: (state: 'starting' | 'ready') => void
+  readonly onCursorReset: () => void
+}
+
+/**
+ * One compositor backend as the bridge drives it.
+ *
+ * Push backends deliver readings through `onMessage`. A pull backend (X11
+ * EWMH) supplies `readActive`, which the bridge calls on each active-window
+ * read. Every driver reports `ready` through `onState` once its first reading
+ * is trustworthy.
+ */
+export interface DesktopDriver {
+  start: () => Promise<void>
+  stop: () => Promise<void>
+  setCursorStreaming?: (on: boolean) => Promise<void>
+  /** KWin only: trusted actuator source. */
+  runOneShot?: (source: string) => Promise<void>
+  readActive?: () => Active
+}
+
+function failureOf(error: unknown): BridgeFailure {
+  if (error instanceof KwinBackendError || error instanceof SwayBackendError || error instanceof HyprlandBackendError)
+    return error.bridgeFailure
+  if (error instanceof X11BackendError)
+    return error.reason
+  return 'transport-failed'
+}
+
+function sameActive(left: Active, right: Active) {
+  return left === right || (left !== null && right !== null && left.pid === right.pid && left.caption === right.caption
+    && left.resourceClass === right.resourceClass && left.desktopFileName === right.desktopFileName && left.fullScreen === right.fullScreen)
+}
 
 interface BridgeOptions {
   readonly backend: LinuxDesktopBackend
   readonly connect: () => Promise<{ sessionBus: DbusTransport, systemBus: DbusTransport | null }>
   readonly openSessionBus: () => Promise<DbusTransport>
-  readonly createBackend: (bus: DbusTransport, callbacks: Pick<KwinBackendOptions, 'onMessage' | 'onFailure' | 'onState' | 'onCursorReset'>) => KwinBackend | undefined
+  readonly createBackend: (bus: DbusTransport, callbacks: BridgeCallbacks) => DesktopDriver | undefined
   readonly report: (patch: Partial<LinuxDesktopFacts>) => void
   readonly ownPids: () => readonly number[]
 }
@@ -38,7 +85,7 @@ export class LinuxDesktopBridge {
   private screens: Outputs = null
   private status: LinuxDesktopBridgeState = 'starting'
   private cursorStreaming = false
-  private driver: KwinBackend | undefined
+  private driver: DesktopDriver | undefined
   private lock: LockSource | undefined
   private busy: BusySource | undefined
   private buses: { sessionBus: DbusTransport, systemBus: DbusTransport | null } | undefined
@@ -46,13 +93,26 @@ export class LinuxDesktopBridge {
   private stopping: Promise<void> | undefined
   private generation = 0
   private running = false
+  /** Pull drivers are read only between `ready` and the next failure, restart or stop. */
+  private pullReady = false
   private api: string | undefined
 
   constructor(private readonly options: BridgeOptions) {
     this.backend = options.backend
   }
 
-  activeWindow(): Active { return this.active }
+  activeWindow(): Active {
+    const read = this.driver?.readActive
+    if (read && this.pullReady) {
+      const next = read()
+      if (!sameActive(next, this.active)) {
+        this.active = next
+        this.events.emit('active', next)
+      }
+    }
+    return this.active
+  }
+
   ownWindows(): OwnWindows { return this.own }
   cursor(): Cursor { return this.pointer }
   outputs(): Outputs { return this.screens }
@@ -113,7 +173,7 @@ export class LinuxDesktopBridge {
     this.starting = Promise.race([
       this.connect(generation).catch((error: unknown) => {
         if (this.running && generation === this.generation) {
-          this.failure(error instanceof KwinBackendError ? error.bridgeFailure : 'transport-failed')
+          this.failure(failureOf(error))
           this.log.withError(error).warn('linux-desktop: startup failed')
         }
       }),
@@ -133,6 +193,7 @@ export class LinuxDesktopBridge {
 
   stop(): Promise<void> {
     this.running = false
+    this.pullReady = false
     ++this.generation
     this.lock?.stop()
     this.busy?.stop()
@@ -163,13 +224,13 @@ export class LinuxDesktopBridge {
     this.cursorStreaming = on
     if (!on)
       this.dropCursor()
-    await this.driver?.setCursorStreaming(on)
+    await this.driver?.setCursorStreaming?.(on)
   }
 
   async setKeepAbove(windowPid: number, on: boolean): Promise<void> {
     if (!Number.isSafeInteger(windowPid) || !this.options.ownPids().includes(windowPid))
       throw new TypeError('Keep-above requires an AIRI process')
-    if (!this.driver)
+    if (!this.driver?.runOneShot)
       return
     // Only pid is inspected before ownership is established inside KWin.
     await this.driver.runOneShot(`(() => {
@@ -197,11 +258,13 @@ export class LinuxDesktopBridge {
         this.options.report({ lockSource })
     }).catch(error => this.log.withError(error).warn('linux-desktop: lock source failed'))
     void this.busy.start().catch(error => this.log.withError(error).warn('linux-desktop: busy source failed'))
+    // A stopped or timed-out generation can never publish readings or facts.
+    const live = () => this.running && generation === this.generation
     this.driver = this.options.createBackend(buses.sessionBus, {
-      onMessage: message => this.message(message),
-      onFailure: reason => this.failure(reason),
-      onState: state => this.state(state),
-      onCursorReset: () => this.dropCursor(),
+      onMessage: message => live() && this.message(message),
+      onFailure: reason => live() && this.failure(reason),
+      onState: state => live() && this.state(state),
+      onCursorReset: () => live() && this.dropCursor(),
     })
     if (!this.driver) {
       this.state('ready')
@@ -239,6 +302,7 @@ export class LinuxDesktopBridge {
   private state(bridge: 'starting' | 'ready') {
     if (!this.running)
       return
+    this.pullReady = bridge === 'ready'
     if (bridge === 'starting') {
       this.clear()
       this.options.report({
@@ -258,10 +322,12 @@ export class LinuxDesktopBridge {
     this.log.log(`linux-desktop: backend ${this.backend} ready${this.api ? ` (api ${this.api})` : ''}`)
   }
 
-  private failure(reason: KwinFailure) {
+  private failure(reason: BridgeFailure) {
     if (!this.running)
       return
+    this.pullReady = false
     this.clear()
+    this.log.warn(`linux-desktop: backend ${this.backend} failed (${reason})`)
     this.options.report({
       backend: this.backend,
       bridge: 'failed',
@@ -274,7 +340,7 @@ export class LinuxDesktopBridge {
     this.setStatus('failed')
   }
 
-  private message(message: KwinMessage) {
+  private message(message: BridgeMessage) {
     if (!this.running)
       return
     switch (message.method) {

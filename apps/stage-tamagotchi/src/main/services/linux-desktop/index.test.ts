@@ -97,7 +97,6 @@ describe('linux desktop bridge', () => {
 
   it.each([
     [{ SWAYSOCK: '/private/sway' }, 'none'],
-    [{ HYPRLAND_INSTANCE_SIGNATURE: 'private' }, 'none'],
     [{ XDG_SESSION_TYPE: 'x11', DISPLAY: ':91' }, 'none'],
     [{ XDG_CURRENT_DESKTOP: 'GNOME' }, 'gnome'],
   ] as const)('keeps desktop %j without a window source reason-only', async (env, backend) => {
