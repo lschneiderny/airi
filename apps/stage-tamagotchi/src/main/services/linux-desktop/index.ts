@@ -9,6 +9,7 @@ import { app } from 'electron'
 import { reportLinuxDesktop } from '../electron/host-capabilities'
 import { HyprlandBackend } from './backends/hyprland'
 import { KwinBackend } from './backends/kwin'
+import { SwayBackend } from './backends/sway'
 import { LinuxDesktopBridge } from './bridge'
 import { DbusTransport } from './dbus/transport'
 import { detectLinuxDesktop } from './detect'
@@ -33,6 +34,18 @@ export function createLinuxDesktopBridge(options: {
   // a missing value fails startup with the backend's reason.
   const backends: Partial<Record<LinuxDesktopBackend, Factory>> = {
     kwin: (transport, callbacks) => new KwinBackend({ transport, tempDir, ownPids, ...callbacks }),
+    sway: (_bus, { onMessage, onFailure, onState }) => {
+      const backend = new SwayBackend({ socketPath: env.SWAYSOCK ?? '', ownPids, onFailure })
+      backend.onActive(payload => onMessage({ method: 'Active', payload }))
+      backend.onOwnWindows(payload => onMessage({ method: 'OwnWindows', payload: [...payload] }))
+      return {
+        start: async () => {
+          await backend.start()
+          onState('ready')
+        },
+        stop: () => backend.stop(),
+      }
+    },
     // Todo 9 owns the renderer-paced cursor tick that calls `requestCursor`.
     hyprland: (_bus, { onMessage, onFailure, onState }) => {
       const backend = new HyprlandBackend({

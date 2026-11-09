@@ -96,7 +96,6 @@ describe('linux desktop bridge', () => {
   }
 
   it.each([
-    [{ SWAYSOCK: '/private/sway' }, 'none'],
     [{ XDG_SESSION_TYPE: 'x11', DISPLAY: ':91' }, 'none'],
     [{ XDG_CURRENT_DESKTOP: 'GNOME' }, 'gnome'],
   ] as const)('keeps desktop %j without a window source reason-only', async (env, backend) => {
@@ -286,7 +285,7 @@ describe('linux desktop bridge', () => {
   it('forwards Linux lock transitions to the owning window and removes closed subscribers', async () => {
     await bus.name('org.freedesktop.ScreenSaver')
     bus.method('/org/freedesktop/ScreenSaver', 'org.freedesktop.ScreenSaver', 'GetActive', '', 'b', () => false)
-    create({ SWAYSOCK: '/private/sway' })
+    create({ XDG_CURRENT_DESKTOP: 'GNOME' })
     const context = createContext()
     const window = new EventEmitter()
     const transitions: string[] = []
