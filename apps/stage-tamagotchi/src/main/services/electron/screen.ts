@@ -2,9 +2,8 @@ import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import type { BrowserWindow, Point } from 'electron'
 
 import { defineInvokeHandler } from '@moeru/eventa'
-import { cursorScreenPoint, hostCapabilitiesChanged, startLoopGetCursorScreenPoint } from '@proj-airi/electron-eventa'
+import { cursorScreenPoint, startLoopGetCursorScreenPoint } from '@proj-airi/electron-eventa'
 import { createRendererLoop } from '@proj-airi/electron-vueuse/main'
-import { acceptCursorReading } from '@proj-airi/stage-shared/host-capabilities'
 import { screen } from 'electron'
 
 import { electron } from '../../../shared/eventa'
@@ -27,14 +26,13 @@ export function createScreenService(params: { context: ReturnType<typeof createC
     run: () => publishCursor(readTrustedCursor()),
   })
 
-  // Invalidate a cached reading even while the renderer's polling loop is hidden.
-  const offCapabilities = params.context.on(hostCapabilitiesChanged, ({ body }) => {
-    if (sent !== undefined && body && !acceptCursorReading(body.signals.cursorScreenPoint))
-      publishCursor(null)
-  })
+  // NOTICE:
+  // No capability listener invalidates a cached point. The cursor status derives only from the static
+  // waylandSession fact, so no runtime report can change it after the first tick reads the snapshot.
+  // Source: resolveHostCapabilities in packages/stage-shared/src/host-capabilities/index.ts.
+  // Removal condition: add a listener when a runtime fact can change the cursorScreenPoint status.
   function dispose() {
     stop()
-    offCapabilities()
   }
 
   // The loop stops with its window; these cover the app closing first.
