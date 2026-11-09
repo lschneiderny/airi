@@ -1,3 +1,5 @@
+import type { ConfigEnv, LogLevel } from 'vite'
+
 import { join, resolve } from 'node:path'
 import { env } from 'node:process'
 
@@ -19,6 +21,7 @@ import { Download } from '@proj-airi/unplugin-fetch'
 import { DownloadLive2DSDK } from '@proj-airi/unplugin-live2d-sdk'
 import { resolveModelEndpoint, Sherpaw } from '@proj-airi/vite-plugin-sherpaw'
 import { defineConfig } from 'electron-vite'
+import { isAgent } from 'std-env'
 
 const stageUIAssetsRoot = resolve(join(import.meta.dirname, '..', '..', 'packages', 'stage-ui', 'src', 'assets'))
 const sharedCacheDir = resolve(join(import.meta.dirname, '..', '..', '.cache'))
@@ -26,8 +29,17 @@ const sherpawModels = [paraformerBilingualZhEn, zipformerMultilingual, xAsrBilin
 /** Main downloads remote Sherpaw models. It must use the endpoint that the renderer plugin uses. */
 const sherpawModelEndpoint = resolveModelEndpoint()
 
-export default defineConfig({
+/**
+ * A coding agent pays for build output in tokens, so its builds log only warnings and errors. That drops the
+ * per-chunk size listing, about 1,400 of the 1,500 lines a renderer build prints. Dev servers keep their usual output.
+ */
+function buildLogLevel(command: ConfigEnv['command']): LogLevel | undefined {
+  return command === 'build' && isAgent ? 'warn' : undefined
+}
+
+export default defineConfig(({ command }) => ({
   main: {
+    logLevel: buildLogLevel(command),
     define: {
       'import.meta.env.SHERPAW_MODEL_ENDPOINT': JSON.stringify(sherpawModelEndpoint),
     },
@@ -94,6 +106,7 @@ export default defineConfig({
   },
 
   preload: {
+    logLevel: buildLogLevel(command),
     build: {
       lib: {
         entry: {
@@ -107,6 +120,7 @@ export default defineConfig({
   },
 
   renderer: {
+    logLevel: buildLogLevel(command),
     // Thanks to [@Maqsyo](https://github.com/Maqsyo)
     // https://github.com/alex8088/electron-vite/issues/99#issuecomment-1862671727
     base: './',
@@ -314,4 +328,4 @@ export default defineConfig({
       Download('https://dist.ayaka.moe/vrm-models/VRoid-Hub/AvatarSample-B/AvatarSample_B.vrm', 'AvatarSample_B.vrm', 'vrm/models/AvatarSample-B', { parentDir: stageUIAssetsRoot, cacheDir: sharedCacheDir }),
     ],
   },
-})
+}))
