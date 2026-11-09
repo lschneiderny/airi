@@ -1,4 +1,5 @@
 import type { FileLoggerHandle } from './app/file-logger'
+import type { GlobalShortcutServiceOptions } from './services/electron/global-shortcut'
 import type { SettingsWindowManager } from './windows/settings'
 import type { StageWindowHost } from './windows/stage'
 
@@ -21,6 +22,7 @@ import { isLinux } from 'std-env'
 import devIcon from '../../resources/icon-dev.png?asset'
 
 import { openDebugger, setupDebugger } from './app/debugger'
+import { DESKTOP_FILE_NAME, installDevelopmentDesktopEntry, resolveDataHome } from './app/desktop-entry'
 import { nullFileLoggerHandle, setupFileLogger } from './app/file-logger'
 import { resolveIsWayland } from './app/ozone'
 import { installSingleInstanceGuard } from './app/single-instance'
@@ -159,6 +161,9 @@ if (isLinux) {
 if (is.dev)
   app.dock?.setIcon(devIcon)
 electronApp.setAppUserModelId('ai.moeru.airi')
+// The XDG portals and the compositor identify AIRI by this desktop file, which carries the app id.
+if (isLinux)
+  app.setDesktopName(DESKTOP_FILE_NAME)
 
 // Track the real user-facing AIRI window because the process also owns hidden utility windows.
 // The second-instance handler should restore the main UI instead of accidentally surfacing internals.
@@ -198,6 +203,23 @@ app.whenReady().then(async () => {
 
   injeca.setLogger(createLoggLogger(useLogg('injeca').useGlobalConfig()))
 
+  // A packaged install ships the desktop file; a development build installs it so the portals resolve the app id.
+  if (isLinux && import.meta.env.DEV) {
+    try {
+      const written = await installDevelopmentDesktopEntry({
+        dataHome: resolveDataHome(env, app.getPath('home')),
+        execPath: process.execPath,
+        appPath: app.getAppPath(),
+      })
+      if (written)
+        log.log(`Installed the development desktop entry ${written}`)
+    }
+    catch (error) {
+      log.withError(error).warn('Failed to install the development desktop entry')
+    }
+  }
+
+  let shortcutPortal: GlobalShortcutServiceOptions['portal']
   if (isLinux) {
     const linuxDesktop = injeca.provide('services:linux-desktop', () => createLinuxDesktopBridge({
       env,
@@ -211,6 +233,7 @@ app.whenReady().then(async () => {
     onAppBeforeQuit(() => bridge.stop())
     // Coordinate ownership observes the bridge from its first state change.
     onAppBeforeQuit(attachLinuxCoordinates(bridge))
+    shortcutPortal = { openBus: () => bridge.openSessionBus() }
     // The bridge bounds startup, including bus connection and Hello, to 2 s.
     await bridge.start()
     if (appExiting)
@@ -330,7 +353,7 @@ app.whenReady().then(async () => {
     }),
   })
 
-  const globalShortcut = injeca.provide('services:global-shortcut', () => setupGlobalShortcutService())
+  const globalShortcut = injeca.provide('services:global-shortcut', () => setupGlobalShortcutService({ portal: shortcutPortal }))
 
   // Beat Sync uses a background renderer because Web Audio processing needs a DOM runtime.
   const beatSync = injeca.provide('windows:beat-sync', () => setupBeatSync())

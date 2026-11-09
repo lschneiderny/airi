@@ -8,6 +8,14 @@ Shared character behavior belongs in `packages/stage-ui`. Use `stage-web` for br
 From the repository root, run `pnpm install`, then `pnpm dev:tamagotchi`.
 Run `pnpm -F @proj-airi/stage-tamagotchi build` to build the app.
 
+### Linux desktop file
+
+On Linux, the XDG portals identify AIRI by its desktop file `ai.moeru.airi.desktop`, whose basename is the app id `ai.moeru.airi`. The deb and rpm packages install it in `/usr/share/applications`, because `desktopName` in `package.json` and `linux.syncDesktopName` in `electron-builder.config.ts` name it. The main process calls `app.setDesktopName('ai.moeru.airi.desktop')` at startup.
+
+A development build has no installed desktop file. On Linux, it writes `${XDG_DATA_HOME:-~/.local/share}/applications/ai.moeru.airi.desktop` at startup when that file is absent, and logs `Installed the development desktop entry <path>`. The entry runs the current Electron binary with the app path and is hidden from application menus. An existing file is never replaced, so delete it after you move the checkout. Automated QA must set `XDG_DATA_HOME` to a private directory, such as the `<session dir>/data` of `pnpm qa:display`, so that a test run never writes to your data home.
+
+Push-to-talk and other key-up shortcuts use the GlobalShortcuts portal on Wayland and XWayland (`src/main/services/electron/global-shortcut.ts`). Native X11 uses the uiohook driver and falls back to the portal when uiohook fails to load or start.
+
 ## Local model files
 
 Sherpaw downloads remote model files into the app user data directory. The main

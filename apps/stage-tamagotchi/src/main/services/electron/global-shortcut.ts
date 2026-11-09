@@ -2,6 +2,8 @@ import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import type { ShortcutBinding, ShortcutRegistrationResult } from '@proj-airi/stage-shared/global-shortcut'
 import type { BrowserWindow } from 'electron'
 
+import type { DbusTransport } from '../linux-desktop/dbus/transport'
+import type { PortalShortcutsDriver } from '../linux-desktop/session/global-shortcuts-portal'
 import type { UiohookDriver } from './global-shortcut-uiohook'
 
 import process from 'node:process'
@@ -19,7 +21,7 @@ import {
   electronShortcutUnregisterAll,
 } from '../../../shared/eventa'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
-import { reportGlobalInputHookFailure } from './host-capabilities'
+import { getCurrentHostCapabilities, reportGlobalInputHookFailure, reportLinuxDesktop } from './host-capabilities'
 
 export type EventaContext = ReturnType<typeof createContext>['context']
 
@@ -36,15 +38,29 @@ export interface RegisterMainShortcutParams {
 export interface GlobalShortcutService {
   registerWindow: (params: RegisterWindowParams) => void
   registerMainShortcut: (params: RegisterMainShortcutParams) => ShortcutRegistrationResult
-  dispose: () => void
+  dispose: () => Promise<void>
+}
+
+export interface GlobalShortcutServiceOptions {
+  /**
+   * The GlobalShortcuts portal for key-up bindings on Linux. The Linux desktop bridge opens its bus from
+   * the injected environment. Without it, every key-up binding uses the uiohook driver.
+   */
+  portal?: {
+    /** Opens a connection that the service owns and closes on dispose. */
+    openBus: () => Promise<DbusTransport>
+    /** Bound on each portal request, including a BindShortcuts dialog. Defaults to the driver's 60 s. */
+    requestTimeoutMs?: number
+  }
 }
 
 type ActiveBinding
   = | { binding: ShortcutBinding, owner: 'renderer', driver: 'electron', electronAccelerator: string }
     | { binding: ShortcutBinding, owner: 'main', driver: 'electron', electronAccelerator: string, onTriggered: () => void }
     | { binding: ShortcutBinding, owner: 'renderer', driver: 'uiohook' }
+    | { binding: ShortcutBinding, owner: 'renderer', driver: 'portal' }
 
-export function setupGlobalShortcutService(): GlobalShortcutService {
+export function setupGlobalShortcutService(options: GlobalShortcutServiceOptions = {}): GlobalShortcutService {
   const log = useLogg('global-shortcut').useGlobalConfig()
 
   const contexts = new Set<EventaContext>()
@@ -96,7 +112,105 @@ export function setupGlobalShortcutService(): GlobalShortcutService {
     return { id: binding.id, ok: true }
   }
 
-  async function tryRegisterUiohook(binding: ShortcutBinding): Promise<ShortcutRegistrationResult> {
+  // The portal binds the whole key-up set at once, and each bind replaces its session, so portal
+  // changes run one at a time. Portal entries in `active` are the bindings the portal holds.
+  let portal: Promise<{ driver: PortalShortcutsDriver, close: () => Promise<void> } | undefined> | undefined
+  let portalQueue: Promise<unknown> = Promise.resolve()
+  let portalBusy = false
+  let disposed = false
+
+  function portalBindings(): ShortcutBinding[] {
+    return Array.from(active.values()).filter(entry => entry.driver === 'portal').map(entry => entry.binding)
+  }
+
+  // Session Closed, owner loss, denial and ShortcutsChanged drop portal shortcuts outside a bind.
+  function prunePortal(driver: PortalShortcutsDriver): void {
+    const held = new Set(driver.list().map(entry => entry.binding.id))
+    for (const [id, entry] of active) {
+      if (entry.driver === 'portal' && !held.has(id))
+        active.delete(id)
+    }
+  }
+
+  function openPortal(config: NonNullable<GlobalShortcutServiceOptions['portal']>) {
+    portal ??= (async () => {
+      const { PortalShortcutsDriver } = await import('../linux-desktop/session/global-shortcuts-portal')
+      const bus = await config.openBus()
+      const driver: PortalShortcutsDriver = new PortalShortcutsDriver({
+        sessionBus: bus,
+        onTriggered: broadcastTriggered,
+        onState: (portalShortcuts) => {
+          reportLinuxDesktop({ portalShortcuts })
+          if (!portalBusy)
+            prunePortal(driver)
+        },
+        onError: error => log.withError(error).warn('GlobalShortcuts portal request failed'),
+        requestTimeoutMs: config.requestTimeoutMs,
+      })
+      return {
+        driver,
+        close: async () => {
+          await driver.stop()
+          await bus.close()
+        },
+      }
+    })().catch((error) => {
+      portal = undefined
+      log.withError(error).warn('GlobalShortcuts portal is unavailable')
+      return undefined
+    })
+    return portal
+  }
+
+  function runPortal<T>(job: (driver: PortalShortcutsDriver) => Promise<T>, unavailable: T): Promise<T> {
+    const run = portalQueue.then(async () => {
+      const opened = disposed || !options.portal ? undefined : await openPortal(options.portal)
+      if (!opened)
+        return unavailable
+      portalBusy = true
+      try {
+        return await job(opened.driver)
+      }
+      finally {
+        portalBusy = false
+        prunePortal(opened.driver)
+      }
+    })
+    portalQueue = run.catch(() => {})
+    return run
+  }
+
+  function tryRegisterPortal(binding: ShortcutBinding): Promise<ShortcutRegistrationResult> {
+    const unsupported: ShortcutRegistrationResult = { id: binding.id, ok: false, reason: ShortcutFailureReasons.Unsupported }
+    return runPortal(async (driver) => {
+      // A registration queued earlier can have taken this id or key combination.
+      if (active.has(binding.id))
+        return { id: binding.id, ok: false, reason: ShortcutFailureReasons.DuplicateId }
+      if (usedByAnotherBinding(binding))
+        return { id: binding.id, ok: false, reason: ShortcutFailureReasons.Conflict }
+
+      const results = await driver.bind([...portalBindings(), binding])
+      const result = results.find(entry => entry.id === binding.id) ?? unsupported
+      if (result.ok)
+        active.set(binding.id, { binding, owner: 'renderer', driver: 'portal' })
+      return result
+    }, unsupported)
+  }
+
+  /** Rebinds the remaining portal set after a release, unless the portal already holds exactly that set. */
+  function syncPortal(): void {
+    if (disposed)
+      return
+    void runPortal(async (driver) => {
+      const wanted = portalBindings()
+      const held = driver.list()
+      if (held.length === wanted.length && held.every(entry => active.get(entry.binding.id)?.driver === 'portal'))
+        return
+      await driver.bind(wanted)
+    }, undefined)
+  }
+
+  async function tryRegisterUiohook(binding: ShortcutBinding, fallback?: (binding: ShortcutBinding) => Promise<ShortcutRegistrationResult>): Promise<ShortcutRegistrationResult> {
     if (!uiohookDriver) {
       // NOTICE:
       // uiohook-napi@1.5.5 ships an x86-64 binary in its Linux ARM64 prebuild.
@@ -110,14 +224,32 @@ export function setupGlobalShortcutService(): GlobalShortcutService {
       catch (error) {
         reportGlobalInputHookFailure('load')
         log.withError(error).warn('uiohook driver is unavailable on this system')
-        return { id: binding.id, ok: false, reason: ShortcutFailureReasons.Unsupported }
+        return fallback?.(binding) ?? { id: binding.id, ok: false, reason: ShortcutFailureReasons.Unsupported }
       }
     }
 
     const result = uiohookDriver.tryRegister(binding)
+    if (result.ok && fallback && !uiohookDriver.isRunning()) {
+      uiohookDriver.unregisterById(binding.id)
+      return fallback(binding)
+    }
     if (result.ok)
       active.set(binding.id, { binding, owner: 'renderer', driver: 'uiohook' })
     return result
+  }
+
+  /**
+   * Key-up bindings use the GlobalShortcuts portal on Wayland and XWayland, where no global input hook
+   * observes other clients. Native X11 keeps uiohook and uses the portal when uiohook fails to load or start.
+   * Without a portal, as on Windows and macOS, uiohook takes every key-up binding.
+   */
+  function tryRegisterKeyUps(binding: ShortcutBinding): Promise<ShortcutRegistrationResult> {
+    if (!options.portal)
+      return tryRegisterUiohook(binding)
+    const { host } = getCurrentHostCapabilities()
+    if (host === 'linux-wayland' || host === 'linux-xwayland')
+      return tryRegisterPortal(binding)
+    return tryRegisterUiohook(binding, host === 'linux-x11' ? tryRegisterPortal : undefined)
   }
 
   // Main-owned shortcuts stay live without a renderer context.
@@ -162,10 +294,12 @@ export function setupGlobalShortcutService(): GlobalShortcutService {
         log.withError(error).warn(`Failed to unregister accelerator for "${id}"`)
       }
     }
-    else {
+    else if (entry.driver === 'uiohook') {
       uiohookDriver?.unregisterById(id)
     }
     active.delete(id)
+    if (entry.driver === 'portal')
+      syncPortal()
   }
 
   function tryRegister(binding: ShortcutBinding): ShortcutRegistrationResult | Promise<ShortcutRegistrationResult> {
@@ -176,7 +310,7 @@ export function setupGlobalShortcutService(): GlobalShortcutService {
       return { id: binding.id, ok: false, reason: ShortcutFailureReasons.Conflict }
 
     return binding.receiveKeyUps
-      ? tryRegisterUiohook(binding)
+      ? tryRegisterKeyUps(binding)
       : tryRegisterElectron(binding)
   }
 
@@ -225,10 +359,15 @@ export function setupGlobalShortcutService(): GlobalShortcutService {
     })
   }
 
-  const dispose: GlobalShortcutService['dispose'] = () => {
+  const dispose: GlobalShortcutService['dispose'] = async () => {
+    disposed = true
     unregisterAll(true)
     uiohookDriver?.dispose()
     contexts.clear()
+    // Stopping the driver cancels a queued bind, so the queue settles before the bus closes.
+    const opened = await portal
+    await opened?.close()
+    await portalQueue
   }
 
   onAppBeforeQuit(() => dispose())

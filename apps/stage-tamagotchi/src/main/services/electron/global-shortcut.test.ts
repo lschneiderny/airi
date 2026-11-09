@@ -1,10 +1,16 @@
 import type { ShortcutBinding } from '@proj-airi/stage-shared/global-shortcut'
+import type { HostId, LinuxDesktopFacts } from '@proj-airi/stage-shared/host-capabilities'
 import type { BrowserWindow } from 'electron'
 
-import type { EventaContext } from './global-shortcut'
+import type { EventaContext, GlobalShortcutService, GlobalShortcutServiceOptions } from './global-shortcut'
+
+import { once } from 'node:events'
 
 import { ShortcutFailureReasons } from '@proj-airi/stage-shared/global-shortcut'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { sessionInterface } from '../linux-desktop/session/portal-request'
+import { FakePortal } from '../linux-desktop/session/portal.test-helper'
 
 function exampleBinding(id: string, key = 'KeyK'): ShortcutBinding {
   return {
@@ -76,7 +82,7 @@ function registerMockWindow(service: { registerWindow: (params: { context: Event
  * so the driver can be exercised through its public interface in a
  * single test file.
  */
-async function setupMocks() {
+async function setupMocks(options: { host?: HostId, uiohook?: 'running' | 'load-fails' | 'start-fails' } = {}) {
   const registerMock = vi.fn<(accelerator: string, callback: () => void) => boolean>(() => true)
   const unregisterMock = vi.fn<(accelerator: string) => void>()
   const unregisterAllMock = vi.fn<() => void>()
@@ -106,14 +112,35 @@ async function setupMocks() {
     },
   }))
 
-  vi.doMock('./global-shortcut-uiohook', () => ({
-    createUiohookDriver: () => ({
-      // The real driver answers at once. An async double would leave the binding out of the active map.
-      tryRegister: vi.fn((binding: ShortcutBinding) => ({ id: binding.id, ok: true })),
-      unregisterById: vi.fn(),
-      unregisterAll: vi.fn(),
-      dispose: vi.fn(),
-    }),
+  const uiohookRegister = vi.fn((binding: ShortcutBinding) => ({ id: binding.id, ok: true }))
+  const uiohookUnregister = vi.fn()
+  vi.doMock('./global-shortcut-uiohook', () => {
+    if (options.uiohook === 'load-fails')
+      throw new Error('uiohook-napi has no binary for this system')
+    return {
+      createUiohookDriver: () => ({
+        // The real driver answers at once. An async double would leave the binding out of the active map.
+        tryRegister: uiohookRegister,
+        unregisterById: uiohookUnregister,
+        unregisterAll: vi.fn(),
+        isRunning: () => options.uiohook !== 'start-fails',
+        dispose: vi.fn(),
+      }),
+    }
+  })
+
+  const states: LinuxDesktopFacts['portalShortcuts'][] = []
+  const stateEvents = new EventTarget()
+  const getCurrentHostCapabilities = vi.fn(() => ({ host: options.host ?? 'windows' }))
+  vi.doMock('./host-capabilities', () => ({
+    getCurrentHostCapabilities,
+    reportGlobalInputHookFailure: vi.fn(),
+    reportLinuxDesktop: (patch: Partial<LinuxDesktopFacts>) => {
+      if (patch.portalShortcuts) {
+        states.push(patch.portalShortcuts)
+        stateEvents.dispatchEvent(new Event(patch.portalShortcuts))
+      }
+    },
   }))
 
   vi.doMock('@moeru/eventa', async (importOriginal) => {
@@ -151,6 +178,11 @@ async function setupMocks() {
     unregisterAllMock,
     triggerCallbacks,
     onAppBeforeQuitMock,
+    uiohookRegister,
+    uiohookUnregister,
+    getCurrentHostCapabilities,
+    states,
+    stateEvents,
   }
 }
 
@@ -477,5 +509,162 @@ describe('setupGlobalShortcutService', () => {
     expect(() => unreg({ id: '' })).not.toThrow()
     expect(() => unreg({ id: 'never-registered' })).not.toThrow()
     expect(m.unregisterMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('setupGlobalShortcutService with the GlobalShortcuts portal on a private daemon', () => {
+  const ptt: ShortcutBinding = {
+    id: 'voice-push-to-talk',
+    accelerator: { modifiers: ['ctrl', 'shift'], key: 'Space' },
+    scope: 'global',
+    receiveKeyUps: true,
+    description: 'Push to Talk',
+  }
+  let fake: FakePortal
+  let service: GlobalShortcutService | undefined
+
+  beforeEach(async () => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    fake = new FakePortal()
+    await fake.start()
+    await fake.install()
+  })
+
+  afterEach(async () => {
+    await service?.dispose()
+    service = undefined
+    await fake.close()
+  })
+
+  async function setup(host: HostId, uiohook?: 'running' | 'load-fails' | 'start-fails', withPortal = true) {
+    const m = await setupMocks({ host, uiohook })
+    const portal: GlobalShortcutServiceOptions['portal'] = withPortal ? { openBus: async () => fake.client, requestTimeoutMs: 200 } : undefined
+    service = m.setupGlobalShortcutService({ portal })
+    const ctx = createMockContext()
+    registerMockWindow(service, ctx)
+    const invoke = (name: string, payload: unknown) => ctx.invokeHandlers.get(`eventa:invoke:electron:shortcut:${name}`)!(payload)
+    return {
+      ...m,
+      register: async (binding: ShortcutBinding) => await invoke('register', binding),
+      // The renderer unregisters before each registration, so a reload or rebind is idempotent.
+      rebind: async (binding: ShortcutBinding) => {
+        await invoke('unregister', { id: binding.id })
+        return await invoke('register', binding)
+      },
+      unregister: (id: string) => invoke('unregister', { id }),
+      list: () => (invoke('list', undefined) as ShortcutBinding[]).map(binding => binding.id),
+      triggers: () => ctx.emit.mock.calls.map(([, body]) => body),
+    }
+  }
+
+  it.each(['linux-wayland', 'linux-xwayland'] as const)('binds key-up bindings through the portal on %s and delivers down then up', async (host) => {
+    const s = await setup(host)
+
+    expect(await s.register(ptt)).toEqual({ id: ptt.id, ok: true })
+    expect(await s.register(exampleBinding('toggle'))).toEqual({ id: 'toggle', ok: true })
+    expect(s.uiohookRegister).not.toHaveBeenCalled()
+    expect(s.registerMock).toHaveBeenCalledTimes(1)
+    expect(s.registerMock).toHaveBeenCalledWith('CmdOrCtrl+Shift+K', expect.any(Function))
+    expect(fake.requested).toEqual([[ptt.id, { description: 'Push to Talk', preferred_trigger: 'CTRL+SHIFT+space' }]])
+    expect(s.states).toEqual(['session', 'bound'])
+    expect(s.list().sort()).toEqual(['toggle', ptt.id].sort())
+
+    fake.key('Activated')
+    fake.key('Deactivated')
+    await fake.drain()
+    expect(s.triggers()).toEqual([{ id: ptt.id, phase: 'down' }, { id: ptt.id, phase: 'up' }])
+  })
+
+  it('reports a denied bind and keeps the binding inactive', async () => {
+    const s = await setup('linux-wayland')
+    fake.code = 1
+
+    expect(await s.register(ptt)).toEqual({ id: ptt.id, ok: false, reason: ShortcutFailureReasons.Denied })
+    expect(s.states).toEqual(['session'])
+    expect(s.list()).toEqual([])
+  })
+
+  it.each(['load-fails', 'start-fails'] as const)('falls back to the portal on native X11 when uiohook %s', async (uiohook) => {
+    const s = await setup('linux-x11', uiohook)
+
+    expect(await s.register(ptt)).toEqual({ id: ptt.id, ok: true })
+    expect(s.states).toEqual(['session', 'bound'])
+    if (uiohook === 'start-fails')
+      expect(s.uiohookUnregister).toHaveBeenCalledWith(ptt.id)
+  })
+
+  it('keeps uiohook on native X11 while its hook runs', async () => {
+    const s = await setup('linux-x11', 'running')
+
+    expect(await s.register(ptt)).toEqual({ id: ptt.id, ok: true })
+    expect(s.uiohookRegister).toHaveBeenCalledWith(ptt)
+    expect(fake.createCount).toBe(0)
+  })
+
+  it('keeps uiohook and never reads the host without a portal', async () => {
+    const s = await setup('linux-wayland', 'running', false)
+
+    expect(await s.register(ptt)).toEqual({ id: ptt.id, ok: true })
+    expect(s.uiohookRegister).toHaveBeenCalledWith(ptt)
+    expect(s.getCurrentHostCapabilities).not.toHaveBeenCalled()
+    expect(fake.createCount).toBe(0)
+  })
+
+  it('drops the binding when the portal closes the session and binds again on the next registration', async () => {
+    const s = await setup('linux-wayland')
+    await s.register(ptt)
+    const absent = once(s.stateEvents, 'absent', { signal: AbortSignal.timeout(2000) })
+
+    fake.service.emitSignal(fake.session, sessionInterface, 'Closed', 'a{sv}', [{}])
+    await absent
+    expect(s.list()).toEqual([])
+
+    expect(await s.rebind(ptt)).toEqual({ id: ptt.id, ok: true })
+    expect(s.states).toEqual(['session', 'bound', 'absent', 'session', 'bound'])
+    expect(s.list()).toEqual([ptt.id])
+  })
+
+  it('keeps exactly one portal session through repeated enable and disable', async () => {
+    const s = await setup('linux-wayland')
+
+    for (let round = 0; round < 5; round++) {
+      expect(await s.rebind(ptt)).toEqual({ id: ptt.id, ok: true })
+      expect(s.states.at(-1)).toBe('bound')
+      expect(s.list()).toEqual([ptt.id])
+
+      // Disabling releases the binding; the portal then holds an empty session.
+      const released = once(s.stateEvents, 'session', { signal: AbortSignal.timeout(2000) })
+      s.unregister(ptt.id)
+      await released
+      expect(s.list()).toEqual([])
+    }
+    expect(fake.createCount - fake.closedSessions.length).toBe(1)
+  })
+
+  it('bounds a portal that never answers and binds once it answers again', async () => {
+    const s = await setup('linux-wayland')
+    fake.hold = 'BindShortcuts'
+
+    expect(await s.register(ptt)).toEqual({ id: ptt.id, ok: false, reason: ShortcutFailureReasons.Denied })
+    expect(s.list()).toEqual([])
+
+    fake.hold = undefined
+    expect(await s.rebind(ptt)).toEqual({ id: ptt.id, ok: true })
+    expect(s.states.at(-1)).toBe('bound')
+  })
+
+  it('claims no portal state before a binding and closes the session on dispose', async () => {
+    const s = await setup('linux-wayland')
+    expect(s.states).toEqual([])
+    expect(fake.createCount).toBe(0)
+
+    await s.register(ptt)
+    const session = fake.session
+    await service!.dispose()
+    service = undefined
+
+    expect(s.states.at(-1)).toBe('absent')
+    expect(fake.closedSessions).toContain(session)
   })
 })

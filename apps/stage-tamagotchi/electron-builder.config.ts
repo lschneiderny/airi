@@ -300,6 +300,9 @@ export default {
     synopsis: 'AI VTuber/Waifu chatbot app inspired by Neuro-sama.',
     description: 'AIRI is an AI VTuber/Waifu chatbot supporting Live2D/VRM avatars, featuring human-like interactions and modular stage-based rendering.',
     executableName: 'airi',
+    // The XDG portals identify AIRI by the desktop file basename, which must equal the app id.
+    // This installs `desktopName` from package.json as /usr/share/applications/ai.moeru.airi.desktop.
+    syncDesktopName: true,
     artifactName: '${productName}-${version}-linux-${arch}.${ext}',
     icon: 'build/icons/icon.png',
   },
