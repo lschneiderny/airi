@@ -8,6 +8,7 @@ Keep product routes, selectors, window identities, and interaction scenarios in 
 2. Search for an existing `defineScenario` module. In AIRI, start with `packages/scenarios-stage-tamagotchi-electron`.
 3. Build the application when its main entrypoint is absent or stale. For a production/file renderer, wait for the repository build command to exit successfully. Pass `--settle-ms 2500` so Vishot waits through Vite bundling or renderer reloads; Vishot intentionally has no default delay.
 4. Run the product scenario with `vishot capture --target electron`.
+   On Linux, prefix the command with `pnpm qa:display run --` so Electron opens in the headless QA display instead of on the user's desktop. Paths after `--cwd` resolve against that directory. Stop the session with `pnpm qa:display down` when you finish.
 5. When no scenario is needed, use Vishot's direct window capture:
 
    ```bash

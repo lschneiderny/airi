@@ -14,7 +14,7 @@ Check doctor's `pointer-platform` row before rendered pointer QA. Run real-point
 - T0 checks local unit behavior.
 - T1 proves deterministic controller behavior and scores emotion effects relative to the same-seed stripped run and idle noise. It does not use a rig.
 - T2 runs the real ForBOOTH rig with Cubism Core, physics, and pose in headless Node. It does not prove rendered pixels.
-- T3 drives the Electron app through the development-only bridge and records traces and screenshots. Keep its window visible during capture.
+- T3 drives the Electron app through the development-only bridge and records traces and screenshots. Keep its window visible during capture. On Linux, run it inside the headless QA display (see below).
 - T4 is Luke's visual review. Scores do not judge naturalness.
 
 Use the lowest level that answers the question. T1 and T2 use the shared scorer. T3 proves transfer to the rendered app, not statistical confidence or naturalness.
@@ -53,6 +53,15 @@ Clip QA kit for a real-surface MMD run:
 The `builtin:t3-touch` scenario pets, pokes, and triggers the touch blush with the real OS pointer. `builtin:t3-touch-pass` verifies that a passing cursor does not start a pet. The T1 touch suite covers deterministic touch behavior. T3 touch runs move the real OS cursor and need an undisturbed desktop; the runner refuses paths outside the virtual screen and stops when the reported head is implausible.
 
 Set `AIRI_QA_RIG_FORBOOTH` to the local ForBOOTH rig directory for T2 and T3. Keep local `AIRI_QA_*` values in the ignored repo-root `.env.qa`; every qa-tools command loads it, and shell values take precedence. Set `AIRI_QA_CUBISM_CORE` when the core is not at the current checkout's default path. `AIRI_QA_RIG_BEAR` is an optional doctor input; Luke's rule says acceptance on one rig counts for the other. The bridge is enabled only when the build is development and both `APP_REMOTE_DEBUG=true` and `APP_MOTION_QA_BRIDGE=true` are set. T3 uses `APP_USER_DATA_PATH` for a temporary profile and manages its remote-debug port internally. Do not reuse a personal Electron profile.
+
+On Linux, start every T3 run, `qa:motion gate --level t3`, and `qa:stage measure` app through the headless QA display so the user can keep working:
+
+```bash
+AIRI_QA_RIG_FORBOOTH="<rig dir>" pnpm qa:display run -- pnpm qa:motion t3 --rig forbooth --scenario builtin:t3-smoke
+pnpm qa:display down
+```
+
+The session is a GPU-accelerated KWin compositor with its own Xwayland and D-Bus bus, run as a systemd user unit, so nothing reaches the user's desktop. Use `--name <name>` when another agent's session may be running, and stop your own session when you finish. `pnpm qa:display shot <file.png>` captures the whole session display when CDP screenshots are not enough. The display does not lift the `exclusive` slot rule, and the real-pointer `t3-touch` scenarios still need Windows. Details: [`scripts/dev-tools/README.md`](../../../scripts/dev-tools/README.md#pnpm-qadisplay).
 
 Gate selection and environment values are recorded in the run manifest. A reduced `--seeds` run is not the full committed gate.
 

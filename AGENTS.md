@@ -123,7 +123,9 @@ AIRI_DEV_QUIET=1 pnpm dev                     # Agent dev session: log file, rea
 pnpm typecheck; pnpm lint | lint:fix          # ESLint also formats
 pnpm verify                                   # Changed-file typecheck, lint, and related tests
 pnpm wt ls; pnpm dev:top; pnpm slots status   # Worktrees, per-worktree CPU/memory, CPU slot budget
+pnpm qa:display run -- <command>              # Linux: run app windows in a headless KWin session, off the user's desktop
 ```
+On Linux, start every agent command that opens app windows (T3 runs, agent-browser on Electron, Vishot) through `pnpm qa:display run --`, so the user's desktop, focus, and cursor stay undisturbed. Use `--name <name>` for parallel sessions and stop yours with `pnpm qa:display down --name <name>`.
 After each task, run `pnpm verify` before finishing. It typechecks the changed packages and their dependents through Turbo, lints the changed files, and runs the tests related to them. It typechecks every package when a root config file changes. It skips a step that already passed on the same working tree.
 Use `pnpm lint` or root `pnpm typecheck` only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
 When `pnpm run` or `pnpm exec` fails because dependencies are out of date, run `pnpm install` once explicitly. The workspace sets `verifyDepsBeforeRun: error` so installs never start silently.
@@ -152,6 +154,7 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Screenshots and visual evidence | [use-vishot](.agents/skills/use-vishot/SKILL.md). Load only the matching runtime and scenario references. |
 | Live2D, VRM, MMD import/rendering in web and desktop | [use-agent-browser-for-airi](.agents/skills/use-agent-browser-for-airi/SKILL.md) |
 | Motion QA, emotion/idle gates, rendered motion runs | [motion-qa](.agents/skills/motion-qa/SKILL.md) |
+| Live QA on Linux: anything that opens app windows | [`pnpm qa:display`](scripts/dev-tools/README.md#pnpm-qadisplay) |
 
 ## NOTES
 Nested guides own local exceptions and package-specific checks. Historical ADRs/audits and scanner observations are not current runtime acceptance.

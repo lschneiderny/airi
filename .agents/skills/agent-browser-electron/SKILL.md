@@ -52,7 +52,13 @@ If `/json/list` does not contain a window that the user says exists, do not assu
 
 The CDP port is project- and run-command-specific. Do not assume `9222`, `9250`, or any other value is universal. If an Electron process is running but no CDP port responds, tell the user to relaunch the app with the project's remote-debug environment variables or launch flags.
 
-For AIRI stage-tamagotchi on POSIX shells:
+For AIRI stage-tamagotchi on Linux, start the app inside the headless QA display so its windows stay off the user's desktop:
+
+```bash
+APP_REMOTE_DEBUG=true APP_REMOTE_DEBUG_PORT=9250 APP_USER_DATA_PATH="$(mktemp -d)" pnpm qa:display run -- pnpm dev:tamagotchi
+```
+
+Stop it afterwards with `pnpm qa:display down`. On macOS:
 
 ```bash
 APP_REMOTE_DEBUG=true APP_REMOTE_DEBUG_PORT=9250 pnpm dev:tamagotchi
