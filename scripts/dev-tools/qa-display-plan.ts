@@ -61,7 +61,7 @@ Commands:
 --compositor defaults to kwin. --portals adds xdg-desktop-portal and KDE global shortcuts (kwin only).`
 
 /** Unit, socket, and directory names accept only characters that are safe in all three. */
-const namePattern = /^[a-z0-9][a-z0-9-]{0,31}$/
+export const namePattern = /^[a-z0-9][a-z0-9-]{0,31}$/
 
 export function parseQaDisplayArgs(argv: readonly string[]): QaDisplayArgs | { error: string } {
   const separator = argv.indexOf('--')

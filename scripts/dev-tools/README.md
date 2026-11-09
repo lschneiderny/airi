@@ -8,6 +8,7 @@ Root commands for working on this repository with many worktrees and parallel ag
 | `pnpm wt ls \| new \| rm \| gc` | Lists, creates, removes, and garbage-collects worktrees. |
 | `pnpm dev:top` | Shows dev process memory and CPU per worktree, flags orphans, and stops one worktree's processes. |
 | `pnpm qa:display up \| down \| status \| env \| run \| shot` | Runs a headless, GPU-accelerated KWin session on Linux, so agents can run the Electron app and live QA without touching the user's desktop. |
+| `pnpm qa:kwin-probe [--seconds N] [--cursor] [--bus <address>]` | Loads the AIRI KWin bridge into a QA session's KWin, prints its messages as JSON lines, then unloads it and confirms KWin no longer has the scripts. |
 | `pnpm check:bundle` | Builds the Electron app and fails if the main window loads three, three-mmd, three-vrm, or Tres at startup. |
 | `pnpm test:run` | Runs the root Vitest config and then each package suite (`test-stage-tamagotchi:run`, `test-stage-web:run`, `test-stage-pages:run`, `test-ui:run`, `test-stage-ui-live2d:run`, `test-model-driver-lipsync:run`, `test-stage-ui-three:run`, `test-stage-ui-mmd:run`). Every suite runs even after a failure. It prints a per-suite summary and exits 1 if any suite failed. |
 
@@ -129,6 +130,22 @@ Real-pointer T3 runs such as `builtin:t3-touch` work inside the session: the QA 
 Startup failures name the unit. Read its log with `journalctl --user -u airi-qa-display-<name>.service`.
 
 The session isolates the display, not the process environment. An app inside it still shares the user's files, network ports, and default profile. T3 runs already set their own profile through `APP_USER_DATA_PATH`. For other runs, set `APP_USER_DATA_PATH` to a scratch directory so the agent's app does not take the desktop instance's single-instance lock.
+
+## `pnpm qa:kwin-probe`
+
+```sh
+pnpm qa:display run --name kp -- pnpm qa:kwin-probe --seconds 15
+pnpm qa:display run --name kp -- pnpm qa:kwin-probe --cursor   # also stream the pointer position
+pnpm qa:kwin-probe --bus "unix:path=$XDG_RUNTIME_DIR/airi-qa-display/kp/bus"   # an explicitly chosen bus
+```
+
+The probe refuses to run on an inherited desktop bus, because the bridge reads the active window as soon as it loads. Before loading anything, it requires `AIRI_QA_DISPLAY_SESSION` to name a running qa:display session whose recorded bus equals `DBUS_SESSION_BUS_ADDRESS`, or an explicit `--bus <address>`. Otherwise it exits 2 and names `pnpm qa:display run --`.
+
+The probe runs the Linux desktop KWin backend (`apps/stage-tamagotchi/src/main/services/linux-desktop/backends/kwin/`) outside Electron. It connects to the selected bus, loads `airi-desktop-bridge-<pid>` (and `airi-desktop-cursor-<pid>` with `--cursor`), and prints one JSON line per `Hello`, `Active`, `OwnWindows`, and `Cursor` message for `--seconds` (default 10, from 1 to 3600). `Active` lines replace the window caption with `captionLength`. Afterwards it unloads the scripts, asks KWin `isScriptLoaded` for both names, and prints `scripts-unloaded: true`. It exits 1 with `scripts-unloaded: false` when a script is still loaded, and with `scripts-unloaded: unverified` when KWin has no owner or does not answer. Ctrl+C or SIGTERM ends the run early with the same cleanup.
+
+Script files live in `$XDG_RUNTIME_DIR/airi-kwin/`, which each QA session keeps private. On start, the probe unloads and deletes the scripts of any dead process found there, so a probe killed with SIGKILL is cleaned up by the next one in the same session. Without a KWin on the bus, it exits 1 with `bridge failed: org.kde.KWin has no owner`; a bridge that never says `Hello` fails after 2 seconds. A bad argument exits 2.
+
+The backend imports its compositor scripts with Vite's `?raw` suffix, so the probe registers a small Node loader hook for those imports.
 
 ## CPU slots and the verify cache
 

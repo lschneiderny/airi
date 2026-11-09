@@ -64,6 +64,7 @@
     "wt": "tsx scripts/dev-tools/wt.ts",
     "dev:top": "tsx scripts/dev-tools/top.ts",
     "qa:display": "tsx scripts/dev-tools/qa-display.ts",
+    "qa:kwin-probe": "tsx scripts/dev-tools/kwin-probe.ts",
     "up": "taze -w -r -I && pnpm prune && pnpm dedupe",
     "nolyfill": "pnpm dlx nolyfill",
     "knip": "knip"
