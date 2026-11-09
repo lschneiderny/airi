@@ -2,7 +2,7 @@ import type { BaseIssue, BaseSchema, InferOutput } from 'valibot'
 
 import type { KwinMessage } from '../kwin/protocol'
 
-import { array, finite, maxLength, minLength, minValue, number, object, picklist, pipe, regex, safeInteger, safeParse, string, tuple } from 'valibot'
+import { array, boolean, finite, maxLength, maxValue, minLength, minValue, number, object, optional, picklist, pipe, regex, safeInteger, safeParse, string, tuple } from 'valibot'
 
 const text = pipe(string(), maxLength(4096))
 const coordinate = pipe(number(), finite())
@@ -17,6 +17,17 @@ const geometry = {
 const active = object({ ...geometry, class: text, fullscreen: picklist([0, 1, 2]) })
 const clients = pipe(array(object(geometry)), maxLength(4096))
 const cursor = object({ x: coordinate, y: coordinate })
+// Hyprland reports width and height as mode pixels; scale and transform turn them into layout size.
+const monitors = pipe(array(object({
+  name: pipe(string(), maxLength(256)),
+  width: pipe(coordinate, minValue(1)),
+  height: pipe(coordinate, minValue(1)),
+  x: coordinate,
+  y: coordinate,
+  scale: pipe(coordinate, minValue(Number.MIN_VALUE)),
+  transform: pipe(number(), safeInteger(), minValue(0), maxValue(7)),
+  disabled: optional(boolean(), false),
+})), maxLength(16))
 
 /** Replies are bounded before JSON decoding, including calls outside the socket client. */
 function decode<T extends BaseSchema<unknown, unknown, BaseIssue<unknown>>>(schema: T, input: unknown): InferOutput<T> | null {
@@ -62,6 +73,27 @@ export function parseOwnWindows(input: unknown, ownPids: readonly number[]) {
   })) ?? null
 }
 
+/**
+ * Enabled monitors in Hyprland's logical layout space, as KWin and sway report them.
+ * The layout size is the mode size, swapped for odd (quarter-turn) transforms, divided by scale and rounded.
+ */
+export function parseOutputs(input: unknown) {
+  const list = decode(monitors, input)
+  if (!list)
+    return null
+  const outputs = []
+  for (const monitor of list) {
+    if (monitor.disabled)
+      continue
+    const [width, height] = monitor.transform % 2 === 1 ? [monitor.height, monitor.width] : [monitor.width, monitor.height]
+    const logical = { width: Math.round(width / monitor.scale), height: Math.round(height / monitor.scale) }
+    if (logical.width < 1 || logical.height < 1)
+      return null
+    outputs.push({ name: monitor.name, x: monitor.x, y: monitor.y, ...logical, scale: monitor.scale })
+  }
+  return outputs
+}
+
 export function parseCursor(input: unknown) {
   return decode(cursor, input)
 }
@@ -82,11 +114,17 @@ export function parseEvent(line: string) {
       return /^[0-9a-f]+,/i.test(data) ? { event, data } : null
     case 'fullscreen':
       return /^[01]$/.test(data) ? { event, data } : null
+    case 'monitoradded':
+    case 'monitorremoved':
+      return data ? { event, data } : null
+    case 'monitoraddedv2':
+    case 'monitorremovedv2':
+      return /^-?\d+,/.test(data) ? { event, data } : null
     default:
       return null
   }
 }
 
 export type HyprlandMessage
-  = | Extract<KwinMessage, { method: 'Active' | 'Cursor' }>
+  = | Extract<KwinMessage, { method: 'Active' | 'Cursor' | 'Outputs' }>
     | { readonly method: 'OwnWindows', readonly payload: ReturnType<typeof parseOwnWindows> }

@@ -1,0 +1,107 @@
+[
+  {
+    "id": 0,
+    "name": "DP-1",
+    "description": "Private Vendor Display",
+    "make": "Vendor",
+    "model": "Panel",
+    "serial": "SECRET",
+    "width": 1920,
+    "height": 1080,
+    "physicalWidth": 520,
+    "physicalHeight": 290,
+    "refreshRate": 60,
+    "x": 0,
+    "y": 0,
+    "activeWorkspace": {
+      "id": 1,
+      "name": "1"
+    },
+    "specialWorkspace": {
+      "id": 0,
+      "name": ""
+    },
+    "reserved": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "scale": 1,
+    "transform": 0,
+    "focused": true,
+    "dpmsStatus": true,
+    "vrr": false,
+    "disabled": false
+  },
+  {
+    "id": 1,
+    "name": "HDMI-A-1",
+    "description": "Private Vendor Display",
+    "make": "Vendor",
+    "model": "Panel",
+    "serial": "SECRET",
+    "width": 3840,
+    "height": 2160,
+    "physicalWidth": 520,
+    "physicalHeight": 290,
+    "refreshRate": 60,
+    "x": 1920,
+    "y": -100,
+    "activeWorkspace": {
+      "id": 1,
+      "name": "1"
+    },
+    "specialWorkspace": {
+      "id": 0,
+      "name": ""
+    },
+    "reserved": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "scale": 1.5,
+    "transform": 0,
+    "focused": false,
+    "dpmsStatus": true,
+    "vrr": false,
+    "disabled": false
+  },
+  {
+    "id": 2,
+    "name": "DP-3",
+    "description": "Private Vendor Display",
+    "make": "Vendor",
+    "model": "Panel",
+    "serial": "SECRET",
+    "width": 1080,
+    "height": 1920,
+    "physicalWidth": 520,
+    "physicalHeight": 290,
+    "refreshRate": 60,
+    "x": -1080,
+    "y": 0,
+    "activeWorkspace": {
+      "id": 1,
+      "name": "1"
+    },
+    "specialWorkspace": {
+      "id": 0,
+      "name": ""
+    },
+    "reserved": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "scale": 1,
+    "transform": 1,
+    "focused": false,
+    "dpmsStatus": true,
+    "vrr": false,
+    "disabled": true
+  }
+]

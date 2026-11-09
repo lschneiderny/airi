@@ -212,7 +212,11 @@ describe('linux desktop backend registration', () => {
     async function compositor(signature: string) {
       const path = join(directory, 'hypr', signature)
       await mkdir(path, { recursive: true })
-      const replies: Record<string, unknown> = { 'j/activewindow': window, 'j/clients': [own, window] }
+      const replies: Record<string, unknown> = {
+        'j/activewindow': window,
+        'j/clients': [own, window],
+        'j/monitors': [{ name: 'HEADLESS-1', x: 0, y: 0, width: 1920, height: 1080, scale: 1, transform: 0 }],
+      }
       const events: Socket[] = []
       const requests: string[] = []
       await listen(join(path, '.socket.sock'), socket => socket.once('data', (chunk) => {
@@ -236,6 +240,22 @@ describe('linux desktop backend registration', () => {
       events[0].write('activewindowv2>>def\n')
       await focused.promise
       expect(bridge.activeWindow()).toMatchObject({ pid, caption: 'AIRI' })
+    })
+
+    it('publishes Hyprland monitors, so a bound window of matching size verifies geometry', async () => {
+      const { replies } = await compositor('instance')
+      replies['j/clients'] = [{ ...own, title: 'airi-bind-1' }, window]
+      const screen = { x: 0, y: 0, width: 1920, height: 1080 }
+      const bridge = create({ HYPRLAND_INSTANCE_SIGNATURE: 'instance' })
+      await bridge.start()
+      expect(bridge.outputs()).toEqual([{ name: 'HEADLESS-1', ...screen, scale: 1 }])
+      // The same evidence coordinates.ts hands the verifier: a bound window whose size matches, and mapped displays.
+      const bound = bridge.ownWindows()?.find(candidate => candidate.caption === 'airi-bind-1')
+      const displays = mapDisplaysToOutputs([{ bounds: screen, workArea: screen, scaleFactor: 1 }], bridge.outputs() ?? [])
+      const report = vi.fn()
+      const verifier = new CoordinateVerifier({ report, log: () => {}, now: () => 0 })
+      verifier.observeGeometry({ sizeMatches: bound?.width === rect.width && bound.height === rect.height, displaysKnown: displays !== null })
+      expect(report).toHaveBeenCalledWith({ geometryVerified: true })
     })
 
     it('reads the cursor on each tick only while streaming, through the bridge cursor path', async () => {

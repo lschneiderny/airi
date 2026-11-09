@@ -7,7 +7,7 @@ import { Buffer } from 'node:buffer'
 import { createConnection } from 'node:net'
 import { join } from 'node:path'
 
-import { parseActive, parseCursor, parseEvent, parseOwnWindows } from './protocol'
+import { parseActive, parseCursor, parseEvent, parseOutputs, parseOwnWindows } from './protocol'
 import { HyprlandBackendError, HyprlandRequests } from './socket'
 
 export interface HyprlandBackendOptions {
@@ -32,12 +32,14 @@ export class HyprlandBackend {
   private active: ReturnType<typeof parseActive> = null
   private own: ReturnType<typeof parseOwnWindows> = null
   private point: ReturnType<typeof parseCursor> = null
+  private screens: ReturnType<typeof parseOutputs> = null
 
   constructor(private readonly options: HyprlandBackendOptions) {}
 
   activeWindow() { return this.active }
   ownWindows() { return this.own }
   cursor() { return this.point }
+  outputs() { return this.screens }
 
   start(): Promise<void> {
     if (this.starting)
@@ -73,6 +75,7 @@ export class HyprlandBackend {
     this.active = null
     this.own = null
     this.point = null
+    this.screens = null
   }
 
   async setCursorStreaming(on: boolean) {
@@ -182,8 +185,15 @@ export class HyprlandBackend {
         this.dirty = false
         const active = await requests.request('j/activewindow', signal)
         const own = await requests.request('j/clients', signal)
+        const monitors = await requests.request('j/monitors', signal)
         if (signal.aborted)
           return
+        const screens = parseOutputs(monitors)
+        // A reply that cannot be read must not leave stale geometry behind, so it fails the backend as a bad cursor reply does.
+        if (!screens)
+          throw new HyprlandBackendError('transport-failed')
+        this.screens = screens
+        this.options.onMessage({ method: 'Outputs', payload: screens })
         this.active = parseActive(active)
         this.own = parseOwnWindows(own, this.options.ownPids())
         this.options.onMessage({ method: 'Active', payload: this.active })

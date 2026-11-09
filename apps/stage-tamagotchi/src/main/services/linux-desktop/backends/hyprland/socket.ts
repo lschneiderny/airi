@@ -15,7 +15,7 @@ export class HyprlandBackendError extends Error {
 export class HyprlandRequests {
   constructor(private readonly path: string) {}
 
-  request(command: 'j/activewindow' | 'j/clients' | 'j/cursorpos', signal: AbortSignal): Promise<string> {
+  request(command: 'j/activewindow' | 'j/clients' | 'j/cursorpos' | 'j/monitors', signal: AbortSignal): Promise<string> {
     if (signal.aborted)
       return Promise.reject(new HyprlandBackendError('stopped'))
     return new Promise((resolve, reject) => {

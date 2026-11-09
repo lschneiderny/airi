@@ -28,7 +28,7 @@ KWin confirms the current owner of `org.kde.KWin` before loading a script.
 | `kwin` | KDE desktop name | Session bus, `XDG_RUNTIME_DIR` | Supported Hello | Pushed active window, own windows, cursor stream | Owner loss, unsupported API, two-second Hello deadline |
 | `x11-ewmh` | X11 session only, never XWayland | `DISPLAY` | One display connection opened | Active window read on demand from `_NET_ACTIVE_WINDOW`; Electron keeps cursor, origin and displays | Display unavailable, or a failed read |
 | `sway` | `SWAYSOCK` | `SWAYSOCK` | Subscription, outputs and first tree | Pushed active window, own-window geometry and outputs (`GET_OUTPUTS`, refreshed on `output` events); no cursor (`sway-cursor-unreported`) | Socket missing, closed, malformed or timed out |
-| `hyprland` | `HYPRLAND_INSTANCE_SIGNATURE` | `XDG_RUNTIME_DIR`, `HYPRLAND_INSTANCE_SIGNATURE` | Event socket and first replies | Pushed active window and own-window geometry; cursor once per cursor-loop tick (`requestCursor`) | Missing or escaping signature, socket closed, reply too large or timed out |
+| `hyprland` | `HYPRLAND_INSTANCE_SIGNATURE` | `XDG_RUNTIME_DIR`, `HYPRLAND_INSTANCE_SIGNATURE` | Event socket and first replies | Pushed active window and own-window geometry; monitors as `Outputs` (`j/monitors`, refreshed on `monitoradded`/`monitorremoved` and their v2 events; logical layout position and size, with scale); cursor once per cursor-loop tick (`requestCursor`) | Missing or escaping signature, socket closed, reply too large, timed out or unreadable monitors reply |
 
 Every failure clears the readings and publishes `failed` with
 `bridgeFailure: other` and its fixed reason in the log; the bridge never
