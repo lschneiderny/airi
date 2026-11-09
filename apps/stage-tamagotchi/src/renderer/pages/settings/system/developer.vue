@@ -66,6 +66,12 @@ const menu = computed(() => [
     to: '/devtools/use-window-mouse',
   },
   {
+    title: t('tamagotchi.settings.pages.system.presence-sensing.title'),
+    description: t('tamagotchi.settings.pages.system.presence-sensing.description'),
+    icon: 'i-solar:eye-scan-bold-duotone',
+    to: '/settings/system/presence-sensing',
+  },
+  {
     title: 'Displays',
     description: 'Visualize connected displays and cursor position',
     icon: 'i-solar:sledgehammer-bold-duotone',

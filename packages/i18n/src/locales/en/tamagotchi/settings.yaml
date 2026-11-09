@@ -72,6 +72,46 @@ pages:
           use-window-mouse:
             title: useWindowMouse Tool
             description: Test the Electron window cursor position
+    presence-sensing:
+      title: Presence sensing
+      description: See which signals this system lets AIRI sense, and why one is limited or unavailable.
+      host: Host
+      pending: AIRI has not read what this system can sense yet.
+      status:
+        live: Live
+        degraded: Limited
+        unavailable: Unavailable
+      signals:
+        cursorScreenPoint: Cursor position on screen
+        windowOrigin: Window position on screen
+        displayOrigins: Display positions
+        systemIdleTime: Idle time
+        screenLock: Screen lock
+        foregroundWindow: Foreground window
+        globalKeyUp: Global key release
+        clickThroughForward: Click-through forwarding
+        alwaysOnTop: Always on top
+        systemAudioCapture: System audio capture
+      reasons:
+        wayland-cursor-unreported: Wayland does not report the cursor position outside the window.
+        wayland-window-origin-hidden: Wayland hides where the window sits on the screen.
+        wayland-display-origin-unverified: Display positions under Wayland are not verified on this system.
+        xwayland-idle-constant-zero: XWayland always reports zero idle time.
+        wayland-idle-unverified: Idle time under Wayland becomes live once this system shows it advancing.
+        linux-lock-events-undocumented: Linux screen lock events are not documented, so they may be missed.
+        platform-no-foreground-binding: This system has no way to read the foreground window.
+        foreground-binding-load-failed: The foreground window reader failed to load.
+        wayland-no-global-input-hook: Wayland does not allow a global input hook.
+        global-input-hook-load-failed: The global input hook failed to load.
+        global-input-hook-start-failed: The global input hook failed to start.
+        macos-accessibility-denied: Allow AIRI in Accessibility settings to read global keys.
+        macos-window-titles-untrusted: Window titles are hidden until AIRI is allowed in Accessibility settings.
+        linux-no-click-through-forward: Linux cannot forward clicks through a transparent window.
+        wayland-no-z-order: Wayland does not let a window stay above other windows.
+        linux-capture-audio-unverified: System audio capture on Linux is not verified.
+        macos-capture-audio-requires-14-2: System audio capture needs macOS 14.2 or newer.
+        web-sandbox: The browser sandbox does not expose this signal.
+        web-page-pointer-only: The browser reports the pointer only while it is over the page.
 devtools:
   title: Developer
   pages:

@@ -25,6 +25,12 @@ const settings = computed(() => [
     to: '/settings/system/window-shortcuts',
   },
   {
+    title: t('tamagotchi.settings.pages.system.presence-sensing.title'),
+    description: t('tamagotchi.settings.pages.system.presence-sensing.description'),
+    icon: 'i-solar:eye-scan-bold-duotone',
+    to: '/settings/system/presence-sensing',
+  },
+  {
     title: t('settings.pages.system.developer.title'),
     description: t('settings.pages.system.developer.description'),
     icon: 'i-solar:code-bold-duotone',
