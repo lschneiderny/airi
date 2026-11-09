@@ -3,7 +3,6 @@ import type { MaybeElementRef, MouseInElementOptions } from '@vueuse/core'
 import { defaultWindow, tryOnMounted, unrefElement, useEventListener, useMouseInElement, useMutationObserver, useResizeObserver } from '@vueuse/core'
 import { computed, shallowRef, watch } from 'vue'
 
-import { useElectronCursorAvailable } from './use-electron-mouse'
 import { useElectronRelativeMouse } from './use-electron-relative-mouse'
 
 /**
@@ -25,7 +24,7 @@ export function useElectronMouseInElement(
   } = options
   const type = options.type || 'page'
 
-  const { x, y, sourceType } = useElectronRelativeMouse(options)
+  const { x, y, sourceType, available } = useElectronRelativeMouse(options)
 
   const targetRef = shallowRef(target ?? window?.document.body)
   const elementX = shallowRef(0)
@@ -35,7 +34,6 @@ export function useElectronMouseInElement(
   const elementHeight = shallowRef(0)
   const elementWidth = shallowRef(0)
   const isOutside = shallowRef(true)
-  const available = useElectronCursorAvailable()
   // Only hit-testing falls back to DOM events. The returned coordinates stay Electron-owned.
   const dom = useMouseInElement(target, options)
   const outside = computed(() => available.value ? isOutside.value : dom.isOutside.value)
@@ -59,6 +57,9 @@ export function useElectronMouseInElement(
     elementPositionY.value = top + (type === 'page' ? window.pageYOffset : 0)
     elementHeight.value = height
     elementWidth.value = width
+
+    if (!available.value)
+      return
 
     const elX = x.value - elementPositionX.value
     const elY = y.value - elementPositionY.value

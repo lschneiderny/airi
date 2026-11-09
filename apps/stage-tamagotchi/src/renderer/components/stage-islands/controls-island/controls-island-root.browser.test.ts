@@ -13,6 +13,8 @@ import { useControlsIslandPlacement } from './use-controls-island-placement'
 
 const windowX = ref(0)
 const windowY = ref(0)
+const windowWidth = ref(400)
+const windowHeight = ref(500)
 const display = {
   bounds: { x: 0, y: 0, width: 1600, height: 1000 },
   workArea: { x: 0, y: 0, width: 1600, height: 1000 },
@@ -21,7 +23,7 @@ const displays = ref([display])
 
 vi.mock('@proj-airi/electron-vueuse', () => ({
   useElectronAllDisplays: () => displays,
-  useElectronWindowBounds: () => ({ x: windowX, y: windowY, width: ref(400), height: ref(500) }),
+  useElectronWindowBounds: () => ({ x: windowX, y: windowY, width: windowWidth, height: windowHeight }),
 }))
 
 const Dock = defineComponent({
@@ -38,6 +40,37 @@ vi.mock('@vueuse/core', async importOriginal => ({
 }))
 
 describe('controls island origin trust', () => {
+  it.each(['windows', 'macos'] as const)('retains its initial dock before the first %s bounds reading', async (host) => {
+    const pinia = createPinia()
+    useHostCapabilitiesStore(pinia).set(capabilitiesForHost(host))
+    windowX.value = 0
+    windowY.value = 0
+    windowWidth.value = 0
+    windowHeight.value = 0
+    const view = await render(ControlsIslandRoot, {
+      props: { frozen: false },
+      slots: { default: () => h(Dock) },
+      global: { plugins: [pinia] },
+    })
+    onTestFinished(() => {
+      windowWidth.value = 400
+      windowHeight.value = 500
+      return view.unmount()
+    })
+    expect(view.getByTestId('dock').element().textContent).toBe('top-right')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    onTestFinished(() => {
+      vi.useRealTimers()
+    })
+
+    windowWidth.value = 400
+    windowHeight.value = 500
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(view.getByTestId('dock').element().textContent).toBe('top-left')
+  })
+
   it('defers hidden Wayland origin docking until the snapshot resolves', async () => {
     const pinia = createPinia()
     const capabilities = useHostCapabilitiesStore(pinia)

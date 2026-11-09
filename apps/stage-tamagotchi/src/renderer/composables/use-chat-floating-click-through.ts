@@ -112,7 +112,7 @@ export function useChatFloatingClickThrough(options: {
   /** Content that takes no pointer and no keyboard focus, such as a passive message feed. */
   passiveArea?: MaybeRefOrGetter<HTMLElement | null | undefined>
 }) {
-  const { x, y } = useElectronRelativeMouse()
+  const { x, y, available } = useElectronRelativeMouse()
   // An attached window moves with the main window, so only the screen
   // position tells whether the hand moved.
   const hand = useElectronMouse()
@@ -120,6 +120,9 @@ export function useChatFloatingClickThrough(options: {
 
   const hostCapabilities = useHostCapabilitiesStore()
   const clickThroughAvailable = computed(() => hostCapabilities.status('clickThroughForward')?.kind === 'live')
+  const canUseCursor = computed(() => available.value
+    && hostCapabilities.status('cursorScreenPoint')?.kind === 'live'
+    && hostCapabilities.status('windowOrigin')?.kind === 'live')
 
   /** Screen position of the hand when the cursor last found paint; a press clears it. */
   let paintedAt: { x: number, y: number } | undefined
@@ -194,10 +197,15 @@ export function useChatFloatingClickThrough(options: {
    * transition. The still-hand rule then does not apply: nothing that the hand pointed at remains, so the window
    * passes clicks through at once instead of after the next hand movement.
    */
-  function hitTest(options: { removed?: boolean } = {}) {
-    if (options.removed)
+  function hitTest(change: { removed?: boolean } = {}) {
+    if (change.removed || !canUseCursor.value)
       paintedAt = undefined
-    const next = !clickThroughAvailable.value || takesPointer()
+    if (!canUseCursor.value) {
+      const passiveArea = toValue(options.passiveArea)
+      if (passiveArea)
+        passiveArea.style.opacity = ''
+    }
+    const next = !clickThroughAvailable.value || !canUseCursor.value || takesPointer()
     if (next === appliedTakesPointer)
       return
     appliedTakesPointer = next
@@ -218,7 +226,7 @@ export function useChatFloatingClickThrough(options: {
 
   // Dialogs and menus mount straight into the body.
   useMutationObserver(document.body, () => hitTest(), { childList: true })
-  watch(clickThroughAvailable, () => hitTest())
+  watch([clickThroughAvailable, canUseCursor], () => hitTest())
   watch([() => toValue(options.pinned), () => toValue(options.passiveArea), pointerHeld, x, y], () => hitTest(), { immediate: true })
 
   return { hitTest }

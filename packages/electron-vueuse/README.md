@@ -17,11 +17,15 @@ the next IPC response is pending, so a refresh never appears to consumers as a t
 `useElectronCursorAvailable()` reports whether a trusted screen cursor has arrived.
 It starts false and becomes false again when the host withholds a reading.
 Mouse coordinates retain their last trusted values without dispatching a synthetic move to zero.
-`useElectronRelativeMouse()` also returns this ref as `available`. Consumers must use it
-before treating cached coordinates as current host input.
+`useElectronWindowBounds()` keeps its numeric defaults at zero and exposes `available`,
+which becomes true only after its first bounds event. A real zero origin is valid;
+the numeric value alone does not establish that a reading has arrived.
+`useElectronRelativeMouse().available` requires both an available cursor and received
+window bounds. Consumers must check it before treating relative coordinates as current
+host input, and must still check the host capability snapshot for origin trust.
 
 `useElectronMouseInElement()` uses DOM pointer events for `isOutside` hit-testing
-while the trusted Electron cursor is unavailable. This fallback supports UI
+while the trusted Electron cursor or the first window bounds are unavailable. This fallback supports UI
 hover behavior only. It does not make DOM coordinates trusted desktop input or
 feed them to presence and motion resolution.
 

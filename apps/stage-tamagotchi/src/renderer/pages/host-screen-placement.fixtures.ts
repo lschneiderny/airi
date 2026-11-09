@@ -15,6 +15,9 @@ export const display = { id: 7, bounds: { x: 0, y: 0, width: 1600, height: 1000 
 export const windowBounds = { x: 200, y: 300, width: 400, height: 500 }
 export const boundsX = ref(windowBounds.x)
 export const boundsY = ref(windowBounds.y)
+export const boundsWidth = ref(windowBounds.width)
+export const boundsHeight = ref(windowBounds.height)
+export const boundsAvailable = ref(true)
 export const cursorAvailable = ref(true)
 export const outsideWindow = ref(false)
 export const setIgnoreMouseEvents = vi.fn()
@@ -26,6 +29,11 @@ export const samplerReads: Array<{ renderer: 'canvas' | 'three', x: number, y: n
 beforeEach(() => {
   mountedStage.value = false
   samplerReads.length = 0
+  boundsAvailable.value = true
+  boundsX.value = windowBounds.x
+  boundsY.value = windowBounds.y
+  boundsWidth.value = windowBounds.width
+  boundsHeight.value = windowBounds.height
 })
 
 vi.mock('@vueuse/core', async importOriginal => ({
@@ -39,8 +47,8 @@ vi.mock('@vueuse/core', async importOriginal => ({
 // Keep pages and Pinia real; isolate IPC, unrelated producers and the renderer boundary.
 vi.mock('@proj-airi/electron-vueuse', () => ({
   useElectronAllDisplays: () => ref([display]),
-  useElectronWindowBounds: () => ({ x: boundsX, y: boundsY, width: ref(400), height: ref(500) }),
-  useElectronRelativeMouse: () => ({ x: ref(20), y: ref(30), available: cursorAvailable }),
+  useElectronWindowBounds: () => ({ x: boundsX, y: boundsY, width: boundsWidth, height: boundsHeight, available: boundsAvailable }),
+  useElectronRelativeMouse: () => ({ x: ref(20), y: ref(30), available: computed(() => cursorAvailable.value && boundsAvailable.value) }),
   useElectronMouseInElement: () => ({ isOutside: ref(true) }),
   useElectronMouseInWindow: () => ({ isOutside: outsideWindow }),
   useElectronMouseAroundWindowBorder: () => ({ isNearAnyBorder: ref(false) }),

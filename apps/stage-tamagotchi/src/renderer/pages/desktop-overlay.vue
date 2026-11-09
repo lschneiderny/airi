@@ -16,8 +16,10 @@ import type { Rect } from './desktop-overlay-coordinates'
  */
 import type { OverlayState } from './desktop-overlay-polling'
 
+import { errorMessageFrom } from '@moeru/std'
 import { electron } from '@proj-airi/electron-eventa'
 import { useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
+import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { electronMcpApplyAndRestart, electronMcpCallTool, electronMcpGetRuntimeStatus, electronMcpListTools, getDesktopOverlayReadinessContract } from '../../shared/eventa'
@@ -47,7 +49,10 @@ const applyAndRestartMcp = useElectronEventaInvoke(electronMcpApplyAndRestart)
 const callMcpTool = useElectronEventaInvoke(electronMcpCallTool)
 const getMcpRuntimeStatus = useElectronEventaInvoke(electronMcpGetRuntimeStatus)
 const listMcpTools = useElectronEventaInvoke(electronMcpListTools)
-const overlayBounds = ref<Rect | null>(null)
+const windowBounds = ref<Rect | null>(null)
+const hostCapabilities = useHostCapabilitiesStore()
+// Every marker shares this boundary, including candidates and completion ripples.
+const overlayBounds = computed(() => hostCapabilities.status('windowOrigin')?.kind === 'live' ? windowBounds.value : null)
 const pollHeartbeatEnabled = isOverlayPollHeartbeatEnabled()
 
 // ---------------------------------------------------------------------------
@@ -200,16 +205,10 @@ onMounted(async () => {
   // Read overlay window bounds from main process (one-time)
   try {
     const bounds = await getWindowBounds()
-    overlayBounds.value = bounds
+    windowBounds.value = bounds
   }
-  catch {
-    // Fallback: assume bounds start at (0,0) with window inner size
-    overlayBounds.value = {
-      x: 0,
-      y: 0,
-      width: window.innerWidth,
-      height: window.innerHeight,
-    }
+  catch (error) {
+    console.warn('[Desktop Overlay] Window bounds unavailable; markers stay hidden:', errorMessageFrom(error))
   }
 
   if (pollHeartbeatEnabled) {

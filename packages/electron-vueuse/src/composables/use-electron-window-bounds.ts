@@ -8,6 +8,7 @@ const windowBoundsX = ref(0)
 const windowBoundsY = ref(0)
 const windowBoundsWidth = ref(0)
 const windowBoundsHeight = ref(0)
+const windowBoundsAvailable = ref(false)
 
 let initialized = false
 
@@ -27,6 +28,7 @@ function initializeWindowBoundsTracking() {
     windowBoundsY.value = event.body.y
     windowBoundsWidth.value = event.body.width
     windowBoundsHeight.value = event.body.height
+    windowBoundsAvailable.value = true
   })
 
   void defineInvoke(context, startLoopGetBounds)()
@@ -36,6 +38,8 @@ export function useElectronWindowBounds() {
   initializeWindowBoundsTracking()
 
   return {
+    /** True only after the first bounds event; numeric defaults alone are not a reading. */
+    available: windowBoundsAvailable,
     x: windowBoundsX,
     y: windowBoundsY,
     width: windowBoundsWidth,
