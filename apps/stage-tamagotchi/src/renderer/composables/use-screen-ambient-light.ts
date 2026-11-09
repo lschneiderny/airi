@@ -246,6 +246,11 @@ export function useScreenAmbientLight(sources: {
     if (!context)
       throw new Error('Failed to create the screen sampling canvas')
 
+    // Unknown is not a degraded host: wait before choosing a display or excluding the window.
+    await until(() => hostCapabilities.snapshot).not.toBeNull()
+    if (version !== startVersion)
+      return
+
     // Only macOS puts screen capture behind a permission, and the main-process
     // handler throws on every other platform, which would fail the start and
     // switch the feature off. Elsewhere the capture begins straight away.

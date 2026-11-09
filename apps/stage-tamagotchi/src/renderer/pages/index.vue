@@ -86,6 +86,9 @@ const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
 const isOutside = computed(() => controlsIslandRef.value?.isOutside ?? true)
 const isOutsideFor250Ms = refDebounced(isOutside, 250)
 const { x: relativeMouseX, y: relativeMouseY, available: cursorAvailable } = useElectronRelativeMouse()
+const hostCapabilities = useHostCapabilitiesStore()
+// Every native-coordinate consumer shares this boundary. DOM hover remains available in the Island.
+const canUseCursor = computed(() => hostCapabilities.status('cursorScreenPoint')?.kind === 'live' && cursorAvailable.value)
 // NOTICE: In real-world use cases of Fade on Hover feature, the cursor may move around the edge of the
 // model rapidly, causing flickering effects when checking pixel transparency strictly.
 // Here we use render-target pixel sampling to keep detection aligned with the actual render output.
@@ -155,7 +158,7 @@ const shouldUseThreeTransparencyHitTest = computed(() => shouldSampleStageTransp
  * region sampler reports `true` and the stage stays visible.
  */
 const isTransparent = computed(() => {
-  if (stagePaused.value || componentStateStage.value !== 'mounted' || !fadeOnHoverEnabled.value)
+  if (!canUseCursor.value || stagePaused.value || componentStateStage.value !== 'mounted' || !fadeOnHoverEnabled.value)
     return true
 
   // TresCanvas leaves preserveDrawingBuffer off, so VRM's canvas reads back empty and
@@ -176,7 +179,7 @@ const isTransparent = computed(() => {
  * window is click-through.
  */
 const isPointerOverStageCanvas = computed(() =>
-  document.elementFromPoint(relativeMouseX.value, relativeMouseY.value) === stageCanvas.value,
+  canUseCursor.value && document.elementFromPoint(relativeMouseX.value, relativeMouseY.value) === stageCanvas.value,
 )
 /**
  * Drives native click-through, and runs whether or not Auto Hide is on.
@@ -187,7 +190,7 @@ const isPointerOverStageCanvas = computed(() =>
  * lands there: it draws a DOM panel and exposes no canvas to read.
  */
 const isTransparentForMouseEvents = computed(() => {
-  if (stagePaused.value || componentStateStage.value !== 'mounted')
+  if (!canUseCursor.value || stagePaused.value || componentStateStage.value !== 'mounted')
     return false
 
   // Load-bearing, not a convenience. A scene swap unmounts the canvas while the state
@@ -207,13 +210,15 @@ const isTransparentForMouseEvents = computed(() => {
   return transparent
 })
 
-const { isNearAnyBorder: isAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 10 })
-const isAroundWindowBorderFor250Ms = refDebounced(isAroundWindowBorder, 250)
+const { isNearAnyBorder: nativeAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 10 })
+const isAroundWindowBorder = computed(() => canUseCursor.value && nativeAroundWindowBorder.value)
+const debouncedAroundWindowBorder = refDebounced(isAroundWindowBorder, 250)
+const isAroundWindowBorderFor250Ms = computed(() => canUseCursor.value && debouncedAroundWindowBorder.value)
 
-// Only a live cursor can hide the Island. The edge band keeps it visible during resizing.
-const hostCapabilities = useHostCapabilitiesStore()
+// Keep the controls visible until capabilities arrive, as on the original classic page.
+// The edge band keeps the Island visible during resizing.
 const clickThroughAvailable = computed(() => hostCapabilities.status('clickThroughForward')?.kind === 'live')
-const cursorAwayFromWindow = computed(() => hostCapabilities.status('cursorScreenPoint')?.kind === 'live' && isOutsideWindow.value && !isAroundWindowBorder.value)
+const cursorAwayFromWindow = computed(() => canUseCursor.value && isOutsideWindow.value && !isAroundWindowBorder.value)
 
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
 
@@ -333,7 +338,7 @@ const modelSettingsRuntimeSnapshot = computed<ModelSettingsRuntimeSnapshot>(() =
  * - {@link setIgnoreMouseEvents}
  */
 function handleFadeOnHoverInteractionChange() {
-  if (stagePaused.value) {
+  if (!canUseCursor.value || stagePaused.value) {
     isIgnoringMouseEvents.value = false
     shouldFadeOnCursorWithin.value = false
     setIgnoreMouseEvents([false, { forward: true }])
@@ -377,7 +382,7 @@ function handleFadeOnHoverInteractionChange() {
 }
 
 watch(
-  [outsideHearingStatus, isOutside, isOutsideFor250Ms, isPointerOverStageCanvas, isAroundWindowBorder, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, isTransparentForMouseEvents, controlsOverlayActive, fadeOnHoverEnabled, alwaysOnTop, stagePaused, clickThroughAvailable],
+  [canUseCursor, outsideHearingStatus, isOutside, isOutsideFor250Ms, isPointerOverStageCanvas, isAroundWindowBorder, isAroundWindowBorderFor250Ms, isOutsideWindow, isTransparent, isTransparentForMouseEvents, controlsOverlayActive, fadeOnHoverEnabled, alwaysOnTop, stagePaused, clickThroughAvailable],
   handleFadeOnHoverInteractionChange,
   { immediate: true },
 )
@@ -428,13 +433,14 @@ onMounted(() => {
     openOnboarding()
 })
 
-const cursorPosition = computed(() => cursorAvailable.value
+const cursorPosition = computed(() => canUseCursor.value
   ? { x: relativeMouseX.value, y: relativeMouseY.value }
   : undefined)
 
 const allDisplays = useElectronAllDisplays()
 const { x: windowX, y: windowY, width: windowWidth, height: windowHeight } = useElectronWindowBounds()
 // Natural turns the character toward the screen interior from where this window sits among the displays.
+// Raw bounds may hide the origin on Wayland; wait for explicit trust before forwarding them.
 const screenPlacement = computed(() => hostCapabilities.status('windowOrigin')?.kind === 'live'
   ? {
       displays: allDisplays.value.map(display => display.bounds),

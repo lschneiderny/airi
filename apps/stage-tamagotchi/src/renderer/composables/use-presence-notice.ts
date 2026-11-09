@@ -1,3 +1,5 @@
+import type { HostCapabilities } from '@proj-airi/stage-shared/host-capabilities'
+
 import type { StageHostMode } from '../../shared/eventa'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -44,8 +46,8 @@ export function usePresenceNotice(page: 'index' | 'stage') {
       owns.value = presenceNoticeOwner[state.running] === page
   }).catch(error => console.warn('[PresenceNotice] Failed to read the stage state:', errorMessageFrom(error)))
 
-  function show(key: string) {
-    const signals = presenceLimitations(snapshot.value!).map(limitation => t(`tamagotchi.settings.pages.system.presence-sensing.signals.${limitation.signal}`))
+  function show(key: string, capabilities: HostCapabilities) {
+    const signals = presenceLimitations(capabilities).map(limitation => t(`tamagotchi.settings.pages.system.presence-sensing.signals.${limitation.signal}`))
     const names = new Intl.ListFormat(undefined, { type: 'conjunction' }).format(signals)
     shownKey = key
     const dismiss = async () => {
@@ -92,8 +94,8 @@ export function usePresenceNotice(page: 'index' | 'stage') {
       shownKey = null
       return
     }
-    if (key !== shownKey)
-      show(key)
+    if (key !== shownKey && capabilities)
+      show(key, capabilities)
   }, { immediate: true })
 
   onScopeDispose(() => {
