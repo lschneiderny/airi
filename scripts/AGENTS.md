@@ -15,7 +15,8 @@ Repository developer tooling that belongs to no workspace package: the `pnpm dev
 | Verify pass cache | `dev-tools/verify-cache.ts` | Keys stored under `<git common dir>/airi-verify/` |
 | Worktree commands | `dev-tools/wt.ts`, `dev-tools/wt-plan.ts` | `ls`, `new`, `rm`, `gc` |
 | Process rollup and kill | `dev-tools/top.ts`, `dev-tools/lib/processes.ts` | Worktree attribution and orphan detection |
-| Headless QA display (Linux) | `dev-tools/qa-display.ts`, `dev-tools/qa-display-plan.ts` | `pnpm qa:display`: GPU-accelerated nested KWin session as a systemd user unit |
+| Headless QA display (Linux) | `dev-tools/qa-display.ts`, `dev-tools/qa-display-plan.ts` | `pnpm qa:display`: KWin, Xvfb/openbox or headless sway; KWin `--portals`; each session has a private runtime directory and bus |
+| KWin bridge probe | `dev-tools/kwin-probe.ts` | `pnpm qa:kwin-probe`: isolated script handshake, redacted messages and unload receipts |
 | CPU slot status display | `dev-tools/lib/cpu-slots.ts` | Renders `@proj-airi/cpu-slots` status for `dev:top` |
 | Suite runner | `dev-tools/test-run.ts`, `dev-tools/test-run-plan.ts` | Runs every suite after a failure, exits 1 on any failure |
 | Shared process, git, and chunking helpers | `dev-tools/lib/exec.ts`, `dev-tools/lib/git.ts` | Command-line length limits for Windows shims |
