@@ -17,7 +17,7 @@ import { defineInvokeHandler } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { isRendererUnavailable } from '@proj-airi/electron-vueuse/main'
 import { effect } from 'alien-signals'
-import { app, ipcMain, Menu, nativeImage, screen, Tray } from 'electron'
+import { app, ipcMain, Menu, nativeImage, Tray } from 'electron'
 import { debounce, once } from 'es-toolkit'
 import { isMacOS } from 'std-env'
 
@@ -27,7 +27,7 @@ import macOSTrayIcon from '../../../resources/tray-icon-macos.png?asset'
 import { electronAppIconGet, electronAppIconSet } from '../../shared/eventa'
 import { findDominantDisplayArea } from '../../shared/utils/electron/display'
 import { onAppBeforeQuit } from '../libs/bootkit/lifecycle'
-import { windowOriginTrusted } from '../services/electron/host-capabilities'
+import { displayMatching, readDisplays, readPrimaryDisplay, readWindowRect } from '../services/electron/coordinates'
 import { Animator } from '../windows/shared/animator'
 import { AppIconVisibility } from '../windows/shared/app-icon'
 import { computeResizedBoundsAnchoredToDominantDisplay } from '../windows/shared/display'
@@ -42,7 +42,8 @@ function applyWindowSize(window: BrowserWindow, width: number, height: number, x
 
   window.setResizable(true)
 
-  if (!windowOriginTrusted()) {
+  const currentBounds = readWindowRect(window)
+  if (!currentBounds) {
     window.setSize(Math.round(width), Math.round(height))
     window.show()
     return
@@ -56,9 +57,9 @@ function applyWindowSize(window: BrowserWindow, width: number, height: number, x
         height: Math.round(height),
       }
     : computeResizedBoundsAnchoredToDominantDisplay({
-        currentBounds: window.getBounds(),
+        currentBounds,
         targetSize: { width, height },
-        displays: screen.getAllDisplays(),
+        displays: readDisplays(),
       })
 
   window.setBounds(bounds)
@@ -106,10 +107,10 @@ const setupTrayOnce = once((params: SetupTrayParams): void => {
       return
     }
 
-    const mainWindowBounds = windowOriginTrusted() ? params.mainWindow.getBounds() : undefined
+    const mainWindowBounds = readWindowRect(params.mainWindow)
     const currentDisplay = mainWindowBounds
-      ? findDominantDisplayArea(mainWindowBounds, screen.getAllDisplays()) ?? screen.getDisplayMatching(mainWindowBounds)
-      : screen.getPrimaryDisplay()
+      ? findDominantDisplayArea(mainWindowBounds, readDisplays()) ?? displayMatching(mainWindowBounds)
+      : readPrimaryDisplay()
     const contextMenu = Menu.buildFromTemplate([
       { label: params.i18n.t('tamagotchi.electron.tray.menu.labels.label.show'), click: () => showUserFacingWindow(params.mainWindow) },
       ...windowLayoutMenuItems({

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseActive, parseCursor, parseHello, parseOwnPids, parseOwnWindows } from './protocol'
+import { parseActive, parseCursor, parseHello, parseOutputs, parseOwnPids, parseOwnWindows } from './protocol'
 
 const active = { caption: 'untrusted window title', resourceClass: 'konsole', desktopFileName: 'org.kde.konsole', pid: 42, fullScreen: false }
-const ownWindow = { id: '{window-1}', pid: 42, x: -100, y: 50, width: 800, height: 600, keepAbove: true, outputScale: 1.25 }
+const ownWindow = { id: '{window-1}', pid: 42, x: -100, y: 50, width: 800, height: 600, keepAbove: true, outputScale: 1.25, caption: 'airi-bind-1' }
+const output = { name: 'DP-1', x: -1920, y: 0, width: 1920, height: 1080, scale: 1.25 }
 
 describe('kwin protocol', () => {
   it.each(['plasma6', 'plasma5', 'unsupported'])('accepts the %s Hello fixture', (api) => {
@@ -24,12 +25,19 @@ describe('kwin protocol', () => {
     expect(parseOwnPids('[42,43]')).toEqual([42, 43])
   })
 
+  it('accepts bounded outputs, including an empty list while outputs change', () => {
+    expect(parseOutputs(JSON.stringify([output]))).toEqual([output])
+    expect(parseOutputs(JSON.stringify(Array.from({ length: 16 }).fill(output)))).toHaveLength(16)
+    expect(parseOutputs('[]')).toEqual([])
+  })
+
   it.each([
     ['Hello', parseHello],
     ['Active', parseActive],
     ['OwnWindows', parseOwnWindows],
     ['Cursor', parseCursor],
     ['OwnPids', parseOwnPids],
+    ['Outputs', parseOutputs],
   ] as const)('rejects malformed and oversized %s JSON without reflecting input', (_method, parse) => {
     for (const payload of ['{secret-caption', ' '.repeat(65537), undefined, 123]) {
       expect(() => parse(payload)).toThrow('Invalid KWin payload')
@@ -47,7 +55,15 @@ describe('kwin protocol', () => {
     () => parseOwnWindows(JSON.stringify([{ ...ownWindow, width: -1 }])),
     () => parseOwnWindows(JSON.stringify([{ ...ownWindow, outputScale: 0 }])),
     () => parseOwnWindows(JSON.stringify([{ ...ownWindow, id: 1 }])),
-    () => parseOwnWindows(JSON.stringify([{ ...ownWindow, caption: 'not part of todo 4' }])),
+    () => parseOwnWindows(JSON.stringify([{ ...ownWindow, caption: 'x'.repeat(4097) }])),
+    () => parseOwnWindows(JSON.stringify([{ ...ownWindow, caption: undefined }])),
+    () => parseOwnWindows(JSON.stringify([{ ...ownWindow, resourceClass: 'not an own-window field' }])),
+    () => parseOutputs(JSON.stringify(Array.from({ length: 17 }).fill(output))),
+    () => parseOutputs(JSON.stringify([{ ...output, scale: 0 }])),
+    () => parseOutputs(JSON.stringify([{ ...output, width: 0 }])),
+    () => parseOutputs(JSON.stringify([{ ...output, name: 'x'.repeat(257) }])),
+    () => parseOutputs(JSON.stringify([{ ...output, y: 'top' }])),
+    () => parseOutputs(JSON.stringify({ outputs: [output] })),
     () => parseCursor('{"x":1e999,"y":0}'),
     () => parseCursor('{"x":1}'),
     () => parseOwnPids('[0]'),

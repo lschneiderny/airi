@@ -27,7 +27,6 @@ export interface StageScreen {
 }
 
 export interface StageBoundWindow {
-  getBounds: () => Rectangle
   setBounds: (bounds: Rectangle) => void
   isDestroyed: () => boolean
   once: (event: 'closed', listener: () => void) => unknown
@@ -55,8 +54,13 @@ export function readStageDisplays(screen: Pick<StageScreen, 'getAllDisplays' | '
  * `onDisplaysChanged` runs so the renderer receives the new state.
  */
 export function bindStageWindowToHomeDisplay(params: {
-  screen: StageScreen
+  /** Display change events. */
+  screen: Pick<StageScreen, 'on' | 'off'>
+  /** Display geometry in the same space as `readRect`. */
+  displays: Pick<StageScreen, 'getAllDisplays' | 'getPrimaryDisplay'>
   window: StageBoundWindow
+  /** The window's trusted rectangle, or `null` while its origin cannot be read. */
+  readRect: () => Rectangle | null
   getConfig: () => StageConfig
   onDisplaysChanged: () => void
 }): { applyHomeBounds: () => void, dispose: () => void } {
@@ -64,9 +68,9 @@ export function bindStageWindowToHomeDisplay(params: {
     if (params.window.isDestroyed())
       return
 
-    const { workArea } = resolveHomeDisplay(readStageDisplays(params.screen), params.getConfig())
-    const current = params.window.getBounds()
-    if (current.x !== workArea.x || current.y !== workArea.y || current.width !== workArea.width || current.height !== workArea.height)
+    const { workArea } = resolveHomeDisplay(readStageDisplays(params.displays), params.getConfig())
+    const current = params.readRect()
+    if (!current || current.x !== workArea.x || current.y !== workArea.y || current.width !== workArea.width || current.height !== workArea.height)
       params.window.setBounds({ ...workArea })
 
     params.onDisplaysChanged()

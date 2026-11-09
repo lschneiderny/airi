@@ -9,12 +9,16 @@ import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { screen } from 'electron'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
-import { getCurrentHostCapabilities } from './host-capabilities'
+import { attachLinuxCoordinates } from './coordinates'
+import { getCurrentHostCapabilities, reportLinuxDesktop } from './host-capabilities'
 import { createScreenService } from './screen'
 
 vi.mock('electron', () => ({
-  app: { isReady: () => true, commandLine: { getSwitchValue: () => '' } },
+  app: { isReady: () => true, commandLine: { getSwitchValue: () => '' }, on: vi.fn(), off: vi.fn() },
+  BrowserWindow: { getAllWindows: () => [] },
   screen: {
+    on: vi.fn(),
+    off: vi.fn(),
     getCursorScreenPoint: vi.fn(),
     dipToScreenPoint: vi.fn((point: Point) => ({ x: point.x * 2, y: point.y * 2 })),
     screenToDipPoint: vi.fn((point: Point) => ({ x: point.x / 2, y: point.y / 2 })),
@@ -22,6 +26,11 @@ vi.mock('electron', () => ({
     screenToDipRect: vi.fn((_window: unknown, rect: Rectangle) => ({ ...rect, width: rect.width / 2 })),
   },
 }))
+
+vi.mock('node:process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:process')>()
+  return { default: { ...actual, platform: 'linux' } }
+})
 
 vi.mock('@proj-airi/electron-vueuse/main', () => ({
   createRendererLoop: vi.fn(() => ({ start: vi.fn(), stop: vi.fn() })),
@@ -53,7 +62,48 @@ function setupScreen() {
 describe('screen service', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubEnv('WAYLAND_DISPLAY', '')
+    vi.stubEnv('XDG_SESSION_TYPE', 'x11')
     Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('windows'))
+  })
+
+  it('resends the cursor when a status change invalidates the cached point', async () => {
+    const { sent, tick, startLoop } = setupScreen()
+    vi.mocked(screen.getCursorScreenPoint).mockReturnValue({ x: 10, y: 20 })
+    await startLoop()
+    await tick()
+    expect(sent).toEqual([{ x: 10, y: 20 }])
+    reportLinuxDesktop({ lockSource: 'logind' })
+    expect(getCurrentHostCapabilities().host).toBe('linux-x11')
+    expect(sent).toEqual([{ x: 10, y: 20 }, { x: 10, y: 20 }])
+  })
+
+  it('streams the compositor cursor from the first started loop until the last one stops', async () => {
+    const bridge = {
+      backend: 'kwin' as const,
+      ready: () => true,
+      cursor: () => null,
+      ownWindows: () => null,
+      outputs: () => null,
+      onCursor: () => () => {},
+      onOwnWindows: () => () => {},
+      onOutputs: () => () => {},
+      onState: () => () => {},
+      setCursorStreaming: vi.fn(async (_on: boolean) => {}),
+    }
+    const detach = attachLinuxCoordinates(bridge)
+    onTestFinished(detach)
+    bridge.setCursorStreaming.mockClear()
+    const first = setupScreen()
+    const second = setupScreen()
+    await first.startLoop()
+    await second.startLoop()
+    await first.startLoop()
+    expect(bridge.setCursorStreaming.mock.calls).toEqual([[true]])
+    first.window.emit('closed')
+    expect(bridge.setCursorStreaming.mock.calls).toEqual([[true]])
+    second.window.webContents.emit('render-process-gone')
+    expect(bridge.setCursorStreaming.mock.calls).toEqual([[true], [false]])
   })
 
   it.each(['windows', 'macos'] as const)('preserves exact live values and dedupe on %s, including a resting cursor', async (host) => {

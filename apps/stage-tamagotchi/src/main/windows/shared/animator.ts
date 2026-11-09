@@ -2,7 +2,7 @@ import type { BrowserWindow, Rectangle } from 'electron'
 
 import { animate, utils } from 'animejs'
 
-import { windowOriginTrusted } from '../../services/electron/host-capabilities'
+import { readWindowRect, windowOriginTrusted } from '../../services/electron/coordinates'
 
 type AnimatableWindow = Pick<BrowserWindow, 'getBounds' | 'isDestroyed' | 'setPosition' | 'setSize'>
 
@@ -30,12 +30,11 @@ export class Animator {
     if (this.window.isDestroyed())
       return
 
-    if (!windowOriginTrusted()) {
+    const current = readWindowRect(this.window)
+    if (!current) {
       this.window.setSize(target.width, target.height)
       return
     }
-
-    const current = this.window.getBounds()
 
     if (current.width !== target.width || current.height !== target.height)
       this.window.setSize(target.width, target.height)

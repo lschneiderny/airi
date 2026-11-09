@@ -29,7 +29,6 @@ class FakeWindow extends EventEmitter {
     this.bounds = { ...bounds }
   }
 
-  getBounds = () => ({ ...this.bounds })
   setBounds = vi.fn((bounds: Rectangle) => {
     this.bounds = { ...bounds }
   })
@@ -42,7 +41,7 @@ describe('bindStageWindowToHomeDisplay', () => {
     const screen = new FakeScreen()
     const window = new FakeWindow(external.workArea)
     const onDisplaysChanged = vi.fn()
-    bindStageWindowToHomeDisplay({ screen, window, getConfig: () => ({ ...defaultStageConfig, homeDisplayId: '7' }), onDisplaysChanged })
+    bindStageWindowToHomeDisplay({ screen, displays: screen, window, readRect: () => ({ ...window.bounds }), getConfig: () => ({ ...defaultStageConfig, homeDisplayId: '7' }), onDisplaysChanged })
 
     screen.displays = [builtIn]
     screen.emit('display-removed')
@@ -56,7 +55,7 @@ describe('bindStageWindowToHomeDisplay', () => {
     const window = new FakeWindow(builtIn.workArea)
     const onDisplaysChanged = vi.fn()
     let homeDisplayId: string | null = null
-    const { applyHomeBounds } = bindStageWindowToHomeDisplay({ screen, window, getConfig: () => ({ ...defaultStageConfig, homeDisplayId }), onDisplaysChanged })
+    const { applyHomeBounds } = bindStageWindowToHomeDisplay({ screen, displays: screen, window, readRect: () => ({ ...window.bounds }), getConfig: () => ({ ...defaultStageConfig, homeDisplayId }), onDisplaysChanged })
 
     homeDisplayId = '7'
     applyHomeBounds()
@@ -69,7 +68,7 @@ describe('bindStageWindowToHomeDisplay', () => {
     const screen = new FakeScreen()
     const window = new FakeWindow(builtIn.workArea)
     const onDisplaysChanged = vi.fn()
-    bindStageWindowToHomeDisplay({ screen, window, getConfig: () => defaultStageConfig, onDisplaysChanged })
+    bindStageWindowToHomeDisplay({ screen, displays: screen, window, readRect: () => ({ ...window.bounds }), getConfig: () => defaultStageConfig, onDisplaysChanged })
 
     screen.emit('display-metrics-changed')
     window.emit('closed')

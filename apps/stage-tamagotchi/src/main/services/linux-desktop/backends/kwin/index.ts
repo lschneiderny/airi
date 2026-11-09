@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import bridgeSource from './bridge-script.js?raw'
 import cursorSource from './cursor-script.js?raw'
 
-import { parseActive, parseCursor, parseHello, parseOwnPids, parseOwnWindows } from './protocol'
+import { parseActive, parseCursor, parseHello, parseOutputs, parseOwnPids, parseOwnWindows } from './protocol'
 
 /**
  * Structural subset of DbusTransport (`../../dbus/transport`) that tests can fake;
@@ -48,6 +48,8 @@ export interface KwinBackendOptions {
   readonly onMessage: (message: KwinMessage) => void
   readonly onFailure: (reason: KwinFailure) => void
   readonly onState?: (state: 'starting' | 'ready') => void
+  /** The cursor script was found unloaded, so the last position has no live source. */
+  readonly onCursorReset?: () => void
 }
 
 /** Serializes script ownership; stop and owner changes invalidate in-flight work. */
@@ -118,8 +120,10 @@ export class KwinBackend {
         await this.unload(this.cursorName)
         return
       }
-      if (!await this.scripting<boolean>('isScriptLoaded', 's', [this.cursorName]))
+      if (!await this.scripting<boolean>('isScriptLoaded', 's', [this.cursorName])) {
+        this.options.onCursorReset?.()
         await this.load(this.cursorName, cursorSource, generation)
+      }
     }))
   }
 
@@ -258,6 +262,7 @@ export class KwinBackend {
         Active: { signature: 's', outSignature: '', handler: json => push({ method: 'Active', payload: parseActive(json) }) },
         OwnWindows: { signature: 's', outSignature: '', handler: json => push({ method: 'OwnWindows', payload: parseOwnWindows(json) }) },
         Cursor: { signature: 's', outSignature: '', handler: json => push({ method: 'Cursor', payload: parseCursor(json) }) },
+        Outputs: { signature: 's', outSignature: '', handler: json => push({ method: 'Outputs', payload: parseOutputs(json) }) },
         OwnPids: { signature: '', outSignature: 's', handler: () => JSON.stringify(parseOwnPids(JSON.stringify(this.options.ownPids()))) },
       },
     }, { allowedSender: () => this.running && (this.ready || this.hello !== undefined) ? this.owner : null })

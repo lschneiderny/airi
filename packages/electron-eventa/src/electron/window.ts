@@ -2,10 +2,11 @@ import type { BrowserWindow, Rectangle } from 'electron'
 
 import { defineEventa, defineInvokeEventa } from '@moeru/eventa'
 
-export const bounds = defineEventa<Rectangle>('eventa:event:electron:window:bounds')
+/** `null` means main withholds this window's rectangle: its origin cannot be trusted right now. */
+export const bounds = defineEventa<Rectangle | null>('eventa:event:electron:window:bounds')
 export const startLoopGetBounds = defineInvokeEventa('eventa:event:electron:window:start-loop-get-bounds')
 
-const getBounds = defineInvokeEventa<ReturnType<BrowserWindow['getBounds']>>('eventa:invoke:electron:window:get-bounds')
+const getBounds = defineInvokeEventa<ReturnType<BrowserWindow['getBounds']> | null>('eventa:invoke:electron:window:get-bounds')
 const setBounds = defineInvokeEventa<void, Parameters<BrowserWindow['setBounds']>>('eventa:invoke:electron:window:set-bounds')
 const setIgnoreMouseEvents = defineInvokeEventa<void, [boolean, { forward: boolean }]>('eventa:invoke:electron:window:set-ignore-mouse-events')
 const setVibrancy = defineInvokeEventa<void, Parameters<BrowserWindow['setVibrancy']> | [null]>('eventa:invoke:electron:window:set-vibrancy')

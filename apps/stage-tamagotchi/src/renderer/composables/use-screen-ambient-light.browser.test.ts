@@ -24,7 +24,7 @@ const displays = [
 /** The display list as the Electron poll publishes it; a case replaces it to rescale a display. */
 const displayList = ref(displays)
 const windowBounds = vi.hoisted(() => ({ x: 100, y: 100, width: 400, height: 500 }))
-const bounds = { x: ref(windowBounds.x), y: ref(windowBounds.y), width: ref(windowBounds.width), height: ref(windowBounds.height) }
+const bounds = { x: ref(windowBounds.x), y: ref(windowBounds.y), width: ref(windowBounds.width), height: ref(windowBounds.height), available: ref(true) }
 
 /** Records which display each capture was opened for. */
 const selectedDisplayIds = vi.hoisted(() => [] as string[])

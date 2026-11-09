@@ -1,6 +1,6 @@
 import { defineInvoke } from '@moeru/eventa'
-import { electron } from '@proj-airi/electron-eventa'
-import { useAsyncState, useIntervalFn } from '@vueuse/core'
+import { electron, hostCapabilitiesChanged } from '@proj-airi/electron-eventa'
+import { tryOnScopeDispose, useAsyncState, useIntervalFn } from '@vueuse/core'
 
 import { useElectronEventaContext } from './use-electron-eventa-context'
 
@@ -13,6 +13,9 @@ export function useElectronAllDisplays() {
   useIntervalFn(() => {
     void execute()
   }, 5000)
+  // A coordinate status change can move every display origin into another space; refresh at once.
+  const off = context.value.on(hostCapabilitiesChanged, () => void execute())
+  tryOnScopeDispose(off)
 
   return allDisplays
 }

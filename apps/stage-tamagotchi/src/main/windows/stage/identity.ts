@@ -1,5 +1,6 @@
 import type { BrowserWindow, Rectangle } from 'electron'
 
+import { readRendererWindowBounds } from '../../services/electron/coordinates'
 import { centerWindowOnDisplay } from '../shared/display'
 import { toggleWindowShow } from '../shared/window'
 
@@ -52,7 +53,7 @@ export function showUserFacingWindow(window: BrowserWindow | null | undefined): 
  */
 export function centerUserFacingWindow(window: BrowserWindow | undefined): Rectangle {
   if (window && !window.isDestroyed() && isStageWindow(window))
-    return window.getBounds()
+    return readRendererWindowBounds(window) ?? { x: 0, y: 0, width: 0, height: 0 }
 
   return centerWindowOnDisplay(window)
 }

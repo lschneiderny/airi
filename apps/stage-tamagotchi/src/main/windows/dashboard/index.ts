@@ -1,4 +1,3 @@
-import type { Rectangle } from 'electron'
 import type { InferOutput } from 'valibot'
 
 import type { I18n } from '../../libs/i18n'
@@ -24,7 +23,7 @@ import { electronStartDraggingWindow } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
-import { windowOriginTrusted } from '../../services/electron/host-capabilities'
+import { readWindowRect } from '../../services/electron/coordinates'
 import { protectPrivilegedWindowNavigation } from '../shared'
 import { setupDashboardWindowElectronInvokes } from './rpc/index.electron'
 
@@ -91,7 +90,9 @@ export async function setupDashboardWindow(params: {
     }
   }
 
-  function handleNewBounds(newBounds: Rectangle) {
+  function handleNewBounds() {
+    const origin = readWindowRect(window)
+    const { width, height } = window.getBounds()
     const config = getConfig()
     if (!config.windows || !Array.isArray(config.windows)) {
       config.windows = []
@@ -103,20 +104,20 @@ export async function setupDashboardWindow(params: {
       config.windows.push({
         title: 'AIRI Dashboard',
         tag: 'dashboard',
-        ...windowOriginTrusted() ? { x: newBounds.x, y: newBounds.y } : {},
-        width: newBounds.width,
-        height: newBounds.height,
+        ...origin ? { x: origin.x, y: origin.y } : {},
+        width,
+        height,
       })
     }
     else {
       const windowConfig = defu(config.windows[existingConfigIndex], { title: 'AIRI Dashboard', tag: 'dashboard' })
 
-      if (windowOriginTrusted()) {
-        windowConfig.x = newBounds.x
-        windowConfig.y = newBounds.y
+      if (origin) {
+        windowConfig.x = origin.x
+        windowConfig.y = origin.y
       }
-      windowConfig.width = newBounds.width
-      windowConfig.height = newBounds.height
+      windowConfig.width = width
+      windowConfig.height = height
 
       config.windows[existingConfigIndex] = windowConfig
     }
@@ -124,8 +125,8 @@ export async function setupDashboardWindow(params: {
     updateConfig(config)
   }
 
-  window.on('resize', () => handleNewBounds(window.getBounds()))
-  window.on('move', () => handleNewBounds(window.getBounds()))
+  window.on('resize', handleNewBounds)
+  window.on('move', handleNewBounds)
 
   window.on('ready-to-show', () => window!.show())
   protectPrivilegedWindowNavigation(window)

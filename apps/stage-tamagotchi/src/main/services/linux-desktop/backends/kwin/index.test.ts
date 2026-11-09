@@ -132,6 +132,7 @@ describe('kwinBackend lifecycle', () => {
   let backend: KwinBackend
   const messages = vi.fn()
   const failures = vi.fn()
+  const cursorResets = vi.fn()
 
   beforeEach(async () => {
     directory = await mkdtemp(join(tmpdir(), 'airi-kwin-test-'))
@@ -142,9 +143,11 @@ describe('kwinBackend lifecycle', () => {
       ownPids: () => [process.pid],
       onMessage: messages,
       onFailure: failures,
+      onCursorReset: cursorResets,
     })
     messages.mockClear()
     failures.mockClear()
+    cursorResets.mockClear()
   })
 
   afterEach(async () => {
@@ -160,6 +163,9 @@ describe('kwinBackend lifecycle', () => {
     expect(bus.receive('OwnPids')).toBe(JSON.stringify([process.pid]))
     expect(() => bus.receive('Cursor', '{"x":1,"y":2}', ':1.intruder')).toThrow('AccessDenied')
     expect(() => bus.receive('Active', '{private-title')).toThrow('Invalid KWin payload')
+    bus.receive('Outputs', '[{"name":"DP-1","x":0,"y":0,"width":1920,"height":1080,"scale":1}]')
+    expect(messages).toHaveBeenCalledWith({ method: 'Outputs', payload: [{ name: 'DP-1', x: 0, y: 0, width: 1920, height: 1080, scale: 1 }] })
+    expect(() => bus.receive('Outputs', '[{"name":"DP-1","x":0,"y":0,"width":1920,"height":1080,"scale":0}]')).toThrow('Invalid KWin payload')
   })
 
   it('unloads dead-pid manifest entries while leaving live-pid files untouched', async () => {
@@ -363,10 +369,24 @@ describe('kwinBackend lifecycle', () => {
       if (name.includes('cursor'))
         bus.loaded.delete(id)
     }
+    cursorResets.mockClear()
     await backend.setCursorStreaming(true)
+    expect(cursorResets).toHaveBeenCalledTimes(1)
     expect([...bus.loaded.values()]).toContain(`airi-desktop-cursor-${process.pid}`)
+    await backend.setCursorStreaming(true)
+    expect(cursorResets).toHaveBeenCalledTimes(1)
     await backend.setCursorStreaming(false)
     expect([...bus.loaded.values()]).toEqual([`airi-desktop-bridge-${process.pid}`])
+  })
+
+  it('converges on the last request when cursor streaming toggles rapidly', async () => {
+    await backend.start()
+    const toggles = Array.from({ length: 9 }, (_, index) => backend.setCursorStreaming(index % 2 === 0))
+    await Promise.all(toggles)
+    expect([...bus.loaded.values()].sort()).toEqual([backend.bridgeName, backend.cursorName])
+    await Promise.all([backend.setCursorStreaming(true), backend.setCursorStreaming(false)])
+    expect([...bus.loaded.values()]).toEqual([backend.bridgeName])
+    expect(failures).not.toHaveBeenCalled()
   })
 
   it('unloads one-shot scripts after execution and when execution rejects', async () => {

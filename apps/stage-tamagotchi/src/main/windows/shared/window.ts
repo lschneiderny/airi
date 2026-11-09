@@ -15,7 +15,7 @@ import { isLinux, isMacOS, isWindows } from 'std-env'
 import { createServerChannelService } from '../../services/airi/channel-server'
 import { createI18nService } from '../../services/airi/i18n'
 import { createAppService, createAppVersionService, createDesktopActivityService, createForegroundWindowService, createHostCapabilitiesService, createPowerMonitorService, createScreenService, createSystemPreferencesService, createWindowService } from '../../services/electron'
-import { windowOriginTrusted } from '../../services/electron/host-capabilities'
+import { readWindowRect } from '../../services/electron/coordinates'
 
 export function toggleWindowShow(window?: BrowserWindow | null): void {
   if (!window) {
@@ -169,8 +169,10 @@ export function resizeBoundsByDelta(bounds: Rectangle, params: ResizeByDeltaOpti
 }
 
 export function resizeWindowByDelta(params: ResizeByDeltaOptions & { window: BrowserWindow }): void {
-  const bounds = resizeBoundsByDelta(params.window.getBounds(), params)
-  if (windowOriginTrusted())
+  const rect = readWindowRect(params.window)
+  const { width, height } = params.window.getBounds()
+  const bounds = resizeBoundsByDelta(rect ?? { x: 0, y: 0, width, height }, params)
+  if (rect)
     params.window.setBounds(bounds)
   else
     params.window.setSize(bounds.width, bounds.height)

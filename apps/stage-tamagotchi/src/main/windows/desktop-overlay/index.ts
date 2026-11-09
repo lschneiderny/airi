@@ -26,10 +26,11 @@ import type { McpManager } from '../../services/airi/mcp-servers'
 import { join, resolve } from 'node:path'
 import { env } from 'node:process'
 
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow } from 'electron'
 
 import { desktopOverlayPollHeartbeatMarker, desktopOverlayPollHeartbeatQueryParam } from '../../../shared/desktop-overlay-heartbeat'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { readPrimaryDisplay } from '../../services/electron/coordinates'
 import { protectPrivilegedWindowNavigation } from '../shared/window'
 import { setupDesktopOverlayElectronInvokes } from './rpc/index.electron'
 import {
@@ -75,7 +76,7 @@ export async function setupDesktopOverlayWindow(params: {
 
   // Use primary display bounds (not just size) — the origin may be non-zero
   // when multiple displays are arranged in macOS Display Preferences.
-  const primaryDisplay = screen.getPrimaryDisplay()
+  const primaryDisplay = readPrimaryDisplay()
   const preloadPath = join(getElectronMainDirname(), '../preload/index.mjs')
 
   overlayWindow = new BrowserWindow(createDesktopOverlayWindowOptions({

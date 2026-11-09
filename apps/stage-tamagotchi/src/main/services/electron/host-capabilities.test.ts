@@ -4,8 +4,6 @@ import { EventEmitter } from 'node:events'
 
 import { createContext, defineInvoke } from '@moeru/eventa'
 import { getHostCapabilities, hostCapabilitiesChanged, reportPointerSample, reportSystemAudioHeard } from '@proj-airi/electron-eventa'
-import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
-import { screen } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import nativeWaylandIdle from '../../../../../../packages/stage-shared/src/host-capabilities/__fixtures__/native-wayland-idle.json'
@@ -20,10 +18,6 @@ const host = vi.hoisted(() => ({
 }))
 
 vi.mock('electron', () => ({
-  screen: {
-    getPrimaryDisplay: vi.fn(() => ({ id: 1 })),
-    getDisplayMatching: vi.fn(() => ({ id: 2 })),
-  },
   app: {
     isReady: () => host.ready,
     commandLine: { getSwitchValue: host.getSwitchValue },
@@ -177,25 +171,27 @@ describe('host capability service', () => {
     await expect(reader.read()).resolves.toEqual(before)
   })
 
-  it.each(['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland'] as const)('chooses the display from the current %s origin status', (name) => {
-    Object.assign(service.getCurrentHostCapabilities(), capabilitiesForHost(name))
-    const getBounds = vi.fn(() => ({ x: 10, y: 20, width: 300, height: 400 }))
-
-    expect(service.displayForWindow({ getBounds }).id).toBe(name === 'linux-wayland' ? 1 : 2)
-    expect(getBounds).toHaveBeenCalledTimes(name === 'linux-wayland' ? 0 : 1)
+  it('forwards pointer samples from the sending window to the coordinate provider', async () => {
+    const reader = registerWindow()
+    const sink = vi.fn()
+    service.setPointerSampleSink(sink)
+    await defineInvoke(reader.context, reportPointerSample)({ clientX: 10, clientY: 20, atMs: 1000 })
+    expect(sink).toHaveBeenCalledWith(reader.window, { clientX: 10, clientY: 20, atMs: 1000 })
+    service.setPointerSampleSink(undefined)
   })
 
-  it('rechecks origin trust after status loss and recovery', () => {
-    const snapshot = service.getCurrentHostCapabilities()
-    const getBounds = vi.fn(() => ({ x: 10, y: 20, width: 300, height: 400 }))
-    Object.assign(snapshot, capabilitiesForHost('windows'))
-    expect(service.displayForWindow({ getBounds }).id).toBe(2)
-    Object.assign(snapshot, capabilitiesForHost('linux-wayland'))
-    expect(service.displayForWindow({ getBounds }).id).toBe(1)
-    expect(getBounds).toHaveBeenCalledTimes(1)
-    Object.assign(snapshot, capabilitiesForHost('windows'))
-    expect(service.displayForWindow({ getBounds }).id).toBe(2)
-    expect(screen.getDisplayMatching).toHaveBeenCalledTimes(2)
+  it('notifies main-process listeners of every published change, and stops on unsubscribe', () => {
+    host.switches['ozone-platform'] = 'x11'
+    service.getCurrentHostCapabilities()
+    const listener = vi.fn()
+    const off = service.onHostCapabilitiesChange(listener)
+    service.reportLinuxDesktop({ backend: 'kwin', bridge: 'ready' })
+    service.reportLinuxDesktop({ backend: 'kwin', bridge: 'ready' })
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(listener.mock.calls[0]?.[0].signals.cursorScreenPoint).toEqual({ kind: 'unavailable', reason: 'linux-cursor-verifying' })
+    off()
+    service.reportLinuxDesktop({ cursorVerified: true, geometryVerified: true })
+    expect(listener).toHaveBeenCalledTimes(1)
   })
 
   it('withholds native Wayland window origins and starts idle unverified', async () => {

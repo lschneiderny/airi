@@ -15,11 +15,13 @@ import { LockSource } from './session/lock'
 type Active = Extract<KwinMessage, { method: 'Active' }>['payload']
 type OwnWindows = Extract<KwinMessage, { method: 'OwnWindows' }>['payload'] | null
 type Cursor = Extract<KwinMessage, { method: 'Cursor' }>['payload'] | null
+type Outputs = Extract<KwinMessage, { method: 'Outputs' }>['payload'] | null
+export type LinuxDesktopBridgeState = 'starting' | 'ready' | 'failed' | 'stopped'
 
 interface BridgeOptions {
   readonly backend: LinuxDesktopBackend
   readonly connect: () => Promise<{ sessionBus: DbusTransport, systemBus: DbusTransport | null }>
-  readonly createBackend: (bus: DbusTransport, callbacks: Pick<KwinBackendOptions, 'onMessage' | 'onFailure' | 'onState'>) => KwinBackend | undefined
+  readonly createBackend: (bus: DbusTransport, callbacks: Pick<KwinBackendOptions, 'onMessage' | 'onFailure' | 'onState' | 'onCursorReset'>) => KwinBackend | undefined
   readonly report: (patch: Partial<LinuxDesktopFacts>) => void
   readonly ownPids: () => readonly number[]
 }
@@ -28,10 +30,13 @@ interface BridgeOptions {
 export class LinuxDesktopBridge {
   readonly backend: LinuxDesktopBackend
   private readonly log = useLogg('linux-desktop').useGlobalConfig()
-  private readonly events = new EventEmitter<{ active: [Active], own: [OwnWindows], cursor: [Cursor], lock: [boolean] }>()
+  private readonly events = new EventEmitter<{ active: [Active], own: [OwnWindows], cursor: [Cursor], outputs: [Outputs], lock: [boolean], state: [LinuxDesktopBridgeState] }>()
   private active: Active = null
   private own: OwnWindows = null
   private pointer: Cursor = null
+  private screens: Outputs = null
+  private status: LinuxDesktopBridgeState = 'starting'
+  private cursorStreaming = false
   private driver: KwinBackend | undefined
   private lock: LockSource | undefined
   private busy: BusySource | undefined
@@ -49,6 +54,9 @@ export class LinuxDesktopBridge {
   activeWindow(): Active { return this.active }
   ownWindows(): OwnWindows { return this.own }
   cursor(): Cursor { return this.pointer }
+  outputs(): Outputs { return this.screens }
+  /** Only a ready bridge owns readings; until then Electron's gated readings apply. */
+  ready(): boolean { return this.status === 'ready' }
   busyHint(): 'busy' | 'quiet' | null { return this.busy?.hint() ?? null }
   onActive(listener: (value: Active) => void) {
     this.events.on('active', listener)
@@ -68,6 +76,20 @@ export class LinuxDesktopBridge {
     this.events.on('cursor', listener)
     return () => {
       this.events.off('cursor', listener)
+    }
+  }
+
+  onOutputs(listener: (value: Outputs) => void) {
+    this.events.on('outputs', listener)
+    return () => {
+      this.events.off('outputs', listener)
+    }
+  }
+
+  onState(listener: (state: LinuxDesktopBridgeState) => void) {
+    this.events.on('state', listener)
+    return () => {
+      this.events.off('state', listener)
     }
   }
 
@@ -114,6 +136,7 @@ export class LinuxDesktopBridge {
     this.lock?.stop()
     this.busy?.stop()
     this.clear()
+    this.setStatus('stopped')
     this.stopping ??= (async () => {
       try {
         await this.driver?.stop()
@@ -126,7 +149,11 @@ export class LinuxDesktopBridge {
     return this.stopping
   }
 
+  /** Without a running cursor script the last position has no source, so stopping drops it. */
   async setCursorStreaming(on: boolean): Promise<void> {
+    this.cursorStreaming = on
+    if (!on)
+      this.dropCursor()
     await this.driver?.setCursorStreaming(on)
   }
 
@@ -165,6 +192,7 @@ export class LinuxDesktopBridge {
       onMessage: message => this.message(message),
       onFailure: reason => this.failure(reason),
       onState: state => this.state(state),
+      onCursorReset: () => this.dropCursor(),
     })
     if (!this.driver) {
       this.state('ready')
@@ -178,9 +206,25 @@ export class LinuxDesktopBridge {
     this.active = null
     this.own = null
     this.pointer = null
+    this.screens = null
     this.events.emit('active', null)
     this.events.emit('own', null)
     this.events.emit('cursor', null)
+    this.events.emit('outputs', null)
+  }
+
+  private dropCursor() {
+    if (this.pointer === null)
+      return
+    this.pointer = null
+    this.events.emit('cursor', null)
+  }
+
+  private setStatus(status: LinuxDesktopBridgeState) {
+    if (this.status === status)
+      return
+    this.status = status
+    this.events.emit('state', status)
   }
 
   private state(bridge: 'starting' | 'ready') {
@@ -197,9 +241,11 @@ export class LinuxDesktopBridge {
         geometryVerified: false,
         keepAboveVerified: false,
       })
+      this.setStatus('starting')
       return
     }
     this.options.report({ backend: this.backend, bridge, bridgeFailure: null })
+    this.setStatus('ready')
     this.log.log(`linux-desktop: backend ${this.backend} ready${this.api ? ` (api ${this.api})` : ''}`)
   }
 
@@ -216,6 +262,7 @@ export class LinuxDesktopBridge {
       geometryVerified: false,
       keepAboveVerified: false,
     })
+    this.setStatus('failed')
   }
 
   private message(message: KwinMessage) {
@@ -234,8 +281,15 @@ export class LinuxDesktopBridge {
         this.events.emit('own', this.own)
         break
       case 'Cursor':
+        // A push still in flight when streaming stopped must not resurrect a reading.
+        if (!this.cursorStreaming)
+          break
         this.pointer = message.payload
         this.events.emit('cursor', this.pointer)
+        break
+      case 'Outputs':
+        this.screens = message.payload
+        this.events.emit('outputs', this.screens)
         break
     }
   }

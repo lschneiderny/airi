@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import bridgeSource from './bridge-script.js?raw'
 import cursorSource from './cursor-script.js?raw'
 
-import { parseActive, parseCursor, parseHello, parseOwnWindows } from './protocol'
+import { parseActive, parseCursor, parseHello, parseOutputs, parseOwnWindows } from './protocol'
 
 class Signal {
   private readonly listeners = new Set<() => void>()
@@ -136,6 +136,7 @@ describe('kwin scripts', () => {
       height: 600,
       keepAbove: true,
       outputScale: 1.25,
+      caption: 'untrusted',
     }])
 
     active.caption = 'changed'
@@ -150,6 +151,10 @@ describe('kwin scripts', () => {
     own.clientGeometry.x = 80
     own.frameGeometryChanged.emit()
     expect(parseOwnWindows(harness.calls[0]?.payload)[0]?.x).toBe(80)
+    harness.replyNext()
+    own.caption = 'airi-bind-1'
+    own.captionChanged.emit()
+    expect(parseOwnWindows(harness.calls[0]?.payload)[0]?.caption).toBe('airi-bind-1')
     harness.replyNext()
     added.emit()
     expect(harness.calls[0]?.method).toBe('OwnPids')
@@ -220,6 +225,50 @@ describe('kwin scripts', () => {
     expect(parseOwnWindows(harness.replyNext().payload).map(window => window.id)).toEqual(['{window-42}'])
   })
 
+  it('reports outputs at load and again when an output or the output set changes', () => {
+    const screen = (name: string, x: number, devicePixelRatio = 1) => ({
+      name,
+      geometry: { x, y: 0, width: 1920, height: 1080 },
+      devicePixelRatio,
+      geometryChanged: new Signal(),
+      scaleChanged: new Signal(),
+    })
+    const left = screen('DP-1', 0)
+    const right = screen('HDMI-A-1', 1920, 1.5)
+    const screensChanged = new Signal()
+    const workspace = {
+      activeWindow: null,
+      windowActivated: new Signal(),
+      windowAdded: new Signal(),
+      windowRemoved: new Signal(),
+      stackingOrder: [],
+      screens: [left, right],
+      screensChanged,
+    }
+    const harness = scriptHarness(bridgeSource, workspace)
+    const sent = () => {
+      const outputs = []
+      while (harness.calls.length) {
+        const call = harness.replyNext()
+        if (call.method === 'Outputs')
+          outputs.push(parseOutputs(call.payload))
+      }
+      return outputs
+    }
+    expect(sent()).toEqual([[
+      { name: 'DP-1', x: 0, y: 0, width: 1920, height: 1080, scale: 1 },
+      { name: 'HDMI-A-1', x: 1920, y: 0, width: 1920, height: 1080, scale: 1.5 },
+    ]])
+    right.devicePixelRatio = 2
+    right.scaleChanged.emit()
+    expect(sent()[0]?.[1]?.scale).toBe(2)
+    workspace.screens = [left]
+    screensChanged.emit()
+    expect(sent()).toEqual([[{ name: 'DP-1', x: 0, y: 0, width: 1920, height: 1080, scale: 1 }]])
+    right.geometryChanged.emit()
+    expect(harness.calls).toEqual([])
+  })
+
   it('reports unsupported without reading windows', () => {
     const harness = scriptHarness(bridgeSource, {})
     expect(parseHello(harness.replyNext().payload)).toEqual({ api: 'unsupported' })
@@ -262,6 +311,7 @@ describe('kwin scripts', () => {
       height: 600,
       keepAbove: true,
       outputScale: 1.25,
+      caption: 'untrusted',
     }]
     expect(messages).toEqual([
       { method: 'Hello', payload: { api } },
@@ -274,7 +324,7 @@ describe('kwin scripts', () => {
   })
 
   it('disconnects inactive windows and reports a cleared active window', () => {
-    const first = windowFixture()
+    const first = windowFixture(41)
     const second = windowFixture(43)
     const workspace: {
       activeWindow: ReturnType<typeof windowFixture> | null

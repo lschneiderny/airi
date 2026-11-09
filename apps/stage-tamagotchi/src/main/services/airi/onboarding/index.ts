@@ -4,13 +4,12 @@ import type { BrowserWindow } from 'electron'
 import type { OnboardingWindowManager } from '../../../windows/onboarding'
 
 import { defineInvokeHandler } from '@moeru/eventa'
-import { screen } from 'electron'
 
 import { electronOpenOnboarding } from '../../../../shared/eventa'
 import { Animator } from '../../../windows/shared/animator'
 import { computeAdjacentPosition } from '../../../windows/shared/display'
 import { isStageWindow } from '../../../windows/stage/identity'
-import { displayForWindow, windowOriginTrusted } from '../../electron/host-capabilities'
+import { displayForWindow, displayMatching, readWindowRect } from '../../electron/coordinates'
 
 const ANIMATION_DURATION = 350
 
@@ -23,26 +22,27 @@ export function createOnboardingService(params: {
   let cleanupOnClosed: (() => void) | undefined
 
   defineInvokeHandler(params.context, electronOpenOnboarding, async () => {
-    const savedBounds = params.mainWindow.getBounds()
+    const savedBounds = readWindowRect(params.mainWindow)
+    const { width: savedWidth, height: savedHeight } = params.mainWindow.getBounds()
 
     const onboardingWindow = await params.onboardingWindowManager.getAndToggleWindow()
     // The desktop stage covers the whole work area and never moves, so only the classic window slides beside onboarding.
     if (isStageWindow(params.mainWindow))
       return
 
-    if (!windowOriginTrusted()) {
+    const onboardingBounds = readWindowRect(onboardingWindow)
+    if (!savedBounds || !onboardingBounds) {
       const work = displayForWindow(onboardingWindow).workArea
-      params.mainWindow.setSize(Math.min(savedBounds.width, work.width), Math.min(savedBounds.height, work.height))
+      params.mainWindow.setSize(Math.min(savedWidth, work.width), Math.min(savedHeight, work.height))
       cleanupOnClosed?.()
       cleanupOnClosed = params.onboardingWindowManager.onClosed(() => {
         if (!params.mainWindow.isDestroyed())
-          params.mainWindow.setSize(savedBounds.width, savedBounds.height)
+          params.mainWindow.setSize(savedWidth, savedHeight)
         cleanupOnClosed = undefined
       })
       return
     }
-    const onboardingBounds = onboardingWindow.getBounds()
-    const display = screen.getDisplayMatching(onboardingBounds)
+    const display = displayMatching(onboardingBounds)
 
     const adjacent = computeAdjacentPosition(
       onboardingBounds,

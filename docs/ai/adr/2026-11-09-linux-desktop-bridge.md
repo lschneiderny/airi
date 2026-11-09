@@ -37,8 +37,8 @@ persisted. Hello proves that the bridge runs; it proves no sensor's accuracy.
 | `bridge` | `starting` | KWin's supported Hello and completed script startup give `ready`; missing owner, transport failure, unsupported API or two-second deadline give `failed`; reason-only backends become `ready` without claiming sensors |
 | `bridgeFailure` | `null` | Unsupported Hello gives `api-unsupported`; other startup or backend failures give `other`; a new successful handshake clears it |
 | `foregroundVerified` | `false` | An AIRI window's `focus` event followed within 1 s by an AIRI pid in the bridge's active window gives `true`; three consecutive focus events that see only foreign or null pids give `false` |
-| `cursorVerified` | `false` | Todo 9: verified geometry and two distinct compositor positions; renderer mismatch revokes it |
-| `geometryVerified` | `false` | Todo 9: own-window binding, size agreement within one pixel, and known outputs |
+| `cursorVerified` | `false` | Verified geometry and two distinct compositor positions; two renderer mismatches within ten seconds revoke it |
+| `geometryVerified` | `false` | A bound own window whose compositor size matches its Electron size within one pixel, and known outputs (on native Wayland, every display mapped to an output) |
 | `keepAboveVerified` | `false` | Todo 10: own-window keep-above state observed after the actuator |
 | `lockSource` | `null` | Readable logind LockedHint with a subscription, otherwise ScreenSaver GetActive with ActiveChanged |
 | `portalShortcuts` | `absent` | Todo 11: a portal session gives `session`; an accepted current key-up binding gives `bound` |
@@ -46,9 +46,8 @@ persisted. Hello proves that the bridge runs; it proves no sensor's accuracy.
 | `systemAudioVerified` | `false` | A capture reports an input level above 0.05 on a Linux host; main accepts only a finite level above 0.05 |
 
 The pointer and system-audio Eventa invokes are registered per sending window
-and removed on window close or app quit. The pointer invoke currently
-acknowledges reports without granting any fact, on every host; todo 9 owns its
-verifier.
+and removed on window close or app quit. Pointer samples reach the coordinate
+verifier below; the system-audio invoke feeds the verifier described next.
 
 ### System audio capture
 
@@ -107,6 +106,54 @@ Lock and busy sources operate independently of compositor readiness. Only
 lock transitions are forwarded, through the existing power-monitor events
 to each window. Windows and macOS retain their Electron lock listeners.
 Suspend and resume still use Electron on every host.
+
+## Coordinate ownership and verification
+
+`services/electron/coordinates.ts` is the only main-process reader of the
+cursor, window rectangles and displays. Off Linux, or without a ready bridge,
+it returns exactly what Electron returns, gated by the capability snapshot. On
+Linux with a ready bridge, each reading has one owner, and only that owner is
+read, so Electron and compositor origins never meet in one computation:
+
+| Backend | Session | Cursor | Window rect | Displays |
+| --- | --- | --- | --- | --- |
+| `x11-ewmh`, `gnome`, `none` | any | Electron, gated | Electron, gated | Electron |
+| `kwin`, `hyprland` | XWayland | bridge | Electron | Electron |
+| `kwin`, `hyprland` | native Wayland | bridge | bridge | bridge outputs |
+| `sway` | XWayland | none | Electron | Electron |
+| `sway` | native Wayland | none | bridge | bridge outputs |
+
+Native X11 sessions keep Electron for every reading on every backend. Bridge
+displays are Electron displays moved to the origin of the output with the same
+size and scale; a display without exactly one such output leaves Electron's
+displays in place and withholds geometry verification.
+
+The bridge script reports `Outputs` (name, origin, size, scale) at load and on
+output-set, geometry and scale changes, and adds `caption` to own windows
+only. Binding gives an AIRI window the unique title `airi-bind-<n>`, waits up
+to two seconds for an own window with that caption, records its compositor id
+and restores the title. Binding runs for every visible window when the bridge
+becomes ready, for a window when it shows, and for an unbound window when it
+gains focus. After a revocation, the next show or focus rebinds every visible
+window as one batch, and geometry is not granted until the whole batch settles.
+A window that has not proved its id reads `null`. While the origin is live,
+its renderer receives a `null` bounds event, which clears the availability of
+its cached bounds, so no renderer pairs an Electron origin with compositor
+cursor or display coordinates. Origin consumers check that availability as
+well as the global status, and display lists refresh on every capability
+change.
+
+Renderers send `reportPointerSample` at most every 250 ms while the cursor is
+`linux-cursor-verifying` or live on a Linux backend. Main compares each sample
+with `cursor - window origin` over readings from the last 500 ms. Two
+disagreements over two pixels within ten seconds revoke both facts, clear the
+bindings and log `linux-desktop: coordinate mismatch revoked verification`.
+Silence never revokes: a resting pointer keeps its reading. The compositor
+cursor becomes `null` when KWin loses its owner or restarts, when the cursor
+script is found unloaded, when the bridge fails, and when the last cursor loop
+stops, because the stopped script no longer reports movement. The first
+running cursor loop starts compositor cursor streaming and the last one stops
+it. A capability change makes every screen service resend its cursor.
 
 ## Script lifecycle and cost
 

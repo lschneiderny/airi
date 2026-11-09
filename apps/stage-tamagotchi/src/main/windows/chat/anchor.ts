@@ -4,7 +4,7 @@ import type { StageCharacterPlacement } from '../../../shared/eventa'
 
 import { debounce } from 'es-toolkit'
 
-import { windowOriginTrusted } from '../../services/electron/host-capabilities'
+import { readWindowRect } from '../../services/electron/coordinates'
 import { wholePixels } from './floating-placement'
 
 /**
@@ -39,7 +39,7 @@ export interface CharacterPlacementSource {
 /** The anchor of the classic window mode: the main window's own bounds. */
 export function createMainWindowAnchor(main: BrowserWindow): ChatAnchor {
   return {
-    getRect: () => windowOriginTrusted() ? main.getBounds() : null,
+    getRect: () => readWindowRect(main),
     onChange(listener) {
       main.on('move', listener)
       main.on('resize', listener)

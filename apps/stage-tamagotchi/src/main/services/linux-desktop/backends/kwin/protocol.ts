@@ -22,7 +22,17 @@ const ownWindows = pipe(array(strictObject({
   height: pipe(coordinate, minValue(0)),
   keepAbove: boolean(),
   outputScale: pipe(coordinate, minValue(Number.MIN_VALUE)),
+  // Own windows only; the binding handshake matches its `airi-bind-<n>` title here.
+  caption: text,
 })), maxLength(32))
+const outputs = pipe(array(strictObject({
+  name: pipe(string(), maxLength(256)),
+  x: coordinate,
+  y: coordinate,
+  width: pipe(coordinate, minValue(1)),
+  height: pipe(coordinate, minValue(1)),
+  scale: pipe(coordinate, minValue(Number.MIN_VALUE)),
+})), maxLength(16))
 const cursor = strictObject({ x: coordinate, y: coordinate })
 const ownPids = pipe(array(pipe(pid, minValue(1))), maxLength(256))
 
@@ -64,6 +74,9 @@ export function parseOwnWindows(payload: unknown) {
 export function parseCursor(payload: unknown) {
   return parsePayload(cursor, payload)
 }
+export function parseOutputs(payload: unknown) {
+  return parsePayload(outputs, payload)
+}
 /** OwnPids has no request arguments; its reply is a JSON array of process IDs. */
 export function parseOwnPids(payload: unknown) {
   return parsePayload(ownPids, payload)
@@ -74,3 +87,4 @@ export type KwinMessage
     | { readonly method: 'Active', readonly payload: InferOutput<typeof active> }
     | { readonly method: 'OwnWindows', readonly payload: InferOutput<typeof ownWindows> }
     | { readonly method: 'Cursor', readonly payload: InferOutput<typeof cursor> }
+    | { readonly method: 'Outputs', readonly payload: InferOutput<typeof outputs> }

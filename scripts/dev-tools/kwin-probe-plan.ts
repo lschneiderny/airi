@@ -62,11 +62,17 @@ export function parseKwinProbeArgs(argv: readonly string[]): KwinProbeArgs | { e
   return args
 }
 
-/** Window captions can hold private text, so the probe prints only their length. */
+/** Window captions (the active window and every own window) can hold private text, so the probe prints only their length. */
 export function formatKwinProbeLine(message: KwinMessage): string {
   if (message.method === 'Active' && message.payload) {
     const { caption, ...rest } = message.payload
     return JSON.stringify({ method: 'Active', payload: { captionLength: caption.length, ...rest } })
+  }
+  if (message.method === 'OwnWindows') {
+    return JSON.stringify({
+      method: 'OwnWindows',
+      payload: message.payload.map(({ caption, ...rest }) => ({ ...rest, captionLength: caption.length })),
+    })
   }
   return JSON.stringify(message)
 }

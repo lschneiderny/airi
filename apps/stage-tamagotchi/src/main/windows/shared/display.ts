@@ -2,10 +2,8 @@ import type { BrowserWindow, Rectangle } from 'electron'
 
 import type { DisplayArea } from '../../../shared/utils/electron/display'
 
-import { screen } from 'electron'
-
 import { findDominantDisplayArea } from '../../../shared/utils/electron/display'
-import { displayForWindow, windowOriginTrusted } from '../../services/electron/host-capabilities'
+import { displayForWindow, displayMatching, readRendererWindowBounds, readWindowRect } from '../../services/electron/coordinates'
 
 export function currentDisplayBounds(window: BrowserWindow) {
   const nearbyDisplay = displayForWindow(window)
@@ -59,12 +57,12 @@ export function centerWindowOnDisplay(window: Pick<BrowserWindow, 'getBounds' | 
   if (!window || window.isDestroyed())
     throw new Error('Main AIRI window is not available.')
 
-  const windowBounds = window.getBounds()
-  if (!windowOriginTrusted()) {
+  const windowBounds = readWindowRect(window)
+  if (!windowBounds) {
     window.show()
-    return windowBounds
+    return readRendererWindowBounds(window) ?? { x: 0, y: 0, width: 0, height: 0 }
   }
-  const displayWorkArea = screen.getDisplayMatching(windowBounds).workArea
+  const displayWorkArea = displayMatching(windowBounds).workArea
   const centeredBounds = computeCenteredWindowBounds({ displayWorkArea, windowBounds })
 
   window.setBounds(centeredBounds)
