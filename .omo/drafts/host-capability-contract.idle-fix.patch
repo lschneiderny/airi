@@ -1,0 +1,143 @@
+diff --git a/apps/stage-tamagotchi/src/main/services/electron/desktop-activity.test.ts b/apps/stage-tamagotchi/src/main/services/electron/desktop-activity.test.ts
+index e97dea0d4..473cb7d4f 100644
+--- a/apps/stage-tamagotchi/src/main/services/electron/desktop-activity.test.ts
++++ b/apps/stage-tamagotchi/src/main/services/electron/desktop-activity.test.ts
+@@ -6,6 +6,7 @@ import { createDesktopActivityService } from './desktop-activity'
+ 
+ const host = vi.hoisted(() => ({
+   isLinux: false,
++  switches: {} as Record<string, string>,
+ }))
+ 
+ const powerMonitorMock = vi.hoisted(() => ({
+@@ -13,6 +14,7 @@ const powerMonitorMock = vi.hoisted(() => ({
+ }))
+ 
+ vi.mock('electron', () => ({
++  app: { commandLine: { getSwitchValue: (name: string) => host.switches[name] ?? '' } },
+   powerMonitor: powerMonitorMock,
+ }))
+ 
+@@ -25,6 +27,8 @@ vi.mock('std-env', () => ({
+ describe('createDesktopActivityService', () => {
+   beforeEach(() => {
+     vi.clearAllMocks()
++    host.switches = {}
++    vi.stubEnv('WAYLAND_DISPLAY', '')
+   })
+ 
+   afterEach(() => {
+@@ -37,15 +41,30 @@ describe('createDesktopActivityService', () => {
+     return defineInvoke(context, electron.powerMonitor.getSystemIdleTime)()
+   }
+ 
+-  it('reports unknown idle time on a Linux Wayland session, even when Electron reads 0', async () => {
++  it('reports unknown idle time under XWayland, even when Electron reads 0', async () => {
+     host.isLinux = true
++    host.switches = { 'ozone-platform': 'x11' }
+     vi.stubEnv('XDG_SESSION_TYPE', 'wayland')
++    vi.stubEnv('WAYLAND_DISPLAY', 'wayland-0')
+     powerMonitorMock.getSystemIdleTime.mockReturnValue(0)
+ 
+     await expect(readIdleSeconds()).resolves.toBeNull()
+     expect(powerMonitorMock.getSystemIdleTime).not.toHaveBeenCalled()
+   })
+ 
++  it('passes the measured idle time through on the native Wayland backend, including 0', async () => {
++    host.isLinux = true
++    host.switches = { 'ozone-platform-hint': 'auto' }
++    vi.stubEnv('XDG_SESSION_TYPE', 'wayland')
++    vi.stubEnv('WAYLAND_DISPLAY', 'wayland-0')
++
++    powerMonitorMock.getSystemIdleTime.mockReturnValue(0)
++    await expect(readIdleSeconds()).resolves.toBe(0)
++
++    powerMonitorMock.getSystemIdleTime.mockReturnValue(42)
++    await expect(readIdleSeconds()).resolves.toBe(42)
++  })
++
+   it('passes the measured idle time through on a Linux X11 session, including 0', async () => {
+     host.isLinux = true
+     vi.stubEnv('XDG_SESSION_TYPE', 'x11')
+diff --git a/apps/stage-tamagotchi/src/main/services/electron/desktop-activity.ts b/apps/stage-tamagotchi/src/main/services/electron/desktop-activity.ts
+index 87e9217bf..b6943a4ed 100644
+--- a/apps/stage-tamagotchi/src/main/services/electron/desktop-activity.ts
++++ b/apps/stage-tamagotchi/src/main/services/electron/desktop-activity.ts
+@@ -4,10 +4,11 @@ import type { BrowserWindow } from 'electron'
+ import process from 'node:process'
+ 
+ import { defineInvokeHandler } from '@moeru/eventa'
+-import { powerMonitor } from 'electron'
++import { app, powerMonitor } from 'electron'
+ import { isLinux } from 'std-env'
+ 
+ import { electron } from '../../../shared/eventa'
++import { resolveIsWayland } from '../../app/ozone'
+ import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
+ 
+ /**
+@@ -27,11 +28,17 @@ export function createDesktopActivityService(params: { context: ReturnType<typeo
+   // already reach the renderer through the power monitor service.
+ 
+   // NOTICE:
+-  // Linux Wayland answers `null` (unknown), so the resolver falls back to `idle`.
+-  // Electron can return a constant 0 there, which would read as recent input.
+-  // Elsewhere 0 is a real reading. Source: docs/ai/adr/2026-10-17-natural-motion-v2-performance-state.md.
+-  // Removal condition: Electron measures idle time on Wayland sessions.
+-  const idleTimeUnknown = isLinux && process.env.XDG_SESSION_TYPE === 'wayland'
++  // XWayland answers `null` (unknown): Chromium's X11 path reads a constant 0 there, which would read as recent input.
++  // Native Wayland measures idle time through compositor protocols, so its readings pass through.
++  // Source: docs/ai/adr/2026-10-17-natural-motion-v2-performance-state.md, https://github.com/electron/electron/issues/34826.
++  // Removal condition: Chromium's X11 Ozone backend measures idle time under XWayland.
++  const waylandSession = resolveIsWayland({ env: process.env })
++  const waylandOzone = resolveIsWayland({
++    explicitOzonePlatform: app.commandLine.getSwitchValue('ozone-platform'),
++    ozonePlatformHint: app.commandLine.getSwitchValue('ozone-platform-hint'),
++    env: process.env,
++  })
++  const idleTimeUnknown = isLinux && waylandSession && !waylandOzone
+   const offGetSystemIdleTime = defineInvokeHandler(params.context, electron.powerMonitor.getSystemIdleTime, () => idleTimeUnknown ? null : powerMonitor.getSystemIdleTime())
+ 
+   const offBeforeQuit = onAppBeforeQuit(offGetSystemIdleTime)
+diff --git a/docs/ai/adr/2026-10-17-natural-motion-v2-performance-state.md b/docs/ai/adr/2026-10-17-natural-motion-v2-performance-state.md
+index a71081fb2..535967739 100644
+--- a/docs/ai/adr/2026-10-17-natural-motion-v2-performance-state.md
++++ b/docs/ai/adr/2026-10-17-natural-motion-v2-performance-state.md
+@@ -94,7 +94,7 @@ The web host writes no snapshot, so `desktop` is `null`.
+ 
+ `packages/electron-eventa` defines the invoke `electron.powerMonitor.getSystemIdleTime` as `defineInvokeEventa<number | null>('eventa:invoke:electron:power-monitor:get-system-idle-time')`.
+ It returns whole seconds since the last keyboard or mouse input anywhere on the desktop, or `null` when the host cannot measure idle time.
+-The main service `createDesktopActivityService` answers it with `powerMonitor.getSystemIdleTime()`, or with `null` on a Linux Wayland session (see Linux and Wayland degradation). The handler is window-scoped and is removed when the window closes or the app quits.
++The main service `createDesktopActivityService` answers it with `powerMonitor.getSystemIdleTime()`, or with `null` under XWayland (see Linux and Wayland degradation). The handler is window-scoped and is removed when the window closes or the app quits.
+ The main process never polls on its own; the renderer polls only while the stage is visible.
+ 
+ `packages/stage-ui/src/services/speech/bus.ts` defines `speechInputUserSpeakingChangedEvent` as `defineEventa<{ speaking: boolean }>('eventa:audio:speech:input:user-speaking-changed')`.
+@@ -154,10 +154,11 @@ On the web host, `desktop` is `null`.
+ When a signal is unknown, the producer reports `null`, and a `null` field never selects `watching`. The resolver test covers an all-null snapshot.
+ On the Wayland Ozone backend, Electron cannot read the cursor position reliably. If the stage never receives pointer moves, `cursorMovedAtMs` stays `null` and does not count as activity.
+ 
+-On a Linux Wayland session, Electron can report a constant idle time of 0 because it cannot measure desktop idle time there. The resolver would read that 0 as recent input and select `watching` while the stage is visible.
+-So the Electron main process answers idle time as `null` when `process.platform` is `linux` and `XDG_SESSION_TYPE` is `wayland`, whether Electron runs on the Wayland Ozone backend or under XWayland. The snapshot then carries `idleSeconds: null`, and the resolver falls back to `idle`.
+-On Windows, macOS, and Linux X11, the producer passes the measured value through, and 0 means recent input.
+-The constant 0 on Wayland has not been observed on a real Wayland session in this work.
++Under XWayland (the X11 Ozone backend inside a Wayland session), Chromium reads desktop idle time through the X11 screen saver extension and reports a constant 0 ([electron#34826](https://github.com/electron/electron/issues/34826)). The resolver would read that 0 as recent input and select `watching` while the stage is visible.
++So the Electron main process answers idle time as `null` when `process.platform` is `linux`, the session is Wayland (`WAYLAND_DISPLAY` or `XDG_SESSION_TYPE=wayland`), and the Ozone backend is not Wayland (`resolveIsWayland` in `src/main/app/ozone.ts`). The snapshot then carries `idleSeconds: null`, and the resolver falls back to `idle`.
++The native Wayland Ozone backend measures idle time through ext-idle-notify, `org_kde_kwin_idle`, or Mutter's IdleMonitor (Chromium `ui/ozone/platform/wayland/host/wayland_screen.cc`, `CalculateIdleTime`). Each provider reports 0 until 5 seconds without input, then the true idle time, which is accurate enough for the 10-second watching and 300-second away thresholds. A compositor with none of these providers still reads a constant 0.
++On Windows, macOS, Linux X11, and native Wayland, the producer passes the measured value through, and 0 means recent input.
++The 2026-10-17 version of this section nulled idle time on every Wayland session, including native Wayland, which kept a Linux character in `idle` during normal desktop use. That reading was never observed on a real session; it was corrected on 2026-11-08 from the Chromium source.
+ 
+ ## Energy
+ 
+diff --git a/packages/stage-shared/src/performance-state/index.ts b/packages/stage-shared/src/performance-state/index.ts
+index ffcbc17da..1fc3e9d2d 100644
+--- a/packages/stage-shared/src/performance-state/index.ts
++++ b/packages/stage-shared/src/performance-state/index.ts
+@@ -53,7 +53,7 @@ export interface PerformanceState {
+  * the renderer store). Web hosts never write one, so the resolver receives `null`.
+  *
+  * A `null` field means the host cannot measure that signal, for example idle
+- * time and cursor position under Wayland. The resolver never treats an unknown
++ * time under XWayland and cursor position under Wayland. The resolver never treats an unknown
+  * signal as activity.
+  *
+  * Timestamps share the epoch clock of {@link PerformanceInputs.nowMs}.
