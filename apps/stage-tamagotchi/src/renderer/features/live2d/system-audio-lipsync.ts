@@ -8,17 +8,25 @@ import type {
   SystemAudioLipSyncOutput,
 } from '@proj-airi/stage-ui/stores/system-audio-lipsync'
 
+import { defineInvoke } from '@moeru/eventa'
+import { errorMessageFrom } from '@moeru/std'
+import { electron } from '@proj-airi/electron-eventa'
 import { setupElectronScreenCapture } from '@proj-airi/electron-screen-capture/renderer'
 import { getElectronEventaContext } from '@proj-airi/electron-vueuse'
 import { createLive2DLipSync } from '@proj-airi/model-driver-lipsync'
 import { wlipsyncProfile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
+import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { clamp } from 'es-toolkit'
 
 const inputAnalyserFFTSize = 1024
+/** Input level above which a Linux capture counts as having heard system audio. */
+const heardInputLevel = 0.05
 
 /** Electron adapter that connects renderer-local system audio to Live2D lipsync. */
 export class Live2DSystemAudioLipSyncDriver implements SystemAudioLipSyncDriver {
   private readonly screenCapture = setupElectronScreenCapture(getElectronEventaContext())
+  private readonly reportSystemAudioHeard = defineInvoke(getElectronEventaContext(), electron.hostCapabilities.reportSystemAudioHeard)
+  private readonly hostCapabilities = useHostCapabilitiesStore()
   private generation = 0
   private stream: MediaStream | undefined
   private pendingStart: Promise<void> | undefined
@@ -40,7 +48,17 @@ export class Live2DSystemAudioLipSyncDriver implements SystemAudioLipSyncDriver 
 
     this.callbacks = callbacks
     const generation = ++this.generation
-    const processor = new Live2DLipSyncProcessor(output => this.callbacks?.onOutput(output))
+    let heard = false
+    const processor = new Live2DLipSyncProcessor((output) => {
+      this.callbacks?.onOutput(output)
+      if (heard || generation !== this.generation || output.inputLevel <= heardInputLevel)
+        return
+      if (!this.hostCapabilities.snapshot?.host.startsWith('linux-'))
+        return
+      heard = true
+      this.reportSystemAudioHeard({ level: output.inputLevel })
+        .catch(error => console.warn('[SystemAudioLipSync] Failed to report heard system audio:', errorMessageFrom(error)))
+    })
     this.processor = processor
     processor.updateOptions(options)
     this.pendingStart = this.screenCapture.selectWithSource(

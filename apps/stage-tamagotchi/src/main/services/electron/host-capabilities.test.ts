@@ -136,17 +136,45 @@ describe('host capability service', () => {
     await expect(reader.read()).resolves.toMatchObject({ linuxDesktopBackend: null })
   })
 
-  it.each(['linux', 'win32', 'darwin'])('acknowledges the reserved verification invokes without granting facts on %s', async (platform) => {
+  it.each(['linux', 'win32', 'darwin'])('acknowledges the reserved pointer invoke without granting facts on %s', async (platform) => {
     host.platform = platform
     const reader = registerWindow()
     const before = await reader.read()
     await expect(defineInvoke(reader.context, reportPointerSample)({ clientX: 10, clientY: 20, atMs: 1000 })).resolves.toBeUndefined()
-    await expect(defineInvoke(reader.context, reportSystemAudioHeard)({ level: 0.5 })).resolves.toBeUndefined()
     await expect(reader.read()).resolves.toEqual(before)
     expect(reader.changes).toEqual([])
     reader.window.emit('closed')
     expect(reader.context.listeners.get(reportPointerSample.sendEvent.id)?.size ?? 0).toBe(0)
     expect(reader.context.listeners.get(reportSystemAudioHeard.sendEvent.id)?.size ?? 0).toBe(0)
+  })
+
+  it('marks Linux system audio live once when a capture hears audio', async () => {
+    const reader = registerWindow()
+    const report = defineInvoke(reader.context, reportSystemAudioHeard)
+    await expect(reader.read()).resolves.toMatchObject({
+      signals: { systemAudioCapture: { kind: 'degraded', reason: 'linux-capture-audio-unverified' } },
+    })
+    await report({ level: 0.05 })
+    await report({ level: Number.NaN })
+    expect(reader.changes).toEqual([])
+    await report({ level: 0.4 })
+    await report({ level: 0.6 })
+    expect(reader.changes.map(caps => caps.signals.systemAudioCapture)).toEqual([{ kind: 'live' }])
+    await expect(reader.read()).resolves.toEqual(reader.changes[0])
+
+    // The proof is process memory: a restarted main process starts unverified.
+    vi.resetModules()
+    service = await import('./host-capabilities')
+    expect(service.getCurrentHostCapabilities().signals.systemAudioCapture).toEqual({ kind: 'degraded', reason: 'linux-capture-audio-unverified' })
+  })
+
+  it.each(['win32', 'darwin'])('keeps system audio unchanged when a capture hears audio on %s', async (platform) => {
+    host.platform = platform
+    const reader = registerWindow()
+    const before = await reader.read()
+    await defineInvoke(reader.context, reportSystemAudioHeard)({ level: 0.6 })
+    expect(reader.changes).toEqual([])
+    await expect(reader.read()).resolves.toEqual(before)
   })
 
   it.each(['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland'] as const)('chooses the display from the current %s origin status', (name) => {

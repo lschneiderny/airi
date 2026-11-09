@@ -43,11 +43,36 @@ persisted. Hello proves that the bridge runs; it proves no sensor's accuracy.
 | `lockSource` | `null` | Readable logind LockedHint with a subscription, otherwise ScreenSaver GetActive with ActiveChanged |
 | `portalShortcuts` | `absent` | Todo 11: a portal session gives `session`; an accepted current key-up binding gives `bound` |
 | `clickThroughToggle` | Version-derived | Electron at least 43.7.6 on Linux supplies the primitive; cursor and origin must independently resolve live before click-through becomes limited/emulated |
-| `systemAudioVerified` | `false` | Todo 12: main-owned evaluation of capture activity |
+| `systemAudioVerified` | `false` | A capture reports an input level above 0.05 on a Linux host; main accepts only a finite level above 0.05 |
 
 The pointer and system-audio Eventa invokes are registered per sending window
-and removed on window close or app quit. They currently acknowledge reports
-without granting any fact, on every host. Todos 9 and 12 own their verifiers.
+and removed on window close or app quit. The pointer invoke currently
+acknowledges reports without granting any fact, on every host; todo 9 owns its
+verifier.
+
+### System audio capture
+
+The Live2D system-audio lip-sync driver sends `reportSystemAudioHeard` once per
+capture, the first time the capture's input level exceeds 0.05 while the
+window's host snapshot names a Linux host. `recordSystemAudioHeard` in main
+then sets `systemAudioVerified`, and `systemAudioCapture` resolves live. Off
+Linux the renderer never reports, and `reportLinuxDesktop` ignores the fact.
+A silent capture proves nothing, so the status stays degraded with
+`linux-capture-audio-unverified` until sound actually arrives. The proof lives
+in process memory, so each launch starts degraded again.
+
+On native Wayland under KWin, the first live investigation (todo 12 part A)
+found that capture never started. The main-process display-media handler
+called `desktopCapturer.getSources` again. On Wayland that opened a second
+ScreenCast portal picker and returned a new source id, so the requested id was
+not found. The handler threw inside its async callback without answering, and
+`getDisplayMedia` stayed pending. Todo 23 fixed this in
+`packages/electron-screen-capture`: on Linux, main keeps the sources from the
+renderer's one `getSources` call and grants the selected one with the existing
+`loopback` audio mode, and every failed lookup answers the callback with
+`null`. With that fix, one picker yields a live `System audio` track through
+`PulseaudioLoopbackForScreenShare`, and a 440 Hz tone on a private PipeWire
+sink raises the input level above 0.05.
 
 ## Backend and signal contract
 

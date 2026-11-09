@@ -141,15 +141,24 @@ export function recordWaylandIdleSample(seconds: number, atMs: number) {
   }
 }
 
+/**
+ * A capture that heard audio proves Linux system-audio capture for this process.
+ * The proof is never persisted, so a restart starts degraded again.
+ */
+export function recordSystemAudioHeard(level: number) {
+  if (Number.isFinite(level) && level > 0.05)
+    reportLinuxDesktop({ systemAudioVerified: true })
+}
+
 /** Registers one window's invoke and change delivery until it closes or the app quits. */
 export function createHostCapabilitiesService(params: { context: EventaContext, window: BrowserWindow }) {
   getCurrentHostCapabilities()
   contexts.add(params.context)
   const offGet = defineInvokeHandler(params.context, getHostCapabilities, getCurrentHostCapabilities)
-  // These invokes reserve the renderer boundary. Coordinate and audio verifiers
-  // land in linux-sensor-parity todos 9 and 12; receipt alone is never evidence.
+  // This invoke reserves the renderer boundary. The coordinate verifier lands in
+  // linux-sensor-parity todo 9; receipt alone is never evidence.
   const offPointer = defineInvokeHandler(params.context, reportPointerSample, () => {})
-  const offAudio = defineInvokeHandler(params.context, reportSystemAudioHeard, () => {})
+  const offAudio = defineInvokeHandler(params.context, reportSystemAudioHeard, ({ level }) => recordSystemAudioHeard(level))
   function dispose() {
     offGet()
     offPointer()
