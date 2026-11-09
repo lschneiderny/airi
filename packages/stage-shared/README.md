@@ -67,6 +67,7 @@ Do not persist or replicate it: it is runtime state, and each renderer reads onl
 
 The `host-capabilities` entrypoint owns the pure host capability contract: `HostCapabilities`, `HostSignal`, `SignalStatus`, `HostReasons`, the resolver `resolveHostCapabilities`, the deterministic QA profiles `capabilitiesForHost`, `idleAdvances`, and `presenceNoticeKey`.
 It states per host which signals are live, degraded, or unavailable, and why.
+The host-by-host signal and feature table is in the [host capability ADR](../../docs/ai/adr/2026-11-08-host-capability-contract.md#host-parity-matrix).
 
 ```ts
 import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'

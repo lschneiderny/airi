@@ -160,6 +160,10 @@ The native Wayland Ozone backend measures idle time through ext-idle-notify, `or
 On Windows, macOS, Linux X11, and native Wayland, the producer passes the measured value through, and 0 means recent input.
 The 2026-10-17 version of this section nulled idle time on every Wayland session, including native Wayland, which kept a Linux character in `idle` during normal desktop use. That reading was never observed on a real session; it was corrected on 2026-11-08 from the Chromium source.
 
+Host support (2026-11-08): cursor attention, idle sensing, and foreground
+awareness are recorded in the [host capability parity
+matrix](2026-11-08-host-capability-contract.md#host-parity-matrix).
+
 ## Energy
 
 The user's Energy setting is a number from 0 to 1, stored as `settings/live2d/natural-energy`, with a default of 0.5.

@@ -20,6 +20,11 @@ Mouse coordinates retain their last trusted values without dispatching a synthet
 `useElectronRelativeMouse()` also returns this ref as `available`. Consumers must use it
 before treating cached coordinates as current host input.
 
+`useElectronMouseInElement()` uses DOM pointer events for `isOutside` hit-testing
+while the trusted Electron cursor is unavailable. This fallback supports UI
+hover behavior only. It does not make DOM coordinates trusted desktop input or
+feed them to presence and motion resolution.
+
 ## Usage
 
 ```ts
