@@ -1,14 +1,14 @@
 import process from 'node:process'
 
-import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { registerHooks } from 'node:module'
 import { tmpdir } from 'node:os'
 
 import { errorMessageFrom } from '@moeru/std'
 
-import { formatKwinProbeLine, kwinProbeUsage, parseKwinProbeArgs, qaSessionMarker, selectKwinProbeBus } from './kwin-probe-plan'
-import { parseSessionEnv, qaDisplayPaths } from './qa-display-plan'
+import { formatKwinProbeLine, kwinProbeUsage, parseKwinProbeArgs, selectKwinProbeBus } from './kwin-probe-plan'
+import { assertQaDisplaySession } from './qa-display-guard'
+import { takeAllowHostSession } from './qa-display-plan'
 
 // NOTICE:
 // The KWin backend imports its compositor scripts with Vite's `?raw` suffix, which tsx cannot load.
@@ -29,31 +29,18 @@ registerHooks({
   },
 })
 
-/** Asks the user's systemd manager whether the session unit runs, then reads the bus the session recorded. */
-function runningSessionBus(name: string): string | null {
-  const hostRuntimeDir = process.env.AIRI_QA_HOST_RUNTIME_DIR || `/run/user/${process.getuid?.()}`
-  const paths = qaDisplayPaths(name, hostRuntimeDir)
-  const env = { ...process.env, XDG_RUNTIME_DIR: hostRuntimeDir, DBUS_SESSION_BUS_ADDRESS: `unix:path=${hostRuntimeDir}/bus` }
-  if (spawnSync('systemctl', ['--user', 'is-active', '--quiet', paths.unit], { env, stdio: 'ignore' }).status !== 0)
-    return null
-  if (!existsSync(paths.envFile))
-    return null
-  return parseSessionEnv(readFileSync(paths.envFile, 'utf8'))?.env.DBUS_SESSION_BUS_ADDRESS || null
-}
-
 async function main(): Promise<number> {
-  const args = parseKwinProbeArgs(process.argv.slice(2))
+  const { argv, allowHostSession } = takeAllowHostSession(process.argv.slice(2))
+  const args = parseKwinProbeArgs(argv)
   if ('error' in args) {
     console.error(`kwin-probe: ${args.error}\n\n${kwinProbeUsage}`)
     return 2
   }
-  // Decide the bus before loading the backend or opening any connection.
-  const bus = selectKwinProbeBus({
-    explicitBus: args.bus,
-    marker: process.env[qaSessionMarker],
-    inheritedBus: process.env.DBUS_SESSION_BUS_ADDRESS,
-    sessionBus: runningSessionBus,
-  })
+  // Decide the bus before loading the backend or opening any connection. Without --bus, the inherited bus must
+  // belong to the running qa:display session the environment names; the shared guard exits 2 otherwise.
+  if (!args.bus)
+    assertQaDisplaySession('qa:kwin-probe', allowHostSession)
+  const bus = selectKwinProbeBus({ explicitBus: args.bus, inheritedBus: process.env.DBUS_SESSION_BUS_ADDRESS })
   if ('error' in bus) {
     console.error(`kwin-probe: ${bus.error}`)
     return 2

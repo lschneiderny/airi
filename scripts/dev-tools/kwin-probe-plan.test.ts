@@ -30,27 +30,17 @@ describe('parseKwinProbeArgs', () => {
 
 describe('selectKwinProbeBus', () => {
   const sessionBus = 'unix:path=/run/user/1000/airi-qa-display/kp/bus'
-  const hostBus = 'unix:path=/run/user/1000/bus'
-  const sessions = (name: string) => name === 'kp' ? sessionBus : null
 
   it.each([
-    ['an explicit --bus', { explicitBus: 'unix:path=/tmp/private', inheritedBus: hostBus, sessionBus: sessions }, 'unix:path=/tmp/private'],
-    ['the marker naming the running session that owns the inherited bus', { marker: 'kp', inheritedBus: sessionBus, sessionBus: sessions }, sessionBus],
-  ])('accepts %s', (_name, input, address) => {
+    ['an explicit --bus over the inherited bus', { explicitBus: 'unix:path=/tmp/private', inheritedBus: sessionBus }, 'unix:path=/tmp/private'],
+    ['an explicit --bus without an inherited bus', { explicitBus: 'unix:path=/tmp/private' }, 'unix:path=/tmp/private'],
+    ['the inherited bus the session guard accepted', { inheritedBus: sessionBus }, sessionBus],
+  ])('uses %s', (_name, input, address) => {
     expect(selectKwinProbeBus(input)).toEqual({ address })
   })
 
-  it.each([
-    ['no marker on the host bus', { inheritedBus: hostBus, sessionBus: sessions }, 'AIRI_QA_DISPLAY_SESSION is not set'],
-    ['no marker and no bus', { sessionBus: sessions }, 'AIRI_QA_DISPLAY_SESSION is not set'],
-    ['a marker that is not a session name', { marker: '../kp', inheritedBus: sessionBus, sessionBus: sessions }, 'is not a qa:display session name'],
-    ['a marker naming a stopped session', { marker: 'gone', inheritedBus: sessionBus, sessionBus: sessions }, 'qa:display session "gone" is not running'],
-    ['a marker with the host bus inherited', { marker: 'kp', inheritedBus: hostBus, sessionBus: sessions }, 'is not the bus of qa:display session "kp"'],
-    ['a marker with no bus inherited', { marker: 'kp', sessionBus: sessions }, 'is not the bus of qa:display session "kp"'],
-  ])('refuses %s', (_name, input, reason) => {
-    const result = selectKwinProbeBus(input)
-    expect(result).toEqual({ error: expect.stringContaining(reason) })
-    expect(result).toEqual({ error: expect.stringContaining('pnpm qa:display run --') })
+  it('refuses when there is neither --bus nor an inherited bus, naming qa:display run', () => {
+    expect(selectKwinProbeBus({})).toEqual({ error: expect.stringContaining('pnpm qa:display run --') })
   })
 })
 

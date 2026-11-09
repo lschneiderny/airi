@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseQaDisplayArgs, parseSessionEnv, pointerCommand, qaDisplayPaths, qaDisplayUnitArgs, requiredBinaries, sessionMountTargets, shellExports, swayConfig, swayProbeScript } from './qa-display-plan'
+import { clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseQaDisplayArgs, parseSessionEnv, pointerCommand, qaDisplayGuard, qaDisplayPaths, qaDisplayUnitArgs, requiredBinaries, sessionMountTargets, shellExports, swayConfig, swayProbeScript, takeAllowHostSession } from './qa-display-plan'
 
 describe('qa display arguments', () => {
   it('defaults to a 1920x1080 headless session named qa without portals', () => {
@@ -253,10 +253,10 @@ describe('qa display session environment', () => {
   })
 
   it.each([
-    ['kwin', kwinText, { PATH: '/bin', AIRI_QA_DISPLAY: 'qa', KDE_FULL_SESSION: 'true', KDE_SESSION_VERSION: '6', XDG_CURRENT_DESKTOP: 'KDE', XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-airi-qa-qa', DISPLAY: ':2', DBUS_SESSION_BUS_ADDRESS: bus, ...ownEnv }],
-    ['x11', `${own}AIRI_QA_COMPOSITOR=x11\nDISPLAY=:90\nDBUS_SESSION_BUS_ADDRESS=${bus}\nXDG_SESSION_TYPE=x11\n`, { PATH: '/bin', AIRI_QA_DISPLAY: 'qa', XDG_CURRENT_DESKTOP: 'Openbox', XDG_SESSION_TYPE: 'x11', DISPLAY: ':90', DBUS_SESSION_BUS_ADDRESS: bus, ...ownEnv }],
-    ['sway with Xwayland', `${own}AIRI_QA_COMPOSITOR=sway\nWAYLAND_DISPLAY=wayland-1\nSWAYSOCK=/run/user/1000/sway-ipc.1000.7.sock\nDISPLAY=:3\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`, { PATH: '/bin', AIRI_QA_DISPLAY: 'qa', XDG_CURRENT_DESKTOP: 'sway', XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1', SWAYSOCK: '/run/user/1000/sway-ipc.1000.7.sock', DISPLAY: ':3', DBUS_SESSION_BUS_ADDRESS: bus, ...ownEnv }],
-    ['sway without Xwayland', `${own}AIRI_QA_COMPOSITOR=sway\nWAYLAND_DISPLAY=wayland-1\nSWAYSOCK=/run/user/1000/sway-ipc.1000.7.sock\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`, { PATH: '/bin', AIRI_QA_DISPLAY: 'qa', XDG_CURRENT_DESKTOP: 'sway', XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1', SWAYSOCK: '/run/user/1000/sway-ipc.1000.7.sock', DBUS_SESSION_BUS_ADDRESS: bus, ...ownEnv }],
+    ['kwin', kwinText, { PATH: '/bin', AIRI_QA_DISPLAY: 'qa', AIRI_QA_DISPLAY_SESSION: 'qa', KDE_FULL_SESSION: 'true', KDE_SESSION_VERSION: '6', XDG_CURRENT_DESKTOP: 'KDE', XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-airi-qa-qa', DISPLAY: ':2', DBUS_SESSION_BUS_ADDRESS: bus, ...ownEnv }],
+    ['x11', `${own}AIRI_QA_COMPOSITOR=x11\nDISPLAY=:90\nDBUS_SESSION_BUS_ADDRESS=${bus}\nXDG_SESSION_TYPE=x11\n`, { PATH: '/bin', AIRI_QA_DISPLAY: 'qa', AIRI_QA_DISPLAY_SESSION: 'qa', XDG_CURRENT_DESKTOP: 'Openbox', XDG_SESSION_TYPE: 'x11', DISPLAY: ':90', DBUS_SESSION_BUS_ADDRESS: bus, ...ownEnv }],
+    ['sway with Xwayland', `${own}AIRI_QA_COMPOSITOR=sway\nWAYLAND_DISPLAY=wayland-1\nSWAYSOCK=/run/user/1000/sway-ipc.1000.7.sock\nDISPLAY=:3\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`, { PATH: '/bin', AIRI_QA_DISPLAY: 'qa', AIRI_QA_DISPLAY_SESSION: 'qa', XDG_CURRENT_DESKTOP: 'sway', XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1', SWAYSOCK: '/run/user/1000/sway-ipc.1000.7.sock', DISPLAY: ':3', DBUS_SESSION_BUS_ADDRESS: bus, ...ownEnv }],
+    ['sway without Xwayland', `${own}AIRI_QA_COMPOSITOR=sway\nWAYLAND_DISPLAY=wayland-1\nSWAYSOCK=/run/user/1000/sway-ipc.1000.7.sock\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`, { PATH: '/bin', AIRI_QA_DISPLAY: 'qa', AIRI_QA_DISPLAY_SESSION: 'qa', XDG_CURRENT_DESKTOP: 'sway', XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1', SWAYSOCK: '/run/user/1000/sway-ipc.1000.7.sock', DBUS_SESSION_BUS_ADDRESS: bus, ...ownEnv }],
   ])('turns an inherited KDE host environment into the exact %s client environment', (_, text, expected) => {
     expect(clientEnv({ ...kdeHost, XDG_RUNTIME_DIR: '/run/user/1000', XAUTHORITY: '/run/user/1000/xauth_x', SWAYSOCK: '/x', HYPRLAND_INSTANCE_SIGNATURE: 'h', KDE_SESSION_VERSION: '6' }, parseSessionEnv(text)!.env, 'qa')).toEqual(expected)
   })
@@ -264,6 +264,7 @@ describe('qa display session environment', () => {
   it('prints shell exports that unset deleted keys', () => {
     expect(shellExports(parseSessionEnv(kwinText)!.env, 'qa')).toBe([
       'export AIRI_QA_DISPLAY=qa',
+      'export AIRI_QA_DISPLAY_SESSION=qa',
       'export XDG_CURRENT_DESKTOP=KDE',
       'export XDG_SESSION_TYPE=wayland',
       'export WAYLAND_DISPLAY=wayland-airi-qa-qa',
@@ -275,6 +276,50 @@ describe('qa display session environment', () => {
       'unset HYPRLAND_INSTANCE_SIGNATURE',
       'unset XAUTHORITY',
     ].join('\n'))
+  })
+})
+
+describe('qa display host session guard', () => {
+  const bus = 'unix:path=/run/user/1000/airi-qa-display/lsp/bus'
+  const kwinText = `XDG_RUNTIME_DIR=/run/user/1000/airi-qa-display/lsp/runtime\nAIRI_QA_HOST_RUNTIME_DIR=/run/user/1000\nAIRI_QA_COMPOSITOR=kwin\nAIRI_QA_PORTALS=0\nWAYLAND_DISPLAY=wayland-airi-qa-lsp\nDISPLAY=:2\nDBUS_SESSION_BUS_ADDRESS=${bus}\nXDG_SESSION_TYPE=wayland\n`
+  const session = parseSessionEnv(kwinText)!
+  const kdeHost = { PATH: '/bin', XDG_CURRENT_DESKTOP: 'KDE', WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0', XDG_SESSION_TYPE: 'wayland', XDG_RUNTIME_DIR: '/run/user/1000', DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus' }
+  const inside = clientEnv(kdeHost, session.env, 'lsp')
+  const guard = (overrides: Partial<Parameters<typeof qaDisplayGuard>[0]>) => qaDisplayGuard({ command: 'qa:smoke', platform: 'linux', env: inside, allowHostSession: false, session, unitActive: true, ...overrides })
+
+  it('lets a command run inside the live session it names', () => {
+    expect(guard({})).toEqual({ ok: true })
+  })
+
+  it('refuses the older AIRI_QA_DISPLAY name alone as a session marker', () => {
+    expect(guard({ env: { ...inside, AIRI_QA_DISPLAY_SESSION: undefined } }).ok).toBe(false)
+  })
+
+  it.each([
+    ['no session marker', { env: kdeHost }, 'AIRI_QA_DISPLAY_SESSION is not set'],
+    ['a marker that is not a session name', { env: { ...inside, AIRI_QA_DISPLAY_SESSION: '../x' } }, 'is not a qa:display session name'],
+    ['a stale marker whose unit stopped', { unitActive: false }, 'the qa:display session "lsp" is not running'],
+    ['a stale marker whose env file is gone', { session: null }, 'the qa:display session "lsp" is not running'],
+    ['a marker set by hand on the host display', { env: { ...kdeHost, AIRI_QA_DISPLAY_SESSION: 'lsp' } }, 'does not match the qa:display session "lsp"'],
+    ['the host bus inside the session', { env: { ...inside, DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus' } }, 'DBUS_SESSION_BUS_ADDRESS does not match'],
+    ['no bus inherited inside the session', { env: { ...inside, DBUS_SESSION_BUS_ADDRESS: undefined } }, 'DBUS_SESSION_BUS_ADDRESS does not match'],
+    ['a host sway socket leaking into a kwin session', { env: { ...inside, SWAYSOCK: '/run/user/1000/sway.sock' } }, 'SWAYSOCK does not match'],
+  ])('refuses on Linux with %s and names qa:display run', (_, overrides, reason) => {
+    const verdict = guard(overrides)
+    expect(verdict.ok).toBe(false)
+    expect(verdict).toHaveProperty('message', expect.stringContaining(reason))
+    expect(verdict).toHaveProperty('message', expect.stringContaining('pnpm qa:display run -- pnpm qa:smoke'))
+  })
+
+  it('lets the explicit escape hatch and other platforms through without a session', () => {
+    expect(guard({ env: kdeHost, session: null, unitActive: false, allowHostSession: true })).toEqual({ ok: true })
+    expect(guard({ env: kdeHost, session: null, unitActive: false, platform: 'win32' })).toEqual({ ok: true })
+    expect(guard({ env: kdeHost, session: null, unitActive: false, platform: 'darwin' })).toEqual({ ok: true })
+  })
+
+  it('strips the escape hatch from the arguments the command parses', () => {
+    expect(takeAllowHostSession(['--model', 'a.vrm', '--allow-host-session'])).toEqual({ argv: ['--model', 'a.vrm'], allowHostSession: true })
+    expect(takeAllowHostSession(['run', '--say', 'hi'])).toEqual({ argv: ['run', '--say', 'hi'], allowHostSession: false })
   })
 })
 

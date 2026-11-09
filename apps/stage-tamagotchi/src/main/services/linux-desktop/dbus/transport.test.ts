@@ -2,6 +2,7 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
+import { env } from 'node:process'
 import { createInterface } from 'node:readline'
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -225,6 +226,19 @@ describe('dbusTransport on a private daemon', () => {
   it('rejects a nonexistent socket within 2 seconds and names its address', async () => {
     const start = performance.now()
     await expect(DbusTransport.session('unix:path=/nonexistent')).rejects.toThrow('unix:path=/nonexistent')
+    expect(performance.now() - start).toBeLessThan(2000)
+  }, 2000)
+})
+
+describe('dbusTransport defaults inside the isolated test environment', () => {
+  it.each([
+    { bus: 'session', key: 'DBUS_SESSION_BUS_ADDRESS', connect: () => DbusTransport.session() },
+    { bus: 'system', key: 'DBUS_SYSTEM_BUS_ADDRESS', connect: () => DbusTransport.system() },
+  ] as const)('a default $bus connection fails fast on the scrubbed address instead of the host bus', async ({ key, connect }) => {
+    const address = env[key]
+    expect(address).toMatch(/^unix:path=.*airi-test-runtime-.*\/no-bus$/)
+    const start = performance.now()
+    await expect(connect()).rejects.toThrow(`D-Bus connection to ${address} failed`)
     expect(performance.now() - start).toBeLessThan(2000)
   }, 2000)
 })

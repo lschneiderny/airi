@@ -1,15 +1,10 @@
 import type { KwinMessage } from '../../apps/stage-tamagotchi/src/main/services/linux-desktop/backends/kwin/protocol'
 
-import { namePattern } from './qa-display-plan'
-
 export interface KwinProbeArgs {
   seconds: number
   cursor: boolean
   bus?: string
 }
-
-/** Set by `pnpm qa:display run` to the session name; the probe trusts it only after checking the session. */
-export const qaSessionMarker = 'AIRI_QA_DISPLAY_SESSION'
 
 export const kwinProbeUsage = `Usage: pnpm qa:display run [--name <session>] -- pnpm qa:kwin-probe [--seconds N] [--cursor]
        pnpm qa:kwin-probe --bus <address> [--seconds N] [--cursor]
@@ -18,38 +13,25 @@ Loads the AIRI KWin bridge into a QA session's KWin, prints one JSON line per
 message for N seconds (default 10, at most 3600), then unloads the scripts and
 checks that KWin no longer has them. --cursor also streams the pointer position.
 Without --bus it runs only inside a running qa:display session, never on the
-inherited desktop session bus.`
+inherited desktop session bus (see the host session guard in qa-display-guard.ts).`
 
 export interface KwinProbeBusInput {
   /** The `--bus` address, an explicit choice by the caller. */
   explicitBus?: string
-  /** The value of `AIRI_QA_DISPLAY_SESSION`. */
-  marker?: string
-  /** The inherited `DBUS_SESSION_BUS_ADDRESS`. */
+  /** The inherited `DBUS_SESSION_BUS_ADDRESS`, used only after the host session guard accepted the environment. */
   inheritedBus?: string
-  /** The bus address of the named qa:display session, or null when that session is not running. */
-  sessionBus: (name: string) => string | null
 }
 
-const isolationHint = 'Run it inside a QA session with `pnpm qa:display run -- pnpm qa:kwin-probe`, or pass --bus <address>.'
-
 /**
- * Picks the bus the probe may load KWin scripts on. The bridge reads the active window as soon as it loads, so an
- * inherited bus is accepted only when it is the bus of the running qa:display session the marker names.
+ * Picks the bus the probe loads KWin scripts on: the explicit `--bus`, else the inherited bus. The caller runs
+ * `assertQaDisplaySession` first when there is no `--bus`, so the inherited bus is the qa:display session's own.
  */
 export function selectKwinProbeBus(input: KwinProbeBusInput): { address: string } | { error: string } {
   if (input.explicitBus)
     return { address: input.explicitBus }
-  if (!input.marker)
-    return { error: `refusing the inherited session bus: ${qaSessionMarker} is not set. ${isolationHint}` }
-  if (!namePattern.test(input.marker))
-    return { error: `refusing the inherited session bus: ${qaSessionMarker}="${input.marker}" is not a qa:display session name. ${isolationHint}` }
-  const sessionBus = input.sessionBus(input.marker)
-  if (!sessionBus)
-    return { error: `refusing the inherited session bus: qa:display session "${input.marker}" is not running. ${isolationHint}` }
-  if (sessionBus !== input.inheritedBus)
-    return { error: `refusing the inherited session bus: DBUS_SESSION_BUS_ADDRESS is not the bus of qa:display session "${input.marker}". ${isolationHint}` }
-  return { address: sessionBus }
+  if (input.inheritedBus)
+    return { address: input.inheritedBus }
+  return { error: 'no session bus: DBUS_SESSION_BUS_ADDRESS is not set. Run it inside a QA session with `pnpm qa:display run -- pnpm qa:kwin-probe`, or pass --bus <address>.' }
 }
 
 export function parseKwinProbeArgs(argv: readonly string[]): KwinProbeArgs | { error: string } {
