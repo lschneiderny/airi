@@ -17,6 +17,8 @@ export interface SummaryInput {
   diagnostics: string
   durationMs: number
   failed: boolean
+  /** Renderer exceptions and console errors from every window. Reported, not gated; `qa:smoke` gates them. */
+  pageErrors: number
 }
 
 export function buildSummary(input: SummaryInput) {
@@ -34,5 +36,6 @@ export function buildSummary(input: SummaryInput) {
     screenshot: input.screenshot,
     diagnostics: input.diagnostics,
     durationMs: input.durationMs,
+    pageErrors: input.pageErrors,
   }
 }
