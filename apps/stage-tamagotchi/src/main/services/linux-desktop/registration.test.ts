@@ -192,9 +192,13 @@ describe('linux desktop backend registration', () => {
       await mkdir(path, { recursive: true })
       const replies: Record<string, unknown> = { 'j/activewindow': window, 'j/clients': [own, window] }
       const events: Socket[] = []
-      await listen(join(path, '.socket.sock'), socket => socket.once('data', chunk => socket.end(JSON.stringify(replies[chunk.toString()] ?? null))))
+      const requests: string[] = []
+      await listen(join(path, '.socket.sock'), socket => socket.once('data', (chunk) => {
+        requests.push(chunk.toString())
+        socket.end(JSON.stringify(replies[chunk.toString()] ?? null))
+      }))
       await listen(join(path, '.socket2.sock'), socket => events.push(socket))
-      return { replies, events }
+      return { replies, events, requests }
     }
 
     it('connects under the injected runtime directory and follows events', async () => {
@@ -210,6 +214,27 @@ describe('linux desktop backend registration', () => {
       events[0].write('activewindowv2>>def\n')
       await focused.promise
       expect(bridge.activeWindow()).toMatchObject({ pid, caption: 'AIRI' })
+    })
+
+    it('reads the cursor on each tick only while streaming, through the bridge cursor path', async () => {
+      const { replies, requests } = await compositor('instance')
+      replies['j/cursorpos'] = { x: -120, y: 340 }
+      const bridge = create({ HYPRLAND_INSTANCE_SIGNATURE: 'instance' })
+      await bridge.start()
+      const reads = () => requests.filter(command => command === 'j/cursorpos').length
+      await bridge.requestCursor()
+      expect(reads()).toBe(0)
+      await bridge.setCursorStreaming(true)
+      const cursor = vi.fn()
+      bridge.onCursor(cursor)
+      await bridge.requestCursor()
+      expect(reads()).toBe(1)
+      expect(bridge.cursor()).toEqual({ x: -120, y: 340 })
+      expect(cursor).toHaveBeenCalledWith({ x: -120, y: 340 })
+      await bridge.setCursorStreaming(false)
+      await bridge.requestCursor()
+      expect(reads()).toBe(1)
+      expect(bridge.cursor()).toBeNull()
     })
 
     it('fails and clears readings when the event socket closes', async () => {

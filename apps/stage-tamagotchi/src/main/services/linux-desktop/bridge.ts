@@ -47,6 +47,8 @@ export interface DesktopDriver {
   start: () => Promise<void>
   stop: () => Promise<void>
   setCursorStreaming?: (on: boolean) => Promise<void>
+  /** Pull cursor backends (Hyprland): one read per renderer-paced tick. */
+  requestCursor?: () => Promise<void>
   /** KWin only: trusted actuator source. */
   runOneShot?: (source: string) => Promise<void>
   readActive?: () => Active
@@ -225,6 +227,13 @@ export class LinuxDesktopBridge {
     if (!on)
       this.dropCursor()
     await this.driver?.setCursorStreaming?.(on)
+  }
+
+  /** One cursor read for pull drivers; only while streaming is on and the driver is ready. Push drivers ignore it. */
+  requestCursor(): Promise<void> {
+    if (!this.cursorStreaming || !this.pullReady)
+      return Promise.resolve()
+    return this.driver?.requestCursor?.() ?? Promise.resolve()
   }
 
   async setKeepAbove(windowPid: number, on: boolean): Promise<void> {

@@ -90,6 +90,7 @@ describe('screen service', () => {
       onOutputs: () => () => {},
       onState: () => () => {},
       setCursorStreaming: vi.fn(async (_on: boolean) => {}),
+      requestCursor: vi.fn(async () => {}),
     }
     const detach = attachLinuxCoordinates(bridge)
     onTestFinished(detach)
@@ -104,6 +105,29 @@ describe('screen service', () => {
     expect(bridge.setCursorStreaming.mock.calls).toEqual([[true]])
     second.window.webContents.emit('render-process-gone')
     expect(bridge.setCursorStreaming.mock.calls).toEqual([[true], [false]])
+  })
+
+  it('asks the compositor bridge for the cursor on each tick of a started loop', async () => {
+    const bridge = {
+      backend: 'hyprland' as const,
+      ready: () => true,
+      cursor: () => null,
+      ownWindows: () => null,
+      outputs: () => null,
+      onCursor: () => () => {},
+      onOwnWindows: () => () => {},
+      onOutputs: () => () => {},
+      onState: () => () => {},
+      setCursorStreaming: vi.fn(async (_on: boolean) => {}),
+      requestCursor: vi.fn(async () => {}),
+    }
+    const detach = attachLinuxCoordinates(bridge)
+    onTestFinished(detach)
+    const { tick, startLoop } = setupScreen()
+    await startLoop()
+    await tick()
+    await tick()
+    expect(bridge.requestCursor).toHaveBeenCalledTimes(2)
   })
 
   it.each(['windows', 'macos'] as const)('preserves exact live values and dedupe on %s, including a resting cursor', async (host) => {

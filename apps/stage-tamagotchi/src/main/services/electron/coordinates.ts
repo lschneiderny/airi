@@ -16,7 +16,7 @@ import { getCurrentHostCapabilities, reportLinuxDesktop, setPointerSampleSink } 
 
 export type CoordinateWindow = Pick<BrowserWindow, 'getBounds'>
 
-export type LinuxCoordinateBridge = Pick<LinuxDesktopBridge, 'backend' | 'ready' | 'cursor' | 'ownWindows' | 'outputs' | 'onCursor' | 'onOwnWindows' | 'onOutputs' | 'onState' | 'setCursorStreaming'>
+export type LinuxCoordinateBridge = Pick<LinuxDesktopBridge, 'backend' | 'ready' | 'cursor' | 'ownWindows' | 'outputs' | 'onCursor' | 'onOwnWindows' | 'onOutputs' | 'onState' | 'setCursorStreaming' | 'requestCursor'>
 
 type OwnWindowEntry = NonNullable<ReturnType<LinuxCoordinateBridge['ownWindows']>>[number]
 
@@ -231,6 +231,11 @@ export function setCursorLoopActive(loop: object, active: boolean) {
     cursorLoops.delete(loop)
   if ((before === 0) !== (cursorLoops.size === 0))
     linux?.syncCursorStreaming()
+}
+
+/** One tick of the cursor loop: pull-based compositors read the cursor now; the result arrives through `onCursor`. */
+export function requestBridgeCursor() {
+  void linux?.bridge.requestCursor()
 }
 
 /** The global cursor from its owner, or `null` while the host cannot vouch for it. */
