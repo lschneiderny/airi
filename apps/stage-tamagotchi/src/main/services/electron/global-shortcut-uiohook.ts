@@ -129,10 +129,6 @@ function buildPredicate(acc: ShortcutAccelerator, platform: NodeJS.Platform): { 
   return { predicate, expectedKeycode }
 }
 
-function isInjectedWaylandHost(platform: NodeJS.Platform, sessionType: string | undefined): boolean {
-  return platform === 'linux' && sessionType === 'wayland'
-}
-
 function isMacAccessibilityTrusted(platform: NodeJS.Platform, prompt: boolean): boolean {
   if (platform !== 'darwin')
     return true
@@ -154,12 +150,6 @@ export interface UiohookDriverOptions {
    * @default process.platform
    */
   platform?: NodeJS.Platform
-  /**
-   * Session type for the Wayland refusal check. Tests only:
-   * when either this or `platform` is injected, the refusal uses these values;
-   * production reads the host capability snapshot instead.
-   */
-  sessionType?: string
 }
 
 export interface UiohookDriver {
@@ -193,13 +183,9 @@ export function createUiohookDriver(options: UiohookDriverOptions): UiohookDrive
     broadcastTriggered,
     logger,
     platform = process.platform,
-    sessionType,
   } = options
-  const injectedHost = options.platform !== undefined || sessionType !== undefined
 
   function refusedByHost(): boolean {
-    if (injectedHost)
-      return isInjectedWaylandHost(platform, sessionType)
     const globalKeyUp = getCurrentHostCapabilities().signals.globalKeyUp
     return globalKeyUp.kind === 'unavailable' && globalKeyUp.reason === HostReasons.WaylandNoGlobalInputHook
   }

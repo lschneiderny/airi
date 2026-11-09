@@ -123,6 +123,8 @@ function coversDisplay(windows: NonNullable<ReturnType<DarwinBinding['readWindow
 }
 
 let bindingPromise: Promise<DarwinBinding> | undefined
+// Shared by every sampler: all windows report into the one host capability service, so a sampler
+// that sees a trust change must not be masked by another sampler's earlier report.
 let lastTitleTrust: boolean | undefined
 
 /** Loads lazily once; framework handles and constant CFStrings live until process exit. */
@@ -391,16 +393,19 @@ export function createDarwinSampler(binding: DarwinBinding, isOwnProcess: (pid: 
       }
 
       let title = ''
-      const trusted = Boolean(binding.isProcessTrusted())
-      if (trusted !== lastTitleTrust) {
-        lastTitleTrust = trusted
-        reportForegroundTitleTrust(trusted)
-      }
-      if (!ownProcess && performance.now() >= backoffUntil && trusted) {
-        const value = readTitle(pid, performance.now() + AX_BUDGET_MS)
-        title = value.title
-        if (value.timedOut)
-          backoffUntil = performance.now() + AX_BACKOFF_MS
+      // Trust is read only when a title could be read, as before the host capability contract.
+      if (!ownProcess && performance.now() >= backoffUntil) {
+        const trusted = Boolean(binding.isProcessTrusted())
+        if (trusted !== lastTitleTrust) {
+          lastTitleTrust = trusted
+          reportForegroundTitleTrust(trusted)
+        }
+        if (trusted) {
+          const value = readTitle(pid, performance.now() + AX_BUDGET_MS)
+          title = value.title
+          if (value.timedOut)
+            backoffUntil = performance.now() + AX_BACKOFF_MS
+        }
       }
 
       return {

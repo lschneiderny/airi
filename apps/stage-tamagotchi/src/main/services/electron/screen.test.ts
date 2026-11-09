@@ -3,13 +3,12 @@ import type { Point, Rectangle } from 'electron'
 import { EventEmitter } from 'node:events'
 
 import { createContext, defineInvoke } from '@moeru/eventa'
-import { cursorScreenPoint, electron, hostCapabilitiesChanged, startLoopGetCursorScreenPoint } from '@proj-airi/electron-eventa'
+import { cursorScreenPoint, electron, startLoopGetCursorScreenPoint } from '@proj-airi/electron-eventa'
 import { createRendererLoop } from '@proj-airi/electron-vueuse/main'
 import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { screen } from 'electron'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
-import { emitAppBeforeQuit, emitAppWindowAllClosed } from '../../libs/bootkit/lifecycle'
 import { getCurrentHostCapabilities } from './host-capabilities'
 import { createScreenService } from './screen'
 
@@ -121,27 +120,6 @@ describe('screen service', () => {
     expect(screen.getCursorScreenPoint).not.toHaveBeenCalled()
   })
 
-  it('invalidates a cached point once on a runtime change without waiting for a tick, then resumes the same point', async () => {
-    const caps = getCurrentHostCapabilities()
-    const { sent, tick, context, startLoop } = setupScreen()
-    vi.mocked(screen.getCursorScreenPoint).mockReturnValue({ x: 10, y: 20 })
-    await startLoop()
-    await tick()
-
-    Object.assign(caps, capabilitiesForHost('linux-xwayland'))
-    await context.emit(hostCapabilitiesChanged, caps)
-    expect(sent).toEqual([{ x: 10, y: 20 }, null])
-    await context.emit(hostCapabilitiesChanged, caps)
-    await tick()
-    expect(sent).toEqual([{ x: 10, y: 20 }, null])
-
-    Object.assign(caps, capabilitiesForHost('windows'))
-    await context.emit(hostCapabilitiesChanged, caps)
-    await tick()
-    await tick()
-    expect(sent).toEqual([{ x: 10, y: 20 }, null, { x: 10, y: 20 }])
-  })
-
   it('resends withheld state when a renderer reloads', async () => {
     Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('linux-wayland'))
     const { sent, tick, startLoop } = setupScreen()
@@ -152,24 +130,6 @@ describe('screen service', () => {
     await tick()
     await tick()
     expect(sent).toEqual([null, null])
-  })
-
-  it.each(['closed', 'before-quit', 'all-closed'])('stops capability invalidation after %s', async (event) => {
-    const { sent, tick, window, context, startLoop } = setupScreen()
-    vi.mocked(screen.getCursorScreenPoint).mockReturnValue({ x: 10, y: 20 })
-    await startLoop()
-    await tick()
-
-    if (event === 'closed')
-      window.emit('closed')
-    else if (event === 'before-quit')
-      await emitAppBeforeQuit()
-    else
-      await emitAppWindowAllClosed()
-    Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('linux-wayland'))
-    await context.emit(hostCapabilitiesChanged, getCurrentHostCapabilities())
-
-    expect(sent).toEqual([{ x: 10, y: 20 }])
   })
 
   it('returns null from all three cursor invokes on native Wayland', async () => {

@@ -1,7 +1,9 @@
 import type { ShortcutBinding } from '@proj-airi/stage-shared/global-shortcut'
+import type { HostCapabilities } from '@proj-airi/stage-shared/host-capabilities'
 
 import { useLogg } from '@guiiai/logg'
 import { ShortcutFailureReasons } from '@proj-airi/stage-shared/global-shortcut'
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -117,6 +119,14 @@ async function setupMocks(hostPlatform?: NodeJS.Platform) {
     })
   }
 
+  // The driver reads the host through the service. A test pins that snapshot here, and the snapshot
+  // tests below leave it unset to reach the real service.
+  let pinnedHost: HostCapabilities | undefined
+  vi.doMock('./host-capabilities', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('./host-capabilities')>()
+    return { ...actual, getCurrentHostCapabilities: () => pinnedHost ?? actual.getCurrentHostCapabilities() }
+  })
+
   const { createUiohookDriver } = await import('./global-shortcut-uiohook')
 
   function fire(name: 'keydown' | 'keyup', e: KeyboardEvent): void {
@@ -124,7 +134,11 @@ async function setupMocks(hostPlatform?: NodeJS.Platform) {
       listener(e)
   }
 
-  function createDriver(overrides: { platform?: NodeJS.Platform, sessionType?: string } = {}) {
+  /** Builds a driver whose Wayland refusal reads the pinned host snapshot, which defaults to the platform's host. */
+  function createDriver(overrides: { platform?: NodeJS.Platform, host?: 'windows' | 'macos' | 'linux-x11' | 'linux-wayland' } = {}) {
+    const platform = overrides.platform ?? 'darwin'
+    const hosts = { darwin: 'macos', win32: 'windows', linux: 'linux-x11' } as const
+    pinnedHost = capabilitiesForHost(overrides.host ?? hosts[platform as keyof typeof hosts])
     const broadcastTriggered = vi.fn<(id: string, phase: 'down' | 'up') => void>()
     const logger = {
       warn: vi.fn(),
@@ -133,8 +147,7 @@ async function setupMocks(hostPlatform?: NodeJS.Platform) {
     const driver = createUiohookDriver({
       broadcastTriggered,
       logger: logger as unknown as Parameters<typeof createUiohookDriver>[0]['logger'],
-      platform: overrides.platform ?? 'darwin',
-      sessionType: overrides.sessionType,
+      platform,
     })
     return { driver, broadcastTriggered, logger }
   }
@@ -332,7 +345,7 @@ describe('createUiohookDriver', () => {
 
   it('returns Unsupported under a native Wayland session', async () => {
     const m = await setupMocks()
-    const { driver } = m.createDriver({ platform: 'linux', sessionType: 'wayland' })
+    const { driver } = m.createDriver({ platform: 'linux', host: 'linux-wayland' })
 
     const result = driver.tryRegister(exampleBinding('ptt'))
     expect(result).toEqual({ id: 'ptt', ok: false, reason: ShortcutFailureReasons.Unsupported })
@@ -341,7 +354,7 @@ describe('createUiohookDriver', () => {
 
   it('permits registration on Linux under X11 / XWayland', async () => {
     const m = await setupMocks()
-    const { driver } = m.createDriver({ platform: 'linux', sessionType: 'x11' })
+    const { driver } = m.createDriver({ platform: 'linux' })
 
     expect(driver.tryRegister(exampleBinding('ptt'))).toEqual({ id: 'ptt', ok: true })
     expect(m.startMock).toHaveBeenCalledTimes(1)

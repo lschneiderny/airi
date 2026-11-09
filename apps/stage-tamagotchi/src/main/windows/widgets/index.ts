@@ -398,9 +398,10 @@ export function setupWidgetsWindowManager(params: {
         : screen.getPrimaryDisplay().workArea
       const width = Math.min(saved.width, work.width)
       const height = Math.min(saved.height, work.height)
+      const fallback = saved.x === undefined || saved.y === undefined ? computeDefaultBounds() : undefined
       const clamped: Rectangle = {
-        x: clamp(saved.x ?? computeDefaultBounds().x, work.x, work.x + work.width - width),
-        y: clamp(saved.y ?? computeDefaultBounds().y, work.y, work.y + work.height - height),
+        x: clamp(saved.x ?? fallback!.x, work.x, work.x + work.width - width),
+        y: clamp(saved.y ?? fallback!.y, work.y, work.y + work.height - height),
         width,
         height,
       }

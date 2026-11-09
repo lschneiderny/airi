@@ -367,6 +367,15 @@ describe('darwin foreground sampler', () => {
     expect(native.forbidden).not.toHaveBeenCalled()
   })
 
+  it('does not read Accessibility trust for the own process', () => {
+    desktop.trusted = true
+
+    const sample = createDarwinSampler(binding, () => true)()
+
+    expect(sample?.title).toBe('')
+    expect(native.AXIsProcessTrusted).not.toHaveBeenCalled()
+  })
+
   it('backs off when timeout occurs during AXTitle after a successful focused-window lookup', () => {
     desktop.trusted = true
     desktop.titleStatus = -25204
