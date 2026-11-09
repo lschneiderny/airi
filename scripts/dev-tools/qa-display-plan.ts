@@ -10,6 +10,8 @@ import { join } from 'node:path'
  * Each session has a private `XDG_RUNTIME_DIR`, `XDG_DATA_HOME`, and `XDG_CONFIG_HOME` under its session directory, set
  * before the bus starts, so nothing it or its D-Bus-activated helpers create (sockets, FUSE mounts, config) lands in
  * the user's runtime directory or home.
+ * Audio stays off the user's PipeWire graph: by default the session has no audio sockets at all, `--private-audio`
+ * starts its own PipeWire, WirePlumber, and pipewire-pulse with a null sink, and only `--host-audio` links the user's.
  * Clients render on the host GPU, and their windows, focus, and cursor never reach the user's desktop.
  */
 
@@ -17,6 +19,17 @@ export type QaDisplayCommand = 'up' | 'down' | 'status' | 'env' | 'run' | 'shot'
 
 export const qaCompositors = ['kwin', 'x11', 'sway'] as const
 export type QaCompositor = (typeof qaCompositors)[number]
+
+/**
+ * - `none` (default): no audio socket in the private runtime directory, so nothing in the session reaches any graph.
+ * - `private`: a PipeWire stack of its own inside the private runtime directory, with the null sink `airi_qa` as default.
+ * - `host`: the user's PipeWire and Pulse sockets linked in. A person's opt-in; agents never use it.
+ */
+export const qaAudioModes = ['none', 'private', 'host'] as const
+export type QaAudioMode = (typeof qaAudioModes)[number]
+
+/** The null sink a `--private-audio` session makes its default. */
+export const qaPrivateSink = 'airi_qa'
 
 const sessionIdentity: Record<QaCompositor, { XDG_CURRENT_DESKTOP: string, XDG_SESSION_TYPE: string }> = {
   kwin: { XDG_CURRENT_DESKTOP: 'KDE', XDG_SESSION_TYPE: 'wayland' },
@@ -35,6 +48,8 @@ export interface QaDisplayArgs {
   compositor?: QaCompositor
   /** Starts the desktop portal and KDE global shortcuts on the private bus (kwin only). */
   portals: boolean
+  /** `--private-audio` or `--host-audio`; `none` without either. */
+  audio: QaAudioMode
   /** The command after `--` for `run`. */
   argv: string[]
   /** The output file for `shot`. */
@@ -48,7 +63,7 @@ const commands: readonly QaDisplayCommand[] = ['up', 'down', 'status', 'env', 'r
 export const qaDisplayUsage = `Usage: pnpm qa:display <command> [--name <name>]
 
 Commands:
-  up [--size 1920x1080] [--windowed] [--compositor kwin|x11|sway] [--portals]
+  up [--size 1920x1080] [--windowed] [--compositor kwin|x11|sway] [--portals] [--private-audio]
                                        Start the headless session (no-op when it is running)
   down                                 Stop the session and everything that renders in it
   status                               Print whether the session runs and its environment
@@ -58,7 +73,9 @@ Commands:
   pointer <x> <y>                      Move the session pointer (EIS on kwin, xdotool on x11, swaymsg on sway)
 
 --name defaults to "qa". Use one name per parallel agent.
---compositor defaults to kwin. --portals adds xdg-desktop-portal and KDE global shortcuts (kwin only).`
+--compositor defaults to kwin. --portals adds xdg-desktop-portal and KDE global shortcuts (kwin only).
+Sessions have no audio by default. --private-audio starts a private PipeWire stack whose default sink is the null
+sink airi_qa. --host-audio links your own PipeWire and Pulse sockets instead; agents never use it.`
 
 /** Unit, socket, and directory names accept only characters that are safe in all three. */
 const namePattern = /^[a-z0-9][a-z0-9-]{0,31}$/
@@ -71,7 +88,7 @@ export function parseQaDisplayArgs(argv: readonly string[]): QaDisplayArgs | { e
   if (!commands.includes(command as QaDisplayCommand))
     return { error: command ? `unknown command "${command}"` : 'missing command' }
 
-  const args: QaDisplayArgs = { command: command as QaDisplayCommand, name: 'qa', width: 1920, height: 1080, windowed: false, portals: false, argv: passthrough }
+  const args: QaDisplayArgs = { command: command as QaDisplayCommand, name: 'qa', width: 1920, height: 1080, windowed: false, portals: false, audio: 'none', argv: passthrough }
   const positional: string[] = []
   for (let index = 0; index < rest.length; index++) {
     const flag = rest[index]
@@ -80,6 +97,12 @@ export function parseQaDisplayArgs(argv: readonly string[]): QaDisplayArgs | { e
     }
     else if (flag === '--portals') {
       args.portals = true
+    }
+    else if (flag === '--private-audio' || flag === '--host-audio') {
+      const audio = flag === '--private-audio' ? 'private' : 'host'
+      if (args.audio !== 'none' && args.audio !== audio)
+        return { error: '--private-audio and --host-audio cannot be combined' }
+      args.audio = audio
     }
     else if (flag === '--name' || flag === '--size' || flag === '--compositor') {
       const value = rest[++index]
@@ -151,6 +174,10 @@ export interface QaDisplayPaths {
   swayConfig: string
   /** Run through `swaymsg exec`; a file, because sway's command parser would split an inline probe at `;`. */
   swayProbe: string
+  /** `<name> <pid>` per line for each process of a `--private-audio` stack. */
+  audioPids: string
+  /** The WirePlumber profile fragment that keeps a private stack away from hardware. */
+  wireplumberConf: string
 }
 
 export function qaDisplayPaths(name: string, runtimeDir: string): QaDisplayPaths {
@@ -167,11 +194,26 @@ export function qaDisplayPaths(name: string, runtimeDir: string): QaDisplayPaths
     config: join(dir, 'config'),
     swayConfig: join(dir, 'sway.conf'),
     swayProbe: join(dir, 'sway-probe.sh'),
+    audioPids: join(dir, 'audio.pids'),
+    wireplumberConf: join(dir, 'config', 'wireplumber', 'wireplumber.conf.d', '90-airi-qa-no-devices.conf'),
   }
 }
 
 /** Binaries each session starts, with the Fedora package that ships them. Absolute paths are checked as files. */
-export function requiredBinaries(compositor: QaCompositor, portals: boolean): Array<{ binary: string, pkg: string }> {
+export function requiredBinaries(compositor: QaCompositor, portals: boolean, audio: QaAudioMode): Array<{ binary: string, pkg: string }> {
+  const audioStack = audio === 'private'
+    ? [
+        { binary: 'pipewire', pkg: 'pipewire' },
+        { binary: 'wireplumber', pkg: 'wireplumber' },
+        { binary: 'pipewire-pulse', pkg: 'pipewire-pulseaudio' },
+        { binary: 'pactl', pkg: 'pulseaudio-utils' },
+        { binary: 'timeout', pkg: 'coreutils' },
+      ]
+    : []
+  return [...compositorBinaries(compositor, portals), ...audioStack]
+}
+
+function compositorBinaries(compositor: QaCompositor, portals: boolean): Array<{ binary: string, pkg: string }> {
   const bus = { binary: 'dbus-daemon', pkg: 'dbus-daemon' }
   switch (compositor) {
     case 'kwin':
@@ -223,6 +265,33 @@ export function kglobalShortcutsSeed(): string {
   return `[${appId}]\n_k_friendly_name=AIRI\n${id}=${trigger},${trigger},${description}\n`
 }
 
+/**
+ * Disables every WirePlumber device monitor, so a private stack opens no sound card, camera, or Bluetooth device and
+ * its only sink is the null sink.
+ */
+export function wireplumberNoDevicesConf(): string {
+  const monitors = ['alsa', 'alsa-midi', 'bluez', 'bluez.midi', 'v4l2', 'libcamera']
+  return `wireplumber.profiles = {\n  main = {\n${monitors.map(monitor => `    monitor.${monitor} = disabled\n`).join('')}  }\n}\n`
+}
+
+/** Reads `audio.pids`; malformed lines are skipped. */
+export function parseAudioPids(text: string): Array<{ name: string, pid: number }> {
+  return text.split('\n').flatMap((line) => {
+    const match = /^([\w-]+) (\d+)$/.exec(line.trim())
+    return match ? [{ name: match[1], pid: Number(match[2]) }] : []
+  })
+}
+
+/**
+ * Whether `/proc/<pid>/stat` shows the named audio process still running. The unit's shell `exec`s the compositor,
+ * which does not reap the stack, so a crashed process stays a zombie that `kill -0` still finds; a reused pid shows
+ * another command name. Both count as exited.
+ */
+export function audioProcessRunning(name: string, stat: string | null): boolean {
+  const match = stat ? /^\d+ \((.*)\) (\S)/s.exec(stat) : null
+  return match !== null && match[1] === name.slice(0, 15) && match[2] !== 'Z' && match[2] !== 'X'
+}
+
 /** `output size` and nothing else: no bar, no key bindings, no idle or lock. */
 export function swayConfig(width: number, height: number): string {
   return `output * resolution ${width}x${height}\n`
@@ -257,22 +326,49 @@ function updateActivationEnv(keys: readonly string[]): string {
   return `{ busctl --user --timeout=2 call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus UpdateActivationEnvironment a{ss} ${keys.length} ${pairs} >/dev/null || { echo "the private bus refused the activation environment" > "$AIRI_QA_DIR/error"; exit 1; }; }`
 }
 
-/** Host display, session, and desktop keys that the systemd user manager hands every unit; none may reach the session's bus. */
-const hostSessionKeys = 'WAYLAND_DISPLAY DISPLAY XAUTHORITY SWAYSOCK HYPRLAND_INSTANCE_SIGNATURE KDE_FULL_SESSION KDE_SESSION_VERSION'
+/**
+ * Host display, session, desktop, and audio keys that the systemd user manager can hand every unit; none may reach the
+ * session's bus or its audio clients, which find their audio only through the private `XDG_RUNTIME_DIR`.
+ */
+const hostSessionKeys = 'WAYLAND_DISPLAY DISPLAY XAUTHORITY SWAYSOCK HYPRLAND_INSTANCE_SIGNATURE KDE_FULL_SESSION KDE_SESSION_VERSION PULSE_SERVER PIPEWIRE_REMOTE PIPEWIRE_RUNTIME_DIR'
 
-/** Host audio sockets linked into the private runtime directory one by one, so clients keep sound without the rest of the host runtime. */
+/** Host audio sockets that `--host-audio` links into the private runtime directory one by one. */
 const hostAudioSockets = ['pipewire-0', 'pipewire-0-manager', 'pulse/native']
 
 /**
- * The unit's first steps for every compositor: drop host display keys, point the runtime, data, and config homes at
- * the session directory, then link the audio sockets. They run before `dbus-daemon`, so every activated service
- * inherits them.
+ * The unit's first steps for every compositor: drop host display and audio keys, then point the runtime, data, and
+ * config homes at the session directory. They run before `dbus-daemon`, so every activated service inherits them.
+ * Only `--host-audio` then links the user's audio sockets in.
  */
-function privateSessionSetup(identity: { XDG_CURRENT_DESKTOP: string, XDG_SESSION_TYPE: string }): string[] {
+function privateSessionSetup(identity: { XDG_CURRENT_DESKTOP: string, XDG_SESSION_TYPE: string }, audio: QaAudioMode): string[] {
   return [
     `unset ${hostSessionKeys}`,
     `export XDG_RUNTIME_DIR="$AIRI_QA_DIR/runtime" XDG_DATA_HOME="$AIRI_QA_DIR/data" XDG_CONFIG_HOME="$AIRI_QA_DIR/config" XDG_CURRENT_DESKTOP=${identity.XDG_CURRENT_DESKTOP} XDG_SESSION_TYPE=${identity.XDG_SESSION_TYPE}`,
-    `for s in ${hostAudioSockets.join(' ')}; do if [ -S "$AIRI_QA_HOST_RUNTIME_DIR/$s" ]; then mkdir -p "$(dirname "$XDG_RUNTIME_DIR/$s")"; ln -sf "$AIRI_QA_HOST_RUNTIME_DIR/$s" "$XDG_RUNTIME_DIR/$s"; fi; done`,
+    ...(audio === 'host'
+      ? [`for s in ${hostAudioSockets.join(' ')}; do if [ -S "$AIRI_QA_HOST_RUNTIME_DIR/$s" ]; then mkdir -p "$(dirname "$XDG_RUNTIME_DIR/$s")"; ln -sf "$AIRI_QA_HOST_RUNTIME_DIR/$s" "$XDG_RUNTIME_DIR/$s"; fi; done`]
+      : []),
+  ]
+}
+
+/** `pactl` pinned to the private pulse socket with a deadline, so it can neither fall back to another server nor hang. */
+const privatePactl = 'PULSE_SERVER="unix:$XDG_RUNTIME_DIR/pulse/native" timeout 3 pactl'
+
+/**
+ * Starts `pipewire`, `wireplumber`, and `pipewire-pulse` inside the private runtime directory, after the private bus
+ * and before the compositor, so KWin, the portals, and every client connect to this stack. WirePlumber's state goes to
+ * the session directory, and its config (written by `up`) disables every device monitor. Each step waits a bounded
+ * time and records why it gave up. The processes stay in the unit's cgroup, so `down` stops them with the session.
+ */
+function privateAudioStart(): string[] {
+  const start = (binary: string, redirect: '>' | '>>') => `{ XDG_STATE_HOME="$AIRI_QA_DIR/state" ${binary} >"$AIRI_QA_DIR/${binary}.log" 2>&1 & echo "${binary} $!" ${redirect} "$AIRI_QA_DIR/audio.pids"; }`
+  return [
+    start('pipewire', '>'),
+    waitFor('[ -S "$XDG_RUNTIME_DIR/pipewire-0" ]', 50, 'the private pipewire did not open its socket within 5 seconds'),
+    start('wireplumber', '>>'),
+    start('pipewire-pulse', '>>'),
+    waitFor(`[ -S "$XDG_RUNTIME_DIR/pulse/native" ] && ${privatePactl} info >/dev/null 2>&1`, 50, 'the private pipewire-pulse did not answer within 5 seconds'),
+    `${privatePactl} load-module module-null-sink sink_name=${qaPrivateSink} >/dev/null`,
+    waitFor(`${privatePactl} set-default-sink ${qaPrivateSink} 2>/dev/null && [ "$(${privatePactl} get-default-sink 2>/dev/null)" = ${qaPrivateSink} ]`, 100, `WirePlumber did not make ${qaPrivateSink} the default sink within 10 seconds`),
   ]
 }
 
@@ -282,6 +378,7 @@ export interface QaDisplayUnitOptions {
   windowed: boolean
   compositor: QaCompositor
   portals: boolean
+  audio: QaAudioMode
   x11Display?: number
   /** A standalone `kglobalacceld` executable to start with the portals; `undefined` when KWin hosts it. */
   globalAccelExecutable?: string
@@ -294,9 +391,10 @@ export interface QaDisplayUnitOptions {
  */
 export function qaDisplayUnitArgs(options: QaDisplayUnitOptions, paths: QaDisplayPaths, host: { runtimeDir: string, waylandDisplay?: string }): string[] {
   const busStart = [
-    ...privateSessionSetup(sessionIdentity[options.compositor]),
+    ...privateSessionSetup(sessionIdentity[options.compositor], options.audio),
     'dbus-daemon --session --fork --address="unix:path=$AIRI_QA_DIR/bus" >/dev/null',
     'export DBUS_SESSION_BUS_ADDRESS="unix:path=$AIRI_QA_DIR/bus"',
+    ...(options.audio === 'private' ? privateAudioStart() : []),
   ]
   let script: string[]
   if (options.compositor === 'kwin') {
@@ -366,6 +464,7 @@ export function qaDisplayUnitArgs(options: QaDisplayUnitOptions, paths: QaDispla
     `--setenv=AIRI_QA_DIR=${paths.dir}`,
     `--setenv=AIRI_QA_COMPOSITOR=${options.compositor}`,
     `--setenv=AIRI_QA_PORTALS=${options.portals ? '1' : '0'}`,
+    `--setenv=AIRI_QA_AUDIO=${options.audio}`,
     `--setenv=AIRI_QA_HOST_RUNTIME_DIR=${host.runtimeDir}`,
     '/bin/sh',
     '-c',
@@ -377,6 +476,9 @@ function shellQuote(word: string): string {
   return /^[\w./=:-]+$/.test(word) ? word : `'${word.replaceAll('\'', '\'\\\'\'')}'`
 }
 
+/** Variables that would point an audio client at a server other than the one in its `XDG_RUNTIME_DIR`. */
+const hostAudioKeys = ['PULSE_SERVER', 'PIPEWIRE_REMOTE', 'PIPEWIRE_RUNTIME_DIR'] as const
+
 /**
  * What a client inside each compositor gets: `sets` are taken from the env file (or fixed), `deletes` are removed
  * from the inherited host environment so a KDE, sway, or Hyprland host cannot leak into the session.
@@ -384,19 +486,20 @@ function shellQuote(word: string): string {
  * Sway sets `DISPLAY` only when it started Xwayland and deletes it otherwise.
  * Every compositor also sets the session's private `XDG_RUNTIME_DIR`, where its Wayland socket lives, and
  * `AIRI_QA_HOST_RUNTIME_DIR`, so `pnpm qa:display` still finds the user's systemd and sessions from inside a session.
+ * Host audio overrides are deleted everywhere, so a client finds audio only in the private runtime directory.
  */
 export const sessionKeys: Record<QaCompositor, { sets: readonly string[], deletes: readonly string[] }> = {
   kwin: {
     sets: ['XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'WAYLAND_DISPLAY', 'DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR', 'AIRI_QA_HOST_RUNTIME_DIR'],
-    deletes: ['SWAYSOCK', 'HYPRLAND_INSTANCE_SIGNATURE', 'XAUTHORITY'],
+    deletes: ['SWAYSOCK', 'HYPRLAND_INSTANCE_SIGNATURE', 'XAUTHORITY', ...hostAudioKeys],
   },
   x11: {
     sets: ['XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR', 'AIRI_QA_HOST_RUNTIME_DIR'],
-    deletes: ['WAYLAND_DISPLAY', 'SWAYSOCK', 'HYPRLAND_INSTANCE_SIGNATURE', 'KDE_FULL_SESSION', 'KDE_SESSION_VERSION', 'XAUTHORITY'],
+    deletes: ['WAYLAND_DISPLAY', 'SWAYSOCK', 'HYPRLAND_INSTANCE_SIGNATURE', 'KDE_FULL_SESSION', 'KDE_SESSION_VERSION', 'XAUTHORITY', ...hostAudioKeys],
   },
   sway: {
     sets: ['XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'WAYLAND_DISPLAY', 'SWAYSOCK', 'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR', 'AIRI_QA_HOST_RUNTIME_DIR', 'DISPLAY'],
-    deletes: ['HYPRLAND_INSTANCE_SIGNATURE', 'KDE_FULL_SESSION', 'KDE_SESSION_VERSION', 'XAUTHORITY'],
+    deletes: ['HYPRLAND_INSTANCE_SIGNATURE', 'KDE_FULL_SESSION', 'KDE_SESSION_VERSION', 'XAUTHORITY', ...hostAudioKeys],
   },
 }
 
@@ -410,6 +513,7 @@ const requiredKeys: Record<QaCompositor, readonly string[]> = {
 export interface QaSession {
   compositor: QaCompositor
   portals: boolean
+  audio: QaAudioMode
   /** Key to value; an empty value removes the key from the client environment. */
   env: Record<string, string>
 }
@@ -422,8 +526,9 @@ export function parseSessionEnv(text: string): QaSession | null {
       values.set(line.slice(0, at), line.slice(at + 1))
   }
   const compositor = values.get('AIRI_QA_COMPOSITOR') as QaCompositor | undefined
+  const audio = values.get('AIRI_QA_AUDIO') as QaAudioMode | undefined
   const bus = values.get('DBUS_SESSION_BUS_ADDRESS')
-  if (!compositor || !qaCompositors.includes(compositor) || !bus || requiredKeys[compositor].some(key => !values.get(key)))
+  if (!compositor || !qaCompositors.includes(compositor) || !audio || !qaAudioModes.includes(audio) || !bus || requiredKeys[compositor].some(key => !values.get(key)))
     return null
   const env: Record<string, string> = { ...sessionIdentity[compositor] }
   for (const key of sessionKeys[compositor].sets) {
@@ -432,7 +537,7 @@ export function parseSessionEnv(text: string): QaSession | null {
   }
   for (const key of sessionKeys[compositor].deletes)
     env[key] = ''
-  return { compositor, portals: values.get('AIRI_QA_PORTALS') === '1', env }
+  return { compositor, portals: values.get('AIRI_QA_PORTALS') === '1', audio, env }
 }
 
 /** The host environment with the session keys replaced. An empty value removes the key, so host display keys cannot leak in. */

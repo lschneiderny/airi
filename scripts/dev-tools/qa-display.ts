@@ -4,16 +4,18 @@ import process from 'node:process'
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { delimiter, join, resolve } from 'node:path'
+import { delimiter, dirname, join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 
 import { errorMessageFrom } from '@moeru/std'
 
 import { run } from './lib/exec'
-import { clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseQaDisplayArgs, parseSessionEnv, pointerCommand, qaDisplayPaths, qaDisplayUnitArgs, qaDisplayUsage, requiredBinaries, sessionMountTargets, shellExports, swayConfig, swayProbeScript } from './qa-display-plan'
+import { audioProcessRunning, clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseAudioPids, parseQaDisplayArgs, parseSessionEnv, pointerCommand, qaDisplayPaths, qaDisplayUnitArgs, qaDisplayUsage, requiredBinaries, sessionMountTargets, shellExports, swayConfig, swayProbeScript, wireplumberNoDevicesConf } from './qa-display-plan'
 
 const startTimeoutMs = 20_000
+/** Extra startup time for `--private-audio`, whose own waits add up to 20 seconds at most. */
+const privateAudioStartMs = 20_000
 const kwinPointerHelper = fileURLToPath(new URL('../../packages/qa-tools/scripts/linux/kwin-pointer.py', import.meta.url))
 
 function fail(message: string, code = 1): never {
@@ -55,6 +57,27 @@ function readSession(envFile: string): QaSession | null {
   return existsSync(envFile) ? parseSessionEnv(readFileSync(envFile, 'utf8')) : null
 }
 
+function procStat(pid: number): string | null {
+  try {
+    return readFileSync(`/proc/${pid}/stat`, 'utf8')
+  }
+  catch {
+    return null
+  }
+}
+
+/** The private audio processes that are gone; all of them when the pid file itself is missing. */
+function deadAudioProcesses(pidFile: string): string[] {
+  const processes = existsSync(pidFile) ? parseAudioPids(readFileSync(pidFile, 'utf8')) : []
+  if (processes.length === 0)
+    return ['pipewire', 'wireplumber', 'pipewire-pulse']
+  return processes.filter(entry => !audioProcessRunning(entry.name, procStat(entry.pid))).map(entry => `${entry.name} (pid ${entry.pid})`)
+}
+
+function describeSession(session: Pick<QaSession, 'compositor' | 'portals' | 'audio'>): string {
+  return `${session.compositor}${session.portals ? ' with portals' : ''}${session.audio === 'none' ? '' : `, ${session.audio} audio`}`
+}
+
 function hasBinary(binary: string): boolean {
   const candidates = binary.startsWith('/') ? [binary] : (process.env.PATH ?? '').split(delimiter).filter(Boolean).map(dir => join(dir, binary))
   return candidates.some((file) => {
@@ -82,17 +105,22 @@ function globalAccelExecutable(): string | undefined {
   return located?.kind === 'executable' ? located.path : undefined
 }
 
-async function up(args: Pick<QaDisplayArgs, 'name' | 'width' | 'height' | 'windowed' | 'compositor' | 'portals'>, quiet: boolean): Promise<QaSession> {
+async function up(args: Pick<QaDisplayArgs, 'name' | 'width' | 'height' | 'windowed' | 'compositor' | 'portals' | 'audio'>, quiet: boolean): Promise<QaSession> {
   const paths = qaDisplayPaths(args.name, runtimeDir())
   const running = isActive(paths.unit) ? readSession(paths.envFile) : null
   if (running) {
-    if ((args.compositor && args.compositor !== running.compositor) || (args.portals && !running.portals))
-      fail(`"${args.name}" already runs ${running.compositor}${running.portals ? ' with portals' : ''}. Stop it first with: pnpm qa:display down --name ${args.name}`)
+    if ((args.compositor && args.compositor !== running.compositor) || (args.portals && !running.portals) || (args.audio !== 'none' && args.audio !== running.audio))
+      fail(`"${args.name}" already runs ${describeSession(running)}. Stop it first with: pnpm qa:display down --name ${args.name}`)
+    if (running.audio === 'private') {
+      const dead = deadAudioProcesses(paths.audioPids)
+      if (dead.length > 0)
+        fail(`the private audio stack of "${args.name}" is not running (${dead.join(', ')} exited). Restart the session: pnpm qa:display down --name ${args.name} && pnpm qa:display up --name ${args.name} --private-audio`)
+    }
     return running
   }
 
   const compositor: QaCompositor = args.compositor ?? 'kwin'
-  const missing = missingBinaryMessage(requiredBinaries(compositor, args.portals), hasBinary)
+  const missing = missingBinaryMessage(requiredBinaries(compositor, args.portals, args.audio), hasBinary)
   if (missing)
     failRaw(missing, 1)
 
@@ -106,6 +134,10 @@ async function up(args: Pick<QaDisplayArgs, 'name' | 'width' | 'height' | 'windo
   mkdirSync(paths.config, { recursive: true })
   if (args.portals)
     writeFileSync(join(paths.config, 'kglobalshortcutsrc'), kglobalShortcutsSeed())
+  if (args.audio === 'private') {
+    mkdirSync(dirname(paths.wireplumberConf), { recursive: true })
+    writeFileSync(paths.wireplumberConf, wireplumberNoDevicesConf())
+  }
   if (compositor === 'sway') {
     writeFileSync(paths.swayConfig, swayConfig(args.width, args.height))
     writeFileSync(paths.swayProbe, swayProbeScript())
@@ -118,14 +150,15 @@ async function up(args: Pick<QaDisplayArgs, 'name' | 'width' | 'height' | 'windo
   }, paths, { runtimeDir: runtimeDir(), waylandDisplay: process.env.WAYLAND_DISPLAY })
   execFileSync('systemd-run', unitArgs, { env: systemdEnv(), stdio: 'inherit' })
 
-  const deadline = Date.now() + startTimeoutMs
+  const timeoutMs = startTimeoutMs + (args.audio === 'private' ? privateAudioStartMs : 0)
+  const deadline = Date.now() + timeoutMs
   const logHint = `Read its log with: journalctl --user -u ${paths.unit}`
   while (Date.now() < deadline) {
     const session = readSession(paths.envFile)
     if (session) {
       if (!quiet) {
         const where = [session.env.WAYLAND_DISPLAY, session.env.DISPLAY && `X display ${session.env.DISPLAY}`].filter(Boolean).join(' and ')
-        console.info(`qa:display: "${args.name}" is up (${compositor}${args.portals ? ' with portals' : ''}) on ${where} (${args.width}x${args.height}${args.windowed ? ', windowed' : ''}).`)
+        console.info(`qa:display: "${args.name}" is up (${describeSession(session)}) on ${where} (${args.width}x${args.height}${args.windowed ? ', windowed' : ''}).`)
       }
       return session
     }
@@ -139,7 +172,7 @@ async function up(args: Pick<QaDisplayArgs, 'name' | 'width' | 'height' | 'windo
     await sleep(200)
   }
   systemctl(['stop', paths.unit])
-  fail(`"${args.name}" did not become ready within ${startTimeoutMs / 1000} seconds and was stopped. ${logHint}`)
+  fail(`"${args.name}" did not become ready within ${timeoutMs / 1000} seconds and was stopped. ${logHint}`)
 }
 
 /** The user's runtime directory, also from inside a session, whose own `XDG_RUNTIME_DIR` is private. */
@@ -187,7 +220,7 @@ async function main() {
         console.info(`qa:display: "${args.name}" is not running.`)
         process.exit(1)
       }
-      console.info(`qa:display: "${args.name}" is running as ${paths.unit} (${session.compositor}${session.portals ? ' with portals' : ''}).\n${shellExports(session.env, args.name)}`)
+      console.info(`qa:display: "${args.name}" is running as ${paths.unit} (${describeSession(session)}).\n${shellExports(session.env, args.name)}`)
       return
     }
     case 'env':

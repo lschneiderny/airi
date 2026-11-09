@@ -1,10 +1,27 @@
 import { describe, expect, it } from 'vitest'
 
-import { clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseQaDisplayArgs, parseSessionEnv, pointerCommand, qaDisplayGuard, qaDisplayPaths, qaDisplayUnitArgs, requiredBinaries, sessionMountTargets, shellExports, swayConfig, swayProbeScript, takeAllowHostSession } from './qa-display-plan'
+import { audioProcessRunning, clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseAudioPids, parseQaDisplayArgs, parseSessionEnv, pointerCommand, qaDisplayGuard, qaDisplayPaths, qaDisplayUnitArgs, requiredBinaries, sessionMountTargets, shellExports, swayConfig, swayProbeScript, takeAllowHostSession, wireplumberNoDevicesConf } from './qa-display-plan'
 
 describe('qa display arguments', () => {
-  it('defaults to a 1920x1080 headless session named qa without portals', () => {
-    expect(parseQaDisplayArgs(['up'])).toEqual({ command: 'up', name: 'qa', width: 1920, height: 1080, windowed: false, portals: false, argv: [] })
+  it('defaults to a 1920x1080 headless session named qa without portals or audio', () => {
+    expect(parseQaDisplayArgs(['up'])).toEqual({ command: 'up', name: 'qa', width: 1920, height: 1080, windowed: false, portals: false, audio: 'none', argv: [] })
+  })
+
+  it.each([
+    [['up', '--private-audio'], 'private'],
+    [['run', '--private-audio', '--portals', '--', 'x'], 'private'],
+    [['up', '--host-audio'], 'host'],
+    [['up', '--compositor', 'sway', '--private-audio'], 'private'],
+    [['up', '--private-audio', '--private-audio'], 'private'],
+  ] as const)('reads %j as %s audio', (argv, audio) => {
+    expect(parseQaDisplayArgs(argv)).toMatchObject({ audio })
+  })
+
+  it.each([
+    [['up', '--private-audio', '--host-audio']],
+    [['run', '--host-audio', '--private-audio', '--', 'x']],
+  ])('rejects private and host audio together: %j', (argv) => {
+    expect(parseQaDisplayArgs(argv)).toEqual({ error: '--private-audio and --host-audio cannot be combined' })
   })
 
   it('reads name, size, windowed, and the command after --', () => {
@@ -15,6 +32,7 @@ describe('qa display arguments', () => {
       height: 1440,
       windowed: true,
       portals: false,
+      audio: 'none',
       argv: ['pnpm', 'qa:stage', '--', '--x'],
     })
   })
@@ -64,7 +82,7 @@ describe('qa display arguments', () => {
 
 describe('qa display unit', () => {
   const paths = qaDisplayPaths('qa', '/run/user/1000')
-  const kwin = { width: 1920, height: 1080, windowed: false, compositor: 'kwin', portals: false } as const
+  const kwin = { width: 1920, height: 1080, windowed: false, compositor: 'kwin', portals: false, audio: 'none' } as const
   const host = { runtimeDir: '/run/user/1000', waylandDisplay: 'wayland-1' }
 
   it('names the unit, socket, and runtime files after the session', () => {
@@ -80,14 +98,16 @@ describe('qa display unit', () => {
       config: '/run/user/1000/airi-qa-display/qa/config',
       swayConfig: '/run/user/1000/airi-qa-display/qa/sway.conf',
       swayProbe: '/run/user/1000/airi-qa-display/qa/sway-probe.sh',
+      audioPids: '/run/user/1000/airi-qa-display/qa/audio.pids',
+      wireplumberConf: '/run/user/1000/airi-qa-display/qa/config/wireplumber/wireplumber.conf.d/90-airi-qa-no-devices.conf',
     })
   })
 
   it('starts a private bus and a virtual KWin that writes the env file once ready', () => {
     const args = qaDisplayUnitArgs(kwin, paths, host)
-    expect(args.slice(0, 9)).toEqual(['--user', '--unit=airi-qa-display-qa.service', '--collect', '--quiet', '--property=KillMode=control-group', '--setenv=AIRI_QA_DIR=/run/user/1000/airi-qa-display/qa', '--setenv=AIRI_QA_COMPOSITOR=kwin', '--setenv=AIRI_QA_PORTALS=0', '--setenv=AIRI_QA_HOST_RUNTIME_DIR=/run/user/1000'])
-    expect(args.slice(9, 11)).toEqual(['/bin/sh', '-c'])
-    const script = args[11]
+    expect(args.slice(0, 10)).toEqual(['--user', '--unit=airi-qa-display-qa.service', '--collect', '--quiet', '--property=KillMode=control-group', '--setenv=AIRI_QA_DIR=/run/user/1000/airi-qa-display/qa', '--setenv=AIRI_QA_COMPOSITOR=kwin', '--setenv=AIRI_QA_PORTALS=0', '--setenv=AIRI_QA_AUDIO=none', '--setenv=AIRI_QA_HOST_RUNTIME_DIR=/run/user/1000'])
+    expect(args.slice(10, 12)).toEqual(['/bin/sh', '-c'])
+    const script = args[12]
     expect(script).toContain('dbus-daemon --session --fork --address="unix:path=$AIRI_QA_DIR/bus"')
     expect(script).toContain('exec kwin_wayland --virtual --xwayland --socket wayland-airi-qa-qa --width 1920 --height 1080 --no-lockscreen --no-global-shortcuts --no-kactivities')
     expect(script).toContain('mv "$AIRI_QA_DIR/env.tmp" "$AIRI_QA_DIR/env"')
@@ -99,15 +119,76 @@ describe('qa display unit', () => {
     ['kwin with portals', { ...kwin, portals: true }, 'KDE', 'wayland'],
     ['x11', { ...kwin, compositor: 'x11', x11Display: 90 }, 'Openbox', 'x11'],
     ['sway', { ...kwin, compositor: 'sway' }, 'sway', 'wayland'],
-  ] as const)('%s drops host display keys and exports the private XDG homes before the bus starts', (_, options, desktop, type) => {
+  ] as const)('%s drops host display and audio keys and exports the private XDG homes before the bus starts', (_, options, desktop, type) => {
     const script = qaDisplayUnitArgs(options, paths, host).at(-1)!
     const steps = script.split(' && ')
     const bus = steps.findIndex(step => step.startsWith('dbus-daemon '))
-    expect(steps[0]).toBe('unset WAYLAND_DISPLAY DISPLAY XAUTHORITY SWAYSOCK HYPRLAND_INSTANCE_SIGNATURE KDE_FULL_SESSION KDE_SESSION_VERSION')
+    expect(steps[0]).toBe('unset WAYLAND_DISPLAY DISPLAY XAUTHORITY SWAYSOCK HYPRLAND_INSTANCE_SIGNATURE KDE_FULL_SESSION KDE_SESSION_VERSION PULSE_SERVER PIPEWIRE_REMOTE PIPEWIRE_RUNTIME_DIR')
     expect(steps[1]).toBe(`export XDG_RUNTIME_DIR="$AIRI_QA_DIR/runtime" XDG_DATA_HOME="$AIRI_QA_DIR/data" XDG_CONFIG_HOME="$AIRI_QA_DIR/config" XDG_CURRENT_DESKTOP=${desktop} XDG_SESSION_TYPE=${type}`)
-    expect(steps[2]).toBe('for s in pipewire-0 pipewire-0-manager pulse/native; do if [ -S "$AIRI_QA_HOST_RUNTIME_DIR/$s" ]; then mkdir -p "$(dirname "$XDG_RUNTIME_DIR/$s")"; ln -sf "$AIRI_QA_HOST_RUNTIME_DIR/$s" "$XDG_RUNTIME_DIR/$s"; fi; done')
-    expect(bus).toBe(3)
+    expect(bus).toBe(2)
     expect(steps.slice(bus).some(step => /XDG_(?:RUNTIME_DIR|DATA_HOME|CONFIG_HOME)=/.test(step))).toBe(false)
+  })
+
+  describe('audio', () => {
+    const hostLink = 'for s in pipewire-0 pipewire-0-manager pulse/native; do if [ -S "$AIRI_QA_HOST_RUNTIME_DIR/$s" ]; then mkdir -p "$(dirname "$XDG_RUNTIME_DIR/$s")"; ln -sf "$AIRI_QA_HOST_RUNTIME_DIR/$s" "$XDG_RUNTIME_DIR/$s"; fi; done'
+    const compositorStart = { kwin: 'exec kwin_wayland', x11: 'Xvfb :90', sway: 'sway -c' } as const
+
+    it.each([
+      ['kwin', 'none', false, false],
+      ['kwin', 'private', false, true],
+      ['kwin', 'host', true, false],
+      ['x11', 'none', false, false],
+      ['x11', 'private', false, true],
+      ['x11', 'host', true, false],
+      ['sway', 'none', false, false],
+      ['sway', 'private', false, true],
+      ['sway', 'host', true, false],
+    ] as const)('%s with %s audio: links host sockets %s, starts a private stack %s', (compositor, audio, links, stack) => {
+      const args = qaDisplayUnitArgs({ ...kwin, compositor, audio, x11Display: 90 }, paths, host)
+      const steps = args.at(-1)!.split(' && ')
+      expect(args).toContain(`--setenv=AIRI_QA_AUDIO=${audio}`)
+      expect(steps.includes(hostLink)).toBe(links)
+      expect(steps.some(step => step.includes('AIRI_QA_HOST_RUNTIME_DIR/$s'))).toBe(links)
+      expect(steps.some(step => /\bpipewire\b/.test(step) && !step.startsWith('unset ') && step !== hostLink)).toBe(stack)
+      if (links)
+        expect(steps.indexOf(hostLink)).toBe(2)
+    })
+
+    it.each(['kwin', 'x11', 'sway'] as const)('%s starts the private stack after the bus and before the compositor, waiting for each step', (compositor) => {
+      const steps = qaDisplayUnitArgs({ ...kwin, compositor, audio: 'private', portals: compositor === 'kwin', x11Display: 90 }, paths, host).at(-1)!.split(' && ')
+      const at = (needle: string) => steps.findIndex(step => step.includes(needle))
+      const order = [
+        at('dbus-daemon --session'),
+        at('export DBUS_SESSION_BUS_ADDRESS'),
+        at('XDG_STATE_HOME="$AIRI_QA_DIR/state" pipewire >"$AIRI_QA_DIR/pipewire.log"'),
+        at('[ -S "$XDG_RUNTIME_DIR/pipewire-0" ]'),
+        at('XDG_STATE_HOME="$AIRI_QA_DIR/state" wireplumber >'),
+        at('XDG_STATE_HOME="$AIRI_QA_DIR/state" pipewire-pulse >'),
+        at('[ -S "$XDG_RUNTIME_DIR/pulse/native" ]'),
+        at('load-module module-null-sink sink_name=airi_qa'),
+        at('set-default-sink airi_qa'),
+        at(compositorStart[compositor]),
+      ]
+      expect(order.every(index => index >= 0)).toBe(true)
+      expect(order).toEqual([...order].sort((a, b) => a - b))
+      if (compositor === 'kwin')
+        expect(steps.findIndex(step => step.includes('xdg-desktop-portal'))).toBeGreaterThan(order.at(-2)!)
+    })
+
+    it('records each audio pid, pins pactl to the private socket, and bounds every wait', () => {
+      const steps = qaDisplayUnitArgs({ ...kwin, audio: 'private' }, paths, host).at(-1)!.split(' && ')
+      expect(steps.filter(step => step.includes('"$AIRI_QA_DIR/audio.pids"')).map(step => /echo "([\w-]+) \$!" (>>?)/.exec(step)?.slice(1))).toEqual([['pipewire', '>'], ['wireplumber', '>>'], ['pipewire-pulse', '>>']])
+      const pactl = steps.filter(step => step.includes('pactl'))
+      expect(pactl.length).toBeGreaterThan(0)
+      for (const step of pactl)
+        expect(step.match(/pactl/g)!.length).toBe(step.match(/PULSE_SERVER="unix:\$XDG_RUNTIME_DIR\/pulse\/native" timeout 3 pactl/g)!.length)
+      const waits = [...steps.join(' && ').matchAll(/-ge (\d+) \]; then echo "([^"]+)" > "\$AIRI_QA_DIR\/error"; exit 1/g)].map(match => [match[1], match[2]])
+      expect(waits).toEqual([
+        ['50', 'the private pipewire did not open its socket within 5 seconds'],
+        ['50', 'the private pipewire-pulse did not answer within 5 seconds'],
+        ['100', 'WirePlumber did not make airi_qa the default sink within 10 seconds'],
+      ])
+    })
   })
 
   it('hands the compositor sockets to the private bus activation environment before publishing the env file', () => {
@@ -142,7 +223,7 @@ describe('qa display unit', () => {
   })
 
   it('runs Xvfb and openbox on a free display for x11', () => {
-    const args = qaDisplayUnitArgs({ width: 1280, height: 720, windowed: false, compositor: 'x11', portals: false, x11Display: 91 }, paths, host)
+    const args = qaDisplayUnitArgs({ width: 1280, height: 720, windowed: false, compositor: 'x11', portals: false, audio: 'none', x11Display: 91 }, paths, host)
     const script = args.at(-1)!
     expect(args).toContain('--setenv=AIRI_QA_COMPOSITOR=x11')
     expect(script).toContain('export DISPLAY=:91')
@@ -153,7 +234,7 @@ describe('qa display unit', () => {
   })
 
   it('runs headless sway with a generated config and probes through swaymsg', () => {
-    const script = qaDisplayUnitArgs({ width: 1280, height: 720, windowed: false, compositor: 'sway', portals: false }, paths, host).at(-1)!
+    const script = qaDisplayUnitArgs({ width: 1280, height: 720, windowed: false, compositor: 'sway', portals: false, audio: 'none' }, paths, host).at(-1)!
     expect(script).toContain('export WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1')
     expect(script).toContain('sway -c "$AIRI_QA_DIR/sway.conf" &')
     expect(script).toContain('sock="$XDG_RUNTIME_DIR/sway-ipc.$(id -u).$pid.sock"')
@@ -186,20 +267,51 @@ describe('qa display unit', () => {
 })
 
 describe('qa display binaries', () => {
+  const stack = ['pipewire', 'wireplumber', 'pipewire-pulse', 'pactl', 'timeout']
+
   it.each([
-    ['kwin', false, ['kwin_wayland', 'Xwayland', 'dbus-daemon']],
-    ['kwin', true, ['kwin_wayland', 'Xwayland', 'dbus-daemon', '/usr/libexec/xdg-desktop-portal', '/usr/libexec/xdg-desktop-portal-kde', 'busctl']],
-    ['x11', false, ['Xvfb', 'openbox', 'dbus-daemon']],
-    ['sway', false, ['sway', 'swaymsg', 'dbus-daemon']],
-  ] as const)('%s (portals %s) needs %j', (compositor, portals, binaries) => {
-    expect(requiredBinaries(compositor, portals).map(entry => entry.binary)).toEqual(binaries)
+    ['kwin', false, 'none', ['kwin_wayland', 'Xwayland', 'dbus-daemon']],
+    ['kwin', true, 'none', ['kwin_wayland', 'Xwayland', 'dbus-daemon', '/usr/libexec/xdg-desktop-portal', '/usr/libexec/xdg-desktop-portal-kde', 'busctl']],
+    ['kwin', false, 'host', ['kwin_wayland', 'Xwayland', 'dbus-daemon']],
+    ['kwin', true, 'private', ['kwin_wayland', 'Xwayland', 'dbus-daemon', '/usr/libexec/xdg-desktop-portal', '/usr/libexec/xdg-desktop-portal-kde', 'busctl', ...stack]],
+    ['x11', false, 'none', ['Xvfb', 'openbox', 'dbus-daemon']],
+    ['x11', false, 'private', ['Xvfb', 'openbox', 'dbus-daemon', ...stack]],
+    ['sway', false, 'none', ['sway', 'swaymsg', 'dbus-daemon']],
+  ] as const)('%s (portals %s, %s audio) needs %j', (compositor, portals, audio, binaries) => {
+    expect(requiredBinaries(compositor, portals, audio).map(entry => entry.binary)).toEqual(binaries)
   })
 
   it('names the first missing binary and its package', () => {
-    expect(missingBinaryMessage(requiredBinaries('x11', false), binary => binary !== 'Xvfb')).toBe('qa-display: Xvfb not installed (run: sudo dnf install xorg-x11-server-Xvfb)')
-    expect(missingBinaryMessage(requiredBinaries('sway', false), binary => binary !== 'swaymsg')).toBe('qa-display: swaymsg not installed (run: sudo dnf install sway)')
-    expect(missingBinaryMessage(requiredBinaries('kwin', true), binary => !binary.endsWith('-kde'))).toBe('qa-display: /usr/libexec/xdg-desktop-portal-kde not installed (run: sudo dnf install xdg-desktop-portal-kde)')
-    expect(missingBinaryMessage(requiredBinaries('kwin', false), () => true)).toBeNull()
+    expect(missingBinaryMessage(requiredBinaries('x11', false, 'none'), binary => binary !== 'Xvfb')).toBe('qa-display: Xvfb not installed (run: sudo dnf install xorg-x11-server-Xvfb)')
+    expect(missingBinaryMessage(requiredBinaries('sway', false, 'none'), binary => binary !== 'swaymsg')).toBe('qa-display: swaymsg not installed (run: sudo dnf install sway)')
+    expect(missingBinaryMessage(requiredBinaries('kwin', true, 'none'), binary => !binary.endsWith('-kde'))).toBe('qa-display: /usr/libexec/xdg-desktop-portal-kde not installed (run: sudo dnf install xdg-desktop-portal-kde)')
+    expect(missingBinaryMessage(requiredBinaries('kwin', false, 'private'), binary => binary !== 'pipewire-pulse')).toBe('qa-display: pipewire-pulse not installed (run: sudo dnf install pipewire-pulseaudio)')
+    expect(missingBinaryMessage(requiredBinaries('kwin', false, 'private'), binary => binary !== 'pactl')).toBe('qa-display: pactl not installed (run: sudo dnf install pulseaudio-utils)')
+    expect(missingBinaryMessage(requiredBinaries('kwin', false, 'none'), () => true)).toBeNull()
+  })
+
+  it('disables every WirePlumber device monitor for a private stack', () => {
+    expect(wireplumberNoDevicesConf()).toBe('wireplumber.profiles = {\n  main = {\n    monitor.alsa = disabled\n    monitor.alsa-midi = disabled\n    monitor.bluez = disabled\n    monitor.bluez.midi = disabled\n    monitor.v4l2 = disabled\n    monitor.libcamera = disabled\n  }\n}\n')
+  })
+
+  it('reads the audio pid file and skips malformed lines', () => {
+    expect(parseAudioPids('pipewire 101\nwireplumber 102\n\ngarbage\npipewire-pulse 103\nx -1\n')).toEqual([
+      { name: 'pipewire', pid: 101 },
+      { name: 'wireplumber', pid: 102 },
+      { name: 'pipewire-pulse', pid: 103 },
+    ])
+    expect(parseAudioPids('')).toEqual([])
+  })
+
+  it.each([
+    ['a sleeping wireplumber', 'wireplumber', '101 (wireplumber) S 1 2 3', true],
+    ['a running pipewire-pulse', 'pipewire-pulse', '103 (pipewire-pulse) R 1 2 3', true],
+    ['a zombie the compositor never reaped', 'wireplumber', '101 (wireplumber) Z 1 2 3', false],
+    ['a dead task', 'pipewire', '101 (pipewire) X 1 2 3', false],
+    ['a pid reused by another command', 'pipewire', '101 (bash) S 1 2 3', false],
+    ['a pid without /proc entry', 'pipewire', null, false],
+  ] as const)('counts %s as running: %s', (_, name, stat, running) => {
+    expect(audioProcessRunning(name, stat)).toBe(running)
   })
 
   it('finds the global accelerator as a KWin plugin or a standalone executable', () => {
@@ -216,7 +328,8 @@ describe('qa display binaries', () => {
 describe('qa display session environment', () => {
   const bus = 'unix:path=/run/user/1000/airi-qa-display/qa/bus'
   const rt = '/run/user/1000/airi-qa-display/qa/runtime'
-  const own = `XDG_RUNTIME_DIR=${rt}\nAIRI_QA_HOST_RUNTIME_DIR=/run/user/1000\n`
+  const own = `XDG_RUNTIME_DIR=${rt}\nAIRI_QA_HOST_RUNTIME_DIR=/run/user/1000\nAIRI_QA_AUDIO=none\n`
+  const noAudio = { PULSE_SERVER: '', PIPEWIRE_REMOTE: '', PIPEWIRE_RUNTIME_DIR: '' }
   const ownEnv = { XDG_RUNTIME_DIR: rt, AIRI_QA_HOST_RUNTIME_DIR: '/run/user/1000' }
   const kwinText = `HOME=/home/u\n${own}AIRI_QA_COMPOSITOR=kwin\nAIRI_QA_PORTALS=0\nWAYLAND_DISPLAY=wayland-airi-qa-qa\nDISPLAY=:2\nXAUTHORITY=\nDBUS_SESSION_BUS_ADDRESS=${bus}\nXDG_SESSION_TYPE=wayland\n`
   const kdeHost = { PATH: '/bin', XDG_CURRENT_DESKTOP: 'KDE', KDE_FULL_SESSION: 'true', WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0', XDG_SESSION_TYPE: 'wayland' }
@@ -225,6 +338,7 @@ describe('qa display session environment', () => {
     expect(parseSessionEnv(kwinText)).toEqual({
       compositor: 'kwin',
       portals: false,
+      audio: 'none',
       env: {
         XDG_CURRENT_DESKTOP: 'KDE',
         XDG_SESSION_TYPE: 'wayland',
@@ -235,13 +349,18 @@ describe('qa display session environment', () => {
         SWAYSOCK: '',
         HYPRLAND_INSTANCE_SIGNATURE: '',
         XAUTHORITY: '',
+        ...noAudio,
       },
     })
     expect(parseSessionEnv(kwinText.replace('AIRI_QA_PORTALS=0', 'AIRI_QA_PORTALS=1'))?.portals).toBe(true)
+    expect(parseSessionEnv(kwinText.replace('AIRI_QA_AUDIO=none', 'AIRI_QA_AUDIO=private'))?.audio).toBe('private')
+    expect(parseSessionEnv(kwinText.replace('AIRI_QA_AUDIO=none', 'AIRI_QA_AUDIO=host'))?.audio).toBe('host')
   })
 
   it.each([
-    ['kwin without the private runtime dir', `AIRI_QA_COMPOSITOR=kwin\nWAYLAND_DISPLAY=w\nDISPLAY=:2\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`],
+    ['kwin without the private runtime dir', `AIRI_QA_COMPOSITOR=kwin\nAIRI_QA_AUDIO=none\nWAYLAND_DISPLAY=w\nDISPLAY=:2\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`],
+    ['kwin without an audio mode', `${own.replace('AIRI_QA_AUDIO=none\n', '')}AIRI_QA_COMPOSITOR=kwin\nWAYLAND_DISPLAY=w\nDISPLAY=:2\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`],
+    ['kwin with an unknown audio mode', `${own.replace('AIRI_QA_AUDIO=none', 'AIRI_QA_AUDIO=loud')}AIRI_QA_COMPOSITOR=kwin\nWAYLAND_DISPLAY=w\nDISPLAY=:2\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`],
     ['kwin without DISPLAY', `${own}AIRI_QA_COMPOSITOR=kwin\nWAYLAND_DISPLAY=w\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`],
     ['kwin without the bus', `${own}AIRI_QA_COMPOSITOR=kwin\nWAYLAND_DISPLAY=w\nDISPLAY=:2\n`],
     ['x11 without DISPLAY', `${own}AIRI_QA_COMPOSITOR=x11\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`],
@@ -258,7 +377,7 @@ describe('qa display session environment', () => {
     ['sway with Xwayland', `${own}AIRI_QA_COMPOSITOR=sway\nWAYLAND_DISPLAY=wayland-1\nSWAYSOCK=/run/user/1000/sway-ipc.1000.7.sock\nDISPLAY=:3\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`, { PATH: '/bin', AIRI_QA_DISPLAY: 'qa', AIRI_QA_DISPLAY_SESSION: 'qa', XDG_CURRENT_DESKTOP: 'sway', XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1', SWAYSOCK: '/run/user/1000/sway-ipc.1000.7.sock', DISPLAY: ':3', DBUS_SESSION_BUS_ADDRESS: bus, ...ownEnv }],
     ['sway without Xwayland', `${own}AIRI_QA_COMPOSITOR=sway\nWAYLAND_DISPLAY=wayland-1\nSWAYSOCK=/run/user/1000/sway-ipc.1000.7.sock\nDBUS_SESSION_BUS_ADDRESS=${bus}\n`, { PATH: '/bin', AIRI_QA_DISPLAY: 'qa', AIRI_QA_DISPLAY_SESSION: 'qa', XDG_CURRENT_DESKTOP: 'sway', XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1', SWAYSOCK: '/run/user/1000/sway-ipc.1000.7.sock', DBUS_SESSION_BUS_ADDRESS: bus, ...ownEnv }],
   ])('turns an inherited KDE host environment into the exact %s client environment', (_, text, expected) => {
-    expect(clientEnv({ ...kdeHost, XDG_RUNTIME_DIR: '/run/user/1000', XAUTHORITY: '/run/user/1000/xauth_x', SWAYSOCK: '/x', HYPRLAND_INSTANCE_SIGNATURE: 'h', KDE_SESSION_VERSION: '6' }, parseSessionEnv(text)!.env, 'qa')).toEqual(expected)
+    expect(clientEnv({ ...kdeHost, XDG_RUNTIME_DIR: '/run/user/1000', XAUTHORITY: '/run/user/1000/xauth_x', SWAYSOCK: '/x', HYPRLAND_INSTANCE_SIGNATURE: 'h', KDE_SESSION_VERSION: '6', PULSE_SERVER: 'unix:/run/user/1000/pulse/native', PIPEWIRE_REMOTE: 'pipewire-0', PIPEWIRE_RUNTIME_DIR: '/run/user/1000' }, parseSessionEnv(text)!.env, 'qa')).toEqual(expected)
   })
 
   it('prints shell exports that unset deleted keys', () => {
@@ -275,13 +394,16 @@ describe('qa display session environment', () => {
       'unset SWAYSOCK',
       'unset HYPRLAND_INSTANCE_SIGNATURE',
       'unset XAUTHORITY',
+      'unset PULSE_SERVER',
+      'unset PIPEWIRE_REMOTE',
+      'unset PIPEWIRE_RUNTIME_DIR',
     ].join('\n'))
   })
 })
 
 describe('qa display host session guard', () => {
   const bus = 'unix:path=/run/user/1000/airi-qa-display/lsp/bus'
-  const kwinText = `XDG_RUNTIME_DIR=/run/user/1000/airi-qa-display/lsp/runtime\nAIRI_QA_HOST_RUNTIME_DIR=/run/user/1000\nAIRI_QA_COMPOSITOR=kwin\nAIRI_QA_PORTALS=0\nWAYLAND_DISPLAY=wayland-airi-qa-lsp\nDISPLAY=:2\nDBUS_SESSION_BUS_ADDRESS=${bus}\nXDG_SESSION_TYPE=wayland\n`
+  const kwinText = `XDG_RUNTIME_DIR=/run/user/1000/airi-qa-display/lsp/runtime\nAIRI_QA_HOST_RUNTIME_DIR=/run/user/1000\nAIRI_QA_COMPOSITOR=kwin\nAIRI_QA_AUDIO=none\nAIRI_QA_PORTALS=0\nWAYLAND_DISPLAY=wayland-airi-qa-lsp\nDISPLAY=:2\nDBUS_SESSION_BUS_ADDRESS=${bus}\nXDG_SESSION_TYPE=wayland\n`
   const session = parseSessionEnv(kwinText)!
   const kdeHost = { PATH: '/bin', XDG_CURRENT_DESKTOP: 'KDE', WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0', XDG_SESSION_TYPE: 'wayland', XDG_RUNTIME_DIR: '/run/user/1000', DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus' }
   const inside = clientEnv(kdeHost, session.env, 'lsp')
@@ -304,6 +426,7 @@ describe('qa display host session guard', () => {
     ['the host bus inside the session', { env: { ...inside, DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus' } }, 'DBUS_SESSION_BUS_ADDRESS does not match'],
     ['no bus inherited inside the session', { env: { ...inside, DBUS_SESSION_BUS_ADDRESS: undefined } }, 'DBUS_SESSION_BUS_ADDRESS does not match'],
     ['a host sway socket leaking into a kwin session', { env: { ...inside, SWAYSOCK: '/run/user/1000/sway.sock' } }, 'SWAYSOCK does not match'],
+    ['a host pulse server leaking into the session', { env: { ...inside, PULSE_SERVER: 'unix:/run/user/1000/pulse/native' } }, 'PULSE_SERVER does not match'],
   ])('refuses on Linux with %s and names qa:display run', (_, overrides, reason) => {
     const verdict = guard(overrides)
     expect(verdict.ok).toBe(false)
