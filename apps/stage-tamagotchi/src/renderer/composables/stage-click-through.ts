@@ -25,10 +25,15 @@ export interface StageClickThroughInput {
   /** The character rect in window DIP, unpadded; `null` before the scene publishes one. */
   rect: PlacementRect | null
   /**
-   * Keeps the pointer whatever the pixels say: the controls are open or under the cursor, the stage is paused, a drag
-   * is running, or click-through is unavailable on this platform.
+   * Keeps the pointer whatever the pixels say: the controls are open or under the cursor, the stage is paused, or a
+   * drag is running.
    */
   forceCapture: boolean
+  /**
+   * Lets every click through whatever the pixels say, and wins over `forceCapture`: click-through is not usable, so a
+   * captured full-screen stage could not release the pointer reliably.
+   */
+  forceIgnore: boolean
   /**
    * This frame's alpha readback at the cursor: `true` when she is drawn there. `undefined` when the caller did not
    * read this frame, which leaves the state as it is.
@@ -71,9 +76,9 @@ export function createStageHitReadState(): StageHitReadState {
  * {@link stageRestingReadIntervalMs} and a moving one at most every {@link stageMovingReadIntervalMs}; between reads
  * the click-through state keeps the last answer.
  */
-export function planStageHitRead(state: StageHitReadState, input: Pick<StageClickThroughInput, 'nowMs' | 'cursor' | 'rect' | 'forceCapture'>): { read: boolean, state: StageHitReadState } {
+export function planStageHitRead(state: StageHitReadState, input: Pick<StageClickThroughInput, 'nowMs' | 'cursor' | 'rect' | 'forceCapture' | 'forceIgnore'>): { read: boolean, state: StageHitReadState } {
   const { cursor, nowMs } = input
-  if (input.forceCapture || !cursor || !isInsidePaddedRect(cursor, input.rect))
+  if (input.forceIgnore || input.forceCapture || !cursor || !isInsidePaddedRect(cursor, input.rect))
     return { read: false, state }
   if (state.lastReadMs !== null && state.lastCursor) {
     const moved = state.lastCursor.x !== cursor.x || state.lastCursor.y !== cursor.y
@@ -117,6 +122,9 @@ export function resolveStageClickThrough(state: StageClickThroughState, input: S
 }
 
 function nextState(state: StageClickThroughState, input: StageClickThroughInput): StageClickThroughState {
+  if (input.forceIgnore)
+    return { ignoring: true, misses: 0, lastHitMs: state.lastHitMs }
+
   if (input.forceCapture)
     return { ignoring: false, misses: 0, lastHitMs: input.nowMs }
 
@@ -135,4 +143,54 @@ function nextState(state: StageClickThroughState, input: StageClickThroughInput)
 
   const debounced = state.lastHitMs === null || input.nowMs - state.lastHitMs >= stageClickThroughReleaseDebounceMs
   return { ignoring: misses >= releaseMisses && debounced, misses, lastHitMs: state.lastHitMs }
+}
+
+/**
+ * How long the host cursor reading must have stood still before the window's own pointer events, seen elsewhere, mark
+ * it stale. A live reading follows a moving pointer within a few frames.
+ */
+export const stageCursorStaleAfterMs = 250
+
+/** Pointer events within this distance of the host reading agree with it, in DIP. */
+const cursorAgreementDip = 2
+
+export interface StageCursorTrust {
+  /** The host cursor reading in window DIP; `null` when unknown. */
+  reading: { x: number, y: number } | null
+  /** When the reading last changed, on the caller's clock. */
+  changedAtMs: number
+  /** Whether the window's own pointer events contradicted this reading. It is trusted again once it moves. */
+  stale: boolean
+}
+
+export function createStageCursorTrust(): StageCursorTrust {
+  return { reading: null, changedAtMs: 0, stale: false }
+}
+
+/** Records this frame's host cursor reading. A reading that moved is trusted again. */
+export function observeStageCursor(trust: StageCursorTrust, cursor: { x: number, y: number } | null, nowMs: number): StageCursorTrust {
+  if (trust.reading?.x === cursor?.x && trust.reading?.y === cursor?.y)
+    return trust
+  return { reading: cursor ? { x: cursor.x, y: cursor.y } : null, changedAtMs: nowMs, stale: false }
+}
+
+/**
+ * Checks the host reading against a pointer event the window received, in window DIP.
+ *
+ * A captured stage receives the real pointer position, so a reading that stood still for
+ * {@link stageCursorStaleAfterMs} while the window saw the pointer elsewhere is stale. On X11 the Electron cursor stays
+ * put under a foreign fullscreen window; a stale reading over the character would keep the whole stage capturing.
+ */
+export function contradictStageCursor(trust: StageCursorTrust, pointer: { x: number, y: number }, nowMs: number): StageCursorTrust {
+  const { reading } = trust
+  if (!reading || trust.stale || nowMs - trust.changedAtMs < stageCursorStaleAfterMs)
+    return trust
+  if (Math.abs(pointer.x - reading.x) <= cursorAgreementDip && Math.abs(pointer.y - reading.y) <= cursorAgreementDip)
+    return trust
+  return { ...trust, stale: true }
+}
+
+/** The cursor the hit test may use: the host reading, unless the window contradicted it. */
+export function trustedStageCursor(trust: StageCursorTrust): { x: number, y: number } | null {
+  return trust.stale ? null : trust.reading
 }

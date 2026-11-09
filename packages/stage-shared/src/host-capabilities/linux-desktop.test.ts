@@ -65,6 +65,8 @@ const rows: ResolutionRow[] = [
   { name: 'verified native Wayland click through is emulated', facts: { clickThroughToggle: true, cursorVerified: true, geometryVerified: true }, signals: { clickThroughForward: { kind: 'degraded', reason: 'linux-click-through-emulated' } } },
   { name: 'required case a XWayland KWin click through uses Electron origin', host: 'linux-xwayland', facts: { clickThroughToggle: true, cursorVerified: true }, signals: { windowOrigin: live, clickThroughForward: { kind: 'degraded', reason: 'linux-click-through-emulated' } } },
   { name: 'X11 click through uses existing live coordinates', host: 'linux-x11', facts: { backend: 'x11-ewmh', clickThroughToggle: true }, signals: { clickThroughForward: { kind: 'degraded', reason: 'linux-click-through-emulated' } } },
+  { name: 'X11 click through is emulated while the bridge starts', host: 'linux-x11', facts: { backend: 'x11-ewmh', bridge: 'starting', clickThroughToggle: true }, signals: { clickThroughForward: { kind: 'degraded', reason: 'linux-click-through-emulated' } } },
+  { name: 'a failed bridge ends emulated click through even with live X11 coordinates', host: 'linux-x11', facts: { backend: 'x11-ewmh', bridge: 'failed', clickThroughToggle: true }, signals: { cursorScreenPoint: live, windowOrigin: live, clickThroughForward: { kind: 'unavailable', reason: 'linux-no-click-through-forward' } } },
   { name: 'XWayland idle stays unavailable even with all bridge proofs', host: 'linux-xwayland', facts: { cursorVerified: true, geometryVerified: true }, signals: { systemIdleTime: { kind: 'unavailable', reason: 'xwayland-idle-constant-zero' } } },
 ]
 

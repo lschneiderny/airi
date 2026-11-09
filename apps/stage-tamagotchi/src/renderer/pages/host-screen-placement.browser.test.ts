@@ -97,12 +97,10 @@ describe.each([['classic', MainPage], ['desktop', StagePage]] as const)('%s scre
     if (host === 'linux-wayland')
       await expect.element(view.getByTestId('stage-cursor')).toHaveTextContent('undefined')
     if (component === StagePage) {
-      // A missing first cursor reading must not capture the desktop on a live host.
+      // A missing first cursor reading must not capture the desktop on a live host, and a host without usable
+      // click-through (linux-wayland without the bridge) never captures it.
       stageFrame.value?.({ timestamp: 16, delta: 16 })
-      if (host === 'linux-wayland')
-        expect(setIgnoreMouseEvents).toHaveBeenCalledWith([false, { forward: true }])
-      else
-        expect(setIgnoreMouseEvents).not.toHaveBeenCalledWith([false, { forward: true }])
+      expect(setIgnoreMouseEvents).not.toHaveBeenCalledWith([false, { forward: true }])
     }
     else {
       cursorAvailable.value = host !== 'linux-wayland'

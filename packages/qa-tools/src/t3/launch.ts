@@ -13,6 +13,8 @@ import { spawnPnpm } from '../env/pnpm'
 
 /** The main stage window: the synced leader on the root route. */
 export const stageTargetPattern = /synced-leader=true[^#]*#\/$/
+/** The leader page of the full-screen desktop stage (`#/stage`). */
+export const desktopStageTargetPattern = /synced-leader=true[^#]*#\/stage$/
 
 /** The environment of a rendered run: fresh profile, CDP on a free port without the system browser, and the bridge gate. */
 export function t3LaunchEnv(profileDir: string, port: number): Record<string, string> {
@@ -127,9 +129,9 @@ export function failOnExit<T>(app: LaunchedApp, step: string, work: Promise<T>):
 }
 
 /** Waits for the CDP endpoint and the main stage target, then connects to it. Each wait is bounded (120 s each). */
-export async function connectStage(app: LaunchedApp): Promise<{ stage: CdpClient, browserUrl: string, targetUrl: string }> {
+export async function connectStage(app: LaunchedApp, targetPattern = stageTargetPattern): Promise<{ stage: CdpClient, browserUrl: string, targetUrl: string }> {
   const browserUrl = await failOnExit(app, 'the remote debug endpoint', waitForRemoteDebug(app.port))
-  const target = await failOnExit(app, 'the main stage window', findDebugTarget(app.port, 'main stage window', candidate => candidate.type === 'page' && stageTargetPattern.test(candidate.url)))
+  const target = await failOnExit(app, 'the main stage window', findDebugTarget(app.port, 'main stage window', candidate => candidate.type === 'page' && targetPattern.test(candidate.url)))
   if (!target.webSocketDebuggerUrl)
     throw new Error(`The main stage target ${target.url} has no WebSocket debugger URL`)
   const stage = await CdpClient.connect(target.webSocketDebuggerUrl)

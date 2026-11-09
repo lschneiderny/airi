@@ -12,17 +12,20 @@ import { fileURLToPath } from 'node:url'
 import { is } from '@electron-toolkit/utils'
 import { errorMessageFrom } from '@moeru/std'
 import { initScreenCaptureForWindow } from '@proj-airi/electron-screen-capture/main'
+import { HostReasons } from '@proj-airi/stage-shared/host-capabilities'
 import { app, dialog, BrowserWindow as ElectronBrowserWindow, screen } from 'electron'
 
 import icon from '../../../../resources/icon.png?asset'
 
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
-import { readDisplays, readPrimaryDisplay, readWindowRect } from '../../services/electron/coordinates'
+import { onCompositorCursor, readDisplays, readPrimaryDisplay, readWindowRect } from '../../services/electron/coordinates'
+import { getCurrentHostCapabilities, onHostCapabilitiesChange } from '../../services/electron/host-capabilities'
 import { hideOnClose } from '../main/hide-on-close'
 import { mainWindowQuery } from '../main/query'
 import { setupMainWindowElectronInvokes } from '../main/rpc/index.electron'
 import { protectPrivilegedWindowNavigation } from '../shared'
 import { placeWindow } from '../shared/placement'
+import { watchStageClickThrough } from './click-through-fallback'
 import { defaultStageConfig, resolveHomeDisplay } from './config'
 import { bindStageWindowToHomeDisplay, readStageDisplays } from './displays'
 import { markStageWindow } from './identity'
@@ -32,7 +35,7 @@ import { applyStageInputIsolation, createStageWindowOptions } from './window-con
 
 export { createStageConfig, defaultStageConfig } from './config'
 export { centerUserFacingWindow, isStageWindow, showUserFacingWindow } from './identity'
-export { selectHostMode } from './mode'
+export { isLinuxStageEligible, selectHostMode } from './mode'
 export { createStageStateBroadcast } from './state-broadcast'
 
 export interface StageWindowHost extends Pick<StageWindowInvokes, 'getCharacterPlacement' | 'onCharacterPlacementChange'> {
@@ -107,6 +110,35 @@ export async function setupStageWindow(
   window.on('ready-to-show', () => window.showInactive())
   protectPrivilegedWindowNavigation(window)
 
+  // The page keeps ignoring the pointer while click-through is unusable; this offers the way out, once per launch.
+  window.once('show', () => {
+    const stopWatching = watchStageClickThrough({
+      status: () => getCurrentHostCapabilities().signals.clickThroughForward,
+      // The resolver reports a failed bridge through the foreground reason.
+      bridgeFailed: () => {
+        const foreground = getCurrentHostCapabilities().signals.foregroundWindow
+        return foreground.kind === 'unavailable' && (foreground.reason === HostReasons.LinuxBridgeFailed || foreground.reason === HostReasons.KwinApiUnsupported)
+      },
+      onChange: listener => onHostCapabilitiesChange(() => listener()),
+      onCursor: onCompositorCursor,
+      offer: () => {
+        console.warn('[stage] Click-through is not usable on this desktop; offering the classic window')
+        offerClassicWindowRelaunch({
+          window,
+          dialog,
+          i18n: params.i18n,
+          notice: 'click-through-notice',
+          relaunch: () => {
+            // The saved mode is the rollback path, so the relaunch builds the classic window.
+            params.config.update({ ...getConfig(), mode: 'window' })
+            relaunchApp()
+          },
+        }).catch(error => console.error('[stage] Failed to show the click-through notice:', errorMessageFrom(error)))
+      },
+    })
+    window.once('closed', stopWatching)
+  })
+
   // The stage page replaces the classic page, so it keeps every main-window invoke (controls, chat, inlay, settings).
   await setupMainWindowElectronInvokes({
     window,
@@ -135,7 +167,7 @@ export async function setupStageWindow(
     relaunch: relaunchApp,
     broadcast: params.broadcast,
     onLeaveMmd: () => {
-      offerClassicWindowRelaunch({ window, dialog, i18n: params.i18n, relaunch: relaunchApp })
+      offerClassicWindowRelaunch({ window, dialog, i18n: params.i18n, relaunch: relaunchApp, notice: 'leave-mmd-notice' })
         .catch(error => console.error('[stage] Failed to show the relaunch notice:', errorMessageFrom(error)))
     },
   })

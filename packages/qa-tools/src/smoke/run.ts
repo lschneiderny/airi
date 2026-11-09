@@ -7,7 +7,7 @@ import type { SmokeOptions } from './args'
 import process from 'node:process'
 
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, extname, resolve } from 'node:path'
+import { dirname, extname, join, resolve } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -16,7 +16,7 @@ import { killTree, listLiveProcesses } from '../env/processes'
 import { createRun } from '../evidence/run'
 import { MotionQaBridgeClient } from '../t3/bridge-client'
 import { importRig, zipRig } from '../t3/import-rig'
-import { connectStage, failOnExit, launchStageTamagotchi } from '../t3/launch'
+import { connectStage, desktopStageTargetPattern, failOnExit, launchStageTamagotchi, stageTargetPattern } from '../t3/launch'
 import { completeOnboarding } from '../t3/onboarding'
 import { closeBrowser } from '../t3/run-t3'
 import { captureStagePng } from '../t3/screenshot'
@@ -58,9 +58,14 @@ export async function runSmoke(options: SmokeOptions, repoRoot: string, signal: 
   const bounded = <T>(work: Promise<T>): Promise<T> => Promise.race([work, interrupted])
 
   try {
-    app = await launchStageTamagotchi({ repoRoot, profileDir, logFile: run.path('app.log'), list: listLiveProcesses, env: { AIRI_STAGE_HOST: 'window' } })
+    const desktop = options.stageHost === 'desktop'
+    // The desktop stage is enabled in the temporary profile the way the setting saves it, so the launch goes through
+    // `selectHostMode` and its platform gate. An empty AIRI_STAGE_HOST is not a mode, so it overrides nothing.
+    if (desktop)
+      writeFileSync(join(profileDir, 'stage-config.json'), `${JSON.stringify({ experimental: true, mode: 'desktop', activeRenderer: 'mmd' })}\n`)
+    app = await launchStageTamagotchi({ repoRoot, profileDir, logFile: run.path('app.log'), list: listLiveProcesses, env: { AIRI_STAGE_HOST: desktop ? '' : 'window' } })
     run.recordProcess({ rootPid: app.root.pid, created: app.root.created, commandLine: app.root.commandLine })
-    const connected = await bounded(connectStage(app))
+    const connected = await bounded(connectStage(app, desktop ? desktopStageTargetPattern : stageTargetPattern))
     stage = connected.stage
     browserUrl = connected.browserUrl
     tracked = trackTree(await listLiveProcesses(), app.root)

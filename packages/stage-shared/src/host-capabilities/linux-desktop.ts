@@ -102,6 +102,8 @@ export function applyLinuxDesktopCapabilities(host: HostId, desktop: LinuxDeskto
       break
   }
 
-  if (desktop.clickThroughToggle && signals.cursorScreenPoint.kind === 'live' && signals.windowOrigin.kind === 'live')
+  // A failed bridge means the desktop no longer matches what was verified, so emulation stops even where Electron
+  // still reports live X11 coordinates.
+  if (desktop.clickThroughToggle && desktop.bridge !== 'failed' && signals.cursorScreenPoint.kind === 'live' && signals.windowOrigin.kind === 'live')
     signals.clickThroughForward = { kind: 'degraded', reason: HostReasons.LinuxClickThroughEmulated }
 }

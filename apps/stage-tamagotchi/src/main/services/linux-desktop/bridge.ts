@@ -54,6 +54,8 @@ export interface DesktopDriver {
   /** KWin only: trusted actuator source. */
   runOneShot?: (source: string) => Promise<void>
   readActive?: () => Active
+  /** Pull drivers only: the pointer, read from the server on each cursor read. */
+  readCursor?: () => Cursor
 }
 
 function failureOf(error: unknown): BridgeFailure {
@@ -118,7 +120,11 @@ export class LinuxDesktopBridge {
   }
 
   ownWindows(): OwnWindows { return this.own }
-  cursor(): Cursor { return this.pointer }
+  cursor(): Cursor {
+    const read = this.driver?.readCursor
+    return read && this.pullReady ? read() : this.pointer
+  }
+
   outputs(): Outputs { return this.screens }
   /** Only a ready bridge owns readings; until then Electron's gated readings apply. */
   ready(): boolean { return this.status === 'ready' }

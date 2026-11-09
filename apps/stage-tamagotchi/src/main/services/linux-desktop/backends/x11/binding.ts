@@ -8,6 +8,7 @@ interface NativeBinding {
   readonly XInternAtom: (display: Pointer, name: string, onlyIfExists: number) => number
   // This signature mirrors Xlib's ABI, including its five output arguments.
   readonly XGetWindowProperty: (display: Pointer, window: number, property: number, offset: number, length: number, deleteProperty: number, requestedType: number, actualType: [number], format: [number], count: [number], remaining: [number], data: [Pointer]) => number
+  readonly XQueryPointer: (display: Pointer, window: number, root: [number], child: [number], rootX: [number], rootY: [number], windowX: [number], windowY: [number], mask: [number]) => number
   readonly XFree: (data: Pointer) => number
   readonly XCloseDisplay: (display: Pointer) => number
   readonly XSetErrorHandler: (handler: Pointer) => Pointer
@@ -50,6 +51,7 @@ export class X11Binding {
       XDefaultRootWindow: library.func('unsigned long XDefaultRootWindow(void *display)'),
       XInternAtom: library.func('unsigned long XInternAtom(void *display, const char *name, int only_if_exists)'),
       XGetWindowProperty: library.func('int XGetWindowProperty(void *display, unsigned long window, unsigned long property, long offset, long length, int delete_property, unsigned long requested_type, _Out_ unsigned long *actual_type, _Out_ int *format, _Out_ unsigned long *count, _Out_ unsigned long *remaining, _Out_ void **data)'),
+      XQueryPointer: library.func('int XQueryPointer(void *display, unsigned long window, _Out_ unsigned long *root, _Out_ unsigned long *child, _Out_ int *root_x, _Out_ int *root_y, _Out_ int *window_x, _Out_ int *window_y, _Out_ unsigned int *mask)'),
       XFree: library.func('int XFree(void *data)'),
       XCloseDisplay: library.func('int XCloseDisplay(void *display)'),
       XSetErrorHandler: library.func('void *XSetErrorHandler(void *handler)'),
@@ -124,6 +126,27 @@ export class X11Binding {
       if (data[0])
         this.native.XFree(data[0])
     }
+  }
+
+  /**
+   * The pointer position on the root window in X11 pixels, asked of the server on each call, or `null` while the
+   * pointer is on another screen.
+   */
+  pointer(): { x: number, y: number } | null {
+    if (this.closed)
+      throw new X11BackendError('display-unavailable')
+    const root: [number] = [0]
+    const child: [number] = [0]
+    const rootX: [number] = [0]
+    const rootY: [number] = [0]
+    const windowX: [number] = [0]
+    const windowY: [number] = [0]
+    const mask: [number] = [0]
+    if (!this.native.XQueryPointer(this.display, this.root, root, child, rootX, rootY, windowX, windowY, mask))
+      return null
+    if (!Number.isSafeInteger(rootX[0]) || !Number.isSafeInteger(rootY[0]))
+      throw new X11BackendError('property-invalid')
+    return { x: rootX[0], y: rootY[0] }
   }
 
   close(): void {

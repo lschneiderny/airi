@@ -12,7 +12,11 @@ export interface X11EwmhBackendOptions {
   readonly display: string
 }
 
-/** On-demand EWMH reads only. Electron remains the X11 coordinate authority. */
+/**
+ * On-demand reads only: the EWMH active window and the root pointer. Electron keeps window rectangles and displays.
+ * The pointer comes from the server because Electron's X11 cursor is a cache that only events on its own windows
+ * refresh, and a click-through window receives none.
+ */
 export class X11EwmhBackend {
   private binding: X11Binding | undefined
   private starting: Promise<void> | undefined
@@ -47,6 +51,11 @@ export class X11EwmhBackend {
     this.binding?.close()
     this.binding = undefined
     await this.starting
+  }
+
+  /** The root pointer in X11 pixels, or `null` before the display opened or while the pointer is on another screen. */
+  pointer(): { x: number, y: number } | null {
+    return this.binding?.pointer() ?? null
   }
 
   activeWindow(): X11ActiveWindow | null {

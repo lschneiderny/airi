@@ -48,8 +48,9 @@ import {
   electronStageSetHome,
   electronStageStateChanged,
 } from '../../shared/eventa'
+import { isStageClickThroughUsable } from '../../shared/stage-click-through'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
-import { createStageClickThroughState, createStageHitReadState, isInsidePaddedRect, planStageHitRead, resolveStageClickThrough } from '../composables/stage-click-through'
+import { contradictStageCursor, createStageClickThroughState, createStageCursorTrust, createStageHitReadState, isInsidePaddedRect, observeStageCursor, planStageHitRead, resolveStageClickThrough, trustedStageCursor } from '../composables/stage-click-through'
 import { usePresenceNotice } from '../composables/use-presence-notice'
 import { usePushToTalkShortcut } from '../composables/use-push-to-talk-shortcut'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
@@ -385,8 +386,16 @@ useEventListener(window, 'pointercancel', endPress)
 
 // Click-through: no readback outside her padded rect; inside, one readback per frame (`resolveStageClickThrough`).
 
-// Plain desktop UI starts click-through, as before the host probe existed. Cursor reads still wait.
-const clickThroughAvailable = computed(() => (hostCapabilities.status('clickThroughForward')?.kind ?? 'live') === 'live')
+// The window starts click-through and stays so until click-through is usable: live forwarding, or Linux emulation.
+// Unusable click-through lets everything through, because a captured full-screen stage would trap the desktop.
+const clickThroughUsable = computed(() => isStageClickThroughUsable(hostCapabilities.status('clickThroughForward')))
+// Emulation decides from the host cursor alone, so the window's own pointer events check that reading.
+const clickThroughEmulated = computed(() => clickThroughUsable.value && hostCapabilities.status('clickThroughForward')?.kind === 'degraded')
+let cursorTrust = createStageCursorTrust()
+useEventListener(window, 'pointermove', (event: PointerEvent) => {
+  if (clickThroughEmulated.value)
+    cursorTrust = contradictStageCursor(cursorTrust, { x: event.clientX, y: event.clientY }, performance.now())
+})
 
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
 let clickThrough = createStageClickThroughState()
@@ -439,13 +448,15 @@ function readHit(cursor: { x: number, y: number }, request: boolean): boolean | 
 let hitRead = createStageHitReadState()
 
 useRafFn(({ timestamp }) => {
-  const cursor = cursorPosition.value ?? null
+  cursorTrust = observeStageCursor(cursorTrust, cursorPosition.value ?? null, timestamp)
+  const cursor = clickThroughEmulated.value ? trustedStageCursor(cursorTrust) : cursorTrust.reading
   const rect = placementRect.value
-  const forceCapture = stagePaused.value || !clickThroughAvailable.value || press.value !== null || controlsHoldPointer.value
-  const plan = planStageHitRead(hitRead, { nowMs: timestamp, cursor, rect, forceCapture })
+  const forceIgnore = !clickThroughUsable.value
+  const forceCapture = stagePaused.value || press.value !== null || controlsHoldPointer.value
+  const plan = planStageHitRead(hitRead, { nowMs: timestamp, cursor, rect, forceCapture, forceIgnore })
   hitRead = plan.state
   const hit = cursor ? readHit(cursor, plan.read) : undefined
-  const result = resolveStageClickThrough(clickThrough, { nowMs: timestamp, cursor, rect, forceCapture, hit })
+  const result = resolveStageClickThrough(clickThrough, { nowMs: timestamp, cursor, rect, forceCapture, forceIgnore, hit })
   clickThrough = result.state
   if (result.changed)
     setIgnoreMouseEvents([result.state.ignoring, { forward: true }])

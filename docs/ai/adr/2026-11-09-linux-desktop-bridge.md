@@ -26,7 +26,7 @@ KWin confirms the current owner of `org.kde.KWin` before loading a script.
 | Backend | Selected when | Explicit input from `env` | Ready after | Readings | Failure |
 | --- | --- | --- | --- | --- | --- |
 | `kwin` | KDE desktop name | Session bus, `XDG_RUNTIME_DIR` | Supported Hello | Pushed active window, own windows, cursor stream | Owner loss, unsupported API, two-second Hello deadline |
-| `x11-ewmh` | X11 session only, never XWayland | `DISPLAY` | One display connection opened | Active window read on demand from `_NET_ACTIVE_WINDOW`; Electron keeps cursor, origin and displays | Display unavailable, or a failed read |
+| `x11-ewmh` | X11 session only, never XWayland | `DISPLAY` | One display connection opened | Active window read on demand from `_NET_ACTIVE_WINDOW`, and the pointer read from the server with `XQueryPointer` on each cursor read; Electron keeps origin and displays | Display unavailable, or a failed read |
 | `sway` | `SWAYSOCK` | `SWAYSOCK` | Subscription, outputs and first tree | Pushed active window, own-window geometry and outputs (`GET_OUTPUTS`, refreshed on `output` events); no cursor (`sway-cursor-unreported`) | Socket missing, closed, malformed or timed out |
 | `hyprland` | `HYPRLAND_INSTANCE_SIGNATURE` | `XDG_RUNTIME_DIR`, `HYPRLAND_INSTANCE_SIGNATURE` | Event socket and first replies | Pushed active window and own-window geometry; monitors as `Outputs` (`j/monitors`, refreshed on `monitoradded`/`monitorremoved` and their v2 events; logical layout position and size, with scale); cursor once per cursor-loop tick (`requestCursor`) | Missing or escaping signature, socket closed, reply too large, timed out or unreadable monitors reply |
 
@@ -108,7 +108,7 @@ origins but no global cursor; native Wayland has no trusted window origin.
 | System idle | E | E | E | E | E | E | Existing advancing-idle verifier; XWayland remains unavailable |
 | Screen lock | L | L | L | L | L | L | Successful logind or ScreenSaver read and subscription |
 | Global key-up | L on Wayland/XWayland; E on X11 | E | L | L | L | L where portal is bound | Accepted portal binding, todo 11; existing X11 hook |
-| Click-through | Limited/emulated when cursor and origin are live | Limited/emulated | U without cursor | Limited/emulated when cursor and origin are live | E | E | Version primitive plus live cursor and origin; stage integration is todo 13 |
+| Click-through | Limited/emulated when cursor and origin are live | Limited/emulated | U without cursor | Limited/emulated when cursor and origin are live | E | E | Version primitive plus live cursor and origin, while the bridge has not failed; only the desktop stage consumes it |
 | System audio | L | L | L | L | L | L | Capture verification, todo 12; otherwise existing degraded status |
 
 Until verification, the resolver publishes its `*-verifying` reasons.
@@ -117,6 +117,43 @@ Startup publishes `linux-bridge-starting`; failure publishes
 the static status of the other signals. A compositor owner change clears all
 compositor readings and verification immediately, then a successful reload
 returns to ready with verification still false.
+
+### Desktop stage
+
+`selectHostMode` builds the desktop stage on Linux only when
+`isLinuxStageEligible` holds: `detectLinuxDesktop(env)` names `kwin` or
+`x11-ewmh`, and Electron is at least 43.7.6. `main/index.ts` computes it
+synchronously at launch, and the stage RPC's `next` host recomputes it from
+the same environment and version. This is a launch gate beside the host
+capability service, not a capability claim, so it does not break the rule that
+consumers never detect Linux to answer a capability question. sway, Hyprland,
+GNOME and unknown compositors keep the classic window.
+
+The stage window starts click-through. The stage page captures the pointer only
+while `clickThroughForward` is usable: live, or
+`degraded(linux-click-through-emulated)`. Emulation needs the version
+primitive, live cursor and origin, and a bridge that has not failed; a failed
+bridge ends it even on X11, where Electron still reports live coordinates.
+Otherwise the page forces click-through, ahead of a press, a pause or the
+controls. Under emulation the page also checks the host cursor against its own
+pointer events: a reading that stood still for 250 ms while the window saw the
+pointer elsewhere is withheld until it moves, so a cursor source that stops
+following the pointer (as Electron's X11 cursor did, see Coordinate ownership)
+releases the stage instead of holding it.
+
+Main watches the same status from the moment the stage window shows. It offers
+the classic window once per launch (`click-through-notice`) at once when the
+bridge has failed (the snapshot's foreground reason is `linux-bridge-failed`
+or `kwin-api-unsupported`) or usable click-through is taken away (a
+revocation), and when click-through is still unusable 15 seconds after the
+pointer first moved. The first move is the first compositor cursor reading
+that differs from the first one reported after the stage showed. A pointer
+that never moves gets no offer, and the stage keeps ignoring it without a time
+limit (Luke, 2026-11-09: "Start the 15 s at first move"). Accepting saves the stage mode `window` and
+relaunches; dismissing keeps the stage running and ignoring the pointer.
+Nothing about this is persisted except that mode choice. Only the desktop stage
+consumes emulated click-through: the voice inlay, captions and floating chat
+keep treating anything but live as unavailable.
 
 Lock and busy sources operate independently of compositor readiness. Only
 lock transitions are forwarded, through the existing power-monitor events
@@ -133,13 +170,14 @@ read, so Electron and compositor origins never meet in one computation:
 
 | Backend | Session | Cursor | Window rect | Displays |
 | --- | --- | --- | --- | --- |
-| `x11-ewmh`, `gnome`, `none` | any | Electron, gated | Electron, gated | Electron |
+| `x11-ewmh` | X11 | bridge (`XQueryPointer`, converted to DIP) | Electron, gated | Electron |
+| `x11-ewmh`, `gnome`, `none` | any other | Electron, gated | Electron, gated | Electron |
 | `kwin`, `hyprland` | XWayland | bridge | Electron | Electron |
 | `kwin`, `hyprland` | native Wayland | bridge | bridge | bridge outputs |
 | `sway` | XWayland | none | Electron | Electron |
 | `sway` | native Wayland | none | bridge | bridge outputs |
 
-Native X11 sessions keep Electron for every reading on every backend. Bridge
+Native X11 sessions keep Electron's window rectangles and displays on every backend. The `x11-ewmh` backend owns the X11 cursor because Electron's is a cache: Chromium's `X11ScreenOzone::GetCursorScreenPointPx` returns the location of the last pointer event on its own windows and skips `QueryPointer` while a location is cached. A click-through window receives no events, so live QA of the desktop stage on Xvfb read `(960, 540)`, the pointer's start position, wherever the pointer went. The backend asks the server on each read, and `coordinates.ts` converts the server pixels to DIP with `screen.screenToDipPoint`, the space of Electron's window rectangles. Without a ready bridge, X11 falls back to Electron's cursor. Bridge
 displays are Electron displays moved to the origin of the output with the same
 size and scale; a display without exactly one such output leaves Electron's
 displays in place and withholds geometry verification.

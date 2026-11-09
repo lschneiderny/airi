@@ -39,6 +39,10 @@ export function createLinuxDesktopBridge(options: {
     'kwin': (transport, callbacks) => new KwinBackend({ transport, tempDir, ownPids, ...callbacks }),
     'x11-ewmh': (_bus, { onFailure, onState }) => {
       const backend = new X11EwmhBackend({ sessionType: session, display: env.DISPLAY ?? '' })
+      function fail(error: unknown) {
+        void backend.stop()
+        onFailure(error instanceof X11BackendError ? error.reason : 'transport-failed')
+      }
       return {
         start: async () => {
           await backend.start()
@@ -51,8 +55,16 @@ export function createLinuxDesktopBridge(options: {
             return active && { ...active, desktopFileName: '' }
           }
           catch (error) {
-            void backend.stop()
-            onFailure(error instanceof X11BackendError ? error.reason : 'transport-failed')
+            fail(error)
+            return null
+          }
+        },
+        readCursor: () => {
+          try {
+            return backend.pointer()
+          }
+          catch (error) {
+            fail(error)
             return null
           }
         },

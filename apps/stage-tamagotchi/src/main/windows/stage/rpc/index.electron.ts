@@ -5,7 +5,7 @@ import type { StageConfig } from '../config'
 import type { StageScreen } from '../displays'
 import type { StageStateBroadcast } from '../state-broadcast'
 
-import { env, platform } from 'node:process'
+import { env, platform, versions } from 'node:process'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { boolean, number, object, picklist, safeParse, string } from 'valibot'
@@ -25,7 +25,7 @@ import {
 import { createWindowContext } from '../../../libs/electron/window-context'
 import { buildStageHostState, withStageHome, withStageHomeDisplay } from '../config'
 import { readStageDisplays } from '../displays'
-import { selectHostMode } from '../mode'
+import { isLinuxStageEligible, selectHostMode } from '../mode'
 
 const rectSchema = object({ x: number(), y: number(), width: number(), height: number() })
 const placementSchema = object({ displayId: string(), bounds: rectSchema, homeBounds: rectSchema })
@@ -85,7 +85,8 @@ export function setupStageWindowInvokes(params: {
       config,
       displays: readStageDisplays(params.screen),
       running: params.running,
-      next: selectHostMode(config, platform, env, { development: import.meta.env.DEV }),
+      // The same inputs as the launch in `main/index.ts`, so `next` predicts what a relaunch builds.
+      next: selectHostMode(config, platform, env, { development: import.meta.env.DEV }, isLinuxStageEligible(env, versions.electron)),
     })
   }
 

@@ -76,7 +76,7 @@ Each signal cell is the canonical result of `capabilitiesForHost(host)`.
 | Foreground awareness | Yes | Yes | No | No | No | No |
 | Push-to-talk key-up | Yes | Yes | Yes | No | No | No |
 | Click-through | Yes | Yes | No | No | No | No |
-| Desktop stage | Yes | Yes | No | No | No | No |
+| Desktop stage | Yes | Yes | Limited (KWin or EWMH; emulated click-through) | Limited (KWin; emulated click-through) | Limited (KWin; emulated click-through) | No |
 
 The feature cells name the inputs the host can deliver to the performance
 resolver. Watching requires a visible stage and a user who is not away; it can
@@ -101,8 +101,11 @@ cannot detect desktop absence.
 
 The Windows and macOS sensor behavior remains the reference behavior. Linux
 screen placement remains available under X11 and XWayland, where window
-coordinates are reported. Desktop stage is unavailable on Linux because
-click-through forwarding is unavailable.
+coordinates are reported. Linux has no forwarded click-through, so the desktop
+stage launches only on KWin or an EWMH X11 session with Electron 43.7.6 or
+later, and captures the pointer only while the bridge's emulated click-through
+(`degraded(linux-click-through-emulated)`) resolves. The launch gate and the
+fallback are described in `2026-11-09-linux-desktop-bridge.md`, Desktop stage.
 
 Without click-through forwarding, a transparent window that must stay usable
 also takes every click over its empty area. The voice inlay therefore hides

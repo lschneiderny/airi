@@ -72,7 +72,7 @@ describe('error triage', () => {
 
 describe('smoke arguments', () => {
   it('defaults to no model and a 20 second settle', () => {
-    expect(parseSmokeArgs([], '/repo')).toEqual({ model: undefined, kind: 'live2d', settleMs: 20_000, allow: undefined, out: undefined })
+    expect(parseSmokeArgs([], '/repo')).toEqual({ model: undefined, kind: 'live2d', stageHost: 'window', settleMs: 20_000, allow: undefined, out: undefined })
   })
 
   it('resolves paths against the caller and infers the model kind', () => {
@@ -83,5 +83,12 @@ describe('smoke arguments', () => {
     expect(() => parseSmokeArgs(['run'], '/repo')).toThrow(SmokeUsageError)
     expect(() => parseSmokeArgs(['--kind', 'mmd'], '/repo')).toThrow('--kind needs --model')
     expect(() => parseSmokeArgs(['--settle', '601'], '/repo')).toThrow(SmokeUsageError)
+  })
+
+  it('runs the desktop stage host only for an MMD model', () => {
+    expect(parseSmokeArgs(['--stage-host', 'desktop', '--model', 'm/a.pmx'], '/repo')).toMatchObject({ stageHost: 'desktop', kind: 'mmd' })
+    expect(() => parseSmokeArgs(['--stage-host', 'desktop'], '/repo')).toThrow('--stage-host desktop needs an MMD --model')
+    expect(() => parseSmokeArgs(['--stage-host', 'desktop', '--model', 'm/a.vrm'], '/repo')).toThrow('--stage-host desktop needs an MMD --model')
+    expect(() => parseSmokeArgs(['--stage-host', 'stage'], '/repo')).toThrow()
   })
 })
