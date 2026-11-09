@@ -156,6 +156,8 @@ export interface UiohookDriver {
   tryRegister: (binding: ShortcutBinding) => ShortcutRegistrationResult
   unregisterById: (id: string) => void
   unregisterAll: () => void
+  /** Tells if the OS hook runs. `tryRegister` accepts a binding even when the hook failed to start. */
+  isRunning: () => boolean
   dispose: () => void
 }
 
@@ -321,5 +323,5 @@ export function createUiohookDriver(options: UiohookDriverOptions): UiohookDrive
     }
   }
 
-  return { tryRegister, unregisterById, unregisterAll, dispose }
+  return { tryRegister, unregisterById, unregisterAll, isRunning: () => started, dispose }
 }

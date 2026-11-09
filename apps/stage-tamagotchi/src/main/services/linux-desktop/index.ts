@@ -43,6 +43,7 @@ export function createLinuxDesktopBridge(options: {
     ownPids,
     report: reportLinuxDesktop,
     createBackend: (bus, callbacks) => factory?.(bus, callbacks),
+    openSessionBus: () => DbusTransport.session(sessionAddress),
     connect: async () => {
       const [session, system] = await Promise.allSettled([
         options.sessionBus ?? DbusTransport.session(sessionAddress),

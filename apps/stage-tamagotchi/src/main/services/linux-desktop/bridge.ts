@@ -21,6 +21,7 @@ export type LinuxDesktopBridgeState = 'starting' | 'ready' | 'failed' | 'stopped
 interface BridgeOptions {
   readonly backend: LinuxDesktopBackend
   readonly connect: () => Promise<{ sessionBus: DbusTransport, systemBus: DbusTransport | null }>
+  readonly openSessionBus: () => Promise<DbusTransport>
   readonly createBackend: (bus: DbusTransport, callbacks: Pick<KwinBackendOptions, 'onMessage' | 'onFailure' | 'onState' | 'onCursorReset'>) => KwinBackend | undefined
   readonly report: (patch: Partial<LinuxDesktopFacts>) => void
   readonly ownPids: () => readonly number[]
@@ -147,6 +148,14 @@ export class LinuxDesktopBridge {
       }
     })()
     return this.stopping
+  }
+
+  /**
+   * Opens another connection to the bridge's session bus, owned by the caller. The GlobalShortcuts
+   * portal needs its own connection, because Registry.Register must be its first portal call.
+   */
+  openSessionBus(): Promise<DbusTransport> {
+    return this.options.openSessionBus()
   }
 
   /** Without a running cursor script the last position has no source, so stopping drops it. */

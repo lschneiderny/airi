@@ -11,6 +11,7 @@
   },
   "homepage": "https://airi.moeru.ai/docs/",
   "main": "./out/main/index.js",
+  "desktopName": "ai.moeru.airi.desktop",
   "scripts": {
     "lint": "eslint --cache .",
     "typecheck": "vue-tsc --noEmit",
