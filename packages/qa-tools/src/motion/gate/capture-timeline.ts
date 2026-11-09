@@ -33,8 +33,12 @@ export async function captureTimeline(options: {
     else {
       const { performanceMode, performance, host } = await options.readState()
       options.modeSamples.push({ at: check.at, performanceMode, performance, host })
-      if (options.idleAfterSeconds !== undefined && check.at >= options.idleAfterSeconds && performanceMode !== 'idle')
-        throw new Error(`mode-left-idle at ${check.at} s: ${performanceMode ?? 'unknown'}`)
+      if (options.idleAfterSeconds !== undefined && check.at >= options.idleAfterSeconds) {
+        if (performanceMode !== 'idle')
+          throw new Error(`mode-left-idle at ${check.at} s: ${performanceMode ?? 'unknown'}`)
+        if (options.samplePerformance && performance?.away !== false)
+          throw new Error(`away-active at ${check.at} s: ${performance?.away ?? 'unknown'}`)
+      }
     }
   }
 }

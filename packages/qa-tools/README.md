@@ -310,6 +310,10 @@ Host-profile T3 captures record performance samples every ten seconds from scena
 
 A standalone `qa:motion t3 --rig forbooth --scenario <file.json>` whose scenario declares `settings.host` records the same samples without imposing a gate verdict. It is suitable for one-seed diagnostics, not three-capture gate acceptance. The ten-second sample interval bounds transition timing; a sample does not prove that the state stayed unchanged between reads.
 
+Host-profile liveliness captures target idle with away inactive. Each scored sample must report `performance.away === false`, otherwise the capture fails with `away-active`, including when the diagnostics are missing. The harness records the rejected sample and does not suppress away, override the resolver, or change sensor readings.
+
+The unchanged T3 capture lasts 600 seconds: 180 seconds of warm-up and 420 scored seconds. With verified, advancing native Wayland idle sensing and no input, the resolver enters away above 300 idle seconds. The instrumented capture observed this between 290 and 300 seconds, inside the scored window. Such an unattended capture cannot finish as idle-only; the harness now reports that limitation instead of changing the resolver or shortening the measurement. An unavailable idle sensor remains a different condition: it supplies null and cannot trigger inactivity-driven away.
+
 ## Evidence
 
 After argument and environment checks pass, `pnpm qa:test`, `pnpm qa:motion gate` at T1, T2, or T3, direct `pnpm qa:motion t3`, and `pnpm qa:motion validate-scorer` create unique runs under `.temp/qa/<timestamp>-<tool>-<label>/`. Each run's `run.json` records its command, source SHA, dirty state, relevant `APP_*` and `AIRI_QA_*` environment values, gate provenance when applicable, artifact hashes, and result. A T3 gate also creates one run per capture session. An emotion `--rescore` creates its new run only after the archive passes validation; a refusal exits 2 before creating it. The standalone `t2:probe` prints a JSON summary and creates no run directory.
