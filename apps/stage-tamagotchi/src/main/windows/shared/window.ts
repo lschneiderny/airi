@@ -198,7 +198,7 @@ export async function setupBaseWindowElectronInvokes(params: {
     : { bridge: undefined }
   createPowerMonitorService({ context: params.context, window: params.window, bridge })
   createDesktopActivityService({ context: params.context, window: params.window })
-  createForegroundWindowService({ context: params.context, window: params.window, getSidecarPid: params.getSidecarPid })
+  createForegroundWindowService({ context: params.context, window: params.window, getSidecarPid: params.getSidecarPid, bridge })
   createSystemPreferencesService({ context: params.context, window: params.window })
 
   await createI18nService({ context: params.context, window: params.window, i18n: params.i18n })

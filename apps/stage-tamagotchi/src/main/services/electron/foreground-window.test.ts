@@ -11,6 +11,7 @@ import { createForegroundWindowService } from './foreground-window'
 const host = vi.hoisted(() => ({
   isWindows: true,
   isMacOS: false,
+  isLinux: false,
 }))
 
 const darwin = vi.hoisted(() => ({
@@ -25,7 +26,7 @@ vi.mock('./foreground-window-darwin', () => ({
 }))
 
 /** The process-wide foreground status; the real snapshot is covered in foreground-window.trust.test.ts. */
-const snapshot = vi.hoisted(() => ({ foregroundUnavailable: false }))
+const snapshot = vi.hoisted(() => ({ foregroundUnavailable: false, reportLinuxDesktop: vi.fn() }))
 
 vi.mock('./host-capabilities', () => ({
   getCurrentHostCapabilities: () => ({
@@ -34,6 +35,7 @@ vi.mock('./host-capabilities', () => ({
   reportForegroundBindingFailed: () => {
     snapshot.foregroundUnavailable = true
   },
+  reportLinuxDesktop: snapshot.reportLinuxDesktop,
 }))
 
 const appMock = vi.hoisted(() => ({
@@ -114,13 +116,29 @@ vi.mock('std-env', () => ({
   get isMacOS() {
     return host.isMacOS
   },
+  get isLinux() {
+    return host.isLinux
+  },
 }))
+
+/** Above the 64-bit kernel's pid_max, so `/proc/<pid>/exe` can never resolve on the test host. */
+const MISSING_PID = 4194305
+
+function createBridge(backend: string, active: { caption: string, resourceClass: string, desktopFileName: string, pid: number, fullScreen: boolean } | null) {
+  return {
+    backend,
+    activeWindow: () => active,
+    busyHint: () => null,
+    onActive: () => () => {},
+  }
+}
 
 describe('createForegroundWindowService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     host.isWindows = true
     host.isMacOS = false
+    host.isLinux = false
     snapshot.foregroundUnavailable = false
     darwin.load.mockResolvedValue({})
     darwin.createSampler.mockReturnValue(darwin.sample)
@@ -157,11 +175,74 @@ describe('createForegroundWindowService', () => {
     })
   })
 
-  function createReader(getSidecarPid?: () => number | null) {
+  function createReader(getSidecarPid?: () => number | null, bridge?: ReturnType<typeof createBridge>, window: object = { once: vi.fn(), on: vi.fn(), off: vi.fn() }) {
     const context = createContext()
-    createForegroundWindowService({ context: context as never, window: { once: vi.fn() } as never, getSidecarPid })
+    createForegroundWindowService({ context: context as never, window: window as never, getSidecarPid, bridge: bridge as never })
     return defineInvoke(context, electron.foregroundWindow.sample)
   }
+
+  describe('on Linux', () => {
+    const konsole = { caption: 'luke@host:~', resourceClass: 'org.kde.konsole', desktopFileName: 'org.kde.konsole', pid: MISSING_PID, fullScreen: false }
+
+    beforeEach(() => {
+      host.isWindows = false
+      host.isLinux = true
+    })
+
+    it.each(['kwin', 'x11-ewmh', 'sway', 'hyprland'])('samples the %s bridge without loading koffi', async (backend) => {
+      await expect(createReader(undefined, createBridge(backend, konsole))()).resolves.toEqual({
+        exePath: null,
+        exeName: 'org.kde.konsole',
+        title: 'luke@host:~',
+        pid: MISSING_PID,
+        ownProcess: false,
+        busy: 'accepts',
+        sampledAtMs: expect.any(Number),
+      })
+      expect(koffiMock.load).not.toHaveBeenCalled()
+    })
+
+    it('marks the main process window as its own', async () => {
+      await expect(createReader(undefined, createBridge('kwin', { ...konsole, pid: process.pid }))()).resolves.toMatchObject({ pid: process.pid, ownProcess: true })
+    })
+
+    it.each(['gnome', 'none'])('resolves null for the %s backend', async (backend) => {
+      await expect(createReader(undefined, createBridge(backend, konsole))()).resolves.toBeNull()
+    })
+
+    it('resolves null without a bridge', async () => {
+      await expect(createReader()()).resolves.toBeNull()
+    })
+
+    it('resolves null while the snapshot holds the foreground signal unavailable', async () => {
+      snapshot.foregroundUnavailable = true
+
+      await expect(createReader(undefined, createBridge('kwin', konsole))()).resolves.toBeNull()
+    })
+
+    it('verifies the foreground reading when an AIRI window gains focus and is active', () => {
+      const listeners = new Map<string, () => void>()
+      const window = {
+        once: vi.fn((event: string, listener: () => void) => listeners.set(`once:${event}`, listener)),
+        on: vi.fn((event: string, listener: () => void) => listeners.set(event, listener)),
+        off: vi.fn(),
+      }
+      createReader(undefined, createBridge('kwin', { ...konsole, pid: process.pid }), window)
+
+      listeners.get('focus')?.()
+      expect(snapshot.reportLinuxDesktop).toHaveBeenCalledExactlyOnceWith({ foregroundVerified: true })
+
+      listeners.get('once:closed')?.()
+      expect(window.off).toHaveBeenCalledWith('focus', listeners.get('focus'))
+    })
+
+    it('does not listen for focus on a backend without a foreground reading', () => {
+      const window = { once: vi.fn(), on: vi.fn(), off: vi.fn() }
+      createReader(undefined, createBridge('gnome', konsole), window)
+
+      expect(window.on).not.toHaveBeenCalled()
+    })
+  })
 
   it('reads the title, the executable, and busy, and closes the process handle', async () => {
     const sample = await createReader()()

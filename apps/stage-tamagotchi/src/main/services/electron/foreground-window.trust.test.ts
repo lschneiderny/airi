@@ -30,6 +30,7 @@ vi.mock('node:process', async (importOriginal) => {
 vi.mock('std-env', () => ({
   isWindows: false,
   isMacOS: true,
+  isLinux: false,
 }))
 
 vi.mock('./foreground-window-darwin', async (importOriginal) => {

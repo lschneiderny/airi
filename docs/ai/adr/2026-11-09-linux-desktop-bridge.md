@@ -36,7 +36,7 @@ persisted. Hello proves that the bridge runs; it proves no sensor's accuracy.
 | `backend` | `none` | Injected environment and registered backend selection; KWin additionally confirms its bus owner |
 | `bridge` | `starting` | KWin's supported Hello and completed script startup give `ready`; missing owner, transport failure, unsupported API or two-second deadline give `failed`; reason-only backends become `ready` without claiming sensors |
 | `bridgeFailure` | `null` | Unsupported Hello gives `api-unsupported`; other startup or backend failures give `other`; a new successful handshake clears it |
-| `foregroundVerified` | `false` | Reserved for todo 8's AIRI focus/pid correlation and sampler integration |
+| `foregroundVerified` | `false` | An AIRI window's `focus` event followed within 1 s by an AIRI pid in the bridge's active window gives `true`; three consecutive focus events that see only foreign or null pids give `false` |
 | `cursorVerified` | `false` | Todo 9: verified geometry and two distinct compositor positions; renderer mismatch revokes it |
 | `geometryVerified` | `false` | Todo 9: own-window binding, size agreement within one pixel, and known outputs |
 | `keepAboveVerified` | `false` | Todo 10: own-window keep-above state observed after the actuator |
@@ -139,7 +139,8 @@ at 32, own pids at 256 and each JSON message at 65,536 characters.
 Activation, captionChanged and fullScreenChanged update that reading.
 App-side presence rules govern what reaches consumers: the sharing toggle,
 denylist and 120-character title limit apply, and titles are never logged.
-The sampler and its verification land in todo 8.
+`createLinuxSampler` maps that reading to a foreground sample and reads only
+`/proc/<pid>/exe` beyond it, never the process command line or environment.
 
 (b) Own-window discovery may enumerate windows reading only `pid` to compare
 against OwnPids inside the compositor. For a window that is neither active
