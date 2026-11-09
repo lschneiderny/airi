@@ -22,6 +22,7 @@ import { hideOnClose } from '../main/hide-on-close'
 import { mainWindowQuery } from '../main/query'
 import { setupMainWindowElectronInvokes } from '../main/rpc/index.electron'
 import { protectPrivilegedWindowNavigation } from '../shared'
+import { placeWindow } from '../shared/placement'
 import { defaultStageConfig, resolveHomeDisplay } from './config'
 import { bindStageWindowToHomeDisplay, readStageDisplays } from './displays'
 import { markStageWindow } from './identity'
@@ -143,6 +144,7 @@ export async function setupStageWindow(
     displays: stageDisplays,
     window,
     readRect: () => readWindowRect(window),
+    place: bounds => placeWindow(window, bounds),
     getConfig,
     onDisplaysChanged: params.broadcast.emitAll,
   })

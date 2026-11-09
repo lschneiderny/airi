@@ -3,6 +3,7 @@ import type { LinuxDesktopBackend, LinuxDesktopFacts } from '@proj-airi/stage-sh
 import type { HyprlandMessage } from './backends/hyprland/protocol'
 import type { HyprlandFailure } from './backends/hyprland/socket'
 import type { KwinFailure } from './backends/kwin'
+import type { PlacementRect } from './backends/kwin/actuator-scripts'
 import type { KwinMessage } from './backends/kwin/protocol'
 import type { SwayFailure } from './backends/sway'
 import type { DbusTransport } from './dbus/transport'
@@ -13,6 +14,7 @@ import { useLogg } from '@guiiai/logg'
 
 import { HyprlandBackendError } from './backends/hyprland/socket'
 import { KwinBackendError } from './backends/kwin'
+import { keepAboveScript, placementScript } from './backends/kwin/actuator-scripts'
 import { SwayBackendError } from './backends/sway'
 import { X11BackendError } from './backends/x11/binding'
 import { BusySource } from './session/busy'
@@ -236,18 +238,16 @@ export class LinuxDesktopBridge {
     return this.driver?.requestCursor?.() ?? Promise.resolve()
   }
 
-  async setKeepAbove(windowPid: number, on: boolean): Promise<void> {
-    if (!Number.isSafeInteger(windowPid) || !this.options.ownPids().includes(windowPid))
-      throw new TypeError('Keep-above requires an AIRI process')
-    if (!this.driver?.runOneShot)
-      return
-    // Only pid is inspected before ownership is established inside KWin.
-    await this.driver.runOneShot(`(() => {
-      const windows = 'activeWindow' in workspace ? workspace.stackingOrder : workspace.clientList();
-      for (const window of windows) {
-        if (window.pid === ${windowPid}) window.keepAbove = ${on === true};
-      }
-    })()`)
+  /** Writes keep-above on the AIRI window whose compositor id the binding handshake proved. */
+  async setKeepAbove(windowId: string, on: boolean): Promise<void> {
+    const source = keepAboveScript(this.options.ownPids(), windowId, on)
+    await this.driver?.runOneShot?.(source)
+  }
+
+  /** Moves and sizes the bound AIRI window so its client area equals `rect`. */
+  async placeWindow(windowId: string, rect: PlacementRect): Promise<void> {
+    const source = placementScript(this.options.ownPids(), windowId, rect)
+    await this.driver?.runOneShot?.(source)
   }
 
   private async connect(generation: number): Promise<void> {

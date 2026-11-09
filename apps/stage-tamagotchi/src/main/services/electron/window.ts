@@ -16,6 +16,7 @@ import {
   electronWindowSetAlwaysOnTop,
 } from '../../../shared/eventa'
 import { onAppBeforeQuit, onAppWindowAllClosed } from '../../libs/bootkit/lifecycle'
+import { placeWindow } from '../../windows/shared/placement'
 import { resizeWindowByDelta, setWindowAlwaysOnTop } from '../../windows/shared/window'
 import { readRendererWindowBounds } from './coordinates'
 
@@ -85,7 +86,7 @@ export function createWindowService(params: { context: ReturnType<typeof createC
 
   defineInvokeHandler(params.context, electron.window.setBounds, (newBounds, options) => {
     if (newBounds && params.window.webContents.id === options?.raw.ipcMainEvent.sender.id) {
-      params.window.setBounds(newBounds[0])
+      placeWindow(params.window, newBounds[0])
     }
   })
 

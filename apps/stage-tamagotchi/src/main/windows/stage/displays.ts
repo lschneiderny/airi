@@ -27,7 +27,6 @@ export interface StageScreen {
 }
 
 export interface StageBoundWindow {
-  setBounds: (bounds: Rectangle) => void
   isDestroyed: () => boolean
   once: (event: 'closed', listener: () => void) => unknown
 }
@@ -61,6 +60,8 @@ export function bindStageWindowToHomeDisplay(params: {
   window: StageBoundWindow
   /** The window's trusted rectangle, or `null` while its origin cannot be read. */
   readRect: () => Rectangle | null
+  /** Places the window, through the compositor where Electron cannot. */
+  place: (bounds: Rectangle) => void
   getConfig: () => StageConfig
   onDisplaysChanged: () => void
 }): { applyHomeBounds: () => void, dispose: () => void } {
@@ -71,7 +72,7 @@ export function bindStageWindowToHomeDisplay(params: {
     const { workArea } = resolveHomeDisplay(readStageDisplays(params.displays), params.getConfig())
     const current = params.readRect()
     if (!current || current.x !== workArea.x || current.y !== workArea.y || current.width !== workArea.width || current.height !== workArea.height)
-      params.window.setBounds({ ...workArea })
+      params.place({ ...workArea })
 
     params.onDisplaysChanged()
   }

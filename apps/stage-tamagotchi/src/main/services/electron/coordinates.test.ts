@@ -61,6 +61,8 @@ class FakeBridge {
 
   readonly setCursorStreaming = vi.fn(async (_on: boolean) => {})
   readonly requestCursor = vi.fn(async () => {})
+  readonly setKeepAbove = vi.fn(async (_id: string, _on: boolean) => {})
+  readonly placeWindow = vi.fn(async (_id: string, _rect: Rectangle) => {})
   private readonly events = new EventEmitter()
   constructor(readonly backend: LinuxDesktopBackend) {}
   ready() { return this.state === 'ready' }
@@ -122,6 +124,7 @@ class FakeWindow extends EventEmitter {
   isVisible() { return this.visible }
   getBounds() { return { ...this.electronBounds } }
   getSize() { return [this.electronBounds.width, this.electronBounds.height] }
+  setBounds = vi.fn()
 }
 
 function flush() {
@@ -466,6 +469,203 @@ describe('coordinate provider', () => {
 
     it('is a no-op without a Linux bridge', () => {
       expect(() => coordinates.setCursorLoopActive({}, true)).not.toThrow()
+    })
+  })
+
+  describe('kwin actuators', () => {
+    const rect = { x: 200, y: 200, width: 300, height: 400 }
+
+    function setKeepAboveOnPush(bridge: FakeBridge, value: (on: boolean) => boolean) {
+      bridge.setKeepAbove.mockImplementation(async (id, on) => {
+        bridge.pushOwn((bridge.own ?? []).map(entry => entry.id === id ? { ...entry, keepAbove: value(on) } : entry))
+      })
+    }
+
+    async function boundKwinWindow() {
+      const bridge = new FakeBridge('kwin')
+      const window = new FakeWindow({ x: 1796, y: 420, width: 300, height: 400 }, { x: 50, y: 560, width: 300, height: 400 }, bridge, '{w1}')
+      attach(bridge, window)
+      verify('kwin')
+      await flush()
+      return { bridge, window }
+    }
+
+    function alwaysOnTop() {
+      return capabilities.getCurrentHostCapabilities().signals.alwaysOnTop
+    }
+
+    it('writes keep-above on the bound window and turns alwaysOnTop live once KWin shows it', async () => {
+      const { bridge, window } = await boundKwinWindow()
+      setKeepAboveOnPush(bridge, on => on)
+      expect(alwaysOnTop()).toEqual({ kind: 'unavailable', reason: 'linux-keep-above-verifying' })
+      coordinates.requestKeepAbove(window, true)
+      await flush()
+      expect(bridge.setKeepAbove).toHaveBeenCalledExactlyOnceWith('{w1}', true)
+      expect(alwaysOnTop()).toEqual({ kind: 'live' })
+    })
+
+    it('applies a keep-above request made before binding once the window is bound', async () => {
+      const bridge = new FakeBridge('kwin')
+      bridge.state = 'starting'
+      const window = new FakeWindow({ x: 1796, y: 420, width: 300, height: 400 }, { x: 50, y: 560, width: 300, height: 400 }, bridge, '{w1}')
+      attach(bridge, window)
+      coordinates.requestKeepAbove(window, true)
+      expect(bridge.setKeepAbove).not.toHaveBeenCalled()
+      verify('kwin')
+      bridge.setState('ready')
+      await flush()
+      expect(bridge.setKeepAbove).toHaveBeenCalledExactlyOnceWith('{w1}', true)
+    })
+
+    it('keeps alwaysOnTop verifying when KWin does not show the requested value within 1 s', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      try {
+        const { bridge, window } = await boundKwinWindow()
+        setKeepAboveOnPush(bridge, () => false)
+        coordinates.requestKeepAbove(window, true)
+        await flush()
+        vi.advanceTimersByTime(1000)
+        expect(alwaysOnTop()).toEqual({ kind: 'unavailable', reason: 'linux-keep-above-verifying' })
+        expect(capabilities.getCurrentHostCapabilities()).toMatchObject({ signals: { alwaysOnTop: { kind: 'unavailable' } } })
+      }
+      finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('revokes a verified keep-above when a later request fails', async () => {
+      const { bridge, window } = await boundKwinWindow()
+      setKeepAboveOnPush(bridge, on => on)
+      coordinates.requestKeepAbove(window, true)
+      await flush()
+      expect(alwaysOnTop()).toEqual({ kind: 'live' })
+      bridge.setKeepAbove.mockRejectedValueOnce(new Error('refused'))
+      coordinates.requestKeepAbove(window, false)
+      await flush()
+      expect(alwaysOnTop()).toEqual({ kind: 'unavailable', reason: 'linux-keep-above-verifying' })
+    })
+
+    it('applies only the latest keep-above value when requests arrive while one runs', async () => {
+      const { bridge, window } = await boundKwinWindow()
+      const gate = Promise.withResolvers<void>()
+      bridge.setKeepAbove.mockImplementationOnce(() => gate.promise)
+      for (const on of [true, false, true, false])
+        coordinates.requestKeepAbove(window, on)
+      gate.resolve()
+      await flush()
+      await flush()
+      expect(bridge.setKeepAbove.mock.calls).toEqual([['{w1}', true], ['{w1}', false]])
+    })
+
+    it.each([
+      ['hyprland on native Wayland', 'linux-wayland', 'hyprland'],
+      ['kwin under XWayland', 'linux-xwayland', 'kwin'],
+    ] as const)('leaves keep-above and placement to Electron for %s', async (_name, name, backend) => {
+      session(name)
+      const bridge = new FakeBridge(backend)
+      const window = new FakeWindow({ x: 50, y: 560, width: 300, height: 400 }, { x: 50, y: 560, width: 300, height: 400 }, bridge, '{w1}')
+      attach(bridge, window)
+      verify(backend)
+      await flush()
+      coordinates.requestKeepAbove(window, true)
+      expect(coordinates.placeOwnWindow(window, rect)).toBe(false)
+      await flush()
+      expect(bridge.setKeepAbove).not.toHaveBeenCalled()
+      expect(bridge.placeWindow).not.toHaveBeenCalled()
+    })
+
+    it('places a bound window through KWin only while the origin is live', async () => {
+      const { bridge, window } = await boundKwinWindow()
+      expect(coordinates.placeOwnWindow(window, rect)).toBe(true)
+      await flush()
+      expect(bridge.placeWindow).toHaveBeenCalledExactlyOnceWith('{w1}', rect)
+      capabilities.reportLinuxDesktop({ geometryVerified: false })
+      expect(coordinates.placeOwnWindow(window, rect)).toBe(false)
+    })
+
+    it('never places a window that has not proved its compositor identity', async () => {
+      const { bridge } = await boundKwinWindow()
+      const stranger = { getBounds: () => rect, setBounds: vi.fn() }
+      expect(coordinates.placeOwnWindow(stranger, rect)).toBe(false)
+      await flush()
+      expect(bridge.placeWindow).not.toHaveBeenCalled()
+    })
+
+    it('drops a queued placement for a window that closed before it ran', async () => {
+      const { bridge, window } = await boundKwinWindow()
+      const gate = Promise.withResolvers<void>()
+      bridge.placeWindow.mockImplementationOnce(() => gate.promise)
+      coordinates.placeOwnWindow(window, rect)
+      coordinates.placeOwnWindow(window, { ...rect, x: 300 })
+      window.destroyed = true
+      window.emit('closed')
+      gate.resolve()
+      await flush()
+      expect(bridge.placeWindow).toHaveBeenCalledOnce()
+    })
+
+    it('applies a placement requested before binding once the window proves its identity', async () => {
+      const bridge = new FakeBridge('kwin')
+      const window = new FakeWindow({ x: 1796, y: 420, width: 300, height: 400 }, { x: 50, y: 560, width: 300, height: 400 }, bridge, '{w1}')
+      window.visible = false
+      attach(bridge, window)
+      verify('kwin')
+      await flush()
+      expect(coordinates.placeOwnWindow(window, rect)).toBe(false)
+      expect(bridge.placeWindow).not.toHaveBeenCalled()
+      window.visible = true
+      window.emit('show')
+      await flush()
+      expect(bridge.placeWindow).toHaveBeenCalledExactlyOnceWith('{w1}', rect)
+    })
+
+    it('holds rectangle notifications until KWin shows the requested placement', async () => {
+      const bridge = new FakeBridge('kwin')
+      const window = new FakeWindow({ x: 1796, y: 420, width: 300, height: 400 }, { x: 50, y: 560, width: 300, height: 400 }, bridge, '{w1}')
+      window.visible = false
+      attach(bridge, window)
+      verify('kwin')
+      await flush()
+      const listener = vi.fn()
+      coordinates.onCompositorWindowRect(window, listener)
+      coordinates.placeOwnWindow(window, rect)
+      window.visible = true
+      window.emit('show')
+      await flush()
+      expect(listener).not.toHaveBeenCalled()
+      bridge.pushOwn((bridge.own ?? []).map(entry => ({ ...entry, ...rect })))
+      expect(listener).toHaveBeenCalledOnce()
+      expect(coordinates.readWindowRect(window)).toEqual(rect)
+    })
+
+    it('reports no stale rectangle after KWin never shows the requested placement', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      try {
+        const { window } = await boundKwinWindow()
+        const listener = vi.fn()
+        coordinates.onCompositorWindowRect(window, listener)
+        coordinates.placeOwnWindow(window, rect)
+        await flush()
+        expect(listener).not.toHaveBeenCalled()
+        vi.advanceTimersByTime(1000)
+        expect(listener).not.toHaveBeenCalled()
+      }
+      finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('notifies listeners when the compositor reports a new rectangle for a bound window', async () => {
+      const { bridge, window } = await boundKwinWindow()
+      const listener = vi.fn()
+      const off = coordinates.onCompositorWindowRect(window, listener)
+      bridge.pushOwn((bridge.own ?? []).map(entry => ({ ...entry })))
+      expect(listener).not.toHaveBeenCalled()
+      bridge.pushOwn((bridge.own ?? []).map(entry => ({ ...entry, x: 200, y: 200 })))
+      expect(listener).toHaveBeenCalledOnce()
+      off()
+      bridge.pushOwn((bridge.own ?? []).map(entry => ({ ...entry, x: 210 })))
+      expect(listener).toHaveBeenCalledOnce()
     })
   })
 })

@@ -27,8 +27,9 @@ import { normalizeWidgetWindowSize } from '../../../shared/utils/electron/window
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
-import { displayForWindow, displayMatching, readPrimaryDisplay, readWindowRect, windowOriginTrusted } from '../../services/electron/coordinates'
+import { displayForWindow, displayMatching, onCompositorWindowRect, readPrimaryDisplay, readWindowRect, windowOriginTrusted } from '../../services/electron/coordinates'
 import { showWindowOnAllWorkspaces } from '../shared/app-icon'
+import { placeWindow } from '../shared/placement'
 import { protectPrivilegedWindowNavigation, setWindowAlwaysOnTop, spotlightLikeWindowConfig, transparentWindowConfig } from '../shared/window'
 import { createWidgetIframeRequestCoordinator } from './iframe-request-coordinator'
 import { setupWidgetsWindowInvokes } from './rpc/index.electron'
@@ -258,6 +259,8 @@ interface WidgetWindowContext {
   disposeInvokes?: () => void
   eventa?: ReturnType<typeof createContext>
   persistBounds: boolean
+  /** Set while a saved position waits for a live origin and the window's proved rectangle. */
+  restorePending?: boolean
   window?: BrowserWindow
   windowSetupPromise?: Promise<BrowserWindow>
 }
@@ -384,12 +387,14 @@ export function setupWidgetsWindowManager(params: {
     windowContext.currentRoute = route
   }
 
-  function applyStoredOrDefaultBounds(window: BrowserWindow) {
+  function applyStoredOrDefaultBounds(windowContext: WidgetWindowContext, window: BrowserWindow) {
     const saved = getConfig().bounds
+    windowContext.restorePending = false
     if (!windowOriginTrusted()) {
       const work = readPrimaryDisplay().workArea
       const size = saved ?? computeDefaultBounds()
       window.setSize(Math.min(size.width, work.width), Math.min(size.height, work.height))
+      windowContext.restorePending = saved?.x !== undefined && saved.y !== undefined
       return
     }
     if (saved) {
@@ -405,11 +410,11 @@ export function setupWidgetsWindowManager(params: {
         width,
         height,
       }
-      window.setBounds(clamped)
+      placeWindow(window, clamped)
       return
     }
 
-    window.setBounds(computeDefaultBounds())
+    placeWindow(window, computeDefaultBounds())
   }
 
   function applyWindowLayout(windowContext: WidgetWindowContext, window: BrowserWindow, snapshot?: Pick<WidgetSnapshot, 'windowSize'>) {
@@ -421,7 +426,7 @@ export function setupWidgetsWindowManager(params: {
       windowContext.persistBounds = true
       window.setMinimumSize(0, 0)
       window.setMaximumSize(work.width, work.height)
-      applyStoredOrDefaultBounds(window)
+      applyStoredOrDefaultBounds(windowContext, window)
       return
     }
 
@@ -439,7 +444,7 @@ export function setupWidgetsWindowManager(params: {
       window.setSize(width, height)
       return
     }
-    window.setBounds({
+    placeWindow(window, {
       x: clamp(currentBounds.x, work.x, work.x + work.width - width),
       y: clamp(currentBounds.y, work.y, work.y + work.height - height),
       width,
@@ -487,17 +492,24 @@ export function setupWidgetsWindowManager(params: {
     }
 
     window.on('closed', handleWindowClosed)
-    applyStoredOrDefaultBounds(window)
+    applyStoredOrDefaultBounds(windowContext, window)
 
     const persist = () => {
-      if (windowContext.persistBounds) {
-        const origin = readWindowRect(window)
+      // Before the restore, a readable origin is the compositor's choice, not the user's.
+      const origin = readWindowRect(window)
+      if (windowContext.persistBounds && (!windowContext.restorePending || !origin)) {
         const { width, height } = window.getBounds()
         update({ bounds: origin ?? { ...getConfig().bounds, width, height } })
       }
     }
     window.on('resize', persist)
     window.on('move', persist)
+    onCompositorWindowRect(window, () => {
+      if (!windowContext.restorePending)
+        persist()
+      else if (windowContext.persistBounds && readWindowRect(window))
+        applyStoredOrDefaultBounds(windowContext, window)
+    })
 
     try {
       const disposeInvokes = await setupWidgetsWindowInvokes({

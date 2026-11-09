@@ -27,6 +27,7 @@ import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { displayNearestPoint, readCursor, readPrimaryDisplay } from '../../services/electron/coordinates'
 import { excludeWindowFromTaskbar } from '../shared/app-icon'
+import { placeWindow } from '../shared/placement'
 import { protectPrivilegedWindowNavigation, setupBaseWindowElectronInvokes, transparentWindowConfig } from '../shared/window'
 
 const SPOTLIGHT_WINDOW_WIDTH = 720
@@ -151,7 +152,7 @@ export function setupSpotlightWindowManager(params: {
 
   async function show() {
     const window = await reusable.getWindow()
-    window.setBounds(resolveSpotlightBounds())
+    placeWindow(window, resolveSpotlightBounds())
     window.show()
     window.focus()
     window.webContents.focus()
