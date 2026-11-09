@@ -79,6 +79,22 @@ export const MotionQaStateSchema = strictObject({
   desktopIdleSeconds: nullable(pipe(number(), finite())),
   /** The performance mode the stage resolved, or null while no stage reports one. */
   performanceMode: nullable(performanceMode),
+  /** Inputs of the last stage resolution and the away flag handed to Natural, not a new diagnostic resolution. */
+  performance: nullable(strictObject({
+    resolvedAtMs: pipe(number(), finite()),
+    away: boolean(),
+    cursorMovedAtMs: nullable(pipe(number(), finite())),
+    desktop: nullable(strictObject({
+      idleSeconds: nullable(pipe(number(), finite())),
+      locked: boolean(),
+      suspendedAtMs: nullable(pipe(number(), finite())),
+      resumedAtMs: nullable(pipe(number(), finite())),
+      unlockedAtMs: nullable(pipe(number(), finite())),
+      screenChange: nullable(pipe(number(), finite())),
+      systemAudioLevel: nullable(pipe(number(), finite())),
+      sampledAtMs: pipe(number(), finite()),
+    })),
+  })),
 })
 export type MotionQaState = InferOutput<typeof MotionQaStateSchema>
 

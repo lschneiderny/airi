@@ -226,13 +226,14 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
       screenshots: planScreenshots(scenario.screenshotsAt ?? []),
       durationSeconds: scenario.durationSeconds,
       idleAfterSeconds: options.idleAfterSeconds,
+      samplePerformance: scenario.settings?.host !== undefined,
       waitUntil: at => abortable(untilDeadline(hostOriginMs + at * 1000)),
       takeScreenshot: async (shot) => {
         const rendererMs = await abortable(bridge.rendererNowMs())
         await abortable(captureStagePng(stagePage, run.path(join('screenshots', shot.file))))
         taken.push({ ...shot, actualAt: (rendererMs - started.rendererStartMs) / 1000, traceT: (rendererMs - captureRendererMs) / 1000 })
       },
-      readMode: async () => (await abortable(bridge.call('state', undefined, bounds.commandMs))).performanceMode,
+      readState: async () => await abortable(bridge.call('state', undefined, bounds.commandMs)),
       modeSamples,
     })
 

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 import { buildEmotionTrial, claimMotionQaHandlers, createMotionQaContext, hasMotionQaHandlers, isMotionQaBridgeEnabled, MotionQaAwaitCaptureResultSchema, MotionQaCommandSchema, MotionQaConfigureInputSchema, MotionQaRunScenarioInputSchema, MotionQaRunScenarioResultSchema, MotionQaStartCaptureInputSchema, motionQaStateInvokeEventa, MotionQaStateSchema } from '.'
 import { capabilitiesForHost } from '../host-capabilities'
 
-const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 }, screenAwareness: true, placement: -0.75, placementYawBias: -0.08, chat: { hasTarget: true, typing: false, sentSeq: 2, unfoldSeq: 1 }, host: capabilitiesForHost('linux-wayland'), desktopIdleSeconds: 12.5, performanceMode: 'watching' } as const
+const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 }, screenAwareness: true, placement: -0.75, placementYawBias: -0.08, chat: { hasTarget: true, typing: false, sentSeq: 2, unfoldSeq: 1 }, host: capabilitiesForHost('linux-wayland'), desktopIdleSeconds: 12.5, performanceMode: 'watching', performance: { resolvedAtMs: 20_000, away: false, cursorMovedAtMs: null, desktop: { idleSeconds: 12.5, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, screenChange: 0.2, systemAudioLevel: null, sampledAtMs: 19_000 } } } as const
 
 describe('motion QA bridge schemas', () => {
   it('requires usable screen scale and positive head geometry, while accepting an unavailable head', () => {
@@ -39,6 +39,14 @@ describe('motion QA bridge schemas', () => {
     expect(safeParse(MotionQaStateSchema, { ...state, host: null, desktopIdleSeconds: null, performanceMode: null }).success).toBe(true)
   })
 
+  it('rejects missing or malformed resolver diagnostics instead of accepting an incomplete capture sample', () => {
+    const { performance: _, ...withoutPerformance } = state
+    expect(safeParse(MotionQaStateSchema, withoutPerformance).success).toBe(false)
+    expect(safeParse(MotionQaStateSchema, { ...state, performance: { ...state.performance, away: 'yes' } }).success).toBe(false)
+    expect(safeParse(MotionQaStateSchema, { ...state, performance: { ...state.performance, cursorMovedAtMs: Number.NaN } }).success).toBe(false)
+    expect(safeParse(MotionQaStateSchema, { ...state, performance: { ...state.performance, desktop: { ...state.performance.desktop, idleSeconds: Number.POSITIVE_INFINITY } } }).success).toBe(false)
+  })
+
   it('rejects a state missing the host, or with a wrong-shaped host, idle reading or mode', () => {
     const { host: _, ...withoutHost } = state
     expect(safeParse(MotionQaStateSchema, withoutHost).success).toBe(false)
@@ -61,6 +69,7 @@ describe('motion QA bridge schemas', () => {
     const scenario = buildEmotionTrial({ emotion: 'angry', band: 'strong', variant: 'full', seed: 1 })
     const payloads = [
       [MotionQaStateSchema, state],
+      [MotionQaStateSchema, { ...state, performance: null }],
       [MotionQaConfigureInputSchema, { driver: 'natural', heldEmotions: false }],
       [MotionQaConfigureInputSchema, { screenAwareness: false }],
       [MotionQaStateSchema, { ...state, placement: null, placementYawBias: 0 }],

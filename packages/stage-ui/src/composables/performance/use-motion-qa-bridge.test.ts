@@ -1,5 +1,5 @@
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
-import type { PerformanceMode } from '@proj-airi/stage-shared/performance-state'
+import type { PerformanceInputs, PerformanceMode } from '@proj-airi/stage-shared/performance-state'
 import type { NaturalCaptureResult } from '@proj-airi/stage-ui-live2d/stores'
 
 import type { MotionQaFrames } from './use-motion-qa-bridge'
@@ -9,6 +9,7 @@ import { createChatHooks } from '@proj-airi/core-agent'
 import { normalizeActPayload } from '@proj-airi/pipelines-audio'
 import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { createMotionQaContext, createMotionQaDispatcher, motionQaRunScenarioInvokeEventa } from '@proj-airi/stage-shared/motion-scenario'
+import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
@@ -83,6 +84,7 @@ describe('useMotionQaBridge', () => {
   let chat: ReturnType<typeof createChatHooks>
   const speaking = ref(false)
   const mode = ref<PerformanceMode>('idle')
+  let performanceInputs: PerformanceInputs
 
   /** Stands in for the capture that Model.vue runs: scenario events stamped into it land in the log. */
   function recordCaptureMarks() {
@@ -98,6 +100,7 @@ describe('useMotionQaBridge', () => {
     chat = createChatHooks()
     speaking.value = false
     mode.value = 'idle'
+    performanceInputs = { nowMs: 0, speaking: false, userSpeaking: false, generating: false, cursorMovedAtMs: null, desktop: null, visible: true, override: null, cueAttention: null, foregroundCategory: null }
     const streaming = useLlmStreamingControlStore()
     const dispatcher = createMotionQaDispatcher()
     dispatch = async command => JSON.parse(await dispatcher(JSON.stringify(command)))
@@ -116,7 +119,7 @@ describe('useMotionQaBridge', () => {
         emotionsQueue: { enqueue: cue => log.push(`queue:${cue.emotion.name}:${cue.source}:${cue.emotion.intensity}`) },
         dispatchAct: marker => streaming.dispatchWith(marker),
         renderError: () => undefined,
-        performanceMode: () => mode.value,
+        performance: () => ({ inputs: performanceInputs, state: { ...resolvePerformanceState(performanceInputs, initialResolverMemory).state, mode: mode.value } }),
         frames: clock.frames,
       })
     })
@@ -243,6 +246,26 @@ describe('useMotionQaBridge', () => {
     const release = useNaturalMotionDiagnostics().registerStageReader(() => ({ naturalActive: true, hold: null, head }))
     expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { head, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 } } })
     release()
+  })
+
+  it('serializes the last resolver inputs and actual away state without substituting newer desktop readings', async () => {
+    const desktop = { idleSeconds: 301, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, systemAudioLevel: 0.2, screenChange: 0.3, sampledAtMs: 301_000 }
+    performanceInputs = { ...performanceInputs, nowMs: 301_250, cursorMovedAtMs: 1000, desktop }
+    useDesktopActivityStore().setSnapshot({ ...desktop, idleSeconds: 0, sampledAtMs: 302_000 })
+
+    expect(await dispatch({ name: 'state' })).toMatchObject({
+      ok: true,
+      result: {
+        performanceMode: 'idle',
+        desktopIdleSeconds: 0,
+        performance: { away: true, resolvedAtMs: 301_250, cursorMovedAtMs: 1000, desktop },
+      },
+    })
+
+    performanceInputs = { ...performanceInputs, nowMs: 302_250, desktop: null, cursorMovedAtMs: null }
+    expect(await dispatch({ name: 'state' })).toMatchObject({
+      result: { performance: { away: false, resolvedAtMs: 302_250, cursorMovedAtMs: null, desktop: null } },
+    })
   })
 
   it('dispatches emotion, ACT and mode events in scenario order through the real paths', async () => {
