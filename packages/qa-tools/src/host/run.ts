@@ -138,7 +138,7 @@ export async function runHostCli(argv: string[], repoRoot: string): Promise<numb
       const result = evaluateHostSmoke({ expected, expectIdle, samples })
       report.exitCode = result.exitCode
       report.idleOutcome = result.idleOutcome
-      report.failures.push(...result.failures)
+      report.failures.push(...result.failures.map(failure => failure.message))
     }
     catch (error) {
       report.failures.push(errorMessageFrom(error) ?? 'host smoke failed')

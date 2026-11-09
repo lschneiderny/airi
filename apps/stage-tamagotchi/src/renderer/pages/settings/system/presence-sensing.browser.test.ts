@@ -2,7 +2,7 @@ import type { HostId } from '@proj-airi/stage-shared/host-capabilities'
 
 import en from '@proj-airi/i18n/locales/en'
 
-import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
+import { capabilitiesForHost, HostReasons } from '@proj-airi/stage-shared/host-capabilities'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { createPinia, setActivePinia } from 'pinia'
 import { describe, expect, it, onTestFinished } from 'vitest'
@@ -11,12 +11,14 @@ import { createI18n } from 'vue-i18n'
 
 import PresenceSensing from './presence-sensing.vue'
 
-// The literal English copy, because a user reads words and not keys.
-const statusLive = 'Live'
-const statusLimited = 'Limited'
-const statusUnavailable = 'Unavailable'
-const windowOriginReason = 'Wayland hides where the window sits on the screen.'
-const globalKeyUpReason = 'Wayland does not allow a global input hook.'
+const i18n = createI18n({ legacy: false, locale: 'en', messages: { en } })
+// The copy is read from the en catalogue by key, so a wording edit cannot break the checks.
+const copy = (key: string) => i18n.global.t(`tamagotchi.settings.pages.system.presence-sensing.${key}`)
+const statusLive = copy('status.live')
+const statusLimited = copy('status.degraded')
+const statusUnavailable = copy('status.unavailable')
+const windowOriginReason = copy(`reasons.${HostReasons.WaylandWindowOriginHidden}`)
+const globalKeyUpReason = copy(`reasons.${HostReasons.WaylandNoGlobalInputHook}`)
 
 async function renderPage(host: HostId) {
   const pinia = createPinia()
@@ -26,7 +28,7 @@ async function renderPage(host: HostId) {
     global: {
       plugins: [
         pinia,
-        createI18n({ legacy: false, locale: 'en', messages: { en } }),
+        i18n,
       ],
     },
   })

@@ -73,7 +73,7 @@ describe('host smoke observation', () => {
     const samples = await sequence('windows', (_, host) => ({ host, desktopIdleSeconds: 42 }))
     const result = evaluateHostSmoke({ expected: capabilitiesForHost('windows'), samples })
     expect(result.exitCode).toBe(1)
-    expect(result.failures).toContain('systemIdleTime: live idle readings did not advance')
+    expect(result.failures).toContainEqual(expect.objectContaining({ code: 'idle-not-advancing', signal: 'systemIdleTime' }))
   })
 
   it.each([
@@ -100,7 +100,7 @@ describe('host smoke observation', () => {
     })
     const mismatch = evaluateHostSmoke({ expected: capabilitiesForHost('linux-wayland'), expectIdle: 'verified', samples })
     expect(mismatch.exitCode).toBe(1)
-    expect(mismatch.failures).toContain('systemIdleTime: expected idle-verified, received idle-unverified')
+    expect(mismatch.failures).toContainEqual(expect.objectContaining({ code: 'idle-outcome-mismatch', signal: 'systemIdleTime', expected: 'idle-verified', received: 'idle-unverified' }))
   })
 
   it.each([
@@ -114,16 +114,19 @@ describe('host smoke observation', () => {
     }))
     const result = evaluateHostSmoke({ expected: capabilitiesForHost('linux-wayland'), samples })
     expect(result.exitCode).toBe(1)
-    expect(result.failures).toContain('systemIdleTime: invalid Wayland transition or idle readings did not advance while live')
+    expect(result.failures).toContainEqual(expect.objectContaining({ code: 'wayland-idle-invalid', signal: 'systemIdleTime' }))
   })
 
   it('fails a forced host mismatch and names the XWayland idle reason', async () => {
     const samples = await sequence('linux-xwayland', (_, host) => ({ host, desktopIdleSeconds: null }))
     const result = evaluateHostSmoke({ expected: capabilitiesForHost('linux-wayland'), samples })
     expect(result.exitCode).toBe(1)
-    expect(result.failures).toContain('host: expected linux-wayland, received linux-xwayland')
-    expect(result.failures.join('; ')).toContain('systemIdleTime: expected')
-    expect(result.failures.join('; ')).toContain('xwayland-idle-constant-zero')
+    expect(result.failures).toContainEqual(expect.objectContaining({ code: 'host-mismatch', expected: 'linux-wayland', received: 'linux-xwayland' }))
+    expect(result.failures).toContainEqual(expect.objectContaining({
+      code: 'signal-mismatch',
+      signal: 'systemIdleTime',
+      received: { kind: 'unavailable', reason: HostReasons.XwaylandIdleConstantZero },
+    }))
   })
 
   it.each([
@@ -136,8 +139,7 @@ describe('host smoke observation', () => {
     }))
     const result = evaluateHostSmoke({ expected: capabilitiesForHost('windows'), samples })
     expect(result.exitCode).toBe(1)
-    expect(result.failures.join('; ')).toContain(`${signal}: expected`)
-    expect(result.failures.join('; ')).toContain(reason)
+    expect(result.failures).toContainEqual(expect.objectContaining({ code: 'signal-mismatch', signal, received: { kind: 'unavailable', reason } }))
   })
 
   it('checks snapshots after the initial sample for runtime changes', async () => {
@@ -147,14 +149,14 @@ describe('host smoke observation', () => {
     }))
     const result = evaluateHostSmoke({ expected: capabilitiesForHost('windows'), samples })
     expect(result.exitCode).toBe(1)
-    expect(result.failures.join('; ')).toContain('windowOrigin')
+    expect(result.failures).toContainEqual(expect.objectContaining({ code: 'signal-mismatch', signal: 'windowOrigin' }))
   })
 
   it.each(['linux-wayland', 'linux-xwayland'] as const)('rejects a fabricated unavailable idle reading on %s', async (hostId) => {
     const samples = await sequence(hostId, (_, host) => ({ host, desktopIdleSeconds: 0 }))
     const result = evaluateHostSmoke({ expected: capabilitiesForHost(hostId), samples })
     expect(result.exitCode).toBe(1)
-    expect(result.failures.join('; ')).toContain('systemIdleTime')
+    expect(result.failures).toContainEqual(expect.objectContaining({ signal: 'systemIdleTime' }))
   })
 
   it('rejects a different unavailable Wayland reason', async () => {
@@ -169,7 +171,7 @@ describe('host smoke observation', () => {
     const samples = await sequence('linux-xwayland', (_, host) => ({ host, desktopIdleSeconds: null }))
     const result = evaluateHostSmoke({ expected: capabilitiesForHost('linux-xwayland'), samples: samples.slice(0, 10) })
     expect(result.exitCode).toBe(1)
-    expect(result.failures).toContain('systemIdleTime: observation did not span 180 seconds')
+    expect(result.failures).toContainEqual(expect.objectContaining({ code: 'observation-too-short', signal: 'systemIdleTime' }))
   })
 
   it('observes a full interval after the first bridge request finishes', async () => {
