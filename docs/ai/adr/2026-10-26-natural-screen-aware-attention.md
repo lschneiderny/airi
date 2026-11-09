@@ -1,5 +1,9 @@
 # Natural screen-aware attention
 
+Host support (2026-11-08): screen placement availability by host is recorded
+in the [host capability parity
+matrix](2026-11-08-host-capability-contract.md#host-parity-matrix).
+
 Date: 2026-10-26
 Status: accepted
 

@@ -1,5 +1,9 @@
 # Full-screen desktop stage and locomotion for MMD models
 
+Host support (2026-11-08): desktop stage, placement, and click-through are
+recorded in the [host capability parity
+matrix](2026-11-08-host-capability-contract.md#host-parity-matrix).
+
 Date: 2026-10-31
 Status: accepted
 
