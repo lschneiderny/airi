@@ -7,6 +7,7 @@ Root commands for working on this repository with many worktrees and parallel ag
 | `pnpm verify` | Typechecks changed packages and their dependents, lints changed files, and runs related tests. Skips a step that already passed on the same working tree. |
 | `pnpm wt ls \| new \| rm \| gc` | Lists, creates, removes, and garbage-collects worktrees. |
 | `pnpm dev:top` | Shows dev process memory and CPU per worktree, flags orphans, and stops one worktree's processes. |
+| `pnpm qa:display up \| down \| status \| env \| run \| shot` | Runs a headless, GPU-accelerated KWin session on Linux, so agents can run the Electron app and live QA without touching the user's desktop. |
 | `pnpm check:bundle` | Builds the Electron app and fails if the main window loads three, three-mmd, three-vrm, or Tres at startup. |
 | `pnpm test:run` | Runs the root Vitest config and then each package suite (`test-stage-tamagotchi:run`, `test-stage-web:run`, `test-stage-pages:run`, `test-ui:run`, `test-stage-ui-live2d:run`, `test-model-driver-lipsync:run`, `test-stage-ui-three:run`, `test-stage-ui-mmd:run`). Every suite runs even after a failure. It prints a per-suite summary and exits 1 if any suite failed. |
 
@@ -15,12 +16,14 @@ Root commands for working on this repository with many worktrees and parallel ag
 - Use `pnpm verify` before finishing a task, instead of root `pnpm lint` and `pnpm typecheck`.
 - Use `pnpm wt` to create and remove worktrees, so installs use the shared store and removal survives Windows path limits.
 - Use `pnpm dev:top` when the machine is slow, to see which worktree and tool is responsible.
+- Use `pnpm qa:display run -- <command>` on Linux for any agent run that opens app windows, such as T3 runs, agent-browser sessions, and Vishot captures, while the user keeps working on the desktop.
 - Use `pnpm check:bundle` after changing how the stage, settings, or hosts import a renderer package.
 
 ## When not to use
 
 - Use root `pnpm typecheck`, `pnpm lint`, or `pnpm test:run` for a release or a whole-repository sweep. `pnpm verify` only covers what changed since the base.
 - `pnpm verify` does not run QA gates or Electron builds.
+- Do not use `pnpm qa:display` for real-pointer T3 runs. They drive the Windows cursor and need a Windows desktop.
 
 ## Quiet dev output
 
@@ -84,6 +87,29 @@ pnpm dev:top kill <worktree> --orphans --yes
 ```
 
 A process belongs to the worktree whose path appears in its command line, or else to its nearest ancestor's worktree. An orphan is a Node.js, Electron, or Godot process whose parent has exited. macOS and Linux reparent an orphan to PID 1, so a parent of PID 1 counts as exited there. A subreaper such as `systemd --user` adopts orphans under its own PID, and those are not flagged. `kill` stops each process tree once, from its top-most member. Windows stops the tree with `taskkill /T`. macOS and Linux have no tree kill, so `kill` signals the top member and every descendant in the snapshot, parents first. Right before each kill it re-reads the live command line, because Windows reuses PIDs. It never stops the tree it runs in.
+
+## `pnpm qa:display`
+
+```bash
+pnpm qa:display up                          # headless 1920x1080 session named "qa"
+pnpm qa:display up --name agent-2 --size 2560x1440
+pnpm qa:display up --windowed               # show the session as a window on your desktop
+pnpm qa:display run -- pnpm qa:motion ...   # start the session if needed, then run inside it
+eval "$(pnpm --silent qa:display env)"      # point the current shell at the session
+pnpm qa:display shot .temp/qa/desktop.png   # capture the whole session display
+pnpm qa:display status
+pnpm qa:display down
+```
+
+A session is a `kwin_wayland --virtual` compositor with rootless Xwayland and a private D-Bus session bus. It runs as the transient systemd user unit `airi-qa-display-<name>.service`, so it survives the agent that started it, and `down` stops KWin, Xwayland, and the bus together. Clients render on the host GPU: Electron reports GPU compositing, WebGL, and WebGPU on the NVIDIA card through ANGLE. Their windows, focus changes, and pointer input stay inside the session. The private bus has no notification server, StatusNotifier host, portal, or global-shortcut service, so notifications, tray icons, and shortcuts from the app never reach the desktop.
+
+`run` and `env` replace `WAYLAND_DISPLAY`, `DISPLAY`, `DBUS_SESSION_BUS_ADDRESS`, and `XDG_SESSION_TYPE`, remove `XAUTHORITY`, and set `AIRI_QA_DISPLAY=<name>`. `run` exits with the command's exit code. Clients that `run` started are not part of the unit. They lose their display and exit when the session stops. Stop leftovers with `pnpm dev:top kill <worktree>`.
+
+`shot` captures through Spectacle, which asks the session's KWin for the image. App screenshots that T3 runs and Vishot take through CDP do not need it.
+
+Startup failures name the unit. Read its log with `journalctl --user -u airi-qa-display-<name>.service`.
+
+The session isolates the display, not the process environment. An app inside it still shares the user's files, network ports, and default profile. T3 runs already set their own profile through `APP_USER_DATA_PATH`. For other runs, set `APP_USER_DATA_PATH` to a scratch directory so the agent's app does not take the desktop instance's single-instance lock.
 
 ## CPU slots and the verify cache
 
