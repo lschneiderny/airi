@@ -54,6 +54,15 @@ const rows = computed(() => {
     </div>
 
     <div
+      v-if="snapshot?.linuxDesktopBackend"
+      data-testid="presence-backend"
+      :class="['flex items-center gap-2', 'text-xs text-neutral-500 dark:text-neutral-400']"
+    >
+      <span>{{ tt('backend') }}:</span>
+      <span :class="['font-medium text-neutral-700 dark:text-neutral-300']">{{ tt(`backends.${snapshot.linuxDesktopBackend}`) }}</span>
+    </div>
+
+    <div
       v-if="!snapshot"
       :class="['rounded-lg bg-neutral-100/70 px-3 py-2 text-sm text-neutral-500 dark:bg-neutral-800/70 dark:text-neutral-400']"
     >

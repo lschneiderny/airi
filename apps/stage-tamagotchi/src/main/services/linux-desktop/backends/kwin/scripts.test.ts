@@ -100,11 +100,12 @@ describe('kwin scripts', () => {
     expect(harness.calls).toEqual([])
   })
 
-  it.each(['plasma6', 'plasma5'] as const)('reads active and own windows through the %s API', (api) => {
+  it.each(['plasma6', 'plasma5'] as const)('reports the foreign active window while discovering only own windows through the %s API', (api) => {
     const own = windowFixture()
-    // Discovery may inspect pid, but must never read another window's metadata.
+    const active = windowFixture(99)
+    // An inactive foreign window exposes only pid during own-window discovery.
     const other = {
-      pid: 99,
+      pid: 100,
       get caption() { throw new Error('Private caption read') },
       get frameGeometry() { throw new Error('Private geometry read') },
     }
@@ -112,8 +113,8 @@ describe('kwin scripts', () => {
     const added = new Signal()
     const removed = new Signal()
     const workspace = api === 'plasma6'
-      ? { activeWindow: own, windowActivated: activated, windowAdded: added, windowRemoved: removed, stackingOrder: [own, other] }
-      : { activeClient: own, clientActivated: activated, clientAdded: added, clientRemoved: removed, clientList: () => [own, other] }
+      ? { activeWindow: active, windowActivated: activated, windowAdded: added, windowRemoved: removed, stackingOrder: [active, own, other] }
+      : { activeClient: active, clientActivated: activated, clientAdded: added, clientRemoved: removed, clientList: () => [active, own, other] }
     const harness = scriptHarness(bridgeSource, workspace)
     expect(parseHello(harness.calls[0]?.payload)).toEqual({ api })
     const messages = []
@@ -123,7 +124,7 @@ describe('kwin scripts', () => {
       caption: 'untrusted',
       resourceClass: 'konsole',
       desktopFileName: 'org.kde.konsole',
-      pid: 42,
+      pid: 99,
       fullScreen: false,
     })
     expect(parseOwnWindows(messages.find(call => call.method === 'OwnWindows')?.payload)).toEqual([{
@@ -137,11 +138,12 @@ describe('kwin scripts', () => {
       outputScale: 1.25,
     }])
 
-    own.caption = 'changed'
-    own.captionChanged.emit()
-    own.fullScreen = true
-    own.fullScreenChanged.emit()
+    active.caption = 'changed'
+    active.captionChanged.emit()
+    active.fullScreen = true
+    active.fullScreenChanged.emit()
     expect(harness.calls).toHaveLength(1)
+    expect(parseActive(harness.calls[0]?.payload)?.caption).toBe('changed')
     harness.replyNext()
     expect(parseActive(harness.calls[0]?.payload)?.fullScreen).toBe(true)
     harness.replyNext()

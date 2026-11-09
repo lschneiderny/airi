@@ -121,7 +121,7 @@
     // NOTICE:
     // Compare only pid with OwnPids inside KWin.
     // Existing AIRI windows need rediscovery after KWin restarts.
-    // Never store, send, or log foreign PIDs; never read other foreign properties.
+    // Discovery never stores, sends or logs foreign PIDs or reads their metadata.
     // Source: todo 4a attempt 2, orchestrator C1 ruling (2026-11-09).
     // Remove when KWin offers ownership-scoped lookup.
     own = (api === 'plasma6' ? workspace.stackingOrder : workspace.clientList())

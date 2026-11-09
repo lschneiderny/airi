@@ -7,7 +7,7 @@ import { systemPreferences } from './system-preferences'
 import { window } from './window'
 
 export type { ForegroundWindowSample } from './foreground-window'
-export { getHostCapabilities, hostCapabilitiesChanged } from './host-capabilities'
+export { getHostCapabilities, hostCapabilitiesChanged, reportPointerSample, reportSystemAudioHeard } from './host-capabilities'
 export { cursorScreenPoint, startLoopGetCursorScreenPoint } from './screen'
 export { bounds, startLoopGetBounds } from './window'
 export type { BackgroundMaterialType, ResizeDirection, VibrancyType } from './window'

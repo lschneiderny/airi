@@ -3,7 +3,7 @@ import type { HostCapabilities } from '@proj-airi/stage-shared/host-capabilities
 import { EventEmitter } from 'node:events'
 
 import { createContext, defineInvoke } from '@moeru/eventa'
-import { getHostCapabilities, hostCapabilitiesChanged } from '@proj-airi/electron-eventa'
+import { getHostCapabilities, hostCapabilitiesChanged, reportPointerSample, reportSystemAudioHeard } from '@proj-airi/electron-eventa'
 import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { screen } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -13,6 +13,7 @@ import nativeWaylandIdle from '../../../../../../packages/stage-shared/src/host-
 const host = vi.hoisted(() => ({
   platform: 'linux',
   version: '14.2.0',
+  electronVersion: '43.8.7',
   ready: true,
   switches: {} as Record<string, string>,
   getSwitchValue: vi.fn<(name: string) => string>(),
@@ -35,6 +36,7 @@ vi.mock('node:process', async (importOriginal) => {
     default: {
       ...actual,
       get platform() { return host.platform },
+      get versions() { return { ...actual.versions, electron: host.electronVersion } },
       getSystemVersion: () => host.version,
     },
   }
@@ -54,7 +56,7 @@ describe('host capability service', () => {
     vi.resetModules()
     vi.clearAllMocks()
     vi.spyOn(Date, 'now').mockReturnValue(1000)
-    Object.assign(host, { platform: 'linux', version: '14.2.0', ready: true, switches: {} })
+    Object.assign(host, { platform: 'linux', version: '14.2.0', electronVersion: '43.8.7', ready: true, switches: {} })
     host.getSwitchValue.mockImplementation(name => host.switches[name] ?? '')
     vi.stubEnv('WAYLAND_DISPLAY', 'wayland-0')
     vi.stubEnv('XDG_SESSION_TYPE', 'wayland')
@@ -80,6 +82,72 @@ describe('host capability service', () => {
     service.createHostCapabilitiesService({ context: context as never, window: window as never })
     return { context, window, changes, read: defineInvoke(context, getHostCapabilities) }
   }
+
+  it('publishes Linux bridge facts once and retains reports before readiness', async () => {
+    host.ready = false
+    service.reportLinuxDesktop({ backend: 'kwin', bridge: 'starting' })
+    expect(host.getSwitchValue).not.toHaveBeenCalled()
+    host.ready = true
+    const reader = registerWindow()
+    await expect(reader.read()).resolves.toMatchObject({
+      linuxDesktopBackend: 'kwin',
+      signals: { foregroundWindow: { kind: 'unavailable', reason: 'linux-bridge-starting' } },
+    })
+    service.reportLinuxDesktop({ bridge: 'ready', lockSource: 'screensaver' })
+    service.reportLinuxDesktop({ bridge: 'ready', lockSource: 'screensaver' })
+    expect(reader.changes).toHaveLength(1)
+    await expect(reader.read()).resolves.toMatchObject({
+      signals: {
+        foregroundWindow: { kind: 'unavailable', reason: 'linux-foreground-verifying' },
+        screenLock: { kind: 'live' },
+      },
+    })
+  })
+
+  it('emits a backend change even when every signal stays equal', () => {
+    host.switches['ozone-platform'] = 'x11'
+    service.reportLinuxDesktop({ backend: 'kwin', bridge: 'failed', bridgeFailure: 'other' })
+    const reader = registerWindow()
+    const before = service.getCurrentHostCapabilities().signals
+    service.reportLinuxDesktop({ backend: 'x11-ewmh' })
+    expect(reader.changes).toHaveLength(1)
+    expect(reader.changes[0]?.signals).toEqual(before)
+    expect(reader.changes[0]?.linuxDesktopBackend).toBe('x11-ewmh')
+  })
+
+  it.each([
+    ['43.7.5', 'unavailable'],
+    ['43.7.6', 'degraded'],
+    ['43.8.7', 'degraded'],
+    ['44.0.0', 'degraded'],
+    ['42.99.99', 'unavailable'],
+  ])('uses Electron %s for the Linux click-through toggle', (version, kind) => {
+    host.electronVersion = version
+    host.switches['ozone-platform'] = 'x11'
+    service.reportLinuxDesktop({ backend: 'kwin', bridge: 'ready', cursorVerified: true })
+    expect(service.getCurrentHostCapabilities().signals.clickThroughForward.kind).toBe(kind)
+  })
+
+  it.each(['win32', 'darwin'])('ignores Linux reports on %s', async (platform) => {
+    host.platform = platform
+    const reader = registerWindow()
+    service.reportLinuxDesktop({ backend: 'kwin', bridge: 'ready', lockSource: 'logind' })
+    expect(reader.changes).toEqual([])
+    await expect(reader.read()).resolves.toMatchObject({ linuxDesktopBackend: null })
+  })
+
+  it.each(['linux', 'win32', 'darwin'])('acknowledges the reserved verification invokes without granting facts on %s', async (platform) => {
+    host.platform = platform
+    const reader = registerWindow()
+    const before = await reader.read()
+    await expect(defineInvoke(reader.context, reportPointerSample)({ clientX: 10, clientY: 20, atMs: 1000 })).resolves.toBeUndefined()
+    await expect(defineInvoke(reader.context, reportSystemAudioHeard)({ level: 0.5 })).resolves.toBeUndefined()
+    await expect(reader.read()).resolves.toEqual(before)
+    expect(reader.changes).toEqual([])
+    reader.window.emit('closed')
+    expect(reader.context.listeners.get(reportPointerSample.sendEvent.id)?.size ?? 0).toBe(0)
+    expect(reader.context.listeners.get(reportSystemAudioHeard.sendEvent.id)?.size ?? 0).toBe(0)
+  })
 
   it.each(['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland'] as const)('chooses the display from the current %s origin status', (name) => {
     Object.assign(service.getCurrentHostCapabilities(), capabilitiesForHost(name))

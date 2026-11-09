@@ -3,6 +3,8 @@ export {
   cursorScreenPoint,
   getHostCapabilities,
   hostCapabilitiesChanged,
+  reportPointerSample,
+  reportSystemAudioHeard,
   startLoopGetBounds,
   startLoopGetCursorScreenPoint,
 } from './electron/index'

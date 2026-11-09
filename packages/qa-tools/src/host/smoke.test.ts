@@ -58,6 +58,37 @@ function live(caps: HostCapabilities): HostCapabilities {
 }
 
 describe('host smoke observation', () => {
+  it.each(['linux-x11', 'linux-xwayland', 'linux-wayland'] as const)('accepts bridge verification and proven lock on %s during rollout', async (hostId) => {
+    const samples = await sequence(hostId, (index, host) => ({
+      host: {
+        ...host,
+        signals: {
+          ...host.signals,
+          foregroundWindow: { kind: 'unavailable', reason: index === 0 ? HostReasons.LinuxBridgeStarting : HostReasons.LinuxForegroundVerifying },
+          cursorScreenPoint: { kind: 'unavailable', reason: HostReasons.LinuxCursorVerifying },
+          windowOrigin: { kind: 'unavailable', reason: HostReasons.LinuxGeometryVerifying },
+          screenLock: { kind: 'live' },
+        },
+      },
+      desktopIdleSeconds: hostId === 'linux-x11' ? index * 5 : null,
+    }))
+    expect(evaluateHostSmoke({ expected: capabilitiesForHost(hostId), samples }).failures).toEqual([])
+  })
+
+  it.each([
+    ['linux-wayland', 'foregroundWindow', HostReasons.LinuxBridgeFailed],
+    ['linux-wayland', 'globalKeyUp', HostReasons.LinuxBridgeStarting],
+    ['windows', 'foregroundWindow', HostReasons.LinuxForegroundVerifying],
+    ['linux-wayland', 'systemAudioCapture', HostReasons.LinuxGeometryVerifying],
+  ] as const)('rejects rollout tolerance for %s %s %s', async (hostId, signal, reason) => {
+    const samples = await sequence(hostId, (index, host) => ({
+      host: { ...host, signals: { ...host.signals, [signal]: { kind: 'unavailable', reason } } },
+      desktopIdleSeconds: hostId === 'windows' ? index * 5 : null,
+    }))
+    expect(evaluateHostSmoke({ expected: capabilitiesForHost(hostId), samples }).failures)
+      .toContainEqual(expect.objectContaining({ code: 'signal-mismatch', signal }))
+  })
+
   it('accepts matching healthy host signals with advancing raw idle samples', async () => {
     const samples = await sequence('windows', index => ({ host: capabilitiesForHost('windows'), desktopIdleSeconds: index * 5 }))
     expect(evaluateHostSmoke({ expected: capabilitiesForHost('windows'), samples })).toEqual({

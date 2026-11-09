@@ -47,6 +47,7 @@ export interface KwinBackendOptions {
   readonly ownPids: () => readonly number[]
   readonly onMessage: (message: KwinMessage) => void
   readonly onFailure: (reason: KwinFailure) => void
+  readonly onState?: (state: 'starting' | 'ready') => void
 }
 
 /** Serializes script ownership; stop and owner changes invalidate in-flight work. */
@@ -89,6 +90,7 @@ export class KwinBackend {
           return
         this.owner = newOwner || null
         this.ready = false
+        this.options.onState?.('starting')
         const next = ++this.generation
         this.hello?.reject(new KwinBackendError('owner-changed'))
         // beginStart reports reload failures; this operation has no caller.
@@ -275,6 +277,7 @@ export class KwinBackend {
     this.ready = true
     if (this.cursorStreaming)
       await this.load(this.cursorName, cursorSource, generation)
+    this.options.onState?.('ready')
   }
 
   private scripting<T>(member: string, signature: string, body: unknown[], owner = this.owner): Promise<T> {
