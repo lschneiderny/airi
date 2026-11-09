@@ -20,15 +20,15 @@ export function useElectronMouseAroundWindowBorder(
   const threshold = options.threshold ?? 8
   const overshoot = options.overshoot ?? threshold
 
-  const { x, y } = useElectronRelativeMouse()
+  const { x, y, available } = useElectronRelativeMouse()
   const { width, height } = useElectronWindowBounds()
 
   // Helpers to determine proximity to each edge. We allow a small overshoot so
   // users hovering slightly outside still get feedback to find the edge.
-  const nearLeft = computed(() => Math.abs(x.value) <= threshold && y.value > -overshoot && y.value < height.value + overshoot)
-  const nearRight = computed(() => Math.abs(x.value - width.value) <= threshold && y.value > -overshoot && y.value < height.value + overshoot)
-  const nearTop = computed(() => Math.abs(y.value) <= threshold && x.value > -overshoot && x.value < width.value + overshoot)
-  const nearBottom = computed(() => Math.abs(y.value - height.value) <= threshold && x.value > -overshoot && x.value < width.value + overshoot)
+  const nearLeft = computed(() => available.value && Math.abs(x.value) <= threshold && y.value > -overshoot && y.value < height.value + overshoot)
+  const nearRight = computed(() => available.value && Math.abs(x.value - width.value) <= threshold && y.value > -overshoot && y.value < height.value + overshoot)
+  const nearTop = computed(() => available.value && Math.abs(y.value) <= threshold && x.value > -overshoot && x.value < width.value + overshoot)
+  const nearBottom = computed(() => available.value && Math.abs(y.value - height.value) <= threshold && x.value > -overshoot && x.value < width.value + overshoot)
 
   const nearTopLeft = computed(() => nearTop.value && nearLeft.value)
   const nearTopRight = computed(() => nearTop.value && nearRight.value)

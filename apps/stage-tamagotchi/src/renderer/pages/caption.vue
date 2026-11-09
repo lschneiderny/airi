@@ -2,7 +2,8 @@
 import type { CaptionChannelEvent } from '@proj-airi/stage-shared'
 
 import { defineInvoke } from '@moeru/eventa'
-import { useElectronEventaContext, useElectronMouseAroundWindowBorder, useElectronMouseInWindow } from '@proj-airi/electron-vueuse'
+import { useElectronEventaContext, useElectronMouseAroundWindowBorder, useElectronMouseInWindow, useElectronRelativeMouse } from '@proj-airi/electron-vueuse'
+import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { createFadeAnimator, PoppinText } from '@proj-airi/stage-ui/components'
 import { refDebounced, useBroadcastChannel } from '@vueuse/core'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -19,8 +20,15 @@ const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
 const isOutsideWindowFor250Ms = refDebounced(isOutsideWindow, 250)
 const shouldFadeOnCursorWithin = computed(() => !isOutsideWindowFor250Ms.value)
 
-const { isNearAnyBorder: isAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 30 })
-const isAroundWindowBorderFor250Ms = refDebounced(isAroundWindowBorder, 250)
+const { available: cursorAvailable } = useElectronRelativeMouse()
+const hostCapabilities = useHostCapabilitiesStore()
+const canUseCursor = computed(() => cursorAvailable.value
+  && hostCapabilities.status('cursorScreenPoint')?.kind === 'live'
+  && hostCapabilities.status('windowOrigin')?.kind === 'live')
+const { isNearAnyBorder: nativeAroundWindowBorder } = useElectronMouseAroundWindowBorder({ threshold: 30 })
+const isAroundWindowBorder = computed(() => canUseCursor.value && nativeAroundWindowBorder.value)
+const debouncedAroundWindowBorder = refDebounced(isAroundWindowBorder, 250)
+const isAroundWindowBorderFor250Ms = computed(() => canUseCursor.value && debouncedAroundWindowBorder.value)
 
 // Broadcast channel for captions
 const { data } = useBroadcastChannel<CaptionChannelEvent, CaptionChannelEvent>({ name: 'airi-caption-overlay' })
@@ -126,6 +134,7 @@ onUnmounted(() => {
     </div>
 
     <Transition
+      v-if="canUseCursor"
       enter-active-class="transition-opacity duration-250 ease-in-out"
       enter-from-class="opacity-50"
       enter-to-class="opacity-100"
@@ -133,7 +142,10 @@ onUnmounted(() => {
       leave-from-class="opacity-100"
       leave-to-class="opacity-50"
     >
-      <div v-if="isAroundWindowBorderFor250Ms" class="pointer-events-none absolute left-0 top-0 z-999 h-full w-full">
+      <div
+        v-if="isAroundWindowBorderFor250Ms"
+        :class="['pointer-events-none absolute left-0 top-0 z-999 h-full w-full']"
+      >
         <div
           :class="[
             'b-primary/50',

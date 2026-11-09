@@ -8,9 +8,35 @@ import { render } from 'vitest-browser-vue'
 import { nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
-import { boundsX, boundsY, cursorAvailable, display, MainPage, outsideWindow, setIgnoreMouseEvents, stageFrame, StagePage, windowBounds } from './host-screen-placement.fixtures'
+import { boundsAvailable, boundsHeight, boundsWidth, boundsX, boundsY, cursorAvailable, display, MainPage, outsideWindow, setIgnoreMouseEvents, stageFrame, StagePage, windowBounds } from './host-screen-placement.fixtures'
 
 describe.each([['classic', MainPage], ['desktop', StagePage]] as const)('%s screen placement', (_name, component) => {
+  it.each(['windows', 'macos'] as const)('waits for the first %s bounds reading before forwarding placement and relative cursor', async (host) => {
+    const pinia = createPinia()
+    useHostCapabilitiesStore(pinia).set(capabilitiesForHost(host))
+    boundsAvailable.value = false
+    boundsX.value = 0
+    boundsY.value = 0
+    boundsWidth.value = 0
+    boundsHeight.value = 0
+    cursorAvailable.value = true
+    const view = await render(component, { global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en' })] } })
+    onTestFinished(() => view.unmount())
+
+    expect(view.getByTestId('stage-placement').element().textContent).toBe('undefined')
+    expect(view.getByTestId('stage-cursor').element().textContent).toBe('undefined')
+
+    boundsX.value = windowBounds.x
+    boundsY.value = windowBounds.y
+    boundsWidth.value = windowBounds.width
+    boundsHeight.value = windowBounds.height
+    boundsAvailable.value = true
+    await nextTick()
+
+    expect(view.getByTestId('stage-placement').element().textContent).toBe(JSON.stringify({ displays: [display.bounds], windowBounds }))
+    expect(view.getByTestId('stage-cursor').element().textContent).toBe('{"x":20,"y":30}')
+  })
+
   it('defers hidden Wayland origin and cursor inputs until the snapshot resolves', async () => {
     const pinia = createPinia()
     const capabilities = useHostCapabilitiesStore(pinia)

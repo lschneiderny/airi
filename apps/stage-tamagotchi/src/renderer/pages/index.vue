@@ -438,10 +438,10 @@ const cursorPosition = computed(() => canUseCursor.value
   : undefined)
 
 const allDisplays = useElectronAllDisplays()
-const { x: windowX, y: windowY, width: windowWidth, height: windowHeight } = useElectronWindowBounds()
+const { x: windowX, y: windowY, width: windowWidth, height: windowHeight, available: boundsAvailable } = useElectronWindowBounds()
 // Natural turns the character toward the screen interior from where this window sits among the displays.
 // Raw bounds may hide the origin on Wayland; wait for explicit trust before forwarding them.
-const screenPlacement = computed(() => hostCapabilities.status('windowOrigin')?.kind === 'live'
+const screenPlacement = computed(() => boundsAvailable.value && hostCapabilities.status('windowOrigin')?.kind === 'live'
   ? {
       displays: allDisplays.value.map(display => display.bounds),
       windowBounds: { x: windowX.value, y: windowY.value, width: windowWidth.value, height: windowHeight.value },

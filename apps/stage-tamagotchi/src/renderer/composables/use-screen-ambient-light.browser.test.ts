@@ -101,6 +101,26 @@ async function mount() {
 }
 
 describe('screen ambient light capture', () => {
+  it.each(['windows', 'macos'] as const)('waits for the first %s bounds before choosing a capture display', async (host) => {
+    useHostCapabilitiesStore().set(capabilitiesForHost(host))
+    bounds.x.value = 0
+    bounds.y.value = 0
+    bounds.width.value = 0
+    bounds.height.value = 0
+    await mount()
+    await nextTick()
+
+    expect(selectedDisplayIds).toEqual([])
+    expect(getPrimaryDisplay).not.toHaveBeenCalled()
+
+    bounds.x.value = windowBounds.x
+    bounds.y.value = windowBounds.y
+    bounds.width.value = windowBounds.width
+    bounds.height.value = windowBounds.height
+
+    await vi.waitFor(() => expect(selectedDisplayIds).toEqual(['screen:17:0']))
+  })
+
   it.each<HostId>(['windows', 'macos', 'linux-wayland'])('waits for the %s snapshot before selecting a capture display', async (host) => {
     const capabilities = useHostCapabilitiesStore()
     capabilities.reset()
