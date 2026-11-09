@@ -9,8 +9,10 @@ Follow the [root guide](../../AGENTS.md) and its motion-qa task routing. `README
 
 | Task | Location | Notes |
 | --- | --- | --- |
-| CLI entrypoints | `bin/` | `doctor`, `motion`, `report`, `test`, `evidence`, `t2-probe`, `check-prod-bundle`, `setup`, `llm`, `app` |
+| CLI entrypoints | `bin/` | `doctor`, `motion`, `report`, `test`, `evidence`, `t2-probe`, `check-prod-bundle`, `setup`, `llm`, `app`, `smoke`, `mcp` |
 | Experience session driver | `src/app/` | `pnpm qa:app run`: temporary profile, seeded replay provider and model, chat send, named bridge events, JSON summary |
+| Clean-start smoke and page errors | `src/smoke/` | `pnpm qa:smoke`: CDP error collector for every window, main-log scan, allowlist in `fixtures/smoke/allowed-errors.json` |
+| Agent MCP server | `src/mcp/` | `pnpm qa:mcp`: `airi_*` tools over one `AppSession`; registered in the root `.mcp.json` |
 | Replay chat and speech server | `src/llm/` | `pnpm qa:llm serve`: scripted OpenAI-compatible replies and WAV speech, JSONL request log |
 | Model evaluation CLI | `bin/model.ts` | Dispatches `prompt`, `score`, `import-ollama-bench`, and `help` |
 | Model evaluation implementation | `src/model/` | Prompt rendering, transcript import, runtime scoring, provenance, and summaries |

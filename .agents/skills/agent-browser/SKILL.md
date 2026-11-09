@@ -9,7 +9,7 @@ hidden: true
 
 Fast browser automation CLI for AI agents. Chrome/Chromium via CDP with accessibility-tree snapshots and compact `@eN` element refs.
 
-Install: `npm i -g agent-browser && agent-browser install`
+Install: `npm i -g agent-browser@0.41.2 && agent-browser install`. Version 0.41.2 is installed and tested on the Linux workstation. If npm blocks its postinstall script, the CLI still works there; run `agent-browser --version` to confirm.
 
 ## Start here
 
