@@ -310,6 +310,7 @@ catalog:
   culori: ^4.0.2
   d3: 7.9.0
   date-fns: ^4.4.0
+  dbus-native: ^0.16.3
   debug: ^4.4.3
   defu: ^6.1.7
   destr: ^2.0.5
