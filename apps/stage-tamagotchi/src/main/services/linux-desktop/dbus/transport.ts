@@ -2,6 +2,12 @@ import { env } from 'node:process'
 
 import * as dbus from 'dbus-native'
 
+/** A wire value with an explicit D-Bus signature, constructed by the transport. */
+export interface DbusVariant<T = unknown> {
+  readonly signature: string
+  readonly value: T
+}
+
 interface MethodCall {
   readonly destination: string
   readonly path: string
@@ -35,6 +41,20 @@ export class DbusTransport {
   private failure: Error | undefined
   private readonly disposers = new Set<() => void>()
 
+  static variant<T>(signature: string, value: T): DbusVariant<T> {
+    return new dbus.Variant(signature, value)
+  }
+
+  /** Recursively decode dictionaries and variants; consumers validate the result. */
+  static toPlain(value: unknown): unknown {
+    return dbus.toPlain(value)
+  }
+
+  /** Only actual remote errors have a D-Bus error name. Local failures remain distinct. */
+  static errorName(error: unknown): string | undefined {
+    return error instanceof dbus.DBusError ? error.dbusName : undefined
+  }
+
   private constructor(private readonly bus: dbus.MessageBus) {
     bus.connection.on('error', (error) => {
       this.failure = error
@@ -63,10 +83,17 @@ export class DbusTransport {
     }
   }
 
-  async call<T>(msg: MethodCall): Promise<T> {
+  /** Available after connect's Hello barrier, for portal request path prediction. */
+  get uniqueName(): string {
+    if (!this.bus.name)
+      throw new Error('D-Bus connection has no unique name')
+    return this.bus.name
+  }
+
+  async call<T>(msg: MethodCall, options?: { signal?: AbortSignal, timeout?: number }): Promise<T> {
     if (this.failure)
       throw this.failure
-    return this.bus.invoke<T>({ ...msg })
+    return this.bus.invoke<T>({ ...msg }, options)
   }
 
   emitSignal(path: string, iface: string, member: string, signature: string, body: unknown[]): void {
