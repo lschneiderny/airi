@@ -1,6 +1,6 @@
 import type { KwinProbe } from '../t3/pointer-kwin'
 
-import { execFile, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join, posix, resolve } from 'node:path'
@@ -256,7 +256,14 @@ function createDoctorChecks(probes: DoctorProbes): DoctorCheck[] {
     {
       id: 'stray-electron',
       run: async () => {
-        const strays = strayElectronProcesses(await probes.listProcesses(), probes.repoRoot)
+        let listing: ProcessEntry[]
+        try {
+          listing = await probes.listProcesses()
+        }
+        catch (error) {
+          return { status: 'warn', detail: `not checked: ${errorMessageFrom(error) ?? 'the process listing failed'}`, fix: 'On Linux, run the doctor inside a QA display to check for stray Electron processes: pnpm qa:display run -- pnpm qa:doctor' }
+        }
+        const strays = strayElectronProcesses(listing, probes.repoRoot)
         return strays.length === 0
           ? ok('no stage-tamagotchi electron processes from this worktree')
           : { status: 'warn', detail: `stage-tamagotchi electron processes from this worktree running: PIDs ${strays.map(({ pid }) => pid).join(', ')}`, fix: 'Stop the dev session that owns them before a rendered run; doctor never kills processes.' }
@@ -413,31 +420,6 @@ function resolveChromiumExecutable(repoRoot: string): string | undefined {
   }
 }
 
-function listProcesses(timeoutMs: number): Promise<ProcessEntry[]> {
-  const [command, args] = platform === 'win32'
-    ? ['powershell', ['-NoProfile', '-Command', 'Get-CimInstance Win32_Process | Select ProcessId,CommandLine | ConvertTo-Json']] as const
-    : ['ps', ['-eo', 'pid,args']] as const
-  return new Promise((resolveList, reject) => {
-    execFile(command, [...args], { timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024, windowsHide: true }, (error, stdout) => {
-      if (error) {
-        reject(error)
-        return
-      }
-      if (platform === 'win32') {
-        const parsed = JSON.parse(stdout) as { ProcessId: number, CommandLine: string | null } | { ProcessId: number, CommandLine: string | null }[]
-        resolveList((Array.isArray(parsed) ? parsed : [parsed]).map(({ ProcessId, CommandLine }) => ({ pid: ProcessId, commandLine: CommandLine ?? '' })))
-        return
-      }
-      resolveList(stdout.split('\n').slice(1).flatMap((line) => {
-        const trimmed = line.trim()
-        const separator = trimmed.indexOf(' ')
-        const pid = Number(trimmed.slice(0, separator))
-        return separator > 0 && Number.isInteger(pid) ? [{ pid, commandLine: trimmed.slice(separator + 1).trim() }] : []
-      }))
-    })
-  })
-}
-
 /** Real probes for `runDoctor`, rooted at the repository checkout. */
 export function createSystemProbes(repoRoot: string, env: Record<string, string | undefined> = processEnv): DoctorProbes {
   const abs = (path: string) => resolve(repoRoot, path)
@@ -459,7 +441,8 @@ export function createSystemProbes(repoRoot: string, env: Record<string, string 
     existsAbsolute: path => existsSync(path),
     env,
     listRig: listRigModels,
-    listProcesses: () => listProcesses(10_000),
+    // On Linux this lists only the current qa:display session and refuses outside one; it never reads the host table.
+    listProcesses: () => listLiveProcesses(10_000, platform, env),
     kwinPointer: async () => {
       try {
         return parseKwinProbe(await runKwinHelper('probe', { timeoutMs: 10_000 }))

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseAudioPids, parseQaDisplayArgs, parseSessionEnv, parseSystemBusPid, pointerCommand, qaDisplayGuard, qaDisplayPaths, qaDisplayUnitArgs, requiredBinaries, sessionMountTargets, sessionProcessRunning, shellExports, swayConfig, swayProbeScript, systemBusConfig, takeAllowHostSession, wireplumberNoDevicesConf } from './qa-display-plan'
+import { clientEnv, freeX11Display, isQaDisplayRunScope, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseAudioPids, parseQaDisplayArgs, parseSessionEnv, parseSystemBusPid, pointerCommand, qaDisplayGuard, qaDisplayPaths, qaDisplayRunArgs, qaDisplayRunScopeStopArgs, qaDisplayRunScopeUnit, qaDisplayUnitArgs, requiredBinaries, sessionMountTargets, sessionProcessRunning, shellExports, swayConfig, swayProbeScript, systemBusConfig, takeAllowHostSession, wireplumberNoDevicesConf } from './qa-display-plan'
 
 describe('qa display arguments', () => {
   it('defaults to a 1920x1080 headless session named qa without portals or audio', () => {
@@ -509,5 +509,30 @@ describe('qa display pointer', () => {
     ['sway', { command: 'swaymsg', args: ['seat', '-', 'cursor', 'set', '10', '20'] }],
   ] as const)('routes %s to its pointer tool', (compositor, expected) => {
     expect(pointerCommand(compositor, { x: 10, y: 20 }, '/h/kwin-pointer.py', 1000)).toEqual(expected)
+  })
+})
+
+describe('qa display run scope', () => {
+  it('runs the command in the session run scope and restores the session runtime directory and bus for it', () => {
+    const scope = ['--user', '--scope', '--quiet', '--collect', '--unit=airi-qa-display-lsp.run-42.scope', '--', 'env']
+    const restore = ['XDG_RUNTIME_DIR=/run/user/1000/airi-qa-display/lsp/runtime', 'DBUS_SESSION_BUS_ADDRESS=unix:path=/b']
+    expect(qaDisplayRunArgs('lsp', 42, { XDG_RUNTIME_DIR: '/run/user/1000/airi-qa-display/lsp/runtime', DBUS_SESSION_BUS_ADDRESS: 'unix:path=/b' }, ['pnpm', 'qa:smoke'])).toEqual([...scope, ...restore, 'pnpm', 'qa:smoke'])
+    expect(qaDisplayRunArgs('lsp', 42, {}, ['x'])).toEqual(['--user', '--scope', '--quiet', '--collect', '--unit=airi-qa-display-lsp.run-42.scope', '--', 'env', '-u', 'XDG_RUNTIME_DIR', '-u', 'DBUS_SESSION_BUS_ADDRESS', 'x'])
+  })
+
+  it('stops every run scope of the session on down, and only those', () => {
+    const [verb, pattern] = qaDisplayRunScopeStopArgs('lsp')
+    expect(verb).toBe('stop')
+    const glob = new RegExp(`^${pattern!.replaceAll('.', '\\.').replaceAll('*', '.*')}$`)
+    expect(glob.test(qaDisplayRunScopeUnit('lsp', 42))).toBe(true)
+    expect(glob.test(qaDisplayRunScopeUnit('lsp-2', 42))).toBe(false)
+    expect(glob.test('airi-qa-display-lsp.service')).toBe(false)
+  })
+
+  it('recognises only run scopes of the named session', () => {
+    expect(isQaDisplayRunScope('lsp', 'airi-qa-display-lsp.run-42.scope')).toBe(true)
+    expect(isQaDisplayRunScope('lsp', 'airi-qa-display-lsp-2.run-42.scope')).toBe(false)
+    expect(isQaDisplayRunScope('lsp', 'airi-qa-display-lsp.run-x.scope')).toBe(false)
+    expect(isQaDisplayRunScope('lsp', 'airi-qa-display-lsp.service')).toBe(false)
   })
 })
