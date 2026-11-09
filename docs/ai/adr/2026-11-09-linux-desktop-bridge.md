@@ -208,9 +208,11 @@ denylist and 120-character title limit apply, and titles are never logged.
 (b) Own-window discovery may enumerate windows reading only `pid` to compare
 against OwnPids inside the compositor. For a window that is neither active
 nor AIRI's own, no other property is read, sent, stored or logged. Discovery
-retains only matched AIRI windows. Actuators accept an AIRI pid and inspect
-no foreign property beyond the ownership comparison. Host facts and window
-titles are not persisted.
+retains only matched AIRI windows. Actuators (todo 10: keep-above and
+placement) accept the compositor id that the binding handshake proved for an
+AIRI `BrowserWindow`. Their one-shot script compares a window's pid with
+OwnPids before it reads the id, so a foreign window is read for pid only and
+never written. Host facts and window titles are not persisted.
 
 Every agent app run uses `pnpm qa:display run` with a named private compositor,
 runtime directory, bus, temporary profile and data directory. Sensor fixtures

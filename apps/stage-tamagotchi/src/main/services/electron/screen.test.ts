@@ -91,6 +91,8 @@ describe('screen service', () => {
       onState: () => () => {},
       setCursorStreaming: vi.fn(async (_on: boolean) => {}),
       requestCursor: vi.fn(async () => {}),
+      setKeepAbove: vi.fn(async () => {}),
+      placeWindow: vi.fn(async () => {}),
     }
     const detach = attachLinuxCoordinates(bridge)
     onTestFinished(detach)
@@ -120,6 +122,8 @@ describe('screen service', () => {
       onState: () => () => {},
       setCursorStreaming: vi.fn(async (_on: boolean) => {}),
       requestCursor: vi.fn(async () => {}),
+      setKeepAbove: vi.fn(async () => {}),
+      placeWindow: vi.fn(async () => {}),
     }
     const detach = attachLinuxCoordinates(bridge)
     onTestFinished(detach)

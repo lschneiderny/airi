@@ -12,6 +12,7 @@ import icon from '../../../../resources/icon.png?asset'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createReusableWindow } from '../../libs/electron/window-manager/reusable'
 import { readPrimaryDisplay } from '../../services/electron/coordinates'
+import { placeWindow } from '../shared/placement'
 import { protectPrivilegedWindowNavigation, setWindowAlwaysOnTop, transparentWindowConfig } from '../shared/window'
 import { INLAY_WINDOW_HEIGHT, inlayWindowBounds } from './bounds'
 import { setupInlayWindowInvokes } from './rpc/index.electron'
@@ -61,7 +62,7 @@ export function setupInlayWindowReusable(params: {
 
     const place = () => {
       if (!window.isDestroyed())
-        window.setBounds(inlayWindowBounds(readPrimaryDisplay().workArea))
+        placeWindow(window, inlayWindowBounds(readPrimaryDisplay().workArea))
     }
     place()
     // A resolution change, a moved Dock, or another primary display moves the work area under the fixed window.

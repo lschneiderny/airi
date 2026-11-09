@@ -15,7 +15,8 @@ import { isLinux, isMacOS, isWindows } from 'std-env'
 import { createServerChannelService } from '../../services/airi/channel-server'
 import { createI18nService } from '../../services/airi/i18n'
 import { createAppService, createAppVersionService, createDesktopActivityService, createForegroundWindowService, createHostCapabilitiesService, createPowerMonitorService, createScreenService, createSystemPreferencesService, createWindowService } from '../../services/electron'
-import { readWindowRect } from '../../services/electron/coordinates'
+import { readWindowRect, requestKeepAbove } from '../../services/electron/coordinates'
+import { placeWindow } from './placement'
 
 export function toggleWindowShow(window?: BrowserWindow | null): void {
   if (!window) {
@@ -101,23 +102,21 @@ export function spotlightLikeWindowConfig(): BrowserWindowConstructorOptions {
  *
  * macOS and Windows support the screen-saver level and relative level layering,
  * while Linux (X11/Wayland) works reliably with standard always-on-top.
+ * On KDE native Wayland, where Electron's request has no effect, a KWin
+ * actuator also writes keep-above on the window's bound compositor window.
  */
 export function setWindowAlwaysOnTop(
   window: Pick<BrowserWindow, 'setAlwaysOnTop'>,
   flag: boolean,
   relativeLevel = 1,
 ): void {
-  if (!flag) {
+  if (!flag)
     window.setAlwaysOnTop(false)
-    return
-  }
-
-  if (isMacOS || isWindows) {
+  else if (isMacOS || isWindows)
     window.setAlwaysOnTop(true, 'screen-saver', relativeLevel)
-    return
-  }
-
-  window.setAlwaysOnTop(true)
+  else
+    window.setAlwaysOnTop(true)
+  requestKeepAbove(window, flag)
 }
 
 interface ResizeByDeltaOptions {
@@ -173,7 +172,7 @@ export function resizeWindowByDelta(params: ResizeByDeltaOptions & { window: Bro
   const { width, height } = params.window.getBounds()
   const bounds = resizeBoundsByDelta(rect ?? { x: 0, y: 0, width, height }, params)
   if (rect)
-    params.window.setBounds(bounds)
+    placeWindow(params.window, bounds)
   else
     params.window.setSize(bounds.width, bounds.height)
 }

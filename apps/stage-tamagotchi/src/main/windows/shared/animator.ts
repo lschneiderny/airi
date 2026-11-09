@@ -3,6 +3,7 @@ import type { BrowserWindow, Rectangle } from 'electron'
 import { animate, utils } from 'animejs'
 
 import { readWindowRect, windowOriginTrusted } from '../../services/electron/coordinates'
+import { placeWindow } from './placement'
 
 type AnimatableWindow = Pick<BrowserWindow, 'getBounds' | 'isDestroyed' | 'setPosition' | 'setSize'>
 
@@ -48,7 +49,7 @@ export class Animator {
       modifier: utils.round(0),
       onRender: () => {
         if (!this.window.isDestroyed() && windowOriginTrusted())
-          this.window.setPosition(Math.round(state.x), Math.round(state.y))
+          placeWindow(this.window, { x: Math.round(state.x), y: Math.round(state.y) })
       },
     })
   }

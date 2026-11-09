@@ -23,9 +23,10 @@ import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
-import { displayMatching, readDisplays, readPrimaryDisplay, readWindowRect, windowOriginTrusted } from '../../services/electron/coordinates'
+import { displayMatching, onCompositorWindowRect, readDisplays, readPrimaryDisplay, readWindowRect, windowOriginTrusted } from '../../services/electron/coordinates'
 import { showWindowOnAllWorkspaces } from '../shared/app-icon'
 import { mapForBreakpoints, resolutionBreakpoints, widthFrom } from '../shared/display'
+import { placeWindow } from '../shared/placement'
 import { protectPrivilegedWindowNavigation, setupBaseWindowElectronInvokes, setWindowAlwaysOnTop, transparentWindowConfig } from '../shared/window'
 
 const captionConfigSchema = object({
@@ -218,7 +219,7 @@ export function setupCaptionWindowManager(params: {
           const toX = Math.round(state.x)
           const toY = Math.round(state.y)
           lastProgrammaticMoveAt = Date.now()
-          win.setPosition(toX, toY)
+          placeWindow(win, { x: toX, y: toY })
         },
       })
     }
@@ -322,23 +323,30 @@ export function setupCaptionWindowManager(params: {
     const cfg = getConfig()
     const saved = cfg?.matrices?.[matrixHash]?.bounds
 
+    // A saved position waits for a live origin and this window's proved rectangle before it is applied.
+    let pendingRestore: Rectangle | undefined
     if (!windowOriginTrusted()) {
       const size = saved ?? computeInitialCaptionBounds({ mainWindow: params.mainWindow })
       window.setSize(size.width, size.height)
+      if (saved?.x !== undefined && saved.y !== undefined)
+        pendingRestore = { ...saved, x: saved.x, y: saved.y }
     }
     else if (saved && saved.x !== undefined && saved.y !== undefined) {
       const workArea = displayMatching({ ...saved, x: saved.x, y: saved.y }).workArea
       const clamped = clampBoundsWithinRect({ ...saved, x: saved.x, y: saved.y }, workArea)
-      window.setBounds(clamped)
+      placeWindow(window, clamped)
     }
     else {
       const initialBounds = computeInitialCaptionBounds({ mainWindow: params.mainWindow })
-      window.setBounds({ ...initialBounds, ...saved })
+      placeWindow(window, { ...initialBounds, ...saved })
     }
 
     const persistBounds = () => {
-      const config = getConfig() ?? { isFollowing, matrices: {} }
       const origin = readWindowRect(window)
+      // Before the restore, a readable origin is the compositor's choice, not the user's.
+      if (pendingRestore && origin)
+        return
+      const config = getConfig() ?? { isFollowing, matrices: {} }
       const { width, height } = window.getBounds()
       const stored = config.matrices[matrixHash]
       const bounds = origin ?? { ...stored?.bounds, width, height }
@@ -352,6 +360,18 @@ export function setupCaptionWindowManager(params: {
 
     window.on('resize', persistBounds)
     window.on('move', persistBounds)
+    onCompositorWindowRect(window, () => {
+      if (!pendingRestore) {
+        persistBounds()
+        return
+      }
+      if (!readWindowRect(window))
+        return
+      const target = pendingRestore
+      pendingRestore = undefined
+      lastProgrammaticMoveAt = Date.now()
+      placeWindow(window, clampBoundsWithinRect(target, displayMatching(target).workArea))
+    })
     window.on('show', emitVisibilityChanged)
     window.on('hide', emitVisibilityChanged)
 
@@ -447,7 +467,7 @@ export function setupCaptionWindowManager(params: {
     lastProgrammaticMoveAt = Date.now()
     const initialBounds = computeInitialCaptionBounds({ mainWindow: params.mainWindow })
     if (windowOriginTrusted())
-      window.setBounds(initialBounds)
+      placeWindow(window, initialBounds)
     else
       window.setSize(initialBounds.width, initialBounds.height)
 

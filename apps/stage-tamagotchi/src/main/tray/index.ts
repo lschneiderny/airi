@@ -31,6 +31,7 @@ import { displayMatching, readDisplays, readPrimaryDisplay, readWindowRect } fro
 import { Animator } from '../windows/shared/animator'
 import { AppIconVisibility } from '../windows/shared/app-icon'
 import { computeResizedBoundsAnchoredToDominantDisplay } from '../windows/shared/display'
+import { placeWindow } from '../windows/shared/placement'
 import { toggleWindowShow } from '../windows/shared/window'
 import { isStageWindow, showUserFacingWindow } from '../windows/stage/identity'
 import { resolveAlignedWindowBounds, windowLayoutMenuItems } from './window-layout'
@@ -62,7 +63,7 @@ function applyWindowSize(window: BrowserWindow, width: number, height: number, x
         displays: readDisplays(),
       })
 
-  window.setBounds(bounds)
+  placeWindow(window, bounds)
   window.show()
 }
 

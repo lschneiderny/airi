@@ -8,6 +8,7 @@ import icon from '../../../../resources/icon.png?asset'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { protectPrivilegedWindowNavigation } from '../shared'
+import { placeWindow } from '../shared/placement'
 
 export interface OpenDevtoolsWindowParams extends Partial<Electron.Rectangle> {
   key: string
@@ -76,7 +77,7 @@ export function setupDevtoolsWindow(): DevtoolsWindowManager {
         bounds.x = params.x
       if (params.y !== undefined)
         bounds.y = params.y
-      window.setBounds(bounds)
+      placeWindow(window, bounds)
     }
 
     return window

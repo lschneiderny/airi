@@ -31,6 +31,7 @@ import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { displayMatching, readDisplays, readRendererWindowBounds, readWindowRect, windowOriginTrusted } from '../../services/electron/coordinates'
 import { showWindowOnAllWorkspaces } from '../shared/app-icon'
+import { placeWindow } from '../shared/placement'
 import { protectPrivilegedWindowNavigation, resizeBoundsByDelta, transparentWindowConfig } from '../shared/window'
 import { attachedChatOffset, chooseAttachedChatLayout, keepChatOnDisplay, preferredAttachedChatLayout, wholePixels } from './floating-placement'
 
@@ -152,7 +153,7 @@ export function setupFloatingChatWindow(params: {
     // Source: https://github.com/electron/electron/issues/13043
     // Removal: Electron keeps the size of a moved non-resizable window.
     if (current.x !== x || current.y !== y || current.width !== size.width || current.height !== size.height)
-      target.setBounds({ x, y, ...size })
+      placeWindow(target, { x, y, ...size })
   }
 
   function currentState(): ChatFloatingState {
@@ -475,7 +476,7 @@ export function setupFloatingChatWindow(params: {
 
     // The saved position may be on a display that is gone or smaller now.
     if (windowOriginTrusted() && params.getPlacement() !== 'attached' && saved.x != null && saved.y != null)
-      target.setBounds(keepChatOnDisplay({ x: saved.x, y: saved.y, width: saved.width, height: saved.height }, readDisplays()))
+      placeWindow(target, keepChatOnDisplay({ x: saved.x, y: saved.y, width: saved.width, height: saved.height }, readDisplays()))
 
     showWindowOnAllWorkspaces(target)
     if (isMacOS) {

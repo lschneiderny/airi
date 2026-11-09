@@ -4,6 +4,7 @@ import type { DisplayArea } from '../../../shared/utils/electron/display'
 
 import { findDominantDisplayArea } from '../../../shared/utils/electron/display'
 import { displayForWindow, displayMatching, readRendererWindowBounds, readWindowRect } from '../../services/electron/coordinates'
+import { placeWindow } from './placement'
 
 export function currentDisplayBounds(window: BrowserWindow) {
   const nearbyDisplay = displayForWindow(window)
@@ -65,7 +66,7 @@ export function centerWindowOnDisplay(window: Pick<BrowserWindow, 'getBounds' | 
   const displayWorkArea = displayMatching(windowBounds).workArea
   const centeredBounds = computeCenteredWindowBounds({ displayWorkArea, windowBounds })
 
-  window.setBounds(centeredBounds)
+  placeWindow(window, centeredBounds)
   window.show()
 
   return centeredBounds
