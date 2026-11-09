@@ -28,6 +28,9 @@ host input, and must still check the host capability snapshot for origin trust.
 while the trusted Electron cursor or the first window bounds are unavailable. This fallback supports UI
 hover behavior only. It does not make DOM coordinates trusted desktop input or
 feed them to presence and motion resolution.
+Without a native reading or a delivered DOM entry/move, `isOutside` stays true:
+unknown cursor state never establishes hover. DOM exit clears that fallback
+even while native hit-testing is authoritative.
 
 ## Usage
 

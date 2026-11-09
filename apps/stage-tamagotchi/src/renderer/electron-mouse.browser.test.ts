@@ -92,7 +92,7 @@ describe('useElectronMouse', () => {
   })
 })
 
-async function mountHitTest() {
+async function mountHitTest(position = 100) {
   const target = ref<HTMLElement>()
   let state: ReturnType<typeof useElectronMouseInElement> | undefined
   const host = document.createElement('div')
@@ -100,7 +100,7 @@ async function mountHitTest() {
   const app = createApp({
     setup() {
       state = useElectronMouseInElement(target)
-      return () => h('div', { ref: target, style: 'position:fixed;left:100px;top:100px;width:100px;height:100px' })
+      return () => h('div', { ref: target, style: `position:fixed;left:${position}px;top:${position}px;width:100px;height:100px` })
     },
   })
   app.mount(host)
@@ -115,6 +115,17 @@ async function mountHitTest() {
 }
 
 describe('useElectronMouseInElement', () => {
+  it('does not invent DOM hover at the origin before input or after a native reading is withheld', async () => {
+    const { state } = await mountHitTest(0)
+    expect(state.isOutside.value).toBe(true)
+
+    await sendCursor({ x: 40, y: 40 })
+    expect(state.isOutside.value).toBe(false)
+
+    await sendCursor(null)
+    expect(state.isOutside.value).toBe(true)
+  })
+
   it('retains pointer-only entry when native availability is withdrawn mid-hover', async () => {
     await sendCursor({ x: 900, y: 900 })
     const { state, target } = await mountHitTest()
