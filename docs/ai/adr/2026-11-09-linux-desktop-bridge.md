@@ -225,10 +225,13 @@ GNOME is excluded from compositor sensing because its equivalent requires
 an installed Shell extension. AIRI does not install or require one. GNOME
 still uses independently proven lock, portal and audio sources.
 
-## Interim smoke policy
+## Smoke policy
 
-Until todo 18 introduces exact backend profiles, `qa:host smoke` accepts the
-static Linux status, an unavailable starting/verifying status for a
-bridge-owned signal, or a live screen-lock signal. It still rejects bridge
-failures and unrelated signal changes. Windows and macOS comparisons remain
-exact. Node evaluation cases cover both acceptance and rejection.
+On Linux, `qa:host smoke` requires `--expect-backend` and takes the proofs the
+session can reach in `--expect-verified`. Its expected profile is
+`capabilitiesForHost(host, linuxDesktop)` with those proofs, and every other
+profile it accepts comes from the same resolver: the `starting` profile and the
+unverified profile, which a signal may pass through once, in that order. A
+proof that changes no signal on that host and backend is refused. Lock is
+expected only where the session owns a lock source. Windows and macOS
+comparisons remain exact.

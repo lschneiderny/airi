@@ -22,6 +22,7 @@ import {
   nextScenarioChatInput,
 } from '@proj-airi/stage-shared/motion-scenario'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
+import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useExpressionStore, useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
@@ -96,6 +97,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
   const override = useNaturalPerformanceOverride()
   const hostCapabilities = useHostCapabilitiesStore()
   const desktopActivity = useDesktopActivityStore()
+  const foregroundWindow = useForegroundWindowStore()
   const expressions = useExpressionStore()
   const context = createMotionQaContext()
   const eventLog = useMotionQaEvents(options)
@@ -130,6 +132,8 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       placementYawBias: diagnostics.lastPlacementYawBias,
       chat: diagnostics.lastChat && { ...diagnostics.lastChat },
       host: hostCapabilities.snapshot && structuredClone(toRaw(hostCapabilities.snapshot)),
+      // Only these three fields leave the window; the title stays in the store.
+      foreground: foregroundWindow.sample && { exeName: foregroundWindow.sample.exeName, busy: foregroundWindow.sample.busy, ownProcess: foregroundWindow.sample.ownProcess },
       desktopIdleSeconds: desktopActivity.snapshot?.idleSeconds ?? null,
       performanceMode: state.mode,
       performance: {

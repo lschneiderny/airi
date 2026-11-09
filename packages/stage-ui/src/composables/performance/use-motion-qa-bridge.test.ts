@@ -11,6 +11,7 @@ import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { createMotionQaContext, createMotionQaDispatcher, motionQaRunScenarioInvokeEventa } from '@proj-airi/stage-shared/motion-scenario'
 import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage-shared/performance-state'
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
+import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
@@ -239,6 +240,16 @@ describe('useMotionQaBridge', () => {
     useHostCapabilitiesStore().reset()
     mode.value = 'talking'
     expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { host: null, desktopIdleSeconds: 43, performanceMode: 'talking' } })
+  })
+
+  it('reports the foreground sample without its title, path or pid', async () => {
+    expect(await dispatch({ name: 'state' })).toMatchObject({ ok: true, result: { foreground: null } })
+    useForegroundWindowStore().setSample({ exePath: '/usr/bin/konsole', exeName: 'konsole', title: 'secret title', pid: 42, ownProcess: false, busy: 'fullscreen', sampledAtMs: 1 })
+    const reply = await dispatch({ name: 'state' }) as { ok: boolean, result: { foreground: object } }
+    expect(reply.result.foreground).toEqual({ exeName: 'konsole', busy: 'fullscreen', ownProcess: false })
+    expect(JSON.stringify(reply)).not.toContain('secret title')
+    useForegroundWindowStore().reset()
+    expect(await dispatch({ name: 'state' })).toMatchObject({ result: { foreground: null } })
   })
 
   it('reports the stage face-feature head unit without applying another scale', async () => {

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { MotionQaBridgeClient, MotionQaBridgeError } from './bridge-client'
 
-const state = { modelId: null, modelLoaded: false, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: false, hold: null, captureActive: false, head: null, screen: { x: 0, y: 0, devicePixelRatio: 1 }, screenAwareness: true, placement: null, placementYawBias: 0, chat: null, host: null, desktopIdleSeconds: null, performanceMode: null, performance: null }
+const state = { modelId: null, modelLoaded: false, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: false, hold: null, captureActive: false, head: null, screen: { x: 0, y: 0, devicePixelRatio: 1 }, screenAwareness: true, placement: null, placementYawBias: 0, chat: null, host: null, foreground: null, desktopIdleSeconds: null, performanceMode: null, performance: null }
 
 function evaluatorFrom(replies: (() => unknown)[]) {
   const expressions: string[] = []

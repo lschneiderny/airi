@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 import { buildEmotionTrial, claimMotionQaHandlers, createMotionQaContext, hasMotionQaHandlers, isMotionQaBridgeEnabled, MotionQaAwaitCaptureResultSchema, MotionQaCommandSchema, MotionQaConfigureInputSchema, MotionQaRunScenarioInputSchema, MotionQaRunScenarioResultSchema, MotionQaStartCaptureInputSchema, motionQaStateInvokeEventa, MotionQaStateSchema } from '.'
 import { capabilitiesForHost } from '../host-capabilities'
 
-const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 }, screenAwareness: true, placement: -0.75, placementYawBias: -0.08, chat: { hasTarget: true, typing: false, sentSeq: 2, unfoldSeq: 1 }, host: capabilitiesForHost('linux-wayland'), desktopIdleSeconds: 12.5, performanceMode: 'watching', performance: { resolvedAtMs: 20_000, away: false, cursorMovedAtMs: null, desktop: { idleSeconds: 12.5, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, screenChange: 0.2, systemAudioLevel: null, sampledAtMs: 19_000 } } } as const
+const state = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: { emotion: 'angry', strength: 0.9 }, captureActive: false, head: { x: 100, y: 50, width: 80, height: 90 }, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 }, screenAwareness: true, placement: -0.75, placementYawBias: -0.08, chat: { hasTarget: true, typing: false, sentSeq: 2, unfoldSeq: 1 }, host: capabilitiesForHost('linux-wayland'), foreground: null, desktopIdleSeconds: 12.5, performanceMode: 'watching', performance: { resolvedAtMs: 20_000, away: false, cursorMovedAtMs: null, desktop: { idleSeconds: 12.5, locked: false, suspendedAtMs: null, resumedAtMs: null, unlockedAtMs: null, screenChange: 0.2, systemAudioLevel: null, sampledAtMs: 19_000 } } } as const
 
 describe('motion QA bridge schemas', () => {
   it('requires usable screen scale and positive head geometry, while accepting an unavailable head', () => {
@@ -37,6 +37,16 @@ describe('motion QA bridge schemas', () => {
   it('accepts the host snapshot, idle reading and resolved mode, each null while unreported', () => {
     expect(safeParse(MotionQaStateSchema, state).success).toBe(true)
     expect(safeParse(MotionQaStateSchema, { ...state, host: null, desktopIdleSeconds: null, performanceMode: null }).success).toBe(true)
+  })
+
+  it('accepts a title-free foreground sample and rejects one that carries a title or an unknown busy state', () => {
+    const foreground = { exeName: 'konsole', busy: 'fullscreen', ownProcess: false }
+    expect(safeParse(MotionQaStateSchema, { ...state, foreground }).success).toBe(true)
+    expect(safeParse(MotionQaStateSchema, { ...state, foreground: { ...foreground, exeName: null, busy: null } }).success).toBe(true)
+    expect(safeParse(MotionQaStateSchema, { ...state, foreground: { ...foreground, title: 'secret' } }).success).toBe(false)
+    expect(safeParse(MotionQaStateSchema, { ...state, foreground: { ...foreground, busy: 'gaming' } }).success).toBe(false)
+    const { foreground: _, ...withoutForeground } = state
+    expect(safeParse(MotionQaStateSchema, withoutForeground).success).toBe(false)
   })
 
   it('rejects missing or malformed resolver diagnostics instead of accepting an incomplete capture sample', () => {
