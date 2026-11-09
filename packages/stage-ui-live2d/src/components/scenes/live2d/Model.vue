@@ -19,6 +19,7 @@ import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { Cubism4MotionManager } from 'pixi-live2d-display/cubism4'
 
 import type { PixiLive2DInternalModel } from '../../../composables/live2d'
+import type { CanvasPointerSample } from '../../../composables/live2d/canvas-pointer'
 import type { ArchiveExpressionFile, Model3ExpressionRef } from '../../../composables/live2d/expression-controller'
 import type { SpeechEvent } from '../../../composables/live2d/expression/slots'
 import type { Live2DModelCanvasRect } from '../../../composables/live2d/head-anchor'
@@ -66,6 +67,7 @@ import {
   useMotionUpdatePluginManualControl,
   useSettingsLive2d,
 } from '../../../composables/live2d'
+import { activeCanvasPointer } from '../../../composables/live2d/canvas-pointer'
 import { EmotionHoldPerformer, selectManualHold } from '../../../composables/live2d/expression/hold'
 import { useFitModel } from '../../../composables/live2d/fit-model'
 import { live2DCanvasRectToViewport } from '../../../composables/live2d/head-anchor'
@@ -215,10 +217,10 @@ const touchPoint = new Point()
 /** Head and body boxes in model canvas space, re-measured at most every 100 ms while the pointer moves. */
 let touchRegions: { head: Live2DModelCanvasRect | undefined, unscaledHead: Live2DModelCanvasRect | undefined, eyeAnchor: { x: number, y: number } | undefined, body: Live2DModelCanvasRect | undefined, source: Live2DTouchDebugSource, measuredAtMs: number } | undefined
 const touchRegionsMaxAgeMs = 100
-/** Latest primary pointermove over the canvas in model canvas space, stamped with `performance.now()`. */
-let latestPointer: { x: number, y: number, atMs: number } | undefined
-/** A pointer sample younger than this drives Natural attention instead of the host cursor mapping. */
-const pointerFreshMs = 100
+/** Latest primary pointermove over the canvas. */
+let latestPointer: CanvasPointerSample | undefined
+/** Whether the primary pointer is over the canvas: set by a move, cleared when it leaves or is cancelled. */
+let pointerOver = false
 /** Whether the lipsync plugin wrote `ParamMouthOpenY` this frame; Natural leaves the mouth to it. */
 let lipSyncOwnsMouth = false
 
@@ -647,8 +649,7 @@ async function performModelLoad() {
       readRigProfile(),
       () => {
         let cursor = null
-        // A fresh canvas pointer sample wins over the host cursor mapping, so gaze and touch share one input.
-        const pointer = latestPointer && performance.now() - latestPointer.atMs < pointerFreshMs ? latestPointer : undefined
+        const pointer = activeCanvasPointer(latestPointer, performance.now(), { hostCursor: props.eyeFocusSourceActive, pointerOver })
         // The controller decides what an aside or screen cue does with the cursor; the host only reports it.
         if (live2dNaturalCursorAttention.value && (props.eyeFocusSourceActive || pointer)) {
           if (pointer) {
@@ -1550,7 +1551,10 @@ function onTouchPointer(event: PointerEvent) {
     const point = modelPointFrom(event, event.currentTarget)
     if (point)
       latestPointer = { x: point.x, y: point.y, atMs: performance.now() }
+    pointerOver = true
   }
+  if (event.type === 'pointerleave' || event.type === 'pointercancel')
+    pointerOver = false
   if (!touchActive.value)
     return
   if (event.type === 'pointerleave' || event.type === 'pointercancel') {

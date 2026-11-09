@@ -104,6 +104,15 @@ screen placement remains available under X11 and XWayland, where window
 coordinates are reported. Desktop stage is unavailable on Linux because
 click-through forwarding is unavailable.
 
+Without click-through forwarding, a transparent window that must stay usable
+also takes every click over its empty area. The voice inlay therefore hides
+while it paints nothing on such hosts and appears without focus when speech or
+a draft arrives; hosts with forwarding keep it shown. Without a host cursor,
+Live2D gaze and touch attention read the canvas pointer, and the last sample
+holds until the pointer leaves the canvas, so a resting hand does not read as a
+cursor that went away. Both were found by real-pointer QA in the Linux QA
+display on 2026-11-09.
+
 ## Consequences
 
 Consumers can distinguish an unsupported signal from a runtime failure and
