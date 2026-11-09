@@ -10,6 +10,7 @@
   let active = null
   let own = []
   let ownPids = []
+  let screens = []
 
   // One outstanding call for the whole bridge. Pending snapshots replace their
   // older value; a failed call never gets a reply and therefore stops this pump.
@@ -109,14 +110,40 @@
         keepAbove: window.keepAbove,
         // Plasma 5 does not expose Window.output.
         outputScale: window.output ? window.output.devicePixelRatio : 1,
+        caption: String(window.caption).slice(0, 4096),
       }
     }))
+  }
+
+  function sendOutputs() {
+    enqueue('Outputs', screens.map(output => ({
+      name: String(output.name).slice(0, 256),
+      x: output.geometry.x,
+      y: output.geometry.y,
+      width: output.geometry.width,
+      height: output.geometry.height,
+      scale: output.devicePixelRatio,
+    })))
+  }
+
+  function updateOutputs() {
+    for (const output of screens) {
+      output.geometryChanged.disconnect(sendOutputs)
+      output.scaleChanged.disconnect(sendOutputs)
+    }
+    screens = workspace.screens.slice(0, 16)
+    for (const output of screens) {
+      output.geometryChanged.connect(sendOutputs)
+      output.scaleChanged.connect(sendOutputs)
+    }
+    sendOutputs()
   }
 
   function updateOwn() {
     for (const window of own) {
       disconnect(window.frameGeometryChanged, sendOwn)
       disconnect(window.keepAboveChanged, sendOwn)
+      disconnect(window.captionChanged, sendOwn)
     }
     // NOTICE:
     // Compare only pid with OwnPids inside KWin.
@@ -130,6 +157,7 @@
     for (const window of own) {
       window.frameGeometryChanged.connect(sendOwn)
       window.keepAboveChanged.connect(sendOwn)
+      window.captionChanged.connect(sendOwn)
     }
     sendOwn()
   }
@@ -153,4 +181,9 @@
   }
   activated()
   requestPids()
+  // Plasma 6 exposes outputs to scripts; Plasma 5 reports none, so its geometry never verifies.
+  if ('screens' in workspace && workspace.screensChanged) {
+    workspace.screensChanged.connect(updateOutputs)
+    updateOutputs()
+  }
 })()

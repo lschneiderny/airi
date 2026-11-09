@@ -51,6 +51,13 @@ describe('formatKwinProbeLine', () => {
     expect(line).not.toContain('secret')
   })
 
+  it('replaces every own-window caption with its length', () => {
+    const caption = 'F2 synthetic private window title'
+    const line = formatKwinProbeLine({ method: 'OwnWindows', payload: [{ id: '{w1}', pid: 4242, x: 0, y: 0, width: 200, height: 200, keepAbove: true, outputScale: 1, caption }] })
+    expect(line).not.toContain(caption)
+    expect(JSON.parse(line)).toEqual({ method: 'OwnWindows', payload: [{ id: '{w1}', pid: 4242, x: 0, y: 0, width: 200, height: 200, keepAbove: true, outputScale: 1, captionLength: caption.length }] })
+  })
+
   it.each([
     { method: 'Active', payload: null },
     { method: 'Hello', payload: { api: 'plasma6' } },

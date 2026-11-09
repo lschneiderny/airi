@@ -17,6 +17,7 @@ import {
 } from '../../../shared/eventa'
 import { onAppBeforeQuit, onAppWindowAllClosed } from '../../libs/bootkit/lifecycle'
 import { resizeWindowByDelta, setWindowAlwaysOnTop } from '../../windows/shared/window'
+import { readRendererWindowBounds } from './coordinates'
 
 export function createWindowService(params: { context: ReturnType<typeof createContext>['context'], window: BrowserWindow }) {
   function getWindowLifecycleState(reason: ElectronWindowLifecycleState['reason']): ElectronWindowLifecycleState {
@@ -33,10 +34,16 @@ export function createWindowService(params: { context: ReturnType<typeof createC
     params.context.emit(electronWindowLifecycleChanged, getWindowLifecycleState(reason))
   }
 
+  let withheld = false
   const { start, stop } = createRendererLoop({
     window: params.window,
     run: () => {
-      params.context.emit(bounds, params.window.getBounds())
+      const rect = readRendererWindowBounds(params.window)
+      // A withheld rectangle is announced once, so the renderer stops using its cached origin.
+      if (!rect && withheld)
+        return
+      withheld = !rect
+      params.context.emit(bounds, rect)
     },
   })
 
@@ -47,7 +54,10 @@ export function createWindowService(params: { context: ReturnType<typeof createC
     offAllClosed()
     offBeforeQuit()
   })
-  defineInvokeHandler(params.context, startLoopGetBounds, () => start())
+  defineInvokeHandler(params.context, startLoopGetBounds, () => {
+    withheld = false
+    start()
+  })
   defineInvokeHandler(params.context, electronGetWindowLifecycleState, (_, options) => {
     if (params.window.webContents.id === options?.raw.ipcMainEvent.sender.id)
       return getWindowLifecycleState('snapshot')
@@ -62,7 +72,7 @@ export function createWindowService(params: { context: ReturnType<typeof createC
 
   defineInvokeHandler(params.context, electron.window.getBounds, (_, options) => {
     if (params.window.webContents.id === options?.raw.ipcMainEvent.sender.id) {
-      return params.window.getBounds()
+      return readRendererWindowBounds(params.window)
     }
 
     return {

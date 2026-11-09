@@ -23,7 +23,7 @@ const displays = ref([display])
 
 vi.mock('@proj-airi/electron-vueuse', () => ({
   useElectronAllDisplays: () => displays,
-  useElectronWindowBounds: () => ({ x: windowX, y: windowY, width: windowWidth, height: windowHeight }),
+  useElectronWindowBounds: () => ({ x: windowX, y: windowY, width: windowWidth, height: windowHeight, available: ref(true) }),
 }))
 
 const Dock = defineComponent({

@@ -48,6 +48,7 @@ import { setupExtensionHost } from './services/airi/plugins'
 import { setupArtistryBridge } from './services/airi/widgets/artistry-bridge'
 import { setupAutoUpdater } from './services/electron/auto-updater'
 import { setupSherpawModelAssetsProtocol } from './services/electron/bundled-sherpaw-assets'
+import { attachLinuxCoordinates } from './services/electron/coordinates'
 import { setupGlobalShortcutService } from './services/electron/global-shortcut'
 import { setupPermissionHandlers } from './services/electron/media-permissions'
 import { setupSherpawModelAssets } from './services/electron/sherpaw-model-assets'
@@ -208,6 +209,8 @@ app.whenReady().then(async () => {
       return
     }
     onAppBeforeQuit(() => bridge.stop())
+    // Coordinate ownership observes the bridge from its first state change.
+    onAppBeforeQuit(attachLinuxCoordinates(bridge))
     // The bridge bounds startup, including bus connection and Hello, to 2 s.
     await bridge.start()
     if (appExiting)

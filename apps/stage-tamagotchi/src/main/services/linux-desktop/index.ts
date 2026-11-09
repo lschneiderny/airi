@@ -12,7 +12,7 @@ import { LinuxDesktopBridge } from './bridge'
 import { DbusTransport } from './dbus/transport'
 import { detectLinuxDesktop } from './detect'
 
-export type { LinuxDesktopBridge } from './bridge'
+export type { LinuxDesktopBridge, LinuxDesktopBridgeState } from './bridge'
 
 /** The sole environment-to-backend boundary. Injected buses transfer ownership. */
 export function createLinuxDesktopBridge(options: {
@@ -26,7 +26,7 @@ export function createLinuxDesktopBridge(options: {
   const sessionAddress = env.DBUS_SESSION_BUS_ADDRESS ?? `unix:path=${tempDir}/bus`
   const systemAddress = env.DBUS_SYSTEM_BUS_ADDRESS ?? 'unix:path=/var/run/dbus/system_bus_socket'
   const ownPids = () => [...new Set([pid, ...app.getAppMetrics().map(metric => metric.pid)])]
-  type Factory = (bus: DbusTransport, callbacks: Pick<KwinBackendOptions, 'onMessage' | 'onFailure' | 'onState'>) => KwinBackend | undefined
+  type Factory = (bus: DbusTransport, callbacks: Pick<KwinBackendOptions, 'onMessage' | 'onFailure' | 'onState' | 'onCursorReset'>) => KwinBackend | undefined
   // Later desktop implementations register here only when their consumers and
   // runtime verifiers land together. Merely importing a module grants nothing.
   const backends: Partial<Record<LinuxDesktopBackend, Factory>> = {

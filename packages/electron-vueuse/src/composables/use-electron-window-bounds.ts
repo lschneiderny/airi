@@ -21,8 +21,13 @@ function initializeWindowBoundsTracking() {
   const context = getElectronEventaContext()
 
   context.on(bounds, (event) => {
-    if (!event || !event.body)
+    if (!event)
       return
+    // Main withholds a rectangle it cannot vouch for; the cached origin must not stay usable.
+    if (!event.body) {
+      windowBoundsAvailable.value = false
+      return
+    }
 
     windowBoundsX.value = event.body.x
     windowBoundsY.value = event.body.y

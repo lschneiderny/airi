@@ -10,6 +10,7 @@ type Displays = Display[]
 const boundary = vi.hoisted(() => ({
   getAllDisplays: vi.fn<() => Promise<Displays>>(),
   refresh: undefined as (() => void) | undefined,
+  capabilitiesChanged: undefined as (() => void) | undefined,
 }))
 
 vi.mock('@moeru/eventa', async (importOriginal) => {
@@ -18,7 +19,14 @@ vi.mock('@moeru/eventa', async (importOriginal) => {
 })
 
 vi.mock('./use-electron-eventa-context', () => ({
-  useElectronEventaContext: () => shallowRef({}),
+  useElectronEventaContext: () => shallowRef({
+    on: (_event: unknown, listener: () => void) => {
+      boundary.capabilitiesChanged = listener
+      return () => {
+        boundary.capabilitiesChanged = undefined
+      }
+    },
+  }),
 }))
 
 vi.mock('@vueuse/core', async (importOriginal) => {
@@ -93,5 +101,17 @@ describe('useElectronAllDisplays', () => {
     await second.promise
     await nextTick()
     expect(displays.value).toBe(updated)
+  })
+
+  it('refreshes at once when the host capabilities change, and stops with its scope', async () => {
+    boundary.getAllDisplays.mockResolvedValue([])
+    const scope = effectScope()
+    scopes.push(scope)
+    scope.run(() => useElectronAllDisplays())
+    expect(boundary.getAllDisplays).toHaveBeenCalledTimes(1)
+    boundary.capabilitiesChanged!()
+    expect(boundary.getAllDisplays).toHaveBeenCalledTimes(2)
+    scope.stop()
+    expect(boundary.capabilitiesChanged).toBeUndefined()
   })
 })

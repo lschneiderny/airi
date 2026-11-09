@@ -1,20 +1,23 @@
 import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import type { HostCapabilities, HostFacts, LinuxDesktopFacts } from '@proj-airi/stage-shared/host-capabilities'
-import type { BrowserWindow, Display, Point } from 'electron'
+import type { BrowserWindow } from 'electron'
 
 import process from 'node:process'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { getHostCapabilities, hostCapabilitiesChanged, reportPointerSample, reportSystemAudioHeard } from '@proj-airi/electron-eventa'
-import { acceptCursorReading, HostReasons, idleAdvances, resolveHostCapabilities } from '@proj-airi/stage-shared/host-capabilities'
-import { app, screen } from 'electron'
+import { HostReasons, idleAdvances, resolveHostCapabilities } from '@proj-airi/stage-shared/host-capabilities'
+import { app } from 'electron'
 
 import { resolveIsWayland } from '../../app/ozone'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
 
 type EventaContext = ReturnType<typeof createContext>['context']
+type PointerSampleSink = (window: BrowserWindow, sample: { clientX: number, clientY: number, atMs: number }) => void
 
 const contexts = new Set<EventaContext>()
+const changeListeners = new Set<(capabilities: HostCapabilities) => void>()
+let pointerSampleSink: PointerSampleSink | undefined
 const idleSamples: Array<{ seconds: number, atMs: number }> = []
 const runtimeFacts: Pick<HostFacts, 'foregroundBindingFailed' | 'globalInputHookFailure' | 'foregroundTitlesTrusted' | 'waylandIdleVerified' | 'linuxDesktop'> = {
   foregroundBindingFailed: false,
@@ -73,21 +76,17 @@ export function getCurrentHostCapabilities(): HostCapabilities {
   return current
 }
 
-/** Native readings are sampled only while the current host can vouch for them. */
-export function readTrustedCursor(): Point | null {
-  return acceptCursorReading(getCurrentHostCapabilities().signals.cursorScreenPoint)
-    ? screen.getCursorScreenPoint()
-    : null
+/** Main-process consumers that cache a reading re-read it when a status changes. */
+export function onHostCapabilitiesChange(listener: (capabilities: HostCapabilities) => void): () => void {
+  changeListeners.add(listener)
+  return () => {
+    changeListeners.delete(listener)
+  }
 }
 
-/** Global positions are usable only while the host reports a live window origin. */
-export function windowOriginTrusted(): boolean {
-  return getCurrentHostCapabilities().signals.windowOrigin.kind === 'live'
-}
-
-/** A hidden origin cannot identify the window's display. */
-export function displayForWindow(window: Pick<BrowserWindow, 'getBounds'>): Display {
-  return windowOriginTrusted() ? screen.getDisplayMatching(window.getBounds()) : screen.getPrimaryDisplay()
+/** The coordinate provider receives renderer pointer samples; without one they are acknowledged and dropped. */
+export function setPointerSampleSink(sink: PointerSampleSink | undefined) {
+  pointerSampleSink = sink
 }
 
 function updateSnapshot() {
@@ -99,6 +98,8 @@ function updateSnapshot() {
   if (next.linuxDesktopBackend === current.linuxDesktopBackend && JSON.stringify(next.signals) === JSON.stringify(current.signals))
     return
   current = next
+  for (const listener of changeListeners)
+    listener(current)
   for (const context of contexts)
     context.emit(hostCapabilitiesChanged, current)
 }
@@ -155,9 +156,12 @@ export function createHostCapabilitiesService(params: { context: EventaContext, 
   getCurrentHostCapabilities()
   contexts.add(params.context)
   const offGet = defineInvokeHandler(params.context, getHostCapabilities, getCurrentHostCapabilities)
-  // This invoke reserves the renderer boundary. The coordinate verifier lands in
-  // linux-sensor-parity todo 9; receipt alone is never evidence.
-  const offPointer = defineInvokeHandler(params.context, reportPointerSample, () => {})
+  // Receipt alone is never evidence: the coordinate provider compares each
+  // pointer sample with the compositor.
+  const offPointer = defineInvokeHandler(params.context, reportPointerSample, (sample) => {
+    if (sample)
+      pointerSampleSink?.(params.window, sample)
+  })
   const offAudio = defineInvokeHandler(params.context, reportSystemAudioHeard, ({ level }) => recordSystemAudioHeard(level))
   function dispose() {
     offGet()

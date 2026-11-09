@@ -11,18 +11,23 @@ VueUse-like composables and helpers shared across AIRI Electron apps.
 
 For IPC contract definitions, use `@proj-airi/electron-eventa`.
 
-`useElectronAllDisplays` starts empty and refreshes every 5 seconds. It keeps the last completed display snapshot while
+`useElectronAllDisplays` starts empty, refreshes every 5 seconds, and refreshes at once when the host capabilities change. It keeps the last completed display snapshot while
 the next IPC response is pending, so a refresh never appears to consumers as a temporary display removal.
 
 `useElectronCursorAvailable()` reports whether a trusted screen cursor has arrived.
 It starts false and becomes false again when the host withholds a reading.
 Mouse coordinates retain their last trusted values without dispatching a synthetic move to zero.
 `useElectronWindowBounds()` keeps its numeric defaults at zero and exposes `available`,
-which becomes true only after its first bounds event. A real zero origin is valid;
+which becomes true only after its first bounds event and false again when main sends `null`
+because it cannot vouch for this window's rectangle. A real zero origin is valid;
 the numeric value alone does not establish that a reading has arrived.
 `useElectronRelativeMouse().available` requires both an available cursor and received
 window bounds. Consumers must check it before treating relative coordinates as current
 host input, and must still check the host capability snapshot for origin trust.
+The first `useElectronRelativeMouse()` call also starts one `pointermove` reporter per renderer.
+It sends `reportPointerSample` at most every 250 ms, and only while the snapshot's cursor
+is verifying or live on a Linux desktop backend, so main can check the compositor cursor
+against this window.
 
 `useElectronMouseInElement()` uses DOM pointer events for `isOutside` hit-testing
 while the trusted Electron cursor or the first window bounds are unavailable. This fallback supports UI

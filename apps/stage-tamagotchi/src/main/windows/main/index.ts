@@ -1,4 +1,3 @@
-import type { Rectangle } from 'electron'
 import type { InferOutput } from 'valibot'
 
 import type { I18n } from '../../libs/i18n'
@@ -33,7 +32,7 @@ import { electronStartDraggingWindow } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
-import { windowOriginTrusted } from '../../services/electron/host-capabilities'
+import { readWindowRect } from '../../services/electron/coordinates'
 import { protectPrivilegedWindowNavigation, setWindowAlwaysOnTop, transparentWindowConfig } from '../shared'
 import { hideOnClose } from './hide-on-close'
 import { mainWindowQuery } from './query'
@@ -119,7 +118,9 @@ export async function setupMainWindow(params: {
     }
   }
 
-  function handleNewBounds(newBounds: Rectangle) {
+  function handleNewBounds() {
+    const origin = readWindowRect(window)
+    const { width, height } = window.getBounds()
     const config = getConfig()
     if (!config.windows || !Array.isArray(config.windows)) {
       config.windows = []
@@ -131,20 +132,20 @@ export async function setupMainWindow(params: {
       config.windows.push({
         title: 'AIRI',
         tag: 'main',
-        ...windowOriginTrusted() ? { x: newBounds.x, y: newBounds.y } : {},
-        width: newBounds.width,
-        height: newBounds.height,
+        ...origin ? { x: origin.x, y: origin.y } : {},
+        width,
+        height,
       })
     }
     else {
       const mainWindowConfig = defu(config.windows[existingConfigIndex], { title: 'AIRI', tag: 'main' })
 
-      if (windowOriginTrusted()) {
-        mainWindowConfig.x = newBounds.x
-        mainWindowConfig.y = newBounds.y
+      if (origin) {
+        mainWindowConfig.x = origin.x
+        mainWindowConfig.y = origin.y
       }
-      mainWindowConfig.width = newBounds.width
-      mainWindowConfig.height = newBounds.height
+      mainWindowConfig.width = width
+      mainWindowConfig.height = height
 
       config.windows[existingConfigIndex] = mainWindowConfig
     }
@@ -152,8 +153,8 @@ export async function setupMainWindow(params: {
     updateConfig(config)
   }
 
-  window.on('resize', () => handleNewBounds(window.getBounds()))
-  window.on('move', () => handleNewBounds(window.getBounds()))
+  window.on('resize', handleNewBounds)
+  window.on('move', handleNewBounds)
 
   // Thanks to [@HeartArmy](https://github.com/HeartArmy) for the tip implementation.
   //

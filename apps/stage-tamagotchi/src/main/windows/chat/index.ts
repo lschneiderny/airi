@@ -30,6 +30,7 @@ import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
+import { readRendererWindowBounds } from '../../services/electron/coordinates'
 import { protectPrivilegedWindowNavigation } from '../shared'
 import { createCharacterAnchor, createMainWindowAnchor } from './anchor'
 import { chatAttentionTargetOf, createChatAttentionTargetFeed } from './attention-target'
@@ -245,9 +246,10 @@ export function setupChatWindowManager(params: {
       return chatAttentionTargetOf(floating.attentionSnapshot())
 
     const window = legacy.getOpenWindow()
+    const bounds = window ? readRendererWindowBounds(window) : null
     return chatAttentionTargetOf({
       mode: 'legacy',
-      window: window ? { shown: window.isVisible(), minimized: window.isMinimized(), bounds: window.getBounds() } : undefined,
+      window: bounds && window ? { shown: window.isVisible(), minimized: window.isMinimized(), bounds } : undefined,
     })
   }
 

@@ -23,6 +23,7 @@ const windowBounds = {
   y: shallowRef(100),
   width: shallowRef(450),
   height: shallowRef(600),
+  available: shallowRef(true),
 }
 vi.mock('@proj-airi/electron-vueuse', () => ({
   useElectronCursorAvailable: () => shallowRef(true),
@@ -110,6 +111,7 @@ afterEach(() => {
   windowBounds.y.value = 100
   windowBounds.width.value = 450
   windowBounds.height.value = 600
+  windowBounds.available.value = true
   vi.unstubAllGlobals()
   vi.useRealTimers()
 })
@@ -178,6 +180,17 @@ describe('resolveControlsIslandDock', () => {
 })
 
 describe('controlsIslandRoot', () => {
+  it('keeps its dock while main withholds the window rectangle', async () => {
+    vi.useFakeTimers()
+    const { host } = mountRoot()
+    windowBounds.available.value = false
+    windowBounds.x.value = 100
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(readPlacement(host)).toEqual({ dock: 'top-right', phase: 'idle' })
+  })
+
   it('changes corners one second after the last window movement', async () => {
     vi.useFakeTimers()
     const { host } = mountRoot()

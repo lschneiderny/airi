@@ -89,7 +89,8 @@ function relocate(nextDock: ControlsIslandDock) {
 }
 
 // Defer origin-based docking until the snapshot establishes trust; keep the initial UI dock meanwhile.
-const windowOriginLive = computed(() => hostCapabilities.status('windowOrigin')?.kind === 'live')
+// Live origins count only while main still delivers this window's rectangle.
+const windowOriginLive = computed(() => hostCapabilities.status('windowOrigin')?.kind === 'live' && windowBounds.available.value)
 const liveWindowBounds = computed(() => windowOriginLive.value
   ? {
       x: windowBounds.x.value,

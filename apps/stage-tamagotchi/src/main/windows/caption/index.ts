@@ -10,7 +10,7 @@ import { join, resolve } from 'node:path'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { animate, utils } from 'animejs'
-import { BrowserWindow as ElectronBrowserWindow, ipcMain, screen } from 'electron'
+import { BrowserWindow as ElectronBrowserWindow, ipcMain } from 'electron'
 import { debounce, throttle } from 'es-toolkit'
 import { isMacOS } from 'std-env'
 import { boolean, number, object, optional, record, string } from 'valibot'
@@ -23,7 +23,7 @@ import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
-import { windowOriginTrusted } from '../../services/electron/host-capabilities'
+import { displayMatching, readDisplays, readPrimaryDisplay, readWindowRect, windowOriginTrusted } from '../../services/electron/coordinates'
 import { showWindowOnAllWorkspaces } from '../shared/app-icon'
 import { mapForBreakpoints, resolutionBreakpoints, widthFrom } from '../shared/display'
 import { protectPrivilegedWindowNavigation, setupBaseWindowElectronInvokes, setWindowAlwaysOnTop, transparentWindowConfig } from '../shared/window'
@@ -46,7 +46,7 @@ const captionConfigSchema = object({
 type CaptionConfig = InferOutput<typeof captionConfigSchema>
 
 function computeDisplayMatrixHash(): string {
-  const displays = screen.getAllDisplays()
+  const displays = readDisplays()
   const signature = displays
     .slice()
     .sort((a, b) => (a.bounds.x - b.bounds.x) || (a.bounds.y - b.bounds.y))
@@ -57,8 +57,8 @@ function computeDisplayMatrixHash(): string {
 }
 
 function computeInitialCaptionBounds(params: { mainWindow: BrowserWindow, captionOptions?: Partial<Rectangle> }): Pick<Rectangle, 'width' | 'height'> & Partial<Rectangle> {
-  const mainBounds = windowOriginTrusted() ? params.mainWindow.getBounds() : undefined
-  const displayWorkArea = mainBounds ? screen.getDisplayMatching(mainBounds).workArea : screen.getPrimaryDisplay().workArea
+  const mainBounds = readWindowRect(params.mainWindow)
+  const displayWorkArea = mainBounds ? displayMatching(mainBounds).workArea : readPrimaryDisplay().workArea
 
   // Base sizing from display width with sensible caps
   const width = mapForBreakpoints(
@@ -171,17 +171,17 @@ export function setupCaptionWindowManager(params: {
   // Note: when following window, we compute and persist the current relative offset
   // and start following without docking, so no immediate reposition is needed here.
 
-  function computeRelativeOffset(win: BrowserWindow): { dx: number, dy: number } {
-    const caption = win.getBounds()
-    const main = params.mainWindow.getBounds()
-    return { dx: caption.x - main.x, dy: caption.y - main.y }
+  function computeRelativeOffset(win: BrowserWindow): { dx: number, dy: number } | null {
+    const caption = readWindowRect(win)
+    const main = readWindowRect(params.mainWindow)
+    return caption && main ? { dx: caption.x - main.x, dy: caption.y - main.y } : null
   }
 
   function followMainWindow(win: BrowserWindow) {
-    if (!windowOriginTrusted())
-      return
     const cfg = getConfig() ?? { isFollowing, matrices: {} }
     const initialOffset = cfg?.matrices?.[matrixHash]?.relativeToMain ?? computeRelativeOffset(win)
+    if (!windowOriginTrusted() || !initialOffset)
+      return
 
     // Store relative offset for this matrix
     const cfgToSave = getConfig() ?? { isFollowing, matrices: {} }
@@ -197,7 +197,9 @@ export function setupCaptionWindowManager(params: {
       if (!Number.isFinite(toX) || !Number.isFinite(toY))
         return
 
-      const b = win.getBounds()
+      const b = readWindowRect(win)
+      if (!b)
+        return
       state.x = Number.isFinite(b.x) ? b.x : 0
       state.y = Number.isFinite(b.y) ? b.y : 0
       animation?.pause()
@@ -231,12 +233,14 @@ export function setupCaptionWindowManager(params: {
         return
 
       const stored = getConfig()?.matrices[matrixHash]?.relativeToMain ?? initialOffset
-      const main = params.mainWindow.getBounds()
-      const b = win.getBounds()
+      const main = readWindowRect(params.mainWindow)
+      const b = readWindowRect(win)
+      if (!main || !b)
+        return
       let tx = main.x + stored.dx
       let ty = main.y + stored.dy
       const target = { x: tx, y: ty, width: b.width, height: b.height }
-      const workArea = screen.getDisplayMatching(target).workArea
+      const workArea = displayMatching(target).workArea
       const clamped = clampBoundsWithinRect(target, workArea)
       tx = clamped.x
       ty = clamped.y
@@ -323,7 +327,7 @@ export function setupCaptionWindowManager(params: {
       window.setSize(size.width, size.height)
     }
     else if (saved && saved.x !== undefined && saved.y !== undefined) {
-      const workArea = screen.getDisplayMatching({ ...saved, x: saved.x, y: saved.y }).workArea
+      const workArea = displayMatching({ ...saved, x: saved.x, y: saved.y }).workArea
       const clamped = clampBoundsWithinRect({ ...saved, x: saved.x, y: saved.y }, workArea)
       window.setBounds(clamped)
     }
@@ -334,15 +338,15 @@ export function setupCaptionWindowManager(params: {
 
     const persistBounds = () => {
       const config = getConfig() ?? { isFollowing, matrices: {} }
-      const b = window.getBounds()
+      const origin = readWindowRect(window)
+      const { width, height } = window.getBounds()
       const stored = config.matrices[matrixHash]
-      const bounds = windowOriginTrusted() ? b : { ...stored?.bounds, width: b.width, height: b.height }
+      const bounds = origin ?? { ...stored?.bounds, width, height }
       config.matrices[matrixHash] = { ...stored, bounds }
       config.isFollowing = isFollowing
-      if (windowOriginTrusted() && isFollowing && Date.now() - lastProgrammaticMoveAt > 100) {
-        const rel = computeRelativeOffset(window)
-        config.matrices[matrixHash] = { ...config.matrices[matrixHash], bounds: b, relativeToMain: rel }
-      }
+      const rel = origin && isFollowing && Date.now() - lastProgrammaticMoveAt > 100 ? computeRelativeOffset(window) : null
+      if (rel)
+        config.matrices[matrixHash] = { ...config.matrices[matrixHash], bounds, relativeToMain: rel }
       updateConfig(config)
     }
 
@@ -396,8 +400,8 @@ export function setupCaptionWindowManager(params: {
 
     applyIgnoreMouseEvents(window, isFollowing)
 
-    if (isFollowing && windowOriginTrusted()) {
-      const rel = computeRelativeOffset(window)
+    const rel = isFollowing ? computeRelativeOffset(window) : null
+    if (rel) {
       const config = getConfig() ?? { isFollowing, matrices: {} }
       config.isFollowing = isFollowing
       config.matrices[matrixHash] = { ...config.matrices[matrixHash], relativeToMain: rel }
@@ -449,18 +453,19 @@ export function setupCaptionWindowManager(params: {
 
     // Persist new bounds and a clean relative offset so follow uses it
     const config = getConfig() ?? { isFollowing, matrices: {} }
-    const b = window.getBounds()
-    if (!windowOriginTrusted()) {
+    const b = readWindowRect(window)
+    const rel = computeRelativeOffset(window)
+    if (!b || !rel) {
+      const { width, height } = window.getBounds()
       config.matrices[matrixHash] = {
         ...config.matrices[matrixHash],
-        bounds: { ...config.matrices[matrixHash]?.bounds, width: b.width, height: b.height },
+        bounds: { ...config.matrices[matrixHash]?.bounds, width, height },
       }
       config.isFollowing = isFollowing
       updateConfig(config)
       return
     }
 
-    const rel = computeRelativeOffset(window)
     config.matrices[matrixHash] = { ...config.matrices[matrixHash], bounds: b, relativeToMain: rel }
     config.isFollowing = isFollowing
 

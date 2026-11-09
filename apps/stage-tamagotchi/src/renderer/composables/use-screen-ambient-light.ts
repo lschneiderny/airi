@@ -102,7 +102,8 @@ export function useScreenAmbientLight(sources: {
   const displays = useElectronAllDisplays()
   const windowBounds = useElectronWindowBounds()
   const hostCapabilities = useHostCapabilitiesStore()
-  const windowOriginLive = computed(() => hostCapabilities.status('windowOrigin')?.kind === 'live')
+  // Live origins count only while main still delivers this window's rectangle.
+  const windowOriginLive = computed(() => hostCapabilities.status('windowOrigin')?.kind === 'live' && windowBounds.available.value)
   const getPrimaryDisplay = useElectronEventaInvoke(electron.screen.getPrimaryDisplay)
   const primaryDisplay = shallowRef<(typeof displays.value)[number]>()
   const capturedDisplay = shallowRef<(typeof displays.value)[number]>()

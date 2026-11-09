@@ -17,6 +17,7 @@ import { app, dialog, BrowserWindow as ElectronBrowserWindow, screen } from 'ele
 import icon from '../../../../resources/icon.png?asset'
 
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { readDisplays, readPrimaryDisplay, readWindowRect } from '../../services/electron/coordinates'
 import { hideOnClose } from '../main/hide-on-close'
 import { mainWindowQuery } from '../main/query'
 import { setupMainWindowElectronInvokes } from '../main/rpc/index.electron'
@@ -44,6 +45,9 @@ export function relaunchApp(): void {
   app.exit()
 }
 
+/** Stage display geometry, in the same space as the window rectangles the coordinate provider reads. */
+const stageDisplays = { getAllDisplays: readDisplays, getPrimaryDisplay: readPrimaryDisplay }
+
 /**
  * Registers the stage contracts on a window other than the desktop stage: the classic main window, so its page can
  * report the active renderer, and the settings window, so its page can edit the mode and the home display.
@@ -59,7 +63,7 @@ export function setupWindowStageInvokes(params: {
     window: params.window,
     config: params.config,
     defaultConfig: defaultStageConfig,
-    screen,
+    screen: stageDisplays,
     running: params.running,
     relaunch: relaunchApp,
     broadcast: params.broadcast,
@@ -85,7 +89,7 @@ export async function setupStageWindow(
   params: Parameters<typeof setupMainWindow>[0] & { config: StageConfigStore, broadcast: StageStateBroadcast },
 ): Promise<StageWindowHost> {
   const getConfig = () => params.config.get() ?? defaultStageConfig
-  const home = resolveHomeDisplay(readStageDisplays(screen), getConfig())
+  const home = resolveHomeDisplay(readStageDisplays(stageDisplays), getConfig())
 
   const window = new ElectronBrowserWindow({
     ...createStageWindowOptions({
@@ -125,7 +129,7 @@ export async function setupStageWindow(
     window,
     config: params.config,
     defaultConfig: defaultStageConfig,
-    screen,
+    screen: stageDisplays,
     running: 'desktop',
     relaunch: relaunchApp,
     broadcast: params.broadcast,
@@ -134,7 +138,14 @@ export async function setupStageWindow(
         .catch(error => console.error('[stage] Failed to show the relaunch notice:', errorMessageFrom(error)))
     },
   })
-  const { applyHomeBounds } = bindStageWindowToHomeDisplay({ screen, window, getConfig, onDisplaysChanged: params.broadcast.emitAll })
+  const { applyHomeBounds } = bindStageWindowToHomeDisplay({
+    screen,
+    displays: stageDisplays,
+    window,
+    readRect: () => readWindowRect(window),
+    getConfig,
+    onDisplaysChanged: params.broadcast.emitAll,
+  })
 
   await load(window, withHashRoute(baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')), '/stage', {
     query: mainWindowQuery(is.dev, env),

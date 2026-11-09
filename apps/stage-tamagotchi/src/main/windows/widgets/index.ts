@@ -15,7 +15,7 @@ import type { ServerChannel } from '../../services/airi/channel-server'
 import { join, resolve } from 'node:path'
 
 import { safeClose } from '@proj-airi/electron-vueuse/main'
-import { BrowserWindow as ElectronBrowserWindow, ipcMain, screen } from 'electron'
+import { BrowserWindow as ElectronBrowserWindow, ipcMain } from 'electron'
 import { clamp } from 'es-toolkit/math'
 import { isMacOS } from 'std-env'
 import { number, object, optional } from 'valibot'
@@ -27,7 +27,7 @@ import { normalizeWidgetWindowSize } from '../../../shared/utils/electron/window
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
-import { displayForWindow, windowOriginTrusted } from '../../services/electron/host-capabilities'
+import { displayForWindow, displayMatching, readPrimaryDisplay, readWindowRect, windowOriginTrusted } from '../../services/electron/coordinates'
 import { showWindowOnAllWorkspaces } from '../shared/app-icon'
 import { protectPrivilegedWindowNavigation, setWindowAlwaysOnTop, spotlightLikeWindowConfig, transparentWindowConfig } from '../shared/window'
 import { createWidgetIframeRequestCoordinator } from './iframe-request-coordinator'
@@ -200,7 +200,7 @@ const widgetsWindowConfigSchema = object({
 type WidgetsWindowConfig = InferOutput<typeof widgetsWindowConfigSchema>
 
 function computeDefaultBounds(): Rectangle {
-  const primary = screen.getPrimaryDisplay().workArea
+  const primary = readPrimaryDisplay().workArea
   const width = Math.min(500, Math.floor(primary.width * 0.35))
   const height = Math.min(500, Math.floor(primary.height * 0.6))
   const x = primary.x + primary.width - width - 16
@@ -387,15 +387,15 @@ export function setupWidgetsWindowManager(params: {
   function applyStoredOrDefaultBounds(window: BrowserWindow) {
     const saved = getConfig().bounds
     if (!windowOriginTrusted()) {
-      const work = screen.getPrimaryDisplay().workArea
+      const work = readPrimaryDisplay().workArea
       const size = saved ?? computeDefaultBounds()
       window.setSize(Math.min(size.width, work.width), Math.min(size.height, work.height))
       return
     }
     if (saved) {
       const work = saved.x !== undefined && saved.y !== undefined
-        ? screen.getDisplayMatching({ ...saved, x: saved.x, y: saved.y }).workArea
-        : screen.getPrimaryDisplay().workArea
+        ? displayMatching({ ...saved, x: saved.x, y: saved.y }).workArea
+        : readPrimaryDisplay().workArea
       const width = Math.min(saved.width, work.width)
       const height = Math.min(saved.height, work.height)
       const fallback = saved.x === undefined || saved.y === undefined ? computeDefaultBounds() : undefined
@@ -432,7 +432,7 @@ export function setupWidgetsWindowManager(params: {
     const maxHeight = clamp(windowSize.maxHeight ?? work.height, minHeight, work.height)
     const width = clamp(windowSize.width ?? minWidth, minWidth, maxWidth)
     const height = clamp(windowSize.height ?? minHeight, minHeight, maxHeight)
-    const currentBounds = windowOriginTrusted() ? window.getBounds() : undefined
+    const currentBounds = readWindowRect(window)
     window.setMinimumSize(minWidth, minHeight)
     window.setMaximumSize(maxWidth, maxHeight)
     if (!currentBounds) {
@@ -491,8 +491,9 @@ export function setupWidgetsWindowManager(params: {
 
     const persist = () => {
       if (windowContext.persistBounds) {
-        const bounds = window.getBounds()
-        update({ bounds: windowOriginTrusted() ? bounds : { ...getConfig().bounds, width: bounds.width, height: bounds.height } })
+        const origin = readWindowRect(window)
+        const { width, height } = window.getBounds()
+        update({ bounds: origin ?? { ...getConfig().bounds, width, height } })
       }
     }
     window.on('resize', persist)

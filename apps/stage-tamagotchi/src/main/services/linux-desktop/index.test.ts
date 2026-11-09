@@ -80,6 +80,8 @@ describe('linux desktop bridge', () => {
       if (hello)
         await push('Hello', { api })
     })
+    for (const id of [2, 3, 4])
+      bus.method(`/Scripting/Script${id}`, 'org.kde.kwin.Script', 'run', '', '', () => {})
   }
 
   function push(member: string, payload: unknown) {
@@ -131,6 +133,7 @@ describe('linux desktop bridge', () => {
     bridge.onCursor(cursor)
     await bridge.start()
     expect(facts).toHaveBeenCalledWith(expect.objectContaining({ backend: 'kwin', bridge: 'ready' }))
+    await bridge.setCursorStreaming(true)
     await push('Cursor', { x: 10, y: 20 })
     expect(cursor).toHaveBeenCalledWith({ x: 10, y: 20 })
     expect(bridge.cursor()).toEqual({ x: 10, y: 20 })
@@ -138,6 +141,48 @@ describe('linux desktop bridge', () => {
     expect(bridge.cursor()).toBeNull()
     expect(loaded.size).toBe(0)
     expect(await readdir(join(directory, 'airi-kwin'))).toEqual([])
+  })
+
+  it('holds outputs and readiness, and drops the cursor reading when streaming stops', async () => {
+    await compositor()
+    create()
+    const states: string[] = []
+    bridge.onState(state => states.push(state))
+    expect(bridge.ready()).toBe(false)
+    await bridge.start()
+    expect(bridge.ready()).toBe(true)
+    const outputs = [{ name: 'DP-1', x: 0, y: 0, width: 1920, height: 1080, scale: 1 }]
+    const pushed = vi.fn()
+    bridge.onOutputs(pushed)
+    await push('Outputs', outputs)
+    expect(bridge.outputs()).toEqual(outputs)
+    expect(pushed).toHaveBeenCalledWith(outputs)
+    await bridge.setCursorStreaming(true)
+    await push('Cursor', { x: 1, y: 2 })
+    expect(bridge.cursor()).toEqual({ x: 1, y: 2 })
+    await bridge.setCursorStreaming(false)
+    expect(bridge.cursor()).toBeNull()
+    await bridge.stop()
+    expect(bridge.outputs()).toBeNull()
+    expect(bridge.ready()).toBe(false)
+    expect(states).toEqual(['ready', 'stopped'])
+  })
+
+  it('drops the cursor reading when the cursor script is found unloaded', async () => {
+    await compositor()
+    create()
+    await bridge.start()
+    await bridge.setCursorStreaming(true)
+    await push('Cursor', { x: 5, y: 6 })
+    for (const [id, name] of loaded) {
+      if (name.includes('cursor'))
+        loaded.delete(id)
+    }
+    const cursor = vi.fn()
+    bridge.onCursor(cursor)
+    await bridge.setCursorStreaming(true)
+    expect(cursor).toHaveBeenCalledWith(null)
+    expect(bridge.cursor()).toBeNull()
   })
 
   it('cancels startup and unloads a script while Hello is pending', async () => {
@@ -158,6 +203,7 @@ describe('linux desktop bridge', () => {
     create()
     await bridge.start()
     await push('Cursor', { x: 10, y: 20 })
+    await push('Outputs', [{ name: 'DP-1', x: 0, y: 0, width: 1920, height: 1080, scale: 1 }])
     const revoked = Promise.withResolvers<void>()
     const ready = Promise.withResolvers<void>()
     facts.mockImplementation((patch) => {
@@ -176,6 +222,8 @@ describe('linux desktop bridge', () => {
     })
     await revoked.promise
     expect(bridge.cursor()).toBeNull()
+    expect(bridge.outputs()).toBeNull()
+    expect(bridge.ready()).toBe(false)
     loaded.clear()
     await bus.name('org.kde.KWin')
     await ready.promise

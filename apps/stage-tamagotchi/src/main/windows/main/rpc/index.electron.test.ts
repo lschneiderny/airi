@@ -22,6 +22,7 @@ vi.mock('@moeru/eventa', async (importOriginal) => {
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events')
   return {
+    app: { isReady: () => true, commandLine: { getSwitchValue: () => '' } },
     ipcMain: Object.assign(new EventEmitter(), { setMaxListeners: vi.fn() }),
     BrowserWindow: class extends EventEmitter {
       private destroyed = false

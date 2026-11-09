@@ -1,6 +1,6 @@
 import type { MenuItemConstructorOptions, Rectangle } from 'electron'
 
-import { windowOriginTrusted } from '../services/electron/host-capabilities'
+import { readWindowRect } from '../services/electron/coordinates'
 import { isStageWindow } from '../windows/stage/identity'
 
 export const RECOMMENDED_WIDTH = 450
@@ -47,9 +47,8 @@ function isSizeMatch(window: LayoutWindow, targetWidth: number, targetHeight: nu
   return Math.abs(width - Math.round(targetWidth)) <= 2 && Math.abs(height - Math.round(targetHeight)) <= 2
 }
 
-function isPositionMatch(window: LayoutWindow, target: Rectangle): boolean {
-  const { x, y } = window.getBounds()
-  return Math.abs(x - target.x) <= 5 && Math.abs(y - target.y) <= 5
+function isPositionMatch(rect: Rectangle, target: Rectangle): boolean {
+  return Math.abs(rect.x - target.x) <= 5 && Math.abs(rect.y - target.y) <= 5
 }
 
 /**
@@ -74,10 +73,11 @@ export function windowLayoutMenuItems(options: {
   const halfHeightTarget = Math.floor(areaHeight / 2)
   const halfWidthTarget = Math.floor(halfHeightTarget * ASPECT_RATIO)
   const label = (key: string) => t(`tamagotchi.electron.tray.menu.labels.label.${key}`)
+  const rect = readWindowRect(window)
   const alignItem = (key: string, position: AlignPosition): MenuItemConstructorOptions => ({
     label: label(key),
     type: 'checkbox',
-    checked: isPositionMatch(window, resolveAlignedWindowBounds(window, workArea, position)),
+    checked: rect !== null && isPositionMatch(rect, resolveAlignedWindowBounds(window, workArea, position)),
     click: () => align(position),
   })
 
@@ -92,7 +92,7 @@ export function windowLayoutMenuItems(options: {
         { label: label('full_screen'), type: 'checkbox', checked: isSizeMatch(window, areaWidth, areaHeight), click: () => resize(areaWidth, areaHeight, areaX, areaY) },
       ],
     },
-    ...windowOriginTrusted()
+    ...rect
       ? [{
         label: label('align_to'),
         submenu: [

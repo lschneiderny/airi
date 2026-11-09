@@ -12,7 +12,7 @@ import { join, resolve } from 'node:path'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { isRendererUnavailable } from '@proj-airi/electron-vueuse/main'
 import { animate } from 'animejs'
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow } from 'electron'
 import { debounce } from 'es-toolkit'
 import { isMacOS } from 'std-env'
 
@@ -29,7 +29,7 @@ import {
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
-import { windowOriginTrusted } from '../../services/electron/host-capabilities'
+import { displayMatching, readDisplays, readRendererWindowBounds, readWindowRect, windowOriginTrusted } from '../../services/electron/coordinates'
 import { showWindowOnAllWorkspaces } from '../shared/app-icon'
 import { protectPrivilegedWindowNavigation, resizeBoundsByDelta, transparentWindowConfig } from '../shared/window'
 import { attachedChatOffset, chooseAttachedChatLayout, keepChatOnDisplay, preferredAttachedChatLayout, wholePixels } from './floating-placement'
@@ -132,15 +132,16 @@ export function setupFloatingChatWindow(params: {
    */
   let size = { width: minimumSize.width, height: minimumSize.height }
 
-  /** The chat's position with the size it is meant to have. */
-  function boundsOf(target: BrowserWindow): Rectangle {
-    const { x, y } = target.getBounds()
-    return { x, y, ...size }
+  /** The chat's position with the size it is meant to have, or `null` while its origin cannot be read. */
+  function boundsOf(target: BrowserWindow): Rectangle | null {
+    const rect = readWindowRect(target)
+    return rect && { x: rect.x, y: rect.y, ...size }
   }
 
   /** Puts the chat at `x`, `y` in the size it is meant to have. */
   function placeAt(target: BrowserWindow, x: number, y: number) {
-    if (!windowOriginTrusted()) {
+    const current = readWindowRect(target)
+    if (!current) {
       target.setSize(size.width, size.height)
       return
     }
@@ -150,7 +151,6 @@ export function setupFloatingChatWindow(params: {
     // these up, so a drag made the chat wide. Moves set `size` instead.
     // Source: https://github.com/electron/electron/issues/13043
     // Removal: Electron keeps the size of a moved non-resizable window.
-    const current = target.getBounds()
     if (current.x !== x || current.y !== y || current.width !== size.width || current.height !== size.height)
       target.setBounds({ x, y, ...size })
   }
@@ -183,9 +183,10 @@ export function setupFloatingChatWindow(params: {
     if (!windowOriginTrusted())
       return
     const rect = anchor?.getRect()
-    if (!rect)
+    const bounds = boundsOf(target)
+    if (!rect || !bounds)
       return
-    const offset = attachedChatOffset(rect, boundsOf(target), screen.getDisplayMatching(rect).workArea, layout)
+    const offset = attachedChatOffset(rect, bounds, displayMatching(rect).workArea, layout)
     // A child window has already moved with the main window, so this is
     // usually a no-op during a drag.
     placeAt(target, rect.x + offset.x, rect.y + offset.y)
@@ -206,11 +207,11 @@ export function setupFloatingChatWindow(params: {
     if (!windowOriginTrusted())
       return
     const rect = anchor?.getRect()
-    if (!rect)
-      return
     const bounds = boundsOf(target)
+    if (!rect || !bounds)
+      return
     const offset = { x: bounds.x - rect.x, y: bounds.y - rect.y }
-    const to = attachedChatOffset(rect, bounds, screen.getDisplayMatching(rect).workArea, layout)
+    const to = attachedChatOffset(rect, bounds, displayMatching(rect).workArea, layout)
 
     slide = animate(offset, {
       x: to.x,
@@ -232,9 +233,10 @@ export function setupFloatingChatWindow(params: {
   function finishRelocation(target: BrowserWindow) {
     relocating = false
     const rect = anchor?.getRect()
-    if (rect && windowOriginTrusted()) {
+    const bounds = boundsOf(target)
+    if (rect && bounds && windowOriginTrusted()) {
       // The anchor may have moved on while the content folded.
-      layout = chooseAttachedChatLayout(rect, boundsOf(target), screen.getDisplayMatching(rect).workArea, layout)
+      layout = chooseAttachedChatLayout(rect, bounds, displayMatching(rect).workArea, layout)
       moveToLayout(target)
     }
     emitState()
@@ -245,9 +247,10 @@ export function setupFloatingChatWindow(params: {
       return
 
     const rect = anchor?.getRect()
-    if (!rect)
+    const bounds = boundsOf(target)
+    if (!rect || !bounds)
       return
-    const next = chooseAttachedChatLayout(rect, boundsOf(target), screen.getDisplayMatching(rect).workArea, layout)
+    const next = chooseAttachedChatLayout(rect, bounds, displayMatching(rect).workArea, layout)
     const sideChanged = next.side !== layout.side
     const anchorChanged = next.anchor !== layout.anchor
 
@@ -334,8 +337,9 @@ export function setupFloatingChatWindow(params: {
     }
 
     const rect = nextAnchor.getRect()
-    if (rect && windowOriginTrusted())
-      layout = chooseAttachedChatLayout(rect, boundsOf(target), screen.getDisplayMatching(rect).workArea, preferredAttachedChatLayout)
+    const bounds = boundsOf(target)
+    if (rect && bounds && windowOriginTrusted())
+      layout = chooseAttachedChatLayout(rect, bounds, displayMatching(rect).workArea, preferredAttachedChatLayout)
     moveToLayout(target)
     const stopFollowingPin = followMainPin(main, target)
     // NOTICE:
@@ -403,16 +407,16 @@ export function setupFloatingChatWindow(params: {
     if (params.getPlacement() === 'attached' || !windowOriginTrusted())
       return
 
-    const placed = keepChatOnDisplay({ ...position, ...size }, screen.getAllDisplays())
+    const placed = keepChatOnDisplay({ ...position, ...size }, readDisplays())
     placeAt(target, placed.x, placed.y)
   }
 
   function persistBounds(target: BrowserWindow) {
-    if (!windowOriginTrusted()) {
+    const bounds = boundsOf(target)
+    if (!bounds) {
       params.saveBounds({ ...params.getBounds(), ...size })
       return
     }
-    const bounds = boundsOf(target)
     // Attached placement derives the position from the main window, so only
     // the other placements own one worth keeping.
     const position = params.getPlacement() !== 'attached' ? { x: bounds.x, y: bounds.y } : {}
@@ -426,13 +430,14 @@ export function setupFloatingChatWindow(params: {
     // side under the cursor. A chat that is not attached has its grip at the
     // top-left.
     stopSlide()
-    const resized = resizeBoundsByDelta(boundsOf(target), {
+    const bounds = boundsOf(target)
+    const resized = resizeBoundsByDelta(bounds ?? { x: 0, y: 0, ...size }, {
       ...delta,
       direction: attachedTo ? gripDirection(layout) : 'nw',
       minWidth: minimumSize.width,
       minHeight: minimumSize.height,
     })
-    if (!windowOriginTrusted()) {
+    if (!bounds) {
       size = { width: resized.width, height: resized.height }
       target.setSize(size.width, size.height)
       persistBounds(target)
@@ -440,7 +445,7 @@ export function setupFloatingChatWindow(params: {
     }
     // The chat stops growing at the edges of the work area, so the grip stays
     // in reach.
-    const placed = keepChatOnDisplay(resized, screen.getAllDisplays())
+    const placed = keepChatOnDisplay(resized, readDisplays())
     size = { width: placed.width, height: placed.height }
     placeAt(target, placed.x, placed.y)
     if (attachedTo)
@@ -470,7 +475,7 @@ export function setupFloatingChatWindow(params: {
 
     // The saved position may be on a display that is gone or smaller now.
     if (windowOriginTrusted() && params.getPlacement() !== 'attached' && saved.x != null && saved.y != null)
-      target.setBounds(keepChatOnDisplay({ x: saved.x, y: saved.y, width: saved.width, height: saved.height }, screen.getAllDisplays()))
+      target.setBounds(keepChatOnDisplay({ x: saved.x, y: saved.y, width: saved.width, height: saved.height }, readDisplays()))
 
     showWindowOnAllWorkspaces(target)
     if (isMacOS) {
@@ -608,9 +613,10 @@ export function setupFloatingChatWindow(params: {
     isUnfolded: () => !folded,
     attentionSnapshot() {
       const window = reusable.getOpenWindow()
+      const rect = window ? readRendererWindowBounds(window) : null
       return {
         mode: 'floating',
-        window: window ? { shown: window.isVisible(), bounds: boundsOf(window) } : undefined,
+        window: window && rect ? { shown: window.isVisible(), bounds: { x: rect.x, y: rect.y, ...size } } : undefined,
         folded,
         relocating,
       }
