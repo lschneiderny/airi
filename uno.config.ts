@@ -138,7 +138,18 @@ export function presetWebFontsFonts(provider: 'fontsource' | 'none'): Record<str
   }
 }
 
-export function sharedUnoConfig() {
+export interface SharedUnoConfigOptions {
+  /**
+   * Directory whose `node_modules` provides the `@iconify-json/*` collections.
+   * Set it when the process can start outside the consuming package, such as Vitest started from the repository root
+   * with `--config <package>/vitest.config.ts`.
+   *
+   * @default process.cwd()
+   */
+  iconCollectionsPath?: string
+}
+
+export function sharedUnoConfig(options: SharedUnoConfigOptions = {}) {
   return defineConfig({
     presets: [
       presetWind3(),
@@ -146,6 +157,7 @@ export function sharedUnoConfig() {
       presetTypography(),
       presetIcons({
         scale: 1.2,
+        collectionsNodeResolvePath: options.iconCollectionsPath,
         collections: {
           ...createExternalPackageIconLoader('@proj-airi/lobe-icons'),
           ...createExternalPackageIconLoader('@proj-airi/iconify-meteocons'),
