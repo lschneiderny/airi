@@ -153,7 +153,8 @@ export function useDataMaintenance() {
     await expressionPerformanceSettingsStore.reset()
     await hostNoticeSettingsStore.reset()
     mcpStore.resetState()
-    onboardingStore.resetSetupState()
+    // A follower routes this synced action to the leader; await it so the reset commits before deletion reports done.
+    await onboardingStore.resetSetupState()
     airiCardStore.resetState()
   }
 
