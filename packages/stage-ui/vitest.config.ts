@@ -40,7 +40,8 @@ export default withCpuSlots(defineConfig({
     // Use the app's route-block transform when browser tests mount shared pages.
     VueRouter({ routesFolder: [], dts: false }),
     Vue(),
-    UnoCSS(mergeConfigs([sharedUnoConfig(), {
+    // `pnpm verify` starts Vitest from the repository root, where the icon collections of this package do not resolve.
+    UnoCSS(mergeConfigs([sharedUnoConfig({ iconCollectionsPath: import.meta.dirname }), {
       // Browser tests use product styles, not Histoire's hover-preview variants.
       configFile: false,
       // Vitest loads components after the stylesheet. Scan their source before
