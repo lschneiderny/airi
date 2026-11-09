@@ -3,7 +3,7 @@
 
 import type { Format, LogLevelString } from '@guiiai/logg'
 import type { MutexInterface } from 'async-mutex'
-import type { BrowserWindow, DesktopCapturerSource, SourcesOptions } from 'electron'
+import type { BrowserWindow, DesktopCapturerSource, SourcesOptions, Streams } from 'electron'
 
 import { useLogg } from '@guiiai/logg'
 import { defineInvokeHandler } from '@moeru/eventa'
@@ -11,6 +11,7 @@ import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { Mutex, withTimeout } from 'async-mutex'
 import { app, desktopCapturer, ipcMain, session as sessionModule } from 'electron'
 import { nanoid } from 'nanoid'
+import { isLinux } from 'std-env'
 
 import { screenCapture } from '..'
 import {
@@ -202,17 +203,18 @@ export function initScreenCaptureForWindow(window: BrowserWindow, options?: Init
 
   const { context } = createContext(ipcMain, window, { onlySameWindow: true })
   const session = sessionModule.defaultSession
+  let linuxSources: DesktopCapturerSource[] = []
 
   defineInvokeHandler(context, screenCapture.checkMacOSPermission, async () => checkMacOSScreenCapturePermission())
   defineInvokeHandler(context, screenCapture.requestMacOSPermission, async () => requestMacOSScreenCapturePermission())
 
   defineInvokeHandler(context, screenCapture.getSources, async (sourcesOptions) => {
-    // NOTICE(@nekomeowww): In probability of 9/10, the window thumbnail is purely empty or black, sources printed and
-    // nothing is returned from the desktopCapturer API.
-    // NOTICE(@sumimakito): Not only thumbnail is empty, the appIcon could be empty as well with nothing returned.
-    // REVIEW(@sumimakito): This has nothing to do with out side, probably related to Electron Bug, you can
-    // read more here https://github.com/electron/electron/issues/44504
+    linuxSources = []
+    // Electron may return empty thumbnails and app icons.
+    // See https://github.com/electron/electron/issues/44504.
     const sources = await desktopCapturer.getSources(sourcesOptions)
+    if (isLinux)
+      linuxSources = sources
     return sources.map(source => toSerializableDesktopCapturerSource(source))
   })
 
@@ -226,6 +228,11 @@ export function initScreenCaptureForWindow(window: BrowserWindow, options?: Init
       throw new Error('timeout must be a positive finite number')
     }
 
+    // On Wayland getSources already opens the portal picker. Keep that source:
+    // another enumeration opens another picker and returns a different ID.
+    const selectedSource = linuxSources.find(source => source.id === request.sourceId)
+    linuxSources = []
+
     await setSourceMutex.acquire()
     log.withFields({ windowId, windowTitle: tryWindowTitle(window, windowTitle) }).debug('setSourceMutex acquired')
 
@@ -236,16 +243,29 @@ export function initScreenCaptureForWindow(window: BrowserWindow, options?: Init
 
     try {
       session.setDisplayMediaRequestHandler(async (_request, callback) => {
-        const sources = await desktopCapturer.getSources(request.options)
-        const source = sources.find(source => source.id === request.sourceId)
-        if (!source) {
-          throw new Error(`Source with id ${request.sourceId} not found.`)
+        let source: DesktopCapturerSource | undefined
+        try {
+          source = isLinux
+            ? selectedSource
+            : (await desktopCapturer.getSources(request.options)).find(source => source.id === request.sourceId)
+        }
+        catch (error) {
+          log.withFields({ windowId }).withError(error).warn('Display media source lookup failed')
         }
 
-        callback({
-          video: source,
-          audio: options?.loopbackWithMute ? LoopbackAudioTypes.LoopbackWithMute : LoopbackAudioTypes.Loopback,
-        })
+        // NOTICE:
+        // Electron 43's callback type omits its supported null denial value.
+        // An empty object also throws in main.
+        // Source: v43.8.7 shell/browser/electron_browser_context.cc,
+        // ElectronBrowserContext::DisplayMediaDeviceChosen (IsNullOrUndefined).
+        // Remove when Electron's callback type includes null.
+        const respond = callback as (streams: Streams | null) => void
+        respond(source
+          ? {
+              video: source,
+              audio: options?.loopbackWithMute ? LoopbackAudioTypes.LoopbackWithMute : LoopbackAudioTypes.Loopback,
+            }
+          : null)
       })
 
       setSourceMutexTimeoutHandle = setTimeout(() => {

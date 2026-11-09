@@ -12,6 +12,7 @@ export default withCpuSlots(defineConfig({
       'packages/ccc',
       'packages/core-agent',
       'packages/cpu-slots',
+      'packages/electron-screen-capture',
       'packages/electron-vueuse',
       'packages/i18n',
       'packages/pipelines-audio',
