@@ -5,7 +5,7 @@ import type { Profile } from '@proj-airi/model-driver-lipsync/shared/wlipsync'
 import type { NaturalTouchGesture } from '@proj-airi/motion-driver-natural/frame-types'
 import type { StreamingControlLook } from '@proj-airi/pipelines-audio'
 import type { CaptionChannelEvent, PresenceBubbleState } from '@proj-airi/stage-shared'
-import type { PerformanceCueAttention, PerformanceState, ResolverMemory } from '@proj-airi/stage-shared/performance-state'
+import type { PerformanceCueAttention, PerformanceInputs, PerformanceState, ResolverMemory } from '@proj-airi/stage-shared/performance-state'
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
 import type { MMDStageWorld } from '@proj-airi/stage-ui-mmd/composables/mmd'
 import type { TachieEmotion } from '@proj-airi/stage-ui-tachie'
@@ -560,10 +560,11 @@ const { performanceOverride } = storeToRefs(naturalPerformanceOverride)
 const situation = useSituationStore()
 const foregroundCategory = computed(() => situation.foregroundCategory)
 let performanceMemory: ResolverMemory = initialResolverMemory
+let performanceInputs: PerformanceInputs
 const performance = shallowRef<PerformanceState>(resolvePerformance())
 
 function resolvePerformance(): PerformanceState {
-  const resolution = resolvePerformanceState({
+  performanceInputs = {
     nowMs: Date.now(),
     speaking: nowSpeaking.value,
     userSpeaking: userSpeaking.value,
@@ -574,7 +575,8 @@ function resolvePerformance(): PerformanceState {
     override: performanceOverride.value,
     cueAttention: cueLook.value?.attention ?? null,
     foregroundCategory: foregroundCategory.value,
-  }, performanceMemory)
+  }
+  const resolution = resolvePerformanceState(performanceInputs, performanceMemory)
   performanceMemory = resolution.memory
   return resolution.state
 }
@@ -663,7 +665,7 @@ if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
           emotionsQueue,
           dispatchAct: marker => streamingControl.dispatchWith(marker),
           renderError: () => stageRenderError.value,
-          performanceMode: () => performance.value.mode,
+          performance: () => ({ inputs: performanceInputs, state: performance.value }),
         }))
       }
     })

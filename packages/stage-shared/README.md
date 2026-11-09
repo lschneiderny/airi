@@ -151,6 +151,8 @@ The `motion-scenario` entrypoint owns the input script that motion QA replays at
 - the schemas and Eventa invoke contracts (`eventa:invoke:motion-qa:*`) of the dev-only QA bridge, `createMotionQaContext`, `claimMotionQaHandlers` (one handler set per window), and `createMotionQaDispatcher`, which turns one JSON command string into one JSON reply and never rejects;
 - `isMotionQaBridgeEnabled`, also exported alone from `@proj-airi/stage-shared/motion-scenario/flag`, so a caller that guards it with `import.meta.env.DEV` keeps the bridge contracts out of production bundles.
 
+The bridge state includes `performance`, a read-only diagnostic of the last stage resolution: its epoch time, desktop inputs, cursor movement time, and the `away` flag passed to Natural. It does not substitute current store readings for the inputs that produced the reported state.
+
 ```ts
 import { buildEmotionTrial, createScenarioPlayer, MotionScenarioSchema } from '@proj-airi/stage-shared/motion-scenario'
 import { parse } from 'valibot'

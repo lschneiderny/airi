@@ -1,5 +1,5 @@
 import type { MotionQaRunScenarioResult, MotionQaState, MotionScenario, ScenarioEvent } from '@proj-airi/stage-shared/motion-scenario'
-import type { PerformanceMode } from '@proj-airi/stage-shared/performance-state'
+import type { PerformanceInputs, PerformanceState } from '@proj-airi/stage-shared/performance-state'
 
 import type { EmotionPayload } from '../../constants/emotions'
 import type { MotionQaChatHooks } from './use-motion-qa-events'
@@ -56,8 +56,8 @@ export interface MotionQaBridgeOptions {
   dispatchAct: (marker: string) => Promise<boolean>
   /** The stage's render error for the selected model, if it reported one. */
   renderError: () => Error | undefined
-  /** The performance mode the stage currently resolves; read on every `state` call. */
-  performanceMode: () => PerformanceMode
+  /** The last resolver inputs and the state the stage hands to Natural; read without resolving again. */
+  performance: () => { inputs: PerformanceInputs, state: PerformanceState }
   /** Defaults to `performance.now()` and `requestAnimationFrame`. */
   frames?: MotionQaFrames
 }
@@ -112,6 +112,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
   function readState(): MotionQaState {
     const snapshot = diagnostics.stageSnapshot()
     const modelId = stageModel.stageModelSelected || null
+    const { inputs, state } = options.performance()
     return {
       modelId,
       modelLoaded: modelId !== null && (options.modelLoaded?.() ?? diagnostics.loadedModelId === modelId),
@@ -130,7 +131,13 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       chat: diagnostics.lastChat && { ...diagnostics.lastChat },
       host: hostCapabilities.snapshot && structuredClone(toRaw(hostCapabilities.snapshot)),
       desktopIdleSeconds: desktopActivity.snapshot?.idleSeconds ?? null,
-      performanceMode: options.performanceMode(),
+      performanceMode: state.mode,
+      performance: {
+        resolvedAtMs: inputs.nowMs,
+        away: state.away,
+        cursorMovedAtMs: inputs.cursorMovedAtMs,
+        desktop: inputs.desktop && { ...inputs.desktop },
+      },
     }
   }
 
