@@ -60,6 +60,7 @@ class FakeBridge {
   ]
 
   readonly setCursorStreaming = vi.fn(async (_on: boolean) => {})
+  readonly requestCursor = vi.fn(async () => {})
   private readonly events = new EventEmitter()
   constructor(readonly backend: LinuxDesktopBackend) {}
   ready() { return this.state === 'ready' }

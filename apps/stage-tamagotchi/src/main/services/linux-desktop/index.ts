@@ -70,7 +70,6 @@ export function createLinuxDesktopBridge(options: {
         stop: () => backend.stop(),
       }
     },
-    // Todo 9 owns the renderer-paced cursor tick that calls `requestCursor`.
     'hyprland': (_bus, { onMessage, onFailure, onState }) => {
       const backend = new HyprlandBackend({
         env: { XDG_RUNTIME_DIR: env.XDG_RUNTIME_DIR, HYPRLAND_INSTANCE_SIGNATURE: env.HYPRLAND_INSTANCE_SIGNATURE },
@@ -85,6 +84,7 @@ export function createLinuxDesktopBridge(options: {
         },
         stop: () => backend.stop(),
         setCursorStreaming: on => backend.setCursorStreaming(on),
+        requestCursor: () => backend.requestCursor(),
       }
     },
     // Reason-only desktops: no driver, so the bridge reports ready at once with no samples.
