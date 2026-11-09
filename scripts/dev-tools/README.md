@@ -23,7 +23,6 @@ Root commands for working on this repository with many worktrees and parallel ag
 
 - Use root `pnpm typecheck`, `pnpm lint`, or `pnpm test:run` for a release or a whole-repository sweep. `pnpm verify` only covers what changed since the base.
 - `pnpm verify` does not run QA gates or Electron builds.
-- Do not use `pnpm qa:display` for real-pointer T3 runs. They drive the Windows cursor and need a Windows desktop.
 
 ## Quiet dev output
 
@@ -104,6 +103,8 @@ pnpm qa:display down
 A session is a `kwin_wayland --virtual` compositor with rootless Xwayland and a private D-Bus session bus. It runs as the transient systemd user unit `airi-qa-display-<name>.service`, so it survives the agent that started it, and `down` stops KWin, Xwayland, and the bus together. Clients render on the host GPU: Electron reports GPU compositing, WebGL, and WebGPU on the NVIDIA card through ANGLE. Their windows, focus changes, and pointer input stay inside the session. The private bus has no notification server, StatusNotifier host, portal, or global-shortcut service, so notifications, tray icons, and shortcuts from the app never reach the desktop.
 
 `run` and `env` replace `WAYLAND_DISPLAY`, `DISPLAY`, `DBUS_SESSION_BUS_ADDRESS`, and `XDG_SESSION_TYPE`, remove `XAUTHORITY`, and set `AIRI_QA_DISPLAY=<name>`. `run` exits with the command's exit code. Clients that `run` started are not part of the unit. They lose their display and exit when the session stops. Stop leftovers with `pnpm dev:top kill <worktree>`.
+
+Real-pointer T3 runs such as `builtin:t3-touch` work inside the session: the QA tools inject pointer input through the session KWin's EIS interface, which the private bus exposes without an authorization prompt. They detect the session through `AIRI_QA_DISPLAY` and refuse to drive the cursor without it. See [Pointer platform preflight](../../packages/qa-tools/README.md#pointer-platform-preflight).
 
 `shot` captures through Spectacle, which asks the session's KWin for the image. App screenshots that T3 runs and Vishot take through CDP do not need it.
 

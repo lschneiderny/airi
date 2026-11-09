@@ -31,6 +31,9 @@ function healthyProbes(overrides: Partial<DoctorProbes> = {}): DoctorProbes {
     env: { AIRI_QA_RIG_FORBOOTH: '/rigs/forbooth', AIRI_QA_RIG_BEAR: '/rigs/bear' },
     listRig: () => ({ isDirectory: true, models: ['model/rig.model3.json'] }),
     listProcesses: async () => [{ pid: 7, commandLine: 'node vitest run' }],
+    kwinPointer: async () => {
+      throw new Error('kwinPointer must not run outside a Linux QA display')
+    },
     repoRoot: 'C:/repo',
     ...overrides,
   }
@@ -175,7 +178,40 @@ describe('runDoctor', () => {
     expect(row.detail).toContain('cursorAttention off')
     expect(row.detail).toContain('stage-frame-budget readback is unmeasured')
     expect(row.detail).not.toContain('#2521')
-    expect(row.fix).toBe('Run rendered pointer QA on Windows.')
+    expect(row.fix).toContain('pnpm qa:display run --')
+  })
+
+  it('pointer-platform is ok inside a Linux QA display when the KWin EIS backend is available', async () => {
+    const row = await rowOf('pointer-platform', healthyProbes({
+      platform: () => 'linux',
+      sessionType: () => 'wayland',
+      env: { AIRI_QA_DISPLAY: 'touch' },
+      kwinPointer: async () => ({ ok: true, missing: [], screen: { x: 0, y: 0, width: 1920, height: 1080 } }),
+    }))
+
+    expect(row.status).toBe('ok')
+    expect(row.detail).toContain('QA display "touch": real-pointer T3 touch runs inject input through KWin EIS on a 1920x1080 output')
+    expect(row.detail).toContain('stage-frame-budget readback is unmeasured')
+    expect(row.detail).toContain('#2521')
+  })
+
+  it('pointer-platform warns inside a Linux QA display with the missing pointer prerequisites', async () => {
+    const row = await rowOf('pointer-platform', healthyProbes({
+      platform: () => 'linux',
+      env: { AIRI_QA_DISPLAY: 'touch' },
+      kwinPointer: async () => ({ ok: false, missing: ['libei.so.1: cannot open shared object file'] }),
+    }))
+
+    expect(row.status).toBe('warn')
+    expect(row.detail).toContain('KWin EIS pointer backend is unavailable (libei.so.1: cannot open shared object file)')
+    expect(row.fix).toContain('libei')
+  })
+
+  it('pointer-platform never probes KWin on Linux outside a QA display', async () => {
+    const row = await rowOf('pointer-platform', healthyProbes({ platform: () => 'linux' }))
+
+    expect(row.status).toBe('warn')
+    expect(row.detail).toContain('linux outside the QA display')
   })
 
   it('pointer-platform names Wayland limitations only on Linux Wayland', async () => {

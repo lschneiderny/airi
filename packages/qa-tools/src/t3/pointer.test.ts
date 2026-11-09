@@ -2,7 +2,8 @@ import type { MotionQaState } from '@proj-airi/stage-shared/motion-scenario'
 
 import { describe, expect, it } from 'vitest'
 
-import { parsePointerReceipt, parseVirtualScreenReceipt, planPointerSteps, pointerDesktopCommand, pointerScriptCommand, pointerSteps } from './pointer'
+import { parsePointerReceipt, parseVirtualScreenReceipt, planPointerSteps, pointerDesktopCommand, pointerScriptCommand, pointerSteps, selectPointerBackend } from './pointer'
+import { kwinPointerHelper } from './pointer-kwin'
 
 const steps = [
   { tMs: 2000, x: -200, y: 100, phase: 'move' as const },
@@ -20,13 +21,14 @@ describe('real pointer playback', () => {
   })
 
   it('reads physical virtual-screen bounds without moving or releasing the pointer', () => {
-    const script = pointerDesktopCommand('win32')!.args.at(-1)!
+    const script = pointerDesktopCommand('windows')!.args.at(-1)!
     expect(script).toContain('SetProcessDPIAware')
     for (const index of [76, 77, 78, 79])
       expect(script).toContain(`GetSystemMetrics(${index})`)
     expect(script).not.toContain('SetCursorPos')
     expect(script).not.toContain('mouse_event')
-    expect(pointerDesktopCommand('linux')).toBeNull()
+    expect(pointerDesktopCommand(null)).toBeNull()
+    expect(pointerDesktopCommand('kwin-eis')).toEqual({ command: 'python3', args: ['-I', kwinPointerHelper, 'query'] })
     expect(parseVirtualScreenReceipt(JSON.stringify(desktop))).toEqual(desktop)
     expect(() => parseVirtualScreenReceipt('garbage')).toThrow()
     expect(() => parseVirtualScreenReceipt(JSON.stringify({ ...desktop, width: 0 }))).toThrow()
@@ -76,7 +78,7 @@ describe('real pointer playback', () => {
   })
 
   it('builds sorted timed Windows moves and dwells before a press, always releasing on exit', () => {
-    const built = pointerScriptCommand(steps, 123456, 'win32')!
+    const built = pointerScriptCommand(steps, 123456, 'windows')!
     expect(built.command).toBe('powershell')
     const script = built.args.at(-1)!
     expect(script).toContain('Stopwatch')
@@ -88,13 +90,33 @@ describe('real pointer playback', () => {
     expect(script).toContain('finally { [QaPointer]::mouse_event(4')
     expect(script).toContain('foregroundElevated')
     expect(script.indexOf('pointer-path-outside-virtual-screen')).toBeLessThan(script.indexOf('SetCursorPos'))
-    expect(pointerScriptCommand(steps, 0, 'linux')).toBeNull()
+    expect(pointerScriptCommand(steps, 0, null)).toBeNull()
+  })
+
+  it('sends the KWin helper the same numeric table on stdin after an epoch and press-dwell header', () => {
+    expect(pointerScriptCommand(steps, 123456, 'kwin-eis')).toEqual({
+      command: 'python3',
+      args: ['-I', kwinPointerHelper, 'play'],
+      input: '123456 100\n2000,-200,100,0;2500,-200,100,1;2700,-200,100,2',
+    })
+    expect(pointerScriptCommand([], 5, 'kwin-eis')!.input).toBe('5 100\n')
+    expect(() => pointerScriptCommand([...steps].reverse(), 0, 'kwin-eis')).toThrow(/Invalid pointer/)
+  })
+
+  it('selects the KWin backend only inside a Linux QA display', () => {
+    expect(selectPointerBackend('win32', {})).toEqual({ backend: 'windows' })
+    expect(selectPointerBackend('linux', { AIRI_QA_DISPLAY: 'touch' })).toEqual({ backend: 'kwin-eis' })
+    const desktop = selectPointerBackend('linux', { WAYLAND_DISPLAY: 'wayland-0' })
+    expect(desktop.backend).toBeNull()
+    expect(desktop).toMatchObject({ reason: expect.stringMatching(/^pointer-platform-unsupported: .*pnpm qa:display run --/) })
+    expect(selectPointerBackend('linux', { AIRI_QA_DISPLAY: '' }).backend).toBeNull()
+    expect(selectPointerBackend('darwin', { AIRI_QA_DISPLAY: 'touch' })).toMatchObject({ backend: null, reason: expect.stringMatching(/^pointer-platform-unsupported/) })
   })
 
   it('refuses unsorted, nonfinite and injected inputs', () => {
-    expect(() => pointerScriptCommand([...steps].reverse(), 0, 'win32')).toThrow(/Invalid pointer/)
-    expect(() => pointerScriptCommand([{ ...steps[0], x: Number.NaN }], 0, 'win32')).toThrow(/Invalid pointer/)
-    expect(() => pointerScriptCommand(steps, Number.POSITIVE_INFINITY, 'win32')).toThrow(/Invalid pointer/)
+    expect(() => pointerScriptCommand([...steps].reverse(), 0, 'windows')).toThrow(/Invalid pointer/)
+    expect(() => pointerScriptCommand([{ ...steps[0], x: Number.NaN }], 0, 'windows')).toThrow(/Invalid pointer/)
+    expect(() => pointerScriptCommand(steps, Number.POSITIVE_INFINITY, 'windows')).toThrow(/Invalid pointer/)
   })
 
   it('accepts only a complete, timely, read-back receipt', () => {

@@ -11,7 +11,6 @@ import type { TeardownReport } from './teardown'
 
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { platform } from 'node:process'
 
 import { errorMessageFrom } from '@moeru/std'
 import { CdpClient, waitFor } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
@@ -25,7 +24,8 @@ import { toRenderedExpressionIds } from './expression-ids'
 import { importRig, zipRig } from './import-rig'
 import { connectStage, failOnExit, launchStageTamagotchi } from './launch'
 import { completeOnboarding } from './onboarding'
-import { planPointerSteps, playPointer, readPointerDesktop } from './pointer'
+import { parkPointer, planPointerSteps, playPointer, readPointerDesktop, resolvePointerScreen, selectPointerBackend } from './pointer'
+import { occludingWindows } from './pointer-kwin'
 import { assertStageAnimating, captureStagePng, planScreenshots, untilDeadline } from './screenshot'
 import { findWorktreeAppProcesses, teardownRun, trackTree } from './teardown'
 import { captureMarkerPrefix, parseTraceEvents, verifyT3Run } from './verify-trace'
@@ -103,8 +103,10 @@ function writeJson(run: RunHandle, name: string, value: unknown) {
 export async function runT3(options: RunT3Options): Promise<RunT3Result> {
   const { repoRoot, scenario, log, signal } = options
   const cursorAttention = scenario.events.some(event => event.kind === 'pointer')
-  if (cursorAttention && platform !== 'win32')
-    return { exitCode: 2, summary: 'pointer-platform-unsupported: real pointer runs require Windows' }
+  const pointer = selectPointerBackend()
+  if (cursorAttention && pointer.backend === null)
+    return { exitCode: 2, summary: pointer.reason }
+  const pointerBackend = cursorAttention ? pointer.backend : null
   const conflicts = findWorktreeAppProcesses(await listLiveProcesses(), repoRoot, options.selfPids)
   if (conflicts.length > 0) {
     return {
@@ -179,21 +181,29 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
       throw new Error('pointer-model-unavailable: model load has not committed')
     bridgeLog.pointerState = pointerState
     let steps: ReturnType<typeof planPointerSteps>['steps'] = []
-    if (pointerState) {
+    if (pointerState && pointerBackend) {
       const windowCss = await abortable(stagePage.evaluate<{ width: number, height: number }>('({ width: innerWidth, height: innerHeight })'))
-      bridgeLog.pointerGeometry = { head: pointerState.head, windowCss, screen: pointerState.screen }
-      log(`qa-tools t3: pointer geometry headCss=${JSON.stringify(pointerState.head)} windowCss=${JSON.stringify(windowCss)}`)
+      const appPids = [launched.root.pid, ...trackTree(await listLiveProcesses(), launched.root).map(entry => entry.pid)]
+      const placed = await abortable(resolvePointerScreen(pointerBackend, pointerState.screen, windowCss, appPids))
+      bridgeLog.pointerGeometry = { backend: pointerBackend, head: pointerState.head, windowCss, screen: placed.screen, rendererScreen: pointerState.screen, window: placed.window }
+      log(`qa-tools t3: pointer geometry backend=${pointerBackend} headCss=${JSON.stringify(pointerState.head)} windowCss=${JSON.stringify(windowCss)} screen=${JSON.stringify(placed.screen)}${placed.window ? ` window=${placed.window.method}:${placed.window.window.pid}` : ''}`)
       if (pointerState.head && pointerState.head.width > windowCss.width / 2)
         throw new Error(`pointer-head-implausible: head width ${pointerState.head.width} CSS px exceeds half window width ${windowCss.width / 2} CSS px`)
-      const desktop = await abortable(readPointerDesktop())
+      const desktop = await abortable(readPointerDesktop(pointerBackend))
       bridgeLog.virtualScreen = desktop
       // Refuse before even parking: neither the declared nor a mirrored path may move outside the desktop.
-      const plan = planPointerSteps(scenario.events, pointerState, desktop)
+      const plan = planPointerSteps(scenario.events, { ...pointerState, screen: placed.screen }, desktop)
       steps = plan.steps
       bridgeLog.pointerPlan = plan
       log(`qa-tools t3: pointer plan ${steps.length} steps, mirrored=${plan.mirrored ?? 'none'}, virtualScreen=${JSON.stringify(desktop)}`)
+      if (placed.window && placed.windows) {
+        const occluders = occludingWindows(placed.windows, placed.window.window, steps)
+        bridgeLog.pointerOccluders = occluders
+        for (const occluder of occluders)
+          log(`qa-tools t3: warning: window ${JSON.stringify(occluder.caption)} (PID ${occluder.pid}) is stacked above the stage and covers ${occluder.steps} of ${steps.length} pointer steps; input there reaches it unless it is click-through`)
+      }
     }
-    const parked = await abortable(parkCursor())
+    const parked = await abortable(pointerBackend ? parkPointer(pointerBackend) : parkCursor())
     bridgeLog.cursor = parked
     if (!parked.ok)
       throw new Error(`Cursor parking failed: ${parked.reason}`)
@@ -211,8 +221,8 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
     const started = await abortable(bridge.start('runScenario', { scenario: rendered.scenario }, bounds.commandMs))
     const rendererNowMs = await abortable(bridge.rendererNowMs())
     const hostOriginMs = Date.now() - (rendererNowMs - started.rendererStartMs)
-    if (cursorAttention) {
-      pointerPlayback = playPointer(steps, Math.round(hostOriginMs), pointerAbort.signal)
+    if (pointerBackend) {
+      pointerPlayback = playPointer(steps, Math.round(hostOriginMs), pointerAbort.signal, pointerBackend)
       // The screenshot loop can still be running when playback rejects.
       pointerPlayback.catch(() => {})
     }
@@ -278,9 +288,9 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
     pointerAbort.abort()
     if (pointerPlayback) {
       await pointerPlayback.catch(() => {})
-      // A killed PowerShell cannot execute its finally; release LEFTUP from a new owned command before parking.
+      // A killed playback command cannot execute its finally; release the button from a new owned command before parking.
       try {
-        bridgeLog.pointerRelease = await playPointer([], Date.now())
+        bridgeLog.pointerRelease = await playPointer([], Date.now(), undefined, pointerBackend)
       }
       catch (error) {
         bridgeLog.pointerReleaseError = errorMessageFrom(error)
@@ -289,7 +299,7 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
       }
     }
     if (cursorParked) {
-      const parked = await parkCursor()
+      const parked = await (pointerBackend ? parkPointer(pointerBackend) : parkCursor())
       bridgeLog.cursorFinally = parked
       if (!parked.ok) {
         exitCode = exitCode === 0 ? 1 : exitCode
