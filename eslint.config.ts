@@ -133,6 +133,58 @@ export default defineConfig({
     }],
   },
 }, {
+  // Wayland detection has one owner: the host capability service resolves it once and publishes the snapshot.
+  name: 'airi/host-capabilities',
+  files: ['apps/stage-tamagotchi/src/**/*.{ts,vue}'],
+  ignores: [
+    'apps/stage-tamagotchi/src/main/app/ozone.ts',
+    'apps/stage-tamagotchi/src/main/app/ozone.test.ts',
+    'apps/stage-tamagotchi/src/main/index.ts',
+    'apps/stage-tamagotchi/src/main/services/electron/host-capabilities.ts',
+    'apps/stage-tamagotchi/src/main/services/electron/host-capabilities.test.ts',
+  ],
+  rules: {
+    'ts/no-restricted-imports': ['error', {
+      patterns: [{
+        // Matches any specifier that names the ozone module: sibling (`./ozone`), relative from any depth
+        // (`../../app/ozone`), and alias (`@/main/app/ozone`), with or without `.ts`.
+        // `ozone.ts` is the only module with that name under apps/stage-tamagotchi/src.
+        regex: '(^|/)ozone(\\.ts)?$',
+        message: 'Do not detect Wayland per call site. Read the host capability snapshot from the host capability service (main/services/electron/host-capabilities.ts) instead.',
+      }],
+    }],
+    // A rule entry replaces the earlier one, so the repo-wide `no-restricted-syntax` entries are repeated here.
+    'no-restricted-syntax': [
+      'error',
+      {
+        message: 'Avoid `error instanceof Error ? error.message : ...`. Use `errorMessageFrom(error)` from \'@moeru/std\' (or `errorMessageFromUnknown(error, fallback)` from \'@proj-airi/stage-shared\'). Pair with `?? \'fallback\'` when a default is needed.',
+        selector: 'ConditionalExpression[test.type=\'BinaryExpression\'][test.operator=\'instanceof\'][test.right.name=\'Error\'][consequent.type=\'MemberExpression\'][consequent.property.name=\'message\']',
+      },
+      {
+        message: 'Omit TypeScript and JavaScript source extensions from relative imports, dynamic imports, and re-exports.',
+        selector: [
+          'ImportDeclaration[source.value=/^\\.{1,2}\\/.*\\.[cm]?[jt]sx?$/]',
+          'ExportNamedDeclaration[source.value=/^\\.{1,2}\\/.*\\.[cm]?[jt]sx?$/]',
+          'ExportAllDeclaration[source.value=/^\\.{1,2}\\/.*\\.[cm]?[jt]sx?$/]',
+          'ImportExpression[source.value=/^\\.{1,2}\\/.*\\.[cm]?[jt]sx?$/]',
+        ].join(', '),
+      },
+      {
+        message: 'Do not detect Wayland per call site. Read the host capability snapshot from the host capability service (main/services/electron/host-capabilities.ts) instead.',
+        // Covers literal specifiers, template literals whose static parts name ozone (including `${base}/ozone`),
+        // and string concatenations. Fully computed specifiers such as `import(name)` cannot be decided statically.
+        selector: [
+          'ImportExpression[source.value=/(^|\\/)ozone(\\.ts)?$/]',
+          'ImportExpression > TemplateLiteral.source > TemplateElement[value.raw=/ozone/]',
+          'ImportExpression > TemplateLiteral.source > Literal[value=/ozone/]',
+          'ImportExpression > BinaryExpression.source Literal[value=/ozone/]',
+        ].join(', '),
+      },
+      'TSEnumDeclaration[const=true]',
+      'TSExportAssignment',
+    ],
+  },
+}, {
   files: ['server/apps/api/**/*.ts'],
   rules: {
     'no-restricted-syntax': [
