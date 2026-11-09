@@ -43,7 +43,7 @@ The steps:
 
 - **typecheck** runs `turbo run typecheck --filter=...[<merge base>]`. That covers every package with a changed file and every package that depends on one. Turbo caches results in the main worktree's `.turbo/cache`, which all worktrees share. A change to a root file that every package reads (`tsconfig*.json`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json`, a root `.d.ts`) typechecks every package.
 - **lint** runs `moeru-lint` (oxlint, then ESLint with its cache) on the changed files.
-- **test** runs `vitest related` on the changed code files with the root config. When a changed code file is inside a workspace package, it also runs the configs that `pnpm test:run` adds.
+- **test** runs `vitest related` on the changed code files with the root config. When a changed code file is inside a workspace package, it also runs each config that `pnpm test:run` adds whose package is that package or depends on it, according to `turbo ls --filter=...{<package>}`. A config in an unrelated package cannot import the changed code, so it is skipped.
 
 Changed files are those that differ between the merge base and the working tree, including uncommitted and untracked files.
 

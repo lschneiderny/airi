@@ -12,8 +12,13 @@ const typecheckGlobalFile = /^(?:tsconfig[^/]*\.json|package\.json|pnpm-lock\.ya
 const codeFile = /\.(?:[cm]?[jt]sx?|vue)$/
 const binaryFile = /\.(?:png|jpe?g|gif|webp|avif|ico|icns|bmp|svgz|mp[34]|wav|ogg|flac|webm|mov|zip|7z|gz|tgz|woff2?|ttf|otf|moc3|vrm|pmx|pmd|vmd|glb|gltf|bin|exe|dll|node|wasm|pdf|psd)$/i
 
+export interface ExtraTestConfig {
+  config: string
+  project?: string
+}
+
 /** Vitest configs that `pnpm test:run` runs besides the root config, with the project it selects. */
-export const extraTestConfigs: { config: string, project?: string }[] = [
+export const extraTestConfigs: ExtraTestConfig[] = [
   { config: 'apps/stage-tamagotchi/vitest.config.ts', project: 'browser' },
   { config: 'packages/stage-ui/vitest.config.ts' },
   { config: 'packages/stage-ui-live2d/vitest.config.ts', project: 'browser' },
@@ -38,12 +43,29 @@ export interface VerifyPlan {
   typecheck: TypecheckScope
   lintFiles: string[]
   testFiles: string[]
-  /** The extra configs only hold package tests, so they run only when a changed code file is in a package. */
-  extraTestConfigs: boolean
+  /**
+   * Workspace package directories that hold a changed code file. The extra configs only hold package tests, so they
+   * run only for these packages and the packages that depend on them.
+   */
+  testPackagePaths: string[]
+}
+
+function packageOf(path: string, packagePaths: string[]): string | undefined {
+  return packagePaths.find(packagePath => path === packagePath || path.startsWith(`${packagePath}/`))
 }
 
 function inPackage(path: string, packagePaths: string[]): boolean {
-  return packagePaths.some(packagePath => path === packagePath || path.startsWith(`${packagePath}/`))
+  return packageOf(path, packagePaths) !== undefined
+}
+
+/**
+ * Keeps the extra configs whose package is in `affectedPackagePaths`: the packages with a changed code file plus every
+ * package that depends on one. A config in any other package cannot import the changed code, so `vitest related`
+ * would only start its browser to find nothing.
+ */
+export function selectExtraTestConfigs(affectedPackagePaths: string[]): ExtraTestConfig[] {
+  const affected = new Set(affectedPackagePaths)
+  return extraTestConfigs.filter(({ config }) => affected.has(config.slice(0, config.lastIndexOf('/'))))
 }
 
 /**
@@ -70,7 +92,7 @@ export function planVerify(changed: ChangedFile[], packagePaths: string[], rootD
     typecheck,
     lintFiles: present.filter(path => !binaryFile.test(path)),
     testFiles,
-    extraTestConfigs: testFiles.some(path => inPackage(path, packagePaths)),
+    testPackagePaths: [...new Set(testFiles.map(path => packageOf(path, packagePaths)).filter(path => path !== undefined))],
   }
 }
 

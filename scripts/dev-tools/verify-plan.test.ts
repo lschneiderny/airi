@@ -6,7 +6,7 @@ import { acquire } from '@proj-airi/cpu-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { verifyCacheKey } from './verify-cache'
-import { parseVerifyArgs, planVerify, stripWorkerFlags, testPrerequisiteTurboArgs } from './verify-plan'
+import { parseVerifyArgs, planVerify, selectExtraTestConfigs, stripWorkerFlags, testPrerequisiteTurboArgs } from './verify-plan'
 
 const packages = ['packages/stage-ui', 'apps/stage-tamagotchi']
 const file = (path: string, deleted = false) => ({ path, deleted })
@@ -23,7 +23,12 @@ describe('planVerify', () => {
     expect(plan.typecheck).toEqual({ kind: 'affected' })
     expect(plan.lintFiles).toEqual(['packages/stage-ui/src/a.ts', 'docs/readme.md'])
     expect(plan.testFiles).toEqual(['packages/stage-ui/src/a.ts'])
-    expect(plan.extraTestConfigs).toBe(true)
+    expect(plan.testPackagePaths).toEqual(['packages/stage-ui'])
+  })
+
+  it('lists each package with a changed code file once', () => {
+    const plan = planVerify([file('packages/stage-ui/src/a.ts'), file('packages/stage-ui/src/b.vue'), file('apps/stage-tamagotchi/src/c.ts'), file('apps/stage-tamagotchi/README.md')], packages)
+    expect(plan.testPackagePaths).toEqual(['packages/stage-ui', 'apps/stage-tamagotchi'])
   })
 
   it('typechecks every package when a root config file changed', () => {
@@ -50,7 +55,7 @@ describe('planVerify', () => {
     const plan = planVerify([file('scripts/dev-tools/verify.ts')], packages)
     expect(plan.typecheck).toEqual({ kind: 'none' })
     expect(plan.testFiles).toEqual(['scripts/dev-tools/verify.ts'])
-    expect(plan.extraTestConfigs).toBe(false)
+    expect(plan.testPackagePaths).toEqual([])
   })
 
   it('keeps deleted files out of lint and test while still selecting typecheck', () => {
@@ -66,6 +71,25 @@ describe('planVerify', () => {
 
   it('does not match a package that only shares a name prefix', () => {
     expect(planVerify([file('packages/stage-ui-three/src/a.ts')], packages).typecheck).toEqual({ kind: 'none' })
+  })
+})
+
+describe('selectExtraTestConfigs', () => {
+  it('keeps only the configs of affected packages, with their projects', () => {
+    expect(selectExtraTestConfigs(['packages/stage-ui-mmd', 'apps/stage-tamagotchi', 'packages/stage-ui', 'packages/qa-tools'])).toEqual([
+      { config: 'apps/stage-tamagotchi/vitest.config.ts', project: 'browser' },
+      { config: 'packages/stage-ui/vitest.config.ts' },
+      { config: 'packages/stage-ui-mmd/vitest.config.ts', project: 'browser' },
+    ])
+  })
+
+  it('selects nothing when no affected package owns an extra config', () => {
+    expect(selectExtraTestConfigs([])).toEqual([])
+    expect(selectExtraTestConfigs(['packages/core-agent'])).toEqual([])
+  })
+
+  it('does not match a package that only shares a name prefix', () => {
+    expect(selectExtraTestConfigs(['packages/stage-ui-three-extra', 'packages/stage'])).toEqual([])
   })
 })
 

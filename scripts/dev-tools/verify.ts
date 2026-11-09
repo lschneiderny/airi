@@ -1,6 +1,6 @@
 import type { CpuClass } from '@proj-airi/cpu-slots'
 
-import type { VerifyStep } from './verify-plan'
+import type { ExtraTestConfig, VerifyStep } from './verify-plan'
 
 import process from 'node:process'
 
@@ -13,7 +13,7 @@ import { acquire } from '@proj-airi/cpu-slots'
 import { capture, chunkByLength, nodeCommandChunkLimits, run, shimCommandChunkLimits } from './lib/exec'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { readPass, verifyCacheKey, writePass } from './verify-cache'
-import { extraTestConfigs, parseVerifyArgs, planVerify, stripWorkerFlags, testPrerequisiteTurboArgs, verifyUsage } from './verify-plan'
+import { parseVerifyArgs, planVerify, selectExtraTestConfigs, stripWorkerFlags, testPrerequisiteTurboArgs, verifyUsage } from './verify-plan'
 
 interface Command {
   label: string
@@ -41,7 +41,16 @@ function workspacePackages(root: string): { paths: string[], rootDependencyPaths
   }
 }
 
-function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnType<typeof planVerify>): Command[] | string {
+/** The given package directories plus every workspace package that depends on one, through Turbo's package graph. */
+function withDependents(root: string, packagePaths: string[]): string[] {
+  if (!packagePaths.length)
+    return []
+  const filters = packagePaths.map(path => `--filter=...{./${path}}`)
+  const listing = JSON.parse(capture(process.execPath, [join(root, 'node_modules/turbo/bin/turbo'), 'ls', ...filters, '--output=json'], { cwd: root })) as { packages: { items: { path: string }[] } }
+  return listing.packages.items.map(item => item.path.replaceAll('\\', '/'))
+}
+
+function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnType<typeof planVerify>, extraConfigs: ExtraTestConfig[]): Command[] | string {
   const node = (entry: string, args: string[]) => [join(root, entry), ...args]
   if (step === 'typecheck') {
     if (plan.typecheck.kind === 'none')
@@ -63,7 +72,7 @@ function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnT
   }
   if (!plan.testFiles.length)
     return 'no code file changed'
-  const configs = [{ config: 'vitest.config.ts', project: undefined as string | undefined }, ...(plan.extraTestConfigs ? extraTestConfigs : [])]
+  const configs: ExtraTestConfig[] = [{ config: 'vitest.config.ts' }, ...extraConfigs]
   // `vitest related` resolves relative paths against the config's root, and the extra configs are rooted in their packages.
   const absoluteFiles = plan.testFiles.map(file => join(root, file))
   const rebuild: Command = {
@@ -100,6 +109,7 @@ async function main(): Promise<number> {
   const changed = changedFiles(root, base)
   const workspaces = workspacePackages(root)
   const plan = planVerify(changed, workspaces.paths, workspaces.rootDependencyPaths)
+  const extraConfigs = args.steps.includes('test') ? selectExtraTestConfigs(withDependents(root, plan.testPackagePaths)) : []
   const tree = workingTreeHash(root)
   const cacheDir = join(gitCommonDir(root), 'airi-verify')
   // Windows spells the variable `Path`; a second `PATH` key would hide the system directories.
@@ -110,7 +120,7 @@ async function main(): Promise<number> {
   console.info(`verify: ${changed.length} changed file(s) since ${args.base} (${base.slice(0, 9)}), tree ${tree.slice(0, 9)}`)
   const results: StepResult[] = []
   for (const step of args.steps) {
-    const commands = commandsFor(step, root, base, plan)
+    const commands = commandsFor(step, root, base, plan, extraConfigs)
     if (typeof commands === 'string') {
       results.push({ step, status: 'skipped', detail: commands, durationMs: 0 })
       continue
