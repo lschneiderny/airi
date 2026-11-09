@@ -10,6 +10,9 @@ import { join } from 'node:path'
  * Each session has a private `XDG_RUNTIME_DIR`, `XDG_DATA_HOME`, and `XDG_CONFIG_HOME` under its session directory, set
  * before the bus starts, so nothing it or its D-Bus-activated helpers create (sockets, FUSE mounts, config) lands in
  * the user's runtime directory or home.
+ * A second private `dbus-daemon` acts as the session's system bus. It starts first and its address is exported before
+ * the session bus starts, so the compositor, every client, and every service the session bus activates reach it instead
+ * of the host system bus and its logind, UPower, or NetworkManager.
  * Audio stays off the user's PipeWire graph: by default the session has no audio sockets at all, `--private-audio`
  * starts its own PipeWire, WirePlumber, and pipewire-pulse with a null sink, and only `--host-audio` links the user's.
  * Clients render on the host GPU, and their windows, focus, and cursor never reach the user's desktop.
@@ -178,7 +181,13 @@ export interface QaDisplayPaths {
   audioPids: string
   /** The WirePlumber profile fragment that keeps a private stack away from hardware. */
   wireplumberConf: string
+  /** The generated config of the private system bus, its socket inside the private runtime directory, and its pid. */
+  systemBusConf: string
+  systemBusSocket: string
+  systemBusPid: string
 }
+
+const systemBusSocketName = 'system_bus_socket'
 
 export function qaDisplayPaths(name: string, runtimeDir: string): QaDisplayPaths {
   const dir = join(runtimeDir, 'airi-qa-display', name)
@@ -196,7 +205,39 @@ export function qaDisplayPaths(name: string, runtimeDir: string): QaDisplayPaths
     swayProbe: join(dir, 'sway-probe.sh'),
     audioPids: join(dir, 'audio.pids'),
     wireplumberConf: join(dir, 'config', 'wireplumber', 'wireplumber.conf.d', '90-airi-qa-no-devices.conf'),
+    systemBusConf: join(dir, 'system-bus.conf'),
+    systemBusSocket: join(dir, 'runtime', systemBusSocketName),
+    systemBusPid: join(dir, 'system-bus.pid'),
   }
+}
+
+/**
+ * The config of the session's private system bus: `<type>system</type>`, one unix socket, no service directories (so
+ * nothing activates on it), and an allow-all policy. The bus is private to the session, so the open policy reaches
+ * nothing but the session's own clients, and it needs no root.
+ */
+export function systemBusConfig(socket: string): string {
+  return [
+    '<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">',
+    '<busconfig>',
+    '  <type>system</type>',
+    `  <listen>unix:path=${socket}</listen>`,
+    '  <auth>EXTERNAL</auth>',
+    '  <policy context="default">',
+    '    <allow user="*"/>',
+    '    <allow own="*"/>',
+    '    <allow send_destination="*" eavesdrop="true"/>',
+    '    <allow eavesdrop="true"/>',
+    '  </policy>',
+    '</busconfig>',
+    '',
+  ].join('\n')
+}
+
+/** Reads `system-bus.pid`, which `dbus-daemon --print-pid` fills with one pid; anything else is `null`. */
+export function parseSystemBusPid(text: string): number | null {
+  const match = /^(\d+)\s*$/.exec(text)
+  return match ? Number(match[1]) : null
 }
 
 /** Binaries each session starts, with the Fedora package that ships them. Absolute paths are checked as files. */
@@ -283,11 +324,11 @@ export function parseAudioPids(text: string): Array<{ name: string, pid: number 
 }
 
 /**
- * Whether `/proc/<pid>/stat` shows the named audio process still running. The unit's shell `exec`s the compositor,
- * which does not reap the stack, so a crashed process stays a zombie that `kill -0` still finds; a reused pid shows
- * another command name. Both count as exited.
+ * Whether `/proc/<pid>/stat` shows the named session process (an audio process or the private system bus) still
+ * running. The unit's shell `exec`s the compositor, which does not reap the stack, so a crashed process stays a zombie
+ * that `kill -0` still finds; a reused pid shows another command name. Both count as exited.
  */
-export function audioProcessRunning(name: string, stat: string | null): boolean {
+export function sessionProcessRunning(name: string, stat: string | null): boolean {
   const match = stat ? /^\d+ \((.*)\) (\S)/s.exec(stat) : null
   return match !== null && match[1] === name.slice(0, 15) && match[2] !== 'Z' && match[2] !== 'X'
 }
@@ -392,8 +433,12 @@ export interface QaDisplayUnitOptions {
 export function qaDisplayUnitArgs(options: QaDisplayUnitOptions, paths: QaDisplayPaths, host: { runtimeDir: string, waylandDisplay?: string }): string[] {
   const busStart = [
     ...privateSessionSetup(sessionIdentity[options.compositor], options.audio),
+    // The system bus starts first, so the session dbus-daemon, and every service it activates, inherits its address.
+    'dbus-daemon --config-file="$AIRI_QA_DIR/system-bus.conf" --fork --print-pid >"$AIRI_QA_DIR/system-bus.pid"',
+    `export DBUS_SYSTEM_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/${systemBusSocketName}"`,
     'dbus-daemon --session --fork --address="unix:path=$AIRI_QA_DIR/bus" >/dev/null',
     'export DBUS_SESSION_BUS_ADDRESS="unix:path=$AIRI_QA_DIR/bus"',
+    updateActivationEnv(['DBUS_SYSTEM_BUS_ADDRESS']),
     ...(options.audio === 'private' ? privateAudioStart() : []),
   ]
   let script: string[]
@@ -490,15 +535,15 @@ const hostAudioKeys = ['PULSE_SERVER', 'PIPEWIRE_REMOTE', 'PIPEWIRE_RUNTIME_DIR'
  */
 export const sessionKeys: Record<QaCompositor, { sets: readonly string[], deletes: readonly string[] }> = {
   kwin: {
-    sets: ['XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'WAYLAND_DISPLAY', 'DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR', 'AIRI_QA_HOST_RUNTIME_DIR'],
+    sets: ['XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'WAYLAND_DISPLAY', 'DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'DBUS_SYSTEM_BUS_ADDRESS', 'XDG_RUNTIME_DIR', 'AIRI_QA_HOST_RUNTIME_DIR'],
     deletes: ['SWAYSOCK', 'HYPRLAND_INSTANCE_SIGNATURE', 'XAUTHORITY', ...hostAudioKeys],
   },
   x11: {
-    sets: ['XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR', 'AIRI_QA_HOST_RUNTIME_DIR'],
+    sets: ['XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'DBUS_SYSTEM_BUS_ADDRESS', 'XDG_RUNTIME_DIR', 'AIRI_QA_HOST_RUNTIME_DIR'],
     deletes: ['WAYLAND_DISPLAY', 'SWAYSOCK', 'HYPRLAND_INSTANCE_SIGNATURE', 'KDE_FULL_SESSION', 'KDE_SESSION_VERSION', 'XAUTHORITY', ...hostAudioKeys],
   },
   sway: {
-    sets: ['XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'WAYLAND_DISPLAY', 'SWAYSOCK', 'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR', 'AIRI_QA_HOST_RUNTIME_DIR', 'DISPLAY'],
+    sets: ['XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'WAYLAND_DISPLAY', 'SWAYSOCK', 'DBUS_SESSION_BUS_ADDRESS', 'DBUS_SYSTEM_BUS_ADDRESS', 'XDG_RUNTIME_DIR', 'AIRI_QA_HOST_RUNTIME_DIR', 'DISPLAY'],
     deletes: ['HYPRLAND_INSTANCE_SIGNATURE', 'KDE_FULL_SESSION', 'KDE_SESSION_VERSION', 'XAUTHORITY', ...hostAudioKeys],
   },
 }
@@ -529,6 +574,10 @@ export function parseSessionEnv(text: string): QaSession | null {
   const audio = values.get('AIRI_QA_AUDIO') as QaAudioMode | undefined
   const bus = values.get('DBUS_SESSION_BUS_ADDRESS')
   if (!compositor || !qaCompositors.includes(compositor) || !audio || !qaAudioModes.includes(audio) || !bus || requiredKeys[compositor].some(key => !values.get(key)))
+    return null
+  // A file without the private system bus (a session from before it existed) or with any other system bus counts as
+  // not running, so no client is handed the host system bus.
+  if (values.get('DBUS_SYSTEM_BUS_ADDRESS') !== `unix:path=${values.get('XDG_RUNTIME_DIR')}/${systemBusSocketName}`)
     return null
   const env: Record<string, string> = { ...sessionIdentity[compositor] }
   for (const key of sessionKeys[compositor].sets) {
@@ -590,6 +639,8 @@ export function qaDisplayGuard(input: {
   /** The parsed env file of the session `AIRI_QA_DISPLAY_SESSION` names, or null when it is missing or incomplete. */
   session: QaSession | null
   unitActive: boolean
+  /** Whether the session's private system bus still runs (not exited, not a zombie). */
+  systemBusRunning: boolean
 }): QaDisplayGuardVerdict {
   if (input.platform !== 'linux' || input.allowHostSession)
     return { ok: true }
@@ -604,6 +655,8 @@ export function qaDisplayGuard(input: {
     return refuse(`AIRI_QA_DISPLAY_SESSION=${name} is not a qa:display session name`)
   if (!input.unitActive || !input.session)
     return refuse(`the qa:display session "${name}" is not running`)
+  if (!input.systemBusRunning)
+    return refuse(`the private system bus of the qa:display session "${name}" is not running`)
   for (const [key, value] of Object.entries(input.session.env)) {
     if ((input.env[key] ?? '') !== value)
       return refuse(`${key} does not match the qa:display session "${name}"`)
