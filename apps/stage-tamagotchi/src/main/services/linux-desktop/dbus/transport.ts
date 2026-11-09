@@ -69,6 +69,30 @@ export class DbusTransport {
     return this.bus.invoke<T>({ ...msg })
   }
 
+  emitSignal(path: string, iface: string, member: string, signature: string, body: unknown[]): void {
+    this.bus.sendSignal(path, iface, member, signature, body)
+  }
+
+  /** Exposes synchronous getters publicly through the standard Properties API. */
+  exportReadOnlyProperties(path: string, iface: string, properties: Record<string, {
+    readonly signature: string
+    readonly get: () => unknown
+  }>): () => void {
+    const descriptors: Record<string, dbus.PropertyDescriptor> = {}
+    const implementation: Record<string, unknown> = {}
+    for (const [name, property] of Object.entries(properties)) {
+      descriptors[name] = { type: property.signature, access: 'read' }
+      Object.defineProperty(implementation, name, { enumerable: true, get: property.get })
+    }
+    this.bus.exportInterface(implementation, path, { name: iface, properties: descriptors })
+    const unexport = () => {
+      this.bus.unexportInterface(path, iface)
+      this.disposers.delete(unexport)
+    }
+    this.disposers.add(unexport)
+    return unexport
+  }
+
   async getProperty<T>(destination: string, path: string, iface: string, name: string): Promise<T> {
     const value = await this.call<unknown>({ destination, path, interface: 'org.freedesktop.DBus.Properties', member: 'Get', signature: 'ss', body: [iface, name] })
     return dbus.variantValue<T>(value)
