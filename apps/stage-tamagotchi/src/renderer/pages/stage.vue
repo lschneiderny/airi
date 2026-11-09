@@ -158,10 +158,13 @@ useModelSettingsRuntimeOwner({
 
 // Natural inputs, as on the classic page: the cursor, where this window sits among the displays, and the chat window.
 const { x: relativeMouseX, y: relativeMouseY, available: cursorAvailable } = useElectronRelativeMouse()
-const cursorPosition = computed(() => cursorAvailable.value ? { x: relativeMouseX.value, y: relativeMouseY.value } : undefined)
+const hostCapabilities = useHostCapabilitiesStore()
+const cursorPosition = computed(() => hostCapabilities.status('cursorScreenPoint')?.kind === 'live' && cursorAvailable.value
+  ? { x: relativeMouseX.value, y: relativeMouseY.value }
+  : undefined)
 const allDisplays = useElectronAllDisplays()
 const { x: windowX, y: windowY, width: windowWidth, height: windowHeight } = useElectronWindowBounds()
-const hostCapabilities = useHostCapabilitiesStore()
+// Raw bounds may hide the origin on Wayland; wait for explicit trust before forwarding them.
 const screenPlacement = computed(() => hostCapabilities.status('windowOrigin')?.kind === 'live'
   ? {
       displays: allDisplays.value.map(display => display.bounds),
@@ -305,7 +308,7 @@ const controlsHoldPointer = computed(() =>
   (controlsIslandRef.value?.overlayActive ?? false) || !isOutsideControls.value || !isOutsideControlsFor250Ms.value,
 )
 const cursorAwayFromCharacter = computed(() =>
-  cursorAvailable.value && isOutsideControls.value && !isInsidePaddedRect(cursorPosition.value ?? null, placementRect.value),
+  cursorPosition.value !== undefined && isOutsideControls.value && !isInsidePaddedRect(cursorPosition.value, placementRect.value),
 )
 // The anchor is a zero-height strip on her top edge: the Island's fixed position resolves against it (the transform
 // makes it the containing block), and her body stays canvas for the hit test's `elementFromPoint`.
@@ -382,7 +385,8 @@ useEventListener(window, 'pointercancel', endPress)
 
 // Click-through: no readback outside her padded rect; inside, one readback per frame (`resolveStageClickThrough`).
 
-const clickThroughAvailable = computed(() => hostCapabilities.status('clickThroughForward')?.kind === 'live')
+// Plain desktop UI starts click-through, as before the host probe existed. Cursor reads still wait.
+const clickThroughAvailable = computed(() => (hostCapabilities.status('clickThroughForward')?.kind ?? 'live') === 'live')
 
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
 let clickThrough = createStageClickThroughState()
@@ -437,7 +441,7 @@ let hitRead = createStageHitReadState()
 useRafFn(({ timestamp }) => {
   const cursor = cursorPosition.value ?? null
   const rect = placementRect.value
-  const forceCapture = !cursor || stagePaused.value || !clickThroughAvailable.value || press.value !== null || controlsHoldPointer.value
+  const forceCapture = stagePaused.value || !clickThroughAvailable.value || press.value !== null || controlsHoldPointer.value
   const plan = planStageHitRead(hitRead, { nowMs: timestamp, cursor, rect, forceCapture })
   hitRead = plan.state
   const hit = cursor ? readHit(cursor, plan.read) : undefined

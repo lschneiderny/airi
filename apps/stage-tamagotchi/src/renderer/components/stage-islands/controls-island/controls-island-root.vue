@@ -88,20 +88,25 @@ function relocate(nextDock: ControlsIslandDock) {
   finishLeave()
 }
 
-const liveWindowBounds = computed(() => hostCapabilities.status('windowOrigin')?.kind === 'live'
+// Defer origin-based docking until the snapshot establishes trust; keep the initial UI dock meanwhile.
+const windowOriginLive = computed(() => hostCapabilities.status('windowOrigin')?.kind === 'live')
+const liveWindowBounds = computed(() => windowOriginLive.value
   ? {
       x: windowBounds.x.value,
       y: windowBounds.y.value,
       width: windowBounds.width.value,
       height: windowBounds.height.value,
     }
-  : { x: 0, y: 0, width: 0, height: 0 })
+  : undefined)
 const settledWindowBounds = refDebounced(liveWindowBounds, placementSettleDelayMs)
-const candidateDock = computed(() => resolveControlsIslandDock({
-  displays: displays.value,
-  previousDock: dock.value,
-  windowBounds: settledWindowBounds.value,
-}))
+// A resolved limitation takes effect immediately, even while old bounds are still debouncing.
+const candidateDock = computed(() => windowOriginLive.value && settledWindowBounds.value
+  ? resolveControlsIslandDock({
+      displays: displays.value,
+      previousDock: dock.value,
+      windowBounds: settledWindowBounds.value,
+    })
+  : dock.value)
 
 watch(candidateDock, (nextDock) => {
   if (props.frozen) {

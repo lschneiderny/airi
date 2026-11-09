@@ -1,3 +1,5 @@
+import type { HostId } from '@proj-airi/stage-shared/host-capabilities'
+
 import type { ScreenAmbientLightDiagnosticsSnapshot } from '../../shared/screen-ambient-light-diagnostics'
 
 import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
@@ -6,7 +8,7 @@ import { useSettingsScreenAmbientLight } from '@proj-airi/stage-shared/stores/sc
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
-import { defineComponent, ref } from 'vue'
+import { defineComponent, nextTick, ref } from 'vue'
 
 import { screenAmbientLightDiagnosticsChannelName } from '../../shared/screen-ambient-light-diagnostics'
 import { useScreenAmbientLight } from './use-screen-ambient-light'
@@ -29,6 +31,7 @@ const selectedDisplayIds = vi.hoisted(() => [] as string[])
 const captureCanvases: HTMLCanvasElement[] = []
 /** Sources the main process offers; each case sets what it needs. */
 const offeredSources = vi.hoisted(() => ({ list: [] as { id: string, display_id: string }[] }))
+const getPrimaryDisplay = vi.fn(async () => displays[1])
 
 // The returned functions run at composable setup, after the consts above
 // exist; the factory itself runs before them and must not touch them.
@@ -36,7 +39,7 @@ vi.mock('@proj-airi/electron-vueuse', () => ({
   useElectronCursorAvailable: () => ref(true),
   getElectronEventaContext: () => ({}),
   useElectronAllDisplays: () => displayList,
-  useElectronEventaInvoke: () => async () => displays[1],
+  useElectronEventaInvoke: () => getPrimaryDisplay,
   useElectronWindowBounds: () => bounds,
 }))
 
@@ -68,6 +71,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   useHostCapabilitiesStore().set(capabilitiesForHost('windows'))
   selectedDisplayIds.length = 0
+  getPrimaryDisplay.mockClear()
   captureCanvases.length = 0
   offeredSources.list = displays.map(display => ({ id: `screen:${display.id}:0`, display_id: String(display.id) }))
   bounds.x.value = windowBounds.x
@@ -97,6 +101,35 @@ async function mount() {
 }
 
 describe('screen ambient light capture', () => {
+  it.each<HostId>(['windows', 'macos', 'linux-wayland'])('waits for the %s snapshot before selecting a capture display', async (host) => {
+    const capabilities = useHostCapabilitiesStore()
+    capabilities.reset()
+    await mount()
+    await nextTick()
+
+    expect(getPrimaryDisplay).not.toHaveBeenCalled()
+    expect(selectedDisplayIds).toEqual([])
+
+    capabilities.set(capabilitiesForHost(host))
+
+    await vi.waitFor(() => expect(selectedDisplayIds).toEqual([host === 'linux-wayland' ? 'screen:18:0' : 'screen:17:0']))
+    expect(getPrimaryDisplay).toHaveBeenCalledTimes(host === 'linux-wayland' ? 1 : 0)
+  })
+
+  it('does not start a cancelled capture when the pending snapshot arrives', async () => {
+    const capabilities = useHostCapabilitiesStore()
+    capabilities.reset()
+    await mount()
+    useSettingsScreenAmbientLight().screenAmbientLightEnabled = false
+    await nextTick()
+
+    capabilities.set(capabilitiesForHost('windows'))
+    await nextTick()
+
+    expect(getPrimaryDisplay).not.toHaveBeenCalled()
+    expect(selectedDisplayIds).toEqual([])
+  })
+
   it('captures the primary display without position-derived regions when the window origin is unavailable', async () => {
     useHostCapabilitiesStore().set(capabilitiesForHost('linux-wayland'))
     // Fabricated zero origin points at display 17; the primary is display 18.
