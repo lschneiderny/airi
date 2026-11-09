@@ -18,18 +18,22 @@ import { encodeFrame } from './ipc'
 
 const rect = { x: 10, y: 20, width: 800, height: 600 }
 const node = { id: 9, type: 'con', pid: 123, name: 'first', app_id: 'foot', rect, focused: true }
+const output = { name: 'HEADLESS-1', active: true, rect: { x: 0, y: 0, width: 1920, height: 1080 }, scale: 1 }
 const cleanups: (() => Promise<void>)[] = []
 const next = (events: EventEmitter, name: string) => once(events, name, { signal: AbortSignal.timeout(3000) })
 
-async function fixture(options: { tree?: unknown, replyTree?: boolean, subscribe?: boolean } = {}) {
+async function fixture(options: { tree?: unknown, outputs?: unknown, replyTree?: boolean, subscribe?: boolean } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'airi-sway-'))
   const path = join(directory, 'ipc.sock')
   const events = new EventEmitter()
   const sockets = new Set<Socket>()
   const requests: { type: number, body: string }[] = []
   let tree: unknown = options.tree ?? node
+  let outputs: unknown = options.outputs ?? [output]
   const server = createServer((socket) => {
     sockets.add(socket)
+    // The backend under test destroys its socket on failure; the fake compositor sees that as a reset.
+    socket.on('error', () => socket.destroy())
     socket.on('close', () => sockets.delete(socket))
     let buffered = Buffer.alloc(0)
     socket.on('data', (chunk: Buffer) => {
@@ -43,6 +47,8 @@ async function fixture(options: { tree?: unknown, replyTree?: boolean, subscribe
         buffered = buffered.subarray(14 + length)
         if (type === 2 && options.subscribe !== false)
           socket.write(encodeFrame(2, { success: true }))
+        if (type === 3)
+          socket.write(encodeFrame(3, outputs))
         if (type === 4 && options.replyTree !== false)
           socket.write(encodeFrame(4, tree))
         events.emit('request', type)
@@ -59,6 +65,7 @@ async function fixture(options: { tree?: unknown, replyTree?: boolean, subscribe
   })
   backend.onActive(active => events.emit('active', active))
   backend.onOwnWindows(windows => events.emit('own', windows))
+  backend.onOutputs(value => events.emit('outputs', value))
   cleanups.push(async () => {
     await backend.stop()
     for (const socket of sockets)
@@ -73,6 +80,9 @@ async function fixture(options: { tree?: unknown, replyTree?: boolean, subscribe
     requests,
     setTree: (value: unknown) => {
       tree = value
+    },
+    setOutputs: (value: unknown) => {
+      outputs = value
     },
   }
 }
@@ -131,7 +141,7 @@ describe('sway socket client', () => {
     ], { env: { ...process.env, SWAYSOCK: ambient.path }, timeout: 5000 })
     expect(JSON.parse(stdout)).toEqual({ outcome: 'socket-unavailable', ambientReads: 0 })
     expect(ambientConnections).not.toHaveBeenCalled()
-    expect(explicit.requests).toEqual([{ type: 2, body: '["window"]' }, { type: 4, body: '' }])
+    expect(explicit.requests).toEqual([{ type: 2, body: '["window","output"]' }, { type: 3, body: '' }, { type: 4, body: '' }])
   })
 
   it('delivers snapshots for focus, title and fullscreen events using only read-only requests', async () => {
@@ -152,9 +162,35 @@ describe('sway socket client', () => {
       expect(await updated).toEqual([{ caption: change, resourceClass: 'org.kde.konsole', desktopFileName: 'org.kde.konsole', pid: 123, fullScreen: true }])
     }
     expect(requests).toEqual([
-      { type: 2, body: '["window"]' },
+      { type: 2, body: '["window","output"]' },
+      { type: 3, body: '' },
       ...Array.from({ length: 4 }, () => ({ type: 4, body: '' })),
     ])
+  })
+
+  it('reads outputs before startup resolves and refreshes them on output events', async () => {
+    const { backend, events, requests, setOutputs } = await fixture()
+    const order: string[] = []
+    events.on('outputs', () => order.push('outputs'))
+    const connection = next(events, 'connection')
+    const first = next(events, 'outputs')
+    const start = backend.start().then(() => order.push('ready'))
+    const [socket] = await connection
+    expect(await first).toEqual([[{ name: 'HEADLESS-1', x: 0, y: 0, width: 1920, height: 1080, scale: 1 }]])
+    await start
+    expect(order).toEqual(['outputs', 'ready'])
+    setOutputs([{ ...output, rect: { x: 0, y: 0, width: 1280, height: 720 }, scale: 1.5 }])
+    const updated = next(events, 'outputs')
+    socket.write(encodeFrame(0x80000001, { change: 'unspecified' }))
+    expect(await updated).toEqual([[{ name: 'HEADLESS-1', x: 0, y: 0, width: 1280, height: 720, scale: 1.5 }]])
+    expect(requests.map(request => request.type)).toEqual([2, 3, 4, 3])
+  })
+
+  it('reports invalid outputs without leaking payloads', async () => {
+    const { backend, events } = await fixture({ outputs: [{ ...output, rect: 'private title' }] })
+    const failure = next(events, 'failure')
+    await expect(backend.start()).rejects.toThrow('Sway bridge failed: protocol-failed')
+    expect(await failure).toEqual(['protocol-failed'])
   })
 
   it.each([false, true])('reports a closed socket (partial frame: %s) and can restart', async (partial) => {

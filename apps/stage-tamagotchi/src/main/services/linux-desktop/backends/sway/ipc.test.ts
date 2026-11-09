@@ -55,12 +55,14 @@ describe('i3 IPC framing', () => {
     expect(() => decoder.finish()).toThrow(SwayProtocolError)
   })
 
-  it('only permits GET_TREE and window SUBSCRIBE requests', () => {
+  it('only permits GET_TREE, GET_OUTPUTS and window and output SUBSCRIBE requests', () => {
     const decoder = new FrameDecoder()
-    const requests = [encodeRequest(4), encodeRequest(2)]
+    const requests = [encodeRequest(4), encodeRequest(3), encodeRequest(2)]
     expect(requests[0]?.subarray(14).length).toBe(0)
-    expect(decoder.push(requests[1] ?? Buffer.alloc(0))).toEqual([{ type: 2, payload: ['window'] }])
-    for (const forbidden of [0, 1, 3, 5, 6, 7, 8, 9, 10, 11, 12, 100, 101])
+    expect(requests[1]?.subarray(14).length).toBe(0)
+    expect(requests[1]?.readUInt32LE(10)).toBe(3)
+    expect(decoder.push(requests[2] ?? Buffer.alloc(0))).toEqual([{ type: 2, payload: ['window', 'output'] }])
+    for (const forbidden of [0, 1, 5, 6, 7, 8, 9, 10, 11, 12, 100, 101])
       expect(() => Reflect.apply(encodeRequest, undefined, [forbidden])).toThrow(SwayProtocolError)
   })
 })

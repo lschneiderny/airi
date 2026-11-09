@@ -2,14 +2,14 @@ import type { Buffer } from 'node:buffer'
 import type { Socket } from 'node:net'
 
 import type { Frame } from './ipc'
-import type { Active, OwnWindow } from './tree'
+import type { Active, Output, OwnWindow } from './tree'
 
 import { createConnection } from 'node:net'
 
 import { object, safeParse, string } from 'valibot'
 
 import { encodeRequest, FrameDecoder, SwayProtocolError } from './ipc'
-import { readTree } from './tree'
+import { readOutputs, readTree } from './tree'
 
 export type SwayFailure = 'socket-unavailable' | 'transport-failed' | 'socket-closed' | 'protocol-failed' | 'request-timeout' | 'stopped'
 
@@ -34,9 +34,12 @@ export class SwayBackend {
   private deadline: ReturnType<typeof setTimeout> | undefined
   private pendingTree = false
   private dirty = false
+  private pendingOutputs = false
+  private outputsDirty = false
   private subscribed = false
   private readonly activeListeners = new Set<(active: Active) => void>()
   private readonly ownListeners = new Set<(windows: readonly OwnWindow[]) => void>()
+  private readonly outputListeners = new Set<(outputs: readonly Output[]) => void>()
 
   constructor(private readonly options: SwayBackendOptions) {}
 
@@ -54,6 +57,13 @@ export class SwayBackend {
     }
   }
 
+  onOutputs(listener: (outputs: readonly Output[]) => void): () => void {
+    this.outputListeners.add(listener)
+    return () => {
+      this.outputListeners.delete(listener)
+    }
+  }
+
   start(): Promise<void> {
     if (this.starting)
       return this.starting
@@ -66,6 +76,8 @@ export class SwayBackend {
     this.starting = this.startup.promise
     this.pendingTree = false
     this.dirty = false
+    this.pendingOutputs = false
+    this.outputsDirty = false
     this.subscribed = false
     const decoder = new FrameDecoder()
     const socket = createConnection(path)
@@ -156,20 +168,54 @@ export class SwayBackend {
     this.socket?.write(encodeRequest(4))
   }
 
+  private requestOutputs() {
+    if (this.pendingOutputs) {
+      this.outputsDirty = true
+      return
+    }
+    this.pendingOutputs = true
+    this.armDeadline()
+    this.socket?.write(encodeRequest(3))
+  }
+
+  /** Replies arrive in request order; the deadline stays armed while either request is unanswered. */
+  private settleDeadline() {
+    if (this.pendingTree || this.pendingOutputs)
+      this.armDeadline()
+    else
+      clearTimeout(this.deadline)
+  }
+
   private receive(frame: Frame) {
     switch (frame.type) {
       case 2:
         if (this.subscribed || typeof frame.payload !== 'object' || !frame.payload || !('success' in frame.payload) || frame.payload.success !== true)
           throw new SwayProtocolError()
         this.subscribed = true
+        // Outputs are requested first, so they reach the bridge before the tree reply makes it ready.
+        this.requestOutputs()
         this.requestTree()
         break
+      case 3: {
+        if (!this.pendingOutputs)
+          throw new SwayProtocolError()
+        const outputs = readOutputs(frame.payload)
+        this.pendingOutputs = false
+        this.settleDeadline()
+        for (const listener of this.outputListeners)
+          listener(outputs)
+        if (this.outputsDirty) {
+          this.outputsDirty = false
+          this.requestOutputs()
+        }
+        break
+      }
       case 4: {
         if (!this.pendingTree)
           throw new SwayProtocolError()
         const snapshot = readTree(frame.payload, this.options.ownPids())
         this.pendingTree = false
-        clearTimeout(this.deadline)
+        this.settleDeadline()
         for (const listener of this.activeListeners)
           listener(snapshot.active)
         for (const listener of this.ownListeners)
@@ -180,6 +226,13 @@ export class SwayBackend {
           this.dirty = false
           this.requestTree()
         }
+        break
+      }
+      case 0x80000001: {
+        // Output events: an output was added, removed or changed mode, scale or position.
+        if (!this.subscribed)
+          throw new SwayProtocolError()
+        this.requestOutputs()
         break
       }
       case 0x80000003: {

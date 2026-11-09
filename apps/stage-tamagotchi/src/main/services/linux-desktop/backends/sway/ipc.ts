@@ -28,15 +28,15 @@ export function encodeFrame(type: number, payload: unknown): Buffer {
   return Buffer.concat([header, body])
 }
 
-/** The backend's sole outgoing boundary cannot encode state-changing commands. */
-export function encodeRequest(type: 2 | 4): Buffer {
+/** The backend's sole outgoing boundary cannot encode state-changing commands: SUBSCRIBE, GET_OUTPUTS and GET_TREE only. */
+export function encodeRequest(type: 2 | 3 | 4): Buffer {
   if (type === 2)
-    return encodeFrame(2, ['window'])
-  if (type !== 4)
+    return encodeFrame(2, ['window', 'output'])
+  if (type !== 3 && type !== 4)
     throw new SwayProtocolError()
   const header = Buffer.alloc(14)
   magic.copy(header)
-  header.writeUInt32LE(4, 10)
+  header.writeUInt32LE(type, 10)
   return header
 }
 

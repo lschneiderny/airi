@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { readTree } from './tree'
+import { readOutputs, readTree } from './tree'
 
 const rect = { x: -100, y: 24, width: 800, height: 600 }
 const window = {
@@ -49,5 +49,25 @@ describe('sway tree projection', () => {
     { ...window, nodes: [null] },
   ])('rejects malformed node data', (tree) => {
     expect(() => readTree(tree, [])).toThrow('Invalid Sway IPC payload')
+  })
+})
+
+describe('sway outputs projection', () => {
+  const output = { name: 'HEADLESS-1', active: true, rect: { x: 1920, y: 0, width: 1280, height: 720 }, scale: 1.5, make: 'headless', current_mode: { width: 1920, height: 1080 } }
+
+  it('keeps active outputs in logical coordinates with their scale and skips disabled ones', () => {
+    expect(readOutputs([output, { name: 'DP-2', active: false, rect: { x: 0, y: 0, width: 0, height: 0 }, scale: -1 }]))
+      .toEqual([{ name: 'HEADLESS-1', x: 1920, y: 0, width: 1280, height: 720, scale: 1.5 }])
+  })
+
+  it.each([
+    { reply: { name: 'HEADLESS-1' } },
+    { reply: [{ ...output, rect: 'private' }] },
+    { reply: [{ ...output, rect: { ...output.rect, width: 0 } }] },
+    { reply: [{ ...output, scale: 0 }] },
+    { reply: [{ ...output, name: 'x'.repeat(257) }] },
+    { reply: Array.from({ length: 17 }, (_, index) => ({ ...output, name: `HEADLESS-${index}` })) },
+  ])('rejects a malformed reply %#', ({ reply }) => {
+    expect(() => readOutputs(reply)).toThrow('Invalid Sway IPC payload')
   })
 })

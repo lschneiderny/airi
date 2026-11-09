@@ -14,6 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { encodeFrame } from './backends/sway/ipc'
 import { X11BackendError } from './backends/x11/binding'
+import { mapDisplaysToOutputs } from './geometry/outputs'
+import { CoordinateVerifier } from './geometry/verification'
 import { createLinuxDesktopBridge } from './index'
 import { PrivateBus } from './session/private-bus.test-helper'
 
@@ -142,7 +144,10 @@ describe('linux desktop backend registration', () => {
   })
 
   describe('sway', () => {
-    const tree = { id: 1, type: 'root', rect, nodes: [{ id: 9, type: 'con', pid, name: 'AIRI', app_id: 'airi', rect, focused: true }] }
+    const screen = { x: 0, y: 0, width: 1920, height: 1080 }
+    const tree = { id: 1, type: 'root', rect: screen, nodes: [{ id: 2, type: 'output', rect: screen, scale: 1, nodes: [{ id: 9, type: 'con', pid, name: 'AIRI', app_id: 'airi', rect, focused: true }] }] }
+    const outputs = [{ name: 'HEADLESS-1', active: true, rect: screen, scale: 1 }]
+    let reply = { tree: tree as unknown }
 
     async function compositor(path: string) {
       await listen(path, (socket) => {
@@ -152,7 +157,7 @@ describe('linux desktop backend registration', () => {
           while (buffered.length >= 14 && buffered.length >= 14 + buffered.readUInt32LE(6)) {
             const type = buffered.readUInt32LE(10)
             buffered = buffered.subarray(14 + buffered.readUInt32LE(6))
-            socket.write(type === 2 ? encodeFrame(2, { success: true }) : encodeFrame(4, tree))
+            socket.write(type === 2 ? encodeFrame(2, { success: true }) : type === 3 ? encodeFrame(3, outputs) : encodeFrame(4, reply.tree))
           }
         })
       })
@@ -173,6 +178,23 @@ describe('linux desktop backend registration', () => {
       expect(lastFailure()).toMatchObject({ backend: 'sway', bridgeFailure: 'other', foregroundVerified: false })
       expect(bridge.activeWindow()).toBeNull()
       expect(bridge.ownWindows()).toBeNull()
+    })
+
+    it('publishes sway outputs, so a bound window of matching size verifies geometry', async () => {
+      const path = join(directory, 'sway.sock')
+      reply = { tree: { ...tree, nodes: [{ ...tree.nodes[0], nodes: [{ ...tree.nodes[0].nodes[0], name: 'airi-bind-1' }] }] } }
+      await compositor(path)
+      const bridge = create({ SWAYSOCK: path })
+      await bridge.start()
+      expect(bridge.outputs()).toEqual([{ name: 'HEADLESS-1', ...screen, scale: 1 }])
+      // The same evidence coordinates.ts hands the verifier: a bound window whose size matches, and mapped displays.
+      const bound = bridge.ownWindows()?.find(window => window.caption === 'airi-bind-1')
+      const displays = mapDisplaysToOutputs([{ bounds: screen, workArea: screen, scaleFactor: 1 }], bridge.outputs() ?? [])
+      const report = vi.fn()
+      const verifier = new CoordinateVerifier({ report, log: () => {}, now: () => 0 })
+      verifier.observeGeometry({ sizeMatches: bound?.width === rect.width && bound.height === rect.height, displaysKnown: displays !== null })
+      expect(report).toHaveBeenCalledWith({ geometryVerified: true })
+      reply = { tree }
     })
 
     it('fails startup when the injected socket does not exist', async () => {

@@ -1,11 +1,12 @@
 import type { KwinMessage } from '../kwin/protocol'
 
-import { array, boolean, finite, minValue, nullable, number, object, optional, pipe, safeInteger, safeParse, string, unknown } from 'valibot'
+import { array, boolean, finite, maxLength, minValue, nullable, number, object, optional, pipe, safeInteger, safeParse, string, unknown } from 'valibot'
 
 import { SwayProtocolError } from './ipc'
 
 export type Active = Extract<KwinMessage, { method: 'Active' }>['payload']
 export type OwnWindow = Extract<KwinMessage, { method: 'OwnWindows' }>['payload'][number] & { readonly caption: string }
+export type Output = Extract<KwinMessage, { method: 'Outputs' }>['payload'][number]
 
 const integer = pipe(number(), safeInteger(), minValue(0))
 const coordinate = pipe(number(), finite())
@@ -64,4 +65,30 @@ export function readTree(tree: unknown, ownPids: readonly number[]): { active: A
     }
   }
   return { active, ownWindows }
+}
+
+// Disabled outputs report a zero rect and a negative scale, so only active ones are checked strictly.
+const outputSchema = object({
+  name: pipe(string(), maxLength(256)),
+  active: optional(boolean(), true),
+  rect: object({ x: coordinate, y: coordinate, width: pipe(coordinate, minValue(0)), height: pipe(coordinate, minValue(0)) }),
+  scale: optional(coordinate, 1),
+})
+// The bridge's Outputs contract allows 16 outputs, as the KWin script does.
+const outputsSchema = pipe(array(outputSchema), maxLength(16))
+
+/** The active outputs of a GET_OUTPUTS reply, in sway's logical layout coordinates with their scale. */
+export function readOutputs(reply: unknown): Output[] {
+  const result = safeParse(outputsSchema, reply)
+  if (!result.success)
+    throw new SwayProtocolError()
+  const outputs: Output[] = []
+  for (const output of result.output) {
+    if (!output.active)
+      continue
+    if (output.rect.width < 1 || output.rect.height < 1 || !(output.scale > 0))
+      throw new SwayProtocolError()
+    outputs.push({ name: output.name, ...output.rect, scale: output.scale })
+  }
+  return outputs
 }
