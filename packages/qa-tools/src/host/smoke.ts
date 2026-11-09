@@ -27,6 +27,7 @@ export function expectedHostFacts(input: {
     globalInputHookFailure: 'none',
     foregroundTitlesTrusted: null,
     waylandIdleVerified: false,
+    linuxDesktop: null,
   }
 }
 export interface HostSample {

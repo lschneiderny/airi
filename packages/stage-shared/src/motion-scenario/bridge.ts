@@ -8,7 +8,7 @@ import { defineInvokeEventa } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/event-target'
 import { array, boolean, finite, integer, literal, looseObject, maxLength, maxValue, minLength, minValue, nullable, number, optional, picklist, pipe, record, strictObject, string, union, variant } from 'valibot'
 
-import { HOST_IDS, HOST_REASONS, HOST_SIGNALS } from '../host-capabilities'
+import { HOST_IDS, HOST_REASONS, HOST_SIGNALS, LINUX_DESKTOP_BACKENDS } from '../host-capabilities'
 import { MotionScenarioSchema } from './schema'
 
 export { isMotionQaBridgeEnabled } from './flag'
@@ -42,6 +42,7 @@ const signalStatus = variant('kind', [
 ])
 const hostCapabilities = strictObject({
   host: hostId,
+  linuxDesktopBackend: nullable(picklist(LINUX_DESKTOP_BACKENDS)),
   signals: strictObject(Object.fromEntries(HOST_SIGNALS.map(signal => [signal, signalStatus])) as Record<HostSignal, typeof signalStatus>),
   resolvedAtMs: pipe(number(), finite()),
 })

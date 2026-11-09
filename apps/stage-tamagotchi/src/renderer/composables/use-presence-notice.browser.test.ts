@@ -13,7 +13,7 @@ import { setupSynced, usePiniaSynced } from '@proj-airi/stage-ui/libs/pinia/setu
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
-import { defineComponent, h, nextTick, shallowRef } from 'vue'
+import { defineComponent, h, nextTick, shallowRef, watch } from 'vue'
 import { createI18n } from 'vue-i18n'
 import { toast, Toaster } from 'vue-sonner'
 
@@ -80,6 +80,41 @@ async function mountNotice(page: 'index' | 'stage', capabilities: HostCapabiliti
 
 const toastLocator = () => document.querySelector('[data-sonner-toast]')
 
+/**
+ * Resolves once the condition holds. It re-checks on the store change that can flip it and on the DOM mutation
+ * that can flip it, so no timer polls. Rejects with a message naming the awaited state after the timeout.
+ */
+function until(condition: () => boolean, what: string, ms = 5000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let stopWatch = () => {}
+    let observer: MutationObserver | undefined
+    const finish = () => {
+      clearTimeout(timer)
+      stopWatch()
+      observer?.disconnect()
+    }
+    const check = () => {
+      if (condition()) {
+        finish()
+        resolve()
+      }
+    }
+    observer = new MutationObserver(check)
+    timer = setTimeout(() => {
+      finish()
+      reject(new Error(`timed out after ${ms} ms waiting for ${what}`))
+    }, ms)
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true })
+    stopWatch = watch(condition, check, { flush: 'sync' })
+    check()
+  })
+}
+
+function dismissedKeysAre(mounted: { settings: ReturnType<typeof useHostNoticeSettings> }, keys: Array<string | null>) {
+  return JSON.stringify(mounted.settings.document.dismissedKeys) === JSON.stringify(keys)
+}
+
 async function expectNoToast() {
   await vi.waitFor(() => {
     expect(stageStateReads.mock.calls.length).toBeGreaterThan(0)
@@ -124,12 +159,13 @@ describe('presence notice', () => {
       globalInputHookFailure: 'accessibility-denied',
       foregroundTitlesTrusted: null,
       waylandIdleVerified: false,
+      linuxDesktop: null,
     } satisfies Parameters<typeof resolveHostCapabilities>[0]
     const a = resolveHostCapabilities(facts, 0)
     const b = resolveHostCapabilities({ ...facts, foregroundTitlesTrusted: false }, 1)
     const a2 = resolveHostCapabilities({ ...facts, foregroundTitlesTrusted: true }, 2)
     const mounted = await mountNotice('index', a)
-    await vi.waitFor(() => expect(toastLocator()).not.toBeNull())
+    await until(() => toastLocator() !== null, 'the notice toast to open')
     const original = toast.getHistory().at(-1)
     if (!original || !('action' in original) || !original.action || !('onClick' in original.action))
       throw new Error('The notice has no Details action')
@@ -139,19 +175,21 @@ describe('presence notice', () => {
     expect(mounted.settings.document.dismissedKeys).toEqual([])
     await original.action.onClick(new MouseEvent('click'))
 
-    await vi.waitFor(() => expect(mounted.settings.document.dismissedKeys).toEqual([presenceNoticeKey(a)]))
+    await until(() => dismissedKeysAre(mounted, [presenceNoticeKey(a)]), 'the shown key to be remembered')
+    expect(mounted.settings.document.dismissedKeys).toEqual([presenceNoticeKey(a)])
     expect(document.querySelectorAll('[data-sonner-toast]')).toHaveLength(1)
     expect(toastLocator()?.textContent).toContain(signalLabel('foregroundWindow'))
     expect(openedRoutes).toEqual([presenceNoticeRoute])
     useHostCapabilitiesStore(mounted.pinia).set(a2)
-    await vi.waitFor(() => expect(toastLocator()).toBeNull())
+    await until(() => toastLocator() === null, 'the notice toast to close after trust returns')
     expect(JSON.parse(localStorage.getItem('settings/host-notice')!).dismissedKeys).toEqual([presenceNoticeKey(a)])
 
     useHostCapabilitiesStore(mounted.pinia).set(b)
-    await vi.waitFor(() => expect(toastLocator()).not.toBeNull())
+    await until(() => toastLocator() !== null, 'the notice toast to reopen')
     await mounted.view.getByRole('button', { name: 'Close toast' }).click()
-    await vi.waitFor(() => expect(mounted.settings.document.dismissedKeys).toEqual([presenceNoticeKey(a), presenceNoticeKey(b)]))
-    await vi.waitFor(() => expect(toastLocator()).toBeNull())
+    await until(() => dismissedKeysAre(mounted, [presenceNoticeKey(a), presenceNoticeKey(b)]), 'both keys to be remembered')
+    expect(mounted.settings.document.dismissedKeys).toEqual([presenceNoticeKey(a), presenceNoticeKey(b)])
+    await until(() => toastLocator() === null, 'the notice toast to close after Close toast')
     useHostCapabilitiesStore(mounted.pinia).set(a2)
     await nextTick()
     useHostCapabilitiesStore(mounted.pinia).set(b)
