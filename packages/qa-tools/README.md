@@ -71,6 +71,8 @@ Doctor, motion, stage, t2-probe, and qa:test load this file before reading QA se
 
 Doctor's `pointer-platform` row is OK on Windows. On Linux inside `pnpm qa:display run --`, it is OK when the KWin pointer backend is available: `python3` with PyGObject (`gi`), `libei.so.1`, and the nested KWin's `org.kde.KWin.EIS.RemoteDesktop` D-Bus interface. Otherwise the row is WARN and names what is missing. Run rendered pointer QA on Windows, or on Linux inside the QA display.
 
+The KWin backend needs the default `kwin` QA display (with or without `--portals`). The `x11` and `sway` QA display sessions (`pnpm qa:display up --compositor x11|sway`) have no KWin, so the row is WARN there and real-pointer T3 runs refuse. To place the pointer in any of the three sessions by hand, use `pnpm qa:display pointer <x> <y>`. It plays one EIS move on `kwin`, runs `xdotool mousemove` on `x11`, and runs `swaymsg seat - cursor set` on `sway`.
+
 On Linux inside the QA display, real-pointer T3 runs use the KWin backend:
 
 - `scripts/linux/kwin-pointer.py`, run with `python3 -I`, injects absolute pointer motion and left-button presses through the session KWin's EIS (libei as a sender). It reads the output geometry, the cursor position, the active window, and the window list through a one-shot KWin script that calls back over the session bus. It plays the same step table as the Windows script, with the same press dwell and timing receipt; the cursor in the receipt is read back from KWin. Linux has no elevated foreground, so `foregroundElevated` is always false.

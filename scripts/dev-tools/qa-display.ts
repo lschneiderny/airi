@@ -1,69 +1,165 @@
+import type { QaCompositor, QaDisplayArgs, QaSession } from './qa-display-plan'
+
 import process from 'node:process'
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { delimiter, join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { fileURLToPath } from 'node:url'
 
 import { errorMessageFrom } from '@moeru/std'
 
 import { run } from './lib/exec'
-import { clientEnv, parseQaDisplayArgs, parseSessionEnv, qaDisplayPaths, qaDisplayUnitArgs, qaDisplayUsage, shellExports } from './qa-display-plan'
+import { clientEnv, freeX11Display, kglobalShortcutsSeed, locateGlobalAccelDaemon, missingBinaryMessage, parseQaDisplayArgs, parseSessionEnv, pointerCommand, qaDisplayPaths, qaDisplayUnitArgs, qaDisplayUsage, requiredBinaries, sessionMountTargets, shellExports, swayConfig, swayProbeScript } from './qa-display-plan'
 
 const startTimeoutMs = 20_000
+const kwinPointerHelper = fileURLToPath(new URL('../../packages/qa-tools/scripts/linux/kwin-pointer.py', import.meta.url))
 
 function fail(message: string, code = 1): never {
   console.error(`qa:display: ${message}`)
   process.exit(code)
 }
 
-function isActive(unit: string): boolean {
-  return spawnSync('systemctl', ['--user', 'is-active', '--quiet', unit]).status === 0
+/** Prints a message that already carries its own `qa-display:` prefix. */
+function failRaw(message: string, code: number): never {
+  console.error(message)
+  process.exit(code)
 }
 
-function readSession(envFile: string) {
+/**
+ * The environment for `systemctl --user` and `systemd-run --user`. Inside a session, `XDG_RUNTIME_DIR` and the bus
+ * are the session's private ones, so this points both back at the user's manager.
+ */
+function systemdEnv(): NodeJS.ProcessEnv {
+  const host = process.env.AIRI_QA_HOST_RUNTIME_DIR
+  return host ? { ...process.env, XDG_RUNTIME_DIR: host, DBUS_SESSION_BUS_ADDRESS: `unix:path=${host}/bus` } : process.env
+}
+
+function systemctl(args: string[], stdio: 'inherit' | 'ignore' = 'ignore') {
+  return spawnSync('systemctl', ['--user', ...args], { env: systemdEnv(), stdio })
+}
+
+function isActive(unit: string): boolean {
+  return systemctl(['is-active', '--quiet', unit]).status === 0
+}
+
+/** Lazily unmounts what the session's FUSE helpers left under its directory, then removes the directory. */
+function removeSessionDir(dir: string) {
+  for (const target of sessionMountTargets(readFileSync('/proc/self/mountinfo', 'utf8'), dir))
+    spawnSync('fusermount3', ['-u', '-z', target], { stdio: 'inherit' })
+  rmSync(dir, { recursive: true, force: true })
+}
+
+function readSession(envFile: string): QaSession | null {
   return existsSync(envFile) ? parseSessionEnv(readFileSync(envFile, 'utf8')) : null
 }
 
-async function up(args: { name: string, width: number, height: number, windowed: boolean }, quiet: boolean) {
+function hasBinary(binary: string): boolean {
+  const candidates = binary.startsWith('/') ? [binary] : (process.env.PATH ?? '').split(delimiter).filter(Boolean).map(dir => join(dir, binary))
+  return candidates.some((file) => {
+    try {
+      accessSync(file, constants.X_OK)
+      return true
+    }
+    catch {
+      return false
+    }
+  })
+}
+
+function takenX11Displays(): Set<number> {
+  const taken = new Set<number>()
+  const add = (names: string[], pattern: RegExp) => names.forEach(name => pattern.test(name) && taken.add(Number(pattern.exec(name)![1])))
+  add(existsSync('/tmp/.X11-unix') ? readdirSync('/tmp/.X11-unix') : [], /^X(\d+)$/)
+  add(readdirSync('/tmp'), /^\.X(\d+)-lock$/)
+  return taken
+}
+
+function globalAccelExecutable(): string | undefined {
+  const rpm = spawnSync('rpm', ['-ql', 'kglobalacceld', 'kf6-kglobalaccel'], { encoding: 'utf8' })
+  const located = locateGlobalAccelDaemon(rpm.stdout ?? '')
+  return located?.kind === 'executable' ? located.path : undefined
+}
+
+async function up(args: Pick<QaDisplayArgs, 'name' | 'width' | 'height' | 'windowed' | 'compositor' | 'portals'>, quiet: boolean): Promise<QaSession> {
   const paths = qaDisplayPaths(args.name, runtimeDir())
   const running = isActive(paths.unit) ? readSession(paths.envFile) : null
-  if (running)
+  if (running) {
+    if ((args.compositor && args.compositor !== running.compositor) || (args.portals && !running.portals))
+      fail(`"${args.name}" already runs ${running.compositor}${running.portals ? ' with portals' : ''}. Stop it first with: pnpm qa:display down --name ${args.name}`)
     return running
+  }
+
+  const compositor: QaCompositor = args.compositor ?? 'kwin'
+  const missing = missingBinaryMessage(requiredBinaries(compositor, args.portals), hasBinary)
+  if (missing)
+    failRaw(missing, 1)
 
   if (isActive(paths.unit))
-    execFileSync('systemctl', ['--user', 'stop', paths.unit], { stdio: 'inherit' })
+    systemctl(['stop', paths.unit], 'inherit')
   // A failed unit keeps its name until it is reset, and `--collect` does not cover a failure before the start finishes.
-  spawnSync('systemctl', ['--user', 'reset-failed', paths.unit], { stdio: 'ignore' })
-  rmSync(paths.dir, { recursive: true, force: true })
-  mkdirSync(paths.dir, { recursive: true })
-  execFileSync('systemd-run', qaDisplayUnitArgs(args, paths, process.env.WAYLAND_DISPLAY), { stdio: 'inherit' })
+  systemctl(['reset-failed', paths.unit])
+  removeSessionDir(paths.dir)
+  mkdirSync(paths.runtime, { recursive: true, mode: 0o700 })
+  mkdirSync(paths.data, { recursive: true })
+  mkdirSync(paths.config, { recursive: true })
+  if (args.portals)
+    writeFileSync(join(paths.config, 'kglobalshortcutsrc'), kglobalShortcutsSeed())
+  if (compositor === 'sway') {
+    writeFileSync(paths.swayConfig, swayConfig(args.width, args.height))
+    writeFileSync(paths.swayProbe, swayProbeScript())
+  }
+  const unitArgs = qaDisplayUnitArgs({
+    ...args,
+    compositor,
+    x11Display: compositor === 'x11' ? freeX11Display(takenX11Displays()) : undefined,
+    globalAccelExecutable: args.portals ? globalAccelExecutable() : undefined,
+  }, paths, { runtimeDir: runtimeDir(), waylandDisplay: process.env.WAYLAND_DISPLAY })
+  execFileSync('systemd-run', unitArgs, { env: systemdEnv(), stdio: 'inherit' })
 
   const deadline = Date.now() + startTimeoutMs
+  const logHint = `Read its log with: journalctl --user -u ${paths.unit}`
   while (Date.now() < deadline) {
     const session = readSession(paths.envFile)
     if (session) {
-      if (!quiet)
-        console.info(`qa:display: "${args.name}" is up on ${session.WAYLAND_DISPLAY} and X display ${session.DISPLAY} (${args.width}x${args.height}${args.windowed ? ', windowed' : ''}).`)
+      if (!quiet) {
+        const where = [session.env.WAYLAND_DISPLAY, session.env.DISPLAY && `X display ${session.env.DISPLAY}`].filter(Boolean).join(' and ')
+        console.info(`qa:display: "${args.name}" is up (${compositor}${args.portals ? ' with portals' : ''}) on ${where} (${args.width}x${args.height}${args.windowed ? ', windowed' : ''}).`)
+      }
       return session
     }
+    if (existsSync(paths.errorFile)) {
+      const reason = readFileSync(paths.errorFile, 'utf8').trim()
+      systemctl(['stop', paths.unit])
+      fail(`"${args.name}" did not start: ${reason}. ${logHint}`)
+    }
     if (!isActive(paths.unit))
-      fail(`"${args.name}" exited during startup. Read its log with: journalctl --user -u ${paths.unit}`)
+      fail(`"${args.name}" exited during startup. ${logHint}`)
     await sleep(200)
   }
-  fail(`"${args.name}" did not become ready within ${startTimeoutMs / 1000} seconds. Read its log with: journalctl --user -u ${paths.unit}`)
+  systemctl(['stop', paths.unit])
+  fail(`"${args.name}" did not become ready within ${startTimeoutMs / 1000} seconds and was stopped. ${logHint}`)
 }
 
+/** The user's runtime directory, also from inside a session, whose own `XDG_RUNTIME_DIR` is private. */
 function runtimeDir(): string {
-  const dir = process.env.XDG_RUNTIME_DIR
+  const dir = process.env.AIRI_QA_HOST_RUNTIME_DIR ?? process.env.XDG_RUNTIME_DIR
   if (!dir)
     fail('XDG_RUNTIME_DIR is not set. Run this from a logged-in desktop session.', 2)
   return dir
 }
 
+function runningSession(unit: string, envFile: string, name: string): QaSession {
+  const session = isActive(unit) ? readSession(envFile) : null
+  if (!session)
+    fail(`"${name}" is not running. Start it with: pnpm qa:display up --name ${name}`)
+  return session
+}
+
 async function main() {
   if (process.platform !== 'linux')
-    fail('the headless QA display needs Linux with KWin. On Windows, T3 runs use the real desktop.', 2)
+    fail('the headless QA display needs Linux. On Windows, T3 runs use the real desktop.', 2)
 
   const args = parseQaDisplayArgs(process.argv.slice(2))
   if ('error' in args) {
@@ -81,8 +177,8 @@ async function main() {
         console.info(`qa:display: "${args.name}" is not running.`)
         return
       }
-      execFileSync('systemctl', ['--user', 'stop', paths.unit], { stdio: 'inherit' })
-      rmSync(paths.dir, { recursive: true, force: true })
+      systemctl(['stop', paths.unit], 'inherit')
+      removeSessionDir(paths.dir)
       console.info(`qa:display: stopped "${args.name}".`)
       return
     case 'status': {
@@ -91,32 +187,40 @@ async function main() {
         console.info(`qa:display: "${args.name}" is not running.`)
         process.exit(1)
       }
-      console.info(`qa:display: "${args.name}" is running as ${paths.unit}.\n${shellExports(session, args.name)}`)
+      console.info(`qa:display: "${args.name}" is running as ${paths.unit} (${session.compositor}${session.portals ? ' with portals' : ''}).\n${shellExports(session.env, args.name)}`)
       return
     }
-    case 'env': {
-      const session = isActive(paths.unit) ? readSession(paths.envFile) : null
-      if (!session)
-        fail(`"${args.name}" is not running. Start it with: pnpm qa:display up --name ${args.name}`)
-      console.info(shellExports(session, args.name))
+    case 'env':
+      console.info(shellExports(runningSession(paths.unit, paths.envFile, args.name).env, args.name))
       return
-    }
     case 'run': {
       const session = await up(args, true)
       const [command, ...rest] = args.argv
-      process.exitCode = await run(command, rest, { cwd: process.cwd(), env: clientEnv(process.env, session, args.name) })
+      process.exitCode = await run(command, rest, { cwd: process.cwd(), env: clientEnv(process.env, session.env, args.name) })
       return
     }
     case 'shot': {
-      const session = isActive(paths.unit) ? readSession(paths.envFile) : null
-      if (!session)
-        fail(`"${args.name}" is not running.`)
+      const session = runningSession(paths.unit, paths.envFile, args.name)
+      if (session.compositor !== 'kwin')
+        failRaw('qa-display: shot needs a kwin session; use a CDP screenshot', 2)
       const file = resolve(args.file!)
       // Spectacle asks the session's KWin for the capture, so it must run inside the session.
-      const result = spawnSync('spectacle', ['--background', '--nonotify', '--fullscreen', '--output', file], { env: clientEnv(process.env, session, args.name), stdio: ['ignore', 'ignore', 'inherit'], timeout: 20_000 })
+      const result = spawnSync('spectacle', ['--background', '--nonotify', '--fullscreen', '--output', file], { env: clientEnv(process.env, session.env, args.name), stdio: ['ignore', 'ignore', 'inherit'], timeout: 20_000 })
       if (result.status !== 0 || !existsSync(file))
         fail(`spectacle could not capture "${args.name}" (exit ${result.status ?? result.signal}).`)
       console.info(`qa:display: wrote ${file}`)
+      return
+    }
+    case 'pointer': {
+      const session = runningSession(paths.unit, paths.envFile, args.name)
+      const built = pointerCommand(session.compositor, args.point!, kwinPointerHelper, Date.now())
+      const missing = missingBinaryMessage([{ binary: built.command, pkg: { python3: 'python3', xdotool: 'xdotool', swaymsg: 'sway' }[built.command] ?? built.command }], hasBinary)
+      if (missing)
+        failRaw(missing, 1)
+      const result = spawnSync(built.command, built.args, { env: clientEnv(process.env, session.env, args.name), input: built.input, stdio: ['pipe', 'inherit', 'inherit'], timeout: 20_000 })
+      if (result.status !== 0)
+        fail(`${built.command} could not move the pointer in "${args.name}" (exit ${result.status ?? result.signal}).`)
+      console.info(`qa:display: moved the ${session.compositor} pointer of "${args.name}" to ${args.point!.x},${args.point!.y}.`)
     }
   }
 }
