@@ -43,7 +43,7 @@ Follow the [root guide](../../AGENTS.md) and its motion-qa task routing. `README
 - Never skip, delete, or weaken a test to clear a failure. Add a registry entry only with a concrete cause, date, and removal condition.
 - Never tune a gate, scorer constant, or Natural recipe to make a failing run pass. Failures and missed validation thresholds are findings.
 - A cached T1 run is never T3 acceptance evidence.
-- Do not start a T3 run during heavyweight checks, and keep the desktop, focus, and app window undisturbed until it ends.
+- Do not start a T3 run during heavyweight checks, and keep the desktop, focus, and app window undisturbed until it ends. On Linux, start it through `pnpm qa:display run --` so it runs in a headless KWin session instead of the user's desktop.
 - Do not kill leftover processes by PID alone. Confirm that their command lines contain your worktree path first.
 - Statistical gates do not prove naturalness. Naturalness remains Luke's visual review.
 
