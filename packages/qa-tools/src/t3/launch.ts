@@ -47,14 +47,14 @@ export const fatalStartupPattern = /App threw an error during load[^\n]*\n?[^\n]
  * Starts `pnpm --dir <repoRoot> -F @proj-airi/stage-tamagotchi dev` with the T3 environment. `--dir` puts the
  * worktree path into the root's command line, so teardown can prove ownership from the live process table.
  */
-export async function launchStageTamagotchi(options: { repoRoot: string, profileDir: string, logFile: string, list: ProcessLister, env?: Record<string, string> }): Promise<LaunchedApp> {
+export async function launchStageTamagotchi(options: { repoRoot: string, profileDir: string, logFile: string, list: ProcessLister, env?: Record<string, string>, script?: 'dev' | 'dev:xwayland' }): Promise<LaunchedApp> {
   const port = await findAvailablePort()
   const env = { ...t3LaunchEnv(options.profileDir, port), ...options.env }
   // In-process reuse retains a reference even though it reports `inherited`. Every launch must release its
   // reference after teardown; only an env-inherited handle has a no-op release.
   const lease = await acquire({ class: 'exclusive', command: `stage-tamagotchi dev (T3, ${options.repoRoot})`, cwd: options.repoRoot })
   try {
-    const child = spawnPnpm(['--dir', options.repoRoot, '-F', '@proj-airi/stage-tamagotchi', 'dev'], {
+    const child = spawnPnpm(['--dir', options.repoRoot, '-F', '@proj-airi/stage-tamagotchi', options.script ?? 'dev'], {
       repoRoot: options.repoRoot,
       env: { ...processEnv, ...env, ...lease.env },
       stdio: 'pipe',
