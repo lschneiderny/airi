@@ -39,6 +39,7 @@ Paths below are relative to this package.
 - Put component stories beside their components. Put independent stories in `stories/`.
 - `vitest.config.ts` separates serial Node tests from headless Chromium browser tests.
 - Browser tests scan product UnoCSS sources before the initial stylesheet. Preserve this configuration when changing test setup.
+- Visual baselines (`*.visual.browser.test.ts`) compare screenshots with committed Linux references in `__visual-baselines__`. Read the README section `Visual baselines` before adding a test or updating references.
 - For synced stores, read the root `enforce-rules-for-pinia-synced` skill. Install both plugins returned by `setupSynced`.
 - Keep provider records serializable. Executable instances, request epochs, and tool executors stay local to their runtime.
 - Synced stores disable storage-event replication when Pinia owns propagation.
@@ -55,6 +56,7 @@ pnpm -F @proj-airi/stage-ui typecheck
 pnpm -F @proj-airi/stage-ui exec vitest run --project node src/libs/document-sync/reconcile.test.ts
 pnpm -F @proj-airi/stage-ui exec vitest run --project browser src/components/scenarios/chat/components/history.browser.test.ts
 pnpm -F @proj-airi/stage-ui test:run
+pnpm -F @proj-airi/stage-ui exec vitest run --project browser --update visual.browser
 pnpm -F @proj-airi/stage-ui run story:dev
 pnpm -F @proj-airi/stage-ui run story:build
 ```

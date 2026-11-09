@@ -26,6 +26,14 @@ Do not add tests for pure prose or assertions that only restate setup and consta
 - Prefer browser mode for behavior that depends on real DOM or Web Platform APIs.
 - Add interaction assertions rather than relying on snapshots alone.
 
+## Visual Baselines
+
+- Use visual baselines only for deterministic component states: no animation, timer, network, or random input. They add to interaction assertions; they do not replace them.
+- Follow `packages/stage-ui/README.md#visual-baselines`. Name files `*.visual.browser.test.ts` and render through `renderVisualBaseline` from `packages/stage-ui/src/test/visual-baseline.ts`.
+- Tolerance lives in `browser.expect.toMatchScreenshot` of the package Vitest config. Do not pass per-test comparator options.
+- Update references with `--update` only for an intended visual change. Inspect every changed image and commit it with that change.
+- Never commit references for a platform you did not run on. To add a platform, add it to `referencePlatforms` in the same commit as its reviewed references.
+
 ## Mocks and Runtime Boundaries
 
 - In unit tests, mock external providers, Electron IPC, and services at their boundaries.
