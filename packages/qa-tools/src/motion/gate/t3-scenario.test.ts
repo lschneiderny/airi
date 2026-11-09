@@ -246,6 +246,13 @@ describe('t3 gate scenarios', () => {
 })
 
 describe('buildT3IdleScenario', () => {
+  it('declares the host while leaving the real stage screen inputs enabled', () => {
+    const scenario = buildT3IdleScenario(1, 599, 'linux-wayland')
+    expect(scenario.settings?.host).toBe('linux-wayland')
+    expect(t3ScreenAwareness(scenario)).toBe(true)
+    expect(scenario.events.every(event => event.kind === 'marker')).toBe(true)
+  })
+
   it('builds a T3 idle scenario with minute markers and no inputs', () => {
     const scenario = buildT3IdleScenario(2, 599)
     expect(scenario.durationSeconds).toBe(599)

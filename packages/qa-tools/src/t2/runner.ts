@@ -117,6 +117,8 @@ export interface RunT2Options {
   observe?: (values: ArrayLike<number>, simTime: number) => void
   /** Wall-clock bound in seconds; the run throws when it is exceeded. @default 900 */
   maxWallSeconds?: number
+  /** Liveliness gates only: the start of the scored idle window. */
+  idleAfterSeconds?: number
 }
 
 function readCatalogDefinitions(rig: T2RigData, catalog: CatalogEntry[]): ExpressionDefinition[] {
@@ -170,6 +172,7 @@ export function runT2(input: MotionScenario, runtime: T2Runtime, options: RunT2O
     level: 't2',
     simHz: t2Hz,
     catalog,
+    idleAfterSeconds: options.idleAfterSeconds,
     createHost: ({ settings }): ScenarioHost => {
       if (!cubism4.CubismFramework.isStarted()) {
         cubism4.CubismFramework.startUp({ logFunction: () => {}, loggingLevel: cubismLogLevelOff })

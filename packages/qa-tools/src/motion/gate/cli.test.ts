@@ -10,6 +10,18 @@ import { emotionGateFor, gateBands, gateEmotions, livelinessGateFor } from './op
 const parse = (...args: string[]) => parseGateArgs(args)
 
 describe('parseGateArgs', () => {
+  it.each(['t1', 't2', 't3'])('accepts a declared liveliness host at %s', (level) => {
+    const args = ['liveliness', '--level', level, '--host', 'linux-wayland', ...(level === 't1' ? [] : ['--rig', 'forbooth'])]
+    expect(parse(...args)).toMatchObject({ ok: true, command: { host: 'linux-wayland' } })
+  })
+
+  it.each([
+    [['emotion', '--level', 't1', '--host', 'linux-wayland'], 'liveliness only'],
+    [['liveliness', '--level', 't1', '--host', 'unknown'], 'Unknown host'],
+  ])('rejects invalid host usage %j', (args, message) => {
+    expect(parse(...args)).toMatchObject({ ok: false, message: expect.stringContaining(message) })
+  })
+
   it('defaults to every emotion and band and leaves the worker count to the slot grant', () => {
     const result = parse('emotion', '--level', 't1')
 
@@ -93,6 +105,20 @@ describe('resolveWorkers', () => {
 })
 
 describe('runGateCli', () => {
+  it('refuses a mismatched T3 host before a lease, rig or run directory', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'qa-cli-host-'))
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await runGateCli(['liveliness', '--level', 't3', '--rig', 'forbooth', '--host', 'web'], root, {})).toBe(2)
+      expect(error.mock.calls.flat().join('\n')).toContain('host-mismatch')
+      expect(readdirSync(root)).toEqual([])
+    }
+    finally {
+      error.mockRestore()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it.each([undefined, '{'])('exits 2 for an unusable T2 rig before creating a run: %s', async (json) => {
     const root = mkdtempSync(join(tmpdir(), 'qa-cli-t2-'))
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})

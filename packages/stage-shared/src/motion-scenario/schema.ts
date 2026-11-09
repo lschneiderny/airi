@@ -1,15 +1,20 @@
 import type { InferOutput } from 'valibot'
 
 import type { Band } from '../expression-performance/types'
+import type { HostId } from '../host-capabilities'
 import type { PerformanceMode } from '../performance-state'
 
 import { array, boolean, check, finite, integer, literal, maxValue, minLength, minValue, nullable, number, optional, picklist, pipe, rawCheck, strictObject, string, unknown, variant } from 'valibot'
 
 import { PERFORMANCE_EMOTIONS } from '../expression-performance/types'
+import { hostProfileViolations } from './host-profile'
 
 /** The QA levels a scenario can run at: T1 simulated pipeline, T2 headless rig, T3 rendered app. */
 export const motionScenarioLevels = ['t1', 't2', 't3'] as const
 export type MotionScenarioLevel = typeof motionScenarioLevels[number]
+
+/** Host profiles accepted by both scenario files and the gate CLI. */
+export const motionScenarioHosts = ['windows', 'macos', 'linux-x11', 'linux-xwayland', 'linux-wayland', 'web'] as const satisfies readonly HostId[]
 
 // NOTICE:
 // These picklists duplicate unions that stage-shared owns elsewhere (or, for `PostureHome`, that stage-ui-live2d owns,
@@ -83,6 +88,8 @@ const scenarioObject = strictObject({
   levels: pipe(array(picklist(motionScenarioLevels)), minLength(1)),
   // Valibot objects accept arrays; the settings section must be a record, as in expression-performance/settings.ts.
   settings: optional(pipe(unknown(), check(value => !Array.isArray(value), 'Expected a settings object'), strictObject({
+    /** Resolve performance from this host's available signals instead of a forced idle mode. */
+    host: optional(picklist(motionScenarioHosts)),
     heldEmotions: optional(boolean()),
     cursorAttention: optional(boolean()),
     expressionEnabled: optional(boolean()),
@@ -103,6 +110,8 @@ export const MotionScenarioSchema = pipe(scenarioObject, rawCheck(({ dataset, ad
   if (!dataset.typed)
     return
   const scenario = dataset.value
+  for (const message of hostProfileViolations(scenario))
+    addIssue({ message })
   const root = { type: 'object', origin: 'value', input: scenario, key: 'events', value: scenario.events } as const
   const at = (index: number, key: string) => [
     root,

@@ -1,5 +1,6 @@
 import type { CpuClass, Lease } from '@proj-airi/cpu-slots'
 import type { Band, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
+import type { HostId } from '@proj-airi/stage-shared/host-capabilities'
 
 import type { ClosureWriter } from '../cache/lookup'
 import type { GateLevel, GateSelection } from './options'
@@ -13,6 +14,7 @@ import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
 import { acquire, CpuSlotsError } from '@proj-airi/cpu-slots'
+import { motionScenarioHosts } from '@proj-airi/stage-shared/motion-scenario'
 
 import { resolveVitestEntry } from '../../env/pnpm'
 import { createRun } from '../../evidence/run'
@@ -20,13 +22,15 @@ import { T2SetupError } from '../../t2/errors'
 import { loadT2Runtime } from '../../t2/runner'
 import { cacheFinishedRun, lookupResult, prepareCache, replayHit } from '../cache/lookup'
 import { aggregateEmotion, aggregateLiveliness, formatSummary } from './aggregate'
+import { resolveT3HostLaunch } from './host-launch'
 import { emotionGateFor, gateBands, gateEmotions, livelinessGateFor } from './options'
 import { explicitT1ReferenceProblem, runT3Gate } from './t3-gate'
 
-export const gateUsage = `Usage: motion gate <emotion | liveliness> --level <t1 | t2 | t3> [--rig forbooth] [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N] [--t1-report <run dir>] [--rescore <gate run dir>] [--fresh]
+export const gateUsage = `Usage: motion gate <emotion | liveliness> --level <t1 | t2 | t3> [--rig forbooth] [--host <id>] [--emotions a,b] [--bands clear,strong] [--seeds N] [--workers N] [--timeout-minutes N] [--t1-report <run dir>] [--rescore <gate run dir>] [--fresh]
 
   --level    t1 (controller simulation), t2 (headless real rig) or t3 (rendered Electron app, committed cells only)
   --rig      forbooth (required for t2 and t3; local rig and core environment variables)
+  --host     liveliness only: ${motionScenarioHosts.join(', ')}; T3 requires a matching runner
   --t1-report  T3 emotion only: the T1 emotion run dir the transfer ratios divide by (default: the newest at this commit)
   --rescore    T3 emotion only: score an archived gate run dir again from its session traces, launching nothing
   --emotions comma list of: ${gateEmotions.join(', ')} (emotion gate only; default all)
@@ -49,6 +53,7 @@ export interface GateCommand {
   rescore: string | null
   /** `--level t1`: skip the cache lookup. */
   fresh: boolean
+  host?: HostId
 }
 
 export type ParsedGateArgs = { ok: true, command: GateCommand } | { ok: false, message: string }
@@ -74,12 +79,12 @@ function parsePositiveInteger(raw: string | undefined, name: string): number | n
 
 /** Validates `gate` arguments (everything after the `gate` word is the caller's `rest`). */
 export function parseGateArgs(rest: string[]): ParsedGateArgs {
-  let values: { 'level'?: string, 'rig'?: string, 'emotions'?: string, 'bands'?: string, 'seeds'?: string, 'workers'?: string, 'timeout-minutes'?: string, 't1-report'?: string, 'rescore'?: string, 'fresh'?: boolean }
+  let values: { 'level'?: string, 'rig'?: string, 'host'?: string, 'emotions'?: string, 'bands'?: string, 'seeds'?: string, 'workers'?: string, 'timeout-minutes'?: string, 't1-report'?: string, 'rescore'?: string, 'fresh'?: boolean }
   let positionals: string[]
   try {
     ({ values, positionals } = parseArgs({
       args: rest,
-      options: { 'level': { type: 'string' }, 'rig': { type: 'string' }, 'emotions': { type: 'string' }, 'bands': { type: 'string' }, 'seeds': { type: 'string' }, 'workers': { type: 'string' }, 'timeout-minutes': { type: 'string' }, 't1-report': { type: 'string' }, 'rescore': { type: 'string' }, 'fresh': { type: 'boolean' } },
+      options: { 'level': { type: 'string' }, 'rig': { type: 'string' }, 'host': { type: 'string' }, 'emotions': { type: 'string' }, 'bands': { type: 'string' }, 'seeds': { type: 'string' }, 'workers': { type: 'string' }, 'timeout-minutes': { type: 'string' }, 't1-report': { type: 'string' }, 'rescore': { type: 'string' }, 'fresh': { type: 'boolean' } },
       strict: true,
       allowPositionals: true,
     }))
@@ -92,6 +97,11 @@ export function parseGateArgs(rest: string[]): ParsedGateArgs {
     return { ok: false, message: `Unknown gate ${JSON.stringify(target ?? '')}. Valid gates: emotion, liveliness` }
   if (extra.length)
     return { ok: false, message: `Unexpected argument ${JSON.stringify(extra[0])}` }
+  if (values.host !== undefined && target !== 'liveliness')
+    return { ok: false, message: '--host applies to liveliness only' }
+  const host = motionScenarioHosts.find(host => host === values.host)
+  if (values.host !== undefined && host === undefined)
+    return { ok: false, message: `Unknown host ${JSON.stringify(values.host)}. Valid hosts: ${motionScenarioHosts.join(', ')}` }
   if (values.level !== 't1' && values.level !== 't2' && values.level !== 't3')
     return { ok: false, message: values.level === undefined ? '--level is required. Valid levels: t1, t2, t3' : `Level ${JSON.stringify(values.level)} is not available. Valid levels: t1, t2, t3` }
   if (values.level !== 't1' && values.rig !== 'forbooth')
@@ -126,7 +136,7 @@ export function parseGateArgs(rest: string[]): ParsedGateArgs {
     return { ok: false, message: timeoutMinutes }
   return {
     ok: true,
-    command: { target, level: values.level, selection: { emotions, bands, seedsLimit: seeds }, workers, timeoutMinutes: timeoutMinutes ?? (target === 'emotion' ? 90 : 30), t1Report: values['t1-report'] ?? null, rescore: values.rescore ?? null, fresh: values.fresh ?? false },
+    command: { target, level: values.level, selection: { emotions, bands, seedsLimit: seeds }, workers, timeoutMinutes: timeoutMinutes ?? (target === 'emotion' ? 90 : 30), t1Report: values['t1-report'] ?? null, rescore: values.rescore ?? null, fresh: values.fresh ?? false, ...(host === undefined ? {} : { host }) },
   }
 }
 
@@ -222,8 +232,13 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
     console.error(`${parsed.message}\n${gateUsage}`)
     return 2
   }
-  const { target, level, selection, timeoutMinutes } = parsed.command
+  const { target, level, selection, timeoutMinutes, host } = parsed.command
   if (level === 't3') {
+    const launch = resolveT3HostLaunch(host, env)
+    if (!launch.ok) {
+      console.error(launch.message)
+      return 2
+    }
     // A re-score launches nothing, so it takes no lease.
     if (parsed.command.rescore !== null)
       return runT3Gate({ target, t1Report: parsed.command.t1Report, rescore: parsed.command.rescore }, repoRoot, env, () => gateFileSha(repoRoot))
@@ -239,7 +254,7 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
     if (typeof t3Lease === 'number')
       return t3Lease
     try {
-      return await runT3Gate({ target, t1Report: parsed.command.t1Report, rescore: null }, repoRoot, env, () => gateFileSha(repoRoot))
+      return await runT3Gate({ target, t1Report: parsed.command.t1Report, rescore: null, host }, repoRoot, env, () => gateFileSha(repoRoot))
     }
     finally {
       t3Lease.release()
@@ -263,6 +278,7 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
     QA_LEVEL: level,
     QA_EMOTIONS: selection.emotions.join(','),
     QA_BANDS: selection.bands.join(','),
+    QA_HOST: host ?? '',
     ...(selection.seedsLimit === null ? {} : { QA_SEEDS: String(selection.seedsLimit) }),
   }
   // Only T1 is cached. The worker count is not an input: the report is the same for any count.
@@ -330,7 +346,7 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
       return finish(1, `gate run broke: ${reason}`)
     }
 
-    const context = { runDir: run.dir, fileSha, level }
+    const context = { runDir: run.dir, fileSha, level, host }
     const report = target === 'emotion' ? aggregateEmotion(context, emotionGate, selection) : aggregateLiveliness(context, naturalIdleLivelinessGate)
     writeFileSync(run.path('report.json'), `${JSON.stringify(report, null, 2)}\n`)
     run.addArtifact('report.json', 'report')

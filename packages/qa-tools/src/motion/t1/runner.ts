@@ -22,6 +22,8 @@ export interface RunT1Options {
   emotionTable?: typeof naturalEmotions
   /** Receives every classified touch at its sim time; see `ScenarioSinkOptions.onTouch`. */
   onTouch?: ScenarioSinkOptions['onTouch']
+  /** Liveliness gates only: the start of the scored idle window. */
+  idleAfterSeconds?: number
 }
 
 /** Ranges for ids that the reference statistics lack; the stage reads the real rig's table for these. */
@@ -76,6 +78,7 @@ export function runT1(input: MotionScenario, options: RunT1Options = {}): Natura
     catalog,
     emotionTable,
     onTouch,
+    idleAfterSeconds: options.idleAfterSeconds,
     createHost: () => {
       const table = buildParameterTable()
       const values = Float32Array.from(table.base)

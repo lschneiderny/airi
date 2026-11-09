@@ -3,6 +3,7 @@ import type { MotionQaRunScenarioResult, MotionScenario } from '@proj-airi/stage
 
 import type { OwnedProcess } from '../env/processes'
 import type { RunHandle } from '../evidence/run'
+import type { ModeSample } from '../motion/gate/capture-timeline'
 import type { ResolvedRig } from './args'
 import type { LaunchedApp } from './launch'
 import type { TakenScreenshot } from './screenshot'
@@ -17,6 +18,7 @@ import { CdpClient, waitFor } from '@proj-airi/scenarios-stage-tamagotchi-electr
 
 import { killTree, listLiveProcesses } from '../env/processes'
 import { createRun } from '../evidence/run'
+import { captureTimeline } from '../motion/gate/capture-timeline'
 import { MotionQaBridgeClient } from './bridge-client'
 import { parkCursor } from './cursor'
 import { toRenderedExpressionIds } from './expression-ids'
@@ -41,6 +43,10 @@ export interface RunT3Options {
   log: (line: string) => void
   /** PIDs that are never treated as the run's processes (this CLI and its parent). */
   selfPids: readonly number[]
+  /** Selected after the gate verifies the runner's host. */
+  script?: 'dev' | 'dev:xwayland'
+  /** Liveliness gates only: sample mode every 10 s from the scored-window start. */
+  idleAfterSeconds?: number
 }
 
 export interface RunT3Result {
@@ -59,11 +65,11 @@ const bounds = {
 }
 
 /**
- * The Natural screen-aware attention setting a T3 run configures: on iff the scenario has a `placement` or `chat-*` event.
+ * Screen-aware attention is on for host profiles and scripts with a `placement` or `chat-*` event.
  * Runs always pass it explicitly, because the T3 profile persists localStorage and the setting defaults to on.
  */
 export function t3ScreenAwareness(scenario: MotionScenario): boolean {
-  return scenario.events.some(event => event.kind === 'placement' || event.kind.startsWith('chat-'))
+  return scenario.settings?.host !== undefined || scenario.events.some(event => event.kind === 'placement' || event.kind.startsWith('chat-'))
 }
 
 function sleep(ms: number) {
@@ -141,7 +147,7 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
     bridgeLog.rig = { name: options.rig.name, model3: options.rig.model3.slice(options.rig.root.length).replaceAll('\\', '/'), ...zipped }
     log(`qa-tools t3: zipped ${zipped.files} rig files (${zipped.bytes} bytes); launching stage-tamagotchi`)
 
-    app = await launchStageTamagotchi({ repoRoot, profileDir, logFile: run.path('app.log'), list: listLiveProcesses })
+    app = await launchStageTamagotchi({ repoRoot, profileDir, logFile: run.path('app.log'), list: listLiveProcesses, script: options.script })
     run.recordProcess({ rootPid: app.root.pid, created: app.root.created, commandLine: app.root.commandLine })
     writeJson(run, 'launch.json', { env: app.env, root: app.root })
     log(`qa-tools t3: root PID ${app.root.pid}, remote debug port ${app.port}`)
@@ -214,12 +220,21 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
     log(`qa-tools t3: capture ${capture.captureId} (${captureSeconds} s) and scenario ${scenario.id} started`)
 
     const taken: TakenScreenshot[] = []
-    for (const shot of planScreenshots(scenario.screenshotsAt ?? [])) {
-      await abortable(untilDeadline(hostOriginMs + shot.at * 1000))
-      const rendererMs = await abortable(bridge.rendererNowMs())
-      await abortable(captureStagePng(stagePage, run.path(join('screenshots', shot.file))))
-      taken.push({ ...shot, actualAt: (rendererMs - started.rendererStartMs) / 1000, traceT: (rendererMs - captureRendererMs) / 1000 })
-    }
+    const modeSamples: ModeSample[] = []
+    bridgeLog.modeSamples = modeSamples
+    await captureTimeline({
+      screenshots: planScreenshots(scenario.screenshotsAt ?? []),
+      durationSeconds: scenario.durationSeconds,
+      idleAfterSeconds: options.idleAfterSeconds,
+      waitUntil: at => abortable(untilDeadline(hostOriginMs + at * 1000)),
+      takeScreenshot: async (shot) => {
+        const rendererMs = await abortable(bridge.rendererNowMs())
+        await abortable(captureStagePng(stagePage, run.path(join('screenshots', shot.file))))
+        taken.push({ ...shot, actualAt: (rendererMs - started.rendererStartMs) / 1000, traceT: (rendererMs - captureRendererMs) / 1000 })
+      },
+      readMode: async () => (await abortable(bridge.call('state', undefined, bounds.commandMs))).performanceMode,
+      modeSamples,
+    })
 
     const scenarioResult: MotionQaRunScenarioResult = await abortable(started.settle((scenario.durationSeconds + 60) * 1000))
     bridgeLog.runScenario = scenarioResult

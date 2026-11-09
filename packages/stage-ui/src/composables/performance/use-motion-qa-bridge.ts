@@ -10,6 +10,7 @@ import {
   claimMotionQaHandlers,
   createMotionQaContext,
   createScenarioPlayer,
+  hostProfileViolations,
   motionQaAwaitCaptureInvokeEventa,
   motionQaChatSendInvokeEventa,
   motionQaConfigureInvokeEventa,
@@ -165,7 +166,11 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
     })
   }
 
-  async function dispatchEvent(event: ScenarioEvent): Promise<string | null> {
+  async function dispatchEvent(event: ScenarioEvent, settings: MotionScenario['settings']): Promise<string | null> {
+    // Direct Eventa callers bypass the JSON dispatcher; never let them inject a missing host signal.
+    const violations = hostProfileViolations({ settings, events: [event] })
+    if (violations.length)
+      return violations.join('; ')
     switch (event.kind) {
       case 'emotion': {
         const name = EMOTION_VALUES.find(value => value === event.emotion)
@@ -197,7 +202,6 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       case 'chat-typing':
       case 'chat-sent':
       case 'chat-unfold':
-        // `runScenario` pinned the override to `null`, so it is never `undefined` while a scenario runs.
         diagnostics.chatOverride = nextScenarioChatInput(diagnostics.chatOverride ?? null, event)
         return null
       case 'placebo':
@@ -222,14 +226,22 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       throw new Error('The scenario does not list level "t3", so it cannot run in the rendered app')
     if (scenarioRunning)
       throw new Error('A scenario is already running')
+    const host = scenario.settings?.host
+    if (host !== undefined && hostCapabilities.snapshot?.host !== host)
+      throw new Error(`host-mismatch: scenario declares ${host}, live host is ${hostCapabilities.snapshot?.host ?? 'unknown'}`)
     scenarioRunning = true
     // Keep the home through capture completion, which can follow the last scenario event.
     // The next scenario replaces it; disposing this bridge restores the product home.
     diagnostics.setPostureHome(scenario.home ?? 'desk')
-    // A scenario never sees the real window placement or chat activity: only its own events drive these inputs.
-    // Like the home, the overrides persist after the scenario until the next one or bridge disposal.
-    diagnostics.placementOverride = null
-    diagnostics.chatOverride = null
+    // Profiled scenarios observe the real stage; clear controls a prior scripted run may have left behind.
+    if (host !== undefined) {
+      override.overrideEnabled = false
+      override.overrideMode = null
+      override.overrideEnergy = null
+    }
+    // Unprofiled scenarios retain their deterministic scripted placement and chat inputs.
+    diagnostics.placementOverride = host === undefined ? null : undefined
+    diagnostics.chatOverride = host === undefined ? null : undefined
 
     const player = createScenarioPlayer(scenario)
     const lastAt = scenario.events.at(-1)?.at ?? 0
@@ -255,7 +267,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
         handle = undefined
         const elapsed = frames.now() / 1000 - startSeconds
         for (const event of player.eventsBetween(previous, elapsed)) {
-          const reason = await dispatchEvent(event)
+          const reason = await dispatchEvent(event, scenario.settings)
           if (reason) {
             result.rejected.push({ at: event.at, kind: event.kind, reason })
             continue

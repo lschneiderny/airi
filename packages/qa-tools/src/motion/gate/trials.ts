@@ -1,5 +1,6 @@
 import type { naturalEmotions } from '@proj-airi/motion-driver-natural/emotions'
 import type { Band, CatalogEntry, ExpressionPerformanceSettings, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
+import type { HostId } from '@proj-airi/stage-shared/host-capabilities'
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
 import type { EmotionGate, EmotionTrialRecord, PlaceboRecord, TrialVariant } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
 import type { LivelinessGate } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/gates'
@@ -21,8 +22,8 @@ import { measureTrialSamples } from './samples'
 
 const catalog = catalogJson as CatalogEntry[]
 
-export type ScenarioRunner = (scenario: MotionScenario) => NaturalTrace
-const runDefault: ScenarioRunner = scenario => runT1(scenario, { catalog })
+export type ScenarioRunner = (scenario: MotionScenario, options?: { idleAfterSeconds?: number }) => NaturalTrace
+const runDefault: ScenarioRunner = (scenario, options) => runT1(scenario, { catalog, ...options })
 
 /** Wall-clock bound of one simulated trial. The simulation is synchronous, so it is checked when the trial ends. */
 const defaultTrialBoundMs = 300_000
@@ -140,7 +141,7 @@ export function trimWarmUp(trace: NaturalTrace, warmUpSeconds: number): Liveline
 }
 
 /** One idle desk run through the selected pipeline, warm-up dropped; the liveliness gate scores three of these. */
-export function runIdleTrace(seed: number, gate: LivelinessGate, boundMs: number, runScenario: ScenarioRunner = runDefault): LivelinessTrace & { ranges: ParameterRanges } {
+export function runIdleTrace(seed: number, gate: LivelinessGate, boundMs: number, runScenario: ScenarioRunner = runDefault, host?: HostId): LivelinessTrace & { ranges: ParameterRanges } {
   const scenario: MotionScenario = {
     version: 1,
     id: `idle-liveliness-${seed}`,
@@ -148,7 +149,8 @@ export function runIdleTrace(seed: number, gate: LivelinessGate, boundMs: number
     durationSeconds: gate.warmUpSeconds + gate.scoredSeconds,
     home: 'desk',
     levels: ['t1', 't2', 't3'],
+    ...(host === undefined ? {} : { settings: { host } }),
     events: [],
   }
-  return bounded(`idle run ${seed}`, boundMs, () => trimWarmUp(runScenario(scenario), gate.warmUpSeconds))
+  return bounded(`idle run ${seed}`, boundMs, () => trimWarmUp(runScenario(scenario, { idleAfterSeconds: gate.warmUpSeconds }), gate.warmUpSeconds))
 }

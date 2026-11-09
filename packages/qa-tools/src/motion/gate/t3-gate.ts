@@ -1,4 +1,5 @@
 import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
+import type { HostId } from '@proj-airi/stage-shared/host-capabilities'
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
 import type { ScoredChannel } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/emotion-score'
 import type { NaturalTrace } from '@proj-airi/stage-ui-live2d/composables/live2d/natural-motion/trace'
@@ -30,6 +31,7 @@ import { maxT3ScenarioSeconds, resolveRig, t3RigCatalogs, T3UsageError } from '.
 import { runT3 } from '../../t3/run-t3'
 import { scenarioEventsOf, TraceEventsSchema } from '../../t3/verify-trace'
 import { aggregateLiveliness, formatSummary, hashPartials, seal } from './aggregate'
+import { resolveT3HostLaunch } from './host-launch'
 import { cellPartialName, livelinessGateFor, livelinessPartialName, nullPartialName } from './options'
 import { writePartial } from './partials'
 import { currentReportSchema, parseGateReport } from './report'
@@ -44,6 +46,7 @@ export interface T3GateCommand {
   t1Report: string | null
   /** An archived T3 emotion gate run dir to score again from its session traces, with no launch; `null` runs live. */
   rescore: string | null
+  host?: HostId
 }
 
 const fixturesDir = resolve(import.meta.dirname, '..', '..', '..', 'fixtures')
@@ -122,7 +125,7 @@ function writeJson(run: RunHandle, name: string, value: unknown) {
  * Runs each scenario as one rendered T3 session (launch, capture, teardown). A failed session (for example a cursor that
  * would not park) does not stop the others; an interrupt or a refusal before launch does.
  */
-async function runSessions(scenarios: readonly MotionScenario[], context: { repoRoot: string, rig: ResolvedRig, run: RunHandle, signal: AbortSignal }): Promise<SessionOutcome[]> {
+async function runSessions(scenarios: readonly MotionScenario[], context: { repoRoot: string, rig: ResolvedRig, run: RunHandle, signal: AbortSignal, script: 'dev' | 'dev:xwayland', idleAfterSeconds?: number }): Promise<SessionOutcome[]> {
   const catalog = JSON.parse(readFileSync(resolve(fixturesDir, t3RigCatalogs.forbooth), 'utf8')) as CatalogEntry[]
   const outcomes: SessionOutcome[] = []
   for (const scenario of scenarios) {
@@ -140,6 +143,8 @@ async function runSessions(scenarios: readonly MotionScenario[], context: { repo
       signal: context.signal,
       log: line => process.stderr.write(`${line}\n`),
       selfPids: [pid, ppid],
+      script: context.script,
+      idleAfterSeconds: context.idleAfterSeconds,
     })
     const tracePath = result.runDir ? join(result.runDir, 'trace.json') : null
     const trace = tracePath && existsSync(tracePath) ? JSON.parse(readFileSync(tracePath, 'utf8')) as NaturalTrace : null
@@ -372,7 +377,7 @@ function scoreLivelinessSessions(run: RunHandle, outcomes: readonly SessionOutco
       sessions: sessionSummaries(outcomes),
     })
   }
-  const { determinismHash, ...body } = aggregateLiveliness({ runDir: run.dir, fileSha, level: 't3' }, gate)
+  const { determinismHash, ...body } = aggregateLiveliness({ runDir: run.dir, fileSha, level: 't3', host: outcomes[0]?.scenario.settings?.host }, gate)
   const rows = sessionRows(outcomes, expected)
   return seal({
     ...body,
@@ -410,6 +415,11 @@ function t3Summary(report: GateReport): string {
 export async function runT3Gate(command: T3GateCommand, repoRoot: string, env: NodeJS.ProcessEnv, gateFileSha: () => string): Promise<number> {
   if (command.rescore !== null)
     return rescoreT3Emotion(command.rescore, repoRoot, gateFileSha)
+  const launch = resolveT3HostLaunch(command.host, env)
+  if (!launch.ok) {
+    console.error(launch.message)
+    return 2
+  }
   let rig: ResolvedRig
   try {
     rig = resolveRig('forbooth', env)
@@ -438,7 +448,7 @@ export async function runT3Gate(command: T3GateCommand, repoRoot: string, env: N
   }
 
   const plan = command.target === 'emotion' ? t3EmotionPlan() : null
-  const scenarios = plan ? plan.sessions.map(session => session.scenario) : livelinessGateFor('t3').seeds.map(seed => buildT3IdleScenario(seed, maxT3ScenarioSeconds))
+  const scenarios = plan ? plan.sessions.map(session => session.scenario) : livelinessGateFor('t3').seeds.map(seed => buildT3IdleScenario(seed, maxT3ScenarioSeconds, command.host))
   const gate = command.target === 'emotion' ? naturalEmotionT3Gate : livelinessGateFor('t3')
   const fileSha = gateFileSha()
   const run = createRun({ tool: 'motion', label: `gate-${command.target}-t3`, repoRoot, gate: { id: gate.id, version: String(gate.version), fileSha } })
@@ -461,7 +471,7 @@ export async function runT3Gate(command: T3GateCommand, repoRoot: string, env: N
   let outcomes: SessionOutcome[] = []
   let report: GateReport | null = null
   try {
-    outcomes = await runSessions(scenarios, { repoRoot, rig, run, signal: controller.signal })
+    outcomes = await runSessions(scenarios, { repoRoot, rig, run, signal: controller.signal, script: launch.script, idleAfterSeconds: command.target === 'liveliness' ? livelinessGateFor('t3').warmUpSeconds : undefined })
     if (controller.signal.aborted) {
       exitCode = 130
       summary = 'interrupted'

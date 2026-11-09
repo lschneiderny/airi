@@ -273,6 +273,47 @@ describe('useMotionQaBridge', () => {
     expect(log).toEqual(['mark:marker:after'])
   })
 
+  it.each([
+    { kind: 'placement', at: 1, inward: 1 },
+    { kind: 'pointer', at: 1, phase: 'move', x: 1, y: 0 },
+    { kind: 'mode', at: 1, mode: 'watching' },
+  ] satisfies MotionScenario['events'])('refuses a host-profile $kind even when the dispatcher is bypassed', async (event) => {
+    useHostCapabilitiesStore().set(capabilitiesForHost('linux-wayland'))
+    recordCaptureMarks()
+    const run = defineInvoke(createMotionQaContext(), motionQaRunScenarioInvokeEventa)
+    const input = { ...scenario([event]), settings: { host: 'linux-wayland' as const } }
+
+    expect(await drive(clock, run({ scenario: input }))).toEqual({
+      dispatched: 0,
+      rejected: [{ at: 1, kind: event.kind, reason: expect.stringContaining(event.kind) }],
+    })
+    expect(log.filter(line => line.startsWith('mark:'))).toEqual([])
+  })
+
+  it.each([null, 'windows'] as const)('refuses a declared host that differs from live host %s', async (host) => {
+    if (host)
+      useHostCapabilitiesStore().set(capabilitiesForHost(host))
+    const reply = await dispatch({ name: 'runScenario', input: { scenario: { ...scenario([]), settings: { host: 'linux-wayland' } } } })
+    expect(reply).toMatchObject({ ok: false, error: expect.stringContaining('host-mismatch') })
+  })
+
+  it('clears earlier overrides before a host-profile run and leaves real placement and chat flowing', async () => {
+    useHostCapabilitiesStore().set(capabilitiesForHost('linux-wayland'))
+    await drive(clock, dispatch({ name: 'runScenario', input: { scenario: scenario([
+      { kind: 'mode', at: 0, mode: 'thinking', energy: 0.8 },
+      { kind: 'placement', at: 0, inward: 1 },
+      { kind: 'chat-typing', at: 0, active: true },
+    ]) } }))
+    const override = useNaturalPerformanceOverride()
+    expect(override.performanceOverride).toEqual({ mode: 'thinking', energy: 0.8 })
+
+    expect(await drive(clock, dispatch({ name: 'runScenario', input: { scenario: { ...scenario([]), settings: { host: 'linux-wayland' } } } }))).toMatchObject({ ok: true })
+
+    expect([override.overrideEnabled, override.overrideMode, override.overrideEnergy, override.performanceOverride]).toEqual([false, null, null, null])
+    const diagnostics = useNaturalMotionDiagnostics()
+    expect([diagnostics.placementOverride, diagnostics.chatOverride]).toEqual([undefined, undefined])
+  })
+
   it.each([undefined, 'desk', 'product'] as const)('applies scenario home %s before dispatch and retains it until disposal', async (home) => {
     const diagnostics = useNaturalMotionDiagnostics()
     expect(diagnostics.postureHome).toBe('product')

@@ -14,7 +14,21 @@ import { useNaturalPerformanceOverride } from '../../../../../stores/natural-per
 const neutralEnergy = 0.5
 
 const { t } = useI18n()
-const { overrideEnabled, overrideMode, overrideEnergy } = storeToRefs(useNaturalPerformanceOverride())
+const override = useNaturalPerformanceOverride()
+const { overrideEnergy } = storeToRefs(override)
+const overrideMode = computed({
+  get: () => override.overrideMode ?? 'idle',
+  set: (mode: PerformanceMode) => { override.overrideMode = mode },
+})
+const overrideEnabled = computed({
+  get: () => override.overrideEnabled,
+  set: (enabled: boolean) => {
+    // A host-profile QA run clears the mode; enabling the lab starts from its displayed idle choice.
+    if (enabled && override.overrideMode === null)
+      override.overrideMode = 'idle'
+    override.overrideEnabled = enabled
+  },
+})
 
 const modeOptions = computed<SelectTabOption<PerformanceMode>[]>(() =>
   (['idle', 'watching', 'listening', 'thinking', 'talking'] as const).map(mode => ({
