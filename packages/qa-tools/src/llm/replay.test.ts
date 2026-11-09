@@ -33,6 +33,17 @@ describe('replay scripts', () => {
     expect(script.take('wave again').index).toBe(0)
     expect(() => script.take('exhausted')).toThrow('selection.json: exhausted at index 3')
   })
+
+  it('serves appended replies after an empty start, in order', () => {
+    const script = new ReplayScript([], 'mcp')
+    expect(() => script.take('hi')).toThrow('mcp: exhausted at index 0')
+    expect(script.remaining).toBe(0)
+    script.append({ content: 'one', toolCalls: [] })
+    script.append({ content: 'two', toolCalls: [] })
+    expect(script.take('hi').entry.content).toBe('one')
+    expect(script.remaining).toBe(1)
+    expect(script.take('again').entry.content).toBe('two')
+  })
 })
 
 describe('openAI replay chunks', () => {

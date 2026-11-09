@@ -56,8 +56,25 @@ export function parseScript(text: string, source: string): ReplayEntry[] {
 /** Owns consumption; a preferred match never discards an earlier unconsumed entry. */
 export class ReplayScript {
   private readonly consumed = new Set<number>()
+  private readonly list: ReplayEntry[]
 
-  constructor(readonly entries: readonly ReplayEntry[], readonly source: string) {}
+  constructor(entries: readonly ReplayEntry[], readonly source: string) {
+    this.list = [...entries]
+  }
+
+  get entries(): readonly ReplayEntry[] {
+    return this.list
+  }
+
+  /** Entries that no request has consumed yet. */
+  get remaining(): number {
+    return this.list.length - this.consumed.size
+  }
+
+  /** Queues one more reply, for a driver that scripts each turn as it sends it. */
+  append(entry: ReplayEntry): void {
+    this.list.push(entry)
+  }
 
   take(lastUser: string): { readonly entry: ReplayEntry, readonly index: number } {
     const remaining = this.entries.map((entry, index) => ({ entry, index })).filter(item => !this.consumed.has(item.index))

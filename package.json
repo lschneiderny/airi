@@ -34,6 +34,7 @@
     "qa:doctor": "pnpm -F @proj-airi/qa-tools run doctor",
     "qa:llm": "node --import tsx packages/qa-tools/bin/llm.ts",
     "qa:app": "node --import tsx packages/qa-tools/bin/app.ts",
+    "qa:mcp": "node --import tsx packages/qa-tools/bin/mcp.ts",
     "qa:model": "pnpm --silent -F @proj-airi/qa-tools run --silent model",
     "qa:motion": "pnpm -F @proj-airi/qa-tools run motion",
     "qa:host": "node --import tsx packages/qa-tools/bin/host.ts",
