@@ -9,6 +9,7 @@ Parent guidance: [root AGENTS.md](../../AGENTS.md). Its task-routing skills also
 | Task | Location | Notes |
 | --- | --- | --- |
 | Dependency graph | `src/main/index.ts` | injeca composition, windows, services, platform flags |
+| Host capability snapshot | `src/main/services/electron/host-capabilities.ts` | Main-process host facts, per-window capability delivery, and runtime status updates |
 | Electron integration | `src/main/services/electron/` | Permissions, shortcuts, updater, assets, screens |
 | AIRI services | `src/main/services/airi/` | Channel, MCP, plugins, widgets, authentication |
 | Native windows | `src/main/windows/` | Managers, geometry, navigation, RPC adapters |
@@ -59,6 +60,7 @@ These files exceed 500 lines. Read the owning module before editing them: `godot
 - Do not accept symlinks, escaping entrypoints, or changed packages after directory-import review.
 - Do not replace the iframe request queue with one latest value. Vue batches prop updates.
 - Do not gate VRM transparency sampling on Auto Hide.
+- Do not detect Wayland or Linux to answer a capability question; read `useHostCapabilitiesStore` or the main host capability service.
 - Do not use uncertain native cursor state to disable Wayland window interaction.
 - Do not remove main-owned shortcuts during renderer shortcut resets.
 - Floating chat uses the default pin level to preserve input-method candidate visibility.
