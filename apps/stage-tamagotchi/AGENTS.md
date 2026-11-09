@@ -10,6 +10,7 @@ Parent guidance: [root AGENTS.md](../../AGENTS.md). Its task-routing skills also
 | --- | --- | --- |
 | Dependency graph | `src/main/index.ts` | injeca composition, windows, services, platform flags |
 | Host capability snapshot | `src/main/services/electron/host-capabilities.ts` | Main-process host facts, per-window capability delivery, and runtime status updates |
+| Linux desktop bridge | `src/main/services/linux-desktop/AGENTS.md` | Backend selection, private bus transport, compositor scripts, session sources and runtime verification |
 | Electron integration | `src/main/services/electron/` | Permissions, shortcuts, updater, assets, screens |
 | AIRI services | `src/main/services/airi/` | Channel, MCP, plugins, widgets, authentication |
 | Native windows | `src/main/windows/` | Managers, geometry, navigation, RPC adapters |
