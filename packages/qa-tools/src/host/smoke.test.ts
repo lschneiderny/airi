@@ -1,11 +1,30 @@
-import type { HostCapabilities, HostFacts, HostId } from '@proj-airi/stage-shared/host-capabilities'
+import type { HostCapabilities, HostFacts, HostId, LinuxDesktopFacts } from '@proj-airi/stage-shared/host-capabilities'
 
-import type { HostSample } from './smoke'
+import type { HostSample, LinuxDesktopExpectation } from './smoke'
 
 import { capabilitiesForHost, HostReasons, resolveHostCapabilities } from '@proj-airi/stage-shared/host-capabilities'
 import { describe, expect, it } from 'vitest'
 
-import { evaluateHostSmoke, expectedHostFacts, observeHost } from './smoke'
+import { evaluateHostSmoke, expectedHostFacts, focusRoundTrip, hostSmokeExpectation, linuxDesktopFacts, linuxDriveSteps, observeHost, parseLinuxDesktopExpectation } from './smoke'
+
+describe('parseLinuxDesktopExpectation', () => {
+  it('parses the backend and verified list on Linux', () => {
+    expect(parseLinuxDesktopExpectation('linux', 'kwin', 'foreground,cursor,geometry')).toEqual({ backend: 'kwin', verified: ['foreground', 'cursor', 'geometry'] })
+    expect(parseLinuxDesktopExpectation('linux', 'none', undefined)).toEqual({ backend: 'none', verified: [] })
+    expect(parseLinuxDesktopExpectation('win32', undefined, undefined)).toBeNull()
+  })
+
+  it.each([
+    ['linux', undefined, undefined, /required on Linux/],
+    ['linux', 'mutter', undefined, /Unknown --expect-backend/],
+    ['linux', 'kwin', 'foreground,title', /Unknown --expect-verified fact: title/],
+    ['linux', 'kwin', 'cursor,cursor', /twice/],
+    ['darwin', 'kwin', undefined, /Linux only/],
+    ['win32', undefined, 'foreground', /Linux only/],
+  ] as const)('refuses %s --expect-backend %s --expect-verified %s', (platform, backend, verified, error) => {
+    expect(() => parseLinuxDesktopExpectation(platform, backend, verified)).toThrow(error)
+  })
+})
 
 describe('expectedHostFacts', () => {
   it.each<{
@@ -34,17 +53,26 @@ describe('expectedHostFacts', () => {
     expect(resolveHostCapabilities(facts, 0).signals.systemAudioCapture).toEqual(status)
   })
 
+  it('derives the Linux desktop facts from the expected backend and verified signals', () => {
+    const facts = expectedHostFacts({ platform: 'linux', env: { WAYLAND_DISPLAY: 'wayland-0' }, xwayland: false, macosVersion: null, linuxDesktop: { backend: 'kwin', verified: ['foreground', 'cursor', 'geometry'] } })
+    expect(facts.linuxDesktop).toMatchObject({ backend: 'kwin', bridge: 'ready', foregroundVerified: true, cursorVerified: true, geometryVerified: true, keepAboveVerified: false, lockSource: null, portalShortcuts: 'absent', systemAudioVerified: false })
+    const host = resolveHostCapabilities(facts, 0)
+    expect(host.linuxDesktopBackend).toBe('kwin')
+    expect(host.signals).toMatchObject({ foregroundWindow: { kind: 'live' }, cursorScreenPoint: { kind: 'live' }, windowOrigin: { kind: 'live' } })
+    expect(host).toEqual(capabilitiesForHost('linux-wayland', facts.linuxDesktop!))
+  })
+
   it('refuses an unreadable macOS version instead of claiming audio support', () => {
     expect(() => expectedHostFacts({ platform: 'darwin', env: {}, xwayland: false, macosVersion: null })).toThrow('macosVersion')
   })
 })
 
-async function sequence(host: HostId, stateAt: (index: number, caps: HostCapabilities) => Pick<HostSample, 'host' | 'desktopIdleSeconds'>) {
+async function sequence(host: HostId, stateAt: (index: number, caps: HostCapabilities) => Pick<HostSample, 'host' | 'desktopIdleSeconds'> & Partial<Pick<HostSample, 'foreground'>>) {
   let clock = 0
   let index = 0
   const samples: HostSample[] = []
   await observeHost({
-    readState: async () => ({ ...stateAt(index++, capabilitiesForHost(host)), performanceMode: 'idle' }),
+    readState: async () => ({ foreground: null, ...stateAt(index++, capabilitiesForHost(host)), performanceMode: 'idle' }),
     now: () => clock,
     sleep: async (ms) => { clock += ms },
     signal: new AbortController().signal,
@@ -58,21 +86,87 @@ function live(caps: HostCapabilities): HostCapabilities {
 }
 
 describe('host smoke observation', () => {
-  it.each(['linux-x11', 'linux-xwayland', 'linux-wayland'] as const)('accepts bridge verification and proven lock on %s during rollout', async (hostId) => {
-    const samples = await sequence(hostId, (index, host) => ({
-      host: {
-        ...host,
-        signals: {
-          ...host.signals,
-          foregroundWindow: { kind: 'unavailable', reason: index === 0 ? HostReasons.LinuxBridgeStarting : HostReasons.LinuxForegroundVerifying },
-          cursorScreenPoint: { kind: 'unavailable', reason: HostReasons.LinuxCursorVerifying },
-          windowOrigin: { kind: 'unavailable', reason: HostReasons.LinuxGeometryVerifying },
-          screenLock: { kind: 'live' },
-        },
-      },
-      desktopIdleSeconds: hostId === 'linux-x11' ? index * 5 : null,
-    }))
-    expect(evaluateHostSmoke({ expected: capabilitiesForHost(hostId), samples }).failures).toEqual([])
+  const kwin: LinuxDesktopExpectation = { backend: 'kwin', verified: ['foreground', 'cursor', 'geometry'] }
+  const resolveOn = (host: HostId) => (desktop: LinuxDesktopFacts | null) => capabilitiesForHost(host, desktop ?? undefined)
+  const fg = { exeName: 'electron', busy: 'accepts', ownProcess: true } as const
+
+  /** Starting for two samples, verifying for two, then verified: the documented once-per-signal transition. */
+  function rollout(host: HostId, desktop: LinuxDesktopExpectation) {
+    return (index: number): HostCapabilities => {
+      const unverified = { ...desktop, verified: [] }
+      if (index < 2)
+        return capabilitiesForHost(host, linuxDesktopFacts(unverified, 'starting'))
+      if (index < 4)
+        return capabilitiesForHost(host, linuxDesktopFacts(unverified))
+      return capabilitiesForHost(host, linuxDesktopFacts(desktop))
+    }
+  }
+
+  it.each<[HostId, LinuxDesktopExpectation]>([
+    ['linux-wayland', kwin],
+    ['linux-xwayland', { backend: 'kwin', verified: ['foreground', 'cursor'] }],
+    ['linux-x11', { backend: 'x11-ewmh', verified: ['foreground'] }],
+    ['linux-wayland', { backend: 'sway', verified: ['foreground', 'geometry'] }],
+  ])('accepts %s %o that goes from starting through verifying to verified once', async (hostId, desktop) => {
+    const at = rollout(hostId, desktop)
+    const samples = await sequence(hostId, index => ({ host: at(index), desktopIdleSeconds: hostId === 'linux-x11' ? index * 5 : null, foreground: index >= 4 ? fg : null }))
+    const expectation = hostSmokeExpectation(resolveOn(hostId), desktop)
+    expect(evaluateHostSmoke({ ...expectation, expectIdle: hostId === 'linux-wayland' ? 'unverified' : undefined, samples }).failures).toEqual([])
+  })
+
+  it('rejects a second transition: verified foreground that falls back to verifying', async () => {
+    const at = rollout('linux-wayland', kwin)
+    const samples = await sequence('linux-wayland', index => ({ host: index === 20 ? at(3) : at(index), desktopIdleSeconds: null, foreground: fg }))
+    const result = evaluateHostSmoke({ ...hostSmokeExpectation(resolveOn('linux-wayland'), kwin), samples })
+    expect(result.exitCode).toBe(1)
+    expect(result.failures).toContainEqual(expect.objectContaining({ code: 'signal-mismatch', signal: 'foregroundWindow', received: { kind: 'unavailable', reason: HostReasons.LinuxForegroundVerifying } }))
+  })
+
+  it('names verification-missing when an expected verified signal never turns live', async () => {
+    const stuck = { ...kwin, verified: ['cursor', 'geometry'] } as const
+    const samples = await sequence('linux-wayland', () => ({ host: capabilitiesForHost('linux-wayland', linuxDesktopFacts(stuck)), desktopIdleSeconds: null, foreground: null }))
+    const result = evaluateHostSmoke({ ...hostSmokeExpectation(resolveOn('linux-wayland'), kwin), samples })
+    expect(result.exitCode).toBe(1)
+    expect(result.failures).toContainEqual(expect.objectContaining({ code: 'verification-missing', signal: 'foregroundWindow' }))
+    expect(result.failures.filter(failure => failure.code === 'signal-mismatch')).toEqual([])
+  })
+
+  it('names verification-missing when foreground is live but no foreground sample arrived', async () => {
+    const samples = await sequence('linux-wayland', () => ({ host: capabilitiesForHost('linux-wayland', linuxDesktopFacts(kwin)), desktopIdleSeconds: null, foreground: null }))
+    const result = evaluateHostSmoke({ ...hostSmokeExpectation(resolveOn('linux-wayland'), kwin), samples })
+    expect(result.failures).toEqual([expect.objectContaining({ code: 'verification-missing', signal: 'foregroundWindow' })])
+  })
+
+  it('fails backend-mismatch when the app reports another backend', async () => {
+    const samples = await sequence('linux-wayland', () => ({ host: capabilitiesForHost('linux-wayland', linuxDesktopFacts(kwin)), desktopIdleSeconds: null, foreground: fg }))
+    const sway: LinuxDesktopExpectation = { backend: 'sway', verified: ['foreground', 'geometry'] }
+    const result = evaluateHostSmoke({ ...hostSmokeExpectation(resolveOn('linux-wayland'), sway), samples })
+    expect(result.exitCode).toBe(1)
+    expect(result.failures).toContainEqual(expect.objectContaining({ code: 'backend-mismatch', signal: 'host', expected: 'sway', received: 'kwin' }))
+  })
+
+  it('rejects a live screen lock the expectation does not name', async () => {
+    const samples = await sequence('linux-wayland', () => ({ host: capabilitiesForHost('linux-wayland', linuxDesktopFacts({ ...kwin, verified: [...kwin.verified, 'lock'] })), desktopIdleSeconds: null, foreground: fg }))
+    const result = evaluateHostSmoke({ ...hostSmokeExpectation(resolveOn('linux-wayland'), kwin), samples })
+    expect(result.failures).toEqual([expect.objectContaining({ code: 'signal-mismatch', signal: 'screenLock', received: { kind: 'live' } })])
+  })
+
+  it('names verification-missing for an expected lock source that never appears', async () => {
+    const samples = await sequence('linux-wayland', () => ({ host: capabilitiesForHost('linux-wayland', linuxDesktopFacts(kwin)), desktopIdleSeconds: null, foreground: fg }))
+    const result = evaluateHostSmoke({ ...hostSmokeExpectation(resolveOn('linux-wayland'), { ...kwin, verified: [...kwin.verified, 'lock'] }), samples })
+    expect(result.failures).toEqual([expect.objectContaining({ code: 'verification-missing', signal: 'screenLock' })])
+  })
+
+  it('refuses a verified fact that changes no signal of that host and backend', () => {
+    expect(() => hostSmokeExpectation(resolveOn('linux-x11'), { backend: 'x11-ewmh', verified: ['foreground', 'cursor'] })).toThrow(/cursor/)
+    expect(() => hostSmokeExpectation(resolveOn('linux-wayland'), { backend: 'sway', verified: ['cursor'] })).toThrow(/cursor/)
+  })
+
+  it('rejects a bridge-owned signal stuck at starting when no verification is expected', async () => {
+    const desktop: LinuxDesktopExpectation = { backend: 'x11-ewmh', verified: [] }
+    const samples = await sequence('linux-x11', index => ({ host: capabilitiesForHost('linux-x11', linuxDesktopFacts(desktop, 'starting')), desktopIdleSeconds: index * 5 }))
+    const result = evaluateHostSmoke({ ...hostSmokeExpectation(resolveOn('linux-x11'), desktop), samples })
+    expect(result.failures).toContainEqual(expect.objectContaining({ code: 'signal-mismatch', signal: 'foregroundWindow', received: { kind: 'unavailable', reason: HostReasons.LinuxBridgeStarting } }))
   })
 
   it.each([
@@ -212,7 +306,7 @@ describe('host smoke observation', () => {
     await observeHost({
       readState: async () => {
         clock += index === 0 ? 2 : 0.2
-        return { host: capabilitiesForHost('windows'), desktopIdleSeconds: index++ * 5, performanceMode: 'idle' }
+        return { host: capabilitiesForHost('windows'), desktopIdleSeconds: index++ * 5, performanceMode: 'idle', foreground: null }
       },
       now: () => clock,
       sleep: async (ms) => { clock += ms },
@@ -222,16 +316,117 @@ describe('host smoke observation', () => {
     expect(evaluateHostSmoke({ expected: capabilitiesForHost('windows'), samples }).exitCode).toBe(0)
   })
 
+  it('drives verification once per sample index after recording it', async () => {
+    let clock = 0
+    const driven: Array<[number, number]> = []
+    const samples: HostSample[] = []
+    await observeHost({
+      readState: async () => ({ host: capabilitiesForHost('windows'), desktopIdleSeconds: clock / 1_000, performanceMode: 'idle', foreground: null }),
+      now: () => clock,
+      sleep: async (ms) => { clock += ms },
+      signal: new AbortController().signal,
+      samples,
+      drive: async (index) => { driven.push([index, samples.length]) },
+    })
+    expect(driven).toEqual(samples.slice(0, -1).map((_, index) => [index, index + 1]))
+  })
+
   it('retains raw samples when interruption stops observation', async () => {
     const controller = new AbortController()
     const samples: HostSample[] = []
     await expect(observeHost({
-      readState: async () => ({ host: capabilitiesForHost('linux-xwayland'), desktopIdleSeconds: null, performanceMode: 'idle' }),
+      readState: async () => ({ host: capabilitiesForHost('linux-xwayland'), desktopIdleSeconds: null, performanceMode: 'idle', foreground: null }),
       now: () => 0,
       sleep: async () => { controller.abort(new Error('SIGINT')) },
       signal: controller.signal,
       samples,
     })).rejects.toThrow('SIGINT')
     expect(samples).toHaveLength(1)
+  })
+})
+
+describe('linux verification drive', () => {
+  it('plans pointer moves only for cursor and the focus round trip only for foreground', () => {
+    expect(linuxDriveSteps(['foreground', 'cursor', 'geometry'])).toEqual([
+      { sample: 1, kind: 'pointer', x: 200, y: 200, signal: 'cursorScreenPoint' },
+      { sample: 2, kind: 'pointer', x: 1000, y: 600, signal: 'cursorScreenPoint' },
+      { sample: 3, kind: 'focus', signal: 'foregroundWindow' },
+    ])
+    expect(linuxDriveSteps(['geometry', 'lock'])).toEqual([])
+  })
+
+  /** A foreground reader that follows a scripted focus owner, and a clock that only moves when the drive sleeps. */
+  function scripted(owner: () => 'airi' | 'helper') {
+    let clock = 0
+    const log: string[] = []
+    return {
+      log,
+      now: () => clock,
+      sleep: async (ms: number) => { clock += ms },
+      readForeground: async () => owner() === 'airi' ? { exeName: 'electron', busy: 'accepts' as const, ownProcess: true } : { exeName: 'konsole', busy: 'accepts' as const, ownProcess: false },
+    }
+  }
+
+  it('moves focus to the helper and back to AIRI, closing the helper in between', async () => {
+    let focused: 'airi' | 'helper' = 'airi'
+    const io = scripted(() => focused)
+    const detail = await focusRoundTrip({
+      ...io,
+      openHelper: async () => {
+        io.log.push('open')
+        focused = 'helper'
+        return {
+          close: async () => {
+            io.log.push('close')
+            focused = 'airi'
+          },
+        }
+      },
+    })
+    expect(io.log).toEqual(['open', 'close'])
+    expect(detail).toBe('focus left AIRI for konsole, then returned to an AIRI window (electron)')
+  })
+
+  it('fails and still closes the helper when focus never leaves AIRI', async () => {
+    const io = scripted(() => 'airi')
+    const close = async () => {
+      io.log.push('close')
+    }
+    await expect(focusRoundTrip({ ...io, openHelper: async () => ({ close }) }))
+      .rejects
+      .toThrow('focus never left AIRI')
+    expect(io.log).toEqual(['close'])
+  })
+
+  it('fails when focus does not come back to AIRI after the helper closes', async () => {
+    const io = scripted(() => 'helper')
+    await expect(focusRoundTrip({ ...io, openHelper: async () => ({ close: async () => {} }) }))
+      .rejects
+      .toThrow('focus never returned to an AIRI window')
+  })
+
+  it('fails when the app reports no foreground sample', async () => {
+    const io = { ...scripted(() => 'airi'), readForeground: async () => null }
+    await expect(focusRoundTrip({ ...io, openHelper: async () => ({ close: async () => {} }) }))
+      .rejects
+      .toThrow('focus never left AIRI')
+  })
+
+  it('names drive-failed for a required step that failed or never ran', async () => {
+    const desktop: LinuxDesktopExpectation = { backend: 'kwin', verified: ['foreground', 'cursor', 'geometry'] }
+    const samples = await sequence('linux-wayland', () => ({ host: capabilitiesForHost('linux-wayland', linuxDesktopFacts(desktop)), desktopIdleSeconds: null, foreground: { exeName: 'electron', busy: 'accepts', ownProcess: true } }))
+    const expectation = hostSmokeExpectation(desktop_ => capabilitiesForHost('linux-wayland', desktop_ ?? undefined), desktop)
+    const drive = [
+      { sample: 1, action: 'pointer 200,200', ok: true, detail: '' },
+      { sample: 3, action: 'focus round trip', ok: false, detail: 'focus never left AIRI' },
+    ]
+    const result = evaluateHostSmoke({ ...expectation, samples, drive, driveSteps: linuxDriveSteps(desktop.verified) })
+    expect(result.exitCode).toBe(1)
+    expect(result.failures).toEqual([
+      expect.objectContaining({ code: 'drive-failed', signal: 'cursorScreenPoint', message: expect.stringContaining('sample 2') }),
+      expect.objectContaining({ code: 'drive-failed', signal: 'foregroundWindow', message: expect.stringContaining('focus never left AIRI') }),
+    ])
+    const passed = evaluateHostSmoke({ ...expectation, samples, drive: [1, 2, 3].map(sample => ({ sample, action: '', ok: true, detail: '' })), driveSteps: linuxDriveSteps(desktop.verified) })
+    expect(passed.failures).toEqual([])
   })
 })

@@ -3,6 +3,7 @@ import type { InferOutput } from 'valibot'
 import type { PerformanceEmotion } from '../expression-performance/types'
 import type { HostCapabilities, HostSignal } from '../host-capabilities'
 import type { PerformanceMode } from '../performance-state'
+import type { ForegroundWindowSample } from '../stores/foreground-window'
 
 import { defineInvokeEventa } from '@moeru/eventa'
 import { createContext } from '@moeru/eventa/adapters/event-target'
@@ -32,6 +33,14 @@ type SameMembers<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : ne
 const performanceModes = ['idle', 'watching', 'listening', 'thinking', 'talking'] as const
 const _modesMatch: SameMembers<typeof performanceModes[number], PerformanceMode> = true
 void _modesMatch
+// NOTICE:
+// This list duplicates the `ForegroundWindowSample['busy']` union, which is not exported as a value.
+// `SameMembers` checks the list against the union both ways.
+// Source: stores/foreground-window.ts.
+// Removal condition: the foreground window store exports a value array.
+const foregroundBusyStates = ['accepts', 'busy', 'fullscreen', 'presentation', 'quiet'] as const
+const _busyMatches: SameMembers<typeof foregroundBusyStates[number], NonNullable<ForegroundWindowSample['busy']>> = true
+void _busyMatches
 const hostId = picklist(HOST_IDS)
 const performanceMode = picklist(performanceModes)
 const hostReason = picklist(HOST_REASONS)
@@ -74,6 +83,8 @@ export const MotionQaStateSchema = strictObject({
   chat: nullable(strictObject({ hasTarget: boolean(), typing: boolean(), sentSeq: number(), unfoldSeq: number() })),
   /** The window's host capability snapshot, or null before a host wrote one. */
   host: nullable(hostCapabilities),
+  /** The latest foreground window sample without its title, or null while the host has written none. Never the title. */
+  foreground: nullable(strictObject({ exeName: nullable(string()), busy: nullable(picklist(foregroundBusyStates)), ownProcess: boolean() })),
   /** Seconds since the last desktop input from the latest desktop activity sample, or null when the host reports none. */
   desktopIdleSeconds: nullable(pipe(number(), finite())),
   /** The performance mode the stage resolved, or null while no stage reports one. */
