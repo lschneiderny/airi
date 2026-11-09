@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "airi-qa": {
+      "command": "pnpm",
+      "args": ["--silent", "qa:mcp"]
+    }
+  }
+}
