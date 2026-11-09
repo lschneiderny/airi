@@ -18,6 +18,7 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 | `pnpm qa:motion gate liveliness --level t1 [--workers N] [--timeout-minutes N]` | Check idle motion against the committed generated-liveliness rules. |
 | `pnpm qa:motion gate <emotion\|liveliness> --level t2 --rig forbooth [options]` | Run the selected gate against the headless ForBOOTH rig and Cubism Core. Set `AIRI_QA_RIG_FORBOOTH`; set `AIRI_QA_CUBISM_CORE` when the core is not at the checkout's default path. |
 | `pnpm qa:motion t3 --rig forbooth --scenario <builtin:name\|file.json> [--keep-open]` | Drive a scenario in the rendered Electron app and collect a Natural trace and screenshots. |
+| `pnpm qa:host smoke [--xwayland] [--expect-idle verified\|unverified]` | Launch a temporary Electron profile and compare host signals with the runner's capabilities, then observe idle delivery every 5 seconds for 180 seconds. |
 | `pnpm qa:motion validate-scorer --level t1 [--sections aa,zero,mutations,unmutated,determinism] [--seeds N] [--workers N] [--timeout-minutes N]` | Evaluate scorer false positives, mutation detection, unmutated gate power, and determinism. A missed validation threshold exits 1 by design. |
 | `pnpm qa:report <runDir> [<runDir>...] [--out <file>]` | Combine gate, T3, and test-run evidence into a self-contained HTML review page. |
 | `pnpm qa:stage measure --mode <window\|desktop> --port <cdp port> [--seconds 60] [--attempts 3] --out <json>` | Measure the MMD frame budget of a running app in one host mode. See [Stage gates](#stage-gates). |
@@ -32,6 +33,18 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 | `pnpm qa:character render --stage <stranger\|friendly\|close\|intimate> [--mood <bucket words>]` | Print the exact `system:character` text for a relationship stage and optional mood buckets. |
 
 `--seeds N` reduces a run and the report records that selection. It does not change the committed gate. Exit code 0 means the requested check passed, 1 means a check failed or a run broke, and 2 means invalid arguments or setup; T3 also uses 130 for interruption.
+
+## Host signal smoke
+
+Run `pnpm qa:host smoke` on Windows, macOS, or Linux X11. On native Wayland, `--expect-idle verified|unverified` is required: choose the result established by the machine's idle probe. For this machine, run `pnpm qa:host smoke --expect-idle verified`. Run `pnpm qa:host smoke --xwayland` for XWayland.
+
+The command prints a JSON report and saves `report.json` and `app.log` under the reported `.temp/qa/` run directory. Every sample includes its elapsed time, raw host snapshot, idle reading, and resolved performance mode. A live idle sensor must advance; native Wayland may stay unverified with null idle readings or promote once to live and then advance. Runtime hook or foreground binding failures fail the signal comparison and name their reason.
+
+Exit codes are 0 for pass, 1 for a failed check or interrupted run, and 2 for refused setup or invalid arguments. SIGINT and SIGTERM stop observation and finish teardown before releasing CPU leases; repeated interrupts leave teardown running. Only Windows parks the cursor before observation. Other hosts receive no harness input. The smoke refuses a second Electron session in its worktree and always removes its temporary profile after stopping its app tree.
+
+For failure QA only, `pnpm qa:host smoke --xwayland --expect linux-wayland` changes the expected host without changing the launched backend. It must exit 1 and name `systemIdleTime`.
+
+Windows live acceptance is [~] for Luke: `pnpm qa:host smoke`. macOS live acceptance is [~] for Luke: `pnpm qa:host smoke`. Use the smoke to verify host delivery; use the motion gates to score character motion.
 
 ## Fresh worktree Cubism setup
 
