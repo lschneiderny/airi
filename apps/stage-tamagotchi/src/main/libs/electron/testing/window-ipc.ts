@@ -25,13 +25,16 @@ export function createWindowIpc(ipcMain: EventEmitter) {
   let destroyed = false
   const window = Object.assign(new EventEmitter(), {
     isDestroyed: () => destroyed,
-    webContents: {
+    isVisible: () => !destroyed,
+    webContents: Object.assign(new EventEmitter(), {
       id: nextWebContentsId++,
+      isCrashed: () => false,
       isDestroyed: () => destroyed,
       send: (channel: string, payload: unknown) => rendererIpc.emit(channel, {}, payload),
-    },
+    }),
   })
-  // The fake IPC objects carry only the members that the Eventa adapters call.
+  // The fakes carry only the members that the Eventa adapters call and that the window services read when they
+  // register.
   const { context } = createRendererContext({
     on: (channel: string, listener: (...args: unknown[]) => void) => {
       rendererIpc.on(channel, listener)

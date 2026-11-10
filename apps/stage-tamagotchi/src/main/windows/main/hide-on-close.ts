@@ -3,6 +3,7 @@ import type { BrowserWindow } from 'electron'
 import { autoUpdater } from 'electron'
 
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 
 /**
  * Hides the window when the user closes it, so the app keeps running in the tray. The window closes only when the
@@ -30,7 +31,7 @@ export function hideOnClose(window: BrowserWindow) {
     window.hide()
   })
 
-  window.once('closed', () => {
+  onWindowClosed(window, () => {
     offBeforeQuit()
     autoUpdater.off('before-quit-for-update', allowClose)
   })

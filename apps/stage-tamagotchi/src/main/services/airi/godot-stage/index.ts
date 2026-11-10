@@ -54,6 +54,7 @@ import {
 } from '../../../../shared/eventa'
 import { onAppBeforeQuit } from '../../../libs/bootkit/lifecycle'
 import { getElectronMainDirname } from '../../../libs/electron/location'
+import { onWindowClosed } from '../../../libs/electron/on-window-closed'
 
 type GodotStageProcess = ChildProcessByStdio<null, Readable, Readable>
 type MainContext = ReturnType<typeof createContext>['context']
@@ -713,7 +714,7 @@ export function createGodotStageService(params: {
     }
   }
 
-  params.window.on('closed', cleanup)
+  onWindowClosed(params.window, cleanup)
   return cleanup
 }
 

@@ -30,6 +30,7 @@ import { BrowserWindow } from 'electron'
 
 import { desktopOverlayPollHeartbeatMarker, desktopOverlayPollHeartbeatQueryParam } from '../../../shared/desktop-overlay-heartbeat'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { readPrimaryDisplay } from '../../services/electron/coordinates'
 import { protectPrivilegedWindowNavigation } from '../shared/window'
 import { setupDesktopOverlayElectronInvokes } from './rpc/index.electron'
@@ -91,7 +92,7 @@ export async function setupDesktopOverlayWindow(params: {
       showDesktopOverlayWithoutFocus(overlayWindow)
   })
 
-  overlayWindow.on('closed', () => {
+  onWindowClosed(overlayWindow, () => {
     overlayWindow = null
   })
 

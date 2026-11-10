@@ -21,6 +21,7 @@ import {
   electronShortcutUnregisterAll,
 } from '../../../shared/eventa'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { getCurrentHostCapabilities, reportGlobalInputHookFailure, reportLinuxDesktop } from './host-capabilities'
 
 export type EventaContext = ReturnType<typeof createContext>['context']
@@ -333,7 +334,7 @@ export function setupGlobalShortcutService(options: GlobalShortcutServiceOptions
 
   const registerWindow: GlobalShortcutService['registerWindow'] = ({ context, window }) => {
     contexts.add(context)
-    window.on('closed', () => {
+    onWindowClosed(window, () => {
       contexts.delete(context)
     })
 

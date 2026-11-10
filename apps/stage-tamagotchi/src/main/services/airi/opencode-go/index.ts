@@ -9,6 +9,7 @@ import { defineInvokeHandler } from '@moeru/eventa'
 import { maxLength, minLength, optional, parse, picklist, pipe, regex, strictObject, string } from 'valibot'
 
 import { goCancelRequest, goGetConfiguration, goOpenRequest, goReadChunk, goSetConfiguration } from '../../../../shared/eventa/opencode-go'
+import { onWindowClosed } from '../../../libs/electron/on-window-closed'
 import { createWindowContext } from '../../../libs/electron/window-context'
 import { Credentials } from './credentials'
 
@@ -107,14 +108,14 @@ class GoNetworkService {
     // The native window cannot supply webContents after `closed`.
     const contents = window.webContents
     const { context } = createWindowContext(window)
-    const handlers: Array<() => void> = []
+    // Everything the binding registered outside itself: its invoke handlers and its window close callback.
+    const registrations: Array<() => void> = []
     const binding: Binding = {
       window,
       close: () => {
         this.cancelMatching(state => state.owner === binding)
-        for (const remove of handlers)
+        for (const remove of registrations)
           remove()
-        window.off('closed', binding.close)
         contents.off('did-start-navigation', binding.navigate)
         contents.off('render-process-gone', binding.gone)
         this.bindings.delete(window)
@@ -128,23 +129,23 @@ class GoNetworkService {
     }
     this.bindings.set(window, binding)
     this.requests.set(binding, new Map())
-    window.on('closed', binding.close)
+    registrations.push(onWindowClosed(window, binding.close))
     contents.on('did-start-navigation', binding.navigate)
     contents.on('render-process-gone', binding.gone)
 
-    handlers.push(defineInvokeHandler(context, goGetConfiguration, async (input, options) => {
+    registrations.push(defineInvokeHandler(context, goGetConfiguration, async (input, options) => {
       this.authorize(binding, options)
       const { providerId } = parseInput(profileSchema, input)
       return this.credentials.get(providerId)
     }))
-    handlers.push(defineInvokeHandler(context, goSetConfiguration, async (input, options) => {
+    registrations.push(defineInvokeHandler(context, goSetConfiguration, async (input, options) => {
       this.authorize(binding, options)
       const { providerId, apiKey } = parseInput(updateSchema, input)
       const result = await this.credentials.set(providerId, apiKey)
       this.cancelMatching(state => state.providerId === providerId)
       return result
     }))
-    handlers.push(defineInvokeHandler(context, goOpenRequest, async (input, options): Promise<GoResponse> => {
+    registrations.push(defineInvokeHandler(context, goOpenRequest, async (input, options): Promise<GoResponse> => {
       const requests = this.authorize(binding, options)
       const request = parseInput(requestSchema, input)
       if (request.operation === 'models' && request.body !== undefined)
@@ -215,7 +216,7 @@ class GoNetworkService {
         invocationSignal?.removeEventListener('abort', abort)
       }
     }))
-    handlers.push(defineInvokeHandler(context, goReadChunk, async (input, options) => {
+    registrations.push(defineInvokeHandler(context, goReadChunk, async (input, options) => {
       this.authorize(binding, options)
       const { requestId } = parseInput(pullSchema, input)
       const state = this.requests.get(binding)?.get(requestId)
@@ -243,7 +244,7 @@ class GoNetworkService {
         state.reading = false
       }
     }))
-    handlers.push(defineInvokeHandler(context, goCancelRequest, (input, options) => {
+    registrations.push(defineInvokeHandler(context, goCancelRequest, (input, options) => {
       this.authorize(binding, options)
       this.cancel(binding, parseInput(pullSchema, input).requestId)
     }))

@@ -30,6 +30,7 @@ import icon from '../../../../resources/icon.png?asset'
 
 import { electronStartDraggingWindow } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { readWindowRect } from '../../services/electron/coordinates'
@@ -222,7 +223,7 @@ export async function setupMainWindow(params: {
     const { context } = createWindowContext(window)
     const cleanUpWindowDraggingInvokeHandler = defineInvokeHandler(context, electronStartDraggingWindow, handleStartDraggingWindow)
 
-    window.on('closed', () => {
+    onWindowClosed(window, () => {
       cleanUpWindowDraggingInvokeHandler()
     })
   }

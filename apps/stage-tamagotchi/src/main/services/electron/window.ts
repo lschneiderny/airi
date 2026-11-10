@@ -16,6 +16,7 @@ import {
   electronWindowSetAlwaysOnTop,
 } from '../../../shared/eventa'
 import { onAppBeforeQuit, onAppWindowAllClosed } from '../../libs/bootkit/lifecycle'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { placeWindow } from '../../windows/shared/placement'
 import { resizeWindowByDelta, setWindowAlwaysOnTop } from '../../windows/shared/window'
 import { readRendererWindowBounds } from './coordinates'
@@ -51,7 +52,7 @@ export function createWindowService(params: { context: ReturnType<typeof createC
   // The loop stops with its window; these cover the app closing first.
   const offAllClosed = onAppWindowAllClosed(() => stop())
   const offBeforeQuit = onAppBeforeQuit(() => stop())
-  params.window.once('closed', () => {
+  onWindowClosed(params.window, () => {
     offAllClosed()
     offBeforeQuit()
   })

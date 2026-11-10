@@ -3,6 +3,7 @@ import type { BrowserWindow } from 'electron'
 import { createContext } from '@moeru/eventa/adapters/electron/main'
 
 import { ipcRouter } from './ipc-router'
+import { onWindowClosed } from './on-window-closed'
 
 type WindowContext = ReturnType<typeof createContext>['context']
 
@@ -39,9 +40,9 @@ export function createWindowContext(window: BrowserWindow): { context: WindowCon
 
   const { context } = createContext(ipcRouter().forWindow(window.webContents.id), window, { onlySameWindow: true })
   contexts.set(window, context)
-  // The adapter disposes the context on the same event. A later call for this window must reach the adapter again,
-  // which refuses a destroyed window, instead of returning the disposed context.
-  window.once('closed', () => contexts.delete(window))
+  // The adapter disposes the context on the same event, through its own `closed` listener. A later call for this
+  // window must be refused as a destroyed window, instead of returning the disposed context.
+  onWindowClosed(window, () => contexts.delete(window))
   return { context }
 }
 

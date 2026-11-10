@@ -30,6 +30,7 @@ import {
   electronPluginToolsChanged,
 } from '../../../../shared/eventa/plugin/tools'
 import { onAppBeforeQuit } from '../../../libs/bootkit/lifecycle'
+import { onWindowClosed } from '../../../libs/electron/on-window-closed'
 import { createAppContext } from '../../../libs/electron/window-context'
 import { setupExtensionHostServiceInternal } from './host'
 
@@ -81,7 +82,7 @@ function trackDirectoryImportOwner(
   }
 
   trackedOwnerIds.add(ownerId)
-  ownerWindow.once('closed', () => {
+  onWindowClosed(ownerWindow, () => {
     cancelDirectoryImportsForOwner(hostService, planOwners, ownerId)
     trackedOwnerIds.delete(ownerId)
   })

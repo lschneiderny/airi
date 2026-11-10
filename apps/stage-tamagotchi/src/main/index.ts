@@ -32,6 +32,7 @@ import { createIOTraceHubConfig } from './configs/io-trace-hub'
 import { createIOTraceRecordingConfig } from './configs/io-trace-recording'
 import { emitAppBeforeQuit, emitAppWindowAllClosed, onAppBeforeQuit } from './libs/bootkit/lifecycle'
 import { getElectronMainDirname, setElectronMainDirname } from './libs/electron/location'
+import { onWindowClosed } from './libs/electron/on-window-closed'
 import { createAppContext } from './libs/electron/window-context'
 import { createI18n } from './libs/i18n'
 import { setupAppleSpeechTranscriptionService } from './services/airi/apple-speech-transcription'
@@ -419,7 +420,7 @@ app.whenReady().then(async () => {
           dependsOn.goNetwork.bindWindow(window)
           const webContentsId = window.webContents.id
           extensionManagementWebContentsId = webContentsId
-          window.once('closed', () => {
+          onWindowClosed(window, () => {
             if (extensionManagementWebContentsId === webContentsId) {
               extensionManagementWebContentsId = undefined
             }

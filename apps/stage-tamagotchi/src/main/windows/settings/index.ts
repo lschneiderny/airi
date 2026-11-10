@@ -18,6 +18,7 @@ import icon from '../../../../resources/icon.png?asset'
 
 import { electronSettingsNavigate } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { ignoreWindowClosedDuringCreation } from '../../libs/electron/window-closed'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
@@ -91,7 +92,7 @@ export function setupSettingsWindowReusableFunc(params: {
       query: { 'synced-leader': 'false' },
     }))
 
-    window.on('closed', () => {
+    onWindowClosed(window, () => {
       if (settingsContext)
         settingsContext = undefined
     })

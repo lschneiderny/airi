@@ -3,6 +3,7 @@ import type { Display, Rectangle } from 'electron'
 import type { StageDisplayInfo } from '../../../shared/eventa'
 import type { StageConfig } from './config'
 
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { resolveHomeDisplay } from './config'
 
 export function toStageDisplayInfos(displays: readonly Display[], primaryId: number): StageDisplayInfo[] {
@@ -87,6 +88,6 @@ export function bindStageWindowToHomeDisplay(params: {
     params.screen.off('display-metrics-changed', applyHomeBounds)
   }
 
-  params.window.once('closed', dispose)
+  onWindowClosed(params.window, dispose)
   return { applyHomeBounds, dispose }
 }

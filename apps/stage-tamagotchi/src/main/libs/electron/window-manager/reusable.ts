@@ -2,6 +2,7 @@ import type { BrowserWindow } from 'electron'
 
 import { isRendererUnavailable } from '@proj-airi/electron-vueuse/main'
 
+import { onWindowClosed } from '../on-window-closed'
 import { WindowClosedDuringCreationError } from '../window-closed'
 
 /** One window that is created on demand and created again after it closes. */
@@ -42,7 +43,7 @@ export function createReusableWindow(setupFn: () => BrowserWindow | Promise<Brow
       }
 
       window = created
-      created.on?.('closed', () => {
+      onWindowClosed(created, () => {
         if (window === created)
           window = undefined
       })

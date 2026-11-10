@@ -30,6 +30,7 @@ import {
   electronSetUpdaterPreferences,
 
 } from '../../../shared/eventa'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { MockAutoUpdater } from './mock-auto-updater'
 
 function getReleaseChannelName() {
@@ -635,6 +636,6 @@ export function createAutoUpdaterService(params: { context: ReturnType<typeof cr
       fn()
   }
 
-  window.on('closed', cleanup)
+  onWindowClosed(window, cleanup)
   return cleanup
 }

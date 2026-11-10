@@ -29,6 +29,7 @@ import {
   electronOpenSettings,
   noticeWindowEventa,
 } from '../../../../shared/eventa'
+import { onWindowClosed } from '../../../libs/electron/on-window-closed'
 import { createWindowContext } from '../../../libs/electron/window-context'
 import { createGodotStageService } from '../../../services/airi/godot-stage'
 import { registerIOTraceRecording } from '../../../services/airi/io-trace-recording/register'
@@ -73,7 +74,7 @@ export async function setupMainWindowElectronInvokes(params: {
   createGodotStageService({ context, manager: params.godotStageManager, window: params.window })
   createOnboardingService({ context, onboardingWindowManager: params.onboardingWindowManager, mainWindow: params.window })
   const stopIOTraceRecording = registerIOTraceRecording(context, params.ioTraceRecording)
-  params.window.once('closed', stopIOTraceRecording)
+  onWindowClosed(params.window, stopIOTraceRecording)
 
   defineInvokeHandler(context, electronCenterMainWindow, () => centerUserFacingWindow(params.window))
   defineInvokeHandler(context, electronOpenMainDevtools, () => params.window.webContents.openDevTools({ mode: 'detach' }))
@@ -88,9 +89,9 @@ export async function setupMainWindowElectronInvokes(params: {
   defineInvokeHandler(context, electronOpenChat, () => params.chatWindow.toggle())
   defineInvokeHandler(context, electronGetChatButtonState, () => params.chatWindow.getButtonState())
   const stopChatButtonState = params.chatWindow.onButtonStateChange(state => context.emit(electronChatButtonStateChanged, state))
-  params.window.once('closed', stopChatButtonState)
+  onWindowClosed(params.window, stopChatButtonState)
   defineInvokeHandler(context, electronGetChatAttentionTarget, () => params.chatWindow.getAttentionTarget())
   const stopChatAttentionTarget = params.chatWindow.onAttentionTargetChange(target => context.emit(electronChatAttentionTargetChanged, target))
-  params.window.once('closed', stopChatAttentionTarget)
+  onWindowClosed(params.window, stopChatAttentionTarget)
   defineInvokeHandler(context, noticeWindowEventa.openWindow, payload => params.noticeWindow.open(payload))
 }

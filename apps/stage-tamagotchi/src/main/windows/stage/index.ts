@@ -18,6 +18,7 @@ import { app, dialog, BrowserWindow as ElectronBrowserWindow, screen } from 'ele
 import icon from '../../../../resources/icon.png?asset'
 
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { onCompositorCursor, readDisplays, readPrimaryDisplay, readWindowRect } from '../../services/electron/coordinates'
 import { getCurrentHostCapabilities, onHostCapabilitiesChange } from '../../services/electron/host-capabilities'
@@ -138,7 +139,7 @@ export async function setupStageWindow(
         }).catch(error => console.error('[stage] Failed to show the click-through notice:', errorMessageFrom(error)))
       },
     })
-    window.once('closed', stopWatching)
+    onWindowClosed(window, stopWatching)
   })
 
   // The stage page replaces the classic page, so it keeps every main-window invoke (controls, chat, inlay, settings).

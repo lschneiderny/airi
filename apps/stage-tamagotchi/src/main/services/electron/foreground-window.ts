@@ -14,6 +14,7 @@ import { isLinux, isMacOS, isWindows } from 'std-env'
 
 import { electron } from '../../../shared/eventa'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createDarwinSampler, loadDarwinBinding } from './foreground-window-darwin'
 import { createLinuxForegroundVerifier, createLinuxSampler } from './foreground-window-linux'
 import { createWin32Sampler, loadWin32Binding } from './foreground-window-win32'
@@ -100,7 +101,7 @@ export function createForegroundWindowService(params: {
     params.window.on('focus', onFocus)
 
   const offBeforeQuit = onAppBeforeQuit(offSample)
-  params.window.once('closed', () => {
+  onWindowClosed(params.window, () => {
     offSample()
     offBeforeQuit()
     if (onFocus)

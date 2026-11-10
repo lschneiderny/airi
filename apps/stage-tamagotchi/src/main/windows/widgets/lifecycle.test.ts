@@ -60,6 +60,11 @@ const mocks = vi.hoisted(() => {
       return this
     }
 
+    // Only `closed` is registered once, and each fake window closes at most once.
+    once(event: string, listener: () => void) {
+      return this.on(event, listener)
+    }
+
     emit(event: string) {
       for (const listener of this.listeners.get(event) ?? [])
         listener()

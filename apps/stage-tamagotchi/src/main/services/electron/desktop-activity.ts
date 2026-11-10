@@ -7,6 +7,7 @@ import { powerMonitor } from 'electron'
 
 import { electron } from '../../../shared/eventa'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { getCurrentHostCapabilities, recordWaylandIdleSample } from './host-capabilities'
 
 /**
@@ -40,7 +41,7 @@ export function createDesktopActivityService(params: { context: ReturnType<typeo
   })
 
   const offBeforeQuit = onAppBeforeQuit(offGetSystemIdleTime)
-  params.window.once('closed', () => {
+  onWindowClosed(params.window, () => {
     offGetSystemIdleTime()
     offBeforeQuit()
   })

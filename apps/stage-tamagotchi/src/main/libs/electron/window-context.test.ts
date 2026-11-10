@@ -22,12 +22,16 @@ import { IOTraceRecordingService } from '../../services/airi/io-trace-recording'
 import { registerIOTraceRecording } from '../../services/airi/io-trace-recording/register'
 import { createMcpServersService } from '../../services/airi/mcp-servers'
 import { createAppService, createAppVersionService } from '../../services/electron/app'
+import { setupBaseWindowElectronInvokes } from '../../windows/shared/window'
 import { createWindowIpc } from './testing/window-ipc'
 import { createAppContext, createWindowContext } from './window-context'
 
 const appMock = vi.hoisted(() => ({
+  commandLine: { getSwitchValue: () => '' },
+  getAppMetrics: () => [],
   getPath: vi.fn(() => '/tmp/airi-user-data'),
   getVersion: vi.fn(() => '0.0.0'),
+  isReady: () => true,
   quit: vi.fn(),
 }))
 
@@ -40,14 +44,23 @@ vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events')
   return {
     app: appMock,
+    BrowserWindow: { getAllWindows: () => [] },
     ipcMain: new EventEmitter(),
+    powerMonitor: new EventEmitter(),
+    screen: { on: vi.fn(), off: vi.fn() },
     shell: shellMock,
+    systemPreferences: {},
   }
 })
 
-vi.mock('../bootkit/lifecycle', () => ({
-  onAppBeforeQuit: vi.fn(),
+// The base window setup resolves the app config and, on Linux, the desktop bridge. This window has neither.
+vi.mock('injeca', () => ({
+  injeca: { resolve: async () => ({ bridge: undefined, config: { get: () => ({}), update: vi.fn() } }) },
 }))
+// The barrel of the Electron services also loads these two, which need the updater and the native shortcut hook.
+vi.mock('../../services/electron/auto-updater', () => ({}))
+vi.mock('../../services/electron/global-shortcut', () => ({}))
+vi.mock('../../services/airi/channel-server', () => ({ createServerChannelService: vi.fn() }))
 
 function createMcpManagerMock() {
   return {
@@ -185,6 +198,32 @@ describe('createWindowContext', () => {
     windows[2].close()
     expect(ipcMain.listenerCount('eventa-message')).toBe(0)
     expect(ipcMain.listenerCount('eventa-error')).toBe(0)
+  })
+})
+
+describe('setupBaseWindowElectronInvokes', () => {
+  afterEach(() => {
+    for (const window of opened.splice(0))
+      window.close()
+  })
+
+  // Node warns at more than 10 listeners per event. Each window service cleans up when its window closes, and one
+  // `closed` listener per service passed that limit, which the code hid with `window.setMaxListeners(32)`.
+  it('keeps the closed listeners of a window under the Node warning limit and still cleans up on close', async () => {
+    const { ipcMain, powerMonitor } = await import('electron')
+    const { window, close } = await openWindow()
+    const { context } = createWindowContext(window)
+
+    await setupBaseWindowElectronInvokes({ context, window, serverChannel: {} as never, i18n: { locale: vi.fn() } as never })
+
+    expect(window.listenerCount('closed')).toBeLessThan(10)
+    expect(ipcMain.listenerCount('eventa-message')).toBe(1)
+    expect(powerMonitor.listenerCount('suspend')).toBe(1)
+
+    close()
+
+    expect(powerMonitor.listenerCount('suspend')).toBe(0)
+    expect(ipcMain.listenerCount('eventa-message')).toBe(0)
   })
 })
 

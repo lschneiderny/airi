@@ -8,6 +8,7 @@ import { acceptCursorReading } from '@proj-airi/stage-shared/host-capabilities'
 import { app, BrowserWindow as ElectronBrowserWindow, screen } from 'electron'
 
 import { findDominantDisplayArea } from '../../../shared/utils/electron/display'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { KeepAboveVerifier, LatestValueActuator } from '../linux-desktop/geometry/actuators'
 import { OwnWindowBinder } from '../linux-desktop/geometry/binding'
 import { mapDisplaysToOutputs } from '../linux-desktop/geometry/outputs'
@@ -232,7 +233,7 @@ class LinuxCoordinates {
     }
     window.on('show', bind)
     window.on('focus', bindUnbound)
-    window.once('closed', () => {
+    onWindowClosed(window, () => {
       window.off('show', bind)
       window.off('focus', bindUnbound)
       this.placer.cancel(window)

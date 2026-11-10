@@ -8,6 +8,7 @@ import type { ServerChannel } from '../../services/airi/channel-server'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { safeClose } from '@proj-airi/electron-vueuse/main'
 
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { setupBaseWindowElectronInvokes } from './window'
 
@@ -54,7 +55,7 @@ export function createReferencedWindowManager<Payload extends RequestWindowPaylo
 
     await setupBaseWindowElectronInvokes({ context, window: win, i18n: params.i18n, serverChannel: params.serverChannel })
 
-    win.on('closed', () => windows.delete(id))
+    onWindowClosed(win, () => windows.delete(id))
 
     return { window: win, context }
   }

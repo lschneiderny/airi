@@ -10,6 +10,7 @@ import { isMacOS } from 'std-env'
 import icon from '../../../../resources/icon.png?asset'
 
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createReusableWindow } from '../../libs/electron/window-manager/reusable'
 import { readPrimaryDisplay } from '../../services/electron/coordinates'
 import { placeWindow } from '../shared/placement'
@@ -69,7 +70,7 @@ export function setupInlayWindowReusable(params: {
     screen.on('display-metrics-changed', place)
     screen.on('display-added', place)
     screen.on('display-removed', place)
-    window.once('closed', () => {
+    onWindowClosed(window, () => {
       screen.off('display-metrics-changed', place)
       screen.off('display-added', place)
       screen.off('display-removed', place)

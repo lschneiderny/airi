@@ -11,6 +11,7 @@ import { app } from 'electron'
 
 import { resolveIsWayland } from '../../app/ozone'
 import { onAppBeforeQuit } from '../../libs/bootkit/lifecycle'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { hasLinuxClickThroughToggle } from '../linux-desktop/detect'
 
 type EventaContext = ReturnType<typeof createContext>['context']
@@ -170,7 +171,7 @@ export function createHostCapabilitiesService(params: { context: EventaContext, 
     contexts.delete(params.context)
   }
   const offBeforeQuit = onAppBeforeQuit(dispose)
-  params.window.once('closed', () => {
+  onWindowClosed(params.window, () => {
     dispose()
     offBeforeQuit()
   })

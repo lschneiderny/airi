@@ -27,6 +27,7 @@ import {
   electronChatWindowTakeDraft,
 } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
@@ -191,7 +192,7 @@ export function setupChatWindowManager(params: {
     window.on('restore', attentionTarget.update)
     window.on('move', attentionTarget.update)
     window.on('resize', attentionTarget.update)
-    window.on('closed', attentionTarget.update)
+    onWindowClosed(window, attentionTarget.update)
 
     // `onlySameWindow` hears only this window and disposes with it, so a mode
     // switch that closes the window leaves no handlers behind.

@@ -8,6 +8,7 @@ import { screen } from 'electron'
 
 import { electron } from '../../../shared/eventa'
 import { onAppBeforeQuit, onAppWindowAllClosed } from '../../libs/bootkit/lifecycle'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { readCursor, readDisplays, readPrimaryDisplay, readWindowRect, requestBridgeCursor, setCursorLoopActive } from './coordinates'
 import { onHostCapabilitiesChange } from './host-capabilities'
 
@@ -49,7 +50,7 @@ export function createScreenService(params: { context: ReturnType<typeof createC
   const offAllClosed = onAppWindowAllClosed(dispose)
   const offBeforeQuit = onAppBeforeQuit(dispose)
   params.window.webContents?.once('render-process-gone', dispose)
-  params.window.once('closed', () => {
+  onWindowClosed(params.window, () => {
     dispose()
     offCapabilities()
     offAllClosed()

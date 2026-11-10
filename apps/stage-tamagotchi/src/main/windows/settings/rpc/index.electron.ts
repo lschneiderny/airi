@@ -20,6 +20,7 @@ import {
   electronSpotlightShortcutGet,
   electronSpotlightShortcutSet,
 } from '../../../../shared/eventa'
+import { onWindowClosed } from '../../../libs/electron/on-window-closed'
 import { ignoreWindowClosedDuringCreation } from '../../../libs/electron/window-closed'
 import { createWindowContext } from '../../../libs/electron/window-context'
 import { createGodotStageService } from '../../../services/airi/godot-stage'
@@ -54,7 +55,7 @@ export async function setupSettingsWindowInvokes(params: {
   createMcpServersService({ context, manager: params.mcpManager })
   createGodotStageService({ context, manager: params.godotStageManager, window: params.settingsWindow })
   const stopIOTraceRecording = registerIOTraceRecording(context, params.ioTraceRecording)
-  params.settingsWindow.once('closed', stopIOTraceRecording)
+  onWindowClosed(params.settingsWindow, stopIOTraceRecording)
 
   // Register the global shortcut service for the settings window.
   params.globalShortcut.registerWindow({ context, window: params.settingsWindow })

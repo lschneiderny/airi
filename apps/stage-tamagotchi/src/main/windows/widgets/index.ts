@@ -25,6 +25,7 @@ import icon from '../../../../resources/icon.png?asset'
 import { widgetsClearEvent, widgetsIframeRequestEvent, widgetsRemoveEvent, widgetsRenderEvent, widgetsUpdateEvent } from '../../../shared/eventa'
 import { normalizeWidgetWindowSize } from '../../../shared/utils/electron/windows/window-size'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { displayForWindow, displayMatching, onCompositorWindowRect, readPrimaryDisplay, readWindowRect, windowOriginTrusted } from '../../services/electron/coordinates'
@@ -463,8 +464,8 @@ export function setupWidgetsWindowManager(params: {
      * Triggering workflow:
      *
      * {@link BrowserWindow}
-     *   -> `window.on`
-     *     -> `closed`
+     *   -> `closed`
+     *     -> {@link onWindowClosed}
      *       -> handleWindowClosed
      *
      * Upstream:
@@ -482,7 +483,7 @@ export function setupWidgetsWindowManager(params: {
         destroyWidget(windowContext.widgetId)
     }
 
-    window.on('closed', handleWindowClosed)
+    onWindowClosed(window, handleWindowClosed)
     applyStoredOrDefaultBounds(windowContext, window)
 
     const persist = () => {

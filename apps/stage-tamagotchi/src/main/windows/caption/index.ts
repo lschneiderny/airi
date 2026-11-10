@@ -20,6 +20,7 @@ import icon from '../../../../resources/icon.png?asset'
 import { captionGetIsFollowingWindow, captionIsFollowingWindowChanged } from '../../../shared/eventa'
 import { clampBoundsWithinRect } from '../../../shared/utils/electron/display'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createConfig } from '../../libs/electron/persistence'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
@@ -387,7 +388,7 @@ export function setupCaptionWindowManager(params: {
       followMainWindow(window)
     }
 
-    window.on('closed', () => {
+    onWindowClosed(window, () => {
       detachFromMain()
       try {
         cleanupGetAttached()

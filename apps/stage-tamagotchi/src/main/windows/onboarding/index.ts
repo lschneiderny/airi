@@ -12,6 +12,7 @@ import icon from '../../../../resources/icon.png?asset'
 
 import { electronOnboardingClose } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { protectPrivilegedWindowNavigation, toggleWindowShow } from '../shared'
@@ -71,7 +72,7 @@ export function setupOnboardingWindowManager(params: {
       query: { 'synced-leader': 'false' },
     }))
 
-    newWindow.on('closed', () => {
+    onWindowClosed(newWindow, () => {
       for (const cb of closeCallbacks) {
         try {
           cb()

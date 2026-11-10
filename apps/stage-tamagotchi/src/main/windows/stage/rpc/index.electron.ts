@@ -22,6 +22,7 @@ import {
   electronStageSetMode,
   electronStageStateChanged,
 } from '../../../../shared/eventa'
+import { onWindowClosed } from '../../../libs/electron/on-window-closed'
 import { createWindowContext } from '../../../libs/electron/window-context'
 import { buildStageHostState, withStageHome, withStageHomeDisplay } from '../config'
 import { readStageDisplays } from '../displays'
@@ -150,7 +151,7 @@ export function setupStageWindowInvokes(params: {
       listener(parsed.output)
   })
 
-  params.window.once('closed', () => {
+  onWindowClosed(params.window, () => {
     stopBroadcast()
     placementListeners.clear()
   })

@@ -27,6 +27,7 @@ import {
   electronChatFloatingStateChanged,
 } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { displayMatching, readDisplays, readRendererWindowBounds, readWindowRect, requestKeepAbove, windowOriginTrusted } from '../../services/electron/coordinates'
@@ -515,7 +516,7 @@ export function setupFloatingChatWindow(params: {
     })
     // Registered before any await, so a window that fails during setup
     // still releases the main window listeners when it is destroyed.
-    target.on('closed', () => {
+    onWindowClosed(target, () => {
       persistMove.cancel()
       detachFromMain?.()
       detachFromMain = undefined

@@ -94,6 +94,47 @@ request; no such pair was found on 2026-11-10.
 All 16 `ipcMain.setMaxListeners(...)` calls and their TODO comments are
 removed.
 
+### One close scope per window
+
+`onWindowClosed(window, callback)` in
+`apps/stage-tamagotchi/src/main/libs/electron/on-window-closed.ts` registers
+one real `closed` listener per window and runs every callback of that window
+from it, in the order of their registration. It returns a function that
+cancels the callback.
+
+All `window.on('closed', ...)` and `window.once('closed', ...)` calls under
+`apps/stage-tamagotchi/src/main` use it. `window.setMaxListeners(32)` is
+removed.
+
+A callback that throws no longer stops the callbacks after it. All callbacks
+run, and then the error is thrown again, so a failed cleanup still surfaces as
+an uncaught exception in the main process. Several errors are thrown as one
+`AggregateError`.
+
+The callbacks of a window now run together, at the position of the first
+`onWindowClosed` call for that window among the remaining real listeners.
+Their order among themselves is unchanged. The remaining real listeners are
+the Eventa adapter's own (it disposes the window context) and those of
+`createRendererLoop` in `@proj-airi/electron-vueuse`, which keeps its own.
+A close callback must not depend on whether the window context is already
+disposed. The window is destroyed in either case, so the context sends
+nothing.
+
+## Result
+
+Measured in the same clean start on 2026-11-10, before and after:
+
+| Listener count | Before | After |
+| --- | ---: | ---: |
+| `eventa-message` on `ipcMain` | 17 | 1 |
+| `closed` on the classic main window | 25 | 5 |
+| `closed` on the desktop stage window | 27 | 5 |
+| `closed` on the inlay window | 16 | 5 |
+
+A window built by `setupBaseWindowElectronInvokes` alone has 4 `closed`
+listeners instead of 10: the adapter, the close scope, and two renderer loops.
+`window-context.test.ts` keeps that count under Node's warning limit of 10.
+
 ## Scope
 
 The renderer side is unchanged. `ipcRenderer.setMaxListeners(0)` in
