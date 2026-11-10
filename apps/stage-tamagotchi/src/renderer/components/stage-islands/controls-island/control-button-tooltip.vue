@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { TooltipContentProps } from 'reka-ui'
 
+import { HostReasons } from '@proj-airi/stage-shared/host-capabilities'
+import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { TooltipContent, TooltipPortal, TooltipProvider, TooltipRoot, TooltipTrigger } from 'reka-ui'
 import { computed } from 'vue'
 
@@ -16,6 +18,13 @@ const props = withDefaults(defineProps<{
 })
 
 const { isLeft } = useControlsIslandPlacement()
+const hostCapabilities = useHostCapabilitiesStore()
+// Emulation must read the character's canvas beneath informational tooltips.
+// Otherwise the DOM hit-test releases the window and loses the tooltip's exit events.
+const clickThroughEmulated = computed(() => {
+  const status = hostCapabilities.status('clickThroughForward')
+  return status?.kind === 'degraded' && status.reason === HostReasons.LinuxClickThroughEmulated
+})
 const resolvedSide = computed<NonNullable<TooltipContentProps['side']>>(() => {
   if (props.side === 'inward') {
     return isLeft.value ? 'right' : 'left'
@@ -39,6 +48,7 @@ const resolvedSide = computed<NonNullable<TooltipContentProps['side']>>(() => {
           <TooltipContent
             :class="[
               'controls-island-tooltip',
+              { 'controls-island-tooltip-emulated': clickThroughEmulated },
               'border-1 border-solid border-neutral-200/60 dark:border-neutral-800/10',
               'bg-neutral-50/80 dark:bg-neutral-800/70',
               'w-fit flex items-center self-end justify-center px-1.5 py-1',
@@ -59,6 +69,10 @@ const resolvedSide = computed<NonNullable<TooltipContentProps['side']>>(() => {
 <style scoped>
 :global([data-reka-popper-content-wrapper=""]:has(.controls-island-tooltip)) {
   z-index: 1000 !important;
+}
+
+:global([data-reka-popper-content-wrapper=""]:has(.controls-island-tooltip-emulated)) {
+  pointer-events: none;
 }
 
 .fade-enter-active,
