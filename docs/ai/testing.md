@@ -89,7 +89,8 @@ On Linux, the broker reads CPU PSI `some avg10` before each scheduling
 transaction. At or above the configured hold threshold, new grants pause
 while any lease is held. Below the configured idle threshold, non-exclusive
 grants may use a bounded extra quarter of the budget. The current defaults
-are 20 and 70; they are defaults awaiting quiet-machine calibration. With no
+are 20 and 70, confirmed by a quiet-host calibration on 2026-11-10 (see
+`packages/cpu-slots/README.md`). With no
 pressure sample, scheduling uses the normal budget. Existing leases do not
 shrink when pressure changes. Exclusive work is never overcommitted and
 requires all slots to be free.

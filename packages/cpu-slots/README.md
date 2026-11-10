@@ -79,7 +79,17 @@ On November 10, 2026, the Linux workstation's real `/proc/pressure/cpu` was samp
 | One verify | 241 | 62.60 | 69.14 | 77.46 |
 | Three requested verifies | 328 | 56.97 | 65.06 | 74.58 |
 
-These are shared-workstation readings, not a controlled machine-idle baseline. Other lanes were neither stopped nor inspected. The three concurrent commands initially received two six-slot leases while the third queued; existing grants do not shrink. The single run also rebuilt packages, whereas subsequent builds were cached. The baseline was already above the idle threshold, and the single-run peak exceeded the hold threshold, but the lower peak during the three-run phase does not establish that these thresholds are wrong for the workload. Keep the defaults at 20 and 70 rather than tune them to this contaminated sample. A quiet-host calibration remains necessary before retuning. The readings and command logs are in `.omo/evidence/test-qa-revamp/task-19-calibration.json` and `task-19-calibration-*.txt`.
+That sample was contaminated: it is a shared-workstation reading, not a machine-idle baseline. Other lanes were neither stopped nor inspected. The three concurrent commands initially received two six-slot leases while the third queued; existing grants do not shrink. The single run also rebuilt packages, whereas subsequent builds were cached. The baseline was already above the idle threshold, and the single-run peak exceeded the hold threshold, but the lower peak during the three-run phase does not establish that these thresholds are wrong for the workload. The defaults were therefore not tuned to this sample. The readings and command logs are in `.omo/evidence/test-qa-revamp/task-19-calibration.json` and `task-19-calibration-*.txt`.
+
+The quiet-host calibration followed on November 10, 2026, on the same 16-CPU workstation with the default budget of 12, with only this lane running and the real broker and live `/proc/pressure/cpu` in use. `some avg10` readings, sampled every 5 seconds:
+
+| Phase | Samples | Median | p90 | Maximum |
+| --- | ---: | ---: | ---: | ---: |
+| Idle baseline (2 minutes) | 25 | 0.00 | 0.00 | 0.00 |
+| One `pnpm verify` (test, forced) | 18 | 0.00 | 1.43 | 2.14 |
+| Two concurrent verifies (test and typecheck, forced) | 20 | 0.92 | 5.56 | 10.14 |
+
+No grant was delayed by `cpu-pressure`. Idle pressure sits far below 20, so a quiet host gets the bounded overcommit, and no verify on its own approaches 70. The thresholds of 20 and 70 are confirmed (2026-11-10) and stay unchanged. The readings are in `.omo/evidence/test-qa-revamp/task-19-calibration-quiet.md`.
 
 The store is written under a directory lock. Every mutation runs in one transaction. A grant is written as a lease, then checked again, and removed if the check fails. A lease is reclaimed only after its owner's death is observed and a process snapshot shows the workload is gone. Snapshots are rate-capped at one per 2 s per observer, and each snapshot process has a 30 s timeout (`Store.canRefresh` in `packages/cpu-slots/src/store.ts`, `PROCESS_LOOKUP_TIMEOUT_MS` in `processes.ts`). A snapshot takes about 0.5 s; the timeout only cuts off a hung PowerShell, because a timed-out lookup is retried and its work is lost.
 
