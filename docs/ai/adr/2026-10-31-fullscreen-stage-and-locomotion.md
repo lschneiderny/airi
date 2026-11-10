@@ -117,5 +117,4 @@ The hit-test readback passes its gate with a thin margin. The frame rate on this
 - Landed: the second wander on arrival. A wander deadline that fell due while another goal was walking stayed due, so the wander fired in the frame the goal ended. `decideBody` now draws a new deadline from the arrival instead.
 - Landed: roaming at the default height. At 560 DIP on a 1440 DIP wide work area, three leg lengths of ground fit on neither side of home. When three legs do not fit, the minimum wander distance is now half the longer free side, but never less than one leg length.
 - Extract the host-service wiring duplicated by `index.vue` and `stage.vue` (roughly 105 lines) into a shared composable after this plan.
-- Make the `qa-tools` pnpm resolver work with a standalone pnpm binary, such as the one mise installs, so `qa:stage measure --pairs` launches without a scratch shim.
 - Luke-run checks that agents could not perform on this host: the two-display home switch, real OS clicks through the stage with another app frontmost, an OS-level screen capture, and the Windows re-measure of the spike and gates, including the 125 % and 150 % display scales.
