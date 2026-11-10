@@ -43,6 +43,7 @@
     "std-env": "catalog:"
   },
   "devDependencies": {
+    "@proj-airi/cpu-slots": "workspace:^",
     "@proj-airi/electron-eventa": "workspace:^",
     "@proj-airi/stage-shared": "workspace:^",
     "vue": "catalog:"

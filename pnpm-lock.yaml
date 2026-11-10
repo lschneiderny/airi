@@ -2964,6 +2964,9 @@ importers:
       '@moeru/std':
         specifier: 'catalog:'
         version: 0.1.0-beta.17
+      '@proj-airi/cpu-slots':
+        specifier: workspace:^
+        version: link:../cpu-slots
       async-mutex:
         specifier: 'catalog:'
         version: 0.5.0
@@ -2998,6 +3001,9 @@ importers:
         specifier: 'catalog:'
         version: 4.2.0
     devDependencies:
+      '@proj-airi/cpu-slots':
+        specifier: workspace:^
+        version: link:../cpu-slots
       '@proj-airi/electron-eventa':
         specifier: workspace:^
         version: link:../electron-eventa
