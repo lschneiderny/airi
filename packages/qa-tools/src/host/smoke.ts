@@ -3,6 +3,7 @@ import type { MotionQaState } from '@proj-airi/stage-shared/motion-scenario'
 
 import { isDeepStrictEqual } from 'node:util'
 
+import { errorMessageFrom } from '@moeru/std'
 import { HOST_SIGNALS, HostReasons, idleAdvances, LINUX_DESKTOP_BACKENDS } from '@proj-airi/stage-shared/host-capabilities'
 
 import { isWaylandSession } from './wayland-session'
@@ -321,7 +322,22 @@ export async function focusRoundTrip(options: {
   return `focus left AIRI for ${away.exeName ?? 'an unnamed window'}, then returned to an AIRI window (${back.exeName ?? 'unnamed'})`
 }
 
-/** Samples the bridge every 5 seconds for 180 seconds. The clock, bridge and `drive` are external boundaries, stubbed in unit tests. */
+/** A bridge read that timed out: no sample was recorded for it. `atMs` is null before the first sample. */
+export interface MissedSample {
+  readonly atMs: number | null
+  readonly message: string
+}
+
+/** A run of this many timed-out bridge reads in a row ends the observation as broken. */
+export const MAX_CONSECUTIVE_MISSED_SAMPLES = 3
+
+const timedOutPattern = /timed out after \d+ ?ms/
+
+/**
+ * Samples the bridge every 5 seconds for 180 seconds. The clock, bridge and `drive` are external boundaries, stubbed in
+ * unit tests. A read that times out (a slow CDP evaluate under host load) is recorded in `missed` and retried at once;
+ * the evaluation sees only the samples that arrived. Any other error, or the third timeout in a row, ends the run.
+ */
 export async function observeHost(options: {
   readState: () => Promise<Pick<MotionQaState, 'host' | 'desktopIdleSeconds' | 'performanceMode' | 'foreground'>>
   now: () => number
@@ -330,11 +346,27 @@ export async function observeHost(options: {
   samples: HostSample[]
   /** Runs after each recorded sample except the last, with that sample's index; the next sample waits for it. */
   drive?: (index: number) => Promise<void>
+  missed?: MissedSample[]
 }): Promise<void> {
   let start: number | undefined
+  let consecutiveMissed = 0
   for (;;) {
     options.signal.throwIfAborted()
-    const state = await options.readState()
+    let state: Awaited<ReturnType<typeof options.readState>>
+    try {
+      state = await options.readState()
+    }
+    catch (error) {
+      const message = errorMessageFrom(error) ?? ''
+      if (options.signal.aborted || !timedOutPattern.test(message))
+        throw error
+      options.missed?.push({ atMs: start === undefined ? null : options.now() - start, message })
+      consecutiveMissed += 1
+      if (consecutiveMissed >= MAX_CONSECUTIVE_MISSED_SAMPLES)
+        throw error
+      continue
+    }
+    consecutiveMissed = 0
     const sampledAt = options.now()
     // The first request has variable latency; start the interval at its completed sample.
     start ??= sampledAt

@@ -19,7 +19,7 @@ Run `pnpm qa:doctor` first. It checks whether the current worktree can produce m
 | `pnpm qa:motion gate <emotion\|liveliness> --level t2 --rig forbooth [options]` | Run the selected gate against the headless ForBOOTH rig and Cubism Core. Set `AIRI_QA_RIG_FORBOOTH`; set `AIRI_QA_CUBISM_CORE` when the core is not at the checkout's default path. |
 | `pnpm qa:motion t3 --rig forbooth --scenario <builtin:name\|file.json> [--keep-open]` | Drive a scenario in the rendered Electron app and collect a Natural trace and screenshots. |
 | `pnpm qa:host smoke [--xwayland] [--expect-idle verified\|unverified] [--expect-backend <backend>] [--expect-verified <proofs>]` | Launch a temporary Electron profile and compare host signals with the runner's capabilities, then observe idle delivery every 5 seconds for 180 seconds. On Linux, also check the desktop backend and the signals it verifies. |
-| `pnpm qa:smoke [--model <path>] [--stage-host window\|desktop] [--settle <seconds>] [--allow <json>] [--out <dir>]` | Start the app from a fresh profile and fail on any renderer exception, `console.error`, browser error, or main-process error in any window. See [Clean-start smoke](#clean-start-smoke). |
+| `pnpm qa:smoke [--model <path>] [--stage-host window\|desktop] [--expect-host window\|desktop] [--xwayland] [--electron-arg=<switch>...] [--settle <seconds>] [--allow <json>] [--out <dir>]` | Start the app from a fresh profile and fail on any renderer exception, `console.error`, browser error, or main-process error in any window. See [Clean-start smoke](#clean-start-smoke). |
 | `pnpm qa:app run --model <path> --say <text> [options]` | Run a disposable experience session: replayed chat and speech, real model import, events, and a screenshot. See [App experience sessions](#app-experience-sessions). |
 | `pnpm qa:mcp` | Serve the `airi-qa` MCP server over stdio, so an agent can start the app, chat, screenshot, and read errors through tools. See [Agent MCP server](#agent-mcp-server). |
 | `pnpm qa:motion validate-scorer --level t1 [--sections aa,zero,mutations,unmutated,determinism] [--seeds N] [--workers N] [--timeout-minutes N]` | Evaluate scorer false positives, mutation detection, unmutated gate power, and determinism. A missed validation threshold exits 1 by design. |
@@ -59,6 +59,8 @@ In a headless `qa:display --compositor sway` session, run `pnpm qa:host smoke --
 - Idle: on 2026-11-09 idle stayed unverified for the whole observation, so the run expects `--expect-idle unverified`.
 
 The command prints a JSON report and saves `report.json` and `app.log` under the reported `.temp/qa/` run directory. Every sample includes its elapsed time, raw host snapshot, idle reading, and resolved performance mode. A live idle sensor must advance; native Wayland may stay unverified with null idle readings or promote once to live and then advance. Runtime hook or foreground binding failures fail the signal comparison and name their reason.
+
+A bridge read that times out under host load (a slow CDP evaluate) is not a broken run. It is listed in `report.json` `missedSamples` with its elapsed time and message, and the next read follows at once. The evaluation sees only the samples that arrived, with its checks unchanged, so the observation must still span 180 seconds. Three timed-out reads in a row, or any other bridge error, end the run as `run-failed`.
 
 Exit codes are 0 for pass, 1 for a failed check or interrupted run, and 2 for refused setup or invalid arguments. SIGINT and SIGTERM stop observation and finish teardown before releasing CPU leases; repeated interrupts leave teardown running. Only Windows parks the cursor before observation. macOS receives no harness input; Linux receives only the evidence steps described above. The smoke refuses a second Electron session in its worktree and always removes its temporary profile after stopping its app tree.
 
@@ -221,15 +223,29 @@ pnpm -F @proj-airi/qa-tools exec vitest run --project node src/llm
 pnpm qa:smoke                                              # Linux: pnpm qa:display run -- pnpm --silent qa:smoke (required; see Linux host session guard)
 pnpm qa:smoke --model /models/character.zip --settle 10
 pnpm qa:smoke --model /models/miku/miku.pmx --stage-host desktop   # the full-screen desktop stage instead of the classic window
+pnpm qa:smoke --model /models/miku/miku.pmx --stage-host desktop --expect-host window   # a platform whose gate keeps the classic window (sway)
+pnpm qa:smoke --xwayland                                   # launch through dev:xwayland inside a Wayland session
 ```
 
-By default the smoke forces the classic window (`AIRI_STAGE_HOST=window`). `--stage-host desktop` instead saves the Experimental 3D stage setting, the desktop mode, and an MMD renderer in the temporary profile's `stage-config.json`, so the launch goes through `selectHostMode` and its platform gate, and attaches to the `#/stage` page. It needs an MMD `--model`. On a platform where the gate keeps the classic window, the run fails because no `#/stage` page appears.
+By default the smoke forces the classic window (`AIRI_STAGE_HOST=window`). `--stage-host desktop` instead saves the Experimental 3D stage setting, the desktop mode, and an MMD renderer in the temporary profile's `stage-config.json`, so the launch goes through `selectHostMode` and its platform gate, and attaches to the `#/stage` page. It needs an MMD `--model`.
+
+`--expect-host` names the host the run must end in; it defaults to `--stage-host`. On a platform where the gate keeps the classic window, such as a `qa:display --compositor sway` session, pass `--stage-host desktop --expect-host window`: the run then attaches to the classic `#/` window, imports the model there, and passes only when the main process logged `Building the classic window host`, the collector attached to a `#/` window, and no `#/stage` window existed at any time during the run. Every run checks the same three facts for its expected host (`#/stage` instead of `#/` for the desktop stage), so a run that silently ended in the other host fails. `--expect-host desktop` needs `--stage-host desktop`. The summary reports `expectHost`.
+
+`--xwayland` launches `dev:xwayland` (`--ozone-platform=x11`) instead of `dev`, and its run directory ends in `-clean-start-xwayland`. `--electron-arg=<switch>` (repeatable; write it with `=` because the value starts with `--`) appends one Chromium or Electron switch to the Electron command line through electron-vite's `--` passthrough. The X11 QA display (`qa:display --compositor x11`, Xvfb with Openbox) has no GPU, and WebGL fails there with `WebGL unsupported` or `WebGL context creation failed`, so run the smoke there with software GL:
+
+```bash
+pnpm qa:display run --name x11 -- pnpm --silent qa:smoke \
+  --electron-arg=--use-gl=angle --electron-arg=--use-angle=swiftshader \
+  --electron-arg=--enable-unsafe-swiftshader --electron-arg=--ignore-gpu-blocklist
+```
+
+The session itself does not add these switches; the smoke passes them only when asked, so a run on a GPU session keeps the real GL path.
 
 While the app runs, a CDP collector attaches to every window, including windows opened later, and records uncaught exceptions, unhandled rejections, `console.error` and failed `console.assert` calls, and browser error log entries such as failed resource loads. Enabling the domains replays what V8 buffered before the attach, so errors from the first paint count. After teardown, the main-process log is scanned for app logger `[error]` lines, uncaught exceptions, and unhandled rejections. Chromium's own `:ERROR:` lines and the renderer errors that Vite echoes as `[vite] (client)` are excluded.
 
 Any error that does not match an entry in `fixtures/smoke/allowed-errors.json` (or `--allow <json>`) fails the run, and so does a window the collector could not attach to. Each allowlist entry names its `kind` (`exception`, `console`, `log`, or `main`), a regular-expression `pattern`, a `reason`, the date it was `added`, and when to remove it (`removeWhen`). Add an entry only for a concrete, understood cause, as in the known-failures registry; an unexplained error is a finding.
 
-Stdout is one JSON line: `ok`, `runDir`, `failure`, the watched `windows`, counts of unexpected `errors` and `mainErrors`, `allowed`, `unwatchedWindows`, the `firstErrors`, and the `screenshot`. The run directory keeps `errors.json` (every error with its window, kind, text, and source), `diagnostics.json`, `stage.png`, and `app.log`. Exit 0 means a clean start, 1 means an unexpected error or a broken run, 2 means invalid arguments or setup, and 130 means interruption.
+Stdout is one JSON line: `ok`, `runDir`, `failure`, `expectHost`, the watched `windows`, counts of unexpected `errors` and `mainErrors`, `allowed`, `unwatchedWindows`, the `firstErrors`, and the `screenshot`. The run directory keeps `errors.json` (every error with its window, kind, text, and source), `diagnostics.json`, `stage.png`, and `app.log`. Exit 0 means a clean start, 1 means an unexpected error or a broken run, 2 means invalid arguments or setup, and 130 means interruption.
 
 On 2026-11-09 a run on Linux in `qa:display` watched the stage, `#/inlay`, and beat-sync windows and found no errors. With a probe that threw an early exception, logged `console.error`, and rejected a promise in the renderer entry, it failed and reported all three in both app windows.
 

@@ -21,6 +21,7 @@ import { completeOnboarding } from '../t3/onboarding'
 import { closeBrowser } from '../t3/run-t3'
 import { captureStagePng } from '../t3/screenshot'
 import { findWorktreeAppProcesses, teardownRun, trackTree } from '../t3/teardown'
+import { checkHostMode } from './host-mode'
 import { PageErrorCollector } from './page-errors'
 import { parseAllowedErrors, scanMainLog, triageErrors } from './triage'
 
@@ -35,7 +36,7 @@ export async function runSmoke(options: SmokeOptions, repoRoot: string, signal: 
   const selfPids = [process.pid, process.ppid]
   if (findWorktreeAppProcesses(await listLiveProcesses(), repoRoot, selfPids).length)
     throw new Error('Refusing to launch while this worktree already has an Electron session')
-  const run = createRun({ tool: 'smoke', label: 'clean-start', repoRoot, outDir: options.out })
+  const run = createRun({ tool: 'smoke', label: options.xwayland ? 'clean-start-xwayland' : 'clean-start', repoRoot, outDir: options.out })
   const profileDir = run.path('profile')
   mkdirSync(profileDir)
   const details: Record<string, unknown> = { options }
@@ -63,9 +64,18 @@ export async function runSmoke(options: SmokeOptions, repoRoot: string, signal: 
     // `selectHostMode` and its platform gate. An empty AIRI_STAGE_HOST is not a mode, so it overrides nothing.
     if (desktop)
       writeFileSync(join(profileDir, 'stage-config.json'), `${JSON.stringify({ experimental: true, mode: 'desktop', activeRenderer: 'mmd' })}\n`)
-    app = await launchStageTamagotchi({ repoRoot, profileDir, logFile: run.path('app.log'), list: listLiveProcesses, env: { AIRI_STAGE_HOST: desktop ? '' : 'window' } })
+    app = await launchStageTamagotchi({
+      repoRoot,
+      profileDir,
+      logFile: run.path('app.log'),
+      list: listLiveProcesses,
+      env: { AIRI_STAGE_HOST: desktop ? '' : 'window' },
+      script: options.xwayland ? 'dev:xwayland' : 'dev',
+      electronArgs: options.electronArgs,
+    })
     run.recordProcess({ rootPid: app.root.pid, created: app.root.created, commandLine: app.root.commandLine })
-    const connected = await bounded(connectStage(app, desktop ? desktopStageTargetPattern : stageTargetPattern))
+    // The run attaches to the stage window of the host it expects: a gated platform keeps the classic `#/` window.
+    const connected = await bounded(connectStage(app, options.expectHost === 'desktop' ? desktopStageTargetPattern : stageTargetPattern))
     stage = connected.stage
     browserUrl = connected.browserUrl
     tracked = trackTree(await listLiveProcesses(), app.root)
@@ -125,7 +135,13 @@ export async function runSmoke(options: SmokeOptions, repoRoot: string, signal: 
     stage?.close()
   }
 
-  const mainLines = existsSync(run.path('app.log')) ? scanMainLog(readFileSync(run.path('app.log'), 'utf8')) : []
+  const appLog = existsSync(run.path('app.log')) ? readFileSync(run.path('app.log'), 'utf8') : ''
+  const mainLines = scanMainLog(appLog)
+  if (failure === undefined && app) {
+    const hostModeFailure = checkHostMode(options.expectHost, appLog, collector?.targets ?? [])
+    if (hostModeFailure)
+      failure = hostModeFailure
+  }
   const triage = triageErrors(collector?.errors ?? [], mainLines, allowList)
   const attachErrors = collector?.attachErrors ?? []
   const clean = triage.unexpected.length === 0 && triage.mainUnexpected.length === 0 && attachErrors.length === 0
@@ -133,6 +149,7 @@ export async function runSmoke(options: SmokeOptions, repoRoot: string, signal: 
     ok: failure === undefined && clean,
     runDir: run.dir,
     failure: failure ?? null,
+    expectHost: options.expectHost,
     windows: collector?.targets ?? [],
     errors: triage.unexpected.length,
     mainErrors: triage.mainUnexpected.length,

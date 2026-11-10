@@ -1,11 +1,11 @@
 import type { HostCapabilities, HostFacts, HostId, LinuxDesktopFacts } from '@proj-airi/stage-shared/host-capabilities'
 
-import type { HostSample, LinuxDesktopExpectation } from './smoke'
+import type { HostSample, LinuxDesktopExpectation, MissedSample } from './smoke'
 
 import { capabilitiesForHost, HostReasons, resolveHostCapabilities } from '@proj-airi/stage-shared/host-capabilities'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { evaluateHostSmoke, expectedHostFacts, focusRoundTrip, hostSmokeExpectation, linuxDesktopFacts, linuxDriveSteps, observeHost, parseLinuxDesktopExpectation } from './smoke'
+import { evaluateHostSmoke, expectedHostFacts, focusRoundTrip, hostSmokeExpectation, linuxDesktopFacts, linuxDriveSteps, MAX_CONSECUTIVE_MISSED_SAMPLES, observeHost, parseLinuxDesktopExpectation } from './smoke'
 
 describe('parseLinuxDesktopExpectation', () => {
   it('parses the backend and verified list on Linux', () => {
@@ -314,6 +314,68 @@ describe('host smoke observation', () => {
       samples,
     })
     expect(evaluateHostSmoke({ expected: capabilitiesForHost('windows'), samples }).exitCode).toBe(0)
+  })
+
+  describe('slow samples', () => {
+    const timeout = () => new Error('CDP Runtime.evaluate (request 30) timed out after 10000ms')
+
+    /** Each bridge read takes 200 ms of fake time; `fail` decides which reads reject after 10 s instead. */
+    async function observeWith(fail: (index: number) => Error | undefined) {
+      vi.useFakeTimers({ now: 0 })
+      try {
+        let index = 0
+        const samples: HostSample[] = []
+        const missed: MissedSample[] = []
+        const observed = observeHost({
+          readState: () => new Promise((resolve, reject) => {
+            const error = fail(index++)
+            if (error)
+              setTimeout(reject, 10_000, error)
+            else
+              setTimeout(resolve, 200, { host: capabilitiesForHost('windows'), desktopIdleSeconds: Date.now() / 1_000, performanceMode: 'idle', foreground: null })
+          }),
+          now: () => Date.now(),
+          sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+          signal: new AbortController().signal,
+          samples,
+          missed,
+        })
+        const outcome = observed.then(() => undefined, (error: unknown) => error)
+        await vi.runAllTimersAsync()
+        return { error: await outcome, samples, missed }
+      }
+      finally {
+        vi.useRealTimers()
+      }
+    }
+
+    it('records one timed-out sample as missed and keeps observing for 180 seconds', async () => {
+      const { error, samples, missed } = await observeWith(index => index === 5 ? timeout() : undefined)
+      expect(error).toBeUndefined()
+      expect(missed).toEqual([{ atMs: expect.any(Number), message: timeout().message }])
+      expect(missed[0].atMs).toBeGreaterThan(20_000)
+      expect(samples.at(-1)!.atMs).toBeGreaterThanOrEqual(180_000)
+      expect(evaluateHostSmoke({ expected: capabilitiesForHost('windows'), samples }).failures).toEqual([])
+    })
+
+    it(`fails after ${MAX_CONSECUTIVE_MISSED_SAMPLES} consecutive timed-out samples`, async () => {
+      const { error, missed } = await observeWith(index => index >= 3 ? timeout() : undefined)
+      expect(error).toEqual(timeout())
+      expect(missed).toHaveLength(MAX_CONSECUTIVE_MISSED_SAMPLES)
+    })
+
+    it('resets the bound after a sample arrives', async () => {
+      const { error, missed } = await observeWith(index => [3, 4, 6, 7].includes(index) ? timeout() : undefined)
+      expect(error).toBeUndefined()
+      expect(missed).toHaveLength(4)
+    })
+
+    it('fails at once on an error that is not a timeout', async () => {
+      const exited = new Error('The app exited (code 1) while waiting for host state')
+      const { error, missed } = await observeWith(index => index === 2 ? exited : undefined)
+      expect(error).toBe(exited)
+      expect(missed).toEqual([])
+    })
   })
 
   it('drives verification once per sample index after recording it', async () => {
