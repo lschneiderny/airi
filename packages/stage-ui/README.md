@@ -550,6 +550,8 @@ Each chat request sends the worded mood and the relationship stage as a per-requ
 
 The situation bridge feeds touch, reach-out, and extraction events into the state. The situation gate's tick takes the mood factor from the reading's urge factor, so a better mood makes an unprompted turn slightly more likely and a low or tense mood can make it pointed.
 
+The character-state store depends on the card store, never the reverse. A store that keeps data per card registers a listener with `useAiriCardStore().onCardRemoval`; the character-state store uses it to forget the record of a deleted card.
+
 The stage drives the resting face from the mood through the Live2D and MMD adapters. A devtools page lets you inspect the current reading.
 
 The [layered character state ADR](../../docs/ai/adr/2026-11-03-layered-character-state.md) records the design and its known gaps.

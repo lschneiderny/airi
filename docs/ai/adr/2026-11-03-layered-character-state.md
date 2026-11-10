@@ -74,6 +74,12 @@ A mood cue changes the stage contract, so `STAGE_CONTRACT_EN_SHA256` changes whe
 
 Every number in this ADR is a starting value. Appendix A of the plan lists the starting constants and formulas. The constants live in a settings module, not in stored records, so tuning them needs no migration.
 
+### Store ownership (2026-11-10)
+
+The character-state store depends on the card store, and the card store never calls the character-state store.
+
+- **Card deletion.** The card store owns the card lifecycle and knows no store that keeps data per card. `removeCard` runs in the leader and awaits the listeners of `onCardRemoval` before it drops the card. The leading character-state store registers one: it removes the card's record and cancels a pending save that would write the record back. A listener that rejects keeps the card. Before this change the card store resolved the character-state store inside `removeCard`, so the two stores called each other.
+
 ## Constants
 
 The starting values live in `packages/stage-shared/src/character-state/settings.ts`. The table below lists every leaf of `CHARACTER_STATE_SETTINGS` as it ships. Durations are in milliseconds: an hour is 3600000 and a day is 86400000. The 81 values that Appendix A of the plan states were checked against the module, and none differs. Values the module sets without an Appendix A entry, such as buffers, row limits, and sentence text, are listed too.

@@ -5,6 +5,7 @@ import type { AiriCard } from './airi-card'
 import { DEFAULT_CHARACTER_PROFILE, initialCharacterState } from '@proj-airi/stage-shared/character-state'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 
 import { characterStateRepo } from '../../database/repos/character-state.repo'
 import { memoryRepo } from '../../database/repos/memory.repo'
@@ -100,6 +101,23 @@ vi.mock('vue-i18n', () => ({
     t: (key: string) => key,
   }),
 }))
+
+/** A synced runtime that reports a fixed role on subscribe, like the plugin. */
+function leadershipRuntime(isLeader: boolean): SyncedPiniaRuntime {
+  return {
+    dispose: vi.fn(),
+    getLeaderId: vi.fn(),
+    getParticipantCount: vi.fn(() => 1),
+    isLeader: () => isLeader,
+    onCoordinationChange: vi.fn(() => vi.fn()),
+    onLeadershipChange: vi.fn((listener: (isLeader: boolean) => void) => {
+      listener(isLeader)
+      return vi.fn()
+    }),
+    participantId: 'airi-card-test',
+    plugin: vi.fn(),
+  }
+}
 
 /**
  * @example
@@ -651,22 +669,9 @@ describe('airi-card store', () => {
     const cardStore = useAiriCardStore()
     await cardStore.initialize()
     cardStore.cards.set('x', { ...cardStore.builtInCard, name: 'X' })
-    // Card deletion routes the removal to the leader, so this window leads.
+    // Card deletion runs in the leader, whose character state store listens for it, so this window leads.
     const characterState = useCharacterStateStore()
-    const runtime: SyncedPiniaRuntime = {
-      dispose: vi.fn(),
-      getLeaderId: vi.fn(),
-      getParticipantCount: vi.fn(() => 1),
-      isLeader: () => true,
-      onCoordinationChange: vi.fn(() => vi.fn()),
-      onLeadershipChange: vi.fn((listener: (isLeader: boolean) => void) => {
-        listener(true)
-        return vi.fn()
-      }),
-      participantId: 'airi-card-test',
-      plugin: vi.fn(),
-    }
-    characterState.initialize(runtime)
+    characterState.initialize(leadershipRuntime(true))
 
     try {
       expect(await cardStore.removeCard('x')).toBe(true)
@@ -678,6 +683,82 @@ describe('airi-card store', () => {
     finally {
       characterState.dispose()
     }
+  })
+
+  // Deleting the active card switches to the default card, and that switch saves the record it leaves. A save still
+  // pending for the deleted card would write its record back right after the removal.
+  it('drops the pending character state save of a deleted active card', async () => {
+    await characterStateRepo.clear()
+    const cardStore = useAiriCardStore()
+    await cardStore.initialize()
+    cardStore.cards.set('x', { ...cardStore.builtInCard, name: 'X' })
+    await cardStore.activateCard('x')
+    const characterState = useCharacterStateStore()
+    characterState.initialize(leadershipRuntime(true))
+
+    try {
+      await characterState.ready()
+      expect(characterState.cardId).toBe('x')
+      expect(await characterState.apply({ kind: 'touch-pleasant', id: 'touch-1', atMs: Date.now() })).toBe(true)
+      expect(await characterStateRepo.load('x')).toBeNull()
+
+      expect(await cardStore.removeCard('x')).toBe(true)
+      await nextTick()
+      await characterState.ready()
+
+      expect(characterState.cardId).toBe('default')
+      expect(await characterStateRepo.load('x')).toBeNull()
+    }
+    finally {
+      characterState.dispose()
+    }
+  })
+
+  it('leaves stored character state alone when the character state store of this window does not lead', async () => {
+    await characterStateRepo.clear()
+    await characterStateRepo.save(initialCharacterState('x', DEFAULT_CHARACTER_PROFILE, characterStateContext(Date.now())))
+    const cardStore = useAiriCardStore()
+    await cardStore.initialize()
+    cardStore.cards.set('x', { ...cardStore.builtInCard, name: 'X' })
+    const characterState = useCharacterStateStore()
+    characterState.initialize(leadershipRuntime(false))
+
+    try {
+      expect(await cardStore.removeCard('x')).toBe(true)
+      await characterState.ready()
+
+      expect(await characterStateRepo.load('x')).not.toBeNull()
+    }
+    finally {
+      characterState.dispose()
+    }
+  })
+
+  it('awaits every removal listener before it drops the card, and keeps the card when one rejects', async () => {
+    const cardStore = useAiriCardStore()
+    await cardStore.initialize()
+    cardStore.cards.set('x', { ...cardStore.builtInCard, name: 'X' })
+    const cleanup = Promise.withResolvers<void>()
+    const seen: Array<{ cardId: string, cardPresent: boolean }> = []
+    const stop = cardStore.onCardRemoval(async (cardId) => {
+      seen.push({ cardId, cardPresent: cardStore.cards.has(cardId) })
+      await cleanup.promise
+    })
+
+    const removal = cardStore.removeCard('x')
+    await vi.waitFor(() => expect(seen).toEqual([{ cardId: 'x', cardPresent: true }]))
+    expect(cardStore.cards.has('x')).toBe(true)
+    cleanup.resolve()
+    expect(await removal).toBe(true)
+    expect(cardStore.cards.has('x')).toBe(false)
+
+    stop()
+    cardStore.cards.set('y', { ...cardStore.builtInCard, name: 'Y' })
+    cardStore.onCardRemoval(() => Promise.reject(new Error('The record could not be removed')))
+    await expect(cardStore.removeCard('y')).rejects.toThrow('The record could not be removed')
+    expect(cardStore.cards.has('y')).toBe(true)
+    // The removed listener was not asked again.
+    expect(seen).toHaveLength(1)
   })
 
   it('keeps the character profile and unknown AIRI extension fields of an added card', async () => {

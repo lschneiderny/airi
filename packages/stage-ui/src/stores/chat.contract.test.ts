@@ -317,6 +317,8 @@ vi.mock('./modules/airi-card', () => ({
     activeCardId: 'alice',
     // No card carries a character profile, so the character-state store uses the default one.
     cards: new Map(),
+    // A leading character-state store subscribes to card deletion; no test here deletes a card.
+    onCardRemoval: () => () => {},
     getCard: () => undefined,
     getSystemPrompt: (id: string) => cardPrompts.get(id) ?? 'system prompt',
     getModules: (id: string) => ({

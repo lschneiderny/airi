@@ -18,7 +18,6 @@ import { captureAnalyticsEvent } from '../../libs/product-signals'
 import { wakeWordSchema } from '../../libs/voice/wake-words'
 import { clearModuleSelections, resolveModuleSelection } from '../../services/airi-card-modules'
 import { normalizeContextWindow } from '../../types/airiCard'
-import { useCharacterStateStore } from '../character-state'
 import { useMemoryStore } from '../memory'
 import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
@@ -70,6 +69,8 @@ export const useAiriCardStore = defineStore('airi-card', () => {
   let appliedModules: AiriExtension['modules'] | undefined
   let followingInheritedSettings = false
   const storeScope = getCurrentScope()
+  /** Run before a card is deleted; see {@link onCardRemoval}. */
+  const cardRemovalListeners = new Set<(cardId: string) => Promise<void> | void>()
 
   const activeCard = computed(() => cards.value.get(activeCardId.value))
   function useRuntimeModuleStores() {
@@ -183,12 +184,8 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     const memory = useMemoryStore(pinia)
     await memory.ready()
     await Promise.all(memory.entries.filter(entry => entry.persona === id).map(entry => memory.remove(entry)))
-    // NOTICE:
-    // The character store is resolved here, at call time, instead of at store creation.
-    // The card store and the character-state store call each other, so creating either one inside the other's setup would be circular.
-    // The call is routed to the leader, which also drops a pending save that would write the record back (packages/stage-ui/src/stores/character-state).
-    // Removal condition: card delete no longer needs the character store at call time, that is, the card-store <-> character-state call-time cycle is removed.
-    await useCharacterStateStore(pinia).forget(id)
+    // A listener that rejects keeps the card, so its data and the card stay together.
+    await Promise.all(Array.from(cardRemovalListeners, listener => listener(id)))
 
     const removed = cards.value.delete(id)
     if (!removed)
@@ -221,6 +218,20 @@ export const useAiriCardStore = defineStore('airi-card', () => {
       await applyActiveCardSettings(card)
 
     return true
+  }
+
+  /**
+   * Calls `listener` with the id of a card that {@link removeCard} is about to delete, so a store that keeps data per
+   * card drops it with the card. The card store knows none of those stores; they depend on it, never the reverse.
+   *
+   * `removeCard` awaits every listener before it drops the card. It runs in the synchronization leader, so only the
+   * listeners of the leader window are called. The listeners are this window's memory and never replicate.
+   *
+   * @returns A function that removes the listener.
+   */
+  function onCardRemoval(listener: (cardId: string) => Promise<void> | void): () => void {
+    cardRemovalListeners.add(listener)
+    return () => cardRemovalListeners.delete(listener)
   }
 
   const getCard = (id: string) => {
@@ -654,6 +665,7 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     builtInCard,
     addCard,
     removeCard,
+    onCardRemoval,
     updateCard,
     updateActiveCardConsciousness,
     updateActiveCardDisplayModel,

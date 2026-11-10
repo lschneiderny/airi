@@ -23,6 +23,8 @@ vi.mock('./modules/airi-card', async () => {
   return {
     useAiriCardStore: defineStore('airi-card', {
       state: () => ({ activeCardId: 'default', cards: new Map<string, unknown>() }),
+      // A leading character state store subscribes to card deletion; no test here deletes a card.
+      actions: { onCardRemoval: () => () => {} },
     }),
   }
 })
