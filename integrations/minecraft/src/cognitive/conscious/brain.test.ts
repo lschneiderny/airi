@@ -1,3 +1,5 @@
+import type { MineflayerWithAgents } from '../types'
+
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
@@ -696,9 +698,14 @@ describe('brain queue coalescing', () => {
   })
 })
 
+// The turn-order regression drives these private entry points directly. Const keys keep the
+// members' declared types; literal bracket access would fail `dot-notation`.
+const enqueueEventKey = 'enqueueEvent'
+const processEventKey = 'processEvent'
+
 describe('brain control action queue', () => {
   it('does not block turn completion while control action executes in worker', async () => {
-    const deps: any = createDeps('await goToPlayer({ player_name: "Alex", closeness: 2 })')
+    const deps: ConstructorParameters<typeof Brain>[0] = createDeps('await goToPlayer({ player_name: "Alex", closeness: 2 })')
     const actionStarted = Promise.withResolvers<void>()
     const action = Promise.withResolvers<string>()
     const completionOrder: string[] = []
@@ -713,9 +720,9 @@ describe('brain control action queue', () => {
       return 'ok'
     })
 
-    const brain: any = new Brain(deps)
-    brain.enqueueEvent = vi.fn(async () => undefined)
-    const processing = brain.processEvent({}, createPerceptionEvent()).then(() => {
+    const brain = new Brain(deps)
+    brain[enqueueEventKey] = vi.fn(async () => undefined)
+    const processing = brain[processEventKey]({} as MineflayerWithAgents, createPerceptionEvent()).then(() => {
       completionOrder.push('turn')
     })
     let safetyTimeout: ReturnType<typeof setTimeout> | undefined
