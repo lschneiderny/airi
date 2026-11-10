@@ -30,6 +30,86 @@ describe('shouldReportPointerSamples', () => {
 })
 
 describe('createPointerSampleReporter', () => {
+  it('discards the first XWayland move on each window entry before throttling fresh samples', () => {
+    const target = new EventTarget()
+    const report = vi.fn()
+    let now = 0
+    const stop = createPointerSampleReporter({
+      target,
+      report,
+      now: () => now,
+      wallClock: () => now,
+      snapshot: () => linux({ kind: 'live' }, 'kwin', 'linux-xwayland'),
+    })
+    // Todo 32 cross-1, cross-2 and cross-2-back: entry moves replay cached positions.
+    for (const [at, x, y, entry] of [
+      [1000, 960, 540, true],
+      [1300, 564, 690, false],
+      [40097, 564, 690, true],
+      [42065, 711, 700, false],
+      [42115, 706, 699, false],
+      [42165, 701, 699, false],
+      [42215, 696, 698, false],
+      [42265, 691, 698, false],
+      [42315, 685, 697, false],
+      [49903, 685, 697, true],
+      [49953, 900, 500, false],
+    ] as const) {
+      now = at
+      if (entry)
+        target.dispatchEvent(Object.assign(new Event('pointerover'), { relatedTarget: null }))
+      move(target, x, y)
+    }
+    stop()
+    expect(report.mock.calls.map(([sample]) => sample)).toEqual([
+      { clientX: 564, clientY: 690, atMs: 1300 },
+      { clientX: 711, clientY: 700, atMs: 42065 },
+      { clientX: 685, clientY: 697, atMs: 42315 },
+      { clientX: 900, clientY: 500, atMs: 49953 },
+    ])
+  })
+
+  it.each(['linux-wayland', 'linux-x11'] as const)('keeps the first entry sample on %s', (host) => {
+    const target = new EventTarget()
+    const report = vi.fn()
+    const stop = createPointerSampleReporter({
+      target,
+      report,
+      now: () => 1000,
+      wallClock: () => 1000,
+      snapshot: () => linux({ kind: 'live' }, 'kwin', host),
+    })
+    target.dispatchEvent(Object.assign(new Event('pointerover'), { relatedTarget: null }))
+    move(target, 3, 4)
+    stop()
+    expect(report.mock.calls).toEqual([[{ clientX: 3, clientY: 4, atMs: 1000 }]])
+  })
+
+  it('keeps sustained offset samples after an XWayland entry and ignores child transitions', () => {
+    const target = new EventTarget()
+    const report = vi.fn()
+    let now = 1000
+    const stop = createPointerSampleReporter({
+      target,
+      report,
+      now: () => now,
+      wallClock: () => now,
+      snapshot: () => linux({ kind: 'live' }, 'kwin', 'linux-xwayland'),
+    })
+    target.dispatchEvent(Object.assign(new Event('pointerover'), { relatedTarget: null }))
+    move(target, 960, 540)
+    now += 50
+    move(target, 3, 4)
+    now += 300
+    target.dispatchEvent(Object.assign(new Event('pointerover'), { relatedTarget: target }))
+    move(target, 4, 5)
+    stop()
+    expect(report.mock.calls).toEqual([
+      [{ clientX: 3, clientY: 4, atMs: 1050 }],
+      [{ clientX: 4, clientY: 5, atMs: 1350 }],
+    ])
+  })
+
   it('sends at most one sample per 250 ms, only while samples are wanted', () => {
     const target = new EventTarget()
     const report = vi.fn()

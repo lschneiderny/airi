@@ -1,5 +1,7 @@
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { createPointerSampleReporter } from '../../../../../../../packages/electron-vueuse/src/composables/pointer-samples'
 import { CoordinateVerifier } from './verification'
 
 const revocationLine = 'linux-desktop: coordinate mismatch revoked verification'
@@ -121,6 +123,27 @@ describe('coordinateVerifier', () => {
       verifier.comparePointer(window, { clientX: 0, clientY: 0, atMs: now })
       verifier.comparePointer(window, { clientX: 0, clientY: 0, atMs: now })
       reports.length = 0
+      verifier.observeCursor({ x: 900, y: 500 })
+      verifier.observeCursor({ x: 901, y: 500 })
+      expect(verifier.comparePointer(window, { clientX: 101, clientY: 100, atMs: now })).toBe('skipped')
+      expect(reports).toEqual([])
+      verifier.observeGeometry({ sizeMatches: true, displaysKnown: true })
+      expect(reports).toEqual([{ geometryVerified: true, cursorVerified: true }])
+    })
+
+    it('still revokes for the two distinct offsets from todo 9', () => {
+      grantBoth()
+      expect(verifier.comparePointer(window, { clientX: 3, clientY: 4, atMs: now })).toBe('mismatch')
+      now += 300
+      expect(verifier.comparePointer(window, { clientX: 4, clientY: 5, atMs: now })).toBe('revoked')
+      expect(reports).toEqual([{ geometryVerified: false, cursorVerified: false }])
+    })
+
+    it('requires two new positions when geometry is proved before cursor recovery', () => {
+      grantBoth()
+      verifier.comparePointer(window, { clientX: 0, clientY: 0, atMs: now })
+      verifier.comparePointer(window, { clientX: 0, clientY: 0, atMs: now })
+      reports.length = 0
       verifier.observeGeometry({ sizeMatches: true, displaysKnown: true })
       verifier.observeCursor({ x: 900, y: 500 })
       expect(reports).toEqual([{ geometryVerified: true }])
@@ -160,6 +183,46 @@ describe('coordinateVerifier', () => {
       now += 5000
       expect(verifier.comparePointer(window, { clientX: 0, clientY: 0, atMs: now })).toBe('revoked')
     })
+  })
+
+  it('keeps verification through the recorded XWayland re-entry sequence', () => {
+    grantBoth()
+    verifier.observeWindowOrigin(window, { x: 0, y: 0 })
+    const target = new EventTarget()
+    const comparisons: string[] = []
+    const snapshot = capabilitiesForHost('linux-xwayland')
+    const stop = createPointerSampleReporter({
+      target,
+      now: () => now,
+      wallClock: () => now,
+      snapshot: () => ({
+        ...snapshot,
+        linuxDesktopBackend: 'kwin',
+        signals: { ...snapshot.signals, cursorScreenPoint: { kind: 'live' } },
+      }),
+      report: sample => comparisons.push(verifier.comparePointer(window, sample)),
+    })
+    // task-32 cross-2 and cross-2-back: the old renderer points repeat at 40097 and 49903.
+    // The compositor points on those rows are the corresponding EIS move's destination.
+    for (const [at, cursorX, cursorY, clientX, clientY, entry] of [
+      [1000, 666, 700, 960, 540, true],
+      [1300, 564, 690, 564, 690, false],
+      [40097, 716, 700, 564, 690, true],
+      [42065, 711, 700, 711, 700, false],
+      [42315, 685, 697, 685, 697, false],
+      [49903, 1300, 300, 685, 697, true],
+    ] as const) {
+      now = at
+      verifier.observeCursor({ x: cursorX, y: cursorY })
+      if (entry)
+        target.dispatchEvent(Object.assign(new Event('pointerover'), { relatedTarget: null }))
+      target.dispatchEvent(Object.assign(new Event('pointermove'), { clientX, clientY }))
+    }
+    stop()
+    expect(comparisons).toEqual(['match', 'match', 'match'])
+    expect(verifier.cursorVerified).toBe(true)
+    expect(verifier.geometryVerified).toBe(true)
+    expect(log).not.toHaveBeenCalled()
   })
 
   describe('reset', () => {

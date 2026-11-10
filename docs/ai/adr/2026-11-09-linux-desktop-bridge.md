@@ -197,6 +197,26 @@ cursor or display coordinates. Origin consumers check that availability as
 well as the global status, and display lists refresh on every capability
 change.
 
+On XWayland only, the renderer excludes the first `pointermove` after an
+outer-window entry (`pointerover` with `relatedTarget === null`) before the
+250 ms throttle. Todo 32's real KWin EIS crossing receipts show these trusted
+entry moves repeating Chromium's last position: `(564,690)` and `(685,697)`,
+rather than the current compositor cursor. A trusted event therefore does not
+prove a fresh coordinate sample. Inner-element transitions do not count as
+window entries. Only one move per entry is excluded, so a continuing offset,
+including repeated positions, still supplies mismatches at the normal rate.
+The next fresh move is eligible immediately; the stale entry never consumes
+its throttle interval.
+
+This policy rejects evidence at its renderer source instead of expanding the
+500 ms comparison history, clearing mismatches on matches, or granting facts
+again from pointer agreement. The verifier's two-mismatch revocation and
+re-grant rules stay unchanged: after revocation it needs a fresh binding and
+geometry proof, followed by two distinct compositor positions (or positions
+observed since revocation before that geometry proof). Pointer samples alone
+cannot re-grant either fact. Native Wayland, native X11, Windows and macOS keep
+their existing behavior. Evidence: `task-33-xwayland-reentry.md`.
+
 Renderers send `reportPointerSample` at most every 250 ms while the cursor is
 `linux-cursor-verifying` or live on a Linux backend. Main compares each sample
 with `cursor - window origin` over readings from the last 500 ms. Two
