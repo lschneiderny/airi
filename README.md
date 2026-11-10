@@ -23,6 +23,34 @@ The design records for these features are in [`docs/ai/adr/`](./docs/ai/adr/).
 | Desktop (Stage Tamagotchi, Electron) | [`apps/stage-tamagotchi`](./apps/stage-tamagotchi) | Main target |
 | Web (Stage Web) | [`apps/stage-web`](./apps/stage-web) | Works without desktop-only features such as foreground-window sampling |
 
+## Platform support
+
+Windows and macOS retain their documented desktop capability contract; their
+post-Electron-bump live smoke is still for Luke to run. On macOS, Electron
+issue #54597 means Electron 43.8.7 can launch if sleep/wake notification
+registration is refused, but `powerMonitor` suspend and resume events do not
+fire in that process. Luke's smoke should verify startup and event delivery
+when registration succeeds. If registration is refused, missing suspend and
+resume events are expected.
+
+On Linux, support depends on the desktop backend. On the tested Plasma 6.8.2
+host, KDE had the broadest verified set, including the desktop stage on native
+Wayland and XWayland.
+Foreground, cursor, geometry and keep-above passed the KWin native host smoke;
+idle becomes live after runtime verification, while lock and system audio
+remain unverified in the QA profile. The tested X11 Openbox session verified
+foreground, cursor and geometry, and its desktop stage was eligible. Native
+X11 push-to-talk key-up uses uiohook. The Xvfb stage smoke needed SwiftShader
+because the test display has no GPU. Raw X11 and XWayland stage pointerdown
+and rest-timing receipts were not retained; those checks remain pending F3.
+
+Sway verifies geometry but uses the classic window; its headless test session
+could not verify foreground or idle. Hyprland has an implemented backend but
+has not had a live run, so its runtime support remains unverified. GNOME has
+no foreground or global cursor sensor because AIRI does not ship a GNOME Shell
+extension. The [host capability contract](./docs/ai/adr/2026-11-08-host-capability-contract.md#host-parity-matrix)
+records each signal status and its evidence limits.
+
 ## Getting started
 
 This fork publishes no releases, so you run it from source. You need [Git](https://git-scm.com/downloads) and [mise](https://mise.jdx.dev/installing-mise.html), which installs the Node.js and pnpm versions pinned in [`.tool-versions`](./.tool-versions).

@@ -58,6 +58,17 @@ In a headless `qa:display --compositor sway` session, run `pnpm qa:host smoke --
 - Foreground: the seat has no input devices, so Electron never activates and foreground is never verified. Expecting `foreground` ends with `verification-missing` and `drive-failed`.
 - Idle: on 2026-11-09 idle stayed unverified for the whole observation, so the run expects `--expect-idle unverified`.
 
+For native KWin Wayland, include all four proofs established by the regression
+run, including keep-above:
+
+```sh
+pnpm qa:display run -- pnpm qa:host smoke --expect-idle verified --expect-backend kwin --expect-verified foreground,cursor,geometry,keepAbove
+```
+
+The smoke passed with 37 samples in `.temp/qa/20261109-184734-host-smoke`
+under `/mnt/dev/projects/dtuber-wt/lsp-t19`. Lock and audio are not listed
+because that session did not provide a lock source or run capture.
+
 The command prints a JSON report and saves `report.json` and `app.log` under the reported `.temp/qa/` run directory. Every sample includes its elapsed time, raw host snapshot, idle reading, and resolved performance mode. A live idle sensor must advance; native Wayland may stay unverified with null idle readings or promote once to live and then advance. Runtime hook or foreground binding failures fail the signal comparison and name their reason.
 
 A bridge read that times out under host load (a slow CDP evaluate) is not a broken run. It is listed in `report.json` `missedSamples` with its elapsed time and message, and the next read follows at once. The evaluation sees only the samples that arrived, with its checks unchanged, so the observation must still span 180 seconds. Three timed-out reads in a row, or any other bridge error, end the run as `run-failed`.
