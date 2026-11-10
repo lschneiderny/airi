@@ -1,28 +1,17 @@
-import type { CdpClient } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
-
-import type { OwnedProcess } from '../env/processes'
-import type { LaunchedApp } from '../t3/launch'
 import type { SmokeOptions } from './args'
 
-import process from 'node:process'
-
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, extname, join, resolve } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 
 import { errorMessageFrom } from '@moeru/std'
 
-import { killTree, listLiveProcesses } from '../env/processes'
 import { createRun } from '../evidence/run'
-import { MotionQaBridgeClient } from '../t3/bridge-client'
+import { AppSessionCore, refuseIfWorktreeBusy } from '../session/app-session'
 import { importRig, zipRig } from '../t3/import-rig'
-import { connectStage, desktopStageTargetPattern, failOnExit, launchStageTamagotchi, stageTargetPattern } from '../t3/launch'
-import { completeOnboarding } from '../t3/onboarding'
-import { closeBrowser } from '../t3/run-t3'
+import { desktopStageTargetPattern, stageTargetPattern } from '../t3/launch'
 import { captureStagePng } from '../t3/screenshot'
-import { findWorktreeAppProcesses, teardownRun, trackTree } from '../t3/teardown'
 import { checkHostMode } from './host-mode'
-import { PageErrorCollector } from './page-errors'
 import { parseAllowedErrors, scanMainLog, triageErrors } from './triage'
 
 export const defaultAllowListPath = 'packages/qa-tools/fixtures/smoke/allowed-errors.json'
@@ -33,30 +22,16 @@ export const defaultAllowListPath = 'packages/qa-tools/fixtures/smoke/allowed-er
  */
 export async function runSmoke(options: SmokeOptions, repoRoot: string, signal: AbortSignal) {
   const allowList = parseAllowedErrors(JSON.parse(readFileSync(options.allow ?? resolve(repoRoot, defaultAllowListPath), 'utf8')))
-  const selfPids = [process.pid, process.ppid]
-  if (findWorktreeAppProcesses(await listLiveProcesses(), repoRoot, selfPids).length)
-    throw new Error('Refusing to launch while this worktree already has an Electron session')
+  await refuseIfWorktreeBusy(repoRoot)
   const run = createRun({ tool: 'smoke', label: options.xwayland ? 'clean-start-xwayland' : 'clean-start', repoRoot, outDir: options.out })
   const profileDir = run.path('profile')
   mkdirSync(profileDir)
+  const session = AppSessionCore.create({ repoRoot, profileDir, signal })
   const details: Record<string, unknown> = { options }
   const startedAt = Date.now()
-  let app: LaunchedApp | undefined
-  let stage: CdpClient | undefined
-  let browserUrl: string | undefined
-  let collector: PageErrorCollector | undefined
-  let tracked: OwnedProcess[] = []
   let screenshot: string | null = null
   let failure: string | undefined
   let interruptedRun = false
-  const interrupted = new Promise<never>((_, reject) => {
-    const onAbort = () => reject(signal.reason ?? new Error('interrupted'))
-    if (signal.aborted)
-      onAbort()
-    signal.addEventListener('abort', onAbort, { once: true })
-  })
-  void interrupted.catch(() => {})
-  const bounded = <T>(work: Promise<T>): Promise<T> => Promise.race([work, interrupted])
 
   try {
     const desktop = options.stageHost === 'desktop'
@@ -64,42 +39,37 @@ export async function runSmoke(options: SmokeOptions, repoRoot: string, signal: 
     // `selectHostMode` and its platform gate. An empty AIRI_STAGE_HOST is not a mode, so it overrides nothing.
     if (desktop)
       writeFileSync(join(profileDir, 'stage-config.json'), `${JSON.stringify({ experimental: true, mode: 'desktop', activeRenderer: 'mmd' })}\n`)
-    app = await launchStageTamagotchi({
-      repoRoot,
-      profileDir,
-      logFile: run.path('app.log'),
-      list: listLiveProcesses,
-      env: { AIRI_STAGE_HOST: desktop ? '' : 'window' },
-      script: options.xwayland ? 'dev:xwayland' : 'dev',
-      electronArgs: options.electronArgs,
+    const { stage, bridge, initialState } = await session.start({
+      launch: {
+        logFile: run.path('app.log'),
+        env: { AIRI_STAGE_HOST: desktop ? '' : 'window' },
+        script: options.xwayland ? 'dev:xwayland' : 'dev',
+        electronArgs: options.electronArgs,
+      },
+      onLaunched: app => run.recordProcess({ rootPid: app.root.pid, created: app.root.created, commandLine: app.root.commandLine }),
+      // The run attaches to the stage window of the host it expects: a gated platform keeps the classic `#/` window.
+      targetPattern: options.expectHost === 'desktop' ? desktopStageTargetPattern : stageTargetPattern,
+      collectPageErrors: true,
+      bridge: { step: 'the bridge', timeoutMs: 300_000 },
     })
-    run.recordProcess({ rootPid: app.root.pid, created: app.root.created, commandLine: app.root.commandLine })
-    // The run attaches to the stage window of the host it expects: a gated platform keeps the classic `#/` window.
-    const connected = await bounded(connectStage(app, options.expectHost === 'desktop' ? desktopStageTargetPattern : stageTargetPattern))
-    stage = connected.stage
-    browserUrl = connected.browserUrl
-    tracked = trackTree(await listLiveProcesses(), app.root)
-    collector = new PageErrorCollector(app.port)
-    await bounded(collector.start())
-    await bounded(completeOnboarding(stage))
-    const bridge = new MotionQaBridgeClient(stage)
-    details.initialState = await bounded(failOnExit(app, 'the bridge', bridge.waitForBridge({ timeoutMs: 300_000 })))
+    details.initialState = initialState
     if (options.model) {
       let modelInput = options.model
       if (statSync(modelInput).isDirectory() || ['.pmx', '.pmd'].includes(extname(modelInput).toLowerCase())) {
         modelInput = run.path('model.zip')
-        await bounded(zipRig(statSync(options.model).isDirectory() ? options.model : dirname(options.model), modelInput))
+        await session.bounded(zipRig(statSync(options.model).isDirectory() ? options.model : dirname(options.model), modelInput))
       }
-      details.import = await bounded(failOnExit(app, 'model import', importRig(stage, bridge, modelInput, 600_000, options.kind)))
+      details.import = await session.whileRunning('model import', importRig(stage, bridge, modelInput, 600_000, options.kind))
     }
-    await bounded(failOnExit(app, 'the settle period', setTimeout(options.settleMs)))
-    details.state = await bounded(bridge.call('state', undefined, 30_000))
-    await bounded(captureStagePng(stage, run.path('stage.png')))
+    await session.whileRunning('the settle period', setTimeout(options.settleMs))
+    details.state = await session.bounded(bridge.call('state', undefined, 30_000))
+    await session.bounded(captureStagePng(stage, run.path('stage.png')))
     screenshot = run.path('stage.png')
   }
   catch (error) {
     interruptedRun = signal.aborted
     failure = errorMessageFrom(error) ?? 'unknown smoke failure'
+    const stage = session.stage
     if (stage && !signal.aborted) {
       try {
         await captureStagePng(stage, run.path('stage.png'), 5_000)
@@ -111,17 +81,8 @@ export async function runSmoke(options: SmokeOptions, repoRoot: string, signal: 
     }
   }
   finally {
-    await collector?.stop()
-    const browser = browserUrl
     try {
-      const teardown = await teardownRun({ repoRoot, profileDir, root: app?.root, tracked, selfPids }, {
-        list: listLiveProcesses,
-        kill: killTree,
-        closeBrowser: browser ? () => closeBrowser(browser) : undefined,
-        waitRootExit: app?.waitExit,
-        removeDir: path => rmSync(path, { recursive: true, force: true }),
-        sleep: async (ms) => { await setTimeout(ms) },
-      }, [run.path('model.zip')])
+      const teardown = await session.teardown({ extraPaths: [run.path('model.zip')] })
       details.teardown = teardown
       if (!teardown.ok)
         failure ??= 'teardown left processes or files behind'
@@ -129,15 +90,12 @@ export async function runSmoke(options: SmokeOptions, repoRoot: string, signal: 
     catch (error) {
       failure ??= `teardown failed: ${errorMessageFrom(error) ?? 'unknown error'}`
     }
-    finally {
-      app?.releaseLease()
-    }
-    stage?.close()
   }
+  const collector = session.collector
 
   const appLog = existsSync(run.path('app.log')) ? readFileSync(run.path('app.log'), 'utf8') : ''
   const mainLines = scanMainLog(appLog)
-  if (failure === undefined && app) {
+  if (failure === undefined && session.app) {
     const hostModeFailure = checkHostMode(options.expectHost, appLog, collector?.targets ?? [])
     if (hostModeFailure)
       failure = hostModeFailure
