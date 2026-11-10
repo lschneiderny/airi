@@ -22,7 +22,7 @@ Follow the [root guide](../../AGENTS.md) for shared rules. `README.md` documents
 ## CONVENTIONS
 
 - The root export resolves to source. The `/vitest` export resolves to built `dist/vitest.mjs`.
-- `decide(state, budget)` stays pure. Process lookups never run while the store lock is held.
+- `decide(state, budget, now, pressure?)` stays pure. Pass ticket age and any CPU pressure sample as data; process lookups never run while the store lock is held.
 - Every store mutation runs in one transaction. A grant is written, checked again, and removed if the check fails.
 - A failed process lookup proves nothing. Report it as `snapshot-failed` and retry.
 - A lease is reclaimed only after its owner's death is observed and a later snapshot shows the workload is gone.
@@ -37,6 +37,7 @@ Follow the [root guide](../../AGENTS.md) for shared rules. `README.md` documents
 - Do not delete the lock directory or store files unless the owner is confirmed dead.
 - Do not use the broker as an operating-system quota, for long-running dev servers, or across machines.
 - Do not request an `exclusive` lease under a shared lease. It fails with `exclusive-under-shared`.
+- App sessions use the `live` class. Reserve `exclusive` for frame-timing work that must not share CPU.
 
 ## CHECKS
 
