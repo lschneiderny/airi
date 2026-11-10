@@ -9,6 +9,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
 import { extractJavaScriptCandidate, JavaScriptPlanner } from './js-planner'
+import { trackSandboxWorkers } from './js-planner-worker-test-support'
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:child_process')>()
+  return { ...original, fork: vi.fn(original.fork) }
+})
+
+trackSandboxWorkers()
 
 describe('extractJavaScriptCandidate', () => {
   it('takes the inner code of a fenced block, leaving template literals intact', () => {

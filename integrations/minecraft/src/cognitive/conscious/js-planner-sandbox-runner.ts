@@ -63,8 +63,10 @@ export async function executeSandboxWorker(
     let bridgeCallCount = 0
     let hardTimeout: ReturnType<typeof setTimeout> | undefined
     let settled = false
+    let outcome: (() => void) | undefined
+    const bridgeTimeouts = new Set<ReturnType<typeof setTimeout>>()
 
-    const child = fork(SANDBOX_WORKER_ENTRY_PATH, [ISOLATED_VM_ENTRY_PATH], {
+    const child = fork(SANDBOX_WORKER_ENTRY_PATH, [ISOLATED_VM_ENTRY_PATH, String(hardTimeoutMs)], {
       cwd: SANDBOX_SOURCE_DIRECTORY,
       env: {},
       execArgv: [
@@ -99,6 +101,9 @@ export async function executeSandboxWorker(
       settled = true
       if (hardTimeout)
         clearTimeout(hardTimeout)
+      for (const timeout of bridgeTimeouts)
+        clearTimeout(timeout)
+      bridgeTimeouts.clear()
       child.removeAllListeners()
       child.stderr?.removeAllListeners()
       handler()
@@ -113,6 +118,7 @@ export async function executeSandboxWorker(
       message: Extract<WorkerToParentMessage, { type: 'bridge-request' }>,
     ): Promise<void> => {
       let response: ParentToWorkerMessage
+      let bridgeTimeout: ReturnType<typeof setTimeout> | undefined
 
       try {
         bridgeCallCount++
@@ -123,10 +129,11 @@ export async function executeSandboxWorker(
         const result = await Promise.race([
           options.onBridgeRequest(message.method, message.args),
           new Promise<never>((_, reject) => {
-            setTimeout(
+            bridgeTimeout = setTimeout(
               () => reject(new Error(`Sandbox bridge timed out after ${options.bridgeTimeoutMs}ms for ${message.method}`)),
               options.bridgeTimeoutMs,
             )
+            bridgeTimeouts.add(bridgeTimeout)
           }),
         ])
 
@@ -145,6 +152,12 @@ export async function executeSandboxWorker(
           error: serializeWorkerError(error),
         }
       }
+      finally {
+        if (bridgeTimeout) {
+          clearTimeout(bridgeTimeout)
+          bridgeTimeouts.delete(bridgeTimeout)
+        }
+      }
 
       if (child.connected)
         child.send(response)
@@ -154,14 +167,18 @@ export async function executeSandboxWorker(
       const timeoutError = createWorkerError(
         withCapturedStderr(`Sandbox worker timed out after ${hardTimeoutMs}ms`),
       )
+      outcome = () => reject(timeoutError)
       void child.kill('SIGKILL')
-      finalize(() => reject(timeoutError))
     }, hardTimeoutMs)
 
     child.stderr?.on('data', chunk => stderrChunks.push(String(chunk)))
 
     child.on('error', (error) => {
-      finalize(() => reject(createWorkerError(withCapturedStderr(errorMessageFromValue(error)), undefined, error)))
+      outcome = () => reject(createWorkerError(withCapturedStderr(errorMessageFromValue(error)), undefined, error))
+      if (child.pid)
+        void child.kill('SIGKILL')
+      else
+        finalize(outcome)
     })
 
     child.on('exit', (code, signal) => {
@@ -170,12 +187,16 @@ export async function executeSandboxWorker(
 
       const reason = signal
         ? `Sandbox worker exited via signal ${signal}`
-        : `Sandbox worker exited with code ${code ?? 'unknown'}`
+        : code === 124
+          ? `Sandbox worker timed out after ${hardTimeoutMs}ms`
+          : `Sandbox worker exited with code ${code ?? 'unknown'}`
 
-      finalize(() => reject(createWorkerError(withCapturedStderr(reason))))
+      finalize(outcome ?? (() => reject(createWorkerError(withCapturedStderr(reason)))))
     })
 
     child.on('message', (message: WorkerToParentMessage) => {
+      if (outcome)
+        return
       if (!message || typeof message !== 'object')
         return
 
@@ -190,18 +211,20 @@ export async function executeSandboxWorker(
       }
 
       if (message.type === 'result') {
-        finalize(() => resolve(message.result))
+        // A response alone does not prove the native isolate or process stopped.
+        // Keep the hard deadline armed and settle only after the child's exit.
+        outcome = () => resolve(message.result)
         return
       }
 
       if (message.type === 'error') {
-        finalize(() => reject(createWorkerError(withCapturedStderr(message.error.message), message.state, message.error)))
+        outcome = () => reject(createWorkerError(withCapturedStderr(message.error.message), message.state, message.error))
         return
       }
 
       if (message.type === 'catastrophic-error') {
+        outcome = () => reject(createWorkerError(withCapturedStderr(message.error.message), undefined, message.error))
         void child.kill('SIGKILL')
-        finalize(() => reject(createWorkerError(withCapturedStderr(message.error.message), undefined, message.error)))
       }
     })
   })

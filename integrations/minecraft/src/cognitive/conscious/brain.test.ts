@@ -4,6 +4,14 @@ import { z } from 'zod'
 import { config } from '../../composables/config'
 import { ActionError } from '../../utils/errors'
 import { Brain } from './brain'
+import { trackSandboxWorkers } from './js-planner-worker-test-support'
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:child_process')>()
+  return { ...original, fork: vi.fn(original.fork) }
+})
+
+trackSandboxWorkers()
 
 function createReflexSnapshot() {
   return {
