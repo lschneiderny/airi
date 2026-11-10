@@ -182,8 +182,8 @@ const builtInDisplay: DesktopStageState['displays'][number] = { id: '1', primary
 const externalDisplay: DesktopStageState['displays'][number] = { id: '7', primary: false, workArea: { x: 1440, y: 0, width: 2560, height: 1415 }, scaleFactor: 1 }
 
 /** A host whose writes land in its own state, as the Electron page does after each invoke resolves. */
-function fakeDesktopStageHost(initial: Omit<DesktopStageState, 'next'> & Partial<Pick<DesktopStageState, 'next'>>) {
-  const state = shallowRef<DesktopStageState | null>({ ...initial, next: initial.next ?? (initial.experimental ? initial.mode : 'window') })
+function fakeDesktopStageHost(initial: Omit<DesktopStageState, 'next' | 'followMe'> & Partial<Pick<DesktopStageState, 'next' | 'followMe'>>) {
+  const state = shallowRef<DesktopStageState | null>({ ...initial, followMe: initial.followMe ?? false, next: initial.next ?? (initial.experimental ? initial.mode : 'window') })
   const host: DesktopStageHost = {
     state,
     setExperimental: vi.fn(async (experimental) => {
@@ -194,6 +194,9 @@ function fakeDesktopStageHost(initial: Omit<DesktopStageState, 'next'> & Partial
     }),
     setHomeDisplay: vi.fn(async (homeDisplayId) => {
       state.value = { ...state.value!, homeDisplayId }
+    }),
+    setFollowMe: vi.fn(async (followMe) => {
+      state.value = { ...state.value!, followMe }
     }),
     relaunch: vi.fn(async () => {}),
   }
@@ -321,6 +324,26 @@ describe('mmd model settings desktop stage', () => {
 
     await vi.waitFor(() => expect(host.setHomeDisplay).toHaveBeenCalledWith('7'))
     expect(host.setHomeDisplay).toHaveBeenCalledOnce()
+  })
+
+  it('turns Follow me on through the host, off by default', async () => {
+    const host = fakeDesktopStageHost({ experimental: true, mode: 'desktop', running: 'desktop', homeDisplayId: '1', displays: [builtInDisplay, externalDisplay] })
+    const { screen } = await renderWithHost(host)
+    await screen.getByText(t('settings.mmd.stage.title'), { exact: true }).click()
+
+    const followMe = screen.getByRole('switch', { name: t('settings.mmd.stage.follow-me.title') })
+    await expect.element(followMe).not.toBeChecked()
+    await followMe.click()
+    await vi.waitFor(() => expect(host.setFollowMe).toHaveBeenCalledWith(true))
+    await expect.element(followMe).toBeChecked()
+  })
+
+  it('offers Follow me only with a second display', async () => {
+    const host = fakeDesktopStageHost({ experimental: true, mode: 'desktop', running: 'desktop', homeDisplayId: '1', displays: [builtInDisplay] })
+    const { screen } = await renderWithHost(host)
+    await screen.getByText(t('settings.mmd.stage.title'), { exact: true }).click()
+
+    await expect.element(screen.getByRole('switch', { name: t('settings.mmd.stage.follow-me.title') })).toBeDisabled()
   })
 
   it('writes the character height and the roam mode to the store and persists them', async () => {

@@ -85,3 +85,33 @@ export function isStageCharacterUnseen(state: StageHandOffState, slot: StageRowS
     return true
   return slot !== null && rootX !== null && (rootX < slot.visible.minX || rootX > slot.visible.maxX)
 }
+
+/** How long the cursor must stay on one display before Follow me makes it the home display. */
+export const followMeDwellMs = 30_000
+
+export interface FollowMeState {
+  /** The display the cursor is on; `null` while it is on none or its position is unknown. */
+  displayId: string | null
+  /** When the cursor arrived there, on the caller's clock. */
+  sinceMs: number
+}
+
+export function createFollowMeState(): FollowMeState {
+  return { displayId: null, sinceMs: 0 }
+}
+
+/**
+ * Follow me, one animation frame at a time: names the display to make the home display once the cursor has stayed on
+ * it for {@link followMeDwellMs}.
+ *
+ * A cursor that leaves the display, or whose position becomes unknown, starts the wait again. The display is named
+ * once per wait, so a slow answer from the main process is not asked for again on the next frame.
+ */
+export function followCursor(state: FollowMeState, input: { nowMs: number, cursorDisplayId: string | null, homeDisplayId: string | null }): { state: FollowMeState, rehomeTo: string | null } {
+  const { nowMs, cursorDisplayId } = input
+  if (cursorDisplayId !== state.displayId)
+    return { state: { displayId: cursorDisplayId, sinceMs: nowMs }, rehomeTo: null }
+  if (cursorDisplayId === null || cursorDisplayId === input.homeDisplayId || nowMs - state.sinceMs < followMeDwellMs)
+    return { state, rehomeTo: null }
+  return { state: { displayId: cursorDisplayId, sinceMs: nowMs }, rehomeTo: cursorDisplayId }
+}

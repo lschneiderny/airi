@@ -21,6 +21,8 @@ export interface DesktopStageState {
   /** The host selected by the native launch policy for the next launch. */
   next: DesktopStageMode
   homeDisplayId: string
+  /** The Follow me setting: the display the cursor stays on becomes the home display. */
+  followMe: boolean
   displays: DesktopStageDisplay[]
 }
 
@@ -36,6 +38,7 @@ export interface DesktopStageHost {
   setExperimental: (enabled: boolean) => Promise<void>
   setMode: (mode: DesktopStageMode) => Promise<void>
   setHomeDisplay: (displayId: string) => Promise<void>
+  setFollowMe: (enabled: boolean) => Promise<void>
   relaunch: () => Promise<void>
 }
 

@@ -3,7 +3,7 @@ import type { StageHandOffState } from './stage-hand-off'
 import { layoutStageRow } from '@proj-airi/stage-shared/stage-world'
 import { describe, expect, it } from 'vitest'
 
-import { createStageHandOffState, isStageCharacterUnseen, observeStageDisplay, planStageMove, settleStageMove } from './stage-hand-off'
+import { createFollowMeState, createStageHandOffState, followCursor, followMeDwellMs, isStageCharacterUnseen, observeStageDisplay, planStageMove, settleStageMove } from './stage-hand-off'
 
 const row = layoutStageRow({
   displays: [
@@ -94,5 +94,48 @@ describe('isStageCharacterUnseen', () => {
     expect(isStageCharacterUnseen(on('laptop'), laptop!, unseenX)).toBe(true)
     expect(isStageCharacterUnseen(moving, laptop!, laptop!.ground.maxX)).toBe(true)
     expect(isStageCharacterUnseen(settleStageMove(moving), monitor!, monitor!.ground.minX)).toBe(false)
+  })
+})
+
+describe('followCursor', () => {
+  /** Runs one frame per entry and returns the displays named along the way. */
+  function frames(entries: Array<{ nowMs: number, cursorDisplayId: string | null }>, homeDisplayId = 'laptop') {
+    let state = createFollowMeState()
+    const named: string[] = []
+    for (const entry of entries) {
+      const next = followCursor(state, { ...entry, homeDisplayId })
+      state = next.state
+      if (next.rehomeTo)
+        named.push(next.rehomeTo)
+    }
+    return named
+  }
+
+  it('names the display the cursor has stayed on for the whole wait, once', () => {
+    expect(frames([
+      { nowMs: 0, cursorDisplayId: 'monitor' },
+      { nowMs: followMeDwellMs - 1, cursorDisplayId: 'monitor' },
+    ])).toEqual([])
+    expect(frames([
+      { nowMs: 0, cursorDisplayId: 'monitor' },
+      { nowMs: followMeDwellMs, cursorDisplayId: 'monitor' },
+      { nowMs: followMeDwellMs + 16, cursorDisplayId: 'monitor' },
+    ])).toEqual(['monitor'])
+  })
+
+  it('starts the wait again when the cursor leaves the display or is lost', () => {
+    expect(frames([
+      { nowMs: 0, cursorDisplayId: 'monitor' },
+      { nowMs: 20_000, cursorDisplayId: 'laptop' },
+      { nowMs: 21_000, cursorDisplayId: 'monitor' },
+      { nowMs: 40_000, cursorDisplayId: null },
+      { nowMs: 41_000, cursorDisplayId: 'monitor' },
+      { nowMs: 60_000, cursorDisplayId: 'monitor' },
+    ])).toEqual([])
+  })
+
+  it('never names the home display or an unknown one', () => {
+    expect(frames([{ nowMs: 0, cursorDisplayId: 'laptop' }, { nowMs: 90_000, cursorDisplayId: 'laptop' }])).toEqual([])
+    expect(frames([{ nowMs: 0, cursorDisplayId: null }, { nowMs: 90_000, cursorDisplayId: null }])).toEqual([])
   })
 })

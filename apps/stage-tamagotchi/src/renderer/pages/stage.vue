@@ -39,6 +39,7 @@ import {
 import { isStageClickThroughUsable } from '../../shared/stage-click-through'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
 import { contradictStageCursor, createStageClickThroughState, createStageCursorTrust, createStageHitReadState, isInsidePaddedRect, observeStageCursor, planStageHitRead, resolveStageClickThrough, trustedStageCursor } from '../composables/stage-click-through'
+import { createFollowMeState, followCursor } from '../composables/stage-hand-off'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
 import { useStageHandOff } from '../composables/use-stage-hand-off'
 import { useStageHostWiring } from '../composables/use-stage-host-wiring'
@@ -232,8 +233,8 @@ const stageWorld = computed<MMDStageWorld | undefined>(() => {
 })
 
 // Once she is measured, she teleports to her home on the display the window covers, with one physics reset, and again
-// whenever the row is laid out anew or the hand-off asks for it. A confirmed walk to another display only changes the
-// camera, and a home change alone (a drag release) never moves her.
+// when the row is laid out anew or the hand-off asks for it. A confirmed walk to another display and a home change
+// alone never move her.
 watch([row, () => measuredModelHeight.value !== null, handOff.teleportSeq], ([, measured]) => {
   const homeX = stageWorld.value ? stageHomeX.value : null
   rootX.value = homeX
@@ -419,6 +420,18 @@ function readHit(cursor: { x: number, y: number }, request: boolean): boolean | 
 
 let hitRead = createStageHitReadState()
 
+// Follow me: the display the cursor stays on becomes the home display, and her return home walks her there.
+let followMe = createFollowMeState()
+function cursorDisplayId(): string | null {
+  const cursor = cursorPosition.value
+  const origin = screenPlacement.value?.windowBounds
+  if (!cursor || !origin)
+    return null
+  const x = cursor.x + origin.x
+  const y = cursor.y + origin.y
+  return hostState.value?.displays.find(({ bounds }) => x >= bounds.x && x < bounds.x + bounds.width && y >= bounds.y && y < bounds.y + bounds.height)?.id ?? null
+}
+
 useRafFn(({ timestamp }) => {
   cursorTrust = observeStageCursor(cursorTrust, cursorPosition.value ?? null, timestamp)
   const cursor = clickThroughEmulated.value ? trustedStageCursor(cursorTrust) : cursorTrust.reading
@@ -426,6 +439,16 @@ useRafFn(({ timestamp }) => {
   // While no display shows her, nothing of hers can be clicked, and the window may be between two displays.
   const unseen = handOff.frame({ dragging: press.value !== null })
   const forceIgnore = !clickThroughUsable.value || unseen
+  // She can only follow to a display she can walk to, so Follow me waits for hand-off.
+  if (hostState.value?.followMe && handOff.on.value) {
+    const follow = followCursor(followMe, { nowMs: timestamp, cursorDisplayId: cursorDisplayId(), homeDisplayId: hostState.value.homeDisplayId })
+    followMe = follow.state
+    if (follow.rehomeTo !== null)
+      rehome(follow.rehomeTo).catch(error => console.warn('[Stage] Failed to follow the cursor to its display:', errorMessageFrom(error)))
+  }
+  else {
+    followMe = createFollowMeState()
+  }
   const forceCapture = stagePaused.value || press.value !== null || controlsHoldPointer.value
   const plan = planStageHitRead(hitRead, { nowMs: timestamp, cursor, rect, forceCapture, forceIgnore })
   hitRead = plan.state

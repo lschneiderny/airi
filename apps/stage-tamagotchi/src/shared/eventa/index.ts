@@ -253,6 +253,11 @@ export interface StageHostState {
   /** The display the character lives on: the saved one when it is connected, otherwise the primary display. */
   homeDisplayId: string
   /**
+   * The Follow me setting, off by default. While it is on, the desktop stage page makes the display the cursor has
+   * stayed on for 30 s the home display (`electronStageRehome`), and the character walks there.
+   */
+  followMe: boolean
+  /**
    * The display the desktop stage window is confirmed to cover. It is the home display at launch and after every
    * display change, and another display after the character walked there (`electronStageMoveToDisplay`). Runtime
    * state, never persisted. Without a desktop stage window it equals `homeDisplayId`.
@@ -306,6 +311,8 @@ export const electronStageRehome = defineInvokeEventa<StageHostState, string>('e
  * not the desktop stage.
  */
 export const electronStageMoveToDisplay = defineInvokeEventa<StageHostState, string>('eventa:invoke:electron:windows:stage:move-to-display')
+/** Persists the Follow me setting. It applies at once. */
+export const electronStageSetFollowMe = defineInvokeEventa<StageHostState, boolean>('eventa:invoke:electron:windows:stage:set-follow-me')
 /** Persists the Experimental 3D stage setting. It applies at the next launch (see `electronStageRelaunch`). */
 export const electronStageSetExperimental = defineInvokeEventa<StageHostState, boolean>('eventa:invoke:electron:windows:stage:set-experimental')
 /** Persists the host mode. It applies at the next launch (see `electronStageRelaunch`). */

@@ -53,6 +53,10 @@ With a row, the MMD scene places the cursor and the chat by their screen positio
 
 A drag release on a display she walked to makes that display the home display through `electronStageRehome`, which changes the home display and leaves the window where it is. The Home display control in Settings keeps moving the window at once, as before.
 
+### Follow me
+
+Follow me is an optional way to choose the home display, off by default (`followMe` in the stage config, the Follow me control under Settings > Models > Desktop stage). While it is on and hand-off is on, the stage page tracks the display the cursor is on. When the cursor has stayed on a display other than the home display for 30 s, that display becomes the home display through `electronStageRehome`. Nothing moves at that moment: the director's return home, `RETURN_HOME_DELAY_MS` after her last reason to be elsewhere, strolls her over, and the window follows her. The chat anchor moves with the home display at once, because it attaches to where she lives.
+
 ### When hand-off is on
 
 Hand-off is on only while the row has more than one display and the host reports both `windowOrigin` and `cursorScreenPoint` as live. Otherwise the page passes no row to the scene: she stays on the display the window covers, and her home is on that display.

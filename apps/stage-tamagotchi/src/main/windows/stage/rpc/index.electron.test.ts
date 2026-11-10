@@ -10,7 +10,7 @@ import { env, platform, versions } from 'node:process'
 import { createContext, defineInvoke, defineInvokeEventa } from '@moeru/eventa'
 import { describe, expect, it, vi } from 'vitest'
 
-import { electronStageMoveToDisplay, electronStageRehome, electronStageSetActiveRenderer, electronStageSetExperimental, electronStageSetHomeDisplay, electronStageSetMode, electronStageStateChanged } from '../../../../shared/eventa'
+import { electronStageMoveToDisplay, electronStageRehome, electronStageSetActiveRenderer, electronStageSetExperimental, electronStageSetFollowMe, electronStageSetHomeDisplay, electronStageSetMode, electronStageStateChanged } from '../../../../shared/eventa'
 import { defaultStageConfig } from '../config'
 import { isLinuxStageEligible, selectHostMode } from '../mode'
 import { createStageStateBroadcast } from '../state-broadcast'
@@ -110,6 +110,19 @@ describe('electronStageSetExperimental', () => {
     const looseSetExperimental = defineInvokeEventa<StageHostState, unknown>('eventa:invoke:electron:windows:stage:set-experimental')
     await expect(defineInvoke(settingsContext, looseSetExperimental)('yes')).rejects.toThrow()
     expect(getConfig().experimental).toBe(false)
+  })
+})
+
+describe('electronStageSetFollowMe', () => {
+  it('persists Follow me, off by default, and sends the new state to every window', async () => {
+    const { settingsContext, received, getConfig } = setup()
+    expect(getConfig().followMe).toBe(false)
+
+    const state = await defineInvoke(settingsContext, electronStageSetFollowMe)(true)
+
+    expect(state.followMe).toBe(true)
+    expect(getConfig().followMe).toBe(true)
+    expect(received.map(next => next.followMe)).toEqual([true])
   })
 })
 

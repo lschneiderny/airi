@@ -2885,6 +2885,12 @@ mmd:
       description: The display the character stands on. The saved home position stays on each display.
       option: 'Display {id}: {width} x {height}'
       primary: primary
+    follow-me:
+      title: Follow me
+      description: >-
+        Off by default. When the cursor has stayed on another display for 30
+        seconds, that display becomes the home display, and the character walks
+        over.
     character-height:
       title: Character height
       description: The on-screen height of the character on the desktop stage, in points.

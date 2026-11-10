@@ -12,6 +12,7 @@ import {
   electronStageGetState,
   electronStageRelaunch,
   electronStageSetExperimental,
+  electronStageSetFollowMe,
   electronStageSetHomeDisplay,
   electronStageSetMode,
   electronStageStateChanged,
@@ -41,6 +42,7 @@ export function useDesktopStageHost(): DesktopStageSettingsHost {
   const setModeInvoke = useElectronEventaInvoke(electronStageSetMode)
   const setExperimentalInvoke = useElectronEventaInvoke(electronStageSetExperimental)
   const setHomeDisplayInvoke = useElectronEventaInvoke(electronStageSetHomeDisplay)
+  const setFollowMeInvoke = useElectronEventaInvoke(electronStageSetFollowMe)
   const relaunchInvoke = useElectronEventaInvoke(electronStageRelaunch)
 
   const state = shallowRef<StageHostState | null>(null)
@@ -75,6 +77,9 @@ export function useDesktopStageHost(): DesktopStageSettingsHost {
       setMode,
       setHomeDisplay: async (displayId) => {
         state.value = await setHomeDisplayInvoke(displayId)
+      },
+      setFollowMe: async (enabled) => {
+        state.value = await setFollowMeInvoke(enabled)
       },
       relaunch: () => relaunchInvoke(),
     },

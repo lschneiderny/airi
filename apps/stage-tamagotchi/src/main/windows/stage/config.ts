@@ -18,6 +18,8 @@ export const stageConfigSchema = object({
   mode: optional(picklist(['window', 'desktop']), 'window'),
   activeRenderer: optional(nullable(picklist(['mmd', 'other'])), null),
   homeDisplayId: optional(nullable(string()), null),
+  /** The Follow me setting: the display the cursor stays on becomes the home display. Off by default. */
+  followMe: optional(boolean(), false),
   homes: optional(record(string(), object({
     xDip: number(),
     fingerprint: displayFingerprintSchema,
@@ -32,6 +34,7 @@ export const defaultStageConfig: StageConfig = {
   mode: 'window',
   activeRenderer: null,
   homeDisplayId: null,
+  followMe: false,
   homes: {},
 }
 
@@ -113,6 +116,7 @@ export function buildStageHostState(params: {
     activeRenderer: params.config.activeRenderer,
     displays: [...params.displays],
     homeDisplayId,
+    followMe: params.config.followMe,
     stageDisplayId: params.displays.some(display => display.id === params.stageDisplayId) ? params.stageDisplayId! : homeDisplayId,
     homes: Object.fromEntries(params.displays.map(display => [display.id, resolveHome(display, params.config)])),
     running: params.running,

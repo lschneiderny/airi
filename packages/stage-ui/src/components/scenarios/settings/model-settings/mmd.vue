@@ -98,6 +98,10 @@ const desktopStageExperimental = computed<boolean>({
   get: () => desktopStageState.value?.experimental ?? false,
   set: (enabled) => { void desktopStage?.setExperimental(enabled) },
 })
+const desktopStageFollowMe = computed<boolean>({
+  get: () => desktopStageState.value?.followMe ?? false,
+  set: (enabled) => { void desktopStage?.setFollowMe(enabled) },
+})
 const desktopStageMode = computed<DesktopStageMode>({
   get: () => desktopStageState.value?.mode ?? 'window',
   set: (mode) => { void desktopStage?.setMode(mode) },
@@ -553,6 +557,12 @@ function removeMotion(id: string) {
         :label="t('settings.mmd.stage.home-display.title')"
         :description="t('settings.mmd.stage.home-display.description')"
         @update:model-value="setHomeDisplay"
+      />
+      <FieldCheckbox
+        v-model="desktopStageFollowMe"
+        :disabled="homeDisplayOptions.length < 2"
+        :label="t('settings.mmd.stage.follow-me.title')"
+        :description="t('settings.mmd.stage.follow-me.description')"
       />
       <FieldRange
         v-model="stageCharacterHeight"

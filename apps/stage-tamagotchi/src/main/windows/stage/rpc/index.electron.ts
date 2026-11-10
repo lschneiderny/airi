@@ -19,6 +19,7 @@ import {
   electronStageRelaunch,
   electronStageSetActiveRenderer,
   electronStageSetExperimental,
+  electronStageSetFollowMe,
   electronStageSetHome,
   electronStageSetHomeDisplay,
   electronStageSetMode,
@@ -138,6 +139,12 @@ export function setupStageWindowInvokes(params: {
     if (!parsed.success)
       throw new TypeError(`electronStageSetExperimental: expected a boolean, got ${JSON.stringify(payload)}`)
     return updateConfig({ ...getConfig(), experimental: parsed.output })
+  })
+  defineInvokeHandler(context, electronStageSetFollowMe, (payload) => {
+    const parsed = safeParse(boolean(), payload)
+    if (!parsed.success)
+      throw new TypeError(`electronStageSetFollowMe: expected a boolean, got ${JSON.stringify(payload)}`)
+    return updateConfig({ ...getConfig(), followMe: parsed.output })
   })
   defineInvokeHandler(context, electronStageSetMode, (payload) => {
     const parsed = safeParse(modeSchema, payload)

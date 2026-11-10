@@ -60,6 +60,7 @@ vi.mock('@proj-airi/electron-vueuse', () => ({
           displays: [{ id: 'home', workArea: { x: 0, y: 0, width: 1600, height: 1000 } }],
           homeDisplayId: 'home',
           stageDisplayId: 'home',
+          followMe: false,
           homes: { home: { xDip: 400 } },
         }
       : { visible: false, bounds: null },
