@@ -678,6 +678,50 @@ describe('win32 sharing errors on entries in flux', () => {
 })
 
 describe('tickets, leases, and heartbeat', () => {
+  it('writes live tickets as browser with policy and reads them back as live', () => {
+    const store = createStore()
+    const ticket = store.enqueue({ ...request, class: 'live' })
+    expect(JSON.parse(nodeFs.read(join(root, 'tickets', `${ticket.seq}.json`))))
+      .toMatchObject({ class: 'browser', policy: 'live', min: 4, max: 6, exclusive: false })
+    expect(store.snapshot().tickets).toEqual([ticket])
+    expect(ticket.class).toBe('live')
+  })
+
+  it('keeps a live policy lease accounted for after its heartbeat becomes stale', () => {
+    const store = createStore()
+    const ticket = store.enqueue({ ...request, class: 'live' })
+    const lease = store.grant(ticket.seq, 6, ticket.id)
+    expect(lease).toBeDefined()
+    clock += 46_000
+    expect(store.snapshot().leases).toEqual([lease])
+    const exclusive = store.enqueue({ ...request, class: 'exclusive' })
+    expect(decide(store.snapshot(), 6)).toEqual({ kind: 'wait', reason: 'leases-held' })
+    expect(store.grant(exclusive.seq, 6, exclusive.id)).toBeUndefined()
+  })
+
+  it.each(['grant', 'heartbeat restoration', 'workload registration'])(
+    'keeps live lease wire encoding through %s',
+    (operation) => {
+      const store = createStore()
+      const ticket = store.enqueue({ ...request, class: 'live' })
+      const lease = store.grant(ticket.seq, 6, ticket.id)
+      expect(lease).toBeDefined()
+      if (!lease)
+        return
+      const path = join(root, 'leases', `${lease.id}.json`)
+      if (operation === 'heartbeat restoration') {
+        nodeFs.remove(path)
+        store.heartbeat(lease)
+      }
+      if (operation === 'workload registration')
+        store.addWorkload(lease, 40)
+      expect(JSON.parse(nodeFs.read(path)))
+        .toMatchObject({ class: 'browser', policy: 'live', slots: 6, exclusive: false })
+      expect(store.snapshot().leases).toEqual([lease])
+      expect(lease.class).toBe('live')
+    },
+  )
+
   it('a5 prunes a dead head waiter so the next ticket can run', () => {
     const first = createStore(20).enqueue(request)
     const store = createStore()

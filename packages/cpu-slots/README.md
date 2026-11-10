@@ -23,6 +23,7 @@ A lease lasts as long as its workload. A registered process, or any descendant o
 | --- | --- | --- |
 | `test` | 2 to 6 | Root Vitest config |
 | `browser` | 2 to 4 | Extra Vitest configs and browser-mode projects |
+| `live` | 4 to 6 | App QA sessions, for example `pnpm slots run --class live -- sleep 20` |
 | `typecheck` | 2 to 6 | `turbo run typecheck` |
 | `build` | 2 to 6 | Package builds |
 | `lint` | 1 | `moeru-lint` chunks |

@@ -1,6 +1,7 @@
 export const classes = {
   test: { min: 2, max: 6, exclusive: false },
   browser: { min: 2, max: 4, exclusive: false },
+  live: { min: 4, max: 6, exclusive: false },
   typecheck: { min: 2, max: 6, exclusive: false },
   build: { min: 2, max: 6, exclusive: false },
   lint: { min: 1, max: 1, exclusive: false },
