@@ -4,7 +4,7 @@ import type { HostCapabilities } from '@proj-airi/stage-shared/host-capabilities
 import type { OwnedProcess } from '../env/processes'
 import type { LaunchedApp } from '../t3/launch'
 import type { TeardownReport } from '../t3/teardown'
-import type { DriveReceipt, DriveStep, HostSample, LinuxDesktopExpectation, SmokeFailure, SmokeResult } from './smoke'
+import type { DriveReceipt, DriveStep, HostSample, LinuxDesktopExpectation, MissedSample, SmokeFailure, SmokeResult } from './smoke'
 
 import process from 'node:process'
 
@@ -48,6 +48,7 @@ export async function runHostCli(argv: string[], repoRoot: string): Promise<numb
     exitCode: number
     failures: HostReportFailure[]
     samples: HostSample[]
+    missedSamples: MissedSample[]
     expected?: HostCapabilities
     runnerFacts?: ReturnType<typeof expectedHostFacts>
     idleOutcome?: string
@@ -57,7 +58,7 @@ export async function runHostCli(argv: string[], repoRoot: string): Promise<numb
     runDir?: string
     teardown?: TeardownReport
     cursor?: Awaited<ReturnType<typeof parkCursor>>
-  } = { exitCode: 2, failures: [], samples }
+  } = { exitCode: 2, failures: [], samples, missedSamples: [] }
   const controller = new AbortController()
   const onInterrupt = () => {
     process.stderr.write('qa-tools host: interrupted; teardown must finish\n')
@@ -160,6 +161,7 @@ export async function runHostCli(argv: string[], repoRoot: string): Promise<numb
         sleep: ms => setTimeout(ms, undefined, { signal: controller.signal }),
         signal: controller.signal,
         samples,
+        missed: report.missedSamples,
         drive: drive && (index => driveLinuxVerification({ step: driveSteps.find(step => step.sample === index), session, repoRoot, readForeground, signal: controller.signal, receipts: drive })),
       })
       applySmokeResult(report, evaluateHostSmoke({ ...expectation, expectIdle, samples, driveSteps, drive }))

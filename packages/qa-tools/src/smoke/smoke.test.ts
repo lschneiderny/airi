@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { parseSmokeArgs, SmokeUsageError } from './args'
+import { checkHostMode } from './host-mode'
 import { pageErrorFrom, targetLabel } from './page-errors'
 import { parseAllowedErrors, scanMainLog, triageErrors } from './triage'
 
@@ -72,7 +73,7 @@ describe('error triage', () => {
 
 describe('smoke arguments', () => {
   it('defaults to no model and a 20 second settle', () => {
-    expect(parseSmokeArgs([], '/repo')).toEqual({ model: undefined, kind: 'live2d', stageHost: 'window', settleMs: 20_000, allow: undefined, out: undefined })
+    expect(parseSmokeArgs([], '/repo')).toEqual({ model: undefined, kind: 'live2d', stageHost: 'window', expectHost: 'window', xwayland: false, electronArgs: [], settleMs: 20_000, allow: undefined, out: undefined })
   })
 
   it('resolves paths against the caller and infers the model kind', () => {
@@ -90,5 +91,44 @@ describe('smoke arguments', () => {
     expect(() => parseSmokeArgs(['--stage-host', 'desktop'], '/repo')).toThrow('--stage-host desktop needs an MMD --model')
     expect(() => parseSmokeArgs(['--stage-host', 'desktop', '--model', 'm/a.vrm'], '/repo')).toThrow('--stage-host desktop needs an MMD --model')
     expect(() => parseSmokeArgs(['--stage-host', 'stage'], '/repo')).toThrow()
+  })
+
+  it('expects the requested host by default and accepts the classic window on a gated platform', () => {
+    const desktop = ['--stage-host', 'desktop', '--model', 'm/a.pmx']
+    expect(parseSmokeArgs(desktop, '/repo')).toMatchObject({ stageHost: 'desktop', expectHost: 'desktop' })
+    expect(parseSmokeArgs([...desktop, '--expect-host', 'window'], '/repo')).toMatchObject({ stageHost: 'desktop', expectHost: 'window' })
+    expect(() => parseSmokeArgs(['--expect-host', 'desktop'], '/repo')).toThrow('--expect-host desktop needs --stage-host desktop')
+    expect(() => parseSmokeArgs([...desktop, '--expect-host', 'stage'], '/repo')).toThrow()
+  })
+
+  it('launches through XWayland and passes Electron switches through', () => {
+    expect(parseSmokeArgs(['--xwayland', '--electron-arg=--use-gl=angle', '--electron-arg=--use-angle=swiftshader'], '/repo')).toMatchObject({ xwayland: true, electronArgs: ['--use-gl=angle', '--use-angle=swiftshader'] })
+    expect(() => parseSmokeArgs(['--electron-arg=use-gl'], '/repo')).toThrow('--electron-arg takes one Chromium or Electron switch')
+    expect(() => parseSmokeArgs(['--electron-arg=--'], '/repo')).toThrow('--electron-arg takes one Chromium or Electron switch')
+  })
+})
+
+describe('host mode check', () => {
+  const classicLog = '2026-11-09T19:20:18.123Z \u001B[32m[log]\u001B[39m Building the classic window host (Linux desktop stage eligible: false)\n'
+  const desktopLog = 'Building the desktop stage host (Linux desktop stage eligible: true)\n'
+
+  it('passes the classic window when no stage window existed', () => {
+    expect(checkHostMode('window', classicLog, ['#/', '#/inlay', 'http://localhost:5173/beat-sync.html'])).toBeUndefined()
+  })
+
+  it('fails an expected classic window when the desktop stage was built or opened', () => {
+    expect(checkHostMode('window', desktopLog, ['#/stage'])).toMatch(/expected the classic window host, the app built the desktop stage host/)
+    expect(checkHostMode('window', classicLog, ['#/', '#/stage'])).toMatch(/a #\/stage window existed/)
+    expect(checkHostMode('window', classicLog, ['#/inlay'])).toMatch(/no #\/ window/)
+  })
+
+  it('passes the desktop stage only with its window', () => {
+    expect(checkHostMode('desktop', desktopLog, ['#/stage', '#/inlay'])).toBeUndefined()
+    expect(checkHostMode('desktop', desktopLog, ['#/inlay'])).toMatch(/no #\/stage window/)
+    expect(checkHostMode('desktop', classicLog, ['#/'])).toMatch(/expected the desktop stage host, the app built the classic window host/)
+  })
+
+  it('fails when the app never logged its host mode', () => {
+    expect(checkHostMode('window', 'starting electron app...\n', ['#/'])).toMatch(/never logged/)
   })
 })
