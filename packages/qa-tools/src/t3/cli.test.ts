@@ -11,12 +11,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { runT3Cli, T3_LEASE_TIMEOUT_EXIT, T3_LEASE_WAIT_MS } from './cli'
 
+import * as rendered from './run-t3'
+
 vi.mock('@proj-airi/cpu-slots', async importOriginal => ({
   ...await importOriginal<typeof import('@proj-airi/cpu-slots')>(),
   acquire: vi.fn(),
 }))
 
-const argv = ['--rig', 'forbooth', '--scenario', 'builtin:t3-smoke']
+const argv = ['--rig', 'forbooth', '--scenario', 'builtin:t3-smoke', '--lease', 'exclusive']
 let rig: string
 let written: string
 
@@ -40,6 +42,53 @@ afterEach(() => {
 })
 
 describe('runT3Cli exclusive lease', () => {
+  it.each([
+    [[], 'live'],
+    [['--lease', 'live'], 'live'],
+    [['--lease', 'exclusive'], 'exclusive'],
+  ])('requests the selected lease for %j', async (flags, expected) => {
+    const stopped = new Error('stop before launch')
+    vi.mocked(acquire).mockRejectedValue(stopped)
+
+    await expect(runT3Cli([...argv.slice(0, 4), ...flags], rig)).rejects.toBe(stopped)
+
+    expect(vi.mocked(acquire).mock.lastCall?.[0].class).toBe(expected)
+  })
+
+  it('keeps the caller lease until teardown finishes after repeated interruptions', async () => {
+    const lease: Lease = { id: 'live', grant: 4, exclusive: false, inherited: false, env: {}, addWorkload: vi.fn(), release: vi.fn() }
+    vi.mocked(acquire).mockResolvedValue(lease)
+    let reached: () => void = () => {}
+    const ready = new Promise<void>((resolve) => {
+      reached = resolve
+    })
+    let finishTeardown: (result: rendered.RunT3Result) => void = () => {}
+    const teardown = new Promise<rendered.RunT3Result>((resolve) => {
+      finishTeardown = resolve
+    })
+    let signal: AbortSignal | undefined
+    vi.spyOn(rendered, 'runT3').mockImplementation(async (options) => {
+      signal = options.signal
+      reached()
+      return teardown
+    })
+    vi.spyOn(process.stdout, 'write').mockReturnValue(true)
+    const listeners = process.listenerCount('SIGINT')
+    const running = runT3Cli(argv.slice(0, 4), rig)
+    await ready
+
+    process.emit('SIGINT')
+    process.emit('SIGINT')
+    expect(signal?.aborted).toBe(true)
+    expect(written).toContain('again (2); teardown is still running')
+    expect(lease.release).not.toHaveBeenCalled()
+    finishTeardown({ exitCode: 130, summary: 'interrupted after teardown' })
+
+    expect(await running).toBe(130)
+    expect(lease.release).toHaveBeenCalledOnce()
+    expect(process.listenerCount('SIGINT')).toBe(listeners)
+  })
+
   it('exits 2 with a clear message when it inherits a shared lease', async () => {
     vi.stubEnv('AIRI_CPU_LEASE', 'parent-lease')
     vi.mocked(acquire).mockRejectedValue(new CpuSlotsError('exclusive-under-shared'))

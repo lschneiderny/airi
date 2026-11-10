@@ -34,12 +34,12 @@ async function main(): Promise<number> {
   let lease: Awaited<ReturnType<typeof acquire>> | undefined
   try {
     lease = await acquire({
-      class: 'exclusive',
+      class: 'live',
       command: `qa:app run --model ${options.model}`,
       cwd: repoRoot,
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30 * 60_000)]),
     })
-    const result = await runApp(options, repoRoot, controller.signal)
+    const result = await runApp(options, repoRoot, controller.signal, lease)
     process.stdout.write(`${JSON.stringify(result.summary)}\n`)
     return result.exitCode
   }

@@ -1,3 +1,4 @@
+import type { Lease } from '@proj-airi/cpu-slots'
 import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
 import type { HostId } from '@proj-airi/stage-shared/host-capabilities'
 import type { MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
@@ -40,14 +41,15 @@ import { buildT3EmotionPlan, buildT3IdleScenario, t3PlanFromScenarios, t3Scenari
 import { measureT3Session, scoreT3Emotion } from './t3-score'
 import { trimWarmUp } from './trials'
 
-export interface T3GateCommand {
+export type T3GateCommand = {
   target: 'emotion' | 'liveliness'
   /** Run dir of the T1 emotion report the transfer ratios divide by; `null` finds the newest one at this commit. */
   t1Report: string | null
-  /** An archived T3 emotion gate run dir to score again from its session traces, with no launch; `null` runs live. */
-  rescore: string | null
   host?: HostId
-}
+} & (
+  | { rescore: string }
+  | { rescore: null, lease: Lease }
+)
 
 const fixturesDir = resolve(import.meta.dirname, '..', '..', '..', 'fixtures')
 const t1EmotionRunPattern = /-motion-gate-emotion-t1$/
@@ -125,7 +127,7 @@ function writeJson(run: RunHandle, name: string, value: unknown) {
  * Runs each scenario as one rendered T3 session (launch, capture, teardown). A failed session (for example a cursor that
  * would not park) does not stop the others; an interrupt or a refusal before launch does.
  */
-async function runSessions(scenarios: readonly MotionScenario[], context: { repoRoot: string, rig: ResolvedRig, run: RunHandle, signal: AbortSignal, script: 'dev' | 'dev:xwayland', idleAfterSeconds?: number }): Promise<SessionOutcome[]> {
+async function runSessions(scenarios: readonly MotionScenario[], context: { repoRoot: string, rig: ResolvedRig, run: RunHandle, signal: AbortSignal, script: 'dev' | 'dev:xwayland', idleAfterSeconds?: number, lease: Lease }): Promise<SessionOutcome[]> {
   const catalog = JSON.parse(readFileSync(resolve(fixturesDir, t3RigCatalogs.forbooth), 'utf8')) as CatalogEntry[]
   const outcomes: SessionOutcome[] = []
   for (const scenario of scenarios) {
@@ -134,6 +136,7 @@ async function runSessions(scenarios: readonly MotionScenario[], context: { repo
     context.run.addArtifact(source, 'scenario')
     console.info(`qa-tools gate t3: session ${outcomes.length + 1}/${scenarios.length} (${scenario.id}, ${scenario.durationSeconds} s)`)
     const result = await runT3({
+      lease: context.lease,
       repoRoot: context.repoRoot,
       rig: context.rig,
       scenario,
@@ -471,7 +474,7 @@ export async function runT3Gate(command: T3GateCommand, repoRoot: string, env: N
   let outcomes: SessionOutcome[] = []
   let report: GateReport | null = null
   try {
-    outcomes = await runSessions(scenarios, { repoRoot, rig, run, signal: controller.signal, script: launch.script, idleAfterSeconds: command.target === 'liveliness' ? livelinessGateFor('t3').warmUpSeconds : undefined })
+    outcomes = await runSessions(scenarios, { repoRoot, rig, run, signal: controller.signal, script: launch.script, idleAfterSeconds: command.target === 'liveliness' ? livelinessGateFor('t3').warmUpSeconds : undefined, lease: command.lease })
     if (controller.signal.aborted) {
       exitCode = 130
       summary = 'interrupted'

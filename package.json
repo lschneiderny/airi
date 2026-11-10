@@ -56,7 +56,7 @@
     "test-stage-ui-mmd:run": "vitest run --config packages/stage-ui-mmd/vitest.config.ts --project browser",
     "lint": "moeru-lint .",
     "lint:fix": "moeru-lint --fix .",
-    "capture:tamagotchi": "tsx packages/cpu-slots/src/cli.ts run --class exclusive -- pnpm exec vishot capture --target electron ./packages/scenarios-stage-tamagotchi-electron/src/scenarios/demo-controls-settings-chat-websocket/index.ts --app-entrypoint ./apps/stage-tamagotchi/out/main/index.js --cwd . --output-dir ./packages/scenarios-stage-tamagotchi-browser/artifacts/raw --format avif",
+    "capture:tamagotchi": "tsx packages/cpu-slots/src/cli.ts run --class live -- pnpm exec vishot capture --target electron ./packages/scenarios-stage-tamagotchi-electron/src/scenarios/demo-controls-settings-chat-websocket/index.ts --app-entrypoint ./apps/stage-tamagotchi/out/main/index.js --cwd . --output-dir ./packages/scenarios-stage-tamagotchi-browser/artifacts/raw --format avif",
     "typecheck": "tsx packages/cpu-slots/src/cli.ts run --class typecheck -- turbo run typecheck -F=\"./packages/*\" -F=\"./apps/*\" -F=\"./server/**\" -F=\"./services/*\" \"--concurrency={grant}\"",
     "typecheck:engines": "tsx packages/cpu-slots/src/cli.ts run --class build -- pnpm -rF=\"./engines/*\" --parallel typecheck",
     "slots": "tsx packages/cpu-slots/src/cli.ts",

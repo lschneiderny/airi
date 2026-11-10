@@ -1,3 +1,4 @@
+import type { Lease } from '@proj-airi/cpu-slots'
 import type { MotionQaState } from '@proj-airi/stage-shared/motion-scenario'
 
 import type { LiveProcess } from '../env/processes'
@@ -13,6 +14,7 @@ import { AppSessionCore, refuseIfWorktreeBusy } from './app-session'
 
 const repoRoot = '/wt/tqr-t8'
 const profileDir = '/wt/tqr-t8/.temp/qa/run-1/profile'
+const lease: Lease = { id: 'test', grant: 4, exclusive: false, inherited: false, env: {}, addWorkload: vi.fn(), release: vi.fn() }
 const root: LiveProcess = { pid: 4242, parentPid: 1, created: 1, commandLine: `node pnpm.mjs --dir ${repoRoot} -F @proj-airi/stage-tamagotchi dev` }
 const electron: LiveProcess = { pid: 4243, parentPid: root.pid, created: 2, commandLine: `${repoRoot}/node_modules/electron/dist/electron .` }
 const state: MotionQaState = { modelId: 'm', modelLoaded: true, driver: 'natural', cursorAttention: true, expressionEnabled: true, heldEmotions: true, naturalActive: true, hold: null, captureActive: false, head: { x: 100, y: 50, width: 80, height: 100 }, screen: { x: 0, y: 0, devicePixelRatio: 1 }, screenAwareness: true, placement: null, placementYawBias: 0, chat: null, host: null, foreground: null, desktopIdleSeconds: null, performanceMode: null, performance: null }
@@ -107,7 +109,7 @@ describe('appSessionCore', () => {
     const world = fakeWorld()
     const session = new AppSessionCore({ repoRoot, profileDir, selfPids: [7] }, world.deps)
     const started = await session.start({
-      launch: { logFile: '/dev/null', script: 'dev:xwayland' },
+      launch: { logFile: '/dev/null', script: 'dev:xwayland', lease },
       onLaunched: () => void world.steps.push('recorded'),
       collectPageErrors: true,
       beforeOnboarding: async ({ targetUrl }) => void world.steps.push(`prepare:${targetUrl}`),
@@ -123,7 +125,7 @@ describe('appSessionCore', () => {
   it('skips the optional steps it was not asked for', async () => {
     const world = fakeWorld()
     const session = new AppSessionCore({ repoRoot, profileDir }, world.deps)
-    const started = await session.start({ launch: { logFile: '/dev/null' }, onboarding: false })
+    const started = await session.start({ launch: { logFile: '/dev/null', lease }, onboarding: false })
 
     expect(world.steps).toEqual(['launch:dev', expect.stringMatching(/^connect:/)])
     expect(started.initialState).toBeUndefined()
@@ -135,14 +137,14 @@ describe('appSessionCore', () => {
   it('refuses a second start while the first one owns the app', async () => {
     const world = fakeWorld()
     const session = new AppSessionCore({ repoRoot, profileDir }, world.deps)
-    await session.start({ launch: { logFile: '/dev/null' } })
-    await expect(session.start({ launch: { logFile: '/dev/null' } })).rejects.toThrow('already started')
+    await session.start({ launch: { logFile: '/dev/null', lease } })
+    await expect(session.start({ launch: { logFile: '/dev/null', lease } })).rejects.toThrow('already started')
   })
 
   it('fails the bridge wait as soon as the app exits, and teardown still releases everything', async () => {
     const world = fakeWorld({ bridgeReady: new Promise(() => {}) })
     const session = new AppSessionCore({ repoRoot, profileDir }, world.deps)
-    const starting = session.start({ launch: { logFile: '/dev/null' }, collectPageErrors: true, bridge: { step: 'the seeded bridge', timeoutMs: 60_000 } })
+    const starting = session.start({ launch: { logFile: '/dev/null', lease }, collectPageErrors: true, bridge: { step: 'the seeded bridge', timeoutMs: 60_000 } })
     world.exit(1)
 
     await expect(starting).rejects.toThrow('The app exited (code 1) while waiting for the seeded bridge')
@@ -165,7 +167,7 @@ describe('appSessionCore', () => {
       return new Promise(() => {})
     } })
     const session = new AppSessionCore({ repoRoot, profileDir, signal: controller.signal }, world.deps)
-    const starting = session.start({ launch: { logFile: '/dev/null' }, collectPageErrors: true, bridge: { step: 'the bridge', timeoutMs: 60_000 } })
+    const starting = session.start({ launch: { logFile: '/dev/null', lease }, collectPageErrors: true, bridge: { step: 'the bridge', timeoutMs: 60_000 } })
     await atOnboarding
     controller.abort(new Error('interrupted'))
 
@@ -184,7 +186,7 @@ describe('appSessionCore', () => {
     controller.abort(new Error('interrupted'))
     const session = new AppSessionCore({ repoRoot, profileDir, signal: controller.signal }, world.deps)
 
-    await expect(session.start({ launch: { logFile: '/dev/null' } })).rejects.toThrow('interrupted')
+    await expect(session.start({ launch: { logFile: '/dev/null', lease } })).rejects.toThrow('interrupted')
     expect(world.steps).toEqual([])
     const report = await session.teardown({ removeDir: world.removeDir })
     expect(report.browserClose.attempted).toBe(false)
@@ -217,7 +219,7 @@ describe('appSessionCore', () => {
     it('after-connect lets the connect finish, so teardown closes the browser gracefully instead of only killing', async () => {
       const { controller, world, atConnect, finishConnect } = interruptDuringConnect()
       const session = new AppSessionCore({ repoRoot, profileDir, signal: controller.signal, abortMode: 'after-connect' }, world.deps)
-      const starting = session.start({ launch: { logFile: '/dev/null' }, bridge: { step: 'the bridge', timeoutMs: 60_000 } })
+      const starting = session.start({ launch: { logFile: '/dev/null', lease }, bridge: { step: 'the bridge', timeoutMs: 60_000 } })
       await atConnect
       controller.abort(new Error('interrupted'))
       finishConnect()
@@ -232,7 +234,7 @@ describe('appSessionCore', () => {
     it('race rejects at once and leaves no browser to close, as smoke and app always did', async () => {
       const { controller, world, atConnect } = interruptDuringConnect()
       const session = new AppSessionCore({ repoRoot, profileDir, signal: controller.signal }, world.deps)
-      const starting = session.start({ launch: { logFile: '/dev/null' } })
+      const starting = session.start({ launch: { logFile: '/dev/null', lease } })
       await atConnect
       controller.abort(new Error('interrupted'))
 

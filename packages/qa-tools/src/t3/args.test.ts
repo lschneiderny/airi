@@ -9,8 +9,15 @@ import { loadT3Scenario, parseT3Args, resolveRig, T3UsageError } from './args'
 const fixturesDir = resolve(import.meta.dirname, '..', '..', 'fixtures', 'scenarios')
 
 describe('parseT3Args', () => {
+  it('defaults captures to live and accepts an exclusive timing lease', () => {
+    const args = ['--rig', 'forbooth', '--scenario', 'builtin:t3-smoke']
+    expect(parseT3Args(args)).toMatchObject({ lease: 'live' })
+    expect(parseT3Args([...args, '--lease', 'exclusive'])).toMatchObject({ lease: 'exclusive' })
+    expect(() => parseT3Args([...args, '--lease', 'test'])).toThrow('--lease must be live or exclusive')
+  })
+
   it('reads --rig, --scenario and --keep-open', () => {
-    expect(parseT3Args(['--rig', 'forbooth', '--scenario', 'builtin:t3-smoke', '--keep-open'])).toEqual({ rig: 'forbooth', scenario: 'builtin:t3-smoke', keepOpen: true })
+    expect(parseT3Args(['--rig', 'forbooth', '--scenario', 'builtin:t3-smoke', '--keep-open'])).toEqual({ rig: 'forbooth', scenario: 'builtin:t3-smoke', keepOpen: true, lease: 'live' })
   })
 
   it.each([
