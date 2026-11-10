@@ -1,4 +1,8 @@
+import type { AcquireOptions } from '@proj-airi/cpu-slots'
+
 import type { ChangedFile } from './lib/git'
+
+import { classes } from '@proj-airi/cpu-slots'
 
 export const verifySteps = ['typecheck', 'lint', 'test'] as const
 export type VerifyStep = typeof verifySteps[number]
@@ -38,6 +42,13 @@ export const extraTestConfigs: ExtraTestConfig[] = [
 export const testPrerequisiteTurboArgs = ['run', 'build', '-F=./packages/*', '--output-logs=errors-only']
 
 export type TypecheckScope = { kind: 'none' } | { kind: 'affected' } | { kind: 'all', reason: string }
+
+/** One request covers every command in a step, including the test build prerequisite. */
+export function planStepLease(step: VerifyStep, typecheck: TypecheckScope, affectedPackageCount: number): Pick<AcquireOptions, 'class' | 'max'> {
+  if (step === 'typecheck' && typecheck.kind === 'affected')
+    return { class: step, max: Math.max(classes.typecheck.min, affectedPackageCount) }
+  return { class: step }
+}
 
 export interface VerifyPlan {
   typecheck: TypecheckScope

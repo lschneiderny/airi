@@ -6,7 +6,7 @@ import { acquire } from '@proj-airi/cpu-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { verifyCacheKey } from './verify-cache'
-import { parseVerifyArgs, planVerify, selectExtraTestConfigs, stripWorkerFlags, testPrerequisiteTurboArgs } from './verify-plan'
+import { parseVerifyArgs, planStepLease, planVerify, selectExtraTestConfigs, stripWorkerFlags, testPrerequisiteTurboArgs, verifySteps } from './verify-plan'
 
 const packages = ['packages/stage-ui', 'apps/stage-tamagotchi']
 const file = (path: string, deleted = false) => ({ path, deleted })
@@ -127,7 +127,31 @@ describe('stripWorkerFlags', () => {
   })
 })
 
-describe('per-command slot acquisition', () => {
+describe('planStepLease', () => {
+  it('maps each step to its CPU class', () => {
+    expect(verifySteps.map(step => planStepLease(step, { kind: 'affected' }, 3))).toEqual([
+      { class: 'typecheck', max: 3 },
+      { class: 'lint' },
+      { class: 'test' },
+    ])
+  })
+
+  it.each([
+    { count: 0, max: 2 },
+    { count: 1, max: 2 },
+    { count: 2, max: 2 },
+    { count: 5, max: 5 },
+    { count: 20, max: 20 },
+  ])('sizes an affected typecheck of $count packages to max $max', ({ count, max }) => {
+    expect(planStepLease('typecheck', { kind: 'affected' }, count)).toEqual({ class: 'typecheck', max })
+  })
+
+  it('keeps the class default for an all-package typecheck', () => {
+    expect(planStepLease('typecheck', { kind: 'all', reason: 'root config changed' }, 1)).toEqual({ class: 'typecheck' })
+  })
+})
+
+describe('per-step slot acquisition', () => {
   let store: string
 
   beforeEach(() => {
@@ -149,9 +173,9 @@ describe('per-command slot acquisition', () => {
   // acquire() builds its Store without snapshotProcesses or processStartedAt (packages/cpu-slots/src/acquire.ts), so no fake can be injected.
   // Removal condition: drop the explicit timeout once acquire() accepts injected store options.
   it('grants the next step immediately after the previous step releases', async () => {
-    const request = (cpuClass: 'typecheck' | 'lint' | 'test') => ({ class: cpuClass, cwd: process.cwd(), command: `verify ${cpuClass}`, signal: AbortSignal.timeout(10_000) })
+    const request = (step: 'typecheck' | 'lint' | 'test') => ({ ...planStepLease(step, { kind: 'affected' }, 1), cwd: process.cwd(), command: `verify ${step}`, signal: AbortSignal.timeout(10_000) })
     const first = await acquire(request('typecheck'))
-    expect(first.grant).toBeGreaterThan(0)
+    expect(first.grant).toBe(2)
     first.release()
     const second = await acquire(request('lint'))
     expect(second.grant).toBe(1)
