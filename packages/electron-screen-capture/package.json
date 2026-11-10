@@ -45,6 +45,7 @@
     "@electron-toolkit/preload": "catalog:",
     "@moeru/eventa": "catalog:",
     "@moeru/std": "catalog:",
+    "@proj-airi/cpu-slots": "workspace:^",
     "async-mutex": "catalog:",
     "nanoid": "catalog:",
     "vite": "catalog:",
