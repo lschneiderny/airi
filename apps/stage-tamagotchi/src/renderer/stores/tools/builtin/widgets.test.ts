@@ -3,42 +3,13 @@ import type { JsonSchema } from 'xsschema'
 
 import type { WidgetInvokers } from './widgets'
 
-import { execFile as execFileCallback } from 'node:child_process'
-import { promisify } from 'node:util'
-
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { canRenderExtensionUi, sanitizeExtensionUiRenderProps } from '../../../widgets/extension-ui/host'
 import { installStrictToolSchemaMatchers } from '../testing/strict-tool-schema'
 import { executeWidgetAction, normalizeComponentProps, widgetsTools } from './widgets'
 
 installStrictToolSchemaMatchers()
-
-const execFile = promisify(execFileCallback)
-const aihubmixApiKey = process.env.AIHUBMIX_API_KEY?.trim() || ''
-const hasAihubmixApiKey = Boolean(aihubmixApiKey)
-const aihubmixBaseUrl = normalizeBaseUrl(process.env.AIHUBMIX_BASE_URL)
-const configuredAihubmixModel = process.env.AIHUBMIX_MODEL?.trim()
-
-interface AihubmixModelListResponse {
-  data?: Array<{
-    id?: string
-  }>
-}
-
-interface AihubmixErrorResponse {
-  error?: {
-    message?: string
-    type?: string
-    param?: string
-    code?: string
-  }
-}
-
-interface CurlJsonResponse<T> {
-  body: T
-  status: number
-}
 
 function getObjectSchema(schema?: JsonSchema) {
   if (!schema)
@@ -49,140 +20,6 @@ function getObjectSchema(schema?: JsonSchema) {
 
   const candidates = [...(schema.anyOf ?? []), ...(schema.oneOf ?? [])]
   return candidates.find((candidate): candidate is JsonSchema => Boolean(candidate && typeof candidate === 'object' && !Array.isArray(candidate) && candidate.type === 'object'))
-}
-
-/**
- * Normalizes the configured AIHubMix base URL to a trailing-slash form.
- *
- * Before:
- * - `https://aihubmix.com/v1`
- *
- * After:
- * - `https://aihubmix.com/v1/`
- */
-function normalizeBaseUrl(value: string | undefined): string {
-  let normalized = value?.trim() || 'https://aihubmix.com/v1/'
-  if (!normalized.endsWith('/'))
-    normalized += '/'
-  return normalized
-}
-
-/**
- * Executes one `curl` JSON request and returns both the body and HTTP status.
- *
- * Use when:
- * - The local Node TLS stack fails against the provider but HTTPS requests succeed via `curl`
- * - An env-backed integration test still needs a reproducible provider response
- *
- * Expects:
- * - `curl` is installed in the local environment
- * - The endpoint returns JSON on both success and error paths
- *
- * Returns:
- * - Parsed JSON body plus the HTTP status code
- */
-async function runCurlJson<T>(options: {
-  body?: string
-  headers?: string[]
-  method?: 'GET' | 'POST'
-  url: string
-}): Promise<CurlJsonResponse<T>> {
-  // NOTICE:
-  // Node `fetch` reaches AIHubMix from this repo environment with `ECONNRESET` before TLS
-  // negotiation completes, while `curl` succeeds against the same host and credentials.
-  // This test uses `curl` through `execFile` so we can still reproduce the provider-side
-  // schema validation error inside Vitest without introducing shell interpolation or
-  // hand-managed temporary files.
-  const args = [
-    '--silent',
-    '--show-error',
-    '--write-out',
-    '\n%{http_code}',
-    '--url',
-    options.url,
-  ]
-
-  for (const header of options.headers ?? []) {
-    args.push('--header', header)
-  }
-
-  if (options.method) {
-    args.push('--request', options.method)
-  }
-
-  if (options.body) {
-    args.push('--data-raw', options.body)
-  }
-
-  const result = await execFile('curl', args, {
-    maxBuffer: 1024 * 1024 * 4,
-  })
-  const output = result.stdout.trimEnd()
-  const lastNewlineIndex = output.lastIndexOf('\n')
-
-  if (lastNewlineIndex < 0)
-    throw new Error('curl did not emit an HTTP status line.')
-
-  const rawBody = output.slice(0, lastNewlineIndex)
-  const rawStatus = output.slice(lastNewlineIndex + 1)
-  const status = Number.parseInt(rawStatus, 10)
-
-  if (!Number.isFinite(status))
-    throw new Error(`curl emitted an invalid HTTP status: ${rawStatus}`)
-
-  return {
-    body: JSON.parse(rawBody) as T,
-    status,
-  }
-}
-
-/**
- * Picks one likely chat-capable model for the local provider repro.
- *
- * Use when:
- * - The env file does not pin `AIHUBMIX_MODEL`
- * - A live schema repro still needs a concrete chat model id
- *
- * Expects:
- * - `/models` returns provider model ids
- *
- * Returns:
- * - A concrete chat model id to use with `/chat/completions`
- */
-async function resolveAihubmixModel(): Promise<string> {
-  if (configuredAihubmixModel)
-    return configuredAihubmixModel
-
-  const response = await runCurlJson<AihubmixModelListResponse>({
-    url: new URL('models', aihubmixBaseUrl).toString(),
-    headers: [
-      `Authorization: Bearer ${aihubmixApiKey}`,
-    ],
-  })
-  expect(response.status).toBe(200)
-
-  const modelIds = (response.body.data ?? [])
-    .map(entry => entry.id?.trim())
-    .filter((value): value is string => Boolean(value))
-
-  const preferredModel = [
-    'gpt-4o-mini',
-    'gpt-4.1-mini',
-    'gpt-4.1-nano',
-    'gpt-4o',
-  ].find(candidate => modelIds.includes(candidate))
-
-  if (preferredModel)
-    return preferredModel
-
-  const fallbackModel = modelIds.find(model =>
-    ['embed', 'embedding', 'tts', 'whisper', 'rerank'].every(fragment => !model.toLowerCase().includes(fragment)),
-  )
-
-  if (!fallbackModel)
-    throw new Error('Unable to resolve an AIHubMix chat model. Set AIHUBMIX_MODEL in .env.local.')
-
-  return fallbackModel
 }
 
 /**
@@ -254,57 +91,6 @@ describe('widgets tool helpers', () => {
       expect((windowSizeProperties.minHeight as JsonSchema).exclusiveMinimum).toBe(0)
       expect((windowSizeProperties.maxWidth as JsonSchema).exclusiveMinimum).toBe(0)
       expect((windowSizeProperties.maxHeight as JsonSchema).exclusiveMinimum).toBe(0)
-    })
-
-    describe('live AIHubMix repro', () => {
-      if (!hasAihubmixApiKey) {
-        it.skip('aIHUBMIX_API_KEY must be set in apps/stage-tamagotchi/.env.local to run this test', () => {})
-        return
-      }
-
-      let model: string
-      let stageWidgetsTool: Tool
-
-      beforeAll(async () => {
-        stageWidgetsTool = await getStageWidgetsTool()
-        model = await resolveAihubmixModel()
-      })
-
-      it('accepts the provider-facing schema after windowSize constraints are made provider-safe', async () => {
-        // ROOT CAUSE:
-        //
-        // `stage_widgets.windowSize` is emitted as a strict object with optional nested keys.
-        // Some OpenAI-compatible validators reject that shape and require every nested property
-        // to appear in `required`, even though the schema is valid Draft-07 JSON Schema.
-        //
-        // This test proves whether AIHubMix currently rejects the tool with the same provider-
-        // side validation error reported in the bug report.
-        const response = await runCurlJson<AihubmixErrorResponse>({
-          method: 'POST',
-          url: new URL('chat/completions', aihubmixBaseUrl).toString(),
-          headers: [
-            `Authorization: Bearer ${aihubmixApiKey}`,
-            'Content-Type: application/json',
-          ],
-          body: JSON.stringify({
-            model,
-            messages: [
-              {
-                role: 'user',
-                content: 'Open the widgets window.',
-              },
-            ],
-            tools: [stageWidgetsTool],
-            tool_choice: 'auto',
-            temperature: 0,
-          }),
-        })
-
-        const payload = response.body
-
-        expect(response.status).toBe(200)
-        expect(payload.error).toBeUndefined()
-      }, 15000)
     })
   })
 
