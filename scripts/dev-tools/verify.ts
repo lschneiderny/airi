@@ -10,8 +10,8 @@ import { acquire } from '@proj-airi/cpu-slots'
 
 import { capture, chunkByLength, nodeCommandChunkLimits, run, shimCommandChunkLimits } from './lib/exec'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
-import { readPass, verifyCacheKey, writePass } from './verify-cache'
-import { parseVerifyArgs, planStepLease, planVerify, selectExtraTestConfigs, stripWorkerFlags, testPrerequisiteTurboArgs, verifyUsage } from './verify-plan'
+import { readLastPass, readPass, verifyCacheKey, writeLastPass, writePass } from './verify-cache'
+import { advanceLastPass, parseVerifyArgs, planStepLease, planVerify, selectExtraTestConfigs, selectVerifyScope, stripWorkerFlags, testPrerequisiteTurboArgs, touchesAppRuntime, typecheckFilters, verifyUsage } from './verify-plan'
 
 interface Command {
   label: string
@@ -46,14 +46,12 @@ function withDependents(root: string, packagePaths: string[]): string[] {
   return listing.packages.items.map(item => item.path.replaceAll('\\', '/'))
 }
 
-function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnType<typeof planVerify>, extraConfigs: ExtraTestConfig[]): Command[] | string {
+function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof planVerify>, extraConfigs: ExtraTestConfig[]): Command[] | string {
   const node = (entry: string, args: string[]) => [join(root, entry), ...args]
   if (step === 'typecheck') {
     if (plan.typecheck.kind === 'none')
       return 'no workspace package changed'
-    const filters = plan.typecheck.kind === 'all'
-      ? ['-F=./packages/*', '-F=./apps/*', '-F=./server/**', '-F=./services/*']
-      : [`--filter=...[${base}]`]
+    const filters = typecheckFilters(plan.typecheck, plan.typecheckPackagePaths)
     const label = plan.typecheck.kind === 'all' ? `every package (${plan.typecheck.reason})` : 'changed packages and their dependents'
     return [{ label, args: node('node_modules/turbo/bin/turbo', ['run', 'typecheck', ...filters, '--output-logs=errors-only']), concurrency: true }]
   }
@@ -98,24 +96,57 @@ async function main(): Promise<number> {
     console.error(`Cannot find the merge base with ${args.base}: ${errorMessageFrom(error) ?? 'unknown error'}`)
     return 2
   }
-  const changed = changedFiles(root, base)
   const workspaces = workspacePackages(root)
-  const plan = planVerify(changed, workspaces.paths, workspaces.rootDependencyPaths)
-  const extraConfigs = args.steps.includes('test') ? selectExtraTestConfigs(withDependents(root, plan.testPackagePaths)) : []
-  const affectedTypecheckCount = args.steps.includes('typecheck') && plan.typecheck.kind === 'affected'
-    ? withDependents(root, workspaces.paths.filter(path => changed.some(file => file.path === path || file.path.startsWith(`${path}/`)))).length
-    : 0
   const tree = workingTreeHash(root)
   const cacheDir = join(gitCommonDir(root), 'airi-verify')
+  const branch = git(root, ['branch', '--show-current']) || null
+  const head = git(root, ['rev-parse', 'HEAD'])
+  const context = { branch, mergeBase: base, gate: args.gate }
+  const record = branch && !args.gate ? readLastPass(cacheDir, branch) : null
+  const recordStep = (step: VerifyStep, status: 'passed' | 'cached') => {
+    if (!branch)
+      return
+    // Reread so a completed step never replaces another step's newer record with the startup copy.
+    const next = advanceLastPass(readLastPass(cacheDir, branch), context, {
+      step,
+      status,
+      entry: { tree, head, recordedAt: new Date().toISOString() },
+    })
+    if (next)
+      writeLastPass(cacheDir, branch, next)
+  }
   // Windows spells the variable `Path`; a second `PATH` key would hide the system directories.
   const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH'
   const env = { ...process.env, [pathKey]: `${join(root, 'node_modules/.bin')}${delimiter}${process.env[pathKey] ?? ''}` }
 
   const slotsEnabled = !process.env.CI && process.env.AIRI_CPU_SLOTS !== 'off'
-  console.info(`verify: ${changed.length} changed file(s) since ${args.base} (${base.slice(0, 9)}), tree ${tree.slice(0, 9)}`)
+  console.info(`verify: merge base with ${args.base} ${base.slice(0, 9)}, tree ${tree.slice(0, 9)}`)
+  if (args.gate && touchesAppRuntime(changedFiles(root, base, tree)))
+    console.info('gate reminder: app runtime changed; run pnpm qa:display run -- pnpm qa:smoke before landing.')
   const results: StepResult[] = []
   for (const step of args.steps) {
-    const commands = commandsFor(step, root, base, plan, extraConfigs)
+    const entry = record?.steps[step]
+    let treeExists = false
+    if (entry && record?.mergeBase === base) {
+      try {
+        git(root, ['cat-file', '-e', `${entry.tree}^{tree}`])
+        treeExists = true
+      }
+      catch {
+        // Pruned objects invalidate the incremental baseline; selectVerifyScope explains the fallback.
+      }
+    }
+    const scope = selectVerifyScope(context, { record, step, treeExists })
+    console.info(`[${step}] scope: ${scope.mode === 'incremental' ? `incremental from ${scope.base} (${scope.reason})` : `branch (${scope.reason})`}`)
+    const changed = changedFiles(root, scope.base, tree)
+    console.info(`[${step}] ${changed.length} changed file(s)`)
+    if (args.dryRun) {
+      for (const file of changed)
+        console.info(`  ${file.deleted ? 'D' : 'M'} ${file.path}`)
+    }
+    const plan = planVerify(changed, workspaces.paths, workspaces.rootDependencyPaths)
+    const extraConfigs = step === 'test' ? selectExtraTestConfigs(withDependents(root, plan.testPackagePaths)) : []
+    const commands = commandsFor(step, root, plan, extraConfigs)
     if (typeof commands === 'string') {
       results.push({ step, status: 'skipped', detail: commands, durationMs: 0 })
       continue
@@ -123,10 +154,14 @@ async function main(): Promise<number> {
     const command = stripWorkerFlags(commands.flatMap(item => item.args))
     const key = verifyCacheKey({ tree, step, command, node: process.version, platform: process.platform })
     const cached = args.force ? null : readPass(cacheDir, key)
-    if (cached) {
+    if (cached && !args.dryRun && workingTreeHash(root) === tree) {
+      recordStep(step, 'cached')
       results.push({ step, status: 'cached', detail: `passed ${cached.passedAt} on this tree`, durationMs: 0 })
       continue
     }
+    const affectedTypecheckCount = step === 'typecheck' && plan.typecheck.kind === 'affected'
+      ? withDependents(root, plan.typecheckPackagePaths).length
+      : 0
     const leasePlan = planStepLease(step, plan.typecheck, affectedTypecheckCount)
     if (args.dryRun) {
       console.info(`[${step}] acquire one lease (class ${leasePlan.class}${leasePlan.max !== undefined ? `, max ${leasePlan.max}` : ''})`)
@@ -162,7 +197,8 @@ async function main(): Promise<number> {
       results.push({ step, status: 'passed', detail: `${labels} (not cached: files changed during the step)`, durationMs })
       continue
     }
-    writePass(cacheDir, { key, step, tree, command, passedAt: new Date().toISOString(), durationMs })
+    writePass(cacheDir, { key, step, tree, command, passedAt: new Date().toISOString(), durationMs, scopeBase: scope.base, mode: scope.mode })
+    recordStep(step, 'passed')
     results.push({ step, status: 'passed', detail: labels, durationMs })
   }
 

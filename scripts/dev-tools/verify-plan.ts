@@ -7,6 +7,62 @@ import { classes } from '@proj-airi/cpu-slots'
 export const verifySteps = ['typecheck', 'lint', 'test'] as const
 export type VerifyStep = typeof verifySteps[number]
 
+export interface VerifiedTree {
+  readonly tree: string
+  readonly head: string
+  readonly recordedAt: string
+}
+
+export interface LastVerifyPass {
+  readonly mergeBase: string
+  readonly steps: Partial<Record<VerifyStep, VerifiedTree>>
+}
+
+export interface VerifyContext {
+  readonly branch: string | null
+  readonly mergeBase: string
+  readonly gate: boolean
+}
+
+export interface VerifyScope {
+  readonly mode: 'incremental' | 'branch'
+  readonly base: string
+  readonly reason: string
+}
+
+/** HEAD is deliberately not a baseline: commits made without verification must remain in scope. */
+export function selectVerifyScope(context: VerifyContext, previous: { record: LastVerifyPass | null, step: VerifyStep, treeExists: boolean }): VerifyScope {
+  const { record, step, treeExists } = previous
+  const entry = record?.steps[step]
+  if (!context.branch)
+    return { mode: 'branch', base: context.mergeBase, reason: 'detached HEAD' }
+  if (context.gate)
+    return { mode: 'branch', base: context.mergeBase, reason: 'gate' }
+  if (!record)
+    return { mode: 'branch', base: context.mergeBase, reason: 'missing record' }
+  if (record.mergeBase !== context.mergeBase)
+    return { mode: 'branch', base: context.mergeBase, reason: 'merge base moved' }
+  if (!entry)
+    return { mode: 'branch', base: context.mergeBase, reason: 'missing step entry' }
+  if (!treeExists)
+    return { mode: 'branch', base: context.mergeBase, reason: 'recorded tree missing' }
+  return { mode: 'incremental', base: entry.tree, reason: `recorded ${entry.recordedAt}` }
+}
+
+/** Only call for the unchanged tree checked by a step, from its selected branch or verified-tree scope. */
+export function advanceLastPass(record: LastVerifyPass | null, context: VerifyContext, result: { step: VerifyStep, status: 'passed' | 'cached' | 'failed' | 'skipped', entry: VerifiedTree }): LastVerifyPass | null {
+  if (!context.branch || (result.status !== 'passed' && result.status !== 'cached'))
+    return record
+  return {
+    mergeBase: context.mergeBase,
+    steps: { ...(record?.mergeBase === context.mergeBase ? record.steps : {}), [result.step]: result.entry },
+  }
+}
+
+export function touchesAppRuntime(changed: ChangedFile[]): boolean {
+  return changed.some(({ path }) => /^(?:apps\/stage-tamagotchi|packages\/(?:stage-ui[^/]*|stage-shared|stage-pages|stage-layouts))\/src\//.test(path))
+}
+
 /**
  * Root files that change what every package's typecheck sees. A change to one of them typechecks
  * every package, because Turbo's `[ref]` filter maps root files to no package.
@@ -43,6 +99,15 @@ export const testPrerequisiteTurboArgs = ['run', 'build', '-F=./packages/*', '--
 
 export type TypecheckScope = { kind: 'none' } | { kind: 'affected' } | { kind: 'all', reason: string }
 
+/** Directory filters work for both commit and tree baselines; Turbo's [ref] selector needs a commit. */
+export function typecheckFilters(scope: TypecheckScope, packagePaths: string[]): string[] {
+  switch (scope.kind) {
+    case 'none': return []
+    case 'all': return ['-F=./packages/*', '-F=./apps/*', '-F=./server/**', '-F=./services/*']
+    case 'affected': return packagePaths.map(path => `--filter=...{./${path}}`)
+  }
+}
+
 /** One request covers every command in a step, including the test build prerequisite. */
 export function planStepLease(step: VerifyStep, typecheck: TypecheckScope, affectedPackageCount: number): Pick<AcquireOptions, 'class' | 'max'> {
   if (step === 'typecheck' && typecheck.kind === 'affected')
@@ -52,6 +117,7 @@ export function planStepLease(step: VerifyStep, typecheck: TypecheckScope, affec
 
 export interface VerifyPlan {
   typecheck: TypecheckScope
+  typecheckPackagePaths: string[]
   lintFiles: string[]
   testFiles: string[]
   /**
@@ -101,6 +167,7 @@ export function planVerify(changed: ChangedFile[], packagePaths: string[], rootD
   const testFiles = present.filter(path => codeFile.test(path))
   return {
     typecheck,
+    typecheckPackagePaths: [...new Set(changed.map(file => packageOf(file.path, packagePaths)).filter(path => path !== undefined))],
     lintFiles: present.filter(path => !binaryFile.test(path)),
     testFiles,
     testPackagePaths: [...new Set(testFiles.map(path => packageOf(path, packagePaths)).filter(path => path !== undefined))],
@@ -132,12 +199,14 @@ export interface VerifyArgs {
   steps: VerifyStep[]
   force: boolean
   dryRun: boolean
+  gate: boolean
 }
 
 export type ParsedVerifyArgs = { ok: true, args: VerifyArgs } | { ok: false, message: string }
 
-export const verifyUsage = `Usage: pnpm verify [--base <ref>] [--only typecheck,lint,test] [--force] [--dry-run]
+export const verifyUsage = `Usage: pnpm verify [--gate] [--base <ref>] [--only typecheck,lint,test] [--force] [--dry-run]
 
+  --gate     check the full branch instead of changes since each step's last pass
   --base     compare against the merge base with <ref> (default main)
   --only     run only these steps (default all)
   --force    ignore cached passes for this working tree
@@ -145,10 +214,13 @@ export const verifyUsage = `Usage: pnpm verify [--base <ref>] [--only typecheck,
 Exit codes: 0 every step passed, 1 a step failed, 2 usage error.`
 
 export function parseVerifyArgs(argv: string[]): ParsedVerifyArgs {
-  const args: VerifyArgs = { base: 'main', steps: [...verifySteps], force: false, dryRun: false }
+  const args: VerifyArgs = { base: 'main', steps: [...verifySteps], force: false, dryRun: false, gate: false }
   for (let index = 0; index < argv.length; index++) {
     const flag = argv[index]
-    if (flag === '--force') {
+    if (flag === '--gate') {
+      args.gate = true
+    }
+    else if (flag === '--force') {
       args.force = true
     }
     else if (flag === '--dry-run') {

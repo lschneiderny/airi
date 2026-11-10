@@ -32,7 +32,8 @@ Use `AIRI_DEV_QUIET=1 pnpm dev` (or another `dev:*` command routed through `scri
 ## `pnpm verify`
 
 ```bash
-pnpm verify                      # all steps against the merge base with main
+pnpm verify                      # changes since each step's last passing tree
+pnpm verify --gate               # full branch against the merge base with main
 pnpm verify --only lint,test     # some steps
 pnpm verify --base origin/main   # another base
 pnpm verify --dry-run            # print the plan and commands
@@ -41,15 +42,21 @@ pnpm verify --force              # ignore cached passes
 
 The steps:
 
-- **typecheck** runs `turbo run typecheck --filter=...[<merge base>]`. That covers every package with a changed file and every package that depends on one. Turbo caches results in the main worktree's `.turbo/cache`, which all worktrees share. A change to a root file that every package reads (`tsconfig*.json`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json`, a root `.d.ts`) typechecks every package.
+- **typecheck** runs `turbo run typecheck --filter=...{./<package-dir>}` for each changed package. Directory filters cover its dependents and accept scopes derived from Git trees. Turbo caches results in the main worktree's `.turbo/cache`, which all worktrees share. A change to a root file that every package reads (`tsconfig*.json`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json`, a root `.d.ts`) typechecks every package.
 - **lint** runs `moeru-lint` (oxlint, then ESLint with its cache) on the changed files.
 - **test** runs `vitest related` on the changed code files with the root config. When a changed code file is inside a workspace package, it also runs each config that `pnpm test:run` adds whose package is that package or depends on it, according to `turbo ls --filter=...{<package>}`. A config in an unrelated package cannot import the changed code, so it is skipped.
 
 Each step acquires one CPU lease before its first command and releases it after its last command, including on failure. A failed command stops the remaining commands in that step. `--dry-run` prints one lease request per uncached, runnable step.
 
-Changed files are those that differ between the merge base and the working tree, including uncommitted and untracked files.
+Each step prints its scope. Plain verify uses that step's last passing tree on the current branch, including committed, staged, unstaged, and untracked changes since that tree. A commit without verification does not advance the baseline. Comparing working-tree snapshots also avoids repeatedly checking unchanged untracked files.
 
-A passing step is recorded under `<git common dir>/airi-verify/`, keyed by the working tree hash, the exact command, the Node.js version, and the platform. Every worktree reads the same store. A rerun on an identical tree reports `cached` without running anything. Failures are never stored. A pass is not stored if files changed while the step ran. Entries older than 30 days are pruned.
+The per-branch record lives at `<git common dir>/airi-verify/last/<encoded-branch>.json`, with slashes percent-encoded. It holds the merge base and a `{ tree, head, recordedAt }` entry per step. A missing or malformed record, missing step entry, changed merge base, or pruned tree falls back to the full branch scope and prints why. Detached HEAD always uses branch scope and never reads or writes a last-pass record. `--base` selects the ref used to compute the merge base.
+
+After a pass, including a cached pass, only that step's entry advances. Skipped and failed steps leave their entries unchanged. A pass against a different merge base starts a new record so old entries cannot narrow the other steps. Dry runs never write records. Files must remain unchanged during the step before either the pass cache or the last-pass record is written.
+
+Use `pnpm verify --gate` before landing to check the full branch regardless of previous passes. If the branch touches app runtime paths (`apps/stage-tamagotchi/src/`, `packages/stage-ui*/src/`, `packages/stage-shared/src/`, `packages/stage-pages/src/`, or `packages/stage-layouts/src/`), the gate prints a reminder to run `pnpm qa:display run -- pnpm qa:smoke`.
+
+A passing step is recorded under `<git common dir>/airi-verify/`, keyed by the working tree hash, step, exact command, Node.js version, and platform. Entries also carry `scopeBase` and `mode`; those fields do not change the key. Every worktree reads the same store. An identical tree and command reports `cached` without running anything; an empty incremental scope reports `skipped`. Failures are never stored. A pass is not stored if files changed while the step ran. Pass-cache entries older than 30 days are pruned.
 
 Exit codes: 0 every step passed, 1 a step failed, 2 usage error.
 

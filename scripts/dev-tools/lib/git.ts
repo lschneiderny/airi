@@ -25,13 +25,13 @@ export interface ChangedFile {
 }
 
 /** Files that differ between `base` and the working tree: committed, staged, unstaged, and untracked. */
-export function changedFiles(root: string, base: string): ChangedFile[] {
+export function changedFiles(root: string, base: string, tree = workingTreeHash(root)): ChangedFile[] {
   const files = new Map<string, ChangedFile>()
-  const diff = git(root, ['diff', '--name-status', '--no-renames', '-z', base]).split('\0').filter(Boolean)
+  // A recorded tree can already contain untracked files. Comparing snapshots includes them exactly once,
+  // and keeps the scope and cache key tied to the same content without changing the user's index.
+  const diff = git(root, ['diff', '--name-status', '--no-renames', '-z', base, tree]).split('\0').filter(Boolean)
   for (let index = 0; index + 1 < diff.length; index += 2)
     files.set(diff[index + 1], { path: diff[index + 1], deleted: diff[index] === 'D' })
-  for (const path of git(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean))
-    files.set(path, { path, deleted: false })
   return [...files.values()].sort((a, b) => a.path.localeCompare(b.path))
 }
 
