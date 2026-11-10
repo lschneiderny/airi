@@ -172,9 +172,12 @@ status means its runtime proof passed in a QA session. `[~]` marks a missing
 live proof; neither label extends to untested distributions or compositor
 versions.
 
-Todo 18 will record its idle-retune amendment in
-`docs/ai/adr/2026-10-25-natural-idle-reshape-and-emotion-ducking.md`; its outcome
-is still pending.
+Todo 18 did not land an idle retune, so
+`docs/ai/adr/2026-10-25-natural-idle-reshape-and-emotion-ducking.md` has no
+amendment from this plan. Only its QA harness changes shipped: host-profile
+captures record the resolver inputs, and a liveliness capture fails with
+`away-active` when a scored sample reports away as active or unknown
+(`packages/qa-tools/README.md`, host-profile T3 captures).
 
 ## Follow-ups
 

@@ -1,5 +1,5 @@
 import type { ShortcutBinding } from '@proj-airi/stage-shared/global-shortcut'
-import type { HostCapabilities } from '@proj-airi/stage-shared/host-capabilities'
+import type { HostCapabilities, HostId } from '@proj-airi/stage-shared/host-capabilities'
 
 import { useLogg } from '@guiiai/logg'
 import { ShortcutFailureReasons } from '@proj-airi/stage-shared/global-shortcut'
@@ -135,7 +135,7 @@ async function setupMocks(hostPlatform?: NodeJS.Platform) {
   }
 
   /** Builds a driver whose Wayland refusal reads the pinned host snapshot, which defaults to the platform's host. */
-  function createDriver(overrides: { platform?: NodeJS.Platform, host?: 'windows' | 'macos' | 'linux-x11' | 'linux-wayland' } = {}) {
+  function createDriver(overrides: { platform?: NodeJS.Platform, host?: HostId } = {}) {
     const platform = overrides.platform ?? 'darwin'
     const hosts = { darwin: 'macos', win32: 'windows', linux: 'linux-x11' } as const
     pinnedHost = capabilitiesForHost(overrides.host ?? hosts[platform as keyof typeof hosts])
@@ -154,6 +154,8 @@ async function setupMocks(hostPlatform?: NodeJS.Platform) {
 
   /** Builds a driver with no injected host, so the Wayland refusal comes from the snapshot. */
   async function createSnapshotDriver() {
+    // An earlier test in the file may have pinned a host; the snapshot tests must reach the real service.
+    pinnedHost = undefined
     const { createHostCapabilitiesService, getCurrentHostCapabilities } = await import('./host-capabilities')
     const { hostCapabilitiesChanged } = await import('@proj-airi/electron-eventa')
     const { createContext } = await import('@moeru/eventa')
