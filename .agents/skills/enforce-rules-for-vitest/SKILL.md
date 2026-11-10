@@ -5,7 +5,8 @@ description: Apply AIRI test-scope, regression, async, and runtime-boundary rule
 
 # AIRI Tests
 
-Use the test project that owns the affected code. Run the smallest test that faithfully exercises the changed behavior.
+For check selection, see the [testing guide](../../../docs/ai/testing.md).
+
 Do not add tests for pure prose or assertions that only restate setup and constants.
 
 ## Regression Coverage

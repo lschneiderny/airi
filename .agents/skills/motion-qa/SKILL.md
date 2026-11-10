@@ -5,19 +5,11 @@ description: Run motion, emotion, or idle QA, including deterministic gates, hea
 
 # Motion QA
 
+For required checks by change type, see the [testing guide](../../../docs/ai/testing.md).
+
 Run `pnpm qa:doctor` first. Resolve reported failures before starting a check. Doctor reports setup problems and never fixes them. In a fresh worktree, run `pnpm qa:setup cubism` first: it downloads Cubism Core into both apps without launching them.
 
 Check doctor's `pointer-platform` row before rendered pointer QA. Run stage hit-test readback acceptance on Windows. Run real-pointer touch on Windows, or on Linux inside `pnpm qa:display run --`, where the QA tools inject input through the session KWin's EIS (run doctor inside the session to check its prerequisites). Elsewhere, touch scenarios refuse with `pointer-platform-unsupported`. T3 runs without pointer events use cursor attention off instead of a parked cursor (a different condition), except on Windows, and CDP pointer moves do not measure the stage hit-test readback. On Linux Wayland the app uses the classic window with click-through disabled, and the polled cursor can stick stale (#2521). Do not present these degraded conditions as Windows pointer acceptance.
-
-## Choose a level
-
-- T0 checks local unit behavior.
-- T1 proves deterministic controller behavior and scores emotion effects relative to the same-seed stripped run and idle noise. It does not use a rig.
-- T2 runs the real ForBOOTH rig with Cubism Core, physics, and pose in headless Node. It does not prove rendered pixels.
-- T3 drives the Electron app through the development-only bridge and records traces and screenshots. Keep its window visible during capture. On Linux, run it inside the headless QA display (see below).
-- T4 is Luke's visual review. Scores do not judge naturalness.
-
-Use the lowest level that answers the question. T1 and T2 use the shared scorer. T3 proves transfer to the rendered app, not statistical confidence or naturalness.
 
 ## Commands
 
@@ -61,7 +53,7 @@ AIRI_QA_RIG_FORBOOTH="<rig dir>" pnpm qa:display run -- pnpm qa:motion t3 --rig 
 pnpm qa:display down
 ```
 
-The session is a GPU-accelerated KWin compositor with its own Xwayland and D-Bus bus, run as a systemd user unit, so nothing reaches the user's desktop. Use `--name <name>` when another agent's session may be running, and stop your own session when you finish. `pnpm qa:display shot <file.png>` captures the whole session display when CDP screenshots are not enough. The display does not lift the `exclusive` slot rule. Real-pointer `t3-touch` scenarios run inside it through KWin EIS; outside it they refuse on Linux. Details: [`scripts/dev-tools/README.md`](../../../scripts/dev-tools/README.md#pnpm-qadisplay).
+The session is a GPU-accelerated KWin compositor with its own Xwayland and D-Bus bus, run as a systemd user unit, so nothing reaches the user's desktop. Use `--name <name>` when another agent's session may be running, and stop your own session when you finish. `pnpm qa:display shot <file.png>` captures the whole session display when CDP screenshots are not enough. The display does not change a command's CPU slot class. Real-pointer `t3-touch` scenarios run inside it through KWin EIS; outside it they refuse on Linux. Details: [`scripts/dev-tools/README.md`](../../../scripts/dev-tools/README.md#pnpm-qadisplay).
 
 Gate selection and environment values are recorded in the run manifest. A reduced `--seeds` run is not the full committed gate.
 
@@ -99,7 +91,7 @@ After validation passes, `qa:test`, `qa:motion gate` at T1/T2/T3, direct `qa:mot
 pnpm -F @proj-airi/qa-tools run evidence archive --plan <slug> --from <worktree-path>
 ```
 
-Do not commit evidence or rig/core assets. Heavy runs take a class from the CPU slot budget: gate runs take `gate`, and T3 captures take `exclusive`, which waits until no other lease holds slots. Run `pnpm slots status` before a heavy run to see the current holder and queue. Never overlap T3 captures with browser suites, builds, root typecheck, or lint. Let the broker queue a run rather than starting it by hand.
+Do not commit evidence or rig/core assets. Gate runs take the `gate` CPU slot class, and T3 captures take the `live` class. The T3 timing gate and `qa:stage measure` take `exclusive`, which waits until no other lease holds slots. Run `pnpm slots status` to inspect current holders and queued work.
 
 Acceptance evidence needs `--fresh` on every T1 gate and `validate-scorer` run, so the result is computed rather than read from the cache. A cached run is a local check. `--t1-report` refuses a cached run with exit 2, so pass a run made with `--fresh`.
 
