@@ -6,6 +6,7 @@ import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { electronChatFloatingContentHidden } from '../../../shared/eventa'
+import { requestKeepAbove } from '../../services/electron/coordinates'
 import { getCurrentHostCapabilities } from '../../services/electron/host-capabilities'
 import { createCharacterAnchor, createMainWindowAnchor } from './anchor'
 import { setupFloatingChatWindow } from './floating'
@@ -60,7 +61,7 @@ const mocks = await vi.hoisted(async () => {
     focus = () => {}
     moveTop = () => {}
     restore = () => {}
-    setAlwaysOnTop = () => {}
+    setAlwaysOnTop = vi.fn()
     setParentWindow = () => {}
     setIgnoreMouseEvents = () => {}
     setFullScreenable = () => {}
@@ -100,6 +101,10 @@ vi.mock('../shared/window', () => ({
   transparentWindowConfig: () => ({}),
 }))
 vi.mock('../shared/app-icon', () => ({ showWindowOnAllWorkspaces: () => {} }))
+vi.mock('../../services/electron/coordinates', async importOriginal => ({
+  ...await importOriginal<typeof import('../../services/electron/coordinates')>(),
+  requestKeepAbove: vi.fn(),
+}))
 
 const chatSize = { width: 380, height: 560 }
 const characterSize = { width: 156, height: 558 }
@@ -151,7 +156,38 @@ function setup(anchor: () => ChatAnchor | undefined) {
 describe('floating chat attached to an anchor', () => {
   beforeEach(() => {
     mocks.handlers.clear()
+    vi.mocked(requestKeepAbove).mockClear()
     Object.assign(getCurrentHostCapabilities(), capabilitiesForHost('windows'))
+  })
+
+  it.each(['attached', 'danmaku', 'free'] as const)('routes %s chat pinning through the compositor while keeping the default Electron level', async (placement) => {
+    const main = new mocks.FakeBrowserWindow()
+    main.isAlwaysOnTop = () => placement !== 'free'
+    const floating = setupFloatingChatWindow({
+      getMainWindow: () => main as never,
+      getAnchor: () => createManualAnchor(homeAt(800)).anchor,
+      getPlacement: () => placement,
+      getPinned: () => true,
+      getBounds: () => chatSize,
+      saveBounds: () => {},
+      setupChatInvokes: async () => {},
+      onFoldedChange: () => {},
+      onWindowChange: () => {},
+    })
+    await floating.open()
+    const target = floating.getOpenWindow()
+    expect(requestKeepAbove).toHaveBeenLastCalledWith(target, true)
+    expect(target?.setAlwaysOnTop).toHaveBeenLastCalledWith(true)
+
+    if (placement !== 'free') {
+      main.emit('always-on-top-changed', {}, false)
+      expect(requestKeepAbove).toHaveBeenLastCalledWith(target, false)
+      expect(target?.setAlwaysOnTop).toHaveBeenLastCalledWith(false)
+    }
+    floating.close()
+    const calls = vi.mocked(requestKeepAbove).mock.calls.length
+    main.emit('always-on-top-changed', {}, true)
+    expect(requestKeepAbove).toHaveBeenCalledTimes(calls)
   })
 
   it('does not place attached chat from a hidden origin, including a runtime status flip', async () => {

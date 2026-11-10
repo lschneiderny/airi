@@ -1,5 +1,7 @@
 import type { BrowserWindow, BrowserWindowConstructorOptions, Rectangle } from 'electron'
 
+import { requestKeepAbove } from '../../services/electron/coordinates'
+
 /**
  * Build BrowserWindow options for the desktop grounding overlay.
  *
@@ -58,6 +60,7 @@ export function applyDesktopOverlayInputIsolation(
 ): void {
   window.setIgnoreMouseEvents(true, { forward: true })
   window.setAlwaysOnTop(true, 'screen-saver')
+  requestKeepAbove(window, true)
   window.setContentProtection(true)
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 }

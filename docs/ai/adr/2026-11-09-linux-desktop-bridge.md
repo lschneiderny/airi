@@ -104,7 +104,7 @@ origins but no global cursor; native Wayland has no trusted window origin.
 | Cursor | L on Wayland/XWayland; E on X11 | E | U, cursor unreported | L | U, needs extension | E | Coordinate provider and two distinct samples, todo 9 |
 | Window origin | L on native Wayland; E otherwise | E | L on native Wayland; E on XWayland | L on native Wayland; E on XWayland | U on native Wayland; E otherwise | E | Bound own window and matching dimensions, todo 9 |
 | Display origins | L on native Wayland; E otherwise | E | L on native Wayland; E on XWayland | L on native Wayland; E on XWayland | E | E | Output identity, size and scale agreement, todo 9 |
-| Always on top | L on native Wayland; E otherwise | E | E | E | E | E | Own-window actuator readback, todo 10 |
+| Always on top | L on native Wayland; E otherwise | E | E | E | E | E | Own-window actuator readback for the main stage, floating chat and desktop overlay, todos 10 and 36 |
 | System idle | E | E | E | E | E | E | Existing advancing-idle verifier; XWayland remains unavailable |
 | Screen lock | L | L | L | L | L | L | Successful logind or ScreenSaver read and subscription |
 | Global key-up | L on Wayland/XWayland; E on X11 | E | L | L | L | L where portal is bound | Accepted portal binding, todo 11; existing X11 hook |
@@ -233,6 +233,15 @@ running cursor loop starts compositor cursor streaming and the last one stops
 it. A capability change makes every screen service resend its cursor.
 
 ## Script lifecycle and cost
+
+The floating chat and desktop grounding overlay submit keep-above requests
+through the same coordinate provider as the main stage. The provider registers
+every BrowserWindow at creation, proves its compositor identity when shown,
+and applies a pending request after binding. Each window uses the existing
+latest-value actuator and compositor read-back verifier. Attached and danmaku
+chat follow the main window's pin; free chat uses its saved pin preference.
+The Electron calls retain their existing levels on other hosts: default level
+for text input in floating chat, and screen-saver level for the overlay.
 
 Names include the app pid: `ai.moeru.airi.LinuxDesktop.p<pid>`,
 `airi-desktop-bridge-<pid>` and `airi-desktop-cursor-<pid>`. Scripts are written
