@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { platform } from 'node:process'
 
 import { errorMessageFrom } from '@moeru/std'
+import { acquire } from '@proj-airi/cpu-slots'
 import { CdpClient, findDebugTarget, sleep, waitForRemoteDebug } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 
 import { killTree, listLiveProcesses } from '../env/processes'
@@ -642,12 +643,17 @@ async function launchAndMeasure(options: { repoRoot: string, profile: string, mo
   const profileDir = join(options.scratch, `${options.mode}-${options.n}-profile`)
   cpSync(options.profile, profileDir, { recursive: true })
   options.log(`qa-tools stage: launching ${options.mode} pair ${options.n}`)
+  const lease = await acquire({ class: 'exclusive', command: `qa:stage measure ${options.mode} pair ${options.n}`, cwd: options.repoRoot })
   const app = await launchStageTamagotchi({
+    lease,
     repoRoot: options.repoRoot,
     profileDir,
     logFile: join(options.scratch, `${options.mode}-${options.n}.log`),
     list: listLiveProcesses,
     env: { AIRI_STAGE_HOST: options.mode },
+  }).catch((error) => {
+    lease.release()
+    throw error
   })
   let tracked: OwnedProcess[] = []
   let browserUrl: string | undefined

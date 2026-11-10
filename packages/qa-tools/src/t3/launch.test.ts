@@ -56,6 +56,28 @@ class FakeDevRoot extends ChildProcess {
 }
 
 describe('launchStageTamagotchi', () => {
+  it('registers the app on the caller lease without acquiring another reference', async () => {
+    const lease: Lease = { id: 'caller', grant: 4, exclusive: false, inherited: false, env: { AIRI_CPU_LEASE: 'caller', AIRI_CPU_GRANT: '4' }, addWorkload: vi.fn(), release: vi.fn() }
+    const acquiring = vi.mocked(acquire)
+    acquiring.mockClear()
+    acquiring.mockRejectedValue(new Error('launcher must use the caller lease'))
+    vi.spyOn(remoteDebug, 'findAvailablePort').mockResolvedValue(9333)
+    const child = new FakeDevRoot()
+    const spawn = vi.spyOn(pnpm, 'spawnPnpm').mockReturnValue(child)
+    const options = { repoRoot: '/repo', profileDir: '/run/profile', logFile: devNull, list: async () => [], lease }
+
+    const app = await launchStageTamagotchi(options)
+    child.emit('exit', 0)
+    await app.exited
+
+    expect(acquiring).not.toHaveBeenCalled()
+    expect(lease.addWorkload).toHaveBeenCalledExactlyOnceWith(child.pid)
+    expect(spawn.mock.lastCall?.[1]?.env).toMatchObject(lease.env)
+    expect(lease.release).not.toHaveBeenCalled()
+    app.releaseLease()
+    expect(lease.release).toHaveBeenCalledOnce()
+  })
+
   /** Launches with a fake pnpm child, a fake lease and a fixed port, and returns the pnpm arguments it spawned. */
   async function spawnedArgs(options: { script?: 'dev' | 'dev:xwayland', electronArgs?: readonly string[] }): Promise<readonly string[]> {
     const lease: Lease = { id: 'test', grant: null, exclusive: true, inherited: false, env: {}, addWorkload: vi.fn(), release: vi.fn() }
@@ -63,7 +85,7 @@ describe('launchStageTamagotchi', () => {
     vi.spyOn(remoteDebug, 'findAvailablePort').mockResolvedValue(9333)
     const child = new FakeDevRoot()
     const spawn = vi.spyOn(pnpm, 'spawnPnpm').mockReturnValue(child)
-    const app = await launchStageTamagotchi({ repoRoot: '/repo', profileDir: '/run/profile', logFile: devNull, list: async () => [], ...options })
+    const app = await launchStageTamagotchi({ repoRoot: '/repo', profileDir: '/run/profile', logFile: devNull, list: async () => [], lease, ...options })
     child.emit('exit', 0)
     await app.exited
     app.releaseLease()

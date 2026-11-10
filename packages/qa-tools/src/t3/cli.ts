@@ -12,14 +12,14 @@ import { runT3 } from './run-t3'
 
 const fixturesDir = resolve(import.meta.dirname, '..', '..', 'fixtures')
 
-/** Longest T3 waits for its exclusive CPU lease; other worktrees' work can hold the budget that long. */
+/** Longest T3 waits for its requested CPU lease; other worktrees' work can hold the budget that long. */
 export const T3_LEASE_WAIT_MS = 30 * 60_000
-/** Exit code when the exclusive lease does not arrive in time. 0, 1, 2 and 130 are taken. */
+/** Exit code when the requested lease does not arrive in time. 0, 1, 2 and 130 are taken. */
 export const T3_LEASE_TIMEOUT_EXIT = 3
 
 /** `qa:motion t3 ...`: validates the arguments and the rig before launching, runs one T3 scenario, and returns the exit code. */
 export async function runT3Cli(argv: readonly string[], repoRoot: string): Promise<number> {
-  let prepared: { rig: ReturnType<typeof resolveRig>, scenario: ReturnType<typeof loadT3Scenario>, catalog: CatalogEntry[], keepOpen: boolean }
+  let prepared: { rig: ReturnType<typeof resolveRig>, scenario: ReturnType<typeof loadT3Scenario>, catalog: CatalogEntry[], keepOpen: boolean, lease: 'live' | 'exclusive' }
   try {
     const options = parseT3Args(argv)
     prepared = {
@@ -27,6 +27,7 @@ export async function runT3Cli(argv: readonly string[], repoRoot: string): Promi
       scenario: loadT3Scenario(options.scenario, { fixturesDir: resolve(fixturesDir, 'scenarios'), cwd: process.cwd() }),
       catalog: JSON.parse(readFileSync(resolve(fixturesDir, t3RigCatalogs[options.rig]), 'utf8')) as CatalogEntry[],
       keepOpen: options.keepOpen,
+      lease: options.lease,
     }
   }
   catch (error) {
@@ -59,23 +60,24 @@ export async function runT3Cli(argv: readonly string[], repoRoot: string): Promi
   try {
     const timeout = AbortSignal.timeout(T3_LEASE_WAIT_MS)
     try {
-      // Exclusive: a rendered run measures frames, so nothing else may compete. `--keep-open` holds the lease until teardown.
-      lease = await acquire({ class: 'exclusive', command: `qa:motion t3 ${argv.join(' ')}`, cwd: repoRoot, signal: AbortSignal.any([controller.signal, timeout]) })
+      // Captures share the machine; ad hoc timing runs opt into exclusive. Keep-open holds either lease until teardown.
+      lease = await acquire({ class: prepared.lease, command: `qa:motion t3 ${argv.join(' ')}`, cwd: repoRoot, signal: AbortSignal.any([controller.signal, timeout]) })
     }
     catch (error) {
       if (controller.signal.aborted)
         return 130
       if (timeout.aborted) {
-        stderr.write(`qa-tools t3: no exclusive CPU lease within ${T3_LEASE_WAIT_MS / 60_000} min; run \`pnpm slots status\` to see who holds the budget\n`)
+        stderr.write(`qa-tools t3: no ${prepared.lease} CPU lease within ${T3_LEASE_WAIT_MS / 60_000} min; run \`pnpm slots status\` to see who holds the budget\n`)
         return T3_LEASE_TIMEOUT_EXIT
       }
       if (error instanceof CpuSlotsError && error.code === 'exclusive-under-shared') {
-        stderr.write(`qa-tools t3: T3 needs an exclusive CPU lease, but it runs under the shared lease ${env.AIRI_CPU_LEASE ?? ''} it inherited; run qa:motion t3 directly, not from \`pnpm slots run\` or another leased command\n`)
+        stderr.write(`qa-tools t3: exclusive-under-shared: T3 needs an exclusive CPU lease, but it runs under the shared lease ${env.AIRI_CPU_LEASE ?? ''} it inherited; run qa:motion t3 directly, not from \`pnpm slots run\` or another leased command\n`)
         return 2
       }
       throw error
     }
     const result = await runT3({
+      lease,
       repoRoot,
       rig: prepared.rig,
       scenario: prepared.scenario.scenario,

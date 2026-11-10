@@ -1,3 +1,4 @@
+import type { Lease } from '@proj-airi/cpu-slots'
 import type { MotionQaEvent } from '@proj-airi/stage-shared/motion-scenario'
 
 import type { AppOptions } from './args'
@@ -21,8 +22,8 @@ import { buildPlan, buildSeedEntries } from './plan'
 import { sendMessage } from './send'
 import { buildSummary, matchExpectations } from './summary'
 
-/** One disposable experience session. The CLI owns the exclusive CPU lease and interrupt signal. */
-export async function runApp(options: AppOptions, repoRoot: string, signal: AbortSignal) {
+/** One disposable experience session. The CLI owns the live CPU lease and interrupt signal. */
+export async function runApp(options: AppOptions, repoRoot: string, signal: AbortSignal, lease: Lease) {
   const script = await loadScript(options, repoRoot)
   await refuseIfWorktreeBusy(repoRoot)
   const run = createRun({ tool: 'app', label: 'experience', repoRoot, outDir: options.out })
@@ -48,7 +49,7 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
     const baseURL = await server.listen()
     details.replay = { baseURL, source: script.source, entries: script.entries.length }
     const started = await session.start({
-      launch: { logFile: run.path('app.log'), env: { AIRI_STAGE_HOST: 'window' } },
+      launch: { logFile: run.path('app.log'), env: { AIRI_STAGE_HOST: 'window' }, lease },
       onLaunched: launched => run.recordProcess({ rootPid: launched.root.pid, created: launched.root.created, commandLine: launched.root.commandLine }),
       collectPageErrors: true,
       beforeOnboarding: async ({ stage, app, targetUrl }) => {

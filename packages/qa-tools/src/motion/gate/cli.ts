@@ -254,7 +254,7 @@ export async function runGateCli(rest: string[], repoRoot: string, env: NodeJS.P
     if (typeof t3Lease === 'number')
       return t3Lease
     try {
-      return await runT3Gate({ target, t1Report: parsed.command.t1Report, rescore: null, host }, repoRoot, env, () => gateFileSha(repoRoot))
+      return await runT3Gate({ target, t1Report: parsed.command.t1Report, rescore: null, host, lease: t3Lease }, repoRoot, env, () => gateFileSha(repoRoot))
     }
     finally {
       t3Lease.release()

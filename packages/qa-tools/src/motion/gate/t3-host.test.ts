@@ -1,3 +1,5 @@
+import type { Lease } from '@proj-airi/cpu-slots'
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -35,8 +37,9 @@ describe('t3 host gate wiring', () => {
     vi.spyOn(processes, 'listLiveProcesses').mockResolvedValue([])
     const capture = vi.spyOn(rendered, 'runT3').mockResolvedValue({ exitCode: 2, summary: 'capture launch refused by test boundary' })
     vi.spyOn(console, 'info').mockImplementation(() => {})
+    const lease: Lease = { id: 'gate', grant: 12, exclusive: true, inherited: false, env: {}, addWorkload: vi.fn(), release: vi.fn() }
     try {
-      const code = await runT3Gate({ target: 'liveliness', host: 'linux-xwayland', t1Report: null, rescore: null }, root, {
+      const code = await runT3Gate({ target: 'liveliness', host: 'linux-xwayland', t1Report: null, rescore: null, lease }, root, {
         WAYLAND_DISPLAY: 'wayland-0',
         AIRI_QA_RIG_FORBOOTH: rig,
       }, () => 'frozen-gates')
@@ -46,8 +49,10 @@ describe('t3 host gate wiring', () => {
         script: 'dev:xwayland',
         scenario: { settings: { host: 'linux-xwayland' } },
         idleAfterSeconds: 180,
+        lease,
       })
       expect(code).toBe(1)
+      expect(lease.release).not.toHaveBeenCalled()
     }
     finally {
       rmSync(root, { recursive: true, force: true })

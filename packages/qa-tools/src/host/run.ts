@@ -36,7 +36,7 @@ export function applySmokeResult(report: { exitCode: number, failures: unknown[]
   report.failures.push(...result.failures)
 }
 
-/** The CLI owns signals and both lease references until its entire app tree has stopped. */
+/** The CLI owns signals and its lease until its entire app tree has stopped. */
 export async function runHostCli(argv: string[], repoRoot: string): Promise<number> {
   const samples: HostSample[] = []
   const report: {
@@ -106,7 +106,7 @@ export async function runHostCli(argv: string[], repoRoot: string): Promise<numb
     if (findWorktreeAppProcesses(await listLiveProcesses(), repoRoot, [process.pid, process.ppid]).length)
       throw new Error('Refusing to launch: this worktree already has an Electron session')
     lease = await acquire({
-      class: 'exclusive',
+      class: 'live',
       command: `qa:host ${argv.join(' ')}`,
       cwd: repoRoot,
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20 * 60_000)]),
@@ -121,7 +121,7 @@ export async function runHostCli(argv: string[], repoRoot: string): Promise<numb
     report.exitCode = 1
     try {
       const { app, bridge } = await appSession.start({
-        launch: { logFile: run.path('app.log'), script: values.xwayland ? 'dev:xwayland' : 'dev' },
+        launch: { logFile: run.path('app.log'), script: values.xwayland ? 'dev:xwayland' : 'dev', lease },
         onLaunched: launched => run.recordProcess({ rootPid: launched.root.pid, created: launched.root.created, commandLine: launched.root.commandLine }),
         beforeOnboarding: async ({ stage, app }) => {
           await failOnExit(app, 'the dispatcher', waitFor('motion QA dispatcher', async () => {

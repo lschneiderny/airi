@@ -1,3 +1,4 @@
+import type { Lease } from '@proj-airi/cpu-slots'
 import type { CatalogEntry } from '@proj-airi/stage-shared/expression-performance'
 import type { MotionQaRunScenarioResult, MotionScenario } from '@proj-airi/stage-shared/motion-scenario'
 
@@ -31,6 +32,8 @@ import { findWorktreeAppProcesses, teardownRun, trackTree } from './teardown'
 import { captureMarkerPrefix, parseTraceEvents, verifyT3Run } from './verify-trace'
 
 export interface RunT3Options {
+  /** Owned by the command until every capture and teardown completes. */
+  lease: Lease
   repoRoot: string
   rig: ResolvedRig
   scenario: MotionScenario
@@ -149,7 +152,7 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
     bridgeLog.rig = { name: options.rig.name, model3: options.rig.model3.slice(options.rig.root.length).replaceAll('\\', '/'), ...zipped }
     log(`qa-tools t3: zipped ${zipped.files} rig files (${zipped.bytes} bytes); launching stage-tamagotchi`)
 
-    app = await launchStageTamagotchi({ repoRoot, profileDir, logFile: run.path('app.log'), list: listLiveProcesses, script: options.script })
+    app = await launchStageTamagotchi({ repoRoot, profileDir, logFile: run.path('app.log'), list: listLiveProcesses, script: options.script, lease: options.lease })
     run.recordProcess({ rootPid: app.root.pid, created: app.root.created, commandLine: app.root.commandLine })
     writeJson(run, 'launch.json', { env: app.env, root: app.root })
     log(`qa-tools t3: root PID ${app.root.pid}, remote debug port ${app.port}`)
@@ -323,7 +326,7 @@ export async function runT3(options: RunT3Options): Promise<RunT3Result> {
       sleep,
     },
     [zipPath],
-  ).finally(() => app?.releaseLease())
+  )
   stage?.close()
   writeJson(run, 'teardown.json', report)
   if (!report.ok) {

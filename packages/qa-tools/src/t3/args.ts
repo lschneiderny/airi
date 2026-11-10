@@ -22,28 +22,30 @@ export interface T3CliOptions {
   rig: T3RigName
   scenario: string
   keepOpen: boolean
+  lease: 'live' | 'exclusive'
 }
 
 /** A usage problem: the CLI prints it with the usage text and exits 2 before launching anything. */
 export class T3UsageError extends Error {}
 
-export const t3Usage = `Usage: qa:motion t3 --rig forbooth --scenario <file | builtin:<name>> [--keep-open]
+export const t3Usage = `Usage: qa:motion t3 --rig forbooth --scenario <file | builtin:<name>> [--keep-open] [--lease live|exclusive]
 
 Launches the Electron app with a fresh profile, imports the rig, runs the scenario through the dev-only motion QA
 bridge, captures a Natural trace and screenshots into .temp/qa/<runId>/, and tears every process down.
   --rig        rig name; forbooth reads AIRI_QA_RIG_FORBOOTH
   --scenario   a scenario JSON file, or builtin:<name> from packages/qa-tools/fixtures/scenarios/
   --keep-open  after the run, keep the app open until Ctrl+C, then tear down
-Exit codes: 0 pass, 1 run or verification failure, 2 usage or environment error before launch, 3 no exclusive CPU
+  --lease      live (default), or exclusive for a timing measurement
+Exit codes: 0 pass, 1 run or verification failure, 2 usage or environment error before launch, 3 no requested CPU
 lease within 30 min (see pnpm slots status), 130 interrupted.
 `
 
 export function parseT3Args(argv: readonly string[]): T3CliOptions {
-  let values: { 'rig'?: string, 'scenario'?: string, 'keep-open'?: boolean }
+  let values: { 'rig'?: string, 'scenario'?: string, 'keep-open'?: boolean, 'lease'?: string }
   try {
     values = parseArgs({
       args: [...argv],
-      options: { 'rig': { type: 'string' }, 'scenario': { type: 'string' }, 'keep-open': { type: 'boolean' } },
+      options: { 'rig': { type: 'string' }, 'scenario': { type: 'string' }, 'keep-open': { type: 'boolean' }, 'lease': { type: 'string' } },
       strict: true,
       allowPositionals: false,
     }).values
@@ -57,7 +59,10 @@ export function parseT3Args(argv: readonly string[]): T3CliOptions {
     throw new T3UsageError(`Unknown rig "${values.rig}"; known rigs: ${Object.keys(t3Rigs).join(', ')}`)
   if (!values.scenario)
     throw new T3UsageError('--scenario is required')
-  return { rig: values.rig as T3RigName, scenario: values.scenario, keepOpen: values['keep-open'] ?? false }
+  const lease = values.lease ?? 'live'
+  if (lease !== 'live' && lease !== 'exclusive')
+    throw new T3UsageError('--lease must be live or exclusive')
+  return { rig: values.rig as T3RigName, scenario: values.scenario, keepOpen: values['keep-open'] ?? false, lease }
 }
 
 export interface ResolvedRig {
