@@ -1,16 +1,26 @@
 import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
-import { stageTamagotchiBrowserProject } from './apps/stage-tamagotchi/vitest.browser-project'
-import { stageWebBrowserProject } from './apps/stage-web/vitest.browser-project'
-import { audioBrowserProject } from './packages/audio/vitest.browser-project'
-import { modelDriverLipsyncBrowserProject } from './packages/model-driver-lipsync/vitest.browser-project'
-import { providerInferenceBrowserProject } from './packages/provider-inference/vitest.browser-project'
-import { stagePagesBrowserProject } from './packages/stage-pages/vitest.browser-project'
-import { stageUiLive2dBrowserProject } from './packages/stage-ui-live2d/vitest.browser-project'
-import { stageUiMmdBrowserProject } from './packages/stage-ui-mmd/vitest.browser-project'
-import { stageUiThreeBrowserProject } from './packages/stage-ui-three/vitest.browser-project'
-import { stageUiBrowserProject } from './packages/stage-ui/vitest.browser-project'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { stageTamagotchiBrowserProject } from './apps/stage-tamagotchi/vitest.browser-project.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { stageWebBrowserProject } from './apps/stage-web/vitest.browser-project.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { audioBrowserProject } from './packages/audio/vitest.browser-project.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { modelDriverLipsyncBrowserProject } from './packages/model-driver-lipsync/vitest.browser-project.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { providerInferenceBrowserProject } from './packages/provider-inference/vitest.browser-project.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { stagePagesBrowserProject } from './packages/stage-pages/vitest.browser-project.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { stageUiLive2dBrowserProject } from './packages/stage-ui-live2d/vitest.browser-project.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { stageUiMmdBrowserProject } from './packages/stage-ui-mmd/vitest.browser-project.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { stageUiThreeBrowserProject } from './packages/stage-ui-three/vitest.browser-project.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { stageUiBrowserProject } from './packages/stage-ui/vitest.browser-project.ts'
 
 export default withCpuSlots(defineConfig({
   test: {

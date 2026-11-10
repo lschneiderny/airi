@@ -3,7 +3,8 @@ import type { TestProjectInlineConfiguration } from 'vitest/config'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig, mergeConfig } from 'vitest/config'
 
-import stageWebConfig from './vite.config'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import stageWebConfig from './vite.config.ts'
 
 export const stageWebBrowserProject: TestProjectInlineConfiguration = mergeConfig(stageWebConfig, defineConfig({
   root: import.meta.dirname,
