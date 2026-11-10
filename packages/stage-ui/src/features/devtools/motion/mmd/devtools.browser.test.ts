@@ -82,7 +82,7 @@ const fixture: Partial<MMDMotionSnapshot> = {
   lookAt: { target: { x: 0.5, y: 1.25, z: -2 }, yaw: Math.PI / 6, pitch: -Math.PI / 36, turning: true, turns: 3 },
   feet: { maxError: 0.0312, errorL: 0.0312, errorR: 0.0104, contact: 0.95 },
   touch: { lastRegion: 'head', hitBody: true, petActive: false, headScreenPoint: { x: 320.4, y: 180.6 }, events: 7 },
-  world: { unitsPerDip: 0.05, floorRowDip: 892, ground: { minX: -60.25, maxX: 60.25 }, homeX: 35.713, characterHeightDip: 300 },
+  world: { unitsPerDip: 0.05, floorRowDip: 892, ground: { minX: -60.25, maxX: 60.25 }, homeX: 35.713, characterHeightDip: 300, originX: 0, reach: null },
   characterPlacement: { x: 507.25, y: 592.5, width: 84.5, height: 300.4 },
   stageModel: { height: 15.02, footBaselineY: 0.731 },
   locomotion: { mode: 'walking', position: { x: 12.5, z: 0 }, yaw: Math.PI / 2, goalX: 22.5, reason: 'approach-chat', pace: 'walk', speed: 1.234, phase: 0.42, weight: 1, skate: 0.0123, leashClamps: 2, enabled: true },

@@ -734,8 +734,16 @@ function worldSnapshot(): MMDMotionSnapshot['world'] {
   const model = stageModel.value
   if (!world || !model)
     return null
-  const { unitsPerDip, floorRowDip } = world.calibration
-  return { unitsPerDip, floorRowDip, ground: { minX: world.ground.minX, maxX: world.ground.maxX }, homeX: world.homeX, characterHeightDip: model.height / unitsPerDip }
+  const { unitsPerDip, floorRowDip, originX } = world.calibration
+  return {
+    unitsPerDip,
+    floorRowDip,
+    ground: { minX: world.ground.minX, maxX: world.ground.maxX },
+    homeX: world.homeX,
+    characterHeightDip: model.height / unitsPerDip,
+    originX,
+    reach: world.row?.slots.map(slot => ({ minX: slot.ground.minX, maxX: slot.ground.maxX })) ?? null,
+  }
 }
 
 /** What the world overlays draw this frame: the work-area edges on the floor line, the ground, home and the director's goal. */

@@ -101,7 +101,7 @@ export interface MMDMotionSnapshot {
    * units on the floor line, `floorRowDip` is the floor line's work-area row, `ground` the reachable x range in model
    * units, `homeX` the resting root x and `characterHeightDip` the configured character height.
    */
-  world: { unitsPerDip: number, floorRowDip: number, ground: { minX: number, maxX: number }, homeX: number, characterHeightDip: number } | null
+  world: { unitsPerDip: number, floorRowDip: number, ground: { minX: number, maxX: number }, homeX: number, characterHeightDip: number, originX: number, reach: { minX: number, maxX: number }[] | null } | null
   /** The body's clip ownership per mask group (0-1) while the Natural driver runs; `arms.owned` repeats the arm groups. */
   ownership: Record<ClipMaskGroup, number> | null
 }
