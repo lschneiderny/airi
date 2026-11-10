@@ -53,7 +53,11 @@ History survives temporary-store cleanup. Before an append, a file exceeding 5 M
 
 ## Grant rule
 
-`decide(state, budget)` is pure. It grants the lowest ticket sequence first (FIFO). A waiting ticket reports one reason: `queue-empty`, `over-budget`, `exclusive-held`, `leases-held`, or `insufficient-slots`. Waiters poll every 500 ms, or every 50 ms right after a busy lock.
+`decide(state, budget, now)` is pure. It first blocks grants while over budget or while an exclusive lease is held. It grants the lowest ticket sequence (the head) whenever that request fits. Otherwise, it scans later tickets in sequence order and grants the first non-exclusive request whose minimum fits the free slots. Grants retain the class maximum, capped by free slots.
+
+After a non-exclusive head has waited 60 seconds (`HEAD_AGING_MS`), backfill stops with reason `head-aging` until enough running work drains for the head to fit. Exclusive heads never age: later shared work may continue, and exclusive tickets can wait indefinitely under steady load. An exclusive ticket is only granted at the head with zero held slots and takes the whole budget.
+
+`pnpm slots status` shows each queued ticket's decision reason: `over-budget`, `exclusive-held`, `leases-held`, `insufficient-slots`, or `head-aging` when no grant is possible; `queue-ahead` when another ticket is selected; and `ready` for the selected ticket (`null` in JSON). An empty queue produces `queue-empty`. Waiters poll every 500 ms, or every 50 ms right after a busy lock. The store rechecks the decision with its current time under the lock; a backfill rejected at the aging boundary retries on its next poll.
 
 The store is written under a directory lock. Every mutation runs in one transaction. A grant is written as a lease, then checked again, and removed if the check fails. A lease is reclaimed only after its owner's death is observed and a process snapshot shows the workload is gone. Snapshots are rate-capped at one per 2 s per observer, and each snapshot process has a 30 s timeout (`Store.canRefresh` in `packages/cpu-slots/src/store.ts`, `PROCESS_LOOKUP_TIMEOUT_MS` in `processes.ts`). A snapshot takes about 0.5 s; the timeout only cuts off a hung PowerShell, because a timed-out lookup is retried and its work is lost.
 

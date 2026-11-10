@@ -157,7 +157,7 @@ function isEvent(value: unknown): value is HistoryEvent {
     && ['id', 'cwd', 'command'].every(key => typeof row[key] === 'string')
     && ['ts', 'min', 'max', 'slots', 'budget', 'waitMs', 'heldMs', 'pid'].every(key => typeof row[key] === 'number' && Number.isFinite(row[key]))
     && ['seq', 'heldBefore', 'queueAhead'].every(key => row[key] === null || (typeof row[key] === 'number' && Number.isFinite(row[key])))
-    && (row.lastWaitReason === null || ['queue-empty', 'over-budget', 'exclusive-held', 'leases-held', 'insufficient-slots', 'queue-ahead', 'lock-busy', 'lock-lost', 'entry-busy', 'snapshot-failed'].includes(String(row.lastWaitReason)))
+    && (row.lastWaitReason === null || ['queue-empty', 'over-budget', 'exclusive-held', 'leases-held', 'insufficient-slots', 'head-aging', 'queue-ahead', 'lock-busy', 'lock-lost', 'entry-busy', 'snapshot-failed'].includes(String(row.lastWaitReason)))
 }
 
 function distribution(values: number[]): { median: number, p90: number } {

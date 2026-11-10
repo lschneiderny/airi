@@ -1,9 +1,11 @@
+import type { Decision } from './grant'
 import type { StoredLease, Ticket } from './store'
 
 import { existsSync } from 'node:fs'
 
 import { storeRoot, whileBusy } from './acquire'
 import { parseBudget } from './budget'
+import { decide } from './grant'
 import { Store, StoreBusyError } from './store'
 
 /** A live ticket file the queue cannot read; it is never granted, so status shows it instead of hiding it. */
@@ -20,7 +22,7 @@ export interface Status {
   budget: number
   held: number
   leases: (StoredLease & { age: number })[]
-  queue: ((Ticket & { wait: number }) | MalformedQueueEntry)[]
+  queue: ((Ticket & { wait: number, reason: Extract<Decision, { kind: 'wait' }>['reason'] | 'queue-ahead' | null }) | MalformedQueueEntry)[]
 }
 
 /** Longest readStatus retries a busy broker lock before it throws. */
@@ -78,13 +80,18 @@ export function readStatus(options: { root?: string } = {}): Status {
     Date.now() + STATUS_BUSY_BUDGET_MS,
   )
   const now = Date.now()
+  const decision = decide(state, budget, now)
   return {
     storePath,
     budget,
     held: state.leases.reduce((sum, lease) => sum + lease.slots, 0),
     leases: state.leases.map(lease => ({ ...lease, age: now - lease.createdAt })),
     queue: [
-      ...state.tickets.map(ticket => ({ ...ticket, wait: now - ticket.createdAt })),
+      ...state.tickets.map(ticket => ({
+        ...ticket,
+        wait: now - ticket.createdAt,
+        reason: decision.kind === 'wait' ? decision.reason : decision.ticketSeq === ticket.seq ? null : 'queue-ahead' as const,
+      })),
       ...malformed.map(({ file, pid, mtimeMs }): MalformedQueueEntry => ({
         malformed: true,
         file,

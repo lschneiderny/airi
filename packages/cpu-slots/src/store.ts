@@ -20,7 +20,6 @@ export interface Ticket extends TicketRecord, ProcessIdentity {
   id: string
   cwd: string
   command: string
-  createdAt: number
 }
 
 export interface StoredLease extends LeaseRecord, WorkloadOwner {
@@ -312,11 +311,11 @@ export class Store {
     this.transact(() => this.remove(this.ticketPath(seq)))
   }
 
-  /** Grants ticket `ticketId` at `ticketSeq` when it heads the queue for `slots`; a seq that now holds another ticket is refused. */
+  /** Grants ticket `ticketId` at `ticketSeq` when the current decision selects it for `slots`; a replaced ticket is refused. */
   grant(ticketSeq: number, slots: number, ticketId: string): StoredLease | undefined {
     return this.transact(() => {
       const state = this.snapshot()
-      const decision = decide(state, this.budget)
+      const decision = decide(state, this.budget, this.now())
       if (decision.kind !== 'grant' || decision.ticketSeq !== ticketSeq || decision.slots !== slots)
         return undefined
       const ticket = state.tickets.find(ticket => ticket.seq === ticketSeq)!

@@ -51,6 +51,32 @@ it('lists a live ticket the queue cannot read instead of hiding it', () => {
   expect(readStatus({ root }).queue).toEqual([{ malformed: true, file: '1.json', pid: process.pid, touched: expect.any(Number) }])
 })
 
+it.each([
+  { age: 59_999, cpuClass: 'typecheck', reasons: ['queue-ahead', null] },
+  { age: 60_000, cpuClass: 'typecheck', reasons: ['head-aging', 'head-aging'] },
+  { age: 61_000, cpuClass: 'exclusive', reasons: ['queue-ahead', null] },
+] as const)('shows each queued reason for $cpuClass at age $age', ({ age, cpuClass, reasons }) => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  try {
+    const store = new Store({ root, budget: 8 })
+    const request = { class: 'test', cwd: '/worktree', command: 'job' } as const
+    const holder = store.enqueue({ ...request, min: 7, max: 7 })
+    expect(store.grant(holder.seq, 7, holder.id)).toBeDefined()
+    const head = store.enqueue({ ...request, class: cpuClass })
+    vi.setSystemTime(Date.now() + age)
+    store.touchTicket(head.seq, head.id)
+    const later = store.enqueue({ ...request, class: 'lint' })
+
+    expect(readStatus({ root }).queue).toMatchObject([
+      { seq: head.seq, reason: reasons[0], wait: age },
+      { seq: later.seq, reason: reasons[1], wait: 0 },
+    ])
+  }
+  finally {
+    vi.useRealTimers()
+  }
+})
+
 it('f23 retries a busy store every 500 ms, then gives up at the cap with the busy reason', async () => {
   let clock = 0
   const waits: number[] = []
