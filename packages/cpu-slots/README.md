@@ -86,10 +86,10 @@ The quiet-host calibration followed on November 10, 2026, on the same 16-CPU wor
 | Phase | Samples | Median | p90 | Maximum |
 | --- | ---: | ---: | ---: | ---: |
 | Idle baseline (2 minutes) | 25 | 0.00 | 0.00 | 0.00 |
-| One `pnpm verify` (test, forced) | 18 | 0.00 | 1.43 | 2.14 |
-| Two concurrent verifies (test and typecheck, forced) | 20 | 0.92 | 5.56 | 10.14 |
+| One `pnpm verify --only test` | 18 | 0.00 | 1.43 | 2.14 |
+| Three concurrent `pnpm verify --only test` runs | 24 | 1.92 | 9.00 | 12.77 |
 
-No grant was delayed by `cpu-pressure`. Idle pressure sits far below 20, so a quiet host gets the bounded overcommit, and no verify on its own approaches 70. The thresholds of 20 and 70 are confirmed (2026-11-10) and stay unchanged. The readings are in `.omo/evidence/test-qa-revamp/task-19-calibration-quiet.md`.
+Each verify also used `--gate --force`, so it ran the tests instead of reporting a skipped or cached pass. The three concurrent runs used three worktrees and all exited 0. Their top-level leases received 6, 6, and 3 slots, which is the idle ceiling of 15. No grant was delayed by `cpu-pressure`. Idle pressure sits far below 20, so a quiet host gets the bounded overcommit. Even three concurrent verifies stay far below 70. The defaults do not change: the thresholds of 20 and 70 are confirmed (2026-11-10). The readings are in `.omo/evidence/test-qa-revamp/task-19-calibration-quiet.md`.
 
 The store is written under a directory lock. Every mutation runs in one transaction. A grant is written as a lease, then checked again, and removed if the check fails. A lease is reclaimed only after its owner's death is observed and a process snapshot shows the workload is gone. Snapshots are rate-capped at one per 2 s per observer, and each snapshot process has a 30 s timeout (`Store.canRefresh` in `packages/cpu-slots/src/store.ts`, `PROCESS_LOOKUP_TIMEOUT_MS` in `processes.ts`). A snapshot takes about 0.5 s; the timeout only cuts off a hung PowerShell, because a timed-out lookup is retried and its work is lost.
 
