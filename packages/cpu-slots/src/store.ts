@@ -903,7 +903,12 @@ export class Store {
 
   private readJson(path: string): unknown {
     try {
-      return JSON.parse(this.fs.read(path))
+      const value: unknown = JSON.parse(this.fs.read(path))
+      if (object(value) && value.class === 'browser' && value.policy === 'live') {
+        value.class = 'live'
+        delete value.policy
+      }
+      return value
     }
     catch (error) {
       if (code(error) === 'ENOENT' || error instanceof SyntaxError)
@@ -948,7 +953,15 @@ export class Store {
     this.checkToken()
     const temporary = `${path}.${randomUUID()}.tmp`
     try {
-      this.fs.write(temporary, JSON.stringify(value))
+      // NOTICE:
+      // Encode live as browser with a policy so older worktrees count its slots.
+      // Older commonRecord rejects unknown classes, and records prunes them after 45 s.
+      // Source: commonRecord and Store.records in this file; shared cross-worktree store.
+      // Remove when every worktree in git worktree list has live in packages/cpu-slots/src/classes.ts.
+      const record = object(value) && value.class === 'live'
+        ? { ...value, class: 'browser', policy: 'live' }
+        : value
+      this.fs.write(temporary, JSON.stringify(record))
       this.fs.touch(temporary, this.now())
       this.beforeCommit?.(path)
       this.checkToken()

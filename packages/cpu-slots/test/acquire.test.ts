@@ -190,6 +190,23 @@ describe('acquire lifecycle', () => {
     store.releaseIfIdle(parent)
     expect((await take()).inherited).toBe(false)
   })
+
+  it('rejects exclusive under an inherited live lease without queueing', async () => {
+    const store = new Store({ root, budget: 8 })
+    const ticket = store.enqueue({ ...request, class: 'live' })
+    const parent = store.grant(ticket.seq, 6, ticket.id)
+    expect(parent).toBeDefined()
+    vi.stubEnv('AIRI_CPU_LEASE', parent?.id)
+    vi.stubEnv('AIRI_CPU_GRANT', '6')
+    try {
+      await expect(acquire({ ...request, class: 'exclusive' })).rejects.toMatchObject({ code: 'exclusive-under-shared' })
+      expect(store.snapshot()).toEqual({ leases: [parent], tickets: [] })
+    }
+    finally {
+      if (parent)
+        store.releaseIfIdle(parent)
+    }
+  })
 })
 
 describe('releaseIfIdle uses the pruning workload rule', () => {

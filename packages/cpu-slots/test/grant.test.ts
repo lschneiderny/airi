@@ -42,6 +42,41 @@ describe('decide', () => {
     }, 12)).toEqual({ kind: 'grant', ticketSeq: 1, slots: 2 })
   })
 
+  it('grants live four slots beside held work, leaving room for a six-slot test', () => {
+    expect(decide({
+      leases: [{ slots: 8, exclusive: false }],
+      tickets: [ticket(1, 'live')],
+    }, 12)).toEqual({ kind: 'grant', ticketSeq: 1, slots: 4 })
+    expect(decide({
+      leases: [{ slots: 4, exclusive: false }],
+      tickets: [ticket(2)],
+    }, 12)).toEqual({ kind: 'grant', ticketSeq: 2, slots: 6 })
+  })
+
+  it.each([
+    { held: 0, result: { kind: 'grant', ticketSeq: 1, slots: 6 } },
+    { held: 9, result: { kind: 'wait', reason: 'insufficient-slots' } },
+  ])('respects live bounds with $held slots held', ({ held, result }) => {
+    expect(decide({
+      leases: [{ slots: held, exclusive: false }],
+      tickets: [ticket(1, 'live')],
+    }, 12)).toEqual(result)
+  })
+
+  it('keeps exclusive waiting while a live lease holds slots', () => {
+    expect(decide({
+      leases: [{ slots: 4, exclusive: classes.live.exclusive }],
+      tickets: [ticket(1, 'exclusive')],
+    }, 12)).toEqual({ kind: 'wait', reason: 'leases-held' })
+  })
+
+  it('keeps live waiting while an exclusive lease is held', () => {
+    expect(decide({
+      leases: [{ slots: 12, exclusive: true }],
+      tickets: [ticket(1, 'live')],
+    }, 12)).toEqual({ kind: 'wait', reason: 'exclusive-held' })
+  })
+
   it('clamps install 4-4 to a budget of 2', () => {
     expect(decide({ leases: [], tickets: [ticket(1, 'install')] }, 2))
       .toEqual({ kind: 'grant', ticketSeq: 1, slots: 2 })
