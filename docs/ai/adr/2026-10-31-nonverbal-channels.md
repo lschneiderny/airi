@@ -124,6 +124,7 @@ No character card field was added. The card's own system prompt still supplies t
 The Discord flavor allows one face per message from a closed set: `:3 ^^ ^_^ >_< >.< T_T ;_; :) :( :D ;) :P xD XD o_o O_O -_- ^w^ <3`. Pronounceable faces such as `uwu` are excluded, and Unicode emoji stay forbidden.
 `ASCII_FACES` lives only in `@proj-airi/stage-shared/conversation-register`, so `@proj-airi/pipelines-audio` depends on stage-shared for this list. The TTS chunker strips the faces from each assembled segment, never from raw deltas, in every register. The match needs a start or whitespace before the face and an end, whitespace, or punctuation after it, so `10:30` and `C:D` survive.
 Bubbles keep the faces, and captions keep them through the segment's display text. A segment that is empty after stripping is skipped, while its bubble still shows.
+Superseded in part on 2026-11-10: such a segment is still never spoken, and its face now reaches the caption. See "A face alone in a segment reaches the caption" under Consequences.
 
 ### Test strategy, delivery, and scope (D11-D13)
 
@@ -151,7 +152,11 @@ The work ships on the branch `luke/feat/nonverbal-channels` as atomic commits th
 
 **No streaming speech provider remains.** `streamSpeech`, which the hosted bidirectional WebSocket provider used, bypassed the TTS chunker, so it stripped no faces and paused at no BREAK. Commit a291588c0 (2026-11-05) removed it with the hosted account client, and no source in `packages/` or `apps/` streams speech any more. The `stream` variant of core-agent's `SpeechOutput` port remains without an implementer. It passes text to a provider unsegmented and runs cues on arrival, so a host that implements it must strip faces and pause on its own.
 
-**A face alone in a segment leaves the caption.** A segment that is empty after face stripping is skipped, so a face that forms its own segment drops from the caption while the bubble keeps it.
+**A face alone in a segment reaches the caption.** Until 2026-11-10, a segment that was empty after face stripping was skipped, so a face that formed its own segment dropped from the caption while the bubble kept it. The chunker now emits such a segment with an empty text and the face as display text. The pipeline makes no TTS request for it, and its display text follows the voice:
+
+- After a clip, the pipeline emits `onDisplayText` at the segment's place in order. The stage appends the face to the caption once the clip before it ends.
+- Before the first clip, the face joins that clip's caption text.
+- When no clip of the turn has audio, the face is dropped. The caption shows only text that is spoken, so a turn without audio shows no caption at all, and a face alone must not appear there. A reply that consists only of faces therefore still has no caption.
 
 **The contract hash changed once.** Model-eval runs before and after the revision record different contract versions. The [reply-shape ADR](2026-10-31-reply-shape-contract.md) remains the record of the reply-shape rules, and this ADR records their register-neutral revision.
 
@@ -164,6 +169,7 @@ The work ships on the branch `luke/feat/nonverbal-channels` as atomic commits th
 **Resolved follow-ups.**
 
 - "DELAY does not pause the speech track." Resolved on 2026-11-10: a valid DELAY holds the speech track through the BREAK pause.
+- "A face alone in a segment leaves the caption." Resolved on 2026-11-10: the face reaches the caption as display text and is never synthesized.
 - "`streamSpeech` (hosted bidirectional WebSocket only) has no face stripping or BREAK pause." Closed on 2026-11-10 without a change: commit a291588c0 removed `streamSpeech`, and no streaming speech path remains in this fork.
 
 ## Validation
@@ -176,5 +182,6 @@ The work ships on the branch `luke/feat/nonverbal-channels` as atomic commits th
 - qa-tools scorer version 3 counts gestures, breaks, silent and wordless replies, and ASCII faces. Its T1 scenarios assert the five gesture trajectories, and a touch scenario asserts that a 3-poke burst makes exactly one reaction decision. The [qa-tools README](../../../packages/qa-tools/README.md) documents the fields.
 - A rendered pass in the Electron app checks each channel before the branch merges.
 - For the DELAY pause (2026-11-10), speech pipeline tests use a driver clock to check the pause length, the cue held behind a DELAY, and cancellation. A replayed turn in the Electron app on Linux, in `qa:display`, started the next clip 2.03 s after the clip before `<|DELAY 2|>` ended and 1.52 s after the clip before `<|BREAK 1.5|>`, against 0.03 s between two clips without a cue.
+- For the caption face (2026-11-10), chunker, pipeline, core-agent, and stage tests check that a face-only segment is captioned in order and never synthesized. In the same replayed turn, the caption channel received `:3` and `^^` after the clips before them, and the replay server received four speech requests, none with a face.
 
 Related decisions: [situational presence](2026-10-19-situational-presence.md), [unprompted reach-out cadence](2026-10-29-unprompted-reach-out-cadence.md), [Live2D touch interaction](2026-10-18-live2d-touch-interaction.md), [expression performance](2026-10-18-expression-performance.md), and [Natural emotion revamp](2026-10-19-natural-emotion-revamp.md).

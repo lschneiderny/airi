@@ -78,6 +78,11 @@ Other markers, a malformed BREAK or DELAY included, do not pause the speech trac
 
 The default segmenter is the TTS chunker with `stripAsciiFaces`, in every conversation register.
 A TTS request carries the text without faces. Its playback item carries the segment's `displayText`, so captions keep the faces.
+A segment whose only text is faces has an empty `text` and makes no TTS request. Its `displayText` follows the voice:
+
+- After a clip of the same intent, the pipeline emits `onDisplayText` with the segment at its place in order, before the segment's own marker.
+- Before the first clip, it joins that clip's playback `text`, separated by a space, and no event is emitted.
+- When no clip of the intent has audio (synthesis failed, returned nothing, or speech is muted), it is dropped, as no other speech text is shown either.
 
 ## Streaming-control cues and text chunking
 
@@ -87,7 +92,7 @@ A TTS request carries the text without faces. Its playback item carries the segm
 - `<|BREAK|>` pauses for 1.0 s and `<|BREAK n|>` for `n` seconds, clamped to 0.3-3.0. Any other body is rejected as parse-failed and produces no signal.
 
 The TTS chunker ends a segment at every special. At a BREAK or a valid DELAY, it also ends a segment whose text is held at soft punctuation, so text written before the pause is never spoken after it.
-With `stripAsciiFaces`, the chunker removes the faces in `ASCII_FACES` from `@proj-airi/stage-shared/conversation-register` from each assembled segment. It keeps a face with punctuation, such as `:3`, in one segment even when the face arrives split across deltas, and it skips a segment that becomes empty.
+With `stripAsciiFaces`, the chunker removes the faces in `ASCII_FACES` from `@proj-airi/stage-shared/conversation-register` from each assembled segment. It keeps a face with punctuation, such as `:3`, in one segment even when the face arrives split across deltas. A segment that becomes empty keeps its faces as `displayText` with an empty `text`; a segment that is empty without a face is skipped.
 
 ## Checks
 

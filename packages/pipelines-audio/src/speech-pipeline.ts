@@ -74,8 +74,11 @@ interface IntentState {
 /** One output slot whose synthesis settled. */
 interface CompletedOutput<TAudio> {
   result: TtsResult<TAudio> | null
-  /** The segment whose special still fires when the slot has no audio. */
-  special: TextSegment | null
+  /**
+   * The segment that keeps its place in order when the slot has no audio: its special still fires,
+   * and display text that has nothing to speak is still shown.
+   */
+  silent: TextSegment | null
   /** The segment's display text, when it differs from the synthesized text. */
   displayText?: string
 }
@@ -161,6 +164,11 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
     let nextRequestSequence = 0
     let nextOutputSlot = 0
     let nextSlotToSchedule = 0
+    // Display text with nothing to speak follows the voice. After a clip it is shown at its place in
+    // order. Before the first clip it waits here and joins that clip's text. An intent without any audio
+    // shows no speech text at all, so its faces are dropped too.
+    let audible = false
+    let displayTextBeforeFirstClip: string[] = []
 
     /**
      * Holds the speech track for the pause of a BREAK or DELAY special, so the next clip starts that much later.
@@ -183,12 +191,18 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
       }
     }
 
-    function enqueueSpecial(segment: TextSegment) {
+    /** Delivers a segment without audio at its place in order: its display text when `showDisplayText`, then its special. */
+    function enqueueSilent(segment: TextSegment, showDisplayText: boolean) {
       timeline.enqueue({
-        id: `special:${segment.segmentId}`,
+        id: `silent:${segment.segmentId}`,
         track: 'speech',
         async run({ clock }) {
           if (intent.canceled || intent.controller.signal.aborted)
+            return
+
+          if (showDisplayText)
+            context.emit(speechPipelineEventMap.onDisplayText, segment)
+          if (!segment.special)
             return
 
           context.emit(speechPipelineEventMap.onSpecial, segment)
@@ -233,10 +247,13 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
       completedOutputs.set(slot, output)
 
       while (completedOutputs.has(nextSlotToSchedule)) {
-        const { result: completedRequest, special, displayText } = completedOutputs.get(nextSlotToSchedule)!
+        const { result: completedRequest, silent, displayText } = completedOutputs.get(nextSlotToSchedule)!
         completedOutputs.delete(nextSlotToSchedule)
 
         if (completedRequest) {
+          const text = [...displayTextBeforeFirstClip, displayText ?? completedRequest.text].join(' ')
+          displayTextBeforeFirstClip = []
+          audible = true
           enqueuePlayback({
             id: createId('playback'),
             turnId: completedRequest.turnId,
@@ -246,7 +263,7 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
             sequence: completedRequest.sequence,
             ownerId: intent.ownerId,
             priority: intent.priority,
-            text: displayText ?? completedRequest.text,
+            text,
             sentenceIndex: completedRequest.sentenceIndex,
             sentenceStart: completedRequest.sentenceStart,
             special: completedRequest.special,
@@ -255,15 +272,21 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
           })
         }
         // A segment without audio (failed, empty, or muted) still delivers its special at its place in order.
-        else if (special) {
-          enqueueSpecial(special)
+        else if (silent) {
+          const displayOnlyText = silent.text === '' ? silent.displayText : undefined
+          if (displayOnlyText !== undefined && !audible)
+            displayTextBeforeFirstClip.push(displayOnlyText)
+
+          const showDisplayText = displayOnlyText !== undefined && audible
+          if (silent.special || showDisplayText)
+            enqueueSilent(silent, showDisplayText)
         }
 
         nextSlotToSchedule += 1
       }
     }
 
-    function createTtsTask(request: TtsRequest, slot: number, special: TextSegment | null, displayText: string | undefined) {
+    function createTtsTask(request: TtsRequest, slot: number, silent: TextSegment | null, displayText: string | undefined) {
       const task = (async () => {
         let audio: TAudio | null = null
         try {
@@ -276,12 +299,12 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
         }
 
         if (intent.controller.signal.aborted) {
-          completeOutput(slot, { result: null, special: null })
+          completeOutput(slot, { result: null, silent: null })
           return
         }
 
         if (!audio) {
-          completeOutput(slot, { result: null, special })
+          completeOutput(slot, { result: null, silent })
           return
         }
 
@@ -301,7 +324,7 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
 
         context.emit(speechPipelineEventMap.onTtsResult, ttsResult)
         // The playback item carries the special and emits it after the clip ends.
-        completeOutput(slot, { result: ttsResult, special: null, displayText })
+        completeOutput(slot, { result: ttsResult, silent: null, displayText })
       })()
         .finally(() => {
           inFlightTasks.delete(task)
@@ -331,8 +354,9 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
 
         context.emit(speechPipelineEventMap.onSegment, value)
 
-        if (value.text === '' && value.special) {
-          completeOutput(nextOutputSlot++, { result: null, special: value })
+        // Nothing to synthesize: a special without text, a segment whose only text was ASCII faces, or both.
+        if (value.text === '' && (value.special || value.displayText !== undefined)) {
+          completeOutput(nextOutputSlot++, { result: null, silent: value })
           continue
         }
 

@@ -445,7 +445,7 @@ export const useSpeechStore = defineStore('speech', () => {
   }
 
   /** Captures one response's provider, voice, model, and settings before any asynchronous work. */
-  function createOutput(_turn: TurnRef, selection: AiriExtension['modules']['speech'], output: Pick<SpeechOutput, 'playback' | 'onPlaybackStart' | 'onPlaybackEnd' | 'onSpecial'>, _audioContext: AudioContext): SpeechOutput {
+  function createOutput(_turn: TurnRef, selection: AiriExtension['modules']['speech'], output: Pick<SpeechOutput, 'playback' | 'onPlaybackStart' | 'onPlaybackEnd' | 'onSpecial' | 'onDisplayText'>, _audioContext: AudioContext): SpeechOutput {
     if (!enabled.value)
       return { ...output, synthesize: async () => null }
     const synthesisSignal = synthesis.signal

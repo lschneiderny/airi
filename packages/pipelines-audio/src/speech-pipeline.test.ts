@@ -431,6 +431,7 @@ function createOrderedPipeline(tts: SpeechPipelineOptions<string>['tts'], option
   const spy = createPlaybackSpy({ autoEnd: options?.autoEnd, log, now: options?.clock?.now })
   const pipeline = createSpeechPipeline<string>({ playback: spy.playback, tts, logger: quietLogger, clock: options?.clock })
   pipeline.on('onSpecial', segment => log.push(`special:${segment.special}`))
+  pipeline.on('onDisplayText', segment => log.push(`display:${segment.displayText}`))
   const turnEnded = new Promise<void>(resolve => pipeline.on('onTurnEnd', () => resolve()))
 
   function speak(parts: Part[]) {
@@ -641,6 +642,56 @@ describe('speech pause at BREAK and DELAY', () => {
 
     expect(log).toEqual(['start:Hi there.', 'end:Hi there.', `special:${pause}`])
     expect(scheduled.map(item => item.text)).toEqual(['Hi there.'])
+  })
+})
+
+describe('display text of a face-only segment', () => {
+  /** Runs one turn and also records the text of every synthesis request. */
+  function createFacePipeline(tts: SpeechPipelineOptions<string>['tts'] = async request => request.text) {
+    // A fake clock, so a pause between the parts of a reply takes no test time.
+    const ordered = createOrderedPipeline(tts, { clock: createFakeClock() })
+    const synthesized: string[] = []
+    ordered.pipeline.on('onTtsRequest', request => synthesized.push(request.text))
+    return { ...ordered, synthesized }
+  }
+
+  it('shows a face that ends a reply after the clip before it and never synthesizes it', async () => {
+    const { log, speak, synthesized, turnEnded } = createFacePipeline()
+
+    speak([{ literal: 'That was fun! :3' }])
+    await turnEnded
+
+    expect(log).toEqual(['start:That was fun!', 'end:That was fun!', 'display::3'])
+    expect(synthesized).toEqual(['That was fun!'])
+  })
+
+  it('shows a face before a pause, then fires the pause', async () => {
+    const { log, speak, synthesized, turnEnded } = createFacePipeline()
+
+    speak([{ literal: 'That was fun! :3' }, { special: '<|BREAK|>' }, { literal: 'Again?' }])
+    await turnEnded
+
+    expect(log).toEqual(['start:That was fun!', 'end:That was fun!', 'display::3', 'special:<|BREAK|>', 'start:Again?', 'end:Again?'])
+    expect(synthesized).toEqual(['That was fun!', 'Again?'])
+  })
+
+  it('joins a face before the first clip to that clip\'s display text', async () => {
+    const { log, speak, synthesized, turnEnded } = createFacePipeline()
+
+    speak([{ literal: ':3' }, { special: '<|BREAK|>' }, { literal: 'Hello there.' }])
+    await turnEnded
+
+    expect(log).toEqual(['special:<|BREAK|>', 'start::3 Hello there.', 'end::3 Hello there.'])
+    expect(synthesized).toEqual(['Hello there.'])
+  })
+
+  it('shows no face when no text of the turn produces audio, as no other speech text is shown', async () => {
+    const { log, speak, turnEnded } = createFacePipeline(async () => null)
+
+    speak([{ literal: 'That was fun! :3' }, { special: neutral }])
+    await turnEnded
+
+    expect(log).toEqual([`special:${neutral}`])
   })
 })
 

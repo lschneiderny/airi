@@ -23,7 +23,7 @@ export interface TextSegment {
   streamId: string
   intentId: string
   segmentId: string
-  /** Text to synthesize. */
+  /** Text to synthesize. Empty for a special without text and for a segment whose only text is display text. */
   text: string
   /** Text to display when it differs from `text`, for example with the ASCII faces that synthesis skips. */
   displayText?: string
@@ -73,7 +73,10 @@ export interface PlaybackItem<TAudio> {
   sequence: number
   ownerId?: string
   priority: number
-  /** Display text of the clip: the segment's `displayText` when it has one, so it can keep faces the clip does not speak. */
+  /**
+   * Display text of the clip: the segment's `displayText` when it has one, so it can keep faces the clip does not speak.
+   * The first clip of an intent also carries the display text of face-only segments before it.
+   */
   text: string
   special: string | null
   audio: TAudio
@@ -130,6 +133,11 @@ export interface IntentHandle {
 export interface SpeechPipelineEvents<TAudio> {
   onSegment: (segment: TextSegment) => void
   onSpecial: (segment: TextSegment) => void
+  /**
+   * A segment with `displayText` and nothing to speak, such as an ASCII face alone, reached its place after a clip.
+   * Such a segment before the first clip joins that clip's `text` instead, and an intent without audio emits none.
+   */
+  onDisplayText: (segment: TextSegment) => void
   onTtsRequest: (request: TtsRequest) => void
   onTtsResult: (result: TtsResult<TAudio>) => void
   onPlaybackStart: (event: PlaybackStartEvent<TAudio>) => void

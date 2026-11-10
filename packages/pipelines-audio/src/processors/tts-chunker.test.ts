@@ -28,21 +28,25 @@ function token(type: TextToken['type'], value: string, sequence: number): TextTo
 }
 
 /** Streams `parts` as tokens: `<|...|>` parts become specials, everything else a literal delta. */
-async function collectSegments(parts: string[], options?: TtsInputChunkOptions) {
+async function collectFullSegments(parts: string[], options?: TtsInputChunkOptions) {
   const tokens = new ReadableStream<TextToken>({
     start(controller) {
       parts.forEach((part, index) => controller.enqueue(token(part.startsWith('<|') ? 'special' : 'literal', part, index)))
       controller.close()
     },
   })
-  const segments: Pick<TextSegment, 'text' | 'special' | 'reason'>[] = []
+  const segments: TextSegment[] = []
   const reader = createTtsSegmentStream(tokens, { streamId: 'stream', intentId: 'intent' }, options).getReader()
   while (true) {
     const { value, done } = await reader.read()
     if (done)
       return segments
-    segments.push({ text: value.text, special: value.special, reason: value.reason })
+    segments.push(value)
   }
+}
+
+async function collectSegments(parts: string[], options?: TtsInputChunkOptions): Promise<Pick<TextSegment, 'text' | 'special' | 'reason'>[]> {
+  return (await collectFullSegments(parts, options)).map(({ text, special, reason }) => ({ text, special, reason }))
 }
 
 describe('createTtsSegmentStream BREAK boundary', () => {
@@ -121,13 +125,28 @@ describe('createTtsSegmentStream ASCII faces', () => {
     expect((await collectSegments(parts, strip)).map(segment => segment.text)).toEqual([text])
   })
 
-  it('skips a segment that only held a face and keeps the special of a face before it', async () => {
-    expect(await collectSegments(['Okay. :3'], strip)).toEqual([
-      { text: 'Okay.', special: null, reason: 'hard' },
-    ])
+  it('keeps the special of a face before it', async () => {
     expect(await collectSegments(['love you :3', '<|ACT happy|>', ' bye'], strip)).toEqual([
       { text: 'love you', special: '<|ACT happy|>', reason: 'special' },
       { text: 'bye', special: null, reason: 'flush' },
+    ])
+  })
+
+  // ROOT CAUSE:
+  //
+  // A segment that was empty after face stripping was skipped with its display text, so a face that
+  // formed its own segment never reached the caption while the chat bubble kept it.
+  it.each([
+    ['at the end of a reply', ['Okay. :3'], [{ text: 'Okay.' }, { text: '', displayText: ':3', special: null }]],
+    ['before a special', ['Okay. ^^', '<|BREAK|>', ' bye.'], [{ text: 'Okay.' }, { text: '', displayText: '^^', special: '<|BREAK|>' }, { text: 'bye.' }]],
+    ['as the whole reply', ['<3'], [{ text: '', displayText: '<3', special: null }]],
+  ])('emits a face alone in a segment %s with display text and nothing to speak', async (_label, parts, expected) => {
+    expect(await collectFullSegments(parts, strip)).toMatchObject(expected)
+  })
+
+  it('still skips a segment that is empty without any face', async () => {
+    expect(await collectSegments(['Okay.   '], strip)).toEqual([
+      { text: 'Okay.', special: null, reason: 'hard' },
     ])
   })
 

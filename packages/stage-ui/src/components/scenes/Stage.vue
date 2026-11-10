@@ -675,6 +675,18 @@ if (import.meta.env.DEV && isMotionQaBridgeEnabled()) {
     .catch(error => console.error('[Stage] The motion QA bridge could not start:', errorMessageFrom(error) ?? 'unknown error'))
 }
 
+/** Adds text of the reply being spoken to the caption overlay and the presentation channel. */
+function showSpeechText(text: string) {
+  assistantCaption.value += ` ${text}`
+  try {
+    postCaption({ type: 'caption-assistant', text })
+    postPresent({ type: 'assistant-append', text })
+  }
+  catch (error) {
+    console.error('Speech presentation channel failed', error)
+  }
+}
+
 const speechDestination = audioContext.createGain()
 speechDestination.connect(audioContext.destination)
 const playback = new Playback(new BrowserPlayback(audioContext, {
@@ -702,19 +714,14 @@ const disconnectVoiceOutput = voice.connectOutput((turn) => {
   const output = {
     playback,
     onSpecial: (special: string) => void playSpecialToken(special, { turnId: turn.turnId }),
+    // An ASCII face alone in a segment is never spoken, so no clip carries it to the caption.
+    onDisplayText: showSpeechText,
     onPlaybackStart: ({ id, text, sentenceStart }: SpeechClip) => {
       performanceConductor.clipStart(turn.turnId, id, sentenceStart)
       playingCount += 1
       nowSpeaking.value = true
       speechVoicing.value = true
-      assistantCaption.value += ` ${text}`
-      try {
-        postCaption({ type: 'caption-assistant', text })
-        postPresent({ type: 'assistant-append', text })
-      }
-      catch (error) {
-        console.error('Speech presentation channel failed', error)
-      }
+      showSpeechText(text)
     },
     onPlaybackEnd: ({ id }: SpeechClip, end: SpeechClipEnd) => {
       performanceConductor.clipEnd(turn.turnId, id, end.status)

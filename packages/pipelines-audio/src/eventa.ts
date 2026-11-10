@@ -12,6 +12,7 @@ import { defineEventa } from '@moeru/eventa'
 
 export const speechSegmentEvent = defineEventa<TextSegment>('proj-airi:pipelines:output:speech:segment')
 export const speechSpecialEvent = defineEventa<TextSegment>('proj-airi:pipelines:output:speech:special')
+export const speechDisplayTextEvent = defineEventa<TextSegment>('proj-airi:pipelines:output:speech:display-text')
 
 export const speechTtsRequestEvent = defineEventa<TtsRequest>('proj-airi:pipelines:output:speech:tts-request')
 export const speechTtsResultEvent = defineEventa<TtsResult<unknown>>('proj-airi:pipelines:output:speech:tts-result')
@@ -32,6 +33,7 @@ export const speechTurnCancelEvent = defineEventa<{ turnId: string, reason?: str
 export const speechPipelineEventMap = {
   onSegment: speechSegmentEvent,
   onSpecial: speechSpecialEvent,
+  onDisplayText: speechDisplayTextEvent,
   onTtsRequest: speechTtsRequestEvent,
   onTtsResult: speechTtsResultEvent,
   onPlaybackStart: speechPlaybackStartEvent,

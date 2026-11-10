@@ -35,6 +35,11 @@ export interface SpeechClipEnd {
 export type SpeechOutput = {
   readonly playback: AudioPlayback
   readonly onSpecial?: (special: string) => void
+  /**
+   * Runs for text that is shown and never spoken, such as an ASCII face alone in a segment, when the speech
+   * reaches its place after a clip. Pipeline synthesis only: streaming providers receive their text unsegmented.
+   */
+  readonly onDisplayText?: (text: string) => void
   /** Runs when the first audio of a clip is scheduled. */
   readonly onPlaybackStart?: (clip: SpeechClip) => void
   /** Runs once for each started clip after playback ends, stops, or fails. */
@@ -150,6 +155,7 @@ export class SpeechStream {
     })
 
     pipeline.on('onSpecial', segment => segment.special && output.onSpecial?.(segment.special))
+    pipeline.on('onDisplayText', segment => segment.displayText && output.onDisplayText?.(segment.displayText))
     pipeline.on('onIntentEnd', () => this.settle({ status: 'finished' }))
     this.intent = pipeline.openIntent({ turnId: response.turn.turnId, ownerId: response.turn.sessionId })
   }

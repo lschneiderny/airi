@@ -91,6 +91,29 @@ beforeAll(async () => {
   PreviewStage = (await import('../scenarios/settings/model-settings/preview-stage.vue')).default
 })
 
+/** A mono 16-bit PCM WAV file, as a speech provider returns it. `sample` gives the value at each sample index. */
+function pcmWav(sampleRate: number, samples: number, sample: (index: number) => number): ArrayBuffer {
+  const pcm = new ArrayBuffer(44 + samples * 2)
+  const view = new DataView(pcm)
+  const tag = (at: number, value: string) => [...value].forEach((char, index) => view.setUint8(at + index, char.charCodeAt(0)))
+  tag(0, 'RIFF')
+  view.setUint32(4, pcm.byteLength - 8, true)
+  tag(8, 'WAVE')
+  tag(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  tag(36, 'data')
+  view.setUint32(40, pcm.byteLength - 44, true)
+  for (let index = 0; index < samples; index++)
+    view.setInt16(44 + index * 2, sample(index), true)
+  return pcm
+}
+
 /** The loader the chat history shows for an assistant reply that has no text yet. */
 const streamingPlaceholder = '[i-eos-icons\\:three-dots-loading]'
 
@@ -490,6 +513,44 @@ describe('stage emotion routing on Live2D', () => {
     const delivered = until(() => received.value, types => types.includes('sentinel'))
     sentinel.postMessage({ type: 'sentinel' })
     expect(await delivered).toEqual(['sentinel'])
+  })
+
+  // ROOT CAUSE:
+  //
+  // The caption is fed by the text of each played clip. A face alone in a segment is never synthesized,
+  // so no clip carried it, and the caption lost a face that the chat bubble kept.
+  it('captions an ASCII face that forms its own segment after the clip before it, without synthesizing it', async () => {
+    await renderStage('universal')
+    const cards = useAiriCardStore()
+    await cards.initialize()
+    const sessions = useChatSessionStore()
+    await sessions.initialize()
+    const sessionId = sessions.activeSessionId
+    onTestFinished(() => sessions.deleteSession(sessionId))
+    const synthesized: string[] = []
+    const audio = pcmWav(48_000, 4800, () => 0)
+    vi.spyOn(useSpeechStore(), 'createOutput').mockImplementation((_turn, _selection, output) => ({ ...output, synthesize: async (request) => {
+      synthesized.push(request.text)
+      return new Blob([audio], { type: 'audio/wav' })
+    } }))
+    const captions = new BroadcastChannel('airi-caption-overlay')
+    onTestFinished(() => captions.close())
+    const captioned = shallowRef<string[]>([])
+    captions.onmessage = (event: MessageEvent<{ type: string, text: string }>) => {
+      // The stage also posts an empty caption to reset the overlay for a new reply.
+      if (event.data.type === 'caption-assistant' && event.data.text)
+        captioned.value = [...captioned.value, event.data.text]
+    }
+    const chat = useChatStore()
+    const context = { sessionId, turnId: 'face-caption', message: { role: 'user' as const, content: 'hello' }, contexts: {}, composedMessage: [] }
+
+    const faceCaptioned = until(() => captioned.value, texts => texts.includes(':3'))
+    await chat.emitBeforeMessageComposedHooks('hello', context)
+    await chat.emitTokenLiteralHooks('That was fun! :3', context)
+    await chat.emitStreamEndHooks(context)
+
+    expect(await faceCaptioned).toEqual(['That was fun!', ':3'])
+    expect(synthesized).toEqual(['That was fun!'])
   })
 
   it('uses global performance settings without warnings before cards initialize', async () => {
@@ -910,24 +971,7 @@ describe('stage performance routing on MMD', () => {
     })
     // A provider boundary supplies PCM WAV; stage playback and both analysers stay real.
     const sampleRate = 48_000
-    const pcm = new ArrayBuffer(44 + sampleRate * 4)
-    const view = new DataView(pcm)
-    const tag = (at: number, value: string) => [...value].forEach((char, index) => view.setUint8(at + index, char.charCodeAt(0)))
-    tag(0, 'RIFF')
-    view.setUint32(4, pcm.byteLength - 8, true)
-    tag(8, 'WAVE')
-    tag(12, 'fmt ')
-    view.setUint32(16, 16, true)
-    view.setUint16(20, 1, true)
-    view.setUint16(22, 1, true)
-    view.setUint32(24, sampleRate, true)
-    view.setUint32(28, sampleRate * 2, true)
-    view.setUint16(32, 2, true)
-    view.setUint16(34, 16, true)
-    tag(36, 'data')
-    view.setUint32(40, pcm.byteLength - 44, true)
-    for (let index = 0; index < sampleRate * 2; index++)
-      view.setInt16(44 + index * 2, Math.sin(2 * Math.PI * 220 * index / sampleRate) * 10000, true)
+    const pcm = pcmWav(sampleRate, sampleRate * 2, index => Math.sin(2 * Math.PI * 220 * index / sampleRate) * 10000)
     vi.spyOn(useSpeechStore(), 'createOutput').mockImplementation((_turn, _selection, output) => ({ ...output, synthesize: async () => new Blob([pcm], { type: 'audio/wav' }) }))
     const chat = useChatStore()
     const context = { sessionId, turnId: 'mmd-tone', message: { role: 'user' as const, content: 'tone' }, contexts: {}, composedMessage: [] }

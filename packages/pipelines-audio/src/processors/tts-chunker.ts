@@ -82,7 +82,8 @@ export interface TtsInputChunkOptions {
    * Removes standalone ASCII faces (see `ASCII_FACES`) from each assembled segment before it is spoken.
    *
    * The chunker also keeps a face that contains punctuation, such as `:3` or `>.<`, inside one segment,
-   * so a face is recognized even when it arrives split across deltas. A segment left empty is skipped.
+   * so a face is recognized even when it arrives split across deltas. A segment left empty keeps its faces
+   * as `displayText` with an empty `text`, so it is shown and never spoken.
    *
    * @default false
    */
@@ -360,7 +361,8 @@ export async function chunkEmitter(
   try {
     for await (const chunk of chunkTtsInput(reader, options)) {
       const cleanedText = removeChunkMarkers(chunk.text)
-      if (!cleanedText && chunk.reason !== 'special') {
+      // A chunk whose only text was ASCII faces has nothing to speak, and its display text still goes out.
+      if (!cleanedText && chunk.displayText === undefined && chunk.reason !== 'special') {
         continue
       }
 

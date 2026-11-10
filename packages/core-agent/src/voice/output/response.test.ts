@@ -36,6 +36,32 @@ describe('voiceController output', () => {
     await controller.close()
   })
 
+  it('shows a face alone in a segment after the clip before it and never synthesizes it', async () => {
+    const shown: string[] = []
+    const requested: string[] = []
+    const playback = new Playback({ nowMs: () => 0, play: (clip) => {
+      clip.onStart?.()
+      return { done: Promise.resolve({ throughMs: 1 }), stop: async () => ({ throughMs: 0 }) }
+    } })
+    const controller = new VoiceController({ speech: () => ({
+      playback,
+      synthesize: async (request) => {
+        requested.push(request.text)
+        return new Blob(['speech'])
+      },
+      onPlaybackStart: clip => shown.push(`clip:${clip.text}`),
+      onDisplayText: text => shown.push(`display:${text}`),
+    }) })
+    const response = controller.openResponse({ sessionId: 'alice', turnId: 'face' })
+    const speech = response.openSpeech({ purpose: 'answer' })
+    speech.write('That was fun! :3')
+    speech.end()
+    expect(await response.finish()).toBe('finished')
+    expect(shown).toEqual(['clip:That was fun!', 'display::3'])
+    expect(requested).toEqual(['That was fun!'])
+    await controller.close()
+  })
+
   it('leaves streaming-provider sentence alignment undefined', async () => {
     const started = vi.fn()
     const playback = new Playback({ nowMs: () => 0, play: (clip) => {
