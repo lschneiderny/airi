@@ -11,6 +11,7 @@ import { constants } from 'node:os'
 
 import { acquire } from './acquire'
 import { classes } from './classes'
+import { parseSince, readHistory } from './history'
 import { readStatusWithin, STATUS_WAIT_CAP_MS } from './status'
 import { StoreBusyError } from './store'
 import { resolveWin32Command, shimCommandLine } from './win32-command'
@@ -37,6 +38,30 @@ function launch(argv: string[], env: NodeJS.ProcessEnv): ChildProcess {
 
 async function main(args: string[]): Promise<number> {
   const verb = args.shift()
+  if (verb === 'history') {
+    let since = 0
+    let json = false
+    for (let index = 0; index < args.length; index++) {
+      if (args[index] === '--json' && !json)
+        json = true
+      else if (args[index] === '--since' && since === 0 && args[index + 1])
+        since = Date.now() - parseSince(args[++index])
+      else
+        throw new Error('usage: history [--since <duration>] [--json]')
+    }
+    const summary = readHistory(since)
+    if (json) {
+      console.log(JSON.stringify(summary))
+    }
+    else {
+      for (const [cpuClass, stats] of Object.entries(summary.classes))
+        console.log(`${cpuClass}: count ${stats.count}; waitMs median ${stats.waitMs.median} p90 ${stats.waitMs.p90}; heldMs median ${stats.heldMs.median} p90 ${stats.heldMs.p90}`)
+      console.log(`malformed: ${summary.malformed}`)
+      for (const event of summary.topWaits)
+        console.log(`wait ${event.waitMs}ms ${event.class} ${event.command}`)
+    }
+    return 0
+  }
   if (verb === 'status') {
     if (args.length > 1 || (args.length === 1 && args[0] !== '--json'))
       throw new Error('usage: status [--json]')
@@ -68,7 +93,7 @@ async function main(args: string[]): Promise<number> {
     return 0
   }
   if (verb !== 'run')
-    throw new Error('usage: run --class <class> [--min N] [--max N] -- <command...> | status [--json]')
+    throw new Error('usage: run --class <class> [--min N] [--max N] -- <command...> | status [--json] | history [--since <duration>] [--json]')
   const separator = args.indexOf('--')
   if (separator < 0)
     throw new Error('missing command separator')

@@ -41,6 +41,7 @@ class Running {
         AIRI_CPU_GRANT: '',
         AIRI_CPU_CLASS: '',
         AIRI_CPU_SLOTS_DIR: root,
+        AIRI_CPU_SLOTS_HISTORY_DIR: join(root, 'history'),
         AIRI_CPU_BUDGET: '8',
         ...env,
       },
