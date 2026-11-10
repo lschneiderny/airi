@@ -151,6 +151,9 @@ that differs from the first one reported after the stage showed. A pointer
 that never moves gets no offer, and the stage keeps ignoring it without a time
 limit (Luke, 2026-11-09: "Start the 15 s at first move"). Accepting saves the stage mode `window` and
 relaunches; dismissing keeps the stage running and ignoring the pointer.
+The watcher checks the main process's quit state before offering. Intentional
+bridge teardown revokes capabilities before the stage window closes; that
+shutdown revocation and a grace timer expiring during shutdown open no dialog.
 Nothing about this is persisted except that mode choice. Only the desktop stage
 consumes emulated click-through: the voice inlay, captions and floating chat
 keep treating anything but live as unavailable.

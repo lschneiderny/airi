@@ -29,6 +29,8 @@ export function watchStageClickThrough(params: {
   bridgeFailed: () => boolean
   onChange: (listener: () => void) => () => void
   onCursor: (listener: (point: CursorPoint) => void) => () => void
+  /** Intentional bridge teardown must not open a relaunch dialog while the app quits. */
+  isQuitting: () => boolean
   offer: () => void
 }): () => void {
   let everUsable = false
@@ -72,7 +74,8 @@ export function watchStageClickThrough(params: {
     if (!watching)
       return
     stop()
-    params.offer()
+    if (!params.isQuitting())
+      params.offer()
   }
 
   return stop
