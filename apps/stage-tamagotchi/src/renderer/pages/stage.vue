@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
-import type { CameraCalibration } from '@proj-airi/stage-shared/stage-world'
+import type { StageRow } from '@proj-airi/stage-shared/stage-world'
 import type { MMDStageWorld } from '@proj-airi/stage-ui-mmd/composables/mmd'
 import type { ModelSettingsRuntimeSnapshot } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 
@@ -9,7 +9,7 @@ import type { StageCharacterPlacement, StageHostState } from '../../shared/event
 import { errorMessageFrom } from '@moeru/std'
 import { electron } from '@proj-airi/electron-eventa'
 import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
-import { calibrateCamera, defaultHomeDipX, dipToPlane, groundLineOf, homeDipToWorldX, worldToHomeDipX } from '@proj-airi/stage-shared/stage-world'
+import { defaultHomeDipX, dipToPlane, homeDipToWorldX, layoutStageRow, placementRectAt, worldToHomeDipX } from '@proj-airi/stage-shared/stage-world'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useMMD, useMMDExpressionStore, useMMDMotionDiagnostics } from '@proj-airi/stage-ui-mmd/stores'
 import {
@@ -95,7 +95,7 @@ useModelSettingsRuntimeOwner({
   applyMMDExpressionCommand: command => mmdExpressionStore.applySettingsCommand(command),
 })
 
-// Stage state from the main process: the home display, its work area and the saved home.
+// Stage state from the main process: the displays, the home display, the display the window covers and the saved homes.
 const eventaContext = useElectronEventaContext()
 const hostState = shallowRef<StageHostState | null>(null)
 let hostStateChanged = false
@@ -107,6 +107,8 @@ onScopeDispose(eventaContext.value.on(electronStageStateChanged, (event) => {
 }))
 const setHome = useElectronEventaInvoke(electronStageSetHome)
 const homeDisplay = computed(() => hostState.value?.displays.find(display => display.id === hostState.value?.homeDisplayId) ?? null)
+// The display the stage window covers. Her world is that display's slot on the stage row.
+const stageDisplay = computed(() => hostState.value?.displays.find(display => display.id === hostState.value?.stageDisplayId) ?? null)
 const savedHomeDipX = computed(() => homeDisplay.value ? hostState.value?.homes[homeDisplay.value.id]?.xDip ?? null : null)
 const homeDipX = shallowRef<number | null>(null)
 watch(savedHomeDipX, (xDip) => {
@@ -145,37 +147,40 @@ onMounted(async () => {
   }
 })
 
-// The calibration depends only on these numbers, so a home change or a state event with an equal work area keeps it.
-const workAreaWidth = computed(() => homeDisplay.value?.workArea.width ?? 0)
-const workAreaHeight = computed(() => homeDisplay.value?.workArea.height ?? 0)
+// The row depends only on these numbers, so a home change or a state event with an equal work area keeps it.
+const workAreaWidth = computed(() => stageDisplay.value?.workArea.width ?? 0)
+const workAreaHeight = computed(() => stageDisplay.value?.workArea.height ?? 0)
 const measuredModelHeight = computed(() => motionDiagnostics.snapshot.stageModel?.height ?? null)
-const calibration = computed<CameraCalibration | null>(() => {
+// The row holds the display the window covers and no other, so she never leaves it. Its origin is 0.
+const row = computed<StageRow | null>(() => {
   if (workAreaWidth.value <= 0 || workAreaHeight.value <= 0)
     return null
-  return calibrateCamera({
-    workArea: { width: workAreaWidth.value, height: workAreaHeight.value },
+  return layoutStageRow({
+    displays: [{ id: 'stage', workArea: { x: 0, y: 0, width: workAreaWidth.value, height: workAreaHeight.value } }],
     modelHeight: measuredModelHeight.value ?? provisionalModelHeight,
     characterHeightDip: stageCharacterHeight.value,
-    floorRowDip: workAreaHeight.value - toeMarginDip,
+    toeMarginDip,
+    halfWidthDip: 0.3 * stageCharacterHeight.value,
   })
 })
+const stageSlot = computed(() => row.value?.slots[0] ?? null)
 const stageWorld = computed<MMDStageWorld | undefined>(() => {
-  const cal = calibration.value
-  if (!cal || homeDipX.value === null)
+  const slot = stageSlot.value
+  if (!slot || homeDipX.value === null)
     return undefined
-  const workArea = { width: workAreaWidth.value, height: workAreaHeight.value }
   return {
-    workArea,
-    calibration: cal,
-    ground: groundLineOf(workArea, cal, 0.3 * stageCharacterHeight.value * cal.unitsPerDip),
-    homeX: homeDipToWorldX(cal, homeDipX.value, cal.floorRowDip),
+    workArea: { width: slot.workArea.width, height: slot.workArea.height },
+    calibration: slot.calibration,
+    ground: slot.ground,
+    homeX: homeDipToWorldX(slot.calibration, homeDipX.value, slot.calibration.floorRowDip),
   }
 })
 
-// A load places the root at the provisional `homeX`. Once she is measured, and on every calibration change, the root
-// teleports to the new home with one physics reset. A home change alone (a drag release) never moves her.
+// A load places the root at the provisional `homeX`. Once she is measured, and whenever the row is laid out again (a
+// display, the model height or the character height changed), the root teleports to the new home with one physics
+// reset. A home change alone (a drag release) never moves her.
 const rootX = shallowRef<number | null>(null)
-watch([calibration, () => measuredModelHeight.value !== null], ([, measured]) => {
+watch([row, () => measuredModelHeight.value !== null], ([, measured]) => {
   const world = stageWorld.value
   if (!measured || !world) {
     rootX.value = world?.homeX ?? null
@@ -196,14 +201,19 @@ watch(() => motionDiagnostics.snapshot.stageModel, (model) => {
     placementRect.value = null
 })
 const placement = computed<StageCharacterPlacement | null>(() => {
-  const display = homeDisplay.value
+  const display = stageDisplay.value
+  const home = homeDisplay.value
   const world = stageWorld.value
   const rect = placementRect.value
-  if (!display || !world || !rect)
+  if (!display || !home || !world || !rect)
     return null
-  const homeShift = worldToHomeDipX(world.calibration, world.homeX) - worldToHomeDipX(world.calibration, rootX.value ?? world.homeX)
-  const bounds = { ...rect, x: rect.x + display.workArea.x, y: rect.y + display.workArea.y }
-  return { displayId: display.id, bounds, homeBounds: { ...bounds, x: bounds.x + homeShift } }
+  // Her rectangle at home, in the home display's frame: the chat attaches to where she lives.
+  const atHome = placementRectAt(rect, { calibration: world.calibration, rootX: rootX.value ?? world.homeX }, { calibration: world.calibration, rootX: world.homeX })
+  return {
+    displayId: display.id,
+    bounds: { ...rect, x: rect.x + display.workArea.x, y: rect.y + display.workArea.y },
+    homeBounds: { ...atHome, x: atHome.x + home.workArea.x, y: atHome.y + home.workArea.y },
+  }
 })
 useStagePlacementPublisher(placement)
 

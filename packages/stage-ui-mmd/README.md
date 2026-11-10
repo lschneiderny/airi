@@ -121,6 +121,15 @@ published in the diagnostics snapshot and emitted as a `placement` event.
 `body/attention.ts` resolves cursor and chat points onto the plane `0.6 * D`
 in front of her and uses the calibration eye as the camera point.
 
+`MMDStageWorld.row` is optional: a `StageRow` of every display she can walk to.
+The host sets it only while it can move the stage window between displays.
+With it, `rowInputs` gives the director every display's ground line as `reach`
+and places the cursor and the chat by their screen positions, so they count on
+whichever display they are on. A new calibration then means the window moved
+to another display: the camera follows, and the root, the gait, and physics
+stay as they are. In stage mode the scene also re-applies the pixel ratio when
+the device pixel ratio changes, because displays can differ in backing scale.
+
 ### Frame pipeline and diagnostics
 
 `MMDFramePipeline` owns a clean, pre-solver pose for each model. It restores

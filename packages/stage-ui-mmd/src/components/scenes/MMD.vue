@@ -85,7 +85,7 @@ import { createOverlayLabel } from '../../composables/mmd/overlay-label'
 import { MMDOverlays } from '../../composables/mmd/overlays'
 import { readMMDRigProfile } from '../../composables/mmd/rig'
 import { buildMMDClipMask, mmdClipMaskBones } from '../../composables/mmd/rig/clip-mask'
-import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, stagePixelRatio } from '../../composables/mmd/stage-world'
+import { applyStageCamera, applyStageRoot, measureStageExtent, projectCharacterPlacement, rowInputs, stagePixelRatio } from '../../composables/mmd/stage-world'
 import { chatStandX, frameClocks, MMDStanceDirector } from '../../composables/mmd/stance'
 import { buildMMDTouchColliders, MMDTouch, mmdTouchRegionRoots } from '../../composables/mmd/touch'
 import { Emotion, EMOTION_VALUES } from '../../constants/emotions'
@@ -125,7 +125,8 @@ const props = withDefaults(defineProps<{
   enableOrbitControls?: boolean
   /**
    * The desktop stage world. When set, the camera comes from the calibration (no framing, no orbit controls), the root
-   * stands at `homeX` on the floor line, and the classic scale, position and rotation settings are ignored.
+   * stands at `homeX` on the floor line, and the classic scale, position and rotation settings are ignored. With a
+   * `row`, a change of calibration moves the camera to another display and leaves the root where it is.
    */
   stageWorld?: MMDStageWorld
   /**
@@ -436,6 +437,11 @@ function normalizeHex(hex: string): string {
   return /^#[0-9a-f]{8}$/i.test(hex) ? hex.slice(0, 7) : hex
 }
 
+/** The drawing buffer scale for the display the canvas is on now. */
+function pixelRatio(): number {
+  return props.stageWorld ? stagePixelRatio(window.devicePixelRatio, renderScale.value) : Math.min(window.devicePixelRatio, 2) * renderScale.value
+}
+
 function setupScene() {
   const canvas = canvasRef.value!
   renderer = new WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true })
@@ -443,7 +449,7 @@ function setupScene() {
   // MMD toon materials are not PBR/HDR; filmic tone mapping desaturates and
   // washes them out, so render their colors directly.
   renderer.toneMapping = NoToneMapping
-  renderer.setPixelRatio(props.stageWorld ? stagePixelRatio(window.devicePixelRatio, renderScale.value) : Math.min(window.devicePixelRatio, 2) * renderScale.value)
+  renderer.setPixelRatio(pixelRatio())
 
   scene = new Scene()
   // The scene is already chosen when the renderer mounts, so the watcher below never
@@ -639,6 +645,10 @@ function renderLoop(now = performance.now()) {
   if (props.paused || !renderer || !scene || !camera)
     return
 
+  // The stage window can land on a display with another backing scale. The classic window keeps the ratio it started with.
+  if (props.stageWorld && renderer.getPixelRatio() !== pixelRatio())
+    renderer.setPixelRatio(pixelRatio())
+
   expressions.setSlotSettings(props.performanceSettings.slots)
   expressions.update(now / 1000)
   const clocks = frameClocks(now, diagnostics.directorClockOffsetMs)
@@ -753,16 +763,23 @@ function directorWorld(world: MMDStageWorld, modelKey: string): MMDStanceWorld {
   const chat = props.chatTarget?.visible ? props.chatTarget.bounds : null
   const legLength = rig?.legLength ?? 1
   const halfWidth = (characterPlacement.value?.width ?? 0) / 2 * calibration.unitsPerDip
-  // The chat's left and right edges, projected to the ground at the floor row.
-  const edges = chat && placement && dipScale > 0
-    ? [chat.x, chat.x + chat.width].map(x => dipToPlane(calibration, { x: (x - placement.windowBounds.x) / dipScale, y: calibration.floorRowDip }, 0).x)
-    : null
-  const chatX = edges ? chatStandX({ minX: edges[0], maxX: edges[1] }, stageRootX, world.homeX, halfWidth, legLength, world.ground) : null
-  chatStandSpotX = chatX === null ? null : chatX + Math.sign(world.homeX - chatX) * legLength
   const cursor = props.cursorPosition
+  // On a row the cursor and the chat can be on another display, so their screen positions place them, not this window.
+  const onRow = world.row && placement
+    ? rowInputs(world.row, { cursor: cursor ? { x: cursor.x + placement.windowBounds.x, y: cursor.y + placement.windowBounds.y } : null, chat })
+    : null
+  // The chat's left and right edges, projected to the ground at the floor row.
+  const edges = onRow
+    ? onRow.chat && [onRow.chat.minX, onRow.chat.maxX]
+    : chat && placement && dipScale > 0
+      ? [chat.x, chat.x + chat.width].map(x => dipToPlane(calibration, { x: (x - placement.windowBounds.x) / dipScale, y: calibration.floorRowDip }, 0).x)
+      : null
+  const chatX = edges ? chatStandX({ minX: edges[0], maxX: edges[1] }, stageRootX, world.homeX, halfWidth, legLength, onRow?.chat?.ground ?? world.ground) : null
+  chatStandSpotX = chatX === null ? null : chatX + Math.sign(world.homeX - chatX) * legLength
   const owned = body?.ownership()
   return {
     ground: world.ground,
+    reach: onRow?.reach,
     rootX: stageRootX,
     homeX: world.homeX,
     locomotionMode: body?.locomotionFrame?.mode ?? 'idle',
@@ -771,8 +788,8 @@ function directorWorld(world: MMDStageWorld, modelKey: string): MMDStanceWorld {
     roamMode: roamMode.value,
     chatUnfoldSeq,
     chatX,
-    cursorX: cursor ? dipToPlane(calibration, cursor, 0).x : null,
-    cursorOnStage: !!cursor && cursor.x >= 0 && cursor.y >= 0 && cursor.x <= world.workArea.width && cursor.y <= world.workArea.height,
+    cursorX: onRow ? onRow.cursorX : cursor ? dipToPlane(calibration, cursor, 0).x : null,
+    cursorOnStage: onRow ? onRow.cursorOnStage : !!cursor && cursor.x >= 0 && cursor.y >= 0 && cursor.x <= world.workArea.width && cursor.y <= world.workArea.height,
     toolRequest: bodyToolPort.request,
     debugGoal: diagnostics.goalRequest,
     legLength,
@@ -1474,7 +1491,7 @@ watch(cameraFov, () => {
   camera.updateProjectionMatrix()
 })
 watch(renderScale, () => {
-  renderer?.setPixelRatio(props.stageWorld ? stagePixelRatio(window.devicePixelRatio, renderScale.value) : Math.min(window.devicePixelRatio, 2) * renderScale.value)
+  renderer?.setPixelRatio(pixelRatio())
   resize()
 })
 watch(albedoGlow, () => {

@@ -7,6 +7,8 @@ import {
   dipToPlane,
   groundLineOf,
   layoutStageRow,
+  nearestRowSlot,
+  placementRectAt,
   screenToRowX,
   slotScreenToWorldX,
   STAGE_ROW_OFFSTAGE_MODEL_HEIGHTS,
@@ -104,6 +106,42 @@ describe('screenToRowX', () => {
 
   it('extrapolates a column beside the work area on a named slot', () => {
     expect(slotScreenToWorldX(right!, 1440 - 30)).toBeCloseTo(right!.calibration.originX - 30 * right!.calibration.unitsPerDip, 9)
+  })
+
+  it('finds the slot that holds a point, and the closest one for dead space', () => {
+    expect(nearestRowSlot(row, { x: 2000, y: 700 })?.id).toBe('monitor')
+    // Below the laptop's work area, 100 DIP from it and 720 DIP from the monitor.
+    expect(nearestRowSlot(row, { x: 720, y: 1000 })?.id).toBe('laptop')
+    expect(nearestRowSlot({ slots: [] }, { x: 0, y: 0 })).toBeNull()
+  })
+})
+
+describe('placementRectAt', () => {
+  const [left, right] = layoutStageRow(input([laptop, { id: 'short', workArea: { x: 1440, y: 0, width: 1920, height: 400 } }])).slots
+  const column = (slot: typeof left, x: number) => worldToDip(slot!.calibration, { x, y: 0, z: 0 }).x
+  const rootX = left!.ground.minX + 3
+  // A rectangle 100 DIP left of her root column and 500 DIP above the floor row of the laptop.
+  const rect = { x: column(left, rootX) - 100, y: left!.calibration.floorRowDip - 500, width: 200, height: 510 }
+
+  it('shifts the rectangle with the root on one display', () => {
+    const moved = placementRectAt(rect, { calibration: left!.calibration, rootX }, { calibration: left!.calibration, rootX: rootX + 6 })
+
+    expect(moved.x - rect.x).toBeCloseTo(6 / left!.calibration.unitsPerDip, 9)
+    expect(moved.y).toBeCloseTo(rect.y, 9)
+    expect(moved.width).toBeCloseTo(200, 9)
+    expect(moved.height).toBeCloseTo(510, 9)
+  })
+
+  it('lands in the other display\'s window, at the size that display draws her', () => {
+    const homeX = right!.ground.minX + 2
+    const scale = left!.calibration.unitsPerDip / right!.calibration.unitsPerDip
+    const home = placementRectAt(rect, { calibration: left!.calibration, rootX }, { calibration: right!.calibration, rootX: homeX })
+
+    expect(scale).toBeLessThan(1)
+    expect(home.x).toBeCloseTo(column(right, homeX) - 100 * scale, 9)
+    expect(home.y).toBeCloseTo(right!.calibration.floorRowDip - 500 * scale, 9)
+    expect(home.width).toBeCloseTo(200 * scale, 9)
+    expect(home.height).toBeCloseTo(510 * scale, 9)
   })
 })
 

@@ -272,10 +272,11 @@ export interface StageHostState {
 
 /** Where the character is drawn, published by the stage renderer. Rectangles are Electron DIP screen coordinates. */
 export interface StageCharacterPlacement {
+  /** The display `bounds` is on: the one the stage window covers. */
   displayId: string
   /** The projected skeleton bounds where the character is now. */
   bounds: PlacementRect
-  /** The same bounds with the character at home. */
+  /** The same bounds with the character at home, on the home display. */
   homeBounds: PlacementRect
 }
 

@@ -1,8 +1,8 @@
-import { calibrateCamera, worldToDip } from '@proj-airi/stage-shared/stage-world'
+import { calibrateCamera, layoutStageRow, worldToDip } from '@proj-airi/stage-shared/stage-world'
 import { Matrix4, PerspectiveCamera } from 'three'
 import { describe, expect, it } from 'vitest'
 
-import { applyCalibrationToCamera, applyStageCamera, clampToGround, projectCharacterPlacement, stagePixelRatio } from './stage-world'
+import { applyCalibrationToCamera, applyStageCamera, clampToGround, projectCharacterPlacement, rowInputs, stagePixelRatio } from './stage-world'
 
 const workedExample = calibrateCamera({
   workArea: { width: 2560, height: 1400 },
@@ -79,5 +79,42 @@ describe('clampToGround', () => {
     expect(clampToGround(ground, 9)).toBe(5)
     expect(clampToGround(ground, -9)).toBe(-5)
     expect(clampToGround(ground, 2)).toBe(2)
+  })
+})
+
+describe('rowInputs', () => {
+  const row = layoutStageRow({
+    displays: [
+      { id: 'laptop', workArea: { x: 0, y: 25, width: 1440, height: 875 } },
+      { id: 'monitor', workArea: { x: 1440, y: 0, width: 2560, height: 1400 } },
+    ],
+    modelHeight: 20,
+    characterHeightDip: 560,
+    toeMarginDip: 8,
+    halfWidthDip: 168,
+  })
+  const [laptop, monitor] = row.slots
+
+  it('reaches every display\'s ground line', () => {
+    expect(rowInputs(row, { cursor: null, chat: null })).toEqual({ reach: [laptop!.ground, monitor!.ground], cursorX: null, cursorOnStage: false, chat: null })
+  })
+
+  it('puts a cursor on the other display on that display\'s stretch of the row', () => {
+    const { cursorX, cursorOnStage } = rowInputs(row, { cursor: { x: 1440 + 300, y: 600 }, chat: null })
+
+    expect(cursorOnStage).toBe(true)
+    expect(cursorX).toBeCloseTo(monitor!.calibration.originX + 300 * monitor!.calibration.unitsPerDip, 9)
+  })
+
+  it('takes a cursor in dead space off the stage', () => {
+    expect(rowInputs(row, { cursor: { x: 700, y: 1200 }, chat: null })).toMatchObject({ cursorX: null, cursorOnStage: false })
+  })
+
+  it('measures the chat on the display it is on, even when it hangs off the work area', () => {
+    const { chat } = rowInputs(row, { cursor: null, chat: { x: 1440 - 100, y: 700, width: 400, height: 600 } })
+
+    expect(chat?.ground).toBe(monitor!.ground)
+    expect(chat?.minX).toBeCloseTo(monitor!.calibration.originX - 100 * monitor!.calibration.unitsPerDip, 9)
+    expect(chat?.maxX).toBeCloseTo(monitor!.calibration.originX + 300 * monitor!.calibration.unitsPerDip, 9)
   })
 })

@@ -1,13 +1,49 @@
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
-import type { CameraCalibration, WorldFrame } from '@proj-airi/stage-shared/stage-world'
+import type { CameraCalibration, GroundLine, StageRow, WorldFrame } from '@proj-airi/stage-shared/stage-world'
 import type { Group, PerspectiveCamera } from 'three'
 
-import { worldToDip } from '@proj-airi/stage-shared/stage-world'
+import { nearestRowSlot, screenToRowX, slotScreenToWorldX, worldToDip } from '@proj-airi/stage-shared/stage-world'
 
 /** The desktop stage's world for one scene: the work area, its camera calibration, the reachable ground and the resting root x. */
 export interface MMDStageWorld extends WorldFrame {
   /** Resting root x in model units; the scene places the root here when the model loads. */
   readonly homeX: number
+  /**
+   * Every display she can walk to. The host sets it only while it can move the stage window between displays.
+   * `workArea`, `calibration`, and `ground` stay those of the display the window covers; `homeX` and her goals may lie
+   * on any slot. Absent, she never leaves `ground`.
+   */
+  readonly row?: StageRow
+}
+
+/** The director inputs that come from screen positions while she can walk along a row of displays. */
+export interface MMDRowInputs {
+  /** Every display's ground line, for the director's `reach`. */
+  reach: GroundLine[]
+  /** The cursor's world x on the display under it; `null` without a cursor or in dead space. */
+  cursorX: number | null
+  cursorOnStage: boolean
+  /** The chat's left and right edges in world x and the ground line of the display it is on; `null` without a chat. */
+  chat: { minX: number, maxX: number, ground: GroundLine } | null
+}
+
+/**
+ * Places the cursor and the chat on the row, whichever display they are on.
+ *
+ * Both are in screen DIP. A chat that hangs off every work area belongs to the nearest display.
+ */
+export function rowInputs(row: StageRow, screen: { cursor: { x: number, y: number } | null, chat: PlacementRect | null }): MMDRowInputs {
+  const cursorX = screen.cursor ? screenToRowX(row, screen.cursor) : null
+  const { chat } = screen
+  const chatSlot = chat ? nearestRowSlot(row, { x: chat.x + chat.width / 2, y: chat.y + chat.height / 2 }) : null
+  return {
+    reach: row.slots.map(slot => slot.ground),
+    cursorX,
+    cursorOnStage: cursorX !== null,
+    chat: chat && chatSlot
+      ? { minX: slotScreenToWorldX(chatSlot, chat.x), maxX: slotScreenToWorldX(chatSlot, chat.x + chat.width), ground: chatSlot.ground }
+      : null,
+  }
 }
 
 /** Root-relative extent of the character, measured once per load with the root at the origin. */

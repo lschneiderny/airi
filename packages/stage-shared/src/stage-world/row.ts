@@ -1,7 +1,7 @@
 import type { PlacementRect } from '../stage-placement'
 import type { CameraCalibration, GroundLine } from './types'
 
-import { calibrateCamera } from './camera'
+import { calibrateCamera, worldToDip } from './camera'
 import { groundLineOf } from './ground'
 
 /**
@@ -153,6 +153,48 @@ export function screenToRowX(row: StageRow, point: { x: number, y: number }): nu
     point.x >= workArea.x && point.x <= workArea.x + workArea.width
     && point.y >= workArea.y && point.y <= workArea.y + workArea.height)
   return slot ? slotScreenToWorldX(slot, point.x) : null
+}
+
+/**
+ * Where a character rectangle lands when her root stands at another x, on the same camera or on another display's.
+ *
+ * `rect` is in the window DIP of `from.calibration`, drawn with the root at `from.rootX`. The result is in the window
+ * DIP of `to.calibration`, with the root at `to.rootX`: the rectangle keeps its offset from her root column and from
+ * the floor row, scaled when the two displays draw her at different sizes.
+ */
+export function placementRectAt(
+  rect: PlacementRect,
+  from: { calibration: CameraCalibration, rootX: number },
+  to: { calibration: CameraCalibration, rootX: number },
+): PlacementRect {
+  const scale = from.calibration.unitsPerDip / to.calibration.unitsPerDip
+  const fromColumn = worldToDip(from.calibration, { x: from.rootX, y: 0, z: 0 }).x
+  const toColumn = worldToDip(to.calibration, { x: to.rootX, y: 0, z: 0 }).x
+  return {
+    x: toColumn + (rect.x - fromColumn) * scale,
+    y: to.calibration.floorRowDip + (rect.y - from.calibration.floorRowDip) * scale,
+    width: rect.width * scale,
+    height: rect.height * scale,
+  }
+}
+
+/**
+ * The slot whose work area is nearest to a screen point: the one that holds it, or the closest one for a point in
+ * dead space. `null` only for an empty row.
+ */
+export function nearestRowSlot(row: StageRow, point: { x: number, y: number }): StageRowSlot | null {
+  let nearest: StageRowSlot | null = null
+  let distance = Infinity
+  for (const slot of row.slots) {
+    const { workArea } = slot
+    const dx = Math.max(workArea.x - point.x, 0, point.x - (workArea.x + workArea.width))
+    const dy = Math.max(workArea.y - point.y, 0, point.y - (workArea.y + workArea.height))
+    if (Math.hypot(dx, dy) < distance) {
+      nearest = slot
+      distance = Math.hypot(dx, dy)
+    }
+  }
+  return nearest
 }
 
 /** The world x of screen column `screenX` on `slot`'s floor line; columns beside the work area extrapolate. */
