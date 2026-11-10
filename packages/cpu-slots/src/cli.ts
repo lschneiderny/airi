@@ -86,7 +86,7 @@ async function main(args: string[]): Promise<number> {
         if ('malformed' in ticket)
           console.log(`queued malformed ${ticket.file} pid ${ticket.pid ?? '?'} touched ${ticket.touched}ms ago`)
         else
-          console.log(`queued ${ticket.class} ${ticket.min}-${ticket.max} ${ticket.wait}ms ${ticket.command}`)
+          console.log(`queued ${ticket.class} ${ticket.min}-${ticket.max} ${ticket.wait}ms ${ticket.reason ?? 'ready'} ${ticket.command}`)
       }
       console.log(`held ${status.held}/${status.budget}`)
     }

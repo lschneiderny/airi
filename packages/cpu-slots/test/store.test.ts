@@ -695,7 +695,7 @@ describe('tickets, leases, and heartbeat', () => {
     clock += 46_000
     expect(store.snapshot().leases).toEqual([lease])
     const exclusive = store.enqueue({ ...request, class: 'exclusive' })
-    expect(decide(store.snapshot(), 6)).toEqual({ kind: 'wait', reason: 'leases-held' })
+    expect(decide(store.snapshot(), 6, clock)).toEqual({ kind: 'wait', reason: 'leases-held' })
     expect(store.grant(exclusive.seq, 6, exclusive.id)).toBeUndefined()
   })
 
@@ -844,7 +844,7 @@ describe('tickets, leases, and heartbeat', () => {
     const ticket = createStore(30).enqueue(request)
     const state = store.snapshot()
     expect(state.leases.reduce((total, lease) => total + lease.slots, 0)).toBe(12)
-    expect(decide(state, 6)).toEqual({ kind: 'wait', reason: 'over-budget' })
+    expect(decide(state, 6, clock)).toEqual({ kind: 'wait', reason: 'over-budget' })
     expect(store.grant(ticket.seq, 6, ticket.id)).toBeUndefined()
     expect(store.release(first)).toBe(true)
     expect(store.snapshot().leases).toEqual([second])

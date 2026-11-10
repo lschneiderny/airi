@@ -369,7 +369,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
           if (!ticket || !store.touchTicket(ticket.seq, id))
             ticket = store.enqueue(request, id)
           const state = store.snapshot()
-          const decision = decide(state, budget)
+          const decision = decide(state, budget, Date.now())
           waitMessage = `cpu-slots: waiting for ${Math.min(min, budget)} slot(s) of ${request.class} (held ${state.leases.reduce((sum, lease) => sum + lease.slots, 0)}/${budget}, ${state.tickets.filter(other => other.seq < ticket!.seq).length} ahead)`
           history.observe(
             ticket.seq,

@@ -81,6 +81,16 @@ it('reads missing history without creating a directory', () => {
   expect(existsSync(historyRoot())).toBe(false)
 })
 
+it('includes grants that waited for head aging in history summaries', () => {
+  const event = { ...record, lastWaitReason: 'head-aging' } as const
+  appendHistory(event)
+  expect(readHistory()).toMatchObject({
+    malformed: 0,
+    classes: { live: { count: 1 } },
+    topWaits: [event],
+  })
+})
+
 it.each([['10ms', 10], ['2s', 2_000], ['3m', 180_000], ['4h', 14_400_000], ['1d', 86_400_000]])('parses duration %s', (input, expected) => {
   expect(parseSince(input)).toBe(expected)
 })
