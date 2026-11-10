@@ -13,7 +13,7 @@ The Mac benchmark was run outside the application and reviewed by hand. Its outp
 
 - M0 runs committed cue-contract fixtures through the real runtime at every chunk boundary.
 - M1 replays saved transcripts through the real chat runtime and stage controller.
-- M2 runs a model live against a scenario and records request options and transcript provenance. The tooling is implemented; see [M2: live runs](#m2-live-runs). No real model has been run with it yet.
+- M2 runs a model live against a scenario and records request options and transcript provenance. The tooling is implemented; see [M2: live runs](#m2-live-runs). The first real run, of `granite4:latest`, is committed as two live sets.
 - M3 will support judged persona review against an explicit rubric. It is planned, not implemented.
 - M4 is Luke's reading of replies and evidence for character quality.
 
@@ -122,8 +122,7 @@ Each scenario has a replay script in `packages/qa-tools/fixtures/model/scenarios
 
 #### What M2 still lacks
 
-- A real model run. Every test and the acceptance run used the replay server, because no model was installed on the development machine.
-- A committed live dataset under `model-eval/sets/`. It should come from that first real run.
+- More than one real run. The first, on 2026-11-10, ran `granite4:latest` on Ollama 0.40.16 for both scenarios and is committed as `model-eval/sets/live-2026-11-10-granite4-general` and `live-2026-11-10-granite4-relationship-stages`. It is one model with default sampling, so it ranks nothing yet.
 - Tools, the native Ollama shape, and the situation block, as described above.
 - Mood as a scenario input. Stages render with the mood at rest.
 
@@ -145,7 +144,7 @@ The closure digest covers the sorted model-scoring source closure, with CRLF lin
 
 - The legacy Mac M2 comparison confirmed five of six claims: dolphin3's unknown LOOK marker and invented emotion names, hermes3's zero leading cues, gemma4's invented `pouting` and `pouty`, qwen3.5's lower JSON cue count at temperature 0.6, and ministral-3's stage directions in every sweep reply. Row 4, cogito:8b example echo at temperature 0.6, was initially a finding because CRLF extraction returned no examples. The extractor was fixed to accept CRLF, and the regenerated comparison confirms `style.exampleEcho = 4` for `cogito:8b/temp-0.6`.
 - Fixture 25 pins the pre-existing chunk-variance defect at `packages/core-agent/src/runtime/response-categoriser.ts:260-289`. Whole-text and per-character replay differ for this case. The finding is recorded, not hidden by changing runtime behavior.
-- M2 has its scenario schema and live transcript source since 2026-11-10. It still needs a real model run. M3 still needs its judge and persona rubric; the `relationship-stages` transcripts are its first input, because the cue-contract scorer cannot tell whether a reply suits a stage.
+- M2 has its scenario schema and live transcript source since 2026-11-10, and one real run of `granite4:latest` (see the two `live-2026-11-10-granite4-*` sets). In that run every `general` reply opened with a malformed `|<ACT` marker that the runtime recovered. A repeat with the identical prompt wrote well-formed markers, so one unseeded run does not characterise a model; comparisons need repeated or seeded runs. M3 still needs its judge and persona rubric; the `relationship-stages` transcripts are its first input, because the cue-contract scorer cannot tell whether a reply suits a stage.
 - A root `AGENTS.md` routing row for model evaluation remains follow-up work and must land as a separate agent-configuration commit.
 - `packages/core-agent/vieval.config.ts` remains an unrelated leftover.
 - The stale `[Act 2]` comment in the compliance test was corrected to match runtime behavior.

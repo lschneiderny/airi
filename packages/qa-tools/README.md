@@ -137,7 +137,7 @@ Model evaluation separates deterministic fixtures, offline replay, live runs, fu
 
 The runtime replay is the oracle for cue behavior. Prompt output comes from the shared contract renderer used by the app. Build `@proj-airi/core-agent` and `@proj-airi/i18n` before tests that import their dist-backed exports and before scoring. Scoring refuses when the core-agent dist is missing or older than its runtime source; rebuild it with `pnpm -F @proj-airi/core-agent build`. Build i18n with `pnpm -F @proj-airi/i18n build`.
 
-Each committed dataset lives in `packages/qa-tools/model-eval/sets/<set-id>/`. The Mac M2 benchmark is a separate legacy set: use it to reproduce findings on fixed replies, not to mix with canonical-contract runs or rank models against the current prompt.
+Each committed dataset lives in `packages/qa-tools/model-eval/sets/<set-id>/`. The `live-2026-11-10-granite4-general` and `live-2026-11-10-granite4-relationship-stages` sets hold the first real `qa:model run` output, from `granite4:latest`; each set's README states its provenance and what it shows. The Mac M2 benchmark is a separate legacy set: use it to reproduce findings on fixed replies, not to mix with canonical-contract runs or rank models against the current prompt.
 
 Scorer version 3 adds the nonverbal channels to each reply score. The runtime replay stays the oracle for each field:
 

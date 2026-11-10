@@ -1,0 +1,807 @@
+[
+  {
+    "schema": "airi.cue-contract-score.run/v1",
+    "scorer": {
+      "id": "cue-contract-score",
+      "version": 4,
+      "fileSha": "5ac03ef22a00018573435f8fa636447df157913a4a9f611bcc207a35ae225df7"
+    },
+    "sources": {
+      "files": [
+        {
+          "repoPath": "packages/core-agent/src/runtime/chat-orchestrator-runtime.ts",
+          "sha256": "79531bb9eaea74e7f2efd987c10ee073e0c10a577799ae400b25bf5b2bd17eda"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
+          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
+          "sha256": "e16aaaabfb96c0d3d197d674dbac2c689f6f780f61f9d8eb795a716af2ca88bf"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/llm-marker-parser.ts",
+          "sha256": "3600831f3c0025e82589326e40db3e9fb60c37b484d5c98d113442fc23d2fde7"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/recovered-cue.ts",
+          "sha256": "2c51cecae222a6fb1d2e5995fbde08f791a8b0dd5e425afa07c3e3f0120db9eb"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/reply-replay.ts",
+          "sha256": "02908d96e152e8c8ee14810ccd5866080cd6b06c879735d996411a21d25893b7"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/response-categoriser.ts",
+          "sha256": "1700e61d82e240609dfb4fbcf9185c5e3aaa680cea021c1f5eea3b2def20bca0"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/controller.ts",
+          "sha256": "6563e9544c6f2fb598ec84f17fa4365a750f9bb1111ed19468717bf1a1e88a72"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/parsers/act.ts",
+          "sha256": "a3f8c8d0f82724649e6afeb5edcdd2455e27880487c80a33b5a10424e7d4b397"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/parsers/call.ts",
+          "sha256": "6b551d43e3fcd50b767f7a76c0ded949cd3c2b5e685d544038841a77f62e0f64"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/parsers/delay.ts",
+          "sha256": "f51d395600e832dcbde4adf2aa257d03e95b91158acb92eddab111cd60388dc9"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/payloads.ts",
+          "sha256": "a1854fcf7554cd3b6bfe7d0cb0bf195cf632276c9ddca7c06181bbae8921489d"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/aggregate.ts",
+          "sha256": "4b83209c9b0bfa331b4ec5d071b42a0e94c1008b3a2257eee53261eff8594cf6"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
+          "sha256": "5ac03ef22a00018573435f8fa636447df157913a4a9f611bcc207a35ae225df7"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
+          "sha256": "979b98ec5525c5f38ab3ef729d1f0158515f4f4e2a7ba81a09375e1a09a069fc"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/style.ts",
+          "sha256": "5ba59f6989e29f8cd1e716871b21313752e82858676b09575bd06734c420d2ad"
+        },
+        {
+          "repoPath": "packages/stage-shared/src/stage-contract/compose.ts",
+          "sha256": "32f18008f43b6ddb9793aacd933933f49e9ae6b51a429a31e7b92014fa6f633d"
+        },
+        {
+          "repoPath": "packages/stage-shared/src/stage-contract/index.ts",
+          "sha256": "6aa66a946b94b438aad288d21a987122b2cbb66faf114309ccb602c74dabb2fe"
+        }
+      ],
+      "closureDigest": "887500035bdc8cac10acb88b27d486b0a4bca29dd51cd4373bf698a23e5016f1",
+      "coreAgentDistSha256": "ebf6073f7007ba78309e172833758621e1405b479149ff62baee6e016d4b596f"
+    },
+    "fixtures": {
+      "id": "cue-contract-fixtures",
+      "version": 2,
+      "passed": 29,
+      "total": 29
+    },
+    "set": "relationship-stages",
+    "runKey": "relationship-stages@1/granite4:latest/default@close",
+    "model": "granite4:latest",
+    "config": "default@close",
+    "prompt": {
+      "sha256": "29a04bb979ce6dbdd61308515ead2af5a68a74cf2c6970233a49f1ab14f4a427",
+      "contractVersion": "0922aabf01ac"
+    },
+    "replies": 4,
+    "declined": 0,
+    "errors": 0,
+    "blank": 0,
+    "toolNoSpeech": 0,
+    "outcomes": {
+      "parsed": 4,
+      "recovered": 0,
+      "rejected": 0,
+      "none": 0
+    },
+    "leadCue": 4,
+    "acts": 4,
+    "actsInert": 0,
+    "invalidEmotion": 0,
+    "inventedEmotions": [],
+    "forms": {
+      "bare": 4,
+      "colon": 0,
+      "json": 0
+    },
+    "intensity": {
+      "slight": 0,
+      "clear": 0,
+      "strong": 0,
+      "number": 0,
+      "none": 4,
+      "unrecognized": 0
+    },
+    "fields": {
+      "expression": 0,
+      "motion": 0,
+      "look": 0,
+      "lookDropped": 0,
+      "placeholderEcho": 0
+    },
+    "actionsAccepted": 0,
+    "actionsUnknown": 0,
+    "actionToolCalls": 0,
+    "actionToolUnknown": 0,
+    "nonverbal": {
+      "gestures": 0,
+      "gesturesDropped": 0,
+      "bareGestureAttempts": 0,
+      "breaks": 0,
+      "breaksIgnored": 0,
+      "silentMarkers": 0,
+      "wordless": 0,
+      "silentNoCue": 0,
+      "asciiFaces": 0
+    },
+    "delay": {
+      "count": 0,
+      "valid": 0
+    },
+    "call": {
+      "count": 0,
+      "valid": 0
+    },
+    "stripped": 0,
+    "stageRejected": 0,
+    "unknownMarkers": [],
+    "residualReplies": 0,
+    "chunkVariant": 0,
+    "style": {
+      "emoji": 0,
+      "stageDirection": 0,
+      "firstLetterLower": 0,
+      "personaFace": 0,
+      "aiBreak": 0,
+      "exampleEcho": 0,
+      "meanWords": 33.75
+    },
+    "timing": {
+      "replies": 4,
+      "meanTtftMs": 28.25,
+      "meanTotalMs": 532.5,
+      "genTps": null
+    },
+    "legacy": {
+      "replies": 4,
+      "blank": 0,
+      "toolNoSpeech": 0,
+      "toolAny": 0,
+      "errors": 0,
+      "leadCue": "4/4",
+      "badCue": 0,
+      "jsonCue": 0,
+      "malformed": 0,
+      "emoji": 0,
+      "stageDir": 0,
+      "lower": "0%",
+      "persona": "0%",
+      "aiBreak": 0,
+      "words": 34,
+      "genTps": "0.0",
+      "avgReplyS": "0.5",
+      "thinkChars": 0
+    }
+  },
+  {
+    "schema": "airi.cue-contract-score.run/v1",
+    "scorer": {
+      "id": "cue-contract-score",
+      "version": 4,
+      "fileSha": "5ac03ef22a00018573435f8fa636447df157913a4a9f611bcc207a35ae225df7"
+    },
+    "sources": {
+      "files": [
+        {
+          "repoPath": "packages/core-agent/src/runtime/chat-orchestrator-runtime.ts",
+          "sha256": "79531bb9eaea74e7f2efd987c10ee073e0c10a577799ae400b25bf5b2bd17eda"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
+          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
+          "sha256": "e16aaaabfb96c0d3d197d674dbac2c689f6f780f61f9d8eb795a716af2ca88bf"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/llm-marker-parser.ts",
+          "sha256": "3600831f3c0025e82589326e40db3e9fb60c37b484d5c98d113442fc23d2fde7"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/recovered-cue.ts",
+          "sha256": "2c51cecae222a6fb1d2e5995fbde08f791a8b0dd5e425afa07c3e3f0120db9eb"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/reply-replay.ts",
+          "sha256": "02908d96e152e8c8ee14810ccd5866080cd6b06c879735d996411a21d25893b7"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/response-categoriser.ts",
+          "sha256": "1700e61d82e240609dfb4fbcf9185c5e3aaa680cea021c1f5eea3b2def20bca0"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/controller.ts",
+          "sha256": "6563e9544c6f2fb598ec84f17fa4365a750f9bb1111ed19468717bf1a1e88a72"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/parsers/act.ts",
+          "sha256": "a3f8c8d0f82724649e6afeb5edcdd2455e27880487c80a33b5a10424e7d4b397"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/parsers/call.ts",
+          "sha256": "6b551d43e3fcd50b767f7a76c0ded949cd3c2b5e685d544038841a77f62e0f64"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/parsers/delay.ts",
+          "sha256": "f51d395600e832dcbde4adf2aa257d03e95b91158acb92eddab111cd60388dc9"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/payloads.ts",
+          "sha256": "a1854fcf7554cd3b6bfe7d0cb0bf195cf632276c9ddca7c06181bbae8921489d"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/aggregate.ts",
+          "sha256": "4b83209c9b0bfa331b4ec5d071b42a0e94c1008b3a2257eee53261eff8594cf6"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
+          "sha256": "5ac03ef22a00018573435f8fa636447df157913a4a9f611bcc207a35ae225df7"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
+          "sha256": "979b98ec5525c5f38ab3ef729d1f0158515f4f4e2a7ba81a09375e1a09a069fc"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/style.ts",
+          "sha256": "5ba59f6989e29f8cd1e716871b21313752e82858676b09575bd06734c420d2ad"
+        },
+        {
+          "repoPath": "packages/stage-shared/src/stage-contract/compose.ts",
+          "sha256": "32f18008f43b6ddb9793aacd933933f49e9ae6b51a429a31e7b92014fa6f633d"
+        },
+        {
+          "repoPath": "packages/stage-shared/src/stage-contract/index.ts",
+          "sha256": "6aa66a946b94b438aad288d21a987122b2cbb66faf114309ccb602c74dabb2fe"
+        }
+      ],
+      "closureDigest": "887500035bdc8cac10acb88b27d486b0a4bca29dd51cd4373bf698a23e5016f1",
+      "coreAgentDistSha256": "ebf6073f7007ba78309e172833758621e1405b479149ff62baee6e016d4b596f"
+    },
+    "fixtures": {
+      "id": "cue-contract-fixtures",
+      "version": 2,
+      "passed": 29,
+      "total": 29
+    },
+    "set": "relationship-stages",
+    "runKey": "relationship-stages@1/granite4:latest/default@friendly",
+    "model": "granite4:latest",
+    "config": "default@friendly",
+    "prompt": {
+      "sha256": "29a04bb979ce6dbdd61308515ead2af5a68a74cf2c6970233a49f1ab14f4a427",
+      "contractVersion": "0922aabf01ac"
+    },
+    "replies": 4,
+    "declined": 0,
+    "errors": 0,
+    "blank": 0,
+    "toolNoSpeech": 0,
+    "outcomes": {
+      "parsed": 4,
+      "recovered": 0,
+      "rejected": 0,
+      "none": 0
+    },
+    "leadCue": 4,
+    "acts": 8,
+    "actsInert": 0,
+    "invalidEmotion": 0,
+    "inventedEmotions": [],
+    "forms": {
+      "bare": 4,
+      "colon": 0,
+      "json": 4
+    },
+    "intensity": {
+      "slight": 0,
+      "clear": 0,
+      "strong": 4,
+      "number": 0,
+      "none": 4,
+      "unrecognized": 0
+    },
+    "fields": {
+      "expression": 0,
+      "motion": 0,
+      "look": 0,
+      "lookDropped": 0,
+      "placeholderEcho": 0
+    },
+    "actionsAccepted": 0,
+    "actionsUnknown": 0,
+    "actionToolCalls": 0,
+    "actionToolUnknown": 0,
+    "nonverbal": {
+      "gestures": 0,
+      "gesturesDropped": 0,
+      "bareGestureAttempts": 0,
+      "breaks": 0,
+      "breaksIgnored": 0,
+      "silentMarkers": 0,
+      "wordless": 0,
+      "silentNoCue": 0,
+      "asciiFaces": 0
+    },
+    "delay": {
+      "count": 0,
+      "valid": 0
+    },
+    "call": {
+      "count": 0,
+      "valid": 0
+    },
+    "stripped": 0,
+    "stageRejected": 0,
+    "unknownMarkers": [],
+    "residualReplies": 0,
+    "chunkVariant": 0,
+    "style": {
+      "emoji": 4,
+      "stageDirection": 0,
+      "firstLetterLower": 0,
+      "personaFace": 0,
+      "aiBreak": 0,
+      "exampleEcho": 0,
+      "meanWords": 22.25
+    },
+    "timing": {
+      "replies": 4,
+      "meanTtftMs": 25.25,
+      "meanTotalMs": 544.5,
+      "genTps": null
+    },
+    "legacy": {
+      "replies": 4,
+      "blank": 0,
+      "toolNoSpeech": 0,
+      "toolAny": 0,
+      "errors": 0,
+      "leadCue": "4/4",
+      "badCue": 0,
+      "jsonCue": 4,
+      "malformed": 0,
+      "emoji": 4,
+      "stageDir": 0,
+      "lower": "0%",
+      "persona": "0%",
+      "aiBreak": 0,
+      "words": 22,
+      "genTps": "0.0",
+      "avgReplyS": "0.5",
+      "thinkChars": 0
+    }
+  },
+  {
+    "schema": "airi.cue-contract-score.run/v1",
+    "scorer": {
+      "id": "cue-contract-score",
+      "version": 4,
+      "fileSha": "5ac03ef22a00018573435f8fa636447df157913a4a9f611bcc207a35ae225df7"
+    },
+    "sources": {
+      "files": [
+        {
+          "repoPath": "packages/core-agent/src/runtime/chat-orchestrator-runtime.ts",
+          "sha256": "79531bb9eaea74e7f2efd987c10ee073e0c10a577799ae400b25bf5b2bd17eda"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
+          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
+          "sha256": "e16aaaabfb96c0d3d197d674dbac2c689f6f780f61f9d8eb795a716af2ca88bf"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/llm-marker-parser.ts",
+          "sha256": "3600831f3c0025e82589326e40db3e9fb60c37b484d5c98d113442fc23d2fde7"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/recovered-cue.ts",
+          "sha256": "2c51cecae222a6fb1d2e5995fbde08f791a8b0dd5e425afa07c3e3f0120db9eb"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/reply-replay.ts",
+          "sha256": "02908d96e152e8c8ee14810ccd5866080cd6b06c879735d996411a21d25893b7"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/response-categoriser.ts",
+          "sha256": "1700e61d82e240609dfb4fbcf9185c5e3aaa680cea021c1f5eea3b2def20bca0"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/controller.ts",
+          "sha256": "6563e9544c6f2fb598ec84f17fa4365a750f9bb1111ed19468717bf1a1e88a72"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/parsers/act.ts",
+          "sha256": "a3f8c8d0f82724649e6afeb5edcdd2455e27880487c80a33b5a10424e7d4b397"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/parsers/call.ts",
+          "sha256": "6b551d43e3fcd50b767f7a76c0ded949cd3c2b5e685d544038841a77f62e0f64"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/parsers/delay.ts",
+          "sha256": "f51d395600e832dcbde4adf2aa257d03e95b91158acb92eddab111cd60388dc9"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/payloads.ts",
+          "sha256": "a1854fcf7554cd3b6bfe7d0cb0bf195cf632276c9ddca7c06181bbae8921489d"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/aggregate.ts",
+          "sha256": "4b83209c9b0bfa331b4ec5d071b42a0e94c1008b3a2257eee53261eff8594cf6"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
+          "sha256": "5ac03ef22a00018573435f8fa636447df157913a4a9f611bcc207a35ae225df7"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
+          "sha256": "979b98ec5525c5f38ab3ef729d1f0158515f4f4e2a7ba81a09375e1a09a069fc"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/style.ts",
+          "sha256": "5ba59f6989e29f8cd1e716871b21313752e82858676b09575bd06734c420d2ad"
+        },
+        {
+          "repoPath": "packages/stage-shared/src/stage-contract/compose.ts",
+          "sha256": "32f18008f43b6ddb9793aacd933933f49e9ae6b51a429a31e7b92014fa6f633d"
+        },
+        {
+          "repoPath": "packages/stage-shared/src/stage-contract/index.ts",
+          "sha256": "6aa66a946b94b438aad288d21a987122b2cbb66faf114309ccb602c74dabb2fe"
+        }
+      ],
+      "closureDigest": "887500035bdc8cac10acb88b27d486b0a4bca29dd51cd4373bf698a23e5016f1",
+      "coreAgentDistSha256": "ebf6073f7007ba78309e172833758621e1405b479149ff62baee6e016d4b596f"
+    },
+    "fixtures": {
+      "id": "cue-contract-fixtures",
+      "version": 2,
+      "passed": 29,
+      "total": 29
+    },
+    "set": "relationship-stages",
+    "runKey": "relationship-stages@1/granite4:latest/default@intimate",
+    "model": "granite4:latest",
+    "config": "default@intimate",
+    "prompt": {
+      "sha256": "29a04bb979ce6dbdd61308515ead2af5a68a74cf2c6970233a49f1ab14f4a427",
+      "contractVersion": "0922aabf01ac"
+    },
+    "replies": 4,
+    "declined": 0,
+    "errors": 0,
+    "blank": 0,
+    "toolNoSpeech": 0,
+    "outcomes": {
+      "parsed": 4,
+      "recovered": 0,
+      "rejected": 0,
+      "none": 0
+    },
+    "leadCue": 4,
+    "acts": 8,
+    "actsInert": 0,
+    "invalidEmotion": 2,
+    "inventedEmotions": [
+      [
+        "excited",
+        1
+      ],
+      [
+        "thoughtful",
+        1
+      ]
+    ],
+    "forms": {
+      "bare": 4,
+      "colon": 0,
+      "json": 4
+    },
+    "intensity": {
+      "slight": 0,
+      "clear": 1,
+      "strong": 3,
+      "number": 0,
+      "none": 4,
+      "unrecognized": 0
+    },
+    "fields": {
+      "expression": 4,
+      "motion": 4,
+      "look": 0,
+      "lookDropped": 0,
+      "placeholderEcho": 0
+    },
+    "actionsAccepted": 0,
+    "actionsUnknown": 0,
+    "actionToolCalls": 0,
+    "actionToolUnknown": 0,
+    "nonverbal": {
+      "gestures": 1,
+      "gesturesDropped": 3,
+      "bareGestureAttempts": 0,
+      "breaks": 0,
+      "breaksIgnored": 0,
+      "silentMarkers": 0,
+      "wordless": 0,
+      "silentNoCue": 0,
+      "asciiFaces": 0
+    },
+    "delay": {
+      "count": 0,
+      "valid": 0
+    },
+    "call": {
+      "count": 0,
+      "valid": 0
+    },
+    "stripped": 0,
+    "stageRejected": 0,
+    "unknownMarkers": [],
+    "residualReplies": 0,
+    "chunkVariant": 0,
+    "style": {
+      "emoji": 0,
+      "stageDirection": 0,
+      "firstLetterLower": 0,
+      "personaFace": 0,
+      "aiBreak": 0,
+      "exampleEcho": 0,
+      "meanWords": 32.5
+    },
+    "timing": {
+      "replies": 4,
+      "meanTtftMs": 31,
+      "meanTotalMs": 827,
+      "genTps": null
+    },
+    "legacy": {
+      "replies": 4,
+      "blank": 0,
+      "toolNoSpeech": 0,
+      "toolAny": 0,
+      "errors": 0,
+      "leadCue": "4/4",
+      "badCue": 2,
+      "jsonCue": 4,
+      "malformed": 0,
+      "emoji": 0,
+      "stageDir": 0,
+      "lower": "0%",
+      "persona": "0%",
+      "aiBreak": 0,
+      "words": 33,
+      "genTps": "0.0",
+      "avgReplyS": "0.8",
+      "thinkChars": 0
+    }
+  },
+  {
+    "schema": "airi.cue-contract-score.run/v1",
+    "scorer": {
+      "id": "cue-contract-score",
+      "version": 4,
+      "fileSha": "5ac03ef22a00018573435f8fa636447df157913a4a9f611bcc207a35ae225df7"
+    },
+    "sources": {
+      "files": [
+        {
+          "repoPath": "packages/core-agent/src/runtime/chat-orchestrator-runtime.ts",
+          "sha256": "79531bb9eaea74e7f2efd987c10ee073e0c10a577799ae400b25bf5b2bd17eda"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
+          "sha256": "244165099d3ecaa2f6dcf0a0c48465c42b638aa0826bccf3de1c61d87bd418fd"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
+          "sha256": "e16aaaabfb96c0d3d197d674dbac2c689f6f780f61f9d8eb795a716af2ca88bf"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/llm-marker-parser.ts",
+          "sha256": "3600831f3c0025e82589326e40db3e9fb60c37b484d5c98d113442fc23d2fde7"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/recovered-cue.ts",
+          "sha256": "2c51cecae222a6fb1d2e5995fbde08f791a8b0dd5e425afa07c3e3f0120db9eb"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/reply-replay.ts",
+          "sha256": "02908d96e152e8c8ee14810ccd5866080cd6b06c879735d996411a21d25893b7"
+        },
+        {
+          "repoPath": "packages/core-agent/src/runtime/response-categoriser.ts",
+          "sha256": "1700e61d82e240609dfb4fbcf9185c5e3aaa680cea021c1f5eea3b2def20bca0"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/controller.ts",
+          "sha256": "6563e9544c6f2fb598ec84f17fa4365a750f9bb1111ed19468717bf1a1e88a72"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/parsers/act.ts",
+          "sha256": "a3f8c8d0f82724649e6afeb5edcdd2455e27880487c80a33b5a10424e7d4b397"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/parsers/call.ts",
+          "sha256": "6b551d43e3fcd50b767f7a76c0ded949cd3c2b5e685d544038841a77f62e0f64"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/parsers/delay.ts",
+          "sha256": "f51d395600e832dcbde4adf2aa257d03e95b91158acb92eddab111cd60388dc9"
+        },
+        {
+          "repoPath": "packages/pipelines-audio/src/llm-streaming-control/payloads.ts",
+          "sha256": "a1854fcf7554cd3b6bfe7d0cb0bf195cf632276c9ddca7c06181bbae8921489d"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/aggregate.ts",
+          "sha256": "4b83209c9b0bfa331b4ec5d071b42a0e94c1008b3a2257eee53261eff8594cf6"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
+          "sha256": "5ac03ef22a00018573435f8fa636447df157913a4a9f611bcc207a35ae225df7"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
+          "sha256": "979b98ec5525c5f38ab3ef729d1f0158515f4f4e2a7ba81a09375e1a09a069fc"
+        },
+        {
+          "repoPath": "packages/qa-tools/src/model/score/style.ts",
+          "sha256": "5ba59f6989e29f8cd1e716871b21313752e82858676b09575bd06734c420d2ad"
+        },
+        {
+          "repoPath": "packages/stage-shared/src/stage-contract/compose.ts",
+          "sha256": "32f18008f43b6ddb9793aacd933933f49e9ae6b51a429a31e7b92014fa6f633d"
+        },
+        {
+          "repoPath": "packages/stage-shared/src/stage-contract/index.ts",
+          "sha256": "6aa66a946b94b438aad288d21a987122b2cbb66faf114309ccb602c74dabb2fe"
+        }
+      ],
+      "closureDigest": "887500035bdc8cac10acb88b27d486b0a4bca29dd51cd4373bf698a23e5016f1",
+      "coreAgentDistSha256": "ebf6073f7007ba78309e172833758621e1405b479149ff62baee6e016d4b596f"
+    },
+    "fixtures": {
+      "id": "cue-contract-fixtures",
+      "version": 2,
+      "passed": 29,
+      "total": 29
+    },
+    "set": "relationship-stages",
+    "runKey": "relationship-stages@1/granite4:latest/default@stranger",
+    "model": "granite4:latest",
+    "config": "default@stranger",
+    "prompt": {
+      "sha256": "29a04bb979ce6dbdd61308515ead2af5a68a74cf2c6970233a49f1ab14f4a427",
+      "contractVersion": "0922aabf01ac"
+    },
+    "replies": 4,
+    "declined": 0,
+    "errors": 0,
+    "blank": 0,
+    "toolNoSpeech": 0,
+    "outcomes": {
+      "parsed": 4,
+      "recovered": 0,
+      "rejected": 0,
+      "none": 0
+    },
+    "leadCue": 4,
+    "acts": 4,
+    "actsInert": 0,
+    "invalidEmotion": 0,
+    "inventedEmotions": [],
+    "forms": {
+      "bare": 4,
+      "colon": 0,
+      "json": 0
+    },
+    "intensity": {
+      "slight": 0,
+      "clear": 0,
+      "strong": 0,
+      "number": 0,
+      "none": 4,
+      "unrecognized": 0
+    },
+    "fields": {
+      "expression": 0,
+      "motion": 0,
+      "look": 0,
+      "lookDropped": 0,
+      "placeholderEcho": 0
+    },
+    "actionsAccepted": 0,
+    "actionsUnknown": 0,
+    "actionToolCalls": 0,
+    "actionToolUnknown": 0,
+    "nonverbal": {
+      "gestures": 0,
+      "gesturesDropped": 0,
+      "bareGestureAttempts": 0,
+      "breaks": 0,
+      "breaksIgnored": 0,
+      "silentMarkers": 0,
+      "wordless": 0,
+      "silentNoCue": 0,
+      "asciiFaces": 0
+    },
+    "delay": {
+      "count": 0,
+      "valid": 0
+    },
+    "call": {
+      "count": 0,
+      "valid": 0
+    },
+    "stripped": 0,
+    "stageRejected": 0,
+    "unknownMarkers": [],
+    "residualReplies": 0,
+    "chunkVariant": 0,
+    "style": {
+      "emoji": 0,
+      "stageDirection": 0,
+      "firstLetterLower": 0,
+      "personaFace": 0,
+      "aiBreak": 0,
+      "exampleEcho": 0,
+      "meanWords": 20.5
+    },
+    "timing": {
+      "replies": 4,
+      "meanTtftMs": 30.75,
+      "meanTotalMs": 435,
+      "genTps": null
+    },
+    "legacy": {
+      "replies": 4,
+      "blank": 0,
+      "toolNoSpeech": 0,
+      "toolAny": 0,
+      "errors": 0,
+      "leadCue": "4/4",
+      "badCue": 0,
+      "jsonCue": 0,
+      "malformed": 4,
+      "emoji": 0,
+      "stageDir": 0,
+      "lower": "0%",
+      "persona": "0%",
+      "aiBreak": 0,
+      "words": 21,
+      "genTps": "0.0",
+      "avgReplyS": "0.4",
+      "thinkChars": 0
+    }
+  }
+]
