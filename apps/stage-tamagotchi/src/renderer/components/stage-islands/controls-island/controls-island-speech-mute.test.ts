@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type { ControlsIslandPlacement } from './use-controls-island-placement'
 
+import { createPinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, ref, shallowRef } from 'vue'
 
@@ -46,6 +47,7 @@ describe('controlsIslandSpeechMute', () => {
         iconClass: 'size-5',
       }),
     })
+    app.use(createPinia())
     app.provide(controlsIslandPlacementKey, placement)
     app.mount(host)
     return { host, app }
