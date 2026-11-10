@@ -45,6 +45,8 @@ export interface QaDisplayArgs {
   name: string
   width: number
   height: number
+  /** The number of outputs, side by side, each `width` x `height` (kwin only). */
+  outputs: number
   /** Opens the session as a window on the user's desktop instead of a virtual framebuffer. */
   windowed: boolean
   /** Set only when `--compositor` was given; a new session defaults to `kwin`, and a running one keeps its own. */
@@ -66,7 +68,7 @@ const commands: readonly QaDisplayCommand[] = ['up', 'down', 'status', 'env', 'r
 export const qaDisplayUsage = `Usage: pnpm qa:display <command> [--name <name>]
 
 Commands:
-  up [--size 1920x1080] [--windowed] [--compositor kwin|x11|sway] [--portals] [--private-audio]
+  up [--size 1920x1080] [--outputs <n>] [--windowed] [--compositor kwin|x11|sway] [--portals] [--private-audio]
                                        Start the headless session (no-op when it is running)
   down                                 Stop the session and everything that renders in it
   status                               Print whether the session runs and its environment
@@ -77,6 +79,7 @@ Commands:
 
 --name defaults to "qa". Use one name per parallel agent.
 --compositor defaults to kwin. --portals adds xdg-desktop-portal and KDE global shortcuts (kwin only).
+--outputs starts a kwin session with that many outputs side by side, each of --size, for multi-display QA (1 to 4).
 Sessions have no audio by default. --private-audio starts a private PipeWire stack whose default sink is the null
 sink airi_qa. --host-audio links your own PipeWire and Pulse sockets instead; agents never use it.`
 
@@ -131,7 +134,7 @@ export function parseQaDisplayArgs(argv: readonly string[]): QaDisplayArgs | { e
   if (!commands.includes(command as QaDisplayCommand))
     return { error: command ? `unknown command "${command}"` : 'missing command' }
 
-  const args: QaDisplayArgs = { command: command as QaDisplayCommand, name: 'qa', width: 1920, height: 1080, windowed: false, portals: false, audio: 'none', argv: passthrough }
+  const args: QaDisplayArgs = { command: command as QaDisplayCommand, name: 'qa', width: 1920, height: 1080, outputs: 1, windowed: false, portals: false, audio: 'none', argv: passthrough }
   const positional: string[] = []
   for (let index = 0; index < rest.length; index++) {
     const flag = rest[index]
@@ -147,11 +150,16 @@ export function parseQaDisplayArgs(argv: readonly string[]): QaDisplayArgs | { e
         return { error: '--private-audio and --host-audio cannot be combined' }
       args.audio = audio
     }
-    else if (flag === '--name' || flag === '--size' || flag === '--compositor') {
+    else if (flag === '--name' || flag === '--size' || flag === '--compositor' || flag === '--outputs') {
       const value = rest[++index]
       if (value === undefined)
         return { error: `${flag} needs a value` }
-      if (flag === '--name') {
+      if (flag === '--outputs') {
+        if (!/^[1-4]$/.test(value))
+          return { error: '--outputs must be a number from 1 to 4' }
+        args.outputs = Number(value)
+      }
+      else if (flag === '--name') {
         if (!namePattern.test(value))
           return { error: `--name must match ${namePattern}` }
         args.name = value
@@ -181,6 +189,8 @@ export function parseQaDisplayArgs(argv: readonly string[]): QaDisplayArgs | { e
     return { error: '--portals needs the kwin compositor' }
   if (args.windowed && args.compositor !== undefined && args.compositor !== 'kwin')
     return { error: '--windowed needs the kwin compositor' }
+  if (args.outputs > 1 && args.compositor !== undefined && args.compositor !== 'kwin')
+    return { error: '--outputs needs the kwin compositor' }
 
   if (args.command === 'shot') {
     if (positional.length !== 1 || !positional[0].endsWith('.png'))
@@ -456,6 +466,8 @@ function privateAudioStart(): string[] {
 export interface QaDisplayUnitOptions {
   width: number
   height: number
+  /** KWin lays this many outputs of `width` x `height` out side by side. Absent means one. */
+  outputs?: number
   windowed: boolean
   compositor: QaCompositor
   portals: boolean
@@ -510,6 +522,7 @@ export function qaDisplayUnitArgs(options: QaDisplayUnitOptions, paths: QaDispla
       String(options.width),
       '--height',
       String(options.height),
+      ...((options.outputs ?? 1) > 1 ? ['--output-count', String(options.outputs)] : []),
       '--no-lockscreen',
       ...(options.portals ? [] : ['--no-global-shortcuts']),
       '--no-kactivities',
@@ -551,6 +564,8 @@ export function qaDisplayUnitArgs(options: QaDisplayUnitOptions, paths: QaDispla
     `--setenv=AIRI_QA_PORTALS=${options.portals ? '1' : '0'}`,
     `--setenv=AIRI_QA_AUDIO=${options.audio}`,
     `--setenv=AIRI_QA_HOST_RUNTIME_DIR=${host.runtimeDir}`,
+    // Recorded only for more than one output, so a single-output session starts with the arguments it always had.
+    ...((options.outputs ?? 1) > 1 ? [`--setenv=AIRI_QA_OUTPUTS=${options.outputs}`] : []),
     '/bin/sh',
     '-c',
     script.join(' && '),
@@ -598,6 +613,8 @@ const requiredKeys: Record<QaCompositor, readonly string[]> = {
 export interface QaSession {
   compositor: QaCompositor
   portals: boolean
+  /** How many outputs the session started with; 1 for a session that recorded none. */
+  outputs: number
   audio: QaAudioMode
   /** Key to value; an empty value removes the key from the client environment. */
   env: Record<string, string>
@@ -626,7 +643,7 @@ export function parseSessionEnv(text: string): QaSession | null {
   }
   for (const key of sessionKeys[compositor].deletes)
     env[key] = ''
-  return { compositor, portals: values.get('AIRI_QA_PORTALS') === '1', audio, env }
+  return { compositor, portals: values.get('AIRI_QA_PORTALS') === '1', outputs: Number(values.get('AIRI_QA_OUTPUTS')) || 1, audio, env }
 }
 
 /** The host environment with the session keys replaced. An empty value removes the key, so host display keys cannot leak in. */

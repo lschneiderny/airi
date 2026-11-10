@@ -78,8 +78,8 @@ function runningSystemBusPid(pidFile: string): number | null {
   return pid !== null && sessionProcessRunning('dbus-daemon', procStat(pid)) ? pid : null
 }
 
-function describeSession(session: Pick<QaSession, 'compositor' | 'portals' | 'audio'>): string {
-  return `${session.compositor}${session.portals ? ' with portals' : ''}${session.audio === 'none' ? '' : `, ${session.audio} audio`}`
+function describeSession(session: Pick<QaSession, 'compositor' | 'portals' | 'audio' | 'outputs'>): string {
+  return `${session.compositor}${session.portals ? ' with portals' : ''}${session.outputs > 1 ? `, ${session.outputs} outputs` : ''}${session.audio === 'none' ? '' : `, ${session.audio} audio`}`
 }
 
 function hasBinary(binary: string): boolean {
@@ -109,11 +109,11 @@ function globalAccelExecutable(): string | undefined {
   return located?.kind === 'executable' ? located.path : undefined
 }
 
-async function up(args: Pick<QaDisplayArgs, 'name' | 'width' | 'height' | 'windowed' | 'compositor' | 'portals' | 'audio'>, quiet: boolean): Promise<QaSession> {
+async function up(args: Pick<QaDisplayArgs, 'name' | 'width' | 'height' | 'outputs' | 'windowed' | 'compositor' | 'portals' | 'audio'>, quiet: boolean): Promise<QaSession> {
   const paths = qaDisplayPaths(args.name, runtimeDir())
   const running = isActive(paths.unit) ? readSession(paths.envFile) : null
   if (running) {
-    if ((args.compositor && args.compositor !== running.compositor) || (args.portals && !running.portals) || (args.audio !== 'none' && args.audio !== running.audio))
+    if ((args.compositor && args.compositor !== running.compositor) || (args.portals && !running.portals) || (args.outputs > 1 && args.outputs !== running.outputs) || (args.audio !== 'none' && args.audio !== running.audio))
       fail(`"${args.name}" already runs ${describeSession(running)}. Stop it first with: pnpm qa:display down --name ${args.name}`)
     if (runningSystemBusPid(paths.systemBusPid) === null)
       fail(`the private system bus of "${args.name}" is not running. Restart the session: pnpm qa:display down --name ${args.name} && pnpm qa:display up --name ${args.name}`)
@@ -126,6 +126,8 @@ async function up(args: Pick<QaDisplayArgs, 'name' | 'width' | 'height' | 'windo
   }
 
   const compositor: QaCompositor = args.compositor ?? 'kwin'
+  if (args.outputs > 1 && compositor !== 'kwin')
+    fail('--outputs needs the kwin compositor')
   const missing = missingBinaryMessage(requiredBinaries(compositor, args.portals, args.audio), hasBinary)
   if (missing)
     failRaw(missing, 1)

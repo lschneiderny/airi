@@ -4,7 +4,7 @@ import { clientEnv, freeX11Display, isQaDisplayRunScope, kglobalShortcutsSeed, l
 
 describe('qa display arguments', () => {
   it('defaults to a 1920x1080 headless session named qa without portals or audio', () => {
-    expect(parseQaDisplayArgs(['up'])).toEqual({ command: 'up', name: 'qa', width: 1920, height: 1080, windowed: false, portals: false, audio: 'none', argv: [] })
+    expect(parseQaDisplayArgs(['up'])).toEqual({ command: 'up', name: 'qa', width: 1920, height: 1080, outputs: 1, windowed: false, portals: false, audio: 'none', argv: [] })
   })
 
   it.each([
@@ -30,11 +30,19 @@ describe('qa display arguments', () => {
       name: 'agent-2',
       width: 2560,
       height: 1440,
+      outputs: 1,
       windowed: true,
       portals: false,
       audio: 'none',
       argv: ['pnpm', 'qa:stage', '--', '--x'],
     })
+  })
+
+  it('reads the number of outputs, from 1 to 4, for kwin only', () => {
+    expect(parseQaDisplayArgs(['up', '--outputs', '2'])).toMatchObject({ outputs: 2 })
+    expect(parseQaDisplayArgs(['up', '--outputs', '5'])).toEqual({ error: '--outputs must be a number from 1 to 4' })
+    expect(parseQaDisplayArgs(['up', '--outputs'])).toEqual({ error: '--outputs needs a value' })
+    expect(parseQaDisplayArgs(['up', '--compositor', 'sway', '--outputs', '2'])).toEqual({ error: '--outputs needs the kwin compositor' })
   })
 
   it('reads the compositor and portals', () => {
@@ -115,6 +123,13 @@ describe('qa display unit', () => {
     expect(script).toContain('exec kwin_wayland --virtual --xwayland --socket wayland-airi-qa-qa --width 1920 --height 1080 --no-lockscreen --no-global-shortcuts --no-kactivities')
     expect(script).toContain('mv "$AIRI_QA_DIR/env.tmp" "$AIRI_QA_DIR/env"')
     expect(script).not.toContain('portal')
+  })
+
+  it('gives KWin more than one output and records the count for the session', () => {
+    const args = qaDisplayUnitArgs({ ...kwin, outputs: 2 }, paths, host)
+
+    expect(args).toContain('--setenv=AIRI_QA_OUTPUTS=2')
+    expect(args.at(-1)).toContain('--width 1920 --height 1080 --output-count 2 --no-lockscreen')
   })
 
   it.each([
@@ -386,6 +401,7 @@ describe('qa display session environment', () => {
     expect(parseSessionEnv(kwinText)).toEqual({
       compositor: 'kwin',
       portals: false,
+      outputs: 1,
       audio: 'none',
       env: {
         XDG_CURRENT_DESKTOP: 'KDE',
@@ -401,6 +417,8 @@ describe('qa display session environment', () => {
       },
     })
     expect(parseSessionEnv(kwinText.replace('AIRI_QA_PORTALS=0', 'AIRI_QA_PORTALS=1'))?.portals).toBe(true)
+    expect(parseSessionEnv(kwinText)?.outputs).toBe(1)
+    expect(parseSessionEnv(`${kwinText}AIRI_QA_OUTPUTS=2\n`)?.outputs).toBe(2)
     expect(parseSessionEnv(kwinText.replace('AIRI_QA_AUDIO=none', 'AIRI_QA_AUDIO=private'))?.audio).toBe('private')
     expect(parseSessionEnv(kwinText.replace('AIRI_QA_AUDIO=none', 'AIRI_QA_AUDIO=host'))?.audio).toBe('host')
   })
