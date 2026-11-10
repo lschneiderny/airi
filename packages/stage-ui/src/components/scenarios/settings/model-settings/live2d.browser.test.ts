@@ -97,13 +97,14 @@ async function renderRemoteExpressions(groups: ExpressionEntry[], options: { sho
 /** Renders the settings, selects Natural through its radio, and expands the Emotion strength group. */
 async function renderNaturalEmotionStrength(pinia: Pinia, errorHandler?: (error: unknown) => void) {
   Object.assign(window, { Live2DCubismCore: {} })
-  const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
+  const [{ useLive2DNaturalSettings, useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
     import('@proj-airi/stage-ui-live2d'),
     import('./live2d.vue'),
   ])
   await import('virtual:uno.css')
   const settings = useSettingsLive2d(pinia)
   settings.resetState()
+  const natural = useLive2DNaturalSettings(pinia)
   const screen = await render(Live2DSettings, {
     props: { palette: [], runtimeSnapshot: remoteSnapshot([]) },
     global: { plugins: [pinia, createTestI18n()], config: { errorHandler } },
@@ -111,7 +112,7 @@ async function renderNaturalEmotionStrength(pinia: Pinia, errorHandler?: (error:
   await screen.getByText(t('settings.live2d.animation.title'), { exact: true }).click()
   await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
   await screen.getByRole('button', { name: t('settings.natural.emotion-strength.title') }).click()
-  return { screen, settings }
+  return { screen, natural }
 }
 
 /** The labelled field around a slider, so its formatted value can be read without matching every field. */
@@ -594,7 +595,7 @@ describe('live2D model settings', () => {
 
   it('selects Natural and preserves mode settings', async () => {
     Object.assign(window, { Live2DCubismCore: {} })
-    const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
+    const [{ useLive2DNaturalSettings, useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
       import('@proj-airi/stage-ui-live2d'),
       import('./live2d.vue'),
     ])
@@ -602,6 +603,7 @@ describe('live2D model settings', () => {
     const pinia = createPinia()
     const settings = useSettingsLive2d(pinia)
     settings.resetState()
+    const natural = useLive2DNaturalSettings(pinia)
     settings.live2dEyeTracking = false
     localStorage.setItem('selected-runtime-motion', 'idle.motion3.json')
     const screen = await render(Live2DSettings, {
@@ -626,12 +628,12 @@ describe('live2D model settings', () => {
       await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
       const cursor = screen.getByRole('switch', { name: t('settings.live2d.animation.natural-cursor-attention.title') })
       await expect.element(cursor).toBeEnabled()
-      if (settings.live2dNaturalCursorAttention !== enabled)
+      if (natural.document.cursorAttention !== enabled)
         await cursor.click()
       await nextTick()
-      expect(settings.live2dNaturalCursorAttention).toBe(enabled)
+      expect(natural.document.cursorAttention).toBe(enabled)
       expect(localStorage.getItem('settings/live2d/motion-driver')).toBe('natural')
-      expect(localStorage.getItem('settings/live2d/natural-cursor-attention')).toBe(String(enabled))
+      expect(JSON.parse(localStorage.getItem('settings/live2d/natural')!).cursorAttention).toBe(enabled)
       expect(settings.live2dEyeTracking).toBe(false)
       await expect.element(screen.getByRole('switch', { name: t('settings.live2d.animation.force-idle-eye-animation.title') })).toBeDisabled()
       await expect.element(screen.getByRole('combobox')).toBeDisabled()
@@ -654,15 +656,16 @@ describe('live2D model settings', () => {
     const switches = screen.getByRole('switch').all()
     await expect.element(switches[switches.length - 1]).toBeEnabled()
     settings.resetState()
+    await natural.reset()
     await nextTick()
     await expect.element(screen.getByRole('radio', { name: 'Universal', exact: true })).toBeChecked()
-    expect(settings.live2dNaturalCursorAttention).toBe(true)
+    expect(natural.document.cursorAttention).toBe(true)
     expect(settings.live2dEyeTracking).toBe(true)
   })
 
   it('shows the screen-aware attention setting only for Natural and restores it on reset', async () => {
     Object.assign(window, { Live2DCubismCore: {} })
-    const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
+    const [{ useLive2DNaturalSettings, useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
       import('@proj-airi/stage-ui-live2d'),
       import('./live2d.vue'),
     ])
@@ -670,6 +673,7 @@ describe('live2D model settings', () => {
     const pinia = createPinia()
     const settings = useSettingsLive2d(pinia)
     settings.resetState()
+    const natural = useLive2DNaturalSettings(pinia)
     const screen = await render(Live2DSettings, {
       props: {
         palette: [],
@@ -694,23 +698,24 @@ describe('live2D model settings', () => {
     await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
     const awareness = screen.getByRole('switch', { name })
     await expect.element(awareness).toBeChecked()
-    expect(settings.live2dNaturalScreenAwareness).toBe(true)
+    expect(natural.document.screenAwareness).toBe(true)
     await awareness.click()
     await nextTick()
-    expect(settings.live2dNaturalScreenAwareness).toBe(false)
-    expect(localStorage.getItem('settings/live2d/natural-screen-awareness')).toBe('false')
+    expect(natural.document.screenAwareness).toBe(false)
+    expect(JSON.parse(localStorage.getItem('settings/live2d/natural')!).screenAwareness).toBe(false)
 
     settings.resetState()
+    await natural.reset()
     await nextTick()
-    expect(settings.live2dNaturalScreenAwareness).toBe(true)
-    expect(localStorage.getItem('settings/live2d/natural-screen-awareness')).toBe('true')
+    expect(natural.document.screenAwareness).toBe(true)
+    expect(JSON.parse(localStorage.getItem('settings/live2d/natural')!).screenAwareness).toBe(true)
     await expect.element(screen.getByRole('radio', { name: 'Universal', exact: true })).toBeChecked()
     await expect.element(screen.getByRole('switch', { name })).not.toBeInTheDocument()
   })
 
   it('hides eye tracking under Natural whether touch is on or off', async () => {
     Object.assign(window, { Live2DCubismCore: {} })
-    const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
+    const [{ useLive2DNaturalSettings, useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
       import('@proj-airi/stage-ui-live2d'),
       import('./live2d.vue'),
     ])
@@ -718,7 +723,8 @@ describe('live2D model settings', () => {
     const pinia = createPinia()
     const settings = useSettingsLive2d(pinia)
     settings.resetState()
-    settings.live2dNaturalTouch = true
+    const natural = useLive2DNaturalSettings(pinia)
+    await natural.update({ touch: true })
     const screen = await render(Live2DSettings, {
       props: {
         palette: [],
@@ -743,7 +749,7 @@ describe('live2D model settings', () => {
     // Natural replaces eye tracking with cursor attention, so turning touch off must not bring it back.
     await screen.getByRole('switch', { name: t('settings.live2d.animation.natural-touch.title') }).click()
     await nextTick()
-    expect(settings.live2dNaturalTouch).toBe(false)
+    expect(natural.document.touch).toBe(false)
     await expect.element(eyeTracking).not.toBeInTheDocument()
     await screen.getByRole('radio', { name: 'MAGIC', exact: true }).click()
     await expect.element(eyeTracking).toBeInTheDocument()
@@ -751,7 +757,7 @@ describe('live2D model settings', () => {
 
   it('shows the Energy slider only for Natural, persists it, and resets it to 0.5', async () => {
     Object.assign(window, { Live2DCubismCore: {} })
-    const [{ useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
+    const [{ useLive2DNaturalSettings, useSettingsLive2d }, { default: Live2DSettings }] = await Promise.all([
       import('@proj-airi/stage-ui-live2d'),
       import('./live2d.vue'),
     ])
@@ -759,6 +765,7 @@ describe('live2D model settings', () => {
     const pinia = createPinia()
     const settings = useSettingsLive2d(pinia)
     settings.resetState()
+    const natural = useLive2DNaturalSettings(pinia)
     const screen = await render(Live2DSettings, {
       props: {
         palette: [],
@@ -789,21 +796,21 @@ describe('live2D model settings', () => {
     await energy.click()
     await userEvent.keyboard('{ArrowRight}')
     await expect.element(screen.getByText('55%', { exact: true })).toBeVisible()
-    expect(settings.live2dNaturalEnergy).toBe(0.55)
-    const key = 'settings/live2d/natural-energy'
-    expect(localStorage.getItem(key)).toBe('0.55')
+    expect(natural.document.energy).toBe(0.55)
+    expect(JSON.parse(localStorage.getItem('settings/live2d/natural')!).energy).toBe(0.55)
 
-    localStorage.setItem(key, '7')
-    window.dispatchEvent(new StorageEvent('storage', { key, oldValue: '0.55', newValue: '7', storageArea: localStorage }))
+    // An out-of-range value from any caller is clamped by the document, and the slider follows it.
+    await natural.update({ energy: 7 })
     await expect.element(screen.getByText('100%', { exact: true })).toBeVisible()
-    expect(settings.live2dNaturalEnergy).toBe(1)
+    expect(natural.document.energy).toBe(1)
 
     // Reset also restores the Universal driver, which hides the slider.
     settings.resetState()
+    await natural.reset()
     await nextTick()
     await expect.element(energy).not.toBeInTheDocument()
-    expect(settings.live2dNaturalEnergy).toBe(0.5)
-    expect(localStorage.getItem(key)).toBe('0.5')
+    expect(natural.document.energy).toBe(0.5)
+    expect(JSON.parse(localStorage.getItem('settings/live2d/natural')!).energy).toBe(0.5)
     await screen.getByRole('radio', { name: 'Natural', exact: true }).click()
     await expect.element(screen.getByText('50%', { exact: true })).toBeVisible()
 
@@ -815,7 +822,7 @@ describe('live2D model settings', () => {
     'universal',
     'magic',
     'natural',
-  ] as const)('restores stored %s through storage updates without migrating cursor preferences', async (driver) => {
+  ] as const)('restores stored %s through storage updates without migrating the eye-tracking preference', async (driver) => {
     Object.assign(window, { Live2DCubismCore: {} })
     const { useSettingsLive2d } = await import('@proj-airi/stage-ui-live2d')
     const settings = useSettingsLive2d(createPinia())
@@ -823,7 +830,6 @@ describe('live2D model settings', () => {
     await nextTick()
     for (const [key, newValue] of [
       ['settings/live2d/motion-driver', driver],
-      ['settings/live2d/natural-cursor-attention', 'false'],
       ['settings/live2d/eye-tracking', 'true'],
     ]) {
       const oldValue = localStorage.getItem(key)
@@ -832,36 +838,33 @@ describe('live2D model settings', () => {
     }
     await nextTick()
     expect(settings.live2dMotionDriver).toBe(driver)
-    expect(settings.live2dNaturalCursorAttention).toBe(false)
     expect(settings.live2dEyeTracking).toBe(true)
   })
 
   it.each([
     { stored: 'abc', expected: 0.5 },
-    { stored: '7', expected: 1 },
-    { stored: '-2', expected: 0 },
-    { stored: '0.35', expected: 0.35 },
+    { stored: 7, expected: 1 },
+    { stored: -2, expected: 0 },
+    { stored: 0.35, expected: 0.35 },
   ])('reads a stored Natural energy of $stored as $expected', async ({ stored, expected }) => {
     Object.assign(window, { Live2DCubismCore: {} })
-    const { useSettingsLive2d } = await import('@proj-airi/stage-ui-live2d')
-    const settings = useSettingsLive2d(createPinia())
-    settings.resetState()
-    settings.live2dNaturalEnergy = 0.8
-    await nextTick()
-    const key = 'settings/live2d/natural-energy'
-    const oldValue = localStorage.getItem(key)
-    localStorage.setItem(key, stored)
-    window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue: stored, storageArea: localStorage }))
-    await nextTick()
-    expect(settings.live2dNaturalEnergy).toBe(expected)
+    const { useLive2DNaturalSettings } = await import('@proj-airi/stage-ui-live2d')
+    localStorage.setItem('settings/live2d/natural', JSON.stringify({ energy: stored }))
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(useLive2DNaturalSettings(createPinia()).document.energy).toBe(expected)
+    }
+    finally {
+      warning.mockRestore()
+    }
   })
 
   it('writes the Love strength for the selected model only and resets that model', async () => {
     const pinia = createPinia()
     const { useSettingsStageModel } = await import('../../../../stores/settings/stage-model')
     const stageModel = useSettingsStageModel(pinia)
-    const { screen, settings } = await renderNaturalEmotionStrength(pinia)
-    const key = 'settings/live2d/natural-emotion-strength'
+    const { screen, natural } = await renderNaturalEmotionStrength(pinia)
+    const key = 'settings/live2d/natural'
     const love = screen.getByRole('slider', { name: t('settings.emotions.love') })
     const reset = screen.getByRole('button', { name: t('settings.natural.emotion-strength.reset'), exact: true })
     await expect.element(love).toBeVisible()
@@ -873,15 +876,15 @@ describe('live2D model settings', () => {
     for (let step = 0; step < 10; step++)
       await userEvent.keyboard('{ArrowRight}')
     await expect.element(fieldOf(love).getByText('1.50×', { exact: true })).toBeVisible()
-    expect(settings.live2dNaturalEmotionStrength).toEqual({ 'preset-live2d-1': { love: 1.5 } })
-    expect(JSON.parse(localStorage.getItem(key) ?? 'null')).toEqual({ 'preset-live2d-1': { love: 1.5 } })
+    expect(natural.document.emotionStrength).toEqual({ 'preset-live2d-1': { love: 1.5 } })
+    expect(JSON.parse(localStorage.getItem(key) ?? 'null').emotionStrength).toEqual({ 'preset-live2d-1': { love: 1.5 } })
     await expect.element(reset).toBeEnabled()
 
     stageModel.stageModelSelected = 'preset-live2d-2'
     await nextTick()
     await expect.element(fieldOf(love).getByText('1.00×', { exact: true })).toBeVisible()
     await expect.element(reset).toBeDisabled()
-    expect(settings.live2dNaturalEmotionStrength).toEqual({ 'preset-live2d-1': { love: 1.5 } })
+    expect(natural.document.emotionStrength).toEqual({ 'preset-live2d-1': { love: 1.5 } })
 
     stageModel.stageModelSelected = 'preset-live2d-1'
     await nextTick()
@@ -889,26 +892,23 @@ describe('live2D model settings', () => {
     await reset.click()
     await expect.element(fieldOf(love).getByText('1.00×', { exact: true })).toBeVisible()
     await expect.element(reset).toBeDisabled()
-    expect(settings.live2dNaturalEmotionStrength).toEqual({})
-    expect(JSON.parse(localStorage.getItem(key) ?? 'null')).toEqual({})
+    expect(natural.document.emotionStrength).toEqual({})
+    expect(JSON.parse(localStorage.getItem(key) ?? 'null').emotionStrength).toEqual({})
   })
 
-  it('reads a stored Love strength of "x" as 1 without an error', async () => {
+  it('reads a Love strength of "x" as 1 without an error', async () => {
     const handledErrors: unknown[] = []
-    const { screen, settings } = await renderNaturalEmotionStrength(createPinia(), error => handledErrors.push(error))
+    const { screen, natural } = await renderNaturalEmotionStrength(createPinia(), error => handledErrors.push(error))
     const love = screen.getByRole('slider', { name: t('settings.emotions.love') })
     const sad = screen.getByRole('slider', { name: t('settings.emotions.sad') })
-    const key = 'settings/live2d/natural-emotion-strength'
-    const oldValue = localStorage.getItem(key)
-    const newValue = '{"preset-live2d-1":{"love":"x","sad":1.5}}'
     const consoleError = vi.spyOn(console, 'error')
     try {
-      localStorage.setItem(key, newValue)
-      window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue, storageArea: localStorage }))
+      // @ts-expect-error Deliberately exercise malformed runtime input inside a valid record.
+      await natural.update({ emotionStrength: { 'preset-live2d-1': { love: 'x', sad: 1.5 } } })
       await nextTick()
       await expect.element(fieldOf(love).getByText('1.00×', { exact: true })).toBeVisible()
       await expect.element(fieldOf(sad).getByText('1.50×', { exact: true })).toBeVisible()
-      expect(settings.live2dNaturalEmotionStrength).toEqual({ 'preset-live2d-1': { sad: 1.5 } })
+      expect(natural.document.emotionStrength).toEqual({ 'preset-live2d-1': { sad: 1.5 } })
       expect(handledErrors).toEqual([])
       expect(consoleError).not.toHaveBeenCalled()
     }

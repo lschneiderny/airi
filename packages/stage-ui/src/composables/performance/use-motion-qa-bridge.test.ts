@@ -13,7 +13,7 @@ import { initialResolverMemory, resolvePerformanceState } from '@proj-airi/stage
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
-import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
+import { useLive2DNaturalSettings, useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -172,9 +172,10 @@ describe('useMotionQaBridge', () => {
     expect(await dispatch({ name: 'events', input: {} })).toMatchObject({ ok: false })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     scope.stop()
     useSettingsLive2d().resetState()
+    await useLive2DNaturalSettings().reset()
     disposePinia(pinia)
     vi.unstubAllGlobals()
   })
@@ -183,21 +184,21 @@ describe('useMotionQaBridge', () => {
     const reply = await dispatch({ name: 'configure', input: { driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: false } })
 
     const live2d = useSettingsLive2d()
-    expect([live2d.live2dMotionDriver, live2d.live2dNaturalCursorAttention, live2d.live2dExpressionEnabled]).toEqual(['natural', false, true])
+    expect([live2d.live2dMotionDriver, useLive2DNaturalSettings().document.cursorAttention, live2d.live2dExpressionEnabled]).toEqual(['natural', false, true])
     expect(useExpressionPerformanceSettings().document.heldEmotions).toBe(false)
     expect(reply).toMatchObject({ ok: true, result: { driver: 'natural', cursorAttention: false, expressionEnabled: true, heldEmotions: false, captureActive: false, head: null, screen: { x: -1200, y: 20, devicePixelRatio: 1.5 } } })
   })
 
   it('writes the screen-aware setting and reports it back', async () => {
-    const live2d = useSettingsLive2d()
-    expect(live2d.live2dNaturalScreenAwareness).toBe(true)
+    const natural = useLive2DNaturalSettings()
+    expect(natural.document.screenAwareness).toBe(true)
 
     expect(await dispatch({ name: 'configure', input: { screenAwareness: false } })).toMatchObject({ ok: true, result: { screenAwareness: false } })
-    expect(live2d.live2dNaturalScreenAwareness).toBe(false)
+    expect(natural.document.screenAwareness).toBe(false)
     // Omitting the field leaves the setting as it is.
     expect(await dispatch({ name: 'configure', input: {} })).toMatchObject({ ok: true, result: { screenAwareness: false } })
     expect(await dispatch({ name: 'configure', input: { screenAwareness: true } })).toMatchObject({ ok: true, result: { screenAwareness: true } })
-    expect(live2d.live2dNaturalScreenAwareness).toBe(true)
+    expect(natural.document.screenAwareness).toBe(true)
   })
 
   it('reports the placement the stage last handed to Natural and the applied yaw bias', async () => {

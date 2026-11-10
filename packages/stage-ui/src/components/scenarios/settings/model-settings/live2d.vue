@@ -9,7 +9,7 @@ import type { SelectTabOption } from '@proj-airi/ui'
 import type { ExpressionPanelSource } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
-import { defaultModelParameters, useExpressionStore, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
+import { defaultModelParameters, useExpressionStore, useLive2DNaturalSettings, useLive2dParams, useSettingsLive2d } from '@proj-airi/stage-ui-live2d'
 import { OPFSCache } from '@proj-airi/stage-ui-live2d/utils/opfs-loader'
 import { Button, Checkbox, FieldCheckbox, FieldCombobox, FieldRange, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
@@ -44,13 +44,6 @@ const settings = useSettingsLive2d()
 const {
   live2dMotionDriver,
   live2dEyeTracking,
-  live2dNaturalCursorAttention,
-  live2dNaturalScreenAwareness,
-  live2dNaturalTouch,
-  live2dNaturalTouchPetRequiresHold,
-  live2dNaturalTouchHeadScale,
-  live2dNaturalEmotionStrength,
-  live2dNaturalEnergy,
   live2dModelEyeOffset,
   live2dIdleAnimationEnabled,
   live2dAutoBlinkEnabled,
@@ -62,6 +55,12 @@ const {
   live2dRenderScale,
   live2dForceIdleEyeAnimation,
 } = storeToRefs(settings)
+
+const naturalSettings = useLive2DNaturalSettings()
+// `update` is a leader-routed synced action, so callers await it instead of dropping the promise.
+async function updateNaturalSettings(patch: Parameters<typeof naturalSettings.update>[0]) {
+  await naturalSettings.update(patch)
+}
 
 const motionDriverOptions = computed<SelectTabOption<Live2DMotionDriver>[]>(() => [
   {
@@ -169,12 +168,7 @@ const live2dBlinkMode = computed<'auto' | 'force'>({
 
 const { stageModelSelected } = storeToRefs(useSettingsStageModel())
 /** The head area adjustment of the selected stage model; the stage keys it by the same id. */
-const naturalTouchHeadScale = computed({
-  get: () => live2dNaturalTouchHeadScale.value[stageModelSelected.value] ?? 1,
-  set: (value: number) => {
-    live2dNaturalTouchHeadScale.value = { ...live2dNaturalTouchHeadScale.value, [stageModelSelected.value]: value }
-  },
-})
+const naturalTouchHeadScale = computed(() => naturalSettings.document.touchHeadScale[stageModelSelected.value] ?? 1)
 
 function formatScale(value: number) {
   return `${value.toFixed(2)}×`
@@ -430,51 +424,57 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
     <MagicMotionSettings v-if="live2dMotionDriver === 'magic'" />
     <FieldRange
       v-if="live2dMotionDriver === 'natural'"
-      v-model="live2dNaturalEnergy"
+      :model-value="naturalSettings.document.energy"
       :min="0"
       :max="1"
       :step="0.05"
       :label="t('settings.live2d.animation.natural-energy.title')"
       :description="t('settings.live2d.animation.natural-energy.description')"
       :format-value="formatNaturalEnergy"
+      @update:model-value="updateNaturalSettings({ energy: $event })"
     />
     <FieldCheckbox
       v-if="live2dMotionDriver === 'natural'"
-      v-model="live2dNaturalCursorAttention"
+      :model-value="naturalSettings.document.cursorAttention"
       :label="t('settings.live2d.animation.natural-cursor-attention.title')"
       :description="t('settings.live2d.animation.natural-cursor-attention.description')"
       placement="right"
+      @update:model-value="updateNaturalSettings({ cursorAttention: $event })"
     />
     <FieldCheckbox
       v-if="live2dMotionDriver === 'natural'"
-      v-model="live2dNaturalScreenAwareness"
+      :model-value="naturalSettings.document.screenAwareness"
       :label="t('settings.live2d.animation.natural-screen-awareness.title')"
       :description="t('settings.live2d.animation.natural-screen-awareness.description')"
       placement="right"
+      @update:model-value="updateNaturalSettings({ screenAwareness: $event })"
     />
     <FieldCheckbox
       v-if="live2dMotionDriver === 'natural'"
-      v-model="live2dNaturalTouch"
+      :model-value="naturalSettings.document.touch"
       :label="t('settings.live2d.animation.natural-touch.title')"
       :description="t('settings.live2d.animation.natural-touch.description')"
       placement="right"
+      @update:model-value="updateNaturalSettings({ touch: $event })"
     />
     <FieldCheckbox
-      v-if="live2dMotionDriver === 'natural' && live2dNaturalTouch"
-      v-model="live2dNaturalTouchPetRequiresHold"
+      v-if="live2dMotionDriver === 'natural' && naturalSettings.document.touch"
+      :model-value="naturalSettings.document.touchPetRequiresHold"
       :label="t('settings.live2d.animation.natural-touch-pet-requires-hold.title')"
       :description="t('settings.live2d.animation.natural-touch-pet-requires-hold.description')"
       placement="right"
+      @update:model-value="updateNaturalSettings({ touchPetRequiresHold: $event })"
     />
     <FieldRange
-      v-if="live2dMotionDriver === 'natural' && live2dNaturalTouch"
-      v-model="naturalTouchHeadScale"
+      v-if="live2dMotionDriver === 'natural' && naturalSettings.document.touch"
+      :model-value="naturalTouchHeadScale"
       :min="0.5"
       :max="2"
       :step="0.05"
       :label="t('settings.live2d.animation.natural-touch-head-scale.title')"
       :description="t('settings.live2d.animation.natural-touch-head-scale.description')"
       :format-value="formatScale"
+      @update:model-value="updateNaturalSettings({ touchHeadScale: { ...naturalSettings.document.touchHeadScale, [stageModelSelected]: $event } })"
     />
     <FieldCheckbox
       v-if="live2dMotionDriver !== 'natural'"
@@ -486,10 +486,11 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
     />
     <NaturalEmotionStrength
       v-if="live2dMotionDriver === 'natural'"
-      v-model="live2dNaturalEmotionStrength"
+      :model-value="naturalSettings.document.emotionStrength"
       :model-id="stageModelSelected"
+      @update:model-value="updateNaturalSettings({ emotionStrength: $event })"
     />
-    <div v-if="(live2dMotionDriver === 'universal' && live2dEyeTracking) || (live2dMotionDriver === 'natural' && live2dNaturalCursorAttention)" :class="['grid grid-cols-4']">
+    <div v-if="(live2dMotionDriver === 'universal' && live2dEyeTracking) || (live2dMotionDriver === 'natural' && naturalSettings.document.cursorAttention)" :class="['grid grid-cols-4']">
       <PropertyPoint
         v-model:x="live2dModelEyeOffset.x"
         v-model:y="live2dModelEyeOffset.y"

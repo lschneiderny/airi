@@ -23,7 +23,7 @@ import Live2DCanvas from './live2d/Canvas.vue'
 import Live2DModel from './live2d/Model.vue'
 import Live2DPresenceBubble from './live2d/presence-bubble.vue'
 
-import { useLive2DEyeFocusFor, useSettingsLive2d } from '../../composables/live2d'
+import { useLive2DEyeFocusFor, useLive2DNaturalSettings, useSettingsLive2d } from '../../composables/live2d'
 import { createCursorExpiry } from './live2d/cursor-expiry'
 
 import '../../utils/live2d-zip-loader'
@@ -98,9 +98,8 @@ const {
   live2dMaxFps,
   live2dRenderScale,
   live2dShadowEnabled,
-  live2dNaturalEnergy,
-  live2dNaturalEmotionStrength,
 } = storeToRefs(useSettingsLive2d())
+const naturalSettings = useLive2DNaturalSettings()
 const universalMotionEnabled = computed(() => live2dMotionDriver.value === 'universal')
 const {
   screenAmbientLightBacklight,
@@ -219,8 +218,8 @@ defineExpose({
         :live2d-force-auto-blink-enabled="live2dForceAutoBlinkEnabled && live2dMotionDriver !== 'natural'"
         :natural-auto-blink="live2dAutoBlinkEnabled"
         :performance="props.performance"
-        :natural-energy="props.naturalEnergy ?? live2dNaturalEnergy"
-        :natural-emotion-strength="live2dNaturalEmotionStrength[props.modelId ?? '']"
+        :natural-energy="props.naturalEnergy ?? naturalSettings.document.energy"
+        :natural-emotion-strength="naturalSettings.document.emotionStrength[props.modelId ?? '']"
         :performance-settings="props.performanceSettings"
         :screen-placement="props.screenPlacement"
         :chat-target="props.chatTarget"

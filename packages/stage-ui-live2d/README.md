@@ -74,7 +74,7 @@ The controller and its pure layers live in `packages/motion-driver-natural`, sha
 - Screen-aware attention uses the horizontal center of the bottom layer of displays as its placement reference. It eases a small resting head turn toward that reference and fades the turn while cursor attention is engaged. Peripheral and aside glances favor the screen side near an edge. During screen attention and watching mode, desk fixations and screen-change glances use an inward screen point. The web host remains inert because its Live2D model instances provide no chat target; same-page speech-bus events can otherwise reach listeners in the shared Eventa context.
 - While the chat is visible, typing can draw periodic chat fixations with a partial head follow. A typed send triggers a delayed reading glance sized by word count, and opening the chat triggers a brief glance. When talking starts, active and pending chat attention ends at once, so replies keep gaze on the camera. The first chat input records send and unfold counters as a baseline, so its prior events don't trigger glances. Chat text is not sent to Natural.
 
-Screen-aware attention is controlled by `settings/live2d/natural-screen-awareness`, enabled by default. The setting appears only for Natural and gates both placement and chat attention. Turning it off restores the no-signal behavior. The screen point currently applies to both screen attention and watching mode; Luke may revisit that choice.
+Screen-aware attention is controlled by the `screenAwareness` Natural setting, enabled by default. The setting appears only for Natural and gates both placement and chat attention. Turning it off restores the no-signal behavior. The screen point currently applies to both screen attention and watching mode; Luke may revisit that choice.
 
 ### What Natural owns and what it never writes
 
@@ -148,7 +148,9 @@ A wake (screen unlock or resume) lifts the head slightly and glances at the came
 
 ### Energy
 
-Natural has an Energy setting, stored as `settings/live2d/natural-energy`, from 0 (calm) to 1 (energetic). The default is 0.5.
+Natural has an Energy setting, the `energy` field of the Natural settings document, from 0 (calm) to 1 (energetic). The default is 0.5.
+
+Every Natural setting of this renderer is a field of one settings document, held by `useLive2DNaturalSettings` (`src/composables/live2d/natural-settings.ts`) and stored as `settings/live2d/natural`: `energy`, `cursorAttention`, `screenAwareness`, `touch`, `touchPetRequiresHold`, `touchHeadScale`, and `emotionStrength`. The store is synced: every window reads `document`, and `update` and `reset` run on the leader, which is the only window that writes storage. Await `update`; never assign to `document`. A profile saved before the document kept one `settings/live2d/natural-*` key per setting; the store starts from those keys while no document is stored, and the first `update` or `reset` writes the document and deletes them.
 The settings page shows it as a slider only while Natural is selected.
 Energy `E` scales posture amplitude by `0.7 + 0.6E` and posture shift rate by `0.6 + 0.8E`. It also sets the probability that a speech onset becomes an emphasis to `0.15 + 0.2E`.
 At the default of 0.5, Energy leaves every layer at its unscaled behavior.
@@ -159,7 +161,7 @@ Resetting Live2D settings restores the default Energy.
 While enabled, missing head or screen measurements retain the last valid placement rather than resetting the eased turn.
 Turning the setting off, removing the host placement prop, changing drivers, or replacing the model clears that cached measurement.
 
-The Screen-aware attention setting is stored as `settings/live2d/natural-screen-awareness` and is enabled by default. It is available only while Natural is selected. The placement reference is the horizontal center of the bottom-layer displays; the turn eases toward it and fades while the cursor is engaged. Side glances favor the inward screen direction, and screen attention and watching mode use a screen point for desk fixations. Typing, typed sends, and chat opening can produce chat glances, while replies stay on camera. Disabling the setting removes these placement and chat signals.
+The Screen-aware attention setting is the `screenAwareness` field of the Natural settings document and is enabled by default. It is available only while Natural is selected. The placement reference is the horizontal center of the bottom-layer displays; the turn eases toward it and fades while the cursor is engaged. Side glances favor the inward screen direction, and screen attention and watching mode use a screen point for desk fixations. Typing, typed sends, and chat opening can produce chat glances, while replies stay on camera. Disabling the setting removes these placement and chat signals.
 
 ### Emotions by intensity band
 
@@ -219,7 +221,7 @@ Turn the switch off to compare with the earlier behavior: Natural then shows onl
 
 ### Emotion strength
 
-Each model has its own emotion strength per emotion, stored as `settings/live2d/natural-emotion-strength` by stage model id. Values range from 0 to 2, and a missing value means 1.
+Each model has its own emotion strength per emotion, stored in the `emotionStrength` field of the Natural settings document by stage model id. Values range from 0 to 2, and a missing value means 1.
 The strength scales the held emotion. While held emotions are on, a strength of 0 means Natural does not perform that emotion at all: no reaction, no gesture, no mood dose, and no held face.
 While Natural is selected, the settings page shows an Emotion strength group with one slider per emotion and a reset button for the selected model.
 Resetting Live2D settings clears every model's strengths.
@@ -246,9 +248,9 @@ Resetting Live2D settings restores Universal and enables both cursor preferences
 
 ### Touch: poke and pet
 
-Natural has a Poke and pet setting, stored as `settings/live2d/natural-touch` and enabled by default.
-A second setting, `settings/live2d/natural-touch-pet-requires-hold`, counts strokes as petting only while the left mouse button is held. It is off by default.
-A third setting, Head area for petting, scales the touch head box around its center for the selected model, from 0.5× to 2×. This box uses an authored head or face hit area, otherwise the face-feature measure expanded by `faceToHeadScale` (1.6) and extended up to the top of the physics-inclusive head box, otherwise the physics-inclusive head box. The setting is stored per stage model id in `settings/live2d/natural-touch-head-scale`.
+Natural has a Poke and pet setting, the `touch` field of the Natural settings document, enabled by default.
+A second setting, `touchPetRequiresHold`, counts strokes as petting only while the left mouse button is held. It is off by default.
+A third setting, Head area for petting, scales the touch head box around its center for the selected model, from 0.5× to 2×. This box uses an authored head or face hit area, otherwise the face-feature measure expanded by `faceToHeadScale` (1.6) and extended up to the top of the physics-inclusive head box, otherwise the physics-inclusive head box. The setting is stored per stage model id in the `touchHeadScale` field of the Natural settings document.
 The settings page shows these settings only while Natural is selected. Touch does nothing under Universal or MAGIC, and nothing while the stage is paused.
 
 `NaturalTouchGestures` from `@proj-airi/motion-driver-natural/touch-gestures` classifies pointer input on the Live2D canvas, mapped into model canvas space. The MMD scene uses the same classifier, so the rules below hold on both renderers:

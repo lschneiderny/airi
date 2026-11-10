@@ -14,18 +14,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Reads stored per-model strengths. Every renderer's settings store persists them in this shape. localStorage is
- * outside the app's control, so a stored entry that is not a finite number is dropped, an out-of-range one is clamped,
- * and a model left without entries is dropped with it.
+ * Keeps the valid part of per-model strengths that came from outside the app. An entry that is not a finite number is
+ * dropped, an out-of-range one is clamped, and a model left without entries is dropped with it. Anything but a record
+ * gives `{}`.
  */
-export function parseNaturalEmotionStrengths(raw: string): NaturalEmotionStrengthsByModel {
-  let stored: unknown
-  try {
-    stored = JSON.parse(raw)
-  }
-  catch {
-    return {}
-  }
+export function sanitizeNaturalEmotionStrengths(stored: unknown): NaturalEmotionStrengthsByModel {
   if (!isRecord(stored))
     return {}
 

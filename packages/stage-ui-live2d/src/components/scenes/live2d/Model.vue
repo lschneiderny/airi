@@ -56,6 +56,7 @@ import {
   live2DCanvasRectToParent,
   useExpressionController,
   useLive2DMotionManagerUpdate,
+  useLive2DNaturalSettings,
   useMotionUpdatePluginAutoEyeBlink,
   useMotionUpdatePluginBeatSync,
   useMotionUpdatePluginBreathControl,
@@ -186,7 +187,14 @@ const {
   control: manualMotionControl,
   exclusiveOwnerId,
 } = storeToRefs(useLive2DMotionControl())
-const { live2dMotionDriver, live2dNaturalCursorAttention, live2dNaturalScreenAwareness, live2dNaturalTouch, live2dNaturalTouchPetRequiresHold, live2dNaturalTouchHeadScale } = storeToRefs(useSettingsLive2d())
+const { live2dMotionDriver } = storeToRefs(useSettingsLive2d())
+const naturalSettings = useLive2DNaturalSettings()
+const live2dNaturalCursorAttention = computed(() => naturalSettings.document.cursorAttention)
+const live2dNaturalScreenAwareness = computed(() => naturalSettings.document.screenAwareness)
+const live2dNaturalTouch = computed(() => naturalSettings.document.touch)
+const live2dNaturalTouchPetRequiresHold = computed(() => naturalSettings.document.touchPetRequiresHold)
+/** Size of the petting area relative to this model's measured head. A model without an entry uses 1. */
+const naturalTouchHeadScale = computed(() => naturalSettings.document.touchHeadScale[props.modelId ?? ''] ?? 1)
 const naturalDiagnostics = useNaturalMotionDiagnostics()
 const { pendingRequest: naturalCaptureRequest } = storeToRefs(naturalDiagnostics)
 let naturalMotion: Live2DNaturalMotionAdapter | undefined
@@ -1370,7 +1378,7 @@ function readTouchDebug(nowMs: number) {
     nowMs,
     source: regions?.source ?? null,
     drawables: headTracker.selectionCounts(),
-    headScale: live2dNaturalTouchHeadScale.value[props.modelId ?? ''] ?? 1,
+    headScale: naturalTouchHeadScale.value,
     touch: regions?.head,
     cursorUnit: regions?.unscaledHead,
     body: regions?.body,
@@ -1451,7 +1459,7 @@ watch(touchActive, (active) => {
     resetTouch(performance.now())
 })
 // A new head area applies from the next pointer sample instead of after the cache expires.
-watch(live2dNaturalTouchHeadScale, () => {
+watch(naturalTouchHeadScale, () => {
   touchRegions = undefined
 })
 
@@ -1472,7 +1480,7 @@ function readTouchRegions(timeMs: number) {
   const internalModel = current.internalModel
   const interaction = headTracker.interactionBounds(internalModel)
   const touch = interaction?.touch
-  const headScale = live2dNaturalTouchHeadScale.value[props.modelId ?? ''] ?? 1
+  const headScale = naturalTouchHeadScale.value
   touchRegions = { head: touch && scaleLive2DRect(touch, headScale), unscaledHead: interaction?.head, eyeAnchor: interaction?.eyeAnchor, body: live2DVisibleBounds(internalModel), source: interaction?.source ?? null, measuredAtMs: timeMs }
   return touchRegions
 }

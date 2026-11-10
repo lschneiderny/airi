@@ -381,14 +381,19 @@ bodies falls back to a skinned mesh raycast and the hit face's heaviest bone.
 `NaturalTouchGestures` from `@proj-airi/motion-driver-natural/touch-gestures`,
 the classifier Live2D uses, turns the samples into pokes and pets. They feed
 `NaturalMotion`, so the response is pre-physics head and body motion.
-`settings/mmd/natural-touch` (default on) and
-`settings/mmd/natural-touch-pet-requires-hold` (default off) match the Live2D
-settings, and the scene emits `touch` events like `Live2DScene`. `Stage.vue`
+The `touch` (default on) and `touchPetRequiresHold` (default off) Natural
+settings match the Live2D settings, and the scene emits `touch` events like `Live2DScene`. `Stage.vue`
 routes them to the stage touch store, so a pet or poke doses mood, reaches the
 situation, and can start a reaction turn as on Live2D. The scene also plays ACT
 cue gestures (`gesture`) and takes mood doses (`addMood`), and
-`settings/mmd/natural-emotion-strength` holds per-model emotion strengths in the
-Live2D shape. Diagnostics
+the `emotionStrength` Natural setting holds per-model emotion strengths in the
+Live2D shape. The Natural settings are one synced settings document, held by
+`useMMDNaturalSettings` (`src/stores/natural-settings.ts`) and stored as
+`settings/mmd/natural`: every window reads `document`, and the leader-routed
+`update` and `reset` are the only writers. A profile saved before the document
+kept one `settings/mmd/natural-*` key per setting; the store starts from those
+keys while no document is stored, and the first `update` or `reset` writes the
+document and deletes them. Diagnostics
 publish `touch` with `lastRegion`, `hitBody`, `petActive`, `events`, and
 `headScreenPoint` in canvas client pixels.
 
@@ -462,7 +467,7 @@ unknown expression id and warns once per model.
 ### Settings, expression panel, and Motion Lab
 
 The MMD model settings expose the motion driver, Natural energy
-(`settings/mmd/natural-energy`), the touch toggles and the per-model stance
+(the `energy` Natural setting), the touch toggles and the per-model stance
 slots (`settings/mmd/stance-slots`). Below the motion import list, a curation
 table shows one row per clip with its derived kind and layer badge (plus
 `downgraded` and `unusable` badges), a label input with an inline duplicate

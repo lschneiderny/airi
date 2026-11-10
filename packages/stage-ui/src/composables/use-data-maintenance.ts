@@ -2,9 +2,10 @@ import type { ChatSessionsExport } from '../types/chat-session'
 
 import { isStageTamagotchi } from '@proj-airi/stage-shared'
 import { useSettingsScreenAmbientLight } from '@proj-airi/stage-shared/stores/screen-ambient-light'
-import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
+import { useLive2DNaturalSettings, useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useLive2dParams } from '@proj-airi/stage-ui-live2d/stores/model-parameters'
 import { useMMD } from '@proj-airi/stage-ui-mmd/stores/mmd'
+import { useMMDNaturalSettings } from '@proj-airi/stage-ui-mmd/stores/natural-settings'
 import { useModelStore } from '@proj-airi/stage-ui-three/stores/model-store'
 
 import { useHostNoticeSettings } from '../features/host-capabilities/notice-settings'
@@ -54,10 +55,12 @@ export function useDataMaintenance() {
   const audioSettingsStore = useSettingsAudioDevice()
   const live2dParamsStore = useLive2dParams()
   const live2dSettingsStore = useSettingsLive2d()
+  const live2dNaturalSettingsStore = useLive2DNaturalSettings()
   const live2dMagicSettingsStore = useLive2DMotionMagicSettings()
   const screenAmbientLightSettingsStore = useSettingsScreenAmbientLight()
   const threeStore = useModelStore()
   const mmdStore = useMMD()
+  const mmdNaturalSettingsStore = useMMDNaturalSettings()
   const situationStore = useSituationStore()
   const situationSettingsStore = useSituationSettings()
   const expressionPerformanceSettingsStore = useExpressionPerformanceSettings()
@@ -152,6 +155,8 @@ export function useDataMaintenance() {
     await situationSettingsStore.reset()
     await expressionPerformanceSettingsStore.reset()
     await hostNoticeSettingsStore.reset()
+    await live2dNaturalSettingsStore.reset()
+    await mmdNaturalSettingsStore.reset()
     mcpStore.resetState()
     // A follower routes this synced action to the leader; await it so the reset commits before deletion reports done.
     await onboardingStore.resetSetupState()

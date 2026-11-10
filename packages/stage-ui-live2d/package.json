@@ -74,9 +74,11 @@
     "es-toolkit": "catalog:",
     "jszip": "catalog:",
     "pinia": "catalog:",
+    "pinia-plugin-synced": "catalog:",
     "pixi-filters": "catalog:",
     "pixi-live2d-display": "catalog:",
     "three": "catalog:",
+    "valibot": "catalog:",
     "vue": "catalog:",
     "zod": "catalog:"
   },

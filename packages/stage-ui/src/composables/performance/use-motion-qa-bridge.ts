@@ -24,7 +24,7 @@ import {
 import { useDesktopActivityStore } from '@proj-airi/stage-shared/stores/desktop-activity'
 import { useForegroundWindowStore } from '@proj-airi/stage-shared/stores/foreground-window'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
-import { useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
+import { useLive2DNaturalSettings, useSettingsLive2d } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useExpressionStore, useNaturalMotionDiagnostics } from '@proj-airi/stage-ui-live2d/stores'
 import { nextTick, onScopeDispose, toRaw, watch } from 'vue'
 
@@ -90,6 +90,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
 
   const frames = options.frames ?? browserFrames
   const live2d = useSettingsLive2d()
+  const live2dNatural = useLive2DNaturalSettings()
   const performanceSettings = useExpressionPerformanceSettings()
   const stageModel = useSettingsStageModel()
   const displayModels = useDisplayModelsStore()
@@ -119,7 +120,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       modelId,
       modelLoaded: modelId !== null && (options.modelLoaded?.() ?? diagnostics.loadedModelId === modelId),
       driver: live2d.live2dMotionDriver,
-      cursorAttention: live2d.live2dNaturalCursorAttention,
+      cursorAttention: live2dNatural.document.cursorAttention,
       expressionEnabled: live2d.live2dExpressionActive,
       heldEmotions: performanceSettings.document.heldEmotions,
       naturalActive: snapshot?.naturalActive ?? false,
@@ -127,7 +128,7 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
       captureActive: diagnostics.pendingRequest !== null,
       head: snapshot?.head ?? null,
       screen: { x: window.screenX, y: window.screenY, devicePixelRatio: window.devicePixelRatio },
-      screenAwareness: live2d.live2dNaturalScreenAwareness,
+      screenAwareness: live2dNatural.document.screenAwareness,
       placement: diagnostics.lastPlacement,
       placementYawBias: diagnostics.lastPlacementYawBias,
       chat: diagnostics.lastChat && { ...diagnostics.lastChat },
@@ -314,12 +315,16 @@ export function useMotionQaBridge(options: MotionQaBridgeOptions) {
     defineInvokeHandler(context, motionQaConfigureInvokeEventa, async (input) => {
       if (input.driver)
         live2d.live2dMotionDriver = input.driver
-      if (input.cursorAttention !== undefined)
-        live2d.live2dNaturalCursorAttention = input.cursorAttention
       if (input.expressionEnabled !== undefined)
         live2d.live2dExpressionEnabled = input.expressionEnabled
-      if (input.screenAwareness !== undefined)
-        live2d.live2dNaturalScreenAwareness = input.screenAwareness
+      if (input.cursorAttention !== undefined || input.screenAwareness !== undefined) {
+        const updated = await live2dNatural.update({
+          ...(input.cursorAttention !== undefined && { cursorAttention: input.cursorAttention }),
+          ...(input.screenAwareness !== undefined && { screenAwareness: input.screenAwareness }),
+        })
+        if (!updated.success)
+          throw new Error('The Live2D Natural settings rejected "cursorAttention" or "screenAwareness"')
+      }
       if (input.heldEmotions !== undefined) {
         const updated = await performanceSettings.update({ heldEmotions: input.heldEmotions })
         if (!updated.success)

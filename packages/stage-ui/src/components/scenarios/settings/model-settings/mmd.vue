@@ -6,7 +6,7 @@ import type { DesktopStageDisplay, DesktopStageMode } from './desktop-stage'
 import type { ExpressionPanelCommand, ExpressionPanelSnapshot, ExpressionPanelSource } from './expressions/source'
 import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
-import { CLIP_LABEL_PATTERN, controlConfig, effectiveLayer, useMMD, useMMDExpressionStore } from '@proj-airi/stage-ui-mmd/stores'
+import { CLIP_LABEL_PATTERN, controlConfig, effectiveLayer, useMMD, useMMDExpressionStore, useMMDNaturalSettings } from '@proj-airi/stage-ui-mmd/stores'
 import { Button, Checkbox, FieldCheckbox, FieldCombobox, FieldRange, GhostButton, Input, Select, SelectTab } from '@proj-airi/ui'
 import { useFileDialog } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
@@ -66,10 +66,6 @@ const {
   physicsGravity,
   gazeMode,
   motionDriver,
-  naturalEnergy,
-  naturalTouch,
-  naturalTouchPetRequiresHold,
-  naturalEmotionStrength,
   stanceSlots,
   idleMotionName,
   availableMotions,
@@ -89,6 +85,12 @@ const {
   stageCharacterHeight,
   roamMode,
 } = storeToRefs(mmdStore)
+
+const naturalSettings = useMMDNaturalSettings()
+// `update` is a leader-routed synced action, so callers await it instead of dropping the promise.
+async function updateNaturalSettings(patch: Parameters<typeof naturalSettings.update>[0]) {
+  await naturalSettings.update(patch)
+}
 
 const desktopStage = useDesktopStageHost()
 const desktopStageState = computed(() => desktopStage?.state.value ?? null)
@@ -627,32 +629,36 @@ function removeMotion(id: string) {
     </label>
     <FieldRange
       v-if="motionDriver === 'natural'"
-      v-model="naturalEnergy"
+      :model-value="naturalSettings.document.energy"
       :min="0"
       :max="1"
       :step="0.05"
       :label="t('settings.mmd.motion.natural-energy.title')"
       :description="t('settings.mmd.motion.natural-energy.description')"
       :format-value="formatNaturalEnergy"
+      @update:model-value="updateNaturalSettings({ energy: $event })"
     />
     <FieldCheckbox
       v-if="motionDriver === 'natural'"
-      v-model="naturalTouch"
+      :model-value="naturalSettings.document.touch"
       :label="t('settings.mmd.motion.natural-touch.title')"
       :description="t('settings.mmd.motion.natural-touch.description')"
       placement="right"
+      @update:model-value="updateNaturalSettings({ touch: $event })"
     />
     <FieldCheckbox
-      v-if="motionDriver === 'natural' && naturalTouch"
-      v-model="naturalTouchPetRequiresHold"
+      v-if="motionDriver === 'natural' && naturalSettings.document.touch"
+      :model-value="naturalSettings.document.touchPetRequiresHold"
       :label="t('settings.mmd.motion.natural-touch-pet-requires-hold.title')"
       :description="t('settings.mmd.motion.natural-touch-pet-requires-hold.description')"
       placement="right"
+      @update:model-value="updateNaturalSettings({ touchPetRequiresHold: $event })"
     />
     <NaturalEmotionStrength
       v-if="motionDriver === 'natural'"
-      v-model="naturalEmotionStrength"
+      :model-value="naturalSettings.document.emotionStrength"
       :model-id="stageModelSelected"
+      @update:model-value="updateNaturalSettings({ emotionStrength: $event })"
     />
     <p :class="['mt-2', 'text-xs', 'text-neutral-500', 'dark:text-neutral-400']">
       {{ t('settings.mmd.motion.stance.description') }}

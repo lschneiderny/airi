@@ -92,6 +92,7 @@ import { Emotion, EMOTION_VALUES } from '../../constants/emotions'
 import { useMMDExpressionStore } from '../../stores/expression-store'
 import { useMMD } from '../../stores/mmd'
 import { useMMDMotionDiagnostics } from '../../stores/motion-diagnostics'
+import { useMMDNaturalSettings } from '../../stores/natural-settings'
 import { loadMMDModelFromSource } from '../../utils/mmd-loader'
 import {
   applyMMDMaterialOpacity,
@@ -154,6 +155,7 @@ const emit = defineEmits<{
 const componentState = defineModel<'pending' | 'loading' | 'mounted'>('state', { default: 'pending' })
 
 const mmdStore = useMMD()
+const naturalSettings = useMMDNaturalSettings()
 const diagnostics = useMMDMotionDiagnostics()
 const expressions = useMMDExpressionStore()
 // Interactions that start the director's chase window: touch pokes and pets, host drags and sent chat messages.
@@ -215,10 +217,6 @@ const {
   physicsGravity,
   gazeMode,
   motionDriver,
-  naturalEnergy,
-  naturalTouch,
-  naturalTouchPetRequiresHold,
-  naturalEmotionStrength,
   position,
   scale,
   rotationY,
@@ -1161,7 +1159,7 @@ async function loadModel(src: string) {
         natural.setPerformanceSettings(toRaw(props.performanceSettings))
         natural.advance(dt, {
           performance: props.performance,
-          energy: props.naturalEnergy ?? naturalEnergy.value,
+          energy: props.naturalEnergy ?? naturalSettings.document.energy,
           voice: { speaking, speechActiveOrRecent: speaking, level: props.mouthOpenSize },
           cursor,
           chat: props.chatTarget
@@ -1172,7 +1170,7 @@ async function loadModel(src: string) {
             : placement && dipScale > 0
               ? screenInwardness(placement.displays, placement.windowBounds.x + headX * dipScale)
               : mmdScreenInwardness(rect, headX),
-          emotionStrengths: naturalEmotionStrength.value[props.modelId ?? ''] ?? defaultEmotionStrengths,
+          emotionStrengths: naturalSettings.document.emotionStrength[props.modelId ?? ''] ?? defaultEmotionStrengths,
         }, naturalSeconds)
         natural.applyPose(clean, true)
         // Channels must be prepared before bone-morph evaluation. Their surface
@@ -1313,7 +1311,7 @@ watch(() => props.modelSrc, (src) => {
 
 // --- Touch
 // Pokes and pets are a Natural reaction, so touch runs only while Natural drives the model.
-const touchActive = computed(() => naturalTouch.value && motionDriver.value === 'natural' && !props.paused)
+const touchActive = computed(() => naturalSettings.document.touch && motionDriver.value === 'natural' && !props.paused)
 
 function handleTouchEvents(events: NaturalTouchGesture[]) {
   if (!touch)
@@ -1339,7 +1337,7 @@ function resetTouch() {
 watch(componentState, (state) => {
   resetTouch()
   touch = state === 'mounted' && mesh && resolved && rig
-    ? new MMDTouch(mesh, resolved.mmd.pmx, rig, { requireHold: naturalTouchPetRequiresHold.value })
+    ? new MMDTouch(mesh, resolved.mmd.pmx, rig, { requireHold: naturalSettings.document.touchPetRequiresHold })
     : undefined
   if (!touch)
     diagnostics.publish({ touch: null })
@@ -1350,7 +1348,7 @@ watch(touchActive, (active) => {
     resetTouch()
 })
 
-watch(naturalTouchPetRequiresHold, (requireHold) => {
+watch(() => naturalSettings.document.touchPetRequiresHold, (requireHold) => {
   resetTouch()
   if (touch)
     touch.gestures.requireHold = requireHold

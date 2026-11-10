@@ -4,7 +4,9 @@ import en from '@proj-airi/i18n/locales/en'
 import localforage from 'localforage'
 
 import { PiniaColada } from '@pinia/colada'
+import { useLive2DNaturalSettings } from '@proj-airi/stage-ui-live2d/composables/live2d'
 import { useMMD } from '@proj-airi/stage-ui-mmd/stores/mmd'
+import { useMMDNaturalSettings } from '@proj-airi/stage-ui-mmd/stores/natural-settings'
 import { createPinia, disposePinia } from 'pinia'
 import { createSyncedPiniaPlugin } from 'pinia-plugin-synced'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -334,18 +336,24 @@ it('removes downloaded speech models when all data is deleted', async () => {
   await expect(origin.getDirectoryHandle('airi-model-assets')).rejects.toThrow()
 })
 
-it('forgets derived conversation state, presence, expression, host notice, and MMD settings when all data is deleted', async () => {
+it('forgets derived conversation state, presence, expression, host notice, Natural, and MMD settings when all data is deleted', async () => {
   vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ voices: [], models: [] })))
   localStorage.setItem('settings/situation-inner', JSON.stringify({ v: 1, threads: [], savedAtMs: 1 }))
   // Documents of a model that is not loaded must go too.
   localStorage.setItem('expression-catalog:unloaded-model', JSON.stringify({ version: 1, overrides: [] }))
   localStorage.setItem('expression-rest:unloaded-model', JSON.stringify({ version: 1, active: [] }))
+  // A key that a profile saved before the Natural settings documents; deletion must not leave it to be read back.
+  localStorage.setItem('settings/mmd/natural-energy', '0.9')
   const { pinia, runtime, maintenance } = mountMaintenance(`maintenance:${crypto.randomUUID()}`, 'leader-only')
   await vi.waitFor(() => expect(runtime.isLeader()).toBe(true))
   const situationSettings = useSituationSettings(pinia)
   const expressionSettings = useExpressionPerformanceSettings(pinia)
   const hostNotice = useHostNoticeSettings(pinia)
   const mmd = useMMD(pinia)
+  const live2dNatural = useLive2DNaturalSettings(pinia)
+  const mmdNatural = useMMDNaturalSettings(pinia)
+  expect(mmdNatural.document.energy).toBe(0.9)
+  await live2dNatural.update({ energy: 0.9, touchHeadScale: { shuka: 1.5 } })
   await situationSettings.update({ shareForegroundWindow: false })
   await expressionSettings.update({ bands: false })
   await hostNotice.dismiss('linux-wayland:wayland-cursor-unreported')
@@ -361,6 +369,10 @@ it('forgets derived conversation state, presence, expression, host notice, and M
   expect(hostNotice.document.dismissedKeys).toEqual([])
   expect(JSON.parse(localStorage.getItem('settings/host-notice')!).dismissedKeys).toEqual([])
   expect(mmd.physicsEnabled).toBe(true)
+  expect(live2dNatural.document).toMatchObject({ energy: 0.5, touchHeadScale: {} })
+  expect(JSON.parse(localStorage.getItem('settings/live2d/natural')!).energy).toBe(0.5)
+  expect(mmdNatural.document.energy).toBe(0.5)
+  expect(Object.keys(localStorage).filter(key => key.startsWith('settings/mmd/natural'))).toEqual(['settings/mmd/natural'])
 })
 
 it('empties the character state of every card when all data is deleted', async () => {

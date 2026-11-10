@@ -1,5 +1,4 @@
 import type { ClipKind, ClipLayer, DerivedClipMeta } from '@proj-airi/motion-driver-humanoid/clip-meta'
-import type { NaturalEmotionStrengthsByModel } from '@proj-airi/motion-driver-natural/emotion-strengths'
 
 import type { MMDStanceSlots } from '../composables/mmd/stance'
 import type { Emotion } from '../constants/emotions'
@@ -8,10 +7,8 @@ import type { MorphSlot } from '../constants/morphs'
 import localforage from 'localforage'
 
 import { CLIP_LABEL_PATTERN, effectiveLayer } from '@proj-airi/motion-driver-humanoid/clip-meta'
-import { parseNaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
 import { useLocalStorageManualReset } from '@proj-airi/stage-shared/composables'
 import { useBroadcastChannel } from '@vueuse/core'
-import { clamp } from 'es-toolkit'
 import { nanoid } from 'nanoid/non-secure'
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
@@ -69,7 +66,6 @@ export interface MMDMaterialDescriptor {
 }
 
 const MOTION_STORAGE_PREFIX = 'mmd-motion-'
-const NATURAL_ENERGY_DEFAULT = 0.5
 
 /** Eye/head tracking mode, mirroring the VRM renderer's tracking modes. */
 export type MMDGazeMode = 'camera' | 'mouse' | 'none'
@@ -166,30 +162,6 @@ export const useMMD = defineStore('mmd', () => {
    */
   const gazeMode = useLocalStorageManualReset<MMDGazeMode>('settings/mmd/gaze-mode', 'mouse')
   const motionDriver = useLocalStorageManualReset<MMDMotionDriver>('settings/mmd/motion-driver', 'natural')
-  /** Liveliness of Natural movement, 0 (calm) to 1 (energetic); the same scale and default as Live2D's `settings/live2d/natural-energy`. */
-  const naturalEnergy = useLocalStorageManualReset<number>('settings/mmd/natural-energy', NATURAL_ENERGY_DEFAULT, {
-    serializer: {
-      read: (raw) => {
-        const value = Number.parseFloat(raw)
-        return Number.isFinite(value) ? clamp(value, 0, 1) : NATURAL_ENERGY_DEFAULT
-      },
-      write: value => String(value),
-    },
-  })
-  /** Let the user poke the model and pet its head with the cursor while Natural drives it. */
-  const naturalTouch = useLocalStorageManualReset<boolean>('settings/mmd/natural-touch', true)
-  /** Count only strokes made with the primary button held as pets, so passing the cursor over the head never pets it. */
-  const naturalTouchPetRequiresHold = useLocalStorageManualReset<boolean>('settings/mmd/natural-touch-pet-requires-hold', false)
-  /**
-   * How strongly Natural performs each emotion, by stage model id, in the same shape and range as the Live2D setting.
-   * Replace the record on write; consumers watch it by identity.
-   */
-  const naturalEmotionStrength = useLocalStorageManualReset<NaturalEmotionStrengthsByModel>('settings/mmd/natural-emotion-strength', {}, {
-    serializer: {
-      read: parseNaturalEmotionStrengths,
-      write: value => JSON.stringify(value),
-    },
-  })
 
   // === Scene: camera ===
   /** Vertical field of view in degrees. */
@@ -404,10 +376,6 @@ export const useMMD = defineStore('mmd', () => {
     physicsGravity.reset()
     gazeMode.reset()
     motionDriver.reset()
-    naturalEnergy.reset()
-    naturalTouch.reset()
-    naturalTouchPetRequiresHold.reset()
-    naturalEmotionStrength.reset()
     cameraFov.reset()
     ambientColor.reset()
     ambientIntensity.reset()
@@ -443,10 +411,6 @@ export const useMMD = defineStore('mmd', () => {
     physicsGravity,
     gazeMode,
     motionDriver,
-    naturalEnergy,
-    naturalTouch,
-    naturalTouchPetRequiresHold,
-    naturalEmotionStrength,
 
     cameraFov,
     ambientColor,

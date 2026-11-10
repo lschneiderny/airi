@@ -359,7 +359,7 @@ describe('mmd model settings motion', () => {
   })
 
   async function renderMotionSection() {
-    const [{ useMMD }, { useSettingsStageModel }, { default: MMDSettings }] = await Promise.all([
+    const [{ useMMD, useMMDNaturalSettings }, { useSettingsStageModel }, { default: MMDSettings }] = await Promise.all([
       import('@proj-airi/stage-ui-mmd'),
       import('../../../../stores/settings/stage-model'),
       import('./mmd.vue'),
@@ -367,6 +367,7 @@ describe('mmd model settings motion', () => {
     const pinia = createPinia()
     const store = useMMD(pinia)
     store.resetState()
+    const natural = useMMDNaturalSettings(pinia)
     // The stage-model store replaces an unknown id with the default preset, so use a known one.
     useSettingsStageModel(pinia).stageModelSelected = MODEL_ID
     const screen = await render(MMDSettings, {
@@ -375,11 +376,11 @@ describe('mmd model settings motion', () => {
     })
     expect(t('settings.mmd.motion.title')).not.toBe('settings.mmd.motion.title')
     await screen.getByText(t('settings.mmd.motion.title'), { exact: true }).click()
-    return { screen, store }
+    return { screen, store, natural }
   }
 
   it('switches the driver through the radio and writes the store, hiding Natural controls under Classic', async () => {
-    const { screen, store } = await renderMotionSection()
+    const { screen, store, natural } = await renderMotionSection()
     const energy = screen.getByRole('slider', { name: t('settings.mmd.motion.natural-energy.title') })
     const touch = screen.getByRole('switch', { name: t('settings.mmd.motion.natural-touch.title') })
     await expect.element(screen.getByRole('radio', { name: t('settings.mmd.motion.driver.options.natural.title'), exact: true })).toBeChecked()
@@ -398,32 +399,32 @@ describe('mmd model settings motion', () => {
     expect(store.motionDriver).toBe('natural')
     await expect.element(energy).toBeVisible()
 
-    // Pet-requires-hold depends on the touch toggle, and both write their landed keys.
+    // Pet-requires-hold depends on the touch toggle, and both write the settings document.
     const hold = screen.getByRole('switch', { name: t('settings.mmd.motion.natural-touch-pet-requires-hold.title') })
     await hold.click()
     await nextTick()
-    expect(store.naturalTouchPetRequiresHold).toBe(true)
-    expect(localStorage.getItem('settings/mmd/natural-touch-pet-requires-hold')).toBe('true')
+    expect(natural.document.touchPetRequiresHold).toBe(true)
+    expect(JSON.parse(localStorage.getItem('settings/mmd/natural')!).touchPetRequiresHold).toBe(true)
     await touch.click()
     await nextTick()
-    expect(store.naturalTouch).toBe(false)
-    expect(localStorage.getItem('settings/mmd/natural-touch')).toBe('false')
+    expect(natural.document.touch).toBe(false)
+    expect(JSON.parse(localStorage.getItem('settings/mmd/natural')!).touch).toBe(false)
     await expect.element(hold).not.toBeInTheDocument()
   })
 
   it('writes the per-model emotion strength under Natural, in the shape Live2D uses', async () => {
-    const { screen, store } = await renderMotionSection()
+    const { screen, natural } = await renderMotionSection()
     await screen.getByRole('button', { name: t('settings.natural.emotion-strength.title') }).click()
     const happy = screen.getByRole('slider', { name: t('settings.emotions.happy') })
     await expect.element(happy).toBeVisible()
     happy.element().focus()
     for (let step = 0; step < 10; step++)
       await userEvent.keyboard('{ArrowRight}')
-    await vi.waitFor(() => expect(store.naturalEmotionStrength).toEqual({ [MODEL_ID]: { happy: 1.5 } }))
-    expect(JSON.parse(localStorage.getItem('settings/mmd/natural-emotion-strength') ?? 'null')).toEqual({ [MODEL_ID]: { happy: 1.5 } })
+    await vi.waitFor(() => expect(natural.document.emotionStrength).toEqual({ [MODEL_ID]: { happy: 1.5 } }))
+    expect(JSON.parse(localStorage.getItem('settings/mmd/natural') ?? 'null').emotionStrength).toEqual({ [MODEL_ID]: { happy: 1.5 } })
 
     await screen.getByRole('button', { name: t('settings.natural.emotion-strength.reset'), exact: true }).click()
-    await vi.waitFor(() => expect(store.naturalEmotionStrength).toEqual({}))
+    await vi.waitFor(() => expect(natural.document.emotionStrength).toEqual({}))
   })
 
   it('writes the stance slot for the selected stage model and shows None for a removed motion', async () => {

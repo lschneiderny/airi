@@ -24,6 +24,7 @@
     "./constants/emotions": "./src/constants/emotions.ts",
     "./stores": "./src/stores/index.ts",
     "./stores/mmd": "./src/stores/mmd.ts",
+    "./stores/natural-settings": "./src/stores/natural-settings.ts",
     "./utils/mmd-loader": "./src/utils/mmd-loader.ts",
     "./utils/mmd-preview": "./src/utils/mmd-preview.ts",
     "./utils/mmd-validator": "./src/utils/mmd-validator.ts",
@@ -51,8 +52,10 @@
     "localforage": "catalog:",
     "nanoid": "catalog:",
     "pinia": "catalog:",
+    "pinia-plugin-synced": "catalog:",
     "three": "catalog:",
     "three-stdlib": "catalog:",
+    "valibot": "catalog:",
     "vue": "catalog:"
   },
   "devDependencies": {
