@@ -1,4 +1,4 @@
-import type { ExtraTestConfig, VerifyStep } from './verify-plan'
+import type { VerifyStep } from './verify-plan'
 
 import process from 'node:process'
 
@@ -11,7 +11,7 @@ import { acquire } from '@proj-airi/cpu-slots'
 import { capture, chunkByLength, nodeCommandChunkLimits, run, shimCommandChunkLimits } from './lib/exec'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { readLastPass, readPass, verifyCacheKey, writeLastPass, writePass } from './verify-cache'
-import { advanceLastPass, parseVerifyArgs, planStepLease, planVerify, selectExtraTestConfigs, selectVerifyScope, stripWorkerFlags, testPrerequisiteTurboArgs, touchesAppRuntime, typecheckFilters, verifyUsage } from './verify-plan'
+import { advanceLastPass, parseVerifyArgs, planStepLease, planVerify, selectBrowserTestProjects, selectVerifyScope, stripWorkerFlags, testPrerequisiteTurboArgs, touchesAppRuntime, typecheckFilters, verifyUsage } from './verify-plan'
 
 interface Command {
   label: string
@@ -46,7 +46,7 @@ function withDependents(root: string, packagePaths: string[]): string[] {
   return listing.packages.items.map(item => item.path.replaceAll('\\', '/'))
 }
 
-function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof planVerify>, extraConfigs: ExtraTestConfig[]): Command[] | string {
+function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof planVerify>, browserProjects: string[]): Command[] | string {
   const node = (entry: string, args: string[]) => [join(root, entry), ...args]
   if (step === 'typecheck') {
     if (plan.typecheck.kind === 'none')
@@ -65,17 +65,20 @@ function commandsFor(step: VerifyStep, root: string, plan: ReturnType<typeof pla
   }
   if (!plan.testFiles.length)
     return 'no code file changed'
-  const configs: ExtraTestConfig[] = [{ config: 'vitest.config.ts' }, ...extraConfigs]
-  // `vitest related` resolves relative paths against the config's root, and the extra configs are rooted in their packages.
+  const configs: { config: string, projects: string[] }[] = [
+    { config: 'vitest.config.ts', projects: [] },
+    ...(browserProjects.length ? [{ config: 'vitest.browser.config.ts', projects: browserProjects }] : []),
+  ]
+  // `vitest related` resolves relative paths against each project's package root.
   const absoluteFiles = plan.testFiles.map(file => join(root, file))
   const rebuild: Command = {
     label: 'rebuild stale workspace packages',
     args: node('node_modules/turbo/bin/turbo', testPrerequisiteTurboArgs),
     concurrency: true,
   }
-  const related: Command[] = configs.flatMap(({ config, project }) => chunkByLength(absoluteFiles, nodeCommandChunkLimits).map(files => ({
-    label: `tests related to changes (${config}${project ? `, project ${project}` : ''})`,
-    args: node('node_modules/vitest/vitest.mjs', ['related', '--run', '--passWithNoTests', '--config', config, ...(project ? ['--project', project] : []), ...files]),
+  const related: Command[] = configs.flatMap(({ config, projects }) => chunkByLength(absoluteFiles, nodeCommandChunkLimits).map(files => ({
+    label: `tests related to changes (${config}${projects.length ? `, projects ${projects.join(', ')}` : ''})`,
+    args: node('node_modules/vitest/vitest.mjs', ['related', '--run', '--passWithNoTests', '--config', config, ...projects.flatMap(project => ['--project', project]), ...files]),
   })))
   return [rebuild, ...related]
 }
@@ -145,8 +148,8 @@ async function main(): Promise<number> {
         console.info(`  ${file.deleted ? 'D' : 'M'} ${file.path}`)
     }
     const plan = planVerify(changed, workspaces.paths, workspaces.rootDependencyPaths)
-    const extraConfigs = step === 'test' ? selectExtraTestConfigs(withDependents(root, plan.testPackagePaths)) : []
-    const commands = commandsFor(step, root, plan, extraConfigs)
+    const browserProjects = step === 'test' ? selectBrowserTestProjects(withDependents(root, plan.testPackagePaths)) : []
+    const commands = commandsFor(step, root, plan, browserProjects)
     if (typeof commands === 'string') {
       results.push({ step, status: 'skipped', detail: commands, durationMs: 0 })
       continue

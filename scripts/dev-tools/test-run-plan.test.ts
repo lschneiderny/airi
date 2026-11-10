@@ -24,6 +24,7 @@ describe('testRunSuites', () => {
     expect(testRunSuites[0].command).toBe(buildWorkspacePackagesCommand)
     expect(testRunSuites.slice(1).map(suite => suite.command)).toEqual([
       'pnpm exec vitest run',
+      'pnpm exec vitest run --config vitest.browser.config.ts --project provider-inference:browser',
       'pnpm run test-stage-tamagotchi:run',
       'pnpm run test-stage-web:run',
       'pnpm run test-stage-pages:run',
@@ -83,11 +84,12 @@ describe('summarizeSuites', () => {
 
 describe('vitestConfigCoverage', () => {
   const root = join(import.meta.dirname, '..', '..')
-  const trackedConfigs = execFileSync('git', ['ls-files', '**/vitest.config.*', '**/vitest.*.config.*', 'vitest.config.*'], { cwd: root, encoding: 'utf8' })
+  const trackedConfigs = execFileSync('git', ['ls-files', '**/vitest.config.*', '**/vitest.*.config.*', 'vitest.config.*', 'vitest.*.config.*'], { cwd: root, encoding: 'utf8' })
     .split('\n')
     .map(line => line.trim())
     .filter(line => line && line !== 'vitest.config.ts')
   const rootConfig = readFileSync(join(root, 'vitest.config.ts'), 'utf8')
+  const browserRootConfig = readFileSync(join(root, 'vitest.browser.config.ts'), 'utf8')
   const packageScripts = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> }).scripts
 
   it('accounts for every tracked Vitest config', () => {
@@ -106,6 +108,12 @@ describe('vitestConfigCoverage', () => {
         if (runner === 'root') {
           if (!rootConfig.includes(dirname(config)))
             missing.push(`${config}: the root config names no project in ${dirname(config)}`)
+        }
+        else if (runner === 'browser-root') {
+          if (!testRunSuites.some(suite => suite.command === 'pnpm exec vitest run --config vitest.browser.config.ts --project provider-inference:browser'))
+            missing.push(`${config}: test:run has no browser root suite`)
+          if (config !== 'vitest.browser.config.ts' && !browserRootConfig.includes(dirname(config)))
+            missing.push(`${config}: the browser root names no project in ${dirname(config)}`)
         }
         else if (!testRunSuites.some(suite => suite.command === `pnpm run ${runner}`) || !packageScripts[runner]) {
           missing.push(`${config}: test:run has no script ${runner}`)

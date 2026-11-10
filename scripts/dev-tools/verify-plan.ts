@@ -145,6 +145,14 @@ export function selectExtraTestConfigs(affectedPackagePaths: string[]): ExtraTes
   return extraTestConfigs.filter(({ config }) => affected.has(config.slice(0, config.lastIndexOf('/'))))
 }
 
+/** Browser projects share one root, while package selection keeps the existing affected-config boundary. */
+export function selectBrowserTestProjects(affectedPackagePaths: string[]): string[] {
+  const packages = selectExtraTestConfigs(affectedPackagePaths).map(({ config }) => config.slice(0, config.lastIndexOf('/')))
+  if (affectedPackagePaths.includes('packages/provider-inference'))
+    packages.push('packages/provider-inference')
+  return packages.map(path => `${path.slice(path.lastIndexOf('/') + 1)}:browser`)
+}
+
 /**
  * Decides what each step covers. `packagePaths` are workspace package directories relative to the root, using `/`.
  * `rootDependencyPaths` are the directories of the workspace packages the root `package.json` depends on. Turbo's

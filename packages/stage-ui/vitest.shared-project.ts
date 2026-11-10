@@ -1,0 +1,64 @@
+import type { TestProjectInlineConfiguration } from 'vitest/config'
+
+import { cwd } from 'node:process'
+
+import Vue from '@vitejs/plugin-vue'
+import UnoCSS from 'unocss/vite'
+import Info from 'unplugin-info/vite'
+import VueRouter from 'vue-router/vite'
+
+import { mergeConfigs } from 'unocss'
+import { loadEnv } from 'vite'
+
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { sharedUnoConfig } from '../../uno.config.ts'
+
+export function createStageUiProject(): TestProjectInlineConfiguration {
+  return {
+    root: import.meta.dirname,
+    // Shared settings pages import these optional UI dependencies through the
+    // component barrel, and test Workers import the eventa Worker adapter.
+    // Bundle them before a browser test starts to avoid HMR.
+    optimizeDeps: {
+      include: [
+        '@moeru/eventa/adapters/webworkers',
+        '@moeru/eventa/adapters/webworkers/worker',
+        '@moeru/std',
+        '@proj-airi/stage-ui-live2d > @pixi/math',
+        '@vueuse/core',
+        'embla-carousel-vue',
+        'html2canvas',
+        'node-vibrant/browser',
+        'reka-ui',
+        'vaul-vue',
+        'vue',
+        'vue-i18n',
+      ],
+    },
+    plugins: [
+      Info(),
+      // Use the app's route-block transform when browser tests mount shared pages.
+      VueRouter({ routesFolder: [], dts: false }),
+      Vue(),
+      // `pnpm verify` starts Vitest from the repository root, where the icon collections of this package do not resolve.
+      UnoCSS(mergeConfigs([sharedUnoConfig({ iconCollectionsPath: import.meta.dirname }), {
+        // Browser tests use product styles, not Histoire's hover-preview variants.
+        configFile: false,
+        // Vitest loads components after the stylesheet. Scan their source before
+        // the initial CSS response instead of relying on Vite's HMR updates.
+        content: {
+          // NOTICE:
+          // Keep these globs root-relative. On Windows, `import.meta.dirname` has
+          // backslashes that tinyglobby reads as escapes, matching zero files.
+          // Source: @unocss/vite setupContentExtractor.
+          // Removal condition: none; absolute patterns would reintroduce it.
+          filesystem: [
+            'src/**/*.vue',
+            '../ui/src/**/*.vue',
+          ],
+        },
+      }])),
+    ],
+    test: { env: loadEnv('test', cwd(), '') },
+  }
+}
