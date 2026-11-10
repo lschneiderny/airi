@@ -25,8 +25,8 @@ export const presenceNoticeRoute = '/settings/system/presence-sensing'
 /**
  * Tells the user once which presence signals this host cannot provide.
  *
- * Both stage pages call it, but only the page that owns the character in the running host mode shows the toast,
- * so one launch shows one notice. A dismissed key never shows again until Delete all data clears it.
+ * Both stage pages call it through `useStageHostWiring`, but only the page that owns the character in the running host
+ * mode shows the toast, so one launch shows one notice. A dismissed key never shows again until Delete all data clears it.
  */
 export function usePresenceNotice(page: 'index' | 'stage') {
   const { t } = useI18n()

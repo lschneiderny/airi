@@ -103,7 +103,7 @@ The character can live on the desktop without blocking it: clicks pass through e
 
 Every `userFacingMainWindow` consumer must handle the stage: the tray, the single-instance guard, centring, onboarding, and the tray layout actions all check `isStageWindow`. A new consumer that moves, resizes, or focuses the main window must do the same.
 
-Two hosts now coexist. The classic window keeps today's behaviour for Live2D, VRM, Spine, Linux, and any user who prefers it. Both host pages (`apps/stage-tamagotchi/src/renderer/pages/index.vue` and `apps/stage-tamagotchi/src/renderer/pages/stage.vue`) carry the same host-service wiring.
+Two hosts now coexist. The classic window keeps today's behaviour for Live2D, VRM, Spine, Linux, and any user who prefers it. Both host pages (`apps/stage-tamagotchi/src/renderer/pages/index.vue` and `apps/stage-tamagotchi/src/renderer/pages/stage.vue`) take the same host-service wiring from `useStageHostWiring` (`apps/stage-tamagotchi/src/renderer/composables/use-stage-host-wiring.ts`), so a service added there starts on both hosts.
 
 The hit-test readback passes its gate with a thin margin. The frame rate on this Mac is bound by Ammo physics on the renderer thread in both modes, not by the stage window.
 
@@ -116,5 +116,4 @@ The hit-test readback passes its gate with a thin margin. The frame rate on this
 - Replace the GPU readback with a CPU silhouette mask if `stage-frame-budget` fails its readback-max criterion again. Do not change the threshold.
 - Landed: the second wander on arrival. A wander deadline that fell due while another goal was walking stayed due, so the wander fired in the frame the goal ended. `decideBody` now draws a new deadline from the arrival instead.
 - Landed: roaming at the default height. At 560 DIP on a 1440 DIP wide work area, three leg lengths of ground fit on neither side of home. When three legs do not fit, the minimum wander distance is now half the longer free side, but never less than one leg length.
-- Extract the host-service wiring duplicated by `index.vue` and `stage.vue` (roughly 105 lines) into a shared composable after this plan.
 - Luke-run checks that agents could not perform on this host: the two-display home switch, real OS clicks through the stage with another app frontmost, an OS-level screen capture, and the Windows re-measure of the spike and gates, including the 125 % and 150 % display scales.

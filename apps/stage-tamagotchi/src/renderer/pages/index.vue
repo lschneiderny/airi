@@ -1,19 +1,12 @@
 <script setup lang="ts">
 import type { ModelSettingsRuntimeSnapshot } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 
-import type { ChatAttentionTarget } from '../../shared/eventa'
-
-import { errorMessageFrom } from '@moeru/std'
 import { electron } from '@proj-airi/electron-eventa'
 import {
-  useElectronAllDisplays,
-  useElectronEventaContext,
   useElectronEventaInvoke,
   useElectronMouseAroundWindowBorder,
   useElectronMouseInElement,
   useElectronMouseInWindow,
-  useElectronRelativeMouse,
-  useElectronWindowBounds,
 } from '@proj-airi/electron-vueuse'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useExpressionStore } from '@proj-airi/stage-ui-live2d/stores/expression-store'
@@ -27,36 +20,23 @@ import {
 } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
 import { useCanvasPixelIsTransparentAtPoint } from '@proj-airi/stage-ui/composables/canvas-alpha'
-import { useVoiceListening } from '@proj-airi/stage-ui/composables/voice-input-mode'
-import { useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
-import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
-import { useVoiceStore } from '@proj-airi/stage-ui/stores/voice'
 import { refDebounced } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, onScopeDispose, ref, shallowRef, toRef, watch } from 'vue'
-import { toast } from 'vue-sonner'
+import { computed, ref, shallowRef, toRef, watch } from 'vue'
 
 import ControlsIslandRoot from '../components/stage-islands/controls-island/controls-island-root.vue'
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
 import ResourceStatusIsland from '../components/stage-islands/resource-status-island/index.vue'
 
-import { electronChatAttentionTargetChanged, electronGetChatAttentionTarget, electronOpenInlay, electronOpenOnboarding } from '../../shared/eventa'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
-import { usePresenceNotice } from '../composables/use-presence-notice'
-import { usePushToTalkShortcut } from '../composables/use-push-to-talk-shortcut'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
-import { useStageActiveRenderer } from '../composables/use-stage-active-renderer'
+import { useStageHostWiring } from '../composables/use-stage-host-wiring'
 import { stageOpaqueAttribute } from '../composables/use-stage-painted-mask'
 import { useControlsIslandStore } from '../stores/controls-island'
-import { useDesktopActivityProducerStore } from '../stores/desktop-activity'
-import { useForegroundWindowProducerStore } from '../stores/foreground-window'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
-import { useToolSelectionStore } from '../stores/tools'
 import { resolveFadeOnHoverInteraction } from '../utils/fade-on-hover'
 import { shouldSampleStageTransparency } from '../utils/stage-three-transparency'
-
-useStageActiveRenderer()
 
 const hearingStatusElement = ref<HTMLElement>()
 const { isOutside: outsideHearingStatus } = useElectronMouseInElement(hearingStatusElement)
@@ -77,18 +57,14 @@ const isLoading = computed(() => !stageMounted.value && !stageError.value)
 const isIgnoringMouseEvents = ref(false)
 const shouldFadeOnCursorWithin = ref(false)
 
-const onboardingStore = useOnboardingStore()
-const openOnboarding = useElectronEventaInvoke(electronOpenOnboarding)
-
 const { isOutside: isOutsideWindow } = useElectronMouseInWindow()
 // The island already selects the available cursor signal for hit-testing, so
 // read its answer rather than mounting a second set of listeners over the same element.
 const isOutside = computed(() => controlsIslandRef.value?.isOutside ?? true)
 const isOutsideFor250Ms = refDebounced(isOutside, 250)
-const { x: relativeMouseX, y: relativeMouseY, available: cursorAvailable } = useElectronRelativeMouse()
+// The services and Natural inputs that this page shares with the desktop stage page.
+const { relativeMouseX, relativeMouseY, canUseCursor, cursorPosition, screenPlacement, chatTarget } = useStageHostWiring('index')
 const hostCapabilities = useHostCapabilitiesStore()
-// Every native-coordinate consumer shares this boundary. DOM hover remains available in the Island.
-const canUseCursor = computed(() => hostCapabilities.status('cursorScreenPoint')?.kind === 'live' && cursorAvailable.value)
 // NOTICE: In real-world use cases of Fade on Hover feature, the cursor may move around the edge of the
 // model rapidly, causing flickering effects when checking pixel transparency strictly.
 // Here we use render-target pixel sampling to keep detection aligned with the actual render output.
@@ -131,21 +107,6 @@ const mmdExpressionStore = useMMDExpressionStore()
 const motionDiagnostics = useMMDMotionDiagnostics()
 const { sceneMutationLocked, scenePhase } = storeToRefs(modelStore)
 const { stagePaused } = storeToRefs(useStageWindowLifecycleStore())
-// The stage window owns the desktop activity samples that drive the Natural motion performance state.
-const desktopActivityProducer = useDesktopActivityProducerStore()
-desktopActivityProducer.start()
-onScopeDispose(() => desktopActivityProducer.stop())
-// Only the stage window samples the foreground app, so follower windows never poll the main process. It samples only
-// while the user shares the foreground app; stopping also clears the last sample.
-const foregroundWindowProducer = useForegroundWindowProducerStore()
-const situationSettings = useSituationSettings()
-watch(() => situationSettings.document.shareForegroundWindow, (sharing) => {
-  if (sharing)
-    foregroundWindowProducer.start()
-  else
-    foregroundWindowProducer.stop()
-}, { immediate: true })
-onScopeDispose(() => foregroundWindowProducer.stop())
 const { fadeOnHoverEnabled } = storeToRefs(useControlsIslandStore())
 const modelSettingsRuntimeOwnerInstanceId = `tamagotchi-main-stage:${Math.random().toString(36).slice(2, 10)}`
 const shouldUseThreeTransparencyHitTest = computed(() => shouldSampleStageTransparency({
@@ -398,74 +359,6 @@ useModelSettingsRuntimeOwner({
     mmdExpressionStore.applySettingsCommand(command)
   },
 })
-
-const voice = useVoiceStore()
-const toolSelection = useToolSelectionStore()
-// Spoken turns start in this window. They use the tools that the chat window composer grants.
-onScopeDispose(voice.connectTools(() => toolSelection.requestTools))
-const openInlay = useElectronEventaInvoke(electronOpenInlay)
-useVoiceListening()
-usePushToTalkShortcut()
-usePresenceNotice('index')
-// The inlay stays shown from startup and draws a capsule when any capture starts.
-// This call shows it again after the user hid it. A failed begin never reaches `capturing`.
-watch(
-  () => voice.state?.phase === 'capturing',
-  (capturing) => {
-    if (capturing)
-      void openInlay()
-  },
-)
-watch(() => voice.error, (error) => {
-  if (error)
-    toast.error(error)
-})
-// A draft that the host is sending needs no inlay. A failed send clears `sending`, so the draft opens the inlay again.
-watch(
-  () => voice.drafts.filter(draft => !draft.sending).map(draft => `${draft.id}:${draft.rawText}`).join('\0'),
-  (speechDrafts) => {
-    if (speechDrafts)
-      void openInlay()
-  },
-)
-onMounted(() => {
-  if (onboardingStore.needsOnboarding)
-    openOnboarding()
-})
-
-const cursorPosition = computed(() => canUseCursor.value
-  ? { x: relativeMouseX.value, y: relativeMouseY.value }
-  : undefined)
-
-const allDisplays = useElectronAllDisplays()
-const { x: windowX, y: windowY, width: windowWidth, height: windowHeight, available: boundsAvailable } = useElectronWindowBounds()
-// Natural turns the character toward the screen interior from where this window sits among the displays.
-// Raw bounds may hide the origin on Wayland; wait for explicit trust before forwarding them.
-const screenPlacement = computed(() => boundsAvailable.value && hostCapabilities.status('windowOrigin')?.kind === 'live'
-  ? {
-      displays: allDisplays.value.map(display => display.bounds),
-      windowBounds: { x: windowX.value, y: windowY.value, width: windowWidth.value, height: windowHeight.value },
-    }
-  : undefined)
-
-// Natural looks at the chat window. The main process sends only the rectangle and visibility, never chat content.
-// `null` until the first answer, which Natural reads as a hidden chat rather than a missing host feature.
-const chatTarget = shallowRef<ChatAttentionTarget | null>(null)
-// The main process can emit before the snapshot answers, so subscribe first and let a later event win over it.
-let chatTargetChanged = false
-onScopeDispose(useElectronEventaContext().value.on(electronChatAttentionTargetChanged, (event) => {
-  if (!event?.body)
-    return
-  chatTargetChanged = true
-  chatTarget.value = event.body
-}))
-useElectronEventaInvoke(electronGetChatAttentionTarget)()
-  .then((target) => {
-    if (!chatTargetChanged)
-      chatTarget.value = target
-  })
-  .catch(error => console.warn('[Main Page] Failed to read the chat attention target; Natural treats the chat as hidden:', errorMessageFrom(error)))
-const stageChatTarget = computed(() => chatTarget.value ?? { visible: false, bounds: null })
 </script>
 
 <template>
@@ -512,7 +405,7 @@ const stageChatTarget = computed(() => chatTarget.value ?? { visible: false, bou
           flex-1
           :cursor-position="cursorPosition"
           :screen-placement="screenPlacement"
-          :chat-target="stageChatTarget"
+          :chat-target="chatTarget"
           :paused="stagePaused"
           @error="handleStageRenderError"
           @reset="handleStageReset"

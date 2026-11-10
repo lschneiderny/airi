@@ -4,17 +4,11 @@ import type { CameraCalibration } from '@proj-airi/stage-shared/stage-world'
 import type { MMDStageWorld } from '@proj-airi/stage-ui-mmd/composables/mmd'
 import type { ModelSettingsRuntimeSnapshot } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 
-import type { ChatAttentionTarget, StageCharacterPlacement, StageHostState } from '../../shared/eventa'
+import type { StageCharacterPlacement, StageHostState } from '../../shared/eventa'
 
 import { errorMessageFrom } from '@moeru/std'
 import { electron } from '@proj-airi/electron-eventa'
-import {
-  useElectronAllDisplays,
-  useElectronEventaContext,
-  useElectronEventaInvoke,
-  useElectronRelativeMouse,
-  useElectronWindowBounds,
-} from '@proj-airi/electron-vueuse'
+import { useElectronEventaContext, useElectronEventaInvoke } from '@proj-airi/electron-vueuse'
 import { calibrateCamera, defaultHomeDipX, dipToPlane, groundLineOf, homeDipToWorldX, worldToHomeDipX } from '@proj-airi/stage-shared/stage-world'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { useMMD, useMMDExpressionStore, useMMDMotionDiagnostics } from '@proj-airi/stage-ui-mmd/stores'
@@ -24,26 +18,17 @@ import {
 } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
 import { CanvasRegionAlphaReader, isCanvasRegionTransparent } from '@proj-airi/stage-ui/composables/canvas-alpha'
-import { useVoiceListening } from '@proj-airi/stage-ui/composables/voice-input-mode'
-import { useSituationSettings } from '@proj-airi/stage-ui/features/situation/settings'
-import { useOnboardingStore } from '@proj-airi/stage-ui/stores/onboarding'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
-import { useVoiceStore } from '@proj-airi/stage-ui/stores/voice'
 import { refDebounced, useEventListener, useRafFn } from '@vueuse/core'
 import { clamp } from 'es-toolkit/math'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onScopeDispose, ref, shallowRef, toRef, watch } from 'vue'
-import { toast } from 'vue-sonner'
 
 import ControlsIslandRoot from '../components/stage-islands/controls-island/controls-island-root.vue'
 import ControlsIsland from '../components/stage-islands/controls-island/index.vue'
 
 import { defaultFloatingChatWidthDip } from '../../shared/chat-floating'
 import {
-  electronChatAttentionTargetChanged,
-  electronGetChatAttentionTarget,
-  electronOpenInlay,
-  electronOpenOnboarding,
   electronStageGetState,
   electronStageSetHome,
   electronStageStateChanged,
@@ -51,16 +36,11 @@ import {
 import { isStageClickThroughUsable } from '../../shared/stage-click-through'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
 import { contradictStageCursor, createStageClickThroughState, createStageCursorTrust, createStageHitReadState, isInsidePaddedRect, observeStageCursor, planStageHitRead, resolveStageClickThrough, trustedStageCursor } from '../composables/stage-click-through'
-import { usePresenceNotice } from '../composables/use-presence-notice'
-import { usePushToTalkShortcut } from '../composables/use-push-to-talk-shortcut'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
-import { useStageActiveRenderer } from '../composables/use-stage-active-renderer'
+import { useStageHostWiring } from '../composables/use-stage-host-wiring'
 import { stageOpaqueAttribute } from '../composables/use-stage-painted-mask'
 import { useStagePlacementPublisher } from '../composables/use-stage-placement-publisher'
-import { useDesktopActivityProducerStore } from '../stores/desktop-activity'
-import { useForegroundWindowProducerStore } from '../stores/foreground-window'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
-import { useToolSelectionStore } from '../stores/tools'
 
 /** The floor row sits this far above the work-area bottom, so her toes never touch the Dock or taskbar edge. */
 const toeMarginDip = 8
@@ -68,8 +48,6 @@ const toeMarginDip = 8
 const dragStartDip = 8
 /** The calibration stands in this model height until the scene has measured the loaded model; PMX models are ~20 units. */
 const provisionalModelHeight = 20
-
-useStageActiveRenderer()
 
 const settingsStore = useSettings()
 const { stageModelRenderer, stageModelSelectedUrl } = storeToRefs(settingsStore)
@@ -83,49 +61,9 @@ const stageCanvas = toRef(() => widgetStageRef.value?.canvasElement())
 const componentStateStage = ref<'pending' | 'loading' | 'mounted'>('pending')
 useScreenAmbientLight({ stageCanvas: () => stageCanvas.value })
 
-// The stage window owns the same app-wide producers as the classic page, because it replaces that page in desktop mode.
-const desktopActivityProducer = useDesktopActivityProducerStore()
-desktopActivityProducer.start()
-onScopeDispose(() => desktopActivityProducer.stop())
-const foregroundWindowProducer = useForegroundWindowProducerStore()
-const situationSettings = useSituationSettings()
-watch(() => situationSettings.document.shareForegroundWindow, (sharing) => {
-  if (sharing)
-    foregroundWindowProducer.start()
-  else
-    foregroundWindowProducer.stop()
-}, { immediate: true })
-onScopeDispose(() => foregroundWindowProducer.stop())
-
-const voice = useVoiceStore()
-const toolSelection = useToolSelectionStore()
-onScopeDispose(voice.connectTools(() => toolSelection.requestTools))
-const openInlay = useElectronEventaInvoke(electronOpenInlay)
-useVoiceListening()
-usePushToTalkShortcut()
-usePresenceNotice('stage')
-watch(() => voice.state?.phase === 'capturing', (capturing) => {
-  if (capturing)
-    void openInlay()
-})
-watch(() => voice.error, (error) => {
-  if (error)
-    toast.error(error)
-})
-watch(
-  () => voice.drafts.filter(draft => !draft.sending).map(draft => `${draft.id}:${draft.rawText}`).join('\0'),
-  (speechDrafts) => {
-    if (speechDrafts)
-      void openInlay()
-  },
-)
-
-const onboardingStore = useOnboardingStore()
-const openOnboarding = useElectronEventaInvoke(electronOpenOnboarding)
-onMounted(() => {
-  if (onboardingStore.needsOnboarding)
-    openOnboarding()
-})
+// The stage window owns the same app-wide services and Natural inputs as the classic page, because it replaces that
+// page in desktop mode.
+const { cursorPosition, screenPlacement, chatTarget, chatTargetRead } = useStageHostWiring('stage')
 
 // The desktop stage is built only for an MMD model; another renderer chosen while it runs applies at the next launch,
 // so this page reports a runtime owner for MMD only.
@@ -157,39 +95,8 @@ useModelSettingsRuntimeOwner({
   applyMMDExpressionCommand: command => mmdExpressionStore.applySettingsCommand(command),
 })
 
-// Natural inputs, as on the classic page: the cursor, where this window sits among the displays, and the chat window.
-const { x: relativeMouseX, y: relativeMouseY, available: cursorAvailable } = useElectronRelativeMouse()
-const hostCapabilities = useHostCapabilitiesStore()
-const cursorPosition = computed(() => hostCapabilities.status('cursorScreenPoint')?.kind === 'live' && cursorAvailable.value
-  ? { x: relativeMouseX.value, y: relativeMouseY.value }
-  : undefined)
-const allDisplays = useElectronAllDisplays()
-const { x: windowX, y: windowY, width: windowWidth, height: windowHeight, available: boundsAvailable } = useElectronWindowBounds()
-// Raw bounds may hide the origin on Wayland; wait for explicit trust before forwarding them.
-const screenPlacement = computed(() => boundsAvailable.value && hostCapabilities.status('windowOrigin')?.kind === 'live'
-  ? {
-      displays: allDisplays.value.map(display => display.bounds),
-      windowBounds: { x: windowX.value, y: windowY.value, width: windowWidth.value, height: windowHeight.value },
-    }
-  : undefined)
-const eventaContext = useElectronEventaContext()
-const chatTarget = shallowRef<ChatAttentionTarget | null>(null)
-let chatTargetChanged = false
-onScopeDispose(eventaContext.value.on(electronChatAttentionTargetChanged, (event) => {
-  if (!event?.body)
-    return
-  chatTargetChanged = true
-  chatTarget.value = event.body
-}))
-const chatTargetRead = useElectronEventaInvoke(electronGetChatAttentionTarget)()
-  .then((target) => {
-    if (!chatTargetChanged)
-      chatTarget.value = target
-  })
-  .catch(error => console.warn('[Stage] Failed to read the chat attention target; Natural treats the chat as hidden:', errorMessageFrom(error)))
-const stageChatTarget = computed(() => chatTarget.value ?? { visible: false, bounds: null })
-
 // Stage state from the main process: the home display, its work area and the saved home.
+const eventaContext = useElectronEventaContext()
 const hostState = shallowRef<StageHostState | null>(null)
 let hostStateChanged = false
 onScopeDispose(eventaContext.value.on(electronStageStateChanged, (event) => {
@@ -215,7 +122,7 @@ async function ensureHome() {
   if (!display || savedHomeDipX.value !== null || defaultHomeSavedFor === display.id)
     return
   defaultHomeSavedFor = display.id
-  const chatWidthDip = chatTarget.value?.bounds?.width ?? defaultFloatingChatWidthDip
+  const chatWidthDip = chatTarget.value.bounds?.width ?? defaultFloatingChatWidthDip
   const xDip = defaultHomeDipX(display.workArea, 'left', chatWidthDip, 0.3 * stageCharacterHeight.value)
   homeDipX.value = xDip
   try {
@@ -386,6 +293,7 @@ useEventListener(window, 'pointercancel', endPress)
 
 // Click-through: no readback outside her padded rect; inside, one readback per frame (`resolveStageClickThrough`).
 
+const hostCapabilities = useHostCapabilitiesStore()
 // The window starts click-through and stays so until click-through is usable: live forwarding, or Linux emulation.
 // Unusable click-through lets everything through, because a captured full-screen stage would trap the desktop.
 const clickThroughUsable = computed(() => isStageClickThroughUsable(hostCapabilities.status('clickThroughForward')))
@@ -472,7 +380,7 @@ useRafFn(({ timestamp }) => {
       h-full w-full
       :cursor-position="cursorPosition"
       :screen-placement="screenPlacement"
-      :chat-target="stageChatTarget"
+      :chat-target="chatTarget"
       :stage-world="stageWorld"
       :interaction-seq="interactionSeq"
       :paused="stagePaused"
