@@ -81,6 +81,23 @@ describe('createTtsSegmentStream BREAK boundary', () => {
   })
 })
 
+describe('createTtsSegmentStream DELAY boundary', () => {
+  // A valid DELAY pauses the speech track like a BREAK, so text written before it must be spoken before it.
+  it('keeps text held at soft punctuation before a valid DELAY that follows it directly', async () => {
+    expect(await collectSegments(['Hi there,', '<|DELAY 2|>', ' ok.'])).toEqual([
+      { text: 'Hi there,', special: '<|DELAY 2|>', reason: 'special' },
+      { text: 'ok.', special: null, reason: 'hard' },
+    ])
+  })
+
+  it('treats a malformed DELAY, which pauses nothing, as any other special', async () => {
+    expect(await collectSegments(['Hi there,', '<|DELAY soon|>', ' ok.'])).toEqual([
+      { text: '', special: '<|DELAY soon|>', reason: 'special' },
+      { text: 'Hi there, ok.', special: null, reason: 'hard' },
+    ])
+  })
+})
+
 describe('createTtsSegmentStream ASCII faces', () => {
   const strip = { stripAsciiFaces: true }
 

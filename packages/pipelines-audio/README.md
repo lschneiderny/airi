@@ -71,9 +71,10 @@ When that text produces no audio (synthesis failed, returned nothing, or speech 
 Every marker fires before the next clip starts. Markers before any text fire before the first clip, and consecutive markers keep their order.
 With no audio at all, markers fire in arrival order. A cancelled or interrupted intent drops its pending markers.
 
-A well-formed BREAK marker also pauses the ordered speech track: after it fires, the next clip or marker waits `seconds` on the pipeline `clock` (default: the wall clock).
+A well-formed BREAK marker and a valid DELAY marker also pause the ordered speech track: after either fires, the next clip or marker waits `seconds` on the pipeline `clock` (default: the wall clock).
+A BREAK pauses for its clamped duration. A DELAY pauses for the duration it names, with no upper limit.
 The pause belongs to the pipeline, so it holds even when the `onSpecial` listener returns at once. Cancelling the intent ends a pause immediately.
-Other markers, DELAY included, do not pause the speech track.
+Other markers, a malformed BREAK or DELAY included, do not pause the speech track.
 
 The default segmenter is the TTS chunker with `stripAsciiFaces`, in every conversation register.
 A TTS request carries the text without faces. Its playback item carries the segment's `displayText`, so captions keep the faces.
@@ -85,7 +86,7 @@ A TTS request carries the text without faces. Its playback item carries the segm
 - An ACT JSON payload may carry `gesture`: `"nod"`, `"shake"`, `"shrug"`, `"lean"`, or `"glance"`, or `{ "kind": "nod", "count": 2 }`. `normalizeActPayload` drops unknown kinds. `count` is 1-3 for `nod` and `shake` (default 2) and 1 for the other kinds. A gesture-only ACT is valid. It may also carry `action`, a label the consumer resolves later: `normalizeActPayload` trims and lowercases it and keeps it only when it matches `/^[a-z0-9][a-z0-9-]{0,31}$/`, otherwise it omits the field. The parser never resolves or evaluates it. There is no bare or colon action form. The bare form, such as `<|ACT nod|>`, accepts emotions only.
 - `<|BREAK|>` pauses for 1.0 s and `<|BREAK n|>` for `n` seconds, clamped to 0.3-3.0. Any other body is rejected as parse-failed and produces no signal.
 
-The TTS chunker ends a segment at every special. At a BREAK, it also ends a segment whose text is held at soft punctuation, so text written before the pause is never spoken after it.
+The TTS chunker ends a segment at every special. At a BREAK or a valid DELAY, it also ends a segment whose text is held at soft punctuation, so text written before the pause is never spoken after it.
 With `stripAsciiFaces`, the chunker removes the faces in `ASCII_FACES` from `@proj-airi/stage-shared/conversation-register` from each assembled segment. It keeps a face with punctuation, such as `:3`, in one segment even when the face arrives split across deltas, and it skips a segment that becomes empty.
 
 ## Checks

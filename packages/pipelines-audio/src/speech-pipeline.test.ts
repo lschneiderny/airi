@@ -571,12 +571,17 @@ function createFakeClock(): TimelineClock {
   }
 }
 
-describe('speech pause at BREAK', () => {
+describe('speech pause at BREAK and DELAY', () => {
   it.each([
     ['a break after a finished sentence', 'Hi there.', '<|BREAK 0.5|>', 500],
     ['a break carried by the clip before it', 'Hi there', '<|BREAK 0.5|>', 500],
     ['a break without a duration', 'Hi there.', '<|BREAK|>', 1000],
     ['a malformed break', 'Hi there.', '<|BREAK x|>', 0],
+    ['a delay after a finished sentence', 'Hi there.', '<|DELAY 0.5|>', 500],
+    ['a delay carried by the clip before it', 'Hi there', '<|DELAY 2|>', 2000],
+    // A BREAK is clamped to 3 s. A DELAY holds the track for the duration the stage waits, as written.
+    ['a delay longer than a break can be', 'Hi there.', '<|DELAY 4.5|>', 4500],
+    ['a malformed delay', 'Hi there.', '<|DELAY soon|>', 0],
     ['another special', 'Hi there.', neutral, 0],
   ])('starts the next clip after %s only once its pause passed on the driver clock', async (_label, before, special, pauseMs) => {
     const clock = createFakeClock()
@@ -591,30 +596,50 @@ describe('speech pause at BREAK', () => {
     expect(startedAt[1]! - startedAt[0]!).toBe(pauseMs)
   })
 
-  it('keeps the pause between markers when no text produces audio', async () => {
+  it('holds a marker that follows a delay until the delay passed, so the stage stays in step with the voice', async () => {
+    const clock = createFakeClock()
+    const { pipeline, speak, turnEnded } = createOrderedPipeline(createHeldSynthesis(2), { clock })
+    const firedAt: Record<string, number> = {}
+    pipeline.on('onSpecial', (segment) => {
+      firedAt[segment.special!] = clock.now()
+    })
+
+    speak([{ literal: 'Hi there.' }, { special: '<|DELAY 1.5|>' }, { special: neutral }, { literal: ' Okay.' }])
+    await turnEnded
+
+    expect(firedAt).toEqual({ '<|DELAY 1.5|>': 0, [neutral]: 1500 })
+  })
+
+  it.each([
+    ['<|BREAK 2|>'],
+    ['<|DELAY 2|>'],
+  ])('keeps the pause of %s between markers when no text produces audio', async (pause) => {
     const clock = createFakeClock()
     const { log, speak, turnEnded } = createOrderedPipeline(async () => null, { clock })
 
-    speak([{ literal: 'Hi there.' }, { special: '<|BREAK 2|>' }, { literal: ' Okay' }, { special: neutral }])
+    speak([{ literal: 'Hi there.' }, { special: pause }, { literal: ' Okay' }, { special: neutral }])
     await turnEnded
 
-    expect(log).toEqual(['special:<|BREAK 2|>', `special:${neutral}`])
+    expect(log).toEqual([`special:${pause}`, `special:${neutral}`])
     expect(clock.now()).toBe(2000)
   })
 
-  it('ends a pause at once when its turn is cancelled and never schedules the clip after it', async () => {
+  it.each([
+    ['<|BREAK 3|>'],
+    ['<|DELAY 30|>'],
+  ])('ends the pause of %s at once when its turn is cancelled and never schedules the clip after it', async (pause) => {
     const { log, pipeline, scheduled, speak } = createOrderedPipeline(createHeldSynthesis(2), {
       clock: { now: () => 0, sleep: () => new Promise<void>(() => {}) },
     })
-    const breakFired = new Promise<void>(resolve => pipeline.on('onSpecial', () => resolve()))
+    const pauseFired = new Promise<void>(resolve => pipeline.on('onSpecial', () => resolve()))
     const turnCanceled = new Promise<void>(resolve => pipeline.on('onTurnCancel', () => resolve()))
 
-    const intent = speak([{ literal: 'Hi there.' }, { special: '<|BREAK 3|>' }, { literal: ' Okay.' }])
-    await breakFired
+    const intent = speak([{ literal: 'Hi there.' }, { special: pause }, { literal: ' Okay.' }])
+    await pauseFired
     intent.cancel('test-cancel')
     await turnCanceled
 
-    expect(log).toEqual(['start:Hi there.', 'end:Hi there.', 'special:<|BREAK 3|>'])
+    expect(log).toEqual(['start:Hi there.', 'end:Hi there.', `special:${pause}`])
     expect(scheduled.map(item => item.text)).toEqual(['Hi there.'])
   })
 })

@@ -143,7 +143,11 @@ The work ships on the branch `luke/feat/nonverbal-channels` as atomic commits th
 
 **Plugins no longer see user-turn `<|SILENT|>`.** Before this change, a plugin hook received `<|SILENT|>` as a token special on a user turn. The runtime now consumes it, and `cueStats.silent` and `cueStats.wordless` report the outcome instead. Unprompted turns, reactions included, keep their decline semantics.
 
-**DELAY still does not pause playback.** `SpeechOutput.onSpecial` returns nothing, and the stage fires its special handler without awaiting it, so a DELAY pauses only the stage's dispatch chain, as before this change. BREAK pauses the speech track itself. Making DELAY pause playback is a follow-up.
+**DELAY pauses the speech track.** Until 2026-11-10, a DELAY paused only the stage's own dispatch: `SpeechOutput.onSpecial` returns nothing, and the stage fires its special handler without awaiting it, so the voice and every later cue continued at once. A valid DELAY now holds the ordered speech track of `@proj-airi/pipelines-audio` for its duration, through the same pause as BREAK. The next clip and every later cue wait for it, so the stage and the voice stay in step. The chunker also ends the segment at a valid DELAY, so text written before the pause is never spoken after it. Three limits remain:
+
+- A DELAY has no upper limit, unlike BREAK (0.3-3.0 s). A long DELAY silences the voice for that long while the bubble already shows the whole reply. Cancelling or interrupting the turn ends the pause at once.
+- A DELAY that no text follows keeps the turn's speech open for its duration. The runtime drops a trailing BREAK, but it has no such rule for DELAY.
+- With speech muted, the stage dispatches cues from the token hook and nothing reaches the speech track. The stage's own wait paces them there, as before.
 
 **No streaming speech provider remains.** `streamSpeech`, which the hosted bidirectional WebSocket provider used, bypassed the TTS chunker, so it stripped no faces and paused at no BREAK. Commit a291588c0 (2026-11-05) removed it with the hosted account client, and no source in `packages/` or `apps/` streams speech any more. The `stream` variant of core-agent's `SpeechOutput` port remains without an implementer. It passes text to a provider unsegmented and runs cues on arrival, so a host that implements it must strip faces and pause on its own.
 
@@ -153,13 +157,13 @@ The work ships on the branch `luke/feat/nonverbal-channels` as atomic commits th
 
 **Follow-ups.**
 
-- DELAY does not pause the speech track.
 - The qa-tools 3-poke scenario evaluates the reaction policy itself, because the leader's evaluation is internal to the situation store.
 - MMD Natural ignores cue gestures, touch mood doses, and touch reactions, because the stage gates gestures on the Live2D renderer, `MMDScene` has no `gesture` or `addMood`, and `Stage.vue` routes touch only from `Live2DScene`. MMD touch events are not routed yet (follow-up). Resolved by [2026-11-04-interaction-portability](2026-11-04-interaction-portability.md).
 - Reaction odds, the refractory, and gesture amplitudes are starting values that are tuned from real use and the inspector.
 
 **Resolved follow-ups.**
 
+- "DELAY does not pause the speech track." Resolved on 2026-11-10: a valid DELAY holds the speech track through the BREAK pause.
 - "`streamSpeech` (hosted bidirectional WebSocket only) has no face stripping or BREAK pause." Closed on 2026-11-10 without a change: commit a291588c0 removed `streamSpeech`, and no streaming speech path remains in this fork.
 
 ## Validation
@@ -171,5 +175,6 @@ The work ships on the branch `luke/feat/nonverbal-channels` as atomic commits th
 - Natural tests check each cue gesture's trajectory, the queue rules, and that every gesture stays within the parameter range when combined with a strong emotion clip and the pet layer.
 - qa-tools scorer version 3 counts gestures, breaks, silent and wordless replies, and ASCII faces. Its T1 scenarios assert the five gesture trajectories, and a touch scenario asserts that a 3-poke burst makes exactly one reaction decision. The [qa-tools README](../../../packages/qa-tools/README.md) documents the fields.
 - A rendered pass in the Electron app checks each channel before the branch merges.
+- For the DELAY pause (2026-11-10), speech pipeline tests use a driver clock to check the pause length, the cue held behind a DELAY, and cancellation. A replayed turn in the Electron app on Linux, in `qa:display`, started the next clip 2.03 s after the clip before `<|DELAY 2|>` ended and 1.52 s after the clip before `<|BREAK 1.5|>`, against 0.03 s between two clips without a cue.
 
 Related decisions: [situational presence](2026-10-19-situational-presence.md), [unprompted reach-out cadence](2026-10-29-unprompted-reach-out-cadence.md), [Live2D touch interaction](2026-10-18-live2d-touch-interaction.md), [expression performance](2026-10-18-expression-performance.md), and [Natural emotion revamp](2026-10-19-natural-emotion-revamp.md).

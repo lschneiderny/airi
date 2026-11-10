@@ -5,17 +5,15 @@ import type { TextSegment, TextToken } from '../types'
 import { ASCII_FACES } from '@proj-airi/stage-shared/conversation-register'
 import { readGraphemeClusters } from 'clustr'
 
-import { tokenBreak } from '../llm-streaming-control/parsers'
+import { endsSpeechBeforeSpecial } from '../speech-pause'
 import { createPushStream } from '../stream'
 import { stripAsciiFaces } from './ascii-faces'
 
 export const TTS_FLUSH_INSTRUCTION = '\u200B'
 export const TTS_SPECIAL_TOKEN = '\u2063'
-// Marks a BREAK special in the chunker's byte stream. It is a special like `TTS_SPECIAL_TOKEN`,
-// but text held back at soft punctuation never crosses it.
-const TTS_BREAK_TOKEN = '\u2064'
-
-const breakParser = tokenBreak()
+// Marks a special that pauses the speech track (a BREAK or a valid DELAY) in the chunker's byte stream.
+// It is a special like `TTS_SPECIAL_TOKEN`, but text held back at soft punctuation never crosses it.
+const TTS_PAUSE_TOKEN = '\u2064'
 
 const regexpAnySingleDigit = /\d/
 
@@ -44,7 +42,7 @@ const punctuatedFaces = ASCII_FACES.flatMap((face) => {
 function removeChunkMarkers(text: string) {
   return text
     .replaceAll(TTS_SPECIAL_TOKEN, '')
-    .replaceAll(TTS_BREAK_TOKEN, '')
+    .replaceAll(TTS_PAUSE_TOKEN, '')
     .replaceAll(TTS_FLUSH_INSTRUCTION, '')
     .trim()
 }
@@ -210,8 +208,8 @@ async function* chunkInput(
       value = '\n'
 
     const flush = value === TTS_FLUSH_INSTRUCTION
-    const breakSpecial = value === TTS_BREAK_TOKEN
-    const special = value === TTS_SPECIAL_TOKEN || breakSpecial
+    const pauseSpecial = value === TTS_PAUSE_TOKEN
+    const special = value === TTS_SPECIAL_TOKEN || pauseSpecial
     const hard = hardPunctuations.has(value)
     const soft = softPunctuations.has(value)
     const kept = keptPunctuations.has(value)
@@ -258,14 +256,14 @@ async function* chunkInput(
       if (buffer.length === 0) {
         if (special) {
           // Text held at soft punctuation would otherwise join the text after the pause.
-          const text = breakSpecial ? chunk.trim() : ''
+          const text = pauseSpecial ? chunk.trim() : ''
           yield {
             text,
-            words: breakSpecial ? chunkWordsCount : 0,
+            words: pauseSpecial ? chunkWordsCount : 0,
             reason: 'special',
           }
           yieldCount++
-          if (breakSpecial)
+          if (pauseSpecial)
             chunk = ''
           chunkWordsCount = 0
         }
@@ -602,8 +600,8 @@ export function createTtsSegmentStream(
           if (value.type === 'special') {
             const special = value.value ?? ''
             pendingSpecials.push(special)
-            // A BREAK splits the reply, so it always ends the current segment.
-            writeBytes(encoder.encode(breakParser.match(special) ? TTS_BREAK_TOKEN : TTS_SPECIAL_TOKEN))
+            // A pause splits the speech, so it always ends the current segment.
+            writeBytes(encoder.encode(endsSpeechBeforeSpecial(special) ? TTS_PAUSE_TOKEN : TTS_SPECIAL_TOKEN))
           }
           else if (value.type === 'flush') {
             writeBytes(encoder.encode(TTS_FLUSH_INSTRUCTION))

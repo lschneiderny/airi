@@ -514,6 +514,9 @@ chatHookCleanups.push(streamingControl.onSignal(async (signal, context) => {
   if (signal.type === 'delay') {
     // eslint-disable-next-line no-console
     console.debug('delay detected', signal.seconds)
+    // With speech on, the speech track holds the voice and the cues after this DELAY for the same time,
+    // so this wait changes nothing there. With speech muted, specials are dispatched from the token hook,
+    // and this wait is what paces them.
     await sleep(signal.seconds * 1000)
   }
 }))

@@ -73,7 +73,7 @@ Consumers subscribe to the microphone input with their own abort signal. The las
 - `VoiceComposer` is the touch voice control of mobile composers. Hold it to record, slide left to cancel, and slide up to lock. A voice message is sent on release.
 - `useVoiceMessagesStore` owns voice message recordings and their attachment submission.
 - Hearing selects providers and converts captured PCM to each provider's upload format. It does not open the microphone.
-- Speech uses direct or local provider output. Chunked synthesis never speaks the ASCII faces of the texting register and pauses the speech track at each `<|BREAK|>`; the speech pipeline in `@proj-airi/pipelines-audio` owns both.
+- Speech uses direct or local provider output. Chunked synthesis never speaks the ASCII faces of the texting register and pauses the speech track at each `<|BREAK|>` and each valid `<|DELAY n|>`; the speech pipeline in `@proj-airi/pipelines-audio` owns both.
 - `createVoiceRephrasePlugin` rewrites final transcripts with a chat model through a checked transcript patch. The raw text stays in the transcript history. Each segment gets its own rewrite, so segment boundaries stay for later speaker labels. A reply with another segment count leaves the text unchanged.
 - `createVoiceEndJudgePlugin` ends a paused input early when a chat model reads its transcript as a finished message. The model is the rephrase model, or the chat model when no rephrase provider is set.
 

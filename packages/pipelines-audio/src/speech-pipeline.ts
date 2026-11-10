@@ -17,9 +17,9 @@ import type {
 import { createContext } from '@moeru/eventa'
 
 import { speechPipelineEventMap } from './eventa'
-import { tokenBreak } from './llm-streaming-control/parsers'
 import { createPriorityResolver } from './priority'
 import { createTtsSegmentStream } from './processors/tts-chunker'
+import { speechPauseSeconds } from './speech-pause'
 import { createPushStream } from './stream'
 import { createTimeline } from './timeline'
 
@@ -44,7 +44,7 @@ export interface SpeechPipelineOptions<TAudio> {
   logger?: LoggerLike
   priority?: ReturnType<typeof createPriorityResolver>
   /**
-   * Clock of the ordered speech track. A BREAK special waits on it before the next clip is scheduled.
+   * Clock of the ordered speech track. A BREAK or DELAY special waits on it before the next clip is scheduled.
    *
    * @default the wall clock (`Date.now` and `setTimeout`)
    */
@@ -82,16 +82,6 @@ interface CompletedOutput<TAudio> {
 
 function createId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-const breakParser = tokenBreak()
-
-/** Returns the pause of a well-formed BREAK special in seconds, or 0 for any other special. */
-function breakSeconds(special: string | null) {
-  if (!special || !breakParser.match(special))
-    return 0
-
-  return breakParser.parse(special)?.seconds ?? 0
 }
 
 export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAudio>) {
@@ -173,11 +163,11 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
     let nextSlotToSchedule = 0
 
     /**
-     * Holds the speech track for the pause of a BREAK special, so the next clip starts that much later.
+     * Holds the speech track for the pause of a BREAK or DELAY special, so the next clip starts that much later.
      * Cancelling the intent ends the pause at once.
      */
-    async function pauseAtBreak(special: string | null, clock: TimelineClock) {
-      const seconds = breakSeconds(special)
+    async function pauseAfterSpecial(special: string | null, clock: TimelineClock) {
+      const seconds = speechPauseSeconds(special)
       const { signal } = intent.controller
       if (seconds === 0 || signal.aborted)
         return
@@ -202,7 +192,7 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
             return
 
           context.emit(speechPipelineEventMap.onSpecial, segment)
-          await pauseAtBreak(segment.special, clock)
+          await pauseAfterSpecial(segment.special, clock)
         },
       })
     }
@@ -233,7 +223,7 @@ export function createSpeechPipeline<TAudio>(options: SpeechPipelineOptions<TAud
               reason: 'special',
               createdAt: item.createdAt,
             })
-            await pauseAtBreak(item.special, clock)
+            await pauseAfterSpecial(item.special, clock)
           }
         },
       })
