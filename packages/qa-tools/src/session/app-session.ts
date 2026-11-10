@@ -51,6 +51,11 @@ export interface AppSessionContext {
   profileDir: string
   /** This CLI and its parent; never counted or killed. Defaults to the current process and its parent. */
   selfPids?: readonly number[]
+  /**
+   * The environment that process discovery reads. On Linux it names the `qa:display` session whose processes may be
+   * listed. Defaults to this process's environment; a caller that starts the display itself passes that session's.
+   */
+  processEnv?: NodeJS.ProcessEnv
   /** Aborting stops `start` with the signal's reason, as `abortMode` decides; teardown stays the caller's call. */
   signal?: AbortSignal
   /**
@@ -125,7 +130,7 @@ export class AppSessionCore<Stage extends SessionStage> {
   /** A session over the real launcher, CDP connection, process table and browser. */
   static create(context: AppSessionContext): AppSessionCore<CdpClient> {
     return new AppSessionCore<CdpClient>(context, {
-      list: listLiveProcesses,
+      list: () => listLiveProcesses(undefined, undefined, context.processEnv),
       kill: killTree,
       sleep: async (ms) => { await setTimeout(ms) },
       launch: launchStageTamagotchi,

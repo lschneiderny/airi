@@ -19,6 +19,7 @@ import { acquire } from '@proj-airi/cpu-slots'
 import { buildSeedEntries } from '../app/plan'
 import { sendMessage } from '../app/send'
 import { matchExpectations } from '../app/summary'
+import { listLiveProcesses } from '../env/processes'
 import { createRun } from '../evidence/run'
 import { loadScript, ReplayScript } from '../llm/script'
 import { ReplayServer } from '../llm/server'
@@ -98,15 +99,24 @@ export class AppSession {
   }
 
   private async launch(options: StartOptions): Promise<Record<string, unknown>> {
-    await refuseIfWorktreeBusy(this.repoRoot)
-    const script = options.script ? await loadScript({ script: options.script }, this.repoRoot) : new ReplayScript([], 'airi_send replies')
     const { env: baseEnv, display } = this.displayEnv()
+    try {
+      // On Linux the process table is read only inside a QA display session, so the check runs after the display
+      // exists and with that session's environment.
+      await refuseIfWorktreeBusy(this.repoRoot, () => listLiveProcesses(undefined, undefined, baseEnv))
+    }
+    catch (error) {
+      if (display)
+        execFileSync('pnpm', ['--silent', '--dir', this.repoRoot, 'qa:display', 'down', '--name', display], { stdio: 'ignore', timeout: 60_000 })
+      throw error
+    }
+    const script = options.script ? await loadScript({ script: options.script }, this.repoRoot) : new ReplayScript([], 'airi_send replies')
     const run = createRun({ tool: 'mcp', label: 'session', repoRoot: this.repoRoot })
     const profileDir = run.path('profile')
     mkdirSync(profileDir)
     const server = new ReplayServer({ script, log: run.path('requests.jsonl') })
     const baseURL = await server.listen()
-    const core = AppSessionCore.create({ repoRoot: this.repoRoot, profileDir })
+    const core = AppSessionCore.create({ repoRoot: this.repoRoot, profileDir, processEnv: baseEnv })
     let lease: Lease | undefined
     try {
       lease = await acquire({ class: 'live', command: 'qa:mcp session', cwd: this.repoRoot })
