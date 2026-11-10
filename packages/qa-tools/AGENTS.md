@@ -37,6 +37,7 @@ Follow the [root guide](../../AGENTS.md) and its motion-qa task routing. `README
 - Scenarios use the `@proj-airi/stage-shared/motion-scenario` contract and can run at several levels.
 - The `gate` Vitest project includes `gates/**/*.gate.ts` only when `QA_RUN_DIR` is set. Unset it before running package tests directly.
 - Gate worker counts default to the CPU slot grant and are clamped to it.
+- App sessions use the `live` CPU lease and may share capacity with tests. Motion gates use `gate`; frame-timing runs use `exclusive`.
 - Changing a gate requires editing `gates.ts` and bumping its `version` in a commit before running it.
 - Run output and archived evidence are not committed.
 
@@ -51,6 +52,7 @@ Follow the [root guide](../../AGENTS.md) and its motion-qa task routing. `README
 
 ## CHECKS
 
+- Choose required tiers from the [testing guide](../../docs/ai/testing.md); this section lists command mechanics only.
 - Typecheck: `pnpm -F @proj-airi/qa-tools typecheck`.
 - Node tests: `pnpm -F @proj-airi/qa-tools exec vitest run --project node`.
 - Doc path audit: `pnpm -F @proj-airi/qa-tools exec tsx scripts/check-doc-paths.ts`. It checks paths named in the motion QA ADR and skill.
