@@ -31,6 +31,8 @@ Parent guidance: [root AGENTS.md](../../AGENTS.md). Its task-routing skills also
 - Main supplies `synced-leader=true` or `false` before Pinia initialization.
 - `stage-runtime=minimal` omits full Stage startup in lightweight windows.
 - Register window RPC before renderer load.
+- Get a main-process Eventa context from `src/main/libs/electron/window-context.ts`: `createWindowContext(window)` for one window, `createAppContext()` for a request from any window. A window has one shared context, which the window owns.
+- Clean up after a window with `onWindowClosed(window, callback)` from `src/main/libs/electron/on-window-closed.ts`.
 - Shared window helpers own navigation protection, persistence, and platform-specific layering.
 - Home Assistant transport and secrets stay in main. Renderers receive only token presence and masked previews.
 - Extension directory import separates prepare/review from serialized commit.
@@ -66,3 +68,4 @@ These files exceed 500 lines. Read the owning module before editing them: `godot
 - Do not remove main-owned shortcuts during renderer shortcut resets.
 - Floating chat uses the default pin level to preserve input-method candidate visibility.
 - `UPDATE_SERVER_URL` is development-only. It must not control production update routing.
+- Do not call the Eventa main adapter's `createContext`, `ipcMain.on`, `window.on('closed')`, or `setMaxListeners` in `src/main`. See the [IPC and window listener ADR](../../docs/ai/adr/2026-11-10-electron-main-ipc-listeners.md).
