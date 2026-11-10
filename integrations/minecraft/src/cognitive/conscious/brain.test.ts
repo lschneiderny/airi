@@ -690,25 +690,48 @@ describe('brain queue coalescing', () => {
 describe('brain control action queue', () => {
   it('does not block turn completion while control action executes in worker', async () => {
     const deps: any = createDeps('await goToPlayer({ player_name: "Alex", closeness: 2 })')
-    const deferred = new Promise<unknown>(() => {})
+    const actionStarted = Promise.withResolvers<void>()
+    const action = Promise.withResolvers<string>()
+    const completionOrder: string[] = []
     deps.taskExecutor.getAvailableActions = vi.fn(() => [createAsyncControlAction('goToPlayer')])
-    deps.taskExecutor.executeActionWithResult = vi.fn(async (action: any) => {
-      if (action.tool === 'goToPlayer')
-        return deferred
+    deps.taskExecutor.executeActionWithResult = vi.fn(async (instruction: { tool: string }) => {
+      if (instruction.tool === 'goToPlayer') {
+        actionStarted.resolve()
+        const result = await action.promise
+        completionOrder.push('action')
+        return result
+      }
       return 'ok'
     })
 
     const brain: any = new Brain(deps)
-    const outcome = await Promise.race([
-      brain.processEvent({} as any, createPerceptionEvent()).then(() => 'done'),
-      new Promise(resolve => setTimeout(resolve, 250, 'timeout')),
-    ])
+    brain.enqueueEvent = vi.fn(async () => undefined)
+    const processing = brain.processEvent({}, createPerceptionEvent()).then(() => {
+      completionOrder.push('turn')
+    })
+    let safetyTimeout: ReturnType<typeof setTimeout> | undefined
 
-    expect(outcome).toBe('done')
-    const snapshot = brain.getDebugSnapshot()
-    expect(snapshot.actionQueue.counts.total).toBe(1)
-    expect(snapshot.actionQueue.executing?.tool ?? snapshot.actionQueue.pending[0]?.tool).toBe('goToPlayer')
-  })
+    try {
+      await Promise.race([
+        Promise.all([processing, actionStarted.promise]),
+        new Promise<never>((_resolve, reject) => {
+          // Hang guard only; action and turn events establish the ordering.
+          safetyTimeout = setTimeout(() => reject(new Error('Turn did not complete while the control action was pending')), 5_000)
+        }),
+      ])
+
+      expect(completionOrder).toEqual(['turn'])
+      const snapshot = brain.getDebugSnapshot()
+      expect(snapshot.actionQueue.counts.total).toBe(1)
+      expect(snapshot.actionQueue.executing?.tool ?? snapshot.actionQueue.pending[0]?.tool).toBe('goToPlayer')
+    }
+    finally {
+      clearTimeout(safetyTimeout)
+      action.resolve('ok')
+      await processing
+    }
+    expect(completionOrder).toEqual(['turn', 'action'])
+  }, 15_000)
 
   it('executes readonly tools immediately without consuming control queue', async () => {
     const deps: any = createDeps('await querySnapshot()')
