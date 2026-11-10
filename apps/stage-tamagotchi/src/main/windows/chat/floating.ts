@@ -29,7 +29,7 @@ import {
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
-import { displayMatching, readDisplays, readRendererWindowBounds, readWindowRect, windowOriginTrusted } from '../../services/electron/coordinates'
+import { displayMatching, readDisplays, readRendererWindowBounds, readWindowRect, requestKeepAbove, windowOriginTrusted } from '../../services/electron/coordinates'
 import { showWindowOnAllWorkspaces } from '../shared/app-icon'
 import { placeWindow } from '../shared/placement'
 import { protectPrivilegedWindowNavigation, resizeBoundsByDelta, transparentWindowConfig } from '../shared/window'
@@ -290,10 +290,16 @@ export function setupFloatingChatWindow(params: {
 
   /** Keeps the chat's pin equal to the main window's. Returns the function that stops it. */
   function followMainPin(main: BrowserWindow, target: BrowserWindow) {
-    const follow = (_: Electron.Event, isAlwaysOnTop: boolean) => target.setAlwaysOnTop(isAlwaysOnTop)
-    target.setAlwaysOnTop(main.isAlwaysOnTop())
+    const follow = (_: Electron.Event, isAlwaysOnTop: boolean) => pinChat(target, isAlwaysOnTop)
+    pinChat(target, main.isAlwaysOnTop())
     main.on('always-on-top-changed', follow)
     return () => main.off('always-on-top-changed', follow)
+  }
+
+  /** Preserve the default Electron level for input methods, and let KWin apply it on native Wayland. */
+  function pinChat(target: BrowserWindow, on: boolean) {
+    target.setAlwaysOnTop(on)
+    requestKeepAbove(target, on)
   }
 
   /**
@@ -334,7 +340,7 @@ export function setupFloatingChatWindow(params: {
     // Leaving the parent does not restore the chat's own window level.
     const unlinkFromMain = () => {
       target.setParentWindow(null)
-      target.setAlwaysOnTop(main.isAlwaysOnTop())
+      pinChat(target, main.isAlwaysOnTop())
     }
 
     const rect = nextAnchor.getRect()
@@ -383,8 +389,8 @@ export function setupFloatingChatWindow(params: {
     detachFromMain?.()
     detachFromMain = undefined
 
-    // The chat pins with Electron's default level, never the shared
-    // `setWindowAlwaysOnTop`: that level also covers the input method
+    // The chat pins with Electron's default level: the shared
+    // `setWindowAlwaysOnTop` level also covers the input method
     // candidates, and the chat takes text. An attached or danmaku chat takes
     // the main window's pin state.
     const placement = params.getPlacement()
@@ -398,7 +404,7 @@ export function setupFloatingChatWindow(params: {
       detachFromMain = followMainPin(main, target)
     }
     else {
-      target.setAlwaysOnTop(params.getPinned())
+      pinChat(target, params.getPinned())
     }
 
     emitState()

@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { requestKeepAbove } from '../../services/electron/coordinates'
 import {
   applyDesktopOverlayInputIsolation,
   createDesktopOverlayWindowOptions,
   showDesktopOverlayWithoutFocus,
 } from './window-contract'
+
+vi.mock('../../services/electron/coordinates', () => ({ requestKeepAbove: vi.fn() }))
 
 describe('createDesktopOverlayWindowOptions', () => {
   it('creates non-focusable transparent overlay window options for display bounds', () => {
@@ -45,6 +48,7 @@ describe('applyDesktopOverlayInputIsolation', () => {
 
     expect(window.setIgnoreMouseEvents).toHaveBeenCalledWith(true, { forward: true })
     expect(window.setAlwaysOnTop).toHaveBeenCalledWith(true, 'screen-saver')
+    expect(requestKeepAbove).toHaveBeenCalledWith(window, true)
     expect(window.setContentProtection).toHaveBeenCalledWith(true)
     expect(window.setVisibleOnAllWorkspaces).toHaveBeenCalledWith(true, { visibleOnFullScreen: true })
   })
