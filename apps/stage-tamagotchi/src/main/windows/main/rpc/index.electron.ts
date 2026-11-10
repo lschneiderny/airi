@@ -15,7 +15,6 @@ import type { SettingsWindowManager } from '../../settings'
 import type { WidgetsWindowManager } from '../../widgets'
 
 import { defineInvokeHandler } from '@moeru/eventa'
-import { ipcMain } from 'electron'
 
 import {
   electronCenterMainWindow,
@@ -57,11 +56,6 @@ export async function setupMainWindowElectronInvokes(params: {
   inlayWindow: () => Promise<BrowserWindow>
   globalShortcut: GlobalShortcutService
 }) {
-  // TODO: once we refactored eventa to support window-namespaced contexts,
-  // we can remove the setMaxListeners call below since eventa will be able to dispatch and
-  // manage events within eventa's context system.
-  ipcMain.setMaxListeners(0)
-
   const { context } = createWindowContext(params.window)
 
   await setupBaseWindowElectronInvokes({

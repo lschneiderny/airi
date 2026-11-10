@@ -3,8 +3,7 @@ import type { IpcMainEvent, OpenDialogOptions } from 'electron'
 import type { ExtensionHostService, SetupExtensionHostOptions } from './types'
 
 import { defineInvoke, defineInvokeHandler } from '@moeru/eventa'
-import { createContext } from '@moeru/eventa/adapters/electron/main'
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { BrowserWindow, dialog } from 'electron'
 
 import { electronPluginGetAssetBaseUrl } from '../../../../shared/eventa/plugin/assets'
 import {
@@ -31,6 +30,7 @@ import {
   electronPluginToolsChanged,
 } from '../../../../shared/eventa/plugin/tools'
 import { onAppBeforeQuit } from '../../../libs/bootkit/lifecycle'
+import { createAppContext } from '../../../libs/electron/window-context'
 import { setupExtensionHostServiceInternal } from './host'
 
 interface ElectronInvokeOptions {
@@ -106,7 +106,7 @@ function trackDirectoryImportOwner(
  */
 export async function setupExtensionHost(options: SetupExtensionHostOptions): Promise<ExtensionHostService> {
   const hostService = await setupExtensionHostServiceInternal(options)
-  const { context } = createContext(ipcMain)
+  const { context } = createAppContext()
   const invokePluginProtocolListProviders = defineInvoke(context, pluginProtocolListProviders)
   // A plan remains owned by the renderer that displayed its review. Reopening
   // Settings creates a new renderer, which must start a new import review.

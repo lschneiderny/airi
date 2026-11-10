@@ -14,10 +14,9 @@ import { env } from 'node:process'
 
 import { is } from '@electron-toolkit/utils'
 import { defineInvokeHandler } from '@moeru/eventa'
-import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { isRendererUnavailable } from '@proj-airi/electron-vueuse/main'
 import { effect } from 'alien-signals'
-import { app, ipcMain, Menu, nativeImage, Tray } from 'electron'
+import { app, Menu, nativeImage, Tray } from 'electron'
 import { debounce, once } from 'es-toolkit'
 import { isMacOS } from 'std-env'
 
@@ -27,6 +26,7 @@ import macOSTrayIcon from '../../../resources/tray-icon-macos.png?asset'
 import { electronAppIconGet, electronAppIconSet } from '../../shared/eventa'
 import { findDominantDisplayArea } from '../../shared/utils/electron/display'
 import { onAppBeforeQuit } from '../libs/bootkit/lifecycle'
+import { createAppContext } from '../libs/electron/window-context'
 import { displayMatching, readDisplays, readPrimaryDisplay, readWindowRect } from '../services/electron/coordinates'
 import { Animator } from '../windows/shared/animator'
 import { AppIconVisibility } from '../windows/shared/app-icon'
@@ -170,7 +170,7 @@ const setupTrayOnce = once((params: SetupTrayParams): void => {
   })
 
   const appIcon = new AppIconVisibility(params.appConfig)
-  const { context } = createContext(ipcMain)
+  const { context } = createAppContext()
   defineInvokeHandler(context, electronAppIconGet, () => appIcon.hidden)
   defineInvokeHandler(context, electronAppIconSet, async (payload) => {
     await appIcon.setHidden(Boolean(payload))

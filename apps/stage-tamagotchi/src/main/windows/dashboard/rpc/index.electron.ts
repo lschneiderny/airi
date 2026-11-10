@@ -6,7 +6,6 @@ import type { NoticeWindowManager } from '../../notice'
 import type { SettingsWindowManager } from '../../settings'
 
 import { defineInvokeHandler } from '@moeru/eventa'
-import { ipcMain } from 'electron'
 
 import { electronOpenChat, electronOpenMainDevtools, electronOpenSettings, noticeWindowEventa } from '../../../../shared/eventa'
 import { createWindowContext } from '../../../libs/electron/window-context'
@@ -21,11 +20,6 @@ export async function setupDashboardWindowElectronInvokes(params: {
   i18n: I18n
   serverChannel: ServerChannel
 }) {
-  // TODO: once we refactored eventa to support window-namespaced contexts,
-  // we can remove the setMaxListeners call below since eventa will be able to dispatch and
-  // manage events within eventa's context system.
-  ipcMain.setMaxListeners(0)
-
   const { context } = createWindowContext(params.window)
 
   await setupBaseWindowElectronInvokes({ context, window: params.window, serverChannel: params.serverChannel, i18n: params.i18n })

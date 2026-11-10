@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { safeClose } from '@proj-airi/electron-vueuse/main'
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow } from 'electron'
 import { isMacOS } from 'std-env'
 
 import icon from '../../../../resources/icon.png?asset'
@@ -58,11 +58,6 @@ export function setupOnboardingWindowManager(params: {
 
     newWindow.on('ready-to-show', () => newWindow.show())
     protectPrivilegedWindowNavigation(newWindow)
-
-    // TODO: once we refactored eventa to support window-namespaced contexts,
-    // we can remove the setMaxListeners call below since eventa will be able to dispatch and
-    // manage events within eventa's context system.
-    ipcMain.setMaxListeners(0)
 
     const { context } = createWindowContext(newWindow)
 

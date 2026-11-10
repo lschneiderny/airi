@@ -22,7 +22,7 @@ import { is } from '@electron-toolkit/utils'
 import { defineInvokeHandler } from '@moeru/eventa'
 import { initScreenCaptureForWindow } from '@proj-airi/electron-screen-capture/main'
 import { defu } from 'defu'
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow } from 'electron'
 import { isLinux, isMacOS } from 'std-env'
 import { array, number, object, optional, string } from 'valibot'
 
@@ -218,11 +218,6 @@ export async function setupMainWindow(params: {
         console.error(error)
       }
     }
-
-    // TODO: once we refactored eventa to support window-namespaced contexts,
-    // we can remove the setMaxListeners call below since eventa will be able to dispatch and
-    // manage events within eventa's context system.
-    ipcMain.setMaxListeners(0)
 
     const { context } = createWindowContext(window)
     const cleanUpWindowDraggingInvokeHandler = defineInvokeHandler(context, electronStartDraggingWindow, handleStartDraggingWindow)

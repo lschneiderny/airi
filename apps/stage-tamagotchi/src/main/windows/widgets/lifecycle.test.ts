@@ -80,7 +80,6 @@ vi.mock('electron', () => ({
   // No Dock on this platform: the test runs with `isMacOS: false`.
   app: { isReady: () => true, commandLine: { getSwitchValue: () => 'x11' } },
   BrowserWindow: mocks.FakeBrowserWindow,
-  ipcMain: { setMaxListeners: vi.fn() },
   screen: {
     getDisplayMatching: vi.fn(() => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } })),
     getPrimaryDisplay: vi.fn(() => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } })),

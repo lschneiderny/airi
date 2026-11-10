@@ -12,7 +12,6 @@ import type { SpotlightWindowManager } from '../../spotlight'
 import type { WidgetsWindowManager } from '../../widgets'
 
 import { defineInvokeHandler } from '@moeru/eventa'
-import { ipcMain } from 'electron'
 
 import {
   electronCenterMainWindow,
@@ -45,11 +44,6 @@ export async function setupSettingsWindowInvokes(params: {
   spotlightWindow: SpotlightWindowManager
   ioTraceRecording: IOTraceRecordingService
 }) {
-  // TODO: once we refactored eventa to support window-namespaced contexts,
-  // we can remove the setMaxListeners call below since eventa will be able to dispatch and
-  // manage events within eventa's context system.
-  ipcMain.setMaxListeners(0)
-
   // Keep Settings IPC isolated and dispose its handlers when the window closes.
   const { context } = createWindowContext(params.settingsWindow)
 

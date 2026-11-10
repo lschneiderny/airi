@@ -58,6 +58,42 @@ it reached only the listeners of the emitting service's own context. On
 behaviour changed. A new main-side `context.on` must expect emits from sibling
 services.
 
+### One `ipcMain` listener per channel
+
+`IpcRouter` in `apps/stage-tamagotchi/src/main/libs/electron/ipc-router.ts`
+owns the only real listener of each IPC channel. It looks up the
+`webContents` id of the sender and calls the listeners of that window, then
+the listeners that hear every sender. A message from one window no longer
+passes through the sender check of every other window's context.
+
+A context never receives the real `ipcMain`. It receives a target from the
+router that has only `on` and `off`:
+
+- `createWindowContext(window)` uses `forWindow(window.webContents.id)`.
+- `createAppContext()` uses `forApp()`. It replaces every
+  `createContext(ipcMain)` call: the tray, the channel server, the extension
+  host, the IO trace hub, the Sherpaw model assets, computer use, Home
+  Assistant, and the Apple speech and vision services. These contexts stay
+  separate, because each has its own owner and lifetime.
+
+The adapter types its transport as Electron's `IpcMain`, so the router casts
+the target once and marks the cast with a `NOTICE` comment.
+
+The adapter removes its listeners when it disposes, which for a window context
+is when the window closes. The router then drops the window's entry. It
+attaches to a channel with the first listener and detaches with the last one,
+so `ipcMain.listenerCount('eventa-message')` is 1 while any context exists and
+0 after the last one is gone.
+
+Delivery order changed in one respect. `ipcMain` called the contexts in the
+order of their creation. The router calls the window's context before the app
+contexts. The order is visible only when a window context and an app context
+both handle the same invoke, which would already run two handlers for one
+request; no such pair was found on 2026-11-10.
+
+All 16 `ipcMain.setMaxListeners(...)` calls and their TODO comments are
+removed.
+
 ## Scope
 
 The renderer side is unchanged. `ipcRenderer.setMaxListeners(0)` in

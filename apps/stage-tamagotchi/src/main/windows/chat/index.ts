@@ -13,7 +13,7 @@ import { join, resolve } from 'node:path'
 
 import { defineInvoke, defineInvokeHandler } from '@moeru/eventa'
 import { isRendererUnavailable } from '@proj-airi/electron-vueuse/main'
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow } from 'electron'
 import { boolean, number, object, optional, picklist } from 'valibot'
 
 import icon from '../../../../resources/icon.png?asset'
@@ -193,10 +193,6 @@ export function setupChatWindowManager(params: {
     window.on('resize', attentionTarget.update)
     window.on('closed', attentionTarget.update)
 
-    // TODO: once we refactored eventa to support window-namespaced contexts,
-    // we can remove the setMaxListeners call below since eventa will be able to dispatch and
-    // manage events within eventa's context system.
-    ipcMain.setMaxListeners(0)
     // `onlySameWindow` hears only this window and disposes with it, so a mode
     // switch that closes the window leaves no handlers behind.
     const { context } = createWindowContext(window)

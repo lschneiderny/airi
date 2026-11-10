@@ -1,10 +1,10 @@
 import type { Lifecycle } from 'injeca'
 
 import { useLogg } from '@guiiai/logg'
-import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { setupAppleVision } from '@xsai-apple-vision/vision-electron-plugin/main'
-import { ipcMain } from 'electron'
 import { isMacOS } from 'std-env'
+
+import { createAppContext } from '../../../libs/electron/window-context'
 
 /**
  * Registers the app-wide Apple Vision transport and its native Provider.
@@ -26,7 +26,7 @@ import { isMacOS } from 'std-env'
  * Call stack:
  *
  * setupAppleVisionService
- *   -> {@link createContext}
+ *   -> {@link createAppContext}
  *     -> {@link setupAppleVision}
  *       -> {@link createAppleVisionProvider}
  */
@@ -52,7 +52,7 @@ export async function setupAppleVisionService(options: { lifecycle: Lifecycle })
     },
   }
 
-  const eventa = createContext(ipcMain)
+  const eventa = createAppContext()
   const setup = setupAppleVision({ context: eventa.context, provider })
 
   const dispose = () => {

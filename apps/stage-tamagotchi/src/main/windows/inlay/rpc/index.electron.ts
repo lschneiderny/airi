@@ -5,7 +5,6 @@ import type { ServerChannel } from '../../../services/airi/channel-server'
 import type { GlobalShortcutService } from '../../../services/electron/global-shortcut'
 
 import { defineInvokeHandler } from '@moeru/eventa'
-import { ipcMain } from 'electron'
 
 import { electronInlayReturnHome, electronInlaySetPresent } from '../../../../shared/eventa'
 import { createWindowContext } from '../../../libs/electron/window-context'
@@ -20,11 +19,6 @@ export async function setupInlayWindowInvokes(params: {
   /** Places the window at its home position. */
   returnHome: () => void
 }) {
-  // TODO: once we refactored eventa to support window-namespaced contexts,
-  // we can remove the setMaxListeners call below since eventa will be able to dispatch and
-  // manage events within eventa's context system.
-  ipcMain.setMaxListeners(0)
-
   const { context } = createWindowContext(params.inlayWindow)
 
   await setupBaseWindowElectronInvokes({

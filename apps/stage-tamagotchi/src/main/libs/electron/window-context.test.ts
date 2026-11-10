@@ -23,7 +23,7 @@ import { registerIOTraceRecording } from '../../services/airi/io-trace-recording
 import { createMcpServersService } from '../../services/airi/mcp-servers'
 import { createAppService, createAppVersionService } from '../../services/electron/app'
 import { createWindowIpc } from './testing/window-ipc'
-import { createWindowContext } from './window-context'
+import { createAppContext, createWindowContext } from './window-context'
 
 const appMock = vi.hoisted(() => ({
   getPath: vi.fn(() => '/tmp/airi-user-data'),
@@ -64,13 +64,21 @@ function createMcpManagerMock() {
   } satisfies McpManager
 }
 
+const opened: Array<ReturnType<typeof createWindowIpc>> = []
+
+async function openWindow() {
+  const { ipcMain } = await import('electron')
+  const window = createWindowIpc(ipcMain)
+  opened.push(window)
+  return window
+}
+
 /**
  * Opens the main, settings, and about windows. Each window gets its own context and registers the same services,
  * as the window setup functions in `src/main/windows` do.
  */
 async function openWindows(register: (context: ReturnType<typeof createWindowContext>['context'], window: BrowserWindow) => void) {
-  const { ipcMain } = await import('electron')
-  const windows = [createWindowIpc(ipcMain), createWindowIpc(ipcMain), createWindowIpc(ipcMain)]
+  const windows = [await openWindow(), await openWindow(), await openWindow()]
   for (const { window } of windows)
     register(createWindowContext(window).context, window)
 
@@ -82,12 +90,13 @@ describe('createWindowContext', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
-    const { ipcMain } = await import('electron')
-    ipcMain.removeAllListeners()
     directory = await mkdtemp(join(tmpdir(), 'airi-window-context-'))
   })
 
   afterEach(async () => {
+    // The IPC router lives as long as this file. Closing each window removes its listeners from the router.
+    for (const window of opened.splice(0))
+      window.close()
     await rm(directory, { recursive: true, force: true })
   })
 
@@ -138,10 +147,10 @@ describe('createWindowContext', () => {
       expect(change).toHaveBeenCalledTimes(1)
   })
 
-  it('gives every service of one window the same context, so a window keeps one IPC listener', async () => {
+  it('gives every service of one window the same context, and keeps one ipcMain listener for all windows', async () => {
     const { ipcMain } = await import('electron')
-    const main = createWindowIpc(ipcMain)
-    const settings = createWindowIpc(ipcMain)
+    const main = await openWindow()
+    const settings = await openWindow()
 
     // As in `src/main/windows`: the window setup and the services that reach for the window's context on their own.
     const { context } = createWindowContext(main.window)
@@ -151,7 +160,8 @@ describe('createWindowContext', () => {
     createAppVersionService({ window: settings.window })
 
     expect(createWindowContext(main.window).context).toBe(context)
-    expect(ipcMain.listenerCount('eventa-message')).toBe(2)
+    expect(ipcMain.listenerCount('eventa-message')).toBe(1)
+    expect(ipcMain.listenerCount('eventa-error')).toBe(1)
 
     await defineInvoke(main.context, electronAppGetVersion)()
 
@@ -164,10 +174,41 @@ describe('createWindowContext', () => {
 
     windows[0].close()
 
-    expect(ipcMain.listenerCount('eventa-message')).toBe(2)
+    expect(ipcMain.listenerCount('eventa-message')).toBe(1)
     await defineInvoke(windows[1].context, electronAppQuit)()
     expect(appMock.quit).toHaveBeenCalledTimes(1)
     // The closed window has no context any more: a new one is refused instead of the disposed one being returned.
     expect(() => createWindowContext(windows[0].window)).toThrow(TypeError)
+
+    // The router keeps no entry for a closed window, so it leaves `ipcMain` with the last window.
+    windows[1].close()
+    windows[2].close()
+    expect(ipcMain.listenerCount('eventa-message')).toBe(0)
+    expect(ipcMain.listenerCount('eventa-error')).toBe(0)
+  })
+})
+
+describe('createAppContext', () => {
+  afterEach(() => {
+    for (const window of opened.splice(0))
+      window.close()
+  })
+
+  it('runs one handler for an invoke from any window, next to the window contexts', async () => {
+    const { ipcMain } = await import('electron')
+    const windows = await openWindows(context => createAppService({ context, window: {} as never }))
+    const manager = createMcpManagerMock()
+    const app = createAppContext()
+    createMcpServersService({ context: app.context, manager })
+
+    await defineInvoke(windows[2].context, electronMcpApplyAndRestart)()
+
+    expect(manager.applyAndRestart).toHaveBeenCalledTimes(1)
+    expect(ipcMain.listenerCount('eventa-message')).toBe(1)
+
+    app.dispose()
+    for (const window of opened.splice(0))
+      window.close()
+    expect(ipcMain.listenerCount('eventa-message')).toBe(0)
   })
 })

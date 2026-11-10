@@ -7,7 +7,6 @@ import type { ServerChannel } from '../../services/airi/channel-server'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { safeClose } from '@proj-airi/electron-vueuse/main'
-import { ipcMain } from 'electron'
 
 import { createWindowContext } from '../../libs/electron/window-context'
 import { setupBaseWindowElectronInvokes } from './window'
@@ -39,10 +38,6 @@ export function createReferencedWindowManager<Payload extends RequestWindowPaylo
   const windows = new Map<string, { window: BrowserWindow, context: ReturnType<typeof createContext>['context'] }>()
 
   async function bindContext(id: string, payload: Payload, win: BrowserWindow) {
-    // TODO: once we refactored eventa to support window-namespaced contexts,
-    // we can remove the setMaxListeners call below since eventa will be able to dispatch and
-    // manage events within eventa's context system.
-    ipcMain.setMaxListeners(0)
     const { context } = createWindowContext(win)
 
     defineInvokeHandler(context, params.eventa.pageMounted, (req) => {

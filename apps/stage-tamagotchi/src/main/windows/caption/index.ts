@@ -10,7 +10,7 @@ import { join, resolve } from 'node:path'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { animate, utils } from 'animejs'
-import { BrowserWindow as ElectronBrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow as ElectronBrowserWindow } from 'electron'
 import { debounce, throttle } from 'es-toolkit'
 import { isMacOS } from 'std-env'
 import { boolean, number, object, optional, record, string } from 'valibot'
@@ -306,11 +306,6 @@ export function setupCaptionWindowManager(params: {
   }
 
   const reusable = createReusableWindow(async () => {
-    // TODO: once we refactored eventa to support window-namespaced contexts,
-    // we can remove the setMaxListeners call below since eventa will be able to dispatch and
-    // manage events within eventa's context system.
-    ipcMain.setMaxListeners(0)
-
     const window = createCaptionWindow()
     currentWindow = window
     const { context } = createWindowContext(window)

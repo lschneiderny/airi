@@ -23,7 +23,7 @@ vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events')
   return {
     app: { isReady: () => true, commandLine: { getSwitchValue: () => '' } },
-    ipcMain: Object.assign(new EventEmitter(), { setMaxListeners: vi.fn() }),
+    ipcMain: new EventEmitter(),
     BrowserWindow: class extends EventEmitter {
       private destroyed = false
       private contents = { isDestroyed: () => this.destroyed, send: vi.fn(), openDevTools: vi.fn() }

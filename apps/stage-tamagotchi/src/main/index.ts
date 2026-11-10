@@ -12,9 +12,8 @@ import messages from '@proj-airi/i18n/locales'
 
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { Format, LogLevel, setGlobalFormat, setGlobalHookPostLog, setGlobalLogLevel, useLogg } from '@guiiai/logg'
-import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { hasSelectedScreenCaptureSource, initScreenCaptureForMain } from '@proj-airi/electron-screen-capture/main'
-import { app, BrowserWindow, ipcMain, protocol, screen, session } from 'electron'
+import { app, BrowserWindow, protocol, screen, session } from 'electron'
 import { noop } from 'es-toolkit'
 import { createLoggLogger, injeca, lifecycle } from 'injeca'
 import { isLinux } from 'std-env'
@@ -33,6 +32,7 @@ import { createIOTraceHubConfig } from './configs/io-trace-hub'
 import { createIOTraceRecordingConfig } from './configs/io-trace-recording'
 import { emitAppBeforeQuit, emitAppWindowAllClosed, onAppBeforeQuit } from './libs/bootkit/lifecycle'
 import { getElectronMainDirname, setElectronMainDirname } from './libs/electron/location'
+import { createAppContext } from './libs/electron/window-context'
 import { createI18n } from './libs/i18n'
 import { setupAppleSpeechTranscriptionService } from './services/airi/apple-speech-transcription'
 import { setupAppleVisionService } from './services/airi/apple-vision'
@@ -72,11 +72,6 @@ import { setupSettingsWindowReusableFunc } from './windows/settings'
 import { setupSpotlightWindowManager } from './windows/spotlight'
 import { createStageConfig, createStageStateBroadcast, defaultStageConfig, isLinuxStageEligible, selectHostMode, setupStageWindow, setupWindowStageInvokes } from './windows/stage'
 import { setupWidgetsWindowManager } from './windows/widgets'
-
-// TODO: once we refactored eventa to support window-namespaced contexts,
-// we can remove the setMaxListeners call below since eventa will be able to dispatch and
-// manage events within eventa's context system.
-ipcMain.setMaxListeners(100)
 
 setElectronMainDirname(dirname(fileURLToPath(import.meta.url)))
 protocol.registerSchemesAsPrivileged([{
@@ -188,7 +183,7 @@ app.whenReady().then(async () => {
   }
 
   setupSherpawModelAssetsProtocol(resolve(getElectronMainDirname(), '..', 'renderer'))
-  setupSherpawModelAssets(createContext(ipcMain).context)
+  setupSherpawModelAssets(createAppContext().context)
   setupPermissionHandlers(session.defaultSession, hasSelectedScreenCaptureSource)
 
   // Initialize file logger and register the hook
@@ -492,7 +487,7 @@ app.whenReady().then(async () => {
   injeca.invoke({
     dependsOn: { mainWindow, tray, serverChannel, airiHttpServer, godotStageManager, pluginHost, mcpManager, onboardingWindow: onboardingWindowManager, widgetsWindow: widgetsManager, spotlightWindow, artistryConfig },
     callback: async (deps) => {
-      const { context } = createContext(ipcMain)
+      const { context } = createAppContext()
       setupComputerUse(context)
       setupHomeAssistant(context)
       await setupArtistryBridge({

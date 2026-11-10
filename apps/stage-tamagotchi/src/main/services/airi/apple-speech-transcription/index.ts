@@ -1,9 +1,9 @@
 import type { Lifecycle } from 'injeca'
 
-import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { setupAppleSpeechTranscription } from '@xsai-apple-speech/transcription-electron-plugin/main'
-import { ipcMain } from 'electron'
 import { isMacOS } from 'std-env'
+
+import { createAppContext } from '../../../libs/electron/window-context'
 
 /**
  * Registers the app-wide Apple Speech transport and its native Provider.
@@ -15,7 +15,7 @@ import { isMacOS } from 'std-env'
  * Call stack:
  *
  * setupAppleSpeechTranscriptionService
- *   -> {@link createContext}
+ *   -> {@link createAppContext}
  *     -> {@link setupAppleSpeechTranscription}
  *       -> {@link createAppleSpeechProvider}
  */
@@ -24,7 +24,7 @@ export async function setupAppleSpeechTranscriptionService(options: { lifecycle:
     return { dispose: () => Promise.resolve() }
 
   const { createAppleSpeechProvider } = await import('@xsai-apple-speech/transcription-native')
-  const eventa = createContext(ipcMain)
+  const eventa = createAppContext()
   const setup = setupAppleSpeechTranscription({
     context: eventa.context,
     provider: createAppleSpeechProvider(),

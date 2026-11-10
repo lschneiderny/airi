@@ -3,8 +3,7 @@ import type { WebContents } from 'electron'
 import type { IOTraceHub } from '.'
 
 import { defineInvokeHandler } from '@moeru/eventa'
-import { createContext } from '@moeru/eventa/adapters/electron/main'
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow } from 'electron'
 
 import {
   ioTraceHubGet,
@@ -14,17 +13,16 @@ import {
   ioTraceHubSubscribe,
   ioTraceHubUnsubscribe,
 } from '../../../../shared/eventa'
-import { createWindowContext } from '../../../libs/electron/window-context'
+import { createAppContext, createWindowContext } from '../../../libs/electron/window-context'
 
 /**
  * Connects the IO trace hub to every renderer window.
  *
- * The handlers use one context without a window, so each invoke runs once, whichever window sends it. A window
- * context would also receive the invokes of the other windows on the shared `ipcMain`.
+ * The handlers use one app context, so each invoke runs once, whichever window sends it.
  * A subscribed window receives pushed spans on its window context, which the window owns.
  */
 export function registerIOTraceHub(hub: IOTraceHub): () => void {
-  const { context, dispose } = createContext(ipcMain)
+  const { context, dispose } = createAppContext()
   const viewers = new Map<number, () => void>()
 
   function stopViewer(webContentsId: number): void {

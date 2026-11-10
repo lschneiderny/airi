@@ -12,7 +12,6 @@ const defineInvokeHandlerMock = vi.hoisted(() => vi.fn())
 const createWindowContextMock = vi.hoisted(() => vi.fn(() => ({ context: { id: 'desktop-overlay-test' } })))
 const setupBaseWindowElectronInvokesMock = vi.hoisted(() => vi.fn())
 const createMcpServersServiceMock = vi.hoisted(() => vi.fn())
-const ipcMainMock = vi.hoisted(() => ({ setMaxListeners: vi.fn() }))
 
 vi.mock('@moeru/eventa', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@moeru/eventa')>()
@@ -24,10 +23,6 @@ vi.mock('@moeru/eventa', async (importOriginal) => {
 
 vi.mock('../../../libs/electron/window-context', () => ({
   createWindowContext: createWindowContextMock,
-}))
-
-vi.mock('electron', () => ({
-  ipcMain: ipcMainMock,
 }))
 
 vi.mock('../../shared/window', () => ({
@@ -64,7 +59,6 @@ describe('setupDesktopOverlayElectronInvokes', () => {
       i18n,
     })
 
-    expect(ipcMainMock.setMaxListeners).toHaveBeenCalledWith(0)
     expect(createWindowContextMock).toHaveBeenCalledTimes(1)
     expect(setupBaseWindowElectronInvokesMock).toHaveBeenCalledTimes(1)
     expect(createMcpServersServiceMock).toHaveBeenCalledTimes(1)

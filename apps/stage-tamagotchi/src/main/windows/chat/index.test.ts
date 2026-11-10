@@ -108,7 +108,6 @@ const mocks = await vi.hoisted(async () => {
 vi.mock('electron', () => ({
   app: { isReady: () => true, commandLine: { getSwitchValue: () => 'x11' } },
   BrowserWindow: mocks.FakeBrowserWindow,
-  ipcMain: { setMaxListeners: () => {} },
   screen: {
     getDisplayMatching: () => ({ workArea: mocks.workArea }),
     getAllDisplays: () => [{ bounds: mocks.workArea, workArea: mocks.workArea }],

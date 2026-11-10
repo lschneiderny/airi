@@ -15,7 +15,7 @@ import type { ServerChannel } from '../../services/airi/channel-server'
 import { join, resolve } from 'node:path'
 
 import { safeClose } from '@proj-airi/electron-vueuse/main'
-import { BrowserWindow as ElectronBrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow as ElectronBrowserWindow } from 'electron'
 import { clamp } from 'es-toolkit/math'
 import { isMacOS } from 'std-env'
 import { number, object, optional } from 'valibot'
@@ -453,11 +453,6 @@ export function setupWidgetsWindowManager(params: {
   }
 
   async function createWindowForContext(windowContext: WidgetWindowContext, initialRoute: string): Promise<BrowserWindow> {
-    // TODO: once we refactored eventa to support window-namespaced contexts,
-    // we can remove the setMaxListeners call below since eventa will be able to dispatch and
-    // manage events within eventa's context system.
-    ipcMain.setMaxListeners(0)
-
     const window = createWidgetsWindow()
     windowContext.window = window
     windowContext.eventa = createWindowContext(window)

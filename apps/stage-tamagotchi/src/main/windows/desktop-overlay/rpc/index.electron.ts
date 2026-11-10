@@ -18,7 +18,6 @@ import type { DesktopOverlayReadiness } from './contracts'
 
 import { defineInvokeHandler } from '@moeru/eventa'
 import { errorMessageFromValue } from '@proj-airi/stage-shared'
-import { ipcMain } from 'electron'
 
 import { getDesktopOverlayReadinessContract } from '../../../../shared/eventa'
 import { createWindowContext } from '../../../libs/electron/window-context'
@@ -31,11 +30,6 @@ export async function setupDesktopOverlayElectronInvokes(params: {
   serverChannel: ServerChannel
   i18n: I18n
 }) {
-  // TODO: once we refactored eventa to support window-namespaced contexts,
-  // we can remove the setMaxListeners call below since eventa will be able to dispatch and
-  // manage events within eventa's context system.
-  ipcMain.setMaxListeners(0)
-
   const { context } = createWindowContext(params.window)
 
   let readiness: DesktopOverlayReadiness = { state: 'booting' }

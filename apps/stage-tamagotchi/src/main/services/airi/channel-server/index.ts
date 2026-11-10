@@ -11,12 +11,11 @@ import { env, platform } from 'node:process'
 
 import { useLogg } from '@guiiai/logg'
 import { defineInvokeHandler } from '@moeru/eventa'
-import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { errorMessageFrom } from '@moeru/std'
 import { createServer, getLocalIPs } from '@proj-airi/server-runtime/server'
 import { createServerChannelQrPayload } from '@proj-airi/stage-shared/server-channel-qr'
 import { Mutex } from 'async-mutex'
-import { app, ipcMain, session } from 'electron'
+import { app, session } from 'electron'
 import { createCA, createCert } from 'mkcert'
 import { x } from 'tinyexec'
 import { nullable, object, optional, string } from 'valibot'
@@ -28,6 +27,7 @@ import {
   electronGetServerChannelQrPayload,
 } from '../../../../shared/eventa'
 import { createConfig } from '../../../libs/electron/persistence'
+import { createAppContext } from '../../../libs/electron/window-context'
 import { ensureServerChannelConfigDefaults } from './config'
 
 const channelServerConfigSchema = object({
@@ -454,7 +454,7 @@ export async function createServerChannelService(params: { serverChannel: Server
   }
   serverChannelServiceRegistered = true
 
-  const { context } = createContext(ipcMain)
+  const { context } = createAppContext()
 
   defineInvokeHandler(context, electronGetServerChannelConfig, async () => {
     return await getChannelServerConfig()
