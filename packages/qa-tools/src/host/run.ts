@@ -1,8 +1,5 @@
-import type { CdpClient } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 import type { HostCapabilities } from '@proj-airi/stage-shared/host-capabilities'
 
-import type { OwnedProcess } from '../env/processes'
-import type { LaunchedApp } from '../t3/launch'
 import type { TeardownReport } from '../t3/teardown'
 import type { DriveReceipt, DriveStep, HostSample, LinuxDesktopExpectation, MissedSample, SmokeFailure, SmokeResult } from './smoke'
 
@@ -19,14 +16,12 @@ import { acquire } from '@proj-airi/cpu-slots'
 import { waitFor } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 import { capabilitiesForHost, LINUX_DESKTOP_BACKENDS, resolveHostCapabilities } from '@proj-airi/stage-shared/host-capabilities'
 
-import { killTree, listLiveProcesses } from '../env/processes'
+import { listLiveProcesses } from '../env/processes'
 import { createRun } from '../evidence/run'
-import { MotionQaBridgeClient } from '../t3/bridge-client'
+import { AppSessionCore } from '../session/app-session'
 import { parkCursor } from '../t3/cursor'
-import { connectStage, failOnExit, launchStageTamagotchi } from '../t3/launch'
-import { completeOnboarding } from '../t3/onboarding'
-import { closeBrowser } from '../t3/run-t3'
-import { findWorktreeAppProcesses, teardownRun, trackTree } from '../t3/teardown'
+import { failOnExit } from '../t3/launch'
+import { findWorktreeAppProcesses } from '../t3/teardown'
 import { evaluateHostSmoke, expectedHostFacts, focusRoundTrip, hostSmokeExpectation, LINUX_VERIFIED_FACTS, linuxDriveSteps, observeHost, parseLinuxDesktopExpectation } from './smoke'
 
 export const hostUsage = `Usage: pnpm qa:host smoke [--xwayland] [--expect-idle verified|unverified] [--expect-backend ${LINUX_DESKTOP_BACKENDS.join('|')}] [--expect-verified <${LINUX_VERIFIED_FACTS.join(',')}>] [--expect <host> (test-only)]`
@@ -108,8 +103,7 @@ export async function runHostCli(argv: string[], repoRoot: string): Promise<numb
     report.verifiedSignals = expectation.verifiedSignals
     if (detected.host === 'linux-wayland' && expectIdle === undefined)
       throw new Error('--expect-idle verified|unverified is required on linux-wayland')
-    const selfPids = [process.pid, process.ppid]
-    if (findWorktreeAppProcesses(await listLiveProcesses(), repoRoot, selfPids).length)
+    if (findWorktreeAppProcesses(await listLiveProcesses(), repoRoot, [process.pid, process.ppid]).length)
       throw new Error('Refusing to launch: this worktree already has an Electron session')
     lease = await acquire({
       class: 'exclusive',
@@ -122,27 +116,21 @@ export async function runHostCli(argv: string[], repoRoot: string): Promise<numb
     report.runDir = run.dir
     const profileDir = run.path('profile')
     mkdirSync(profileDir)
-    let app: LaunchedApp | undefined
-    let stage: CdpClient | undefined
-    let browserUrl: string | undefined
-    let tracked: OwnedProcess[] = []
+    // An interrupt during startup still waits for the stage connection, so teardown closes the browser gracefully.
+    const appSession = AppSessionCore.create({ repoRoot, profileDir, signal: controller.signal, abortMode: 'after-connect' })
     report.exitCode = 1
     try {
-      app = await launchStageTamagotchi({ repoRoot, profileDir, logFile: run.path('app.log'), list: listLiveProcesses, script: values.xwayland ? 'dev:xwayland' : 'dev' })
-      run.recordProcess({ rootPid: app.root.pid, created: app.root.created, commandLine: app.root.commandLine })
-      const connected = await connectStage(app)
-      stage = connected.stage
-      browserUrl = connected.browserUrl
-      tracked = trackTree(await listLiveProcesses(), app.root)
-      controller.signal.throwIfAborted()
-      const page = stage
-      await failOnExit(app, 'the dispatcher', waitFor('motion QA dispatcher', async () => {
-        controller.signal.throwIfAborted()
-        return await page.evaluate<boolean>('typeof globalThis.__airiMotionQa?.dispatch === "function"', 10_000) ? true : undefined
-      }, 120_000, 500))
-      await completeOnboarding(stage)
-      const bridge = new MotionQaBridgeClient(stage)
-      await failOnExit(app, 'the bridge', bridge.waitForBridge({ timeoutMs: 120_000 }))
+      const { app, bridge } = await appSession.start({
+        launch: { logFile: run.path('app.log'), script: values.xwayland ? 'dev:xwayland' : 'dev' },
+        onLaunched: launched => run.recordProcess({ rootPid: launched.root.pid, created: launched.root.created, commandLine: launched.root.commandLine }),
+        beforeOnboarding: async ({ stage, app }) => {
+          await failOnExit(app, 'the dispatcher', waitFor('motion QA dispatcher', async () => {
+            controller.signal.throwIfAborted()
+            return await stage.evaluate<boolean>('typeof globalThis.__airiMotionQa?.dispatch === "function"', 10_000) ? true : undefined
+          }, 120_000, 500))
+        },
+        bridge: { step: 'the bridge', timeoutMs: 120_000 },
+      })
       // A Windows run parks once before observation; other hosts never move the OS cursor.
       if (process.platform === 'win32') {
         report.cursor = await parkCursor()
@@ -170,27 +158,10 @@ export async function runHostCli(argv: string[], repoRoot: string): Promise<numb
       report.failures.push({ code: 'run-failed', message: errorMessageFrom(error) ?? 'host smoke failed' })
     }
     finally {
-      const url = browserUrl
-      try {
-        report.teardown = await teardownRun(
-          { repoRoot, profileDir, root: app?.root, tracked, selfPids },
-          {
-            list: listLiveProcesses,
-            kill: killTree,
-            closeBrowser: url ? () => closeBrowser(url) : undefined,
-            waitRootExit: app?.waitExit,
-            removeDir: path => rmSync(path, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }),
-            sleep: ms => setTimeout(ms),
-          },
-        )
-        if (!report.teardown.ok) {
-          report.exitCode = 1
-          report.failures.push({ code: 'teardown-failed', message: 'teardown failed; see teardown receipts' })
-        }
-      }
-      finally {
-        stage?.close()
-        app?.releaseLease()
+      report.teardown = await appSession.teardown({ removeDir: path => rmSync(path, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }) })
+      if (!report.teardown.ok) {
+        report.exitCode = 1
+        report.failures.push({ code: 'teardown-failed', message: 'teardown failed; see teardown receipts' })
       }
       writeFileSync(run.path('report.json'), `${JSON.stringify(report, null, 2)}\n`)
       run.addArtifact('report.json', 'host-smoke')

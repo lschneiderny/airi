@@ -546,6 +546,19 @@ The report is a review aid. It does not change a gate verdict or make a naturaln
 - `determinism`: two independent runs give identical scores, and shuffled events or records change nothing.
 - The CLI runs one Vitest process per shard and phase (simulate, then score) and writes `validation.json` (every number, threshold and verdict, with no run id or time) and `summary.txt`. Exit codes: 0 every threshold met, 1 a threshold missed or the run broke, 2 a usage error. A missed threshold is a finding for Luke; never change a gate constant to meet it.
 
+## Architecture
+
+`qa:smoke`, `qa:app`, `qa:host smoke`, and the `qa:mcp` session drive the real app through one shared lifecycle, `AppSessionCore` in `src/session/app-session.ts`. One `start` call runs the same ordered steps for every command:
+
+1. Launch `stage-tamagotchi dev` on the run's fresh profile (`launchStageTamagotchi`) and record its root process.
+2. Connect to the stage window over CDP (`connectStage`) and record the process tree (`trackTree`).
+3. Optionally start a `PageErrorCollector` over every window.
+4. Run the command's own preparation, such as seeding the replay provider or waiting for the dispatcher.
+5. Complete onboarding (`completeOnboarding`), unless the command skips it.
+6. Optionally wait for the motion QA bridge (`MotionQaBridgeClient.waitForBridge`). The wait fails as soon as the app exits.
+
+By default every step after the launch is raced against the command's abort signal. `qa:host smoke` uses `abortMode: 'after-connect'` instead: an interrupt during startup lets the stage connection finish, so teardown still closes the browser gracefully. `teardown` stops the collector, closes the browser, kills the owned process tree, removes the profile only when no run process is left (`teardownRun`), and releases the launch's lease reference. It also works after a failed or interrupted start. Each command still owns its CLI flags, CPU lease, run directory, evidence files, report, and exit code. Each command refuses to launch while its worktree already runs an Electron session, before it creates a run directory.
+
 ## When to use
 
 Use this package when motion or the desktop stage needs a gate verdict, an agent needs to run a rendered scenario, a test run must distinguish new failures from the baseline, or QA evidence needs a portable report and durable archive.

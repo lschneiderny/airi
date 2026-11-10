@@ -1,8 +1,8 @@
 import type { CdpClient } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 import type { MotionQaEvent } from '@proj-airi/stage-shared/motion-scenario'
 
-import type { OwnedProcess } from '../env/processes'
 import type { RunHandle } from '../evidence/run'
+import type { MotionQaBridgeClient } from '../t3/bridge-client'
 import type { LaunchedApp } from '../t3/launch'
 import type { TeardownReport } from '../t3/teardown'
 
@@ -16,19 +16,14 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { buildSeedEntries } from '../app/plan'
 import { sendMessage } from '../app/send'
 import { matchExpectations } from '../app/summary'
-import { killTree, listLiveProcesses } from '../env/processes'
 import { createRun } from '../evidence/run'
 import { loadScript, ReplayScript } from '../llm/script'
 import { ReplayServer } from '../llm/server'
-import { PageErrorCollector } from '../smoke/page-errors'
+import { AppSessionCore, refuseIfWorktreeBusy } from '../session/app-session'
 import { scanMainLog } from '../smoke/triage'
-import { MotionQaBridgeClient } from '../t3/bridge-client'
 import { importRig, zipRig } from '../t3/import-rig'
-import { connectStage, failOnExit, launchStageTamagotchi } from '../t3/launch'
-import { completeOnboarding } from '../t3/onboarding'
-import { closeBrowser } from '../t3/run-t3'
+import { failOnExit } from '../t3/launch'
 import { captureStagePng } from '../t3/screenshot'
-import { findWorktreeAppProcesses, teardownRun, trackTree } from '../t3/teardown'
 
 export type ModelKind = 'live2d' | 'mmd' | 'vrm'
 export type EventKind = MotionQaEvent['kind']
@@ -42,15 +37,13 @@ export interface StartOptions {
 
 interface Live {
   run: RunHandle
+  /** The launched app, its stage connection, process tree and page errors; torn down on `stop`. */
+  core: AppSessionCore<CdpClient>
   app: LaunchedApp
   stage: CdpClient
-  browserUrl: string
   bridge: MotionQaBridgeClient
-  collector: PageErrorCollector
   server: ReplayServer
   script: ReplayScript
-  tracked: OwnedProcess[]
-  profileDir: string
   /** The QA display session this session started, stopped again on `stop`. */
   display?: string
   shots: number
@@ -101,9 +94,7 @@ export class AppSession {
   }
 
   private async launch(options: StartOptions): Promise<Record<string, unknown>> {
-    const selfPids = [process.pid, process.ppid]
-    if (findWorktreeAppProcesses(await listLiveProcesses(), this.repoRoot, selfPids).length)
-      throw new Error('Refusing to launch while this worktree already has an Electron session')
+    await refuseIfWorktreeBusy(this.repoRoot)
     const script = options.script ? await loadScript({ script: options.script }, this.repoRoot) : new ReplayScript([], 'airi_send replies')
     const { env: baseEnv, display } = this.displayEnv()
     const run = createRun({ tool: 'mcp', label: 'session', repoRoot: this.repoRoot })
@@ -111,37 +102,30 @@ export class AppSession {
     mkdirSync(profileDir)
     const server = new ReplayServer({ script, log: run.path('requests.jsonl') })
     const baseURL = await server.listen()
-    let app: LaunchedApp | undefined
-    let stage: CdpClient | undefined
-    let collector: PageErrorCollector | undefined
-    let browserUrl: string | undefined
-    let tracked: OwnedProcess[] = []
+    const core = AppSessionCore.create({ repoRoot: this.repoRoot, profileDir })
     try {
-      app = await launchStageTamagotchi({ repoRoot: this.repoRoot, profileDir, logFile: run.path('app.log'), list: listLiveProcesses, env: { AIRI_STAGE_HOST: 'window' }, baseEnv })
-      run.recordProcess({ rootPid: app.root.pid, created: app.root.created, commandLine: app.root.commandLine })
-      const connected = await connectStage(app)
-      stage = connected.stage
-      browserUrl = connected.browserUrl
-      tracked = trackTree(await listLiveProcesses(), app.root)
-      collector = new PageErrorCollector(app.port)
-      await collector.start()
-      await stage.evaluate(`(() => {
-        for (const [key, value] of Object.entries(${JSON.stringify(buildSeedEntries(baseURL))}))
-          localStorage.setItem(key, value)
-      })()`)
-      await completeOnboarding(stage)
-      const bridge = new MotionQaBridgeClient(stage)
-      await failOnExit(app, 'the bridge', bridge.waitForBridge({ timeoutMs: 300_000 }))
-      this.live = { run, app, stage, browserUrl, bridge, collector, server, script, tracked, profileDir, display, shots: 0 }
+      const { app, stage, bridge } = await core.start({
+        launch: { logFile: run.path('app.log'), env: { AIRI_STAGE_HOST: 'window' }, baseEnv },
+        onLaunched: launched => run.recordProcess({ rootPid: launched.root.pid, created: launched.root.created, commandLine: launched.root.commandLine }),
+        collectPageErrors: true,
+        beforeOnboarding: async ({ stage }) => {
+          await stage.evaluate(`(() => {
+            for (const [key, value] of Object.entries(${JSON.stringify(buildSeedEntries(baseURL))}))
+              localStorage.setItem(key, value)
+          })()`)
+        },
+        bridge: { step: 'the bridge', timeoutMs: 300_000 },
+      })
+      this.live = { run, core, app, stage, bridge, server, script, display, shots: 0 }
       let imported: unknown = null
       if (options.model)
         imported = await this.importModel(options.model, options.kind)
-      return { runDir: run.dir, display: display ?? process.env.AIRI_QA_DISPLAY ?? null, windows: collector.targets, imported, replay: { source: script.source, entries: script.entries.length } }
+      return { runDir: run.dir, display: display ?? process.env.AIRI_QA_DISPLAY ?? null, windows: core.collector?.targets ?? [], imported, replay: { source: script.source, entries: script.entries.length } }
     }
     catch (error) {
       if (!this.live) {
         // A partial start still owns processes, the lease, and the display; release them before reporting the error.
-        await this.teardown({ run, app, stage, browserUrl, collector, server, tracked, profileDir, display }).catch(() => {})
+        await this.teardown({ run, core, server, display }).catch(() => {})
       }
       throw error
     }
@@ -208,9 +192,9 @@ export class AppSession {
     const live = this.require()
     const logFile = live.run.path('app.log')
     return {
-      windows: live.collector.targets,
-      unwatchedWindows: live.collector.attachErrors,
-      page: live.collector.errors,
+      windows: live.core.collector?.targets ?? [],
+      unwatchedWindows: live.core.collector?.attachErrors ?? [],
+      page: live.core.collector?.errors ?? [],
       main: existsSync(logFile) ? scanMainLog(readFileSync(logFile, 'utf8')) : [],
     }
   }
@@ -229,23 +213,13 @@ export class AppSession {
     return await this.teardown(live)
   }
 
-  private async teardown(parts: Partial<Pick<Live, 'app' | 'stage' | 'browserUrl' | 'collector' | 'display'>> & Pick<Live, 'run' | 'server' | 'tracked' | 'profileDir'>): Promise<TeardownReport> {
-    const { run, app, browserUrl } = parts
-    await parts.collector?.stop()
+  private async teardown(parts: Pick<Live, 'run' | 'core' | 'server' | 'display'>): Promise<TeardownReport> {
+    const { run } = parts
     let teardown: TeardownReport
     try {
-      teardown = await teardownRun({ repoRoot: this.repoRoot, profileDir: parts.profileDir, root: app?.root, tracked: parts.tracked, selfPids: [process.pid, process.ppid] }, {
-        list: listLiveProcesses,
-        kill: killTree,
-        closeBrowser: browserUrl ? () => closeBrowser(browserUrl) : undefined,
-        waitRootExit: app?.waitExit,
-        removeDir: path => rmSync(path, { recursive: true, force: true }),
-        sleep: async (ms) => { await sleep(ms) },
-      }, [run.path('model.zip')])
+      teardown = await parts.core.teardown({ extraPaths: [run.path('model.zip')] })
     }
     finally {
-      app?.releaseLease()
-      parts.stage?.close()
       await parts.server.close().catch(() => {})
       if (parts.display)
         execFileSync('pnpm', ['--silent', '--dir', this.repoRoot, 'qa:display', 'down', '--name', parts.display], { stdio: 'ignore', timeout: 60_000 })

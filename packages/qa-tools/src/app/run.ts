@@ -1,31 +1,22 @@
-import type { CdpClient } from '@proj-airi/scenarios-stage-tamagotchi-electron/runtime/remote-debug'
 import type { MotionQaEvent } from '@proj-airi/stage-shared/motion-scenario'
 
-import type { OwnedProcess } from '../env/processes'
-import type { LaunchedApp } from '../t3/launch'
 import type { AppOptions } from './args'
 import type { SendPath } from './summary'
 
 import process from 'node:process'
 
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, extname } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 
 import { errorMessageFrom } from '@moeru/std'
 
-import { killTree, listLiveProcesses } from '../env/processes'
 import { createRun } from '../evidence/run'
 import { loadScript } from '../llm/script'
 import { ReplayServer } from '../llm/server'
-import { PageErrorCollector } from '../smoke/page-errors'
-import { MotionQaBridgeClient } from '../t3/bridge-client'
+import { AppSessionCore, refuseIfWorktreeBusy } from '../session/app-session'
 import { importRig, zipRig } from '../t3/import-rig'
-import { connectStage, failOnExit, launchStageTamagotchi } from '../t3/launch'
-import { completeOnboarding } from '../t3/onboarding'
-import { closeBrowser } from '../t3/run-t3'
 import { captureStagePng } from '../t3/screenshot'
-import { findWorktreeAppProcesses, teardownRun, trackTree } from '../t3/teardown'
 import { buildPlan, buildSeedEntries } from './plan'
 import { sendMessage } from './send'
 import { buildSummary, matchExpectations } from './summary'
@@ -33,12 +24,11 @@ import { buildSummary, matchExpectations } from './summary'
 /** One disposable experience session. The CLI owns the exclusive CPU lease and interrupt signal. */
 export async function runApp(options: AppOptions, repoRoot: string, signal: AbortSignal) {
   const script = await loadScript(options, repoRoot)
-  const selfPids = [process.pid, process.ppid]
-  if (findWorktreeAppProcesses(await listLiveProcesses(), repoRoot, selfPids).length)
-    throw new Error('Refusing to launch while this worktree already has an Electron session')
+  await refuseIfWorktreeBusy(repoRoot)
   const run = createRun({ tool: 'app', label: 'experience', repoRoot, outDir: options.out })
   const profileDir = run.path('profile')
   mkdirSync(profileDir)
+  const session = AppSessionCore.create({ repoRoot, profileDir, signal })
   const events: MotionQaEvent[] = []
   const sendPaths: SendPath[] = []
   const missing: string[] = []
@@ -46,51 +36,32 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
   const turns: Record<string, unknown>[] = []
   details.turns = turns
   const startedAt = Date.now()
-  let app: LaunchedApp | undefined
-  let stage: CdpClient | undefined
-  let browserUrl: string | undefined
-  let bridge: MotionQaBridgeClient | undefined
-  let tracked: OwnedProcess[] = []
   let server: ReplayServer | undefined
-  let collector: PageErrorCollector | undefined
   let screenshot: string | null = null
   let failed = false
   let exitCode = 1
-  let rejectInterrupted: (reason: unknown) => void = () => {}
-  const interrupted = new Promise<never>((_, reject) => {
-    rejectInterrupted = reject
-  })
-  const onAbort = () => rejectInterrupted(signal.reason ?? new Error('interrupted'))
-  signal.addEventListener('abort', onAbort, { once: true })
-  if (signal.aborted)
-    onAbort()
-  // A command can fail before reaching the first abortable wait.
-  void interrupted.catch(() => {})
-  const bounded = <T>(work: Promise<T>): Promise<T> => Promise.race([work, interrupted])
+  const bounded = <T>(work: Promise<T>): Promise<T> => session.bounded(work)
   const json = (name: string, value: unknown) => writeFileSync(run.path(name), `${JSON.stringify(value, null, 2)}\n`)
 
   try {
     server = new ReplayServer({ script, log: run.path('requests.jsonl') })
     const baseURL = await server.listen()
     details.replay = { baseURL, source: script.source, entries: script.entries.length }
-    signal.throwIfAborted()
-    app = await launchStageTamagotchi({ repoRoot, profileDir, logFile: run.path('app.log'), list: listLiveProcesses, env: { AIRI_STAGE_HOST: 'window' } })
-    run.recordProcess({ rootPid: app.root.pid, created: app.root.created, commandLine: app.root.commandLine })
-    const connected = await bounded(connectStage(app))
-    stage = connected.stage
-    browserUrl = connected.browserUrl
-    tracked = trackTree(await listLiveProcesses(), app.root)
-    collector = new PageErrorCollector(app.port)
-    await bounded(collector.start())
-    details.launch = { env: app.env, targetUrl: connected.targetUrl }
-    const page = stage
-    await bounded(page.evaluate(`(() => {
-      for (const [key, value] of Object.entries(${JSON.stringify(buildSeedEntries(baseURL))}))
-        localStorage.setItem(key, value)
-    })()`, options.timeoutMs))
-    await bounded(completeOnboarding(page))
-    bridge = new MotionQaBridgeClient(page)
-    details.initialState = await bounded(failOnExit(app, 'the seeded bridge', bridge.waitForBridge({ timeoutMs: 300_000 })))
+    const started = await session.start({
+      launch: { logFile: run.path('app.log'), env: { AIRI_STAGE_HOST: 'window' } },
+      onLaunched: launched => run.recordProcess({ rootPid: launched.root.pid, created: launched.root.created, commandLine: launched.root.commandLine }),
+      collectPageErrors: true,
+      beforeOnboarding: async ({ stage, app, targetUrl }) => {
+        details.launch = { env: app.env, targetUrl }
+        await stage.evaluate(`(() => {
+          for (const [key, value] of Object.entries(${JSON.stringify(buildSeedEntries(baseURL))}))
+            localStorage.setItem(key, value)
+        })()`, options.timeoutMs)
+      },
+      bridge: { step: 'the seeded bridge', timeoutMs: 300_000 },
+    })
+    const { app, stage: page } = started
+    details.initialState = started.initialState
 
     let modelInput = options.model
     const extension = extname(modelInput).toLowerCase()
@@ -98,8 +69,8 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
       modelInput = run.path('model.zip')
       await bounded(zipRig(statSync(options.model).isDirectory() ? options.model : dirname(options.model), modelInput))
     }
-    details.import = await bounded(failOnExit(app, 'model import', importRig(page, bridge, modelInput, 600_000, options.kind)))
-    const client = bridge
+    details.import = await session.whileRunning('model import', importRig(page, started.bridge, modelInput, 600_000, options.kind))
+    const client = started.bridge
     for (const text of options.say) {
       signal.throwIfAborted()
       const before = await bounded(client.call('events', {}, options.timeoutMs))
@@ -119,7 +90,7 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
           const remaining = options.timeoutMs - (Date.now() - turnStart)
           if (remaining <= 0)
             throw new Error(`Expected events timed out: ${pending.join(', ')}`)
-          const result = await bounded(failOnExit(app, 'expected events', client.call('events', { sinceSeq: lastSeq }, Math.min(remaining, 10_000))))
+          const result = await session.whileRunning('expected events', client.call('events', { sinceSeq: lastSeq }, Math.min(remaining, 10_000)))
           if (result.events.length && result.events[0].seq > lastSeq + 1)
             throw new Error('Event log overflowed between polls; diagnostics are incomplete')
           lastSeq = result.lastSeq
@@ -152,9 +123,10 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
     exitCode = signal.aborted ? 130 : 1
     details.error = errorMessageFrom(error) ?? 'unknown run failure'
     // Failure evidence is best effort; neither diagnostics nor screenshots may prevent teardown.
+    const stage = session.stage
     if (stage && !signal.aborted) {
       try {
-        details.state = await bridge?.call('state', undefined, 5_000)
+        details.state = await session.bridge?.call('state', undefined, 5_000)
         await captureStagePng(stage, run.path('stage.png'), 5_000)
         screenshot = run.path('stage.png')
       }
@@ -164,18 +136,8 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
     }
   }
   finally {
-    signal.removeEventListener('abort', onAbort)
-    await collector?.stop()
-    const browser = browserUrl
     try {
-      const teardown = await teardownRun({ repoRoot, profileDir, root: app?.root, tracked, selfPids }, {
-        list: listLiveProcesses,
-        kill: killTree,
-        closeBrowser: browser ? () => closeBrowser(browser) : undefined,
-        waitRootExit: app?.waitExit,
-        removeDir: path => rmSync(path, { recursive: true, force: true }),
-        sleep: async (ms) => { await setTimeout(ms) },
-      }, [run.path('model.zip')])
+      const teardown = await session.teardown({ extraPaths: [run.path('model.zip')] })
       details.teardown = teardown
       if (!teardown.ok) {
         failed = true
@@ -187,7 +149,6 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
       exitCode = exitCode === 0 ? 1 : exitCode
       details.teardownError = errorMessageFrom(error)
     }
-    stage?.close()
     try {
       await server?.close()
     }
@@ -197,6 +158,7 @@ export async function runApp(options: AppOptions, repoRoot: string, signal: Abor
       details.serverCloseError = errorMessageFrom(error)
     }
   }
+  const collector = session.collector
   details.events = events
   details.sendPaths = sendPaths
   details.pageErrors = collector?.errors ?? []
