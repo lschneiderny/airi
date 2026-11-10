@@ -27,11 +27,18 @@ export interface CameraCalibrationInput {
   readonly distanceInModelHeights?: number
   /** Eye height in model heights; null selects the symmetric frustum. Default 0.5. */
   readonly eyeHeightInModelHeights?: number | null
+  /**
+   * World x of the work area's left edge, in model units. Default 0. A row of displays gives each display its own
+   * origin on one shared x axis, so a root x keeps its meaning when the camera moves to another display.
+   */
+  readonly originX?: number
 }
 
 export interface CameraCalibration {
   /** World units per DIP on the z = 0 plane. */
   readonly unitsPerDip: number
+  /** World x of the work area's left edge: DIP column 0 on the z = 0 plane. */
+  readonly originX: number
   readonly position: Vec3
   /** The floor edge row in DIP that the z = 0, y = 0 line projects to. */
   readonly floorRowDip: number

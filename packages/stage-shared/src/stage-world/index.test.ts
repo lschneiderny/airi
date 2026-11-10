@@ -147,3 +147,56 @@ describe('ground line and home', () => {
     expect(worldToHomeDipX(large, homeDipToWorldX(large, 550, 1400))).toBeCloseTo(550, 9)
   })
 })
+
+describe('calibration origin', () => {
+  const originX = 137.25
+  const shifted = calibrateCamera({ ...base, originX })
+
+  it('defaults to an origin of zero', () => {
+    expect(offAxis.originX).toBe(0)
+  })
+
+  it('moves the eye and keeps the frustum', () => {
+    expect(shifted.position.x).toBeCloseTo(offAxis.position.x + originX, 9)
+    expect(shifted.position.y).toBe(offAxis.position.y)
+    expect(shifted.frustum).toEqual(offAxis.frustum)
+    expect(shifted.unitsPerDip).toBe(offAxis.unitsPerDip)
+  })
+
+  it('projects a world point to the column its offset from the origin gives', () => {
+    for (const z of [0, -4, 6]) {
+      const plain = worldToDip(offAxis, { x: 17.5, y: 9, z })
+      const moved = worldToDip(shifted, { x: 17.5 + originX, y: 9, z })
+      expect(moved.x).toBeCloseTo(plain.x, 9)
+      expect(moved.y).toBeCloseTo(plain.y, 9)
+    }
+    expect(worldToDip(shifted, { x: originX, y: 0, z: 0 }).x).toBeCloseTo(0, 9)
+  })
+
+  it('round-trips worldToDip(dipToPlane(p, z)) with an origin', () => {
+    const random = seededRandom(11)
+    for (let i = 0; i < 20; i++) {
+      const point = { x: random() * 2560, y: random() * 1400 }
+      const z = random() * 20 - 10
+      const back = worldToDip(shifted, dipToPlane(shifted, point, z))
+      expect(back.x).toBeCloseTo(point.x, 9)
+      expect(back.y).toBeCloseTo(point.y, 9)
+    }
+  })
+
+  it('starts the ground line and the home at the origin', () => {
+    const ground = groundLineOf(workArea, shifted, 1.5)
+    expect(ground.minX).toBeCloseTo(originX + 1.5, 9)
+    expect(ground.maxX).toBeCloseTo(originX + 2560 / 30 - 1.5, 9)
+    const x = homeDipToWorldX(shifted, 550, 1400)
+    expect(x).toBeCloseTo(originX + 550 / 30, 9)
+    expect(worldToHomeDipX(shifted, x)).toBeCloseTo(550, 9)
+  })
+
+  it('collapses a too-narrow ground line to the center of its own work area', () => {
+    const narrow = { width: 30, height: 1400 }
+    const ground = groundLineOf(narrow, calibrateCamera({ ...base, workArea: narrow, originX }), 5)
+    expect(ground.minX).toBeCloseTo(originX + 0.5, 9)
+    expect(ground.maxX).toBeCloseTo(originX + 0.5, 9)
+  })
+})

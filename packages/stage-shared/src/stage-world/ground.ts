@@ -2,14 +2,17 @@ import type { CameraCalibration, GroundLine, WorkAreaSize } from './types'
 
 import { dipToPlane, worldToDip } from './camera'
 
-/** Returns the reachable root x range in model units; a work area narrower than the character collapses to its center. */
+/**
+ * Returns the reachable root x range in model units, from the calibration's origin; a work area narrower than the
+ * character collapses to its center.
+ */
 export function groundLineOf(workArea: WorkAreaSize, calibration: CameraCalibration, halfWidthUnits: number): GroundLine {
   const width = calibration.unitsPerDip * workArea.width
-  const minX = halfWidthUnits
-  const maxX = width - halfWidthUnits
+  const minX = calibration.originX + halfWidthUnits
+  const maxX = calibration.originX + width - halfWidthUnits
 
   if (minX > maxX)
-    return { minX: width / 2, maxX: width / 2 }
+    return { minX: calibration.originX + width / 2, maxX: calibration.originX + width / 2 }
 
   return { minX, maxX }
 }
