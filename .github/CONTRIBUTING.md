@@ -108,38 +108,12 @@ The Discord, Telegram, Minecraft, and other integrations in `integrations/` are 
 
 ## Check your changes
 
-Run this after each change:
+Use the [testing and QA guide](../docs/ai/testing.md) to choose checks for your change. It defines the inner loop, incremental commit loop, full branch gate, live acceptance, and checks required for each change type.
 
-```shell
-pnpm verify
-```
-
-`pnpm verify` typechecks the changed packages and their dependents, lints the changed files, and runs the related tests. It skips any step that already passed on the same working tree. If a root config file changed, it typechecks every package.
-
-Narrower and broader commands:
-
-```shell
-pnpm -F <package-name> typecheck
-pnpm -F <package-name> exec vitest run <path>
-pnpm lint:fix        # ESLint also formats
-pnpm typecheck       # whole repository
-pnpm test:run        # whole repository
-```
-
-Build, typecheck, and QA scripts draw from a shared CPU slot budget. If a command waits, run `pnpm slots status` to see which jobs hold the budget.
-
-### Motion QA
-
-Live2D motion and emotion changes have their own gates:
-
-```shell
-pnpm qa:doctor   # preflight
-pnpm qa:test     # tests, reporting only new failures
-pnpm qa:motion   # motion gates
-pnpm qa:report   # HTML review report
-```
-
-The levels and gates are described in [`docs/ai/adr/2026-10-20-motion-qa-levels.md`](../docs/ai/adr/2026-10-20-motion-qa-levels.md).
+The [dev-tools README](../scripts/dev-tools/README.md) documents verify,
+branch-gate, and QA display command mechanics. Package READMEs document
+their test commands and local requirements. The [motion QA levels ADR](../docs/ai/adr/2026-10-20-motion-qa-levels.md)
+describes the evidence each motion level provides.
 
 ## Parallel work in worktrees
 
