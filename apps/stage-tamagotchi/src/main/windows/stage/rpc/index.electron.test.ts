@@ -10,7 +10,7 @@ import { env, platform, versions } from 'node:process'
 import { createContext, defineInvoke, defineInvokeEventa } from '@moeru/eventa'
 import { describe, expect, it, vi } from 'vitest'
 
-import { electronStageSetActiveRenderer, electronStageSetExperimental, electronStageSetMode, electronStageStateChanged } from '../../../../shared/eventa'
+import { electronStageMoveToDisplay, electronStageSetActiveRenderer, electronStageSetExperimental, electronStageSetMode, electronStageStateChanged } from '../../../../shared/eventa'
 import { defaultStageConfig } from '../config'
 import { isLinuxStageEligible, selectHostMode } from '../mode'
 import { createStageStateBroadcast } from '../state-broadcast'
@@ -35,6 +35,8 @@ class FakeWindow extends EventEmitter {
 
 const builtIn = { id: 1, bounds: { x: 0, y: 0, width: 1440, height: 900 }, workArea: { x: 0, y: 25, width: 1440, height: 801 }, scaleFactor: 2 } as Display
 const screen = { getAllDisplays: () => [builtIn], getPrimaryDisplay: () => builtIn }
+
+const external = { id: 7, bounds: { x: 1440, y: 0, width: 2560, height: 1440 }, workArea: { x: 1440, y: 0, width: 2560, height: 1415 }, scaleFactor: 1 } as Display
 
 function setup(options: { running?: 'window' | 'desktop', onLeaveMmd?: () => void } = {}) {
   let config: StageConfig = { ...defaultStageConfig, mode: 'desktop', activeRenderer: 'mmd' }
@@ -135,5 +137,65 @@ describe('leaving MMD while the desktop stage runs', () => {
     const desktop = setup({ onLeaveMmd: desktopLeave })
     await defineInvoke(desktop.stageContext, electronStageSetActiveRenderer)('mmd')
     expect(desktopLeave).not.toHaveBeenCalled()
+  })
+})
+
+describe('electronStageMoveToDisplay', () => {
+  function setupStage(arrives: boolean) {
+    const broadcast = createStageStateBroadcast()
+    const stageWindow = new FakeWindow()
+    const settingsWindow = new FakeWindow()
+    let stageDisplayId = '1'
+    const shared = {
+      config: { get: () => defaultStageConfig, update: () => {} },
+      defaultConfig: defaultStageConfig,
+      screen: { getAllDisplays: () => [builtIn, external], getPrimaryDisplay: () => builtIn },
+      running: 'desktop' as const,
+      relaunch: () => {},
+      broadcast,
+      stageDisplayId: () => stageDisplayId,
+    }
+    setupStageWindowInvokes({
+      ...shared,
+      window: stageWindow as never,
+      moveToDisplay: async (displayId) => {
+        if (arrives)
+          stageDisplayId = displayId
+        return arrives
+      },
+    })
+    setupStageWindowInvokes({ ...shared, window: settingsWindow as never })
+    const settingsContext = contexts.get(settingsWindow)!
+    const received: StageHostState[] = []
+    settingsContext.on(electronStageStateChanged, (event: { body?: StageHostState }) => {
+      if (event.body)
+        received.push(event.body)
+    })
+    return { stageContext: contexts.get(stageWindow)!, settingsContext, received }
+  }
+
+  it('returns the new stage display after a confirmed move, keeps the home display, and tells the other windows', async () => {
+    const { stageContext, received } = setupStage(true)
+
+    const state = await defineInvoke(stageContext, electronStageMoveToDisplay)('7')
+
+    expect(state).toMatchObject({ stageDisplayId: '7', homeDisplayId: '1' })
+    expect(received.map(next => next.stageDisplayId)).toEqual(['7'])
+  })
+
+  it('returns the unchanged stage display when the move was not confirmed', async () => {
+    const { stageContext } = setupStage(false)
+
+    const state = await defineInvoke(stageContext, electronStageMoveToDisplay)('7')
+
+    expect(state.stageDisplayId).toBe('1')
+  })
+
+  it('rejects on a window that is not the desktop stage, and a payload that is not a display id', async () => {
+    const { stageContext, settingsContext } = setupStage(true)
+
+    await expect(defineInvoke(settingsContext, electronStageMoveToDisplay)('7')).rejects.toThrow('not the desktop stage')
+    const looseMove = defineInvokeEventa<StageHostState, unknown>('eventa:invoke:electron:windows:stage:move-to-display')
+    await expect(defineInvoke(stageContext, looseMove)(7)).rejects.toThrow('expected a display id')
   })
 })

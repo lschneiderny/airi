@@ -14,6 +14,7 @@ import {
   electronStageCharacterPlacementChanged,
   electronStageGetCharacterPlacement,
   electronStageGetState,
+  electronStageMoveToDisplay,
   electronStageRelaunch,
   electronStageSetActiveRenderer,
   electronStageSetExperimental,
@@ -57,6 +58,9 @@ export interface StageWindowInvokes {
  * - `config` was set up, and `running` is the host this launch built
  * - `broadcast` is shared by every window of this launch, so a config change made here reaches the other windows
  * - `applyHomeDisplay` re-bounds the desktop stage window when one exists; it runs after the home display changed
+ * - `stageDisplayId` reads the display the desktop stage window covers; every window of a desktop stage launch gets it,
+ *   so they all report the same state
+ * - `moveToDisplay` moves the desktop stage window to another display; only the desktop stage window gets it
  * - `onLeaveMmd` runs when this window reports that the stage model left MMD while the desktop stage runs; the host stays
  *   until the next launch
  *
@@ -72,6 +76,8 @@ export function setupStageWindowInvokes(params: {
   relaunch: () => void
   broadcast: StageStateBroadcast
   applyHomeDisplay?: () => void
+  stageDisplayId?: () => string | undefined
+  moveToDisplay?: (displayId: string) => Promise<boolean>
   onLeaveMmd?: () => void
 }): StageWindowInvokes {
   const { context } = createWindowContext(params.window)
@@ -85,6 +91,7 @@ export function setupStageWindowInvokes(params: {
     return buildStageHostState({
       config,
       displays: readStageDisplays(params.screen),
+      stageDisplayId: params.stageDisplayId?.(),
       running: params.running,
       // The same inputs as the launch in `main/index.ts`, so `next` predicts what a relaunch builds.
       next: selectHostMode(config, platform, env, { development: import.meta.env.DEV }, isLinuxStageEligible(env, versions.electron)),
@@ -111,6 +118,16 @@ export function setupStageWindowInvokes(params: {
     const state = updateConfig(withStageHomeDisplay(getConfig(), readStageDisplays(params.screen), payload))
     params.applyHomeDisplay?.()
     return state
+  })
+  defineInvokeHandler(context, electronStageMoveToDisplay, async (payload) => {
+    if (!params.moveToDisplay)
+      throw new Error('electronStageMoveToDisplay: this window is not the desktop stage')
+    if (typeof payload !== 'string')
+      throw new TypeError(`electronStageMoveToDisplay: expected a display id, got ${JSON.stringify(payload)}`)
+    // Confirmed or not, every window hears where the stage window is now.
+    await params.moveToDisplay(payload)
+    params.broadcast.emitAll()
+    return getState()
   })
   defineInvokeHandler(context, electronStageSetExperimental, (payload) => {
     const parsed = safeParse(boolean(), payload)

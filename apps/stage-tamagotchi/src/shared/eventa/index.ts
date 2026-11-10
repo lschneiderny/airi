@@ -253,6 +253,12 @@ export interface StageHostState {
   /** The display the character lives on: the saved one when it is connected, otherwise the primary display. */
   homeDisplayId: string
   /**
+   * The display the desktop stage window is confirmed to cover. It is the home display at launch and after every
+   * display change, and another display after the character walked there (`electronStageMoveToDisplay`). Runtime
+   * state, never persisted. Without a desktop stage window it equals `homeDisplayId`.
+   */
+  stageDisplayId: string
+  /**
    * The home of each connected display, as a screen x in DIP on the floor row. `null` when the display has no saved
    * home, or when its size or scale changed since the home was saved; the renderer then computes the default home and
    * saves it with `electronStageSetHome`.
@@ -283,6 +289,16 @@ export const electronStageSetHome = defineInvokeEventa<StageHostState, { display
  * display is kept. Rejects for a display that is not connected.
  */
 export const electronStageSetHomeDisplay = defineInvokeEventa<StageHostState, string>('eventa:invoke:electron:windows:stage:set-home-display')
+/**
+ * Moves the desktop stage window to a connected display's work area, for the character walking there. The home display
+ * is unchanged.
+ *
+ * Resolves once the window's rectangle is read back on that work area, or after 1.5 s without it, when the window is
+ * placed on the display it came from. `stageDisplayId` of the returned state tells the two apart: it equals the
+ * requested display only after a confirmed move. Rejects for a display that is not connected, and on a window that is
+ * not the desktop stage.
+ */
+export const electronStageMoveToDisplay = defineInvokeEventa<StageHostState, string>('eventa:invoke:electron:windows:stage:move-to-display')
 /** Persists the Experimental 3D stage setting. It applies at the next launch (see `electronStageRelaunch`). */
 export const electronStageSetExperimental = defineInvokeEventa<StageHostState, boolean>('eventa:invoke:electron:windows:stage:set-experimental')
 /** Persists the host mode. It applies at the next launch (see `electronStageRelaunch`). */

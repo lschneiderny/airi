@@ -87,10 +87,18 @@ describe('buildStageHostState', () => {
       activeRenderer: null,
       displays: [builtIn, external],
       homeDisplayId: '1',
+      stageDisplayId: '1',
       homes: { 1: null, 7: null },
       running: 'desktop',
       next: 'window',
     })
+  })
+
+  it('reports the display the stage window covers, and the home display when that display is gone', () => {
+    const base = { config: defaultStageConfig, running: 'desktop', next: 'desktop' } as const
+
+    expect(buildStageHostState({ ...base, displays: [builtIn, external], stageDisplayId: '7' })).toMatchObject({ homeDisplayId: '1', stageDisplayId: '7' })
+    expect(buildStageHostState({ ...base, displays: [builtIn], stageDisplayId: '7' }).stageDisplayId).toBe('1')
   })
 })
 

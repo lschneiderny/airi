@@ -414,7 +414,7 @@ app.whenReady().then(async () => {
     build: async ({ dependsOn }) => {
       settingsWindowManager = setupSettingsWindowReusableFunc({
         ...dependsOn,
-        stage: { config: stageConfig, running: hostMode, broadcast: stageStateBroadcast, applyHomeDisplay: () => stageHost?.applyHomeDisplay() },
+        stage: { config: stageConfig, running: hostMode, broadcast: stageStateBroadcast, applyHomeDisplay: () => stageHost?.applyHomeDisplay(), stageDisplayId: () => stageHost?.stageDisplayId() },
         getMainWindow: () => userFacingMainWindow,
         onWindowCreated: (window) => {
           dependsOn.goNetwork.bindWindow(window)

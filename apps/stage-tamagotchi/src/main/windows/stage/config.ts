@@ -93,19 +93,27 @@ export function resolveHome(display: StageDisplayInfo, config: StageConfig): { x
   return { xDip: saved.xDip }
 }
 
-/** Builds the state `electronStageGetState` returns, with a `homes` entry for every connected display. */
+/**
+ * Builds the state `electronStageGetState` returns, with a `homes` entry for every connected display.
+ *
+ * `stageDisplayId` is the display the desktop stage window covers. Without one, or when it names a display that is not
+ * connected, the state reports the home display.
+ */
 export function buildStageHostState(params: {
   config: StageConfig
   displays: readonly StageDisplayInfo[]
   running: StageHostMode
   next: StageHostMode
+  stageDisplayId?: string
 }): StageHostState {
+  const homeDisplayId = resolveHomeDisplay(params.displays, params.config).id
   return {
     experimental: params.config.experimental,
     mode: params.config.mode,
     activeRenderer: params.config.activeRenderer,
     displays: [...params.displays],
-    homeDisplayId: resolveHomeDisplay(params.displays, params.config).id,
+    homeDisplayId,
+    stageDisplayId: params.displays.some(display => display.id === params.stageDisplayId) ? params.stageDisplayId! : homeDisplayId,
     homes: Object.fromEntries(params.displays.map(display => [display.id, resolveHome(display, params.config)])),
     running: params.running,
     next: params.next,

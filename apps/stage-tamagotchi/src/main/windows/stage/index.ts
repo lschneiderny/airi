@@ -13,14 +13,14 @@ import { is } from '@electron-toolkit/utils'
 import { errorMessageFrom } from '@moeru/std'
 import { initScreenCaptureForWindow } from '@proj-airi/electron-screen-capture/main'
 import { HostReasons } from '@proj-airi/stage-shared/host-capabilities'
-import { app, dialog, BrowserWindow as ElectronBrowserWindow, screen } from 'electron'
+import { app, dialog, BrowserWindow as ElectronBrowserWindow, powerMonitor, screen } from 'electron'
 
 import icon from '../../../../resources/icon.png?asset'
 
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { createWindowContext } from '../../libs/electron/window-context'
-import { onCompositorCursor, readDisplays, readPrimaryDisplay, readWindowRect } from '../../services/electron/coordinates'
+import { onCompositorCursor, onCompositorWindowRect, readDisplays, readPrimaryDisplay, readWindowRect } from '../../services/electron/coordinates'
 import { getCurrentHostCapabilities, onHostCapabilitiesChange } from '../../services/electron/host-capabilities'
 import { hideOnClose } from '../main/hide-on-close'
 import { mainWindowQuery } from '../main/query'
@@ -29,7 +29,7 @@ import { protectPrivilegedWindowNavigation } from '../shared'
 import { placeWindow } from '../shared/placement'
 import { watchStageClickThrough } from './click-through-fallback'
 import { defaultStageConfig, resolveHomeDisplay } from './config'
-import { bindStageWindowToHomeDisplay, readStageDisplays } from './displays'
+import { bindStageWindowToDisplay, readStageDisplays } from './displays'
 import { markStageWindow } from './identity'
 import { offerClassicWindowRelaunch } from './leave-mmd-notice'
 import { setupStageWindowInvokes } from './rpc/index.electron'
@@ -44,6 +44,8 @@ export interface StageWindowHost extends Pick<StageWindowInvokes, 'getCharacterP
   window: BrowserWindow
   /** Moves the window to the home display's work area after the saved home display changed. */
   applyHomeDisplay: () => void
+  /** The display the window is confirmed to cover: the home display, or the one the character walked to. */
+  stageDisplayId: () => string
 }
 
 export function relaunchApp(): void {
@@ -64,6 +66,7 @@ export function setupWindowStageInvokes(params: {
   running: StageHostMode
   broadcast: StageStateBroadcast
   applyHomeDisplay?: () => void
+  stageDisplayId?: () => string | undefined
 }): StageWindowInvokes {
   return setupStageWindowInvokes({
     window: params.window,
@@ -74,6 +77,7 @@ export function setupWindowStageInvokes(params: {
     relaunch: relaunchApp,
     broadcast: params.broadcast,
     applyHomeDisplay: params.applyHomeDisplay,
+    stageDisplayId: params.stageDisplayId,
   })
 }
 
@@ -89,7 +93,8 @@ export function setupWindowStageInvokes(params: {
  *
  * Returns:
  * - One transparent, click-through, always-on-top window over the home display's work area, shown without focus, and
- *   the placement the renderer publishes
+ *   the placement the renderer publishes. The window moves to another display when the character walks there
+ *   (`electronStageMoveToDisplay`)
  */
 export async function setupStageWindow(
   params: Parameters<typeof setupMainWindow>[0] & { config: StageConfigStore, broadcast: StageStateBroadcast, isQuitting: () => boolean },
@@ -161,6 +166,32 @@ export async function setupStageWindow(
     globalShortcut: params.globalShortcut,
   })
 
+  const display = bindStageWindowToDisplay({
+    screen,
+    displays: stageDisplays,
+    window,
+    readRect: () => readWindowRect(window),
+    place: bounds => placeWindow(window, bounds),
+    onRectChange(listener) {
+      window.on('move', listener)
+      window.on('resize', listener)
+      // Electron emits neither for a native Wayland window; the compositor reports its rectangle there.
+      const stopCompositor = onCompositorWindowRect(window, listener)
+      return () => {
+        window.off('move', listener)
+        window.off('resize', listener)
+        stopCompositor()
+      }
+    },
+    getConfig,
+    onDisplaysChanged: params.broadcast.emitAll,
+    // The page ignores the pointer while she crosses and takes it again over her pixels on the new display.
+    onMoved: () => window.setIgnoreMouseEvents(true, { forward: true }),
+  })
+  // A compositor can rearrange windows across a suspend without a display event.
+  powerMonitor.on('resume', display.recheck)
+  onWindowClosed(window, () => powerMonitor.off('resume', display.recheck))
+
   const invokes = setupStageWindowInvokes({
     window,
     config: params.config,
@@ -169,19 +200,12 @@ export async function setupStageWindow(
     running: 'desktop',
     relaunch: relaunchApp,
     broadcast: params.broadcast,
+    stageDisplayId: display.stageDisplayId,
+    moveToDisplay: display.moveToDisplay,
     onLeaveMmd: () => {
       offerClassicWindowRelaunch({ window, dialog, i18n: params.i18n, relaunch: relaunchApp, notice: 'leave-mmd-notice' })
         .catch(error => console.error('[stage] Failed to show the relaunch notice:', errorMessageFrom(error)))
     },
-  })
-  const { applyHomeBounds } = bindStageWindowToHomeDisplay({
-    screen,
-    displays: stageDisplays,
-    window,
-    readRect: () => readWindowRect(window),
-    place: bounds => placeWindow(window, bounds),
-    getConfig,
-    onDisplaysChanged: params.broadcast.emitAll,
   })
 
   await load(window, withHashRoute(baseUrl(resolve(getElectronMainDirname(), '..', 'renderer')), '/stage', {
@@ -198,7 +222,8 @@ export async function setupStageWindow(
 
   return {
     window,
-    applyHomeDisplay: applyHomeBounds,
+    applyHomeDisplay: display.applyHomeBounds,
+    stageDisplayId: display.stageDisplayId,
     getCharacterPlacement: invokes.getCharacterPlacement,
     onCharacterPlacementChange: invokes.onCharacterPlacementChange,
   }

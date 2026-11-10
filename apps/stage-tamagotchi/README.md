@@ -35,6 +35,8 @@ An MMD character can live on a full-screen desktop stage instead of the classic 
 4. A stage model that is not MMD, or that has never been reported, gets the classic window.
 5. Otherwise the saved stage mode applies.
 
+`bindStageWindowToDisplay` (`src/main/windows/stage/displays.ts`) keeps the window on the work area of the stage display. The stage display is the display the window is confirmed to cover. It is runtime state, never persisted, and `StageHostState.stageDisplayId` reports it. It is the home display at launch and after every display change (`display-added`, `display-removed`, `display-metrics-changed`), so a display change always brings the window home. `electronStageMoveToDisplay` moves the window to another connected display without changing the home display: main places the window, waits until its rectangle is read back on the new work area, and re-applies click-through. After 1.5 s without that rectangle (`stageMoveTimeoutMs`) main places the window on the display it came from, and the returned state keeps the old `stageDisplayId`. On `powerMonitor` `resume`, main places the window on the stage display again when its rectangle differs.
+
 The setting gates only this host: the transparent full-screen window, click-through, drag, locomotion, home persistence, and floating-chat anchoring. MMD clips, curation, and the MMD body work in the classic window whether it is on or off.
 
 Whichever window is built becomes `userFacingMainWindow`. The desktop stage must never be moved, resized, or focused, so every consumer checks `isStageWindow` (`src/main/windows/stage/identity.ts`):
