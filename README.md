@@ -1,6 +1,6 @@
 # AIRI (personal fork)
 
-This is my personal fork of [Project AIRI](https://github.com/moeru-ai/airi). I am shaping it for one use case: trapping a vtuber in the corner of my screen. A local or direct-API language model drives the character.
+This is my personal fork of [Project AIRI](https://github.com/moeru-ai/airi). I am shaping it for one use case: trapping a vtuber in the corner of my screen.
 
 > [!NOTE]
 > This fork is not intended for other users. Features from upstream may be missing or broken here. For the maintained project, releases, and community, use [moeru-ai/airi](https://github.com/moeru-ai/airi).
