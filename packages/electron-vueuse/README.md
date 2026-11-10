@@ -28,6 +28,10 @@ The first `useElectronRelativeMouse()` call also starts one `pointermove` report
 It sends `reportPointerSample` at most every 250 ms, and only while the snapshot's cursor
 is verifying or live on a Linux desktop backend, so main can check the compositor cursor
 against this window.
+On XWayland, the first move after a window entry (`pointerover` with no
+`relatedTarget`) is excluded before throttling: Chromium can replay its cached
+position there. Subsequent moves remain evidence, including repeated positions.
+Native Wayland and X11 keep every eligible sample.
 
 `useElectronMouseInElement()` uses DOM pointer events for `isOutside` hit-testing
 while the trusted Electron cursor or the first window bounds are unavailable. This fallback supports UI
