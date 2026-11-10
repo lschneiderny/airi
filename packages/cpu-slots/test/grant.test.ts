@@ -15,7 +15,45 @@ describe('decide', () => {
 
   it('grants only the lowest sequence even when the listing is unordered', () => {
     expect(decide({ leases: [], tickets: [ticket(3), ticket(1), ticket(2)] }, 12, 0))
-      .toEqual({ kind: 'grant', ticketSeq: 1, slots: 6 })
+      .toEqual({ kind: 'grant', ticketSeq: 1, slots: 4 })
+  })
+
+  it('shares twelve free slots equally across three waiting tests in turn', () => {
+    const state: BrokerState = { leases: [], tickets: [ticket(1), ticket(2), ticket(3)] }
+    for (const ticketSeq of [1, 2, 3]) {
+      const decision = decide(state, 12, 0)
+      expect(decision).toEqual({ kind: 'grant', ticketSeq, slots: 4 })
+      if (decision.kind !== 'grant')
+        throw new Error('Expected a grant')
+      state.leases.push({ slots: decision.slots, exclusive: false })
+      state.tickets = state.tickets.filter(ticket => ticket.seq !== decision.ticketSeq)
+    }
+  })
+
+  it.each([
+    { held: 1, cpuClass: 'test', expected: 3 },
+    { held: 9, cpuClass: 'test', expected: 2 },
+    { held: 0, cpuClass: 'lint', expected: 1 },
+    { held: 0, cpuClass: 'live', expected: 4 },
+  ] as const)('bounds the share for $cpuClass with $held slots held', ({ held, cpuClass, expected }) => {
+    expect(decide({
+      leases: [{ slots: held, exclusive: false }],
+      tickets: [ticket(1, cpuClass), ticket(2), ticket(3), ticket(4, 'exclusive')],
+    }, 12, 0)).toEqual({ kind: 'grant', ticketSeq: 1, slots: expected })
+  })
+
+  it('counts a blocked shared head when sizing a backfill grant', () => {
+    expect(decide({
+      leases: [{ slots: 4, exclusive: false }],
+      tickets: [{ ...ticket(1), min: 9, max: 9 }, ticket(2), ticket(3)],
+    }, 12, 0)).toEqual({ kind: 'grant', ticketSeq: 2, slots: 2 })
+  })
+
+  it('splits backfill slots without counting exclusive waiters of any age', () => {
+    expect(decide({
+      leases: [{ slots: 6, exclusive: false }],
+      tickets: [ticket(1, 'exclusive'), ticket(2), ticket(3, 'exclusive'), ticket(4)],
+    }, 12, 120_000)).toEqual({ kind: 'grant', ticketSeq: 2, slots: 3 })
   })
 
   it('does not let a smaller later request bypass an aged non-exclusive head', () => {

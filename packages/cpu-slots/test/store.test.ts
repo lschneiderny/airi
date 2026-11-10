@@ -890,10 +890,11 @@ describe('tickets, leases, and heartbeat', () => {
     const store = createStore()
     const a = store.enqueue(request)
     const b = store.enqueue(request)
-    expect(store.grant(b.seq, 6, b.id)).toBeUndefined()
+    expect(store.grant(b.seq, 3, b.id)).toBeUndefined()
     expect(store.grant(a.seq, 5, a.id)).toBeUndefined()
-    expect(store.grant(a.seq, 6, a.id)?.slots).toBe(6)
+    expect(store.grant(a.seq, 3, a.id)?.slots).toBe(3)
     expect(store.grant(b.seq, 6, b.id)).toBeUndefined()
+    expect(store.grant(b.seq, 3, b.id)?.slots).toBe(3)
   })
 
   it('serializes exclusive requests with finite clamped bounds', () => {
@@ -907,10 +908,10 @@ describe('tickets, leases, and heartbeat', () => {
 
 describe('write then verify', () => {
   it.each([
-    ['A17 shared/shared', 'test', 'test'],
-    ['A18 exclusive/shared', 'exclusive', 'test'],
-    ['A18 shared/exclusive', 'test', 'exclusive'],
-  ] as const)('%s never keeps conflicting grants after simulated lock failure', (_name, firstClass, secondClass) => {
+    ['A17 shared/shared', 'test', 'test', 3],
+    ['A18 exclusive/shared', 'exclusive', 'test', 6],
+    ['A18 shared/exclusive', 'test', 'exclusive', 6],
+  ] as const)('%s never keeps conflicting grants after simulated lock failure', (_name, firstClass, secondClass, firstSlots) => {
     let interleaved = false
     const second = createStore(20)
     const a = createStore(10).enqueue({ ...request, class: firstClass })
@@ -933,7 +934,7 @@ describe('write then verify', () => {
         nodeFs.write(join(lock, 'owner.json'), saved)
       },
     })
-    expect(first.grant(a.seq, 6, a.id)).toBeUndefined()
+    expect(first.grant(a.seq, firstSlots, a.id)).toBeUndefined()
     expect(interleaved).toBe(true)
     const state = first.snapshot()
     expect(state.leases).toHaveLength(1)
