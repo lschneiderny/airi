@@ -25,6 +25,7 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'airi-cpu-acquire-'))
   leases = []
   vi.stubEnv('AIRI_CPU_SLOTS_DIR', root)
+  vi.stubEnv('AIRI_CPU_SLOTS_HISTORY_DIR', join(root, 'history'))
   vi.stubEnv('AIRI_CPU_BUDGET', '8')
   vi.stubEnv('AIRI_CPU_SLOTS', '')
   vi.stubEnv('CI', '')
@@ -50,6 +51,57 @@ async function take(options: Parameters<typeof acquire>[0] = request): Promise<L
 }
 
 describe('acquire lifecycle', () => {
+  it('records one ticket, grant and release for a reused live lease', async () => {
+    vi.useFakeTimers()
+    const first = await take({ ...request, class: 'live' })
+    const second = await take()
+    second.release()
+    first.release()
+    first.release()
+    const events = readFileSync(join(root, 'history', 'events.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line))
+    expect(events.map(event => event.event)).toEqual(['ticket', 'grant', 'release'])
+    expect(events).toEqual(events.map(event => expect.objectContaining({
+      id: first.id,
+      seq: first.seq,
+      class: 'live',
+      min: 4,
+      max: 6,
+      slots: event.event === 'ticket' ? 0 : 6,
+      budget: 8,
+      heldBefore: 0,
+      queueAhead: 0,
+      waitMs: first.waitMs,
+      heldMs: expect.any(Number),
+      lastWaitReason: null,
+      pid: process.pid,
+      cwd: request.cwd,
+      command: request.command,
+      ts: expect.any(Number),
+    })))
+  })
+
+  it('exposes the complete queue wait and records the hold duration after grant', async () => {
+    vi.useFakeTimers()
+    const store = new Store({ root, budget: 8 })
+    const ticket = store.enqueue({ ...request, class: 'exclusive' })
+    const holder = store.grant(ticket.seq, 8, ticket.id)
+    expect(holder).toBeDefined()
+    const pending = take()
+    await vi.advanceTimersByTimeAsync(1_000)
+    if (holder)
+      store.releaseIfIdle(holder)
+    await vi.advanceTimersByTimeAsync(500)
+    const lease = await pending
+    expect(lease.waitMs).toBe(1_500)
+    await vi.advanceTimersByTimeAsync(750)
+    lease.release()
+    const events = readFileSync(join(root, 'history', 'events.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line))
+    expect(events.map(event => event.event)).toEqual(['ticket', 'wait', 'grant', 'release'])
+    expect(events[1]).toMatchObject({ heldBefore: 8, queueAhead: 0, lastWaitReason: 'exclusive-held' })
+    expect(events[2]).toMatchObject({ heldBefore: 0, slots: 6, waitMs: 1_500, heldMs: 0 })
+    expect(events[3]).toMatchObject({ waitMs: 1_500, heldMs: 750 })
+  })
+
   it('a10 reuses in process, caps the class, rejects exclusive, and never changes env or signal handlers', async () => {
     const env = { ...process.env }
     const signals = [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')]
@@ -151,6 +203,9 @@ describe('acquire lifecycle', () => {
     expect(second.seq).toBeGreaterThan(first.seq)
     abort.abort(new Error('cancel-test'))
     await rejected
+    const events = readFileSync(join(root, 'history', 'events.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line))
+    expect(events.map(event => event.event)).toEqual(['ticket', 'wait', 'ticket', 'abort'])
+    expect(events.at(-1)).toMatchObject({ seq: second.seq, slots: 0, waitMs: 500, heldMs: 0, lastWaitReason: 'insufficient-slots' })
     expect(store.snapshot().tickets).toEqual([])
     holderStore.releaseIfIdle(holder)
   })
@@ -350,6 +405,9 @@ describe('audit follow-ups (2026-10-22)', () => {
       vi.setSystemTime(Date.now() + 270_000)
       await vi.advanceTimersByTimeAsync(50)
       expect(call.settled()?.error).toMatchObject({ name: 'CpuSlotsError', code: 'entry-unreadable', message: `entry-unreadable: ${owner()}` })
+      const events = readFileSync(join(root, 'history', 'events.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line))
+      expect(events.map(event => event.event)).toEqual(['wait', 'unreadable'])
+      expect(events.at(-1)).toMatchObject({ seq: null, lastWaitReason: 'entry-busy', slots: 0, heldMs: 0 })
     }
     finally {
       call.abort.abort()

@@ -37,8 +37,19 @@ A lease lasts as long as its workload. A registered process, or any descendant o
 
 - `AIRI_CPU_BUDGET`: total slots. Defaults to 12. A value must be a positive safe integer, or the broker throws `CpuSlotsError('bad-budget')`.
 - `AIRI_CPU_SLOTS_DIR`: store location. Without it, the store is `airi-cpu-slots` under `LOCALAPPDATA` on Windows, or under the temp directory elsewhere.
+- `AIRI_CPU_SLOTS_HISTORY_DIR`: persistent history directory. Defaults to `$XDG_STATE_HOME/airi-cpu-slots`, or `~/.local/state/airi-cpu-slots` when unset. On Windows it defaults to `%LOCALAPPDATA%\airi-cpu-slots\history`.
 - `AIRI_CPU_SLOTS=off`, or a `CI` environment variable: every lease is a no-op. Nothing is queued.
 - If the store path returns `EROFS`, `EACCES`, `ENOENT`, or `ENOTDIR`, the command runs unbrokered and prints one stderr line saying so.
+
+## Telemetry
+
+`pnpm slots history [--since <duration>] [--json]` summarizes retained history by policy class, including `live` even though its store wire class is `browser`. Durations take a positive integer and `ms`, `s`, `m`, `h`, or `d`, for example `--since 24h`.
+
+Each acquisition appends `ticket`, the first `wait`, `grant`, `release`, signal `abort`, and `unreadable` events to `events.jsonl` after store transactions return. Records contain `ts` (Unix milliseconds), `event`, `id`, `seq`, `class`, `min`, `max`, `slots`, `budget`, `heldBefore`, `queueAhead`, `waitMs`, `heldMs`, `lastWaitReason`, `pid`, `cwd`, and `command`. Unknown sequence and queue observations are `null`; bounds are capped at the budget. A release records the owner's release call or exit cleanup; registered surviving workloads can still hold the store lease. Inherited calls do not duplicate their parent's events. The acquired handle exposes `waitMs`.
+
+The summary counts grants, takes wait distributions from grants and hold distributions from releases, and lists the five longest granted waits with commands. Median averages the two middle values; p90 uses the nearest rank. Empty distributions are zero. `--since` filters each event by timestamp. Malformed lines are skipped and counted, including structurally invalid JSON records.
+
+History survives temporary-store cleanup. Before an append, a file exceeding 5 MiB is renamed to `events.1.jsonl`, replacing the previous segment; summaries read both segments. Concurrent rotation tolerates a missing source. Appends run outside the broker lock, and write failures print a diagnostic without changing lease accounting. Commands and working directories are stored as supplied, so avoid putting secrets in command arguments.
 
 ## Grant rule
 

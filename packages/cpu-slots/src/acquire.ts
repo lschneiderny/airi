@@ -11,6 +11,7 @@ import { parseBudget } from './budget'
 import { classes } from './classes'
 import { CpuSlotsError } from './errors'
 import { decide } from './grant'
+import { LeaseHistory } from './history'
 import { Store, StoreBusyError } from './store'
 
 export interface AcquireOptions extends StoreRequest {
@@ -22,6 +23,8 @@ export interface Lease {
   grant: number | null
   exclusive: boolean
   inherited: boolean
+  /** Milliseconds from the acquisition request to its committed grant; zero for no-op leases. */
+  waitMs?: number
   /** Ticket sequence of an acquired lease, which fixes the grant order. */
   seq?: number
   env: Partial<Record<'AIRI_CPU_LEASE' | 'AIRI_CPU_GRANT' | 'AIRI_CPU_CLASS', string>>
@@ -189,7 +192,7 @@ function registration(store: Store, lease: StoredLease, pid: number): () => void
 }
 
 function noop(): Lease {
-  return { id: '', grant: null, exclusive: false, inherited: false, env: {}, addWorkload() {}, release() {} }
+  return { id: '', grant: null, exclusive: false, inherited: false, waitMs: 0, env: {}, addWorkload() {}, release() {} }
 }
 
 function reuse(lease: Lease, request: AcquireOptions): Lease {
@@ -202,7 +205,7 @@ function assertShareable(lease: Lease, request: AcquireOptions): void {
     throw new CpuSlotsError('exclusive-under-shared')
 }
 
-function owned(store: Store, record: StoredLease, seq: number): Lease {
+function owned(store: Store, record: StoredLease, history: LeaseHistory): Lease {
   leaseStores.add(store)
   const heartbeat = setInterval(() => {
     try {
@@ -226,6 +229,7 @@ function owned(store: Store, record: StoredLease, seq: number): Lease {
     // all written needs no retry at exit.
     writer.submit(() => {
       store.releaseIfIdle(record)
+      history.record('release')
       if (store.retryRetirements())
         leaseStores.delete(store)
     })
@@ -238,7 +242,8 @@ function owned(store: Store, record: StoredLease, seq: number): Lease {
       grant: record.slots,
       exclusive: record.exclusive,
       inherited: false,
-      seq,
+      seq: history.seq,
+      waitMs: history.waitMs,
       env: { AIRI_CPU_LEASE: record.id, AIRI_CPU_GRANT: String(record.slots), AIRI_CPU_CLASS: record.class },
       addWorkload: pid => writer.submit(registration(store, record, pid)),
       release() {
@@ -253,8 +258,12 @@ function owned(store: Store, record: StoredLease, seq: number): Lease {
   const onExit = (): void => {
     try {
       beforeExitDeadline(deadline => writer.flush(deadline))
-      if (!released)
-        beforeExitDeadline(deadline => whileBusy(() => store.releaseIfIdle(record), deadline))
+      if (!released) {
+        beforeExitDeadline((deadline) => {
+          whileBusy(() => store.releaseIfIdle(record), deadline)
+          history.record('release')
+        })
+      }
     }
     catch {
       // A failed snapshot or busy lock cannot prove idleness. Leave pruning to an observer.
@@ -303,8 +312,10 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
   // One id for the whole call: every ticket it queues and the lease it is granted carry it, so a retry
   // finds what an earlier, failed transaction of this call already committed.
   const id = randomUUID()
+  const history = new LeaseHistory(request, id, budget)
   let ticket: Ticket | undefined
   let waiting = false
+  let waitMessage = ''
   let inheritedChecked = false
   /** The store entry that has stayed unreadable on every poll since `since`. */
   let unreadable: { path: string, since: number, reported: boolean } | undefined
@@ -323,6 +334,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
       try {
         if (request.signal?.aborted) {
           store.withdraw(id)
+          history.record('abort')
           finish()
           reject(request.signal.reason ?? new Error('cancelled'))
           return
@@ -339,6 +351,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
                 grant,
                 exclusive: parent.exclusive,
                 inherited: true,
+                waitMs: 0,
                 env: { AIRI_CPU_LEASE: parent.id, AIRI_CPU_GRANT: String(grant), AIRI_CPU_CLASS: parent.class },
                 addWorkload: pid => writer.submit(registration(store, parent, pid)),
                 release() {},
@@ -357,16 +370,21 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
             ticket = store.enqueue(request, id)
           const state = store.snapshot()
           const decision = decide(state, budget)
+          waitMessage = `cpu-slots: waiting for ${Math.min(min, budget)} slot(s) of ${request.class} (held ${state.leases.reduce((sum, lease) => sum + lease.slots, 0)}/${budget}, ${state.tickets.filter(other => other.seq < ticket!.seq).length} ahead)`
+          history.observe(
+            ticket.seq,
+            state.leases.reduce((sum, lease) => sum + lease.slots, 0),
+            state.tickets.filter(other => other.seq < ticket!.seq).length,
+            decision.kind === 'wait' ? decision.reason : decision.ticketSeq === ticket.seq ? null : 'queue-ahead',
+          )
           if (decision.kind === 'grant' && decision.ticketSeq === ticket.seq) {
             const record = store.grant(ticket.seq, decision.slots, id)
             if (record)
               return { record, seq: ticket.seq }
           }
-          if (!waiting) {
-            console.error(`cpu-slots: waiting for ${Math.min(min, budget)} slot(s) of ${request.class} (held ${state.leases.reduce((sum, lease) => sum + lease.slots, 0)}/${budget}, ${state.tickets.filter(other => other.seq < ticket!.seq).length} ahead)`)
-            waiting = true
-          }
         })
+        if (ticket)
+          history.ticket()
         // Only a committed transaction settles the inheritance check; a busy one repeats it.
         inheritedChecked = true
         unreadable = undefined
@@ -375,12 +393,19 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
         if (result) {
           // Registration (heartbeat, exit hook) happens once the transaction has committed, so a
           // retried transaction never registers the same lease twice.
-          const lease = 'record' in result ? owned(store, result.record, result.seq) : result
+          if ('record' in result)
+            history.grant(result.record.slots)
+          const lease = 'record' in result ? owned(store, result.record, history) : result
           finish()
           console.error(`cpu-slots: granted ${lease.grant} (${request.class})`)
           resolveLease(lease)
           return
         }
+        if (!waiting) {
+          console.error(waitMessage)
+          waiting = true
+        }
+        history.wait()
       }
       catch (error) {
         if (!(error instanceof StoreBusyError)) {
@@ -400,6 +425,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
           console.error(`cpu-slots: waiting for ${Math.min(min, budget)} slot(s) of ${request.class} (held ?/${budget}, ? ahead; ${error.message})`)
           waiting = true
         }
+        history.wait(error.reason)
         if (error.reason === 'entry-busy' && error.path) {
           const now = Date.now()
           if (unreadable?.path !== error.path)
@@ -408,6 +434,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
           if (elapsed >= ENTRY_BUSY_LIMIT_MS) {
             // The ticket is left behind: the store cannot be written, and pruning drops it 45 s after its last touch.
             finish()
+            history.record('unreadable')
             reject(new CpuSlotsError('entry-unreadable', unreadable.path))
             return
           }
