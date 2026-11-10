@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PlacementRect } from '@proj-airi/stage-shared/stage-placement'
-import type { StageRow } from '@proj-airi/stage-shared/stage-world'
+import type { StageRow, StageRowDisplay, StageRowSlot } from '@proj-airi/stage-shared/stage-world'
 import type { MMDStageWorld } from '@proj-airi/stage-ui-mmd/composables/mmd'
 import type { ModelSettingsRuntimeSnapshot } from '@proj-airi/stage-ui/components/scenarios/settings/model-settings/runtime'
 
@@ -20,6 +20,7 @@ import { WidgetStage } from '@proj-airi/stage-ui/components/scenes'
 import { CanvasRegionAlphaReader, isCanvasRegionTransparent } from '@proj-airi/stage-ui/composables/canvas-alpha'
 import { useSettings } from '@proj-airi/stage-ui/stores/settings'
 import { refDebounced, useEventListener, useRafFn } from '@vueuse/core'
+import { isEqual } from 'es-toolkit'
 import { clamp } from 'es-toolkit/math'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onScopeDispose, ref, shallowRef, toRef, watch } from 'vue'
@@ -30,6 +31,8 @@ import ControlsIsland from '../components/stage-islands/controls-island/index.vu
 import { defaultFloatingChatWidthDip } from '../../shared/chat-floating'
 import {
   electronStageGetState,
+  electronStageMoveToDisplay,
+  electronStageRehome,
   electronStageSetHome,
   electronStageStateChanged,
 } from '../../shared/eventa'
@@ -37,6 +40,7 @@ import { isStageClickThroughUsable } from '../../shared/stage-click-through'
 import { useModelSettingsRuntimeOwner } from '../composables/model-settings-runtime-owner'
 import { contradictStageCursor, createStageClickThroughState, createStageCursorTrust, createStageHitReadState, isInsidePaddedRect, observeStageCursor, planStageHitRead, resolveStageClickThrough, trustedStageCursor } from '../composables/stage-click-through'
 import { useScreenAmbientLight } from '../composables/use-screen-ambient-light'
+import { useStageHandOff } from '../composables/use-stage-hand-off'
 import { useStageHostWiring } from '../composables/use-stage-host-wiring'
 import { stageOpaqueAttribute } from '../composables/use-stage-painted-mask'
 import { useStagePlacementPublisher } from '../composables/use-stage-placement-publisher'
@@ -97,18 +101,70 @@ useModelSettingsRuntimeOwner({
 
 // Stage state from the main process: the displays, the home display, the display the window covers and the saved homes.
 const eventaContext = useElectronEventaContext()
+const hostCapabilities = useHostCapabilitiesStore()
 const hostState = shallowRef<StageHostState | null>(null)
+const homeDisplay = computed(() => hostState.value?.displays.find(display => display.id === hostState.value?.homeDisplayId) ?? null)
+// The display the stage window covers. The camera is that display's slot on the stage row.
+const stageDisplay = computed(() => hostState.value?.displays.find(display => display.id === hostState.value?.stageDisplayId) ?? null)
+
+// The row lays every display out on one world x axis. It keeps its identity while the geometry is equal, so a home
+// change or a state event with equal work areas keeps the row and her place on it.
+const rowDisplays = computed<StageRowDisplay[]>((previous) => {
+  const next = (hostState.value?.displays ?? [])
+    .filter(display => display.workArea.width > 0 && display.workArea.height > 0)
+    .map(display => ({ id: display.id, workArea: display.workArea }))
+  return previous && isEqual(previous, next) ? previous : next
+})
+const measuredModelHeight = computed(() => motionDiagnostics.snapshot.stageModel?.height ?? null)
+const row = computed<StageRow | null>(() => {
+  if (rowDisplays.value.length === 0)
+    return null
+  return layoutStageRow({
+    displays: rowDisplays.value,
+    modelHeight: measuredModelHeight.value ?? provisionalModelHeight,
+    characterHeightDip: stageCharacterHeight.value,
+    toeMarginDip,
+    halfWidthDip: 0.3 * stageCharacterHeight.value,
+  })
+})
+const stageSlot = computed(() => row.value?.slots.find(slot => slot.id === stageDisplay.value?.id) ?? null)
+const homeSlot = computed(() => row.value?.slots.find(slot => slot.id === homeDisplay.value?.id) ?? null)
+const rootX = shallowRef<number | null>(null)
+
+// Hand-off: she may walk to another display, and the window follows her, only while the host can vouch for where the
+// window and the cursor are.
+let clickThrough = createStageClickThroughState()
+const moveToDisplay = useElectronEventaInvoke(electronStageMoveToDisplay)
+const handOff = useStageHandOff({
+  row,
+  stageSlot,
+  rootX,
+  live: () => hostCapabilities.status('windowOrigin')?.kind === 'live' && hostCapabilities.status('cursorScreenPoint')?.kind === 'live',
+  move: async (displayId) => {
+    const state = await moveToDisplay(displayId)
+    acceptHostState(state)
+    return state.stageDisplayId
+  },
+  // Main made the window click-through again when it arrived; the hit test starts from that.
+  onWalked: () => {
+    clickThrough = createStageClickThroughState()
+  },
+})
+
+/** Takes a state from the main process, from an event or an invoke result. */
+function acceptHostState(state: StageHostState) {
+  handOff.observe(state.stageDisplayId)
+  hostState.value = state
+}
 let hostStateChanged = false
 onScopeDispose(eventaContext.value.on(electronStageStateChanged, (event) => {
   if (!event?.body)
     return
   hostStateChanged = true
-  hostState.value = event.body
+  acceptHostState(event.body)
 }))
 const setHome = useElectronEventaInvoke(electronStageSetHome)
-const homeDisplay = computed(() => hostState.value?.displays.find(display => display.id === hostState.value?.homeDisplayId) ?? null)
-// The display the stage window covers. Her world is that display's slot on the stage row.
-const stageDisplay = computed(() => hostState.value?.displays.find(display => display.id === hostState.value?.stageDisplayId) ?? null)
+const rehome = useElectronEventaInvoke(electronStageRehome)
 const savedHomeDipX = computed(() => homeDisplay.value ? hostState.value?.homes[homeDisplay.value.id]?.xDip ?? null : null)
 const homeDipX = shallowRef<number | null>(null)
 watch(savedHomeDipX, (xDip) => {
@@ -116,19 +172,24 @@ watch(savedHomeDipX, (xDip) => {
     homeDipX.value = xDip
 })
 
-// A display without a saved home gets the default once: beside the chat on the left, saved through main so the chat
-// and the next launch agree on it.
+/** The default home of a display: beside the chat on the left. */
+function defaultHomeOn(workArea: { width: number, height: number }): number {
+  const chatWidthDip = chatTarget.value.bounds?.width ?? defaultFloatingChatWidthDip
+  return defaultHomeDipX(workArea, 'left', chatWidthDip, 0.3 * stageCharacterHeight.value)
+}
+
+// A home display without a saved home gets the default once, saved through main so the chat and the next launch agree
+// on it.
 let defaultHomeSavedFor: string | null = null
 async function ensureHome() {
   const display = homeDisplay.value
   if (!display || savedHomeDipX.value !== null || defaultHomeSavedFor === display.id)
     return
   defaultHomeSavedFor = display.id
-  const chatWidthDip = chatTarget.value.bounds?.width ?? defaultFloatingChatWidthDip
-  const xDip = defaultHomeDipX(display.workArea, 'left', chatWidthDip, 0.3 * stageCharacterHeight.value)
+  const xDip = defaultHomeOn(display.workArea)
   homeDipX.value = xDip
   try {
-    hostState.value = await setHome({ displayId: display.id, xDip })
+    acceptHostState(await setHome({ displayId: display.id, xDip }))
   }
   catch (error) {
     console.warn('[Stage] Failed to save the default home:', errorMessageFrom(error))
@@ -140,54 +201,44 @@ onMounted(async () => {
     const state = await useElectronEventaInvoke(electronStageGetState)()
     await chatTargetRead
     if (!hostStateChanged)
-      hostState.value = state
+      acceptHostState(state)
   }
   catch (error) {
     console.error('[Stage] Failed to read the stage state; the character stays hidden:', errorMessageFrom(error))
   }
 })
 
-// The row depends only on these numbers, so a home change or a state event with an equal work area keeps it.
-const workAreaWidth = computed(() => stageDisplay.value?.workArea.width ?? 0)
-const workAreaHeight = computed(() => stageDisplay.value?.workArea.height ?? 0)
-const measuredModelHeight = computed(() => motionDiagnostics.snapshot.stageModel?.height ?? null)
-// The row holds the display the window covers and no other, so she never leaves it. Its origin is 0.
-const row = computed<StageRow | null>(() => {
-  if (workAreaWidth.value <= 0 || workAreaHeight.value <= 0)
-    return null
-  return layoutStageRow({
-    displays: [{ id: 'stage', workArea: { x: 0, y: 0, width: workAreaWidth.value, height: workAreaHeight.value } }],
-    modelHeight: measuredModelHeight.value ?? provisionalModelHeight,
-    characterHeightDip: stageCharacterHeight.value,
-    toeMarginDip,
-    halfWidthDip: 0.3 * stageCharacterHeight.value,
-  })
-})
-const stageSlot = computed(() => row.value?.slots[0] ?? null)
+/** Her home on `slot` as a world x: the saved home on the home display, a display's own saved or default home elsewhere. */
+function homeXOn(slot: StageRowSlot): number | null {
+  const xDip = slot === homeSlot.value ? homeDipX.value : hostState.value?.homes[slot.id]?.xDip ?? defaultHomeOn(slot.workArea)
+  return xDip === null ? null : homeDipToWorldX(slot.calibration, xDip, slot.calibration.floorRowDip)
+}
+// She lives on the home display. While she cannot walk there, she rests on the display the window covers.
+const restSlot = computed(() => handOff.on.value && homeSlot.value ? homeSlot.value : stageSlot.value)
+/** Where a teleport puts her: always on the display the window covers, so she is seen afterwards. */
+const stageHomeX = computed(() => stageSlot.value ? homeXOn(stageSlot.value) : null)
 const stageWorld = computed<MMDStageWorld | undefined>(() => {
   const slot = stageSlot.value
-  if (!slot || homeDipX.value === null)
+  const homeX = restSlot.value ? homeXOn(restSlot.value) : null
+  if (!slot || homeX === null || stageHomeX.value === null)
     return undefined
   return {
     workArea: { width: slot.workArea.width, height: slot.workArea.height },
     calibration: slot.calibration,
     ground: slot.ground,
-    homeX: homeDipToWorldX(slot.calibration, homeDipX.value, slot.calibration.floorRowDip),
+    homeX,
+    row: handOff.on.value ? row.value ?? undefined : undefined,
   }
 })
 
-// A load places the root at the provisional `homeX`. Once she is measured, and whenever the row is laid out again (a
-// display, the model height or the character height changed), the root teleports to the new home with one physics
-// reset. A home change alone (a drag release) never moves her.
-const rootX = shallowRef<number | null>(null)
-watch([row, () => measuredModelHeight.value !== null], ([, measured]) => {
-  const world = stageWorld.value
-  if (!measured || !world) {
-    rootX.value = world?.homeX ?? null
-    return
-  }
-  rootX.value = world.homeX
-  widgetStageRef.value?.setStageRootX(world.homeX, { teleport: true })
+// Once she is measured, she teleports to her home on the display the window covers, with one physics reset, and again
+// whenever the row is laid out anew or the hand-off asks for it. A confirmed walk to another display only changes the
+// camera, and a home change alone (a drag release) never moves her.
+watch([row, () => measuredModelHeight.value !== null, handOff.teleportSeq], ([, measured]) => {
+  const homeX = stageWorld.value ? stageHomeX.value : null
+  rootX.value = homeX
+  if (measured && homeX !== null)
+    widgetStageRef.value?.setStageRootX(homeX, { teleport: true })
 }, { flush: 'post' })
 
 // Placement: the scene reports work-area DIP; main and the chat use screen DIP.
@@ -202,17 +253,18 @@ watch(() => motionDiagnostics.snapshot.stageModel, (model) => {
 })
 const placement = computed<StageCharacterPlacement | null>(() => {
   const display = stageDisplay.value
-  const home = homeDisplay.value
+  const slot = stageSlot.value
+  const rest = restSlot.value
   const world = stageWorld.value
   const rect = placementRect.value
-  if (!display || !home || !world || !rect)
+  if (!display || !slot || !rest || !world || !rect)
     return null
-  // Her rectangle at home, in the home display's frame: the chat attaches to where she lives.
-  const atHome = placementRectAt(rect, { calibration: world.calibration, rootX: rootX.value ?? world.homeX }, { calibration: world.calibration, rootX: world.homeX })
+  // Her rectangle at home, on the display her home is on: the chat attaches to where she lives.
+  const atHome = placementRectAt(rect, { calibration: slot.calibration, rootX: rootX.value ?? world.homeX }, { calibration: rest.calibration, rootX: world.homeX })
   return {
     displayId: display.id,
     bounds: { ...rect, x: rect.x + display.workArea.x, y: rect.y + display.workArea.y },
-    homeBounds: { ...atHome, x: atHome.x + home.workArea.x, y: atHome.y + home.workArea.y },
+    homeBounds: { ...atHome, x: atHome.x + rest.workArea.x, y: atHome.y + rest.workArea.y },
   }
 })
 useStagePlacementPublisher(placement)
@@ -288,14 +340,18 @@ function endPress(event: PointerEvent) {
   if (current.dragging)
     widgetStageRef.value?.setStageDragging(false)
   const world = stageWorld.value
-  const display = homeDisplay.value
+  const display = stageDisplay.value
   if (!current.dragging || !world || !display)
     return
   widgetStageRef.value?.setStageRootX(current.rootX, { teleport: true })
   const xDip = worldToHomeDipX(world.calibration, current.rootX)
-  homeDipX.value = xDip
+  const onHomeDisplay = display.id === homeDisplay.value?.id
+  if (onHomeDisplay)
+    homeDipX.value = xDip
   interactionSeq.value += 1
+  // Dropped on a display she walked to, she lives there now: it becomes the home display, and the window stays.
   setHome({ displayId: display.id, xDip })
+    .then(() => onHomeDisplay ? undefined : rehome(display.id))
     .catch(error => console.warn('[Stage] Failed to save the dragged home:', errorMessageFrom(error)))
 }
 useEventListener(window, 'pointerup', endPress)
@@ -303,7 +359,6 @@ useEventListener(window, 'pointercancel', endPress)
 
 // Click-through: no readback outside her padded rect; inside, one readback per frame (`resolveStageClickThrough`).
 
-const hostCapabilities = useHostCapabilitiesStore()
 // The window starts click-through and stays so until click-through is usable: live forwarding, or Linux emulation.
 // Unusable click-through lets everything through, because a captured full-screen stage would trap the desktop.
 const clickThroughUsable = computed(() => isStageClickThroughUsable(hostCapabilities.status('clickThroughForward')))
@@ -316,7 +371,6 @@ useEventListener(window, 'pointermove', (event: PointerEvent) => {
 })
 
 const setIgnoreMouseEvents = useElectronEventaInvoke(electron.window.setIgnoreMouseEvents)
-let clickThrough = createStageClickThroughState()
 
 // Right after the scene submits its frame, a synchronous readPixels waits for the GPU (4-5 ms measured). On WebGL2
 // the reader copies the pixel asynchronously and answers a frame or two later.
@@ -369,7 +423,9 @@ useRafFn(({ timestamp }) => {
   cursorTrust = observeStageCursor(cursorTrust, cursorPosition.value ?? null, timestamp)
   const cursor = clickThroughEmulated.value ? trustedStageCursor(cursorTrust) : cursorTrust.reading
   const rect = placementRect.value
-  const forceIgnore = !clickThroughUsable.value
+  // While no display shows her, nothing of hers can be clicked, and the window may be between two displays.
+  const unseen = handOff.frame({ dragging: press.value !== null })
+  const forceIgnore = !clickThroughUsable.value || unseen
   const forceCapture = stagePaused.value || press.value !== null || controlsHoldPointer.value
   const plan = planStageHitRead(hitRead, { nowMs: timestamp, cursor, rect, forceCapture, forceIgnore })
   hitRead = plan.state
@@ -388,6 +444,7 @@ useRafFn(({ timestamp }) => {
       ref="widgetStageRef"
       v-model:state="componentStateStage"
       h-full w-full
+      :style="{ visibility: handOff.moving.value ? 'hidden' : undefined }"
       :cursor-position="cursorPosition"
       :screen-placement="screenPlacement"
       :chat-target="chatTarget"

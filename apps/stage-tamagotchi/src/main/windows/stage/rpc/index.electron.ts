@@ -15,6 +15,7 @@ import {
   electronStageGetCharacterPlacement,
   electronStageGetState,
   electronStageMoveToDisplay,
+  electronStageRehome,
   electronStageRelaunch,
   electronStageSetActiveRenderer,
   electronStageSetExperimental,
@@ -119,6 +120,9 @@ export function setupStageWindowInvokes(params: {
     params.applyHomeDisplay?.()
     return state
   })
+  // The window stays: she walks to the new home display, and the stage page moves the window after her.
+  defineInvokeHandler(context, electronStageRehome, payload =>
+    updateConfig(withStageHomeDisplay(getConfig(), readStageDisplays(params.screen), payload)))
   defineInvokeHandler(context, electronStageMoveToDisplay, async (payload) => {
     if (!params.moveToDisplay)
       throw new Error('electronStageMoveToDisplay: this window is not the desktop stage')

@@ -25,7 +25,7 @@ remote downloads. The Resource Status Island shows transfer progress and errors.
 
 ## Desktop stage window
 
-An MMD character can live on a full-screen desktop stage instead of the classic 450x600 window. `src/main/windows/stage/` builds that host: one frameless, transparent, always-on-top window over the work area of the home display. It stays out of the taskbar, is shown with `showInactive()` so it never takes focus, and starts click-through (`setIgnoreMouseEvents(true, { forward: true })`). The stage page (`src/renderer/pages/stage.vue`, route `#/stage`) captures the mouse only over her pixels. Outside her padded placement rect, the answer is click-through without a read. Inside it, an asynchronous canvas alpha read decides, at most once per read interval (`src/renderer/composables/stage-click-through.ts`). The classic window (`src/main/windows/main/`) is unchanged.
+An MMD character can live on a full-screen desktop stage instead of the classic 450x600 window. `src/main/windows/stage/` builds that host: one frameless, transparent, always-on-top window over the work area of the home display. With more than one display, the window follows her when she walks to another one (see [Display hand-off](#display-hand-off)). It stays out of the taskbar, is shown with `showInactive()` so it never takes focus, and starts click-through (`setIgnoreMouseEvents(true, { forward: true })`). The stage page (`src/renderer/pages/stage.vue`, route `#/stage`) captures the mouse only over her pixels. Outside her padded placement rect, the answer is click-through without a read. Inside it, an asynchronous canvas alpha read decides, at most once per read interval (`src/renderer/composables/stage-click-through.ts`). The classic window (`src/main/windows/main/`) is unchanged.
 
 `selectHostMode` (`src/main/windows/stage/mode.ts`) picks the host once per launch:
 
@@ -36,6 +36,18 @@ An MMD character can live on a full-screen desktop stage instead of the classic 
 5. Otherwise the saved stage mode applies.
 
 `bindStageWindowToDisplay` (`src/main/windows/stage/displays.ts`) keeps the window on the work area of the stage display. The stage display is the display the window is confirmed to cover. It is runtime state, never persisted, and `StageHostState.stageDisplayId` reports it. It is the home display at launch and after every display change (`display-added`, `display-removed`, `display-metrics-changed`), so a display change always brings the window home. `electronStageMoveToDisplay` moves the window to another connected display without changing the home display: main places the window, waits until its rectangle is read back on the new work area, and re-applies click-through. After 1.5 s without that rectangle (`stageMoveTimeoutMs`) main places the window on the display it came from, and the returned state keeps the old `stageDisplayId`. On `powerMonitor` `resume`, main places the window on the stage display again when its rectangle differs.
+
+### Display hand-off
+
+She can walk from one display to another, and the one stage window follows her. [The display hand-off ADR](../../docs/ai/adr/2026-11-10-display-hand-off.md) records the design. No crossing has been run on two real displays yet; that check is listed there.
+
+- The stage page (`src/renderer/pages/stage.vue`) lays every display out on one world x axis with `layoutStageRow` from `@proj-airi/stage-shared/stage-world`. Neighbours are separated by a wing that no display shows. Her camera is the slot of the stage display, and her home is on the home display's slot.
+- `useStageHandOff` (`src/renderer/composables/use-stage-hand-off.ts`) runs each frame. Once she has walked fully off the stage display, it invokes `electronStageMoveToDisplay` for the display she is heading to. The camera changes only when main confirmed the move, so her root, gait, and physics continue across the crossing. The pure decisions are in `src/renderer/composables/stage-hand-off.ts`.
+- While no display shows her, the page lets every click through, and while the window moves it also hides the canvas.
+- Hand-off is on only while there is more than one display and the host reports both `windowOrigin` and `cursorScreenPoint` as live. Otherwise she stays on the display the window covers.
+- The cursor chase, the chat approach, `come_here`, `go_home`, the return home, and the Motion Lab's walk goal can cross. A wander and a drag stay on the display she is on.
+- A move that main could not confirm turns hand-off off for 10 s (`stageHandOffHoldMs`) and teleports her to her home on the display the window covers. The same teleport happens when the displays change and when main places the window by itself.
+- A drag release on a display she walked to makes it the home display through `electronStageRehome`, which leaves the window where it is.
 
 The setting gates only this host: the transparent full-screen window, click-through, drag, locomotion, home persistence, and floating-chat anchoring. MMD clips, curation, and the MMD body work in the classic window whether it is on or off.
 
@@ -48,7 +60,7 @@ Whichever window is built becomes `userFacingMainWindow`. The desktop stage must
 | Tray Adjust sizes and Align to (`src/main/tray/window-layout.ts`) | Resizes and moves it. | The items are hidden, and both actions return early. |
 | `electronCenterMainWindow` (main and settings window invokes) | Centres it on its display. | `centerUserFacingWindow` returns its bounds without moving it. |
 | Onboarding guard (`src/main/services/airi/onboarding/index.ts`) | Slides it beside the onboarding window. | Leaves it in place; it already covers the work area. |
-| Floating chat (`src/main/windows/chat/anchor.ts`) | Attaches to its bounds as a native child window. | Attaches to her home rect (`createCharacterAnchor`), never to her live rect. |
+| Floating chat (`src/main/windows/chat/anchor.ts`) | Attaches to its bounds as a native child window. | Attaches to her home rect on the home display (`createCharacterAnchor`), never to her live rect, also while she is on another display. |
 
 The architecture and the removal condition for the classic window mode are recorded in [the full-screen stage ADR](../../docs/ai/adr/2026-10-31-fullscreen-stage-and-locomotion.md).
 
@@ -58,7 +70,7 @@ The architecture and the removal condition for the classic window mode are recor
 
 - **Experimental 3D stage** (`experimental` in the stage config, off by default) is the first control. While it is off, the section shows only this toggle, and `selectHostMode` builds the classic window. It is saved through `electronStageSetExperimental` and applies at the next launch; turning it off while the desktop stage runs shows **Relaunch to apply**.
 - **Stage mode** is saved at once but applies at the next launch. When the saved mode differs from the running host, a **Relaunch to apply** button appears. An unsent chat draft is not carried across the relaunch: drafts live in memory (`windows/chat/index.ts`), and the button's description says so. This is the supported policy, not a gap to close.
-- **Home display** calls `electronStageSetHomeDisplay`, which writes `homeDisplayId`, keeps every saved home x, and re-bounds the desktop stage window to the new display's work area. On a host with one display the control is disabled.
+- **Home display** calls `electronStageSetHomeDisplay`, which writes `homeDisplayId`, keeps every saved home x, and re-bounds the desktop stage window to the new display's work area at once, wherever she is; the stage page then teleports her to her home there. On a host with one display the control is disabled.
 - **Character height** and **Roam** write the MMD store (`settings/mmd/stage-character-height`, `settings/mmd/roam-mode`); the stage page re-calibrates from them.
 - Scale, position and rotation under the scene controls apply in the classic window only; the section says so.
 - Only an MMD model can stand on the desktop stage. The stage pages record the stage model's renderer in the stage config (`activeRenderer`). When it is not MMD while the saved mode is `desktop`, the settings page writes the mode back to `window` and shows "Desktop stage supports MMD models; the classic window is used". `selectHostMode` enforces the same rule at launch. A running desktop stage is never torn down: when its page reports a renderer that is not MMD, the stage stays until the next launch, and the main process shows a native notice that offers **Relaunch into the classic window** (`src/main/windows/stage/leave-mmd-notice.ts`).

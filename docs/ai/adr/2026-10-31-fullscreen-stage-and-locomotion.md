@@ -37,7 +37,7 @@ A spike measured a full-screen transparent stage window before any behaviour wor
 
 The stage config (`apps/stage-tamagotchi/src/main/windows/stage/config.ts`, persisted as `config.json` in the `stage` directory under the user data directory) holds `mode` (`window` or `desktop`, default `window`), `activeRenderer`, `homeDisplayId`, and per-display homes as `xDip` on the floor row plus a display fingerprint. A mode change applies at the next launch through a **Relaunch to apply** button. Transparency and window flags are fixed at window creation, so a live switch is not possible.
 
-Whichever window is built becomes `userFacingMainWindow`. Its consumers ask `isStageWindow` (`apps/stage-tamagotchi/src/main/windows/stage/identity.ts`) and never move, resize, or focus the stage. The window contract (`apps/stage-tamagotchi/src/main/windows/stage/window-contract.ts`) creates a frameless, transparent, always-on-top, non-taskbar window. It is a `panel` on macOS, is shown with `showInactive()`, and starts with `setIgnoreMouseEvents(true, { forward: true })`. Unlike the desktop overlay, it is focusable for the Controls Island and touch, and it has no content protection, so screenshots and OBS see her. `bindStageWindowToHomeDisplay` re-bounds the window when displays change.
+Whichever window is built becomes `userFacingMainWindow`. Its consumers ask `isStageWindow` (`apps/stage-tamagotchi/src/main/windows/stage/identity.ts`) and never move, resize, or focus the stage. The window contract (`apps/stage-tamagotchi/src/main/windows/stage/window-contract.ts`) creates a frameless, transparent, always-on-top, non-taskbar window. It is a `panel` on macOS, is shown with `showInactive()`, and starts with `setIgnoreMouseEvents(true, { forward: true })`. Unlike the desktop overlay, it is focusable for the Controls Island and touch, and it has no content protection, so screenshots and OBS see her. `bindStageWindowToDisplay` re-bounds the window when displays change, and since [the display hand-off ADR](2026-11-10-display-hand-off.md) it also moves the window to the display she walks to.
 
 ### The stage-world contract
 
@@ -95,7 +95,7 @@ Settings > Models shows a Desktop stage section for an MMD model: stage mode, ho
 
 ### What stays out
 
-Cross-display walking and hand-off, windows as terrain, perching, drag dangle, props, a gesture or dance clip library, a `perform_action` tool, the VRM adapter, a Live2D stage mode, closeness state, and any behaviour that uses depth are out of scope. The Live2D path and the Natural numbers are unchanged, and no Ammo internals are read.
+Cross-display walking and hand-off (added later by [the display hand-off ADR](2026-11-10-display-hand-off.md)), windows as terrain, perching, drag dangle, props, a gesture or dance clip library, a `perform_action` tool, the VRM adapter, a Live2D stage mode, closeness state, and any behaviour that uses depth are out of scope. The Live2D path and the Natural numbers are unchanged, and no Ammo internals are read.
 
 ## Consequences
 
@@ -109,11 +109,11 @@ The hit-test readback passes its gate with a thin margin. The frame rate on this
 
 ## Follow-ups
 
-- Display hand-off: walking from one display to another, and moving the stage window with her. Today she lives on one home display at a time.
+- Landed, pending the two-display check: display hand-off, walking from one display to another with the stage window following her. [The display hand-off ADR](2026-11-10-display-hand-off.md) records it. The home display is still where she lives; the window now also covers the display she walks to.
 - Terrain: windows as surfaces she can stand on or perch on. The env-gated Windows window-rect sensor spike that M4 needs was measured on 2026-11-04 (`apps/stage-tamagotchi/src/main/services/electron/window-rects-spike.md`); [the clip actions ADR](2026-11-03-mmd-clip-actions.md) lists its gates. [The 3D character roadmap](../3d-character-roadmap.md) tracks M4.
 - Landed: the gesture and dance clip library and the `perform_action` tool, which this ADR left out. [The clip actions ADR](2026-11-03-mmd-clip-actions.md) records them.
 - Remove the classic window mode after roaming, chat anchoring, and display hand-off ship and one feedback cycle on the desktop stage has passed. The removal condition is recorded in the `// NOTICE:` block of `apps/stage-tamagotchi/src/main/windows/stage/mode.ts`. The Linux branch keeps its own removal condition.
 - Replace the GPU readback with a CPU silhouette mask if `stage-frame-budget` fails its readback-max criterion again. Do not change the threshold.
 - Landed: the second wander on arrival. A wander deadline that fell due while another goal was walking stayed due, so the wander fired in the frame the goal ended. `decideBody` now draws a new deadline from the arrival instead.
 - Landed: roaming at the default height. At 560 DIP on a 1440 DIP wide work area, three leg lengths of ground fit on neither side of home. When three legs do not fit, the minimum wander distance is now half the longer free side, but never less than one leg length.
-- Luke-run checks that agents could not perform on this host: the two-display home switch, real OS clicks through the stage with another app frontmost, an OS-level screen capture, and the Windows re-measure of the spike and gates, including the 125 % and 150 % display scales.
+- Luke-run checks that agents could not perform on this host: a crossing between two real displays (KDE Wayland, KDE X11, and macOS), the two-display home switch, real OS clicks through the stage with another app frontmost, an OS-level screen capture, and the Windows re-measure of the spike and gates, including the 125 % and 150 % display scales.

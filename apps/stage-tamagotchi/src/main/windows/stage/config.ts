@@ -133,7 +133,7 @@ export function withStageHomeDisplay(
 ): StageConfig {
   const display = typeof displayId === 'string' && displays.find(candidate => candidate.id === displayId)
   if (!display)
-    throw new Error(`electronStageSetHomeDisplay: display ${JSON.stringify(displayId)} is not connected`)
+    throw new Error(`The home display ${JSON.stringify(displayId)} is not connected`)
 
   return { ...config, homeDisplayId: display.id }
 }

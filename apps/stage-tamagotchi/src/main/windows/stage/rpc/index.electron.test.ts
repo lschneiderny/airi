@@ -10,7 +10,7 @@ import { env, platform, versions } from 'node:process'
 import { createContext, defineInvoke, defineInvokeEventa } from '@moeru/eventa'
 import { describe, expect, it, vi } from 'vitest'
 
-import { electronStageMoveToDisplay, electronStageSetActiveRenderer, electronStageSetExperimental, electronStageSetMode, electronStageStateChanged } from '../../../../shared/eventa'
+import { electronStageMoveToDisplay, electronStageRehome, electronStageSetActiveRenderer, electronStageSetExperimental, electronStageSetHomeDisplay, electronStageSetMode, electronStageStateChanged } from '../../../../shared/eventa'
 import { defaultStageConfig } from '../config'
 import { isLinuxStageEligible, selectHostMode } from '../mode'
 import { createStageStateBroadcast } from '../state-broadcast'
@@ -146,8 +146,16 @@ describe('electronStageMoveToDisplay', () => {
     const stageWindow = new FakeWindow()
     const settingsWindow = new FakeWindow()
     let stageDisplayId = '1'
+    let config = defaultStageConfig
+    const applyHomeDisplay = vi.fn()
     const shared = {
-      config: { get: () => defaultStageConfig, update: () => {} },
+      config: {
+        get: () => config,
+        update: (next: StageConfig) => {
+          config = next
+        },
+      },
+      applyHomeDisplay,
       defaultConfig: defaultStageConfig,
       screen: { getAllDisplays: () => [builtIn, external], getPrimaryDisplay: () => builtIn },
       running: 'desktop' as const,
@@ -171,7 +179,7 @@ describe('electronStageMoveToDisplay', () => {
       if (event.body)
         received.push(event.body)
     })
-    return { stageContext: contexts.get(stageWindow)!, settingsContext, received }
+    return { stageContext: contexts.get(stageWindow)!, settingsContext, received, applyHomeDisplay }
   }
 
   it('returns the new stage display after a confirmed move, keeps the home display, and tells the other windows', async () => {
@@ -189,6 +197,18 @@ describe('electronStageMoveToDisplay', () => {
     const state = await defineInvoke(stageContext, electronStageMoveToDisplay)('7')
 
     expect(state.stageDisplayId).toBe('1')
+  })
+
+  it('rehomes without moving the window, while the settings control moves it', async () => {
+    const { stageContext, settingsContext, applyHomeDisplay } = setupStage(true)
+
+    const rehomed = await defineInvoke(stageContext, electronStageRehome)('7')
+    expect(rehomed).toMatchObject({ homeDisplayId: '7', stageDisplayId: '1' })
+    expect(applyHomeDisplay).not.toHaveBeenCalled()
+    await expect(defineInvoke(stageContext, electronStageRehome)('99')).rejects.toThrow('not connected')
+
+    await defineInvoke(settingsContext, electronStageSetHomeDisplay)('1')
+    expect(applyHomeDisplay).toHaveBeenCalledOnce()
   })
 
   it('rejects on a window that is not the desktop stage, and a payload that is not a display id', async () => {

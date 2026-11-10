@@ -291,6 +291,12 @@ export const electronStageSetHome = defineInvokeEventa<StageHostState, { display
  */
 export const electronStageSetHomeDisplay = defineInvokeEventa<StageHostState, string>('eventa:invoke:electron:windows:stage:set-home-display')
 /**
+ * Makes a connected display the home display and leaves the desktop stage window where it is. The character walks to
+ * her new home by herself, and the window follows her (`electronStageMoveToDisplay`). The stage page calls it when she
+ * is dropped on a display she walked to. Rejects for a display that is not connected.
+ */
+export const electronStageRehome = defineInvokeEventa<StageHostState, string>('eventa:invoke:electron:windows:stage:rehome')
+/**
  * Moves the desktop stage window to a connected display's work area, for the character walking there. The home display
  * is unchanged.
  *

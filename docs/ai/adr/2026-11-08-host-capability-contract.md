@@ -77,6 +77,7 @@ Each signal cell is the canonical result of `capabilitiesForHost(host)`.
 | Push-to-talk key-up | Yes | Yes | Yes | No | No | No |
 | Click-through | Yes | Yes | No | No | No | No |
 | Desktop stage | Yes | Yes | Limited (KWin or EWMH; emulated click-through) | Limited (KWin; emulated click-through) | Limited (KWin; emulated click-through) | No |
+| Display hand-off | Yes | Yes | Yes | No | No | No |
 
 The backend table records observed Linux statuses. `[~]` marks missing or
 limited live proof. The six-column table above remains the canonical shared
@@ -117,6 +118,14 @@ classic window. Hyprland has fixture and registration coverage only; it was
 not installed for a live run. Its cursor and geometry therefore remain
 unverified. GNOME has no shipped Shell extension, and unsupported desktops
 report explicit reasons rather than claiming a foreground sensor.
+
+Display hand-off needs both `windowOrigin` and `cursorScreenPoint` to be live:
+the stage window follows the character to another display only while the host
+can vouch for where the window and the cursor are. The canonical XWayland and
+native Wayland profiles withhold the cursor, so the row reads No there; a KWin
+backend that reports both signals live at runtime qualifies. The rule is in
+[the display hand-off ADR](2026-11-10-display-hand-off.md). No host has run a
+crossing on two real displays yet.
 
 The feature cells name the inputs the host can deliver to the performance
 resolver. Watching requires a visible stage and a user who is not away; it can
