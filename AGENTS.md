@@ -121,21 +121,24 @@ pnpm qa:setup cubism | qa:llm serve            # Cubism Core download, scripted 
 pnpm qa:app run --dry-run ...                 # Rendered app session: seed, send chat, wait for events, summary
 AIRI_DEV_QUIET=1 pnpm dev                     # Agent dev session: log file, ready URL, and errors only
 pnpm typecheck; pnpm lint | lint:fix          # ESLint also formats
-pnpm verify                                   # Changed-file typecheck, lint, and related tests
+pnpm verify                                   # Incremental changed-file typecheck, lint, and related tests
+pnpm verify --gate                            # Full branch check before landing
+pnpm verify --stats                           # Summarize verify step history
 pnpm wt ls; pnpm dev:top; pnpm slots status   # Worktrees, per-worktree CPU/memory, CPU slot budget
+pnpm slots history                            # Summarize CPU lease history
 pnpm qa:display run -- <command>              # Linux: run app windows in a headless KWin session, off the user's desktop
 pnpm qa:smoke [--model <path>]                # Fresh-profile start; fails on any renderer or main-process error
 pnpm qa:app run --model <path> --say <text>   # Replayed chat turn in the real app: ACT, expression, speech events
 ```
 On Linux, start every agent command that opens app windows (T3 runs, agent-browser on Electron, Vishot) through `pnpm qa:display run --`, so the user's desktop, focus, and cursor stay undisturbed. Use `--name <name>` for parallel sessions and stop yours with `pnpm qa:display down --name <name>`.
-The `airi-qa` MCP server in `.mcp.json` (`pnpm qa:mcp`) offers the same app session as tools: `airi_start`, `airi_send`, `airi_screenshot`, `airi_errors`, `airi_eval`, and `airi_stop`. Always call `airi_stop` when done, because the session holds the exclusive CPU lease.
+The `airi-qa` MCP server in `.mcp.json` (`pnpm qa:mcp`) offers the same app session as tools: `airi_start`, `airi_send`, `airi_screenshot`, `airi_errors`, `airi_eval`, and `airi_stop`. Always call `airi_stop` when done, because the session holds a `live` CPU lease.
 
-A change that the running app executes (renderer pages and components, stores, Electron main or preload, stage and model code, chat and speech wiring) is done only when:
-1. `pnpm verify` passes.
-2. `pnpm qa:smoke` passes, on Linux through `pnpm qa:display run --`. Add `--model` when the change touches model loading or the stage.
-3. For a visible change, you captured the changed state (`airi_screenshot`, Vishot, or a T3 screenshot) and looked at it.
-4. For a chat, speech, or ACT change, a `qa:app` run or an `airi_send` call produced the expected events.
-5. Your report names each run directory under `.temp/qa/` as evidence. When a step cannot run, name the step and the reason instead of skipping it silently.
+Testing tiers:
+- Inner loop: run the narrowest relevant package tests.
+- Commit loop: run `pnpm verify` after each change.
+- Branch gate: run `pnpm verify --gate` before landing.
+
+For live acceptance and the change-to-check policy, see [Testing and QA](docs/ai/testing.md).
 
 After each task, run `pnpm verify` before finishing. It typechecks the changed packages and their dependents through Turbo, lints the changed files, and runs the tests related to them. It typechecks every package when a root config file changes. It skips a step that already passed on the same working tree.
 Use `pnpm lint` or root `pnpm typecheck` only when a task needs the whole repository checked. Report only executed checks, their commands/results, changes, and follow-up work.
@@ -153,6 +156,7 @@ Read the listed file before starting. Skill paths below are under `.agents/skill
 | Task | Read |
 | --- | --- |
 | UI appearance/interaction design, changes, review | [DESIGN.md](DESIGN.md) |
+| Choosing which checks to run | [Testing and QA](docs/ai/testing.md) |
 | TypeScript/Vue writing, refactoring, review | [enforce-rules-for-typescript](.agents/skills/enforce-rules-for-typescript/SKILL.md) |
 | Tests, bug reproduction, mocks, test import boundaries | [enforce-rules-for-vitest](.agents/skills/enforce-rules-for-vitest/SKILL.md) |
 | UnoCSS, Vue styles, components, animation, icons, color mode | [enforce-rules-for-unocss](.agents/skills/enforce-rules-for-unocss/SKILL.md) |
