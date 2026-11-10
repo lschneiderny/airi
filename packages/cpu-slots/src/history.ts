@@ -1,5 +1,6 @@
 import type { CpuClass } from './classes'
 import type { Decision } from './grant'
+import type { CpuPressure } from './pressure'
 import type { StoreRequest } from './store'
 
 import process from 'node:process'
@@ -30,6 +31,8 @@ export interface HistoryEvent {
   pid: number
   cwd: string
   command: string
+  /** Admission sample on grant and wait events; null when PSI is unavailable. */
+  pressure?: CpuPressure | null
 }
 
 export function historyRoot(): string {
@@ -98,23 +101,23 @@ export class LeaseHistory {
     }
   }
 
-  wait(reason?: WaitReason): void {
+  wait(reason?: WaitReason, pressure?: CpuPressure): void {
     if (reason)
       this.lastWaitReason = reason
     if (!this.waited) {
       this.waited = true
-      this.record('wait')
+      this.record('wait', pressure)
     }
   }
 
-  grant(slots: number): void {
+  grant(slots: number, pressure?: CpuPressure): void {
     this.slots = slots
     this.grantedAt = Date.now()
     this.waitMs = this.grantedAt - this.startedAt
-    this.record('grant')
+    this.record('grant', pressure)
   }
 
-  record(event: HistoryEvent['event']): void {
+  record(event: HistoryEvent['event'], pressure?: CpuPressure): void {
     const ts = Date.now()
     appendHistory({
       ts,
@@ -134,6 +137,7 @@ export class LeaseHistory {
       pid: process.pid,
       cwd: this.request.cwd,
       command: this.request.command,
+      ...(event === 'grant' || event === 'wait' ? { pressure: pressure ?? null } : {}),
     })
   }
 }
@@ -157,7 +161,10 @@ function isEvent(value: unknown): value is HistoryEvent {
     && ['id', 'cwd', 'command'].every(key => typeof row[key] === 'string')
     && ['ts', 'min', 'max', 'slots', 'budget', 'waitMs', 'heldMs', 'pid'].every(key => typeof row[key] === 'number' && Number.isFinite(row[key]))
     && ['seq', 'heldBefore', 'queueAhead'].every(key => row[key] === null || (typeof row[key] === 'number' && Number.isFinite(row[key])))
-    && (row.lastWaitReason === null || ['queue-empty', 'over-budget', 'exclusive-held', 'leases-held', 'insufficient-slots', 'head-aging', 'queue-ahead', 'lock-busy', 'lock-lost', 'entry-busy', 'snapshot-failed'].includes(String(row.lastWaitReason)))
+    && (row.lastWaitReason === null || ['queue-empty', 'over-budget', 'exclusive-held', 'leases-held', 'insufficient-slots', 'head-aging', 'cpu-pressure', 'queue-ahead', 'lock-busy', 'lock-lost', 'entry-busy', 'snapshot-failed'].includes(String(row.lastWaitReason)))
+    && (row.pressure == null || (typeof row.pressure === 'object' && 'someAvg10' in row.pressure
+      && typeof row.pressure.someAvg10 === 'number' && Number.isFinite(row.pressure.someAvg10)
+      && row.pressure.someAvg10 >= 0 && row.pressure.someAvg10 <= 100))
 }
 
 function distribution(values: number[]): { median: number, p90: number } {

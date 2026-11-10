@@ -2,6 +2,7 @@ import type { CpuClass } from './classes'
 import type { StoreFs } from './fs-adapter'
 import type { BrokerState, LeaseRecord, TicketRecord } from './grant'
 import type { ProcessIdentity, WorkloadOwner } from './liveness'
+import type { CpuPressure, PressureThresholds } from './pressure'
 import type { ProcessSnapshot } from './processes'
 
 import process from 'node:process'
@@ -12,7 +13,7 @@ import { performance } from 'node:perf_hooks'
 
 import { classes } from './classes'
 import { nodeFs } from './fs-adapter'
-import { decide } from './grant'
+import { decide, sharedCeiling } from './grant'
 import { isAlive, isSameProcess, workloadAlive } from './liveness'
 import { processStartedAt, snapshotProcesses } from './processes'
 
@@ -312,10 +313,10 @@ export class Store {
   }
 
   /** Grants ticket `ticketId` at `ticketSeq` when the current decision selects it for `slots`; a replaced ticket is refused. */
-  grant(ticketSeq: number, slots: number, ticketId: string): StoredLease | undefined {
+  grant(ticketSeq: number, slots: number, ticketId: string, pressure?: CpuPressure, thresholds?: PressureThresholds): StoredLease | undefined {
     return this.transact(() => {
       const state = this.snapshot()
-      const decision = decide(state, this.budget, this.now())
+      const decision = decide(state, this.budget, this.now(), pressure, thresholds)
       if (decision.kind !== 'grant' || decision.ticketSeq !== ticketSeq || decision.slots !== slots)
         return undefined
       const ticket = state.tickets.find(ticket => ticket.seq === ticketSeq)!
@@ -939,7 +940,7 @@ export class Store {
   private fits(lease: StoredLease, live: StoredLease[]): boolean {
     const others = live.filter(record => record.id !== lease.id)
     return live.some(record => record.id === lease.id)
-      && live.reduce((total, record) => total + record.slots, 0) <= this.budget
+      && live.reduce((total, record) => total + record.slots, 0) <= (lease.exclusive ? this.budget : sharedCeiling(this.budget))
       && !(lease.exclusive ? others.length > 0 : others.some(record => record.exclusive))
   }
 

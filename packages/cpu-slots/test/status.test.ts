@@ -17,6 +17,7 @@ let root: string
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'airi-cpu-status-'))
   vi.stubEnv('AIRI_CPU_BUDGET', '8')
+  vi.stubEnv('AIRI_CPU_PRESSURE_FILE', join(root, 'missing.psi'))
 })
 
 afterEach(() => {
@@ -29,6 +30,20 @@ it('reads an absent store as empty without creating it', () => {
   const missing = join(root, 'absent')
   expect(readStatus({ root: missing })).toEqual({ storePath: missing, budget: 8, held: 0, leases: [], queue: [] })
   expect(existsSync(missing)).toBe(false)
+})
+
+it('shows cpu-pressure for fitting tickets until the sample cools', () => {
+  const path = join(root, 'cpu.psi')
+  vi.stubEnv('AIRI_CPU_PRESSURE_FILE', path)
+  writeFileSync(path, 'some avg10=90.00 avg60=90.00 avg300=90.00 total=1\n')
+  const store = new Store({ root, budget: 8 })
+  const request = { class: 'test', cwd: '/worktree', command: 'job' } as const
+  const holder = store.enqueue(request)
+  expect(store.grant(holder.seq, 6, holder.id)).toBeDefined()
+  const lint = store.enqueue({ ...request, class: 'lint' })
+  expect(readStatus({ root }).queue).toMatchObject([{ seq: lint.seq, reason: 'cpu-pressure' }])
+  writeFileSync(path, 'some avg10=50.00 avg60=50.00 avg300=50.00 total=1\n')
+  expect(readStatus({ root }).queue).toMatchObject([{ seq: lint.seq, reason: null }])
 })
 
 it('reads a live lease and a queued ticket, with storePath first', () => {

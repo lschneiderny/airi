@@ -48,6 +48,8 @@ beforeEach(() => {
   process.argv = ['node', '/x/node_modules/vitest/vitest.mjs', 'run']
   root = mkdtempSync(join(tmpdir(), 'airi-cpu-vitest-'))
   vi.stubEnv('AIRI_CPU_SLOTS_DIR', root)
+  vi.stubEnv('AIRI_CPU_SLOTS_HISTORY_DIR', join(root, 'history'))
+  vi.stubEnv('AIRI_CPU_PRESSURE_FILE', join(root, 'missing.psi'))
   vi.stubEnv('AIRI_CPU_BUDGET', '12')
   vi.stubEnv('AIRI_CPU_SLOTS', '')
   vi.stubEnv('CI', '')

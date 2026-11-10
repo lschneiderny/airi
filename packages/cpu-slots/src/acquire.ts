@@ -12,6 +12,7 @@ import { classes } from './classes'
 import { CpuSlotsError } from './errors'
 import { decide } from './grant'
 import { LeaseHistory } from './history'
+import { parsePressureThresholds, readCpuPressure } from './pressure'
 import { Store, StoreBusyError } from './store'
 
 export interface AcquireOptions extends StoreRequest {
@@ -302,6 +303,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
   if (process.env.CI || process.env.AIRI_CPU_SLOTS === 'off')
     return noop()
   const budget = parseBudget()
+  const thresholds = parsePressureThresholds()
   const root = storeRoot()
   const current = held.get(root)
   if (current) {
@@ -327,6 +329,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
       request.signal?.removeEventListener('abort', onAbort)
     }
     const tick = (): void => {
+      const pressure = readCpuPressure()
       // A busy lock is brief, so it is retried sooner than the regular poll.
       let delay = 500
       // A process capture the transaction asked for is taken after its lock; the next poll uses it at once.
@@ -369,7 +372,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
           if (!ticket || !store.touchTicket(ticket.seq, id))
             ticket = store.enqueue(request, id)
           const state = store.snapshot()
-          const decision = decide(state, budget, Date.now())
+          const decision = decide(state, budget, Date.now(), pressure, thresholds)
           waitMessage = `cpu-slots: waiting for ${Math.min(min, budget)} slot(s) of ${request.class} (held ${state.leases.reduce((sum, lease) => sum + lease.slots, 0)}/${budget}, ${state.tickets.filter(other => other.seq < ticket!.seq).length} ahead)`
           history.observe(
             ticket.seq,
@@ -378,7 +381,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
             decision.kind === 'wait' ? decision.reason : decision.ticketSeq === ticket.seq ? null : 'queue-ahead',
           )
           if (decision.kind === 'grant' && decision.ticketSeq === ticket.seq) {
-            const record = store.grant(ticket.seq, decision.slots, id)
+            const record = store.grant(ticket.seq, decision.slots, id, pressure, thresholds)
             if (record)
               return { record, seq: ticket.seq }
           }
@@ -394,7 +397,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
           // Registration (heartbeat, exit hook) happens once the transaction has committed, so a
           // retried transaction never registers the same lease twice.
           if ('record' in result)
-            history.grant(result.record.slots)
+            history.grant(result.record.slots, pressure)
           const lease = 'record' in result ? owned(store, result.record, history) : result
           finish()
           console.error(`cpu-slots: granted ${lease.grant} (${request.class})`)
@@ -405,7 +408,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
           console.error(waitMessage)
           waiting = true
         }
-        history.wait()
+        history.wait(undefined, pressure)
       }
       catch (error) {
         if (!(error instanceof StoreBusyError)) {
@@ -425,7 +428,7 @@ export async function acquire(request: AcquireOptions): Promise<Lease> {
           console.error(`cpu-slots: waiting for ${Math.min(min, budget)} slot(s) of ${request.class} (held ?/${budget}, ? ahead; ${error.message})`)
           waiting = true
         }
-        history.wait(error.reason)
+        history.wait(error.reason, pressure)
         if (error.reason === 'entry-busy' && error.path) {
           const now = Date.now()
           if (unreadable?.path !== error.path)
