@@ -1,8 +1,11 @@
 import type { AcquireOptions } from '@proj-airi/cpu-slots'
 
 import type { ChangedFile } from './lib/git'
+import type { VerifyStatsOptions } from './verify-history'
 
 import { classes } from '@proj-airi/cpu-slots'
+
+import { parseStatsArgs } from './verify-history'
 
 export const verifySteps = ['typecheck', 'lint', 'test'] as const
 export type VerifyStep = typeof verifySteps[number]
@@ -208,12 +211,17 @@ export interface VerifyArgs {
   force: boolean
   dryRun: boolean
   gate: boolean
+  stats?: VerifyStatsOptions
 }
 
 export type ParsedVerifyArgs = { ok: true, args: VerifyArgs } | { ok: false, message: string }
 
 export const verifyUsage = `Usage: pnpm verify [--gate] [--base <ref>] [--only typecheck,lint,test] [--force] [--dry-run]
+       pnpm verify --stats [--since <duration>] [--json]
 
+  --stats    summarize step history without running checks
+  --since    include history from this duration ago (positive integer ms, s, m, h, d)
+  --json     print statistics as JSON
   --gate     check the full branch instead of changes since each step's last pass
   --base     compare against the merge base with <ref> (default main)
   --only     run only these steps (default all)
@@ -222,6 +230,12 @@ export const verifyUsage = `Usage: pnpm verify [--gate] [--base <ref>] [--only t
 Exit codes: 0 every step passed, 1 a step failed, 2 usage error.`
 
 export function parseVerifyArgs(argv: string[]): ParsedVerifyArgs {
+  if (argv.includes('--stats')) {
+    const parsed = parseStatsArgs(argv)
+    return parsed.ok
+      ? { ok: true, args: { base: 'main', steps: [], force: false, dryRun: false, gate: false, stats: parsed.stats } }
+      : parsed
+  }
   const args: VerifyArgs = { base: 'main', steps: [...verifySteps], force: false, dryRun: false, gate: false }
   for (let index = 0; index < argv.length; index++) {
     const flag = argv[index]

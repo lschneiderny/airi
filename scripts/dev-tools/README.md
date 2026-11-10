@@ -38,6 +38,8 @@ pnpm verify --only lint,test     # some steps
 pnpm verify --base origin/main   # another base
 pnpm verify --dry-run            # print the plan and commands
 pnpm verify --force              # ignore cached passes
+pnpm verify --stats              # summarize recorded step outcomes
+pnpm verify --stats --since 2d --json
 ```
 
 The steps:
@@ -57,6 +59,12 @@ After a pass, including a cached pass, only that step's entry advances. Skipped 
 Use `pnpm verify --gate` before landing to check the full branch regardless of previous passes. If the branch touches app runtime paths (`apps/stage-tamagotchi/src/`, `packages/stage-ui*/src/`, `packages/stage-shared/src/`, `packages/stage-pages/src/`, or `packages/stage-layouts/src/`), the gate prints a reminder to run `pnpm qa:display run -- pnpm qa:smoke`.
 
 A passing step is recorded under `<git common dir>/airi-verify/`, keyed by the working tree hash, step, exact command, Node.js version, and platform. Entries also carry `scopeBase` and `mode`; those fields do not change the key. Every worktree reads the same store. An identical tree and command reports `cached` without running anything; an empty incremental scope reports `skipped`. Failures are never stored. A pass is not stored if files changed while the step ran. Pass-cache entries older than 30 days are pruned.
+
+Step history is separate from the pass cache. Each completed step appends a record to `<git common dir>/airi-verify/runs.jsonl`, including failures, cached passes, and skips. Records contain `ts` (epoch milliseconds), `worktree`, `branch` (null for detached HEAD), `head`, `tree`, `scopeBase`, `mode`, `step`, `status` (`pass`, `fail`, `cached`, or `skipped`), `durationMs`, `commands` (argument arrays), `files`, `waitMs`, and `grant`. Executed commands include the granted concurrency; cached steps list their planned commands. Steps without a lease record zero wait and a null grant. Duration includes waiting for the lease. Dry runs do not append history.
+
+`pnpm verify --stats` reads history without running checks or changing cache records. It reports counts by status for each step and scope mode, failure rate, median and p90 duration, and the slowest five executed steps with their worktree and branch. Failure rates and duration distributions use executed passes and failures; cached and skipped steps contribute only to counts. `--since` accepts a positive integer followed by `ms`, `s`, `m`, `h`, or `d`. `--json` prints the summary as JSON. Malformed lines are skipped and counted, including malformed lines outside the requested time window.
+
+Before an append, a history file larger than 5 MiB rotates to `runs.1.jsonl`, replacing the previous generation. Statistics read both generations. History write failures print a warning without changing check results. Set `AIRI_VERIFY_HISTORY_DIR` to use another history directory, such as a temporary directory for QA; this setting does not redirect pass-cache or last-pass records.
 
 Exit codes: 0 every step passed, 1 a step failed, 2 usage error.
 
