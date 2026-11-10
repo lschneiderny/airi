@@ -14,6 +14,7 @@ This is the `moeru-ai/airi` pnpm monorepo. Prefer the smallest safe change and k
 
 ## Validation
 
+- Choose required checks from the [Testing and QA guide](../docs/ai/testing.md).
 - Use package-scoped pnpm commands where possible.
 - Run the narrowest relevant test first.
 - Run typecheck if runtime contracts or exported types changed.
