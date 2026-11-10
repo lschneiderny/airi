@@ -263,15 +263,19 @@ export class LinuxDesktopBridge {
       return
     }
     this.buses = buses
-    const lock = new LockSource({ ...buses, onLock: locked => this.events.emit('lock', locked) })
+    const lock = new LockSource({
+      ...buses,
+      onLock: locked => this.events.emit('lock', locked),
+      onSource: (lockSource) => {
+        if (this.running && this.lock === lock)
+          this.options.report({ lockSource })
+      },
+    })
     this.lock = lock
     this.busy = new BusySource({ sessionBus: buses.sessionBus })
     // Session sources have their own bounded probes and never delay windows.
     // A compositor timeout does not stop them, so only stop() withholds the report.
-    void lock.start().then((lockSource) => {
-      if (this.running && this.lock === lock)
-        this.options.report({ lockSource })
-    }).catch(error => this.log.withError(error).warn('linux-desktop: lock source failed'))
+    void lock.start().catch(error => this.log.withError(error).warn('linux-desktop: lock source failed'))
     void this.busy.start().catch(error => this.log.withError(error).warn('linux-desktop: busy source failed'))
     // A stopped or timed-out generation can never publish readings or facts.
     const live = () => this.running && generation === this.generation

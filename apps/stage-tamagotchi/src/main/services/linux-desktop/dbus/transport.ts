@@ -39,6 +39,7 @@ const busPath = '/org/freedesktop/DBus'
 /** Owns one bus connection. Subscriptions and exports end when it closes. */
 export class DbusTransport {
   private failure: Error | undefined
+  private readonly failureListeners = new Set<() => void>()
   private readonly disposers = new Set<() => void>()
 
   static variant<T>(signature: string, value: T): DbusVariant<T> {
@@ -57,8 +58,10 @@ export class DbusTransport {
 
   private constructor(private readonly bus: dbus.MessageBus) {
     bus.connection.on('error', (error) => {
-      this.failure = error
+      this.recordFailure(error)
     })
+    bus.connection.on('end', () => this.recordFailure(new Error('D-Bus connection ended')))
+    bus.connection.on('close', () => this.recordFailure(new Error('D-Bus connection closed')))
   }
 
   static async session(address = env.DBUS_SESSION_BUS_ADDRESS): Promise<DbusTransport> {
@@ -221,13 +224,31 @@ export class DbusTransport {
     })
   }
 
+  /** A failed connection or subscription can no longer prove a live source. */
+  onFailure(listener: () => void): () => void {
+    this.failureListeners.add(listener)
+    const unsubscribe = () => {
+      this.failureListeners.delete(listener)
+      this.disposers.delete(unsubscribe)
+    }
+    this.disposers.add(unsubscribe)
+    if (this.failure)
+      listener()
+    return unsubscribe
+  }
+
   async close(): Promise<void> {
+    this.recordFailure(new Error('D-Bus connection closed'))
     for (const dispose of this.disposers)
       dispose()
     await this.bus.close()
   }
 
   private recordFailure(error: unknown): void {
+    if (this.failure)
+      return
     this.failure = error instanceof Error ? error : new Error('D-Bus subscription failed', { cause: error })
+    for (const listener of this.failureListeners)
+      listener()
   }
 }
