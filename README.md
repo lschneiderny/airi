@@ -7,7 +7,6 @@ This is my personal fork of [Project AIRI](https://github.com/moeru-ai/airi). I 
 
 ## How this fork differs from upstream
 
-- **No account.** The clients no longer have sign-in, the official hosted provider, or account pages. Characters, models, and settings stay on your machine. The hosted backend code in `server/` remains in the tree, but the clients do not use it.
 - **Smaller provider catalog.** Settings > Providers lists local and direct-API providers only, such as Ollama, LM Studio, OpenAI, OpenAI-compatible endpoints, OpenRouter, Anthropic, DeepSeek, and OpenCode Go. Speech providers include ElevenLabs, OpenAI-compatible TTS, and local Kokoro.
 - **Natural motion driver for Live2D.** This driver is an alternative to the upstream Universal and MAGIC drivers. It generates layered procedural motion for posture, gaze, blinking, breathing, and the face. Performance state, mood, and held emotions drive that motion, so the character still looks inhabited while idle.
 - **Expression performance.** Each model's `.exp3.json` files are loaded into a per-model catalog with derived labels and suggested emotion mappings. The language model can use the curated expressions through ACT cues and tools.
