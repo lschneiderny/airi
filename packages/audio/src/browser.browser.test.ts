@@ -1,7 +1,7 @@
 import type { PcmBlock } from '@proj-airi/pipelines-audio'
 
 import { AudioInput, capture, createPushStream, Playback } from '@proj-airi/pipelines-audio'
-import { expect, it, vi } from 'vitest'
+import { expect, it, onTestFinished, vi } from 'vitest'
 
 import { BrowserPlayback, mediaStreamSource, microphoneSource, toMediaStream } from './browser'
 import { encodeWav, toWav } from './encoding'
@@ -60,13 +60,21 @@ it('loads the capture worklet once and resumes the idle context for a later conn
 })
 
 it('stops a late permission result when the only subscriber already left', async () => {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  const permission = Promise.withResolvers<MediaStream>()
+  const getUserMedia = vi.spyOn(navigator.mediaDevices, 'getUserMedia').mockReturnValueOnce(permission.promise)
+  onTestFinished(() => {
+    getUserMedia.mockRestore()
+    stream.getTracks().forEach(track => track.stop())
+  })
   const microphone = microphoneSource({ audio: true })
   const subscription = new AbortController()
   const input = new AudioInput(microphone)
   input.subscribe({ signal: subscription.signal })
   subscription.abort()
+  permission.resolve(stream)
 
-  await new Promise(resolve => setTimeout(resolve, 100))
+  await expect.poll(() => stream.getAudioTracks()[0].readyState).toBe('ended')
   expect(microphone.stream).toBeUndefined()
 })
 
@@ -75,8 +83,9 @@ it('fades real playback on the audio clock before confirming silence', async () 
   await context.resume()
   const playback = new Playback(new BrowserPlayback(context))
   const group = playback.openGroup('voice')
-  const clip = group.enqueue({ id: 'tone', audio: new Blob([toWav(new Float32Array(48000).fill(0.1).buffer, 48000)]) })
-  await new Promise<void>(resolve => setTimeout(resolve, 100))
+  const onStart = vi.fn()
+  const clip = group.enqueue({ id: 'tone', audio: new Blob([toWav(new Float32Array(48000).fill(0.1).buffer, 48000)]), onStart })
+  await vi.waitFor(() => expect(onStart).toHaveBeenCalledOnce())
   const stoppedAt = context.currentTime
   const result = await group.stop({ fadeMs: 50 })
 
@@ -116,8 +125,7 @@ it('records real Web Audio into WAV without stopping borrowed tracks', async () 
   const input = new AudioInput(mediaStreamSource(destination.stream, context))
   const recording = capture(input)
   const wav = encodeWav(recording.stream, { sampleRate: 16000, channels: 1 })
-  await recording.started
-  await new Promise(resolve => setTimeout(resolve, 100))
+  expect(await recording.started).toBe(true)
 
   expect((await recording.finish()).status).toBe('finished')
   const decoded = await new OfflineAudioContext(1, 1, 16000).decodeAudioData(await (await wav).arrayBuffer())

@@ -886,6 +886,7 @@ describe('better-ws client runtime', () => {
           throw new Error('initial prepare failed')
         }
 
+        // Time contract: preparation spans the minimum connected duration under this test's fake clock.
         await new Promise(resolve => setTimeout(resolve, 1000))
         throw new Error('retry prepare failed')
       },

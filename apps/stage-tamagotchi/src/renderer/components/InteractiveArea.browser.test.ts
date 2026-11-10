@@ -880,7 +880,7 @@ describe('interactive area synchronized state', () => {
     await expect.poll(() => Number.parseFloat(getComputedStyle(layout).getPropertyValue('--chat-composer-height')))
       .toBeCloseTo(composer.getBoundingClientRect().height, 0)
 
-    // Virtua's createScrollScheduler (virtua/src/core/driver.ts) retries on
+    // Time contract: Virtua's createScrollScheduler (virtua/src/core/driver.ts) retries on
     // measurements until 150ms pass. Require a quiet 200ms window before mounting
     // unmeasured older rows, which would otherwise restart that tail scroll.
     await vi.waitFor(async () => {
@@ -926,6 +926,7 @@ describe('interactive area synchronized state', () => {
 
     viewport.scrollTop = positionedScrollTop + 1
     viewport.dispatchEvent(new Event('scroll'))
+    // Time contract: the row must stay mounted beyond Virtua's 150 ms scroll retry window.
     await new Promise(resolve => setTimeout(resolve, 220))
     expect(viewport.scrollTop).toBe(positionedScrollTop + 1)
 
@@ -934,6 +935,7 @@ describe('interactive area synchronized state', () => {
 
     viewport.scrollTop = positionedScrollTop
     viewport.dispatchEvent(new Event('scroll'))
+    // Time contract: returning to the original offset must remain stable beyond the scroll retry window.
     await new Promise(resolve => setTimeout(resolve, 220))
     expect(viewport.scrollTop).toBe(positionedScrollTop)
 
@@ -942,6 +944,7 @@ describe('interactive area synchronized state', () => {
 
     viewport.scrollTop = positionedScrollTop - 1
     viewport.dispatchEvent(new Event('scroll'))
+    // Time contract: a one-pixel upward scroll must remain stable beyond the scroll retry window.
     await new Promise(resolve => setTimeout(resolve, 220))
     expect(viewport.scrollTop).toBe(positionedScrollTop - 1)
 
@@ -950,6 +953,7 @@ describe('interactive area synchronized state', () => {
 
     viewport.scrollTop = positionedScrollTop
     viewport.dispatchEvent(new Event('scroll'))
+    // Time contract: the final offset must stay put beyond the scroll retry window.
     await new Promise(resolve => setTimeout(resolve, 220))
     expect(viewport.scrollTop).toBe(positionedScrollTop)
     targetObserver.disconnect()

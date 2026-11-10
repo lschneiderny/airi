@@ -2031,25 +2031,14 @@ describe('setupExtensionHost', () => {
       '})',
     ].join('\n'))
 
-    const deadline = Date.now() + 3000
-    let afterSessionId = beforeSession?.id
-    while (Date.now() < deadline && afterSessionId === beforeSession?.id) {
-      await new Promise(resolve => setTimeout(resolve, 100))
+    await vi.waitFor(async () => {
       const snapshot = await invokeInspect()
       const currentSessionId = snapshot.sessions.find(session => session.extensionId === 'test-auto-reload-reload')?.id
 
-      // ROOT CAUSE:
-      //
-      // Reload stops the old session before starting the replacement, so an inspect call can
-      // observe the intentional short-lived gap with no session. Treat that state as pending
-      // instead of ending the poll before the replacement session is available.
-      if (currentSessionId && currentSessionId !== beforeSession?.id) {
-        afterSessionId = currentSessionId
-      }
-    }
-
-    expect(afterSessionId).toBeDefined()
-    expect(afterSessionId).not.toEqual(beforeSession?.id)
+      // Reload briefly leaves no session between stopping the old one and starting its replacement.
+      expect(currentSessionId).toBeDefined()
+      expect(currentSessionId).not.toEqual(beforeSession?.id)
+    }, { timeout: 3000 })
 
     await invokeSetAutoReload({ extensionId: 'test-auto-reload-reload', enabled: false })
     await invokeSetEnabled({ extensionId: 'test-auto-reload-reload', enabled: false })
@@ -2110,22 +2099,15 @@ describe('setupExtensionHost', () => {
       `${createEmptyExtensionEntrypoint('reload-provider')}\n// reload change`,
     )
 
-    const deadline = Date.now() + 3000
-    let after = before
-    while (Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, 100))
-      after = await invokeInspect()
+    await vi.waitFor(async () => {
+      const after = await invokeInspect()
       const providerSessionId = after.sessions.find(session => session.extensionId === 'reload-provider')?.id
       const consumerSessionId = after.sessions.find(session => session.extensionId === 'reload-consumer')?.id
-      if (
-        providerSessionId
-        && consumerSessionId
-        && providerSessionId !== oldSessionIdByExtensionId.get('reload-provider')
-        && consumerSessionId !== oldSessionIdByExtensionId.get('reload-consumer')
-      ) {
-        break
-      }
-    }
+      expect(providerSessionId).toBeDefined()
+      expect(consumerSessionId).toBeDefined()
+      expect(providerSessionId).not.toEqual(oldSessionIdByExtensionId.get('reload-provider'))
+      expect(consumerSessionId).not.toEqual(oldSessionIdByExtensionId.get('reload-consumer'))
+    }, { timeout: 3000 })
 
     expect(stopSpy.mock.calls.map(([sessionId]) => extensionIdByOldSessionId.get(sessionId))).toEqual([
       'reload-consumer',

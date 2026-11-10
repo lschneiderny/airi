@@ -40,6 +40,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.clearAllMocks()
   localStorage.clear()
 })
@@ -100,10 +101,11 @@ describe('usePushToTalkShortcut', () => {
     devices.enabled = true
     hearing.inputMode = 'push-to-talk'
 
+    vi.useFakeTimers()
     trigger('down')
     trigger('down', 'toggle-main-window')
     sessions.activeSessionId = 'bob'
-    await new Promise(resolve => setTimeout(resolve, 350))
+    await vi.advanceTimersByTimeAsync(350)
     trigger('up')
 
     expect(beginManual).toHaveBeenCalledOnce()

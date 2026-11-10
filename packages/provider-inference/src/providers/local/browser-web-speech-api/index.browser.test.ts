@@ -18,6 +18,7 @@ class FakeSpeechRecognition {
 }
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -59,6 +60,7 @@ it('reports capture failures and does not restart an errored stream', async () =
   vi.stubGlobal('SpeechRecognition', Recognition)
   const context = new AudioContext()
   const media = context.createMediaStreamDestination().stream
+  vi.useFakeTimers()
   const result = streamWebSpeechAPITranscription(media, { continuous: true })
   const textFailure = expect(result.text).rejects.toThrow('audio-capture')
   const textStreamFailure = expect(result.textStream.getReader().read()).rejects.toThrow('audio-capture')
@@ -67,7 +69,7 @@ it('reports capture failures and does not restart an errored stream', async () =
   recognition.onerror?.({ error: 'audio-capture' })
   recognition.onend?.()
   await Promise.all([textFailure, textStreamFailure, fullStreamFailure])
-  await new Promise(resolve => setTimeout(resolve, 150))
+  await vi.advanceTimersByTimeAsync(150)
   expect(recognition.start).toHaveBeenCalledTimes(1)
   media.getTracks().forEach(track => track.stop())
   await context.close()
@@ -87,13 +89,14 @@ it('uses the supplied track and preserves final recognition after an explicit st
   vi.stubGlobal('SpeechRecognition', Recognition)
   const context = new AudioContext()
   const media = context.createMediaStreamDestination().stream
+  vi.useFakeTimers()
   const result = streamWebSpeechAPITranscription(media, { continuous: true })
   expect(instances[0].start).toHaveBeenCalledWith(media.getAudioTracks()[0])
   result.recognition?.stop()
   instances[0].onresult?.({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: 'final words' } }] })
   instances[0].onend?.()
   expect(await result.text).toBe('final words')
-  await new Promise(resolve => setTimeout(resolve, 150))
+  await vi.advanceTimersByTimeAsync(150)
   expect(instances[0].start).toHaveBeenCalledTimes(1)
   media.getTracks().forEach(track => track.stop())
   await context.close()

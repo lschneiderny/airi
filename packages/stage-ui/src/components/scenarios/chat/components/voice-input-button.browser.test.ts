@@ -5,7 +5,7 @@ import { defineInvokeHandler } from '@moeru/eventa'
 import { createPinia, disposePinia } from 'pinia'
 import { afterEach, describe, expect, it } from 'vitest'
 import { render } from 'vitest-browser-vue'
-import { defineComponent, h, ref, shallowRef } from 'vue'
+import { defineComponent, h, nextTick, ref, shallowRef } from 'vue'
 import { createI18n } from 'vue-i18n'
 import { Toaster } from 'vue-sonner'
 
@@ -99,7 +99,7 @@ describe('voiceInputButton', () => {
 
     await screen.getByTestId('voice-input-button').click({ button: 'right' })
     await expect.element(screen.getByTestId('voice-menu-device')).toBeVisible()
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await nextTick()
 
     expect(monitorRequests).toEqual([])
     expect(screen.getByTestId('voice-menu-level').query()).toBeNull()

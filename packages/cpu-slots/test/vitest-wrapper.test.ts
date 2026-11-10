@@ -5,7 +5,7 @@ import type { Plugin, ViteUserConfig } from 'vitest/config'
 import process from 'node:process'
 
 import { spawn, spawnSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, watch, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -314,7 +314,8 @@ describe('withCpuSlots in a real vitest process', () => {
     return {
       child,
       stderr: () => stderr,
-      probe: (): { leases: number, held: number, start?: number, end?: number }[] => existsSync(probeOut) ? readFileSync(probeOut, 'utf8').trim().split('\n').map(line => JSON.parse(line)) : [],
+      // Creation can notify before the first append; only newline-terminated records are complete.
+      probe: (): { leases: number, held: number, start?: number, end?: number }[] => existsSync(probeOut) ? readFileSync(probeOut, 'utf8').split('\n').slice(0, -1).map(line => JSON.parse(line)) : [],
     }
   }
 
@@ -333,9 +334,36 @@ describe('withCpuSlots in a real vitest process', () => {
 
   /** Waits for probe lines, which a watch-mode process writes before it idles forever. */
   async function probes(run: ReturnType<typeof start>, count = 1) {
-    const deadline = Date.now() + TIMEOUT_MS - 10_000
-    while (run.probe().length < count && run.child.exitCode === null && Date.now() < deadline)
-      await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise<void>((resolve, reject) => {
+      // Watch the directory before reading: the child may create or append the probe at either boundary.
+      const watcher = watch(root, (_event, filename) => {
+        if (filename === 'probe.jsonl')
+          check()
+      })
+      const timeout = setTimeout(() => {
+        cleanup()
+        reject(new Error(`Timed out waiting for ${count} Vitest probe lines.\n${run.stderr()}`))
+      }, TIMEOUT_MS - 10_000)
+      function cleanup() {
+        watcher.close()
+        clearTimeout(timeout)
+        run.child.off('exit', check)
+      }
+      function check() {
+        try {
+          if (run.probe().length < count && run.child.exitCode === null)
+            return
+          cleanup()
+          resolve()
+        }
+        catch (error) {
+          cleanup()
+          reject(error)
+        }
+      }
+      run.child.once('exit', check)
+      check()
+    })
     return run.probe()
   }
 
