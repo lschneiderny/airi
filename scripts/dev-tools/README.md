@@ -45,6 +45,8 @@ The steps:
 - **lint** runs `moeru-lint` (oxlint, then ESLint with its cache) on the changed files.
 - **test** runs `vitest related` on the changed code files with the root config. When a changed code file is inside a workspace package, it also runs each config that `pnpm test:run` adds whose package is that package or depends on it, according to `turbo ls --filter=...{<package>}`. A config in an unrelated package cannot import the changed code, so it is skipped.
 
+Each step acquires one CPU lease before its first command and releases it after its last command, including on failure. A failed command stops the remaining commands in that step. `--dry-run` prints one lease request per uncached, runnable step.
+
 Changed files are those that differ between the merge base and the working tree, including uncommitted and untracked files.
 
 A passing step is recorded under `<git common dir>/airi-verify/`, keyed by the working tree hash, the exact command, the Node.js version, and the platform. Every worktree reads the same store. A rerun on an identical tree reports `cached` without running anything. Failures are never stored. A pass is not stored if files changed while the step ran. Entries older than 30 days are pruned.
@@ -168,10 +170,9 @@ The backend imports its compositor scripts with Vite's `?raw` suffix, so the pro
 
 `pnpm verify` takes a lease from the CPU slot budget for each step, so steps from several worktrees queue instead of oversubscribing the machine. The classes are:
 
-- `typecheck`: one `turbo run typecheck` command, with `--concurrency={grant}`.
+- `typecheck`: one `turbo run typecheck` command, with `--concurrency={grant}`. Its requested maximum is the number of changed packages and their dependents, floored at the class minimum of two. An all-package typecheck keeps the class maximum.
 - `lint`: `moeru-lint` in chunks.
-- `test`: `vitest related --run` for the root config.
-- `browser`: extra configs and browser-mode projects.
+- `test`: the prerequisite Turbo build and every `vitest related --run` command share one lease. Turbo receives `--concurrency={grant}`; child Vitest wrappers inherit the lease and apply their class caps, including the browser cap.
 
 A waiting step prints `cpu-slots: waiting for N slot(s) ...`. Run `pnpm slots status` to see the holders.
 

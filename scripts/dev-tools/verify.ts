@@ -1,5 +1,3 @@
-import type { CpuClass } from '@proj-airi/cpu-slots'
-
 import type { ExtraTestConfig, VerifyStep } from './verify-plan'
 
 import process from 'node:process'
@@ -13,13 +11,11 @@ import { acquire } from '@proj-airi/cpu-slots'
 import { capture, chunkByLength, nodeCommandChunkLimits, run, shimCommandChunkLimits } from './lib/exec'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { readPass, verifyCacheKey, writePass } from './verify-cache'
-import { parseVerifyArgs, planVerify, selectExtraTestConfigs, stripWorkerFlags, testPrerequisiteTurboArgs, verifyUsage } from './verify-plan'
+import { parseVerifyArgs, planStepLease, planVerify, selectExtraTestConfigs, stripWorkerFlags, testPrerequisiteTurboArgs, verifyUsage } from './verify-plan'
 
 interface Command {
   label: string
   args: string[]
-  /** The CPU slot class the command runs under. */
-  cpuClass: CpuClass
   /** Whether the granted slot count is passed to the command as `--concurrency`. */
   concurrency?: boolean
 }
@@ -59,7 +55,7 @@ function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnT
       ? ['-F=./packages/*', '-F=./apps/*', '-F=./server/**', '-F=./services/*']
       : [`--filter=...[${base}]`]
     const label = plan.typecheck.kind === 'all' ? `every package (${plan.typecheck.reason})` : 'changed packages and their dependents'
-    return [{ label, args: node('node_modules/turbo/bin/turbo', ['run', 'typecheck', ...filters, '--output-logs=errors-only']), cpuClass: 'typecheck', concurrency: true }]
+    return [{ label, args: node('node_modules/turbo/bin/turbo', ['run', 'typecheck', ...filters, '--output-logs=errors-only']), concurrency: true }]
   }
   if (step === 'lint') {
     if (!plan.lintFiles.length)
@@ -67,7 +63,6 @@ function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnT
     return chunkByLength(plan.lintFiles, shimCommandChunkLimits).map((files, index, all) => ({
       label: `${files.length} changed file(s)${all.length > 1 ? ` [batch ${index + 1}/${all.length}]` : ''}`,
       args: node('node_modules/@moeru/eslint-config/src/moeru-lint.js', files),
-      cpuClass: 'lint',
     }))
   }
   if (!plan.testFiles.length)
@@ -78,14 +73,11 @@ function commandsFor(step: VerifyStep, root: string, base: string, plan: ReturnT
   const rebuild: Command = {
     label: 'rebuild stale workspace packages',
     args: node('node_modules/turbo/bin/turbo', testPrerequisiteTurboArgs),
-    cpuClass: 'build',
     concurrency: true,
   }
   const related: Command[] = configs.flatMap(({ config, project }) => chunkByLength(absoluteFiles, nodeCommandChunkLimits).map(files => ({
     label: `tests related to changes (${config}${project ? `, project ${project}` : ''})`,
     args: node('node_modules/vitest/vitest.mjs', ['related', '--run', '--passWithNoTests', '--config', config, ...(project ? ['--project', project] : []), ...files]),
-    // Every extra config holds browser projects; the root config only runs node tests. The child's vitest wrapper enforces the cap.
-    cpuClass: project || config !== 'vitest.config.ts' ? 'browser' : 'test',
   })))
   return [rebuild, ...related]
 }
@@ -110,6 +102,9 @@ async function main(): Promise<number> {
   const workspaces = workspacePackages(root)
   const plan = planVerify(changed, workspaces.paths, workspaces.rootDependencyPaths)
   const extraConfigs = args.steps.includes('test') ? selectExtraTestConfigs(withDependents(root, plan.testPackagePaths)) : []
+  const affectedTypecheckCount = args.steps.includes('typecheck') && plan.typecheck.kind === 'affected'
+    ? withDependents(root, workspaces.paths.filter(path => changed.some(file => file.path === path || file.path.startsWith(`${path}/`)))).length
+    : 0
   const tree = workingTreeHash(root)
   const cacheDir = join(gitCommonDir(root), 'airi-verify')
   // Windows spells the variable `Path`; a second `PATH` key would hide the system directories.
@@ -132,29 +127,30 @@ async function main(): Promise<number> {
       results.push({ step, status: 'cached', detail: `passed ${cached.passedAt} on this tree`, durationMs: 0 })
       continue
     }
+    const leasePlan = planStepLease(step, plan.typecheck, affectedTypecheckCount)
     if (args.dryRun) {
+      console.info(`[${step}] acquire one lease (class ${leasePlan.class}${leasePlan.max !== undefined ? `, max ${leasePlan.max}` : ''})`)
       for (const item of commands)
-        console.info(`[${step}] ${item.label} (class ${item.cpuClass})\n  node ${[relative(root, item.args[0]), ...item.args.slice(1), ...(item.concurrency && slotsEnabled ? ['--concurrency={grant}'] : [])].join(' ')}`)
+        console.info(`[${step}] ${item.label}\n  node ${[relative(root, item.args[0]), ...item.args.slice(1), ...(item.concurrency && slotsEnabled ? ['--concurrency={grant}'] : [])].join(' ')}`)
       results.push({ step, status: 'skipped', detail: 'dry run', durationMs: 0 })
       continue
     }
     const started = Date.now()
     let failed: string | null = null
-    for (const item of commands) {
-      console.info(`\n[${step}] ${item.label}`)
-      const lease = await acquire({ class: item.cpuClass, cwd: root, command: `verify ${step}: ${item.label}` })
-      let exitCode: number
-      try {
+    const lease = await acquire({ ...leasePlan, cwd: root, command: `verify ${step}` })
+    try {
+      for (const item of commands) {
+        console.info(`\n[${step}] ${item.label}`)
         const args = item.concurrency && lease.grant !== null ? [...item.args, `--concurrency=${lease.grant}`] : item.args
-        exitCode = await run(process.execPath, args, { cwd: root, env: { ...env, ...lease.env }, onSpawn: lease.addWorkload })
+        const exitCode = await run(process.execPath, args, { cwd: root, env: { ...env, ...lease.env }, onSpawn: lease.addWorkload })
+        if (exitCode !== 0) {
+          failed = `${item.label} exited ${exitCode}`
+          break
+        }
       }
-      finally {
-        lease.release()
-      }
-      if (exitCode !== 0) {
-        failed = `${item.label} exited ${exitCode}`
-        break
-      }
+    }
+    finally {
+      lease.release()
     }
     const durationMs = Date.now() - started
     if (failed) {
