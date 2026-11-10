@@ -4,7 +4,7 @@ import { useElectronCursorAvailable, useElectronWindowBounds } from '@proj-airi/
 import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { useHostCapabilitiesStore } from '@proj-airi/stage-shared/stores/host-capabilities'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { createApp, defineComponent, h, nextTick, ref } from 'vue'
 
@@ -108,8 +108,9 @@ describe('floating chat native cursor trust', () => {
   })
 })
 
+let Caption: typeof import('./pages/caption.vue').default
+
 async function mountCaption() {
-  const { default: Caption } = await import('./pages/caption.vue')
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   const host = document.createElement('div')
   document.body.append(host)
@@ -126,6 +127,11 @@ async function mountCaption() {
 }
 
 describe('caption border native cursor trust', () => {
+  // The page's module graph loads cold here, so that load does not count against the first test's timeout.
+  beforeAll(async () => {
+    Caption = (await import('./pages/caption.vue')).default
+  }, 60_000)
+
   it.each(['windows', 'macos'] as const)('preserves the live %s border at the window edge', async (profile) => {
     useHostCapabilitiesStore().set(capabilitiesForHost(profile))
     await sendCursor({ x: 0, y: 0 })
