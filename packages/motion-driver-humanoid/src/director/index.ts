@@ -133,6 +133,14 @@ export interface BodyDirectorInput {
   }
   /** Walkable ground line; null means no world (legacy window mode). */
   ground: { minX: number, maxX: number } | null
+  /**
+   * Every ground line she may walk to, as on a row of displays; `ground` is the one she stands on. Goals with a
+   * destination (the chat, the cursor, home, a tool, the debug goal) clamp to the nearest zone, so they can cross from
+   * one zone to another. A wander stays on `ground`. The stretch between two zones is a wing: there a clip that
+   * stops her is refused as busy, and a root at rest walks to the nearest zone.
+   * Omitted: `ground` is the only zone, and no wing rule applies.
+   */
+  reach?: readonly { minX: number, maxX: number }[]
   rootX: number
   homeX: number
   locomotionMode: 'idle' | 'turning' | 'starting' | 'walking' | 'stopping'
@@ -292,13 +300,27 @@ function clampToGround(x: number, ground: { minX: number, maxX: number }): numbe
   return Math.min(Math.max(x, ground.minX), ground.maxX)
 }
 
+/** The point of the zones nearest to `x`: `x` itself inside a zone, otherwise the closest zone edge. */
+function clampToZones(x: number, zones: readonly { minX: number, maxX: number }[]): number {
+  let nearest = x
+  let distance = Infinity
+  for (const zone of zones) {
+    const clamped = clampToGround(x, zone)
+    if (Math.abs(clamped - x) < distance) {
+      nearest = clamped
+      distance = Math.abs(clamped - x)
+    }
+  }
+  return nearest
+}
+
 /**
  * Where she stops for the chat anchor `chatX`: one leg length short of it, on the side of home.
  * The approach-chat reason and the come-here tool share this rule.
  */
-function chatStandGoal(chatX: number, homeX: number, leg: number, ground: { minX: number, maxX: number }): number {
-  const anchor = clampToGround(chatX, ground)
-  return clampToGround(anchor + Math.sign(homeX - anchor) * leg, ground)
+function chatStandGoal(chatX: number, homeX: number, leg: number, zones: readonly { minX: number, maxX: number }[]): number {
+  const anchor = clampToZones(chatX, zones)
+  return clampToZones(anchor + Math.sign(homeX - anchor) * leg, zones)
 }
 
 /** Draws one uniform value and returns the advanced seed; no hidden state. */
@@ -322,6 +344,11 @@ export function decideBody(
   const finiteNowMs = Number.isFinite(input.nowMs) ? input.nowMs : previous.nowMs ?? 0
   const nowMs = previous.nowMs === null ? finiteNowMs : Math.max(previous.nowMs, finiteNowMs)
   const { ground } = input
+  // Goals with a destination clamp to these; without `reach` they are the ground line alone.
+  const zones = ground === null ? [] : input.reach ?? [ground]
+  const inWing = input.reach !== undefined
+    && ground !== null
+    && Math.abs(clampToZones(input.rootX, input.reach) - input.rootX) > ARRIVAL_TOLERANCE
   const atHome = Math.abs(input.rootX - input.homeX) <= ARRIVAL_TOLERANCE
 
   const leg = input.legLength
@@ -427,6 +454,10 @@ export function decideBody(
     else if (performing !== null && (performing.request.layer === 'full' || isGesture)) {
       refuse('busy', remainingMs())
     }
+    else if (inWing && !isGesture) {
+      // A clip that stops her would play where no display shows her; she is busy until she reaches a zone.
+      refuse('busy', null)
+    }
     else {
       // An upper performance gives way to an action or a dance.
       performing = null
@@ -521,7 +552,7 @@ export function decideBody(
   let request: BodyGoalRequest | null = null
   if (input.chatUnfoldSeq > previous.lastUnfoldSeq && ground !== null && input.chatX !== null) {
     request = {
-      x: chatStandGoal(input.chatX, input.homeX, leg, ground),
+      x: chatStandGoal(input.chatX, input.homeX, leg, zones),
       pace: 'walk',
       reason: 'approach-chat',
     }
@@ -557,15 +588,15 @@ export function decideBody(
         moveRefractoryUntilMs = nowMs + MOVE_TOOL_REFRACTORY_MS
         // Come-here stops where an unfolded chat does: the same stand spot, with the same leg offset.
         const toolX = tool.kind === 'come-here' && input.chatX !== null
-          ? chatStandGoal(input.chatX, input.homeX, leg, ground)
-          : clampToGround(input.homeX, ground)
+          ? chatStandGoal(input.chatX, input.homeX, leg, zones)
+          : clampToZones(input.homeX, zones)
         request = { x: toolX, pace: 'walk', reason: 'tool' }
       }
     }
   }
 
   if (input.debugGoal !== null && input.debugGoal.seq > previous.lastDebugSeq && ground !== null) {
-    request = { x: clampToGround(input.debugGoal.x, ground), pace: input.debugGoal.pace, reason: 'debug' }
+    request = { x: clampToZones(input.debugGoal.x, zones), pace: input.debugGoal.pace, reason: 'debug' }
   }
 
   if (request !== null)
@@ -605,7 +636,7 @@ export function decideBody(
     && nowMs - input.interactionAtMs <= CHASE_WINDOW_MS
     && Math.abs(input.cursorX - input.rootX) > CHASE_STOP_LEGS * leg
   if (chasing && ground !== null && input.cursorX !== null && pending === null && canIssue()) {
-    const chaseX = clampToGround(input.cursorX - Math.sign(input.cursorX - input.rootX) * CHASE_STOP_LEGS * leg, ground)
+    const chaseX = clampToZones(input.cursorX - Math.sign(input.cursorX - input.rootX) * CHASE_STOP_LEGS * leg, zones)
     const sameGoal = reason === 'approach-cursor' && goalX !== null && Math.abs(chaseX - goalX) <= ARRIVAL_TOLERANCE
     if (!sameGoal && Math.abs(chaseX - input.rootX) > ARRIVAL_TOLERANCE)
       issue({ x: chaseX, pace: 'walk', reason: 'approach-cursor' })
@@ -620,8 +651,12 @@ export function decideBody(
     && nowMs - lastReasonMs >= RETURN_HOME_DELAY_MS
     && !atHome
   ) {
-    issue({ x: clampToGround(input.homeX, ground), pace: 'stroll', reason: 'return-home' })
+    issue({ x: clampToZones(input.homeX, zones), pace: 'stroll', reason: 'return-home' })
   }
+
+  // A root at rest in a wing is unseen, so she walks to the nearest zone. Issuing here also keeps a wander from starting there.
+  if (inWing && input.reach !== undefined && pending === null && goalX === null && input.locomotionMode === 'idle' && canIssue())
+    issue({ x: clampToZones(input.rootX, input.reach), pace: 'walk', reason: 'enter-stage' })
 
   const scheduleWander = () => {
     const draw = drawRandom(rngState)

@@ -966,3 +966,98 @@ describe('body director three minute performance scenario', () => {
     expect(labels.find(entry => entry.label === 'ended by interaction')?.atMs).toBe(90_000)
   })
 })
+
+describe('body director reach zones', () => {
+  const left = stage
+  const right = { minX: 30, maxX: 70 }
+  const reach = [left, right]
+  /** A root in the wing between the two zones. */
+  const wingX = 26
+  const chase = { interactionSeq: 1, interactionAtMs: 0, cursorOnStage: true }
+
+  it('decides exactly as without reach when the ground line is the only zone', () => {
+    const frames = (extra: Partial<DirectorInput>) => [
+      world({ ...extra, ...chase, nowMs: 1_000, cursorX: 40 }),
+      world({ ...extra, ...chase, nowMs: 5_000, cursorX: -40, rootX: 12, locomotionMode: 'walking' }),
+      world({ ...extra, nowMs: 70_000, rootX: 19, chatUnfoldSeq: 1, chatX: 30 }),
+      world({ ...extra, nowMs: 75_000, rootX: 19, toolRequest: { seq: 1, kind: 'go-home' }, debugGoal: { seq: 1, x: 99, pace: 'stroll' } }),
+      world({ ...extra, nowMs: 200_000, rootX: 25 }),
+    ]
+
+    expect(run(frames({ reach: [stage] }))).toEqual(run(frames({})))
+  })
+
+  it('chases a cursor on another zone to one leg short of it', () => {
+    const crossing = decide(world({ ...chase, nowMs: 1_000, reach, cursorX: 50 }))
+    const single = decide(world({ ...chase, nowMs: 1_000, cursorX: 50 }))
+
+    expect(crossing.intent.locomotion).toMatchObject({ goalX: 49, reason: 'approach-cursor' })
+    expect(single.intent.locomotion.goalX).toBe(20)
+  })
+
+  it('stops a goal that falls in a wing at the edge of the nearest zone', () => {
+    const nearRight = decide(world({ reach, debugGoal: { seq: 1, x: 28, pace: 'walk' } }))
+    const nearLeft = decide(world({ reach, debugGoal: { seq: 1, x: 22, pace: 'walk' } }))
+
+    expect(nearRight.intent.locomotion).toMatchObject({ goalX: 30, reason: 'debug' })
+    expect(nearLeft.intent.locomotion).toMatchObject({ goalX: 20, reason: 'debug' })
+  })
+
+  it('returns home across zones, and takes the home tool and the chat there too', () => {
+    const onRight = { ground: right, reach, rootX: 50, homeX: 0 }
+    const started = decide(input(onRight))
+    const home = decide(input({ ...onRight, nowMs: RETURN_HOME_DELAY_MS }), started.memory)
+    const tool = decide(input({ ...onRight, toolRequest: { seq: 1, kind: 'go-home' } }))
+    const chat = decide(input({ ...onRight, chatUnfoldSeq: 1, chatX: 6 }))
+
+    expect(home.intent.locomotion).toMatchObject({ goalX: 0, pace: 'stroll', reason: 'return-home' })
+    expect(tool.intent.locomotion).toMatchObject({ goalX: 0, reason: 'tool' })
+    // One leg short of the chat on the side of home, as on a single zone.
+    expect(chat.intent.locomotion).toMatchObject({ goalX: 5, reason: 'approach-chat' })
+  })
+
+  it('keeps a wander on the ground line she stands on', () => {
+    for (const seed of [1, 7, 42, 1234]) {
+      // She lives at the edge next to the other zone, so a wander that used the zones could cross.
+      const roaming = { reach, rootX: 18, homeX: 18, roamMode: 'roam' as const, seed, slots: { sit: false, sleep: false } }
+      const started = decide(world(roaming))
+      const due = decide(world({ ...roaming, nowMs: started.memory.nextWanderAtMs as number }), started.memory)
+
+      expect(due.intent.locomotion.reason).toBe('wander')
+      expect(due.intent.locomotion.goalX).toBeGreaterThanOrEqual(left.minX)
+      expect(due.intent.locomotion.goalX).toBeLessThanOrEqual(left.maxX)
+    }
+  })
+
+  it('refuses a clip that stops her as busy in a wing, and still plays a gesture there', () => {
+    const walking = { reach, rootX: wingX, locomotionMode: 'walking' as const }
+    const full = decide(world({ ...walking, actionRequest: action(1) }))
+    const waved = decide(world({ ...walking, actionRequest: gesture(1) }))
+    const onStage = decide(world({ reach, rootX: 19, actionRequest: action(1) }))
+    const single = decide(world({ rootX: wingX, actionRequest: action(1) }))
+
+    expect(full.memory).toMatchObject({ lastActionSeq: 1, actionRefusal: 'busy', actionRetryAfterMs: null, performing: null })
+    expect(waved.intent.action).toMatchObject({ seq: 1, phase: 'playing' })
+    expect(onStage.intent.action?.seq).toBe(1)
+    expect(single.intent.action?.seq).toBe(1)
+  })
+
+  it('walks a root at rest in a wing to the nearest zone', () => {
+    const rest = decide(world({ reach, rootX: wingX }))
+    const nearLeft = decide(world({ reach, rootX: 23 }))
+    const beyond = decide(input({ ground: right, reach, rootX: 80, homeX: 80 }))
+
+    expect(rest.intent.locomotion).toMatchObject({ goalX: 30, pace: 'walk', reason: 'enter-stage' })
+    expect(nearLeft.intent.locomotion.goalX).toBe(20)
+    expect(beyond.intent.locomotion.goalX).toBe(70)
+  })
+
+  it('leaves her alone in a wing while she walks to a goal, and without reach', () => {
+    const goal = decide(world({ ...chase, nowMs: 1_000, reach, cursorX: 50 }))
+    const crossing = decide(world({ ...chase, nowMs: 1_500, reach, cursorX: 50, rootX: wingX, locomotionMode: 'walking' }), goal.memory)
+    const single = decide(world({ rootX: wingX, homeX: wingX }))
+
+    expect(crossing.intent.locomotion).toMatchObject({ goalX: 49, reason: 'approach-cursor' })
+    expect(single.intent.locomotion.goalX).toBeNull()
+  })
+})

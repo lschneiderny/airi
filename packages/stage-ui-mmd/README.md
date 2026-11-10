@@ -296,7 +296,8 @@ moves only on a stance change), `nowMs` (director-clock time of the last frame
 the director decided; it advances every frame), `stanceReason` (why the stance
 holds: `idle-timeout`, `away`, `dwell`, `no-sleep-slot`, `idle`, `no-sit-slot`
 or `active`), `reason` (the locomotion reason: `approach-chat`,
-`approach-cursor`, `return-home`, `wander`, `tool`, `debug` or `stay`),
+`approach-cursor`, `return-home`, `wander`, `tool`, `debug`, `enter-stage` or
+`stay`),
 `goalX`, `pace`, `pendingGoal { x, reason }` (a goal held while she speaks),
 `nextWanderAtMs` (`null` outside roam mode), `moveRefractoryUntilMs` and
 `lookRefractoryUntilMs` (director-clock times until which `come_here` and

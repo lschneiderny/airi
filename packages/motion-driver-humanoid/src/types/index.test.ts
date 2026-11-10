@@ -80,7 +80,7 @@ describe('rest-relative rotation order', () => {
 
 describe('body locomotion intent', () => {
   it('carries a locomotion intent with a closed set of reasons and paces', () => {
-    const reasons: BodyLocomotionReason[] = ['stay', 'return-home', 'wander', 'approach-chat', 'approach-cursor', 'tool', 'debug']
+    const reasons: BodyLocomotionReason[] = ['stay', 'return-home', 'wander', 'approach-chat', 'approach-cursor', 'tool', 'debug', 'enter-stage']
     const intent: BodyIntent = {
       stance: 'stand',
       attention: { kind: 'camera', point: null },

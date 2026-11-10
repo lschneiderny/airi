@@ -33,7 +33,7 @@ export interface MMDMotionSnapshot {
   lookAt: { target: { x: number, y: number, z: number } | null, yaw: number, pitch: number, turning: boolean, turns: number } | null
   /**
    * The body director. `stanceReason` explains the stance; `reason` is the locomotion reason of the goal in progress
-   * (`approach-chat`, `approach-cursor`, `return-home`, `wander`, `tool`, `debug`, or `stay`).
+   * (`approach-chat`, `approach-cursor`, `return-home`, `wander`, `tool`, `debug`, `enter-stage`, or `stay`).
    */
   /** `centerY` is the センター bone's Y in model units (mesh space), independent of the view scale. */
   director: (MMDStanceDiagnostics & { clockOffsetMs: number, centerY: number | null }) | null

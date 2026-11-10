@@ -129,8 +129,8 @@ slot is available, and holds each stance for at least 3 seconds
 
 On a stage with a ground line, `decideBody` also owns where she goes:
 `BodyIntent.locomotion` carries the goal x, its reason (`approach-chat`,
-`approach-cursor`, `return-home`, `wander`, `tool`, `debug` or `stay`) and the
-pace. She approaches the chat when it unfolds, chases the cursor for
+`approach-cursor`, `return-home`, `wander`, `tool`, `debug`, `enter-stage` or
+`stay`) and the pace. She approaches the chat when it unfolds, chases the cursor for
 `CHASE_WINDOW_MS` after a poke, pet, drag or sent message, returns home
 `RETURN_HOME_DELAY_MS` after the last reason, and wanders between
 `WANDER_MIN_MS` and `WANDER_MAX_MS` apart in roam mode only. A wander goes at
@@ -142,6 +142,15 @@ she speaks and is dropped after `PENDING_GOAL_TTL_MS`. Tool requests share
 glance. The boundary is fixed: the director chooses goals and never moves the
 root; locomotion integrates the position, gait phase, step targets, arm swing
 and root yaw, and never chooses a goal.
+
+The optional `reach` input lists every ground line she may walk to, for a row of
+displays; `ground` stays the one she stands on. A goal with a destination (the
+chat, the cursor, home, a tool, the debug goal) clamps to the nearest zone, so it
+can cross from one zone to another, while a wander stays on `ground`. The stretch
+between two zones is a wing that no display shows. There a clip that stops her
+(an action or a dance) is refused as `busy`, and a root at rest gets an
+`enter-stage` goal to the nearest zone. Without `reach`, `ground` is the only
+zone and neither wing rule applies.
 
 `NO_WORLD_BODY_INPUT` supplies inert world inputs for the classic window. The
 MMD stance director spreads it only when the scene has no stage world; in stage

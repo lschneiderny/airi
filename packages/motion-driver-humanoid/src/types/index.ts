@@ -71,7 +71,7 @@ export interface RigTraits {
 export type LocomotionPace = 'stroll' | 'walk'
 
 /** Why the director issued the current locomotion goal. */
-export type BodyLocomotionReason = 'stay' | 'return-home' | 'wander' | 'approach-chat' | 'approach-cursor' | 'tool' | 'debug'
+export type BodyLocomotionReason = 'stay' | 'return-home' | 'wander' | 'approach-chat' | 'approach-cursor' | 'tool' | 'debug' | 'enter-stage'
 
 /** Where the body should walk, in stage-world x coordinates. */
 export interface BodyLocomotionIntent {

@@ -27,7 +27,7 @@ export interface MMDStanceDiagnostics {
   nowMs: number
   /** Why the stance holds (`idle-timeout`, `away`, ...). */
   stanceReason: string
-  /** The locomotion reason: `approach-chat`, `approach-cursor`, `return-home`, `wander`, `tool`, `debug` or `stay`. */
+  /** The locomotion reason: `approach-chat`, `approach-cursor`, `return-home`, `wander`, `tool`, `debug`, `enter-stage` or `stay`. */
   reason: BodyIntent['locomotion']['reason']
   goalX: number | null
   pace: BodyIntent['locomotion']['pace']
