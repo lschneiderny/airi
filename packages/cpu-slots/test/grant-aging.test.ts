@@ -14,7 +14,7 @@ describe('head aging and backfill', () => {
     expect(decide({
       leases: [{ slots: 8, exclusive: false }],
       tickets: [ticket(2, 'lint'), ticket(1)],
-    }, 12, now)).toEqual({ kind: 'grant', ticketSeq: 1, slots: 4 })
+    }, 12, now)).toEqual({ kind: 'grant', ticketSeq: 1, slots: 2 })
   })
 
   it('backfills the first fitting shared ticket by sequence without mutating the queue', () => {

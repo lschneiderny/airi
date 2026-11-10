@@ -41,10 +41,11 @@ export function decide(state: BrokerState, budget: number, now: number): Decisio
     return { kind: 'wait', reason: 'exclusive-held' }
 
   const free = budget - held
+  const waiting = tickets.filter(ticket => !ticket.exclusive).length
   if (head.exclusive && held === 0)
     return { kind: 'grant', ticketSeq: head.seq, slots: budget }
   if (!head.exclusive && free >= Math.min(head.min, budget))
-    return { kind: 'grant', ticketSeq: head.seq, slots: Math.min(head.max, free) }
+    return { kind: 'grant', ticketSeq: head.seq, slots: Math.min(head.max, free, Math.max(head.min, Math.floor(free / waiting))) }
 
   // Exclusive heads wait best-effort; aging one could freeze every lane behind a long live lease.
   if (!head.exclusive && now - head.createdAt >= HEAD_AGING_MS)
@@ -52,7 +53,7 @@ export function decide(state: BrokerState, budget: number, now: number): Decisio
 
   const backfill = tickets.slice(1).find(ticket => !ticket.exclusive && Math.min(ticket.min, budget) <= free)
   if (backfill)
-    return { kind: 'grant', ticketSeq: backfill.seq, slots: Math.min(backfill.max, free) }
+    return { kind: 'grant', ticketSeq: backfill.seq, slots: Math.min(backfill.max, free, Math.max(backfill.min, Math.floor(free / waiting))) }
 
   return { kind: 'wait', reason: head.exclusive ? 'leases-held' : 'insufficient-slots' }
 }

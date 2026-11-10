@@ -53,7 +53,9 @@ History survives temporary-store cleanup. Before an append, a file exceeding 5 M
 
 ## Grant rule
 
-`decide(state, budget, now)` is pure. It first blocks grants while over budget or while an exclusive lease is held. It grants the lowest ticket sequence (the head) whenever that request fits. Otherwise, it scans later tickets in sequence order and grants the first non-exclusive request whose minimum fits the free slots. Grants retain the class maximum, capped by free slots.
+`decide(state, budget, now)` is pure. It first blocks grants while over budget or while an exclusive lease is held. It grants the lowest ticket sequence (the head) whenever that request fits. Otherwise, it scans later tickets in sequence order and grants the first non-exclusive request whose minimum fits the free slots.
+
+Non-exclusive grants share the free slots among all queued non-exclusive tickets, including the selected ticket and any blocked shared head. With one such ticket, the grant is `min(max, free)`. With several, it is `clamp(floor(free / waiting), min, min(max, free))`, using the request's bounds capped by the budget. Exclusive tickets do not count toward `waiting`. Three queued tests with 12 free slots therefore receive 4, 4, and 4 slots in turn; a lone test receives up to 6. The same sizing rule applies to backfill. A lease keeps its grant for its entire lifetime; later arrivals and cancellations do not resize held leases.
 
 After a non-exclusive head has waited 60 seconds (`HEAD_AGING_MS`), backfill stops with reason `head-aging` until enough running work drains for the head to fit. Exclusive heads never age: later shared work may continue, and exclusive tickets can wait indefinitely under steady load. An exclusive ticket is only granted at the head with zero held slots and takes the whole budget.
 
