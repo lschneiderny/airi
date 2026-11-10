@@ -72,6 +72,12 @@ export async function executeSandboxWorker(
         '--allow-addons',
         `--allow-fs-read=${SANDBOX_SOURCE_DIRECTORY}`,
         `--allow-fs-read=${PNPM_MODULE_STORE_PATH}`,
+        // NOTICE:
+        // Let isolated-vm load on glibc hosts under the permission model.
+        // node-gyp-build probes this path to detect musl, even when it is absent.
+        // Source: node-gyp-build@4.8.4/node-gyp-build.js:197 (isAlpine).
+        // Removal: node-gyp-build stops probing it or isolated-vm stops using node-gyp-build.
+        '--allow-fs-read=/etc/alpine-release',
         '--disable-proto=throw',
         '--frozen-intrinsics',
         // NOTICE:
