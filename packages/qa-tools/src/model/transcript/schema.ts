@@ -1,5 +1,7 @@
 import { Buffer } from 'node:buffer'
 
+import { CLOSENESS_STAGES } from '@proj-airi/stage-shared/character-state'
+
 import * as v from 'valibot'
 
 import { sha256Buffer } from '../../evidence/run'
@@ -16,9 +18,42 @@ const SourceSchema = v.strictObject({
 })
 export type ReplyTranscriptSource = v.InferOutput<typeof SourceSchema>
 
-/** One cue-contract reply with the provenance needed to compare it with another run. */
-export const ReplyTranscriptRecordSchema = v.strictObject({
-  schema: v.literal('airi.reply-transcript/v1'),
+/**
+ * What only a live run knows about one request. Every value is either what the runner sent or what the endpoint
+ * returned; a value the endpoint did not report is `null`, never a guess.
+ */
+const LiveSchema = v.strictObject({
+  scenario: v.strictObject({
+    id: v.string(),
+    version: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    /** The relationship stage of this conversation, or `null` when the scenario sets none. */
+    stage: v.nullable(v.picklist(CLOSENESS_STAGES)),
+  }),
+  endpoint: v.strictObject({
+    shape: v.literal('openai-chat-completions'),
+    baseUrl: v.string(),
+  }),
+  request: v.strictObject({
+    /** The model id the request asked for; `model.id` repeats it. */
+    model: v.string(),
+    /** SHA-256 of the request body bytes; the run's `requests.jsonl` holds the body under the same reply id. */
+    bodySha256: v.string(),
+    startedAt: v.pipe(v.string(), v.isoTimestamp()),
+  }),
+  response: v.strictObject({
+    /** HTTP status, or `null` when no response arrived. */
+    status: v.nullable(v.number()),
+    id: nullableString,
+    /** The model id the endpoint reported in its response. */
+    model: nullableString,
+    systemFingerprint: nullableString,
+    endedAt: v.pipe(v.string(), v.isoTimestamp()),
+  }),
+  /** Full hash of the stage contract in the system prompt; `prompt.contractVersion` is its first 12 characters. */
+  contractSha256: v.string(),
+})
+
+const recordEntries = {
   replyId: v.string(),
   /** The dataset id this row belongs to. */
   set: v.pipe(v.string(), v.nonEmpty()),
@@ -80,7 +115,17 @@ export const ReplyTranscriptRecordSchema = v.strictObject({
   }),
   usage: v.nullable(v.record(v.string(), v.unknown())),
   stickers: v.optional(v.array(v.strictObject({ id: v.string() }))),
-})
+}
+
+/**
+ * One cue-contract reply with the provenance needed to compare it with another run.
+ * Both versions are current formats: v1 holds a captured reply that was imported from another tool's output, and v2
+ * holds a reply that `qa:model run` requested itself, so it adds the `live` block.
+ */
+export const ReplyTranscriptRecordSchema = v.variant('schema', [
+  v.strictObject({ schema: v.literal('airi.reply-transcript/v1'), ...recordEntries }),
+  v.strictObject({ schema: v.literal('airi.reply-transcript/v2'), ...recordEntries, live: LiveSchema }),
+])
 export type ReplyTranscriptRecord = v.InferOutput<typeof ReplyTranscriptRecordSchema>
 
 /**

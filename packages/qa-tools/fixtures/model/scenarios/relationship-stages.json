@@ -1,0 +1,31 @@
+{
+  "schema": "airi.model-scenario/v1",
+  "id": "relationship-stages",
+  "version": 1,
+  "description": "The same four turns at each relationship stage, so the replies of a stranger, a friend, a close friend, and an intimate can be read side by side.",
+  "prompt": {
+    "register": "talking"
+  },
+  "startsAt": "2026-11-10T19:30",
+  "stages": [
+    "stranger",
+    "friendly",
+    "close",
+    "intimate"
+  ],
+  "configs": {
+    "default": {
+      "max_tokens": 320
+    },
+    "temp-0.6": {
+      "max_tokens": 320,
+      "temperature": 0.6
+    }
+  },
+  "turns": [
+    "hey, i'm back",
+    "did you miss me?",
+    "honestly i had a really rough day",
+    "what should we do tonight?"
+  ]
+}

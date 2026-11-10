@@ -6,7 +6,10 @@ import * as v from 'valibot'
 
 import { replyIdFor, ReplyTranscriptRecordSchema } from './schema'
 
-function createRecord(overrides: Partial<ReplyTranscriptRecord> = {}): ReplyTranscriptRecord {
+type ImportedRecord = Extract<ReplyTranscriptRecord, { schema: 'airi.reply-transcript/v1' }>
+type LiveRecord = Extract<ReplyTranscriptRecord, { schema: 'airi.reply-transcript/v2' }>
+
+function createRecord(overrides: Partial<ImportedRecord> = {}): ImportedRecord {
   const source = { kind: 'ollama-bench' as const, file: 'bench.jsonl', fileSha256: 'a'.repeat(64), rowIndex: 0, path: 'turns[0]' }
   return {
     schema: 'airi.reply-transcript/v1',
@@ -56,6 +59,32 @@ describe('replyTranscriptRecordSchema', () => {
     const record = createRecord()
 
     expect(v.safeParse(ReplyTranscriptRecordSchema, { ...record, source: { ...record.source, kind: 'other' } }).success).toBe(false)
+  })
+})
+
+describe('live records (v2)', () => {
+  const live: LiveRecord['live'] = {
+    scenario: { id: 'general', version: 1, stage: null },
+    endpoint: { shape: 'openai-chat-completions', baseUrl: 'http://127.0.0.1:11434/v1' },
+    request: { model: 'qwen3:8b', bodySha256: 'c'.repeat(64), startedAt: '2026-11-10T09:00:00.000Z' },
+    response: { status: 200, id: null, model: null, systemFingerprint: null, endedAt: '2026-11-10T09:00:01.000Z' },
+    contractSha256: 'd'.repeat(64),
+  }
+
+  it('accepts a live block whose unreported response fields are null', () => {
+    expect(v.safeParse(ReplyTranscriptRecordSchema, { ...createRecord(), schema: 'airi.reply-transcript/v2', live }).success).toBe(true)
+  })
+
+  it('requires the live block in v2 and refuses it in v1', () => {
+    expect(v.safeParse(ReplyTranscriptRecordSchema, { ...createRecord(), schema: 'airi.reply-transcript/v2' }).success).toBe(false)
+    expect(v.safeParse(ReplyTranscriptRecordSchema, { ...createRecord(), live }).success).toBe(false)
+  })
+
+  it('rejects an unknown relationship stage and a timestamp that is not ISO', () => {
+    const record = { ...createRecord(), schema: 'airi.reply-transcript/v2' }
+
+    expect(v.safeParse(ReplyTranscriptRecordSchema, { ...record, live: { ...live, scenario: { ...live.scenario, stage: 'married' } } }).success).toBe(false)
+    expect(v.safeParse(ReplyTranscriptRecordSchema, { ...record, live: { ...live, request: { ...live.request, startedAt: 'yesterday' } } }).success).toBe(false)
   })
 })
 

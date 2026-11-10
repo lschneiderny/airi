@@ -6,11 +6,13 @@ import { errorMessageFrom } from '@moeru/std'
 
 import { runImportOllamaBenchCli } from './import/ollama-bench'
 import { runPromptCli } from './prompt'
+import { runRunCli } from './run/command'
 import { runScoreCli } from './score/command'
 
 export const modelUsage = `Usage: pnpm qa:model <command> [options]
 
 Commands:
+  run --scenario <id|file.json> --base-url <url> --model <id> [--config <name>] [--out <dir>] [--machine-label <l>] [--json]  run a scenario against a live OpenAI-compatible chat endpoint and record the replies
   score <transcripts.jsonl> [--set <id>] [--label <l>] [--exposed-actions <label:kind,...>]  score a transcript file with the real runtime replay
   prompt [--locale en] [--card <file>] [--full <fixture>] [--exposed-actions <label:kind,...>] [--json]  print the system prompt the app sends and its hashes
   import-ollama-bench <dir> --set <id>                   convert legacy ollama-bench results into transcripts
@@ -25,6 +27,7 @@ export type ModelCommandHandler = (argv: string[], repoRoot: string, env: NodeJS
 
 export interface ModelCliIo {
   handlers?: {
+    run: ModelCommandHandler
     prompt: ModelCommandHandler
     score: ModelCommandHandler
     importOllamaBench: ModelCommandHandler
@@ -51,6 +54,7 @@ export async function runModelCli(
   const stdout = io.stdout ?? ((text: string) => process.stdout.write(text))
   const stderr = io.stderr ?? ((text: string) => process.stderr.write(text))
   const handlers = io.handlers ?? {
+    run: runRunCli,
     prompt: runPromptCli,
     score: runScoreCli,
     importOllamaBench: runImportOllamaBenchCli,
@@ -69,13 +73,15 @@ export async function runModelCli(
     return 0
   }
 
-  const handler = command === 'prompt'
-    ? handlers.prompt
-    : command === 'score'
-      ? handlers.score
-      : command === 'import-ollama-bench'
-        ? handlers.importOllamaBench
-        : undefined
+  const handler = command === 'run'
+    ? handlers.run
+    : command === 'prompt'
+      ? handlers.prompt
+      : command === 'score'
+        ? handlers.score
+        : command === 'import-ollama-bench'
+          ? handlers.importOllamaBench
+          : undefined
   if (!handler) {
     stderr(`qa-tools model: ${command === undefined ? 'missing command' : `unknown command ${JSON.stringify(command)}`}\n\n${modelUsage}`)
     return 2

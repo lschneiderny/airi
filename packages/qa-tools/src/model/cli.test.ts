@@ -6,6 +6,7 @@ function createIo() {
   const out: string[] = []
   const err: string[] = []
   const handlers = {
+    run: vi.fn(async () => 0),
     prompt: vi.fn(async () => 0),
     score: vi.fn(async () => 0),
     importOllamaBench: vi.fn(async () => 0),
@@ -57,6 +58,7 @@ describe('runModelCli', () => {
   })
 
   it.each([
+    ['run', 'run'],
     ['prompt', 'prompt'],
     ['score', 'score'],
     ['import-ollama-bench', 'importOllamaBench'],

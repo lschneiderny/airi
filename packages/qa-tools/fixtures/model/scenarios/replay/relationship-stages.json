@@ -1,0 +1,50 @@
+[
+  {
+    "content": "<|ACT neutral|>Oh, hello again. Welcome back."
+  },
+  {
+    "content": "<|ACT awkward slight|>Um, we only just met, but it was a little quiet."
+  },
+  {
+    "content": "<|ACT sad slight|>I am sorry to hear that. I hope the evening is kinder to you."
+  },
+  {
+    "content": "<|ACT think|>Maybe something calm? I do not know what you like yet."
+  },
+  {
+    "content": "<|ACT happy|>Hey, welcome back!"
+  },
+  {
+    "content": "<|ACT happy slight|>A little, yes. It is nicer when you are here."
+  },
+  {
+    "content": "<|ACT sad|>Oh no. Do you want to tell me about it?"
+  },
+  {
+    "content": "<|ACT curious|>How about a movie? You pick, I will watch."
+  },
+  {
+    "content": "<|ACT happy strong|>There you are! I was waiting."
+  },
+  {
+    "content": "<|ACT flustered|>Of course I did. Do not make me say it twice."
+  },
+  {
+    "content": "<|ACT sad|>Come here. Tell me everything, I am listening."
+  },
+  {
+    "content": "<|ACT happy|>Let us do what we did last time. I liked that a lot."
+  },
+  {
+    "content": "<|ACT love|>You are back! I missed you so much."
+  },
+  {
+    "content": "<|ACT love strong|>Every minute. It hurts a little when you are gone."
+  },
+  {
+    "content": "<|ACT sad strong|>Oh, sweetheart. I am here now, okay?"
+  },
+  {
+    "content": "<|ACT love|>Stay with me tonight. I do not need anything else."
+  }
+]

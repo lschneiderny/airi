@@ -1,0 +1,50 @@
+[
+  {
+    "content": "<|ACT happy|>Good morning! I just woke up too, so we match.",
+    "usage": {
+      "prompt_tokens": 1510,
+      "completion_tokens": 16,
+      "total_tokens": 1526
+    }
+  },
+  {
+    "content": "<|ACT sad slight|>Oh no, that sounds scary. <|ACT happy|>But you practiced, right? You will do great!",
+    "usage": {
+      "prompt_tokens": 1545,
+      "completion_tokens": 27,
+      "total_tokens": 1572
+    }
+  },
+  {
+    "content": "<|ACT surprised strong|>Wait, really?! <|ACT happy strong|>You got it! I knew you would!",
+    "usage": {
+      "prompt_tokens": 1590,
+      "completion_tokens": 24,
+      "total_tokens": 1614
+    }
+  },
+  {
+    "content": "<|ACT surprised strong|>Whoa! Like this?",
+    "usage": {
+      "prompt_tokens": 1625,
+      "completion_tokens": 11,
+      "total_tokens": 1636
+    }
+  },
+  {
+    "content": "<|ACT {\"emotion\":\"happy\",\"action\":\"wave\"}|>Hi hi! Can you see me waving?",
+    "usage": {
+      "prompt_tokens": 1650,
+      "completion_tokens": 19,
+      "total_tokens": 1669
+    }
+  },
+  {
+    "content": "<|ACT think|>A planet has cleared the space around its orbit. A dwarf planet is round too, but it shares its orbit with other things.",
+    "usage": {
+      "prompt_tokens": 1690,
+      "completion_tokens": 30,
+      "total_tokens": 1720
+    }
+  }
+]

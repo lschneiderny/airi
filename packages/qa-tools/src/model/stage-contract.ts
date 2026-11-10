@@ -45,6 +45,15 @@ export function buildStageContract(locale = 'en') {
 }
 
 /**
+ * The card prompt of the app's built-in card before the user edits it: its description, `base.prompt.prefix`.
+ * The app also appends the card's widget instruction, which asks for a tool; a prompt that is sent without tools
+ * leaves that part out.
+ */
+export function renderDefaultCard(locale = 'en'): string {
+  return createPromptI18n(locale, []).global.t('base.prompt.prefix')
+}
+
+/**
  * Composes formatting rules, untrusted card text, and the canonical stage contract without interpreting the card.
  * With a `register`, the register section follows the card and precedes the contract, as the app's chat prompt places
  * it; the contract, and so `contract.sha256`, does not depend on the register. Without one, no section is added.

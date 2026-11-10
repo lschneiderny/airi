@@ -1,0 +1,28 @@
+{
+  "schema": "airi.model-scenario/v1",
+  "id": "general",
+  "version": 1,
+  "description": "A short everyday chat with the built-in card: a greeting, an emotional turn, good news, a request for a visible reaction, a request for an exposed gesture, and a factual question.",
+  "prompt": {
+    "register": "talking",
+    "exposedActions": "wave:gesture"
+  },
+  "startsAt": "2026-11-10T09:00",
+  "configs": {
+    "default": {
+      "max_tokens": 320
+    },
+    "temp-0.6": {
+      "max_tokens": 320,
+      "temperature": 0.6
+    }
+  },
+  "turns": [
+    "hey, good morning!",
+    "i'm kinda nervous about my presentation tomorrow",
+    "update: i got the job i told you about!!",
+    "show me your most surprised face",
+    "can you wave at me?",
+    "what's the difference between a planet and a dwarf planet?"
+  ]
+}
