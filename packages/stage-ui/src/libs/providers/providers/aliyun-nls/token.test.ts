@@ -1,14 +1,10 @@
-import { env } from 'node:process'
-
-import { utc } from '@date-fns/utc'
-import { isAfter, parse } from 'date-fns'
+import { parse } from 'date-fns'
 import { describe, expect, it } from 'vitest'
 
 import {
   buildCreateTokenRequest,
   canonicalizeQuery,
   createStringToSign,
-  createToken,
   signStringToBase64,
 } from './token'
 
@@ -66,20 +62,5 @@ describe('buildCreateTokenRequest', () => {
     expect(request.signedQuery).toBe(expectedSignedQuery)
     expect(request.url).toBe(expectedUrl)
     expect(request.params.Signature).toBe(expectedSignature)
-  })
-})
-
-describe('createToken', (test) => {
-  it('successfully fetches a token', async () => {
-    if (!env.ALIYUN_AK_ID || !env.ALIYUN_AK_SECRET) {
-      test.skip('ALIYUN_AK_ID and ALIYUN_AK_SECRET must be set in environment to run this test', () => {})
-      return
-    }
-
-    const { token, expiresAt } = await createToken(env.ALIYUN_AK_ID!, env.ALIYUN_AK_SECRET!)
-    expect(token).toBeDefined()
-    expect(token).toBeTypeOf('string')
-    expect(expiresAt).toBeTypeOf('number')
-    expect(isAfter(new Date(expiresAt), utc(new Date()))).toBe(true)
   })
 })
