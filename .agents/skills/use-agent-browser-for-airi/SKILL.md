@@ -5,6 +5,8 @@ description: Test AIRI display-model imports with agent-browser across stage-tam
 
 # Use Agent Browser for AIRI
 
+For required checks by change type, see the [testing guide](../../../docs/ai/testing.md).
+
 Invoke `$agent-browser` and read [input files](references/input-file.md). That reference covers file-input discovery, temporary instrumentation, upload commands, and generic post-upload verification. Run `agent-browser skills get core --full` before browser commands. For Electron, also invoke `$agent-browser-electron` and run `agent-browser skills get electron --full`.
 
 Select the runtime guide:

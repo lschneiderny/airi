@@ -5,6 +5,8 @@ description: Capture deterministic screenshots with Vishot and return a structur
 
 # Use Vishot
 
+For required checks by change type, see the [testing guide](../../../docs/ai/testing.md).
+
 Use Vishot as the common screenshot interface and load only the reference for the selected runtime.
 
 ## Workflow

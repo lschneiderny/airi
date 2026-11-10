@@ -5,6 +5,8 @@ description: Use when Codex needs to inspect, debug, or automate an Electron app
 
 # Agent Browser Electron
 
+For required checks by change type, see the [testing guide](../../../docs/ai/testing.md).
+
 ## Overview
 
 Inspect Electron renderer windows reliably when `agent-browser` alone is not enough to tell which CDP target maps to which visible app window.
