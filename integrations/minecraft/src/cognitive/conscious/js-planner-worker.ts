@@ -1,3 +1,5 @@
+import type { Context, Isolate, Reference } from 'isolated-vm'
+
 import type {
   ActionRuntimeResult,
   ParentToWorkerMessage,
@@ -11,6 +13,31 @@ import process from 'node:process'
 
 import { pathToFileURL } from 'node:url'
 import { inspect } from 'node:util'
+
+let activeIsolate: Isolate | undefined
+let hardDeadline: ReturnType<typeof setTimeout> | undefined
+let shuttingDown = false
+
+// Stop the worker by letting Node exit on its own, never with process.exit().
+// A disposed isolate is destroyed on an isolated-vm pool thread, and that
+// destructor calls node_platform->UnregisterIsolate (isolated-vm 7.0.1
+// environment.cc:466-469, platform_delegate.cc:18-19). process.exit() disposes
+// the platform and runs exit() without Node's environment cleanup hooks, so it
+// can free the platform under that thread (core dump: SIGSEGV in
+// UnregisterIsolate while the main thread was in ~thread_pool_t). A natural exit
+// runs isolated-vm's cleanup hook (module/isolate.cc:113-117), which joins every
+// owned isolate's disposal before the platform goes away.
+function shutdown(code: number): void {
+  if (shuttingDown)
+    return
+  shuttingDown = true
+  process.exitCode = code
+  clearTimeout(hardDeadline)
+  if (activeIsolate && !activeIsolate.isDisposed)
+    activeIsolate.dispose()
+  if (process.connected)
+    process.disconnect?.()
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -75,7 +102,16 @@ function hydrateWorkerError(error: SerializedWorkerError): Error {
 }
 
 function send(message: WorkerToParentMessage): void {
-  process.send?.(message)
+  if (shuttingDown)
+    return
+  if (!process.connected) {
+    shutdown(0)
+    return
+  }
+  process.send?.(message, (error) => {
+    if (error)
+      shutdown(0)
+  })
 }
 
 function appendLog(logs: string[], args: unknown[]): string {
@@ -173,12 +209,14 @@ async function runEvaluation(payload: SandboxWorkerRequest): Promise<void> {
     throw new Error('Sandbox worker missing isolated-vm entry path')
 
   const ivmModule = await import(pathToFileURL(isolatedVmEntryPath).href)
-  const ivm = (ivmModule.default ?? ivmModule) as any
+  if (shuttingDown)
+    return
+  const ivm: typeof import('isolated-vm') = ivmModule.default ?? ivmModule
   const logs: string[] = []
 
-  let bridgeRef: any
-  let context: any
-  let isolate: any
+  let bridgeRef: Reference<(method: string, args: unknown[]) => Promise<string>> | undefined
+  let context: Context | undefined
+  let isolate: Isolate | undefined
   let returnRaw: unknown
 
   try {
@@ -188,6 +226,7 @@ async function runEvaluation(payload: SandboxWorkerRequest): Promise<void> {
         send({ type: 'catastrophic-error', error: serializeWorkerError(error) })
       },
     })
+    activeIsolate = isolate
 
     context = isolate.createContextSync()
     const globalRef = context.global
@@ -226,24 +265,29 @@ async function runEvaluation(payload: SandboxWorkerRequest): Promise<void> {
     })
   }
   catch (error) {
-    send({
-      type: 'error',
-      error: serializeWorkerError(error),
-      state: {
-        logs: cloneStructured(logs),
-        mem: context ? readMemSnapshot(context, payload.timeoutMs) : {},
-      },
-    })
+    if (!shuttingDown) {
+      send({
+        type: 'error',
+        error: serializeWorkerError(error),
+        state: {
+          logs: cloneStructured(logs),
+          mem: context ? readMemSnapshot(context, payload.timeoutMs) : {},
+        },
+      })
+    }
   }
   finally {
     for (const pending of pendingRequests.values())
       pending.reject(new Error('Sandbox worker is shutting down'))
 
     pendingRequests.clear()
-    bridgeRef?.release?.()
-    context?.release?.()
-    isolate?.dispose?.()
-    process.disconnect?.()
+    bridgeRef?.release()
+    context?.release()
+    if (isolate && !isolate.isDisposed)
+      isolate.dispose()
+    activeIsolate = undefined
+    if (process.connected)
+      process.disconnect?.()
   }
 }
 
@@ -273,9 +317,7 @@ process.on('message', (message: ParentToWorkerMessage) => {
 })
 
 process.on('disconnect', () => {
-  for (const pending of pendingRequests.values())
-    pending.reject(new Error('Sandbox worker lost its parent process'))
-  pendingRequests.clear()
+  shutdown(0)
 })
 
 process.on('uncaughtException', (error) => {
@@ -288,4 +330,17 @@ process.on('unhandledRejection', (reason) => {
   process.exitCode = 1
 })
 
-send({ type: 'ready' })
+const hardTimeoutMs = Number(process.argv[3])
+if (!process.connected) {
+  shutdown(0)
+}
+else if (!Number.isSafeInteger(hardTimeoutMs) || hardTimeoutMs <= 0) {
+  shutdown(1)
+}
+else {
+  // isolated-vm 7.0.1 runs post-await microtasks outside evalClosure's timeout
+  // (context_handle.cc:215-220, environment.cc:491-492). Keep the total runner
+  // budget here too, so neither a lost parent nor a pending promise can remove it.
+  hardDeadline = setTimeout(shutdown, hardTimeoutMs, 124)
+  send({ type: 'ready' })
+}
