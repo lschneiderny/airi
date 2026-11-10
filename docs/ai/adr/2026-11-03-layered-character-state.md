@@ -76,9 +76,13 @@ Every number in this ADR is a starting value. Appendix A of the plan lists the s
 
 ### Store ownership (2026-11-10)
 
-The character-state store depends on the card store, and the card store never calls the character-state store.
+The three stores depend on each other in one direction only: the situation store uses the situation bridge, the bridge uses the character-state store, and the character-state store uses the card store. No store calls a store above it.
 
 - **Card deletion.** The card store owns the card lifecycle and knows no store that keeps data per card. `removeCard` runs in the leader and awaits the listeners of `onCardRemoval` before it drops the card. The leading character-state store registers one: it removes the card's record and cancels a pending save that would write the record back. A listener that rejects keeps the card. Before this change the card store resolved the character-state store inside `removeCard`, so the two stores called each other.
+- **Reach-out coupling.** `bridgeSituationToCharacter` is the only seam between the situation store and the character state. It runs from promotion to demotion of the leader, feeds events into the state, and hands the gate the reading's urge factor. The gate runs only in the leader, so it always has the bridge; without a reading the factor is 1. Before this change the gate looked the character-state store up on every tick.
+- **Creation order.** The card store's setup calls `useI18n`, which works only inside a component setup of an app with the i18n plugin. `App.vue` of both hosts creates the chat, character-state, and card stores there. Creating the situation store creates neither the character-state store nor the card store, so a caller outside a component setup can create it and follow. A window that leads starts the bridge, so it needs the character-state and card stores from `App.vue` first.
+
+One call-time lookup remains and is outside this change. `useCharacterStateObservabilityStore` resolves the character-state store inside its actions, because the situation store creates that devtools store in every window.
 
 ## Constants
 

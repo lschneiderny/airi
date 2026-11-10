@@ -548,7 +548,7 @@ The character-state store in `stores/character-state/` holds the active characte
 
 Each chat request sends the worded mood and the relationship stage as a per-request runtime context message with the id `system:character`, beside `system:situation`. It is never part of the system prompt, and the model never receives the numeric mood. A MOOD cue in a reply is applied as a bounded contribution that fades within a few hours, so the model cannot push its own mood far in one turn.
 
-The situation bridge feeds touch, reach-out, and extraction events into the state. The situation gate's tick takes the mood factor from the reading's urge factor, so a better mood makes an unprompted turn slightly more likely and a low or tense mood can make it pointed.
+The situation bridge is the only seam between the situation store and the character state, and it runs only in the leader. It feeds touch, reach-out, and extraction events into the state. It also hands the situation gate's tick the reading's urge factor as the mood factor, so a better mood makes an unprompted turn slightly more likely and a low or tense mood can make it pointed.
 
 The character-state store depends on the card store, never the reverse. A store that keeps data per card registers a listener with `useAiriCardStore().onCardRemoval`; the character-state store uses it to forget the record of a deleted card.
 

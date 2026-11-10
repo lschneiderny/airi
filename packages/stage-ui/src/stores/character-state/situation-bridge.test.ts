@@ -266,6 +266,22 @@ describe('bridgeSituationToCharacter', () => {
     expect(await appliedIds(characterState)).toEqual(expect.arrayContaining([`late-reply:${spokenAtMs}`, `reach-out-reply:${spokenAtMs}`]))
   })
 
+  it('hands the gate the urge factor of the current reading, and nothing while the window holds none', async () => {
+    const characterState = useCharacterStateStore()
+    const bridge = bridgeSituationToCharacter({ situation: () => initialSituationState, gate: () => initialUrgeMemory, extractedThrough: () => undefined, messages: () => [] })
+    expect(characterState.reading).toBeNull()
+    expect(bridge.urgeFactor()).toBeUndefined()
+
+    characterState.initialize(leaderRuntime())
+    await characterState.ready()
+    expect(bridge.urgeFactor()).toBe(characterState.reading!.urgeFactor)
+
+    // A sulky reading that arrives later is the one the next gate tick reads.
+    characterState.replicated = { ...characterState.replicated, reading: { ...characterState.reading!, urgeFactor: 0.8 }, revision: characterState.revision + 1 }
+    expect(bridge.urgeFactor()).toBe(0.8)
+    bridge.stop()
+  })
+
   it('weighs the second and later unanswered reach-outs alike, and treats urgent lines as no reach-out', async () => {
     const characterState = useCharacterStateStore()
     characterState.initialize(leaderRuntime())

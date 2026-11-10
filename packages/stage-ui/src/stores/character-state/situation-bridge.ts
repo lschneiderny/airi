@@ -34,6 +34,11 @@ export interface SituationBridgeSources {
 }
 
 export interface SituationBridge {
+  /**
+   * How far her current mood scales the urge gate's reach-out timing (`CharacterReading.urgeFactor`), or `undefined`
+   * while this window holds no reading yet.
+   */
+  urgeFactor: () => number | undefined
   /** Feeds the relationship events of one thread extraction (`ThreadExtractorDeps.onEvents`). */
   onExtractedEvents: (events: readonly ExtractedEvent[], sessionId: string) => Promise<void>
   /** Drops what the bridge remembers and forgets the character state of every card. */
@@ -48,7 +53,10 @@ interface ReachOut {
 }
 
 /**
- * Turns what the situation store observes into character-state events, in the leader window.
+ * The only seam between the situation store and the character state, in the leader window: it turns what the situation
+ * store observes into character-state events, and hands the gate the reading's urge factor. The situation store starts
+ * it on promotion and stops it on demotion, so the situation store of a window that does not lead holds no reference
+ * to the character state store.
  *
  * - A new touch event: a pet is a pleasant touch; the poke that turns the count into a burst is one unwelcome touch;
  *   any other poke is nothing.
@@ -217,5 +225,5 @@ export function bridgeSituationToCharacter(sources: SituationBridgeSources): Sit
     })
   }
 
-  return { onExtractedEvents, forgetEverything, stop: stopWatch }
+  return { urgeFactor: () => characterState.reading?.urgeFactor, onExtractedEvents, forgetEverything, stop: stopWatch }
 }
