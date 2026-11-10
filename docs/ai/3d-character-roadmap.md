@@ -45,6 +45,6 @@ These decisions were taken on 2026-11-02 for M3 and recorded in `.omo/drafts/mmd
 ## Open across milestones
 
 - Beat-matched dance playback (D4).
-- Display hand-off: walking from one display to another. Built on 2026-11-10 ([display hand-off ADR](adr/2026-11-10-display-hand-off.md)); the crossing on two real displays is not yet checked.
+- Display hand-off: walking from one display to another. Built on 2026-11-10 ([display hand-off ADR](adr/2026-11-10-display-hand-off.md)). A crossing passes `stage-handoff` in a two-output headless KWin session; the crossing on physical displays is not yet checked.
 - A `go_to` tool. M3 added no `go_to` or `list_actions` tool.
 - A Live2D stage mode, which no milestone has scheduled.

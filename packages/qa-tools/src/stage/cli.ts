@@ -5,22 +5,27 @@ import { dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { errorMessageFrom } from '@moeru/std'
+import { acquire } from '@proj-airi/cpu-slots'
 
 import { formatGateResults, readStageEvidence, runStageGates } from './gates'
+import { runHandOff } from './handoff'
 import { measureAttached, measurePairs, measureScenario } from './measure'
 
 export const stageUsage = `Usage:
   stage measure --mode <window|desktop> --port <cdp port> [--seconds 60] [--attempts 3] --out <json>
   stage measure --pairs <n> --profile <profile dir> [--seconds 60] [--settle 10] [--attempts 3] --out <json>
   stage measure --mode <window|desktop> --port <cdp port> --scenario <gesture-walk|action-preempt> --clip <clip name> [--seconds 12] [--attempts 3] --out <json>
+  stage handoff --model <MMD model> [--seconds 120] --out <json>
   stage gate <json> [<json>...]
 
 measure --port attaches to a running app started with APP_REMOTE_DEBUG=true and an MMD model mounted.
 measure --pairs launches the app per run (window, desktop, window, ...) on a copy of the profile.
 measure --scenario walks her 600 DIP and plays the imported clip over the walk (gesture-walk, looped) or into it
 (action-preempt, with a second goal and a stop after --seconds of playing).
+handoff launches the desktop stage on a fresh profile, imports the model, and walks her to another display. It needs
+a session with more than one display: pnpm qa:display run --outputs 2 -- pnpm qa:stage handoff ...
 gate prints PASS, FAIL or NO INPUT for stage-walk-skate, stage-arm-penetration, stage-frame-budget,
-stage-gesture-walk and stage-action-preempt.`
+stage-gesture-walk, stage-action-preempt and stage-handoff.`
 
 const scenarioNames: readonly StageScenario[] = ['gesture-walk', 'action-preempt']
 
@@ -64,7 +69,7 @@ function runGate(paths: readonly string[], cwd: string): number {
  * in). Exit codes: 0 every gate with input passed or the measurement is valid, 1 a gate failed, a run broke or every
  * attempt saw concurrent load, 2 usage error, unreadable evidence or no gate input.
  */
-export async function runStageCli(argv: readonly string[], context: { repoRoot: string, cwd: string, selfPids: readonly number[] }): Promise<number> {
+export async function runStageCli(argv: readonly string[], context: { repoRoot: string, cwd: string, selfPids: readonly number[], signal?: AbortSignal }): Promise<number> {
   const [command, ...rest] = argv
   const log = (line: string) => console.error(line)
   const parse = <T>(read: () => T): T => {
@@ -79,6 +84,27 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
     if (command === 'gate') {
       const { positionals } = parse(() => parseArgs({ args: [...rest], options: {}, allowPositionals: true, strict: true }))
       return runGate(positionals, context.cwd)
+    }
+    if (command === 'handoff') {
+      const { values } = parse(() => parseArgs({ args: [...rest], options: { model: { type: 'string' }, seconds: { type: 'string' }, out: { type: 'string' } }, strict: true }))
+      if (!values.model)
+        throw new UsageError('handoff needs --model <MMD model>')
+      if (!values.out)
+        throw new UsageError('--out is required')
+      const limitSeconds = positiveInteger('seconds', values.seconds, 120)
+      const signal = context.signal ?? new AbortController().signal
+      const lease = await acquire({ class: 'live', command: 'qa:stage handoff', cwd: context.repoRoot, signal: AbortSignal.any([signal, AbortSignal.timeout(30 * 60_000)]) })
+      try {
+        const { record, runDir, teardownOk } = await runHandOff({ repoRoot: context.repoRoot, model: resolve(context.cwd, values.model), limitSeconds, signal, lease })
+        writeJson(resolve(context.cwd, values.out), record)
+        console.info(JSON.stringify({ runDir, refusal: record.refusal, timedOut: record.timedOut, samples: record.perFrameSeries.rows.length, from: record.from, goals: record.goals, final: record.final }))
+        if (record.refusal)
+          log(`qa-tools stage: ${record.refusal}`)
+        return record.refusal === null && !record.timedOut && teardownOk ? 0 : 1
+      }
+      finally {
+        lease.release()
+      }
     }
     if (command !== 'measure')
       throw new UsageError(command ? `unknown command ${command}` : 'missing command')

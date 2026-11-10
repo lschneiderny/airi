@@ -109,7 +109,7 @@ The hit-test readback passes its gate with a thin margin. The frame rate on this
 
 ## Follow-ups
 
-- Landed, pending the two-display check: display hand-off, walking from one display to another with the stage window following her. [The display hand-off ADR](2026-11-10-display-hand-off.md) records it. The home display is still where she lives; the window now also covers the display she walks to.
+- Landed, with a crossing gated in a two-output headless KWin session and the check on physical displays pending: display hand-off, walking from one display to another with the stage window following her. [The display hand-off ADR](2026-11-10-display-hand-off.md) records it. The home display is still where she lives; the window now also covers the display she walks to.
 - Terrain: windows as surfaces she can stand on or perch on. The env-gated Windows window-rect sensor spike that M4 needs was measured on 2026-11-04 (`apps/stage-tamagotchi/src/main/services/electron/window-rects-spike.md`); [the clip actions ADR](2026-11-03-mmd-clip-actions.md) lists its gates. [The 3D character roadmap](../3d-character-roadmap.md) tracks M4.
 - Landed: the gesture and dance clip library and the `perform_action` tool, which this ADR left out. [The clip actions ADR](2026-11-03-mmd-clip-actions.md) records them.
 - Remove the classic window mode after roaming, chat anchoring, and display hand-off ship and one feedback cycle on the desktop stage has passed. The removal condition is recorded in the `// NOTICE:` block of `apps/stage-tamagotchi/src/main/windows/stage/mode.ts`. The Linux branch keeps its own removal condition.

@@ -39,7 +39,7 @@ An MMD character can live on a full-screen desktop stage instead of the classic 
 
 ### Display hand-off
 
-She can walk from one display to another, and the one stage window follows her. [The display hand-off ADR](../../docs/ai/adr/2026-11-10-display-hand-off.md) records the design. No crossing has been run on two real displays yet; that check is listed there.
+She can walk from one display to another, and the one stage window follows her. [The display hand-off ADR](../../docs/ai/adr/2026-11-10-display-hand-off.md) records the design. A crossing passes the `stage-handoff` gate in a two-output headless KWin session (`pnpm qa:stage handoff`); no crossing has been run on physical displays yet, and that check is listed in the ADR.
 
 - The stage page (`src/renderer/pages/stage.vue`) lays every display out on one world x axis with `layoutStageRow` from `@proj-airi/stage-shared/stage-world`. Neighbours are separated by a wing that no display shows. Her camera is the slot of the stage display, and her home is on the home display's slot.
 - `useStageHandOff` (`src/renderer/composables/use-stage-hand-off.ts`) runs each frame. Once she has walked fully off the stage display, it invokes `electronStageMoveToDisplay` for the display she is heading to. The camera changes only when main confirmed the move, so her root, gait, and physics continue across the crossing. The pure decisions are in `src/renderer/composables/stage-hand-off.ts`.

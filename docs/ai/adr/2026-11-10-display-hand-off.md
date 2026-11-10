@@ -1,7 +1,7 @@
 # Display hand-off for the desktop stage
 
 Date: 2026-11-10
-Status: accepted. The decision logic is covered by unit tests. No crossing has been run on two real displays yet; see Verification.
+Status: accepted. Unit tests cover the decisions, and a crossing passed its gate in a headless KWin session with two outputs. No crossing has been run on physical displays yet; see Verification.
 
 ## Context
 
@@ -96,13 +96,19 @@ Gestures can reach past the half width the wing assumes, so a wide arm pose is c
 
 ## Verification
 
-Unit tests cover the row layout, `stageDisplayFor`, the director's reach zones and wing rules, the main-process move (confirmed, timed out, display removed on the way, unknown display), and the page's hand-off state. A single-display clean-start smoke of both hosts passed in the headless QA display.
+Unit tests cover the row layout, `stageDisplayFor`, the director's reach zones and wing rules, the main-process move (confirmed, timed out, display removed on the way, unknown display), the page's hand-off state, and the Follow me wait.
 
-Not verified: a real crossing. The QA display has one output, so no run moved the window between two displays. The two-display check on KDE Wayland, KDE X11, and macOS is the owner's.
+A crossing ran live on 2026-11-10 in the headless QA display: KWin 6.8.2, native Wayland, two outputs of 1600x900 side by side (`pnpm qa:display run --outputs 2 -- pnpm qa:stage handoff`, see `packages/qa-tools/README.md`, Stage gates). She walked 80 model units to the second output and back.
+
+- `stage-handoff` passed: the camera origin went 0 -> 71.76 -> 0, she reached both goals, her rectangle was inside the window at the end, and the largest root step between two 100 ms samples was 0.98 model units, so nothing teleported her.
+- `stage-walk-skate` passed over the same walk: the largest `locomotion.skate` was 0.00055 and the largest `feet.maxError` 0.0021 model units, against limits of 0.05. Foot contact holds across the change of camera.
+- The window arrived in time. Each way, the new camera origin appeared in the diagnostics sample that followed the one in which she left the display, 100 to 200 ms later, and she entered the next display's visible range 500 to 600 ms after that.
+
+This run confirms the move on the KWin placement actuator path. It does not cover physical displays, displays of different sizes or scale factors, X11, macOS, or Windows. It also does not cover a real pointer: the scenario uses the debug walk goal, so the cursor chase across displays, click-through after a crossing, Follow me, and the chat approach to another display were not run live. Those are the owner's two-display checks on KDE Wayland, KDE X11, and macOS.
 
 ## Follow-ups
 
-- Run the two-display check on KDE Wayland, KDE X11, and macOS, and record the result here.
+- Run the two-display check on KDE Wayland, KDE X11, and macOS with physical displays, and record the result here.
 - Measure the move time on each host. If a move regularly outlasts the unseen stretch, widen `STAGE_ROW_OFFSTAGE_MODEL_HEIGHTS`.
 - Windows: the mixed-scale `setBounds` behaviour above.
-- A two-output QA display and a `stage-handoff` scenario, so a crossing can be gated without real hardware.
+- Extend the `stage-handoff` scenario to outputs of different sizes and to a pointer-driven chase.

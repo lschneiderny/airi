@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { formatGateResults, gateActionPreempt, gateArmPenetration, gateFrameBudget, gateGestureWalk, gateWalkSkate, readStageEvidence, runStageGates, stageScenarioColumns } from './gates'
+import { formatGateResults, gateActionPreempt, gateArmPenetration, gateFrameBudget, gateGestureWalk, gateHandOff, gateWalkSkate, readStageEvidence, runStageGates, stageHandOffColumns, stageScenarioColumns } from './gates'
 
 // Minimal copies of the plan's real evidence (`.omo/evidence/fullscreen-stage-locomotion/`); each records its `source`.
 const fixtureDir = join(import.meta.dirname, '../../fixtures/stage')
@@ -237,6 +237,7 @@ describe('scenario records', () => {
       'stage-frame-budget: NO INPUT',
       'stage-gesture-walk: PASS',
       'stage-action-preempt: NO INPUT',
+      'stage-handoff: NO INPUT',
     ])
   })
 
@@ -260,5 +261,68 @@ describe('readStageEvidence', () => {
     expect(() => readStageEvidence('bad', { result: { mode: 'spike', fps: 'fast' } })).toThrow('bad: result is not a measured run')
     expect(() => readStageEvidence('cols', { perFrameSeries: { columns: ['mode'], rows: [] } })).toThrow('needs the columns mode, skate and feetMaxError')
     expect(() => readStageEvidence('list', [])).toThrow('evidence must be a JSON object')
+  })
+})
+
+describe('stage-handoff', () => {
+  /**
+   * A walk from x = 10 on a display with origin 0 to x = 70 on a display with origin 50 and back, one sample per unit.
+   * The window follows at x = 46 on the way out and at x = 34 on the way back.
+   */
+  function record(patch: { final?: Record<string, unknown>, timedOut?: boolean } = {}) {
+    const out = Array.from({ length: 60 }, (_, index) => ({ rootX: 11 + index, goalX: 70, originX: 11 + index < 46 ? 0 : 50 }))
+    const back = Array.from({ length: 60 }, (_, index) => ({ rootX: 69 - index, goalX: 10, originX: 69 - index > 34 ? 50 : 0 }))
+    const rows: unknown[][] = [...out, ...back].map((sample, index) =>
+      [index * 100, sample.rootX === sample.goalX ? 'idle' : 'walking', 0.0001, 0.0002, sample.rootX, sample.originX, sample.goalX, 100, 300])
+    return {
+      kind: 'stage-handoff',
+      refusal: null,
+      from: { rootX: 10, originX: 0 },
+      goals: [70, 10],
+      timedOut: patch.timedOut ?? false,
+      final: { rootX: 10, originX: 0, mode: 'idle', placementX: 400, placementWidth: 300, viewWidth: 1920, ...patch.final },
+      perFrameSeries: { columns: [...stageHandOffColumns], rows },
+    }
+  }
+  const originAt = stageHandOffColumns.indexOf('originX')
+  const verdict = (results: GateResult[], id: string) => results.find(result => result.id === id)?.verdict
+
+  it('passes a walk the window followed there and back, and feeds the same walk to stage-walk-skate', () => {
+    const results = runStageGates(readStageEvidence('handoff', record()))
+
+    expect(verdict(results, 'stage-handoff')).toBe('PASS')
+    expect(verdict(results, 'stage-walk-skate')).toBe('PASS')
+  })
+
+  it('fails when the window never followed, or went back and forth on the way', () => {
+    const stayed = record()
+    stayed.perFrameSeries.rows.forEach((row) => {
+      row[originAt] = 0
+    })
+    const flapped = record()
+    flapped.perFrameSeries.rows[50]![originAt] = 0
+
+    expect(check(gateHandOff(readStageEvidence('stayed', stayed)), 'stayed window followed').pass).toBe(false)
+    expect(check(gateHandOff(readStageEvidence('flapped', flapped)), 'flapped window followed').detail).toContain('0 -> 50 -> 0 -> 50 -> 0')
+  })
+
+  it('fails a teleport on the way, a goal she did not reach, and a character left outside the window', () => {
+    const teleported = record()
+    teleported.perFrameSeries.rows.splice(20, 20)
+    const stuck = record({ timedOut: true, final: { rootX: 52, originX: 50, mode: 'walking' } })
+    stuck.perFrameSeries.rows.splice(40)
+
+    expect(check(gateHandOff(readStageEvidence('teleported', teleported)), 'teleported root continuous').pass).toBe(false)
+    expect(check(gateHandOff(readStageEvidence('stuck', stuck)), 'stuck arrived').detail).toContain('reached 0 of 2 goals')
+    expect(check(gateHandOff(readStageEvidence('unseen', record({ final: { placementX: 1900 } }))), 'unseen seen').pass).toBe(false)
+  })
+
+  it('fails a run the scenario refused, with its reason', () => {
+    const refused = { kind: 'stage-handoff', refusal: 'hand-off is off', from: null, goals: [], timedOut: false, final: null, perFrameSeries: { columns: [...stageHandOffColumns], rows: [] } }
+
+    const result = gateHandOff(readStageEvidence('refused', refused))
+
+    expect(result.verdict).toBe('FAIL')
+    expect(check(result, 'refused ran').detail).toBe('hand-off is off')
   })
 })

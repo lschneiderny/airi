@@ -30,11 +30,17 @@ export const stageGateThresholds = {
   gestureWalkMinMs: 10_000,
   /** Time from `action.performing` clearing to the held goal being issued, inclusive. */
   goalResumeMaxMs: 3_000,
+  /** Distance, in model units, within which her root counts as at the hand-off goal, inclusive. */
+  handOffArrivalMax: 0.2,
+  /** Largest root step between two samples of a hand-off walk, as a share of the first leg, inclusive. A teleport is larger. */
+  handOffStepShareMax: 0.1,
+  /** Largest root step against the walk between two samples of a hand-off walk, model units, inclusive. */
+  handOffBackStepMax: 0.05,
 } as const
 
 export type StageMode = 'window' | 'desktop'
-export type StageGateId = 'stage-walk-skate' | 'stage-arm-penetration' | 'stage-frame-budget' | 'stage-gesture-walk' | 'stage-action-preempt'
-export const stageGateIds: readonly StageGateId[] = ['stage-walk-skate', 'stage-arm-penetration', 'stage-frame-budget', 'stage-gesture-walk', 'stage-action-preempt']
+export type StageGateId = 'stage-walk-skate' | 'stage-arm-penetration' | 'stage-frame-budget' | 'stage-gesture-walk' | 'stage-action-preempt' | 'stage-handoff'
+export const stageGateIds: readonly StageGateId[] = ['stage-walk-skate', 'stage-arm-penetration', 'stage-frame-budget', 'stage-gesture-walk', 'stage-action-preempt', 'stage-handoff']
 
 export type StageScenario = 'gesture-walk' | 'action-preempt'
 
@@ -57,6 +63,26 @@ export interface ScenarioSample {
   goalX: number | null
 }
 
+/**
+ * Column order of a `handoff` series, one row per diagnostics snapshot: `t` in ms since the first goal request, the
+ * `locomotion` mode, `skate` and `feet.maxError`, her root x, the camera origin (`world.originX`, which changes when
+ * the stage window has moved to another display), the goal she walks to, and the left edge and width of her placement
+ * rectangle in window DIP (null before the scene has measured her).
+ */
+export const stageHandOffColumns = ['t', 'mode', 'skate', 'feetMaxError', 'rootX', 'originX', 'goalX', 'placementX', 'placementWidth'] as const
+
+/** One `handoff` run: a walk to another display and back. */
+export interface HandOffRun {
+  /** Why the scenario could not run; null when it ran. */
+  refusal: string | null
+  from: { rootX: number, originX: number } | null
+  /** The walk goals in order: a spot on another display, then the spot she started from. */
+  goals: number[]
+  timedOut: boolean
+  final: { rootX: number, originX: number, mode: string, placementX: number | null, placementWidth: number | null, viewWidth: number } | null
+  samples: { rootX: number, originX: number, goalX: number }[]
+}
+
 /** One measured run: the K6 line `measure` writes as `result`. */
 export interface StageFrameRun {
   mode: StageMode
@@ -71,6 +97,7 @@ export type StageEvidence
     | { kind: 'walk', source: string, frames: { mode: string, skate: number, feetMaxError: number }[] }
     | { kind: 'arms', source: string, model: string, spanMs: number | null, penetration: { left: number, right: number }, clothContact: { left: number, right: number } | null }
     | { kind: 'scenario', source: string, scenario: StageScenario, clip: string, seconds: number, stopAtMs: number | null, p95StageMs: number | null, valid: boolean, samples: ScenarioSample[] }
+    | { kind: 'handoff', source: string, run: HandOffRun }
 
 export interface GateCheck {
   name: string
@@ -215,11 +242,53 @@ function readScenario(source: string, json: Record<string, unknown>): StageEvide
   }
 }
 
+function readHandOff(source: string, json: Record<string, unknown>): StageEvidence {
+  const series = json.perFrameSeries
+  if (!isRecord(series) || !Array.isArray(series.columns) || series.columns.join() !== stageHandOffColumns.join() || !Array.isArray(series.rows))
+    throw new Error(`${source}: perFrameSeries needs the columns ${stageHandOffColumns.join(', ')}`)
+  if (typeof json.timedOut !== 'boolean' || (json.refusal !== null && typeof json.refusal !== 'string'))
+    throw new Error(`${source}: a hand-off record needs refusal and timedOut`)
+  const [rootAt, originAt, goalAt] = [stageHandOffColumns.indexOf('rootX'), stageHandOffColumns.indexOf('originX'), stageHandOffColumns.indexOf('goalX')]
+  const samples = series.rows.map((row: unknown, index: number) => {
+    if (!Array.isArray(row) || !isFiniteNumber(row[rootAt]) || !isFiniteNumber(row[originAt]) || !isFiniteNumber(row[goalAt]))
+      throw new Error(`${source}: perFrameSeries row ${index} is malformed`)
+    return { rootX: row[rootAt] as number, originX: row[originAt] as number, goalX: row[goalAt] as number }
+  })
+  const { from, final } = json
+  const goals = numberArray(json.goals)
+  const fromOk = isRecord(from) && isFiniteNumber(from.rootX) && isFiniteNumber(from.originX)
+  const finalOk = isRecord(final) && isFiniteNumber(final.rootX) && isFiniteNumber(final.originX) && typeof final.mode === 'string' && isFiniteNumber(final.viewWidth)
+  if (json.refusal === null && (!fromOk || !finalOk || !goals || goals.length === 0))
+    throw new Error(`${source}: a hand-off record that ran needs from, goals and final`)
+  return {
+    kind: 'handoff',
+    source,
+    run: {
+      refusal: json.refusal,
+      from: fromOk ? { rootX: from.rootX as number, originX: from.originX as number } : null,
+      goals: goals ?? [],
+      timedOut: json.timedOut,
+      final: finalOk
+        ? {
+            rootX: final.rootX as number,
+            originX: final.originX as number,
+            mode: final.mode as string,
+            placementX: isFiniteNumber(final.placementX) ? final.placementX : null,
+            placementWidth: isFiniteNumber(final.placementWidth) ? final.placementWidth : null,
+            viewWidth: final.viewWidth as number,
+          }
+        : null,
+      samples,
+    },
+  }
+}
+
 /**
  * Reads one evidence JSON into gate inputs. Recognised shapes: a `measure` run (`result` with a mode and fps), a pairs
  * file (`runs`), a walk timeline (`perFrameSeries` at the top level or under `walk`), a per-model arm run (`perFrame`
- * with penL/penR), a multi-model arm summary (`models.<name>.penetration`) and a `measure --scenario` record
- * (`kind: 'stage-scenario'`). Throws for anything else.
+ * with penL/penR), a multi-model arm summary (`models.<name>.penetration`), a `measure --scenario` record
+ * (`kind: 'stage-scenario'`) and a `handoff` record (`kind: 'stage-handoff'`, which is also a walk timeline). Throws
+ * for anything else.
  */
 export function readStageEvidence(source: string, json: unknown): StageEvidence[] {
   if (!isRecord(json))
@@ -227,6 +296,8 @@ export function readStageEvidence(source: string, json: unknown): StageEvidence[
   if (json.kind === 'stage-scenario')
     return [readScenario(source, json)]
   const found: StageEvidence[] = []
+  if (json.kind === 'stage-handoff')
+    found.push(readHandOff(source, json))
 
   if (Array.isArray(json.runs)) {
     json.runs.forEach((entry, index) => {
@@ -549,8 +620,62 @@ export function gateActionPreempt(evidence: readonly StageEvidence[]): GateResul
   return verdictOf('stage-action-preempt', checks)
 }
 
+/**
+ * `stage-handoff`: a walk to another display and back. The stage window followed her once each way (the camera origin
+ * went to another display's and returned), she reached every goal and stands inside the window, and her root never
+ * jumped, so nothing teleported her on the way. Foot contact over the same walk is judged by `stage-walk-skate`.
+ */
+export function gateHandOff(evidence: readonly StageEvidence[]): GateResult {
+  const checks: GateCheck[] = []
+  for (const entry of evidence) {
+    if (entry.kind !== 'handoff')
+      continue
+    const { run } = entry
+    const { from, final, goals, samples } = run
+    if (run.refusal !== null || !from || !final || goals.length === 0) {
+      checks.push({ name: `${entry.source} ran`, pass: false, detail: run.refusal ?? 'the record has no walk' })
+      continue
+    }
+    const origins = [from.originX, ...samples.map(sample => sample.originX)].filter((origin, index, all) => index === 0 || origin !== all[index - 1])
+    checks.push({
+      name: `${entry.source} window followed`,
+      pass: origins.length === 3 && origins[2] === origins[0],
+      detail: `the camera origin went ${origins.map(format).join(' -> ')} (expected to another display and back)`,
+    })
+    const reached = goals.filter(goalX => samples.some(sample => sample.goalX === goalX && Math.abs(sample.rootX - goalX) <= stageGateThresholds.handOffArrivalMax)).length
+    const miss = Math.abs(final.rootX - goals.at(-1)!)
+    checks.push({
+      name: `${entry.source} arrived`,
+      pass: !run.timedOut && reached === goals.length && final.mode === 'idle' && miss <= stageGateThresholds.handOffArrivalMax,
+      detail: `${run.timedOut ? 'timed out; ' : ''}reached ${reached} of ${goals.length} goals, mode ${final.mode}, ${format(miss)} from the last goal (limit <= ${stageGateThresholds.handOffArrivalMax})`,
+    })
+    const right = final.placementX !== null && final.placementWidth !== null ? final.placementX + final.placementWidth : null
+    checks.push({
+      name: `${entry.source} seen`,
+      pass: final.placementX !== null && right !== null && final.placementX >= 0 && right <= final.viewWidth,
+      detail: final.placementX === null || right === null
+        ? 'no placement rectangle after the walk'
+        : `her rectangle spans ${format(final.placementX)} to ${format(right)} DIP in a window ${format(final.viewWidth)} DIP wide`,
+    })
+    // Each step is measured along the walk to the goal of its sample, so a step back is one against that walk.
+    const steps = samples.map((sample, index) => {
+      const previous = index === 0 ? from.rootX : samples[index - 1].rootX
+      return (sample.rootX - previous) * (Math.sign(sample.goalX - previous) || 1)
+    })
+    const stepLimit = stageGateThresholds.handOffStepShareMax * Math.abs(goals[0] - from.rootX)
+    const largest = maxOf(steps.map(Math.abs))
+    const back = Math.max(0, maxOf(steps.map(step => -step)))
+    checks.push({
+      name: `${entry.source} root continuous`,
+      pass: samples.length > 0 && largest <= stepLimit && back <= stageGateThresholds.handOffBackStepMax,
+      detail: `largest step ${format(largest)} (limit <= ${format(stepLimit)}), largest step back ${format(back)} (limit <= ${stageGateThresholds.handOffBackStepMax}) over ${samples.length} samples`,
+    })
+  }
+  return verdictOf('stage-handoff', checks)
+}
+
 export function runStageGates(evidence: readonly StageEvidence[]): GateResult[] {
-  return [gateWalkSkate(evidence), gateArmPenetration(evidence), gateFrameBudget(evidence), gateGestureWalk(evidence), gateActionPreempt(evidence)]
+  return [gateWalkSkate(evidence), gateArmPenetration(evidence), gateFrameBudget(evidence), gateGestureWalk(evidence), gateActionPreempt(evidence), gateHandOff(evidence)]
 }
 
 export function formatGateResults(results: readonly GateResult[]): string {

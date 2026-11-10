@@ -124,8 +124,9 @@ the stage window follows the character to another display only while the host
 can vouch for where the window and the cursor are. The canonical XWayland and
 native Wayland profiles withhold the cursor, so the row reads No there; a KWin
 backend that reports both signals live at runtime qualifies. The rule is in
-[the display hand-off ADR](2026-11-10-display-hand-off.md). No host has run a
-crossing on two real displays yet.
+[the display hand-off ADR](2026-11-10-display-hand-off.md). A crossing passed
+in a two-output headless KWin Wayland session; no host has run one on physical
+displays yet.
 
 The feature cells name the inputs the host can deliver to the performance
 resolver. Watching requires a visible stage and a user who is not away; it can

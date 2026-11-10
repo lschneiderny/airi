@@ -32,7 +32,7 @@ const stageTargetPatterns: Record<StageMode, RegExp> = {
   desktop: /synced-leader=true[^#]*#\/stage$/,
 }
 
-const diagnosticsChannel = 'airi-stores-stage-ui-mmd-motion-diagnostics'
+export const diagnosticsChannel = 'airi-stores-stage-ui-mmd-motion-diagnostics'
 const heavyweightPattern = '[v]itest|[t]sc --noEmit|[v]ue-tsc'
 const quietLoadMax = 3
 
