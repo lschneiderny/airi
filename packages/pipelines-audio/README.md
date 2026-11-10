@@ -72,7 +72,7 @@ Every marker fires before the next clip starts. Markers before any text fire bef
 With no audio at all, markers fire in arrival order. A cancelled or interrupted intent drops its pending markers.
 
 A well-formed BREAK marker and a valid DELAY marker also pause the ordered speech track: after either fires, the next clip or marker waits `seconds` on the pipeline `clock` (default: the wall clock).
-A BREAK pauses for its clamped duration. A DELAY pauses for the duration it names, with no upper limit.
+A BREAK pauses for its clamped duration (0.3 to 3 seconds). A DELAY pauses for the duration it names, clamped to at most 5 seconds by its parser.
 The pause belongs to the pipeline, so it holds even when the `onSpecial` listener returns at once. Cancelling the intent ends a pause immediately.
 Other markers, a malformed BREAK or DELAY included, do not pause the speech track.
 

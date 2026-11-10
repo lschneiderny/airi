@@ -2,6 +2,7 @@ import type { LlmStreamingControlParser, LlmStreamingControlTokenDelay } from '.
 
 const delayTokenPrefix = '<|DELAY '
 const markerSuffix = '|>'
+const maximumDelaySeconds = 5
 
 /**
  * Creates the parser for `<|DELAY n|>` streaming-control tokens.
@@ -13,7 +14,9 @@ const markerSuffix = '|>'
  * - The token body is a finite positive number literal in seconds
  *
  * Returns:
- * - Parsed delay data with no side effects
+ * - `{ type: 'delay', seconds }` with `seconds` clamped to at most 5, so a stray long delay cannot hold the stage
+ *   and the speech track for longer
+ * - undefined for a body that is not a positive number, so the controller reports it as parse-failed
  */
 export function tokenDelay(): LlmStreamingControlParser<LlmStreamingControlTokenDelay> {
   return {
@@ -36,7 +39,7 @@ export function tokenDelay(): LlmStreamingControlParser<LlmStreamingControlToken
 
       return {
         type: 'delay',
-        seconds,
+        seconds: Math.min(maximumDelaySeconds, seconds),
       }
     },
   }

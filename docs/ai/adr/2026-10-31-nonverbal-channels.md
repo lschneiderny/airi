@@ -146,7 +146,7 @@ The work ships on the branch `luke/feat/nonverbal-channels` as atomic commits th
 
 **DELAY pauses the speech track.** Until 2026-11-10, a DELAY paused only the stage's own dispatch: `SpeechOutput.onSpecial` returns nothing, and the stage fires its special handler without awaiting it, so the voice and every later cue continued at once. A valid DELAY now holds the ordered speech track of `@proj-airi/pipelines-audio` for its duration, through the same pause as BREAK. The next clip and every later cue wait for it, so the stage and the voice stay in step. The chunker also ends the segment at a valid DELAY, so text written before the pause is never spoken after it. Three limits remain:
 
-- A DELAY has no upper limit, unlike BREAK (0.3-3.0 s). A long DELAY silences the voice for that long while the bubble already shows the whole reply. Cancelling or interrupting the turn ends the pause at once.
+- A DELAY is clamped to at most 5 s by its parser (BREAK: 0.3-3.0 s), so a stray long DELAY cannot silence the voice for longer while the bubble already shows the whole reply. The clamp applies to the stage's own dispatch as well. Cancelling or interrupting the turn ends the pause at once.
 - A DELAY that no text follows keeps the turn's speech open for its duration. The runtime drops a trailing BREAK, but it has no such rule for DELAY.
 - With speech muted, the stage dispatches cues from the token hook and nothing reaches the speech track. The stage's own wait paces them there, as before.
 

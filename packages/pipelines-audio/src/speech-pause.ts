@@ -10,7 +10,7 @@ const delayParser = tokenDelay()
  * - The speech pipeline decides how long the next clip or marker waits after a special
  *
  * Returns:
- * - The pause of a well-formed BREAK (clamped by its parser) or of a valid DELAY (as written)
+ * - The pause of a well-formed BREAK or of a valid DELAY, each clamped by its parser
  * - 0 for any other special, a malformed BREAK or DELAY included
  */
 export function speechPauseSeconds(special: string | null): number {
