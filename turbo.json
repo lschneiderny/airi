@@ -17,6 +17,11 @@
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.json"],
       "outputLogs": "errors-only"
     },
+    "@proj-airi/api-server#typecheck": {
+      "dependsOn": ["^typecheck", "@proj-airi/cpu-slots#build", "@proj-airi/server-sdk-shared#build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.json"],
+      "outputLogs": "errors-only"
+    },
     "@proj-airi/electron-vueuse#build": {
       "dependsOn": ["@proj-airi/electron-eventa#build"],
       "outputs": ["dist/**"],
