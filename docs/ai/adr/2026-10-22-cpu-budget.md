@@ -82,8 +82,8 @@ The store is guarded by a directory lock, `broker.lock`.
 - Exclude `packages/cpu-slots/README.md` from the typecheck inputs.
 - Track descendants on POSIX through `setsid`, which the cpu-slots README notes is not tracked today.
 - Add an opt-out for indexing of the cache and store directories.
-- Add Defender guidance for the store and cache paths.
+- Add Defender guidance for the store and cache paths. Deferred with the other Windows work.
 - Add a worktree pool, so new worktrees inherit a warm budget.
 - Add an idle reaper for leases whose owners stay alive without doing work.
 - Add a T2 result cache, with the same closure rules, because T2 results are not cached today.
-- Add an adaptive budget that follows the machine's load.
+- Landed on 2026-11-10 for Linux: the budget follows CPU pressure. At or above 70% PSI `some avg10` a nonempty broker grants nothing, and below 20% shared grants may use `budget + floor(budget / 4)`; free slots are also split among waiting tickets, and a fitting ticket can backfill behind a blocked head (`packages/cpu-slots/README.md`, commits `914481da4`, `3a7623ed6`, `0c4de9bab`). macOS and Windows have no pressure input, so their capacity stays at the fixed budget.
