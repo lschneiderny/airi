@@ -1,3 +1,4 @@
+import type { VerifyRun } from './verify-history'
 import type { VerifyStep } from './verify-plan'
 
 import process from 'node:process'
@@ -11,6 +12,7 @@ import { acquire } from '@proj-airi/cpu-slots'
 import { capture, chunkByLength, nodeCommandChunkLimits, run, shimCommandChunkLimits } from './lib/exec'
 import { changedFiles, git, gitCommonDir, repoRoot, workingTreeHash } from './lib/git'
 import { readLastPass, readPass, verifyCacheKey, writeLastPass, writePass } from './verify-cache'
+import { appendVerifyRun, formatVerifyStats, readVerifyStats } from './verify-history'
 import { advanceLastPass, parseVerifyArgs, planStepLease, planVerify, selectBrowserTestProjects, selectVerifyScope, stripWorkerFlags, testPrerequisiteTurboArgs, touchesAppRuntime, typecheckFilters, verifyUsage } from './verify-plan'
 
 interface Command {
@@ -91,6 +93,13 @@ async function main(): Promise<number> {
   }
   const { args } = parsed
   const root = repoRoot(process.cwd())
+  const cacheDir = join(gitCommonDir(root), 'airi-verify')
+  const historyDir = process.env.AIRI_VERIFY_HISTORY_DIR ?? cacheDir
+  if (args.stats) {
+    const stats = readVerifyStats(historyDir, args.stats.sinceMs ? Date.now() - args.stats.sinceMs : 0)
+    console.info(args.stats.json ? JSON.stringify(stats, null, 2) : formatVerifyStats(stats))
+    return 0
+  }
   let base: string
   try {
     base = git(root, ['merge-base', 'HEAD', args.base])
@@ -101,7 +110,6 @@ async function main(): Promise<number> {
   }
   const workspaces = workspacePackages(root)
   const tree = workingTreeHash(root)
-  const cacheDir = join(gitCommonDir(root), 'airi-verify')
   const branch = git(root, ['branch', '--show-current']) || null
   const head = git(root, ['rev-parse', 'HEAD'])
   const context = { branch, mergeBase: base, gate: args.gate }
@@ -127,6 +135,23 @@ async function main(): Promise<number> {
   if (args.gate && touchesAppRuntime(changedFiles(root, base, tree)))
     console.info('gate reminder: app runtime changed; run pnpm qa:display run -- pnpm qa:smoke before landing.')
   const results: StepResult[] = []
+  const finish = (result: StepResult, history: Pick<VerifyRun, 'scopeBase' | 'mode' | 'commands' | 'files' | 'waitMs' | 'grant'>) => {
+    results.push(result)
+    if (!args.dryRun) {
+      const status = { passed: 'pass', failed: 'fail', cached: 'cached', skipped: 'skipped' } as const
+      appendVerifyRun(historyDir, {
+        ts: Date.now(),
+        worktree: root,
+        branch,
+        head,
+        tree,
+        ...history,
+        step: result.step,
+        status: status[result.status],
+        durationMs: result.durationMs,
+      })
+    }
+  }
   for (const step of args.steps) {
     const entry = record?.steps[step]
     let treeExists = false
@@ -142,6 +167,14 @@ async function main(): Promise<number> {
     const scope = selectVerifyScope(context, { record, step, treeExists })
     console.info(`[${step}] scope: ${scope.mode === 'incremental' ? `incremental from ${scope.base} (${scope.reason})` : `branch (${scope.reason})`}`)
     const changed = changedFiles(root, scope.base, tree)
+    const history: Pick<VerifyRun, 'scopeBase' | 'mode' | 'commands' | 'files' | 'waitMs' | 'grant'> = {
+      scopeBase: scope.base,
+      mode: scope.mode,
+      commands: [],
+      files: changed.map(file => file.path),
+      waitMs: 0,
+      grant: null,
+    }
     console.info(`[${step}] ${changed.length} changed file(s)`)
     if (args.dryRun) {
       for (const file of changed)
@@ -151,7 +184,7 @@ async function main(): Promise<number> {
     const browserProjects = step === 'test' ? selectBrowserTestProjects(withDependents(root, plan.testPackagePaths)) : []
     const commands = commandsFor(step, root, plan, browserProjects)
     if (typeof commands === 'string') {
-      results.push({ step, status: 'skipped', detail: commands, durationMs: 0 })
+      finish({ step, status: 'skipped', detail: commands, durationMs: 0 }, history)
       continue
     }
     const command = stripWorkerFlags(commands.flatMap(item => item.args))
@@ -159,7 +192,7 @@ async function main(): Promise<number> {
     const cached = args.force ? null : readPass(cacheDir, key)
     if (cached && !args.dryRun && workingTreeHash(root) === tree) {
       recordStep(step, 'cached')
-      results.push({ step, status: 'cached', detail: `passed ${cached.passedAt} on this tree`, durationMs: 0 })
+      finish({ step, status: 'cached', detail: `passed ${cached.passedAt} on this tree`, durationMs: 0 }, { ...history, commands: commands.map(item => [process.execPath, ...item.args]) })
       continue
     }
     const affectedTypecheckCount = step === 'typecheck' && plan.typecheck.kind === 'affected'
@@ -170,16 +203,22 @@ async function main(): Promise<number> {
       console.info(`[${step}] acquire one lease (class ${leasePlan.class}${leasePlan.max !== undefined ? `, max ${leasePlan.max}` : ''})`)
       for (const item of commands)
         console.info(`[${step}] ${item.label}\n  node ${[relative(root, item.args[0]), ...item.args.slice(1), ...(item.concurrency && slotsEnabled ? ['--concurrency={grant}'] : [])].join(' ')}`)
-      results.push({ step, status: 'skipped', detail: 'dry run', durationMs: 0 })
+      finish({ step, status: 'skipped', detail: 'dry run', durationMs: 0 }, history)
       continue
     }
     const started = Date.now()
     let failed: string | null = null
-    const lease = await acquire({ ...leasePlan, cwd: root, command: `verify ${step}` })
+    const lease = await acquire({ ...leasePlan, cwd: root, command: `verify ${step}` }).catch((error: unknown) => {
+      finish({ step, status: 'failed', detail: 'lease acquisition failed', durationMs: Date.now() - started }, history)
+      throw error
+    })
+    const executed: string[][] = []
+    const execution = { ...history, commands: executed, waitMs: lease.waitMs ?? 0, grant: lease.grant }
     try {
       for (const item of commands) {
         console.info(`\n[${step}] ${item.label}`)
         const args = item.concurrency && lease.grant !== null ? [...item.args, `--concurrency=${lease.grant}`] : item.args
+        executed.push([process.execPath, ...args])
         const exitCode = await run(process.execPath, args, { cwd: root, env: { ...env, ...lease.env }, onSpawn: lease.addWorkload })
         if (exitCode !== 0) {
           failed = `${item.label} exited ${exitCode}`
@@ -187,22 +226,26 @@ async function main(): Promise<number> {
         }
       }
     }
+    catch (error) {
+      finish({ step, status: 'failed', detail: 'command execution failed', durationMs: Date.now() - started }, execution)
+      throw error
+    }
     finally {
       lease.release()
     }
     const durationMs = Date.now() - started
     if (failed) {
-      results.push({ step, status: 'failed', detail: failed, durationMs })
+      finish({ step, status: 'failed', detail: failed, durationMs }, execution)
       continue
     }
     const labels = commands.map(item => item.label).join('; ')
     if (workingTreeHash(root) !== tree) {
-      results.push({ step, status: 'passed', detail: `${labels} (not cached: files changed during the step)`, durationMs })
+      finish({ step, status: 'passed', detail: `${labels} (not cached: files changed during the step)`, durationMs }, execution)
       continue
     }
     writePass(cacheDir, { key, step, tree, command, passedAt: new Date().toISOString(), durationMs, scopeBase: scope.base, mode: scope.mode })
     recordStep(step, 'passed')
-    results.push({ step, status: 'passed', detail: labels, durationMs })
+    finish({ step, status: 'passed', detail: labels, durationMs }, execution)
   }
 
   console.info('\nverify summary')
