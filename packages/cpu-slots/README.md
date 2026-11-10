@@ -38,6 +38,8 @@ A lease lasts as long as its workload. A registered process, or any descendant o
 - `AIRI_CPU_BUDGET`: total slots. Defaults to 12. A value must be a positive safe integer, or the broker throws `CpuSlotsError('bad-budget')`.
 - `AIRI_CPU_SLOTS_DIR`: store location. Without it, the store is `airi-cpu-slots` under `LOCALAPPDATA` on Windows, or under the temp directory elsewhere.
 - `AIRI_CPU_SLOTS_HISTORY_DIR`: persistent history directory. Defaults to `$XDG_STATE_HOME/airi-cpu-slots`, or `~/.local/state/airi-cpu-slots` when unset. On Windows it defaults to `%LOCALAPPDATA%\airi-cpu-slots\history`.
+- `AIRI_CPU_PRESSURE_FILE`: CPU PSI input, defaulting to `/proc/pressure/cpu` on Linux. An explicit override works on any platform. Missing, unreadable, or malformed input disables pressure admission and keeps the normal budget rules.
+- `AIRI_CPU_PRESSURE_IDLE` and `AIRI_CPU_PRESSURE_HOLD`: integer percentages from 0 through 100, defaulting to 20 and 70. Invalid values throw `CpuSlotsError('bad-pressure-threshold')` naming the variable before a ticket is queued. If the thresholds overlap, hold takes precedence.
 - `AIRI_CPU_SLOTS=off`, or a `CI` environment variable: every lease is a no-op. Nothing is queued.
 - If the store path returns `EROFS`, `EACCES`, `ENOENT`, or `ENOTDIR`, the command runs unbrokered and prints one stderr line saying so.
 
@@ -49,17 +51,35 @@ Each acquisition appends `ticket`, the first `wait`, `grant`, `release`, signal 
 
 The summary counts grants, takes wait distributions from grants and hold distributions from releases, and lists the five longest granted waits with commands. Median averages the two middle values; p90 uses the nearest rank. Empty distributions are zero. `--since` filters each event by timestamp. Malformed lines are skipped and counted, including structurally invalid JSON records.
 
+Grant and wait events also contain `pressure: { someAvg10 }`, or `pressure: null` when no sample is available. The sample is read before the transaction for that poll. A pressure-delayed grant retains `lastWaitReason: 'cpu-pressure'` even after a cooler reading permits it to start.
+
 History survives temporary-store cleanup. Before an append, a file exceeding 5 MiB is renamed to `events.1.jsonl`, replacing the previous segment; summaries read both segments. Concurrent rotation tolerates a missing source. Appends run outside the broker lock, and write failures print a diagnostic without changing lease accounting. Commands and working directories are stored as supplied, so avoid putting secrets in command arguments.
 
 ## Grant rule
 
-`decide(state, budget, now)` is pure. It first blocks grants while over budget or while an exclusive lease is held. It grants the lowest ticket sequence (the head) whenever that request fits. Otherwise, it scans later tickets in sequence order and grants the first non-exclusive request whose minimum fits the free slots.
+`decide(state, budget, now, pressure?, thresholds?)` is pure. The caller reads pressure and parses thresholds outside the store transaction; the store receives the same data when rechecking a grant. It blocks grants above capacity or while an exclusive lease is held. It grants the lowest ticket sequence (the head) whenever that request fits. Otherwise, it scans later tickets in sequence order and grants the first non-exclusive request whose minimum fits the free slots.
+
+CPU PSI `some avg10` measures the percentage of the last ten seconds during which at least one task was waiting for CPU. At or above `PRESSURE_HOLD` (70), a nonempty broker grants nothing and reports `cpu-pressure`. An empty broker can still grant its first request using the normal budget, so external CPU load cannot deadlock its queue. Below `PRESSURE_IDLE` (20), shared grants may use `budget + floor(budget / 4)`, or 15 slots for the default budget of 12. At intermediate pressure, or without a reading, capacity stays at the normal budget. Existing leases never shrink as pressure changes.
+
+`Store.fits()` enforces the fixed shared ceiling of `budget + floor(budget / 4)` when committing or adopting a lease, independent of pressure. Adoption recovers an already committed grant even if pressure rose since its write. Pressure admission belongs only to the decision rule. Exclusive grants always require zero held slots and receive exactly `budget`; idle pressure never expands or bypasses them.
 
 Non-exclusive grants share the free slots among all queued non-exclusive tickets, including the selected ticket and any blocked shared head. With one such ticket, the grant is `min(max, free)`. With several, it is `clamp(floor(free / waiting), min, min(max, free))`, using the request's bounds capped by the budget. Exclusive tickets do not count toward `waiting`. Three queued tests with 12 free slots therefore receive 4, 4, and 4 slots in turn; a lone test receives up to 6. The same sizing rule applies to backfill. A lease keeps its grant for its entire lifetime; later arrivals and cancellations do not resize held leases.
 
 After a non-exclusive head has waited 60 seconds (`HEAD_AGING_MS`), backfill stops with reason `head-aging` until enough running work drains for the head to fit. Exclusive heads never age: later shared work may continue, and exclusive tickets can wait indefinitely under steady load. An exclusive ticket is only granted at the head with zero held slots and takes the whole budget.
 
-`pnpm slots status` shows each queued ticket's decision reason: `over-budget`, `exclusive-held`, `leases-held`, `insufficient-slots`, or `head-aging` when no grant is possible; `queue-ahead` when another ticket is selected; and `ready` for the selected ticket (`null` in JSON). An empty queue produces `queue-empty`. Waiters poll every 500 ms, or every 50 ms right after a busy lock. The store rechecks the decision with its current time under the lock; a backfill rejected at the aging boundary retries on its next poll.
+`pnpm slots status` shows each queued ticket's decision reason: `over-budget`, `exclusive-held`, `leases-held`, `insufficient-slots`, `head-aging`, or `cpu-pressure` when no grant is possible; `queue-ahead` when another ticket is selected; and `ready` for the selected ticket (`null` in JSON). An empty queue produces `queue-empty`. Waiters poll every 500 ms, or every 50 ms right after a busy lock. Each poll reads PSI once before taking the lock. The store rechecks the decision with its current time under the lock; a backfill rejected at the aging boundary retries on its next poll.
+
+Scheduling QA must set both `AIRI_CPU_SLOTS_DIR` and `AIRI_CPU_SLOTS_HISTORY_DIR` to private temporary directories before starting any command. Set `AIRI_CPU_PRESSURE_FILE` to a fixture containing `some avg10=5.00 avg60=5.00 avg300=5.00 total=1` for idle pressure, or replace the three averages with `50.00` for intermediate pressure and `90.00` for hot pressure. Three queued tests receive 5, 5, 5 at idle pressure and 4, 4, 4 at intermediate pressure or with a missing fixture. A hot fixture holds a lint ticket behind one running test until rewritten to intermediate pressure.
+
+On November 10, 2026, the Linux workstation's real `/proc/pressure/cpu` was sampled once per second before verification, during one `pnpm verify --only test`, and during three concurrently requested runs. Each verify also used `--base luke/feat/test-qa-revamp --gate --force` so it exercised the full task changes rather than a cached pass. All four runs exited 0. Admission used the intermediate fixture and private broker/history directories; only the measurements read the real kernel file.
+
+| Phase | Samples | Minimum `someAvg10` | Median | Maximum |
+| --- | ---: | ---: | ---: | ---: |
+| This lane idle for ten seconds | 10 | 66.55 | 67.78 | 68.18 |
+| One verify | 241 | 62.60 | 69.14 | 77.46 |
+| Three requested verifies | 328 | 56.97 | 65.06 | 74.58 |
+
+These are shared-workstation readings, not a controlled machine-idle baseline. Other lanes were neither stopped nor inspected. The three concurrent commands initially received two six-slot leases while the third queued; existing grants do not shrink. The single run also rebuilt packages, whereas subsequent builds were cached. The baseline was already above the idle threshold, and the single-run peak exceeded the hold threshold, but the lower peak during the three-run phase does not establish that these thresholds are wrong for the workload. Keep the defaults at 20 and 70 rather than tune them to this contaminated sample. A quiet-host calibration remains necessary before retuning. The readings and command logs are in `.omo/evidence/test-qa-revamp/task-19-calibration.json` and `task-19-calibration-*.txt`.
 
 The store is written under a directory lock. Every mutation runs in one transaction. A grant is written as a lease, then checked again, and removed if the check fails. A lease is reclaimed only after its owner's death is observed and a process snapshot shows the workload is gone. Snapshots are rate-capped at one per 2 s per observer, and each snapshot process has a 30 s timeout (`Store.canRefresh` in `packages/cpu-slots/src/store.ts`, `PROCESS_LOOKUP_TIMEOUT_MS` in `processes.ts`). A snapshot takes about 0.5 s; the timeout only cuts off a hung PowerShell, because a timed-out lookup is retried and its work is lost.
 

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -85,4 +85,38 @@ it('keeps held grants fixed as waiting tickets are cancelled and replaced', () =
   expect(store.grant(head.seq, 3, head.id)).toMatchObject({ slots: 3 })
   expect(store.grant(later.seq, 3, later.id)).toMatchObject({ slots: 3 })
   expect(store.snapshot().leases.map(lease => lease.slots).sort((a, b) => b - a)).toEqual([6, 3, 3])
+})
+
+it('grants and adopts thirteen held slots at idle pressure without discarding the committed lease', () => {
+  for (let index = 0; index < 2; index++) {
+    const holder = store.enqueue(request)
+    expect(store.grant(holder.seq, 6, holder.id)).toMatchObject({ slots: 6 })
+  }
+  const lint = store.enqueue({ ...request, class: 'lint' })
+  expect(store.grant(lint.seq, 1, lint.id, { someAvg10: 5 })).toMatchObject({ slots: 1 })
+  expect(store.adopt(lint.id)).toMatchObject({ id: lint.id, slots: 1 })
+  expect(store.snapshot().leases.reduce((sum, lease) => sum + lease.slots, 0)).toBe(13)
+})
+
+it('rejects a sixteenth slot through both grant and adoption', () => {
+  for (const slots of [6, 6, 3]) {
+    const holder = store.enqueue({ ...request, min: slots, max: slots })
+    expect(store.grant(holder.seq, slots, holder.id, { someAvg10: 5 })).toMatchObject({ slots })
+  }
+  const lint = store.enqueue({ ...request, class: 'lint' })
+  expect(store.grant(lint.seq, 1, lint.id, { someAvg10: 5 })).toBeUndefined()
+  // Reproduce a lease written before a failed transaction's post-write capacity check.
+  writeFileSync(join(root, 'leases', `${lint.id}.json`), JSON.stringify({ ...lint, slots: 1, workload: [] }))
+  expect(store.adopt(lint.id)).toBeUndefined()
+  expect(store.snapshot().leases.reduce((sum, lease) => sum + lease.slots, 0)).toBe(15)
+  expect(store.snapshot().tickets).toEqual([lint])
+})
+
+it('rechecks pressure data before committing a formerly fitting grant', () => {
+  const holder = store.enqueue(request)
+  expect(store.grant(holder.seq, 6, holder.id)).toBeDefined()
+  const lint = store.enqueue({ ...request, class: 'lint' })
+  expect(store.grant(lint.seq, 1, lint.id, { someAvg10: 90 })).toBeUndefined()
+  expect(store.snapshot().tickets).toEqual([lint])
+  expect(store.grant(lint.seq, 1, lint.id, { someAvg10: 50 })).toMatchObject({ slots: 1 })
 })

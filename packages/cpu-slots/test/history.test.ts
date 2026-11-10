@@ -91,6 +91,21 @@ it('includes grants that waited for head aging in history summaries', () => {
   })
 })
 
+it('summarizes pressure-delayed grants with their admission sample', () => {
+  const event = { ...record, lastWaitReason: 'cpu-pressure', pressure: { someAvg10: 50 } } as const
+  appendHistory(event)
+  expect(readHistory()).toMatchObject({
+    malformed: 0,
+    classes: { live: { count: 1 } },
+    topWaits: [event],
+  })
+})
+
+it.each([{}, { someAvg10: -1 }, { someAvg10: 101 }, { someAvg10: '5' }, 'garbage'])('counts malformed pressure %j instead of including it in a summary', (pressure) => {
+  writeFileSync(join(root, 'events.jsonl'), `${JSON.stringify({ ...record, pressure })}\n`)
+  expect(readHistory()).toEqual({ malformed: 1, classes: {}, topWaits: [] })
+})
+
 it.each([['10ms', 10], ['2s', 2_000], ['3m', 180_000], ['4h', 14_400_000], ['1d', 86_400_000]])('parses duration %s', (input, expected) => {
   expect(parseSince(input)).toBe(expected)
 })

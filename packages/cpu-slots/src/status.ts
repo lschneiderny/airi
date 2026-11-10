@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs'
 import { storeRoot, whileBusy } from './acquire'
 import { parseBudget } from './budget'
 import { decide } from './grant'
+import { parsePressureThresholds, readCpuPressure } from './pressure'
 import { Store, StoreBusyError } from './store'
 
 /** A live ticket file the queue cannot read; it is never granted, so status shows it instead of hiding it. */
@@ -70,6 +71,8 @@ export async function readStatusWithin(options: StatusWaitOptions = {}): Promise
 export function readStatus(options: { root?: string } = {}): Status {
   const storePath = options.root ?? storeRoot()
   const budget = parseBudget()
+  const thresholds = parsePressureThresholds()
+  const pressure = readCpuPressure()
   if (!existsSync(storePath))
     return { storePath, budget, held: 0, leases: [], queue: [] }
   const store = new Store({ root: storePath, budget })
@@ -80,7 +83,7 @@ export function readStatus(options: { root?: string } = {}): Status {
     Date.now() + STATUS_BUSY_BUDGET_MS,
   )
   const now = Date.now()
-  const decision = decide(state, budget, now)
+  const decision = decide(state, budget, now, pressure, thresholds)
   return {
     storePath,
     budget,

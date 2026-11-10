@@ -26,6 +26,7 @@ beforeEach(() => {
   leases = []
   vi.stubEnv('AIRI_CPU_SLOTS_DIR', root)
   vi.stubEnv('AIRI_CPU_SLOTS_HISTORY_DIR', join(root, 'history'))
+  vi.stubEnv('AIRI_CPU_PRESSURE_FILE', join(root, 'missing.psi'))
   vi.stubEnv('AIRI_CPU_BUDGET', '8')
   vi.stubEnv('AIRI_CPU_SLOTS', '')
   vi.stubEnv('CI', '')
@@ -51,6 +52,56 @@ async function take(options: Parameters<typeof acquire>[0] = request): Promise<L
 }
 
 describe('acquire lifecycle', () => {
+  it('resamples pressure each poll, waits once, then records the admission sample', async () => {
+    vi.useFakeTimers()
+    const path = join(root, 'cpu.psi')
+    vi.stubEnv('AIRI_CPU_PRESSURE_FILE', path)
+    writeFileSync(path, 'some avg10=90.00 avg60=90.00 avg300=90.00 total=1\n')
+    const store = new Store({ root, budget: 8 })
+    const holder = store.enqueue(request)
+    expect(store.grant(holder.seq, 6, holder.id)).toBeDefined()
+    const pending = take({ ...request, class: 'lint' })
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(store.snapshot().tickets).toHaveLength(1)
+    writeFileSync(path, 'some avg10=50.00 avg60=50.00 avg300=50.00 total=1\n')
+    await vi.advanceTimersByTimeAsync(500)
+    const lease = await pending
+    expect(lease).toMatchObject({ grant: 1, waitMs: 1_500 })
+    const events = readFileSync(join(root, 'history', 'events.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line))
+    expect(events.map(event => event.event)).toEqual(['ticket', 'wait', 'grant'])
+    expect(events[1]).toMatchObject({ pressure: { someAvg10: 90 }, lastWaitReason: 'cpu-pressure' })
+    expect(events[2]).toMatchObject({ pressure: { someAvg10: 50 }, lastWaitReason: 'cpu-pressure', slots: 1 })
+    store.withdraw(holder.id)
+  })
+
+  it('cancels repeated pressure waits without leaking tickets or altering held grants', async () => {
+    vi.useFakeTimers()
+    const path = join(root, 'cpu.psi')
+    vi.stubEnv('AIRI_CPU_PRESSURE_FILE', path)
+    writeFileSync(path, 'some avg10=90.00 avg60=90.00 avg300=90.00 total=1\n')
+    const store = new Store({ root, budget: 8 })
+    const holder = store.enqueue(request)
+    expect(store.grant(holder.seq, 6, holder.id)).toBeDefined()
+    for (let interruption = 0; interruption < 3; interruption++) {
+      const abort = new AbortController()
+      const pending = acquire({ ...request, class: 'lint', signal: abort.signal })
+      const rejected = expect(pending).rejects.toThrow('pressure-cancel')
+      await vi.advanceTimersByTimeAsync(500)
+      expect(store.snapshot().tickets).toHaveLength(1)
+      abort.abort(new Error('pressure-cancel'))
+      await rejected
+      expect(store.snapshot()).toMatchObject({ tickets: [], leases: [{ id: holder.id, slots: 6 }] })
+    }
+    store.withdraw(holder.id)
+    expect(await take({ ...request, class: 'lint' })).toMatchObject({ grant: 1 })
+  })
+
+  it('rejects invalid pressure configuration before writing a ticket', async () => {
+    vi.stubEnv('AIRI_CPU_PRESSURE_HOLD', '101')
+    await expect(acquire(request)).rejects.toMatchObject({ code: 'bad-pressure-threshold', detail: 'AIRI_CPU_PRESSURE_HOLD' })
+    expect(readdirSync(root)).toEqual([])
+  })
+
   it('records one ticket, grant and release for a reused live lease', async () => {
     vi.useFakeTimers()
     const first = await take({ ...request, class: 'live' })
