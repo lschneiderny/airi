@@ -78,6 +78,46 @@ Each signal cell is the canonical result of `capabilitiesForHost(host)`.
 | Click-through | Yes | Yes | No | No | No | No |
 | Desktop stage | Yes | Yes | Limited (KWin or EWMH; emulated click-through) | Limited (KWin; emulated click-through) | Limited (KWin; emulated click-through) | No |
 
+The backend table records observed Linux statuses. `[~]` marks missing or
+limited live proof. The six-column table above remains the canonical shared
+contract; these rows split Linux by the backend selected at runtime.
+
+| Signal | KWin Wayland | KWin XWayland | x11-ewmh | sway | Hyprland | GNOME | none |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `foregroundWindow` | live | live | live | unavailable (`linux-foreground-verifying`) [~] | unavailable (`linux-foreground-verifying`) [~] | unavailable (`gnome-needs-extension`) | unavailable (`linux-desktop-unsupported`) |
+| `cursorScreenPoint` | live | live | live | unavailable (`sway-cursor-unreported`) | unavailable (`linux-cursor-verifying`) [~] | unavailable (`gnome-needs-extension`) | unavailable (`wayland-cursor-unreported`) |
+| `windowOrigin` | live | live | live | live | unavailable (`linux-geometry-verifying`) [~] | unavailable (`gnome-needs-extension`) | unavailable (`wayland-window-origin-hidden`) |
+| `displayOrigins` | live | live | live | live | degraded (`wayland-display-origin-unverified`) [~] | degraded (`wayland-display-origin-unverified`) | degraded (`wayland-display-origin-unverified`) |
+| `systemIdleTime` | live after runtime verification | unavailable (`xwayland-idle-constant-zero`) | live | unavailable (`wayland-idle-unverified`) [~] | unavailable (`wayland-idle-unverified`) [~] | unavailable (`wayland-idle-unverified`) | unavailable (`wayland-idle-unverified`) |
+| `screenLock` | degraded (`linux-lock-events-undocumented`) | degraded (`linux-lock-events-undocumented`) | degraded (`linux-lock-events-undocumented`) | degraded (`linux-lock-events-undocumented`) | degraded (`linux-lock-events-undocumented`) [~] | degraded (`linux-lock-events-undocumented`) | degraded (`linux-lock-events-undocumented`) |
+| `globalKeyUp` | live when a shortcut is bound | unavailable (`wayland-no-global-input-hook`) [~] | live | unavailable (`wayland-no-global-input-hook`) | unavailable (`wayland-no-global-input-hook`) [~] | unavailable (`wayland-no-global-input-hook`) | unavailable (`wayland-no-global-input-hook`) |
+| `clickThroughForward` | degraded (`linux-click-through-emulated`) | degraded (`linux-click-through-emulated`) | degraded (`linux-click-through-emulated`) | unavailable (`linux-no-click-through-forward`) | unavailable (`linux-no-click-through-forward`) [~] | unavailable (`linux-no-click-through-forward`) | unavailable (`linux-no-click-through-forward`) |
+| `alwaysOnTop` | live | live | live | unavailable (`wayland-no-z-order`) | unavailable (`wayland-no-z-order`) [~] | unavailable (`wayland-no-z-order`) | unavailable (`wayland-no-z-order`) |
+| `systemAudioCapture` | degraded (`linux-capture-audio-unverified`) | degraded (`linux-capture-audio-unverified`) | degraded (`linux-capture-audio-unverified`) | degraded (`linux-capture-audio-unverified`) | degraded (`linux-capture-audio-unverified`) [~] | degraded (`linux-capture-audio-unverified`) | degraded (`linux-capture-audio-unverified`) |
+| Desktop stage | Passes isolated smoke and host checks | Passes isolated smoke and host checks | Eligible; X11 smoke passed with SwiftShader | Classic window only | Classic window only; backend not live-tested [~] | Classic window only | Classic window only |
+
+KWin native support was verified on the tested Plasma 6.8.2 host. The passing
+host smoke covers foreground, cursor, geometry and keep-above. Idle becomes
+live only after its runtime verifier passes. Lock and system audio remain
+degraded in the QA session because it had no lock source and did not run
+capture. On the tested KWin native Wayland session, the GlobalShortcuts portal
+delivered push-to-talk key-up after a binding was accepted. The KWin
+XWayland host report kept `globalKeyUp` unavailable, and no live XWayland
+binding result was recorded. On X11, foreground, cursor and geometry were
+verified with Openbox. The host report recorded emulated click-through, and
+the X11 desktop-stage clean-start smoke passed with SwiftShader because Xvfb
+has no GPU. Raw X11 pointerdown and five-second rest-timing receipts were not
+retained, so those routing checks remain pending F3. Native X11 uses uiohook
+for push-to-talk key-up.
+
+Sway geometry verifies after the backend reports outputs. Its headless session
+could not verify foreground because it has no seat input devices, and idle
+remained unverified. Sway has no cursor or always-on-top source, so it uses the
+classic window. Hyprland has fixture and registration coverage only; it was
+not installed for a live run. Its cursor and geometry therefore remain
+unverified. GNOME has no shipped Shell extension, and unsupported desktops
+report explicit reasons rather than claiming a foreground sensor.
+
 The feature cells name the inputs the host can deliver to the performance
 resolver. Watching requires a visible stage and a user who is not away; it can
 be selected by a recent stage pointer move, idle time below 10 seconds, screen
@@ -126,6 +166,11 @@ window-drag APIs remain local.
 The host matrix describes the implemented contract, including the Presence
 sensing page, its one-time notice, `pnpm qa:host smoke`, and the policy against
 placing windows from an untrusted hidden origin.
+
+The Linux backend sub-table records observed host-specific profiles. A live
+status means its runtime proof passed in a QA session. `[~]` marks a missing
+live proof; neither label extends to untested distributions or compositor
+versions.
 
 Todo 18 will record its idle-retune amendment in
 `docs/ai/adr/2026-10-25-natural-idle-reshape-and-emotion-ducking.md`; its outcome
