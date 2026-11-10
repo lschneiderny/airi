@@ -11,6 +11,7 @@ const unavailable: SignalStatus = { kind: 'unavailable', reason: 'linux-no-click
 function harness(initial: SignalStatus, options: { bridgeFailed?: boolean } = {}) {
   let status = initial
   let bridgeFailed = options.bridgeFailed ?? false
+  let quitting = false
   const listeners = new Set<() => void>()
   const cursorListeners = new Set<(point: { x: number, y: number } | null) => void>()
   const offer = vi.fn()
@@ -26,6 +27,7 @@ function harness(initial: SignalStatus, options: { bridgeFailed?: boolean } = {}
       return () => cursorListeners.delete(listener)
     },
     offer,
+    isQuitting: () => quitting,
   })
   const cursor = (point: { x: number, y: number } | null) => cursorListeners.forEach(listener => listener(point))
   return {
@@ -34,6 +36,9 @@ function harness(initial: SignalStatus, options: { bridgeFailed?: boolean } = {}
     listeners,
     cursorListeners,
     cursor,
+    quit() {
+      quitting = true
+    },
     set(next: SignalStatus, failed = bridgeFailed) {
       status = next
       bridgeFailed = failed
@@ -150,6 +155,17 @@ describe('watchStageClickThrough', () => {
     expect(h.listeners.size).toBe(0)
     expect(h.cursorListeners.size).toBe(0)
     vi.advanceTimersByTime(stageClickThroughGraceMs * 4)
+    expect(h.offer).not.toHaveBeenCalled()
+  })
+
+  it.each(['revocation', 'grace expiry'] as const)('does not offer during shutdown on %s', (trigger) => {
+    const h = harness(trigger === 'revocation' ? emulated : unavailable)
+    h.move()
+    h.quit()
+    if (trigger === 'revocation')
+      h.set(unavailable, true)
+    else
+      vi.advanceTimersByTime(stageClickThroughGraceMs)
     expect(h.offer).not.toHaveBeenCalled()
   })
 

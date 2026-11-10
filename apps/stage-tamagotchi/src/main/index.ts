@@ -445,7 +445,7 @@ app.whenReady().then(async () => {
     ? injeca.provide('windows:stage', {
         dependsOn: userFacingWindowDependencies,
         build: async ({ dependsOn }) => {
-          const stage = await setupStageWindow({ ...dependsOn, config: stageConfig, broadcast: stageStateBroadcast, onWindowCreated: onUserFacingWindowCreated(dependsOn.goNetwork) })
+          const stage = await setupStageWindow({ ...dependsOn, config: stageConfig, broadcast: stageStateBroadcast, onWindowCreated: onUserFacingWindowCreated(dependsOn.goNetwork), isQuitting: () => appExiting })
           stageHost = stage
           return stage.window
         },

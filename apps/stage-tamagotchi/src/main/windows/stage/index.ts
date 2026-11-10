@@ -90,7 +90,7 @@ export function setupWindowStageInvokes(params: {
  *   the placement the renderer publishes
  */
 export async function setupStageWindow(
-  params: Parameters<typeof setupMainWindow>[0] & { config: StageConfigStore, broadcast: StageStateBroadcast },
+  params: Parameters<typeof setupMainWindow>[0] & { config: StageConfigStore, broadcast: StageStateBroadcast, isQuitting: () => boolean },
 ): Promise<StageWindowHost> {
   const getConfig = () => params.config.get() ?? defaultStageConfig
   const home = resolveHomeDisplay(readStageDisplays(stageDisplays), getConfig())
@@ -121,6 +121,7 @@ export async function setupStageWindow(
       },
       onChange: listener => onHostCapabilitiesChange(() => listener()),
       onCursor: onCompositorCursor,
+      isQuitting: params.isQuitting,
       offer: () => {
         console.warn('[stage] Click-through is not usable on this desktop; offering the classic window')
         offerClassicWindowRelaunch({
