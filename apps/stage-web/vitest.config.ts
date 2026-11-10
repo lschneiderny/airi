@@ -3,7 +3,8 @@ import Vue from '@vitejs/plugin-vue'
 import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
-import { stageWebBrowserProject } from './vitest.browser-project'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { stageWebBrowserProject } from './vitest.browser-project.ts'
 
 export default withCpuSlots(defineConfig({
   plugins: [Vue()],

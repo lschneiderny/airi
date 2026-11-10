@@ -1,7 +1,9 @@
 import type { TestProjectInlineConfiguration } from 'vitest/config'
 
-import { domStorageExecArgv } from '../../vitest.dom-storage'
-import { createStageUiProject } from './vitest.shared-project'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { domStorageExecArgv } from '../../vitest.dom-storage.ts'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { createStageUiProject } from './vitest.shared-project.ts'
 
 const shared = createStageUiProject()
 

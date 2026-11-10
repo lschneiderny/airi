@@ -4,7 +4,8 @@ import { join } from 'node:path'
 
 import { playwright } from '@vitest/browser-playwright'
 
-import { createStageUiProject } from './vitest.shared-project'
+// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
+import { createStageUiProject } from './vitest.shared-project.ts'
 
 // Match the Playwright page to Vitest's iframe viewport for unscaled screenshots.
 const testViewport = { width: 414, height: 896 }

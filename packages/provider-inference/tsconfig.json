@@ -12,6 +12,7 @@
       "node",
       "vitest"
     ],
+    "allowImportingTsExtensions": true,
     "strict": true,
     "strictNullChecks": true,
     "noUnusedLocals": true,

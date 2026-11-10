@@ -28,6 +28,7 @@
       "@types/audioworklet",
       "unplugin-info/client"
     ],
+    "allowImportingTsExtensions": true,
     "allowJs": true,
     "strict": true,
     "skipLibCheck": true
