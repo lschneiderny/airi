@@ -147,6 +147,7 @@ describe('aggregateRun', () => {
       actionsUnknown: 0,
       actionToolCalls: 0,
       actionToolUnknown: 0,
+      nonverbal: { gestures: 0, gesturesDropped: 0, bareGestureAttempts: 0, breaks: 0, breaksIgnored: 0, silentMarkers: 0, wordless: 0, silentNoCue: 0, asciiFaces: 0 },
       delay: { valid: 1, count: 2 },
       call: { valid: 2, count: 3 },
       stripped: 3,
@@ -267,5 +268,32 @@ describe('aggregateRun', () => {
     ], [style, style], provenance)
 
     expect(run).toMatchObject({ actionsAccepted: 1, actionsUnknown: 2, actionToolCalls: 4, actionToolUnknown: 2 })
+  })
+
+  it('totals nonverbal-channel use over every reply of the run', () => {
+    const act: ReplyScore['acts'][number] = {
+      form: 'json',
+      recoveredFrom: null,
+      stageParsed: true,
+      emotion: null,
+      emotionWritten: null,
+      intensity: { kind: 'none' },
+      expression: null,
+      motion: null,
+      look: null,
+      lookDropped: false,
+      gesture: { kind: 'nod', count: 2, dropped: false },
+      action: null,
+      actionDisposition: null,
+      inert: false,
+      placeholderEcho: [],
+    }
+    const [run] = aggregateRun([record(), record(), record()], [
+      score({ acts: [act, { ...act, gesture: { kind: null, count: null, dropped: true } }, { ...act, gesture: { kind: null, count: null, dropped: false } }], bareGestureAttempts: 2, breaks: 2, breaksIgnored: 1, asciiFaces: 3 }),
+      score({ acts: [act], storedSpeech: null, spokenText: '', silent: { count: 1, beforeSpeech: true }, wordless: true, breaks: 1 }),
+      score({ storedSpeech: null, spokenText: '', silent: { count: 2, beforeSpeech: true }, silentNoCue: true, asciiFaces: 1 }),
+    ], [style, style, style], provenance)
+
+    expect(run.nonverbal).toEqual({ gestures: 2, gesturesDropped: 1, bareGestureAttempts: 2, breaks: 3, breaksIgnored: 1, silentMarkers: 3, wordless: 1, silentNoCue: 1, asciiFaces: 4 })
   })
 })

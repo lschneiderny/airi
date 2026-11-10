@@ -150,6 +150,8 @@ Scorer version 3 adds the nonverbal channels to each reply score. The runtime re
 | `silentNoCue` | The runtime answered a user turn with SILENT alone: no ACT and no words. |
 | `asciiFaces` | Faces from the shared ASCII face list in the spoken text that speech output strips. Bubbles keep them. |
 
+The run summary sums these fields under `nonverbal`: `gestures` (ACTs with a normalized gesture), `gesturesDropped`, `bareGestureAttempts`, `breaks`, `breaksIgnored`, `silentMarkers` (the `silent.count` total), `wordless` and `silentNoCue` (replies), and `asciiFaces`. The table shows them as `gestures ok/drop/bare`, `breaks kept/ign`, `silent mk/wordless/alone`, and `faces`.
+
 Version 3 also redefines `blank` as no speech, no SILENT before speech, and no tool call (`noSpeech && !silent.beforeSpeech && toolCalls.length === 0`), so a wordless or silent reply is not blank. The legacy scorer (`legacy-score.ts`) keeps its own definition.
 
 `buildSystemPrompt` accepts `register` (`talking` or `texting`) and `textingFlavor` (`plain` or `discord`). With a register, it inserts the same register section the app renders after the card and before the stage contract, so a model run can elicit BREAK markers and faces. The contract hash does not change with the register.

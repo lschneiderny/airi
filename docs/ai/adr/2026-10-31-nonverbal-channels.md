@@ -155,7 +155,6 @@ The work ships on the branch `luke/feat/nonverbal-channels` as atomic commits th
 
 - `streamSpeech` (hosted bidirectional WebSocket only) has no face stripping or BREAK pause.
 - DELAY does not pause the speech track.
-- The qa-tools aggregate report does not total the scorer version 3 fields.
 - The qa-tools 3-poke scenario evaluates the reaction policy itself, because the leader's evaluation is internal to the situation store.
 - MMD Natural ignores cue gestures, touch mood doses, and touch reactions, because the stage gates gestures on the Live2D renderer, `MMDScene` has no `gesture` or `addMood`, and `Stage.vue` routes touch only from `Live2DScene`. MMD touch events are not routed yet (follow-up). Resolved by [2026-11-04-interaction-portability](2026-11-04-interaction-portability.md).
 - Reaction odds, the refractory, and gesture amplitudes are starting values that are tuned from real use and the inspector.

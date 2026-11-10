@@ -38,6 +38,22 @@ export interface RunScore {
   /** `perform_action` calls, and those outside the exposed actions and dances. */
   actionToolCalls: number
   actionToolUnknown: number
+  /**
+   * Nonverbal-channel use, summed over every reply of the run.
+   * `gestures` counts ACTs with a normalized gesture, `gesturesDropped` written gestures the normalizer refused, and
+   * `silentMarkers` SILENT markers in visible speech. `wordless` and `silentNoCue` count replies.
+   */
+  nonverbal: {
+    gestures: number
+    gesturesDropped: number
+    bareGestureAttempts: number
+    breaks: number
+    breaksIgnored: number
+    silentMarkers: number
+    wordless: number
+    silentNoCue: number
+    asciiFaces: number
+  }
   delay: { count: number, valid: number }
   call: { count: number, valid: number }
   stripped: number
@@ -107,6 +123,7 @@ export function aggregateRun(
       actionsUnknown: 0,
       actionToolCalls: 0,
       actionToolUnknown: 0,
+      nonverbal: { gestures: 0, gesturesDropped: 0, bareGestureAttempts: 0, breaks: 0, breaksIgnored: 0, silentMarkers: 0, wordless: 0, silentNoCue: 0, asciiFaces: 0 },
       delay: { count: 0, valid: 0 },
       call: { count: 0, valid: 0 },
       stripped: 0,
@@ -170,7 +187,16 @@ export function aggregateRun(
         run.fields.placeholderEcho += act.placeholderEcho.length
         run.actionsAccepted += Number(act.actionDisposition === 'accepted')
         run.actionsUnknown += Number(act.actionDisposition === 'unknown')
+        run.nonverbal.gestures += Number(act.gesture.kind !== null)
+        run.nonverbal.gesturesDropped += Number(act.gesture.dropped)
       }
+      run.nonverbal.bareGestureAttempts += cue.bareGestureAttempts
+      run.nonverbal.breaks += cue.breaks
+      run.nonverbal.breaksIgnored += cue.breaksIgnored
+      run.nonverbal.silentMarkers += cue.silent.count
+      run.nonverbal.wordless += Number(cue.wordless)
+      run.nonverbal.silentNoCue += Number(cue.silentNoCue)
+      run.nonverbal.asciiFaces += cue.asciiFaces
       run.actionToolCalls += cue.actionToolCalls
       run.actionToolUnknown += cue.actionToolUnknown
       run.delay.count += cue.delay.count
