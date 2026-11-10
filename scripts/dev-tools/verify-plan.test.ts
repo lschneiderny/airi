@@ -95,11 +95,11 @@ describe('selectExtraTestConfigs', () => {
 
 describe('parseVerifyArgs', () => {
   it('defaults to every step against main', () => {
-    expect(parseVerifyArgs([])).toEqual({ ok: true, args: { base: 'main', steps: ['typecheck', 'lint', 'test'], force: false, dryRun: false } })
+    expect(parseVerifyArgs([])).toEqual({ ok: true, args: { base: 'main', steps: ['typecheck', 'lint', 'test'], force: false, dryRun: false, gate: false } })
   })
 
   it('keeps step order canonical whatever order --only lists', () => {
-    expect(parseVerifyArgs(['--only', 'test,lint', '--base', 'origin/main', '--force'])).toEqual({ ok: true, args: { base: 'origin/main', steps: ['lint', 'test'], force: true, dryRun: false } })
+    expect(parseVerifyArgs(['--only', 'test,lint', '--base', 'origin/main', '--force'])).toEqual({ ok: true, args: { base: 'origin/main', steps: ['lint', 'test'], force: true, dryRun: false, gate: false } })
   })
 
   it('rejects unknown steps, missing values, and stray arguments', () => {
