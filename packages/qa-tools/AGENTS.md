@@ -14,8 +14,9 @@ Follow the [root guide](../../AGENTS.md) and its motion-qa task routing. `README
 | Clean-start smoke and page errors | `src/smoke/` | `pnpm qa:smoke`: CDP error collector for every window, main-log scan, allowlist in `fixtures/smoke/allowed-errors.json` |
 | Agent MCP server | `src/mcp/` | `pnpm qa:mcp`: `airi_*` tools over one `AppSession`; registered in the root `.mcp.json` |
 | Replay chat and speech server | `src/llm/` | `pnpm qa:llm serve`: scripted OpenAI-compatible replies and WAV speech, JSONL request log |
-| Model evaluation CLI | `bin/model.ts` | Dispatches `prompt`, `score`, `import-ollama-bench`, and `help` |
-| Model evaluation implementation | `src/model/` | Prompt rendering, transcript import, runtime scoring, provenance, and summaries |
+| Model evaluation CLI | `bin/model.ts` | Dispatches `run`, `prompt`, `score`, `import-ollama-bench`, and `help` |
+| Model evaluation implementation | `src/model/` | Prompt rendering, live scenario runs (`run/`), transcript import, runtime scoring, provenance, and summaries |
+| Model scenarios | `fixtures/model/scenarios/` | One JSON file per scenario for `qa:model run`; `replay/` holds hand-written replies for the replay server, not model output |
 | Committed model datasets | `model-eval/sets/` | One directory per set id, including the separate legacy Mac M2 benchmark |
 | Gate definitions run by Vitest | `gates/*.gate.ts` | Gate rules live in `stage-ui-live2d` `natural-motion/gates.ts` |
 | Gate CLI, T3 planning and scoring | `src/motion/gate/` | `t3-scenario.ts`, `t3-score.ts`, `t3-archive.ts` |
