@@ -1,8 +1,8 @@
 import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
 import { defineConfig } from 'vitest/config'
 
-// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
-import { providerInferenceProjects } from './packages/provider-inference/vitest.config.ts'
+import { providerInferenceNodeProject } from './packages/provider-inference/vitest.node-project'
+import { stageUiNodeProject } from './packages/stage-ui/vitest.node-project'
 
 export default withCpuSlots(defineConfig({
   test: {
@@ -33,7 +33,8 @@ export default withCpuSlots(defineConfig({
       'services/computer-use-mcp',
       'packages/plugin-sdk',
       'packages/plugin-sdk-tamagotchi',
-      ...providerInferenceProjects.map(project => ({ ...project, root: 'packages/provider-inference' })),
+      providerInferenceNodeProject,
+      { ...stageUiNodeProject, test: { ...stageUiNodeProject.test, name: 'stage-ui:node' } },
       'packages/qa-tools/vitest.node.config.ts',
       'packages/scenarios-stage-tamagotchi-browser',
       'packages/scenarios-stage-tamagotchi-electron',

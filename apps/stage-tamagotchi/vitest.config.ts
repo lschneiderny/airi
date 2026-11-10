@@ -1,90 +1,24 @@
-import { cwd } from 'node:process'
-
-import vue from '@vitejs/plugin-vue'
-import UnoCss from 'unocss/vite'
-import Info from 'unplugin-info/vite'
-import VueRouter from 'vue-router/vite'
-
 import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
-import { DownloadLive2DSDK } from '@proj-airi/unplugin-live2d-sdk'
-import { playwright } from '@vitest/browser-playwright'
-import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
-// eslint-disable-next-line no-restricted-syntax -- Vite's native config loader, its planned default, resolves a relative import only with its extension.
-import unoConfig from './uno.config.ts'
+import { createStageTamagotchiProject, stageTamagotchiBrowserProject } from './vitest.browser-project'
+
+const shared = createStageTamagotchiProject()
 
 export default withCpuSlots(defineConfig({
-  root: import.meta.dirname,
-  plugins: [
-    Info(),
-    vue(),
-    UnoCss({
-      ...unoConfig,
-      // NOTICE:
-      // Disable config discovery to preserve the initial stylesheet scan below.
-      // The discovered config replaces inline content through a shallow merge.
-      // Source: loadConfig in node_modules/@unocss/config/dist/index.mjs uses
-      // Object.assign(defaults, inlineConfig, result.config ?? {}).
-      // When discovery preserves inline content.filesystem, remove configFile: false
-      // and the explicit unoConfig import and spreads. Verify the shuffled browser suite.
-      configFile: false,
-      // Generate the initial stylesheet before parallel browser files mount.
-      // Late utility extraction can resize controls during layout assertions.
-      content: {
-        ...unoConfig.content,
-        // NOTICE:
-        // Keep these globs root-relative. On Windows, `import.meta.dirname` has
-        // backslashes that tinyglobby reads as escapes, matching zero files.
-        // Source: @unocss/vite setupContentExtractor.
-        // Removal condition: none; absolute patterns would reintroduce it.
-        filesystem: [
-          'src/**/*.vue',
-          '../../packages/stage-layouts/src/**/*.vue',
-          '../../packages/stage-ui/src/**/*.vue',
-          '../../packages/ui/src/**/*.vue',
-        ],
-      },
-    }),
-  ],
+  ...shared,
   test: {
-    env: loadEnv('test', cwd(), ''),
-    projects: [
-      {
-        extends: true,
-        test: {
-          name: 'node',
-          include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
-          exclude: ['src/**/*.browser.test.ts', '**/node_modules/**', '**/.git/**'],
-          fileParallelism: false,
-          maxWorkers: 1,
-          setupFiles: ['../../scripts/dev-tools/vitest-isolate-host-session.ts'],
-        },
+    ...shared.test,
+    projects: [{
+      extends: true,
+      test: {
+        name: 'node',
+        include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
+        exclude: ['src/**/*.browser.test.ts', '**/node_modules/**', '**/.git/**'],
+        fileParallelism: false,
+        maxWorkers: 1,
+        setupFiles: ['../../scripts/dev-tools/vitest-isolate-host-session.ts'],
       },
-      {
-        extends: true,
-        plugins: [
-          DownloadLive2DSDK(),
-          // The settings pages carry a `<route>` block, and this plugin is the
-          // one that turns that block into a module. A test that imports a page
-          // fails to resolve it without this plugin.
-          VueRouter({ dts: false, routesFolder: ['src/renderer/pages'] }),
-        ],
-        test: {
-          name: 'browser',
-          include: ['src/**/*.browser.test.ts'],
-          exclude: ['**/node_modules/**', '**/.git/**'],
-          setupFiles: ['./src/test/setup-live2d.browser.ts'],
-          browser: {
-            enabled: true,
-            headless: true,
-            provider: playwright(),
-            instances: [
-              { browser: 'chromium' },
-            ],
-          },
-        },
-      },
-    ],
+    }, stageTamagotchiBrowserProject],
   },
 }))

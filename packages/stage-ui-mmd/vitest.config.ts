@@ -1,6 +1,7 @@
 import { withCpuSlots } from '@proj-airi/cpu-slots/vitest'
-import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
+
+import { stageUiMmdBrowserProject } from './vitest.browser-project'
 
 export default withCpuSlots(defineConfig({
   root: import.meta.dirname,
@@ -13,20 +14,7 @@ export default withCpuSlots(defineConfig({
           exclude: ['src/**/*.browser.test.ts'],
         },
       },
-      {
-        test: {
-          name: 'browser',
-          include: ['src/**/*.browser.test.ts'],
-          browser: {
-            enabled: true,
-            headless: true,
-            provider: playwright({ launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] } }),
-            instances: [
-              { browser: 'chromium' },
-            ],
-          },
-        },
-      },
+      stageUiMmdBrowserProject,
     ],
   },
 }))
