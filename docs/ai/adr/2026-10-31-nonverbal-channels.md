@@ -145,7 +145,7 @@ The work ships on the branch `luke/feat/nonverbal-channels` as atomic commits th
 
 **DELAY still does not pause playback.** `SpeechOutput.onSpecial` returns nothing, and the stage fires its special handler without awaiting it, so a DELAY pauses only the stage's dispatch chain, as before this change. BREAK pauses the speech track itself. Making DELAY pause playback is a follow-up.
 
-**Streaming speech providers get neither stripping nor the pause.** `streamSpeech`, which the hosted bidirectional WebSocket provider uses, bypasses the TTS chunker. It does not strip faces and does not pause at BREAK. That provider is excluded in this fork. Applying both to it is a follow-up.
+**No streaming speech provider remains.** `streamSpeech`, which the hosted bidirectional WebSocket provider used, bypassed the TTS chunker, so it stripped no faces and paused at no BREAK. Commit a291588c0 (2026-11-05) removed it with the hosted account client, and no source in `packages/` or `apps/` streams speech any more. The `stream` variant of core-agent's `SpeechOutput` port remains without an implementer. It passes text to a provider unsegmented and runs cues on arrival, so a host that implements it must strip faces and pause on its own.
 
 **A face alone in a segment leaves the caption.** A segment that is empty after face stripping is skipped, so a face that forms its own segment drops from the caption while the bubble keeps it.
 
@@ -153,11 +153,14 @@ The work ships on the branch `luke/feat/nonverbal-channels` as atomic commits th
 
 **Follow-ups.**
 
-- `streamSpeech` (hosted bidirectional WebSocket only) has no face stripping or BREAK pause.
 - DELAY does not pause the speech track.
 - The qa-tools 3-poke scenario evaluates the reaction policy itself, because the leader's evaluation is internal to the situation store.
 - MMD Natural ignores cue gestures, touch mood doses, and touch reactions, because the stage gates gestures on the Live2D renderer, `MMDScene` has no `gesture` or `addMood`, and `Stage.vue` routes touch only from `Live2DScene`. MMD touch events are not routed yet (follow-up). Resolved by [2026-11-04-interaction-portability](2026-11-04-interaction-portability.md).
 - Reaction odds, the refractory, and gesture amplitudes are starting values that are tuned from real use and the inspector.
+
+**Resolved follow-ups.**
+
+- "`streamSpeech` (hosted bidirectional WebSocket only) has no face stripping or BREAK pause." Closed on 2026-11-10 without a change: commit a291588c0 removed `streamSpeech`, and no streaming speech path remains in this fork.
 
 ## Validation
 
