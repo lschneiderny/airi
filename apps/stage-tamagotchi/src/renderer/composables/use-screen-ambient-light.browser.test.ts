@@ -88,6 +88,7 @@ afterEach(async () => {
   for (const view of views.splice(0))
     await view.unmount()
   useSettingsScreenAmbientLight().screenAmbientLightEnabled = false
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -256,13 +257,16 @@ describe('screen ambient light capture', () => {
     // A window dragged across the seam and back within the settle time has not
     // moved displays. Restarting a capture costs a new getDisplayMedia call and
     // a gap in the light, so a short excursion must not trigger it.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     await mount()
     await vi.waitFor(() => expect(selectedDisplayIds).toEqual(['screen:17:0']))
 
     bounds.x.value = 1600 + 100
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(100)
     bounds.x.value = windowBounds.x
-    await new Promise(resolve => setTimeout(resolve, 1200))
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(1200)
 
     expect(selectedDisplayIds).toEqual(['screen:17:0'])
   })

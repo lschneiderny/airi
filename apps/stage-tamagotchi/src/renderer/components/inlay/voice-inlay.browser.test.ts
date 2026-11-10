@@ -6,6 +6,7 @@ import { createPinia, disposePinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { userEvent } from 'vitest/browser'
+import { nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 
 import VoiceInlay from './voice-inlay.vue'
@@ -75,6 +76,7 @@ function within<T>(promise: Promise<T>, what: string, ms = 5000): Promise<T> {
 
 afterEach(() => {
   cleanups.splice(0).reverse().forEach(cleanup => cleanup())
+  vi.useRealTimers()
   isWayland.value = false
   clickThroughStatus.value = null
   returnHome.mockReset()
@@ -255,15 +257,19 @@ describe('voice inlay', () => {
   })
 
   it('returns home after it painted nothing for a while, but not while it shows speech', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     renderInlay()
     publish({ drafts: [], input: { ...capturing, text: '', segments: [] } })
-    await expect.poll(inlayView).toBe('capsule')
+    await nextTick()
+    expect(inlayView()).toBe('capsule')
 
-    await new Promise(resolve => setTimeout(resolve, 5500))
+    await vi.advanceTimersByTimeAsync(5500)
     expect(returnHome).not.toHaveBeenCalled()
 
     publish({ drafts: [] })
-    await expect.poll(() => returnHome.mock.calls.length, { timeout: 7000 }).toBe(1)
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(returnHome).toHaveBeenCalledOnce()
   })
 
   it('cancels live speech on Escape and shrinks away', async () => {
@@ -304,7 +310,7 @@ describe('voice inlay', () => {
     shortcutListeners.forEach(listener => listener({ body: { id: 'voice-push-to-talk', phase: 'down' } }))
     shortcutListeners.forEach(listener => listener({ body: { id: 'voice-inlay-dismiss', phase: 'up' } }))
 
-    await new Promise(resolve => setTimeout(resolve, 200))
+    await nextTick()
     expect(commands).toEqual([])
     expect(inlayView()).toBe('capsule')
   })
@@ -318,7 +324,7 @@ describe('voice inlay', () => {
     await userEvent.keyboard('{Escape}')
     await expect.poll(inlayView).toBe('hidden')
     publish({ drafts: [draft], frontDraftId: 'draft' })
-    await new Promise(resolve => setTimeout(resolve, 300))
+    await nextTick()
     expect(inlayView()).toBe('hidden')
     // The draft stays with the host. Escape never discards it.
     expect(commands).toEqual([])

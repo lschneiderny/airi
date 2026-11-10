@@ -32,7 +32,7 @@ describe('chat history scroll container', () => {
     const viewport = screen.container.querySelector<HTMLElement>('.chat-history-list')
 
     expect(viewport?.matches('[data-reka-scroll-area-viewport]')).toBe(true)
-    await new Promise(resolve => setTimeout(resolve, 150))
+    await expect.poll(() => viewport && viewport.scrollHeight > viewport.clientHeight).toBe(true)
     expect(screen.container.querySelector('.scrollable-area-scrollbar--vertical')).toBeNull()
 
     if (!viewport)

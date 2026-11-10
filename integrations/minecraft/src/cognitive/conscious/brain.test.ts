@@ -400,6 +400,7 @@ inv;
 
     const outcome = await Promise.race([
       processing,
+      // Time contract: pausing must finish the in-flight turn within 500 ms; this is a failure deadline.
       new Promise(resolve => setTimeout(resolve, 500, 'timeout')),
     ])
 
