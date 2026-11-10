@@ -256,8 +256,8 @@ interface WidgetRecord extends WidgetSnapshot {
 interface WidgetWindowContext {
   widgetId: string
   currentRoute?: string
-  disposeInvokes?: () => void
-  eventa?: ReturnType<typeof createContext>
+  /** The context of `window`. The window owns it, and the Eventa adapter disposes it when the window closes. */
+  eventa?: Pick<ReturnType<typeof createContext>, 'context'>
   persistBounds: boolean
   /** Set while a saved position waits for a live origin and the window's proved rectangle. */
   restorePending?: boolean
@@ -477,12 +477,8 @@ export function setupWidgetsWindowManager(params: {
      *
      * Downstream:
      * - {@link destroyWidget}
-     * - The Eventa adapter `dispose` operation
      */
     function handleWindowClosed() {
-      windowContext.disposeInvokes?.()
-      windowContext.disposeInvokes = undefined
-      windowContext.eventa?.dispose()
       windowContext.eventa = undefined
       windowContext.currentRoute = undefined
       windowContext.window = undefined
@@ -512,17 +508,14 @@ export function setupWidgetsWindowManager(params: {
     })
 
     try {
-      const disposeInvokes = await setupWidgetsWindowInvokes({
+      await setupWidgetsWindowInvokes({
         widgetWindow: window,
         widgetsManager: widgetsManager!,
         i18n: params.i18n,
         serverChannel: params.serverChannel,
       })
-      if (window.isDestroyed()) {
-        disposeInvokes()
+      if (window.isDestroyed())
         return window
-      }
-      windowContext.disposeInvokes = disposeInvokes
 
       await loadWithRoute(windowContext, window, initialRoute)
       return window

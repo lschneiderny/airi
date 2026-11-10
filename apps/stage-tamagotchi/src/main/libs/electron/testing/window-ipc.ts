@@ -10,7 +10,7 @@ let nextWebContentsId = 1
  * Connects one fake window to a shared fake `ipcMain`, as Electron connects a renderer to the main process.
  *
  * The renderer side sends with the window's `webContents` as the IPC sender. The main side sends to the window
- * through `webContents.send`. Emit `closed` on `window` to close it.
+ * through `webContents.send`. `close()` destroys the window and then emits `closed`, in Electron's order.
  *
  * @example
  * vi.mock('electron', async () => ({ ipcMain: new (await import('node:events')).EventEmitter() }))
@@ -22,11 +22,12 @@ let nextWebContentsId = 1
  */
 export function createWindowIpc(ipcMain: EventEmitter) {
   const rendererIpc = new EventEmitter()
+  let destroyed = false
   const window = Object.assign(new EventEmitter(), {
-    isDestroyed: () => false,
+    isDestroyed: () => destroyed,
     webContents: {
       id: nextWebContentsId++,
-      isDestroyed: () => false,
+      isDestroyed: () => destroyed,
       send: (channel: string, payload: unknown) => rendererIpc.emit(channel, {}, payload),
     },
   })
@@ -40,5 +41,12 @@ export function createWindowIpc(ipcMain: EventEmitter) {
   } as never)
 
   const browserWindow: BrowserWindow = window as never
-  return { window: browserWindow, context }
+  return {
+    window: browserWindow,
+    context,
+    close() {
+      destroyed = true
+      window.emit('closed')
+    },
+  }
 }

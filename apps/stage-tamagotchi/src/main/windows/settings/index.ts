@@ -19,6 +19,7 @@ import icon from '../../../../resources/icon.png?asset'
 import { electronSettingsNavigate } from '../../../shared/eventa'
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
 import { ignoreWindowClosedDuringCreation } from '../../libs/electron/window-closed'
+import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { protectPrivilegedWindowNavigation, toggleWindowShow } from '../shared'
 import { setupWindowStageInvokes } from '../stage'
@@ -95,7 +96,7 @@ export function setupSettingsWindowReusableFunc(params: {
         settingsContext = undefined
     })
 
-    initScreenCaptureForWindow(window)
+    initScreenCaptureForWindow(window, createWindowContext(window).context)
 
     return window
   })

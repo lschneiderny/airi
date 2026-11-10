@@ -1,11 +1,12 @@
+import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import type { BrowserWindow } from 'electron'
 
 import { defineInvokeHandler } from '@moeru/eventa'
-import { createContext } from '@moeru/eventa/adapters/electron/main'
-import { app, ipcMain, shell } from 'electron'
+import { app, shell } from 'electron'
 import { isLinux, isMacOS, isWindows } from 'std-env'
 
 import { electron, electronAppGetVersion, electronAppOpenUserDataFolder, electronAppQuit } from '../../../shared/eventa'
+import { createWindowContext } from '../../libs/electron/window-context'
 
 export function createAppService(params: { context: ReturnType<typeof createContext>['context'], window: BrowserWindow }) {
   defineInvokeHandler(params.context, electron.app.isMacOS, () => isMacOS)
@@ -25,11 +26,10 @@ export function createAppService(params: { context: ReturnType<typeof createCont
 /**
  * Serves the app version to the renderer of one window.
  *
- * The context hears only IPC from this window (`onlySameWindow`). A shared window context hears the IPC of all
- * windows, so one request runs the handler once for each open window. The adapter disposes the context, and with it
- * the handler, when the window closes.
+ * The handler lives on the window's own context, which hears only IPC from this window, so one request runs one
+ * handler. The context, and with it the handler, goes when the window closes.
  */
 export function createAppVersionService(params: { window: BrowserWindow }) {
-  const { context } = createContext(ipcMain, params.window, { onlySameWindow: true })
+  const { context } = createWindowContext(params.window)
   defineInvokeHandler(context, electronAppGetVersion, () => app.getVersion())
 }

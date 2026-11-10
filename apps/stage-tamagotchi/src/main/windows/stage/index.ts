@@ -18,6 +18,7 @@ import { app, dialog, BrowserWindow as ElectronBrowserWindow, screen } from 'ele
 import icon from '../../../../resources/icon.png?asset'
 
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { createWindowContext } from '../../libs/electron/window-context'
 import { onCompositorCursor, readDisplays, readPrimaryDisplay, readWindowRect } from '../../services/electron/coordinates'
 import { getCurrentHostCapabilities, onHostCapabilitiesChange } from '../../services/electron/host-capabilities'
 import { hideOnClose } from '../main/hide-on-close'
@@ -192,7 +193,7 @@ export async function setupStageWindow(
       inlay.showInactive()
   }).catch(error => console.error('Failed to prepare the inlay window', error))
 
-  initScreenCaptureForWindow(window)
+  initScreenCaptureForWindow(window, createWindowContext(window).context)
 
   return {
     window,

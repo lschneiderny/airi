@@ -14,13 +14,14 @@ import {
   ioTraceHubSubscribe,
   ioTraceHubUnsubscribe,
 } from '../../../../shared/eventa'
+import { createWindowContext } from '../../../libs/electron/window-context'
 
 /**
  * Connects the IO trace hub to every renderer window.
  *
  * The handlers use one context without a window, so each invoke runs once, whichever window sends it. A window
  * context would also receive the invokes of the other windows on the shared `ipcMain`.
- * A subscribed window gets its own window context only to receive pushed spans.
+ * A subscribed window receives pushed spans on its window context, which the window owns.
  */
 export function registerIOTraceHub(hub: IOTraceHub): () => void {
   const { context, dispose } = createContext(ipcMain)
@@ -38,15 +39,14 @@ export function registerIOTraceHub(hub: IOTraceHub): () => void {
     if (!window)
       return []
 
-    const viewer = createContext(ipcMain, window)
+    const viewer = createWindowContext(window).context
     const subscription = hub.subscribe((span) => {
       if (!window.isDestroyed())
-        void viewer.context.emit(ioTraceHubSpan, span)
+        void viewer.emit(ioTraceHubSpan, span)
     })
     const onDestroyed = () => stopViewer(sender.id)
     const stop = () => {
       subscription.unsubscribe()
-      viewer.dispose()
       sender.off('destroyed', onDestroyed)
     }
     sender.once('destroyed', onDestroyed)

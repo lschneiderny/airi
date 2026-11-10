@@ -30,6 +30,7 @@ vi.mock('electron', () => ({
 vi.mock('std-env', () => ({ isMacOS: false, isLinux: true }))
 vi.mock('@electron-toolkit/utils', () => ({ is: { dev: false } }))
 vi.mock('@proj-airi/electron-screen-capture/main', () => ({ initScreenCaptureForWindow: vi.fn() }))
+vi.mock('../../libs/electron/window-context', () => ({ createWindowContext: () => ({ context: {} }) }))
 vi.mock('../../../../resources/icon.png?asset', () => ({ default: 'icon.png' }))
 vi.mock('../../libs/electron/persistence', () => ({
   createConfig: () => ({ setup: vi.fn(), get: () => mocks.config, update: (next: typeof mocks.config) => mocks.config = next }),

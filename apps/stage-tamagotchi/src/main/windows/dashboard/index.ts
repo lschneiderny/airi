@@ -177,7 +177,7 @@ export async function setupDashboardWindow(params: {
     })
   }
 
-  initScreenCaptureForWindow(window)
+  initScreenCaptureForWindow(window, createWindowContext(window).context)
 
   return window
 }

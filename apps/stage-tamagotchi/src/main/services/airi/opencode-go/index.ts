@@ -6,11 +6,10 @@ import type { GoResponse } from '../../../../shared/eventa/opencode-go'
 import { randomUUID } from 'node:crypto'
 
 import { defineInvokeHandler } from '@moeru/eventa'
-import { createContext } from '@moeru/eventa/adapters/electron/main'
-import { ipcMain } from 'electron'
 import { maxLength, minLength, optional, parse, picklist, pipe, regex, strictObject, string } from 'valibot'
 
 import { goCancelRequest, goGetConfiguration, goOpenRequest, goReadChunk, goSetConfiguration } from '../../../../shared/eventa/opencode-go'
+import { createWindowContext } from '../../../libs/electron/window-context'
 import { Credentials } from './credentials'
 
 const identifier = pipe(string(), minLength(1), maxLength(256), regex(/^[\w.:/-]+$/))
@@ -36,7 +35,7 @@ function parseInput<TSchema extends BaseSchema<unknown, unknown, BaseIssue<unkno
 
 interface Binding {
   window: BrowserWindow
-  adapter: ReturnType<typeof createContext>
+  /** Stops the binding and removes its handlers. The context belongs to the window and outlives a shutdown. */
   close: () => void
   navigate: (_event: Electron.Event, url: string, isInPlace: boolean, isMainFrame: boolean) => void
   gone: () => void
@@ -107,13 +106,14 @@ class GoNetworkService {
       return
     // The native window cannot supply webContents after `closed`.
     const contents = window.webContents
-    const adapter = createContext(ipcMain, window, { onlySameWindow: true })
+    const { context } = createWindowContext(window)
+    const handlers: Array<() => void> = []
     const binding: Binding = {
       window,
-      adapter,
       close: () => {
         this.cancelMatching(state => state.owner === binding)
-        adapter.dispose()
+        for (const remove of handlers)
+          remove()
         window.off('closed', binding.close)
         contents.off('did-start-navigation', binding.navigate)
         contents.off('render-process-gone', binding.gone)
@@ -132,19 +132,19 @@ class GoNetworkService {
     contents.on('did-start-navigation', binding.navigate)
     contents.on('render-process-gone', binding.gone)
 
-    defineInvokeHandler(adapter.context, goGetConfiguration, async (input, options) => {
+    handlers.push(defineInvokeHandler(context, goGetConfiguration, async (input, options) => {
       this.authorize(binding, options)
       const { providerId } = parseInput(profileSchema, input)
       return this.credentials.get(providerId)
-    })
-    defineInvokeHandler(adapter.context, goSetConfiguration, async (input, options) => {
+    }))
+    handlers.push(defineInvokeHandler(context, goSetConfiguration, async (input, options) => {
       this.authorize(binding, options)
       const { providerId, apiKey } = parseInput(updateSchema, input)
       const result = await this.credentials.set(providerId, apiKey)
       this.cancelMatching(state => state.providerId === providerId)
       return result
-    })
-    defineInvokeHandler(adapter.context, goOpenRequest, async (input, options): Promise<GoResponse> => {
+    }))
+    handlers.push(defineInvokeHandler(context, goOpenRequest, async (input, options): Promise<GoResponse> => {
       const requests = this.authorize(binding, options)
       const request = parseInput(requestSchema, input)
       if (request.operation === 'models' && request.body !== undefined)
@@ -214,8 +214,8 @@ class GoNetworkService {
       finally {
         invocationSignal?.removeEventListener('abort', abort)
       }
-    })
-    defineInvokeHandler(adapter.context, goReadChunk, async (input, options) => {
+    }))
+    handlers.push(defineInvokeHandler(context, goReadChunk, async (input, options) => {
       this.authorize(binding, options)
       const { requestId } = parseInput(pullSchema, input)
       const state = this.requests.get(binding)?.get(requestId)
@@ -242,11 +242,11 @@ class GoNetworkService {
       finally {
         state.reading = false
       }
-    })
-    defineInvokeHandler(adapter.context, goCancelRequest, (input, options) => {
+    }))
+    handlers.push(defineInvokeHandler(context, goCancelRequest, (input, options) => {
       this.authorize(binding, options)
       this.cancel(binding, parseInput(pullSchema, input).requestId)
-    })
+    }))
   }
 
   async dispose(): Promise<void> {

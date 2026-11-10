@@ -232,7 +232,7 @@ export async function setupMainWindow(params: {
     })
   }
 
-  initScreenCaptureForWindow(window)
+  initScreenCaptureForWindow(window, createWindowContext(window).context)
 
   return window
 }

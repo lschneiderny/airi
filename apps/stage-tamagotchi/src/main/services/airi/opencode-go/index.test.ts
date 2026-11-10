@@ -16,7 +16,7 @@ const boundary = vi.hoisted(() => ({
   root: '',
   handlers: new Map<object, Map<unknown, Handler>>(),
   contexts: new Map<object, object>(),
-  dispose: vi.fn(),
+  disposeContext: vi.fn(),
   available: vi.fn(async () => true),
   backend: vi.fn(() => 'gnome_libsecret'),
   encrypt: vi.fn(async (key: string) => Buffer.from(`encrypted:${key}`)),
@@ -43,6 +43,7 @@ vi.mock('@moeru/eventa', async original => ({
   ...await original<typeof import('@moeru/eventa')>(),
   defineInvokeHandler: (context: object, event: unknown, handler: Handler) => {
     boundary.handlers.get(context)!.set(event, handler)
+    return () => boundary.handlers.get(context)!.delete(event)
   },
 }))
 vi.mock('@moeru/eventa/adapters/electron/main', () => ({
@@ -51,7 +52,7 @@ vi.mock('@moeru/eventa/adapters/electron/main', () => ({
     const context = {}
     boundary.contexts.set(window, context)
     boundary.handlers.set(context, new Map())
-    return { context, dispose: boundary.dispose }
+    return { context, dispose: boundary.disposeContext }
   },
 }))
 
@@ -112,6 +113,17 @@ describe('openCode Go main service', () => {
     expect(await call(window, goGetConfiguration, profile)).toEqual({ configured: true, revision: 1, keyPreview: '****1234' })
     expect(boundary.decrypt).not.toHaveBeenCalled()
     expect(await call(window, goSetConfiguration, { ...profile, apiKey: '  ' })).toEqual({ configured: false, revision: 2, keyPreview: '' })
+  })
+
+  // The window owns its context and other services share it, so a shutdown removes only this service's handlers.
+  it('removes its handlers on dispose and leaves the window context alive', async () => {
+    const handlers = boundary.handlers.get(boundary.contexts.get(window)!)!
+    expect(handlers.size).toBe(5)
+
+    await service.dispose()
+
+    expect(handlers.size).toBe(0)
+    expect(boundary.disposeContext).not.toHaveBeenCalled()
   })
 
   it('refuses insecure storage without changing the stored configuration', async () => {

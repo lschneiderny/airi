@@ -1,12 +1,12 @@
+import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import type { ModelAsset } from '@proj-airi/stage-shared/model-assets'
 
 import { join } from 'node:path'
 
 import { defineInvokeHandler } from '@moeru/eventa'
-import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { sherpawModelArtifactUrl, sherpawModels } from '@proj-airi/provider-inference/sherpaw-transcription/models'
 import { ModelAssetRepository } from '@proj-airi/stage-shared/model-assets'
-import { app, BrowserWindow, ipcMain, protocol } from 'electron'
+import { app, BrowserWindow, protocol } from 'electron'
 
 import {
   electronModelAssetCancel,
@@ -16,6 +16,7 @@ import {
   electronModelAssetsList,
   electronModelAssetStatusChanged,
 } from '../../../shared/eventa/model-assets'
+import { createWindowContext } from '../../libs/electron/window-context'
 import { FileModelAssetStorage } from './model-asset-storage'
 
 // The renderer gets mirror URLs from the Vite plugin, but main owns desktop downloads.
@@ -48,18 +49,13 @@ export function setupSherpawModelAssets(context: ReturnType<typeof createContext
   const repository = new ModelAssetRepository(models, storage)
   // NOTICE:
   // An unbound Eventa main context sends only to the sender of an incoming call.
-  // Download progress has no call sender, so each open window needs a bound context.
+  // Download progress has no call sender, so it goes out on the context of each open window.
   // Source: @moeru/eventa/adapters/electron/main createContext.
   // Remove when Eventa supports broadcasts from an unbound main context.
-  const statusContexts = new WeakMap<BrowserWindow, ReturnType<typeof createContext>>()
   repository.subscribe((status) => {
     for (const window of BrowserWindow.getAllWindows()) {
-      let target = statusContexts.get(window)
-      if (!target) {
-        target = createContext(ipcMain, window, { onlySameWindow: true })
-        statusContexts.set(window, target)
-      }
-      void target.context.emit(electronModelAssetStatusChanged, status).catch(error => console.warn('Failed to publish model asset status:', error))
+      const target = createWindowContext(window).context
+      void target.emit(electronModelAssetStatusChanged, status).catch(error => console.warn('Failed to publish model asset status:', error))
     }
   })
 

@@ -6,7 +6,17 @@ system loopback audio in Electron.
 ## Usage
 
 Call `initScreenCaptureForMain` before app readiness and
-`initScreenCaptureForWindow` for each participating window. In the renderer,
+`initScreenCaptureForWindow(window, context)` for each participating window.
+`context` is the Eventa main context that serves that window, created with
+`onlySameWindow: true`. The package registers its invoke handlers on it and
+creates no context of its own, so pass the context the window already uses:
+
+```ts
+const { context } = createContext(ipcMain, window, { onlySameWindow: true })
+initScreenCaptureForWindow(window, context)
+```
+
+In the renderer,
 use `setupElectronScreenCapture(context).selectWithSource`, or the Vue
 `useElectronScreenCapture` equivalent:
 

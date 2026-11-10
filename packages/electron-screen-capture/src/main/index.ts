@@ -2,14 +2,14 @@
 // SPDX-FileCopyrightText: Copyright (c) Moeru AI Project AIRI Team
 
 import type { Format, LogLevelString } from '@guiiai/logg'
+import type { createContext } from '@moeru/eventa/adapters/electron/main'
 import type { MutexInterface } from 'async-mutex'
 import type { BrowserWindow, DesktopCapturerSource, SourcesOptions, Streams } from 'electron'
 
 import { useLogg } from '@guiiai/logg'
 import { defineInvokeHandler } from '@moeru/eventa'
-import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { Mutex, withTimeout } from 'async-mutex'
-import { app, desktopCapturer, ipcMain, session as sessionModule } from 'electron'
+import { app, desktopCapturer, session as sessionModule } from 'electron'
 import { nanoid } from 'nanoid'
 import { isLinux } from 'std-env'
 
@@ -176,7 +176,14 @@ function tryWindowTitle(window: BrowserWindow, previous?: string): string {
   return title
 }
 
-export function initScreenCaptureForWindow(window: BrowserWindow, options?: InitWindowOptions): void {
+/**
+ * Registers the capture invokes for one window.
+ *
+ * `context` is the Eventa main context that serves `window`. It must hear only IPC from that window (the adapter's
+ * `onlySameWindow` option), or a request from another window also runs here. The caller owns the context; this
+ * function creates none, so the window keeps one pair of `ipcMain` listeners.
+ */
+export function initScreenCaptureForWindow(window: BrowserWindow, context: ReturnType<typeof createContext>['context'], options?: InitWindowOptions): void {
   let log = useLogg('screen-capture').useGlobalConfig()
   if (options?.loggerOptions?.logLevel) {
     log = log.withLogLevelString((options?.loggerOptions?.logLevel ?? 'info') as LogLevelString)
@@ -201,7 +208,6 @@ export function initScreenCaptureForWindow(window: BrowserWindow, options?: Init
 
   initializedWindows.add(window)
 
-  const { context } = createContext(ipcMain, window, { onlySameWindow: true })
   const session = sessionModule.defaultSession
   let linuxSources: DesktopCapturerSource[] = []
 

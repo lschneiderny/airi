@@ -5,6 +5,7 @@ import { initScreenCaptureForWindow } from '@proj-airi/electron-screen-capture/m
 import { BrowserWindow } from 'electron'
 
 import { baseUrl, getElectronMainDirname, load } from '../../libs/electron/location'
+import { createWindowContext } from '../../libs/electron/window-context'
 import { excludeWindowFromTaskbar } from '../shared/app-icon'
 import { protectPrivilegedWindowNavigation } from '../shared/window'
 
@@ -23,7 +24,7 @@ export async function setupBeatSync() {
   protectPrivilegedWindowNavigation(window)
 
   await load(window, baseUrl(resolve(getElectronMainDirname(), '..', 'renderer'), 'beat-sync.html'))
-  initScreenCaptureForWindow(window)
+  initScreenCaptureForWindow(window, createWindowContext(window).context)
 
   return window
 }

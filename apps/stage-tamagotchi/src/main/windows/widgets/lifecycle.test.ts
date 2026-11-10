@@ -80,11 +80,7 @@ vi.mock('electron', () => ({
   // No Dock on this platform: the test runs with `isMacOS: false`.
   app: { isReady: () => true, commandLine: { getSwitchValue: () => 'x11' } },
   BrowserWindow: mocks.FakeBrowserWindow,
-  ipcMain: {
-    off: vi.fn(),
-    on: vi.fn(),
-    setMaxListeners: vi.fn(),
-  },
+  ipcMain: { setMaxListeners: vi.fn() },
   screen: {
     getDisplayMatching: vi.fn(() => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } })),
     getPrimaryDisplay: vi.fn(() => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } })),
@@ -93,13 +89,12 @@ vi.mock('electron', () => ({
 
 vi.mock('std-env', () => ({ isMacOS: false }))
 
-vi.mock('@moeru/eventa/adapters/electron/main', () => ({
-  createContext: vi.fn(() => ({
+vi.mock('../../libs/electron/window-context', () => ({
+  createWindowContext: vi.fn(() => ({
     context: {
       emit: vi.fn(),
       on: vi.fn(() => vi.fn()),
     },
-    dispose: vi.fn(),
   })),
 }))
 
@@ -133,7 +128,7 @@ vi.mock('../shared/window', () => ({
 }))
 
 vi.mock('./rpc/index.electron', () => ({
-  setupWidgetsWindowInvokes: vi.fn(async () => vi.fn()),
+  setupWidgetsWindowInvokes: vi.fn(async () => undefined),
 }))
 
 function createManager() {

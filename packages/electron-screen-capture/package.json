@@ -54,7 +54,6 @@
   "inlinedDependencies": {
     "@moeru/eventa": "1.0.2",
     "async-mutex": "0.5.0",
-    "nanoid": "6.0.1",
-    "picomatch": "4.0.5"
+    "nanoid": "6.0.1"
   }
 }

@@ -6,6 +6,7 @@ import { BrowserWindow } from 'electron'
 import icon from '../../../../resources/icon.png?asset'
 
 import { baseUrl, getElectronMainDirname, load, withHashRoute } from '../../libs/electron/location'
+import { createWindowContext } from '../../libs/electron/window-context'
 import { createReusableWindow } from '../../libs/electron/window-manager'
 import { protectPrivilegedWindowNavigation } from '../shared'
 import { placeWindow } from '../shared/placement'
@@ -51,7 +52,7 @@ export function setupDevtoolsWindow(): DevtoolsWindowManager {
           reusableWindows.delete(key)
       })
       protectPrivilegedWindowNavigation(window)
-      initScreenCaptureForWindow(window)
+      initScreenCaptureForWindow(window, createWindowContext(window).context)
 
       await load(window, withHashRoute(rendererBase, route, {
         query: { 'synced-leader': 'false' },

@@ -10,6 +10,7 @@ import { defineInvoke } from '@moeru/eventa'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  electronAppGetVersion,
   electronAppOpenUserDataFolder,
   electronAppQuit,
   electronMcpApplyAndRestart,
@@ -20,7 +21,7 @@ import {
 import { IOTraceRecordingService } from '../../services/airi/io-trace-recording'
 import { registerIOTraceRecording } from '../../services/airi/io-trace-recording/register'
 import { createMcpServersService } from '../../services/airi/mcp-servers'
-import { createAppService } from '../../services/electron/app'
+import { createAppService, createAppVersionService } from '../../services/electron/app'
 import { createWindowIpc } from './testing/window-ipc'
 import { createWindowContext } from './window-context'
 
@@ -137,12 +138,36 @@ describe('createWindowContext', () => {
       expect(change).toHaveBeenCalledTimes(1)
   })
 
-  it('stops serving a window after the window closes', async () => {
+  it('gives every service of one window the same context, so a window keeps one IPC listener', async () => {
+    const { ipcMain } = await import('electron')
+    const main = createWindowIpc(ipcMain)
+    const settings = createWindowIpc(ipcMain)
+
+    // As in `src/main/windows`: the window setup and the services that reach for the window's context on their own.
+    const { context } = createWindowContext(main.window)
+    createAppService({ context, window: main.window })
+    createAppVersionService({ window: main.window })
+    createMcpServersService({ context: createWindowContext(main.window).context, manager: createMcpManagerMock() })
+    createAppVersionService({ window: settings.window })
+
+    expect(createWindowContext(main.window).context).toBe(context)
+    expect(ipcMain.listenerCount('eventa-message')).toBe(2)
+
+    await defineInvoke(main.context, electronAppGetVersion)()
+
+    expect(appMock.getVersion).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops serving a window after the window closes and keeps serving the other windows', async () => {
     const { ipcMain } = await import('electron')
     const windows = await openWindows(context => createAppService({ context, window: {} as never }))
 
-    windows[0].window.emit('closed')
+    windows[0].close()
 
     expect(ipcMain.listenerCount('eventa-message')).toBe(2)
+    await defineInvoke(windows[1].context, electronAppQuit)()
+    expect(appMock.quit).toHaveBeenCalledTimes(1)
+    // The closed window has no context any more: a new one is refused instead of the disposed one being returned.
+    expect(() => createWindowContext(windows[0].window)).toThrow(TypeError)
   })
 })

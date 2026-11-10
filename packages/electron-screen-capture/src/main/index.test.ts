@@ -1,4 +1,5 @@
-import type { BrowserWindow, DesktopCapturerSource, NativeImage, Session, SourcesOptions, Streams } from 'electron'
+import type { ElectronMainContextExtensions, ElectronMainEmitOptions } from '@moeru/eventa/adapters/electron/main'
+import type { BrowserWindow, DesktopCapturerSource, IpcMainEvent, NativeImage, Session, SourcesOptions, Streams } from 'electron'
 
 import { Buffer } from 'node:buffer'
 
@@ -9,12 +10,11 @@ import { screenCapture } from '..'
 import { hasSelectedScreenCaptureSource, initScreenCaptureForMain, initScreenCaptureForWindow } from './index'
 
 type DisplayHandler = NonNullable<Parameters<Session['setDisplayMediaRequestHandler']>[0]>
-interface SenderOptions { raw: { ipcMainEvent: { sender: { id: number } } } }
-type TestContext = ReturnType<typeof createContext<{ invokeRequest: SenderOptions }, SenderOptions>>
+// An in-memory context with the types of the Electron main context, which `initScreenCaptureForWindow` takes.
+type TestContext = ReturnType<typeof createContext<ElectronMainContextExtensions, ElectronMainEmitOptions>>
 
 const boundary = vi.hoisted(() => ({
   platform: 'linux',
-  context: undefined as TestContext | undefined,
   handler: null as DisplayHandler | null,
   getSources: vi.fn<() => Promise<DesktopCapturerSource[]>>(),
 }))
@@ -22,10 +22,6 @@ const boundary = vi.hoisted(() => ({
 vi.mock('std-env', () => ({
   get isLinux() { return boundary.platform === 'linux' },
   get isMacOS() { return boundary.platform === 'darwin' },
-}))
-
-vi.mock('@moeru/eventa/adapters/electron/main', () => ({
-  createContext: () => ({ context: boundary.context }),
 }))
 
 vi.mock('electron', () => ({
@@ -42,7 +38,8 @@ vi.mock('electron', () => ({
 }))
 
 const sourcesOptions: SourcesOptions = { types: ['screen'] }
-const sender = { raw: { ipcMainEvent: { sender: { id: 1 } } } }
+// The handlers read only the sender id of the IPC event.
+const sender: ElectronMainEmitOptions = { raw: { ipcMainEvent: { sender: { id: 1 } } as IpcMainEvent, event: undefined } }
 const mediaRequest = { frame: null, securityOrigin: 'http://localhost', videoRequested: true, audioRequested: true, userGesture: true }
 
 function source(id: string): DesktopCapturerSource {
@@ -56,7 +53,7 @@ let handle: string | undefined
 
 function initWindow(loopbackWithMute = false) {
   const window = { id: 1, webContents: { id: 1 }, isDestroyed: () => false, getTitle: () => 'Capture test' } as BrowserWindow
-  initScreenCaptureForWindow(window, { loopbackWithMute })
+  initScreenCaptureForWindow(window, context, { loopbackWithMute })
 }
 
 async function select(sourceId: string) {
@@ -83,7 +80,6 @@ beforeAll(() => initScreenCaptureForMain())
 beforeEach(() => {
   vi.useFakeTimers()
   context = createContext()
-  boundary.context = context
   boundary.platform = 'linux'
   boundary.getSources.mockReset()
   handle = undefined
