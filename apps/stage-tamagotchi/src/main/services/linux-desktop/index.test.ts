@@ -1,3 +1,5 @@
+import type { LinuxDesktopFacts } from '@proj-airi/stage-shared/host-capabilities'
+
 import { EventEmitter, once } from 'node:events'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -6,6 +8,7 @@ import { pid } from 'node:process'
 
 import { createContext } from '@moeru/eventa'
 import { electronEvents } from '@proj-airi/electron-eventa'
+import { capabilitiesForHost } from '@proj-airi/stage-shared/host-capabilities'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createPowerMonitorService } from '../electron/powerMonitor'
@@ -94,6 +97,139 @@ describe('linux desktop bridge', () => {
       body: [JSON.stringify(payload)],
     })
   }
+
+  function lockFacts() {
+    const events = new EventTarget()
+    let desktop: LinuxDesktopFacts = {
+      backend: 'gnome',
+      bridge: 'starting',
+      bridgeFailure: null,
+      foregroundVerified: false,
+      cursorVerified: false,
+      geometryVerified: false,
+      keepAboveVerified: false,
+      lockSource: null,
+      portalShortcuts: 'absent',
+      clickThroughToggle: false,
+      systemAudioVerified: false,
+    }
+    facts.mockImplementation((patch: Partial<LinuxDesktopFacts>) => {
+      desktop = { ...desktop, ...patch }
+      if ('lockSource' in patch)
+        events.dispatchEvent(new Event('source'))
+    })
+    return {
+      changed: () => once(events, 'source', { signal: AbortSignal.timeout(2000) }),
+      status: () => capabilitiesForHost('linux-wayland', desktop).signals.screenLock,
+    }
+  }
+
+  it.each(['screensaver', 'logind'] as const)('revokes %s lock verification on owner loss until a fresh read completes', async (source) => {
+    const saver = 'org.freedesktop.ScreenSaver'
+    const login = 'org.freedesktop.login1'
+    const name = source === 'screensaver' ? saver : login
+    const pending = Promise.withResolvers<boolean>()
+    const entered = new EventTarget()
+    let recovering = false
+    if (source === 'screensaver') {
+      bus.method('/org/freedesktop/ScreenSaver', saver, 'GetActive', '', 'b', () => {
+        if (!recovering)
+          return false
+        entered.dispatchEvent(new Event('read'))
+        return pending.promise
+      })
+    }
+    else {
+      bus.method('/org/freedesktop/login1', `${login}.Manager`, 'GetSessionByPID', 'u', 'o', async () => {
+        if (recovering) {
+          entered.dispatchEvent(new Event('read'))
+          await pending.promise
+        }
+        return '/org/freedesktop/login1/session/test'
+      })
+      bus.property('/org/freedesktop/login1/session/test', `${login}.Session`, 'LockedHint', 'b', () => false)
+    }
+    await bus.name(name)
+    const lock = lockFacts()
+    const ready = lock.changed()
+    create({ XDG_CURRENT_DESKTOP: 'GNOME' })
+    await bridge.start()
+    await ready
+    expect(lock.status()).toEqual({ kind: 'live' })
+
+    const revoked = lock.changed()
+    await bus.service.call({
+      destination: 'org.freedesktop.DBus',
+      path: '/org/freedesktop/DBus',
+      interface: 'org.freedesktop.DBus',
+      member: 'ReleaseName',
+      signature: 's',
+      body: [name],
+    })
+    await revoked
+    expect(lock.status()).toEqual({ kind: 'degraded', reason: 'linux-lock-events-undocumented' })
+
+    recovering = true
+    const reading = once(entered, 'read', { signal: AbortSignal.timeout(2000) })
+    const restored = lock.changed()
+    await bus.name(name)
+    await reading
+    expect(lock.status()).toEqual({ kind: 'degraded', reason: 'linux-lock-events-undocumented' })
+    pending.resolve(false)
+    await restored
+    expect(lock.status()).toEqual({ kind: 'live' })
+  })
+
+  it('revokes lock verification after a failed logind reread and verifies a new baseline', async () => {
+    const login = 'org.freedesktop.login1'
+    const path = '/org/freedesktop/login1/session/test'
+    await bus.name(login)
+    bus.method('/org/freedesktop/login1', `${login}.Manager`, 'GetSessionByPID', 'u', 'o', () => path)
+    const unexport = bus.service.exportReadOnlyProperties(path, `${login}.Session`, {
+      LockedHint: { signature: 'b', get: () => false },
+    })
+    const lock = lockFacts()
+    const ready = lock.changed()
+    create({ XDG_CURRENT_DESKTOP: 'GNOME' })
+    const transitions = vi.fn()
+    bridge.onLock(transitions)
+    await bridge.start()
+    await ready
+    expect(lock.status()).toEqual({ kind: 'live' })
+
+    unexport()
+    const revoked = lock.changed()
+    const invalidate = () => bus.service.emitSignal(path, 'org.freedesktop.DBus.Properties', 'PropertiesChanged', 'sa{sv}as', [
+      `${login}.Session`,
+      {},
+      ['LockedHint'],
+    ])
+    invalidate()
+    await revoked
+    expect(lock.status()).toEqual({ kind: 'degraded', reason: 'linux-lock-events-undocumented' })
+
+    bus.property(path, `${login}.Session`, 'LockedHint', 'b', () => true)
+    const restored = lock.changed()
+    invalidate()
+    await restored
+    expect(lock.status()).toEqual({ kind: 'live' })
+    expect(transitions).not.toHaveBeenCalled()
+  })
+
+  it('revokes lock verification when its private bus disconnects', async () => {
+    await bus.name('org.freedesktop.ScreenSaver')
+    bus.method('/org/freedesktop/ScreenSaver', 'org.freedesktop.ScreenSaver', 'GetActive', '', 'b', () => false)
+    const lock = lockFacts()
+    const ready = lock.changed()
+    create({ XDG_CURRENT_DESKTOP: 'GNOME' })
+    await bridge.start()
+    await ready
+    expect(lock.status()).toEqual({ kind: 'live' })
+    const revoked = lock.changed()
+    await bus.close()
+    await revoked
+    expect(lock.status()).toEqual({ kind: 'degraded', reason: 'linux-lock-events-undocumented' })
+  })
 
   it.each([
     [{ XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1' }, 'none'],

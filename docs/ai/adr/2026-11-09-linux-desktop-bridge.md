@@ -56,7 +56,7 @@ persisted. Hello proves that the bridge runs; it proves no sensor's accuracy.
 | `cursorVerified` | `false` | Verified geometry and two distinct compositor positions; two renderer mismatches within ten seconds revoke it |
 | `geometryVerified` | `false` | A bound own window whose compositor size matches its Electron size within one pixel, and known outputs (on native Wayland, every display mapped to an output) |
 | `keepAboveVerified` | `false` | Todo 10: own-window keep-above state observed after the actuator |
-| `lockSource` | `null` | Readable logind LockedHint with a subscription, otherwise ScreenSaver GetActive with ActiveChanged |
+| `lockSource` | `null` | Readable logind LockedHint with a subscription, otherwise ScreenSaver GetActive with ActiveChanged; owner changes, failed or timed-out reads, and transport/subscription failure revoke it immediately. A returning source needs a fresh successful read and subscription; recovery establishes a new baseline without inventing a lock transition |
 | `portalShortcuts` | `absent` | Todo 11: a portal session gives `session`; an accepted current key-up binding gives `bound` |
 | `clickThroughToggle` | Version-derived | Electron at least 43.7.6 on Linux supplies the primitive; cursor and origin must independently resolve live before click-through becomes limited/emulated |
 | `systemAudioVerified` | `false` | A capture reports an input level above 0.05 on a Linux host; main accepts only a finite level above 0.05 |
