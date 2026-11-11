@@ -66,30 +66,37 @@ describe('emotion-table report (C002, plan 2.3)', () => {
   })
 })
 
-describe('cue-body report (C002, plan 2.3)', () => {
-  // Six events of each cue kind, 5 s apart; the moving bone oscillates 3 degrees at 4 Hz for the cue's duration.
-  function cues(bone: MotionTraceBone | null) {
+describe('cue-body report (C002, unit M2 R3)', () => {
+  // 150 s of placebo, then six events of each cue kind 5 s apart. Every bone below the neck and the head sways with
+  // seeded 0.3 degree noise; the cued bone adds a 3 degree, 4 Hz oscillation for the cue's duration.
+  function cues(bone: MotionTraceBone | null, noise = 0.3 * DEG) {
     const kinds = ['nod', 'shake', 'shrug', 'lean', 'glance'] as const
     const seconds = { nod: 0.45, shake: 0.5, shrug: 1.1, lean: 2.6, glance: 0.6 }
-    const list = kinds.flatMap((kind, k) => Array.from({ length: 6 }, (_, i) => ({ kind, t: 2 + 5 * (k * 6 + i) })))
+    const list = kinds.flatMap((kind, k) => Array.from({ length: 6 }, (_, i) => ({ kind, t: 152 + 5 * (k * 6 + i) })))
     const events: MotionTraceEvent[] = list.map(cue => ({ t: cue.t, kind: 'gesture', gesture: cue.kind }))
+    const random = createRandomStream(5)
+    const phases = new Map(['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftShoulder', 'rightShoulder', 'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm'].map(b => [b, [0, 1, 2].map(() => [2 * Math.PI * random(), 0.3 + 0.7 * random()])]))
     const world = (b: MotionTraceBone, t: number): Quat => {
+      const sway = (phases.get(b) ?? []).reduce((sum, [phase, hz]) => sum + noise / 3 * Math.sin(2 * Math.PI * hz * t + phase), 0)
       const cue = list.find(x => t >= x.t && t < x.t + seconds[x.kind])
-      return cue && b === bone ? rotX(3 * DEG * Math.sin(2 * Math.PI * 4 * (t - cue.t))) : [0, 0, 0, 1]
+      return rotX(sway + (cue && b === bone ? 3 * DEG * Math.sin(2 * Math.PI * 4 * (t - cue.t)) : 0))
     }
-    return loadedRun(trace({ seconds: 4 + 5 * list.length, scenario: 'emotion', events, world }), null, null)
+    return loadedRun(trace({ seconds: 154 + 5 * list.length, scenario: 'emotion', events, world }), null, null)
   }
 
   it('passes cues that move the chest', () => {
-    expect(cueBodyReport([cues('chest')], bands).verdict).toBe('PASS')
+    expect(cueBodyReport([cues('chest')]).verdict).toBe('PASS')
   })
 
-  // Plan 2.3 as written cannot fail a still body: the bands-v2 shoulder emotion floor is 0, so a still shoulder meets
-  // `0 >= 3 x 0` and `0 >= 2 x 0`. Kept as written until the owner decides; these cases pin today's verdict.
-  it.each([['head-only', 'head'], ['still', null]] as const)('counts a still zero-floor shoulder as moving for %s cues (plan defect)', (_, bone) => {
-    const report = cueBodyReport([cues(bone)], bands)
-    expect(report.verdict).toBe('PASS')
-    expect(report.detail.events.every(e => e.moved.every(b => b === 'leftShoulder' || b === 'rightShoulder'))).toBe(true)
+  it.each([['head-only', 'head'], ['no cue motion', null]] as const)('fails %s cues against the placebo windows', (_, bone) => {
+    const report = cueBodyReport([cues(bone)])
+    expect(report.verdict).toBe('FAIL')
+    expect(report.requirements.every(r => !r.pass)).toBe(true)
+  })
+
+  it('fails a body that never moves, with no placebo spread to beat', () => {
+    expect(cueBodyReport([cues('chest', 0)]).requirements.every(r => r.pass)).toBe(true)
+    expect(cueBodyReport([cues(null, 0)]).verdict).toBe('FAIL')
   })
 })
 
