@@ -101,6 +101,25 @@ describe('mmd frame pipeline', () => {
     expect(events).toEqual(['reset', 'physics'])
   })
 
+  it('caps physics at two fixed steps per frame and leaves on-time frames and pose-stage time unchanged', () => {
+    const { mmd, pipeline } = fixture()
+    const physicsDt: number[] = []
+    const stageDt: number[] = []
+    mmd.physics = {
+      createHelper: () => { throw new Error('Unused helper') },
+      reset: () => {},
+      update: dt => physicsDt.push(dt),
+    }
+    pipeline.options.physics = true
+    pipeline.poseStages.push({ id: 'clock', run: ({ dt }) => stageDt.push(dt) })
+    pipeline.step(1 / 60)
+    pipeline.step(2 / 65)
+    pipeline.step(1 / 30)
+    pipeline.step(1)
+    expect(physicsDt).toEqual([1 / 60, 2 / 65, 2 / 65, 2 / 65])
+    expect(stageDt).toEqual([1 / 60, 2 / 65, 1 / 30, 1 / 20])
+  })
+
   it('counts requested physics resets once per applied reset and never counts a loop wrap', () => {
     const mmd = createModel()
     const mixer = new AnimationMixer(mmd.mesh)

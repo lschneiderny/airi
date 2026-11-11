@@ -3,6 +3,18 @@ import type { AnimationClip, AnimationMixer, Quaternion, Vector3 } from 'three'
 
 import { MMDFrameMetrics } from './frame-metrics'
 
+// NOTICE:
+// Ammo steps Bullet at a fixed 1/65 s with up to five catch-up steps, about 10 ms each, so one late frame made the next frames late.
+// Source: `stepSimulation(e, 5, .015384615384615385)` in node_modules/@moeru/three-mmd-physics-ammo/dist/index.js.
+// Remove the mirrored step when the physics backend exposes its fixed step or a step limit.
+/** Ammo's fixed physics step, mirrored from `@moeru/three-mmd-physics-ammo`. */
+export const MMD_PHYSICS_FIXED_STEP = 1 / 65
+/**
+ * Physics catch-up steps allowed per rendered frame. Only frames later than two steps (about 30.8 ms) are capped, and
+ * the simulated time beyond the cap is dropped, not carried into later frames. A 60 Hz frame takes one or two steps.
+ */
+export const MMD_PHYSICS_MAX_STEPS_PER_FRAME = 2
+
 /** Reused buffers: only the pipeline writes these, stages read them synchronously. */
 export interface MMDCleanPose {
   readonly positions: readonly Vector3[]
@@ -147,7 +159,7 @@ export class MMDFramePipeline {
     })
     this.metrics.measure('physics.update', () => {
       if (this.options.physics !== false)
-        mmd.physics?.update(dt)
+        mmd.physics?.update(Math.min(dt, MMD_PHYSICS_MAX_STEPS_PER_FRAME * MMD_PHYSICS_FIXED_STEP))
     })
     this.metrics.measure('afterPhysics', () => mmd.afterPhysics(this.options))
     for (const stage of this.surfaceStages)

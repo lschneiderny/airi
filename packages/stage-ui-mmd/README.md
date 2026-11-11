@@ -184,6 +184,16 @@ feel the travel, and a teleport resets it once. During a measurement,
 (`requestPhysicsReset`, for example a stage teleport); loop wraps are not
 counted.
 
+The pipeline clamps a frame's time to 1/20 s and lets physics catch up by at
+most two of Ammo's fixed 1/65 s steps per frame
+(`MMD_PHYSICS_MAX_STEPS_PER_FRAME`). A 60 Hz frame takes one or two steps (1.08
+on average), so the cap applies only to frames later than about 30.8 ms. It
+drops the simulated time beyond two steps instead of carrying it into later
+frames. One Ammo step costs about 10 ms of main-thread time for a full model,
+so an uncapped catch-up after one late frame made the next frames late as well.
+Pose stages keep the full clamped time; only the physics clock slows on those
+late frames.
+
 The scene registers these pose stages in order: `natural`, `locomotion`,
 `body-torso`, `foot-contact`, `body-head`, `body-arms`, `eyes`, `classic-gaze`,
 `classic-face`, `lip-sync` and `bone-morphs`. Its surface stages are
