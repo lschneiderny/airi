@@ -17,6 +17,10 @@ forward for a seeded 2 to 4 s between targets (18 cues at seed 1), `speak`
 has three voice turns and twelve labelled emphasis peaks, and `touch` has ten pokes.
 Gaze cursors are three head widths away: x is `3*sin(yaw)`, y is `3*sin(pitch)`;
 the cue type documents how to recover angles for the world target.
+While a cue holds a cursor, the runner circles it around the target by one
+degree of visual angle at 1 Hz, as a hand resting on the mouse does. Natural keeps its
+cursor attention only while the cursor moves, so a cursor held perfectly
+still would lose her gaze after about a second and a half, as it does in the app.
 `walk` defaults to 120 s with two alternating goals at thirty and zero leg
 lengths, 60 s apart, allowing each leg to reach steady walking.
 Touch is reported only and has no human reference.

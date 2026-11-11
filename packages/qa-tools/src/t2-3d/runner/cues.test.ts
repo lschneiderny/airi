@@ -1,5 +1,6 @@
 import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
+import { moveStep, restHold } from '@proj-airi/motion-driver-natural/cursor-attention'
 import { expect, it, vi } from 'vitest'
 
 import { Motion3dCueDriver } from './cues'
@@ -20,6 +21,33 @@ it('maps gaze head widths and clearing to attention and labelled events', () => 
   driver.apply({ at: 1, kind: 'gaze', cursor: null }, 11)
   expect(driver.cursor).toBeNull()
   expect(driver.performance.attention).toBe('camera')
+})
+
+it('keeps a held gaze cursor moving by Natural\'s move step, as a hand on the mouse does', () => {
+  for (const degrees of [0, 15, 80, -80]) {
+    const { driver } = boundary()
+    const target = { x: 3 * Math.sin(degrees * Math.PI / 180), y: 0 }
+    driver.apply({ at: 0, kind: 'gaze', cursor: target }, 10)
+    let anchor = { ...target }
+    let movedAt = 10
+    let longestRest = 0
+    let farthest = 0
+    for (let frame = 0; frame <= 5 * 60; frame++) {
+      const t = 10 + frame / 60
+      driver.step(t)
+      const cursor = driver.cursor!
+      // The scenario maps a cursor to angles by asin(x / 3) and asin(y / 3).
+      expect(Math.max(Math.abs(cursor.x), Math.abs(cursor.y)), `${degrees} deg`).toBeLessThanOrEqual(3)
+      farthest = Math.max(farthest, Math.hypot(Math.asin(cursor.x / 3) - Math.asin(target.x / 3), Math.asin(cursor.y / 3)) * 180 / Math.PI)
+      if (Math.hypot(cursor.x - anchor.x, cursor.y - anchor.y) >= moveStep) {
+        anchor = { ...cursor }
+        movedAt = t
+      }
+      longestRest = Math.max(longestRest, t - movedAt)
+    }
+    expect(longestRest, `${degrees} deg`).toBeLessThan(restHold)
+    expect(farthest, `${degrees} deg`).toBeLessThan(2.5)
+  }
 })
 
 it('samples voice envelopes at 60 Hz, records peaks when due and ends speech', () => {

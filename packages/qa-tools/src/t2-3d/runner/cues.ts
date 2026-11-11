@@ -8,9 +8,18 @@ import type { Motion3dCue } from '../scenarios'
 
 import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/expression-performance'
 
+/**
+ * A hand resting on the mouse: a held scripted cursor circles its target by this visual angle, in radians, at this
+ * rate. Natural's cursor attention keeps interest only while the cursor moves (`moveStep`, `restHold`), as a user's
+ * cursor does in the app. The circle runs in angle space because cursors map to angles by `asin(x / 3)`, so an offset
+ * in head widths would leave that domain at the 80-degree targets.
+ */
+const HAND = { radius: Math.PI / 180, hz: 1 }
+
 /** Owns the scenario's mutable performer inputs and labels every applied cue. */
 export class Motion3dCueDriver {
   cursor: { x: number, y: number } | null = null
+  private held: { readonly cursor: { readonly x: number, readonly y: number }, readonly since: number } | null = null
   debugGoal: MMDStanceWorld['debugGoal'] = null
   goalCancelled = false
   private sequence = 0
@@ -33,6 +42,7 @@ export class Motion3dCueDriver {
     switch (cue.kind) {
       case 'gaze':
         this.cursor = cue.cursor
+        this.held = cue.cursor ? { cursor: cue.cursor, since: t } : null
         this.activity.attention = cue.cursor ? 'cursor' : 'camera'
         this.event(cue.cursor
           ? { t, kind: 'gaze-jump', yaw: Math.asin(cue.cursor.x / 3), pitch: Math.asin(cue.cursor.y / 3), source: 'scenario' }
@@ -96,6 +106,12 @@ export class Motion3dCueDriver {
   }
 
   step(t: number): void {
+    if (this.held) {
+      const phase = 2 * Math.PI * HAND.hz * (t - this.held.since)
+      const yaw = Math.asin(this.held.cursor.x / 3) + HAND.radius * (Math.cos(phase) - 1) * Math.sign(this.held.cursor.x || 1)
+      const pitch = Math.asin(this.held.cursor.y / 3) + HAND.radius * Math.sin(phase)
+      this.cursor = { x: 3 * Math.sin(yaw), y: 3 * Math.sin(pitch) }
+    }
     const speech = this.speech
     if (!speech)
       return
