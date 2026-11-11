@@ -21,12 +21,12 @@ export class BodyPosture {
   private readonly transfer = { y: 0, v: 0, x: 0 }
   private transferCoefficients = secondOrderCoefficients({ f: 0.55, zeta: 0.7, r: -0.45 }, BODY_TICK)
   private readonly weight
-  // The neck starts a turn (86 ms ramp lag); the head follows with 3e's head response for a 5 degree move
-  // (f = 0.62 / 0.31 s, 106 ms ramp lag), so the two overlap instead of moving as one.
+  // Natural's attitude is a posture intent: a head on a relaxed neck settles into it in about 1.1 s with a 7 %
+  // follow-through, so shifts a second apart overlap. The neck (settles in 0.66 s) leads the head.
   private readonly attitudeNeck = Array.from({ length: 3 }, () => ({ y: 0, v: 0, x: 0 }))
   private readonly attitudeHead = Array.from({ length: 3 }, () => ({ y: 0, v: 0, x: 0 }))
-  private readonly neckCoefficients = secondOrderCoefficients({ f: 3, zeta: 0.85, r: 0.1 }, BODY_TICK)
-  private readonly headCoefficients = secondOrderCoefficients({ f: 2, zeta: 0.72, r: 0.15 }, BODY_TICK)
+  private readonly neckCoefficients = secondOrderCoefficients({ f: 1.2, zeta: 0.8, r: 0 }, BODY_TICK)
+  private readonly headCoefficients = secondOrderCoefficients({ f: 0.9, zeta: 0.65, r: 0 }, BODY_TICK)
   private readonly accent = Array.from({ length: 3 }, () => ({ y: 0, v: 0, x: 0 }))
   private readonly accentCoefficients = secondOrderCoefficients({ f: 5, zeta: 1, r: 0 }, BODY_TICK)
   private readonly slow = createLagChain([0.25, 0.15], BODY_TICK)

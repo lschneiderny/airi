@@ -8,6 +8,23 @@ const traits = fixtureRigs[0].traits
 const c = channelIndex
 
 describe('posture performance', () => {
+  it('settles a head posture shift like a head on a relaxed neck, in 0.8 to 1.5 s with a light follow-through', () => {
+    const performer = createBodyPerformer({ traits, seed: 1 })
+    const trace = channelTrace(performer, 4, (t) => {
+      const input = quietInput(t)
+      return { ...input, head: { ...input.head, attitude: { yaw: 0, pitch: t < 0.5 ? 0 : 0.05, roll: 0 } } }
+    })
+    const head = trace[c('neckPitch')].map((v, i) => v + trace[c('headPitch')][i])
+    const final = head.at(-1) ?? 0
+    const settled = head.findLastIndex(v => Math.abs(v - final) > 0.02 * final) + 1
+    const settleSeconds = (settled - 0.5 * 120) / 120
+    expect(settleSeconds).toBeGreaterThanOrEqual(0.8)
+    expect(settleSeconds).toBeLessThanOrEqual(1.5)
+    const overshoot = (Math.max(...head) - final) / final
+    expect(overshoot).toBeGreaterThan(0.02)
+    expect(overshoot).toBeLessThan(0.1)
+  })
+
   it('starts a head attitude turn in the neck and lets the head follow with its own response', () => {
     const performer = createBodyPerformer({ traits, seed: 1 })
     const trace = channelTrace(performer, 3, (t) => {
