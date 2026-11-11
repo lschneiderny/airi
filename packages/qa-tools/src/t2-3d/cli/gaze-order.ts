@@ -5,6 +5,8 @@ import process from 'node:process'
 import { writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
+import { loadBands } from '../gate/load'
+import { GateRefusal } from '../gate/refusals'
 import { formatGazeOrderReport, GazeOrderRefusal, gazeOrderReport } from '../gaze-order'
 import { MotionTraceRefusal, readTrace } from '../read-trace'
 
@@ -15,13 +17,17 @@ export async function gazeOrderMotion3d(args: readonly string[], context: Motion
   }
   const dir = resolve(context.cwd, args[0])
   try {
-    const report = gazeOrderReport(await readTrace(join(dir, 'trace.json')))
+    // The gaze class's committed detector parameters: its fitted floors and accepted head-rotation range.
+    const gaze = (await loadBands(context.repoRoot)).classes.gaze
+    if (!gaze)
+      throw new GazeOrderRefusal('missing-floor', 'The frozen bands have no gaze class')
+    const report = gazeOrderReport(await readTrace(join(dir, 'trace.json')), gaze)
     await writeFile(join(dir, 'gaze-order.json'), `${JSON.stringify(report, null, 2)}\n`)
     process.stdout.write(formatGazeOrderReport(report))
     return 0
   }
   catch (error) {
-    if (!(error instanceof GazeOrderRefusal) && !(error instanceof MotionTraceRefusal))
+    if (!(error instanceof GazeOrderRefusal) && !(error instanceof MotionTraceRefusal) && !(error instanceof GateRefusal))
       throw error
     console.error(`qa:motion3d gaze-order ${dir}: ${error.name}: ${error.detail}`)
     return 2

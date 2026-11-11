@@ -115,33 +115,37 @@ Scores compare motion statistics with bands derived from human capture. They do 
 
 ### Gaze-order report
 
-`pnpm qa:motion3d gaze-order <run directory>` reports, for every body
-`gaze-shift:<degrees>` marker in `trace.json`, when the eyes, the head and the
-chest start to move. It is a report, not a gate: it has no band and does not
-change any verdict. The human body captures have no eyes, so gate version 1
-cannot judge eye order (`gaze.eyeLeadMs` is skipped as `missing-eye-floors`).
+`pnpm qa:motion3d gaze-order <run directory>` reports whether the eyes, the
+head and the chest start a gaze shift in that order. It is a report, not a
+gate: it has no band and does not change any verdict. Gate version 1 cannot
+judge eye order (`gaze.eyeLeadMs` is skipped as `missing-eye-floors`).
 
-- A joint's onset is the first sample at or after the event at which its
-  parent-relative angular speed exceeds 10 percent of its own peak speed in the
-  shift window. The window ends at the next gaze-shift event or 2 s later,
-  whichever comes first. A joint with a zero peak has no onset. The eyes are the
-  mean speed of the eye columns.
-- A shift is ordered when the eye onset is strictly before the head onset and
-  the head onset is strictly before the chest onset. When the head or chest has
-  no onset, the shift is ordered if the eyes moved and the joints that moved are
-  in order. `patterns` counts `full`, `no-chest`, `no-head`, `eyes-only` and
-  `no-eyes` shifts, so the share is not inflated silently.
-- Two ordered shares are reported. "All events" counts every event except
-  `null` ones. The criterion share counts only shifts of 10 degrees or more,
-  below the smallest scripted jump, so every scripted jump counts; goal 2 reads
-  this share. An event under 0.5 degrees in whose window no joint moved has
-  pattern `null` and is left out of both shares; `nullEvents` counts them.
-- The blink share counts the shifts of 40 degrees or more with a `blink` marker
-  inside their window.
+- Episodes and onsets come from the gate's own gaze detector, called
+  read-only: kinematic head turns of at least 0.5 rad/s and 10 degrees inside
+  the frozen bands' accepted head-rotation range, with `jointOnset` on the
+  fitted head and chest activity floors of the gaze class in `bands-v1.json`.
+- The only added parameter is the eye activity floor, declared equal to the
+  fitted head floor. Human body capture has no eyes, so no eye floor can be
+  fitted. An eye in a saccade moves several times faster than the head, so the
+  head's floor is a threshold the eyes cross at saccade onset and never from
+  fixational drift.
+- Each episode lists the time of the head's peak, the integrated head rotation,
+  the eye lead (head onset minus eye onset) and the chest lag (chest onset
+  minus head onset) in ms, eye-before-head and head-before-chest (strict), and
+  the gate's own non-strict `gaze.orderRate` indicator beside the strict one.
+- Shares: (a) eye strictly before head, over episodes in which both have an
+  onset; (b) head strictly before chest, likewise; (c) fully ordered, over
+  episodes in which the eyes and the head have an onset. A turn whose chest
+  never crosses its floor counts as ordered when the eyes lead, and is listed
+  as `no-chest`. Share (c) is the goal-2 criterion. The count of episodes the
+  accepted range excluded is printed beside the shares.
+- The blink share counts the `gaze-shift:<degrees>` marker events of 40 degrees
+  or more with a `blink` marker inside their window, which ends at the next
+  gaze-shift event or 2 s later.
 
-The command prints one row per shift and writes `gaze-order.json` beside the
-trace. A trace with no gaze-shift marker, or without eye, head or chest columns,
-is refused by name with exit 2.
+The command prints one row per episode and writes `gaze-order.json` beside the
+trace. A trace without a head turn of 10 degrees or more in the accepted range,
+or without eye, head or chest columns, is refused by name with exit 2.
 
 ### Reference bands
 
