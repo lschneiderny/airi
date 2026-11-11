@@ -98,7 +98,7 @@ function axisOf(run: LoadedRun, bone: MotionTraceBone): Vec3 | null {
 /**
  * Apex pose features, mirror-invariant: the hand's twist about the forearm (its rest offset), signed by the forearm's
  * lateral direction; the swing component about the forearm-cross-up axis (wrist flexion); the index proximal joint's
- * rotation angle; and the stroke direction from the stroke's start to its apex in the chest frame, x mirrored for the right.
+ * rotation angle; and the stroke direction from the stroke's start to its apex in the trunk-parent frame, x mirrored for the right.
  */
 function features(run: LoadedRun, apex: Apex): FormFeatures | null {
   const { p } = run

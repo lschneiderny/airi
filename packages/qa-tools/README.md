@@ -217,11 +217,16 @@ the gate's own verdict is never changed by them.
 | `pnpm qa:motion3d pops <run>...` | Plan 2.6: one-frame velocity spikes and isolated velocity steps of 30 deg/s or more on the shoulder, upper arm, lower arm and hand (fingers reported only). |
 
 The shared building blocks are in `src/t2-3d/reports/kinematics.ts`: the wrist
-path in the chest frame in arm lengths, kinematic strokes bounded by speed
-minima with at least 0.0168 arm lengths of travel, the apex as the first speed
-minimum within 300 ms at half the peak speed or less, and the pop classifier.
-Known limits of these rules as fixed are recorded in the goal-3 unit M evidence:
-the stroke detector also fires on idle arm sway, the pop classifier misses
+path in arm lengths, in the frame of the bone the shoulder hangs from
+(`upperChest`, or `chest` on a rig without one); kinematic strokes bounded by
+speed minima with at least 0.0146 arm lengths of travel (half of architecture
+4a's smallest stroke, the frame form, at gain 0.5); the apex as the first speed
+minimum within 300 ms at half the peak speed or less; and the pop classifier.
+Known limits of these rules as fixed are recorded in the goal-3 unit M and M2
+evidence. The stroke detector still fires on idle arm sway (16 to 23 strokes
+per hand in 120 s on Chisa, 76 to 90 on Ellen) and counts 4a's own 0.015 A
+post-stroke drift as a stroke, so its negative control fails and the rule is
+reported as stopped, not tuned. The pop classifier misses
 mid-stroke steps in strokes faster than 200 ms, and `cue-body` counts a still
 shoulder as moving because the version-2 shoulder emotion floor is 0.
 

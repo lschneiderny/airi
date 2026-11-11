@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { prepareTrace } from '../metrics'
 import { apexTimes, handPath, kinematicStrokes, pops } from './kinematics'
-import { armWorld, moves, trace } from './test-runs'
+import { armWorld, moves, rotX, trace } from './test-runs'
 
 const DEG = Math.PI / 180
 
@@ -12,11 +12,12 @@ describe('kinematic strokes (plan 2.1)', () => {
     const list: { start: number, duration: number, by: number }[] = []
     let t = 1
     for (const duration of [0.11, 0.15, 0.2, 0.25]) {
-      for (const gain of [0.5, 1, 1.5]) {
-        // 4a beat 0.067 A at this gain; the analytic arm turns its upper arm by the same angle in radians. As in 4a,
-        // the post-stroke hold drifts 1.5 % A along the stroke; a perfectly still hold leaves only float32 ripple.
+      // 4a's smallest stroke (frame, 0.0583 A) at gain 0.5, then the beat (0.067 A) at gains 0.5, 1 and 1.5. The analytic
+      // arm turns its upper arm by the same angle in radians. As in 4a, the post-stroke hold drifts 1.5 % A along the
+      // stroke; a perfectly still hold leaves only float32 ripple.
+      for (const amplitude of [0.0583 * 0.5, 0.067 * 0.5, 0.067, 0.067 * 1.5]) {
         for (const sign of [1, -1]) {
-          list.push({ start: t, duration, by: sign * 0.067 * gain }, { start: t + duration, duration: 0.4, by: sign * 0.015 })
+          list.push({ start: t, duration, by: sign * amplitude }, { start: t + duration, duration: 0.4, by: sign * 0.015 })
           designed.push(t + duration)
           t += duration + 0.5
         }
@@ -26,7 +27,16 @@ describe('kinematic strokes (plan 2.1)', () => {
     const apexes = apexTimes(p, ['left']).map(a => a.t)
     for (const end of designed)
       expect(Math.min(...apexes.map(a => Math.abs(a - end)))).toBeLessThanOrEqual(1 / 60 + 1e-9)
-    expect(apexes).toHaveLength(designed.length)
+    // R1 stopped (unit M2): D_min 0.0146 A is below 4a's own 0.015 A hold drift, so each drift counts as a stroke too.
+    expect(apexes).toHaveLength(2 * designed.length)
+  })
+
+  it('measures the hand in the frame the shoulder hangs from, so a trunk turn that carries a still arm is no stroke', () => {
+    const carried = new Set(['upperChest', 'leftShoulder', 'leftUpperArm', 'leftLowerArm', 'leftHand'])
+    const pitch = moves(Array.from({ length: 8 }, (_, k) => ({ start: 1 + k, duration: 0.15, by: (k % 2 ? -1 : 1) * 0.2 })))
+    const p = prepareTrace(trace({ seconds: 10, scenario: 'talk', world: (bone, t) => carried.has(bone) ? rotX(pitch(t)) : [0, 0, 0, 1] }))
+    expect(kinematicStrokes(handPath(p, 'left')!)).toEqual([])
+    expect(handPath(p, 'left')?.frame).toBe('upperChest')
   })
 
   it('finds no stroke when nothing moves', () => {

@@ -8,14 +8,14 @@ export type Side = 'left' | 'right'
 export const SIDES: readonly Side[] = ['left', 'right']
 
 /**
- * Plan 2.1 constants, fixed before any gesture exists.
- * D_MIN: half of architecture 4a's smallest major stroke, the beat `[0, -0.06, 0.03]` (0.067 A), at the lowest energy
+ * Plan 2.1 constants, fixed before any gesture exists; D_MIN corrected in unit M2.
+ * D_MIN: half of architecture 4a's smallest stroke, the frame form `[0.05, -0.03, 0]` (0.0583 A), at the lowest energy
  * gain `clamp(0.55 + 0.9 E, 0.5, 1.5) = 0.5`, in arm lengths A.
  * APEX_SECONDS: 4a's longest stroke (250 ms) plus the follower group delay (about 40 ms), rounded to 300 ms.
  * APEX_RATIO: twice the ratio of 4a's post-stroke drift speed (about 0.15 A/s) to a gain-0.5 beat's peak (0.57 A/s).
  */
 export const STROKE_CONSTANTS = {
-  minTravel: { value: 0.0168, unit: 'A', source: 'plan 2.1: half of 4a beat |[0,-0.06,0.03]| = 0.067 A at gain 0.5' },
+  minTravel: { value: 0.0146, unit: 'A', source: 'unit M2: half of 4a smallest stroke, frame |[0.05,-0.03,0]| = 0.0583 A, at gain 0.5' },
   apexSeconds: { value: 0.3, unit: 's', source: 'plan 2.1: 4a longest stroke 250 ms + follower group delay ~40 ms' },
   apexRatio: { value: 0.5, unit: 'x peak speed', source: 'plan 2.1: 2 x (4a hold drift 0.15 A/s / gain-0.5 beat peak 0.57 A/s = 0.26)' },
 } as const
@@ -29,9 +29,11 @@ export const POP_CONSTANTS = {
 
 export interface HandPath {
   readonly side: Side
+  /** The arm's trunk parent, the trace parent of the shoulder: the frame the hand is measured in. */
+  readonly frame: MotionTraceBone
   /** Upper-arm plus forearm rest-offset length, model units. */
   readonly armLength: number
-  /** Wrist position from the shoulder joint in the chest frame, arm lengths, one per 60 Hz sample. */
+  /** Wrist position from the shoulder joint in the trunk-parent frame, arm lengths, one per 60 Hz sample. */
   readonly position: readonly Vec3[]
   /**
    * Speed of `position` over [t_i, t_i+1], arm lengths per second, on the gate's velocity convention (index i is the
@@ -50,15 +52,18 @@ function restOffset(p: PreparedTrace, bone: MotionTraceBone): Vec3 | null {
 
 /**
  * Plan 2.1 hand path: forward kinematics over the trace's world orientations and rest offsets. Orientations are
- * rest-relative in the trace basis, so each rest offset rotates by its parent's orientation. Null without the chain.
+ * rest-relative in the trace basis, so each rest offset rotates by its parent's orientation. Unit M2 measures it in
+ * the frame of the bone the shoulder hangs from (`upperChest` or `chest`), so trunk motion above the chest that
+ * carries the arm does not count as hand travel. Null without the chain.
  */
 export function handPath(p: PreparedTrace, side: Side): HandPath | null {
   const upper = p.orientations[`${side}UpperArm`]
   const lower = p.orientations[`${side}LowerArm`]
-  const chest = p.orientations.chest
+  const frame = traceParent(p, `${side}Shoulder`)
+  const chest = frame ? p.orientations[frame] : undefined
   const elbow = restOffset(p, `${side}LowerArm`)
   const wrist = restOffset(p, `${side}Hand`)
-  if (!upper || !lower || !chest || !elbow || !wrist || !p.orientations[`${side}Hand`])
+  if (!frame || !upper || !lower || !chest || !elbow || !wrist || !p.orientations[`${side}Hand`])
     return null
   const armLength = norm(elbow) + norm(wrist)
   const position = p.times.map((_, i): Vec3 => {
@@ -69,7 +74,7 @@ export function handPath(p: PreparedTrace, side: Side): HandPath | null {
     const k = Math.min(i, position.length - 2)
     return k < 0 ? 0 : norm(sub(position[k + 1], position[k])) * HZ
   })
-  return { side, armLength, position, speed }
+  return { side, frame, armLength, position, speed }
 }
 
 export interface KinematicStroke {
@@ -86,7 +91,7 @@ export interface KinematicStroke {
 }
 
 /**
- * Plan 2.1 kinematic strokes: every local maximum of chest-frame hand speed, bounded by the nearest strict speed minima
+ * Plan 2.1 kinematic strokes: every local maximum of trunk-frame hand speed, bounded by the nearest strict speed minima
  * before and after, whose path between them is at least `minTravel`. The apex is the first speed minimum after the
  * peak, when it lies within `apexSeconds` and its speed is at most `apexRatio` of the peak.
  */
