@@ -189,10 +189,22 @@ pooled. The pairs are the shoulder, upper-arm and lower-arm chain
 correlations and lags, the upper-arm idle ACF, and the arm LDLJ and spike
 rates. The fitting rules are unchanged: same percentiles, margins, Fisher
 transform, minimum counts and vacuous-band rule. Both ids receive the one band.
+For a pooled pair the ten-value clip minimum counts side values, not clips, so
+pairs that neither side could fit alone are now gated, which makes the gate
+stricter: idle `smooth.armL.spikeRate` and `smooth.armR.spikeRate` (8 fitting
+clips with a value per side, 16 pooled) and talk `smooth.armR.spikeRate` (7
+values in version 1, 18 pooled side values in version 2).
 Pooled episodes follow manifest order, left before right within a clip.
 Held-out clips are judged on both sides against the pooled band and count
 once per failing side; a pooled episode group counts once for the pair. The
-0-or-1 held-out tolerance is unchanged. The lead extended the rule before any
+0-or-1 held-out tolerance is unchanged.
+The held-out allowance stays at one failing unit, while a pooled pair has about
+twice the held-out units of either side. The talk arm LDLJ pair has 14 held-out
+episode groups instead of 7 per side; two fail, so `smooth.armL.ldlj` and
+`smooth.armR.ldlj` became REPORT with `holdout-failures: 2`. This is a loss of
+a gated check for speech: version 2 no longer gates arm smoothness (LDLJ) in
+talk.
+The lead extended the rule before any
 version 2 band existed: every left or right bone activity floor (half the P10
 of fitting-clip activities) and the `armL`/`armR` move speed (median of
 fitting-clip median speeds) are fitted once from both sides pooled under their
@@ -201,8 +213,28 @@ detector parameter, manifest entry or split changed. A non-sided band keeps its
 fitting rule, but when its metric reads a pooled floor or arm move speed its
 human values are measured with the pooled value, so the band can move; in
 version 2, eleven such bands moved (coverage, bilateral, dimensionality,
-gesture stroke rate and onset) and none changed status. A machine comparison of the two bands files is kept with the
-freeze evidence.
+gesture stroke rate and onset) and none changed status. A machine comparison
+of the two bands files is kept with the freeze evidence.
+
+Mirrored bands whose status changed: idle and walk
+`chain.leftUpperArm-leftLowerArm.lagMs` /
+`chain.rightUpperArm-rightLowerArm.lagMs` and walk
+`chain.leftLowerArm-leftHand.lagMs` / `chain.rightLowerArm-rightHand.lagMs`
+became REPORT as vacuous (version 1 gated the left side only); talk
+`smooth.armL.ldlj` / `smooth.armR.ldlj` became REPORT; idle
+`smooth.armL.spikeRate` / `smooth.armR.spikeRate` and talk
+`smooth.armR.spikeRate` became GATED (talk `smooth.armL.spikeRate` was already
+gated).
+
+A pooled floor can fall outside both version 1 side values when a class has few
+fitting clips, because the floor is half the 10th percentile with linear
+interpolation and pooling changes the interpolation rank. This happens in talk
+(lower arm, upper leg, lower leg, foot, toes) and in the shared
+gaze/emotion/react set (upper leg); every idle and walk pooled floor lies
+between its two side values. Within each clip, left-side values are ordered
+before right-side values in the pooled episodes, which decides which episodes
+share a held-out group of eight and which values the seeded bootstrap draws;
+the rule did not specify this order.
 
 Why: version 1 fitted each side from the same 11 idle clips of one performer,
 so a sided band encoded that performer's handedness. The idle
