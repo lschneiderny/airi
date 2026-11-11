@@ -66,6 +66,9 @@ export class BodyArms {
   private warm = false
   private redraw = 70
   private tension = 0
+  private trunkPitch = 0
+  /** Rate of the trunk pitch the arms hang from, rad/s; the upper arm's swing in the world is flex rate minus it. */
+  private trunkPitchRate = 0
 
   constructor(private readonly traits: BodyRigTraits, seed: number) {
     this.skeleton = new BodySkeleton(traits)
@@ -134,6 +137,8 @@ export class BodyArms {
     this.skeleton.update(targets)
     const pitch = targets[7] + targets[10] + targets[13]
     const roll = targets[8] + targets[11] + targets[14]
+    this.trunkPitchRate = this.warm ? (pitch - this.trunkPitch) / BODY_TICK : 0
+    this.trunkPitch = pitch
     for (const side of SIDES) {
       const start = ARM_START[side]
       const sigma = side === 'left' ? 1 : -1
@@ -179,8 +184,10 @@ export class BodyArms {
     for (let j = 2; j < 26; j++) {
       const index = start + j
       let drag = 0
+      // The forearm trails the upper arm's swing in the world (3a drag). The plumb line's counter-rotation of flex
+      // against the trunk pitch is stillness in the world, so it must not swing the forearm.
       if (j === 5)
-        drag = clampDrag(-0.045 * this.states[start + 2].v, 8)
+        drag = clampDrag(-0.045 * (this.states[start + 2].v - this.trunkPitchRate), 8)
       else if (j === 7 || j === 8)
         drag = clampDrag(-0.06 * this.states[start + 5].v, 25)
       else if (j >= 9 && j < 24)

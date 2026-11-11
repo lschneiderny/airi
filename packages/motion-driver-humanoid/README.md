@@ -383,6 +383,10 @@ rotation, rather than treating these angles as bone-local Euler deltas.
 `solveArmKey` performs load-time two-bone IK in this same reference; targets
 use arm lengths, swivel and returned angles use radians. A geometrically
 unreachable key returns null. Check its limits and clearance before playback.
+Each arm follower trails its parent through a drag term (architecture 3a).
+The elbow trails the upper arm's swing in the world, its flex rate minus the
+trunk pitch rate, so the plumb line's counter-rotation of the upper arm against
+a pitching trunk (stillness in the world) never swings the forearm.
 Nonnegative channels use a C1 lower knee that preserves zero exactly; the
 generic tanh lower knee would bend an otherwise neutral toe. Their upper knee
 and all signed channel limits use the shared `softLimit` primitive.
