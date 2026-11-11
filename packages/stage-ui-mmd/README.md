@@ -141,6 +141,24 @@ the device pixel ratio changes, because displays can differ in backing scale.
 
 ### Frame pipeline and diagnostics
 
+`./composables/mmd/motion-trace` exports `createMMDMotionTraceSampler(mmd, rig, pose)`.
+It returns `{ recorder, stage, rig, inputs }`. Give `rig` a model key and asset
+hash, pass it in `recorder.start(header)`, and place `stage` last in the surface
+stages to read final bones after physics. This module does not register itself
+in the scene. It never writes bones or changes motion.
+
+Set `inputs.channels` to the voice, speaking, trace-axis world target, locomotion
+mode and gait weight used for that frame. Omitted scalars become NaN. Set
+`inputs.wall` in seconds for a headless clock; null selects `performance.now()`.
+Motion time is the sum of pipeline dt, rebased with wall time to frame zero.
+The sampler derives bind rotations and offsets from the skeleton inverse bind
+matrices, folds helper bones into canonical humanoid parents, excludes physics
+bones, and duplicates the both-eyes fallback into both eye columns.
+
+The headless composition also imports `MMDBody` from `./composables/mmd/body`,
+`MMDNaturalAdapter` from `./composables/mmd/natural/adapter`, and
+`MMDStanceDirector` from `./composables/mmd/stance`.
+
 `MMDFramePipeline` owns a clean, pre-solver pose for each model. It restores
 that pose before queued playback commands and mixer sampling, then captures
 the clip pose before registered pose stages, IK, grants, and physics. Surface
