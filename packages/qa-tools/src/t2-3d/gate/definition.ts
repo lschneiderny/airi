@@ -3,13 +3,16 @@ import { declaredBands, metricPolicies } from './policy'
 
 export const LIMITATION = 'Scores compare motion statistics with bands derived from human capture. They do not prove naturalness or appeal, which stay a visual review.'
 
-/** Version 2 freezes human-reference bands with mirrored body sides pooled and the lead-approved held-out tolerance. */
+/**
+ * Version 3 keeps version 2's pooled human-reference bands, reports the talk bands fitted per clip
+ * from locomoting talk performers, and gates emotion separation from neutral instead of all pairs.
+ */
 export const motionQualityGate = {
   id: 'mmd-motion-quality',
-  version: 2,
+  version: 3,
   limitation: LIMITATION,
-  bandsFile: 'packages/qa-tools/fixtures/motion3d/bands-v2.json',
-  bandsSha256: '1cffebeca8e973f303128ff2031e9f4a54a38d3e822ee05cb710e050dbe5ecfe',
+  bandsFile: 'packages/qa-tools/fixtures/motion3d/bands-v3.json',
+  bandsSha256: 'c7c03b8f7e8679e601a722f374635425b32781024314b2377bad45aff092b589',
   refusals: [
     'trace-unreadable',
     'trace-kind',
@@ -64,25 +67,7 @@ export const motionQualityGate = {
       'fingers.frozen': 'two',
     },
     talk: {
-      'chain.spine-chest.zeroLagCorr': 'upper',
-      'chain.chest-neck.zeroLagCorr': 'upper',
-      'chain.neck-head.zeroLagCorr': 'upper',
-      'chain.leftUpperArm-leftLowerArm.zeroLagCorr': 'upper',
-      'chain.leftLowerArm-leftHand.zeroLagCorr': 'upper',
-      'chain.rightUpperArm-rightLowerArm.zeroLagCorr': 'upper',
-      'chain.rightLowerArm-rightHand.zeroLagCorr': 'upper',
-      'coverage.core': 'lower',
-      'coverage.arms': 'lower',
-      'bilateral.upperArm.peakCorr': 'upper',
-      'bilateral.lowerArm.peakCorr': 'upper',
-      'bilateral.hand.peakCorr': 'upper',
       'smooth.head.ldlj': 'two',
-      'smooth.head.spikeRate': 'upper',
-      'smooth.armL.spikeRate': 'upper',
-      'smooth.armR.spikeRate': 'upper',
-      'inter.speedCv': 'two',
-      'dim.upper': 'lower',
-      'dim.core': 'lower',
       'onset.attackFraction': 'two',
       'onset.easedOrAnticipated': 'lower',
       'coverage.fingers': 'lower',
@@ -131,7 +116,7 @@ export const motionQualityGate = {
     emotion: {
       'onset.attackFraction': 'two',
       'onset.easedOrAnticipated': 'lower',
-      'emotion.minSeparation': 'lower',
+      'emotion.minSeparationFromNeutral': 'lower',
       'emotion.armShare': 'lower',
     },
     react: {},

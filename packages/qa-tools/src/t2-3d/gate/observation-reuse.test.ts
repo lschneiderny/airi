@@ -80,7 +80,7 @@ describe('emotion observation reuse', () => {
       const [verdict] = await readVerdicts(dirs)
       expect(verdict.refusal).toBeNull()
       expect(verdict.pooledFrom.trialCounts).toEqual({ happy: 3, placebo: 5 })
-      expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.minSeparation', status: 'PASS' }))
+      expect(verdict.metrics.find((m: { id: string }) => m.id === 'emotion.minSeparation')?.value).toBeGreaterThanOrEqual(2)
     })
   })
 })

@@ -51,7 +51,10 @@ describe('emotion directory pooling', () => {
         const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
         expect(verdict.verdict).toBe('PASS')
         expect(verdict.pooledFrom).toMatchObject({ traces: dirs.map(directory => ({ directory })), trialCounts: { happy: 6, placebo: 6 } })
-        expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.minSeparation', status: 'PASS', basis: 'declared' }))
+        const separation = verdict.metrics.find((m: { id: string }) => m.id === 'emotion.minSeparation')
+        expect(separation).toMatchObject({ status: 'REPORT', basis: 'declared' })
+        expect(separation.value).toBeGreaterThanOrEqual(2)
+        expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.minSeparationFromNeutral', status: 'SKIPPED', detail: 'no-neutral-condition' }))
         expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.armShare', status: 'PASS', value: 1 }))
       }
     }

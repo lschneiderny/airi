@@ -1,11 +1,11 @@
-# Human-reference bands for mmd-motion-quality v2
+# Human-reference bands for mmd-motion-quality v3
 
-Frozen bands SHA-256: `1cffebeca8e973f303128ff2031e9f4a54a38d3e822ee05cb710e050dbe5ecfe`.
-Derived by tool commit `fedec98842b62030940f6d060d5d698e7bd67308` on 2026-11-11T16:52:31.523Z.
+Frozen bands SHA-256: `c7c03b8f7e8679e601a722f374635425b32781024314b2377bad45aff092b589`.
+Derived on 2026-11-11T22:04:52.759Z from the rule commit `0f52ddd5367c321f19752220cd1bb8aaf1bcdd0a` (recorded as `tool.gitSha`) plus the builder wiring that the freeze commit adds. The freeze commit's validity test rebuilds the classes from the reference clips and requires them to equal this file.
 
-Version 1 remains in `bands-v1.json` (SHA-256 `c5a5a8eee5c5e3668cbb081d084b3da62ef9441787a975fc5607886e720230d7`) as its record and is no longer loaded by the gate.
+Version 2 remains in `bands-v2.json` (SHA-256 `1cffebeca8e973f303128ff2031e9f4a54a38d3e822ee05cb710e050dbe5ecfe`) and version 1 in `bands-v1.json` (SHA-256 `c5a5a8eee5c5e3668cbb081d084b3da62ef9441787a975fc5607886e720230d7`) as their records. The gate no longer loads either file.
 
-Only derived statistics are stored in bands-v2.json. No raw motion, model, texture, joint trajectory, or capture is committed. Clip identifiers and subjects below document provenance; raw sources remain outside the repository.
+Only derived statistics are stored in bands-v3.json. No raw motion, model, texture, joint trajectory, or capture is committed. Clip identifiers and subjects below document provenance; raw sources remain outside the repository.
 
 ## Sources and licences
 
@@ -16,6 +16,13 @@ Only derived statistics are stored in bands-v2.json. No raw motion, model, textu
 The source selection and split were fixed before measurement. Manifest SHA-256: `023f898ad02a2351befe2a38cd8a7c2013fa0d9fc412e623a9cbb49f65a00a91`. All 86 entries were attempted. The unchanged upright-admission rule refuses fitting clip cmu:138_32 (30 of 454 frames, 6.6079 percent, exceed the non-upright allowance of 1 percent). Its identifier, hash, subject and refusal remain in bands context.admission; no manifest entry was removed or moved. All held-out sources admit.
 
 100style:InTheDark_FW (10,245 frames) and 100style:Old_FW (14,949 frames) both ingest after the large-block codec correction. Window-source counts after admission are idle 11 fitting / 3 held-out, talk 16 / 5, and walk 13 / 4. No class uses an 8 s fallback.
+
+## Version 3: standing-speaker talk reports and emotion separation from neutral, 2026-11-11
+
+Version 3 is version 2 with two status changes. Every fitted bound, floor, move speed, held-out verdict and admission record is the same as in version 2. `idle`, `walk`, `gaze` and `react` are identical to version 2.
+
+- Talk: every gated talk band fitted per clip from the talk window clips is REPORT with detail `talk reference performers locomote; floors are not valid for a standing speaker`. The rule (`reportStandingSpeaker`, `context.standingSpeaker`) selects 18 ids: the seven chain correlations (`chain.spine-chest`, `chain.chest-neck`, `chain.neck-head`, and both sides' `UpperArm-LowerArm` and `LowerArm-Hand`), `coverage.core`, `coverage.arms`, `bilateral.upperArm`, `bilateral.lowerArm`, `bilateral.hand`, `inter.speedCv`, `dim.upper`, `dim.core`, and `smooth.head.spikeRate`, `smooth.armL.spikeRate`, `smooth.armR.spikeRate`. Their fitted bounds stay in the file, and their values are still measured and printed. The talk class still gates `smooth.head.ldlj`, `onset.attackFraction` and `onset.easedOrAnticipated` (episode bands from idle and talk episodes), and the declared `coverage.fingers`, `fingers.frozen`, `gesture.strokeP` and `gesture.strokeLagMs`.
+- Emotion: `emotion.minSeparation` keeps its formula and its declared bound of 2 and is REPORT. The new declared, gated `emotion.minSeparationFromNeutral` is the minimum, over every emotion other than neutral, of its separation from neutral and its separation from the placebo, in the same pooled SD units, and must be at least 2 (`context.clearOfNeutral`). The neutral-against-placebo pair is not part of it. `emotion.armShare` and the onset bands are unchanged.
 
 ## Version 2: pooled body sides, 2026-11-11
 

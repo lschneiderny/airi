@@ -99,6 +99,12 @@ export const STANDING_SPEAKER = {
   source: 'User decision, 2026-11-11: "Speech gate: Rules now, reference later (Recommended)".',
 } as const
 
+export const CLEAR_OF_NEUTRAL = {
+  rule: 'min over every emotion other than neutral of its separation from neutral and from placebo >= 2; neutral against placebo excluded',
+  reason: 'neutral has no posture, so neutral against placebo cannot separate; emotion.minSeparationFromNeutral gates instead',
+  source: 'User decision, 2026-11-11: "Emotion gate: Clear of neutral (Recommended)". Threshold 2 is the declared bar of emotion.minSeparation, not fitted from human data.',
+} as const
+
 /**
  * Version 3 reports the talk class's clip-unit fitted bands instead of gating them. Episode
  * bands, declared bands, detector parameters and held-out verdicts are kept as fitted, and
@@ -140,6 +146,8 @@ export function declaredBands(scenario: MotionScenarioClass, emotionArmShare: nu
   }
   if (scenario === 'emotion') {
     add('emotion.minSeparation', 2, null, 'min pair separation including every emotion against placebo >= 2', 'Lead decision: detectable above trial noise, as in the Live2D emotion gate')
+    bands['emotion.minSeparation'] = { ...bands['emotion.minSeparation'], status: 'REPORT', detail: CLEAR_OF_NEUTRAL.reason }
+    add('emotion.minSeparationFromNeutral', 2, null, CLEAR_OF_NEUTRAL.rule, CLEAR_OF_NEUTRAL.source)
     add('emotion.armShare', emotionArmShare, null, 'armShare >= half the smallest of four 100STYLE emotion-style arm shares, only on a shared skeleton', 'Lead design decision; four 100STYLE styled standing clips')
     if (emotionArmShare === null)
       bands['emotion.armShare'] = { ...bands['emotion.armShare'], side: 'lower', status: 'REPORT', detail: 'emotion styles do not share a skeleton or posture context is unavailable' }

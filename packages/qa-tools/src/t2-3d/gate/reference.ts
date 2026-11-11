@@ -7,7 +7,7 @@ import type { ClassBands, MotionBandsFile } from './types'
 import { prepareTrace } from '../metrics'
 import { admitReferences } from './admissions'
 import { HOLDOUT_VALIDATION } from './holdouts'
-import { metricPolicies, sideGroup } from './policy'
+import { CLEAR_OF_NEUTRAL, metricPolicies, reportStandingSpeaker, sideGroup, STANDING_SPEAKER } from './policy'
 import { emotionContext, idleLoopContext, stylePosture } from './reference-context'
 import { fitClass } from './reference-fit'
 import { amplitudeRange, measureReference, referenceDetectors } from './reference-measure'
@@ -73,7 +73,7 @@ export async function buildReference(options: ReferenceBuild): Promise<MotionBan
       missing.push(`${scenario}: ${fit} fitting and ${holdout} held-out window clips; need 10 and 3`)
       continue
     }
-    classes[scenario] = fitClass(measured, scenario, detectors[scenario], context.lower)
+    classes[scenario] = reportStandingSpeaker(scenario, fitClass(measured, scenario, detectors[scenario], context.lower))
   }
   for (const scenario of ['gaze', 'emotion', 'react'] as const)
     classes[scenario] = fitClass(measured, scenario, poolDetectors, context.lower)
@@ -81,7 +81,7 @@ export async function buildReference(options: ReferenceBuild): Promise<MotionBan
     console.error(missing.join('\n'))
   return {
     kind: 'mmd-motion-bands',
-    gate: { id: 'mmd-motion-quality', version: 2 },
+    gate: { id: 'mmd-motion-quality', version: 3 },
     fixture: false,
     builtAt: new Date().toISOString(),
     tool: { gitSha: options.gitSha, rule: 'P5-P50-P95-one-tail-margin' },
@@ -89,6 +89,8 @@ export async function buildReference(options: ReferenceBuild): Promise<MotionBan
     classes,
     context: {
       holdoutValidation: HOLDOUT_VALIDATION,
+      standingSpeaker: STANDING_SPEAKER,
+      clearOfNeutral: CLEAR_OF_NEUTRAL,
       sidePooling: { ...SIDE_POOLING, pairs: Object.fromEntries((['idle', 'talk', 'walk', 'gaze', 'emotion', 'react'] as const).map(scenario => [scenario, pooledPairs(scenario)])) },
       admission: {
         fixed: options.manifest.clips.length,

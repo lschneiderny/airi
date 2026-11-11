@@ -95,7 +95,7 @@ describe('runner seed cohorts', () => {
       for (const dir of dirs) {
         const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
         expect(verdict).toMatchObject({ verdict: 'PASS', pooledFrom: { trialCounts: { happy: 6, placebo: 6 } } })
-        expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.minSeparation', status: 'PASS' }))
+        expect(verdict.metrics.find((m: { id: string }) => m.id === 'emotion.minSeparation')?.value).toBeGreaterThanOrEqual(2)
       }
     })
   })
@@ -140,8 +140,9 @@ describe('runner seed cohorts', () => {
 
 describe('required gate metrics', () => {
   it.each([
-    { ids: 'emotion.minSeparation', passed: true, code: 0 },
-    { ids: 'emotion.minSeparation,emotion.armShare', passed: true, code: 0 },
+    { ids: 'emotion.armShare', passed: true, code: 0 },
+    { ids: 'emotion.minSeparation', passed: false, code: 1 },
+    { ids: 'emotion.minSeparationFromNeutral,emotion.armShare', passed: false, code: 1 },
     { ids: 'onset.attackFraction', passed: false, code: 1 },
     { ids: 'emotion.medianSeparation', passed: false, code: 1 },
     { ids: 'gait.headLeadMs', passed: false, code: 1 },

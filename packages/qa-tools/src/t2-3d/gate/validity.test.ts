@@ -8,14 +8,14 @@ import { resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { measureTrace } from '../metrics'
+import { emotionMetrics, measureTrace } from '../metrics'
 import { CORE } from '../metrics/bones'
 import { conjugate, multiply } from '../metrics/math'
 import { analyticTrace, angleX, angleY, detectors } from '../metrics/test-trace'
 import { readManifest } from '../reference/manifest'
 import { motionQualityGate } from './definition'
 import { heldoutFailureUnits, HOLDOUT_VALIDATION } from './holdouts'
-import { judgeTrace } from './judge'
+import { judgeMetrics, judgeTrace } from './judge'
 import { loadBands, parseBands } from './load'
 import { mirroredName } from './policy'
 import { buildReference } from './reference'
@@ -81,6 +81,26 @@ describe('gate validity with committed bands', () => {
       }
       expect(c.moveSpeed.armL, scenario).toBe(c.moveSpeed.armR)
     }
+  })
+
+  it('changes only the talk and emotion classes from version 2', async () => {
+    const v2 = parseBands(JSON.parse(await readFile(resolve(repoRoot, 'packages/qa-tools/fixtures/motion3d/bands-v2.json'), 'utf8')))
+    for (const scenario of ['idle', 'walk', 'gaze', 'react'] as const)
+      expect(bands.classes[scenario], scenario).toEqual(v2.classes[scenario])
+    const talk = bands.classes.talk
+    expect(Object.entries(talk?.metrics ?? {}).filter(([, b]) => b.basis === 'fitted' && b.unit === 'clip' && b.status === 'GATED')).toEqual([])
+    expect(talk?.floors).toEqual(v2.classes.talk?.floors)
+    expect(talk?.holdout).toEqual(v2.classes.talk?.holdout)
+  })
+
+  it('fails a pooled emotion that copies neutral while the all-pairs separation only reports', () => {
+    const trials = Object.entries({ neutral: 0, placebo: 1, copy: 0, other: -1 }).flatMap(([condition, x]) => {
+      const placebo = condition === 'placebo'
+      return (placebo ? [-0.02, -0.01, 0, 0.01, 0.02] : [-0.01, 0, 0.01]).map(noise => ({ condition, placebo, t: 0, frames: [], posture: { head: [x + noise, 0, 0] as const } }))
+    })
+    const judged = judgeMetrics(emotionMetrics(trials), bands.classes.emotion)
+    expect(judged.find(m => m.id === 'emotion.minSeparationFromNeutral')).toMatchObject({ status: 'FAIL', value: expect.closeTo(0, 12) })
+    expect(judged.find(m => m.id === 'emotion.minSeparation')?.status).toBe('REPORT')
   })
 
   it('fails the in-phase sine in both chain and dimensionality families', () => {
