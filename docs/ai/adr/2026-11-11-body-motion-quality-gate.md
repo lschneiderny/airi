@@ -142,4 +142,11 @@ extraction; repeated labels within one trace count once. Each pooled verdict
 records trace directories, digests and per-condition trial counts in
 `pooledFrom`. This admission fix changes no band, threshold or gate version.
 
+Acceptance can now demand named metrics with `gate --require <ids>`.
+Every named metric must be `PASS` in every supplied verdict; the requirement
+and its result are recorded separately from the numerical verdict. Unknown
+ids are usage errors. An idle request of 60 s yields about 59.98 scored seconds,
+so acceptance uses 90 s and requires the declared loop-peak ids rather than
+accepting their skipped status.
+
 Scores compare motion statistics with bands derived from human capture. They do not prove naturalness or appeal, which stay a visual review.

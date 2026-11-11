@@ -114,3 +114,28 @@ describe('emotion pool admission', () => {
     })
   })
 })
+
+describe('required gate metrics', () => {
+  it.each([
+    { ids: 'emotion.minSeparation', passed: true, code: 0 },
+    { ids: 'emotion.minSeparation,emotion.armShare', passed: true, code: 0 },
+    { ids: 'onset.attackFraction', passed: false, code: 1 },
+    { ids: 'emotion.medianSeparation', passed: false, code: 1 },
+    { ids: 'gait.headLeadMs', passed: false, code: 1 },
+  ])('requires PASS rather than skipped, reported or absent: $ids', async ({ ids, passed, code }) => {
+    await withTraces([emotionTrace(1), emotionTrace(2), emotionTrace(3)], async (dirs) => {
+      expect(await gateMotion3d([...dirs, '--require', ids], context)).toBe(code)
+      for (const dir of dirs) {
+        const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
+        expect(verdict).toMatchObject({ verdict: 'PASS', requirements: { metrics: ids.split(','), passed } })
+      }
+    })
+  })
+
+  it('rejects an unknown required metric as a usage error before writing verdicts', async () => {
+    await withTraces([emotionTrace(1)], async (dirs) => {
+      expect(await gateMotion3d([...dirs, '--require', 'unknown.metric'], context)).toBe(2)
+      await expect(readFile(join(dirs[0], 'gate.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+    })
+  })
+})

@@ -13,8 +13,23 @@ import { emotionMetrics, emotionTrials, prepareTrace } from '../metrics'
 import { MotionTraceRefusal, parseTrace } from '../read-trace'
 
 export async function gateMotion3d(args: readonly string[], context: Motion3dCliContext): Promise<number> {
-  if (!args.length || args.some(arg => arg.startsWith('-'))) {
-    console.error('Usage: qa:motion3d gate <run directory>...')
+  const directories: string[] = []
+  const required: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === '--require' && args[i + 1] && !args[i + 1].startsWith('-')) {
+      required.push(...args[++i].split(',').map(id => id.trim()))
+    }
+    else if (arg.startsWith('-')) {
+      console.error('Usage: qa:motion3d gate <run directory>... [--require <metric id>[,<metric id>...]]')
+      return 2
+    }
+    else {
+      directories.push(arg)
+    }
+  }
+  if (!directories.length || required.some(id => !id)) {
+    console.error('Usage: qa:motion3d gate <run directory>... [--require <metric id>[,<metric id>...]]')
     return 2
   }
   if (context.signal.aborted)
@@ -29,8 +44,17 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
       throw error
     bandsRefusal = error
   }
+  const requirements = [...new Set(required)]
+  if (bands) {
+    const known = new Set(Object.values(bands.classes).flatMap(c => Object.keys(c.metrics)))
+    const unknown = requirements.filter(id => !known.has(id))
+    if (unknown.length) {
+      console.error(`qa:motion3d gate: unknown required metric ids: ${unknown.join(', ')}`)
+      return 2
+    }
+  }
   const entries: { dir: string, path: string, input?: DecodedMotionTrace, sha256?: string, refusal?: GateRefusal | MotionTraceRefusal }[] = []
-  for (const dir of args.map(arg => resolve(context.cwd, arg))) {
+  for (const dir of directories.map(arg => resolve(context.cwd, arg))) {
     if (context.signal.aborted)
       return 130
     const path = join(dir, 'trace.json')
@@ -116,10 +140,16 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
         throw error
       verdict = refusedVerdict(entry.path, error)
     }
+    if (requirements.length) {
+      const passed = requirements.every(id => verdict.metrics.some(metric => metric.id === id && metric.status === 'PASS'))
+      verdict = { ...verdict, requirements: { metrics: requirements, passed } }
+    }
     verdicts.push(verdict)
     console.info(`mmd-motion-quality v${verdict.gate.version} ${entry.dir}: ${verdict.verdict}`)
     if (verdict.refusal)
       console.info(`  ${verdict.refusal.name}: ${verdict.refusal.detail}`)
+    if (verdict.requirements)
+      console.info(`  required ${verdict.requirements.passed ? 'PASS' : 'FAIL'}: ${requirements.join(', ')}`)
     try {
       await writeFile(join(entry.dir, 'gate.json'), `${JSON.stringify(verdict, null, 2)}\n`)
     }
@@ -132,5 +162,5 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
     for (const m of verdict.metrics)
       console.info(`  ${m.id} ${m.status} ${m.value ?? 'undefined'} ${m.unit} ${m.band ? `[${m.band.lo ?? '-inf'}, ${m.band.hi ?? 'inf'}] ${m.band.transform} ${m.basis}` : ''} ${m.detail}`)
   }
-  return verdictExitCode(verdicts)
+  return verdicts.some(verdict => verdict.requirements?.passed === false) ? 1 : verdictExitCode(verdicts)
 }

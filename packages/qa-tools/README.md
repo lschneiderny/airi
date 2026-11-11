@@ -42,6 +42,20 @@ episodes skip the metric. Refusals never count as passes or failures.
 Exit codes are 1 if any trace fails, otherwise 2 if any trace is refused or the
 arguments are invalid, otherwise 0; interruption exits 130.
 
+Use `--require <metric id>[,<metric id>...]` to demand `PASS` for every listed
+metric in every given directory. A skipped, report-only, failing or absent
+metric makes the requirement fail and exits 1. `gate.json` records
+`requirements.metrics` and `requirements.passed`; unknown ids are usage errors
+with exit 2. Without this flag the existing verdict policy is unchanged.
+
+Idle runs need more than 60 scored seconds for the declared `period.*.loopPeak`
+bands to be judged: a 60 s request yields about 59.98 s and skips them.
+Idle acceptance therefore uses 90 s and explicitly requires the loop metrics:
+
+```bash
+pnpm qa:motion3d gate <idle-90s directory> --require period.head.loopPeak,period.rootForeAft.loopPeak,period.rootLateral.loopPeak
+```
+
 Emotion directories supplied together pool their trials, including placebo.
 They must share `rig.id`, `rig.assetSha256`, `source.level` and `source.gitSha`;
 seeds may differ. Copied trace content or a trial id repeated across traces
@@ -741,14 +755,6 @@ behavior. It cannot judge skinning, silhouettes, materials, camera framing,
 window integration or perceived naturalness. Exit codes are 0 completed,
 1 run or determinism failure, 2 invalid arguments or setup refusal, and
 130 interrupted.
-
-### Gate
-
-`pnpm qa:motion3d gate` is reserved for judging trace directories into `gate.json` and currently prints `qa:motion3d gate: not implemented` and exits 2.
-
-### Reference bands
-
-`pnpm qa:motion3d reference` is reserved for deriving bands from human clips and currently prints `qa:motion3d reference: not implemented` and exits 2.
 
 ### Trace format
 
