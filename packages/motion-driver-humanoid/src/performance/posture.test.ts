@@ -36,6 +36,18 @@ describe('posture performance', () => {
     }
   })
 
+  it('moves each elbow after its upper arm when the weight shifts', () => {
+    for (const support of [-1, 1]) {
+      const performer = createBodyPerformer({ traits, seed: 1 })
+      const trace = channelTrace(performer, 5, t => ({
+        ...quietInput(t),
+        posture: { amplitude: 0, shiftRate: 0, support: t < 0.5 ? 0 : support },
+      }))
+      for (const side of ['left', 'right'] as const)
+        expect(peakSpeed(trace[c(`${side}Elbow`)]), `${side} support ${support}`).toBeGreaterThan(peakSpeed(trace[c(`${side}Abduct`)]))
+    }
+  })
+
   it('has aperiodic sway and moving holds over two minutes', () => {
     const trace = channelTrace(createBodyPerformer({ traits, seed: 1 }), 120, idleInput)
     const sway = trace[c('pelvisZ')]

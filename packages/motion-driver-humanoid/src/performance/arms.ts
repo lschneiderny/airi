@@ -2,7 +2,7 @@ import type { SecondOrderCoefficients, SecondOrderState } from '../dynamics'
 import type { BodySide } from './channels'
 import type { BodyPerformanceInput, BodyRigTraits } from './contracts'
 
-import { advanceSecondOrder, secondOrderCoefficients } from '../dynamics'
+import { advanceSecondOrder, createLagChain, secondOrderCoefficients } from '../dynamics'
 import { createActivityGate, createDriftNoise, deriveSeed, gaussian } from '../noise'
 import { createRandomStream } from '../random'
 import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, SIDES } from './channels'
@@ -40,6 +40,9 @@ const damping = [0.7, 0.7, 0.45, 0.45, 0.7, 0.6, 0.7, 0.5, 0.5] as const
 const noiseDegrees = [0.6, 0.3, 0.8, 0.5, 1.5, 1.2, 1.5, 2, 1.5] as const
 const offsetDegrees = [0, 0, 2.5, 2, 0, 4, 8, 4, 0] as const
 const clampDrag = (x: number, degrees: number) => Math.max(-degrees * DEG, Math.min(degrees * DEG, x))
+// The forearm hangs from the upper arm, so the weight reaches the elbow one upper-arm response later: the relaxed
+// upper-arm follower's ramp lag, zeta / (pi f) (architecture 3a), after the shoulder link of the weight chain.
+const ELBOW_WEIGHT_LAG = damping[2] / (Math.PI * relaxed[2])
 
 /** Independent arm identities feed shared secondary dynamics after layer blending. */
 export class BodyArms {
@@ -58,6 +61,7 @@ export class BodyArms {
     right: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 },
   }
 
+  private readonly elbowWeight = createLagChain([ELBOW_WEIGHT_LAG], BODY_TICK)
   private warm = false
   private redraw = 70
   private tension = 0
@@ -93,7 +97,9 @@ export class BodyArms {
     this.redraw = Math.max(40, Math.min(120, Math.exp(Math.log(70) + 0.3 * gaussian(this.random))))
   }
 
-  generate(input: BodyPerformanceInput, out: Float64Array, support: number): void {
+  /** `shoulderSupport` is the support transfer as the weight chain delivers it to the shoulders. */
+  generate(input: BodyPerformanceInput, out: Float64Array, shoulderSupport: number): void {
+    const support = this.elbowWeight.step(shoulderSupport)[0]
     this.redraw -= BODY_TICK
     if (this.redraw <= 0)
       this.drawRest()

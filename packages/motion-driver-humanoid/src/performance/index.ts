@@ -158,7 +158,7 @@ class BodyPerformer {
     targets.fill(0)
     state.posture.step(effective, targets)
     state.breath.step(effective, targets)
-    state.arms.generate(effective, targets, state.posture.support)
+    state.arms.generate(effective, targets, state.posture.shoulderSupport)
     state.gaze.step(effective, targets)
     const gait = input.gait
     if (gait) {

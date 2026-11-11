@@ -11,6 +11,8 @@ const headTerms = ['emphasis', 'impulse', 'pet', 'held', 'gesture', 'cue'] as co
 /** Weight starts at the ground. Head attitude travels in the opposite direction. */
 export class BodyPosture {
   support = 0
+  /** The support transfer as it reaches the shoulders: the weight lag chain's torso-upper link. */
+  shoulderSupport = 0
   target = 0
   dwell = 0
   private readonly random
@@ -65,6 +67,7 @@ export class BodyPosture {
     this.support = Math.max(-1, Math.min(1, s))
     const chain = this.weight.step(s)
     const single = this.traits.spineChain.length === 1
+    this.shoulderSupport = chain[single ? 1 : 3]
     const gain = this.rotationScale
     out[3] += 3 * DEG * chain[0] * gain
     out[5] -= 4.5 * DEG * chain[0] * gain
