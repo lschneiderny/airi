@@ -129,9 +129,16 @@ velocity into a passing periodicity score. Before any changed character motion
 was judged, the reader was tightened to require positive finite leg length,
 canonical nearest present parents, finite rest offsets and clocks, and no
 infinite scalar channels. Optional scalar NaNs still mean absent data.
-Preparation refuses nonfinite kinematic signals before detectors can turn them
-into silent zeros; the judge fails nonfinite metric values or contributing
+Preparation refuses nonfinite kinematic signals; the judge fails nonfinite metric values or contributing
 samples with `undefined: nonfinite`. Bands, thresholds and version 1 are unchanged.
+
+Re-review at `1db662fbe` found that finite root velocities from leg length
+`1e-200` could still overflow inside ACF and become a passing zero.
+ACF and loop accumulators now refuse nonfinite arithmetic before zero crossings
+or peak selection. Shared sums, moments, norms, covariance and correlation
+arithmetic, filter recurrences, spectra, smoothness and posture energies refuse
+as `trace-nonfinite` before comparisons can erase an overflow. No minimum leg
+length was introduced, and no threshold, detector constant, band or version changed.
 
 The same review showed that copied emotion traces could multiply insufficient
 trials into a pass. Before judging changed character motion, pooling was made

@@ -1,7 +1,7 @@
 import type { MetricResult, PreparedTrace } from './types'
 
 import { SIGNAL_BONES } from './bones'
-import { mean } from './math'
+import { finite, mean, sum } from './math'
 import { projection, scalarSignals } from './period'
 import { result, skipped } from './result'
 
@@ -20,15 +20,15 @@ export function spectralEstimate(x: readonly number[]): { peakShare: number, ent
         real += tapered[i] * Math.cos(2 * Math.PI * k * i / n)
         imag -= tapered[i] * Math.sin(2 * Math.PI * k * i / n)
       }
-      power[k - 2] += real * real + imag * imag
+      power[k - 2] = finite(power[k - 2] + (real * real + imag * imag), 'spectral energy')
     }
   }
-  const total = power.reduce((a, b) => a + b, 0)
+  const total = sum(power)
   if (total < 1e-18)
     return null
   return {
-    peakShare: Math.max(...power.map((_, i) => power.slice(Math.max(0, i - 2), i + 3).reduce((a, b) => a + b, 0))) / total,
-    entropy: -power.reduce((s, v) => v > 0 ? s + v / total * Math.log(v / total) : s, 0) / Math.log(89),
+    peakShare: finite(Math.max(...power.map((_, i) => sum(power.slice(Math.max(0, i - 2), i + 3)))) / total, 'spectral peak share'),
+    entropy: finite(-power.reduce((s, v) => v > 0 ? s + v / total * Math.log(v / total) : s, 0) / Math.log(89), 'spectral entropy'),
   }
 }
 

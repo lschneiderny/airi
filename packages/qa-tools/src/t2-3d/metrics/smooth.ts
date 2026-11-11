@@ -2,7 +2,7 @@ import type { DetectorParameters, MetricResult, PreparedTrace, Vec3 } from './ty
 
 import { filterVectors } from './filter'
 import { eligibleSegments } from './intermittency'
-import { heading, HZ, median, norm, scale, sub } from './math'
+import { finite, heading, HZ, median, norm, scale, sub, sum } from './math'
 import { episodeResult, result, skipped } from './result'
 
 /** M5: g=H(w_target-w_chest), F15; LDLJ=-ln(integral |g''|^2 dt * D^3/peak^2), unitless. */
@@ -22,10 +22,12 @@ export function smoothMetrics(p: PreparedTrace, params: DetectorParameters): Met
       const jerk: Vec3[] = []
       for (let i = s.start + 1; i < s.end - 1; i++)
         jerk.push(scale(sub(sub(g[i + 1], g[i]), sub(g[i], g[i - 1])), HZ * HZ))
-      const j = jerk.reduce((sum, v) => sum + norm(v) ** 2, 0) / HZ
+      const j = sum(jerk.map(v => norm(v) ** 2)) / HZ
       const peak = Math.max(...g.slice(s.start, s.end).map(norm))
-      const value = -Math.log(j * ((s.end - s.start) / HZ) ** 3 / (peak * peak))
-      return Number.isFinite(value) ? [{ start: s.start, end: s.end, value }] : []
+      if (j === 0 || peak === 0)
+        return []
+      const ratio = finite(finite(j * ((s.end - s.start) / HZ) ** 3, 'jerk duration product') / finite(peak * peak, 'smoothness peak energy'), 'smoothness ratio')
+      return ratio === 0 ? [] : [{ start: s.start, end: s.end, value: finite(-Math.log(ratio), 'log smoothness') }]
     })
     const ldlj = moves.length ? episodeResult(p, `smooth.${region}.ldlj`, 'log-ratio', values) : result(`smooth.${region}.ldlj`, 'log-ratio', 'episode', null)
     // M5 / 10.4: count runs of |g'| > median + 10*(1.4826*MAD+1e-6), per minute MOVING.

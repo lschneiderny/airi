@@ -3,7 +3,7 @@ import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-t
 import type { MetricResult, PreparedTrace, Quat, Vec3 } from './types'
 
 import { ARMS, UPPER } from './bones'
-import { conjugate, heading, mean, median, multiply, normalize, rotationVector } from './math'
+import { conjugate, finite, heading, mean, median, multiply, normalize, rotationVector } from './math'
 import { result, skipped } from './result'
 
 export interface EmotionTrial {
@@ -73,18 +73,20 @@ export function emotionMetrics(trials: readonly EmotionTrial[]): MetricResult[] 
     const vectors = (groups.get(c) ?? []).map(vector)
     return [c, vectors[0].map((_, i) => mean(vectors.map(p => p[i])))]
   }))
-  const squaredDistance = (a: readonly number[], b: readonly number[]) => a.reduce((s, v, i) => s + (v - b[i]) ** 2, 0)
+  const squaredDistance = (a: readonly number[], b: readonly number[]) => finite(a.reduce((s, v, i) => s + (v - b[i]) ** 2, 0), 'posture squared distance')
   const sigma = Math.sqrt(mean(trials.map(t => squaredDistance(vector(t), centres.get(t.condition) ?? []))))
   const pairs: number[] = []
   for (let i = 0; i < conditions.length; i++) {
-    for (let j = i + 1; j < conditions.length; j++)
-      pairs.push(Math.sqrt(squaredDistance(centres.get(conditions[i]) ?? [], centres.get(conditions[j]) ?? [])) / sigma)
+    for (let j = i + 1; j < conditions.length; j++) {
+      if (sigma > 1e-18)
+        pairs.push(finite(Math.sqrt(squaredDistance(centres.get(conditions[i]) ?? [], centres.get(conditions[j]) ?? [])) / sigma, 'emotion separation'))
+    }
   }
   const shares = conditions.filter(c => c !== placebo).flatMap((c) => {
     const a = centres.get(c) ?? []
     const b = centres.get(placebo) ?? []
     const total = squaredDistance(a, b)
-    const arm = a.reduce((s, v, i) => s + (ARMS.includes(bones[Math.floor(i / 3)]) ? (v - b[i]) ** 2 : 0), 0)
+    const arm = finite(a.reduce((s, v, i) => s + (ARMS.includes(bones[Math.floor(i / 3)]) ? (v - b[i]) ** 2 : 0), 0), 'arm posture energy')
     return total > 1e-18 ? [arm / total] : []
   })
   return [

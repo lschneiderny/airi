@@ -1,7 +1,12 @@
 import type { Vec3 } from './types'
 
+import { finite } from './math'
+
 /** Section 3.1 P7: forward/backward second-order Butterworth, 30-sample odd padding. */
 export function butterworth(x: readonly number[], cutoff: number): number[] {
+  for (const value of x)
+    finite(value, 'filter input')
+  finite(cutoff, 'filter cutoff')
   if (x.length < 2)
     return [...x]
   const k = Math.tan(Math.PI * cutoff / 60)
@@ -12,9 +17,9 @@ export function butterworth(x: readonly number[], cutoff: number): number[] {
   const pad = 30
   function reflected(i: number): number {
     if (i < 0)
-      return 2 * x[0] - reflected(-i)
+      return finite(2 * x[0] - reflected(-i), 'filter reflection')
     if (i >= x.length)
-      return 2 * x[x.length - 1] - reflected(2 * (x.length - 1) - i)
+      return finite(2 * x[x.length - 1] - reflected(2 * (x.length - 1) - i), 'filter reflection')
     return x[i]
   }
   const padded = [
@@ -29,7 +34,7 @@ export function butterworth(x: readonly number[], cutoff: number): number[] {
     let y1 = values[0]
     let y2 = values[0]
     return values.map((v) => {
-      const y = b0 * (v + 2 * x1 + x2) - a1 * y1 - a2 * y2
+      const y = finite(b0 * (v + 2 * x1 + x2) - a1 * y1 - a2 * y2, 'filter recurrence')
       x2 = x1
       x1 = v
       y2 = y1

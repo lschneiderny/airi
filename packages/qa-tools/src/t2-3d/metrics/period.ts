@@ -2,7 +2,7 @@ import type { MetricResult, PreparedTrace, Vec3 } from './types'
 
 import { SIGNAL_BONES } from './bones'
 import { filterVectors } from './filter'
-import { dot, heading, HZ, mean, norm, principalAxis, sub } from './math'
+import { dot, finite, heading, HZ, mean, norm, principalAxis, sub, sum } from './math'
 import { result, skipped, windowResult } from './result'
 import { runs } from './segments'
 
@@ -11,9 +11,9 @@ export function acfPeak(signal: readonly number[]): number | null {
   const n = signal.length
   const centre = (n - 1) / 2
   const m = mean(signal)
-  const slope = signal.reduce((s, x, i) => s + (i - centre) * (x - m), 0) / (n * (n * n - 1) / 12)
+  const slope = finite(sum(signal.map((x, i) => (i - centre) * (x - m))) / (n * (n * n - 1) / 12), 'ACF slope')
   const x = signal.map((v, i) => v - m - slope * (i - centre))
-  if (x.reduce((s, v) => s + v * v, 0) < 1e-18)
+  if (sum(x.map(v => v * v)) < 1e-18)
     return null
   const limit = Math.min(360, n - 2)
   const r = Array.from({ length: limit + 1 }, (_, k) => {
@@ -29,7 +29,11 @@ export function acfPeak(signal: readonly number[]): number | null {
       bb += (b[i] - mb) ** 2
       ab += (a[i] - ma) * (b[i] - mb)
     }
-    return aa * bb < 1e-36 ? 0 : ab / Math.sqrt(aa * bb)
+    finite(aa, 'ACF variance')
+    finite(bb, 'ACF variance')
+    finite(ab, 'ACF covariance')
+    const energy = finite(aa * bb, 'ACF energy product')
+    return energy < 1e-36 ? 0 : finite(ab / Math.sqrt(energy), 'ACF correlation')
   })
   const zero = r.findIndex((v, i) => i > 0 && v <= 0)
   if (zero < 0)
@@ -46,7 +50,7 @@ export function acfPeak(signal: readonly number[]): number | null {
 export function loopPeak(signal: readonly Vec3[]): number | null {
   const m: Vec3 = [mean(signal.map(v => v[0])), mean(signal.map(v => v[1])), mean(signal.map(v => v[2]))]
   const x = signal.map(v => sub(v, m))
-  const c0 = x.reduce((s, v) => s + dot(v, v), 0)
+  const c0 = sum(x.map(v => dot(v, v)))
   if (c0 < 1e-18)
     return null
   const limit = Math.min(1800, Math.floor(x.length / 2))
@@ -54,7 +58,7 @@ export function loopPeak(signal: readonly Vec3[]): number | null {
     let c = 0
     for (let i = 0; i < x.length - k; i++)
       c += dot(x[i], x[i + k])
-    return c / c0
+    return finite(c / c0, 'loop correlation')
   })
   const zero = rho.findIndex((v, i) => i > 0 && v <= 0)
   if (zero < 0)
@@ -126,8 +130,8 @@ export function periodMetrics(p: PreparedTrace): MetricResult[] {
   }
   else {
     const speed = head.map(norm).sort((a, b) => b - a)
-    const total = speed.reduce((a, b) => a + b, 0)
-    metrics.push(result('inter.head.top10PathShare', 'fraction', 'trace', total > 1e-18 ? speed.slice(0, Math.ceil(speed.length / 10)).reduce((a, b) => a + b, 0) / total : null))
+    const total = sum(speed)
+    metrics.push(result('inter.head.top10PathShare', 'fraction', 'trace', total > 1e-18 ? sum(speed.slice(0, Math.ceil(speed.length / 10))) / total : null))
   }
   return metrics
 }

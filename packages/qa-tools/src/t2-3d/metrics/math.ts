@@ -1,10 +1,20 @@
 import type { Quat, Vec3 } from './types'
 
+import { MotionTraceRefusal } from '../read-trace'
+
+/** Refuse arithmetic failure before a comparison, clamp or peak can erase it. */
+export function finite(value: number, operation: string): number {
+  if (!Number.isFinite(value))
+    throw new MotionTraceRefusal('trace-nonfinite', `Nonfinite ${operation}`)
+  return value
+}
+
+export const sum = (x: readonly number[]): number => x.reduce((a, b) => finite(a + b, 'sum'), 0)
 export const HZ = 60
 export const DEG = 180 / Math.PI
-export const mean = (x: readonly number[]): number => x.length ? x.reduce((a, b) => a + b, 0) / x.length : 0
-export const norm = (v: Vec3): number => Math.hypot(...v)
-export const dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+export const mean = (x: readonly number[]): number => x.length ? sum(x) / x.length : 0
+export const norm = (v: Vec3): number => finite(Math.hypot(...v), 'vector norm')
+export const dot = (a: Vec3, b: Vec3): number => finite(a[0] * b[0] + a[1] * b[1] + a[2] * b[2], 'dot product')
 export const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 export const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 export const scale = (a: Vec3, s: number): Vec3 => [a[0] * s, a[1] * s, a[2] * s]
@@ -51,8 +61,10 @@ export function rotationVector(q: Quat): Vec3 {
 }
 
 export function median(x: readonly number[]): number {
+  for (const value of x)
+    finite(value, 'median input')
   const a = [...x].sort((a, b) => a - b)
-  return a.length ? (a[Math.floor((a.length - 1) / 2)] + a[Math.floor(a.length / 2)]) / 2 : 0
+  return a.length ? finite(a[Math.floor((a.length - 1) / 2)] + a[Math.floor(a.length / 2)], 'median midpoint') / 2 : 0
 }
 
 export function cv(x: readonly number[]): number | null {
@@ -95,7 +107,11 @@ export function laggedCorrelation(a: readonly number[], b: readonly number[], li
       bb += y * y
       ab += x * y
     }
-    values.push(aa * bb < 1e-36 ? 0 : Math.max(-1, Math.min(1, ab / Math.sqrt(aa * bb))))
+    finite(aa, 'correlation variance')
+    finite(bb, 'correlation variance')
+    finite(ab, 'correlation covariance')
+    const energy = finite(aa * bb, 'correlation energy product')
+    values.push(energy < 1e-36 ? 0 : Math.max(-1, Math.min(1, finite(ab / Math.sqrt(energy), 'correlation'))))
   }
   if (values.every(v => v === 0))
     return null

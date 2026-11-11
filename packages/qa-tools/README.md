@@ -71,7 +71,7 @@ use head episodes only.
 | Refusal | Meaning |
 | --- | --- |
 | `trace-unreadable`, `trace-kind`, `trace-shape` | Unreadable file, unsupported format, or invalid rig/header/block shape. |
-| `trace-nonfinite`, `trace-unnormalized`, `time-nonmonotonic` | Unusable numeric data, non-unit rotations, or time that does not increase. |
+| `trace-nonfinite`, `trace-unnormalized`, `time-nonmonotonic` | Unusable numeric data or arithmetic overflow inside detectors, non-unit rotations, or time that does not increase. |
 | `rate-too-low`, `frame-gap`, `trace-too-short` | Sampling or duration cannot support judging. |
 | `rig-incomplete`, `non-upright`, `class-unknown` | Required rig or reference class is unavailable. |
 | `bands-hash-mismatch` | Frozen band bytes or version do not match the definition. |
