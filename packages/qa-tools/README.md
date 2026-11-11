@@ -105,8 +105,10 @@ use head episodes only.
 | `pool-mismatch` | Emotion traces differ in rig structure, known asset hashes, source level or source revision. Display ids are ignored. |
 
 Version 0 retains explicitly marked analytic fixtures. Version 1 uses frozen
-human-reference bands fitted per body side. Version 2, the current gate, fits
-mirrored body sides pooled. Frozen band files
+human-reference bands fitted per body side. Version 2 fits mirrored body sides
+pooled. Version 3, the current gate, keeps version 2's bands, reports the talk
+bands fitted per clip from locomoting talk performers, and gates emotion
+separation from neutral instead of all pairs. Frozen band files
 are immutable. Changing a band, detector, formula, window, or gated list requires
 the next version, a new file and SHA-256, in an isolated freeze commit before
 judging runs. A hash mismatch refuses scoring. A failing run never authorizes
@@ -281,17 +283,78 @@ failed left-side metrics only. No character data entered the fit. The user
 decided on 2026-11-11: "Arm bands: Gate v2, pooled sides (Recommended)".
 `bands-v1.json` stays in the repository unchanged as the record of version 1.
 
-The counts below describe frozen version 2. `fixtures/motion3d/bands-v2.json`
-records each metric, bound and report-only reason; `bands-v1.json` keeps
-version 1.
+#### Version 3: speech rules now, emotion clear of neutral, 2026-11-11
+
+The project owner decided on 2026-11-11: "Speech gate: Rules now, reference
+later (Recommended)" and "Emotion gate: Clear of neutral (Recommended)". Both
+decisions were made before any goal-3 motion code existed, on the evidence of
+a feasibility probe. That probe added designed gestures and emotion postures to
+a real Chisa trace and judged them with the frozen version 2 bands. Version 3
+carries these two decisions and nothing else. Every fitted bound, floor, move
+speed, held-out verdict and admission record is the same as in version 2.
+Idle, walk, gaze and touch are identical to version 2. No character motion
+data entered any band or rule.
+
+Speech. Every talk performer in the reference locomotes: storyteller 138,
+who supplies 11 of the 16 fitting window clips, has a median root speed of
+about 1 leg length/s. The talk activity floors and the clip-unit talk bands
+therefore describe a walking speaker. A calm, well-formed standing speaker
+missed the upper-arm floor by a factor of 2 to 3 and the trunk floors by up to
+12. Version 3 applies one rule: in the talk class, every gated band fitted per
+clip from the talk window clips becomes REPORT with the reason `talk
+reference performers locomote; floors are not valid for a standing speaker`.
+The values are still measured and printed, and the fitted bounds stay in the
+file. The rule selects 18 metrics, which version 3 no longer gates for speech:
+
+- the chain correlations `chain.spine-chest`, `chain.chest-neck`,
+  `chain.neck-head`, and both sides' `UpperArm-LowerArm` and `LowerArm-Hand`
+  (`zeroLagCorr`);
+- `coverage.core` and `coverage.arms`;
+- `bilateral.upperArm`, `bilateral.lowerArm` and `bilateral.hand`
+  (`peakCorr`);
+- `inter.speedCv`, `dim.upper` and `dim.core`;
+- `smooth.head.spikeRate`, `smooth.armL.spikeRate` and `smooth.armR.spikeRate`.
+
+This is a loss of gated checks for speech. Criterion-level rules make up for
+it, and those rules are not part of this gate. A standing-speaker reference is
+to be proposed later, under a further gate version. Talk still gates these
+metrics:
+
+- `smooth.head.ldlj`: reads the head move speed;
+- `onset.attackFraction` and `onset.easedOrAnticipated`: read the region move
+  speeds;
+- `gesture.strokeP` and `gesture.strokeLagMs`: read the arm move speeds;
+- `coverage.fingers`: reads the fitted talk hand floors;
+- `fingers.frozen`: reads no detector parameter.
+
+These parameters are version 2's talk move speeds and floors. The arm and
+hand values come from talk performers, but no metric here needs the trunk or
+upper arm to reach a reference floor.
+
+Emotion. Neutral has no posture, so `emotion.minSeparation` (all pairs,
+including neutral against placebo) was at most 0.474 for any posture set
+in the probe. It keeps its formula and its bound of 2 and is now REPORT. The new gated
+`emotion.minSeparationFromNeutral` is the minimum, over every emotion other
+than neutral, of its separation from neutral and its separation from the
+placebo. It uses the same pooled SD units and must be at least 2. The
+neutral-against-placebo pair is not part of it. A pool without a `neutral`
+condition skips the metric. This bar is lower than version 2's declared
+all-pairs bar, because pairs of two non-neutral emotions are no longer gated.
+The threshold of 2 was a declared number, transferred from the Live2D emotion
+gate. It was not fitted from human data. `emotion.armShare` and the onset
+bands are unchanged.
+
+The counts below describe frozen version 3. `fixtures/motion3d/bands-v3.json`
+records each metric, bound and report-only reason; `bands-v2.json` and
+`bands-v1.json` keep versions 2 and 1.
 
 | Scenario | Fitted gates and sides | Declared gates | Report only |
 | --- | --- | --- | --- |
 | idle | 27: non-vacuous chain correlation upper; ACF upper; core/arm coverage lower; bilateral upper; arm spike rates upper; head LDLJ two-sided; speed CV two-sided; core dimensionality lower | 5: head and two root loop peaks below 0.3; active-wrist finger coverage at least 0.5; frozen fingers equal 0 | 41: vacuous axial correlations, vacuous arm lags and other vacuous bounds, insufficient clip fits, spectra, arm LDLJ, long intermittency and idle acts |
-| speak (talk) | 21: chain correlations except shoulder-upper-arm; core/arm coverage; bilateral except shoulders; head LDLJ; head and arm spike rates; speed CV; dimensions; onset attack two-sided and eased share lower | 4: finger coverage and frozen fingers; stroke binomial tail at most 0.01 and hit lag -200 to 200 ms | 50: arm LDLJ with two held-out failures, insufficient clip fits, vacuous bounds, spectra, ACF, long intermittency, speech gains and anticipation |
+| speak (talk) | 3: head LDLJ; onset attack two-sided and eased share lower | 4: finger coverage and frozen fingers; stroke binomial tail at most 0.01 and hit lag -200 to 200 ms | 68: the 18 clip-unit talk bands reported for a standing speaker, arm LDLJ with two held-out failures, insufficient clip fits, vacuous bounds, spectra, ACF, long intermittency, speech gains and anticipation |
 | walk | 28: non-vacuous chain correlations and axial lags, coverage, bilateral, spike rates, speed CV and dimensions; pelvis twist, arm lag, heel pitch and turn head lead lower; chest counter and toe pitch upper | 2: finger coverage and frozen fingers | 43: vacuous bounds including neck-head correlation and arm lags, spectra, ACF, LDLJ and long intermittency |
 | gaze-shift | 3: settle and head onset attack two-sided; head eased share lower, from idle/talk episodes | 1: eye lead at least 0 ms | 69: chest lag with three held-out failures, vacuous order/overshoot bands, all core metrics and anticipation |
-| emotions | 2: onset attack two-sided and eased share lower from idle/talk episodes | 2: minimum separation at least 2 including placebo; arm share at least half the smallest of four emotion-style shares on one skeleton | 67: all core metrics, median separation, anticipation and unavailable long statistics |
+| emotions | 2: onset attack two-sided and eased share lower from idle/talk episodes | 2: separation of every non-neutral emotion from neutral and from placebo at least 2; arm share at least half the smallest of four emotion-style shares on one skeleton | 68: all core metrics, all-pairs and median separation, anticipation and unavailable long statistics |
 | touch | none | none | 68: every metric; cannot produce a gate pass |
 
 Fitted candidates without sufficient samples, vacuous bands, and metrics with
@@ -308,9 +371,10 @@ ordinal eye detector policy requires a lead decision.
 Chain metrics already use parent-relative angular velocity. Some axial pairs
 in the 100STYLE idle and walk clips are almost perfectly correlated: idle
 neck-head has median 0.999626. Their vacuous correlation bands remain report
-only, so versions 1 and 2 cannot reject neck-head synchrony through zero-lag correlation
-in idle or walk. The CMU talk band can; upper-arm/lower-arm and lower-arm/hand
-pairs remain gated in all three classes. UNVERIFIED: the capture solve may
+only, so versions 1 to 3 cannot reject neck-head synchrony through zero-lag correlation
+in idle or walk. The CMU talk band could in versions 1 and 2; version 3 reports
+it with the other talk chains. Upper-arm/lower-arm and lower-arm/hand pairs
+remain gated in idle and walk. UNVERIFIED: the capture solve may
 split one measured axial rotation across neighbouring segments of the 23-joint
 skeleton. The capture process has not been checked. The proposed duplicate
 chainRel family was withdrawn after examining reference values and before any

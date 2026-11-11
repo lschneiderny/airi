@@ -1,6 +1,6 @@
 # T2-3D body-motion quality measurement
 
-Status: accepted; version 2 freezes human-reference bands with mirrored sides pooled. Version 1 keeps per-side bands as a record. Version 0 retains analytic fixtures.
+Status: accepted; version 3 keeps version 2's bands, reports the talk bands fitted per clip from locomoting talk performers, and gates emotion separation from neutral. Version 2 (mirrored sides pooled) and version 1 (per-side bands) are kept as records. Version 0 retains analytic fixtures.
 
 ## Decision
 
@@ -62,10 +62,10 @@ Existing chain correlations use angular velocity relative to the parent.
 The 100STYLE idle and walk references have nearly identical axial signals:
 idle neck-head median correlation is 0.999626. Vacuous neck-head correlation
 bands, and idle spine-chest, stay REPORT rather than claiming discrimination
-the reference cannot support. Version 1 cannot reject neck-head synchrony
-through zero-lag correlation in idle or walk; the CMU talk band can. Arm
-upper/lower-segment pairs remain gated in every class with core reference
-fits. UNVERIFIED: the capture solve may distribute one measured rotation
+the reference cannot support. Versions 1 to 3 cannot reject neck-head synchrony
+through zero-lag correlation in idle or walk. The CMU talk band could in
+versions 1 and 2; version 3 reports it with the other talk chains. Arm
+upper/lower-segment pairs remain gated in idle and walk. UNVERIFIED: the capture solve may distribute one measured rotation
 across neighbouring axial segments of its 23-joint skeleton. This explanation
 has not been established from the capture process. The proposed chainRel
 duplicate was withdrawn after inspecting reference values and before any
@@ -92,7 +92,8 @@ rule and source. The lead's version 1 declarations are:
 | `gesture.strokeP` | at most 0.01 | Tests speech coupling against chance, not a human hit-rate distribution. |
 | `gesture.strokeLagMs` | -200 to 200 ms; no hit fails | A published coupling timescale, with no speech-paired reference capture. |
 | `emotion.armShare` | at least half the smallest of Angry, Depressed, Elated, Proud shares relative to Neutral | Four styled standing clips; requires the same skeleton or stays report only. |
-| `emotion.minSeparation` | at least 2, including every emotion against placebo | A detectability judgment transferred from the Live2D emotion standard. |
+| `emotion.minSeparation` | at least 2, including every emotion against placebo; REPORT from version 3 | A detectability judgment transferred from the Live2D emotion standard. Neutral against placebo cannot separate, because neutral has no posture. |
+| `emotion.minSeparationFromNeutral` (version 3) | at least 2, the minimum over every non-neutral emotion of its separation from neutral and from placebo | The same declared threshold, not fitted from human data; it no longer requires two non-neutral emotions to differ. |
 
 Emotion median separation, spectral concentration, long intermittency and idle
 act counts remain diagnostics. Idle ACF covers 1 to 6 s periods but cannot
@@ -251,6 +252,51 @@ independent validation. No character data entered the fit; the bands were
 rebuilt from the unchanged reference clips alone, and no band was adjusted
 by hand. The user decided on 2026-11-11: "Arm bands: Gate v2, pooled sides
 (Recommended)". `bands-v1.json` stays unchanged as the record of version 1.
+
+## Version 3: speech rules now, emotion clear of neutral, 2026-11-11
+
+Decisions: the project owner decided on 2026-11-11: "Speech gate: Rules now,
+reference later (Recommended)" and "Emotion gate: Clear of neutral
+(Recommended)". Both were made before any goal-3 motion code existed. The
+evidence was a feasibility probe that added designed gestures and emotion
+postures to a real Chisa trace and judged them with the frozen version 2 bands.
+Version 3 carries these two decisions and nothing else. No character motion
+data entered any band or rule. Every fitted bound, floor, move speed, held-out
+verdict and admission record equals version 2. Idle, walk, gaze and react are
+byte-identical to version 2 in the bands file.
+
+Speech. The talk reference performers locomote. Storyteller 138 supplies 11 of
+the 16 fitting window clips, at a median root speed of about 1 leg length/s, so
+the talk floors describe a walking speaker. In the probe, a calm, well-formed
+standing speaker missed the upper-arm floor by a factor of 2 to 3 and the trunk
+floors by up to 12. A stationarity-filtered refit left one fitting window clip.
+Rule: in the talk class, every gated band
+fitted per clip from the talk window clips becomes REPORT with the reason
+`talk reference performers locomote; floors are not valid for a standing
+speaker`. The rule yields 18 metrics, which version 3 no longer gates for
+speech: the seven talk chain correlations, `coverage.core`, `coverage.arms`,
+`bilateral.upperArm`, `bilateral.lowerArm`, `bilateral.hand`,
+`inter.speedCv`, `dim.upper`, `dim.core`, and `smooth.head.spikeRate`,
+`smooth.armL.spikeRate` and `smooth.armR.spikeRate`. This is a loss of gated
+checks, made up by criterion-level rules outside this gate. The values are
+still measured and printed. Talk still gates `smooth.head.ldlj`,
+`onset.attackFraction` and `onset.easedOrAnticipated` (episode bands that
+read move speeds), and the declared `coverage.fingers` (reads the talk hand
+floors), `fingers.frozen`, `gesture.strokeP` and `gesture.strokeLagMs` (read
+the arm move speeds). A standing-speaker reference is to be proposed later,
+under a further version.
+
+Emotion. Neutral has no posture in Natural or in the designed posture set, so
+neutral against placebo stayed at 0.474 SD for every posture set probed, and the
+all-pairs `emotion.minSeparation` could not reach 2. It keeps its formula and
+its bound and becomes REPORT. The gated
+`emotion.minSeparationFromNeutral` takes, over every emotion other than
+neutral, the smaller of its separations from neutral and from the placebo, in
+the same pooled SD units, and requires at least 2. Neutral against placebo is
+excluded. This bar is lower than version 2's declared all-pairs bar, because
+pairs of two non-neutral emotions are no longer gated. The threshold of 2 is a
+declared number, not fitted from human data. `emotion.armShare` and the onset
+bands are unchanged.
 
 Acceptance can now demand named metrics with `gate --require <ids>`.
 Every named metric must be `PASS` in every supplied verdict; the requirement
