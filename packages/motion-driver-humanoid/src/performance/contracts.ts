@@ -11,6 +11,43 @@ export type BodyRest = 'none' | 'rest' | 'doze'
 export type BodyActId = 'sigh' | 'shoulder-roll' | 'foot-replant' | 'look-around' | 'hand-inspect' | 'clasp-rock' | 'arm-swing' | 'hair-tuck' | 'yawn' | 'peek-chat' | 'heel-raise' | 'wave'
 export type BodyEmotion = PerformanceEmotion
 export type BodyHeadTerm = 'emphasis' | 'impulse' | 'pet' | 'held' | 'gesture' | 'cue'
+export type BodyCueKind = 'nod' | 'shake' | 'shrug' | 'lean' | 'glance'
+/** Architecture 4a gesture forms; `hand-to-chest` and `thinking-hand` are the emotion-requested arm forms. */
+export type BodyGestureForm = 'beat' | 'palm-up' | 'press' | 'point' | 'chop' | 'frame' | 'hand-to-chest' | 'thinking-hand'
+export type BodyArmForm = Extract<BodyGestureForm, 'hand-to-chest' | 'thinking-hand'>
+export type BodyGestureHand = BodySide | 'both'
+export type BodyGesturePhase = 'rest' | 'preparation' | 'stroke' | 'hold' | 'retraction'
+export type BodyReactionKind = 'body-poke' | 'head-poke' | 'pet' | 'drag'
+
+/**
+ * A gesture layer's report of its unit. `unitSeq` increments when a unit starts and `strokeSeq` when a stroke is
+ * planned; `plannedHit` is that stroke's planned hit in performer seconds, null between strokes.
+ */
+export interface BodyGestureReport {
+  readonly unitSeq: number
+  readonly strokeSeq: number
+  readonly form: BodyGestureForm | null
+  readonly hand: BodyGestureHand | null
+  readonly phase: BodyGesturePhase
+  readonly plannedHit: number | null
+}
+
+/** `seq` increments once per realised cue, emotion posture onset or release, or reaction. */
+export interface BodyCueReport {
+  readonly seq: number
+  readonly kind: BodyCueKind | null
+}
+
+export interface BodyEmotionReport {
+  readonly seq: number
+  readonly emotion: PerformanceEmotion | null
+  readonly phase: 'onset' | 'release' | null
+}
+
+export interface BodyReactionReport {
+  readonly seq: number
+  readonly kind: BodyReactionKind | null
+}
 
 export class BodyRigError extends Error {
   constructor(readonly field: string) {
@@ -107,7 +144,7 @@ export interface BodyPerformanceInput {
   readonly events: {
     readonly impulse: { readonly seq: number, readonly at: number, readonly emotion: BodyEmotion, readonly intensity: number, readonly band: Band, readonly side: number } | null
     readonly gesture: { readonly seq: number, readonly at: number, readonly kind: 'laugh' | 'recoil' | 'shake' | 'drop' | 'sway' | 'tilt-in' | 'look-away' | 'nod-off', readonly side: number, readonly scale: number, readonly lifetime: number } | null
-    readonly cue: { readonly seq: number, readonly start: number, readonly end: number, readonly kind: 'nod' | 'shake' | 'shrug' | 'lean' | 'glance', readonly count: number, readonly side: number } | null
+    readonly cue: { readonly seq: number, readonly start: number, readonly end: number, readonly kind: BodyCueKind, readonly count: number, readonly side: number } | null
     readonly poke: { readonly seq: number, readonly at: number, readonly region: 'head' | 'body', readonly x: number, readonly y: number } | null
     readonly pet: { readonly level: number, readonly active: boolean, readonly x: number, readonly y: number }
     readonly react: { readonly seq: number, readonly at: number, readonly kind: 'wake' | 'screen-change' } | null
@@ -188,5 +225,13 @@ export interface BodyPerformanceFrame {
      * A hold (`collisions.count`) follows a failed scan.
      */
     readonly corrector: { readonly capHits: number, readonly guardScans: number }
+    /**
+     * The latest report of each layer kind (zeros and nulls while no layer reports). `gesture.activation` is the
+     * largest weight any gesture layer applied this tick to a channel of each side's arm, measured by the stack.
+     */
+    readonly gesture: BodyGestureReport & { readonly activation: Readonly<Record<BodySide, number>> }
+    readonly cue: BodyCueReport
+    readonly emotion: BodyEmotionReport
+    readonly reaction: BodyReactionReport
   }
 }

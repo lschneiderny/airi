@@ -1,8 +1,19 @@
 import type { TurnStep } from '../look-at'
-import type { BodyActFeedback, BodyCapabilities, BodyGazeGoal, BodyPerformanceFrame, BodyPerformanceInput, BodyRigTraits } from './contracts'
+import type { BodySide } from './channels'
+import type { BodyActFeedback, BodyArmForm, BodyCapabilities, BodyCueReport, BodyEmotionReport, BodyGazeGoal, BodyGestureReport, BodyPerformanceFrame, BodyPerformanceInput, BodyReactionReport, BodyRigTraits } from './contracts'
 
 import { createInertializer, minJerk } from '../dynamics'
-import { BODY_CHANNELS, BODY_TICK } from './channels'
+import { ARM_START, BODY_CHANNELS, BODY_TICK, SIDES } from './channels'
+
+type Mutable<T> = { -readonly [K in keyof T]: T[K] }
+
+/** Every layer's plan merged for this tick, before any generator runs. */
+export interface MergedPerformancePlan {
+  readonly support: number | null
+  readonly gaze: BodyGazeGoal | null
+  readonly armForm: { readonly side: BodySide, readonly form: BodyArmForm } | null
+  readonly suppressHeadCue: boolean
+}
 
 export interface PerformanceContext {
   readonly input: BodyPerformanceInput
@@ -10,6 +21,7 @@ export interface PerformanceContext {
   readonly capabilities: BodyCapabilities
   readonly rest: Float32Array
   readonly previous: BodyPerformanceFrame
+  readonly plan: MergedPerformancePlan
   readonly tick: number
   readonly time: number
   readonly dt: number
@@ -29,12 +41,21 @@ export interface LayerOutput {
   readonly mouthOpen?: number
   readonly act?: BodyActFeedback | null
   readonly footSteps?: readonly TurnStep[]
+  /** Reports that replace the stack's latest report of that kind; later layers in stack order win. */
+  readonly gesture?: BodyGestureReport
+  readonly cue?: BodyCueReport
+  readonly emotion?: BodyEmotionReport
+  readonly reaction?: BodyReactionReport
 }
 
 /** Intent overrides are sampled before generators; targets still blend in stack order afterwards. */
 export interface PerformancePlan {
   readonly support?: number
   readonly gaze?: BodyGazeGoal
+  /** An emotion-requested arm form for the gesture layer to perform as a held form; the latest layer wins. */
+  readonly armForm?: MergedPerformancePlan['armForm']
+  /** The cue layer plays the head cue itself, so the head posture drops Natural's cue term; any layer may set it. */
+  readonly suppressHeadCue?: boolean
 }
 
 export interface PerformanceLayer {
@@ -55,7 +76,11 @@ const emptySteps: readonly TurnStep[] = []
 /** Channels stay warm under ownership; admission decisions belong to each layer via context.input.owned. */
 export class PerformanceStack {
   readonly activation = new Float64Array(BODY_CHANNELS.length)
-  readonly plan: { support: number | null, gaze: BodyGazeGoal | null } = { support: null, gaze: null }
+  readonly plan: Mutable<MergedPerformancePlan> = { support: null, gaze: null, armForm: null, suppressHeadCue: false }
+  readonly gesture: Mutable<BodyGestureReport> & { activation: Record<BodySide, number> } = { unitSeq: 0, strokeSeq: 0, form: null, hand: null, phase: 'rest', plannedHit: null, activation: { left: 0, right: 0 } }
+  readonly cue: Mutable<BodyCueReport> = { seq: 0, kind: null }
+  readonly emotion: Mutable<BodyEmotionReport> = { seq: 0, emotion: null, phase: null }
+  readonly reaction: Mutable<BodyReactionReport> = { seq: 0, kind: null }
   lidClose = 0
   mouthOpen = 0
   act: BodyActFeedback | null = null
@@ -83,12 +108,18 @@ export class PerformanceStack {
   prepare(context: PerformanceContext): void {
     this.plan.support = null
     this.plan.gaze = null
+    this.plan.armForm = null
+    this.plan.suppressHeadCue = false
     for (const { layer } of this.entries) {
       const plan = layer.plan?.(context)
       if (plan?.support !== undefined)
         this.plan.support = plan.support
       if (plan?.gaze !== undefined)
         this.plan.gaze = plan.gaze
+      if (plan?.armForm !== undefined)
+        this.plan.armForm = plan.armForm
+      if (plan?.suppressHeadCue)
+        this.plan.suppressHeadCue = true
     }
   }
 
@@ -99,6 +130,7 @@ export class PerformanceStack {
     this.lidClose = this.mouthOpen = 0
     this.act = null
     this.footSteps = emptySteps
+    this.gesture.activation.left = this.gesture.activation.right = 0
     for (const entry of this.entries) {
       const { layer } = entry
       const output = layer.step(context)
@@ -135,6 +167,20 @@ export class PerformanceStack {
         this.act = output.act
       if (output.footSteps?.length)
         this.footSteps = output.footSteps
+      if (output.gesture)
+        Object.assign(this.gesture, output.gesture)
+      if (output.cue)
+        Object.assign(this.cue, output.cue)
+      if (output.emotion)
+        Object.assign(this.emotion, output.emotion)
+      if (output.reaction)
+        Object.assign(this.reaction, output.reaction)
+      if (layer.order === 'gesture') {
+        for (const side of SIDES) {
+          for (let c = ARM_START[side]; c < ARM_START[side] + 26; c++)
+            this.gesture.activation[side] = Math.max(this.gesture.activation[side], weight * layer.mask[c])
+        }
+      }
     }
     this.inertia.step()
     for (let c = 0; c < channels.length; c++) {

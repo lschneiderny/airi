@@ -79,4 +79,41 @@ describe('performance layer stack', () => {
     expect(input.posture.support).toBe(0)
     expect(input.gaze.yaw).toBe(0)
   })
+
+  it('merges arm-form and head-cue plans before any layer steps on the same tick', () => {
+    const mask = new Float64Array(BODY_CHANNELS.length)
+    const channels = new Float64Array(BODY_CHANNELS.length)
+    const seen: unknown[] = []
+    const layers: PerformanceLayer[] = [
+      { id: 'emotion', order: 'emotion', mode: 'additive', mask, plan: () => ({ armForm: { side: 'left', form: 'hand-to-chest' } }), step: (context) => {
+        seen.push({ ...context.plan })
+        return { channels, weight: 0, sequence: 0 }
+      }, reset() {} },
+      { id: 'cue', order: 'cue', mode: 'additive', mask, plan: () => ({ suppressHeadCue: true }), step: () => ({ channels, weight: 0, sequence: 0 }), reset() {} },
+    ]
+    createBodyPerformer({ traits, seed: 1, layers }).step(quietInput())
+    expect(seen).toEqual([{ support: null, gaze: null, armForm: { side: 'left', form: 'hand-to-chest' }, suppressHeadCue: true }])
+  })
+
+  it('reports the latest layer report and the gesture weight it applied per arm', () => {
+    const mask = new Float64Array(BODY_CHANNELS.length)
+    mask[channelIndex('rightElbow')] = 0.5
+    const channels = new Float64Array(BODY_CHANNELS.length)
+    const gesture = { unitSeq: 2, strokeSeq: 5, form: 'beat', hand: 'right', phase: 'stroke', plannedHit: 0.1 } as const
+    const layer: PerformanceLayer = {
+      id: 'gesture',
+      order: 'gesture',
+      mode: 'override',
+      mask,
+      enterSeconds: 0,
+      step: () => ({ channels, weight: 1, sequence: 0, gesture, cue: { seq: 1, kind: 'nod' } }),
+      reset() {},
+    }
+    const performer = createBodyPerformer({ traits, seed: 1, layers: [layer] })
+    const frame = performer.step(quietInput())
+    expect(frame.diagnostics.gesture).toEqual({ ...gesture, activation: { left: 0, right: 0.5 } })
+    expect(frame.diagnostics.cue).toEqual({ seq: 1, kind: 'nod' })
+    expect(frame.diagnostics.emotion).toEqual({ seq: 0, emotion: null, phase: null })
+    expect(createBodyPerformer({ traits, seed: 1 }).step(quietInput()).diagnostics.gesture.activation).toEqual({ left: 0, right: 0 })
+  })
 })

@@ -23,9 +23,11 @@ export { BODY_CHANNELS, BODY_TICK, channelGroup, channelIndex, JOINT_LIMITS } fr
 export { BodyCollision, colliderDistance, proxyColliders } from './collision'
 export { BodyRigError } from './contracts'
 export type * from './contracts'
+export type { HandShape, HandShapeSpec } from './hand-shapes'
+export { HAND_SHAPES } from './hand-shapes'
 export type { BodyTransform } from './skeleton'
 export { BodySkeleton, spineWeights } from './skeleton'
-export type { LayerOutput, PerformanceContext, PerformanceLayer, PerformancePlan } from './stack'
+export type { LayerOutput, MergedPerformancePlan, PerformanceContext, PerformanceLayer, PerformancePlan } from './stack'
 
 export interface BodyPerformerOptions {
   readonly traits: BodyRigTraits
@@ -80,6 +82,7 @@ class BodyPerformer {
       rest[c] = limitChannel(c, rest[c])
     this.degrade(rest)
     const collision = new BodyCollision(traits, rest)
+    const stack = new PerformanceStack(this.options.layers ?? [])
     const frame: MutableFrame = {
       tick: 0,
       channels: rest.slice(),
@@ -108,6 +111,10 @@ class BodyPerformer {
         headPenetration: collision.headPenetration,
         collisions: collision.collisions,
         corrector: collision.corrector,
+        gesture: stack.gesture,
+        cue: stack.cue,
+        emotion: stack.emotion,
+        reaction: stack.reaction,
       },
     }
     for (const layer of this.options.layers ?? [])
@@ -120,7 +127,7 @@ class BodyPerformer {
       posture: new BodyPosture(traits, seed),
       breath: new BodyBreath(),
       gaze: new BodyGaze(seed),
-      stack: new PerformanceStack(this.options.layers ?? []),
+      stack,
       skeleton: new BodySkeleton(traits),
       turns: createTurnPlanner(),
       targets: new Float64Array(BODY_CHANNELS.length),
@@ -138,6 +145,7 @@ class BodyPerformer {
       capabilities: frame.capabilities,
       rest: state.rest,
       previous: frame,
+      plan: stack.plan,
       tick: 0,
       time: 0,
       dt: BODY_TICK,

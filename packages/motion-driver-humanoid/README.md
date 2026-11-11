@@ -404,7 +404,15 @@ optional additive channels, morph requests, foot-step events and act feedback.
 The stack supplies smooth entry/exit and inertializes sequence changes.
 Mixed override/additive output supports arm gestures with additive torso
 motion. The context exposes full intent, capabilities, initial rest, the
-previous frame, tick and time. Layers implement clip admission/cancellation
+previous frame, the merged plan, tick and time. Besides support and gaze, a
+plan may request an emotion arm form (`armForm`, hand to chest or the thinking
+hand, for the gesture layer to hold) and `suppressHeadCue`, which hands the
+head cue to the cue layer. A step may also return its `gesture`, `cue`,
+`emotion` or `reaction` report; the frame's diagnostics carry the latest one
+of each kind, and `diagnostics.gesture.activation` is the weight the stack
+applied to each arm through gesture-order layers. Hosts turn report sequence
+changes into trace events. `HAND_SHAPES` holds architecture 4a's six hand
+shapes as data; no layer consumes them yet. Layers implement clip admission/cancellation
 from `input.owned`; generators and followers keep integrating beneath clips.
 The adapter applies `1 - owned[group]` exactly once at bone writes.
 
