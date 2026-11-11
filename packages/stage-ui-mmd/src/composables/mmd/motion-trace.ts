@@ -12,10 +12,12 @@ import { Matrix4, Quaternion, Vector3 } from 'three'
 import { HUMANOID_FINGER_CANDIDATES, MMD_CONTROL_BONE_CANDIDATES } from './rig/bone-map'
 
 /**
- * The trace event of a body `blink` or `gaze-shift` at motion time `t`. Both are `marker` events: `blink:<body|natural>`
- * for the source that closes the lids the face shows, and
- * `gaze-shift:<amplitude>:<signed yaw change>:<goal kind>`, angles in degrees with two decimals and the yaw signed
- * explicitly (positive toward the character's left), so a reader of the first field still reads the amplitude.
+ * The trace event of a body event at motion time `t`. All are `marker` events: `blink:<body|natural>` for the source
+ * that closes the lids the face shows; `gaze-shift:<amplitude>:<signed yaw change>:<goal kind>`, angles in degrees
+ * with two decimals and the yaw signed explicitly (positive toward the character's left), so a reader of the first
+ * field still reads the amplitude; and the layer markers `gesture-stroke:<form>:<left|right|both>:<unitSeq>` at the
+ * planned hit, `gesture-unit:<start|end>`, `cue:<kind>:<seq>`, `emotion-posture:<emotion>:<onset|release>` and
+ * `reaction:<kind>`.
  */
 export function mmdBodyTraceEvent(event: MMDBodyEvent, t: number): MotionTraceEvent {
   // NOTICE:
@@ -23,9 +25,26 @@ export function mmdBodyTraceEvent(event: MMDBodyEvent, t: number): MotionTraceEv
   // Root cause: the trace v1 reader validates a closed set of event kinds and refuses any other.
   // Source: packages/qa-tools/src/t2-3d/read-trace.ts, `eventSchema`.
   // Removal condition: the reader accepts `blink` and `gaze-shift` kinds.
-  return event.kind === 'blink'
-    ? { t, kind: 'marker', label: `blink:${event.source}` }
-    : { t, kind: 'marker', label: `gaze-shift:${event.amplitudeDeg.toFixed(2)}:${event.yawDeg >= 0 ? '+' : ''}${event.yawDeg.toFixed(2)}:${event.goal}` }
+  switch (event.kind) {
+    case 'blink':
+      return { t, kind: 'marker', label: `blink:${event.source}` }
+    case 'gaze-shift':
+      return { t, kind: 'marker', label: `gaze-shift:${event.amplitudeDeg.toFixed(2)}:${event.yawDeg >= 0 ? '+' : ''}${event.yawDeg.toFixed(2)}:${event.goal}` }
+    case 'gesture-stroke':
+      return { t, kind: 'marker', label: `gesture-stroke:${event.form}:${event.hand}:${event.unitSeq}` }
+    case 'gesture-unit':
+      return { t, kind: 'marker', label: `gesture-unit:${event.phase}` }
+    case 'cue':
+      return { t, kind: 'marker', label: `cue:${event.cue}:${event.seq}` }
+    case 'emotion-posture':
+      return { t, kind: 'marker', label: `emotion-posture:${event.emotion}:${event.phase}` }
+    case 'reaction':
+      return { t, kind: 'marker', label: `reaction:${event.reaction}` }
+    default: {
+      const exhaustive: never = event
+      return exhaustive
+    }
+  }
 }
 
 /**

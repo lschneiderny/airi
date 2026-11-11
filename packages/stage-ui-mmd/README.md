@@ -298,6 +298,14 @@ scene recorder and the headless runner pass them to the sampler's `bodyEvent`,
 which records them as trace `marker` events labelled `blink` and
 `gaze-shift:<amplitude>:<signed yaw>:<goal kind>` (degrees, the yaw positive toward
 the character's left), stamped with the time of the frame that raised them.
+The performer also turns the core's layer reports into markers:
+`gesture-stroke:<form>:<left|right|both>:<unitSeq>` on the tick that reaches the
+stroke's planned hit, `gesture-unit:start` and `gesture-unit:end`,
+`cue:<kind>:<seq>`, `emotion-posture:<emotion>:<onset|release>` and
+`reaction:<kind>`. No layer produces them yet. Every bone write also records the
+largest angle between the written local rotation and the clean pose per written
+group (`performance.writeDeviationRad`), measured on the bone, so a fully owned
+group can be checked against the clip it should leave untouched.
 
 Ducking follows clip ownership (below), not raw clip weights, and is applied
 once per written group as `clean * slerp(I, delta, 1 - owned)`. Looping stance
@@ -414,7 +422,7 @@ running (no model, the Classic driver, or the classic window).
 | `overlays` | The `MMDOverlayFlags` the stage draws. |
 | `ownership` | The body's clip ownership per mask group (`root`, `leftLegIk`, `rightLegIk`, `lowerBody`, `leftArm`, `rightArm`, `leftFingers`, `rightFingers`, `upperBody`, `head`; 0-1) while the Natural driver runs. |
 | `trace { state, frames, bones, seconds, refused }` | Scene recorder state (`idle`, `recording`, `stopped`), sample and bone counts, motion duration, and named refusal; null without a recorder or refusal. |
-| `performance { tick, layers, support, shift { target, dwellS }, breath { speechLift, inhales }, gaze { kind, shiftDeg, eyeDeg, headDeg, trunkDeg, shifts, blinks }, correctionDeg { left, right }, collision { count, last } }` | The body performer while Natural drives the model: 120 Hz ticks since its reset, each performance layer as 1 on or 0 off, the weight support (+1 on the right foot), the scheduled support target and remaining dwell, the speech chest lift and phrase inhale count, the gaze goal kind with the last planned shift, eye, head and trunk angles in degrees and the shift and body-blink counts, the arm collision correction in degrees, and the count of ticks on which an arm kept its previous pose for want of a clear one, with the last one (`side`, `depth`, `tick`). |
+| `performance { tick, layers, support, shift { target, dwellS }, breath { speechLift, inhales }, gaze { kind, shiftDeg, eyeDeg, headDeg, trunkDeg, shifts, blinks }, correctionDeg { left, right }, collision { count, last }, corrector { capHits, guardScans }, writeDeviationRad { hips, torso, head, leftArm, rightArm, leftFingers, rightFingers }, gestureActivation { left, right }, arms { deg { left, right }, restDeg { left, right } } }` | The body performer while Natural drives the model: 120 Hz ticks since its reset, each performance layer as 1 on or 0 off, the weight support (+1 on the right foot), the scheduled support target and remaining dwell, the speech chest lift and phrase inhale count, the gaze goal kind with the last planned shift, eye, head and trunk angles in degrees and the shift and body-blink counts, the arm collision correction in degrees, the corrector's cap-hit and guard-scan arm ticks, this frame's largest write deviation from the clean pose per written group in radians, the gesture-layer weight applied to each arm, the nine displayed arm angles per side with their rest values in degrees, and the count of ticks on which an arm kept its previous pose for want of a clear one, with the last one (`side`, `depth`, `tick`). |
 
 The `director` block carries `MMDStanceDiagnostics` plus `clockOffsetMs` (the
 `advanceDirectorClock` total) and `centerY` (the センター bone's Y in model

@@ -1,4 +1,8 @@
-import { BODY_CHANNELS, BodySkeleton, channelIndex } from '@proj-airi/motion-driver-humanoid/performance'
+import type { BodyGestureReport, BodyPerformanceInput, LayerOutput, PerformanceLayer } from '@proj-airi/motion-driver-humanoid/performance'
+
+import type { MMDBodyEvent } from './performer'
+
+import { BODY_CHANNELS, BODY_TICK, BodySkeleton, channelIndex } from '@proj-airi/motion-driver-humanoid/performance'
 import { Euler, Quaternion, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 
@@ -18,6 +22,28 @@ function performerOf(fixture: ReturnType<typeof bodyFixture>) {
   if (!traits)
     throw new TypeError('The fixture rig must yield body traits')
   return { traits, performer: new MMDBodyPerformer(new MMDBodyPose(mmd, rig), traits, { seed: 1, onEvent: () => {} }) }
+}
+
+const zero = { yaw: 0, pitch: 0, roll: 0 }
+const stillInput: BodyPerformanceInput = {
+  head: { attitude: zero, slow: zero, terms: { emphasis: zero, impulse: zero, pet: zero, held: zero, gesture: zero, cue: zero } },
+  posture: { amplitude: 0, shiftRate: 0, support: 0 },
+  gaze: { yaw: 0, pitch: 0, kind: 'sustained', saccadeSeq: 0, blinkFactor: 1, micro: { yaw: 0, pitch: 0 } },
+  breath: { phase: 0, period: 4, scale: 0 },
+  voice: { speaking: false, level: 0, slow: 0, onsetSeq: 0, emphasis: null },
+  mood: { valence: 0, arousal: 0, tension: 0 },
+  energy: { level: 0.5, mode: 'idle', away: false, reactingUntil: 0 },
+  held: { emotion: null, strength: 0, level: 0, side: 1 },
+  events: { impulse: null, gesture: null, cue: null, poke: null, pet: { level: 0, active: false, x: 0, y: 0 }, react: null },
+  directive: { stance: 'stand', rest: 'none', act: null },
+  facingYaw: 0,
+  allowTurn: false,
+  dragging: false,
+  attention: { approach: 0, cursorShare: 0 },
+  rootVelocity: { x: 0, y: 0, z: 0 },
+  owned: { root: 0, leftLegIk: 0, rightLegIk: 0, lowerBody: 0, leftArm: 0, rightArm: 0, leftFingers: 0, rightFingers: 0, upperBody: 0, head: 0 },
+  gait: null,
+  armLift: { left: 0, right: 0 },
 }
 
 function channels(values: Partial<Record<typeof BODY_CHANNELS[number], number>>): Float32Array {
@@ -71,6 +97,50 @@ describe('mmd body performer adapter', () => {
       expect(1 - Math.abs(bone.quaternion.dot(clean.quaternions[index]))).toBeLessThan(1e-12)
       expect(bone.position.distanceTo(clean.positions[index])).toBeLessThan(1e-9)
     })
+  })
+
+  it('raises layer markers from the core reports, each stroke on the tick that reaches its planned hit', () => {
+    const fixture = bodyFixture()
+    const { traits } = performerOf(fixture)
+    const events: { tick: number, event: MMDBodyEvent }[] = []
+    let tick = 0
+    const empty = new Float64Array(BODY_CHANNELS.length)
+    // Tick 2 starts unit 1 and plans a right-hand beat to hit at tick 6; tick 8 returns to rest; tick 3 reports a nod,
+    // an emotion onset and a poke flinch.
+    const output = (t: number): LayerOutput => {
+      const gesture: BodyGestureReport = t < 2
+        ? { unitSeq: 0, strokeSeq: 0, form: null, hand: null, phase: 'rest', plannedHit: null }
+        : t < 8
+          ? { unitSeq: 1, strokeSeq: 1, form: 'beat', hand: 'right', phase: 'stroke', plannedHit: 6 * BODY_TICK }
+          : { unitSeq: 1, strokeSeq: 1, form: null, hand: null, phase: 'rest', plannedHit: null }
+      return t < 3
+        ? { channels: empty, weight: 0, sequence: 0, gesture }
+        : { channels: empty, weight: 0, sequence: 0, gesture, cue: { seq: 1, kind: 'nod' }, emotion: { seq: 1, emotion: 'happy', phase: 'onset' }, reaction: { seq: 1, kind: 'body-poke' } }
+    }
+    const layer: PerformanceLayer = { id: 'reports', order: 'gesture', mode: 'additive', mask: empty, step: context => output(context.tick), reset() {} }
+    const performer = new MMDBodyPerformer(new MMDBodyPose(fixture.mmd, fixture.rig), traits, { seed: 1, layers: [layer], onEvent: event => events.push({ tick, event }) })
+    for (tick = 1; tick <= 10; tick++)
+      performer.step(stillInput)
+    expect(events).toEqual([
+      { tick: 2, event: { kind: 'gesture-unit', phase: 'start', unitSeq: 1 } },
+      { tick: 3, event: { kind: 'cue', cue: 'nod', seq: 1 } },
+      { tick: 3, event: { kind: 'emotion-posture', emotion: 'happy', phase: 'onset' } },
+      { tick: 3, event: { kind: 'reaction', reaction: 'body-poke' } },
+      { tick: 6, event: { kind: 'gesture-stroke', form: 'beat', hand: 'right', unitSeq: 1 } },
+      { tick: 8, event: { kind: 'gesture-unit', phase: 'end', unitSeq: 1 } },
+    ])
+  })
+
+  it('reports a write deviation of 0 for a fully owned group and the written angle for a free one', () => {
+    const fixture = bodyFixture()
+    const { performer } = performerOf(fixture)
+    const pose = channels({ rightFlex: 0.4, rightElbow: 0.5, leftFlex: 0.4, leftElbow: 0.5 })
+    performer.beginFrame()
+    performer.applyArms(fixture.pipeline.clean, { ...free, rightArm: 1, rightFingers: 1 }, pose)
+    expect(performer.writeDeviation.rightArm).toBe(0)
+    expect(performer.writeDeviation.leftArm).toBeGreaterThan(0.3)
+    performer.beginFrame()
+    expect(performer.writeDeviation.leftArm).toBe(0)
   })
 
   it('never writes a physics-owned bone', () => {

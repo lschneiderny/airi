@@ -119,7 +119,10 @@ export interface MMDMotionSnapshot {
    * support target and remaining dwell; `breath` the speech chest lift and phrase inhale count; `gaze` the goal kind,
    * the last planned shift and the eye, head and trunk angles in degrees with the shift and body blink counts;
    * `correctionDeg` the arm collision correction; `collision` the count of ticks on which an arm had no clear pose and
-   * kept its previous one, with the latest side, depth and tick.
+   * kept its previous one, with the latest side, depth and tick. Appended: `corrector` counts the arm ticks on which the
+   * 6 degree cap bounded a projection and on which the guard scan began; `writeDeviationRad` the largest angle this
+   * frame between a written local rotation and the clean pose per written group; `gestureActivation` the weight gesture
+   * layers applied to each arm; `arms` the nine displayed arm angles per side and their rest values, in degrees.
    */
   performance: {
     tick: number
@@ -130,6 +133,10 @@ export interface MMDMotionSnapshot {
     gaze: { kind: 'sustained' | 'free' | 'travel', shiftDeg: number, eyeDeg: number, headDeg: number, trunkDeg: number, shifts: number, blinks: number }
     correctionDeg: { left: number, right: number }
     collision: { count: number, last: { side: 'left' | 'right', depth: number, tick: number } | null }
+    corrector: { capHits: number, guardScans: number }
+    writeDeviationRad: { hips: number, torso: number, head: number, leftArm: number, rightArm: number, leftFingers: number, rightFingers: number }
+    gestureActivation: { left: number, right: number }
+    arms: { deg: { left: number[], right: number[] }, restDeg: { left: number[], right: number[] } }
   } | null
 }
 
