@@ -28,7 +28,7 @@ export function judgeMetrics(measurements: readonly MetricResult[], bands: Motio
   })
 }
 
-export function judgeTrace(input: DecodedMotionTrace, bands: MotionBandsFile, identity: { readonly path: string, readonly sha256: string }, pooled?: { readonly measurements: readonly MetricResult[], readonly from: readonly string[] }): MotionVerdict {
+export function judgeTrace(input: DecodedMotionTrace, bands: MotionBandsFile, identity: { readonly path: string, readonly sha256: string }, pooled?: { readonly measurements: readonly MetricResult[], readonly from: NonNullable<MotionVerdict['pooledFrom']> }): MotionVerdict {
   const timing = checkTrace(input, bands)
   const scenario = input.trace.source.scenario
   const classBands = bands.classes[scenario.class]

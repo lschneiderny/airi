@@ -1,5 +1,6 @@
 import type { Motion3dCliContext } from '../../../bin/motion3d'
 import type { MotionBandsFile, MotionVerdict } from '../gate/types'
+import type { MetricResult } from '../metrics'
 import type { DecodedMotionTrace } from '../read-trace'
 
 import { readFile, writeFile } from 'node:fs/promises'
@@ -29,7 +30,7 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
     bandsRefusal = error
   }
   const entries: { dir: string, path: string, input?: DecodedMotionTrace, sha256?: string, refusal?: GateRefusal | MotionTraceRefusal }[] = []
-  for (const dir of [...new Set(args.map(arg => resolve(context.cwd, arg)))]) {
+  for (const dir of args.map(arg => resolve(context.cwd, arg))) {
     if (context.signal.aborted)
       return 130
     const path = join(dir, 'trace.json')
@@ -58,9 +59,47 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
     }
   }
   const emotions = entries.filter(e => e.input?.trace.source.scenario.class === 'emotion')
-  const pooled = {
-    measurements: emotionMetrics(emotions.flatMap(e => e.input ? emotionTrials(prepareTrace(e.input)) : [])),
-    from: emotions.map(e => e.dir),
+  let pooled: { measurements: readonly MetricResult[], from: NonNullable<MotionVerdict['pooledFrom']> } | undefined
+  try {
+    const digests = new Set<string>()
+    const cohort = emotions[0]?.input?.trace
+    for (const entry of emotions) {
+      if (entry.sha256 && digests.has(entry.sha256))
+        throw new GateRefusal('pool-duplicate', `Repeated trace digest ${entry.sha256}`)
+      if (entry.sha256)
+        digests.add(entry.sha256)
+      const trace = entry.input?.trace
+      if (trace && cohort && (trace.rig.id !== cohort.rig.id || trace.rig.assetSha256 !== cohort.rig.assetSha256
+        || trace.source.level !== cohort.source.level || trace.source.gitSha !== cohort.source.gitSha)) {
+        throw new GateRefusal('pool-mismatch', 'Emotion traces must share rig.id, rig.assetSha256, source.level and source.gitSha')
+      }
+    }
+    const seen = new Set<string>()
+    const trials = emotions.flatMap((entry) => {
+      const extracted = entry.input ? emotionTrials(prepareTrace(entry.input)) : []
+      for (const trial of extracted) {
+        if (trial.trialId !== undefined) {
+          if (seen.has(trial.trialId))
+            throw new GateRefusal('pool-duplicate', `Repeated emotion trial id ${trial.trialId}`)
+          seen.add(trial.trialId)
+        }
+      }
+      return extracted
+    })
+    if (emotions.length) {
+      const trialCounts = Object.fromEntries([...new Set(trials.map(trial => trial.condition))]
+        .map(condition => [condition, trials.filter(trial => trial.condition === condition).length]))
+      pooled = {
+        measurements: emotionMetrics(trials),
+        from: { traces: emotions.map(entry => ({ directory: entry.dir, sha256: entry.sha256 ?? '' })), trialCounts },
+      }
+    }
+  }
+  catch (error) {
+    if (!(error instanceof MotionTraceRefusal) && !(error instanceof GateRefusal))
+      throw error
+    for (const entry of emotions)
+      entry.refusal = error
   }
   const verdicts: MotionVerdict[] = []
   for (const entry of entries) {

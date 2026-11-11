@@ -49,7 +49,7 @@ describe('emotion directory pooling', () => {
       for (const dir of dirs) {
         const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
         expect(verdict.verdict).toBe('PASS')
-        expect(verdict.pooledFrom).toEqual(dirs)
+        expect(verdict.pooledFrom).toMatchObject({ traces: dirs.map(directory => ({ directory })), trialCounts: { happy: 6, placebo: 6 } })
         expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.minSeparation', status: 'PASS', basis: 'declared' }))
         expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.armShare', status: 'PASS', value: 1 }))
       }

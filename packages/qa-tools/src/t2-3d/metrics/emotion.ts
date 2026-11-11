@@ -7,6 +7,7 @@ import { conjugate, heading, mean, median, multiply, normalize, rotationVector }
 import { result, skipped } from './result'
 
 export interface EmotionTrial {
+  readonly trialId?: string
   readonly condition: string
   readonly placebo: boolean
   readonly t: number
@@ -30,9 +31,9 @@ export function emotionTrials(p: PreparedTrace): EmotionTrial[] {
   return p.input.trace.events.flatMap((e) => {
     if (e.kind !== 'emotion' || !['pulse', 'hold-start', 'placebo'].includes(e.phase))
       return []
-    if (e.trialId && seen.has(e.trialId))
+    if (e.trialId !== undefined && seen.has(e.trialId))
       return []
-    if (e.trialId)
+    if (e.trialId !== undefined)
       seen.add(e.trialId)
     const baseline = p.times.flatMap((t, i) => t >= e.t - 1 && t <= e.t ? [i] : [])
     const hold = p.times.flatMap((t, i) => t >= e.t + 2 && t <= e.t + 4 ? [i] : [])
@@ -48,7 +49,7 @@ export function emotionTrials(p: PreparedTrace): EmotionTrial[] {
         posture[bone] = heading(rotationVector(multiply(held, conjugate(base))), p.yaw[frame])
       }
     }
-    return [{ condition: e.phase === 'placebo' ? 'placebo' : e.emotion, placebo: e.phase === 'placebo', t: e.t, posture }]
+    return [{ trialId: e.trialId, condition: e.phase === 'placebo' ? 'placebo' : e.emotion, placebo: e.phase === 'placebo', t: e.t, posture }]
   })
 }
 

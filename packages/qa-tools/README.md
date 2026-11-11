@@ -42,11 +42,28 @@ episodes skip the metric. Refusals never count as passes or failures.
 Exit codes are 1 if any trace fails, otherwise 2 if any trace is refused or the
 arguments are invalid, otherwise 0; interruption exits 130.
 
-Emotion directories supplied together pool their trials, including placebo,
-and each verdict records `pooledFrom`. Run seeds 1 through 6 together for the
+Emotion directories supplied together pool their trials, including placebo.
+They must share `rig.id`, `rig.assetSha256`, `source.level` and `source.gitSha`;
+seeds may differ. Copied trace content or a trial id repeated across traces
+refuses the pool. Pulse and hold labels with the same trial id within one trace
+still count once. Unlabelled trials remain distinct observations.
+Each pooled verdict records `pooledFrom.traces` with directories and SHA-256
+digests, and `pooledFrom.trialCounts` with the count per condition.
+Run seeds 1 through 6 together for the
 scenario's trial guarantee. Gaze episodes outside the fitting head-rotation
 P5 to P95 range are excluded and listed in metric details. Gaze onset bands
 use head episodes only.
+
+| Refusal | Meaning |
+| --- | --- |
+| `trace-unreadable`, `trace-kind`, `trace-shape` | Unreadable file, unsupported format, or invalid rig/header/block shape. |
+| `trace-nonfinite`, `trace-unnormalized`, `time-nonmonotonic` | Unusable numeric data, non-unit rotations, or time that does not increase. |
+| `rate-too-low`, `frame-gap`, `trace-too-short` | Sampling or duration cannot support judging. |
+| `rig-incomplete`, `non-upright`, `class-unknown` | Required rig or reference class is unavailable. |
+| `bands-hash-mismatch` | Frozen band bytes or version do not match the definition. |
+| `no-gated-metrics` | No applicable gated metric was judged. |
+| `pool-duplicate` | Repeated trace digest or trial id across emotion traces. |
+| `pool-mismatch` | Emotion traces have incompatible rig or source identity. |
 
 Version 0 retains explicitly marked analytic fixtures. Version 1 uses frozen
 human-reference bands. Frozen band files

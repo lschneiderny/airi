@@ -133,4 +133,13 @@ Preparation refuses nonfinite kinematic signals before detectors can turn them
 into silent zeros; the judge fails nonfinite metric values or contributing
 samples with `undefined: nonfinite`. Bands, thresholds and version 1 are unchanged.
 
+The same review showed that copied emotion traces could multiply insufficient
+trials into a pass. Before judging changed character motion, pooling was made
+to refuse duplicate content digests and trial ids across traces as
+`pool-duplicate`, and differences in rig id, asset hash, source level or source
+revision as `pool-mismatch`. Different seeds still pool. Trial identity survives
+extraction; repeated labels within one trace count once. Each pooled verdict
+records trace directories, digests and per-condition trial counts in
+`pooledFrom`. This admission fix changes no band, threshold or gate version.
+
 Scores compare motion statistics with bands derived from human capture. They do not prove naturalness or appeal, which stay a visual review.
