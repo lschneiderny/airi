@@ -21,8 +21,6 @@ export default defineConfig({
     'apps/stage-tamagotchi/src/bindings/**',
     'apps/stage-tamagotchi-electron/out/**',
     'apps/stage-tamagotchi-electron/src/renderer/bindings/**',
-    '**/flatpak/**',
-    '**/flatpak-repo/**',
     '**/drizzle/**',
     '**/.astro/**',
     'docs/superpowers/**',
