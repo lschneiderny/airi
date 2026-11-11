@@ -55,6 +55,16 @@ const fixture: Partial<MMDMotionSnapshot> = {
     physicsOwned: ['髪1'],
     physicsWithBoneOwned: [],
     waistCancel: true,
+    spineChain: [],
+    toeBend: { left: null, right: null },
+    twist: { left: { arm: null, wrist: null }, right: { arm: null, wrist: null } },
+    structure: {
+      intermediateSpine: false,
+      shoulders: { left: false, right: false },
+      fingers: { left: false, right: false },
+      toes: { left: false, right: false },
+      eyes: { left: false, right: false, shared: true },
+    },
   },
   director: {
     stance: 'sit',

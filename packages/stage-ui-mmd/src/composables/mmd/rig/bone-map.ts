@@ -74,6 +74,18 @@ export const MMD_ARM_HELPER_CANDIDATES = {
   right: ['右腕捩', '右手捩', '右肩P', '右肩C'],
 } as const satisfies Record<'left' | 'right', readonly string[]>
 
+/** Toe deform controls, distinct from the つま先 position/IK target bones. */
+export const MMD_TOE_BEND_CANDIDATES = {
+  left: ['左足先EX'],
+  right: ['右足先EX'],
+} as const satisfies Record<'left' | 'right', readonly string[]>
+
+/** Main twist controls only; numbered grant helpers remain in the skeleton. */
+export const MMD_TWIST_BONE_CANDIDATES = {
+  left: { arm: ['左腕捩'], wrist: ['左手捩'] },
+  right: { arm: ['右腕捩'], wrist: ['右手捩'] },
+} as const
+
 /**
  * FK leg bones, including the D (deform) variants some models animate instead. They are used only to group clip tracks
  * into the lower-body mask, never to pose.

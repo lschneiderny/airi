@@ -2,7 +2,7 @@ import type { PmxObject } from '@moeru/three-mmd'
 import type { HumanoidBoneName, HumanoidFingerBoneName, RigTraits } from '@proj-airi/motion-driver-humanoid/types'
 
 import { EYE_PITCH_LIMIT, EYE_YAW_LIMIT } from '../gaze'
-import { HUMANOID_BONE_CANDIDATES, HUMANOID_FINGER_CANDIDATES, MMD_ARM_HELPER_CANDIDATES, MMD_CONTROL_BONE_CANDIDATES } from './bone-map'
+import { HUMANOID_BONE_CANDIDATES, HUMANOID_FINGER_CANDIDATES, MMD_ARM_HELPER_CANDIDATES, MMD_CONTROL_BONE_CANDIDATES, MMD_TOE_BEND_CANDIDATES, MMD_TWIST_BONE_CANDIDATES } from './bone-map'
 
 /**
  * The PMX fields the rig profile reads. `mmd.pmx` satisfies it directly. Positions and IK
@@ -10,7 +10,7 @@ import { HUMANOID_BONE_CANDIDATES, HUMANOID_FINGER_CANDIDATES, MMD_ARM_HELPER_CA
  * builds the mesh, so knee limits read here have the opposite X sign from the PMX file.
  */
 export interface MMDRigSource {
-  bones: readonly Pick<PmxObject.Bone, 'name' | 'position' | 'parentBoneIndex' | 'ik'>[]
+  bones: readonly (Pick<PmxObject.Bone, 'name' | 'position' | 'parentBoneIndex' | 'ik'> & Partial<Pick<PmxObject.Bone, 'axisLimit'>>)[]
   rigidBodies: readonly Pick<PmxObject.RigidBody, 'name' | 'boneIndex' | 'physicsMode'>[]
 }
 
@@ -34,6 +34,30 @@ export interface MMDLegIkChain {
 
 /** Where eye gaze can be applied: separate 左目/右目 bones, the 両目 fallback, or nowhere. */
 export type MMDEyeSource = 'eyes' | 'bothEyes' | 'none'
+
+export interface MMDSpineBone {
+  readonly name: string
+  /** Mesh-local bind position in post-parse model units. */
+  readonly position: MMDVec3
+}
+
+export interface MMDTwistBone {
+  readonly name: string
+  /** PMX axisLimit as supplied by the parser; null when unconstrained. */
+  readonly fixedAxis: MMDVec3 | null
+}
+
+/** Skeleton availability only; these flags make no clearance or reach guarantee. */
+export interface MMDRigStructure {
+  readonly intermediateSpine: boolean
+  readonly shoulders: Readonly<Record<'left' | 'right', boolean>>
+  /** At least one mapped, posable finger bone on that side. */
+  readonly fingers: Readonly<Record<'left' | 'right', boolean>>
+  /** A mapped toe position bone or toe bend control on that side. */
+  readonly toes: Readonly<Record<'left' | 'right', boolean>>
+  /** Separate posable eyes, or the shared fallback when neither separate eye is posable. */
+  readonly eyes: { readonly left: boolean, readonly right: boolean, readonly shared: boolean }
+}
 
 /**
  * Rig facts read once from a loaded PMX model. The profile is plain serializable data so
@@ -80,6 +104,11 @@ export interface MMDRigProfile {
   /** The mode 2 subset of `physicsOwned`, such as Vivian's 左足2/左ひざ2 leg helpers. */
   physicsWithBoneOwned: string[]
   waistCancel: boolean
+  /** Posable bones on the neck-to-上半身 parent path, ordered root to tip, excluding the neck. */
+  readonly spineChain: readonly MMDSpineBone[]
+  readonly toeBend: Readonly<Record<'left' | 'right', string | null>>
+  readonly twist: Readonly<Record<'left' | 'right', { readonly arm: MMDTwistBone | null, readonly wrist: MMDTwistBone | null }>>
+  readonly structure: MMDRigStructure
 }
 
 // PMX physicsMode 0 is FollowBone (kinematic); 1 is Physics and 2 is PhysicsWithBone.
@@ -127,6 +156,50 @@ export function readMMDRigProfile(pmx: MMDRigSource): MMDRigProfile {
 
   const findName = (candidates: readonly string[]): string | null =>
     candidates.find(name => indexByName.has(name)) ?? null
+
+  const findPosableName = (candidates: readonly string[]): string | null =>
+    candidates.find((name) => {
+      const index = indexByName.get(name)
+      return index !== undefined && !physicsOwnedIndices.has(index)
+    }) ?? null
+
+  // Use the raw endpoints even when physics owns them: ownership removes a link from
+  // the posable chain, but must not break traversal through that link.
+  const spineName = findName(HUMANOID_BONE_CANDIDATES.spine)
+  const neckName = findName(HUMANOID_BONE_CANDIDATES.neck)
+  const spineIndex = spineName === null ? undefined : indexByName.get(spineName)
+  const neckIndex = neckName === null ? undefined : indexByName.get(neckName)
+  let spineChain: MMDSpineBone[] = []
+  if (spineIndex !== undefined && neckIndex !== undefined) {
+    const path: number[] = []
+    const visited = new Set<number>([neckIndex])
+    for (let index = pmx.bones[neckIndex].parentBoneIndex; index >= 0 && index < pmx.bones.length && !visited.has(index); index = pmx.bones[index].parentBoneIndex) {
+      visited.add(index)
+      path.push(index)
+      if (index === spineIndex) {
+        spineChain = path.reverse().filter(index => !physicsOwnedIndices.has(index)).map(index => ({
+          name: pmx.bones[index].name,
+          position: [...pmx.bones[index].position],
+        }))
+        break
+      }
+    }
+  }
+  const toeBend = {
+    left: findPosableName(MMD_TOE_BEND_CANDIDATES.left),
+    right: findPosableName(MMD_TOE_BEND_CANDIDATES.right),
+  }
+  const readTwist = (candidates: readonly string[]): MMDTwistBone | null => {
+    const name = findPosableName(candidates)
+    if (name === null)
+      return null
+    const axis = pmx.bones.find(bone => bone.name === name)?.axisLimit
+    return { name, fixedAxis: axis ? [...axis] : null }
+  }
+  const twist = {
+    left: { arm: readTwist(MMD_TWIST_BONE_CANDIDATES.left.arm), wrist: readTwist(MMD_TWIST_BONE_CANDIDATES.left.wrist) },
+    right: { arm: readTwist(MMD_TWIST_BONE_CANDIDATES.right.arm), wrist: readTwist(MMD_TWIST_BONE_CANDIDATES.right.wrist) },
+  }
 
   const bones: Partial<Record<HumanoidBoneName, string>> = {}
   const presentBones: HumanoidBoneName[] = []
@@ -293,6 +366,23 @@ export function readMMDRigProfile(pmx: MMDRigSource): MMDRigProfile {
     physicsWithBoneOwned: namesInPmxOrder(physicsWithBoneIndices),
     waistCancel: findName(MMD_CONTROL_BONE_CANDIDATES.leftWaistCancel) !== null
       && findName(MMD_CONTROL_BONE_CANDIDATES.rightWaistCancel) !== null,
+    spineChain,
+    toeBend,
+    twist,
+    structure: {
+      intermediateSpine: spineChain.some(bone => bone.name !== bones.spine && bone.name !== bones.chest),
+      shoulders: { left: bones.leftShoulder !== undefined, right: bones.rightShoulder !== undefined },
+      fingers: {
+        left: Object.keys(fingerBones).some(name => name.startsWith('left')),
+        right: Object.keys(fingerBones).some(name => name.startsWith('right')),
+      },
+      toes: { left: Boolean(bones.leftToes || toeBend.left), right: Boolean(bones.rightToes || toeBend.right) },
+      eyes: {
+        left: bones.leftEye !== undefined,
+        right: bones.rightEye !== undefined,
+        shared: !bones.leftEye && !bones.rightEye && findPosableName(MMD_CONTROL_BONE_CANDIDATES.bothEyes) !== null,
+      },
+    },
   }
 }
 

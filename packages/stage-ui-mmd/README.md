@@ -319,7 +319,7 @@ running (no model, the Classic driver, or the classic window).
 | `loadedModelKey`, `driver` | The mounted model key (`null` without a model) and `natural` or `classic`. |
 | `fps { last, mean60s }`, `timings { <stage>: { lastMs, p95Ms } }` | Rolling frame rate and per-stage timings over the last 600 samples. |
 | `measurement` | The explicit measurement window: `state`, `durationMs`, `frames`, `fps`, `readbackMs { meanMs, maxMs }` (the host's alpha readback cost, `reportReadback`) and `physicsResets` (resets callers requested through `requestPhysicsReset`; loop wraps are not counted). |
-| `rig` | The `MMDRigProfile` of the loaded model. |
+| `rig` | The `MMDRigProfile` of the loaded model. Its `spineChain`, `toeBend`, `twist` and `structure` fields are appended to the diagnostics snapshot. |
 | `natural { events, energy, headYaw }` | Natural event count, requested energy and the head bone's local yaw in radians. |
 | `feet { maxError, errorL, errorR, contact }` | Ankle error after IK and physics in model units, and the foot-contact weight. |
 | `lookAt { target, yaw, pitch, turning, turns }` | The world-space look target, head yaw and pitch in radians, whether the center bone is turning, and the turn count. |
@@ -465,6 +465,33 @@ humanoid bones of `@proj-airi/motion-driver-humanoid` and reports leg IK chains,
 the knee bend sign, leg length, foot baseline, eye bone source, physics-owned
 bones and the waist-cancel flag. `toRigTraits(profile)` converts it to the
 renderer-neutral `RigTraits`. Pose stages must not write physics-owned bones.
+
+The profile also reports structural facts for body adapters:
+
+- `spineChain` contains `{ name, position }` entries in root-to-tip hierarchy
+  order on the path from `上半身` to the neck, excluding the neck and
+  physics-owned links. Positions are copied mesh-local, post-parse bind positions.
+  Ellen and Vivian have `上半身`, `上半身1`, `上半身2`; Carlotta has
+  `上半身`, `上半身3`, `上半身2`. Missing endpoints or a disconnected or
+  cyclic path yield an empty chain.
+- `toeBend.left/right` resolves the posable `左足先EX`/`右足先EX` deform
+  controls, or `null`. The `つま先` bones remain toe positions and IK targets;
+  their presence alone does not establish toe bend.
+- `twist.left/right.arm/wrist` contains the posable main `腕捩`/`手捩`
+  controls as `{ name, fixedAxis }`, or `null`. `fixedAxis` copies the parser's
+  optional PMX `axisLimit` vector without normalizing it; absent axes are `null`.
+  This only describes the controls and does not pose them.
+- `structure` reports posable bone classes: `intermediateSpine` means a chain
+  link beyond the mapped `spine` and `chest`; `shoulders`, `fingers` and `toes`
+  have per-side booleans. Fingers means at least one mapped finger joint, and
+  toes means a toe position or bend control. `eyes.left/right` reports separate
+  eyes; `eyes.shared` reports a posable shared fallback only when neither
+  separate eye is posable. These flags exclude mode 1 and 2 physics ownership
+  and describe skeleton availability only.
+
+The new fields are detached plain data. They do not change existing mappings,
+clip ownership, eye-source selection or motion, and make no reach or clearance
+claim.
 
 ### PMX morph runtime
 
