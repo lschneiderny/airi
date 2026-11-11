@@ -2,10 +2,13 @@ import type { MMD } from '@moeru/three-mmd'
 import type { ClipMaskBones } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { AnimationAction, AnimationClip } from 'three'
 
+import type { LayerFade } from './layer-fade'
+
 import { AnimationMixer, LoopOnce, LoopRepeat, Vector3 } from 'three'
 
 import { ensureAmmo } from '../../utils/ammo'
 import { MMDFramePipeline } from './frame-pipeline'
+import { LAYER_FADE_SECONDS, stepLayerFade } from './layer-fade'
 import { partitionClipByBones, splitClipByLayer, trackBoneName } from './rig/clip-split'
 
 const DEFAULT_CROSSFADE = 0.4
@@ -83,18 +86,13 @@ interface Layer {
   partKey: string
   yieldBones: ReadonlySet<string>
   amount: number
-  fade: { from: number, to: number, elapsed: number, duration: number } | null
+  fade: LayerFade | null
   outDuration: number
   announced: boolean
   ending: boolean
   tearing: boolean
   notes?: string[]
 }
-
-const UPPER_FADE_IN = 0.25
-const UPPER_FADE_OUT = 0.3
-const FULL_FADE_IN = 0.4
-const DANCE_FADE_IN = 0.6
 
 export interface PlayActionOptions {
   /**
@@ -547,11 +545,9 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
       if (active.tearing)
         continue
       if (active.fade) {
-        const fade = active.fade
-        fade.elapsed += delta
-        const progress = fade.duration > 0 ? Math.min(1, fade.elapsed / fade.duration) : 1
-        active.amount = fade.from + (fade.to - fade.from) * progress * progress * (3 - 2 * progress)
-        if (progress >= 1)
+        const { amount, done } = stepLayerFade(active.fade, delta)
+        active.amount = amount
+        if (done)
           active.fade = null
       }
       if (active.amount > 0 && !active.announced) {
@@ -590,7 +586,7 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
       const dance = layerOptions.kind === 'dance'
       const loop = !dance && (layerOptions.loop ?? false)
       const notes = dance && layerOptions.loop ? ['loop-ignored'] : undefined
-      const fadeIn = layerOptions.crossfade ?? (mode === 'upper' ? UPPER_FADE_IN : dance ? DANCE_FADE_IN : FULL_FADE_IN)
+      const fadeIn = layerOptions.crossfade ?? (mode === 'upper' ? LAYER_FADE_SECONDS.upperIn : dance ? LAYER_FADE_SECONDS.danceIn : LAYER_FADE_SECONDS.fullIn)
 
       let gestureClip = clip
       if (mode === 'upper') {
@@ -635,7 +631,7 @@ export function createMMDAnimationManager(mmd: MMD, options: MMDAnimationManager
         yieldBones,
         amount: 0,
         fade: { from: 0, to: 1, elapsed: 0, duration: fadeIn },
-        outDuration: mode === 'upper' ? UPPER_FADE_OUT : fadeIn,
+        outDuration: mode === 'upper' ? LAYER_FADE_SECONDS.upperOut : fadeIn,
         announced: false,
         ending: false,
         tearing: false,

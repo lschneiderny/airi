@@ -171,7 +171,9 @@ For Node composition, import `MMDFramePipeline` from
 `./composables/mmd/frame-metrics`, `readMMDRigProfile` from
 `./composables/mmd/rig`, `MMDBodyPose` from `./composables/mmd/body/pose`,
 and `bodyGazePoints` and `resolveBodyTarget` from
-`./composables/mmd/body/attention`.
+`./composables/mmd/body/attention`. `LAYER_FADE_SECONDS` and `stepLayerFade`
+from `./composables/mmd/layer-fade` are the smoothstep clip-layer fade that
+`playLayer` uses; the headless motion runner drives its claim clip with them.
 These direct entry points avoid the browser audio runtime exported by the
 general `./composables/mmd` barrel.
 

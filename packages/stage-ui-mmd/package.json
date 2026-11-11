@@ -25,6 +25,7 @@
     "./composables/mmd/body/pose": "./src/composables/mmd/body/pose.ts",
     "./composables/mmd/frame-metrics": "./src/composables/mmd/frame-metrics.ts",
     "./composables/mmd/frame-pipeline": "./src/composables/mmd/frame-pipeline.ts",
+    "./composables/mmd/layer-fade": "./src/composables/mmd/layer-fade.ts",
     "./composables/mmd/motion-trace": "./src/composables/mmd/motion-trace.ts",
     "./composables/mmd/natural/adapter": "./src/composables/mmd/natural/adapter.ts",
     "./composables/mmd/overlay-flags": "./src/composables/mmd/overlay-flags.ts",
