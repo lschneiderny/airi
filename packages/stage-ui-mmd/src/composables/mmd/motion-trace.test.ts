@@ -66,3 +66,27 @@ it('keeps root translations in model units and rotations unchanged under uniform
     expect(rot[stride + i]).toBeCloseTo(rot[i], 6)
   mmd.dispose()
 })
+
+it('stamps a body event with the time of the frame that raised it and drops one raised while idle', () => {
+  const { mmd, rig, pipeline, mixer } = bodyFixture()
+  const sampler = createMMDMotionTraceSampler(mmd, rig, new MMDBodyPose(mmd, rig))
+  const context = { dt: 1 / 60, mmd, mixer, clean: pipeline.clean }
+  sampler.bodyEvent({ kind: 'blink' })
+  sampler.recorder.start({
+    kind: 'motion-trace',
+    version: 1,
+    source: { level: 't2-3d', scenario: { id: 'test', class: 'gaze', seed: 1 }, gitSha: null, dirty: null, stages: { pose: [], surface: ['motion-trace'] }, omitted: [], detail: {} },
+    rig: { ...sampler.rig, id: 'fixture' },
+    hz: 60,
+    scoredFrom: 0,
+  })
+  sampler.inputs.wall = 0
+  sampler.stage.run(context)
+  // Body events fire in the `locomotion` pose stage, before this frame's `motion-trace` sample.
+  sampler.bodyEvent({ kind: 'gaze-shift', amplitudeDeg: 40 })
+  sampler.inputs.wall = 1 / 60
+  sampler.stage.run(context)
+  sampler.recorder.stop()
+  expect(sampler.recorder.drain().events).toEqual([{ t: 1 / 60, kind: 'marker', label: 'gaze-shift:40.00' }])
+  mmd.dispose()
+})

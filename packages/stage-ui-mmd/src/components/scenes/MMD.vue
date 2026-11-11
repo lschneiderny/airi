@@ -29,6 +29,7 @@ import type { AnimationClip, SkinnedMesh, Texture } from 'three'
 
 import type { GazeOffset, MMDAnimationManager, MorphController } from '../../composables/mmd'
 import type { ActActionDropReason } from '../../composables/mmd/actions/resolve-act-action'
+import type { MMDBodyEvent } from '../../composables/mmd/body'
 import type { MMDOverlayStage } from '../../composables/mmd/overlays'
 import type { MMDStageExtent, MMDStageWorld } from '../../composables/mmd/stage-world'
 import type { MMDStanceWorld } from '../../composables/mmd/stance'
@@ -87,7 +88,7 @@ import { MMDBodyPose } from '../../composables/mmd/body/pose'
 import { ARM_SWING_REACH, resolveFrameBounds } from '../../composables/mmd/camera-bounds'
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MotionRegistrations } from '../../composables/mmd/motion-registrations'
-import { createMMDMotionTraceSampler, mmdBodyTraceEvent } from '../../composables/mmd/motion-trace'
+import { createMMDMotionTraceSampler } from '../../composables/mmd/motion-trace'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
 import { fnv1a32 } from '../../composables/mmd/natural/seed'
 import { createOverlayLabel } from '../../composables/mmd/overlay-label'
@@ -288,6 +289,8 @@ let morphRuntime: ReturnType<typeof createMMDMorphRuntime> | undefined
 let natural: MMDNaturalAdapter | undefined
 let traceSource: MMDMotionTraceSource | null = null
 let stopTraceEvents: (() => void) | undefined
+// The loaded model's sampler stamps body events with the time of the frame that raised them.
+let traceBodyEvent: ((event: MMDBodyEvent) => void) | undefined
 let body: MMDBody | undefined
 let rig: ReturnType<typeof readMMDRigProfile> | undefined
 let stopMorphOverrides: (() => void) | undefined
@@ -856,6 +859,7 @@ function disposeModel() {
   stopTraceEvents = undefined
   diagnostics.setTraceSource(null)
   traceSource = null
+  traceBodyEvent = undefined
   expressions.dispose()
   stopMorphOverrides?.()
   stopMorphOverrides = undefined
@@ -1397,6 +1401,7 @@ async function loadModel(src: string) {
       maxSeconds: 0,
     }
     traceSource = source
+    traceBodyEvent = sampler.bodyEvent
     diagnostics.setTraceSource(source)
     observeTraceEvents()
     stopMorphOverrides = watch(morphOverrides, (overrides) => {
@@ -1641,11 +1646,7 @@ function observeTraceEvents() {
     if (recorded)
       source.recorder.event(recorded)
   })
-  const stopBodyEvents = body?.onEvent((event) => {
-    const source = traceSource
-    if (source?.recorder.state() === 'recording')
-      source.recorder.event(mmdBodyTraceEvent(event, source.seconds))
-  })
+  const stopBodyEvents = body?.onEvent(event => traceBodyEvent?.(event))
   const stopNaturalEvents = stopTraceEvents
   stopTraceEvents = () => {
     stopNaturalEvents?.()

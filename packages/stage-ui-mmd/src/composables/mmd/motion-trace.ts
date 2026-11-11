@@ -29,6 +29,8 @@ export function mmdBodyTraceEvent(event: MMDBodyEvent, t: number): MotionTraceEv
 /**
  * Read-only, post-physics sampler. The caller starts the recorder with `rig` and
  * supplies channels/wall through `inputs` before stepping. No scene registers it here.
+ * `bodyEvent` holds a body event until this frame's sample and stamps it with that sample's time, so every host
+ * records an event on the frame in which the performer raised it.
  */
 export function createMMDMotionTraceSampler(mmd: MMD, profile: MMDRigProfile, pose: MMDBodyPose) {
   const recorder = new MotionTraceRecorder()
@@ -94,11 +96,14 @@ export function createMMDMotionTraceSampler(mmd: MMD, profile: MMDRigProfile, po
   const scale = new Vector3()
   const worldScale = new Vector3()
   let elapsed = 0
+  const pending: MMDBodyEvent[] = []
   const stage: MMDFrameStage = {
     id: 'motion-trace',
     run(context) {
-      if (recorder.state() !== 'recording')
+      if (recorder.state() !== 'recording') {
+        pending.length = 0
         return
+      }
       elapsed = recorder.frames === 0 ? 0 : elapsed + context.dt
       mesh.updateWorldMatrix(true, true)
       for (const entry of entries) {
@@ -120,7 +125,14 @@ export function createMMDMotionTraceSampler(mmd: MMD, profile: MMDRigProfile, po
           throw new TypeError(`Motion trace header differs from sampler rig: ${slot}`)
         return entry.n
       }, position, inputs.channels)
+      for (const event of pending)
+        recorder.event(mmdBodyTraceEvent(event, elapsed))
+      pending.length = 0
     },
   }
-  return { recorder, stage, rig, inputs }
+  const bodyEvent = (event: MMDBodyEvent) => {
+    if (recorder.state() === 'recording')
+      pending.push(event)
+  }
+  return { recorder, stage, rig, inputs, bodyEvent }
 }

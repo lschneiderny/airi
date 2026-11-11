@@ -17,7 +17,7 @@ import { MMDBody } from '@proj-airi/stage-ui-mmd/composables/mmd/body'
 import { resolveBodyTarget } from '@proj-airi/stage-ui-mmd/composables/mmd/body/attention'
 import { MMDBodyPose } from '@proj-airi/stage-ui-mmd/composables/mmd/body/pose'
 import { MMDFramePipeline } from '@proj-airi/stage-ui-mmd/composables/mmd/frame-pipeline'
-import { createMMDMotionTraceSampler, mmdBodyTraceEvent } from '@proj-airi/stage-ui-mmd/composables/mmd/motion-trace'
+import { createMMDMotionTraceSampler } from '@proj-airi/stage-ui-mmd/composables/mmd/motion-trace'
 import { MMDNaturalAdapter } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import { readMMDRigProfile } from '@proj-airi/stage-ui-mmd/composables/mmd/rig'
 import { composeMMDStages } from '@proj-airi/stage-ui-mmd/composables/mmd/stage-composition'
@@ -104,7 +104,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       } },
     })
     let motionTime = 0
-    body.onEvent(event => sampler.recorder.event(mmdBodyTraceEvent(event, motionTime)))
+    body.onEvent(event => sampler.bodyEvent(event))
     const stages = composeMMDStages({
       body,
       host: {
