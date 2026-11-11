@@ -16,8 +16,9 @@ export class GazeOrderRefusal extends Error {
 /**
  * `full`: all three joints moved. `no-chest`, `no-head`: that joint had no onset.
  * `eyes-only`: neither head nor chest moved. `no-eyes`: the eyes did not move, never ordered.
+ * `null`: an event under NULL_AMPLITUDE_DEG in whose window no joint moved; it is left out of both shares.
  */
-export type GazeOrderPattern = 'full' | 'no-chest' | 'no-head' | 'eyes-only' | 'no-eyes'
+export type GazeOrderPattern = 'full' | 'no-chest' | 'no-head' | 'eyes-only' | 'no-eyes' | 'null'
 
 export interface GazeOrderShift {
   /** Event time, motion seconds. */
@@ -32,10 +33,14 @@ export interface GazeOrderShift {
 
 export interface GazeOrderReport {
   readonly kind: 'gaze-order'
-  readonly version: 1
+  readonly version: 2
   readonly shifts: readonly GazeOrderShift[]
+  /** All events except `null` ones. */
   readonly ordered: number
   readonly orderedShare: number
+  /** The goal-2 criterion: the ordered share over shifts of at least `minAmplitudeDeg`; null without such a shift. */
+  readonly criterion: { readonly minAmplitudeDeg: number, readonly ordered: number, readonly total: number, readonly share: number | null }
+  readonly nullEvents: number
   readonly patterns: Readonly<Record<GazeOrderPattern, number>>
   readonly largeShifts: number
   /** Share of large shifts with a blink in their window; null when there is no large shift. */
@@ -46,6 +51,9 @@ const SHIFT_PREFIX = 'gaze-shift:'
 const WINDOW_SECONDS = 2
 const ONSET_SHARE = 0.1
 const LARGE_SHIFT_DEG = 40
+// Below the smallest scripted jump (15 degrees), so every scripted jump counts.
+const CRITERION_DEG = 10
+const NULL_AMPLITUDE_DEG = 0.5
 // Event times are float64 sums of dt; the trace clock is float32, which rounds about 4e-6 s at 60 s.
 const CLOCK_TOLERANCE = 1e-4
 
@@ -126,25 +134,32 @@ export function gazeOrderReport(input: DecodedMotionTrace): GazeOrderReport {
     const e = onset(eyes, start, end)
     const h = onset(head, start, end)
     const c = onset(chest, start, end)
+    const amplitudeDeg = Number.parseFloat(event.label.slice(SHIFT_PREFIX.length))
+    const still = e === null && h === null && c === null
     return {
       t: event.t,
-      amplitudeDeg: Number.parseFloat(event.label.slice(SHIFT_PREFIX.length)),
+      amplitudeDeg,
       onsetMs: { eyes: ms(e), head: ms(h), chest: ms(c) },
-      ...classify(e, h, c),
+      ...(still && amplitudeDeg < NULL_AMPLITUDE_DEG ? { pattern: 'null' as const, ordered: false } : classify(e, h, c)),
       blink: blinks.some(t => t >= event.t - CLOCK_TOLERANCE && t < until - CLOCK_TOLERANCE),
     }
   })
-  const patterns: Record<GazeOrderPattern, number> = { 'full': 0, 'no-chest': 0, 'no-head': 0, 'eyes-only': 0, 'no-eyes': 0 }
+  const patterns: Record<GazeOrderPattern, number> = { 'full': 0, 'no-chest': 0, 'no-head': 0, 'eyes-only': 0, 'no-eyes': 0, 'null': 0 }
   for (const s of shifts)
     patterns[s.pattern]++
-  const ordered = shifts.filter(s => s.ordered).length
+  const counted = shifts.filter(s => s.pattern !== 'null')
+  const ordered = counted.filter(s => s.ordered).length
+  const criterion = counted.filter(s => s.amplitudeDeg >= CRITERION_DEG)
+  const criterionOrdered = criterion.filter(s => s.ordered).length
   const large = shifts.filter(s => s.amplitudeDeg >= LARGE_SHIFT_DEG)
   return {
     kind: 'gaze-order',
-    version: 1,
+    version: 2,
     shifts,
     ordered,
-    orderedShare: ordered / shifts.length,
+    orderedShare: counted.length ? ordered / counted.length : 0,
+    criterion: { minAmplitudeDeg: CRITERION_DEG, ordered: criterionOrdered, total: criterion.length, share: criterion.length ? criterionOrdered / criterion.length : null },
+    nullEvents: patterns.null,
     patterns,
     largeShifts: large.length,
     blinkShare: large.length ? large.filter(s => s.blink).length / large.length : null,
@@ -157,7 +172,11 @@ export function formatGazeOrderReport(report: GazeOrderReport): string {
     't s\tamplitude deg\teyes ms\thead ms\tchest ms\tpattern\tordered\tblink',
     ...report.shifts.map(s => [s.t.toFixed(3), s.amplitudeDeg.toFixed(2), ms(s.onsetMs.eyes), ms(s.onsetMs.head), ms(s.onsetMs.chest), s.pattern, s.ordered ? 'yes' : 'no', s.blink ? 'yes' : 'no'].join('\t')),
     '',
-    `ordered share: ${report.ordered}/${report.shifts.length} = ${report.orderedShare.toFixed(3)}`,
+    `ordered share, all events: ${report.ordered}/${report.shifts.length - report.nullEvents} = ${report.orderedShare.toFixed(3)}`,
+    report.criterion.share === null
+      ? `ordered share, shifts of ${report.criterion.minAmplitudeDeg} deg or more: no such shift`
+      : `ordered share, shifts of ${report.criterion.minAmplitudeDeg} deg or more: ${report.criterion.ordered}/${report.criterion.total} = ${report.criterion.share.toFixed(3)}`,
+    `null events (under ${NULL_AMPLITUDE_DEG} deg, no joint moved; in neither share): ${report.nullEvents}`,
     `patterns: ${Object.entries(report.patterns).map(([k, v]) => `${k} ${v}`).join(', ')}`,
     report.blinkShare === null
       ? `blink share over shifts of ${LARGE_SHIFT_DEG} deg or more: no such shift`

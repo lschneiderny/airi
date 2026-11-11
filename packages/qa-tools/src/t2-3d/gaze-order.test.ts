@@ -84,6 +84,24 @@ describe('gaze-order report', () => {
     expect(report.largeShifts).toBe(2)
   })
 
+  it('reports the criterion share over shifts of 10 degrees or more beside the all-events share', () => {
+    const joints = { eyes: { start: 1, angle: 0.3 }, head: { start: 1.1, angle: 0.3 }, chest: { start: 1.2, angle: 0.1 } }
+    // The 5-degree event's window holds no motion: it stays in all events, unordered, and outside the criterion.
+    const report = gazeOrderReport(gazeTrace(joints, [shift(1, 30), shift(2.5, 5)], 5))
+    expect(report.orderedShare).toBe(0.5)
+    expect(report.criterion).toEqual({ minAmplitudeDeg: 10, ordered: 1, total: 1, share: 1 })
+  })
+
+  it('leaves a sub-half-degree event without joint motion out of both shares', () => {
+    const joints = { eyes: { start: 1, angle: 0.3 }, head: { start: 1.1, angle: 0.3 }, chest: { start: 1.2, angle: 0.1 } }
+    const report = gazeOrderReport(gazeTrace(joints, [shift(1, 0.3), shift(2.5, 0.2)], 5))
+    expect(report.shifts.map(s => s.pattern)).toEqual(['full', 'null'])
+    expect(report.nullEvents).toBe(1)
+    expect(report.ordered).toBe(1)
+    expect(report.orderedShare).toBe(1)
+    expect(report.criterion).toEqual({ minAmplitudeDeg: 10, ordered: 0, total: 0, share: null })
+  })
+
   it('refuses a trace with no gaze-shift events', () => {
     const trace = gazeTrace({ eyes: { start: 1, angle: 0.3 }, head: { start: 1.1, angle: 0.3 }, chest: { start: 1.2, angle: 0.1 } }, [blink(1)])
     expect(() => gazeOrderReport(trace)).toThrow(GazeOrderRefusal)

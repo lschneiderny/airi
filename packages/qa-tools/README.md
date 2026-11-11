@@ -131,6 +131,11 @@ cannot judge eye order (`gaze.eyeLeadMs` is skipped as `missing-eye-floors`).
   no onset, the shift is ordered if the eyes moved and the joints that moved are
   in order. `patterns` counts `full`, `no-chest`, `no-head`, `eyes-only` and
   `no-eyes` shifts, so the share is not inflated silently.
+- Two ordered shares are reported. "All events" counts every event except
+  `null` ones. The criterion share counts only shifts of 10 degrees or more,
+  below the smallest scripted jump, so every scripted jump counts; goal 2 reads
+  this share. An event under 0.5 degrees in whose window no joint moved has
+  pattern `null` and is left out of both shares; `nullEvents` counts them.
 - The blink share counts the shifts of 40 degrees or more with a `blink` marker
   inside their window.
 
