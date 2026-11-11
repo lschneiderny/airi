@@ -32,6 +32,11 @@ export interface CaptureOptions {
   seed: number
   /** Opt-in protocol: a full collection of the stage renderer before each recording, so a major GC pause stays out of it. */
   collectBefore: boolean
+  /**
+   * The gate class recorded for an `attach` capture, decided before the capture: `talk` for a rendered speaking turn
+   * (plan 2.4), otherwise the scenario's class (idle for `attach`).
+   */
+  scenarioClass: 'idle' | 'talk' | null
 }
 
 /** Requests a full V8 collection of the stage renderer and lets the frames after its pause settle for a second. */
@@ -155,7 +160,7 @@ export async function captureStage(options: CaptureOptions) {
       if (options.collectBefore)
         await collectBeforeRecording(client)
       const started = mounted((await captureSnapshot(client, {
-        command: { type: 'command', name: 'startTrace', value: { scenario: { id: options.scenario, class: scenario?.class ?? 'idle', seed: options.seed }, maxSeconds: options.seconds } },
+        command: { type: 'command', name: 'startTrace', value: { scenario: { id: options.scenario, class: options.scenarioClass ?? scenario?.class ?? 'idle', seed: options.seed }, maxSeconds: options.seconds } },
         wait: 'recording',
       })).snapshot)
       if (started.trace?.refused)

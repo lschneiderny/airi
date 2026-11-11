@@ -109,6 +109,8 @@ describe('qa:stage capture', () => {
     [[...args, '--mode', 'wrong'], '--mode'],
     [[...args, '--port', '65536'], '--port'],
     [[...args, '--scenario', 'speak'], 'scenario-not-drivable'],
+    [[...args, '--class', 'walk'], '--class must be idle or talk'],
+    [[...args, '--scenario', 'idle', '--class', 'talk'], '--class applies only to --scenario attach'],
   ])('refuses invalid arguments before attaching: %j', async (argv, reason) => {
     expect(await runStageCli(argv, context)).toBe(2)
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining(reason))
@@ -153,6 +155,14 @@ describe('qa:stage capture', () => {
     else
       expect(collection).toBe(-1)
     expect(JSON.parse(readFileSync(join(dir, 'capture/capture.json'), 'utf8'))).toMatchObject({ collectBefore: collect })
+  })
+
+  it.each([[[], 'idle'], [['--class', 'talk'], 'talk']] as const)('starts an attach recording with %j as class %s', async (extra, scenarioClass) => {
+    const run = runStageCli([...args, ...extra], context)
+    await vi.runAllTimersAsync()
+    expect(await run).toBe(0)
+    const start = cdp.evaluate.mock.calls.map(([expression]) => String(expression)).find(expression => expression.includes('startTrace'))
+    expect(start).toContain(`"class":"${scenarioClass}"`)
   })
 
   it('assembles multiple drain chunks, provenance, shot timing and a readable rendered trace', async () => {

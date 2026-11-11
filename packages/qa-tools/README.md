@@ -897,7 +897,12 @@ Capture waits for a mounted MMD model, checks animation, then warms up for
 `idle` observes the existing motion. `walk` posts the shared scenario's
 `requestGoal` cues in stage mode, converting leg lengths from the starting
 root and clamping to reachable ground. `attach` records without driving cues,
-so another command can drive the character. Other scenario ids refuse with
+so another command can drive the character, and records gate class `idle`
+unless `--class talk` says, before the capture, that it records a speaking turn
+(goal 3's rendered turn, judged in the talk class). `--class` applies only to
+`attach`. `fixtures/llm/turn-happy.json` is the replay script for that turn: an
+ACT `happy` cue and a 411-character reply, about 20 s of replay speech at the
+replay server's 0.05 s per character. Other scenario ids refuse with
 `scenario-not-drivable`. A walk outside stage mode has the same refusal.
 Capture checks `MMDMotionSnapshot.driver`, refusing Classic with
 `driver-not-natural`; the motion QA bridge's `driver` and `naturalActive`

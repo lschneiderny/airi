@@ -1,0 +1,6 @@
+[
+  {
+    "content": "<|ACT {\"emotion\":\"happy\"}|>Oh, that is wonderful news, and I am really glad you told me about it right away. Let me think about what we could do next. First, we should write down everything that worked today, so nothing gets lost. Then we can pick one small step for tomorrow morning, something easy enough to start before coffee. I think that keeps the whole plan light, and honestly, I am already looking forward to hearing how it goes.",
+    "usage": { "prompt_tokens": 24, "completion_tokens": 96, "total_tokens": 120 }
+  }
+]
