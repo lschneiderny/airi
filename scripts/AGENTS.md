@@ -1,7 +1,7 @@
 # Root scripts
 
 ## OVERVIEW
-Repository developer tooling that belongs to no workspace package: the `pnpm dev:*` launcher, `pnpm verify`, `pnpm wt`, `pnpm dev:top`, and `pnpm test:run`. Score: 12, a distinct tooling domain behind root commands. Follow the [root guide](../AGENTS.md).
+Repository developer tooling that belongs to no workspace package: the `pnpm dev:*` launcher, `pnpm verify`, `pnpm wt`, `pnpm dev:top`, `pnpm release`, and `pnpm test:run`. Score: 12, a distinct tooling domain behind root commands. Follow the [root guide](../AGENTS.md).
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
@@ -18,6 +18,7 @@ Repository developer tooling that belongs to no workspace package: the `pnpm dev
 | Headless QA display (Linux) | `dev-tools/qa-display.ts`, `dev-tools/qa-display-plan.ts` | `pnpm qa:display`: KWin, Xvfb/openbox or headless sway; KWin `--portals`; each session has a private runtime directory and bus |
 | KWin bridge probe | `dev-tools/kwin-probe.ts` | `pnpm qa:kwin-probe`: isolated script handshake, redacted messages and unload receipts |
 | CPU slot status display | `dev-tools/lib/cpu-slots.ts` | Renders `@proj-airi/cpu-slots` status for `dev:top` |
+| Fork releases | `dev-tools/release.ts`, `dev-tools/release-plan.ts` | `pnpm release`: preflight, gate, Godot export, electron-builder, draft GitHub release |
 | Suite runner | `dev-tools/test-run.ts`, `dev-tools/test-run-plan.ts` | Runs every suite after a failure, exits 1 on any failure |
 | Shared process, git, and chunking helpers | `dev-tools/lib/exec.ts`, `dev-tools/lib/git.ts` | Command-line length limits for Windows shims |
 | UI component audit | `audit-ui-components.mjs` | Output feeds `docs/assets/ai/audits/ui-components.md` |
