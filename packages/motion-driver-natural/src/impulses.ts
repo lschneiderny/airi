@@ -1,5 +1,6 @@
 import type { Band, ExpressionPerformanceSettings, PerformanceEmotion, ReactionEpisode } from '@proj-airi/stage-shared/expression-performance'
 
+import type { NaturalBodyIntent } from './frame-types'
 import type { GazePoint } from './gaze'
 import type { Vec3 } from './posture'
 import type { RandomStream } from './random'
@@ -130,8 +131,13 @@ export class NaturalImpulses {
   private readonly episodes = new Map<string, HintPulse>()
   private settings = defaultExpressionPerformanceSettings.naturalBands
   private bands = true
+  private latest: NaturalBodyIntent['impulse'] = null
 
   constructor(private readonly random: RandomStream, private readonly emotions = naturalEmotions) {}
+
+  get latestImpulse() {
+    return this.latest
+  }
 
   setPerformanceSettings(settings: ExpressionPerformanceSettings['naturalBands'], bands = true) {
     this.settings = structuredClone(settings)
@@ -188,6 +194,7 @@ export class NaturalImpulses {
       side,
     })
     const point = spec.glance ?? { x: 0, y: 0 }
+    this.latest = { seq: (this.latest?.seq ?? 0) + 1, at, emotion: episode.emotion, band, intensity: strength, side }
     return { glance: band === 'slight' ? null : { point: { x: side * point.x, y: point.y }, hold: settings.faceHold }, band, intensity: strength, side }
   }
 

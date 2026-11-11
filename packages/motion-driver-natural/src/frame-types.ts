@@ -1,11 +1,13 @@
 import type { Band, PerformanceEmotion } from '@proj-airi/stage-shared/expression-performance'
+import type { PerformanceMode } from '@proj-airi/stage-shared/performance-state'
 
 import type { NaturalBreathOutput } from './breath'
+import type { CueGestureKind } from './cue-gestures'
 import type { GestureKind, naturalEmotions } from './emotions'
 import type { NaturalFaceOutput } from './face'
 import type { GazePoint } from './gaze'
 import type { IdleBehaviourKind } from './idle-activities'
-import type { PostureHome } from './posture'
+import type { PostureHome, Vec3 } from './posture'
 import type { RandomStream } from './random'
 
 export type NaturalTouchRegion = 'head' | 'body'
@@ -149,6 +151,129 @@ export interface NaturalMotionVoice {
   speechActiveOrRecent: boolean
   /** Lipsync mouth level in [0, 1] (the scene's `mouthOpenSize`, unscaled), sent every frame; its onsets drive speech emphasis nods. */
   level: number
+}
+
+/**
+ * Observational state of the latest advance, assembled at its next 120 Hz grid endpoint.
+ * Pose channels remain interpolated; these terms sum to the grid head before its clamp
+ * and the breath pitch addition. Axes are yaw, pitch, roll in Natural units.
+ * Latest events start at seq 1, remain available after completion, and are null before
+ * their first start. Reading them never consumes an event or requires an observer.
+ */
+export interface NaturalBodyIntent {
+  /** Active seconds requested by the frame; the grid endpoint can lead by up to one tick. */
+  readonly time: number
+  readonly head: {
+    readonly posture: Readonly<Vec3>
+    readonly slow: Readonly<Vec3>
+    readonly emphasis: Readonly<Vec3>
+    readonly impulse: Readonly<Vec3>
+    readonly pet: Readonly<Vec3>
+    readonly held: Readonly<Vec3>
+    readonly gesture: Readonly<Vec3>
+    readonly cue: Readonly<Vec3>
+  }
+  readonly posture: {
+    readonly shiftSeq: number
+    readonly amplitude: number
+    readonly shiftRate: number
+    readonly activityGain: number
+  }
+  readonly gaze: {
+    /** First match wins: pet override, cursor fixation, chat fixation, aside, free. */
+    readonly on: 'cursor' | 'chat' | 'pet' | 'aside' | 'free'
+    readonly saccadeSeq: number
+    readonly saccadeSize: number
+  }
+  readonly breath: {
+    readonly phase: number
+    /** Effective period, including the held-emotion period scale, in seconds. */
+    readonly period: number
+    readonly scale: number
+  }
+  readonly voice: {
+    readonly speaking: boolean
+    readonly level: number
+    readonly slow: number
+    readonly onsetSeq: number
+    /** `at` is the detector's active time at acceptance; nods have unsided side 1. */
+    readonly emphasis: {
+      readonly seq: number
+      readonly at: number
+      readonly magnitude: number
+      readonly tau: number
+      readonly kind: 'nod' | 'tilt'
+      readonly side: -1 | 1
+    } | null
+  }
+  readonly mood: {
+    readonly valence: number
+    readonly arousal: number
+    readonly tension: number
+  }
+  readonly energy: {
+    readonly mode: PerformanceMode
+    readonly away: boolean
+    readonly reactingUntil: number
+  }
+  /** Raw held target and eased level; the side is retained after release. */
+  readonly held: {
+    readonly emotion: PerformanceEmotion | null
+    readonly strength: number
+    readonly level: number
+    readonly side: -1 | 1
+  }
+  /** Includes poke surprise episodes and accepted escalations; at is grid-step start. */
+  readonly impulse: {
+    readonly seq: number
+    readonly at: number
+    readonly emotion: PerformanceEmotion
+    readonly band: Band
+    readonly intensity: number
+    readonly side: -1 | 1
+  } | null
+  readonly gesture: {
+    readonly seq: number
+    readonly at: number
+    readonly kind: Exclude<GestureKind, 'shake-or-drop'>
+    readonly side: -1 | 1
+    readonly scale: number
+    readonly lifetime: number
+  } | null
+  readonly cue: {
+    readonly seq: number
+    readonly start: number
+    readonly end: number
+    readonly kind: CueGestureKind
+    readonly count: number
+    readonly side: -1 | 1
+  } | null
+  readonly touch: {
+    /** Every performed poke, including those whose surprise is deduplicated. */
+    readonly poke: {
+      readonly seq: number
+      readonly at: number
+      readonly region: NaturalTouchRegion
+      readonly x: number
+      readonly y: number
+    } | null
+    readonly pet: {
+      readonly level: number
+      readonly active: boolean
+      /** Eased head-relative hand coordinates. */
+      readonly x: number
+      readonly y: number
+    }
+  }
+  readonly react: {
+    readonly seq: number
+    readonly at: number
+    readonly kind: 'wake' | 'screen-change'
+  } | null
+  readonly attention: {
+    readonly approach: number
+    readonly cursorShare: number
+  }
 }
 
 export interface NaturalMotionFrame {

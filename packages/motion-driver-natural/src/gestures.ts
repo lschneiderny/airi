@@ -1,6 +1,7 @@
 import type { Band } from '@proj-airi/stage-shared/expression-performance'
 
 import type { GestureKind } from './emotions'
+import type { NaturalBodyIntent } from './frame-types'
 import type { Vec3 } from './posture'
 import type { RandomStream } from './random'
 
@@ -8,6 +9,7 @@ import { impulseEnvelope } from './impulses'
 import { minJerk } from './processes'
 
 interface ClipShape {
+  readonly scale: number
   /**
    * Seconds after `start` at which the head offset has stayed below 10% of its peak (capped at 2 s).
    * The idle-motion duck holds until then; unlike `lifetime` it ignores quiet exponential tails.
@@ -90,7 +92,7 @@ function raisedCosine(u: number) {
  */
 function createClip(kind: PlayedGesture, side: -1 | 1, scale: number, random: RandomStream): ClipShape {
   const clip = createClipShape(kind, side, scale, random)
-  return { ...clip, activeSpan: activeSpanOf(clip) }
+  return { ...clip, activeSpan: activeSpanOf(clip), scale }
 }
 
 type ClipBody = Pick<ClipShape, 'lifetime' | 'shape' | 'face'>
@@ -233,8 +235,13 @@ export class NaturalGestures {
   private readonly faces: FaceClip[] = []
   private readonly ducks: DuckWindow[] = []
   private readonly lastTrigger = new Map<string, number>()
+  private latest: NaturalBodyIntent['gesture'] = null
 
   constructor(private readonly random: RandomStream) {}
+
+  get latestGesture() {
+    return this.latest
+  }
 
   /**
    * Returns whether a clip started. `shake-or-drop` plays one of the two with equal chance.
@@ -254,6 +261,7 @@ export class NaturalGestures {
     const played = kind === 'shake-or-drop' ? (this.random() < 0.5 ? 'shake' : 'drop') : kind
     const clip: Clip = { ...createClip(played, side, Math.min(1, strength) * amplitude, this.random), start: at }
     this.heads.push(clip)
+    this.latest = { seq: (this.latest?.seq ?? 0) + 1, at, kind: played, side, scale: clip.scale, lifetime: clip.lifetime }
     if (clip.face)
       this.faces.push({ start: at, lifetime: clip.lifetime, face: clip.face })
     this.ducks.push({ start: at, end: at + clip.activeSpan, depth: duck.depth * Math.min(1, strength) * amplitude })

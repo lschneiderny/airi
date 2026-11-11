@@ -5,7 +5,7 @@ import type { FaceBaseline } from './baseline'
 import type { NaturalBreathOutput } from './breath'
 import type { CueGestureKind } from './cue-gestures'
 import type { NaturalFaceOutput } from './face'
-import type { NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionVoice, NaturalRigTraits, NaturalTouchRegion } from './frame-types'
+import type { NaturalBodyIntent, NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionVoice, NaturalRigTraits, NaturalTouchRegion } from './frame-types'
 import type { GazePoint } from './gaze'
 import type { IdleBehaviourKind, IdleCueKind, NaturalIdleDrive } from './idle-activities'
 import type { NaturalEpisode } from './mood'
@@ -41,7 +41,7 @@ import { createRandomStream, deriveSeed } from './random'
 import { NaturalSpeechEmphasis, SpeechOnsetShifts } from './speech-emphasis'
 import { NaturalPetLayer } from './touch'
 
-export type { NaturalAttentionEvent, NaturalGestureEvent, NaturalGlanceEvent, NaturalHoldEvent, NaturalIdleEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionPose, NaturalMotionVoice, NaturalPlacementEvent, NaturalTouchEvent } from './frame-types'
+export type { NaturalAttentionEvent, NaturalBodyIntent, NaturalGestureEvent, NaturalGlanceEvent, NaturalHoldEvent, NaturalIdleEvent, NaturalImpulseEvent, NaturalMotionEvent, NaturalMotionFrame, NaturalMotionObserver, NaturalMotionOptions, NaturalMotionPose, NaturalMotionVoice, NaturalPlacementEvent, NaturalTouchEvent } from './frame-types'
 
 /** Chat timing and geometry only, never text. Target is an eye-anchored offset in head widths, Y up. */
 export interface NaturalChatInput {
@@ -188,6 +188,23 @@ export class NaturalMotion {
   private next: Snapshot
   private suspended = false
   private observer: NaturalMotionObserver | null = null
+  private headTerms: NaturalBodyIntent['head'] = {
+    posture: [0, 0, 0],
+    slow: [0, 0, 0],
+    emphasis: [0, 0, 0],
+    impulse: [0, 0, 0],
+    pet: [0, 0, 0],
+    held: [0, 0, 0],
+    gesture: [0, 0, 0],
+    cue: [0, 0, 0],
+  }
+
+  private cursorShare = 0
+  private pokeSeq = 0
+  private reactEventSeq = 0
+  private latestPoke: NaturalBodyIntent['touch']['poke'] = null
+  private latestReact: NaturalBodyIntent['react'] = null
+  private latestBodyIntent: NaturalBodyIntent | undefined
   /** The hold last reported to the observer; only compared while one is attached. */
   private reportedHoldEmotion: PerformanceEmotion | null = null
   private reportedHoldSide: -1 | 1 | null = null
@@ -246,6 +263,32 @@ export class NaturalMotion {
         this.next = this.integrate()
       }
     }
+    this.latestBodyIntent = {
+      time: this.activeTime,
+      head: {
+        posture: [...this.headTerms.posture],
+        slow: [...this.headTerms.slow],
+        emphasis: [...this.headTerms.emphasis],
+        impulse: [...this.headTerms.impulse],
+        pet: [...this.headTerms.pet],
+        held: [...this.headTerms.held],
+        gesture: [...this.headTerms.gesture],
+        cue: [...this.headTerms.cue],
+      },
+      posture: { shiftSeq: this.posture.shiftCount, amplitude: this.posture.amplitudeScale, shiftRate: this.posture.shiftRateScale, activityGain: this.posture.activityGain },
+      gaze: { on: this.petOverride ? 'pet' : this.gaze.onCursor ? 'cursor' : this.onChat ? 'chat' : this.energy.aside ? 'aside' : 'free', saccadeSeq: this.gaze.saccadeCount, saccadeSize: this.gaze.saccadeSize },
+      breath: { phase: this.breath.phaseRadians, period: this.breath.period * this.breath.periodScale, scale: this.breath.amplitudeScale },
+      voice: { speaking: this.voice.speaking, level: this.voice.level, slow: this.emphasis.slowEnvelope, onsetSeq: this.emphasis.onsetCount, emphasis: this.emphasis.latestEmphasis && { ...this.emphasis.latestEmphasis } },
+      mood: this.moodState,
+      energy: this.energy.state,
+      held: { emotion: this.hold.emotion, strength: this.hold.strength, level: this.hold.level, side: this.hold.side },
+      impulse: this.impulses.latestImpulse && { ...this.impulses.latestImpulse },
+      gesture: this.gestures.latestGesture && { ...this.gestures.latestGesture },
+      cue: this.cueGestures.latestCue && { ...this.cueGestures.latestCue },
+      touch: { poke: this.latestPoke && { ...this.latestPoke }, pet: { level: this.pet.level, active: this.pet.active, ...this.pet.easedHand } },
+      react: this.latestReact && { ...this.latestReact },
+      attention: { approach: this.approach, cursorShare: this.cursorShare },
+    }
     const weight = clamp((this.activeTime - (this.stepIndex - 1) * step) / step, 1)
     const { previous: a, next: b } = this
     const breath = lerpRecord(a.breath, b.breath, weight)
@@ -280,11 +323,18 @@ export class NaturalMotion {
     }
   }
 
+  /** The read-only intent of the most recently produced frame. Call advance before reading. */
+  bodyIntent(): NaturalBodyIntent {
+    if (this.latestBodyIntent === undefined)
+      throw new Error('Call advance() before reading bodyIntent()')
+    return this.latestBodyIntent
+  }
+
   /**
    * Reports performed impulses, holds, gestures, cursor attention, and touch to `observer`, or stops reporting with `null`.
    * Reporting never changes motion: the observer receives values the controller already computed, and
-   * no event is built while no observer is attached. A newly attached observer receives the current
-   * hold, if any, on the next grid step.
+   * observer events are built only while attached; intent records are always retained.
+   * A newly attached observer receives the current hold, if any, on the next grid step.
    */
   setObserver(observer: NaturalMotionObserver | null) {
     this.observer = observer
@@ -556,6 +606,7 @@ export class NaturalMotion {
     const above = this.cursor !== null && this.cursor.y > aboveAnchorThreshold
     this.pet.step(step)
     const cursorShare = attention.weight * (1 - this.pet.level)
+    this.cursorShare = cursorShare
     this.gaze.setCursorTarget({ x: mapped.eye.x, y: above ? Math.min(aboveAnchorEyeLimit, mapped.eye.y) : mapped.eye.y }, attention.oriented ? cursorShare : 0)
     for (const event of attention.events) {
       if (event.kind === 'notice' && stepStart >= this.petGlanceUntil)
@@ -625,6 +676,10 @@ export class NaturalMotion {
       }
     }
     const pokeState = startPending(pending.filter(action => action.kind !== 'chat'), stepStart, { impulses: this.impulses, gaze: this.gaze, energy: this.energy, mood: this.mood, gestures: this.gestures, cueGestures: this.cueGestures, emotionStrengths: this.emotionStrengths, settings: this.performanceSettings, emotions: this.emotions, notify: this.observer ? this.notify : undefined }, { pokes: this.pokes, lastPokeSurprise: this.lastPokeSurprise })
+    this.pokeSeq += pokeState.pokeEvents.length
+    this.reactEventSeq += pokeState.reactEvents.length
+    this.latestPoke = pokeState.pokeEvents.length ? { seq: this.pokeSeq, ...pokeState.pokeEvents[pokeState.pokeEvents.length - 1] } : this.latestPoke
+    this.latestReact = pokeState.reactEvents.length ? { seq: this.reactEventSeq, ...pokeState.reactEvents[pokeState.reactEvents.length - 1] } : this.latestReact
     this.pokes = pokeState.pokes
     this.lastPokeSurprise = pokeState.lastPokeSurprise
     this.energy.step(step)
@@ -730,6 +785,7 @@ export class NaturalMotion {
     const heldPosture = this.performanceSettings.heldEmotions ? this.hold.posture() : [0, 0, 0]
     const gestureHead = this.performanceSettings.heldEmotions ? this.gestures.headOffset(stepStart + step) : [0, 0, 0]
     const cueHead = this.cueGestures.headOffset(stepStart + step)
+    this.headTerms = { posture, slow: slowPose, emphasis, impulse, pet: petHead, held: [heldPosture[0], heldPosture[1], heldPosture[2]], gesture: [gestureHead[0], gestureHead[1], gestureHead[2]], cue: cueHead }
     // The eyes counter-rotate for the head without the continuous wobble: the same terms, minus that one.
     const compose = (base: Readonly<Vec3>) => base.map((value, axis) => {
       let total = value + emphasis[axis] + impulse[axis] + petHead[axis]

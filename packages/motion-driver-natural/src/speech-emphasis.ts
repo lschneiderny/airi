@@ -1,3 +1,4 @@
+import type { NaturalBodyIntent } from './frame-types'
 import type { HeadPulse } from './impulses'
 import type { NaturalPostureLayers, Vec3 } from './posture'
 import type { RandomStream } from './random'
@@ -34,6 +35,10 @@ export class SpeechOnsetDetector {
   private fast = 0
   private slow = 0
   private armed = true
+
+  get slowEnvelope() {
+    return this.slow
+  }
 
   /** Advances by `dt` seconds with mouth level `level`; true when an onset up-crosses the trigger. */
   step(dt: number, level: number): boolean {
@@ -73,8 +78,17 @@ export class NaturalSpeechEmphasis {
   private readonly onsets = new SpeechOnsetDetector()
   private time = 0
   private lastEmphasisAt = Number.NEGATIVE_INFINITY
+  private latest: NaturalBodyIntent['voice']['emphasis'] = null
 
   constructor(private readonly random: RandomStream) {}
+
+  get slowEnvelope() {
+    return this.onsets.slowEnvelope
+  }
+
+  get latestEmphasis() {
+    return this.latest
+  }
 
   /**
    * Advances by `dt` seconds with mouth level `level` and returns the head offset.
@@ -98,11 +112,17 @@ export class NaturalSpeechEmphasis {
     const magnitude = (size.min + (size.max - size.min) * this.random()) * this.sizeScale
     const tau = tauRange.min + (tauRange.max - tauRange.min) * this.random()
     let peak: Vec3
-    if (this.random() < nodShare)
+    let kind: 'nod' | 'tilt'
+    if (this.random() < nodShare) {
       peak = [0, -magnitude, 0]
-    else
+      kind = 'nod'
+    }
+    else {
       peak = [0, 0, (this.random() < 0.5 ? -1 : 1) * magnitude]
+      kind = 'tilt'
+    }
     this.pulses.push({ start: this.time, tau, peak })
+    this.latest = { seq: this.emphasisCount, at: this.time, magnitude, tau, kind, side: peak[2] < 0 || Object.is(peak[2], -0) ? -1 : 1 }
   }
 }
 

@@ -51,6 +51,14 @@ export class NaturalBreathLayer {
     return this.current
   }
 
+  get phaseRadians() {
+    return this.phase
+  }
+
+  get amplitudeScale() {
+    return this.scale
+  }
+
   /** Instantaneous breath period in seconds. */
   get period() {
     return medianPeriod * Math.exp(this.logPeriod)

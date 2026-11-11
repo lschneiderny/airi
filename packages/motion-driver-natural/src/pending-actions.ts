@@ -54,10 +54,18 @@ export interface PendingActionTargets {
   notify?: NaturalMotionObserver
 }
 
+/** Performed physical and desktop actions, independent of observer delivery. */
+interface StartedActions extends PokeSurpriseState {
+  readonly pokeEvents: readonly { readonly at: number, readonly region: NaturalTouchRegion, readonly x: number, readonly y: number }[]
+  readonly reactEvents: readonly { readonly at: number, readonly kind: 'wake' | 'screen-change' }[]
+}
+
 /** Starts emotion impulses and desktop reactions requested since the previous step; returns the updated poke surprise state. */
-export function startPending(actions: Exclude<PendingAction, { kind: 'chat' }>[], at: number, targets: PendingActionTargets, pokeState: PokeSurpriseState): PokeSurpriseState {
+export function startPending(actions: Exclude<PendingAction, { kind: 'chat' }>[], at: number, targets: PendingActionTargets, pokeState: PokeSurpriseState): StartedActions {
   const { impulses, gaze, energy, mood, gestures, cueGestures, emotionStrengths, settings, emotions, notify } = targets
   let { pokes, lastPokeSurprise } = pokeState
+  const pokeEvents: { at: number, region: NaturalTouchRegion, x: number, y: number }[] = []
+  const reactEvents: { at: number, kind: 'wake' | 'screen-change' }[] = []
   for (const action of actions) {
     if (action.kind === 'gesture') {
       cueGestures.trigger(action.gesture, action.count, at)
@@ -80,6 +88,7 @@ export function startPending(actions: Exclude<PendingAction, { kind: 'chat' }>[]
       gaze.glance(glanceTargets.camera, pokeGlanceHold, at)
       // The fixed reacting overlay, like a desktop reaction.
       energy.react(at)
+      pokeEvents.push({ at, region: action.region, x: action.x, y: action.y })
       continue
     }
     if (action.kind === 'emotion') {
@@ -109,6 +118,7 @@ export function startPending(actions: Exclude<PendingAction, { kind: 'chat' }>[]
       notify?.({ kind: 'glance', at, cause: 'screen-change', point, hold: screenChangeGlanceHold })
     }
     energy.react(at)
+    reactEvents.push({ at, kind: action.reaction })
   }
-  return { pokes, lastPokeSurprise }
+  return { pokes, lastPokeSurprise, pokeEvents, reactEvents }
 }

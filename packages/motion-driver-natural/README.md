@@ -29,6 +29,44 @@ its own seeded stream, so a change in one layer does not reshuffle another.
 The controller advances every layer on a fixed 120 Hz grid and interpolates
 between grid states, so the frame rate does not change the motion.
 
+After `advance()`, `motion.bodyIntent()` returns the cached `NaturalBodyIntent`
+for the frame it most recently produced. Call `advance()` before the first read;
+reading earlier throws. Repeated reads return the same snapshot without stepping
+or consuming events. `NaturalMotionFrame` keeps its original shape; intent is
+not a frame property. `NaturalBodyIntent` is exported from the root and
+`./frame-types`. It is a detached, read-only snapshot of state already
+computed by Natural: head posture and its slow component, the six additive head
+terms (emphasis, impulse, pet, held, emotion gesture, cue), posture shift sequence
+and final amplitude/rate scales and activity gain, gaze ownership and saccades,
+breath phase/effective period/amplitude scale, host voice and its slow envelope
+and onsets, mood, energy, held affect, touch, and cursor attention.
+
+Intent is assembled after the grid loop and describes its next endpoint; the
+legacy pose, face, blink, breath and fixation remain interpolated. `intent.time`
+is the frame's active seconds, so the grid endpoint may be up to one tick ahead.
+At grid endpoints after the origin, the posture plus six head terms, clamped to
+[-1, 1], equals the reported head before breath pitch is added and clamped again.
+`head.slow` is an alternative to `head.posture`, not an additional term.
+Gaze ownership chooses pet override, cursor, chat, aside, then free. Pet coordinates
+are the eased hand. Held affect reports the raw target and eased level, including
+its retained side after release; `head.held` reports the term actually applied.
+The energy reaction deadline starts at negative infinity before any reaction.
+
+Emphasis, impulse, emotion gesture, cue, poke and desktop reaction records are
+`null` before their first start. Each has its own `seq`, starting at 1 and advancing
+once per accepted start, independently of observers and reads. Multiple starts
+between frames advance the sequence for each start and retain the latest payload.
+Records remain after their motion ends. Impulses include accepted escalations and
+poke surprise episodes; every poke advances its own record even when surprise is
+deduplicated. Refused gestures/cues do not advance a sequence; queued cues advance
+only when they start. A cue reports its actual start and end; other records use
+`at`, the grid-step start, except emphasis uses the speech detector's active time
+at acceptance. Emphasis carries magnitude, tau, kind and side (1 for an unsided
+nod); an emotion gesture carries its resolved kind, side, sampled lifetime and
+the exact strength times band scale passed to its clip. Pokes preserve their
+region-relative input coordinates. Desktop reactions carry `wake` or
+`screen-change`. Reading intent draws no randomness and changes no frame output.
+
 Two adapters consume the controller. `Live2DNaturalMotionAdapter` in
 `@proj-airi/stage-ui-live2d` writes Live2D parameters, and `MMDNaturalAdapter`
 in `@proj-airi/stage-ui-mmd` writes MMD bones and morph-runtime layers. Live2D

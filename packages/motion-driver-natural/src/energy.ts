@@ -107,6 +107,10 @@ export class NaturalPerformanceEnergy {
     return this.mode === 'talking'
   }
 
+  get state() {
+    return { mode: this.mode, away: this.away, reactingUntil: this.reactingUntil }
+  }
+
   /** Sets the target state; the filter moves toward it from the next step. */
   setState(state: Pick<PerformanceState, 'mode' | 'attention' | 'away'>, energy: number) {
     this.watching = state.mode === 'watching'

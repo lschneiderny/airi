@@ -1,3 +1,4 @@
+import type { NaturalBodyIntent } from './frame-types'
 import type { NaturalGazeLayer } from './gaze'
 import type { Vec3 } from './posture'
 import type { RandomStream } from './random'
@@ -48,10 +49,15 @@ export class NaturalCueGestures {
   private readonly clips: Clip[] = []
   private readonly ducks: { start: number, end: number }[] = []
   private queued: { kind: CueGestureKind, count: number, at: number } | null = null
+  private latest: NaturalBodyIntent['cue'] = null
   /** Raw inward placement (-1..1), before idle placement easing; sampled when a lean starts. */
   placement = 0
 
   constructor(private readonly random: RandomStream, private readonly gaze: NaturalGazeLayer) {}
+
+  get latestCue() {
+    return this.latest
+  }
 
   /** Returns true for an immediate start, false for an ignored or queued request. */
   trigger(kind: CueGestureKind, count: number, at: number): boolean {
@@ -179,6 +185,7 @@ export class NaturalCueGestures {
     const duration = kind === 'nod' ? 0.45 * count : kind === 'shake' ? 0.5 * count : kind === 'shrug' ? 1.1 : 2.6
     const end = kind === 'glance' ? this.gaze.glance({ x: side * 0.35, y: 0.05 }, 0.6, at) : at + duration
     this.clips.push({ kind, count, side, start: at, end })
+    this.latest = { seq: (this.latest?.seq ?? 0) + 1, start: at, end, kind, count, side }
     if (kind !== 'glance')
       this.ducks.push({ start: at, end })
   }

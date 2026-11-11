@@ -82,6 +82,10 @@ export class NaturalPetLayer {
     return this.target === 1
   }
 
+  get easedHand(): Readonly<{ x: number, y: number }> {
+    return this.hand
+  }
+
   /** Starts or continues a pet with the hand at `hand` (x: -1 left to 1 right; y: -1 top to 1 bottom of the head box), or ends it with `null`. */
   set(hand: { x: number, y: number } | null) {
     this.target = hand === null ? 0 : 1

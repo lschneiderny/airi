@@ -135,6 +135,11 @@ export class NaturalPostureLayers {
     return this.slow
   }
 
+  /** Continuous-motion gain held or eased by the latest step. */
+  get activityGain() {
+    return this.gain
+  }
+
   /** Active seconds until the next posture shift begins. */
   get secondsUntilShift() {
     return this.nextShiftAt - this.time
