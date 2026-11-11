@@ -15,6 +15,7 @@ import { chatMessagesToTurns } from '../messages/chat-completions'
 import { formatTimePrefix } from '../messages/datetime-prefix'
 import { renderConversationPreview } from '../messages/preview'
 import { createChatHooks } from './agent-hooks'
+import { canonicalizeTurnCues } from './canonical-cue-text'
 import { useLlmmarkerParser } from './llm-marker-parser'
 import { acceptsRecoveredCue, stripsRecoveredCue } from './recovered-cue'
 import { categorizeResponse, createStreamingCategorizer } from './response-categoriser'
@@ -689,20 +690,26 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
     return fallbackCreatedAt
   }
 
-  function buildContext(history: ChatHistoryItem[], declineMarker: string): Conversation {
+  async function buildContext(history: ChatHistoryItem[], declineMarker: string): Promise<Conversation> {
     const nowTs = now()
     const messagesById = new Map(history.flatMap(message => message.id ? [[message.id, message] as const] : []))
-    const turns = history.flatMap((message, historyIndex): Turn[] => {
+    const turns = await Promise.all(history.map(async (message, historyIndex): Promise<Turn[]> => {
       if (message.role === 'assistant' && message.wordless)
         return chatMessagesToTurns([{ ...unwrapMessage(message), content: renderWordlessCueText(message.wordless, declineMarker) }], message.id ?? `history-${historyIndex}`)
-      if (message.role === 'assistant' && message.generationTranscript)
-        return [structuredClone(unwrapMessage(message.generationTranscript))]
+      if (message.role === 'assistant' && message.generationTranscript) {
+        // The model receives its earlier replies with the cues the runtime accepted, in canonical form, so it does
+        // not copy its own malformed markers. Only this copy changes. The stored transcript stays what the model
+        // wrote, and the chat bubble and exports read the stored message.
+        const turn = structuredClone(unwrapMessage(message.generationTranscript))
+        await canonicalizeTurnCues(turn, deps.stage.recoverCueNames)
+        return [turn]
+      }
       const source = message.role === 'user'
         ? prependTextToContent(unwrapMessage(message), `${formatTimePrefix(getStablePromptTimestamp(message, nowTs))}${formatReplyPromptPrefix(message.replyToMessageId, messagesById)}`)
         : unwrapMessage(message)
       return chatMessagesToTurns(source.role === 'assistant' && source.providerTranscript?.length ? source.providerTranscript : [source], message.id ?? `history-${historyIndex}`)
-    })
-    return { turns }
+    }))
+    return { turns: turns.flat() }
   }
 
   function trimConversationHistory(sessionId: string, generation: number, history: ChatHistoryItem[], contextWindow: number | undefined) {
@@ -1298,10 +1305,12 @@ export function createChatOrchestratorRuntime(deps: ChatOrchestratorRuntimeDeps)
         ],
       })
 
-      const context = buildContext(
+      const context = await buildContext(
         trimConversationHistory(sessionId, generation, sessionMessagesForSend, deps.getContextWindow?.(sessionId)),
         declineMarkerText,
       )
+      if (shouldAbort())
+        return
       // The first request uses the step resolved here, so the display projection below carries the system prompt that
       // the provider receives. Each adapter puts a resolved prompt in place of the system message the same way.
       const resolveOwnerStep = options.resolveStep

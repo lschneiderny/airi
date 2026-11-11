@@ -385,6 +385,42 @@ describe('createChatOrchestratorRuntime', () => {
     expect(JSON.stringify(turns)).toContain('third input')
   })
 
+  it('sends an earlier reply back with the cues the runtime accepted and keeps the stored reply as written', async () => {
+    const harness = createHarness()
+    const replies = ['<|ACT happy|> Well formed.', '[ACT happy] Bracketed. [DELAY 1s]', 'Third.']
+    harness.stream.mockImplementation(async (_model, _provider, _context, options) => {
+      const text = replies[harness.stream.mock.calls.length - 1]!
+      const [turn] = chatMessagesToTurns([{ role: 'assistant', content: text }])
+      if (turn?.type !== 'assistant')
+        throw new Error('Expected assistant turn')
+      // A live generation stores the provider's own messages beside the portable content.
+      turn.rounds[0]!.continuation = { protocol: 'chat-completions', scope: 'scope', data: [{ role: 'assistant', content: text }] }
+      await options?.onStreamEvent?.({ type: 'text-delta', text })
+      await options?.onGeneratedTurn?.(turn)
+      await options?.onStreamEvent?.({ type: 'finish' })
+    })
+    for (const input of ['one', 'two', 'three'])
+      await harness.runtime.ingest(input, { model: 'gpt-test', chatProvider: provider })
+
+    // Both projections of the same history: the provider's own messages, and the portable content another provider gets.
+    for (const scope of ['scope', undefined]) {
+      const requests = harness.stream.mock.calls.map(call => conversationToChatMessages(call[2], true, scope))
+      const repliesSent = requests.map(messages => messages.filter(message => message.role === 'assistant').map(message => message.content))
+      expect(repliesSent).toEqual([
+        [],
+        ['<|ACT happy|> Well formed.'],
+        ['<|ACT happy|> Well formed.', '<|ACT happy|> Bracketed. '],
+      ])
+      // Each request repeats the one before it byte for byte, so a provider prompt cache keeps its prefix.
+      expect(requests[2]!.slice(0, requests[1]!.length)).toEqual(requests[1])
+    }
+
+    const stored = harness.sessionMessages['session-1'].filter(message => message.role === 'assistant')
+    expect(stored.map(message => message.generationTranscript?.rounds[0]?.content)).toEqual(replies.map(text => [{ type: 'text', text }]))
+    expect(stored.map(message => message.generationTranscript?.rounds[0]?.continuation?.data)).toEqual(replies.map(text => [{ role: 'assistant', content: text }]))
+    expect(stored.map(message => message.content)).toEqual([' Well formed.', ' Bracketed. ', 'Third.'])
+  })
+
   it('keeps the newest 90 percent of turns when a card context window is exceeded', async () => {
     const harness = createHarness()
     harness.contextWindow.set(10)

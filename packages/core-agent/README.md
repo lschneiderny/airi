@@ -51,6 +51,11 @@ When the limit is exceeded, the newest `ceil(limit * 0.9)` turns remain. The ret
 The runtime scans backward through the needed turns instead of rebuilding an index for all saved history on each send.
 An omitted limit or `-1` keeps all history. `0` sends only the current input and system messages. Saved chat records stay intact.
 
+A stored generation transcript holds each reply as the model wrote it. When the transcript returns to a provider as history, the runtime sends a copy in which `canonicalizeTurnCues` gives every near-miss cue that the runtime recovered, such as `[ACT happy]`, its canonical `<|ACT happy|>` form. It leaves out near-miss markup that the runtime stripped.
+A model imitates its own earlier turns, so one malformed marker in the history returns in every later reply. `canonicalCueText` uses the marker parser and the recovered-cue rules of the live turn, so the history states what the runtime did. Prose such as `[Act 2]` and a near-miss cue inside a reasoning tag stay as written.
+A reply without a recovered or stripped cue is sent byte for byte, and a rewritten reply has the same text on every later request, so the prompt prefix stays cacheable. A chat stored before this rule sends its recovered cues in canonical form from its next request on, which changes that prefix once.
+Only the copy changes. The stored message, the chat bubble, and exports keep the model's text. Text with citations and legacy `providerTranscript` messages are sent as written.
+
 After all SDK steps settle, `onGeneratedTurn` receives the new `AssistantTurn`. Each round records model usage, its finish reason, tool invocations, and native continuation data. SDK input snapshots define round boundaries; message roles do not define runtime rounds.
 
 The generated turn contains settled rounds and is stored under the existing `generationTranscript` history key. Live deltas still use the existing stream event contract. An interrupted execution does not store a generated turn. If it produced visible output, local Chat history preserves that output with `interrupted: true` so the user can read and retry it.
