@@ -9,6 +9,7 @@ Root commands for working on this repository with many worktrees and parallel ag
 | `pnpm dev:top` | Shows dev process memory and CPU per worktree, flags orphans, and stops one worktree's processes. |
 | `pnpm qa:display up \| down \| status \| env \| run \| shot` | Runs a headless, GPU-accelerated KWin session on Linux, so agents can run the Electron app and live QA without touching the user's desktop. |
 | `pnpm qa:kwin-probe [--seconds N] [--cursor] [--bus <address>]` | Loads the AIRI KWin bridge into a QA session's KWin, prints its messages as JSON lines, then unloads it and confirms KWin no longer has the scripts. |
+| `pnpm release <year>.<month>.<n> [--dry-run]` | Builds this machine's desktop installers for a fork release and uploads them to a draft GitHub release. See [`pnpm release`](#pnpm-release). |
 | `pnpm check:bundle` | Builds the Electron app and fails if the main window loads three, three-mmd, three-vrm, or Tres at startup. |
 | `pnpm test:run` | Runs the root Vitest config and then each package suite (`test-stage-tamagotchi:run`, `test-stage-web:run`, `test-stage-pages:run`, `test-ui:run`, `test-stage-ui-live2d:run`, `test-model-driver-lipsync:run`, `test-stage-ui-three:run`, `test-stage-ui-mmd:run`). Every suite runs even after a failure. It prints a per-suite summary and exits 1 if any suite failed. |
 
@@ -76,6 +77,30 @@ pnpm exec tsx scripts/dev-tools/bundle-check.ts   # check the existing build in 
 ```
 
 The check starts from the module script in `out/renderer/index.html` and follows static `import` and `export ... from` statements through the emitted chunks. It skips dynamic `import()`, which loads only when a 3D model is selected. No chunk it reaches may contain three, which it recognizes by the `__THREE__` property that three sets when it loads. three-mmd, three-vrm, and Tres all import three, so the same marker covers them. The build writes no sourcemaps, so the check cannot name modules directly. It prints how many chunks and megabytes the main window loads at startup. The [lazy 3D renderers ADR](../../docs/ai/adr/2026-11-04-lazy-3d-renderers.md) records why. The `airi/lazy-3d-renderers` ESLint rule catches the same mistake earlier, in the editor and in `pnpm verify`. The check is a separate command because it needs an Electron build.
+
+## `pnpm release`
+
+`pnpm release 2026.11.0` packages the Electron app for the machine it runs on and uploads the installers to a draft release on the fork's GitHub repository (`releaseRepository` in `apps/stage-tamagotchi/src/shared/release-repository.ts`). Run it once on Linux (deb and rpm) and once on macOS (dmg and zip). Windows releases are deferred.
+
+Versions are calendar versions, `<year>.<month>.<n>`, tagged `v<version>`. They never collide with upstream's `0.x` tags, and a fork build always compares as newer than upstream. The version is injected at package time through `extraMetadata.version`, so a release needs no version-bump commit. GitHub creates the tag on the release commit when you publish the draft.
+
+Before it builds, the command refuses to continue unless:
+
+- you are on `main`, with no tracked changes, and `HEAD` matches `origin/main`;
+- `GODOT4` names the Godot .NET editor that exports the stage sidecar (see the engine README, "Exporting");
+- `gh` is signed in;
+- no published release has this tag, and an existing draft targets the same commit as `HEAD`.
+
+It then runs `pnpm verify --gate`, a clean-start smoke (through `pnpm qa:display run --` on Linux), the Godot export into `engines/stage-tamagotchi-godot/out/<linux|mac>`, the app build, and electron-builder with `AIRI_REQUIRE_GODOT_STAGE=true` under a `build` CPU slot. The first platform creates the draft; the second adds its files to it. `--dry-run` stops after the checks.
+
+The smoke starts the development build, not the installer. Before you publish the draft, install each installer on a real display and start it:
+
+- Linux: `sudo dnf install ./AIRI-<version>-linux-x86_64.rpm` or `sudo apt install ./AIRI-<version>-linux-amd64.deb`.
+- macOS: the build is ad-hoc signed and not notarized, so run `xattr -dr com.apple.quarantine /Applications/AIRI.app` after copying it from the dmg.
+
+Then publish with `gh release edit v<version> --repo lschneiderny/airi --draft=false`. Installed Linux builds see the release through the updater. macOS builds cannot install unsigned updates, so their About page points to GitHub Releases instead.
+
+On Fedora, electron-builder's bundled `fpm` needs `libcrypt.so.1` to build the deb. Install `libxcrypt-compat` once if the deb step fails with `ruby: error while loading shared libraries: libcrypt.so.1`.
 
 ## `pnpm wt`
 

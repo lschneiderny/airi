@@ -62,6 +62,7 @@
     "slots": "tsx packages/cpu-slots/src/cli.ts",
     "verify": "tsx scripts/dev-tools/verify.ts",
     "wt": "tsx scripts/dev-tools/wt.ts",
+    "release": "tsx scripts/dev-tools/release.ts",
     "dev:top": "tsx scripts/dev-tools/top.ts",
     "qa:display": "tsx scripts/dev-tools/qa-display.ts",
     "qa:kwin-probe": "tsx scripts/dev-tools/kwin-probe.ts",
