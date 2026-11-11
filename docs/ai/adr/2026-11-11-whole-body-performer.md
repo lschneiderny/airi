@@ -1,0 +1,75 @@
+# Whole-body performer for MMD characters
+
+Date: 2026-11-11
+Status: accepted
+
+## Context
+
+Before this change the MMD body mapped Natural's two-dimensional head and body channels onto bones in fixed shares. The
+`weight-shift` stage rewrote spine and chest at 0.6 and 0.4 of one signal, the `look-at` stage rewrote neck and head at
+0.4 and 0.6, and `arm-rest` held a mirrored, constant rest pose with one torso-roll spring. Two bones driven by one
+signal reach every extreme on the same frame, so the chain read as one rigid segment with a hinge. Weight shift was a
+symmetric ease plus three sinusoids, look-at had no eye lead, no amplitude dependence and no overshoot, and the arms
+never moved on their own. The Natural adapter also wrote neck, head, spine and chest, but the body stages overwrote those
+writes from the clean pose on the same frame, so they never reached the screen.
+
+The goal of the work is a character whose whole body performs: weight starts in the pelvis and climbs, gaze starts in
+the eyes and travels down, the arms hang with their own dynamics and stay out of the body. Live2D had to stay
+byte-identical, and the four millisecond frame budget of the AIRI stages had to hold.
+
+## Decision
+
+Natural stays the mind and the body performs. Natural (`packages/motion-driver-natural`) gained only a read-only
+`bodyIntent()` accessor: head attitude and its terms, breath phase, voice, mood, energy, held emotion, the latest
+impulse, gesture, cue, poke and react records, and gaze events. A pure performer in
+`@proj-airi/motion-driver-humanoid/performance` turns that intent into 77 canonical channels on a fixed 120 Hz tick,
+from a seed: posture and weight shift with anticipation and settle, aperiodic sway, breath through torso, clavicles and
+arms, gaze with eye lead, amplitude-scaled head recruitment and blink coupling, arm rest dynamics, and an arm collision
+corrector that clears the arms against the rig's kinematic bodies before a frame leaves the core. It imports no
+renderer.
+
+The MMD adapter (`packages/stage-ui-mmd/src/composables/mmd/body/`) owns everything rig-specific:
+
+- One 120 Hz clock steps the gait and then the performer for each tick, blending display-rate inputs across the ticks
+  of a frame and showing the two latest ticks blended by the leftover fraction.
+- `buildBodyRigTraits` copies the rig's bind geometry, spine chain (one to four bones), arm segments, feet and its
+  kinematic torso and head bodies into the performer's plain-data traits, each body in its canonical ancestor's frame.
+- `MMDBodyIntent` maps `bodyIntent()`, the gaze goal, the director's stance, the gait and clip ownership into the
+  performer's input.
+- `MMDBodyPerformer` writes channels to bones from the clean pose, applying clip ownership once per group, carrying the
+  canonical straight-down arm onto the bind arm so the rendered segments equal the performer's own kinematics, and
+  skipping missing and physics-owned bones.
+
+The pose stages became `natural`, `locomotion`, `body-torso`, `foot-contact`, `body-head`, `body-arms`, `eyes`, then
+the unchanged Classic, lip-sync and bone-morph stages. `composeMMDStages` is the one owner of that order: the scene
+registers it, the headless runner composes from it, and `qa:stage capture` refuses a scene whose stage list differs
+(`stage-composition-mismatch`), so a headless trace is evidence about the real app. A `BodyCollisionError` keeps the
+previous valid frame on screen and is reported in diagnostics. The `weight-shift` and `rest-pose` modules and the
+look-at joint springs were deleted in the same slice; the turn planner and `aimEyes` stay.
+
+## Alternatives considered
+
+| | A. Filter the channels | B. Natural as intent, pure body performer (chosen) | C. Simulated body |
+| --- | --- | --- | --- |
+| Idea | Keep the 2D channel mapping; add per-bone lag filters, noise and an arm overlay in the adapter. | Natural keeps timing, attention and affect; a pure performer synthesises the 3D pose from that intent. | Drive joints with PD controllers inside Ammo and let physics produce overlap. |
+| Why not | Arms cannot gesture, because a head pulse carries no gesture identity; weight cannot lead, because the body channel is a lagged copy of the head; lags stack on Natural's own lag. | - | Not deterministic per seed, cannot guarantee zero arm penetration or the frame budget, and depends on Ammo internals the package forbids. |
+
+B costs a larger tuning surface and a pure-core copy of the arm collision test. Per-layer switches
+(`setPerformanceLayer`) and tuning one layer at a time answer the first; the corrector uses the gate's own capsules and
+clearance ratio, and the rendered `stage-arm-penetration` gate still measures the real pose after physics.
+
+## Consequences
+
+- MMD motion under the Natural driver changed on purpose, so the headless idle trace differs from the goal-1 baseline.
+  From here on the motion is judged with the frozen gate, not with trace equality. Live2D is unchanged: Natural only
+  gained an accessor.
+- A rig needs hips, a spine, neck, head, two full arms and a measurable leg for the performer. Without them the body
+  keeps foot contact and eye aim only.
+- The gait's lateral pelvis offset is now applied toward the support foot, as the gait's own reach model assumes; the
+  legacy stage applied it with the opposite sign.
+- Body blinks and gaze shifts are recorded as trace `marker` events (`blink`, `gaze-shift:<degrees>`) until the trace
+  reader accepts them as their own kinds.
+- The per-rig hang solver remains and feeds the performer's `armLift`, but the performer's own corrector already clears
+  the same bodies, so the solver acts only where the corrector's model and the rendered pose differ.
+- Gesture, cue, emotion, reaction and act layers, twist-bone writes, foot roll and the rest states are later slices;
+  `setPerformanceLayer` has no layer to switch until they land.
