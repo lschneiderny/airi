@@ -23,6 +23,22 @@ function shift(degrees: number, seed = 1) {
 }
 
 describe('gaze performance', () => {
+  it('holds the trunk until 120 ms after the head starts when a shift reverses or unwinds it', () => {
+    for (const kind of ['sustained', 'free'] as const) {
+      const performer = createBodyPerformer({ traits, seed: 1 })
+      const input = quietInput()
+      const trunk: number[] = []
+      for (let i = 0; i < 960; i++) {
+        const after = i >= 480
+        const frame = performer.step({ ...input, gaze: { ...input.gaze, yaw: (after ? -38 : 40) * DEG, kind: after ? kind : 'sustained', saccadeSeq: after ? 2 : 1 } })
+        trunk.push(frame.channels[c('lowerYaw')] + frame.channels[c('midYaw')] + frame.channels[c('upperYaw')])
+      }
+      expect(trunk[479]).toBeGreaterThan(3 * DEG)
+      const latency = Math.round(0.12 * 120)
+      expect(Math.abs(trunk[480 + latency - 1] - trunk[479])).toBeLessThan(0.01 * DEG)
+    }
+  })
+
   it('eyes arrive before the head, which overshoots and settles', () => {
     const { line, head } = shift(30)
     const final = head.at(-1) ?? 0

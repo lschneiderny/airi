@@ -50,6 +50,7 @@ export class BodyGaze {
   private readonly trunk = createLagChain([0.095, 0.06, 0.08], BODY_TICK)
   private headLatency = 0
   private trunkLatency = 0
+  private trunkGoal = 0
   private recruited = false
   private blinkElapsed = Infinity
   private sinceBlink = Infinity
@@ -95,10 +96,14 @@ export class BodyGaze {
     this.headLatency -= BODY_TICK
     this.trunkLatency -= BODY_TICK
     const relativeYaw = wrap(goal.yaw - input.facingYaw)
-    const trunkGoal = goal.kind === 'free' || this.trunkLatency > 0
-      ? 0
-      : Math.sign(relativeYaw) * Math.min(18 * DEG, 0.3 * Math.max(0, Math.abs(relativeYaw) - 25 * DEG))
-    const trunk = this.trunk.step(trunkGoal)
+    // The trunk starts 120 ms after the head: through its latency it holds where it is, also when the new shift
+    // reverses it or, for a free glance, unwinds it.
+    if (this.trunkLatency <= 0) {
+      this.trunkGoal = goal.kind === 'free'
+        ? 0
+        : Math.sign(relativeYaw) * Math.min(18 * DEG, 0.3 * Math.max(0, Math.abs(relativeYaw) - 25 * DEG))
+    }
+    const trunk = this.trunk.step(this.trunkGoal)
     out[12] += 0.4 * trunk[0]
     out[9] += 0.35 * trunk[1]
     out[6] += 0.25 * trunk[2]
