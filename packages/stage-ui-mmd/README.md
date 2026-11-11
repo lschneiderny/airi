@@ -154,6 +154,8 @@ Motion time is the sum of pipeline dt, rebased with wall time to frame zero.
 The sampler derives bind rotations and offsets from the skeleton inverse bind
 matrices, folds helper bones into canonical humanoid parents, excludes physics
 bones, and duplicates the both-eyes fallback into both eye columns.
+Root positions divide out the mesh's uniform world scale each frame so they use
+the same model units as bind offsets and leg length.
 
 The headless composition also imports `MMDBody` from `./composables/mmd/body`,
 `MMDNaturalAdapter` from `./composables/mmd/natural/adapter`, and

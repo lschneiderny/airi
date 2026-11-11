@@ -35,3 +35,34 @@ it('records bind rotations as identity and a world-axis rotation independently o
   expect(actual.angleTo(rotation)).toBeLessThan(0.0005)
   mmd.dispose()
 })
+
+it('keeps root translations in model units and rotations unchanged under uniform world scale', () => {
+  const { mmd, rig, bone, pipeline, mixer, mesh } = bodyFixture()
+  const sampler = createMMDMotionTraceSampler(mmd, rig, new MMDBodyPose(mmd, rig))
+  sampler.recorder.start({
+    kind: 'motion-trace',
+    version: 1,
+    source: { level: 't2-3d', scenario: { id: 'test', class: 'idle', seed: 1 }, gitSha: null, dirty: null, stages: { pose: [], surface: ['motion-trace'] }, omitted: [], detail: {} },
+    rig: { ...sampler.rig, id: 'fixture' },
+    hz: 60,
+    scoredFrom: 0,
+  })
+  const context = { dt: 1 / 60, mmd, mixer, clean: pipeline.clean }
+  bone('頭').quaternion.setFromAxisAngle(new Vector3(1, 0, 0), 0.4)
+  sampler.inputs.wall = 0
+  sampler.stage.run(context)
+  mesh.scale.setScalar(2)
+  bone('下半身').position.x += 3
+  sampler.inputs.wall = 1 / 60
+  sampler.stage.run(context)
+  sampler.recorder.stop()
+  const data = sampler.recorder.drain()
+  const root = decodeBlock(data.root, 8)
+  expect(root[4] - root[0]).toBeCloseTo(3, 6)
+  expect(root[5]).toBeCloseTo(root[1], 6)
+  const stride = sampler.rig.bones.length * 4
+  const rot = decodeBlock(data.rot, stride * 2)
+  for (let i = 0; i < stride; i++)
+    expect(rot[stride + i]).toBeCloseTo(rot[i], 6)
+  mmd.dispose()
+})

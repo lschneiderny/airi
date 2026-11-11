@@ -76,6 +76,7 @@ export function createMMDMotionTraceSampler(mmd: MMD, profile: MMDRigProfile, po
   const bySlot = new Map(bones.map((slot, index) => [slot, entries[index]]))
   const position = new Vector3()
   const scale = new Vector3()
+  const worldScale = new Vector3()
   let elapsed = 0
   const stage: MMDFrameStage = {
     id: 'motion-trace',
@@ -94,6 +95,9 @@ export function createMMDMotionTraceSampler(mmd: MMD, profile: MMDRigProfile, po
         position.setFromMatrixPosition(hips.bone.matrixWorld).applyQuaternion(basis)
       else
         position.setFromMatrixPosition(mesh.matrixWorld).applyQuaternion(basis)
+      // Bind offsets and leg length use model units, independent of the user's mesh scale.
+      worldScale.setFromMatrixScale(mesh.matrixWorld)
+      position.divideScalar(worldScale.x)
       recorder.sample(elapsed, inputs.wall ?? performance.now() / 1000, (slot) => {
         const entry = bySlot.get(slot)
         if (!entry)
