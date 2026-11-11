@@ -30,6 +30,7 @@ import {
   electronSetUpdaterPreferences,
 
 } from '../../../shared/eventa'
+import { releaseRepository } from '../../../shared/release-repository'
 import { onWindowClosed } from '../../libs/electron/on-window-closed'
 import { MockAutoUpdater } from './mock-auto-updater'
 
@@ -37,9 +38,10 @@ function getReleaseChannelName() {
   return process.arch === 'arm64' ? 'latest-arm64' : 'latest-x64'
 }
 
-const GITHUB_RELEASES_API_URL = 'https://api.github.com/repos/moeru-ai/airi/releases?per_page=100'
-const GITHUB_RELEASES_ATOM_URL = 'https://github.com/moeru-ai/airi/releases.atom'
-const GITHUB_RELEASE_DOWNLOAD_BASE_URL = 'https://github.com/moeru-ai/airi/releases/download'
+const RELEASE_REPOSITORY_PATH = `${releaseRepository.owner}/${releaseRepository.repo}`
+const GITHUB_RELEASES_API_URL = `https://api.github.com/repos/${RELEASE_REPOSITORY_PATH}/releases?per_page=100`
+const GITHUB_RELEASES_ATOM_URL = `https://github.com/${RELEASE_REPOSITORY_PATH}/releases.atom`
+const GITHUB_RELEASE_DOWNLOAD_BASE_URL = `https://github.com/${RELEASE_REPOSITORY_PATH}/releases/download`
 const UPDATE_CHANNEL_ENV_KEY = 'AIRI_UPDATE_CHANNEL'
 
 function getCacheRoot() {
@@ -186,15 +188,15 @@ function selectLatestTagForLane(releases: GitHubReleaseRecord[], lane: UpdateLan
  * Extract release tags from GitHub releases Atom feed without adding XML-parser dependencies.
  *
  * The current feed contains entries like:
- * `<entry><link rel="alternate" type="text/html" href="https://github.com/moeru-ai/airi/releases/tag/v0.9.0-beta.6"/></entry>`
+ * `<entry><link rel="alternate" type="text/html" href="https://github.com/<owner>/<repo>/releases/tag/v0.9.0-beta.6"/></entry>`
  * and
  * `<entry><id>tag:github.com,2008:Repository/963495975/v0.9.0-alpha.36</id></entry>`
  *
- * We intentionally scan for `/moeru-ai/airi/releases/tag/` so we only consume actual release tag links.
+ * We intentionally scan for `/<owner>/<repo>/releases/tag/` so we only consume actual release tag links.
  */
 function extractReleaseTagsFromAtom(atom: string) {
   const tags: string[] = []
-  const marker = '/moeru-ai/airi/releases/tag/'
+  const marker = `/${RELEASE_REPOSITORY_PATH}/releases/tag/`
   let offset = 0
 
   while (offset < atom.length) {
