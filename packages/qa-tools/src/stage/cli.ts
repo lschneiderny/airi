@@ -7,11 +7,14 @@ import { parseArgs } from 'node:util'
 import { errorMessageFrom } from '@moeru/std'
 import { acquire } from '@proj-airi/cpu-slots'
 
+import { captureStage } from './capture'
+import { CaptureRefusal } from './capture-channel'
 import { formatGateResults, readStageEvidence, runStageGates } from './gates'
 import { runHandOff } from './handoff'
 import { measureAttached, measurePairs, measureScenario } from './measure'
 
 export const stageUsage = `Usage:
+  stage capture --port <cdp port> --scenario <idle|walk|attach> --seconds <s> --out <dir> [--mode window|desktop] [--shots 12] [--seed 1]
   stage measure --mode <window|desktop> --port <cdp port> [--seconds 60] [--attempts 3] --out <json>
   stage measure --pairs <n> --profile <profile dir> [--seconds 60] [--settle 10] [--attempts 3] --out <json>
   stage measure --mode <window|desktop> --port <cdp port> --scenario <gesture-walk|action-preempt> --clip <clip name> [--seconds 12] [--attempts 3] --out <json>
@@ -81,6 +84,39 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
     }
   }
   try {
+    if (command === 'capture') {
+      const { values } = parse(() => parseArgs({
+        args: [...rest],
+        options: { port: { type: 'string' }, scenario: { type: 'string' }, seconds: { type: 'string' }, out: { type: 'string' }, mode: { type: 'string' }, shots: { type: 'string' }, seed: { type: 'string' } },
+        strict: true,
+      }))
+      if (!values.port || !values.scenario || !values.seconds || !values.out)
+        throw new UsageError('capture needs --port, --scenario, --seconds and --out')
+      const mode = values.mode ?? 'window'
+      if (mode !== 'window' && mode !== 'desktop')
+        throw new UsageError('--mode must be window or desktop')
+      const seconds = Number(values.seconds)
+      if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 120)
+        throw new UsageError('--seconds must be greater than 0 and at most 120')
+      const port = positiveInteger('port', values.port, 0)
+      if (port > 65535)
+        throw new UsageError('--port must be at most 65535')
+      const seed = values.seed === undefined ? 1 : Number(values.seed)
+      if (!Number.isSafeInteger(seed))
+        throw new UsageError('--seed must be a safe integer')
+      const capture = await captureStage({
+        repoRoot: context.repoRoot,
+        out: resolve(context.cwd, values.out),
+        port,
+        mode,
+        scenario: values.scenario,
+        seconds,
+        shots: positiveInteger('shots', values.shots, 12),
+        seed,
+      })
+      console.info(JSON.stringify({ ok: capture.valid, out: resolve(context.cwd, values.out), frames: capture.frames, fps: capture.fps, failure: capture.failure }))
+      return capture.valid ? 0 : 1
+    }
     if (command === 'gate') {
       const { positionals } = parse(() => parseArgs({ args: [...rest], options: {}, allowPositionals: true, strict: true }))
       return runGate(positionals, context.cwd)
@@ -185,6 +221,6 @@ export async function runStageCli(argv: readonly string[], context: { repoRoot: 
   catch (error) {
     const usage = error instanceof UsageError
     console.error(`qa-tools stage: ${errorMessageFrom(error) ?? 'unknown error'}${usage ? `\n${stageUsage}` : ''}`)
-    return usage ? 2 : 1
+    return usage || error instanceof CaptureRefusal ? 2 : 1
   }
 }

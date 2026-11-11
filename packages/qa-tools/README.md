@@ -483,6 +483,53 @@ Before any cursor movement, a head width greater than half the stage window's CS
 
 The desktop stage gates live in `src/stage/gates.ts`; `src/stage/measure.ts` produces the frame-budget and scenario input. Relative paths resolve against pnpm's `INIT_CWD`: the directory where you typed the command, or the `--dir` directory when pnpm is called with `--dir`.
 
+`pnpm qa:stage capture --port <cdp port> --scenario idle --seconds 30 --out <dir>`
+attaches to a running Electron MMD scene and records final humanoid bones after
+IK, grants and physics. On Linux, launch the app inside
+`pnpm qa:display run --name <name> -- <command>` with a temporary
+`APP_USER_DATA_PATH`. The launcher owns the live CPU lease; capture takes no
+additional lease. `--mode window|desktop` defaults to `window`, `--shots`
+defaults to 12 and `--seed` to 1. Seconds must be greater than 0 and at most
+120; seed selects the cue timeline and does not reseed the mounted model.
+
+Capture waits for a mounted MMD model, checks animation, then warms up for
+10 s and waits for a second of standing before starting the recorder.
+`idle` observes the existing motion. `walk` posts the shared scenario's
+`requestGoal` cues in stage mode, converting leg lengths from the starting
+root and clamping to reachable ground. `attach` records without driving cues,
+so another command can drive the character. Other scenario ids refuse with
+`scenario-not-drivable`. A walk outside stage mode has the same refusal.
+Capture checks `MMDMotionSnapshot.driver`, refusing Classic with
+`driver-not-natural`; the motion QA bridge's `driver` and `naturalActive`
+fields describe Live2D and cannot establish the active MMD driver.
+An absent MMD model refuses with `no-mmd-model`.
+
+Output is `trace.json` (shared v1 contract, `source.level: 'rendered'`),
+`shots/NN-<time>s.png`, `capture.json` and `strip.png`. The recorder drains in
+600-frame chunks. `capture.json` includes the source URL, scenario, host mode,
+frame count, median FPS, median/worst wall-frame intervals, frame-gap fraction,
+`noticeDismissed` (`true`, `false` or `'absent'` for the optional close action
+on the host-capability notice before screenshots),
+requested and actual shot times, and `parity.stageOrder`. Parity compares
+the shared Natural/body pose and surface stage order with the headless
+composition; extra rendered stages such as morphs remain in the trace header.
+The strip has six columns, 320 pixels per shot and no text labels.
+
+Shots are evenly spaced at the midpoint of each interval. If more than 0.5%
+of recorded wall-frame intervals exceed 1/24 s, capture discards that probe
+and records again without screenshots, then replays the cue timeline for
+shots. `probeGapFraction`, `shotsPass: 3` and `shotsNote` disclose this;
+`attach` remains undriven and does not claim to replay external inputs.
+The new trace retains any gaps the renderer produces without screenshots.
+Trace and shots are written before
+the manifest and strip, so strip encoding failure preserves the measurement.
+Median FPS below 20 writes `failure: 'frame-rate-under-20'` and exits 1.
+Successful captures exit 0; usage errors, named scene refusals and unsupported
+scenarios exit 2. Recorder refusals include `measurement-running`,
+`trace-recording`, `invalid-trace-request`, `invalid-trace-event`,
+`trace-not-stopped` and `invalid-trace-range`. Broken runs exit 1.
+Capture is measurement evidence; scoring and visual review are separate.
+
 | Gate id | Input | Passes when |
 | --- | --- | --- |
 | `stage-walk-skate` | A walk timeline: `perFrameSeries` (top level or under `walk`) with the columns `mode`, `skate`, and `feetMaxError`, one row per frame. | The non-idle frames include `walking`, max `locomotion.skate` < 0.05, and max `feet.maxError` < 0.05. |
