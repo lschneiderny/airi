@@ -117,7 +117,7 @@ describe('emotion-table report (C002, plan 2.3)', () => {
 describe('cue-body report (C002, unit M2 R3)', () => {
   // 150 s of placebo, then six events of each cue kind 5 s apart. Every bone below the neck and the head sways with
   // seeded 0.3 degree noise; the cued bone adds a 3 degree, 4 Hz oscillation for the cue's duration.
-  function cues(bone: MotionTraceBone | null, noise = 0.3 * DEG) {
+  function cues(bone: MotionTraceBone | null, noise = 0.3 * DEG, onlyFirst?: number) {
     const kinds = ['nod', 'shake', 'shrug', 'lean', 'glance'] as const
     const seconds = { nod: 0.45, shake: 0.5, shrug: 1.1, lean: 2.6, glance: 0.6 }
     const list = kinds.flatMap((kind, k) => Array.from({ length: 6 }, (_, i) => ({ kind, t: 152 + 5 * (k * 6 + i) })))
@@ -127,7 +127,8 @@ describe('cue-body report (C002, unit M2 R3)', () => {
     const world = (b: MotionTraceBone, t: number): Quat => {
       const sway = (phases.get(b) ?? []).reduce((sum, [phase, hz]) => sum + noise / 3 * Math.sin(2 * Math.PI * hz * t + phase), 0)
       const cue = list.find(x => t >= x.t && t < x.t + seconds[x.kind])
-      return rotX(sway + (cue && b === bone ? 3 * DEG * Math.sin(2 * Math.PI * 4 * (t - cue.t)) : 0))
+      const amplitude = onlyFirst === undefined ? 3 * DEG : list.indexOf(cue ?? list[0]) % 6 === 0 ? onlyFirst : 0
+      return rotX(sway + (cue && b === bone ? amplitude * Math.sin(2 * Math.PI * 4 * (t - cue.t)) : 0))
     }
     return loadedRun(trace({ seconds: 154 + 5 * list.length, scenario: 'emotion', events, world }), null, null)
   }
@@ -140,6 +141,13 @@ describe('cue-body report (C002, unit M2 R3)', () => {
     const report = cueBodyReport([cues(bone)])
     expect(report.verdict).toBe('FAIL')
     expect(report.requirements.every(r => !r.pass)).toBe(true)
+  })
+
+  // One moving event of six adds a sixth of its turn to the average: 0.5 degrees stays inside the null, while 3 degrees
+  // clears it alone, a property of averaging; the printed per-event counts stay at noise level (0 to 2 of 6).
+  it.each([[0.5, false], [3, true]] as const)('judges one moving event of six at %s degrees by its share of the average: pass %s', (degrees, pass) => {
+    const report = cueBodyReport([cues('chest', 0.3 * DEG, degrees * DEG)])
+    expect(report.requirements.every(r => r.pass === pass)).toBe(true)
   })
 
   it('fails a body that never moves, with no placebo spread to beat', () => {
