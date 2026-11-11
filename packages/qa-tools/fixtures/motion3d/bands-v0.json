@@ -1,0 +1,98 @@
+{
+  "kind": "mmd-motion-bands",
+  "gate": { "id": "mmd-motion-quality", "version": 0 },
+  "fixture": true,
+  "builtAt": "2026-11-11T00:00:00.000Z",
+  "tool": { "gitSha": "fixture", "rule": "P5-P50-P95-one-tail-margin" },
+  "datasets": [],
+  "context": { "notice": "Analytic test fixtures only. These are not human reference bands." },
+  "classes": {
+    "idle": {
+      "window": { "seconds": 10, "hopSeconds": 5 },
+      "floors": {
+        "hips": 0.001,
+        "spine": 0.001,
+        "chest": 0.001,
+        "neck": 0.001,
+        "head": 0.001,
+        "leftShoulder": 0.001,
+        "leftUpperArm": 0.001,
+        "leftLowerArm": 0.001,
+        "leftHand": 0.001,
+        "rightShoulder": 0.001,
+        "rightUpperArm": 0.001,
+        "rightLowerArm": 0.001,
+        "rightHand": 0.001,
+        "leftUpperLeg": 0.001,
+        "leftLowerLeg": 0.001,
+        "rightUpperLeg": 0.001,
+        "rightLowerLeg": 0.001
+      },
+      "moveSpeed": { "body": 0.02, "head": 0.02, "trunk": 0.02, "armL": 0.02, "armR": 0.02, "legs": 0.02 },
+      "fit": [],
+      "holdout": [],
+      "metrics": {
+        "chain.spine-chest.zeroLagCorr": {
+          "side": "upper",
+          "domain": [0, 1],
+          "transform": "fisher-z",
+          "unit": "clip",
+          "basis": "fitted",
+          "status": "GATED",
+          "detail": "analytic fixture",
+          "n": 10,
+          "p5": 0.4,
+          "p50": 0.7,
+          "p95": 1.1,
+          "lo": null,
+          "hi": 1.5
+        },
+        "dim.upper": {
+          "side": "lower",
+          "domain": [1, 39],
+          "transform": "none",
+          "unit": "clip",
+          "basis": "fitted",
+          "status": "GATED",
+          "detail": "analytic fixture",
+          "n": 10,
+          "p5": 2,
+          "p50": 2.2,
+          "p95": 3,
+          "lo": 1.8,
+          "hi": null
+        },
+        "coverage.core": {
+          "side": "lower",
+          "domain": [0, 1],
+          "transform": "none",
+          "unit": "clip",
+          "basis": "fitted",
+          "status": "GATED",
+          "detail": "analytic fixture",
+          "n": 10,
+          "p5": 0.8,
+          "p50": 0.9,
+          "p95": 1,
+          "lo": 0.7,
+          "hi": null
+        },
+        "inter.speedCv": {
+          "side": "two",
+          "domain": [0, null],
+          "transform": "none",
+          "unit": "clip",
+          "basis": "fitted",
+          "status": "GATED",
+          "detail": "analytic fixture",
+          "n": 10,
+          "p5": 0.2,
+          "p50": 0.3,
+          "p95": 0.5,
+          "lo": 0.1,
+          "hi": 0.7
+        }
+      }
+    }
+  }
+}

@@ -30,6 +30,89 @@ then has exactly three trials, with twelve placebo trials. Higher seeds repeat
 the sets with different seeded orders; every trial id includes its seed.
 Shorter runs truncate trials and do not carry this pooling guarantee.
 
+### Gate
+
+`pnpm qa:motion3d gate <run directory>...` reads each `trace.json`, writes
+`gate.json` beside it, and prints each metric's value, band, basis, and status.
+Gate `mmd-motion-quality` compares idle, speech, and walking with their own
+reference classes. Gaze and emotions use episode pools; touch is report only.
+Pass requires at least one passing gated metric and no failing metric.
+Undefined motion fails an applicable band; missing bones or insufficient
+episodes skip the metric. Refusals never count as passes or failures.
+Exit codes are 1 if any trace fails, otherwise 2 if any trace is refused or the
+arguments are invalid, otherwise 0; interruption exits 130.
+
+Emotion directories supplied together pool their trials, including placebo,
+and each verdict records `pooledFrom`. Run seeds 1 through 6 together for the
+scenario's trial guarantee. Gaze episodes outside the fitting head-rotation
+P5 to P95 range are excluded and listed in metric details. Gaze onset bands
+use head episodes only.
+
+Version 0 uses explicitly marked analytic fixtures and is not a human-capture
+acceptance gate. A real freeze advances the gate to version 1. Frozen band files
+are immutable. Changing a band, detector, formula, window, or gated list requires
+the next version, a new file and SHA-256, in an isolated freeze commit before
+judging runs. A hash mismatch refuses scoring. A failing run never authorizes
+retuning.
+
+Scores compare motion statistics with bands derived from human capture. They do not prove naturalness or appeal, which stay a visual review.
+
+### Reference bands
+
+```bash
+pnpm qa:motion3d reference --from <reference directory> --out <new bands.json>
+```
+
+The directory supplies `clips.json` and the raw BVH sources. The manifest fixes
+dataset, subject, class, role, and split before measurement. The command never
+moves a clip or overwrites an output. Detector floors are half the P10 of
+fitting clip activities; move speeds are medians of fitting clip median speeds.
+Episode-only clips do not fit detector scales. Metrics are recomputed after
+these scales are fitted. Pooled episodes use the detector scales of the class
+being judged, even when a source clip belongs to another class.
+
+Clip bands need ten fitting values. Percentiles interpolate rank `(n - 1) * p`.
+Bounds are `2 * P5 - P50` and `2 * P95 - P50`, using only the declared side.
+Correlation metrics fit and compare in `atanh(clamp(v, -0.9999, 0.9999))`.
+A bound that reaches its natural limit becomes report only with `vacuous band`;
+the tool does not silently change its side.
+
+Episode bands need forty fitting and sixteen held-out episodes. Each of 2,000
+draws samples eight episodes with replacement using the fixed 20261111 seed,
+then takes the median, or the mean for indicator rates. The same percentile
+margin rule fits those draws. Held-out episodes are checked in consecutive
+groups of eight, in manifest then time order; incomplete final groups are
+dropped. Counts per subject expose actor imbalance. Every held-out clip and
+episode-group result is stored. A failure writes `<out>.rejected.json` and
+exits 1 for a lead decision. No band is widened automatically.
+
+| Scenario | Fitted candidates and sides | Declared bands | Report only |
+| --- | --- | --- | --- |
+| idle | chain correlation upper and lag lower; ACF upper; core and arm coverage lower; bilateral upper; head LDLJ two-sided from idle/talk episodes; spike rate upper; speed CV, hold fraction, move rate two-sided; dimensionality lower | head and two root loop peaks below 0.3; active-wrist finger coverage at least 0.5; frozen fingers equal 0 | spectra, arm LDLJ, long burst and duration CV, head top-path share, idle act statistics |
+| speak (talk) | chain, coverage, bilateral, spike rate, intermittency and dimensions as idle; head LDLJ from idle/talk, arm LDLJ from talk; stroke rate two-sided; onset attack two-sided and eased share lower | finger coverage and frozen fingers; stroke binomial tail at most 0.01 and hit lag -200 to 200 ms | spectra, ACF, long intermittency, head top-path share, stroke/head gain, anticipation rate |
+| walk | chain, coverage, bilateral, spike rate, intermittency and dimensions as idle; pelvis twist, arm lag, heel pitch lower; chest counter and toe pitch upper; turn head lead lower from episodes | finger coverage and frozen fingers | spectra, ACF, LDLJ, long intermittency and head top-path share |
+| gaze-shift | chest lag, overshoot and settle two-sided; order share lower; head onset attack two-sided and eased share lower, all from idle/talk episodes | eye lead at least 0 ms | all core metrics, anticipation rate |
+| emotions | onset attack two-sided and eased share lower from idle/talk episodes | minimum separation at least 2 including placebo; arm share at least half the smallest of four emotion-style shares on one skeleton | all core metrics, median separation, anticipation rate; arm share if skeleton context is unavailable |
+| touch | none | none | every metric; cannot produce a gate pass |
+
+Fitted candidates without sufficient samples, and vacuous bands, remain
+report only with their reason in the file. No raw clip is committed. Short
+windows (idle/walk 10 s, talk 5 s) cannot establish long-term motion variation;
+talk is dominated by one storyteller. Bootstrap episodes are dependent within
+actors and mix actors, so the fixed tail margin is the sole allowance.
+Finger, gaze order, speech coupling, and emotion bands include lead judgments.
+Body-only capture cannot fit eye floors. Under the current metric contract,
+an eye-bearing trace skips eye lead with `missing-eye-floors`; choosing an
+ordinal eye detector policy requires a lead decision.
+
+Idle ACF detects repeated components with periods from 1 to 6 s, and faster
+ones through a repeated period. It cannot reliably see slower oscillation,
+low-power repetition, common periods beyond the lag cap, or distinguish
+narrow-band noise in a short window. Long-span loop peaks use lags 2 to 30 s
+over at least 60 s and can detect a dominant repeating component. The 0.3 root
+limit transfers a head rule without a human root calibration. Short idle loop
+values and the two desk-session head summaries are context, never fitted bands.
+
 ## Usage
 
 Run `pnpm qa:doctor` first. It checks whether the current worktree can produce meaningful results and does not repair the environment.
