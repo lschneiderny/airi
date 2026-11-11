@@ -178,7 +178,7 @@ A locale that lacks a key renders the English text through the i18n `fallbackLoc
 
 ACT accepts a bare-word form next to JSON: `<|ACT happy|>`, `<|ACT happy strong|>`, `<|ACT sad 0.3|>`, and `<|ACT:happy|>`. An unknown word such as `<|ACT banana|>` is rejected with `parse-failed`.
 The flat JSON form also reads a top-level `intensity`.
-The runtime recovers near-miss markers such as `[ACT happy]` or `<ACT happy>` into canonical ACT and DELAY specials.
+The runtime recovers near-miss markers such as `[ACT happy]` or `<ACT happy>` into canonical ACT and DELAY specials. Since 2026-11-10 it also recovers an angle-bracket near-miss of the decline marker, such as `|<SILENT|>`; see the [nonverbal channels ADR](2026-10-31-nonverbal-channels.md).
 A square-bracket near-miss is recovered only when its body is a valid DELAY duration or an ACT payload, so prose such as `[Act 2]` stays in the spoken text.
 An angle-bracket near-miss is always recovered, even with an invalid body such as `<ACT banana>`, so its markup never reaches speech. Otherwise the streaming response categorizer would treat it as a tag and hide the speech after it.
 Since 2026-11-10, a swapped opener counts as an angle-bracket near-miss: in `|<ACT happy|>` the pipe and the bracket changed places, so the leading `|` belongs to the marker and is neither spoken nor shown. A `|` before a `<` that starts no recoverable cue name, as in `sort |<file`, stays text.

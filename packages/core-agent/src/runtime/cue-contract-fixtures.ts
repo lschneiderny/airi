@@ -1,6 +1,6 @@
 import type { CueComplianceOutcome } from './cue-compliance'
 
-export const CUE_CONTRACT_FIXTURES = { id: 'cue-contract-fixtures', version: 3 } as const
+export const CUE_CONTRACT_FIXTURES = { id: 'cue-contract-fixtures', version: 4 } as const
 
 export const cueContractFixtures: readonly {
   id: number
@@ -17,6 +17,8 @@ export const cueContractFixtures: readonly {
     spoken?: string
     residualChars?: number
     unknownMarkers?: string[]
+    /** Decline markers in visible speech, recovered near-misses included. They are no ACT. Defaults to 0. */
+    silentMarkers?: number
     /** Native `<|MOOD ...|>` markers; the character-state layer, not the stage controller, consumes them. Defaults to 0. */
     mood?: number
     notes: string
@@ -55,4 +57,5 @@ export const cueContractFixtures: readonly {
   { id: 31, text: '|<ACT happy|>\n|<ACT {"emotion":"happy","intensity":"strong"}|>\nHey, good morning!', expect: { act: 2, recovered: 2, stripped: 0, stageRejected: 0, outcome: 'recovered', leadCue: true, spoken: '\n\nHey, good morning!', notes: 'granite4 live run of 2026-11-10, shortened: a bare and a JSON cue, both swapped.' } },
   { id: 32, text: '<|ACT happy|>Hey there! Good morning to you too!|>', expect: { act: 1, recovered: 0, stripped: 0, stageRejected: 0, outcome: 'parsed', leadCue: true, spoken: 'Hey there! Good morning to you too!', residualChars: 2, notes: 'granite4 live run of 2026-11-10: a closer that ends the reply directly after its last word is dropped.' } },
   { id: 33, text: '<|ACT happy|> Write x|> f. The pipe operator is |>', expect: { act: 1, recovered: 0, stripped: 0, stageRejected: 0, outcome: 'parsed', leadCue: true, spoken: ' Write x|> f. The pipe operator is |>', notes: 'A closer before more text or after whitespace is prose and stays spoken.' } },
+  { id: 34, text: '|<ACT happy strong|>\n|<SILENT|>\nThat\'s fantastic news!', expect: { act: 1, recovered: 2, stripped: 0, stageRejected: 0, outcome: 'recovered', leadCue: true, spoken: '\n\nThat\'s fantastic news!', silentMarkers: 1, notes: 'granite4 live run of 2026-11-10, shortened: a near-miss decline marker before speech is recovered and consumed, and the speech after it stays.' } },
 ]

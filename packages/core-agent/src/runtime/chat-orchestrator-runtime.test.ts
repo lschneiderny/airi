@@ -20,7 +20,7 @@ const provider: GenerationProvider = {
 }
 
 /** Mirrors the stage rules that AIRI hosts pass; core-agent cannot import them from stage-shared. */
-const liveStage: ChatOrchestratorStageConfig = { declineMarker: '<|SILENT|>', recoverCueNames: ['ACT', 'DELAY'] }
+const liveStage: ChatOrchestratorStageConfig = { declineMarker: '<|SILENT|>', recoverCueNames: ['ACT', 'DELAY', 'SILENT'] }
 
 function createHarness(getActiveProvider = () => 'mock-provider', stage = liveStage) {
   const sessionMessages: Record<string, ChatHistoryItem[]> = {
@@ -3613,6 +3613,31 @@ describe('wordless user turns and break slices', () => {
     // Hosts close the speech response that they opened before composition.
     expect(harness.order.filter(entry => entry === 'hook:stream-end')).toHaveLength(1)
     expect(harness.settled).toEqual([expect.objectContaining({ status: 'finished' })])
+  })
+
+  it('speaks the reply after a near-miss decline marker, and answers without words when no reply follows', async () => {
+    // ROOT CAUSE:
+    //
+    // granite4 wrote `|<SILENT|>` (live run of 2026-11-10). `SILENT` was no recoverable name, so the response
+    // categorizer read `<SILENT|>` as a tag that never closes and kept the rest out of speech.
+    //
+    // The stage now lists the decline marker as recoverable.
+    for (const chunks of chunkingsOf('|<ACT happy|>\n|<SILENT|>\nThat\'s great!')) {
+      const { harness, literals, specials, saved } = await userTurn(chunks)
+
+      expect(literals.join(''), `first chunk of ${chunks.length}: ${chunks[0]}`).toBe('\n\nThat\'s great!')
+      expect(specials).toEqual(['<|ACT happy|>'])
+      expect(saved).toMatchObject({ role: 'assistant', content: '\n\nThat\'s great!' })
+      expect(saved).not.toHaveProperty('wordless')
+      // No speech or control hook receives the marker. The hooks that carry the reply as the model wrote it still do.
+      expect(harness.order.filter(entry => entry.startsWith('hook:token-') && entry.includes('SILENT'))).toEqual([])
+    }
+
+    const { literals, specials, saved, streamEnds } = await userTurn(['|<ACT surprised|>\n|<SILENT|>'])
+    expect(specials).toEqual(['<|ACT surprised|>'])
+    expect(literals).toEqual([])
+    expect(saved).toMatchObject({ role: 'assistant', content: '', slices: [], wordless: { cues: [{ emotion: 'surprised' }] } })
+    expect(streamEnds).toEqual([{ act: 1, recovered: 2, rejected: 0, origin: 'user', declined: false, silent: false, wordless: true, breaks: 0, breaksIgnored: 0 }])
   })
 
   it('stores a wordless reply when the decline marker comes before a gesture-only ACT', async () => {

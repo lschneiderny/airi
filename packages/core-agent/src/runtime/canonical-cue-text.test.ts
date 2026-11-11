@@ -7,7 +7,7 @@ import { cueContractFixtures } from './cue-contract-fixtures'
 import { replayReply } from './reply-replay'
 
 /** Mirrors the stage rules that AIRI hosts pass; core-agent cannot import them from stage-shared. */
-const stage = { declineMarker: '<|SILENT|>', recoverCueNames: ['ACT', 'DELAY'] }
+const stage = { declineMarker: '<|SILENT|>', recoverCueNames: ['ACT', 'DELAY', 'SILENT'] }
 
 describe('canonicalCueText', () => {
   it.each([
@@ -18,6 +18,7 @@ describe('canonicalCueText', () => {
     ['a stripped cue beside a recovered one', '[ACT happy] Wait [DELAY 1s] go', '<|ACT happy|> Wait  go'],
     ['prose beside a recovered cue', '[ACT happy] In [ACT 2] she leaves', '<|ACT happy|> In [ACT 2] she leaves'],
     ['a swapped pipe and bracket', '|<ACT happy|>\n|<ACT {"emotion":"happy"}|>\nGood morning!', '<|ACT happy|>\n<|ACT {"emotion":"happy"}|>\nGood morning!'],
+    ['a swapped decline marker before speech', '|<ACT happy|>\n|<SILENT|>\nGreat news!', '<|ACT happy|>\n<|SILENT|>\nGreat news!'],
     ['a closer that ends the reply after its last word', '<|ACT happy|>Good morning to you too!|>\n', '<|ACT happy|>Good morning to you too!'],
     ['a recovered cue before an unfinished marker', '[ACT happy] Hi <|ACT sa', '<|ACT happy|> Hi '],
   ])('rewrites %s', async (_case, raw, canonical) => {

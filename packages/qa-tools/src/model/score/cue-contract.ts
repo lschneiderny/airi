@@ -7,7 +7,7 @@ import { createStreamingCategorizer, cueComplianceOutcome, replayReply, useLlmma
 import { createStreamingControlParser, normalizeActPayload, tokenAct } from '@proj-airi/pipelines-audio'
 import { ASCII_FACES } from '@proj-airi/stage-shared/conversation-register'
 
-export const CUE_CONTRACT_SCORER = { id: 'cue-contract-score', version: 4 } as const
+export const CUE_CONTRACT_SCORER = { id: 'cue-contract-score', version: 5 } as const
 const REJECTED_TOKENS_MAX = 5
 /**
  * A native MOOD marker: `<|MOOD` followed by whitespace or the closing `|>`. The character-state layer consumes it,
@@ -61,7 +61,10 @@ export interface ReplyScore {
   /** BREAK slices the runtime kept, and well-formed BREAK markers that split nothing. */
   breaks: number
   breaksIgnored: number
-  /** SILENT markers in visible speech, and whether one came before any spoken text. */
+  /**
+   * SILENT markers in visible speech, and whether one came before any spoken text. A near-miss spelling that the
+   * runtime recovers and consumes, such as `|<SILENT|>`, counts like the native marker (since version 5).
+   */
   silent: { count: number, beforeSpeech: boolean }
   /** The runtime answered a user turn without words but with at least one ACT. */
   wordless: boolean
@@ -170,8 +173,14 @@ export const cueContractScorer: ReplyScorer<ReplyScore> = {
           }
           const recovered = await replayReply({ text: recovery.raw, stage })
           if (recovered.specials.length === 0) {
-            if (recovered.cueStats.rejected === 0)
+            // The runtime consumes a recovered decline marker like the native one, so it is a SILENT marker, not prose.
+            if (recovered.cueStats.silent) {
+              silent.count++
+              silent.beforeSpeech ||= !speechSeen
+            }
+            else if (recovered.cueStats.rejected === 0) {
               consumeLiteral(recovery.raw)
+            }
             return true
           }
         }

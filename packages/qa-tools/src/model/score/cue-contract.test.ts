@@ -44,15 +44,18 @@ describe('cue contract scorer', () => {
     expect(score.outcome).toBe(row.expect.outcome)
     expect(score.leadCue).toBe(row.expect.leadCue)
     expect(score.chunkInvariant).toBe(row.expect.chunkInvariant ?? true)
-    expect(score.acts.filter(act => act.recoveredFrom !== null)).toHaveLength(score.cueStats.recovered)
+    // A recovered decline marker counts as recovered and is no ACT. Fixture 34 holds the only one.
+    const silentMarkers = row.expect.silentMarkers ?? 0
+    expect(score.acts.filter(act => act.recoveredFrom !== null)).toHaveLength(score.cueStats.recovered - silentMarkers)
     expect(score.unknownMarkers).toEqual(row.expect.unknownMarkers ?? [])
     expect(score.mood).toBe(row.expect.mood ?? 0)
     if (row.expect.residualChars !== undefined)
       expect(score.residualChars).toBe(row.expect.residualChars)
     if (row.expect.spoken !== undefined)
       expect(score.spokenText).toBe(row.expect.spoken)
-    // No fixture uses a gesture, BREAK, SILENT, or face, so every v3 field stays neutral and `blank` keeps its v2 value.
-    expect(score).toMatchObject({ bareGestureAttempts: 0, breaks: 0, breaksIgnored: 0, silent: { count: 0, beforeSpeech: false }, wordless: false, silentNoCue: false, asciiFaces: 0 })
+    // No fixture uses a gesture, BREAK, or face, and only fixture 34 uses SILENT, before its speech. So every other v3
+    // field stays neutral and `blank` keeps its v2 value.
+    expect(score).toMatchObject({ bareGestureAttempts: 0, breaks: 0, breaksIgnored: 0, silent: { count: silentMarkers, beforeSpeech: silentMarkers > 0 }, wordless: false, silentNoCue: false, asciiFaces: 0 })
     expect(score.acts.map(act => act.gesture)).toEqual(score.acts.map(() => ({ kind: null, count: null, dropped: false })))
     expect(score.blank).toBe(score.spokenText.trim() === '')
   })
@@ -243,6 +246,10 @@ describe('cue contract scorer', () => {
     ['<|ACT happy|><|SILENT|>', { silent: { count: 1, beforeSpeech: true }, wordless: true, silentNoCue: false, blank: false }],
     ['<|SILENT|><|ACT {"gesture":"nod"}|>', { silent: { count: 1, beforeSpeech: true }, wordless: true, silentNoCue: false, blank: false }],
     ['<|SILENT|>', { silent: { count: 1, beforeSpeech: true }, wordless: false, silentNoCue: true, blank: false }],
+    // A near-miss decline marker that the runtime recovers counts like the native one (scorer version 5).
+    ['|<ACT surprised|>\n|<SILENT|>', { silent: { count: 1, beforeSpeech: true }, wordless: true, silentNoCue: false, blank: false }],
+    ['|<SILENT|>\nGreat news!', { silent: { count: 1, beforeSpeech: true }, wordless: false, silentNoCue: false, blank: false, spokenText: '\nGreat news!' }],
+    ['[SILENT] she said nothing', { silent: { count: 0, beforeSpeech: false }, wordless: false, silentNoCue: false, blank: false, spokenText: '[SILENT] she said nothing' }],
     ['Hi <|SILENT|> there', { silent: { count: 1, beforeSpeech: false }, wordless: false, silentNoCue: false, blank: false, spokenText: 'Hi  there' }],
     ['<think><|SILENT|></think>', { silent: { count: 0, beforeSpeech: false }, wordless: false, silentNoCue: false, blank: true }],
   ])('scores SILENT on a user turn: %s', async (text, expected) => {
@@ -283,8 +290,8 @@ describe('action scoring', () => {
   const actText = (action: string) => `<|ACT {"emotion":"happy","action":"${action}"}|>Hi!`
   const performAction = (action: unknown) => ({ name: 'perform_action', arguments: { action } })
 
-  it('pins the scorer version at 4', () => {
-    expect(CUE_CONTRACT_SCORER).toEqual({ id: 'cue-contract-score', version: 4 })
+  it('pins the scorer version at 5', () => {
+    expect(CUE_CONTRACT_SCORER).toEqual({ id: 'cue-contract-score', version: 5 })
   })
 
   it.each([

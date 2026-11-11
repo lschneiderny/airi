@@ -136,6 +136,8 @@ The `legacy-2026-10-27-mac-m2` set remains separate from runs using the canonica
 
 The rendered stage-contract version is the first 12 characters of its SHA-256. This identifies the exact contract text. Separately, when any scorer definition changes, bump `CUE_CONTRACT_SCORER.version` in the same commit. Run comparison uses `closureDigest`, scorer version, and `coreAgentDistSha256` as one comparability key.
 
+Version 5 (2026-11-10) counts a near-miss decline marker that the runtime recovers, such as `|<SILENT|>`, as a SILENT marker. The runtime began to recover and consume that marker on the same day, and version 4 would have read it as prose and reported a wordless reply as blank. The cue contract fixtures are at version 4: fixtures 30 to 33 pin the swapped opener `|<ACT happy|>` and the closer that ends a reply, and fixture 34 pins the recovered decline marker. Summaries scored before these changes report a different closure digest and are not comparable with later ones.
+
 ### Provenance
 
 The closure digest covers the sorted model-scoring source closure, with CRLF line endings normalized to LF before hashing. This makes source hashes stable across checkout line-ending settings while preserving other bytes. `coreAgentDistSha256` separately identifies the built runtime that scoring executed. The run manifest records the scorer identity, source revision, and dirty state.

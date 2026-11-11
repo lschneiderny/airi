@@ -6,7 +6,7 @@ import { cueContractFixtures } from './cue-contract-fixtures'
 import { ChunkInvariantError, replayReply, replayReplyAtEveryChunking } from './reply-replay'
 
 /** Mirrors the stage rules that AIRI hosts pass; qa-tools proves parity with the real `STAGE_RUNTIME_CONFIG`. */
-const stage = { declineMarker: '<|SILENT|>', recoverCueNames: ['ACT', 'DELAY'] }
+const stage = { declineMarker: '<|SILENT|>', recoverCueNames: ['ACT', 'DELAY', 'SILENT'] }
 /** MOOD markers go to the character-state layer, never to the stage controller. */
 const moodMarker = /^<\|MOOD(?:\s|\|>)/
 
