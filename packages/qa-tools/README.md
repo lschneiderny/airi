@@ -120,8 +120,23 @@ head and the chest start a gaze shift in that order. It is a report, not a
 gate: it has no band and does not change any verdict. Gate version 1 cannot
 judge eye order (`gaze.eyeLeadMs` is skipped as `missing-eye-floors`).
 
-- Episodes and onsets come from the gate's own gaze detector, called
-  read-only: kinematic head turns of at least 0.5 rad/s and 10 degrees inside
+- The criterion is displacement order (architecture section 9.1), per
+  `gaze-shift` event of 10 degrees or more, in a window that ends at the next
+  such event or 1.5 s later. Each signal is a yaw displacement from its value
+  at the event, along the sign of the event's yaw: the gaze line (the eyes'
+  yaw in the world), the head relative to the chest, and the chest relative to
+  the pelvis. The eyes lead when the gaze line reaches 90 % of its excursion
+  strictly before the head reaches 50 % of its own; the head leads the chest
+  when it reaches 50 % strictly before the chest does. A head or chest whose
+  excursion stays under 10 % of the shift's amplitude was not recruited: a
+  shift with neither is `eyes-only`, with a head but no chest `no-chest`, and
+  both count as ordered when the eyes lead. The criterion share is the ordered
+  shifts over all shifts of 10 degrees or more; goal 2 needs 0.90. The report
+  prints the eyes-only and no-chest counts, how many shifts of 40 degrees or
+  more recruited the head, and how many sustained shifts beyond 25 degrees of
+  yaw recruited the chest, so the share cannot be met by nothing moving.
+- Reported only, beside the criterion: episodes and onsets from the gate's own
+  gaze detector, called read-only: kinematic head turns of at least 0.5 rad/s and 10 degrees inside
   the frozen bands' accepted head-rotation range, with `jointOnset` on the
   fitted head and chest activity floors of the gaze class in `bands-v1.json`.
 - The only added parameter is the eye activity floor, declared equal to the
@@ -137,15 +152,16 @@ judge eye order (`gaze.eyeLeadMs` is skipped as `missing-eye-floors`).
   onset; (b) head strictly before chest, likewise; (c) fully ordered, over
   episodes in which the eyes and the head have an onset. A turn whose chest
   never crosses its floor counts as ordered when the eyes lead, and is listed
-  as `no-chest`. Share (c) is the goal-2 criterion. The count of episodes the
-  accepted range excluded is printed beside the shares.
+  as `no-chest`. The count of episodes the accepted range excluded is printed
+  beside the shares.
 - The blink share counts the `gaze-shift:<degrees>` marker events of 40 degrees
   or more with a `blink` marker inside their window, which ends at the next
   gaze-shift event or 2 s later.
 
-The command prints one row per episode and writes `gaze-order.json` beside the
-trace. A trace without a head turn of 10 degrees or more in the accepted range,
-or without eye, head or chest columns, is refused by name with exit 2.
+The command prints one row per shift and per episode and writes
+`gaze-order.json` beside the trace. A trace with neither a gaze shift nor a head
+turn of 10 degrees or more, or without eye, head, chest or hips columns, is
+refused by name with exit 2.
 
 ### Reference bands
 

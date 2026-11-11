@@ -95,3 +95,56 @@ describe('gaze-order report', () => {
     expect(() => gazeOrderReport(trace, params)).toThrow(expect.objectContaining({ name: 'no-head-turns' }))
   })
 })
+
+describe('gaze-order criterion (displacement)', () => {
+  interface Part { readonly start: number, readonly share: number, readonly duration: number }
+  /** One 30-degree shift at 1 s: the gaze line in the world, the head on the chest, the chest on the pelvis; the eye in its head makes up the rest. */
+  const shiftTrace = (gaze: Part, head: Part, chest: Part, label = 'gaze-shift:30.00:+30.00:sustained') => {
+    const amplitude = 30 * Math.PI / 180
+    const move = (part: Part, t: number) => part.share * amplitude * ramp(t, part.start, part.duration)
+    return analyticTrace({
+      seconds: 4,
+      bones,
+      scenario: 'gaze',
+      events: [{ t: 1, kind: 'marker', label }],
+      world: (bone, t) => {
+        const chestWorld = angleY(move(chest, t))
+        const headWorld = multiply(chestWorld, angleY(move(head, t)))
+        switch (bone) {
+          case 'chest':
+          case 'neck': return chestWorld
+          case 'head': return headWorld
+          case 'leftEye':
+          case 'rightEye': return multiply(headWorld, angleY(move(gaze, t) - move(head, t) - move(chest, t)))
+          default: return identity
+        }
+      },
+    })
+  }
+  const eyesFirst = { start: 1, share: 1, duration: 0.1 }
+
+  it('orders a shift whose gaze line nearly arrives before the head is halfway and the head before the chest', () => {
+    const report = gazeOrderReport(shiftTrace(eyesFirst, { start: 1.03, share: 0.6, duration: 0.5 }, { start: 1.15, share: 0.2, duration: 0.6 }), params)
+    expect(report.criterion.shifts[0]).toMatchObject({ pattern: 'full', ordered: true, headRecruited: true, chestRecruited: true })
+    expect(report.criterion.share).toEqual({ ordered: 1, total: 1, share: 1 })
+  })
+
+  it('does not order a shift whose head is halfway before the gaze line nearly arrives', () => {
+    const report = gazeOrderReport(shiftTrace({ start: 1.2, share: 1, duration: 0.1 }, { start: 1, share: 0.6, duration: 0.2 }, { start: 1, share: 0, duration: 0.6 }), params)
+    expect(report.criterion.shifts[0]).toMatchObject({ eyesBeforeHead: false, ordered: false })
+  })
+
+  it('does not order a shift whose chest is halfway before the head', () => {
+    const report = gazeOrderReport(shiftTrace(eyesFirst, { start: 1.03, share: 0.6, duration: 0.6 }, { start: 1, share: 0.2, duration: 0.2 }), params)
+    expect(report.criterion.shifts[0]).toMatchObject({ eyesBeforeHead: true, headBeforeChest: false, ordered: false })
+  })
+
+  it('names eyes-only and no-chest shifts, counts them as ordered and reports recruitment', () => {
+    const eyesOnly = gazeOrderReport(shiftTrace(eyesFirst, { start: 1, share: 0, duration: 0.5 }, { start: 1, share: 0, duration: 0.5 }, 'gaze-shift:45.00:-45.00:sustained'), params)
+    expect(eyesOnly.criterion.shifts[0]).toMatchObject({ pattern: 'eyes-only', ordered: true })
+    expect(eyesOnly.criterion).toMatchObject({ eyesOnly: 1, noChest: 0, large: { shifts: 1, headRecruited: 0 } })
+    const noChest = gazeOrderReport(shiftTrace(eyesFirst, { start: 1.03, share: 0.6, duration: 0.5 }, { start: 1, share: 0, duration: 0.5 }), params)
+    expect(noChest.criterion.shifts[0]).toMatchObject({ pattern: 'no-chest', ordered: true })
+    expect(noChest.criterion).toMatchObject({ noChest: 1, sustainedWide: { shifts: 1, chestRecruited: 0 } })
+  })
+})
