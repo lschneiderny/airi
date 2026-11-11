@@ -101,6 +101,16 @@ const contextWindowInput = computed<number | undefined>({
       : -1
   },
 })
+// `undefined` means the card sets no temperature, so its requests carry none.
+const selectedTemperature = ref<number>()
+const temperatureInput = computed<number | undefined>({
+  get: () => selectedTemperature.value,
+  set: (value) => {
+    selectedTemperature.value = typeof value === 'number' && Number.isFinite(value)
+      ? clamp(value, 0, 2)
+      : undefined
+  },
+})
 const selectedPerformance = ref<PerformanceProfile>()
 const performanceFields = [
   { key: 'expressiveness', min: 0.5, max: 1.5 },
@@ -517,6 +527,7 @@ function initializeCard(): Card {
   selectedSpeechVoiceId.value = moduleSettings.speech.voice_id
   selectedDisplayModelId.value = moduleSettings.displayModelId ?? ''
   selectedContextWindow.value = moduleSettings.contextWindow
+  selectedTemperature.value = moduleSettings.temperature
   selectedPerformance.value = moduleSettings.performance ? structuredClone(toRaw(moduleSettings.performance)) : undefined
   selectedCharacter.value = characterProfileOf(airiExt?.modules?.character)
 
@@ -567,6 +578,7 @@ interface EditorSnapshot {
   }
   displayModelId: string
   contextWindow: number
+  temperature: number | undefined
   artistry: {
     provider: string
     model: string
@@ -600,6 +612,7 @@ function createEditorSnapshot(): EditorSnapshot {
     },
     displayModelId: selectedDisplayModelId.value,
     contextWindow: selectedContextWindow.value,
+    temperature: selectedTemperature.value,
     artistry: {
       provider: selectedArtistryProvider.value,
       model: selectedArtistryModel.value,
@@ -741,6 +754,7 @@ async function handleSave(activate: boolean) {
       },
       displayModelId: selectedDisplayModelId.value,
       contextWindow: selectedContextWindow.value,
+      temperature: selectedTemperature.value,
       artistry: {
         provider: selectedArtistryProvider.value,
         model: selectedArtistryModel.value,
@@ -1173,6 +1187,13 @@ function handleBack() {
                 :placeholder="t('settings.pages.card.context_window_all')"
                 :label="t('settings.pages.card.context_window')"
                 :description="t('settings.pages.card.creation.fields_info.context_window')"
+              />
+              <FieldInput
+                v-model="temperatureInput"
+                type="number"
+                :placeholder="t('settings.pages.card.temperature_default')"
+                :label="t('settings.pages.card.temperature')"
+                :description="t('settings.pages.card.creation.fields_info.temperature')"
               />
               <div :class="['grid grid-cols-1 gap-5', 'xl:grid-cols-2']">
                 <FieldInput v-model="cardSystemPrompt" :label="t('settings.pages.card.systemprompt')" :single-line="false" :description="t('settings.pages.card.creation.fields_info.systemprompt')" :input-class="editorLongTextareaClass" />

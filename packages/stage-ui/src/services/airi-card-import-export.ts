@@ -16,7 +16,7 @@ import { array, literal, object, optional, parse, picklist, record, string, unkn
 import { wakeWordSchema } from '../libs/voice/wake-words'
 import { characterProfileOf, characterStateContext } from '../stores/character-state'
 import { DisplayModelFormat } from '../stores/display-models'
-import { normalizeContextWindow } from '../types/airiCard'
+import { normalizeContextWindow, normalizeTemperature } from '../types/airiCard'
 
 const FORMAT = 'airi-character-card'
 const VERSION = 1
@@ -275,9 +275,11 @@ function sanitizeAiri(value: unknown, displayModelIdOverride?: string): AiriExte
   const artistry = isRecord(modules.artistry) ? modules.artistry : {}
   const speech = isRecord(modules.speech) ? modules.speech : {}
   const displayModelId = displayModelIdOverride ?? stringValue(modules.displayModelId)
+  const temperature = normalizeTemperature(source.temperature)
 
   return {
     contextWindow: normalizeContextWindow(source.contextWindow),
+    ...(temperature === undefined ? {} : { temperature }),
     ...(source.wakeWords === undefined ? {} : { wakeWords: parse(array(wakeWordSchema), source.wakeWords) }),
     modules: {
       character: characterProfileOf(modules.character),

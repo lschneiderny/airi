@@ -116,6 +116,10 @@ const consciousnessModels = vi.hoisted(() => ({ value: [{ id: 'gpt-test', metada
 const activeSessionIdRef = ref('session-1')
 const activeProviderRef = ref('mock-provider')
 const cardSelections = new Map<string, { provider: string, model: string }>()
+/** Card temperatures by card id. A card without one is not in the card store, as in every other test. */
+const cardTemperatures = new Map<string, number>()
+/** The temperature of the Consciousness settings while its override is enabled. */
+const consciousnessTemperature: { value: number | undefined } = { value: undefined }
 /** Character prompts by card id. A card without one has the prompt `system prompt`, like the stored system message. */
 const cardPrompts = new Map<string, string>()
 /** The stage contract that the chat store passed to the session store, which ends every session system prompt. */
@@ -302,6 +306,9 @@ vi.mock('./modules/consciousness', () => ({
   useConsciousnessStore: () => ({
     activeModel: activeModelRef,
     activeProvider: activeProviderRef,
+    get activeTemperature() {
+      return consciousnessTemperature.value
+    },
     chatReady: chatReadyRef,
     providerModels: consciousnessModels.value,
     getModelsForProvider: async () => consciousnessModels.value,
@@ -319,7 +326,7 @@ vi.mock('./modules/airi-card', () => ({
     cards: new Map(),
     // A leading character-state store subscribes to card deletion; no test here deletes a card.
     onCardRemoval: () => () => {},
-    getCard: () => undefined,
+    getCard: (id: string) => cardTemperatures.has(id) ? { extensions: { airi: { temperature: cardTemperatures.get(id) } } } : undefined,
     getSystemPrompt: (id: string) => cardPrompts.get(id) ?? 'system prompt',
     getModules: (id: string) => ({
       consciousness: cardSelections.get(id) ?? { provider: activeProviderRef.value, model: activeModelRef.value },
@@ -476,6 +483,8 @@ describe('chat store contract', () => {
     activeSessionIdRef.value = 'session-1'
     activeProviderRef.value = 'mock-provider'
     cardSelections.clear()
+    cardTemperatures.clear()
+    consciousnessTemperature.value = undefined
     cardPrompts.clear()
     stageContract.value = ''
     registerPrompt.value = ''
@@ -770,6 +779,71 @@ describe('chat store contract', () => {
     expect(steps[1]).toMatchObject({ model: 'chat-auto', providerId: 'another-provider', systemPrompt: `${composeSystemPrompt(['Edited Alice prompt', registerPrompt.value].filter(Boolean).join('\n\n'), stageContract.value)}\n\nPlugin toolset guidance.` })
     expect(steps[1]?.headers).toEqual({})
     expect(getChatProviderInstanceMock).toHaveBeenLastCalledWith('another-provider', { reasoning: 'disabled' })
+  })
+
+  describe('card temperature', () => {
+    /** The temperature of the request options and of the first resolved step, which the provider request carries. */
+    function captureTemperatures(captured: Array<{ request: number | undefined, step: number | undefined }>) {
+      llmStreamMock.mockImplementation(async (_model: string, _provider: GenerationProvider, _messages: Conversation, options: StreamOptions) => {
+        captured.push({ request: options.temperature, step: (await options.resolveStep!()).temperature })
+        await options.onStreamEvent?.({ type: 'text-delta', text: 'Hey.' })
+        await options.onStreamEvent?.({ type: 'finish' })
+      })
+    }
+
+    it.each([
+      ['a typed turn', (store: ReturnType<typeof useChatStore>) => store.send({ sessionId: 'session-1', text: 'Hello' })],
+      ['a voice turn', (store: ReturnType<typeof useChatStore>) => store.submit({ sessionId: 'session-1', messageId: 'voice-1', text: 'Hello' })],
+      ['an unprompted turn', (store: ReturnType<typeof useChatStore>) => store.submitUnprompted({ topicKey: 'qa', topicText: 'QA topic' })],
+      ['a reaction turn', (store: ReturnType<typeof useChatStore>) => store.submitReaction({ kind: 'pet-soft', topicText: 'touched you', eventId: 'touch-1' })],
+    ])('sends the temperature of the session character card on %s', async (_origin, start) => {
+      cardTemperatures.set('alice', 0.3)
+      const captured: Array<{ request: number | undefined, step: number | undefined }> = []
+      captureTemperatures(captured)
+
+      await start(useChatStore())
+
+      // A voice `submit` resolves with the storage receipt. Generation continues after it.
+      await vi.waitFor(() => expect(captured).toEqual([{ request: 0.3, step: 0.3 }]))
+    })
+
+    it('sends no temperature when the card and the Consciousness settings set none', async () => {
+      const captured: Array<{ request: number | undefined, step: number | undefined }> = []
+      captureTemperatures(captured)
+
+      await useChatStore().send({ sessionId: 'session-1', text: 'Hello' })
+
+      expect(captured).toEqual([{ request: undefined, step: undefined }])
+    })
+
+    it('ranks a request override above the card, and the card above the Consciousness setting', async () => {
+      consciousnessTemperature.value = 0.9
+      const captured: Array<{ request: number | undefined, step: number | undefined }> = []
+      captureTemperatures(captured)
+      const store = useChatStore()
+
+      await store.send({ sessionId: 'session-1', text: 'Setting only' })
+      cardTemperatures.set('alice', 0.3)
+      await store.send({ sessionId: 'session-1', text: 'Card and setting' })
+      await store.send({ sessionId: 'session-1', text: 'Override', temperature: 1.1 })
+      // Another character's card does not reach this session.
+      cardTemperatures.clear()
+      cardTemperatures.set('bob', 0.1)
+      await store.send({ sessionId: 'session-1', text: 'Setting again' })
+
+      expect(captured.map(entry => entry.request)).toEqual([0.9, 0.3, 1.1, 0.9])
+      expect(captured.map(entry => entry.step)).toEqual([0.9, 0.3, 1.1, 0.9])
+    })
+
+    it('sends no temperature for a stored card value outside 0 to 2', async () => {
+      cardTemperatures.set('alice', 3)
+      const captured: Array<{ request: number | undefined, step: number | undefined }> = []
+      captureTemperatures(captured)
+
+      await useChatStore().send({ sessionId: 'session-1', text: 'Hello' })
+
+      expect(captured).toEqual([{ request: undefined, step: undefined }])
+    })
   })
 
   it('projects stored audio again when a tool step changes to a text-only model', async () => {

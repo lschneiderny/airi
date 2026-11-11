@@ -683,6 +683,7 @@ pages:
         systemprompt: Explain here to the AI LLM how it should answer when prompted.
         posthistoryinstructions: Place here anything the AI LLM should read after the messages history.
         context_window: 'Turn limit, including the current turn. Each turn contains your message and the assistant reply, including tool calls. Consecutive messages from the same role stay together. Leave empty for All. Use 0 to send only your current message. When exceeded, the newest 90% of the limit is retained, rounded up to whole turns. Saved chats stay intact.'
+        temperature: 'How random the replies of this character are, from 0 to 2. A lower value gives steadier replies. A higher value gives more varied replies. Leave empty to send no temperature. Then the custom temperature of the Consciousness settings applies when it is on, and the default of the model provider applies when it is off.'
         version: >-
           Card version, you should increase this if you are making changes from
           a previous card.
@@ -730,6 +731,8 @@ pages:
     posthistoryinstructions: Post-History Instructions
     context_window: Turns to remember
     context_window_all: All
+    temperature: Temperature
+    temperature_default: Not set
     recent: Recently Added
     scenario: Scenario
     search: Search cards...

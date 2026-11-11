@@ -18,6 +18,12 @@ export interface AiriExtension {
    */
   contextWindow?: number
 
+  /**
+   * Sampling temperature for this character's chat requests, from 0 to 2.
+   * Missing sends no temperature, so the Consciousness setting or the provider default applies.
+   */
+  temperature?: number
+
   wakeWords?: WakeWord[]
   modules: {
     performance?: PerformanceProfile
@@ -92,6 +98,22 @@ export function normalizeContextWindow(value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= -1
     ? value
     : -1
+}
+
+/**
+ * Normalizes a character card temperature. A value outside 0 to 2 is dropped, never clamped, so an invalid card
+ * sends no temperature.
+ *
+ * @example
+ * normalizeTemperature(0.3)
+ * // => 0.3
+ * normalizeTemperature(3)
+ * // => undefined
+ */
+export function normalizeTemperature(value: unknown): number | undefined {
+  return typeof value === 'number' && value >= 0 && value <= 2
+    ? value
+    : undefined
 }
 
 /** Character card normalized with the AIRI extension required by the runtime. */

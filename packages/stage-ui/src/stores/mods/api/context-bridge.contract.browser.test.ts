@@ -567,9 +567,10 @@ describe('context bridge contract', () => {
     expect(chatOrchestratorMock.send.mock.calls[0]?.[0]).toMatchObject({
       sessionId: 'session-1',
       text: 'hello',
-      temperature: 0.3,
       topP: 0.8,
     })
+    // The chat store resolves the temperature, so the session character's card can outrank the Consciousness setting.
+    expect(chatOrchestratorMock.send.mock.calls[0]?.[0]).not.toHaveProperty('temperature')
     expect(chatOrchestratorMock.send.mock.calls[0]?.[0]?.input?.data.contextUpdates).toEqual([
       expect.objectContaining({
         contextId: expect.any(String),

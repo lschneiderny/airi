@@ -59,6 +59,8 @@ describe('airi card package import/export', () => {
     expect(airi.modules).toMatchObject({ consciousness: { provider: 'openai', model: 'gpt-4o' }, speech: { provider: 'elevenlabs', model: 'eleven', voice_id: 'alloy' } })
     expect(airi.contextWindow).toBe(42)
     expect(airiFrom(imported.card).contextWindow).toBe(42)
+    expect(airi.temperature).toBe(0.3)
+    expect(airiFrom(imported.card).temperature).toBe(0.3)
     expect(airi.modules).not.toHaveProperty('activeBackgroundId')
     expect(airi.modules.artistry).not.toHaveProperty('workflowId')
     expect(airi.agents).toEqual({})
@@ -70,6 +72,7 @@ describe('airi card package import/export', () => {
     const displayModelsStore = useDisplayModelsStore()
     const source = exportToJSON(createCard('preset-live2d-1'))
     source.data.extensions.third_party = { token: 'do-not-import' }
+    airiFrom(source).temperature = 2.5
 
     const imported = await importAiriCardPackage({
       file: await packageFile(source),
@@ -87,6 +90,8 @@ describe('airi card package import/export', () => {
       mes_example: '',
     })
     expect(imported.card.data.extensions).not.toHaveProperty('third_party')
+    // A temperature outside 0 to 2 is dropped, so the imported card sends none.
+    expect(airi).not.toHaveProperty('temperature')
     expect(airi.modules).not.toHaveProperty('activeBackgroundId')
     expect(airi.modules.artistry).not.toHaveProperty('workflowId')
     expect(airi.agents).toEqual({})
@@ -301,6 +306,7 @@ function createCard(displayModelId = 'preset-vrm-1'): AiriCard {
     extensions: {
       airi: {
         contextWindow: 42,
+        temperature: 0.3,
         modules: {
           consciousness: { provider: 'openai', model: 'gpt-4o' },
           vision: { provider: 'ollama', model: 'llava' },

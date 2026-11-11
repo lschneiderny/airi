@@ -151,6 +151,25 @@ describe('card editor character profile', () => {
     }
   })
 
+  it('shows an unset temperature for an existing card and saves a value, a value clamped to the range, and unset', async () => {
+    const cardId = await createCard()
+    const screen = await render(CardEditor, { props: { cardId, initialSection: 'settings' }, global: { plugins: [pinia, i18n] } })
+
+    const input = screen.getByRole('spinbutton', { name: t('settings.pages.card.temperature') })
+    await expect.element(input).toHaveValue(null)
+    await expect.element(input).toHaveAttribute('placeholder', t('settings.pages.card.temperature_default'))
+    await expect.element(screen.getByText(t('settings.pages.card.creation.fields_info.temperature'))).toBeVisible()
+    for (const [text, expected] of [['0.3', 0.3], ['5', 2], ['', undefined]] as const) {
+      await input.fill(text)
+      await screen.getByRole('button', { name: t('settings.pages.card.save'), exact: true }).first().click()
+      await expect.poll(() => useAiriCardStore(pinia).cards.get(cardId)?.extensions.airi).toSatisfy(
+        (airi: { temperature?: number }) => airi.temperature === expected && (expected !== undefined || !Object.hasOwn(airi, 'temperature')),
+      )
+    }
+    // The other card setting of this section stays as stored.
+    expect(useAiriCardStore(pinia).cards.get(cardId)?.extensions.airi.contextWindow).toBe(-1)
+  })
+
   it('loads the stored profile and clamps a value forced through the model to the schema range', async () => {
     const stored = { resting: { valence: 0.3, energy: -0.2, tension: 0.5 }, startingStage: 'friendly' }
     const cardId = await createCard(stored)

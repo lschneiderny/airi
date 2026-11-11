@@ -169,6 +169,7 @@ describe('airi card editor validation', () => {
     }, {
       performance: { moodGainScale: 0.5 },
       contextWindow: 42,
+      temperature: 0.3,
       consciousness: { provider: 'new-chat', model: 'new-chat-model' },
       vision: { provider: 'new-vision', model: 'new-vision-model' },
       speech: { provider: 'new-speech', model: 'new-speech-model', voice_id: 'new-voice' },
@@ -192,6 +193,9 @@ describe('airi card editor validation', () => {
     expect(extension.contextWindow).toBe(42)
     expect(extension.modules).not.toHaveProperty('contextWindow')
     expect(getAiriCardEditorModuleSettings(result).contextWindow).toBe(42)
+    expect(extension.temperature).toBe(0.3)
+    expect(extension.modules).not.toHaveProperty('temperature')
+    expect(getAiriCardEditorModuleSettings(result).temperature).toBe(0.3)
     expect(extension.modules.consciousness).toEqual({ provider: 'new-chat', model: 'new-chat-model' })
     expect(extension.modules.vision).toEqual({ provider: 'new-vision', model: 'new-vision-model' })
     expect(extension.modules.speech).toEqual({
@@ -223,6 +227,38 @@ describe('airi card editor validation', () => {
       autonomousTarget: 'user',
     })
     expect(extension.agents).toEqual(existing.agents)
+  })
+
+  it.each([
+    ['a cleared field', undefined],
+    ['a value above the range', 2.5],
+    ['a value below the range', -0.1],
+  ])('removes the stored temperature for %s', (_case, edited) => {
+    const stored: Card = {
+      ...createCard(),
+      extensions: {
+        airi: {
+          contextWindow: 12,
+          temperature: 0.3,
+          modules: {
+            consciousness: { provider: '', model: '' },
+            vision: { provider: '', model: '' },
+            speech: { provider: '', model: '', voice_id: '' },
+          },
+          agents: {},
+        } satisfies AiriExtension,
+      },
+    }
+    expect(getAiriCardEditorModuleSettings(stored).temperature).toBe(0.3)
+
+    const saved = applyAiriCardEditorModules(stored, {
+      ...getAiriCardEditorModuleSettings(stored),
+      temperature: edited,
+      artistry: { provider: '', model: '', promptPrefix: '', widgetInstruction: '', spawnMode: 'bg_widget', options: undefined, autonomousEnabled: false, autonomousThreshold: 70 },
+    })
+
+    expect(saved.extensions.airi).not.toHaveProperty('temperature')
+    expect(saved.extensions.airi.contextWindow).toBe(12)
   })
 })
 

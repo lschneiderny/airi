@@ -3,6 +3,7 @@ import type { Card } from '@proj-airi/ccc'
 import type { AiriExtension } from '../types/airiCard'
 
 import { PerformanceProfileSchema } from '@proj-airi/stage-shared/expression-performance'
+import { omit } from 'es-toolkit'
 import {
   check,
   nonEmpty,
@@ -18,7 +19,7 @@ import {
   unknown,
 } from 'valibot'
 
-import { normalizeContextWindow } from '../types/airiCard'
+import { normalizeContextWindow, normalizeTemperature } from '../types/airiCard'
 
 export type AiriCardDraftValidationError = 'name' | 'version' | 'invalid_artistry_json'
 
@@ -26,6 +27,8 @@ export type AiriCardDraftValidationError = 'name' | 'version' | 'invalid_artistr
 interface AiriCardEditorModules {
   /** Stored at the extension level, not under `modules`. */
   contextWindow?: number
+  /** Stored at the extension level, not under `modules`. `undefined` removes the stored temperature. */
+  temperature: number | undefined
   performance?: AiriExtension['modules']['performance']
   consciousness: AiriExtension['modules']['consciousness']
   vision: AiriExtension['modules']['vision']
@@ -51,12 +54,13 @@ interface AiriCardEditorModules {
  */
 export function getAiriCardEditorModuleSettings(
   card: Card | undefined,
-): Pick<AiriCardEditorModules, 'consciousness' | 'vision' | 'speech' | 'displayModelId' | 'performance'> & { contextWindow: number } {
+): Pick<AiriCardEditorModules, 'consciousness' | 'vision' | 'speech' | 'displayModelId' | 'performance' | 'temperature'> & { contextWindow: number } {
   const modules = getAiriCardModules(card?.extensions?.airi)
   const extension = card?.extensions?.airi
 
   return {
     contextWindow: normalizeContextWindow(isRecord(extension) ? extension.contextWindow : undefined),
+    temperature: normalizeTemperature(isRecord(extension) ? extension.temperature : undefined),
     ...(modules?.performance === undefined ? {} : { performance: parse(PerformanceProfileSchema, modules.performance) }),
     consciousness: {
       provider: getModuleString(modules?.consciousness, 'provider'),
@@ -166,15 +170,18 @@ export function applyAiriCardEditorModules(
   const existing = isAiriExtension(card.extensions?.airi)
     ? card.extensions.airi
     : undefined
-  const { contextWindow, ...editedModules } = edited
+  const { contextWindow, temperature: editedTemperature, ...editedModules } = edited
+  const temperature = normalizeTemperature(editedTemperature)
 
   return {
     ...card,
     extensions: {
       ...card.extensions,
       airi: {
-        ...existing,
+        // The form states the temperature on every save, so the stored one is replaced or removed, never kept.
+        ...(existing && omit(existing, ['temperature'])),
         ...(contextWindow === undefined ? {} : { contextWindow: normalizeContextWindow(contextWindow) }),
+        ...(temperature === undefined ? {} : { temperature }),
         modules: {
           ...existing?.modules,
           ...editedModules,

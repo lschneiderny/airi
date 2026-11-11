@@ -64,7 +64,7 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
   const characterStore = useCharacterStore()
   const situation = useSituationStore()
   const consciousnessStore = useConsciousnessStore()
-  const { activeProvider, activeModel, activeTemperature, activeTopP } = storeToRefs(consciousnessStore)
+  const { activeProvider, activeModel, activeTopP } = storeToRefs(consciousnessStore)
   const streamingControl = useLlmStreamingControlStore()
 
   /**
@@ -1122,7 +1122,8 @@ export const useContextBridgeStore = defineStore('mods:api:context-bridge', () =
               await chatOrchestrator.send({
                 sessionId: targetSessionId ?? chatSession.activeSessionId,
                 text: messageText,
-                temperature: activeTemperature.value,
+                // No temperature here: a value would be a request override that outranks the session character's
+                // card. The chat store resolves it from the card, then from the Consciousness setting.
                 topP: activeTopP.value,
                 input: {
                   type: 'input:text',

@@ -17,7 +17,7 @@ import { DEFAULT_ARTISTRY_WIDGET_SPAWNING_PROMPT } from '../../constants/prompts
 import { captureAnalyticsEvent } from '../../libs/product-signals'
 import { wakeWordSchema } from '../../libs/voice/wake-words'
 import { clearModuleSelections, resolveModuleSelection } from '../../services/airi-card-modules'
-import { normalizeContextWindow } from '../../types/airiCard'
+import { normalizeContextWindow, normalizeTemperature } from '../../types/airiCard'
 import { useMemoryStore } from '../memory'
 import { useProviderConfigStore } from '../providers/config'
 import { useProviderStore } from '../providers/provider'
@@ -387,9 +387,12 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     }
 
     // Fill known fields without discarding settings owned by imported extensions.
+    const { temperature: storedTemperature, ...extension } = existingExtension
+    const temperature = normalizeTemperature(storedTemperature)
     return {
-      ...existingExtension,
+      ...extension,
       contextWindow: normalizeContextWindow(existingExtension.contextWindow),
+      ...(temperature === undefined ? {} : { temperature }),
       ...(existingExtension.wakeWords === undefined ? {} : { wakeWords: parse(array(wakeWordSchema), existingExtension.wakeWords) }),
       modules: {
         ...existingExtension.modules,

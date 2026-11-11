@@ -37,6 +37,7 @@ import { createChatAnalyticsHooks } from '../libs/product-signals/events/chat'
 import { getSpeechBusContext, voiceGenerationEnded } from '../services/speech/bus'
 import { createMemoryTools, READ_MEMORY_TOOL_NAME } from '../tools/memory'
 import { createWakeWordTool } from '../tools/wake-words'
+import { normalizeTemperature } from '../types/airiCard'
 import { useLLM } from './ai/chat-llm/llm'
 import { resolveLlmTools } from './ai/chat-llm/tool-resolver'
 import { useLlmToolsStore } from './ai/chat-llm/tools'
@@ -1026,7 +1027,11 @@ export const useChatStore = defineStore('chat', () => {
     const memoryTools = memoryObservability.observeMemoryTools(rawMemoryTools, { sessionId: payload.sessionId, origin: unprompted ? 'unprompted' : 'user' })
     const { provider: providerId, model: modelId } = cardStore.getModules(characterId).consciousness
 
-    const temperature = payload.temperature ?? consciousnessStore.activeTemperature
+    // A request override outranks the session character's card, and the card outranks the Consciousness setting.
+    // With none of them set, the request carries no temperature and the provider default applies.
+    const temperature = payload.temperature
+      ?? normalizeTemperature(cardStore.getCard(characterId)?.extensions.airi.temperature)
+      ?? consciousnessStore.activeTemperature
     const topP = payload.topP ?? consciousnessStore.activeTopP
     const controlEvents = voice ? chatSession.sessionMetas[payload.sessionId]?.controlEvents?.filter(isVoiceInterruption) : undefined
 
