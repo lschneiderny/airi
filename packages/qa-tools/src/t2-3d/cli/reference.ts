@@ -5,6 +5,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
+import { heldoutFailureUnits } from '../gate/holdouts'
 import { sha256 } from '../gate/load'
 import { buildReference } from '../gate/reference'
 import { readManifest } from '../reference/manifest'
@@ -20,9 +21,8 @@ export async function referenceMotion3d(args: readonly string[], context: Motion
     const manifest = await readManifest(join(directory, 'clips.json'))
     const { stdout } = await promisify(execFile)('git', ['rev-parse', 'HEAD'], { cwd: context.repoRoot, signal: context.signal })
     const bands = await buildReference({ directory, manifest, gitSha: stdout.trim(), signal: context.signal })
-    const failed = Object.entries(bands.classes).flatMap(([scenario, c]) => c.holdout.filter(h => h.verdict === 'FAIL').map(h => ({ class: scenario, ...h })))
     const bytes = `${JSON.stringify(bands, null, 2)}\n`
-    const path = failed.length ? `${out}.rejected.json` : out
+    const path = out
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, bytes, { flag: 'wx' })
     console.info(`BANDS ${path} sha256=${sha256(bytes)}`)
@@ -34,8 +34,13 @@ export async function referenceMotion3d(args: readonly string[], context: Motion
           console.info(`  FAIL ${id} value=${h.values?.[id] ?? h.value ?? 'undefined'} band=[${band?.lo ?? '-inf'},${band?.hi ?? 'inf'}] transform=${band?.transform ?? 'none'}`)
         }
       }
+      for (const [id, band] of Object.entries(c.metrics)) {
+        const failures = heldoutFailureUnits(c, id).length
+        if (failures)
+          console.info(`HOLDOUT-RULE ${scenario} ${id} failures=${failures} ${band.status} ${band.detail}`)
+      }
     }
-    return failed.length ? 1 : 0
+    return 0
   }
   catch (error) {
     if (context.signal.aborted)

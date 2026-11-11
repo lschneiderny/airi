@@ -45,6 +45,19 @@ the same percentile margins. Validate held-out consecutive groups of eight
 in manifest then episode-time order. Store subject counts. Dependent episodes
 and actor mixing limit generalization.
 
+Count failing held-out units independently for each class and fitted metric:
+clips for clip fits and groups for episode fits. Zero or one failure leaves
+the fitted gate and every bound unchanged. Two or more failures make that
+metric report only with `holdout-failures: <n>`. Retain every original held-out
+verdict; declared bands are unchanged.
+
+The P5 to P95 interval plus a margin is not a promise that every unseen value
+lies inside. A clip is checked on about 25 metrics, so an isolated miss is
+expected occasionally by chance. Repeated misses for one metric show that it
+does not transfer reliably enough to gate. The lead set this tolerance after
+seeing the held-out results and before any character trace was judged. This
+post-selection decision must remain visible when interpreting validation.
+
 Head LDLJ pools idle and talk; arm LDLJ pools talk. Gaze and onset pools use idle
 and talk, including episode-only clips. Gaze onset uses only the head region.
 Gaze character episodes must match the fitting head-rotation P5 to P95 range;
@@ -86,13 +99,14 @@ Version 0 is explicitly a fixture. Freeze real bands in their own commit with
 the reference license note, new version and hash, and only tests requiring those
 real bands. Future changes to bands, detectors, formulas, windows or gated
 metrics require another isolated version freeze before judging runs. Never
-retune to a failure. Held-out failures write a rejected file and require a lead
-decision. Store only derived statistics; motion and model files stay outside
-git.
+retune a bound to a failure. The initial rejected run is preserved as evidence;
+the lead's subsequent per-metric tolerance determines which fitted metrics can
+gate. Store only derived statistics; motion and model files stay outside git.
 
 Node validity covers in-phase and frozen rejection, rest-pose and sample-rate
 invariance, noise robustness, determinism, Fisher and vacuous bands, seeded
-episode bootstraps, and every named CLI refusal. Real-band tests require all
-committed held-out verdicts to pass without raw clips in the environment.
+episode bootstraps, and every named CLI refusal. Real-band tests require that
+no gated fitted metric has two or more held-out failures, without raw clips
+in the environment. They do not rewrite recorded failing verdicts as passes.
 
 Scores compare motion statistics with bands derived from human capture. They do not prove naturalness or appeal, which stay a visual review.

@@ -6,6 +6,7 @@ import type { ClassBands, MotionBandsFile } from './types'
 
 import { prepareTrace } from '../metrics'
 import { admitReferences } from './admissions'
+import { HOLDOUT_VALIDATION } from './holdouts'
 import { emotionContext, idleLoopContext, stylePosture } from './reference-context'
 import { fitClass } from './reference-fit'
 import { amplitudeRange, measureReference, referenceDetectors } from './reference-measure'
@@ -75,6 +76,7 @@ export async function buildReference(options: ReferenceBuild): Promise<MotionBan
     datasets: options.manifest.datasets.map(dataset => ({ ...dataset, clips: options.manifest.clips.filter(c => c.dataset === dataset.id).length })),
     classes,
     context: {
+      holdoutValidation: HOLDOUT_VALIDATION,
       admission: {
         fixed: options.manifest.clips.length,
         admitted: inputs.length,

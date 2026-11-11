@@ -1,3 +1,4 @@
+import { HOLDOUT_VALIDATION } from './holdouts'
 import { declaredBands, metricPolicies } from './policy'
 
 export const LIMITATION = 'Scores compare motion statistics with bands derived from human capture. They do not prove naturalness or appeal, which stay a visual review.'
@@ -9,6 +10,7 @@ export const motionQualityGate = {
   limitation: LIMITATION,
   bandsFile: 'packages/qa-tools/fixtures/motion3d/bands-v0.json',
   bandsSha256: '8798cd997f0924c272e34c9ed0d96a460c6fc032d10431a58c7e0775c778a689',
+  holdoutRule: HOLDOUT_VALIDATION,
   rules: Object.fromEntries((['idle', 'talk', 'walk', 'gaze', 'emotion', 'react'] as const).map(c => [c, {
     fittedCandidates: metricPolicies(c),
     declared: Object.entries(declaredBands(c, null)).map(([id, band]) => ({ id, side: band.side, rule: band.rule, source: band.source })),

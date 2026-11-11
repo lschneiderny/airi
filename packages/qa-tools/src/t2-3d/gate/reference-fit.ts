@@ -7,6 +7,7 @@ import type { ClassBands, HoldoutVerdict, MetricBand } from './types'
 
 import { mean, median } from '../metrics/math'
 import { fitBand, fitEpisodeBand, passesBand } from './bands'
+import { applyHoldoutRule } from './holdouts'
 import { judgeMetrics } from './judge'
 import { declaredBands, metricPolicies, reportBand } from './policy'
 
@@ -78,5 +79,5 @@ export function fitClass(clips: readonly MeasuredReference[], scenario: MotionSc
     const values = Object.fromEntries(judged.filter(m => m.band?.status === 'GATED').map(m => [m.id, m.value]))
     holdout.push({ clipSha256: clip.clipSha256, dataset: clip.entry.dataset, subject: clip.entry.subject, verdict: failed.length ? 'FAIL' : 'PASS', failed, values })
   }
-  return classBands
+  return applyHoldoutRule(classBands)
 }
