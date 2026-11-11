@@ -27,7 +27,13 @@ export interface MMDBodyWeights {
   rightFingers: number
 }
 
-export type MMDBodyEvent = { readonly kind: 'blink' } | { readonly kind: 'gaze-shift', readonly amplitudeDeg: number }
+/**
+ * `gaze-shift`: the planned shift's amplitude, its signed yaw change (positive toward +X, the character's left) in
+ * degrees, and the goal kind it moves to.
+ */
+export type MMDBodyEvent
+  = | { readonly kind: 'blink' }
+    | { readonly kind: 'gaze-shift', readonly amplitudeDeg: number, readonly yawDeg: number, readonly goal: BodyPerformanceInput['gaze']['kind'] }
 
 interface Target {
   readonly bone: Bone
@@ -206,7 +212,7 @@ export class MMDBodyPerformer {
     if (frame.diagnostics.gazeShifts > this.shifts) {
       // The core measures a shift from its gaze line before the tick to the new goal; the line excludes eye residue.
       this.lastShiftDeg = Math.hypot(wrap(input.gaze.yaw - this.line.yaw), input.gaze.pitch - this.line.pitch) * DEG
-      this.onEvent({ kind: 'gaze-shift', amplitudeDeg: this.lastShiftDeg })
+      this.onEvent({ kind: 'gaze-shift', amplitudeDeg: this.lastShiftDeg, yawDeg: wrap(input.gaze.yaw - this.line.yaw) * DEG, goal: input.gaze.kind })
     }
     if (frame.diagnostics.blinks > this.blinks)
       this.onEvent({ kind: 'blink' })

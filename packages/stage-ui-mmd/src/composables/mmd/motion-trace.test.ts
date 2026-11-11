@@ -83,10 +83,10 @@ it('stamps a body event with the time of the frame that raised it and drops one 
   sampler.inputs.wall = 0
   sampler.stage.run(context)
   // Body events fire in the `locomotion` pose stage, before this frame's `motion-trace` sample.
-  sampler.bodyEvent({ kind: 'gaze-shift', amplitudeDeg: 40 })
+  sampler.bodyEvent({ kind: 'gaze-shift', amplitudeDeg: 40, yawDeg: -38.5, goal: 'sustained' })
   sampler.inputs.wall = 1 / 60
   sampler.stage.run(context)
   sampler.recorder.stop()
-  expect(sampler.recorder.drain().events).toEqual([{ t: 1 / 60, kind: 'marker', label: 'gaze-shift:40.00' }])
+  expect(sampler.recorder.drain().events).toEqual([{ t: 1 / 60, kind: 'marker', label: 'gaze-shift:40.00:-38.50:sustained' }])
   mmd.dispose()
 })

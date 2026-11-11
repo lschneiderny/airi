@@ -73,7 +73,7 @@ clearance ratio, and the rendered `stage-arm-penetration` gate still measures th
   keeps foot contact and eye aim only.
 - The gait's lateral pelvis offset is now applied toward the support foot, as the gait's own reach model assumes; the
   legacy stage applied it with the opposite sign.
-- Body blinks and gaze shifts are recorded as trace `marker` events (`blink`, `gaze-shift:<degrees>`) until the trace
+- Body blinks and gaze shifts are recorded as trace `marker` events (`blink`, `gaze-shift:<amplitude>:<signed yaw>:<goal kind>`) until the trace
   reader accepts them as their own kinds.
 - The per-rig hang solver remains and feeds the performer's `armLift`, but the performer's own corrector already clears
   the same bodies, so the solver acts only where the corrector's model and the rendered pose differ.

@@ -283,7 +283,8 @@ arm keeps its previous valid pose while the torso, head, eyes and legs move on;
 first one is logged. Body blinks and planned gaze shifts reach `body.onEvent`, and both the
 scene recorder and the headless runner pass them to the sampler's `bodyEvent`,
 which records them as trace `marker` events labelled `blink` and
-`gaze-shift:<degrees>`, stamped with the time of the frame that raised them.
+`gaze-shift:<amplitude>:<signed yaw>:<goal kind>` (degrees, the yaw positive toward
+the character's left), stamped with the time of the frame that raised them.
 
 Ducking follows clip ownership (below), not raw clip weights, and is applied
 once per written group as `clean * slerp(I, delta, 1 - owned)`. Looping stance

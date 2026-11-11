@@ -776,7 +776,8 @@ IK, grants, physics and shared motion-trace sampler. Its stages come from
 level does not run (Classic gaze and face, lip-sync, bone and surface morphs)
 keep their ids and slots and do nothing, and `omitted` names that work. Body
 blinks and planned gaze shifts are recorded as `marker` events labelled
-`blink` and `gaze-shift:<degrees>`, because the trace v1 reader accepts no
+`blink` and `gaze-shift:<amplitude>:<signed yaw>:<goal kind>` (degrees; the
+yaw is signed explicitly, positive toward the character's left), because the trace v1 reader accepts no
 other new event kind. It opens no window and
 needs no GPU. Models and textures remain outside the repository. The optional
 load and gaze integration tests use `AIRI_QA_MMD_MODEL` when set.
