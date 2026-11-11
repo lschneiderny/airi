@@ -105,7 +105,8 @@ use head episodes only.
 | `pool-mismatch` | Emotion traces differ in rig structure, known asset hashes, source level or source revision. Display ids are ignored. |
 
 Version 0 retains explicitly marked analytic fixtures. Version 1 uses frozen
-human-reference bands. Frozen band files
+human-reference bands fitted per body side. Version 2, the current gate, fits
+mirrored body sides pooled. Frozen band files
 are immutable. Changing a band, detector, formula, window, or gated list requires
 the next version, a new file and SHA-256, in an isolated freeze commit before
 judging runs. A hash mismatch refuses scoring. A failing run never authorizes
@@ -117,7 +118,7 @@ Scores compare motion statistics with bands derived from human capture. They do 
 
 `pnpm qa:motion3d gaze-order <run directory>` reports whether the eyes, the
 head and the chest start a gaze shift in that order. It is a report, not a
-gate: it has no band and does not change any verdict. Gate version 1 cannot
+gate: it has no band and does not change any verdict. Gate versions 1 and 2 cannot
 judge eye order (`gaze.eyeLeadMs` is skipped as `missing-eye-floors`).
 
 - The criterion is displacement order (architecture section 9.1), per
@@ -141,7 +142,7 @@ judge eye order (`gaze.eyeLeadMs` is skipped as `missing-eye-floors`).
 - Reported only, beside the criterion: episodes and onsets from the gate's own
   gaze detector, called read-only: kinematic head turns of at least 0.5 rad/s and 10 degrees inside
   the frozen bands' accepted head-rotation range, with `jointOnset` on the
-  fitted head and chest activity floors of the gaze class in `bands-v1.json`.
+  fitted head and chest activity floors of the gaze class in `bands-v2.json`.
 - The only added parameter is the eye activity floor, declared equal to the
   fitted head floor. Human body capture has no eyes, so no eye floor can be
   fitted. An eye in a saccade moves several times faster than the head, so the
@@ -230,9 +231,12 @@ whether the pair stays gated. Each left or right bone's activity floor is half
 the P10 of both sides' fitting-clip activities, and `armL` and `armR` share the
 median of both arms' fitting-clip median speeds; both sides use that one
 value. Non-mirrored detector parameters, every declared band, the manifest and
-the fit/held-out split are unchanged. Other bands are fitted by the unchanged
-rules, but metrics that read arm or leg floors are measured with the pooled
-floors. `context.sidePooling` in the bands file lists the pooled pairs per class.
+the fit/held-out split are unchanged. A non-sided band keeps its fitting rule,
+but when its metric reads a pooled floor or arm move speed (coverage,
+bilateral, dimensionality, gesture stroke rate, onset) its human values are
+measured with the pooled value, so the band can move; in version 2, eleven such
+bands moved and none changed status. `context.sidePooling` in the bands file
+lists the pooled pairs per class.
 
 Why: version 1 fitted each side separately from 11 idle clips of one
 performer, so sided bands carried that performer's handedness. For example,
@@ -245,14 +249,15 @@ failed left-side metrics only. No character data entered the fit. The user
 decided on 2026-11-11: "Arm bands: Gate v2, pooled sides (Recommended)".
 `bands-v1.json` stays in the repository unchanged as the record of version 1.
 
-The counts below describe frozen version 1. `fixtures/motion3d/bands-v1.json`
-records each metric, bound and report-only reason.
+The counts below describe frozen version 2. `fixtures/motion3d/bands-v2.json`
+records each metric, bound and report-only reason; `bands-v1.json` keeps
+version 1.
 
 | Scenario | Fitted gates and sides | Declared gates | Report only |
 | --- | --- | --- | --- |
-| idle | 26: non-vacuous chain correlation upper and lag lower; ACF upper; core/arm coverage lower; bilateral upper; head LDLJ two-sided; speed CV two-sided; core dimensionality lower | 5: head and two root loop peaks below 0.3; active-wrist finger coverage at least 0.5; frozen fingers equal 0 | 42: vacuous axial correlations and other vacuous bounds, insufficient clip fits, spectra, arm LDLJ, long intermittency and idle acts |
-| speak (talk) | 22: chain correlations except shoulder-upper-arm; core/arm coverage; bilateral except shoulders; head/arm LDLJ; head/left-arm spike rates; speed CV; dimensions; onset attack two-sided and eased share lower | 4: finger coverage and frozen fingers; stroke binomial tail at most 0.01 and hit lag -200 to 200 ms | 49: insufficient clip fits, vacuous bounds, spectra, ACF, long intermittency, speech gains and anticipation |
-| walk | 30: non-vacuous chain correlations/lags, coverage, bilateral, spike rates, speed CV and dimensions; pelvis twist, arm lag, heel pitch and turn head lead lower; chest counter and toe pitch upper | 2: finger coverage and frozen fingers | 41: vacuous bounds including neck-head correlation, spectra, ACF, LDLJ and long intermittency |
+| idle | 27: non-vacuous chain correlation upper; ACF upper; core/arm coverage lower; bilateral upper; arm spike rates upper; head LDLJ two-sided; speed CV two-sided; core dimensionality lower | 5: head and two root loop peaks below 0.3; active-wrist finger coverage at least 0.5; frozen fingers equal 0 | 41: vacuous axial correlations, vacuous arm lags and other vacuous bounds, insufficient clip fits, spectra, arm LDLJ, long intermittency and idle acts |
+| speak (talk) | 21: chain correlations except shoulder-upper-arm; core/arm coverage; bilateral except shoulders; head LDLJ; head and arm spike rates; speed CV; dimensions; onset attack two-sided and eased share lower | 4: finger coverage and frozen fingers; stroke binomial tail at most 0.01 and hit lag -200 to 200 ms | 50: arm LDLJ with two held-out failures, insufficient clip fits, vacuous bounds, spectra, ACF, long intermittency, speech gains and anticipation |
+| walk | 28: non-vacuous chain correlations and axial lags, coverage, bilateral, spike rates, speed CV and dimensions; pelvis twist, arm lag, heel pitch and turn head lead lower; chest counter and toe pitch upper | 2: finger coverage and frozen fingers | 43: vacuous bounds including neck-head correlation and arm lags, spectra, ACF, LDLJ and long intermittency |
 | gaze-shift | 3: settle and head onset attack two-sided; head eased share lower, from idle/talk episodes | 1: eye lead at least 0 ms | 69: chest lag with three held-out failures, vacuous order/overshoot bands, all core metrics and anticipation |
 | emotions | 2: onset attack two-sided and eased share lower from idle/talk episodes | 2: minimum separation at least 2 including placebo; arm share at least half the smallest of four emotion-style shares on one skeleton | 67: all core metrics, median separation, anticipation and unavailable long statistics |
 | touch | none | none | 68: every metric; cannot produce a gate pass |
@@ -271,7 +276,7 @@ ordinal eye detector policy requires a lead decision.
 Chain metrics already use parent-relative angular velocity. Some axial pairs
 in the 100STYLE idle and walk clips are almost perfectly correlated: idle
 neck-head has median 0.999626. Their vacuous correlation bands remain report
-only, so version 1 cannot reject neck-head synchrony through zero-lag correlation
+only, so versions 1 and 2 cannot reject neck-head synchrony through zero-lag correlation
 in idle or walk. The CMU talk band can; upper-arm/lower-arm and lower-arm/hand
 pairs remain gated in all three classes. UNVERIFIED: the capture solve may
 split one measured axial rotation across neighbouring segments of the 23-joint

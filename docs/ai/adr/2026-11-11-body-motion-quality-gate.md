@@ -197,9 +197,11 @@ version 2 band existed: every left or right bone activity floor (half the P10
 of fitting-clip activities) and the `armL`/`armR` move speed (median of
 fitting-clip median speeds) are fitted once from both sides pooled under their
 unchanged rules and applied to both sides. No declared band, non-mirrored
-detector parameter, manifest entry or split changed. Non-sided bands keep their
-fitting rules, but metrics that read arm or leg floors are measured with the
-pooled floors. A machine comparison of the two bands files is kept with the
+detector parameter, manifest entry or split changed. A non-sided band keeps its
+fitting rule, but when its metric reads a pooled floor or arm move speed its
+human values are measured with the pooled value, so the band can move; in
+version 2, eleven such bands moved (coverage, bilateral, dimensionality,
+gesture stroke rate and onset) and none changed status. A machine comparison of the two bands files is kept with the
 freeze evidence.
 
 Why: version 1 fitted each side from the same 11 idle clips of one performer,
