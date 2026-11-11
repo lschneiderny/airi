@@ -5,7 +5,7 @@ import { motion3dScenarios } from './scenarios'
 
 describe('motion3d scenario timelines', () => {
   // Default seed-1 counts; gaze count varies with seeded hold/return durations.
-  const counts = { 'idle': 1, 'gaze-shift': 18, 'speak': 3, 'emotions': 13, 'walk': 2, 'touch': 10 } as const
+  const counts = { 'idle': 1, 'gaze-shift': 18, 'speak': 11, 'gesture-under-clip': 7, 'emotions': 13, 'walk': 2, 'touch': 10 } as const
   it.each(motion3dScenarios)('replays $id for equal seeds and varies for another seed', (scenario) => {
     const first = scenario.timeline(1, scenario.seconds)
     expect(scenario.timeline(1, scenario.seconds)).toEqual(first)
@@ -52,21 +52,50 @@ describe('motion3d scenario timelines', () => {
     expect(cues[1].at).toBeLessThan(61)
   })
 
-  it('provides twelve labelled voice peaks with bounded 60 Hz envelopes', () => {
+  it.each([1, 2, 3])('speaks version 2 for seed %i: fifteen peaks at least 0.9 s apart, three energies and one chat reply', (seed) => {
     const scenario = motion3dScenarios.find(scenario => scenario.id === 'speak')
     if (!scenario)
       throw new Error('Missing speak scenario')
-    const cues = scenario.timeline(1, 60)
-    let peaks = 0
-    for (const cue of cues) {
-      if (cue.kind !== 'voice')
-        throw new Error('Expected a voice turn')
-      peaks += cue.emphasis.length
-      expect(cue.envelope).toHaveLength(Math.ceil(cue.seconds * 60))
+    expect(scenario.version).toBe(2)
+    const cues = scenario.timeline(seed, 60)
+    const voices = cues.flatMap(cue => cue.kind === 'voice' ? [cue] : [])
+    expect(voices.map(cue => cue.seconds)).toEqual([8, 8, 8])
+    for (const cue of voices) {
+      expect(cue.emphasis).toHaveLength(5)
+      expect(cue.envelope).toHaveLength(8 * 60)
       expect(cue.envelope.every(level => level >= 0 && level <= 1)).toBe(true)
-      expect(cue.emphasis.every(peak => peak.at >= 0 && peak.at < cue.seconds)).toBe(true)
+      expect(cue.emphasis.every(peak => peak.at >= 0 && peak.at < cue.seconds && peak.strength >= 0.35 && peak.strength <= 0.95)).toBe(true)
+      cue.emphasis.slice(1).forEach((peak, i) => expect(peak.at - cue.emphasis[i].at).toBeGreaterThanOrEqual(0.9))
+      // The utterance's energy is set as it starts.
+      expect(cues.find(other => other.kind === 'energy' && other.at === cue.at)).toBeDefined()
     }
-    expect(peaks).toBe(12)
+    const levels = cues.flatMap(cue => cue.kind === 'energy' && voices.some(voice => voice.at === cue.at) ? [cue.level] : [])
+    expect(levels.sort()).toEqual([0.45, 0.65, 0.85])
+    const shown = cues.filter(cue => cue.kind === 'chat' && cue.target !== null)
+    expect(shown).toHaveLength(1)
+    expect(shown[0]).toMatchObject({ unfold: true })
+    expect(voices.filter(voice => voice.at > shown[0].at && voice.at - shown[0].at <= 0.5)).toHaveLength(1)
+  })
+
+  it('holds the synthetic clip at full weight for at least 8 s over at least three labelled peaks and pokes after a peak', () => {
+    const scenario = motion3dScenarios.find(scenario => scenario.id === 'gesture-under-clip')
+    if (!scenario)
+      throw new Error('Missing gesture-under-clip scenario')
+    for (let seed = 1; seed <= 6; seed++) {
+      const cues = scenario.timeline(seed, 30)
+      const claim = cues.find(cue => cue.kind === 'clip-claim')
+      const release = cues.find(cue => cue.kind === 'clip-release')
+      if (claim?.kind !== 'clip-claim' || release?.kind !== 'clip-release')
+        throw new Error('Expected a claim and a release')
+      const full = { from: claim.at + claim.fadeSeconds, to: release.at }
+      expect(full.to - full.from).toBeGreaterThanOrEqual(8)
+      const peaks = cues.flatMap(cue => cue.kind === 'voice' ? cue.emphasis.map(peak => cue.at + peak.at) : [])
+      expect(peaks.filter(t => t >= full.from && t <= full.to).length).toBeGreaterThanOrEqual(3)
+      const poke = cues.find(cue => cue.kind === 'touch')
+      expect(peaks.some(t => Math.abs(poke!.at - t - 0.05) < 1e-9)).toBe(true)
+      expect(poke!.at).toBeGreaterThan(full.from)
+      expect(poke!.at).toBeLessThan(full.to)
+    }
   })
 
   it('covers every emotion three times across seeds one to six with unique pooled trial ids', () => {

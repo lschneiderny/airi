@@ -8,7 +8,8 @@ import { createRandomStream } from '@proj-airi/motion-driver-natural/random'
 import { PERFORMANCE_EMOTIONS } from '@proj-airi/stage-shared/expression-performance'
 
 export interface Motion3dScenario {
-  version: 1
+  /** Timeline version; a new version changes the cues, so traces of an older version are no longer its reference. */
+  version: 1 | 2
   id: string
   class: MotionScenarioClass
   /** Simulated and discarded before scoring. */
@@ -36,6 +37,46 @@ export type Motion3dCue
     | { at: number, kind: 'goal', x: number | null, pace: 'stroll' | 'walk' }
     | { at: number, kind: 'activity', mode: PerformanceMode, away?: boolean }
     | { at: number, kind: 'marker', label: string }
+    /** User energy handed to Natural and the body, 0-1; the runner starts at 0.5. */
+    | { at: number, kind: 'energy', level: number }
+    /**
+     * The chat panel at a point in head widths, as the gaze cursor; `unfold` reports a reply unfolding, the app's case
+     * while she answers, so Natural glances at it. Null hides the chat.
+     */
+    | { at: number, kind: 'chat', target: { x: number, y: number } | null, unfold: boolean }
+    /** The runner's synthetic right-arm clip fades in or out over `fadeSeconds` on its mixer. */
+    | { at: number, kind: 'clip-claim' | 'clip-release', fadeSeconds: number }
+
+/**
+ * Plan 2.2 peaks: the first 0.6 to 1.0 s into the utterance, then seeded gaps of 0.9 to 1.5 s, so no two are closer
+ * than 0.9 s and no stroke period is imposed; strengths 0.35 to 0.95.
+ */
+function peaksFor(count: number, random: RandomStream): { at: number, strength: number }[] {
+  let at = 0.6 + 0.4 * random()
+  return Array.from({ length: count }, (_, i) => {
+    if (i > 0)
+      at += 0.9 + 0.6 * random()
+    return { at, strength: 0.35 + 0.6 * random() }
+  })
+}
+
+/**
+ * A 0.1 floor under one 80 ms Gaussian per labelled peak, sampled at 60 Hz. Unlike version 1 the peak's level is its
+ * labelled strength, so a 0.95 peak stays inside the [0, 1] voice level.
+ */
+function voiceCue(at: number, seconds: number, emphasis: { at: number, strength: number }[]): Motion3dCue {
+  const envelope = Array.from({ length: Math.ceil(seconds * 60) }, (_, frame) =>
+    0.1 + Math.max(...emphasis.map(peak => (peak.strength - 0.1) * Math.exp(-(((frame / 60 - peak.at) / 0.08) ** 2)))))
+  return { at, kind: 'voice', seconds, envelope, emphasis }
+}
+
+/** A chat panel 25 degrees to a seeded side and 10 degrees below the head, in head widths. */
+function chatTarget(random: RandomStream): { x: number, y: number } {
+  const side = random() < 0.5 ? -1 : 1
+  return { x: 3 * Math.sin(side * 25 * Math.PI / 180), y: 3 * Math.sin(-10 * Math.PI / 180) }
+}
+
+const byTime = (a: Motion3dCue, b: Motion3dCue) => a.at - b.at
 
 function shuffled<T>(values: readonly T[], random: RandomStream): T[] {
   const result = [...values]
@@ -90,7 +131,13 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     },
   },
   {
-    version: 1,
+    /**
+     * Version 2 (plan 2.2): three 8 s utterances, each with five labelled peaks at seeded spacings of at least 0.9 s
+     * and strengths of 0.35 to 0.95, at a seeded order of the energies 0.45, 0.65 and 0.85 (0.5 again after each
+     * utterance). During one seeded utterance a chat panel shows and unfolds a reply. No emotion pulse. A run shorter
+     * than 60 s drops the utterances that do not fit.
+     */
+    version: 2,
     id: 'speak',
     class: 'talk',
     warmupSeconds: 10,
@@ -98,15 +145,51 @@ export const motion3dScenarios: readonly Motion3dScenario[] = [
     timeline(seed, seconds) {
       const random = createRandomStream(seed)
       const duration = Math.min(seconds, 120)
-      if (duration <= 0)
-        return []
-      return Array.from({ length: 3 }, (_, turn): Motion3dCue => {
-        const length = Math.min(8, duration / 6)
-        const emphasis = [0.2, 0.4, 0.6, 0.8].map(fraction => ({ at: fraction * length, strength: 0.5 + 0.4 * random() }))
-        const envelope = Array.from({ length: Math.ceil(length * 60) }, (_, frame) =>
-          0.1 + Math.max(...emphasis.map(peak => peak.strength * Math.exp(-(((frame / 60 - peak.at) / 0.08) ** 2)))))
-        return { at: (turn + 0.1 + 0.1 * random()) * duration / 3, kind: 'voice', seconds: length, envelope, emphasis }
-      })
+      const energies = shuffled([0.45, 0.65, 0.85], random)
+      const chatTurn = Math.floor(random() * 3)
+      const chat = chatTarget(random)
+      return Array.from({ length: 3 }, (_, turn): Motion3dCue[] => {
+        const at = (turn + 0.1 + 0.1 * random()) * 20
+        const emphasis = peaksFor(5, random)
+        const cues: Motion3dCue[] = [
+          { at, kind: 'energy', level: energies[turn] },
+          voiceCue(at, 8, emphasis),
+          { at: at + 8, kind: 'energy', level: 0.5 },
+        ]
+        if (turn === chatTurn)
+          cues.push({ at: at - 0.5, kind: 'chat', target: chat, unfold: true }, { at: at + 8, kind: 'chat', target: null, unfold: false })
+        return at + 8 <= duration ? cues : []
+      }).flat().sort(byTime)
+    },
+  },
+  {
+    /**
+     * Plan 2.5 (C004), 30 s, class talk. A synthetic clip claims the right arm and fingers mid-stroke at 3.0 s (0.3 s
+     * fade-in) and releases them at 14.0 s (0.3 s fade-out) while utterance B (8.5 s, 10 s, six peaks) runs on the
+     * left arm; a body poke lands 50 ms after the B peak nearest 12 s; utterance C (20 s, 7 s, four peaks) has both
+     * arms free. Utterance A starts at 0.5 s (8 s, five peaks) at energy 0.85.
+     */
+    version: 1,
+    id: 'gesture-under-clip',
+    class: 'talk',
+    warmupSeconds: 10,
+    seconds: 30,
+    timeline(seed, seconds) {
+      const random = createRandomStream(seed)
+      const a = peaksFor(5, random)
+      const b = peaksFor(6, random)
+      const c = peaksFor(4, random)
+      const poke = b.reduce((best, peak) => Math.abs(8.5 + peak.at - 12) < Math.abs(8.5 + best.at - 12) ? peak : best)
+      const cues: Motion3dCue[] = [
+        { at: 0.5, kind: 'energy', level: 0.85 },
+        voiceCue(0.5, 8, a),
+        { at: 3, kind: 'clip-claim', fadeSeconds: 0.3 },
+        voiceCue(8.5, 10, b),
+        { at: 8.5 + poke.at + 0.05, kind: 'touch', touch: 'poke', region: 'body', x: random() * 2 - 1, y: random() * 2 - 1 },
+        { at: 14, kind: 'clip-release', fadeSeconds: 0.3 },
+        voiceCue(20, 7, c),
+      ]
+      return cues.filter(cue => cue.at < Math.min(seconds, 120)).sort(byTime)
     },
   },
   {

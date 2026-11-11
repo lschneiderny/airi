@@ -1,5 +1,5 @@
 import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
-import type { NaturalMotionVoice } from '@proj-airi/motion-driver-natural/natural-motion'
+import type { NaturalChatInput, NaturalMotionVoice } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { PerformanceState } from '@proj-airi/stage-shared/performance-state'
 import type { MMDNaturalAdapter } from '@proj-airi/stage-ui-mmd/composables/mmd/natural/adapter'
 import type { MMDStanceWorld } from '@proj-airi/stage-ui-mmd/composables/mmd/stance'
@@ -16,9 +16,19 @@ import { defaultExpressionPerformanceSettings } from '@proj-airi/stage-shared/ex
  */
 const HAND = { radius: Math.PI / 180, hz: 1 }
 
+/** The runner's synthetic clip; the driver only says when it claims and releases the arm. */
+export interface Motion3dClipControl {
+  claim: (fadeSeconds: number) => void
+  release: (fadeSeconds: number) => void
+}
+
 /** Owns the scenario's mutable performer inputs and labels every applied cue. */
 export class Motion3dCueDriver {
   cursor: { x: number, y: number } | null = null
+  /** User energy for Natural and the body; 0.5 until an `energy` cue. */
+  energy = 0.5
+  /** Natural's chat input; null until a `chat` cue shows the panel. */
+  chat: NaturalChatInput | null = null
   private held: { readonly cursor: { readonly x: number, readonly y: number }, readonly since: number } | null = null
   debugGoal: MMDStanceWorld['debugGoal'] = null
   goalCancelled = false
@@ -31,6 +41,7 @@ export class Motion3dCueDriver {
     private readonly adapter: Pick<MMDNaturalAdapter, 'impulse' | 'gesture' | 'poke' | 'setPet'>,
     private readonly legLength: number,
     private readonly event: (event: MotionTraceEvent) => void,
+    private readonly clip: Motion3dClipControl | null = null,
   ) {}
 
   get voice(): NaturalMotionVoice { return this.currentVoice }
@@ -99,6 +110,26 @@ export class Motion3dCueDriver {
         return
       case 'marker':
         this.event({ t, kind: 'marker', label: cue.label })
+        return
+      case 'energy':
+        this.energy = cue.level
+        this.event({ t, kind: 'marker', label: `energy:${cue.level}` })
+        return
+      case 'chat': {
+        const unfoldSeq = (this.chat?.unfoldSeq ?? 0) + (cue.unfold ? 1 : 0)
+        this.chat = cue.target ? { target: { ...cue.target }, typing: false, sentSeq: 0, sentWords: 0, unfoldSeq } : null
+        this.event({ t, kind: 'marker', label: cue.target ? `chat:show${cue.unfold ? ':unfold' : ''}` : 'chat:hide' })
+        return
+      }
+      case 'clip-claim':
+      case 'clip-release':
+        if (!this.clip)
+          throw new TypeError(`${cue.kind} needs the runner's clip`)
+        if (cue.kind === 'clip-claim')
+          this.clip.claim(cue.fadeSeconds)
+        else
+          this.clip.release(cue.fadeSeconds)
+        this.event({ t, kind: 'marker', label: cue.kind })
         return
       default:
         cue satisfies never

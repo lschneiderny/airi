@@ -1,5 +1,7 @@
 import type { MotionTraceSource, MotionTraceV1 } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { NaturalChatInput } from '@proj-airi/motion-driver-natural/natural-motion'
 import type { MMDBodyPoints } from '@proj-airi/stage-ui-mmd/composables/mmd/body/attention'
+import type { Vector3 } from 'three'
 
 import type { RunGitState } from '../../evidence/run'
 import type { Motion3dScenario } from '../scenarios'
@@ -22,10 +24,11 @@ import { MMDNaturalAdapter } from '@proj-airi/stage-ui-mmd/composables/mmd/natur
 import { readMMDRigProfile } from '@proj-airi/stage-ui-mmd/composables/mmd/rig'
 import { composeMMDStages } from '@proj-airi/stage-ui-mmd/composables/mmd/stage-composition'
 import { MMDStanceDirector } from '@proj-airi/stage-ui-mmd/composables/mmd/stance'
-import { AnimationMixer, Matrix4, Quaternion } from 'three'
+import { AnimationMixer, LoopOnce, Matrix4, Quaternion } from 'three'
 
 import * as v from 'valibot'
 
+import { CLAIM_CLIP_NAME, CLAIM_TRACE_BONES, Motion3dClaimClip } from './claim-clip'
 import { Motion3dCueDriver } from './cues'
 import { loadHeadlessMMD } from './loader'
 import { Motion3dLookTarget } from './look-target'
@@ -76,7 +79,18 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     const sampler = createMMDMotionTraceSampler(mmd, rig, pose)
     sampler.rig.id = modelKey
     sampler.rig.assetSha256 = loaded.assetSha256
-    const cues = new Motion3dCueDriver(natural, rig.legLength ?? 0, event => sampler.recorder.event(event))
+    const timeline = options.scenario.timeline(options.seed, options.seconds)
+    // A scenario that claims an arm gets one programmatic clip on the runner's mixer, registered like an app clip.
+    const claim = timeline.some(cue => cue.kind === 'clip-claim') ? new Motion3dClaimClip(pose, rig, options.seconds) : null
+    const claimAction = claim ? mixer.clipAction(claim.clip) : null
+    const cues = new Motion3dCueDriver(natural, rig.legLength ?? 0, event => sampler.recorder.event(event), claimAction && {
+      claim: (fadeSeconds) => {
+        claimAction.reset().setLoop(LoopOnce, 1)
+        claimAction.clampWhenFinished = true
+        claimAction.fadeIn(fadeSeconds).play()
+      },
+      release: fadeSeconds => void claimAction.fadeOut(fadeSeconds),
+    })
     const look = new Motion3dLookTarget(mmd.mesh, pose)
     const metrics = new Motion3dMeasurement()
     let points: MMDBodyPoints | null = null
@@ -89,7 +103,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         rootMotion: true,
         frame: natural.bodyFrame.frame,
         intent: natural.bodyFrame.intent,
-        energy: 0.5,
+        energy: cues.energy,
         stance: stance.intent?.stance,
         points,
         disableFootContact: false,
@@ -105,16 +119,20 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     })
     let motionTime = 0
     body.onEvent(event => sampler.bodyEvent(event))
+    if (claim)
+      body.registerClip(CLAIM_CLIP_NAME, claim.clip)
+    let chat: NaturalChatInput | null = null
+    let chatPoint: Vector3 | null = null
     const stages = composeMMDStages({
       body,
       host: {
         'natural': ({ dt }) => {
           natural.advance(dt, {
             performance: cues.performance,
-            energy: 0.5,
+            energy: cues.energy,
             voice: cues.voice,
             cursor,
-            chat: null,
+            chat,
             placement: null,
             emotionStrengths: {},
           }, naturalSeconds)
@@ -128,6 +146,8 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       },
     })
     pipeline = new MMDFramePipeline({ mmd, mixer, metrics, poseStages: stages.pose, surfaceStages: stages.surface })
+    if (claim)
+      pipeline.registerClip(CLAIM_CLIP_NAME, claim.clip)
     const traceBasis = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(pose.right, pose.up, pose.forward)).invert()
     const detail = {
       ...dependencyVersions(),
@@ -137,6 +157,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       ik: true,
       physics: true,
       physicsAffectsIK: mmd.physics?.affectsIK ?? false,
+      scenarioVersion: options.scenario.version,
       textureRequests: loaded.textureRequests,
       images: false,
       bones: mmd.pmx.bones.length,
@@ -164,7 +185,6 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       hz: 60,
       scoredFrom: warmupFrames / 60,
     })
-    const timeline = options.scenario.timeline(options.seed, options.seconds)
     const initializedMs = performance.now() - initializedAt
     let nextCue = 0
     const started = performance.now()
@@ -180,7 +200,11 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       const target = look.resolve(cues.cursor)
       // The camera sits straight ahead of the head at the scenario's look distance, as the app's camera faces her.
       const camera = look.resolve({ x: 0, y: 0 })?.target ?? null
-      points = camera ? { cursor: target?.target ?? null, chat: null, camera } : null
+      // The chat panel resolves like a held cursor: Natural takes its head-width point, the body its world point.
+      const panel = cues.chat?.target ? look.resolve(cues.chat.target) : null
+      chat = cues.chat && panel ? { ...cues.chat, target: panel.cursor } : cues.chat
+      chatPoint = panel?.target ?? null
+      points = camera ? { cursor: target?.target ?? null, chat: chatPoint, camera } : null
       cursor = target?.cursor ?? null
       if (cues.goalCancelled) {
         stance.clearGoal()
@@ -222,7 +246,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       pipeline.step(motion3dStep)
       // Gait is evaluated inside the pose stages; channels must describe this frame.
       if (metrics.scored)
-        metrics.sample(body.diagnostics)
+        metrics.sample(body.diagnostics, body.ownership(), claim && claimAction && claimAction.getEffectiveWeight() > 0 ? claim.expected(claimAction.time, traceBasis) : null)
     }
     const wallMs = performance.now() - started
     sampler.recorder.stop()
@@ -238,6 +262,8 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       wallMs,
       simulatedSeconds: frames / 60,
       collisions: body.diagnostics.performance?.collision ?? { count: 0, last: null },
+      corrector: { ...body.diagnostics.performance?.corrector ?? { capHits: 0, guardScans: 0 }, holds: body.diagnostics.performance?.collision.count ?? 0 },
+      clipBones: claim ? CLAIM_TRACE_BONES.map(([, child]) => child) : null,
     })
     return { trace, summary }
   }

@@ -4,17 +4,43 @@
 
 This private, Node-only package runs repository QA checks for motion, test failures, rendered Electron scenarios, reports, and evidence. Product packages must not depend on it.
 
-Body-motion contracts live under `src/t2-3d/`: `scenarios.ts` exports the six
+Body-motion contracts live under `src/t2-3d/`: `scenarios.ts` exports the seven
 deterministic `motion3dScenarios`, and `read-trace.ts` exports `readTrace(path)`
 and `parseTrace(input)`. Both return `{ trace, rot, root, channels }` with the
 validated header and decoded float32 blocks. `MotionTraceRefusal.name` identifies
 structural refusals; these inputs are never scored.
 
-All six scenarios warm up for 10 s. At their default 60 s scored duration,
+All seven scenarios warm up for 10 s. At their default 60 s scored duration,
 `idle` has one observation marker, `gaze-shift` repeats shuffled targets at
 15, 40 and 80 degrees to both sides, held for a seeded 3 to 5 s, returning
-forward for a seeded 2 to 4 s between targets (18 cues at seed 1), `speak`
-has three voice turns and twelve labelled emphasis peaks, and `touch` has ten pokes.
+forward for a seeded 2 to 4 s between targets (18 cues at seed 1), and `touch`
+has ten pokes.
+
+`speak` is timeline version 2 (recorded as `scenarioVersion` in the trace
+source detail); version-1 speak traces, with twelve peaks at fixed 20/40/60/80 %
+positions, are no longer its reference. Version 2 has three 8 s utterances with
+five labelled peaks each (fifteen per run), spaced by seeded gaps of 0.9 to
+1.5 s, with strengths of 0.35 to 0.95 (the peak's voice level). Each utterance
+runs at one of the energies 0.45, 0.65 and 0.85 in seeded order, returning to
+0.5 after it. During one seeded utterance a chat panel 25 degrees to a seeded
+side and 10 degrees down shows half a second earlier and unfolds a reply, so
+Natural may glance at it while she answers. No emotion pulse is sent.
+
+`gesture-under-clip` (talk, 30 s) exercises clip ownership with a programmatic
+clip, never an asset: utterance A at 0.5 s (energy 0.85, five peaks), a clip
+that claims the right arm and fingers at 3.0 s with a 0.3 s fade-in and
+releases them at 14.0 s with a 0.3 s fade-out, utterance B at 8.5 s (10 s, six
+peaks) while the clip holds, a body poke 50 ms after the B peak nearest 12 s,
+and utterance C at 20 s (7 s, four peaks) with both arms free. The clip keys
+the rig's right shoulder, upper arm, elbow, wrist and finger bones with a raised
+pose and a 0.2 Hz, 3 degree sway, is registered with the body and the frame
+pipeline like an app clip, and plays on the runner's mixer.
+
+Cue kinds beyond voice, gaze, emotion, gesture, touch, goal and activity:
+`energy` sets the user energy handed to Natural and the body (0.5 until set),
+`chat` shows or hides the chat panel (a head-width point, as the gaze cursor)
+and may unfold a reply, and `clip-claim` and `clip-release` fade the runner's
+clip in or out. Each is labelled in the trace as a `marker`.
 Gaze cursors are three head widths away: x is `3*sin(yaw)`, y is `3*sin(pitch)`;
 the cue type documents how to recover angles for the world target.
 While a cue holds a cursor, the runner circles it around the target by one
@@ -967,6 +993,16 @@ Each run takes the `gate` CPU lease and creates:
   penetration, cloth contact, foot skate and foot error, and `collisions`: the
   performer ticks, warm-up included, on which an arm had no clear pose and kept
   its previous one. A run with any such tick writes its outputs and exits 1.
+  It also carries `corrector` (`capHits`, `guardScans` and `holds`: the arm
+  ticks, warm-up included, on which the corrector's 6 degree cap bound, its
+  guard scan began, or it held the arm), `owned` (clip ownership per mask group,
+  one row per scored frame), `ownership` (per scored frame: the largest angle
+  between a written local rotation and the clean pose per written group, in
+  radians, the gesture-layer weight per arm, and the nine displayed arm angles
+  per side with their rest values, in degrees) and `clip` (only with the
+  synthetic claim clip: per scored frame, its analytic rotation of the right
+  upper arm, lower arm and hand relative to their trace parents, in the trace
+  basis, or null while it has no weight).
 - `run.json`: the standard QA manifest with command, environment, source
   revision, artifact hashes and result.
 
