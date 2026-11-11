@@ -48,8 +48,9 @@ The MMD adapter (`packages/stage-ui-mmd/src/composables/mmd/body/`) owns everyth
 The pose stages became `natural`, `locomotion`, `body-torso`, `foot-contact`, `body-head`, `body-arms`, `eyes`, then
 the unchanged Classic, lip-sync and bone-morph stages. `composeMMDStages` is the one owner of that order: the scene
 registers it, the headless runner composes from it, and `qa:stage capture` refuses a scene whose stage list differs
-(`stage-composition-mismatch`), so a headless trace is evidence about the real app. A `BodyCollisionError` keeps the
-previous valid frame on screen and is reported in diagnostics. The `weight-shift` and `rest-pose` modules and the
+(`stage-composition-mismatch`), so a headless trace is evidence about the real app. An arm without a clear pose keeps
+its previous valid pose while the rest of the body moves on, and is counted in diagnostics; a headless run with any
+such tick exits 1. The `weight-shift` and `rest-pose` modules and the
 look-at joint springs were deleted in the same slice; the turn planner and `aimEyes` stay.
 
 ## Alternatives considered

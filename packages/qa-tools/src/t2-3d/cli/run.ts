@@ -48,6 +48,13 @@ export async function runMotion3d(args: readonly string[], context: Motion3dCliC
       run.addArtifact('trace.json', 'motion-trace')
       writeFileSync(run.path('summary.json'), `${JSON.stringify(result.summary, null, 2)}\n`)
       run.addArtifact('summary.json', 'motion3d-run-summary')
+      const { collisions } = result.summary
+      if (collisions.count > 0) {
+        const message = `${collisions.count} performer ticks without a clear arm pose; last ${JSON.stringify(collisions.last)}`
+        run.finish({ exitCode: 1, summary: message })
+        console.error(`qa:motion3d run: ${message}`)
+        return 1
+      }
       run.finish({ exitCode: 0, summary: `${result.trace.frames} frames; ${options.scenario.id}; seed ${options.seed}` })
       console.info(JSON.stringify({
         ok: true,

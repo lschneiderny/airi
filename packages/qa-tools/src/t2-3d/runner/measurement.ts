@@ -20,6 +20,8 @@ export interface Motion3dRunSummary {
   }
   perFrameSeries: { columns: ['t_ms', 'mode', 'skate', 'feetMaxError'], rows: [number, string, number, number][] }
   perFrame: { t_ms: number[], penL: number[], penR: number[], clothL: number[], clothR: number[] }
+  /** Performer ticks, warm-up included, on which an arm had no clear pose and kept its previous one. */
+  collisions: { count: number, last: { side: 'left' | 'right', depth: number, tick: number } | null }
 }
 
 // Same engine set as src/stage/measure.ts. Headless timings remain separate from rendered gate input.
@@ -51,7 +53,7 @@ export class Motion3dMeasurement extends MMDFrameMetrics {
     this.perFrame.clothR.push(arms?.clothContact.right ?? 0)
   }
 
-  finish(input: Pick<Motion3dRunSummary, 'model' | 'scenario' | 'provenance'> & { poseStages: readonly string[], wallMs: number, simulatedSeconds: number }): Motion3dRunSummary {
+  finish(input: Pick<Motion3dRunSummary, 'model' | 'scenario' | 'provenance' | 'collisions'> & { poseStages: readonly string[], wallMs: number, simulatedSeconds: number }): Motion3dRunSummary {
     const stages = Object.fromEntries([...this.samples].map(([id, samples]) => {
       const sorted = [...samples].sort((a, b) => a - b)
       const percentile = (p: number) => sorted[Math.max(0, Math.ceil(sorted.length * p) - 1)]
@@ -80,6 +82,7 @@ export class Motion3dMeasurement extends MMDFrameMetrics {
       },
       perFrameSeries: { columns: ['t_ms', 'mode', 'skate', 'feetMaxError'], rows: this.rows },
       perFrame: this.perFrame,
+      collisions: input.collisions,
     }
   }
 }

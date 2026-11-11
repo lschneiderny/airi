@@ -82,7 +82,7 @@ describe('canonical geometry', () => {
     channels[channelIndex('leftElbow')] = 3 * DEG
     collision.prepare(channels)
     expect(collision.measure('left', channels).depth).toBeGreaterThan(0)
-    collision.correct(channels)
+    collision.correct(channels, 1)
     collision.prepare(channels)
     expect(collision.measure('left', channels).depth).toBe(0)
     expect(collision.correction.left).toBeGreaterThan(0)
@@ -98,7 +98,7 @@ describe('canonical geometry', () => {
     channels[channelIndex('leftElbow')] = 20 * DEG
     collision.prepare(channels)
     expect(collision.measure('left', channels).head).toBeGreaterThan(0)
-    collision.correct(channels)
+    collision.correct(channels, 1)
     collision.prepare(channels)
     expect(collision.measure('left', channels).head).toBe(0)
   })

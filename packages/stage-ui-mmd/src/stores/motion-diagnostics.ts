@@ -118,8 +118,8 @@ export interface MMDMotionSnapshot {
    * performance layer to 1 on or 0 off; `support` is the weight support, +1 on the right foot; `shift` the scheduled
    * support target and remaining dwell; `breath` the speech chest lift and phrase inhale count; `gaze` the goal kind,
    * the last planned shift and the eye, head and trunk angles in degrees with the shift and body blink counts;
-   * `correctionDeg` the arm collision correction; `collision` the `BodyCollisionError` count and the last one, which
-   * kept the previous arm pose on screen.
+   * `correctionDeg` the arm collision correction; `collision` the count of ticks on which an arm had no clear pose and
+   * kept its previous one, with the latest side, depth and tick.
    */
   performance: {
     tick: number

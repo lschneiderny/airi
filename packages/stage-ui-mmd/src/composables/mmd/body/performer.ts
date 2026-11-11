@@ -6,7 +6,7 @@ import type { Bone } from 'three'
 import type { MMDCleanPose } from '../frame-pipeline'
 import type { MMDBodyPose } from './pose'
 
-import { BODY_CHANNELS, BodyCollisionError, channelIndex, createBodyPerformer, spineWeights } from '@proj-airi/motion-driver-humanoid/performance'
+import { BODY_CHANNELS, channelIndex, createBodyPerformer, spineWeights } from '@proj-airi/motion-driver-humanoid/performance'
 import { Euler, Quaternion, Vector3 } from 'three'
 
 const DEG = 180 / Math.PI
@@ -69,7 +69,6 @@ export class MMDBodyPerformer {
   private shifts = 0
   private blinks = 0
   private lastShiftDeg = 0
-  private readonly collisions = { count: 0, last: null as { side: BodySide, depth: number, tick: number } | null }
   private readonly disabledLayers = new Set<string>()
   private readonly layerIds: readonly string[]
   private readonly hips: Target | null
@@ -185,29 +184,13 @@ export class MMDBodyPerformer {
     this.turnSteps.length = 0
   }
 
-  /**
-   * Advances one tick. A `BodyCollisionError` keeps the last valid frame on screen and is counted in diagnostics;
-   * every other error propagates.
-   */
+  /** Advances one tick. An arm without a clear pose keeps its last valid pose in the core; the first one is logged. */
   step(input: BodyPerformanceInput): void {
-    let frame: BodyPerformanceFrame
-    try {
-      frame = this.core.step(input)
-    }
-    catch (error) {
-      if (!(error instanceof BodyCollisionError))
-        throw error
-      this.collisions.count++
-      this.collisions.last = { side: error.side, depth: error.depth, tick: this.ticks + 1 }
-      if (this.collisions.count === 1)
-        console.warn(`[mmd] ${error.message}; the previous arm pose is kept`)
-      this.ticks++
-      this.previous.set(this.current)
-      this.gaze.previous.yaw = this.gaze.current.yaw
-      this.gaze.previous.pitch = this.gaze.current.pitch
-      this.lid.previous = this.lid.current
-      return
-    }
+    const collisions = this.latest?.diagnostics.collisions.count ?? 0
+    const frame = this.core.step(input)
+    const { last } = frame.diagnostics.collisions
+    if (collisions === 0 && last)
+      console.warn(`[mmd] No clear arm pose for ${last.side} (proxy penetration ${last.depth} model units); that arm keeps its previous pose`)
     this.ticks++
     this.latest = frame
     this.previous.set(this.current)
@@ -363,7 +346,7 @@ export class MMDBodyPerformer {
         blinks: this.blinks,
       },
       correctionDeg: { left: (frame?.diagnostics.correction.left ?? 0) * DEG, right: (frame?.diagnostics.correction.right ?? 0) * DEG },
-      collision: { count: this.collisions.count, last: this.collisions.last },
+      collision: { count: frame?.diagnostics.collisions.count ?? 0, last: frame?.diagnostics.collisions.last ?? null },
     }
   }
 

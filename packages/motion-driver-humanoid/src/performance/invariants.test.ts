@@ -12,6 +12,29 @@ const traits = fixtureRigs[0].traits
 const c = channelIndex
 
 describe('performer invariants', () => {
+  it('holds only the arms, and counts it, when no clear arm pose exists', () => {
+    // A torso sphere wider than the arm's reach: no pose of either arm clears it.
+    const rig = { ...traits, colliders: [{ bone: 'spine0', centre: { x: 0, y: 0, z: 0 }, rotation: { yaw: 0, pitch: 0, roll: 0 }, shape: 'sphere', radius: 2 * traits.legLength }] as const }
+    const performer = createBodyPerformer({ traits: rig, seed: 1 })
+    const held = performer.restChannels()
+    let torso = 0
+    let tick = 0
+    for (let i = 0; i < 480; i++) {
+      const frame = performer.step(idleInput(i / 120))
+      expect(frame.tick).toBe(++tick)
+      for (const side of ['left', 'right'] as const) {
+        for (const name of ['ClavElev', 'Flex', 'Abduct', 'Elbow', 'Wflex'] as const)
+          expect(frame.channels[c(`${side}${name}`)]).toBe(held[c(`${side}${name}`)])
+      }
+      torso = Math.max(torso, Math.abs(frame.channels[c('midPitch')] - held[c('midPitch')]))
+    }
+    const frame = performer.step(idleInput(4))
+    expect(torso).toBeGreaterThan(0.1 * DEG)
+    expect(frame.diagnostics.collisions.count).toBeGreaterThan(0)
+    expect(frame.diagnostics.collisions.last).toMatchObject({ tick: frame.tick })
+    expect(frame.diagnostics.collisions.last?.depth).toBeGreaterThan(0)
+  })
+
   it('keeps a neutral toe at zero when the rig has a deforming toe bone', () => {
     const rig = { ...traits, feet: { ...traits.feet, left: { ...traits.feet.left, toeBend: true } } }
     const performer = createBodyPerformer({ traits: rig, seed: 1 })

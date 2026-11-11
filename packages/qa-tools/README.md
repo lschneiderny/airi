@@ -791,8 +791,10 @@ Each run takes the `gate` CPU lease and creates:
 - `trace.json`: shared trace v1, including warm-up, scenario events, source
   revision, asset hash, stages, clock policy and omitted work.
 - `summary.json`: `motion3d-run-summary` v1 with provenance, scored per-stage
-  mean/p50/p95/p99/max timings, pose and AIRI p95 sums, and per-frame arm
-  penetration, cloth contact, foot skate and foot error.
+  mean/p50/p95/p99/max timings, pose and AIRI p95 sums, per-frame arm
+  penetration, cloth contact, foot skate and foot error, and `collisions`: the
+  performer ticks, warm-up included, on which an arm had no clear pose and kept
+  its previous one. A run with any such tick writes its outputs and exits 1.
 - `run.json`: the standard QA manifest with command, environment, source
   revision, artifact hashes and result.
 

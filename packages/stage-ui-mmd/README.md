@@ -277,10 +277,10 @@ shares. The adapter has four parts:
   bones are skipped. `eyes` aims both eyes from their rendered parents at the
   far end of the performer's gaze line.
 
-A `BodyCollisionError` from the performer (no clear arm pose against the
-supplied bodies) keeps the previous valid frame on screen, is counted in
-`performance.collision` and is logged once; an intersecting pose is never
-shown. Body blinks and planned gaze shifts reach `body.onEvent`, and both the
+When the performer finds no clear arm pose against the supplied bodies, that
+arm keeps its previous valid pose while the torso, head, eyes and legs move on;
+`performance.collision` counts it with the latest side, depth and tick, and the
+first one is logged. Body blinks and planned gaze shifts reach `body.onEvent`, and both the
 scene recorder and the headless runner record them as trace `marker` events
 labelled `blink` and `gaze-shift:<degrees>`.
 
@@ -399,7 +399,7 @@ running (no model, the Classic driver, or the classic window).
 | `overlays` | The `MMDOverlayFlags` the stage draws. |
 | `ownership` | The body's clip ownership per mask group (`root`, `leftLegIk`, `rightLegIk`, `lowerBody`, `leftArm`, `rightArm`, `leftFingers`, `rightFingers`, `upperBody`, `head`; 0-1) while the Natural driver runs. |
 | `trace { state, frames, bones, seconds, refused }` | Scene recorder state (`idle`, `recording`, `stopped`), sample and bone counts, motion duration, and named refusal; null without a recorder or refusal. |
-| `performance { tick, layers, support, shift { target, dwellS }, breath { speechLift, inhales }, gaze { kind, shiftDeg, eyeDeg, headDeg, trunkDeg, shifts, blinks }, correctionDeg { left, right }, collision { count, last } }` | The body performer while Natural drives the model: 120 Hz ticks since its reset, each performance layer as 1 on or 0 off, the weight support (+1 on the right foot), the scheduled support target and remaining dwell, the speech chest lift and phrase inhale count, the gaze goal kind with the last planned shift, eye, head and trunk angles in degrees and the shift and body-blink counts, the arm collision correction in degrees, and the `BodyCollisionError` count with the last one (`side`, `depth`, `tick`). |
+| `performance { tick, layers, support, shift { target, dwellS }, breath { speechLift, inhales }, gaze { kind, shiftDeg, eyeDeg, headDeg, trunkDeg, shifts, blinks }, correctionDeg { left, right }, collision { count, last } }` | The body performer while Natural drives the model: 120 Hz ticks since its reset, each performance layer as 1 on or 0 off, the weight support (+1 on the right foot), the scheduled support target and remaining dwell, the speech chest lift and phrase inhale count, the gaze goal kind with the last planned shift, eye, head and trunk angles in degrees and the shift and body-blink counts, the arm collision correction in degrees, and the count of ticks on which an arm kept its previous pose for want of a clear one, with the last one (`side`, `depth`, `tick`). |
 
 The `director` block carries `MMDStanceDiagnostics` plus `clockOffsetMs` (the
 `advanceDirectorClock` total) and `centerY` (the センター bone's Y in model

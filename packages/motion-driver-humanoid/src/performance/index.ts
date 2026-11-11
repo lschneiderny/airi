@@ -19,7 +19,7 @@ export type { ArmRestPose } from './arms'
 export { DEFAULT_ARM_REST_POSE } from './arms'
 export type { BodyChannel, BodySide } from './channels'
 export { BODY_CHANNELS, BODY_TICK, channelGroup, channelIndex, JOINT_LIMITS } from './channels'
-export { BodyCollision, BodyCollisionError, colliderDistance, proxyColliders } from './collision'
+export { BodyCollision, colliderDistance, proxyColliders } from './collision'
 export { BodyRigError } from './contracts'
 export type * from './contracts'
 export type { BodyTransform } from './skeleton'
@@ -97,6 +97,7 @@ class BodyPerformer {
         correction: collision.correction,
         penetration: collision.penetration,
         headPenetration: collision.headPenetration,
+        collisions: collision.collisions,
       },
     }
     for (const layer of this.options.layers ?? [])
@@ -175,7 +176,7 @@ class BodyPerformer {
     for (let c = 0; c < targets.length; c++)
       frame.channels[c] = limitChannel(c, targets[c])
     this.degrade(frame.channels)
-    state.collision.correct(frame.channels)
+    state.collision.correct(frame.channels, frame.tick + 1)
     frame.tick++
     frame.pelvis.x = frame.channels[0] * traits.legLength
     frame.pelvis.y = frame.channels[1] * traits.legLength

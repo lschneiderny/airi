@@ -416,8 +416,10 @@ head-side anchor within joint limits; later acts still validate their own keys.
 If the guard is blocked, that arm loses gesture capability and correction
 returns toward its initial rest instead. Guard blending also resets twist,
 so the checked endpoint and the applied endpoint are the same pose.
-An impossible current proxy configuration throws `BodyCollisionError` instead
-of returning a penetrating pose. Proxy clearance proves neither post-physics
+When no pose of an arm clears the proxies, that arm keeps its last valid arm,
+hand and finger channels while the rest of the body moves on, and
+`diagnostics.collisions` counts the tick with its side, remaining depth and
+tick; the performer never throws for it. Proxy clearance proves neither post-physics
 clearance nor interpolation safety on an imported asset; the adapter unit owns
 those rendered gates.
 

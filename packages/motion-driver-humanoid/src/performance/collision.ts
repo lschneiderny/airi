@@ -8,19 +8,16 @@ import { BodySkeleton, composeTransform, identityTransform, setRotation } from '
 
 export { colliderDistance, proxyColliders } from './colliders'
 
-export class BodyCollisionError extends Error {
-  constructor(readonly side: BodySide, readonly depth: number) {
-    super(`No clear arm pose for ${side}; proxy penetration ${depth} model units`)
-    this.name = 'BodyCollisionError'
-  }
-}
-
 /** Owns scratch FK and persistent correction. The final sampled capsule test is authoritative. */
 export class BodyCollision {
   readonly capabilities: BodyCapabilities
   readonly correction = { left: 0, right: 0 }
   readonly penetration = { left: 0, right: 0 }
   readonly headPenetration = { left: 0, right: 0 }
+  /** Arms held at their last valid pose because no pose cleared the proxies: count, and the latest side, depth and tick. */
+  readonly collisions: { count: number, last: { side: BodySide, depth: number, tick: number } | null } = { count: 0, last: null }
+  /** Each side's last arm, hand and finger channels that cleared every proxy. */
+  private readonly valid = new Float64Array(BODY_CHANNELS.length)
   private readonly skeleton: BodySkeleton
   private readonly colliders: readonly BodyCollider[]
   private readonly posed: ReturnType<typeof identityTransform>[]
@@ -56,8 +53,11 @@ export class BodyCollision {
       headClearance[side] = gestures[side] && this.headProbe(side, guard)
     }
     this.capabilities = { gestures, headClearance }
-    this.correct(rest)
+    this.valid.set(rest)
+    this.correct(rest, 0)
     this.previous.fill(0)
+    this.collisions.count = 0
+    this.collisions.last = null
   }
 
   private headProbe(side: BodySide, channels: Float32Array): boolean {
@@ -158,7 +158,8 @@ export class BodyCollision {
     return d
   }
 
-  correct(channels: Float32Array): void {
+  /** Clears each arm; an arm that no pose clears keeps its last valid pose while every other channel moves on. */
+  correct(channels: Float32Array, tick: number): void {
     this.prepare(channels)
     this.original.set(channels)
     for (const side of SIDES) {
@@ -204,9 +205,18 @@ export class BodyCollision {
             break
         }
       }
-      const final = this.measure(side, channels)
-      if (final.depth > 0)
-        throw new BodyCollisionError(side, final.depth)
+      let final = this.measure(side, channels)
+      if (final.depth > 0) {
+        this.collisions.count++
+        this.collisions.last = { side, depth: final.depth, tick }
+        for (let j = 0; j < 26; j++)
+          channels[start + j] = this.valid[start + j]
+        final = this.measure(side, channels)
+      }
+      else {
+        for (let j = 0; j < 26; j++)
+          this.valid[start + j] = channels[start + j]
+      }
       this.penetration[side] = final.depth
       this.headPenetration[side] = final.head
       let correction = 0

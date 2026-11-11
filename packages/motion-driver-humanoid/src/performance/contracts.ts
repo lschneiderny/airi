@@ -177,5 +177,10 @@ export interface BodyPerformanceFrame {
     readonly correction: Readonly<Record<BodySide, number>>
     readonly penetration: Readonly<Record<BodySide, number>>
     readonly headPenetration: Readonly<Record<BodySide, number>>
+    /**
+     * Ticks on which an arm had no pose clear of the proxies and kept its last valid arm, hand and finger channels
+     * while the rest of the body moved on; `last` names the latest side, its remaining depth in model units and tick.
+     */
+    readonly collisions: { readonly count: number, readonly last: { readonly side: BodySide, readonly depth: number, readonly tick: number } | null }
   }
 }

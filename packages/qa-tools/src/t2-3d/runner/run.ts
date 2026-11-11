@@ -237,6 +237,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
       poseStages: source.stages.pose,
       wallMs,
       simulatedSeconds: frames / 60,
+      collisions: body.diagnostics.performance?.collision ?? { count: 0, last: null },
     })
     return { trace, summary }
   }
