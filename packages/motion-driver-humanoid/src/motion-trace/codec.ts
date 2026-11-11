@@ -14,9 +14,17 @@ export function encodeBlock(values: Float32Array): string {
 /** Rejects malformed base64 and wrong block lengths before allocating the float block. */
 export function decodeBlock(encoded: string, expectedLength: number): Float32Array {
   if (!Number.isSafeInteger(expectedLength) || expectedLength < 0
-    || encoded.length !== Math.ceil(expectedLength * 4 / 3) * 4
-    || !/^(?:[A-Z0-9+/]{4})*(?:[A-Z0-9+/]{2}==|[A-Z0-9+/]{3}=)?$/i.test(encoded)) {
+    || encoded.length !== Math.ceil(expectedLength * 4 / 3) * 4) {
     throw new RangeError('Invalid motion trace block')
+  }
+  // Scan with constant stack space; a repeated-group regex exhausts V8's stack on long traces.
+  const dataEnd = encoded.length - (encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0)
+  for (let i = 0; i < dataEnd; i++) {
+    const code = encoded.charCodeAt(i)
+    const isBase64 = (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+      || (code >= 48 && code <= 57) || code === 43 || code === 47
+    if (!isBase64)
+      throw new RangeError('Invalid motion trace block')
   }
   const binary = atob(encoded)
   if (binary.length !== expectedLength * 4 || btoa(binary) !== encoded)

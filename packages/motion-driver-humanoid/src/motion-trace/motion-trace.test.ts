@@ -16,6 +16,15 @@ const identity = { x: 0, y: 0, z: 0, w: 1 }
 const origin = { x: 0, y: 0, z: 0 }
 
 describe('motion trace', () => {
+  it('round trips two million floats bit-exactly without overflowing the decoder stack', () => {
+    const bits = Uint32Array.from({ length: 2_000_000 }, (_, i) => Math.imul(i, 0x9E3779B9) >>> 0)
+    const values = new Float32Array(bits.buffer)
+    const decoded = decodeBlock(encodeBlock(values), values.length)
+    const actual = new Uint32Array(decoded.buffer)
+    expect(actual.length).toBe(bits.length)
+    expect(actual.every((value, index) => value === bits[index])).toBe(true)
+  })
+
   it('round trips float bits including noncanonical NaN payloads and subarray offsets', () => {
     const bits = new Uint32Array([123, 0x80000000, 0x7FC00123, 0x3F800001, 0xFF800000])
     const values = new Float32Array(bits.buffer, 4, 4)
@@ -24,6 +33,21 @@ describe('motion trace', () => {
     expect(encodeBlock(new Float32Array([1]))).toBe('AACAPw==')
     expect(() => decodeBlock('AACAPw==', 2)).toThrow(RangeError)
     expect(() => decodeBlock('!!!!', 0)).toThrow(RangeError)
+  })
+
+  it.each([
+    ['AACAPx==', 1, 'Invalid motion trace block length or padding'],
+    ['AAAAAAAAAAB=', 2, 'Invalid motion trace block length or padding'],
+    ['AAAAAAA=', 1, 'Invalid motion trace block length or padding'],
+    ['AACAPw=A', 1, 'Invalid motion trace block'],
+    ['AACAPw===', 1, 'Invalid motion trace block'],
+    ['AACAPw==', 2, 'Invalid motion trace block'],
+    ['AACAP-==', 1, 'Invalid motion trace block'],
+    ['AACAPw\n=', 1, 'Invalid motion trace block'],
+    ['AACAPw==', -1, 'Invalid motion trace block'],
+    ['AACAPw==', 1.5, 'Invalid motion trace block'],
+  ] as const)('rejects invalid base64 %s with expected length %s', (encoded, length, message) => {
+    expect(() => decodeBlock(encoded, length)).toThrow(new RangeError(message))
   })
 
   it('reattaches absent axial and finger joints to the nearest present ancestor', () => {
