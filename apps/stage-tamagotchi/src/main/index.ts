@@ -249,7 +249,9 @@ app.whenReady().then(async () => {
   const autoUpdater = injeca.provide('services:auto-updater', {
     dependsOn: { appConfig },
     build: ({ dependsOn }) => setupAutoUpdater({
-      enabled: import.meta.env.VITE_DISTRIBUTION !== 'steam',
+      // Squirrel.Mac installs only updates that pass code-signature validation against the
+      // running app. Fork macOS builds are ad-hoc signed, so their updates are manual downloads.
+      enabled: platform !== 'darwin',
       getStoredUpdateLane: () => dependsOn.appConfig.get()?.updateChannel,
       setStoredUpdateLane: (lane) => {
         const currentConfig = dependsOn.appConfig.get()

@@ -152,7 +152,7 @@ describe('setupAutoUpdater', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1)
     expect(updaterState.instance.setFeedURL).toHaveBeenCalledWith({
       provider: 'generic',
-      url: 'https://github.com/moeru-ai/airi/releases/download/v0.9.0-beta.6',
+      url: 'https://github.com/lschneiderny/airi/releases/download/v0.9.0-beta.6',
     })
     expect(updaterState.instance.channel).toBe(expectedChannelByArch)
   })
@@ -166,7 +166,7 @@ describe('setupAutoUpdater', () => {
 
     expect(updaterState.instance.setFeedURL).toHaveBeenCalledWith({
       provider: 'generic',
-      url: 'https://github.com/moeru-ai/airi/releases/download/v0.9.0-beta.6',
+      url: 'https://github.com/lschneiderny/airi/releases/download/v0.9.0-beta.6',
     })
   })
 
@@ -186,8 +186,7 @@ describe('setupAutoUpdater', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  // https://github.com/moeru-ai/airi/pull/1827
-  it('keeps storefront-managed distributions outside the GitHub updater flow (PR #1827)', async () => {
+  it('keeps a disabled updater outside the GitHub updater flow', async () => {
     const fetchSpy = mockGitHubReleasesFetch()
     const { setupAutoUpdater } = await import('./auto-updater')
     const service = setupAutoUpdater({ enabled: false })
@@ -218,7 +217,7 @@ describe('setupAutoUpdater', () => {
 
     expect(updaterState.instance.setFeedURL).toHaveBeenCalledWith({
       provider: 'generic',
-      url: 'https://github.com/moeru-ai/airi/releases/download/v0.8.9',
+      url: 'https://github.com/lschneiderny/airi/releases/download/v0.8.9',
     })
   })
 
@@ -233,7 +232,7 @@ describe('setupAutoUpdater', () => {
 
     expect(updaterState.instance.setFeedURL).toHaveBeenCalledWith({
       provider: 'generic',
-      url: `https://github.com/moeru-ai/airi/releases/download/${laneReleaseTagMap[lane]}`,
+      url: `https://github.com/lschneiderny/airi/releases/download/${laneReleaseTagMap[lane]}`,
     })
   })
 
@@ -253,7 +252,7 @@ describe('setupAutoUpdater', () => {
 
     expect(updaterState.instance.setFeedURL).toHaveBeenCalledWith({
       provider: 'generic',
-      url: `https://github.com/moeru-ai/airi/releases/download/${laneReleaseTagMap[expectedLane]}`,
+      url: `https://github.com/lschneiderny/airi/releases/download/${laneReleaseTagMap[expectedLane]}`,
     })
   })
 

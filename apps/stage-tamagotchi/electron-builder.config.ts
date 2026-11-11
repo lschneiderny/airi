@@ -10,6 +10,8 @@ import { resolve } from 'node:path'
 
 import { isMacOS } from 'std-env'
 
+import { releaseRepository } from './src/shared/release-repository'
+
 function hasXcode26OrAbove() {
   if (!isMacOS)
     return false
@@ -84,30 +86,6 @@ export default {
     output: 'dist',
     buildResources: 'build',
   },
-  // // For self-publishing, testing, and distribution after modified the code without access to
-  // // an Apple Developer account, comment and uncomment the following lines.
-  // // Later on when you obtained one, you can set up the necessary certificates and provisioning
-  // // profiles to enable these security features.
-  // //
-  // // https://www.bigbinary.com/blog/code-sign-notorize-mac-desktop-app
-  // // https://kilianvalkhof.com/2019/electron/notarizing-your-electron-application/
-  // afterSign: async (context) => {
-  //   const { electronPlatformName, appOutDir } = context
-  //   if (electronPlatformName !== 'darwin')
-  //     return
-  //   if (env.CI !== 'true') {
-  //     console.warn('Skipping notarizing step. Packaging is not running in CI')
-  //     return
-  //   }
-
-  //   const appName = context.packager.appInfo.productFilename
-  //   await notarize({
-  //     appPath: `${appOutDir}/${appName}.app`,
-  //     teamId: env.APPLE_DEVELOPER_TEAM_ID!,
-  //     appleId: env.APPLE_DEVELOPER_APPLE_ID!,
-  //     appleIdPassword: env.APPLE_DEVELOPER_APPLE_APP_SPECIFIC_PASSWORD!,
-  //   })
-  // },
   files: [
     'out/**',
     'resources/**',
@@ -160,7 +138,7 @@ export default {
     name: 'ai.moeru.airi',
     main: 'out/main/index.js',
     homepage: 'https://airi.moeru.ai/docs/',
-    repository: 'https://github.com/moeru-ai/airi',
+    repository: `https://github.com/${releaseRepository.owner}/${releaseRepository.repo}`,
     license: 'MIT',
   },
   win: {
@@ -171,8 +149,7 @@ export default {
     // This prevents cross-arch lookups such as arm64 clients reading x64 metadata.
     publish: {
       provider: 'github',
-      owner: 'moeru-ai',
-      repo: 'airi',
+      ...releaseRepository,
       channel: 'latest-${arch}',
     },
   },
@@ -193,8 +170,7 @@ export default {
     // to architecture-specific update feeds on macOS (for example: `latest-x64-mac.yml`, `latest-arm64-mac.yml`).
     publish: {
       provider: 'github',
-      owner: 'moeru-ai',
-      repo: 'airi',
+      ...releaseRepository,
       // NOTICE: `channel: 'latest-${arch}'` matters because electron-builder expands
       // `${arch}` before it writes any publish metadata, and electron-updater later
       // reuses that expanded channel string when deciding which `*.yml` file to fetch.
@@ -266,14 +242,12 @@ export default {
       NSCameraUsageDescription: 'AIRI requires camera access for vision understanding',
       NSBluetoothAlwaysUsageDescription: 'AIRI uses Bluetooth to read game controller input',
     },
-    // For self-publishing, testing, and distribution after modified the code without access to
-    // an Apple Developer account, comment and uncomment the following 4 lines.
-    // Later on when you obtained one, you can set up the necessary certificates and provisioning
-    // profiles to enable these security features.
-    // hardenedRuntime: false,
-    hardenedRuntime: true,
-    // notarize: false,
-    notarize: true,
+    // No Apple Developer ID: ad-hoc sign so Apple Silicon launches the app, and skip notarization.
+    // Hardened runtime needs notarization to matter, and its library validation would reject
+    // ad-hoc signed frameworks.
+    identity: '-',
+    hardenedRuntime: false,
+    notarize: false,
     executableName: 'airi',
     icon: useIconFormattedMacAppIcon ? 'icon.icon' : 'icon.icns',
   },
@@ -288,8 +262,7 @@ export default {
     // NOTICE: Same channel rule as Windows/macOS. Keep `${arch}` to avoid x64/arm64 feed collisions on Linux.
     publish: {
       provider: 'github',
-      owner: 'moeru-ai',
-      repo: 'airi',
+      ...releaseRepository,
       channel: 'latest-${arch}',
     },
     category: 'Utility',
