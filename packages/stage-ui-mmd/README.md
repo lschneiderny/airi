@@ -144,8 +144,9 @@ the device pixel ratio changes, because displays can differ in backing scale.
 `./composables/mmd/motion-trace` exports `createMMDMotionTraceSampler(mmd, rig, pose)`.
 It returns `{ recorder, stage, rig, inputs }`. Give `rig` a model key and asset
 hash, pass it in `recorder.start(header)`, and place `stage` last in the surface
-stages to read final bones after physics. This module does not register itself
-in the scene. It never writes bones or changes motion.
+stages to read final bones after physics. `MMD.vue` registers it last, after
+`morphs`. It never writes bones or changes motion, and returns immediately
+while idle.
 
 Set `inputs.channels` to the voice, speaking, trace-axis world target, locomotion
 mode and gait weight used for that frame. Omitted scalars become NaN. Set
@@ -184,7 +185,7 @@ counted.
 The scene registers these pose stages in order: `natural`, `locomotion`,
 `weight-shift`, `foot-contact`, `look-at`, `arm-rest`, `eyes`, `classic-gaze`,
 `classic-face`, `lip-sync` and `bone-morphs`. Its surface stages are
-`body-diagnostics` and `morphs`.
+`body-diagnostics`, `morphs` and `motion-trace`.
 The Natural and body stages run only for the Natural driver; the classic
 stages run only for Classic. Every stage is timed under its id.
 
@@ -334,6 +335,7 @@ running (no model, the Classic driver, or the classic window).
 | `arms { weight, owned, penetration { left, right }, clothContact { left, right }, hangDeg, handBelowHip }` | The arm rest layer: `weight` is one minus the larger arm ownership, `owned` the clip ownership per group (`leftArm`, `rightArm`, `leftFingers`, `rightFingers`, 0-1), `penetration` the deepest arm capsule-radius overlap of a kinematic body per side in model units (the gate: 0), `clothContact` the deepest centerline overlap of a dynamic cloth body (information only), `hangDeg` the rest hang in effect and `handBelowHip` whether both hands sit below the hips bone. |
 | `overlays` | The `MMDOverlayFlags` the stage draws. |
 | `ownership` | The body's clip ownership per mask group (`root`, `leftLegIk`, `rightLegIk`, `lowerBody`, `leftArm`, `rightArm`, `leftFingers`, `rightFingers`, `upperBody`, `head`; 0-1) while the Natural driver runs. |
+| `trace { state, frames, bones, seconds, refused }` | Scene recorder state (`idle`, `recording`, `stopped`), sample and bone counts, motion duration, and named refusal; null without a recorder or refusal. |
 
 The `director` block carries `MMDStanceDiagnostics` plus `clockOffsetMs` (the
 `advanceDirectorClock` total) and `centerY` (the センター bone's Y in model
@@ -364,6 +366,17 @@ request must wait, `null` when it was accepted).
 | `setRoamMode` | `{ mode: 'stay' \| 'roam' }` | Writes `roamMode` (`settings/mmd/roam-mode`) from the lab. |
 | `playClip` | `{ name, loop? }` | Queues the clip on the director as a `debug` request. The asleep, dragging, refractory and busy rules apply; `loop: true` skips only the gesture repeat cooldown. `loop` unset keeps the clip's curated or derived loop. An empty or non-string name is rejected with one warning. |
 | `stopClip` | none | Stops the running performance (a `debug` stop request). |
+| `startTrace` | `{ scenario: { id, class, seed }, maxSeconds }` | Replaces stopped data and records final bones, up to 130 s. Refuses with `measurement-running`, `trace-recording`, `no-mmd-model` or `invalid-trace-request`. |
+| `markTrace` | `MotionTraceEvent` | Adds a labelled event on the trace clock; malformed events report `invalid-trace-event`. |
+| `stopTrace` | none | Stops sampling and sorts events; repeated stops are inert. |
+| `drainTrace` | `{ requestId, from, count }` | Replies with `{ type: 'trace', requestId, header?, rot, root, channels, events? }`; header and events appear only at `from: 0`. Maximum chunk: 600 frames. Refuses with `trace-not-stopped`, `invalid-trace-range` or `no-mmd-model`. |
+
+Trace replies stay inside the existing temporary raw diagnostics protocol.
+The scene drops recorder buffers on model unload. Changing the driver stops
+the trace. Frame measurements cannot start during recording. Natural's
+additive `onEvent(listener)` returns an unsubscribe function and leaves its
+existing event counter and seeded output intact. Impulse, hold, gesture and
+touch events, gait events and director goal changes use the trace clock.
 
 A malformed command is ignored with one `console.warn` per store; later valid
 commands are still applied.

@@ -48,6 +48,29 @@ function output(value: number): NaturalMotionFrame {
 }
 
 describe('mmd Natural adapter', () => {
+  it('adds and removes event listeners without changing seeded motion or event counts', () => {
+    const { adapter } = fixture()
+    const { adapter: control } = fixture()
+    const listener = vi.fn()
+    const unsubscribe = adapter.onEvent(listener)
+    for (const current of [adapter, control])
+      current.impulse(happy)
+    for (let frame = 0; frame < 120; frame++) {
+      adapter.advance(1 / 60, input)
+      control.advance(1 / 60, input)
+      expect(adapter.bodyFrame.frame).toEqual(control.bodyFrame.frame)
+    }
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ kind: 'impulse', emotion: 'happy' }))
+    unsubscribe()
+    listener.mockClear()
+    for (const current of [adapter, control]) {
+      current.gesture('nod', 1)
+      current.advance(1, input)
+    }
+    expect(listener).not.toHaveBeenCalled()
+    expect(adapter.diagnostics.events).toBe(control.diagnostics.events)
+  })
+
   it('performs no emotion whose per-model strength is 0', () => {
     const { adapter } = fixture()
     const silenced = { ...input, emotionStrengths: { happy: 0 } }

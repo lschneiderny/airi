@@ -10,6 +10,7 @@ import type { MMDOverlayFlags } from '../composables/mmd/overlay-flags'
 import type { MMDRigProfile } from '../composables/mmd/rig'
 import type { MMDStanceDiagnostics } from '../composables/mmd/stance'
 import type { MMDRoamMode } from './mmd'
+import type { MMDMotionTraceCommand, MMDMotionTraceSnapshot, MMDMotionTraceSource } from './motion-trace'
 
 import { createContext, defineEventa } from '@moeru/eventa'
 import { createContext as createBroadcastChannelContext } from '@moeru/eventa/adapters/broadcast-channel'
@@ -18,6 +19,7 @@ import { onScopeDispose, ref, shallowRef } from 'vue'
 
 import { MMDFrameMetrics } from '../composables/mmd/frame-metrics'
 import { isMMDOverlayFlags, mmdOverlayFlagNames, mmdOverlaysOff } from '../composables/mmd/overlay-flags'
+import { MMDMotionTrace } from './motion-trace'
 
 /** The lab turns stage overlays on or off in every window. Not persisted: a reloaded stage starts with them off. */
 export const mmdOverlaySetEvent = defineEventa<Partial<MMDOverlayFlags>>('eventa:event:mmd:motion-diagnostics:overlay:set')
@@ -104,6 +106,7 @@ export interface MMDMotionSnapshot {
   world: { unitsPerDip: number, floorRowDip: number, ground: { minX: number, maxX: number }, homeX: number, characterHeightDip: number, originX: number, reach: { minX: number, maxX: number }[] | null } | null
   /** The body's clip ownership per mask group (0-1) while the Natural driver runs; `arms.owned` repeats the arm groups. */
   ownership: Record<ClipMaskGroup, number> | null
+  trace: MMDMotionTraceSnapshot | null
 }
 
 export type MMDMotionCommand
@@ -116,6 +119,7 @@ export type MMDMotionCommand
     | { type: 'command', name: 'setRoamMode', value: { mode: MMDRoamMode } }
     | { type: 'command', name: 'playClip', value: { name: string, loop?: boolean } }
     | { type: 'command', name: 'stopClip', value?: undefined }
+    | MMDMotionTraceCommand
 
 function isRoamMode(value: unknown): value is MMDRoamMode {
   return value === 'stay' || value === 'roam'
@@ -135,7 +139,7 @@ function isSnapshotMessage(data: unknown): data is { type: 'snapshot', snapshot:
 }
 
 function isRawMessage(data: unknown): boolean {
-  return typeof data === 'object' && data !== null && 'type' in data && (data.type === 'command' || data.type === 'snapshot')
+  return typeof data === 'object' && data !== null && 'type' in data && (data.type === 'command' || data.type === 'snapshot' || data.type === 'trace')
 }
 
 export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () => {
@@ -143,6 +147,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     ? undefined
     : new BroadcastChannel('airi-stores-stage-ui-mmd-motion-diagnostics')
   let metrics = new MMDFrameMetrics()
+  const trace = new MMDMotionTrace(message => channel?.postMessage(message))
   let warned = false
   /** `armRestHangDeg` is the rest upper-arm angle below horizontal for QA, 0-90; null keeps the default. */
   const debugFlags = ref<{ disableFootContact: boolean, disableLookAt: boolean, armRestHangDeg: number | null }>({ disableFootContact: false, disableLookAt: false, armRestHangDeg: null })
@@ -183,6 +188,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     overlays: { ...mmdOverlaysOff },
     world: null,
     ownership: null,
+    trace: null,
   })
 
   function warn() {
@@ -193,7 +199,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
   }
 
   /** Boundary parser for the plan's raw BroadcastChannel command protocol. */
-  function receive(data: unknown): void {
+  function receive(data: unknown, remote = false): void {
     if (typeof data !== 'object' || data === null || !('type' in data) || data.type !== 'command')
       return
     if (!('name' in data)) {
@@ -203,6 +209,8 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     const value = 'value' in data ? data.value : undefined
     switch (data.name) {
       case 'startMeasurement':
+        if (trace.snapshot()?.state === 'recording')
+          break
         metrics.startMeasurement()
         break
       case 'stopMeasurement':
@@ -281,6 +289,14 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
       case 'stopClip':
         clipRequest.value = { seq: (clipRequest.value?.seq ?? 0) + 1, name: null, loop: undefined }
         break
+      case 'startTrace':
+      case 'markTrace':
+      case 'stopTrace':
+      case 'drainTrace':
+        if (remote && !publisher)
+          return
+        trace.receive(data.name, value, metrics.measurement()?.state === 'running')
+        break
       default:
         warn()
     }
@@ -302,7 +318,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
       }
       return
     }
-    receive(event.data)
+    receive(event.data, true)
   }
   channel?.addEventListener('message', onMessage)
   const { context, dispose } = channel
@@ -313,6 +329,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
       overlays.value = { ...overlays.value, ...body }
   })
   onScopeDispose(() => {
+    trace.setSource(null)
     dispose()
     channel?.removeEventListener('message', onMessage)
     channel?.close()
@@ -337,6 +354,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
       fps: metrics.fps(),
       timings: metrics.timings(),
       measurement: metrics.measurement(),
+      trace: trace.snapshot(),
       overlays: overlays.value,
     }
     channel?.postMessage({ type: 'snapshot', snapshot: snapshot.value })
@@ -361,6 +379,7 @@ export const useMMDMotionDiagnostics = defineStore('mmd-motion-diagnostics', () 
     command,
     setOverlays,
     setMetrics: (next: MMDFrameMetrics) => { metrics = next },
+    setTraceSource: (source: MMDMotionTraceSource | null) => trace.setSource(source),
     recordFrame: (delta: number) => metrics.recordFrame(delta),
     measure: (id: string, run: () => void) => metrics.measure(id, run),
     /** The host page times its alpha readback; the next published `measurement` carries the last second of samples. */

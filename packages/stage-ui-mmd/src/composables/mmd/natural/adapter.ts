@@ -1,7 +1,7 @@
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
 import type { NaturalEmotionStrengths } from '@proj-airi/motion-driver-natural/emotion-strengths'
-import type { NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
+import type { NaturalMotionObserver, NaturalTouchRegion } from '@proj-airi/motion-driver-natural/frame-types'
 import type { IdleBehaviourReport, IdleCueKind, NaturalIdleDrive } from '@proj-airi/motion-driver-natural/idle-activities'
 import type { NaturalEpisode } from '@proj-airi/motion-driver-natural/mood'
 import type { NaturalChatInput, NaturalMotionFrame, NaturalMotionVoice } from '@proj-airi/motion-driver-natural/natural-motion'
@@ -89,6 +89,7 @@ export class MMDNaturalAdapter {
   private muted = false
   private settings = defaultExpressionPerformanceSettings
   private input: MMDNaturalInput | null = null
+  private readonly listeners = new Set<NaturalMotionObserver>()
 
   constructor(
     private readonly mesh: SkinnedMesh,
@@ -98,8 +99,20 @@ export class MMDNaturalAdapter {
     mesh.skeleton.bones.forEach((bone, index) => this.indices.set(bone.name, index))
     this.natural = new NaturalMotion({ seed: fnv1a32(modelKey) })
     this.natural.setRigTraits({ bodyFromHeadPhysics: { x: false, y: false, z: false } })
-    this.natural.setObserver(() => this.events++)
+    this.natural.setObserver((event) => {
+      this.events++
+      for (const listener of this.listeners)
+        listener(event)
+    })
     this.frame = this.natural.advance(0)
+  }
+
+  /** Additive observation only; unsubscribing leaves the diagnostic counter intact. */
+  onEvent(listener: NaturalMotionObserver): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
   }
 
   advance(dt: number, input: MMDNaturalInput, now = this.time + dt): void {

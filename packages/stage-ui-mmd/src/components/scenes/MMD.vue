@@ -12,6 +12,7 @@
 import type { ClipBoneMask, ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 import type { BodyActionKind, BodyActionRequest } from '@proj-airi/motion-driver-humanoid/director'
 import type { IdleClipCandidate } from '@proj-airi/motion-driver-humanoid/idle-clips'
+import type { MotionTraceEvent } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import type { BodyIntent } from '@proj-airi/motion-driver-humanoid/types'
 import type { FaceBaseline } from '@proj-airi/motion-driver-natural/baseline'
 import type { CueGestureKind } from '@proj-airi/motion-driver-natural/cue-gestures'
@@ -33,6 +34,7 @@ import type { MMDStageExtent, MMDStageWorld } from '../../composables/mmd/stage-
 import type { MMDStanceWorld } from '../../composables/mmd/stance'
 import type { SpeechEvent } from '../../stores/expression-slots'
 import type { MMDMotionSnapshot } from '../../stores/motion-diagnostics'
+import type { MMDMotionTraceSource } from '../../stores/motion-trace'
 import type { ResolvedMMDModel } from '../../utils/mmd-loader'
 
 import { errorMessageFrom } from '@moeru/std'
@@ -81,9 +83,11 @@ import { resolveActAction } from '../../composables/mmd/actions/resolve-act-acti
 import { MMDBody } from '../../composables/mmd/body'
 import { MMDBodyToolPort } from '../../composables/mmd/body-tool-port'
 import { resolveBodyPoints, resolveBodyTarget } from '../../composables/mmd/body/attention'
+import { MMDBodyPose } from '../../composables/mmd/body/pose'
 import { ARM_SWING_REACH, resolveFrameBounds } from '../../composables/mmd/camera-bounds'
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
 import { MotionRegistrations } from '../../composables/mmd/motion-registrations'
+import { createMMDMotionTraceSampler } from '../../composables/mmd/motion-trace'
 import { MMDNaturalAdapter, mmdScreenInwardness, projectMMDHead } from '../../composables/mmd/natural/adapter'
 import { fnv1a32 } from '../../composables/mmd/natural/seed'
 import { createOverlayLabel } from '../../composables/mmd/overlay-label'
@@ -281,6 +285,8 @@ let animation: MMDAnimationManager | undefined
 let emote: ReturnType<typeof useMMDEmote> | undefined
 let morphRuntime: ReturnType<typeof createMMDMorphRuntime> | undefined
 let natural: MMDNaturalAdapter | undefined
+let traceSource: MMDMotionTraceSource | null = null
+let stopTraceEvents: (() => void) | undefined
 let body: MMDBody | undefined
 let rig: ReturnType<typeof readMMDRigProfile> | undefined
 let stopMorphOverrides: (() => void) | undefined
@@ -844,6 +850,10 @@ function centerModelY(): number | null {
 function disposeModel() {
   // Invalidate pending loader, physics initialization and motion continuations.
   loadGeneration++
+  stopTraceEvents?.()
+  stopTraceEvents = undefined
+  diagnostics.setTraceSource(null)
+  traceSource = null
   expressions.dispose()
   stopMorphOverrides?.()
   stopMorphOverrides = undefined
@@ -1338,6 +1348,52 @@ async function loadModel(src: string) {
       body.surfaceStage,
       { id: 'morphs', run: () => runtime.applySurfaceStage() },
     )
+    const sampler = createMMDMotionTraceSampler(resolved.mmd, rig, new MMDBodyPose(resolved.mmd, rig))
+    const source: MMDMotionTraceSource = {
+      recorder: sampler.recorder,
+      rig: { ...sampler.rig, id: modelKey },
+      stages: { pose: animation.pipeline.poseStages.map(stage => stage.id), surface: [...animation.pipeline.surfaceStages.map(stage => stage.id), 'motion-trace'] },
+      seconds: 0,
+      maxSeconds: 0,
+    }
+    traceSource = source
+    diagnostics.setTraceSource(source)
+    observeTraceEvents()
+    let lastGoal: string | null = null
+    animation.pipeline.surfaceStages.push({
+      id: 'motion-trace',
+      run(context) {
+        if (sampler.recorder.state() !== 'recording')
+          return
+        if (sampler.recorder.frames === 0)
+          lastGoal = null
+        else
+          source.seconds += context.dt
+        const gait = body?.locomotionFrame
+        const target = body?.diagnostics.lookAt.target
+        const voice = natural?.bodyFrame.input?.voice
+        sampler.inputs.channels = {
+          voiceLevel: voice?.level ?? 0,
+          speaking: voice?.speaking ? 1 : 0,
+          targetX: target?.x,
+          targetY: target?.y,
+          targetZ: target?.z,
+          locomotionMode: gait ? ['idle', 'turning', 'starting', 'walking', 'stopping'].indexOf(gait.mode) : 0,
+          gaitWeight: gait?.weight ?? 0,
+        }
+        sampler.stage.run(context)
+        for (const event of gait?.events ?? [])
+          sampler.recorder.event({ t: source.seconds, kind: 'gait', gait: event.kind, foot: event.foot })
+        const goal = stance?.intent?.locomotion
+        const key = `${goal?.goalX ?? null}:${goal?.pace ?? null}`
+        if (key !== lastGoal) {
+          sampler.recorder.event({ t: source.seconds, kind: 'goal', x: goal?.goalX ?? null, pace: goal?.pace ?? null })
+          lastGoal = key
+        }
+        if (source.seconds >= source.maxSeconds)
+          sampler.recorder.stop()
+      },
+    })
     stopMorphOverrides = watch(morphOverrides, (overrides) => {
       for (const morph of runtime.morphs) {
         runtime.clearChannel('naturalFace', morph.name)
@@ -1543,7 +1599,41 @@ watch(ikEnabled, v => animation?.setIKEnabled(v))
 watch(grantEnabled, v => animation?.setGrantEnabled(v))
 watch(physicsGravity, v => animation?.setGravity(v))
 
+/** The observer reads performed events only; idle recording adds no pose work. */
+function observeTraceEvents() {
+  stopTraceEvents?.()
+  let held: string | null = null
+  stopTraceEvents = natural?.onEvent((event) => {
+    const source = traceSource
+    if (!source || source.recorder.state() !== 'recording')
+      return
+    const t = source.seconds
+    let recorded: MotionTraceEvent | undefined
+    switch (event.kind) {
+      case 'impulse':
+        recorded = { t, kind: 'emotion', emotion: event.emotion, band: event.band, phase: 'pulse' }
+        break
+      case 'hold':
+        if (held)
+          source.recorder.event({ t, kind: 'emotion', emotion: held, band: 'clear', phase: 'hold-end' })
+        held = event.emotion
+        if (held)
+          recorded = { t, kind: 'emotion', emotion: held, band: 'clear', phase: 'hold-start' }
+        break
+      case 'gesture':
+        recorded = { t, kind: 'gesture', gesture: event.gesture }
+        break
+      case 'touch':
+        recorded = { t, kind: 'touch', touch: event.touch, region: event.region }
+        break
+    }
+    if (recorded)
+      source.recorder.event(recorded)
+  })
+}
+
 watch(motionDriver, () => {
+  traceSource?.recorder.stop()
   if (morphRuntime) {
     for (const morph of morphRuntime.morphs) {
       for (const layer of ['naturalFace', 'blink', 'expression', 'lipSync'] as const)
@@ -1552,6 +1642,7 @@ watch(motionDriver, () => {
   }
   if (mesh && rig)
     natural = new MMDNaturalAdapter(mesh, rig, props.modelId ?? props.modelSrc ?? '')
+  observeTraceEvents()
 })
 
 // Morph-slot overrides: rebind each slot the user remapped (empty = auto).

@@ -1,5 +1,6 @@
 import type { MMDMotionCommand } from './motion-diagnostics'
 
+import { MotionTraceRecorder } from '@proj-airi/motion-driver-humanoid/motion-trace'
 import { createPinia, disposePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 import { watch } from 'vue'
@@ -43,11 +44,70 @@ describe('mmd motion diagnostics channel', () => {
           overlays: { ik: false, colliders: false, feet: false, lookAt: false, floorLine: false, groundLine: false, home: false, goal: false, armCapsules: false },
           world: null,
           ownership: null,
+          trace: null,
         },
       })
     }
     finally {
       peer.close()
+      disposePinia(pinia)
+    }
+  })
+
+  it('starts, marks, stops and drains a scene trace through the diagnostics channel', async () => {
+    const pinia = createPinia()
+    const store = useMMDMotionDiagnostics(pinia)
+    const peer = new BroadcastChannel('airi-stores-stage-ui-mmd-motion-diagnostics')
+    const recorder = new MotionTraceRecorder()
+    const source = {
+      recorder,
+      rig: { id: 'fixture', assetSha256: null, legLength: 1, bones: ['hips'] as const, parents: [-1], restOffsets: [[0, 0, 0] as [number, number, number]], physicsOwned: [], eyeSource: 'none' as const, hasFingers: false },
+      stages: { pose: ['natural'], surface: ['motion-trace'] },
+      seconds: 0,
+      maxSeconds: 0,
+    }
+    try {
+      store.setTraceSource({ ...source, rig: { ...source.rig, bones: ['hips'] } })
+      store.command({ type: 'command', name: 'startTrace', value: { scenario: { id: 'idle', class: 'idle', seed: 1 }, maxSeconds: 40 } })
+      recorder.sample(0, 0, () => ({ x: 0, y: 0, z: 0, w: 1 }), { x: 0, y: 0, z: 0 }, {})
+      store.command({ type: 'command', name: 'markTrace', value: { t: 0, kind: 'marker', label: 'ready' } })
+      store.command({ type: 'command', name: 'stopTrace' })
+      store.publish()
+      expect(store.snapshot.trace).toMatchObject({ state: 'stopped', frames: 1, bones: 1, refused: null })
+      const reply = new Promise<unknown>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('trace reply missing')), 2000)
+        peer.addEventListener('message', (event) => {
+          if (event.data.type === 'trace') {
+            clearTimeout(timeout)
+            resolve(event.data)
+          }
+        })
+      })
+      peer.postMessage({ type: 'command', name: 'drainTrace', value: { requestId: 'chunk-0', from: 0, count: 1 } })
+      expect(await reply).toMatchObject({
+        type: 'trace',
+        requestId: 'chunk-0',
+        header: { frames: 1, source: { level: 'rendered', stages: source.stages } },
+        events: [{ t: 0, kind: 'marker', label: 'ready' }],
+        rot: 'AAAAAAAAAAAAAAAAAACAPw==',
+      })
+    }
+    finally {
+      peer.close()
+      disposePinia(pinia)
+    }
+  })
+
+  it('refuses to start a trace during a frame measurement', () => {
+    const pinia = createPinia()
+    const store = useMMDMotionDiagnostics(pinia)
+    try {
+      store.command({ type: 'command', name: 'startMeasurement' })
+      store.command({ type: 'command', name: 'startTrace', value: { scenario: { id: 'idle', class: 'idle', seed: 1 }, maxSeconds: 40 } })
+      store.publish()
+      expect(store.snapshot.trace?.refused).toBe('measurement-running')
+    }
+    finally {
       disposePinia(pinia)
     }
   })
