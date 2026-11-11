@@ -12,6 +12,13 @@ import { projectMMDHead } from '../natural/adapter'
 /** Fraction of the camera distance, toward the camera, where stage-mode cursor and chat gaze converges. */
 export const STAGE_GAZE_PLANE_FRACTION = 0.6
 
+/** World-space points the body can look at this frame. The camera always exists; cursor and chat may not. */
+export interface MMDBodyPoints {
+  readonly cursor: Vector3 | null
+  readonly chat: Vector3 | null
+  readonly camera: Vector3
+}
+
 export interface BodyView {
   mesh: SkinnedMesh
   camera: Camera
@@ -29,7 +36,7 @@ export interface BodyView {
 export function resolveBodyPoints(
   view: BodyView,
   natural: MMDNaturalAdapter['bodyFrame'],
-): { cursor: Vector3 | null, chat: Vector3 | null, camera: Vector3 } | null {
+): MMDBodyPoints | null {
   const { input } = natural
   if (!input || view.gazeMode === 'none')
     return null
@@ -56,7 +63,17 @@ export function resolveBodyPoints(
 }
 
 /**
- * The body's look-at target: the camera in camera mode, the chat while Natural glances at it, otherwise the point of
+ * The points the body's gaze goal chooses from by Natural's gaze target. In camera mode the cursor Natural fixates is
+ * the camera itself, so the camera stands in for the cursor point.
+ */
+export function bodyGazePoints(points: MMDBodyPoints | null, gazeMode: BodyView['gazeMode']): MMDBodyPoints | null {
+  if (!points || gazeMode === 'none')
+    return null
+  return gazeMode === 'camera' ? { ...points, cursor: points.camera } : points
+}
+
+/**
+ * The director's look-at target for diagnostics and trace channels: the camera in camera mode, the chat while Natural glances at it, otherwise the point of
  * the director's latest intent.
  */
 export function resolveBodyTarget(

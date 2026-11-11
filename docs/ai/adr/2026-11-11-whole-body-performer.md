@@ -36,6 +36,11 @@ The MMD adapter (`packages/stage-ui-mmd/src/composables/mmd/body/`) owns everyth
   kinematic torso and head bodies into the performer's plain-data traits, each body in its canonical ancestor's frame.
 - `MMDBodyIntent` maps `bodyIntent()`, the gaze goal, the director's stance, the gait and clip ownership into the
   performer's input.
+- The gaze goal follows Natural's gaze target, as architecture section 3e specifies: the cursor point only while
+  `intent.gaze.on` is `cursor`, the chat point only while it is `chat`, otherwise the camera direction deflected by
+  Natural's free fixation as a free goal. The director's attention point no longer holds the body's gaze; it stays the
+  diagnostic and trace target. The forced attention row of 3e is absent until `BodyIntent.attention` carries a forced
+  flag.
 - `MMDBodyPerformer` writes channels to bones from the clean pose, applying clip ownership once per group, carrying the
   canonical straight-down arm onto the bind arm so the rendered segments equal the performer's own kinematics, and
   skipping missing and physics-owned bones.

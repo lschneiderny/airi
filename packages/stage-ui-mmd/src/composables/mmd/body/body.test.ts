@@ -1,13 +1,14 @@
 import type { ClipMaskGroup } from '@proj-airi/motion-driver-humanoid/clip-mask'
 
 import type { LayerEvent } from '../animation-manager'
+import type { MMDBodyInput } from './index'
 
 import { AnimationClip, Euler, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { describe, expect, it } from 'vitest'
 
 import { createMMDAnimationManager } from '../animation-manager'
 import { mmdClipMaskBones } from '../rig/clip-mask'
-import { bodyFixture } from './fixture'
+import { bodyFixture, cursorAt } from './fixture'
 import { MMDBody } from './index'
 
 const FULL_BODY: readonly ClipMaskGroup[] = ['root', 'leftLegIk', 'rightLegIk']
@@ -101,9 +102,9 @@ describe('mmd full-body stages', () => {
   })
 
   it('aims both eye rays within half a degree after the whole look-at chain', () => {
-    const { pipeline, bone, setInput } = bodyFixture()
+    const { pipeline, bone, setInput, input } = bodyFixture()
     const target = new Vector3(4, 21, 30)
-    setInput({ target })
+    setInput(cursorAt(input.intent, target))
     for (let frame = 0; frame < 180; frame++)
       pipeline.step(1 / 60)
     for (const name of ['左目', '右目']) {
@@ -116,11 +117,34 @@ describe('mmd full-body stages', () => {
     }
   })
 
+  it('aims at the cursor or the chat point only while Natural looks at it', () => {
+    const look = (on: MMDBodyInput['intent']['gaze']['on']) => {
+      const { pipeline, body, bone, input, setInput } = bodyFixture()
+      setInput({
+        intent: { ...input.intent, gaze: { ...input.intent.gaze, on } },
+        points: { cursor: new Vector3(20, 21, 30), chat: new Vector3(-20, 21, 30), camera: new Vector3(0, 21, 40) },
+      })
+      for (let frame = 0; frame < 180; frame++)
+        pipeline.step(1 / 60)
+      const facing = new Vector3(0, 0, 1).applyQuaternion(bone('頭').getWorldQuaternion(new Quaternion()))
+      return { yaw: Math.atan2(facing.x, facing.z) * 180 / Math.PI, kind: body.diagnostics.performance?.gaze.kind }
+    }
+    const cursor = look('cursor')
+    const chat = look('chat')
+    const away = look('free')
+    expect(cursor.kind).toBe('sustained')
+    expect(cursor.yaw).toBeGreaterThan(10)
+    expect(chat.kind).toBe('sustained')
+    expect(chat.yaw).toBeLessThan(-10)
+    expect(away.kind).toBe('free')
+    expect(Math.abs(away.yaw)).toBeLessThan(3)
+  })
+
   it('keeps solved feet on the stepping arcs during alternating body turns', () => {
-    const { pipeline, body, setInput } = bodyFixture()
+    const { pipeline, body, setInput, input } = bodyFixture()
     let lift = 0
     for (let frame = 0; frame < 600; frame++) {
-      setInput({ target: new Vector3(frame < 300 ? -30 : 30, 18, 2) })
+      setInput(cursorAt(input.intent, new Vector3(frame < 300 ? -30 : 30, 18, 2)))
       pipeline.step(1 / 30)
       if (frame >= 10)
         expect(body.diagnostics.feet.maxError).toBeLessThan(0.01)
@@ -130,9 +154,9 @@ describe('mmd full-body stages', () => {
   })
 
   it('resolves eye signs from rotated bind axes instead of flipping parsed Z again', () => {
-    const { pipeline, bone, setInput } = bodyFixture(Math.PI)
+    const { pipeline, bone, setInput, input } = bodyFixture(Math.PI)
     const target = new Vector3(-3, 20, 30)
-    setInput({ target })
+    setInput(cursorAt(input.intent, target))
     for (let frame = 0; frame < 180; frame++)
       pipeline.step(1 / 60)
     for (const name of ['左目', '右目']) {
@@ -144,10 +168,10 @@ describe('mmd full-body stages', () => {
   })
 
   it('clamps both eye axes under saturated, alternating unreachable targets', () => {
-    const { pipeline, bone, setInput } = bodyFixture()
+    const { pipeline, bone, setInput, input } = bodyFixture()
     for (let frame = 0; frame < 120; frame++) {
       const sign = frame < 60 || frame % 2 === 0 ? 1 : -1
-      setInput({ target: new Vector3(sign * (100 + frame), sign * 150, 0) })
+      setInput(cursorAt(input.intent, new Vector3(sign * (100 + frame), sign * 150, 0)))
       pipeline.step(1 / 60)
       for (const name of ['左目', '右目']) {
         const rotation = new Euler().setFromQuaternion(bone(name).quaternion, 'YXZ')
@@ -193,8 +217,8 @@ describe('mmd full-body stages', () => {
   })
 
   it('disables the look-at chain and restores it on the next enabled frames', () => {
-    const { pipeline, body, bone, setInput } = bodyFixture()
-    setInput({ target: new Vector3(10, 20, 30) })
+    const { pipeline, body, bone, setInput, input } = bodyFixture()
+    setInput(cursorAt(input.intent, new Vector3(10, 20, 30)))
     for (let frame = 0; frame < 120; frame++)
       pipeline.step(1 / 60)
     expect(bone('頭').quaternion.y).toBeGreaterThan(0.04)
@@ -209,8 +233,8 @@ describe('mmd full-body stages', () => {
   })
 
   it('retains stepped anchors when contact is briefly interrupted during a turn', () => {
-    const { pipeline, body, setInput, bone } = bodyFixture()
-    setInput({ target: new Vector3(-30, 18, 2) })
+    const { pipeline, body, setInput, bone, input } = bodyFixture()
+    setInput(cursorAt(input.intent, new Vector3(-30, 18, 2)))
     for (let frame = 0; frame < 180; frame++)
       pipeline.step(1 / 60)
     const before = bone('左足首').getWorldPosition(new Vector3())
@@ -224,14 +248,14 @@ describe('mmd full-body stages', () => {
   })
 
   it('ducks all procedural writes under a fully weighted clip', () => {
-    const { pipeline, mixer, bone, setInput } = bodyFixture()
+    const { pipeline, mixer, bone, setInput, input } = bodyFixture()
     const rotation = new Quaternion().setFromEuler(new Euler(0.1, 0.2, 0))
     const clip = new AnimationClip('one-shot', 1, [
       new QuaternionKeyframeTrack('.bones[頭].quaternion', [0, 1], [...rotation.toArray(), ...rotation.toArray()]),
     ])
     pipeline.registerClip(clip.name, clip)
     pipeline.enqueue(() => mixer.clipAction(clip).play())
-    setInput({ target: new Vector3(10, 22, 20) })
+    setInput(cursorAt(input.intent, new Vector3(10, 22, 20)))
     for (let frame = 0; frame < 60; frame++)
       pipeline.step(1 / 30)
     expect(bone('頭').quaternion.clone().normalize().angleTo(rotation)).toBeLessThan(1e-6)
@@ -241,7 +265,7 @@ describe('mmd full-body stages', () => {
 
   it('keeps half of the head look-at under a fully weighted stance clip while ducking the body', () => {
     const headAngle = (clipped: boolean, stanceClips: ReadonlySet<string>) => {
-      const { pipeline, mixer, bone, setInput } = bodyFixture()
+      const { pipeline, mixer, bone, setInput, input } = bodyFixture()
       if (clipped) {
         const clip = new AnimationClip('sit', 1, [new VectorKeyframeTrack('.bones[センター].position', [0, 1], [0, 10, 0, 0, 10, 0])])
         pipeline.registerClip(clip.name, clip)
@@ -249,7 +273,7 @@ describe('mmd full-body stages', () => {
       }
       let groove = 0
       for (let frame = 0; frame < 240; frame++) {
-        setInput({ target: new Vector3(Math.sin(frame / 20) * 12 + 14, 22, 20), stanceClips })
+        setInput({ ...cursorAt(input.intent, new Vector3(Math.sin(frame / 20) * 12 + 14, 22, 20)), stanceClips })
         pipeline.step(1 / 30)
         groove = Math.max(groove, bone('グルーブ').position.length())
       }
@@ -271,7 +295,7 @@ describe('mmd full-body stages', () => {
     rig.legIk.right = null
     delete rig.bones.leftEye
     rig.physicsOwned.push('頭')
-    const body = new MMDBody(mmd, rig, { modelKey: 'partial', input: () => ({ ...input, target: new Vector3(3, 20, 30) }) })
+    const body = new MMDBody(mmd, rig, { modelKey: 'partial', input: () => ({ ...input, ...cursorAt(input.intent, new Vector3(3, 20, 30)) }) })
     pipeline.poseStages.splice(0, pipeline.poseStages.length, ...body.poseStages)
     pipeline.surfaceStages.splice(0, pipeline.surfaceStages.length, body.surfaceStage)
     pipeline.step(1 / 30)
@@ -503,13 +527,13 @@ describe('mmd full-body stages', () => {
   })
 
   it('aims both eye rays at a world target after the root moves and turns', () => {
-    const { pipeline, body, bone, mesh, setInput } = bodyFixture()
+    const { pipeline, body, bone, mesh, setInput, input } = bodyFixture()
     mesh.position.x = 5
     mesh.rotation.y = 0.7
     mesh.updateMatrixWorld(true)
     body.rebase(5, 0.7)
     const target = mesh.localToWorld(new Vector3(4, 21, 30))
-    setInput({ target })
+    setInput(cursorAt(input.intent, target))
     for (let frame = 0; frame < 180; frame++)
       pipeline.step(1 / 60)
     for (const name of ['左目', '右目']) {

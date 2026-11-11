@@ -2,7 +2,7 @@ import { BODY_CHANNELS, BodySkeleton, channelIndex } from '@proj-airi/motion-dri
 import { Euler, Quaternion, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 
-import { bodyFixture } from './fixture'
+import { bodyFixture, cursorAt } from './fixture'
 import { MMDBody } from './index'
 import { MMDBodyPerformer } from './performer'
 import { MMDBodyPose } from './pose'
@@ -77,7 +77,7 @@ describe('mmd body performer adapter', () => {
     const { mmd, pipeline, rig, input, bone } = bodyFixture()
     const physics = ['上半身2', '首', '左腕', '左ひじ', '右人指１']
     rig.physicsOwned.push(...physics)
-    const body = new MMDBody(mmd, rig, { modelKey: 'physics', input: () => ({ ...input, target: new Vector3(20, 18, 10) }) })
+    const body = new MMDBody(mmd, rig, { modelKey: 'physics', input: () => ({ ...input, ...cursorAt(input.intent, new Vector3(20, 18, 10)) }) })
     pipeline.poseStages.splice(0, pipeline.poseStages.length, { id: 'natural', run: () => {} }, ...body.poseStages)
     pipeline.surfaceStages.splice(0, pipeline.surfaceStages.length, body.surfaceStage)
     const index = (name: string) => mmd.mesh.skeleton.bones.indexOf(bone(name))

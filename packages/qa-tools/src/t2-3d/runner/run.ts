@@ -1,4 +1,5 @@
 import type { MotionTraceSource, MotionTraceV1 } from '@proj-airi/motion-driver-humanoid/motion-trace'
+import type { MMDBodyPoints } from '@proj-airi/stage-ui-mmd/composables/mmd/body/attention'
 
 import type { RunGitState } from '../../evidence/run'
 import type { Motion3dScenario } from '../scenarios'
@@ -78,7 +79,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
     const cues = new Motion3dCueDriver(natural, rig.legLength ?? 0, event => sampler.recorder.event(event))
     const look = new Motion3dLookTarget(mmd.mesh, pose)
     const metrics = new Motion3dMeasurement()
-    let points: Parameters<typeof resolveBodyTarget>[0] = null
+    let points: MMDBodyPoints | null = null
     let cursor: { x: number, y: number } | null = null
     let naturalSeconds = 0
     const body = new MMDBody(mmd, rig, {
@@ -90,7 +91,7 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         intent: natural.bodyFrame.intent,
         energy: 0.5,
         stance: stance.intent?.stance,
-        target: resolveBodyTarget(points, natural.bodyFrame, 'mouse', stance.intent),
+        points,
         disableFootContact: false,
         disableLookAt: false,
         stanceClips: stance.baseClips,
@@ -177,7 +178,9 @@ export async function runMotion3dScenario(options: Motion3dRunOptions) {
         cues.apply(timeline[nextCue++], naturalSeconds)
       cues.step(naturalSeconds)
       const target = look.resolve(cues.cursor)
-      points = target ? { cursor: target.target, chat: null, camera: target.target } : null
+      // The camera sits straight ahead of the head at the scenario's look distance, as the app's camera faces her.
+      const camera = look.resolve({ x: 0, y: 0 })?.target ?? null
+      points = camera ? { cursor: target?.target ?? null, chat: null, camera } : null
       cursor = target?.cursor ?? null
       if (cues.goalCancelled) {
         stance.clearGoal()

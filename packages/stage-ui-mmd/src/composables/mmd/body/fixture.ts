@@ -15,6 +15,11 @@ import { MMDBody } from './index'
  * A-pose arms at 36 degrees below horizontal with thumb and index finger chains (the index has a Carlotta-style `０` metacarpal),
  * and `bodies` adds a torso capsule, a hip box and a physics skirt sphere for the arm penetration check.
  */
+/** Natural fixates the cursor at `point`; the camera sits ahead of the fixture's head. */
+export function cursorAt(intent: MMDBodyInput['intent'], point: Vector3): Pick<MMDBodyInput, 'intent' | 'points'> {
+  return { intent: { ...intent, gaze: { ...intent.gaze, on: 'cursor' } }, points: { cursor: point, chat: null, camera: new Vector3(0, 21, 40) } }
+}
+
 export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?: boolean, arms?: boolean, bodies?: boolean, extraBodies?: ExtraBody[], spine?: 1 | 2 | 3 | 4 } = {}) {
   const mesh = new SkinnedMesh(new BufferGeometry(), new MeshBasicMaterial())
   const definitions: Array<{ name: string, parent: number, position: [number, number, number] }> = [
@@ -119,7 +124,7 @@ export function bodyFixture(eyeBindYaw = 0, kneeMax = Math.PI, options: { hair?:
     disableLookAt: false,
     stanceClips: new Set(),
     dragging: false,
-    target: null,
+    points: null,
     intent: natural.bodyIntent(),
     frame: {
       pose: { headX: 0, headY: 0, headZ: 0, bodyX: 0, bodyY: 0, bodyZ: 0, eyeX: 0, eyeY: 0 },

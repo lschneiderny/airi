@@ -9,6 +9,7 @@ import type { AnimationClip } from 'three'
 import type { MMDCleanPose, MMDFrameContext, MMDFrameStage } from '../frame-pipeline'
 import type { MMDRigProfile } from '../rig'
 import type { MMDArmsMeasurement } from './arms'
+import type { MMDBodyPoints } from './attention'
 import type { MMDBodyRoot, MMDLocomotionGoal } from './locomotion'
 import type { MMDBodyEvent, MMDBodyWeights } from './performer'
 
@@ -42,8 +43,8 @@ export interface MMDBodyInput {
   readonly energy?: number
   /** The director's stance; standing when absent. */
   readonly stance?: BodyIntent['stance']
-  /** The sustained gaze point in world space: the camera, the chat, or the director's attention point. */
-  readonly target: Vector3 | null
+  /** The world-space points the gaze goal chooses from by `intent.gaze.on`; null when the host tracks no gaze. */
+  readonly points: MMDBodyPoints | null
   readonly disableFootContact: boolean
   /** QA switch: the head, neck and eyes keep the clip pose and the gaze point is cleared. */
   readonly disableLookAt: boolean
@@ -451,8 +452,10 @@ export class MMDBody {
   }
 
   /**
-   * The gaze goal in the stance frame (mesh-local, so facing is the hip yaw on the center bone): the travel direction
-   * while walking, the sustained target when the host has one, otherwise Natural's free fixation around the facing.
+   * The gaze goal in the stance frame (mesh-local, so facing is the hip yaw on the center bone), architecture 3e, first
+   * match wins: the travel direction while walking; the cursor while Natural fixates it; the chat while Natural looks
+   * at it; otherwise the camera direction deflected by Natural's free fixation. Without points (gaze mode `none`) the
+   * free fixation is taken around the facing. No forced attention point exists yet, so 3e's forced row is absent.
    */
   private resolveGaze(input: MMDBodyInput): void {
     const { pose } = this
@@ -460,7 +463,9 @@ export class MMDBody {
     if (head)
       this.gazeOrigin.copy(pose.mmd.mesh.worldToLocal(head.getWorldPosition(this.gazeOrigin)))
     const far = 100 * (this.performer?.traits.legLength ?? 10)
-    this.gazeTarget = input.disableLookAt ? null : input.target
+    const points = input.disableLookAt ? null : input.points
+    const on = input.intent.gaze.on
+    this.gazeTarget = (on === 'cursor' ? points?.cursor : on === 'chat' ? points?.chat : null) ?? null
     const moving = this.gait !== null && this.gait.mode !== 'idle' && this.gait.mode !== 'stopping'
     if (moving) {
       this.gazeGoal.yaw = 0
@@ -470,20 +475,33 @@ export class MMDBody {
       return
     }
     if (this.gazeTarget) {
-      const d = pose.mmd.mesh.worldToLocal(this.scratch.copy(this.gazeTarget)).sub(this.gazeOrigin)
-      const right = d.dot(pose.right)
-      const forward = d.dot(pose.forward)
-      this.gazeGoal.yaw = Math.atan2(right, forward)
-      this.gazeGoal.pitch = Math.atan2(-d.dot(pose.up), Math.hypot(right, forward))
+      this.gazeDistance = this.aim(this.gazeTarget)
       this.gazeGoal.kind = 'sustained'
-      this.gazeDistance = d.length()
       return
     }
+    if (points) {
+      this.aim(points.camera)
+    }
+    else {
+      this.gazeGoal.yaw = this.facing
+      this.gazeGoal.pitch = 0
+    }
     const { fixation } = input.frame
-    this.gazeGoal.yaw = this.facing + FIXATION_SPAN * fixation.x
-    this.gazeGoal.pitch = -FIXATION_SPAN * fixation.y
+    this.gazeGoal.yaw += FIXATION_SPAN * fixation.x
+    this.gazeGoal.pitch -= FIXATION_SPAN * fixation.y
     this.gazeGoal.kind = 'free'
     this.gazeDistance = far
+  }
+
+  /** Sets the goal direction toward a world point from the gaze origin; returns the distance in model units. */
+  private aim(point: Vector3): number {
+    const { pose } = this
+    const d = pose.mmd.mesh.worldToLocal(this.scratch.copy(point)).sub(this.gazeOrigin)
+    const right = d.dot(pose.right)
+    const forward = d.dot(pose.forward)
+    this.gazeGoal.yaw = Math.atan2(right, forward)
+    this.gazeGoal.pitch = Math.atan2(-d.dot(pose.up), Math.hypot(right, forward))
+    return d.length()
   }
 
   /** The far end of the displayed gaze line in world space; without a performer, the sustained target itself. */

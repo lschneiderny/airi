@@ -82,7 +82,7 @@ import { MMDActionPort } from '../../composables/mmd/action-port'
 import { resolveActAction } from '../../composables/mmd/actions/resolve-act-action'
 import { MMDBody } from '../../composables/mmd/body'
 import { MMDBodyToolPort } from '../../composables/mmd/body-tool-port'
-import { resolveBodyPoints, resolveBodyTarget } from '../../composables/mmd/body/attention'
+import { bodyGazePoints, resolveBodyPoints } from '../../composables/mmd/body/attention'
 import { MMDBodyPose } from '../../composables/mmd/body/pose'
 import { ARM_SWING_REACH, resolveFrameBounds } from '../../composables/mmd/camera-bounds'
 import { createMMDMorphRuntime } from '../../composables/mmd/morph-runtime'
@@ -1256,7 +1256,7 @@ async function loadModel(src: string) {
           intent: natural.bodyFrame.intent,
           energy: props.naturalEnergy ?? naturalSettings.document.energy,
           stance: activeStance.intent?.stance,
-          target: resolveBodyTarget(bodyPoints, natural.bodyFrame, gazeMode.value, activeStance.intent),
+          points: bodyGazePoints(bodyPoints, gazeMode.value),
           ...diagnostics.debugFlags,
           stanceClips: activeStance.baseClips,
           dragging,

@@ -167,7 +167,8 @@ For Node composition, import `MMDFramePipeline` from
 `./composables/mmd/frame-pipeline`, `MMDFrameMetrics` from
 `./composables/mmd/frame-metrics`, `readMMDRigProfile` from
 `./composables/mmd/rig`, `MMDBodyPose` from `./composables/mmd/body/pose`,
-and `resolveBodyTarget` from `./composables/mmd/body/attention`.
+and `bodyGazePoints` and `resolveBodyTarget` from
+`./composables/mmd/body/attention`.
 These direct entry points avoid the browser audio runtime exported by the
 general `./composables/mmd` barrel.
 
@@ -256,9 +257,13 @@ shares. The adapter has four parts:
 - `MMDBodyIntent` (`body/intent.ts`): maps `NaturalBodyIntent`, the gaze goal,
   the director's stance, the gait and clip ownership into
   `BodyPerformanceInput`. Natural head terms are 30 degrees per unit. The gaze
-  goal is the travel direction while walking, the sustained target when the
-  host has one (camera, chat, or the director's attention point), and
-  otherwise Natural's free fixation at 20 degrees per unit around the facing.
+  goal follows Natural's gaze target (`intent.gaze.on`), first match wins: the
+  travel direction while walking; the cursor point, as a sustained goal, while
+  Natural fixates the cursor; the chat point while Natural looks at the chat;
+  otherwise the camera direction deflected by Natural's free fixation at 20
+  degrees per unit, as a free goal. The host passes the cursor, chat and
+  camera points through `bodyGazePoints`; in camera mode the camera stands in
+  for the cursor. Without points the free fixation is taken around the facing.
 - `MMDBodyPerformer` (`body/performer.ts`): writes the blended channels to
   bones from `context.clean`. `body-torso` writes the pelvis offset, the hips
   and the spine chain, spreading the three torso controls with
@@ -380,7 +385,7 @@ running (no model, the Classic driver, or the classic window).
 | `rig` | The `MMDRigProfile` of the loaded model. Its `spineChain`, `toeBend`, `twist` and `structure` fields are appended to the diagnostics snapshot, and `capabilities { gestures, headClearance }` is the performer's load-time result per side (`null` without a performer). |
 | `natural { events, energy, headYaw }` | Natural event count, requested energy and the head bone's local yaw in radians as `body-head` wrote it. |
 | `feet { maxError, errorL, errorR, contact }` | Ankle error after IK and physics in model units, and the foot-contact weight. |
-| `lookAt { target, yaw, pitch, turning, turns }` | The world-space sustained gaze target, the head bone's local yaw and the neck plus head pitch channels in radians, whether the performer's turn planner is turning the center bone, and the turn count. |
+| `lookAt { target, yaw, pitch, turning, turns }` | The world-space sustained gaze point (the cursor or chat point while Natural looks at it, otherwise `null`), the head bone's local yaw and the neck plus head pitch channels in radians, whether the performer's turn planner is turning the center bone, and the turn count. |
 | `director` | The body director (below). |
 | `touch { lastRegion, hitBody, petActive, headScreenPoint, events }` | The touch classifier state; `headScreenPoint` is in canvas client pixels. |
 | `animation { idle, currentAction, actionsStarted, layer }` | The looping base clip, the one-shot in progress, the one-shot count and the layered clip (`{ seq, name, state }` or null). |
