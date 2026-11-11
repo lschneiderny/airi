@@ -125,9 +125,12 @@ judge eye order (`gaze.eyeLeadMs` is skipped as `missing-eye-floors`).
   such event or 1.5 s later. Each signal is a yaw displacement from its value
   at the event, along the sign of the event's yaw: the gaze line (the eyes'
   yaw in the world), the head relative to the chest, and the chest relative to
-  the pelvis. The eyes lead when the gaze line reaches 90 % of its excursion
-  strictly before the head reaches 50 % of its own; the head leads the chest
-  when it reaches 50 % strictly before the chest does. A head or chest whose
+  the pelvis, plus the eyes' yaw relative to the head. The eyes lead when the
+  eyes in the head reach 90 % of their own excursion strictly before the head
+  reaches 50 % of its own. The gaze line's 90 % time is printed beside it but
+  not judged: past the eye limit, which the report measures and prints, the
+  gaze line cannot reach 90 % until the head has carried it. The head leads
+  the chest when it reaches 50 % strictly before the chest does. A head or chest whose
   excursion stays under 10 % of the shift's amplitude was not recruited: a
   shift with neither is `eyes-only`, with a head but no chest `no-chest`, and
   both count as ordered when the eyes lead. The criterion share is the ordered

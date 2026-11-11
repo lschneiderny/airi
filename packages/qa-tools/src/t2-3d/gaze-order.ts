@@ -43,7 +43,7 @@ export interface GazeOrderShare {
 
 export interface GazeOrderReport {
   readonly kind: 'gaze-order'
-  readonly version: 4
+  readonly version: 5
   /** The goal-2 criterion: displacement order per `gaze-shift` event of at least CRITERION_DEG. */
   readonly criterion: GazeCriterion
   readonly eyeFloor: number
@@ -72,10 +72,13 @@ export interface GazeCriterionShift {
   readonly amplitudeDeg: number
   readonly yawDeg: number
   readonly goal: string | null
-  /** Largest displacement along the shift's yaw direction within the window, degrees. */
-  readonly excursionDeg: { readonly gaze: number, readonly head: number, readonly chest: number }
-  /** Gaze line at 90 %, head and chest at 50 % of their own excursion; null when that joint was not recruited. */
-  readonly reachMs: { readonly gaze: number | null, readonly head: number | null, readonly chest: number | null }
+  /** Largest displacement along the shift's yaw direction within the window, degrees; `eyes` is the eyes in the head. */
+  readonly excursionDeg: { readonly gaze: number, readonly eyes: number, readonly head: number, readonly chest: number }
+  /**
+   * Gaze line and eyes at 90 %, head and chest at 50 % of their own excursion; null when that joint was not recruited.
+   * The gaze line is reported only: past the eye limit it cannot arrive before the head has carried it.
+   */
+  readonly reachMs: { readonly gaze: number | null, readonly eyes: number | null, readonly head: number | null, readonly chest: number | null }
   readonly headRecruited: boolean
   readonly chestRecruited: boolean
   readonly eyesBeforeHead: boolean
@@ -89,6 +92,8 @@ export interface GazeCriterionShift {
 export interface GazeCriterion {
   readonly shifts: readonly GazeCriterionShift[]
   readonly share: GazeOrderShare
+  /** The largest eye-in-head yaw anywhere in the trace, degrees: the eye limit the rig showed. */
+  readonly eyeLimitDeg: number
   readonly eyesOnly: number
   readonly noChest: number
   /** Shifts of at least LARGE_SHIFT_DEG and how many recruited the head. */
@@ -120,6 +125,8 @@ function criterion(p: PreparedTrace, events: readonly { t: number, label: string
   const relative = (child: readonly Quat[], parent: readonly Quat[]) => child.map((q, i) => forwardYaw(multiply(conjugate(parent[i]), q)))
   const head = relative(world.head!, world.chest!)
   const chest = relative(world.chest!, world.hips!)
+  const inHead = eyes.map(e => relative(e, world.head!))
+  const eyesInHead = p.times.map((_, i) => inHead.reduce((s, e) => s + e[i], 0) / inHead.length)
   const parsed = events.flatMap((event) => {
     const [amplitude, yaw, goal] = event.label.slice(SHIFT_PREFIX.length).split(':')
     const amplitudeDeg = Number.parseFloat(amplitude)
@@ -140,18 +147,19 @@ function criterion(p: PreparedTrace, events: readonly { t: number, label: string
       return { excursion, ms: reached < 0 ? null : (p.times[start + reached] - event.t) * 1000 }
     }
     const g = track(gaze, GAZE_REACH)
+    const e = track(eyesInHead, GAZE_REACH)
     const h = track(head, JOINT_REACH)
     const c = track(chest, JOINT_REACH)
     const headRecruited = h.excursion >= RECRUITED * event.amplitudeDeg
     const chestRecruited = c.excursion >= RECRUITED * event.amplitudeDeg
     const before = (a: number | null, b: number | null) => a !== null && b !== null && a < b
-    const eyesBeforeHead = !headRecruited || before(g.ms, h.ms)
+    const eyesBeforeHead = !headRecruited || before(e.ms, h.ms)
     const headBeforeChest = chestRecruited ? headRecruited && before(h.ms, c.ms) : null
     const pattern = headRecruited ? (chestRecruited ? 'full' : 'no-chest') : (chestRecruited ? 'no-head' : 'eyes-only')
     return {
       ...event,
-      excursionDeg: { gaze: g.excursion, head: h.excursion, chest: c.excursion },
-      reachMs: { gaze: g.ms, head: headRecruited ? h.ms : null, chest: chestRecruited ? c.ms : null },
+      excursionDeg: { gaze: g.excursion, eyes: e.excursion, head: h.excursion, chest: c.excursion },
+      reachMs: { gaze: g.ms, eyes: e.ms, head: headRecruited ? h.ms : null, chest: chestRecruited ? c.ms : null },
       headRecruited,
       chestRecruited,
       eyesBeforeHead,
@@ -165,6 +173,7 @@ function criterion(p: PreparedTrace, events: readonly { t: number, label: string
   return {
     shifts,
     share: share(shifts.filter(s => s.ordered).length, shifts.length),
+    eyeLimitDeg: Math.max(0, ...eyesInHead.map(v => Math.abs(v) * DEG)),
     eyesOnly: shifts.filter(s => s.pattern === 'eyes-only').length,
     noChest: shifts.filter(s => s.pattern === 'no-chest').length,
     large: { shifts: large.length, headRecruited: large.filter(s => s.headRecruited).length },
@@ -175,9 +184,11 @@ function criterion(p: PreparedTrace, events: readonly { t: number, label: string
 const key = (sample: MetricSample) => `${sample.start}:${sample.end}`
 
 /**
- * Lead rule for goal 2, version 4. The criterion is displacement order per `gaze-shift` event of at least CRITERION_DEG
- * (architecture 9.1: the gaze line reaches 90 % of its excursion before the head reaches 50 %, and the head 50 % before
- * the chest 50 %), with a joint whose excursion stays under 10 % of the amplitude counted as not recruited.
+ * Lead rule for goal 2, version 5. The criterion is displacement order per `gaze-shift` event of at least CRITERION_DEG:
+ * the eyes in the head reach 90 % of their own excursion before the head reaches 50 % of its own, and the head 50 % before
+ * the chest 50 %, with a joint whose excursion stays under 10 % of the amplitude counted as not recruited. Architecture
+ * 9.1 states the eyes' test on the gaze line for a 30 degree shift; past the eye limit the gaze line cannot reach 90 %
+ * until the head has carried it, so the eyes are judged on their own travel and the gaze line is printed beside them.
  * Reported only: episodes and onsets from the gate's own gaze detector (`gazeMetrics`, read-only):
  * kinematic head turns of at least 0.5 rad/s and 10 degrees inside the bands' accepted range, `jointOnset` with the
  * fitted head and chest floors. The only added parameter is the eye floor, declared equal to the fitted head floor:
@@ -236,7 +247,7 @@ export function gazeOrderReport(input: DecodedMotionTrace, params: DetectorParam
   const withChest = episodes.filter(e => e.headBeforeChest !== null)
   return {
     kind: 'gaze-order',
-    version: 4,
+    version: 5,
     criterion: displacement,
     eyeFloor,
     episodes,
@@ -256,9 +267,10 @@ export function formatGazeOrderReport(report: GazeOrderReport): string {
   const deg = (v: number) => v.toFixed(1)
   const c = report.criterion
   const lines = [
-    `criterion: displacement order per gaze-shift event of ${CRITERION_DEG} deg or more (gaze line ${GAZE_REACH * 100} % before head ${JOINT_REACH * 100} %, head before chest ${JOINT_REACH * 100} %)`,
-    't s\tamplitude deg\tyaw deg\tgoal\tgaze/head/chest excursion deg\tgaze 90% ms\thead 50% ms\tchest 50% ms\teyes<head\thead<chest\tordered\tpattern',
-    ...c.shifts.map(s => [s.t.toFixed(3), deg(s.amplitudeDeg), deg(s.yawDeg), s.goal ?? '-', `${deg(s.excursionDeg.gaze)}/${deg(s.excursionDeg.head)}/${deg(s.excursionDeg.chest)}`, ms(s.reachMs.gaze), ms(s.reachMs.head), ms(s.reachMs.chest), yes(s.eyesBeforeHead), yes(s.headBeforeChest), yes(s.ordered), s.pattern].join('\t')),
+    `criterion: displacement order per gaze-shift event of ${CRITERION_DEG} deg or more (eyes in the head ${GAZE_REACH * 100} % before head ${JOINT_REACH * 100} %, head before chest ${JOINT_REACH * 100} %; gaze line printed only)`,
+    `eye-in-head yaw limit measured in this trace: ${deg(c.eyeLimitDeg)} deg`,
+    't s\tamplitude deg\tyaw deg\tgoal\tgaze/eyes/head/chest excursion deg\tgaze 90% ms\teyes 90% ms\thead 50% ms\tchest 50% ms\teyes<head\thead<chest\tordered\tpattern',
+    ...c.shifts.map(s => [s.t.toFixed(3), deg(s.amplitudeDeg), deg(s.yawDeg), s.goal ?? '-', `${deg(s.excursionDeg.gaze)}/${deg(s.excursionDeg.eyes)}/${deg(s.excursionDeg.head)}/${deg(s.excursionDeg.chest)}`, ms(s.reachMs.gaze), ms(s.reachMs.eyes), ms(s.reachMs.head), ms(s.reachMs.chest), yes(s.eyesBeforeHead), yes(s.headBeforeChest), yes(s.ordered), s.pattern].join('\t')),
     '',
     line('criterion share (needs 0.90)', c.share),
     `eyes-only shifts: ${c.eyesOnly}; no-chest shifts: ${c.noChest}`,
