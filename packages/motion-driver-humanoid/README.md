@@ -19,6 +19,16 @@ deterministic motion algorithms for reusable character motion drivers.
 - `./locomotion`: `createLocomotion`, a deterministic procedural gait with root
   motion, planted world foot anchors, body channels, and arm swing.
 - `./rest-pose`: `createArmRest`, the relaxed arm, hand, and finger rest pose.
+- `./motion-trace`: `MotionTraceV1`, little-endian float32 block codec, canonical
+  humanoid parents, and `MotionTraceRecorder`. The recorder accepts plain vectors
+  and rest-normalised world quaternions in +Y up, +Z forward axes, removes hips
+  heading and stores parent-relative rotations with continuous quaternion signs.
+  Call `start(header)`, `sample(time, wall, readN, rootPos, channels)`, `event(e)`,
+  `stop()`, then `drain(from, count)`. Times are seconds; samples rebase time and
+  wall to frame zero, while event times are already relative to frame zero.
+  Samples outside recording are inert; starting again discards the old capture.
+  Drain is non-destructive and supports arbitrary ranges across 600-frame chunks;
+  only the first range includes the header (with total frames) and sorted events.
 - `./types`: canonical humanoid and finger bones, rig traits, positions, rotations (with `rotationToMatrix` and `mirrorRotation`), and body intents.
 - `./weight-shift`: deterministic seeded weight shift and Natural body composition.
 

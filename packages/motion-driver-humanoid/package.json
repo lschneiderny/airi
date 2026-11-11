@@ -10,6 +10,7 @@
     "./idle-clips": "./src/idle-clips/index.ts",
     "./look-at": "./src/look-at/index.ts",
     "./locomotion": "./src/locomotion/index.ts",
+    "./motion-trace": "./src/motion-trace/index.ts",
     "./rest-pose": "./src/rest-pose/index.ts",
     "./types": "./src/types/index.ts",
     "./weight-shift": "./src/weight-shift/index.ts"
