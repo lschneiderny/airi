@@ -287,8 +287,8 @@ decided on 2026-11-11: "Arm bands: Gate v2, pooled sides (Recommended)".
 
 The project owner decided on 2026-11-11: "Speech gate: Rules now, reference
 later (Recommended)" and "Emotion gate: Clear of neutral (Recommended)". Both
-decisions were made before any goal-3 motion code existed, on the evidence of
-a feasibility probe. That probe added designed gestures and emotion postures to
+decisions were made before any goal-3 gesture or emotion motion code existed,
+on the evidence of a feasibility probe. That probe added designed gestures and emotion postures to
 a real Chisa trace and judged them with the frozen version 2 bands. Version 3
 carries these two decisions and nothing else. Every fitted bound, floor, move
 speed, held-out verdict and admission record is the same as in version 2.
@@ -316,7 +316,11 @@ file. The rule selects 18 metrics, which version 3 no longer gates for speech:
 - `smooth.head.spikeRate`, `smooth.armL.spikeRate` and `smooth.armR.spikeRate`.
 
 This is a loss of gated checks for speech. Criterion-level rules make up for
-it, and those rules are not part of this gate. A standing-speaker reference is
+it, and those rules are not part of this gate. Under version 3, a speech trace
+passes the gate if its arm strokes land on the speech peaks and its fingers
+are not constant. This holds even with a frozen trunk and head, one arm,
+mirrored arms, rigid lockstep joints, pops or single-axis motion. The
+criterion-level reports of goal 3 judge those properties, not the gate. A standing-speaker reference is
 to be proposed later, under a further gate version. Talk still gates these
 metrics:
 
@@ -338,7 +342,9 @@ in the probe. It keeps its formula and its bound of 2 and is now REPORT. The new
 than neutral, of its separation from neutral and its separation from the
 placebo. It uses the same pooled SD units and must be at least 2. The
 neutral-against-placebo pair is not part of it. A pool without a `neutral`
-condition skips the metric. This bar is lower than version 2's declared
+condition fails the metric: its value is undefined with detail
+`no-neutral-condition`, because such a pool cannot show that any emotion is
+clear of neutral. This bar is lower than version 2's declared
 all-pairs bar, because pairs of two non-neutral emotions are no longer gated.
 The threshold of 2 was a declared number, transferred from the Live2D emotion
 gate. It was not fitted from human data. `emotion.armShare` and the onset

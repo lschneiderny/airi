@@ -257,7 +257,9 @@ by hand. The user decided on 2026-11-11: "Arm bands: Gate v2, pooled sides
 
 Decisions: the project owner decided on 2026-11-11: "Speech gate: Rules now,
 reference later (Recommended)" and "Emotion gate: Clear of neutral
-(Recommended)". Both were made before any goal-3 motion code existed. The
+(Recommended)". Both were made before any goal-3 gesture or emotion motion
+code existed; unit M had committed only counters, contracts and scenario
+scaffolding. The
 evidence was a feasibility probe that added designed gestures and emotion
 postures to a real Chisa trace and judged them with the frozen version 2 bands.
 Version 3 carries these two decisions and nothing else. No character motion
@@ -278,8 +280,12 @@ speech: the seven talk chain correlations, `coverage.core`, `coverage.arms`,
 `bilateral.upperArm`, `bilateral.lowerArm`, `bilateral.hand`,
 `inter.speedCv`, `dim.upper`, `dim.core`, and `smooth.head.spikeRate`,
 `smooth.armL.spikeRate` and `smooth.armR.spikeRate`. This is a loss of gated
-checks, made up by criterion-level rules outside this gate. The values are
-still measured and printed. Talk still gates `smooth.head.ldlj`,
+checks, made up by criterion-level rules outside this gate. Under version 3, a
+speech trace passes the gate if its arm strokes land on the speech peaks and
+its fingers are not constant. This holds even with a frozen trunk and head,
+one arm, mirrored arms, rigid lockstep joints, pops or single-axis motion.
+The criterion-level reports of goal 3 judge those properties, not the gate.
+The values are still measured and printed. Talk still gates `smooth.head.ldlj`,
 `onset.attackFraction` and `onset.easedOrAnticipated` (episode bands that
 read move speeds), and the declared `coverage.fingers` (reads the talk hand
 floors), `fingers.frozen`, `gesture.strokeP` and `gesture.strokeLagMs` (read
@@ -293,7 +299,9 @@ its bound and becomes REPORT. The gated
 `emotion.minSeparationFromNeutral` takes, over every emotion other than
 neutral, the smaller of its separations from neutral and from the placebo, in
 the same pooled SD units, and requires at least 2. Neutral against placebo is
-excluded. This bar is lower than version 2's declared all-pairs bar, because
+excluded. A pool without a `neutral` condition fails it: the value is
+undefined with detail `no-neutral-condition`, because such a pool cannot show
+that any emotion is clear of neutral. This bar is lower than version 2's declared all-pairs bar, because
 pairs of two non-neutral emotions are no longer gated. The threshold of 2 is a
 declared number, not fitted from human data. `emotion.armShare` and the onset
 bands are unchanged.
