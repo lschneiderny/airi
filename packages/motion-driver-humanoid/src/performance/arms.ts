@@ -37,7 +37,8 @@ export const DEFAULT_ARM_REST_POSE: ArmRestPose = {
 const relaxed = [2.2, 2.2, 1.15, 1.15, 2, 1.8, 2, 2.2, 2.2] as const
 const active = [4, 4, 4.5, 4.5, 4, 4.5, 4, 4.5, 4.5] as const
 const damping = [0.7, 0.7, 0.45, 0.45, 0.7, 0.6, 0.7, 0.5, 0.5] as const
-const noiseDegrees = [0.6, 0.3, 0.8, 0.5, 1.5, 1.2, 1.5, 2, 1.5] as const
+/** Per-joint idle noise amplitude of the nine arm angles, degrees, in `BODY_CHANNELS` arm order. */
+export const ARM_NOISE_DEGREES = [0.6, 0.3, 0.8, 0.5, 1.5, 1.2, 1.5, 2, 1.5] as const
 const offsetDegrees = [0, 0, 2.5, 2, 0, 4, 8, 4, 0] as const
 const clampDrag = (x: number, degrees: number) => Math.max(-degrees * DEG, Math.min(degrees * DEG, x))
 // The forearm hangs from the upper arm, so the weight reaches the elbow one upper-arm response later: the relaxed
@@ -112,7 +113,7 @@ export class BodyArms {
         let noise = 0
         if (j < 25) {
           const value = this.noises[side][j].step(BODY_TICK) * gate
-          noise = j < 9 ? value * noiseDegrees[j] * DEG : 0.6 * sharedCurl + 0.4 * value * 3 * DEG
+          noise = j < 9 ? value * ARM_NOISE_DEGREES[j] * DEG : 0.6 * sharedCurl + 0.4 * value * 3 * DEG
         }
         out[start + j] += this.rest[start + j] + noise
       }
