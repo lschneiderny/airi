@@ -65,7 +65,13 @@ export class BodyPosture {
     advanceSecondOrder(this.transfer, this.target, this.transferCoefficients)
     const s = this.transfer.y
     this.support = Math.max(-1, Math.min(1, s))
-    const chain = this.weight.step(s)
+    const gate = this.gate.step(BODY_TICK) * input.posture.amplitude
+    const lateral = this.drift[0].step(BODY_TICK) * gate * 0.004
+    const forward = this.drift[1].step(BODY_TICK) * gate * 0.006
+    // The pelvis cannot sway sideways over planted feet without loading one leg more: lateral sway is a small support
+    // shift, so it travels the weight chain like a transfer and the free hip drops with it (architecture 3d).
+    const sway = this.traits.legIk && this.lateralGain > 0 ? -lateral / this.lateralGain : 0
+    const chain = this.weight.step(s + sway)
     const single = this.traits.spineChain.length === 1
     this.shoulderSupport = chain[single ? 1 : 3]
     const gain = this.rotationScale
@@ -78,9 +84,6 @@ export class BodyPosture {
     out[9] -= 2 * DEG * chain[single ? 1 : 2] * gain
     out[17] -= 1.2 * DEG * chain[single ? 2 : 4] * gain
     out[20] -= DEG * chain[single ? 3 : 5] * gain
-    const gate = this.gate.step(BODY_TICK) * input.posture.amplitude
-    const lateral = this.drift[0].step(BODY_TICK) * gate * 0.004
-    const forward = this.drift[1].step(BODY_TICK) * gate * 0.006
     if (this.traits.legIk) {
       out[0] += -this.lateralGain * s + lateral
       out[1] -= 0.0065 * Math.abs(s)

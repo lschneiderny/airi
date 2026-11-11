@@ -48,6 +48,16 @@ describe('posture performance', () => {
     }
   })
 
+  it('rolls the hips with the lateral sway between weight transfers', () => {
+    const performer = createBodyPerformer({ traits, seed: 1 })
+    const trace = channelTrace(performer, 60, t => ({ ...quietInput(t), posture: { amplitude: 1, shiftRate: 0, support: 0 } }))
+    const pelvis = trace[c('pelvisX')]
+    const roll = trace[c('hipsRoll')]
+    expect(Math.max(...roll) - Math.min(...roll)).toBeGreaterThan(0.1 * Math.PI / 180)
+    // Pelvis toward +X (the left foot) loads the left leg, so the free right hip drops: positive roll.
+    expect(lagOf(pelvis, roll)).toBeGreaterThan(0)
+  })
+
   it('has aperiodic sway and moving holds over two minutes', () => {
     const trace = channelTrace(createBodyPerformer({ traits, seed: 1 }), 120, idleInput)
     const sway = trace[c('pelvisZ')]
