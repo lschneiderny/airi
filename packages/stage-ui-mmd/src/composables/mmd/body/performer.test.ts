@@ -135,6 +135,9 @@ describe('mmd body performer adapter', () => {
     const fixture = bodyFixture()
     const { performer } = performerOf(fixture)
     const pose = channels({ rightFlex: 0.4, rightElbow: 0.5, leftFlex: 0.4, leftElbow: 0.5 })
+    // A mixer's interpolated clean pose is not exactly unit length; that is no rotation.
+    const k = 0.9999 / Math.hypot(0.1, 0.2, 0.3, 0.9)
+    fixture.pipeline.clean.quaternions.forEach(quaternion => quaternion.set(0.1 * k, 0.2 * k, 0.3 * k, 0.9 * k))
     performer.beginFrame()
     performer.applyArms(fixture.pipeline.clean, { ...free, rightArm: 1, rightFingers: 1 }, pose)
     expect(performer.writeDeviation.rightArm).toBe(0)
