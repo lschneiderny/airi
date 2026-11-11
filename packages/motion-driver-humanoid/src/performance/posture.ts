@@ -15,6 +15,8 @@ export class BodyPosture {
   support = 0
   /** The support transfer as it reaches the shoulders: the weight lag chain's torso-upper link. */
   shoulderSupport = 0
+  /** The trunk's yaw taken up from Natural's slow head yaw: intent, which the head does not cancel. */
+  trunkIntentYaw = 0
   target = 0
   dwell = 0
   private readonly random
@@ -89,8 +91,6 @@ export class BodyPosture {
     out[11] += 0.9 * DEG * chain[single ? 1 : 2] * gain
     out[14] += 0.5 * DEG * chain[single ? 1 : 3] * gain
     out[9] -= 2 * DEG * chain[single ? 1 : 2] * gain
-    out[17] -= 1.2 * DEG * chain[single ? 2 : 4] * gain
-    out[20] -= DEG * chain[single ? 3 : 5] * gain
     if (this.traits.legIk) {
       out[0] += -this.lateralGain * s + lateral
       out[1] -= 0.0065 * Math.abs(s)
@@ -111,6 +111,7 @@ export class BodyPosture {
     const headGain = input.gaze.kind === 'free' ? 1 : 0.6
     out[12] += trunkUpper * headGain
     out[9] += trunkMid * headGain
+    this.trunkIntentYaw = (trunkUpper + trunkMid) * headGain
     for (let axis = 0; axis < 3; axis++) {
       let target = input.head.attitude[axes[axis]]
       for (const term of heldTerms)

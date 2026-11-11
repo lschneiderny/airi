@@ -359,7 +359,11 @@ The performer follows `attitude`, `pet` and `held` through separate neck and
 head responses, with the neck starting each turn and the head following, and
 the speech- and cue-timed terms `emphasis`, `impulse`, `gesture` and `cue`
 through one fast follower so an accent keeps its beat. In a gaze shift the neck
-also follows the head plan through its own, faster response.
+also follows the head plan through its own, faster response. Underneath these,
+the neck and head counter-rotate part of the trunk's world rotation from
+posture and breath (0.5 of yaw, 0.6 of pitch and roll, 80 ms late), so the
+head stays near level while the body sways; the trunk's share of Natural's head
+yaw and the gaze trunk are intent and are not cancelled.
 
 The channel table contains 77 scalars: pelvis XYZ in leg lengths; hips,
 three torso controls, neck and head in intrinsic YXZ radians; and per side nine

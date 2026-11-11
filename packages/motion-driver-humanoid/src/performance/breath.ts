@@ -59,8 +59,6 @@ export class BodyBreath {
     out[7] -= 0.6 * DEG * volume
     out[10] -= DEG * chain[0] + 1.2 * DEG * this.speechLift
     out[13] -= 0.5 * DEG * chain[1]
-    out[16] += 0.5 * DEG * chain[1]
-    out[19] += 0.4 * DEG * chain[1]
     // The shoulders rise about 1.6 degrees per quiet breath (4-5 mm at the shoulder tip), enough to read at the default
     // camera; the arm counter-rotates in the same proportion so the hand hangs plumb and rides on the clavicle.
     for (const side of SIDES) {

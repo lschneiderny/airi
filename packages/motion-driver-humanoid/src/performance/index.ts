@@ -2,6 +2,7 @@ import type { Vec3 } from '../types'
 import type { BodyPerformanceFrame, BodyPerformanceInput, BodyRigTraits } from './contracts'
 import type { PerformanceContext, PerformanceLayer } from './stack'
 
+import { createLagChain } from '../dynamics'
 import { createTurnPlanner } from '../look-at'
 import { BodyArms } from './arms'
 import { BodyBreath } from './breath'
@@ -40,6 +41,14 @@ type MutableFrame = Mutable<Omit<BodyPerformanceFrame, 'pelvis' | 'gaze' | 'eyes
   eyes: { yaw: number, pitch: number }
   diagnostics: Mutable<BodyPerformanceFrame['diagnostics']>
 }
+
+/**
+ * Share of the trunk's unintended yaw, pitch and roll the head cancels. Head stabilisation below 1 Hz is incomplete;
+ * roll and pitch have a gravity reference and hold better than yaw, and the eyes absorb the rest.
+ */
+const STEADY_GAIN = [0.5, 0.6, 0.6] as const
+/** Vestibulo- and cervico-collic reflex latency, seconds. */
+const STEADY_LAG = 0.08
 
 /** Pure state owner. Each step advances exactly one tick; the host owns accumulation/interpolation. */
 class BodyPerformer {
@@ -114,6 +123,7 @@ class BodyPerformer {
       skeleton: new BodySkeleton(traits),
       turns: createTurnPlanner(),
       targets: new Float64Array(BODY_CHANNELS.length),
+      steady: [0, 1, 2].map(() => createLagChain([STEADY_LAG], BODY_TICK)),
     }
   }
 
@@ -158,6 +168,7 @@ class BodyPerformer {
     targets.fill(0)
     state.posture.step(effective, targets)
     state.breath.step(effective, targets)
+    this.steadyHead(targets)
     state.arms.generate(effective, targets, state.posture.shoulderSupport)
     state.gaze.step(effective, targets)
     const gait = input.gait
@@ -204,6 +215,24 @@ class BodyPerformer {
     frame.diagnostics.gazeShifts = state.gaze.shifts
     frame.diagnostics.blinks = state.gaze.blinks
     return frame
+  }
+
+  /**
+   * The neck and head counter-rotate a share of the trunk's world rotation from posture and breath (sway, transfer,
+   * drift, set-point), 80 ms late; the trunk's share of Natural's head yaw is intent and is not cancelled.
+   */
+  private steadyHead(targets: Float64Array): void {
+    const { traits } = this.options
+    for (let axis = 0; axis < 3; axis++) {
+      let trunk = targets[6 + axis] + targets[9 + axis] + targets[12 + axis]
+      if (traits.spineParent === 'hips')
+        trunk += targets[3 + axis]
+      if (axis === 0)
+        trunk -= this.state.posture.trunkIntentYaw
+      const steady = this.state.steady[axis].step(-STEADY_GAIN[axis] * trunk)[0]
+      targets[15 + axis] += 0.35 * steady
+      targets[18 + axis] += 0.65 * steady
+    }
   }
 
   private degrade(channels: Float32Array): void {

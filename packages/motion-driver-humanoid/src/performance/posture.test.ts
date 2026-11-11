@@ -8,6 +8,26 @@ const traits = fixtureRigs[0].traits
 const c = channelIndex
 
 describe('posture performance', () => {
+  it('steadies the head against a weight shift: about 0.4 of the trunk roll and 0.5 of its yaw remain at the head', () => {
+    const performer = createBodyPerformer({ traits, seed: 1 })
+    const trace = channelTrace(performer, 6, t => ({ ...quietInput(t), posture: { amplitude: 0, shiftRate: 0, support: t < 0.5 ? 0 : 1 } }))
+    const end = (name: Parameters<typeof c>[0]) => trace[c(name)].at(-1) ?? 0
+    const trunkRoll = end('lowerRoll') + end('midRoll') + end('upperRoll')
+    const trunkYaw = end('lowerYaw') + end('midYaw') + end('upperYaw')
+    expect((trunkRoll + end('neckRoll') + end('headRoll')) / trunkRoll).toBeCloseTo(0.4, 1)
+    expect((trunkYaw + end('neckYaw') + end('headYaw')) / trunkYaw).toBeCloseTo(0.5, 1)
+  })
+
+  it('steadies the head against breathing: about 0.4 of the trunk pitch remains at the head', () => {
+    const performer = createBodyPerformer({ traits, seed: 1 })
+    const trace = channelTrace(performer, 12, t => ({ ...quietInput(t), breath: { ...quietInput(t).breath, scale: 1 } }))
+    const trunk = trace[c('lowerPitch')].map((v, i) => v + trace[c('midPitch')][i] + trace[c('upperPitch')][i])
+    const head = trunk.map((v, i) => v + trace[c('neckPitch')][i] + trace[c('headPitch')][i])
+    const range = (values: number[]) => Math.max(...values.slice(600)) - Math.min(...values.slice(600))
+    expect(range(head) / range(trunk)).toBeGreaterThan(0.3)
+    expect(range(head) / range(trunk)).toBeLessThan(0.5)
+  })
+
   it('settles a head posture shift like a head on a relaxed neck, in 0.8 to 1.5 s with a light follow-through', () => {
     const performer = createBodyPerformer({ traits, seed: 1 })
     const trace = channelTrace(performer, 4, (t) => {
