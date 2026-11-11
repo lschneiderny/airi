@@ -1,8 +1,12 @@
+import type { BodyPerformanceInput } from './contracts'
+
 import { describe, expect, it } from 'vitest'
 
-import { channelIndex } from './channels'
+import { BodyBreath } from './breath'
+import { BODY_CHANNELS, channelIndex, DEG } from './channels'
 import { createBodyPerformer } from './index'
 import { channelTrace, fixtureRigs, idleInput, lagOf, peakSpeed, quietInput } from './performance.test-fixtures'
+import { BodyPosture } from './posture'
 
 const traits = fixtureRigs[0].traits
 const c = channelIndex
@@ -198,5 +202,63 @@ describe('posture performance', () => {
     expect(Math.min(...tail)).toBeLessThan(-0.001)
     const energy = (a: number[]) => a.reduce((sum, v) => sum + v * v, 0)
     expect(energy(signal.slice(600, 840))).toBeLessThan(energy(signal.slice(180, 420)) / 10)
+  })
+})
+
+describe('posture and breath hooks for the performance layers', () => {
+  type Hooks = Partial<Pick<BodyPosture, 'suppressHeadCue' | 'tempo' | 'amplitude'>>
+  const run = (hooks: Hooks, seconds: number, script: (t: number) => BodyPerformanceInput = idleInput) => {
+    const posture = Object.assign(new BodyPosture(traits, 1), hooks)
+    const trace: { channels: Float64Array, target: number }[] = []
+    for (let tick = 0; tick < seconds * 120; tick++) {
+      const out = new Float64Array(BODY_CHANNELS.length)
+      posture.step(script(tick / 120), out)
+      trace.push({ channels: out, target: posture.target })
+    }
+    return trace
+  }
+
+  it('drops Natural\'s head cue from the accent while the cue layer plays the cue, and keeps the other accents', () => {
+    const cue = (t: number) => {
+      const input = idleInput(t)
+      return { ...input, head: { ...input.head, terms: { ...input.head.terms, cue: { yaw: 0, pitch: 0.1, roll: 0 }, emphasis: { yaw: 0.02, pitch: 0, roll: 0 } } } }
+    }
+    const noCue = (t: number) => {
+      const input = cue(t)
+      return { ...input, head: { ...input.head, terms: { ...input.head.terms, cue: { yaw: 0, pitch: 0, roll: 0 } } } }
+    }
+    const suppressed = run({ suppressHeadCue: true }, 2, cue)
+    expect(suppressed.map(f => [...f.channels])).toEqual(run({}, 2, noCue).map(f => [...f.channels]))
+    expect(run({}, 2, cue).at(-1)?.channels[c('headPitch')]).toBeGreaterThan((suppressed.at(-1)?.channels[c('headPitch')] ?? 0) + 2 * DEG)
+  })
+
+  it('scales sway by the emotion amplitude and the shift rate by its tempo, and is exact at 1', () => {
+    const neutral = run({ tempo: 1, amplitude: 1 }, 30)
+    expect(neutral.map(f => [...f.channels])).toEqual(run({}, 30).map(f => [...f.channels]))
+    const half = run({ amplitude: 0.5 }, 30)
+    const sway = (trace: typeof neutral) => Math.max(...trace.map(f => Math.abs(f.channels[c('lowerYaw')])))
+    expect(sway(half) / sway(neutral)).toBeCloseTo(0.5, 6)
+    const firstShift = (trace: typeof neutral) => trace.findIndex(f => f.target !== trace[0].target)
+    expect(firstShift(run({ tempo: 2 }, 30)) / firstShift(neutral)).toBeCloseTo(0.5, 1)
+  })
+
+  it('scales the breath by the emotion\'s depth and sighs one inhale 1.4 times a phrase inhale', () => {
+    const breathe = (depth: number, sigh: boolean) => {
+      const breath = new BodyBreath()
+      breath.depth = depth
+      return Array.from({ length: 360 }, (_, tick) => {
+        if (sigh && tick === 12)
+          breath.sigh()
+        const out = new Float64Array(BODY_CHANNELS.length)
+        breath.step({ ...quietInput(), breath: { phase: 0, period: 4, scale: 1 } }, out)
+        return out[c('lowerPitch')]
+      })
+    }
+    const base = breathe(1, false)
+    breathe(0.5, false).forEach((v, i) => expect(v).toBeCloseTo(0.5 * base[i], 12))
+    const sighed = breathe(1, true)
+    const extension = Math.max(...sighed.map((v, i) => base[i] - v))
+    expect(extension / (0.6 * DEG)).toBeCloseTo(1.4 * 0.7, 2)
+    expect(Math.abs(sighed[359] - base[359])).toBeLessThan(0.5 * extension)
   })
 })

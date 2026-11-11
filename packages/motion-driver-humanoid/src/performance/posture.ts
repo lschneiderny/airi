@@ -42,6 +42,11 @@ export class BodyPosture {
   private wanderAttention = 1
   /** Set by the performer each tick: a gaze shift is under way. */
   gazeShifting = false
+  /** Set by the performer each tick from the merged plan: the cue layer plays the head cue, so the accent drops it. */
+  suppressHeadCue = false
+  /** Set by the performer each tick from the emotion modulation (4c): weight-shift rate and sway size, 1 at baseline. */
+  tempo = 1
+  amplitude = 1
   private readonly accentCoefficients = secondOrderCoefficients({ f: 5, zeta: 1, r: 0 }, BODY_TICK)
   private readonly slow = createLagChain([0.25, 0.15], BODY_TICK)
   private readonly gate
@@ -69,7 +74,7 @@ export class BodyPosture {
 
   step(input: BodyPerformanceInput, out: Float64Array): void {
     if (input.posture.support === null) {
-      this.dwell -= BODY_TICK * input.posture.shiftRate * (1 + 0.6 * Math.max(0, input.mood.arousal))
+      this.dwell -= BODY_TICK * input.posture.shiftRate * (1 + 0.6 * Math.max(0, input.mood.arousal)) * this.tempo
       if (this.dwell <= 0) {
         let next = this.target
         while (next === this.target) {
@@ -88,7 +93,7 @@ export class BodyPosture {
     advanceSecondOrder(this.transfer, this.target, this.transferCoefficients)
     const s = this.transfer.y
     this.support = Math.max(-1, Math.min(1, s))
-    const gate = this.gate.step(BODY_TICK) * input.posture.amplitude
+    const gate = this.gate.step(BODY_TICK) * input.posture.amplitude * this.amplitude
     const lateral = this.drift[0].step(BODY_TICK) * gate * 0.004
     const forward = this.drift[1].step(BODY_TICK) * gate * 0.006
     // The pelvis cannot sway sideways over planted feet without loading one leg more: lateral sway is a small support
@@ -135,8 +140,10 @@ export class BodyPosture {
       for (const term of heldTerms)
         target += input.head.terms[term][axes[axis]]
       let accent = 0
-      for (const term of accentTerms)
-        accent += input.head.terms[term][axes[axis]]
+      for (const term of accentTerms) {
+        if (term !== 'cue' || !this.suppressHeadCue)
+          accent += input.head.terms[term][axes[axis]]
+      }
       const attitude = (target - (axis === 0 ? trunkUpper + trunkMid : 0)) * headGain + this.wanderSmooth[axis].y
       advanceSecondOrder(this.attitudeNeck[axis], attitude, this.neckCoefficients)
       advanceSecondOrder(this.attitudeHead[axis], attitude, this.headCoefficients)

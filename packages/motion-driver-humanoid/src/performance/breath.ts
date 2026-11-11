@@ -3,10 +3,17 @@ import type { BodyPerformanceInput } from './contracts'
 import { createLagChain } from '../dynamics'
 import { ARM_START, BODY_TICK, DEG, SIDES } from './channels'
 
+/** Lung volume added by a phrase inhale before speech or at a pause. */
+const PHRASE_PEAK = 0.7
+/** Architecture 4c: sad's onset is one inhale at depth 1.4. */
+const SIGH = 1.4
+
 /** Phase is supplied by the mind; the body never starts an independent breath clock. */
 export class BodyBreath {
   speechLift = 0
   inhales = 0
+  /** Set by the performer each tick from the emotion modulation (4c breath depth), 1 at baseline. */
+  depth = 1
   private speaking = false
   private quiet = 0
   private pauseConsumed = false
@@ -14,7 +21,17 @@ export class BodyBreath {
   private rise = Infinity
   private riseFrom = 0
   private phrase = 0
+  private risePeak = PHRASE_PEAK
   private readonly chain = createLagChain([0.06, 0.06, 0.06, 0.04], BODY_TICK)
+
+  /** One inhale at 1.4 times a phrase inhale, released on the following exhale (4c sad onset). */
+  sigh(): void {
+    this.inhales++
+    this.sinceInhale = 0
+    this.rise = 0
+    this.riseFrom = this.phrase
+    this.risePeak = SIGH * PHRASE_PEAK
+  }
 
   step(input: BodyPerformanceInput, out: Float64Array): void {
     this.sinceInhale += BODY_TICK
@@ -32,6 +49,7 @@ export class BodyBreath {
       this.sinceInhale = 0
       this.rise = 0
       this.riseFrom = this.phrase
+      this.risePeak = PHRASE_PEAK
       this.pauseConsumed = true
     }
     this.speaking = input.voice.speaking
@@ -41,7 +59,7 @@ export class BodyBreath {
     if (this.rise < 0.28) {
       this.rise += BODY_TICK
       const progress = Math.min(1, this.rise / 0.28)
-      this.phrase = this.riseFrom + (0.7 - this.riseFrom) * (0.5 - 0.5 * Math.cos(Math.PI * progress))
+      this.phrase = this.riseFrom + (this.risePeak - this.riseFrom) * (0.5 - 0.5 * Math.cos(Math.PI * progress))
     }
     else if (input.voice.slow > 0.05 || !this.speaking) {
       this.phrase *= Math.exp(-BODY_TICK / 2.5)
@@ -53,7 +71,7 @@ export class BodyBreath {
       : u < 0.88
         ? 0.5 + 0.5 * Math.cos(Math.PI * (u - 0.38) / 0.5)
         : 0
-    const depth = 1 + 0.5 * Math.max(0, input.mood.arousal)
+    const depth = (1 + 0.5 * Math.max(0, input.mood.arousal)) * this.depth
     const volume = depth * input.breath.scale * ((1 - 0.6 * this.speechLift) * (lung - 0.35) + this.phrase)
     const chain = this.chain.step(volume)
     out[7] -= 0.6 * DEG * volume
