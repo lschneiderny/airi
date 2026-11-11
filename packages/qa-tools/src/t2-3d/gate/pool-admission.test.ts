@@ -16,7 +16,7 @@ const context = { repoRoot, cwd: repoRoot, signal: new AbortController().signal 
 
 function emotionTrace(seed: number, prefix = `seed-${seed}`): MotionTraceV1 {
   const events: MotionTraceEvent[] = [12, 24, 40, 52].map((t, i) => ({
-    t,
+    t: t + seed * 0.05,
     kind: 'emotion',
     emotion: 'happy',
     band: 'clear',
@@ -30,7 +30,7 @@ function emotionTrace(seed: number, prefix = `seed-${seed}`): MotionTraceV1 {
     events,
     world: (bone, t) => {
       const i = events.findIndex(e => t >= e.t + 1 && t <= e.t + 5)
-      return angleX(i < 0 || !/Arm|Hand|Shoulder/.test(bone) ? 0 : (i < 2 ? 0.3 : 0) + (i % 2 ? 0.01 : -0.01))
+      return angleX(i < 0 || !/Arm|Hand|Shoulder/.test(bone) ? 0 : (i < 2 ? 0.3 : 0) + (i % 2 ? 0.01 : -0.01) + seed * 0.001)
     },
   })
   return {
@@ -71,6 +71,19 @@ describe('emotion pool admission', () => {
     })
   })
 
+  it('refuses the reviewer relabelled copies with identical measured blocks', async () => {
+    const trace = emotionTrace(1)
+    const copies = [1, 2, 3].map(copy => ({
+      ...trace,
+      events: trace.events.map(event => event.kind === 'emotion' ? { ...event, trialId: `${event.trialId}-copy-${copy}` } : event),
+    }))
+    await withTraces(copies, async (dirs) => {
+      expect(await gateMotion3d(dirs, context)).toBe(2)
+      for (const dir of dirs)
+        expect(JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))).toMatchObject({ verdict: 'REFUSED', refusal: { name: 'pool-duplicate' }, metrics: [] })
+    })
+  })
+
   it.each(['rig.id', 'rig.assetSha256', 'source.level', 'source.gitSha'])('refuses incompatible %s cohorts', async (field) => {
     const other = emotionTrace(2)
     switch (field) {
@@ -108,8 +121,13 @@ describe('emotion pool admission', () => {
       for (const dir of dirs) {
         const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
         expect(verdict).toMatchObject({ verdict: 'PASS', pooledFrom: { trialCounts: { happy: 6, placebo: 6 } } })
-        expect(verdict.pooledFrom.traces).toEqual(dirs.map(directory => ({ directory, sha256: expect.stringMatching(/^[a-f0-9]{64}$/) })))
+        expect(verdict.pooledFrom.traces).toEqual(dirs.map(directory => ({
+          directory,
+          sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+          fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+        })))
         expect(new Set(verdict.pooledFrom.traces.map((trace: { sha256: string }) => trace.sha256)).size).toBe(3)
+        expect(new Set(verdict.pooledFrom.traces.map((trace: { fingerprint: string }) => trace.fingerprint)).size).toBe(3)
       }
     })
   })

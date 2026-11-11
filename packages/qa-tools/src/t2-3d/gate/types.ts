@@ -74,7 +74,7 @@ export interface MotionVerdict {
   readonly counts: { readonly pass: number, readonly fail: number, readonly report: number, readonly skipped: number }
   readonly requirements?: { readonly metrics: readonly string[], readonly passed: boolean }
   readonly pooledFrom?: {
-    readonly traces: readonly { readonly directory: string, readonly sha256: string }[]
+    readonly traces: readonly { readonly directory: string, readonly sha256: string, readonly fingerprint: string }[]
     readonly trialCounts: Readonly<Record<string, number>>
   }
   readonly limitation: string

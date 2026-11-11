@@ -53,7 +53,7 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
       return 2
     }
   }
-  const entries: { dir: string, path: string, input?: DecodedMotionTrace, sha256?: string, refusal?: GateRefusal | MotionTraceRefusal }[] = []
+  const entries: { dir: string, path: string, input?: DecodedMotionTrace, sha256?: string, fingerprint?: string, refusal?: GateRefusal | MotionTraceRefusal }[] = []
   for (const dir of directories.map(arg => resolve(context.cwd, arg))) {
     if (context.signal.aborted)
       return 130
@@ -86,6 +86,7 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
   let pooled: { measurements: readonly MetricResult[], from: NonNullable<MotionVerdict['pooledFrom']> } | undefined
   try {
     const digests = new Set<string>()
+    const fingerprints = new Set<string>()
     const cohort = emotions[0]?.input?.trace
     for (const entry of emotions) {
       if (entry.sha256 && digests.has(entry.sha256))
@@ -93,6 +94,21 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
       if (entry.sha256)
         digests.add(entry.sha256)
       const trace = entry.input?.trace
+      if (trace) {
+        // Annotation ids, seed keys and provenance labels cannot create a new observation.
+        entry.fingerprint = sha256(JSON.stringify({
+          rot: trace.rot,
+          root: trace.root,
+          channels: trace.channels,
+          frames: trace.frames,
+          hz: trace.hz,
+          bones: trace.rig.bones,
+          parents: trace.rig.parents,
+        }))
+        if (fingerprints.has(entry.fingerprint))
+          throw new GateRefusal('pool-duplicate', `Repeated measurement fingerprint ${entry.fingerprint}`)
+        fingerprints.add(entry.fingerprint)
+      }
       if (trace && cohort && (trace.rig.id !== cohort.rig.id || trace.rig.assetSha256 !== cohort.rig.assetSha256
         || trace.source.level !== cohort.source.level || trace.source.gitSha !== cohort.source.gitSha)) {
         throw new GateRefusal('pool-mismatch', 'Emotion traces must share rig.id, rig.assetSha256, source.level and source.gitSha')
@@ -115,7 +131,7 @@ export async function gateMotion3d(args: readonly string[], context: Motion3dCli
         .map(condition => [condition, trials.filter(trial => trial.condition === condition).length]))
       pooled = {
         measurements: emotionMetrics(trials),
-        from: { traces: emotions.map(entry => ({ directory: entry.dir, sha256: entry.sha256 ?? '' })), trialCounts },
+        from: { traces: emotions.map(entry => ({ directory: entry.dir, sha256: entry.sha256 ?? '', fingerprint: entry.fingerprint ?? '' })), trialCounts },
       }
     }
   }

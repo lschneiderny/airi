@@ -58,11 +58,15 @@ pnpm qa:motion3d gate <idle-90s directory> --require period.head.loopPeak,period
 
 Emotion directories supplied together pool their trials, including placebo.
 They must share `rig.id`, `rig.assetSha256`, `source.level` and `source.gitSha`;
-seeds may differ. Copied trace content or a trial id repeated across traces
+seeds may differ. Copied trace content, measurement payloads, or a trial id repeated across traces
 refuses the pool. Pulse and hold labels with the same trial id within one trace
 still count once. Unlabelled trials remain distinct observations.
-Each pooled verdict records `pooledFrom.traces` with directories and SHA-256
-digests, and `pooledFrom.trialCounts` with the count per condition.
+Each pooled verdict records `pooledFrom.traces` with directories, whole-file
+SHA-256 digests and measurement `fingerprint` hashes, and `pooledFrom.trialCounts`
+with the count per condition. Fingerprints hash the encoded rotation, root and
+channel blocks plus frames, sample rate, bones and parents. Events, trial ids,
+seeds and provenance labels are excluded, so relabelling a capture cannot
+manufacture replication.
 Run seeds 1 through 6 together for the
 scenario's trial guarantee. Gaze episodes outside the fitting head-rotation
 P5 to P95 range are excluded and listed in metric details. Gaze onset bands
@@ -76,7 +80,7 @@ use head episodes only.
 | `rig-incomplete`, `non-upright`, `class-unknown` | Required rig or reference class is unavailable. |
 | `bands-hash-mismatch` | Frozen band bytes or version do not match the definition. |
 | `no-gated-metrics` | No applicable gated metric was judged. |
-| `pool-duplicate` | Repeated trace digest or trial id across emotion traces. |
+| `pool-duplicate` | Repeated trace digest, measurement fingerprint or trial id across emotion traces. |
 | `pool-mismatch` | Emotion traces have incompatible rig or source identity. |
 
 Version 0 retains explicitly marked analytic fixtures. Version 1 uses frozen

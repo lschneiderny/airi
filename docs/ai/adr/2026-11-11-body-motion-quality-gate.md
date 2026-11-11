@@ -149,6 +149,14 @@ extraction; repeated labels within one trace count once. Each pooled verdict
 records trace directories, digests and per-condition trial counts in
 `pooledFrom`. This admission fix changes no band, threshold or gate version.
 
+The `1db662fbe` re-review also found that renaming trial ids bypassed the
+whole-file duplicate check. Pooling now compares a SHA-256 measurement
+fingerprint of encoded rotation/root/channel blocks and frame count, sample
+rate, bones and parents. Events, trial ids, seed and provenance labels do not
+enter this identity. A repeated fingerprint is `pool-duplicate`; verdicts keep
+both the original whole-file digest and the fingerprint in `pooledFrom.traces`.
+Passing pool controls now use genuinely different trajectories across seeds.
+
 Acceptance can now demand named metrics with `gate --require <ids>`.
 Every named metric must be `PASS` in every supplied verdict; the requirement
 and its result are recorded separately from the numerical verdict. Unknown
