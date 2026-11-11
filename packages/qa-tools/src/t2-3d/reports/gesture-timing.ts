@@ -1,16 +1,17 @@
 import type { MotionTraceBone } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
 import type { MotionBandsFile } from '../gate/types'
-import type { Quat, Vec3 } from '../metrics'
+import type { PreparedTrace, Quat, Vec3 } from '../metrics'
 import type { KinematicStroke, Side } from './kinematics'
 import type { CriterionReport, LoadedRun, ReportConstant } from './report'
 
-import { conjugate, DEG, median, multiply, norm, sub } from '../metrics/math'
-import { handPath, kinematicStrokes, SIDES, STROKE_CONSTANTS } from './kinematics'
+import { percentile } from '../gate/bands'
+import { conjugate, DEG, HZ, median, multiply, norm, sub } from '../metrics/math'
+import { handPath, kinematicStrokes, SIDES, STROKE_CONSTANTS, traceParent } from './kinematics'
 import { armPopBones, popCount } from './pops'
 import { criterionReport, fixed, formatReport, gateStatus, labelledPeaks, markers, printedBand, requireGate, requirement, requireSummary } from './report'
 
-export const GESTURE_TIMING_VERSION = 1
+export const GESTURE_TIMING_VERSION = 2
 
 /** Plan 2.2's C001 constants, fixed before any gesture code. */
 const C = {
@@ -25,10 +26,12 @@ const C = {
   twoHandLag: [0.03, 0.09] as const,
   orderShare: 0.9,
   unpromptedSeconds: 0.4,
+  trunkShare: 0.7,
+  strokeSeconds: 0.25,
+  placeboClearance: 1,
+  placeboPercentile: 0.95,
+  minimumPlacebo: 20,
 }
-
-/** Plan 2.2: required gate ids, fixed before any gesture code. */
-export const C001_REQUIRED = ['gesture.strokeP', 'gesture.strokeLagMs', 'coverage.arms', 'bilateral.upperArm.peakCorr', 'bilateral.lowerArm.peakCorr', 'bilateral.hand.peakCorr', 'smooth.armL.spikeRate', 'smooth.armR.spikeRate', 'onset.easedOrAnticipated', 'fingers.frozen'] as const
 
 export const GESTURE_TIMING_CONSTANTS: readonly ReportConstant[] = [
   { name: 'hit share', value: C.hitShare, unit: 'of labelled peaks', source: 'C001' },
@@ -42,6 +45,11 @@ export const GESTURE_TIMING_CONSTANTS: readonly ReportConstant[] = [
   { name: 'two-hand apex lag', value: `${C.twoHandLag[0]}..${C.twoHandLag[1]}`, unit: 's', source: 'plan 2.2: 4a 40-70 ms non-dominant lag, one frame wider each side' },
   { name: 'preparation order share', value: C.orderShare, unit: 'of unit preparations', source: 'plan 2.2: goal-2 gaze-order precedent' },
   { name: 'unprompted apex window', value: C.unpromptedSeconds, unit: 's', source: 'gate strokeChanceSeconds' },
+  { name: 'trunk participation share', value: C.trunkShare, unit: 'of hit peaks', source: 'unit M2 R2 (b), the C001 hit share' },
+  { name: 'stroke window', value: `apex - ${C.strokeSeconds} .. apex`, unit: 's', source: 'architecture 4a: longest stroke 250 ms' },
+  { name: 'placebo window', value: `${C.strokeSeconds} s, no labelled peak within ${C.placeboClearance} s`, unit: 's', source: 'unit M2 R2 (b): same length, same run' },
+  { name: 'placebo band', value: C.placeboPercentile, unit: 'percentile of placebo upper-torso displacement', source: 'unit M2 R2 (b)' },
+  { name: 'minimum placebo windows', value: C.minimumPlacebo, unit: 'windows', source: 'unit M2 R2 (b): a 95th percentile needs at least 20 samples' },
   { name: 'D_min', value: STROKE_CONSTANTS.minTravel.value, unit: STROKE_CONSTANTS.minTravel.unit, source: STROKE_CONSTANTS.minTravel.source },
   { name: 'apex window', value: STROKE_CONSTANTS.apexSeconds.value, unit: STROKE_CONSTANTS.apexSeconds.unit, source: STROKE_CONSTANTS.apexSeconds.source },
   { name: 'apex speed ratio', value: STROKE_CONSTANTS.apexRatio.value, unit: STROKE_CONSTANTS.apexRatio.unit, source: STROKE_CONSTANTS.apexRatio.source },
@@ -71,6 +79,10 @@ export interface FormFeatures {
 
 export interface GestureTimingDetail {
   readonly peaks: readonly { readonly t: number, readonly hit: boolean, readonly nearestApexMs: number | null }[]
+  readonly utterances: readonly { readonly start: number, readonly end: number, readonly apexes: number }[]
+  readonly trunk: { readonly torso: MotionTraceBone | null, readonly hits: readonly { readonly peak: number, readonly displacementDeg: number | null }[], readonly placeboWindows: number, readonly placeboP95Deg: number | null }
+  readonly gated: readonly { readonly id: string, readonly status: string, readonly value: number | null }[]
+  readonly reportOnly: readonly { readonly id: string, readonly status: string, readonly value: number | null }[]
   readonly apexes: readonly { readonly side: Side, readonly t: number }[]
   readonly unpromptedApexes: readonly number[]
   readonly markers: readonly StrokeMarker[]
@@ -177,7 +189,22 @@ function peakTime(run: LoadedRun, bone: MotionTraceBone, start: number, end: num
   return run.p.times[best]
 }
 
-/** C001 criterion-level report (plan 2.2): every rule and constant fixed before any gesture code. */
+/**
+ * Unit M2 R2 (b): the angle, degrees, by which the upper torso (the bone the shoulders hang from) turns relative to the
+ * hips between two trace times. Null outside the trace or without the bones.
+ */
+function torsoDisplacement(p: PreparedTrace, bone: MotionTraceBone | null, from: number, to: number): number | null {
+  const torso = bone ? p.orientations[bone] : undefined
+  const hips = p.orientations.hips
+  const i = Math.round((from - p.times[0]) * HZ)
+  const j = Math.round((to - p.times[0]) * HZ)
+  if (!torso || !hips || i < 0 || j >= p.times.length)
+    return null
+  const turn = multiply(conjugate(multiply(conjugate(hips[i]), torso[i])), multiply(conjugate(hips[j]), torso[j]))
+  return 2 * Math.acos(Math.min(1, Math.abs(turn[3]))) * DEG
+}
+
+/** C001 criterion-level report (plan 2.2, unit M2 R2): every rule and constant fixed before any gesture code. */
 export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile): CriterionReport<GestureTimingDetail> {
   const summary = requireSummary(run)
   const gate = requireGate(run)
@@ -191,6 +218,28 @@ export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile): Cri
     const lag = nearest ? nearest.t - t : null
     return { t, hit: lag !== null && Math.abs(lag) <= C.hitSeconds + 1e-9, nearestApexMs: lag === null ? null : lag * 1000 }
   })
+  const { scoredFrom, events } = run.input.trace
+  const voiceEnds = events.filter(e => e.kind === 'marker' && e.label === 'voice-end')
+  const utterances = events.flatMap((e) => {
+    if (e.kind !== 'marker' || e.label !== 'voice-start' || e.t < scoredFrom)
+      return []
+    const end = voiceEnds.find(x => x.t > e.t)?.t ?? p.times[p.times.length - 1]
+    return [{ start: e.t, end, apexes: apexes.filter(a => a.t >= e.t && a.t <= end).length }]
+  })
+  const torso = traceParent(p, 'leftShoulder')
+  const trunkHits = peaks.flatMap(peak => peak.hit && peak.nearestApexMs !== null
+    ? [{ peak: peak.t, displacementDeg: torsoDisplacement(p, torso, peak.t + peak.nearestApexMs / 1000 - C.strokeSeconds, peak.t + peak.nearestApexMs / 1000) }]
+    : [])
+  const placebo: number[] = []
+  for (let start = scoredFrom; start + C.strokeSeconds <= p.times[p.times.length - 1]; start += C.strokeSeconds) {
+    if (peaks.some(peak => peak.t >= start - C.placeboClearance && peak.t <= start + C.strokeSeconds + C.placeboClearance))
+      continue
+    const d = torsoDisplacement(p, torso, start, start + C.strokeSeconds)
+    if (d !== null)
+      placebo.push(d)
+  }
+  const placeboP95 = placebo.length >= C.minimumPlacebo ? percentile(placebo, C.placeboPercentile) : null
+  const trunkAbove = placeboP95 === null ? 0 : trunkHits.filter(h => h.displacementDeg !== null && h.displacementDeg > placeboP95).length
   const hits = peaks.filter(peak => peak.hit).length
   const unprompted = apexes.filter(a => !peaks.some(peak => Math.abs(a.t - peak.t) <= C.unpromptedSeconds)).map(a => a.t)
   const near = (t: number, sides: readonly Side[], window: number) => apexes.filter(a => sides.includes(a.side) && Math.abs(a.t - t) <= window + 1e-9).sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0] ?? null
@@ -237,6 +286,8 @@ export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile): Cri
   const penetration = Math.max(0, ...summary.perFrame.penL, ...summary.perFrame.penR)
   const corrector = summary.corrector
   const bilateral = gate.metrics.filter(m => m.id.startsWith('bilateral.') && m.band?.status === 'GATED')
+  const gated = gate.metrics.filter(m => m.band?.status === 'GATED').map(m => ({ id: m.id, status: m.status, value: m.value }))
+  const reportOnly = gate.metrics.filter(m => m.band?.status !== 'GATED').map(m => ({ id: m.id, status: m.status, value: m.value }))
   const ldlj = (['smooth.armL.ldlj', 'smooth.armR.ldlj'] as const).map((id) => {
     const band = printedBand(bands, 'talk', id)
     const { value } = gateStatus(gate, id)
@@ -247,18 +298,24 @@ export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile): Cri
     requirement('peaks-hit', `hits / peaks >= ${C.hitShare}, a hit being a kinematic apex within ${C.hitSeconds * 1000} ms`, `${hits}/${peaks.length} = ${fixed(peaks.length ? hits / peaks.length : null)}`, peaks.length > 0 && hits / peaks.length >= C.hitShare),
     requirement('markers-confirmed', `stroke markers with an apex of their hand within ${C.confirmSeconds * 1000} ms >= ${C.confirmedShare}`, `${confirmed.length}/${strokeMarkers.length}`, strokeMarkers.length > 0 && confirmed.length / strokeMarkers.length >= C.confirmedShare),
     requirement('forms', `>= ${C.minimumForms} confirmed forms differing pairwise by >= ${C.formDegrees} deg in one apex feature`, `${distinct.length} (${distinct.join(', ') || 'none'}) of ${Object.keys(forms).length} confirmed forms`, distinct.length >= C.minimumForms),
-    requirement('bilateral', 'every gated bilateral.*.peakCorr PASS in gate.json', bilateral.map(m => `${m.id} ${m.status}`).join(', ') || 'no gated bilateral metric', bilateral.length > 0 && bilateral.every(m => m.status === 'PASS')),
+    requirement('utterances', 'every utterance in the scored span contains a kinematic stroke apex', `${utterances.filter(u => u.apexes > 0).length}/${utterances.length}`, utterances.length > 0 && utterances.every(u => u.apexes > 0)),
+    requirement('trunk-participation', `upper-torso turn over [apex - ${C.strokeSeconds} s, apex] > placebo p${C.placeboPercentile * 100} on >= ${C.trunkShare} of hit peaks`, `${trunkAbove}/${trunkHits.length}; ${torso ?? 'no torso bone'} against hips; placebo p95 ${fixed(placeboP95, 3)} deg over ${placebo.length} windows`, placeboP95 !== null && trunkHits.length > 0 && trunkAbove / trunkHits.length >= C.trunkShare),
+    requirement('bilateral', 'every gated bilateral.*.peakCorr PASS in gate.json', bilateral.map(m => `${m.id} ${m.status}`).join(', ') || `none gated in gate version ${gate.gate.version} (report-only values listed below)`, bilateral.every(m => m.status === 'PASS')),
     requirement('one-hand', `one-hand stroke markers >= ${C.oneHandShare} of markers`, `${strokeMarkers.length - twoHand.length}/${strokeMarkers.length}`, strokeMarkers.length > 0 && (strokeMarkers.length - twoHand.length) / strokeMarkers.length >= C.oneHandShare),
     requirement('two-hand-lag', `every two-hand stroke's left and right apexes ${C.twoHandLag[0] * 1000}-${C.twoHandLag[1] * 1000} ms apart`, `${twoHand.length} two-hand strokes`, twoHandOk),
     requirement('preparation-order', `upper arm, then lower arm, then hand peak speed in >= ${C.orderShare} of unit preparations`, `${preparations.filter(x => x.ordered).length}/${preparations.length}`, preparations.length > 0 && preparations.filter(x => x.ordered).length / preparations.length >= C.orderShare),
     requirement('penetration', 'max(perFrame.penL, perFrame.penR) = 0', fixed(penetration, 6), penetration === 0),
     requirement('pops', 'arm pop count (plan 2.6) = 0', `${pops}`, pops === 0),
     requirement('corrector', 'capHits = guardScans = holds = 0 in summary.json', corrector ? `capHits ${corrector.capHits}, guardScans ${corrector.guardScans}, holds ${summary.collisions.count}` : 'summary has no corrector block', !!corrector && corrector.capHits === 0 && corrector.guardScans === 0 && summary.collisions.count === 0),
-    requirement('gate-required', 'every C001 required gate id PASS in gate.json', C001_REQUIRED.map(id => `${id} ${gateStatus(gate, id).status}`).join(', '), C001_REQUIRED.every(id => gateStatus(gate, id).status === 'PASS')),
+    requirement('gate-talk', 'gate.json judges the talk class and no gated metric FAILs, whatever gate version it names', `gate version ${gate.gate.version}, class ${gate.trace.class}; ${gated.map(m => `${m.id} ${m.status} ${fixed(m.value)}`).join(', ') || 'no gated metric'}`, gate.trace.class === 'talk' && gated.length > 0 && gated.every(m => m.status !== 'FAIL')),
     requirement('arm-ldlj', 'smooth.armL/R.ldlj inside the printed pooled talk band', ldlj.map(x => `${x.id} ${fixed(x.value)} [${fixed(x.band.lo, 2)}, ${fixed(x.band.hi, 2)}]`).join(', '), ldlj.every(x => x.inside)),
   ]
   return criterionReport('gesture-timing', GESTURE_TIMING_VERSION, [run.dir], GESTURE_TIMING_CONSTANTS, requirements, {
     peaks,
+    utterances,
+    trunk: { torso, hits: trunkHits, placeboWindows: placebo.length, placeboP95Deg: placeboP95 },
+    gated,
+    reportOnly,
     apexes: apexes.map(a => ({ side: a.side, t: a.t })),
     unpromptedApexes: unprompted,
     markers: strokeMarkers,
@@ -274,6 +331,11 @@ export function formatGestureTiming(report: CriterionReport<GestureTimingDetail>
   return formatReport(report, [
     'labelled peaks: t s, nearest apex ms, hit',
     ...d.peaks.map(x => `  ${x.t.toFixed(3)}\t${fixed(x.nearestApexMs, 1)}\t${x.hit ? 'hit' : 'miss'}`),
+    'utterances: start s, end s, kinematic apexes inside',
+    ...d.utterances.map(u => `  ${u.start.toFixed(3)}\t${u.end.toFixed(3)}\t${u.apexes}`),
+    `upper-torso turn at hit peaks (${d.trunk.torso ?? '-'} against hips, deg; placebo p95 ${fixed(d.trunk.placeboP95Deg, 3)} over ${d.trunk.placeboWindows} windows):`,
+    ...d.trunk.hits.map(h => `  ${h.peak.toFixed(3)}\t${fixed(h.displacementDeg, 3)}`),
+    `report-only gate values: ${d.reportOnly.map(m => `${m.id} ${m.status} ${fixed(m.value)}`).join(', ') || 'none'}`,
     `kinematic apexes: ${d.apexes.length} (left ${d.apexes.filter(a => a.side === 'left').length}, right ${d.apexes.filter(a => a.side === 'right').length}); unprompted (no peak within 400 ms): ${d.unpromptedApexes.length}`,
     'stroke markers: t s, form, hand, unit, confirmed by',
     ...d.markers.map(m => `  ${m.t.toFixed(3)}\t${m.form}\t${m.hand}\t${m.unitSeq}\t${m.confirmedBy ? `${m.confirmedBy.side} apex ${m.confirmedBy.t.toFixed(3)}` : '-'}`),
