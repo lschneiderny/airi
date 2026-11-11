@@ -8,6 +8,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 
 import { loadBands } from '../gate/load'
 import { formsDiffer, gestureTimingReport, largestDistinctSet } from './gesture-timing'
+import { ReportUsageError } from './report'
 import { armWorld, gateStub, loadedRun, moves, rotY, summaryStub, trace } from './test-runs'
 
 const repoRoot = fileURLToPath(new URL('../../../../..', import.meta.url))
@@ -17,6 +18,7 @@ beforeAll(async () => {
 })
 
 const FORMS = ['beat', 'palm-up', 'press', 'chop'] as const
+const IDLE = 50
 /** Talk metrics gate version 3 keeps gated; the bilateral metrics are report-only there. */
 const TALK_GATED = ['smooth.head.ldlj', 'onset.attackFraction', 'onset.easedOrAnticipated', 'gesture.strokeP', 'gesture.strokeLagMs', 'coverage.fingers', 'fingers.frozen'] as const
 
@@ -26,7 +28,7 @@ const TALK_GATED = ['smooth.head.ldlj', 'onset.attackFraction', 'onset.easedOrAn
  * and hand twist start 0, 60 and 120 ms apart (`order` reverses that). With each stroke the upper torso turns 2 deg
  * against the hips, as plan 3.1's torso participation (`torso: false` drops it); `silent` leaves one utterance's unit out.
  */
-function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', markerOffset?: number, still?: boolean, torso?: boolean, silent?: number } = {}) {
+function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', markerOffset?: number, still?: boolean, torso?: boolean, silent?: number, idleSway?: number, strokeSeconds?: number, strokeSize?: number } = {}) {
   const events: MotionTraceEvent[] = []
   const upper: { start: number, duration: number, by: number }[] = []
   const elbow: { start: number, duration: number, by: number }[] = []
@@ -35,8 +37,11 @@ function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', 
   const lag = options.order === 'distal' ? [0.12, 0.06, 0] : [0, 0.06, 0.12]
   let form = 0
   let twistNow = 0
+  // A silent lead of idle sway: slow 0.03 rad swings, 2 s apart, each with an apex, so the run has its own idle speed bar.
+  for (let i = 0; i < (options.idleSway ?? 25); i++)
+    upper.push({ start: 2 + 2 * i, duration: 0.4, by: (i % 2 ? -1 : 1) * 0.03 })
   for (let unit = 0; unit < 3; unit++) {
-    const begin = 1 + unit * 9
+    const begin = IDLE + 1 + unit * 9
     events.push({ t: begin, kind: 'marker', label: 'voice-start' }, { t: begin + 8, kind: 'marker', label: 'voice-end' })
     if (unit === options.silent) {
       for (let k = 0; k < 4; k++)
@@ -52,7 +57,9 @@ function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', 
       const peak = begin + 1.5 + 1.5 * k
       const end = peak + (options.apexOffset ?? 0)
       const target = [0, 30, 60, 90][form] * Math.PI / 180 + 0.3
-      upper.push({ start: end - 0.15, duration: 0.15, by: 0.1 }, { start: end, duration: 0.3, by: 0.002 }, { start: end + 0.5, duration: 0.3, by: -0.102 })
+      const stroke = options.strokeSeconds ?? 0.15
+      const size = options.strokeSize ?? 0.1
+      upper.push({ start: end - stroke, duration: stroke, by: size }, { start: end, duration: 0.3, by: 0.002 }, { start: end + 0.5, duration: 0.3, by: -size - 0.002 })
       twist.push({ start: end - 0.15, duration: 0.15, by: target - twistNow })
       twistNow = target
       torso.push({ start: end - 0.15, duration: 0.15, by: 2 * Math.PI / 180 }, { start: end + 0.5, duration: 0.3, by: -2 * Math.PI / 180 })
@@ -63,7 +70,7 @@ function speaker(options: { apexOffset?: number, order?: 'proximal' | 'distal', 
     events.push({ t: begin + 8, kind: 'marker', label: 'gesture-unit:end' })
   }
   const input = trace({
-    seconds: 29,
+    seconds: IDLE + 29,
     scenario: 'talk',
     events,
     world: options.still ? undefined : armWorld({ upper: moves(upper), elbow: moves(elbow), twist: moves(twist) }, {}, (bone, t) => bone === 'upperChest' && options.torso !== false ? rotY(moves(torso)(t)) : null),
@@ -82,11 +89,9 @@ describe('gesture-timing report (C001, plan 2.2)', () => {
     expect(report.verdict).toBe('PASS')
   })
 
-  it('fails the vacuous case in which nothing moves', () => {
+  it('refuses the vacuous case in which nothing moves: no idle, no speed bar, never a pass', () => {
     const { input, gate } = speaker({ still: true })
-    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands)
-    expect(report.verdict).toBe('FAIL')
-    expect(report.requirements.find(r => r.id === 'peaks-hit')?.pass).toBe(false)
+    expect(() => gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands)).toThrow(ReportUsageError)
   })
 
   it.each([[0.19, true], [-0.19, true], [0.25, false]] as const)('counts an apex %s s from its peak as a hit: %s', (offset, hit) => {
@@ -105,6 +110,18 @@ describe('gesture-timing report (C001, plan 2.2)', () => {
     const { input, gate } = speaker({ order: 'distal' })
     const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands)
     expect(report.requirements.find(r => r.id === 'preparation-order')?.pass).toBe(false)
+  })
+
+  it('refuses a run whose silent spans hold fewer than 20 idle apexes', () => {
+    const { input, gate } = speaker({ idleSway: 19 })
+    expect(() => gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands)).toThrow(ReportUsageError)
+  })
+
+  it('does not count strokes slower than the run\'s own idle sway (unit M3 item 1)', () => {
+    const { input, gate } = speaker({ strokeSeconds: 0.4, strokeSize: 0.02, torso: false })
+    const report = gestureTimingReport(loadedRun(input, summaryStub(input), gate), bands)
+    expect(report.requirements.find(r => r.id === 'peaks-hit')?.value).toMatch(/^0\/12/)
+    expect(report.requirements.find(r => r.id === 'utterances')?.pass).toBe(false)
   })
 
   it('fails an utterance without a stroke (R2 a)', () => {
