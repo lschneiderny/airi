@@ -28,6 +28,9 @@ const bodyStageIds: ReadonlySet<string> = new Set(MMD_BODY_POSE_STAGE_IDS)
  * `qa:stage capture` refuses a scene whose reported ids differ from `MMD_POSE_STAGE_IDS` and `MMD_SURFACE_STAGE_IDS`.
  */
 export function composeMMDStages(parts: MMDStageParts): { pose: MMDFrameStage[], surface: MMDFrameStage[] } {
+  const unplaced = parts.body.poseStages.filter(stage => !bodyStageIds.has(stage.id))
+  if (unplaced.length)
+    throw new TypeError(`MMDBody pose stages without a slot in the composition: ${unplaced.map(stage => stage.id).join(', ')}`)
   const body = new Map(parts.body.poseStages.map(stage => [stage.id, stage]))
   const host = new Map<string, MMDFrameStage['run']>(Object.entries(parts.host))
   const pose = MMD_POSE_STAGE_IDS.map((id): MMDFrameStage => {

@@ -22,6 +22,10 @@ describe('mmd stage composition', () => {
     expect(stages.pose.slice(7).every(stage => stage.run === stages.pose[7].run && stage.run !== natural)).toBe(true)
   })
 
+  it('refuses a body pose stage the composition has no slot for', () => {
+    expect(() => composeMMDStages({ body: { ...body, poseStages: [...body.poseStages, bodyStage('body-extra')] }, host: {} })).toThrow(/body-extra/)
+  })
+
   it('refuses a body without one of its pose stages', () => {
     expect(() => composeMMDStages({ body: { ...body, poseStages: body.poseStages.slice(1) }, host: {} })).toThrow(/locomotion/)
   })
