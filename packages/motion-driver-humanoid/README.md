@@ -431,7 +431,23 @@ nor does any emotion term reach a group owned above 0.5. Think requests the
 thinking hand, and sad, love and flustered the hand to chest, through
 `plan.armForm` while their weight exceeds 0.5; angry and think force the
 support. The layer's `modulation` exposes 4c's tempo, amplitude, tension and
-breath depth for the generators, and `sighSeq` counts sighing onsets.
+breath depth for the generators, and `sighSeq` counts sighing onsets. The
+posture's `tempo` and `amplitude` and the breath's `depth` and `sigh()` are the
+hooks the performer feeds from that modulation; each is exact at its neutral
+value.
+
+`createCueLayer()` (`src/performance/cues.ts`, not yet registered) realises
+Natural's cue gestures on the whole body, after architecture 4b. It plays the nod
+(with a 1-degree lift first) and the shake (toward Natural's side, no
+anticipation) on the head itself, at Natural's period and amplitude, and sets
+`plan.suppressHeadCue` so `BodyPosture.suppressHeadCue` drops Natural's cue term
+from the head accent; the performer must copy that flag each tick, or the head
+nods twice. The shrug lifts both clavicles unequally with the far one 40 ms late,
+the lean forces the support to the cue's side, and the glance plans the gaze 14
+degrees to the side while the upper torso follows the head's turn through a
+250 ms link. `CUE_SCALES` holds each cue's below-neck size as a multiple of 4b's
+terms. Every term is additive and starts and ends at rest with zero slope;
+owned groups receive none.
 
 `gait.channels` is already mapped to this table: pelvis, hips and feet override
 by gait weight, and torso/arm terms add. `armLift` is the existing hang solver's
