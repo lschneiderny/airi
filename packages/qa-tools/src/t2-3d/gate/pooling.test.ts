@@ -23,23 +23,24 @@ describe('emotion directory pooling', () => {
     const dirs = await Promise.all([1, 2].map(() => mkdtemp(join(tmpdir(), 'motion3d-emotion-'))))
     try {
       for (const [seed, dir] of dirs.entries()) {
-        const events: MotionTraceEvent[] = Array.from({ length: 6 }, (_, i) => ({
+        // Per seed: three happy pulses, three placebos, then two neutral pulses.
+        const events: MotionTraceEvent[] = Array.from({ length: 8 }, (_, i) => ({
           kind: 'emotion',
           t: 5 + 12 * i,
-          phase: i < 3 ? 'pulse' : 'placebo',
-          emotion: 'happy',
+          phase: i < 3 || i >= 6 ? 'pulse' : 'placebo',
+          emotion: i >= 6 ? 'neutral' : 'happy',
           band: 'clear',
           trialId: `${seed}/${i}`,
         }))
         const input = analyticTrace({
-          seconds: 75,
+          seconds: 100,
           bones: CORE,
           scenario: 'emotion',
           events,
           world: (bone, t) => {
             const i = events.findIndex(e => t >= e.t + 1 && t <= e.t + 5)
             const arm = /Arm|Hand|Shoulder/.test(bone)
-            const a = i < 0 || !arm ? 0 : (i < 3 ? 0.3 : 0) + (i % 3 - 1 + seed * 0.2) * 0.01
+            const a = i < 0 || !arm ? 0 : (i < 3 ? 0.3 : i >= 6 ? -0.3 : 0) + (i % 3 - 1 + seed * 0.2) * 0.01
             // Seeded drift keeps every observation's measured frames distinct.
             return angleX(arm ? a + 1e-4 * Math.sin(1.7 * t + seed + CORE.findIndex(b => b === bone)) : a)
           },
@@ -50,11 +51,8 @@ describe('emotion directory pooling', () => {
       for (const dir of dirs) {
         const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
         expect(verdict.verdict).toBe('PASS')
-        expect(verdict.pooledFrom).toMatchObject({ traces: dirs.map(directory => ({ directory })), trialCounts: { happy: 6, placebo: 6 } })
-        const separation = verdict.metrics.find((m: { id: string }) => m.id === 'emotion.minSeparation')
-        expect(separation).toMatchObject({ status: 'REPORT', basis: 'declared' })
-        expect(separation.value).toBeGreaterThanOrEqual(2)
-        expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.minSeparationFromNeutral', status: 'SKIPPED', detail: 'no-neutral-condition' }))
+        expect(verdict.pooledFrom).toMatchObject({ traces: dirs.map(directory => ({ directory })), trialCounts: { happy: 6, neutral: 4, placebo: 6 } })
+        expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.minSeparationFromNeutral', status: 'PASS', basis: 'declared' }))
         expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.armShare', status: 'PASS', value: 1 }))
       }
     }

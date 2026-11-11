@@ -86,7 +86,8 @@ export function emotionTrials(p: PreparedTrace): EmotionTrial[] {
  * min/median separation are standard-deviation units; armShare is squared arm displacement / total.
  * minSeparationFromNeutral is min over every emotion e other than neutral of min(d(e,neutral), d(e,placebo)),
  * with the same sigma; the neutral-placebo pair is excluded because neutral has no posture of its own.
- * It is skipped when the pool has no `neutral` condition, like a pool with too few trials.
+ * A pool with no `neutral` condition cannot show that any emotion is clear of neutral, so the
+ * value is undefined (a gated FAIL) with detail `no-neutral-condition`, never a skip.
  * Trials may originate in multiple traces; the shared present bone intersection aligns their vectors.
  */
 export function emotionMetrics(trials: readonly EmotionTrial[]): MetricResult[] {
@@ -131,6 +132,6 @@ export function emotionMetrics(trials: readonly EmotionTrial[]): MetricResult[] 
     result(ids[2], 'fraction', 'trace', shares.length ? mean(shares) : null),
     neutral
       ? result(ids[3], 'standard-deviations', 'trace', fromNeutral.length ? Math.min(...fromNeutral) : null)
-      : skipped(ids[3], 'standard-deviations', 'trace', 'no-neutral-condition'),
+      : result(ids[3], 'standard-deviations', 'trace', null, 'undefined: no-motion', 'no-neutral-condition'),
   ]
 }

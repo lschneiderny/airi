@@ -17,20 +17,34 @@ export const context = { repoRoot, cwd: repoRoot, signal: new AbortController().
 export interface FixtureTrial {
   readonly t: number
   readonly phase: 'pulse' | 'placebo'
+  /** Pulse emotion, `happy` by default. */
+  readonly emotion?: 'happy' | 'neutral'
 }
 
-const fourTrials: readonly FixtureTrial[] = [12, 24, 40, 52].map((t, i) => ({ t, phase: i < 2 ? 'pulse' : 'placebo' }))
+/** One happy pair, one neutral pulse and two placebos per trace, so three seeds pool 6 happy, 3 neutral and 6 placebo trials. */
+const defaultTrials: readonly FixtureTrial[] = [
+  { t: 12, phase: 'pulse' },
+  { t: 24, phase: 'pulse' },
+  { t: 32, phase: 'pulse', emotion: 'neutral' },
+  { t: 40, phase: 'placebo' },
+  { t: 52, phase: 'placebo' },
+]
+
+/** The same trials without the neutral pulse: a pool of these has no neutral condition. */
+export const happyAndPlaceboTrials: readonly FixtureTrial[] = defaultTrials.filter(trial => trial.emotion !== 'neutral')
+
+const HELD_ARM_ANGLE = { happy: 0.3, neutral: -0.3 } as const
 
 /**
  * Arm bones carry a seeded sub-milliradian drift, so distinct seeds and distinct
- * trials never share a measured pose; held arm angles separate pulse from placebo.
+ * trials never share a measured pose; held arm angles separate happy, neutral and placebo.
  */
 export function emotionInput(seed: number, options: { readonly prefix?: string, readonly trials?: readonly FixtureTrial[], readonly seconds?: number } = {}): DecodedMotionTrace {
-  const trials = options.trials ?? fourTrials
+  const trials = options.trials ?? defaultTrials
   const events: MotionTraceEvent[] = trials.map((trial, i) => ({
     t: trial.t + seed * 0.05,
     kind: 'emotion',
-    emotion: 'happy',
+    emotion: trial.emotion ?? 'happy',
     band: 'clear',
     phase: trial.phase,
     trialId: `${options.prefix ?? `seed-${seed}`}/${i}`,
@@ -44,7 +58,7 @@ export function emotionInput(seed: number, options: { readonly prefix?: string, 
       if (!/Arm|Hand|Shoulder/.test(bone))
         return angleX(0)
       const i = events.findIndex(e => t >= e.t + 1 && t <= e.t + 5)
-      const held = i < 0 ? 0 : (trials[i].phase === 'pulse' ? 0.3 : 0) + (i % 2 ? 0.01 : -0.01) + seed * 0.001
+      const held = i < 0 ? 0 : (trials[i].phase === 'pulse' ? HELD_ARM_ANGLE[trials[i].emotion ?? 'happy'] : 0) + (i % 2 ? 0.01 : -0.01) + seed * 0.001
       return angleX(held + 1e-4 * Math.sin(1.7 * t + seed + CORE.findIndex(b => b === bone)))
     },
   })

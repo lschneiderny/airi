@@ -74,13 +74,13 @@ describe('emotion observation reuse', () => {
   })
 
   it('scores a single trace whose trials are well separated', async () => {
-    const trials = Array.from({ length: 8 }, (_, i) => ({ t: 12 + 10 * i, phase: i < 3 ? 'pulse' as const : 'placebo' as const }))
-    await withTraces([encoded(emotionInput(1, { trials, seconds: 100 }))], async (dirs) => {
+    const trials = Array.from({ length: 11 }, (_, i) => ({ t: 12 + 10 * i, phase: i < 6 ? 'pulse' as const : 'placebo' as const, emotion: i < 3 ? 'happy' as const : 'neutral' as const }))
+    await withTraces([encoded(emotionInput(1, { trials, seconds: 130 }))], async (dirs) => {
       await gateMotion3d(dirs, context)
       const [verdict] = await readVerdicts(dirs)
       expect(verdict.refusal).toBeNull()
-      expect(verdict.pooledFrom.trialCounts).toEqual({ happy: 3, placebo: 5 })
-      expect(verdict.metrics.find((m: { id: string }) => m.id === 'emotion.minSeparation')?.value).toBeGreaterThanOrEqual(2)
+      expect(verdict.pooledFrom.trialCounts).toEqual({ happy: 3, neutral: 3, placebo: 5 })
+      expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.minSeparationFromNeutral', status: 'PASS' }))
     })
   })
 })

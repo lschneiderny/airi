@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { gateMotion3d } from '../cli/gate'
-import { context, emotionTrace, runnerTrace, withTraces } from './pool-fixture'
+import { context, emotionInput, emotionTrace, encoded, happyAndPlaceboTrials, runnerTrace, withTraces } from './pool-fixture'
 
 describe('emotion pool admission', () => {
   it('refuses three copied directories rather than multiplying insufficient evidence', async () => {
@@ -72,7 +72,7 @@ describe('emotion pool admission', () => {
       expect(await gateMotion3d(dirs, context)).toBe(0)
       for (const dir of dirs) {
         const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
-        expect(verdict).toMatchObject({ verdict: 'PASS', pooledFrom: { trialCounts: { happy: 6, placebo: 6 } } })
+        expect(verdict).toMatchObject({ verdict: 'PASS', pooledFrom: { trialCounts: { happy: 6, neutral: 3, placebo: 6 } } })
         expect(verdict.pooledFrom.traces).toEqual(dirs.map(directory => ({
           directory,
           sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -94,8 +94,8 @@ describe('runner seed cohorts', () => {
       expect(await gateMotion3d(dirs, context)).toBe(0)
       for (const dir of dirs) {
         const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
-        expect(verdict).toMatchObject({ verdict: 'PASS', pooledFrom: { trialCounts: { happy: 6, placebo: 6 } } })
-        expect(verdict.metrics.find((m: { id: string }) => m.id === 'emotion.minSeparation')?.value).toBeGreaterThanOrEqual(2)
+        expect(verdict).toMatchObject({ verdict: 'PASS', pooledFrom: { trialCounts: { happy: 6, neutral: 3, placebo: 6 } } })
+        expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.minSeparationFromNeutral', status: 'PASS' }))
       }
     })
   })
@@ -140,9 +140,9 @@ describe('runner seed cohorts', () => {
 
 describe('required gate metrics', () => {
   it.each([
-    { ids: 'emotion.armShare', passed: true, code: 0 },
+    { ids: 'emotion.minSeparationFromNeutral', passed: true, code: 0 },
+    { ids: 'emotion.minSeparationFromNeutral,emotion.armShare', passed: true, code: 0 },
     { ids: 'emotion.minSeparation', passed: false, code: 1 },
-    { ids: 'emotion.minSeparationFromNeutral,emotion.armShare', passed: false, code: 1 },
     { ids: 'onset.attackFraction', passed: false, code: 1 },
     { ids: 'emotion.medianSeparation', passed: false, code: 1 },
     { ids: 'gait.headLeadMs', passed: false, code: 1 },
@@ -152,6 +152,19 @@ describe('required gate metrics', () => {
       for (const dir of dirs) {
         const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
         expect(verdict).toMatchObject({ verdict: 'PASS', requirements: { metrics: ids.split(','), passed } })
+      }
+    })
+  })
+
+  it('fails a pool without a neutral condition on the separation from neutral', async () => {
+    const traces = [1, 2, 3].map(seed => encoded(emotionInput(seed, { trials: happyAndPlaceboTrials })))
+    await withTraces(traces, async (dirs) => {
+      expect(await gateMotion3d([...dirs, '--require', 'emotion.minSeparationFromNeutral,emotion.armShare'], context)).toBe(1)
+      for (const dir of dirs) {
+        const verdict = JSON.parse(await readFile(join(dir, 'gate.json'), 'utf8'))
+        expect(verdict).toMatchObject({ verdict: 'FAIL', pooledFrom: { trialCounts: { happy: 6, placebo: 6 } }, requirements: { passed: false } })
+        expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.minSeparationFromNeutral', status: 'FAIL', value: null, detail: 'no-neutral-condition' }))
+        expect(verdict.metrics).toContainEqual(expect.objectContaining({ id: 'emotion.armShare', status: 'PASS' }))
       }
     })
   })
