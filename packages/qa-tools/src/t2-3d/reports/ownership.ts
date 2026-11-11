@@ -6,7 +6,7 @@ import type { CriterionReport, LoadedRun, ReportConstant } from './report'
 import { ARM_NOISE_DEGREES } from '@proj-airi/motion-driver-humanoid/performance'
 
 import { apexTimes } from './kinematics'
-import { armPopBones, popEvents } from './pops'
+import { popEvents, upperBodyPopBones } from './pops'
 import { criterionReport, fixed, formatReport, gateStatus, labelledPeaks, markers, printedBand, ReportUsageError, requireGate, requirement, requireSummary } from './report'
 
 export const OWNERSHIP_VERSION = 1
@@ -105,7 +105,7 @@ export function ownershipReport(run: LoadedRun, bands: MotionBandsFile): Criteri
   const near = (t: number, side?: 'left' | 'right') => apexes.some(a => (!side || a.side === side) && Math.abs(a.t - t) <= C.hitSeconds + 1e-9)
   const leftHits = ownedPeaks.filter(t => near(t, 'left')).length
   const pokes = input.trace.events.flatMap(e => e.kind === 'touch' && e.touch === 'poke' ? [e.t] : [])
-  const pokePops = pokes.reduce((n, t) => n + popEvents(p, [...armPopBones, ...TRUNK], t + C.pokeWindow[0], t + C.pokeWindow[1]).length, 0)
+  const pokePops = pokes.reduce((n, t) => n + popEvents(p, [...new Set([...upperBodyPopBones, ...TRUNK])], t + C.pokeWindow[0], t + C.pokeWindow[1]).length, 0)
   const spikeBand = printedBand(bands, 'talk', 'smooth.armL.spikeRate')
   const spikes = (['smooth.armL.spikeRate', 'smooth.armR.spikeRate'] as const).map(id => ({ id, value: gateStatus(gate, id).value }))
   const resumePeak = pokes.length ? peaks.find(t => t >= pokes[0] + C.resumeAfter) ?? null : null
@@ -119,7 +119,7 @@ export function ownershipReport(run: LoadedRun, bands: MotionBandsFile): Criteri
     return { joint, deg, restDeg: rest[joint], band, inside: Math.abs(deg - rest[joint]) <= band }
   })
   const penetration = Math.max(0, ...summary.perFrame.penL, ...summary.perFrame.penR)
-  const allPops = popEvents(p, armPopBones).length
+  const allPops = popEvents(p, upperBodyPopBones).length
   const { corrector } = summary
   const requirements = [
     requirement('owned-arm-untouched', `write deviation of the right arm and fingers <= ${C.deviationRad} rad on fully owned frames`, `rightArm ${fixed(maxDeviation('rightArm'), 6)}, rightFingers ${fixed(maxDeviation('rightFingers'), 6)} over ${full.length} frames`, full.length > 0 && maxDeviation('rightArm') <= C.deviationRad && maxDeviation('rightFingers') <= C.deviationRad),
@@ -131,7 +131,7 @@ export function ownershipReport(run: LoadedRun, bands: MotionBandsFile): Criteri
     requirement('no-stale-stroke', `no unmatched right apex in [release, release + ${C.staleSeconds}] s`, release === null ? 'no release' : `${staleApexes.length}`, release !== null && staleApexes.length === 0),
     requirement('rest-band', `right arm angles within rest +/- ${C.restNoiseScale} x idle noise at release + ${C.restCheckAfter} s`, `${restCheck.filter(r => r.inside).length}/${restCheck.length} joints`, restCheck.length === 9 && restCheck.every(r => r.inside)),
     requirement('penetration', 'max(perFrame.penL, perFrame.penR) = 0', fixed(penetration, 6), penetration === 0),
-    requirement('pops', 'arm pop count over the run = 0', `${allPops}`, allPops === 0),
+    requirement('pops', 'upper-body pop count over the run = 0 (plan 2.6, unit M3)', `${allPops}`, allPops === 0),
     requirement('corrector', 'capHits = guardScans = holds = 0', `capHits ${corrector.capHits}, guardScans ${corrector.guardScans}, holds ${corrector.holds}`, corrector.capHits === 0 && corrector.guardScans === 0 && corrector.holds === 0),
   ]
   return criterionReport('ownership', OWNERSHIP_VERSION, [run.dir], OWNERSHIP_CONSTANTS, requirements, {

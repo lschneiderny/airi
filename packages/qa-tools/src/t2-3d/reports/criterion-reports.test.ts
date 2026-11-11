@@ -11,8 +11,8 @@ import { loadBands } from '../gate/load'
 import { cueBodyReport } from './cue-body'
 import { C002_REQUIRED, emotionTableReport } from './emotion-table'
 import { ownershipReport } from './ownership'
-import { popsReport } from './pops'
-import { armWorld, gateStub, loadedRun, moves, rotX, summaryStub, trace } from './test-runs'
+import { popsReport, upperBodyPopBones } from './pops'
+import { armWorld, gateStub, loadedRun, moves, rotX, rotY, summaryStub, trace } from './test-runs'
 import { turnReport } from './turn'
 
 const repoRoot = fileURLToPath(new URL('../../../../..', import.meta.url))
@@ -208,6 +208,21 @@ describe('pops report (plan 2.6)', () => {
     expect(popsReport(loadedRun(smooth, null, null)).verdict).toBe('PASS')
     expect(popsReport(loadedRun(trace({ seconds: 3, scenario: 'talk' }), null, null)).verdict).toBe('PASS')
     const step = trace({ seconds: 3, scenario: 'talk', world: armWorld({}, { elbow: t => t >= 1.5 ? 2.3 * DEG : 0 }) })
-    expect(popsReport(loadedRun(step, null, null)).detail.arm).toMatchObject([{ bone: 'rightLowerArm', kind: 'position-step' }])
+    expect(popsReport(loadedRun(step, null, null)).detail.upperBody).toMatchObject([{ bone: 'rightLowerArm', kind: 'position-step' }])
+  })
+
+  // A one-frame 1 degree step of one bone carries its descendants with it; only the bone that stepped is charged.
+  it.each(upperBodyPopBones)('finds an injected 1 degree one-frame step on %s and on no other bone', (stepped) => {
+    const { bones, parents } = trace({ seconds: 1, scenario: 'talk' }).trace.rig
+    const carried = (bone: MotionTraceBone): boolean => bone === stepped || (parents[bones.indexOf(bone)] >= 0 && carried(bones[parents[bones.indexOf(bone)]]))
+    const input = trace({ seconds: 3, scenario: 'talk', world: (bone, t) => rotX(carried(bone) && t >= 1.5 ? DEG : 0) })
+    expect(popsReport(loadedRun(input, null, null)).detail.upperBody.map(pop => pop.bone)).toEqual([stepped])
+  })
+
+  // As measured on the goal-2 gaze trace: the chest steps, the upper chest takes back half and its children re-add it.
+  it('charges a chest step to the chest, not to the upper chest, neck and shoulders that carry it on', () => {
+    const below = (bone: MotionTraceBone) => !['hips', 'spine', 'chest', 'upperChest'].includes(bone) && !bone.includes('Leg') && !bone.includes('Foot')
+    const input = trace({ seconds: 3, scenario: 'talk', world: (bone, t) => rotY(t < 1.5 ? 0 : bone === 'chest' || below(bone) ? 2 * DEG : bone === 'upperChest' ? DEG : 0) })
+    expect(popsReport(loadedRun(input, null, null)).detail.upperBody.map(pop => pop.bone)).toEqual(['chest'])
   })
 })

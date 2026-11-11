@@ -215,7 +215,7 @@ the gate's own verdict is never changed by them.
 | `pnpm qa:motion3d cue-body <emotions run>...` | C002 (version 2): a cue event counts when the largest below-neck bone turn over the cue and 0.5 s after it, in units of that bone's SD over same-length placebo windows of the same runs (1 s clear of every cue window and of each emotion event's first 2 s), exceeds the 95th percentile of the same largest-of-bones statistic over those windows; every cue kind must count on at least 5 of its 6 events, with at least 20 placebo windows. `--calibrate <run>...` prints the split-half control instead: each half of the placebo windows scored against the model fitted on the other half, at most 10 % flagged (exit 1 above). |
 | `pnpm qa:motion3d ownership <gesture-under-clip run>` | C004: the right arm and fingers written within 0.001 rad of the clip on fully owned frames, with a trace cross-check against the clip's analytic pose; no gesture activation on an owned arm; the left arm still gesturing; no pop around the poke; a stroke after the poke; no stale right stroke and a right arm back in its rest band after the release. |
 | `pnpm qa:motion3d turn <capture>` | C003: a kinematic stroke apex inside speech, a trunk, neck, head and shoulder posture change after the ACT emotion cue above 20 pseudo-placebo times before it, and the gate verdict. |
-| `pnpm qa:motion3d pops <run>...` | Plan 2.6: one-frame velocity spikes and isolated velocity steps of 30 deg/s or more on the shoulder, upper arm, lower arm and hand (fingers reported only). |
+| `pnpm qa:motion3d pops <run>...` | Plan 2.6 (version 2): one-frame velocity spikes and isolated velocity steps of 30 deg/s or more on the spine, chest, upper chest, neck, head and both shoulders, upper arms, lower arms and hands (fingers reported only). A pop is charged to the bone that stepped: a bone's pop is dropped when its direct trace parent pops on the same frame, because only the parent's own step reaches the child's relative velocity. `gesture-timing` and `ownership` require 0 on the same bones. |
 
 The shared building blocks are in `src/t2-3d/reports/kinematics.ts`: the wrist
 path in arm lengths, in the frame of the bone the shoulder hangs from
@@ -231,7 +231,8 @@ reported as stopped, not tuned. The pop classifier, sampled at 60 Hz, cannot
 see a one-frame step of 2.3 degrees in the middle of a stroke of 150 ms or less
 (in 110 ms strokes it misses 6 of 11 injected phases, in 150 ms strokes 5 of
 11); it finds every such step in strokes of 200 and 250 ms. Every pops report
-prints this limit. The arm corrector's 6 degree cap and its guard scan, the
+prints this limit. Pops cover the whole upper body and are charged to the bone that
+stepped (see the `pops` row above). The arm corrector's 6 degree cap and its guard scan, the
 known source of such steps, are counted in `summary.json` and required to be 0
 by `gesture-timing` and `ownership`. `cue-body`'s split-half control
 holds on the goal-3 emotion runs, but architecture 4b's trunk terms for the

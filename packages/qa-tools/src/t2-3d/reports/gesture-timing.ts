@@ -8,7 +8,7 @@ import type { CriterionReport, LoadedRun, ReportConstant } from './report'
 import { percentile } from '../gate/bands'
 import { conjugate, DEG, HZ, median, multiply, norm, sub } from '../metrics/math'
 import { handPath, kinematicStrokes, SIDES, STROKE_CONSTANTS, traceParent } from './kinematics'
-import { armPopBones, popCount } from './pops'
+import { popCount, upperBodyPopBones } from './pops'
 import { criterionReport, fixed, formatReport, gateStatus, labelledPeaks, markers, printedBand, requireGate, requirement, requireSummary } from './report'
 
 export const GESTURE_TIMING_VERSION = 2
@@ -282,7 +282,7 @@ export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile): Cri
       return { unitSeq: first.unitSeq, side, upperMs: ms(upper), lowerMs: ms(lower), handMs: ms(hand), ordered }
     })
   })
-  const pops = popCount(p, armPopBones)
+  const pops = popCount(p, upperBodyPopBones)
   const penetration = Math.max(0, ...summary.perFrame.penL, ...summary.perFrame.penR)
   const corrector = summary.corrector
   const bilateral = gate.metrics.filter(m => m.id.startsWith('bilateral.') && m.band?.status === 'GATED')
@@ -305,7 +305,7 @@ export function gestureTimingReport(run: LoadedRun, bands: MotionBandsFile): Cri
     requirement('two-hand-lag', `every two-hand stroke's left and right apexes ${C.twoHandLag[0] * 1000}-${C.twoHandLag[1] * 1000} ms apart`, `${twoHand.length} two-hand strokes`, twoHandOk),
     requirement('preparation-order', `upper arm, then lower arm, then hand peak speed in >= ${C.orderShare} of unit preparations`, `${preparations.filter(x => x.ordered).length}/${preparations.length}`, preparations.length > 0 && preparations.filter(x => x.ordered).length / preparations.length >= C.orderShare),
     requirement('penetration', 'max(perFrame.penL, perFrame.penR) = 0', fixed(penetration, 6), penetration === 0),
-    requirement('pops', 'arm pop count (plan 2.6) = 0', `${pops}`, pops === 0),
+    requirement('pops', 'upper-body pop count (plan 2.6, unit M3) = 0', `${pops}`, pops === 0),
     requirement('corrector', 'capHits = guardScans = holds = 0 in summary.json', corrector ? `capHits ${corrector.capHits}, guardScans ${corrector.guardScans}, holds ${summary.collisions.count}` : 'summary has no corrector block', !!corrector && corrector.capHits === 0 && corrector.guardScans === 0 && summary.collisions.count === 0),
     requirement('gate-talk', 'gate.json judges the talk class and no gated metric FAILs, whatever gate version it names', `gate version ${gate.gate.version}, class ${gate.trace.class}; ${gated.map(m => `${m.id} ${m.status} ${fixed(m.value)}`).join(', ') || 'no gated metric'}`, gate.trace.class === 'talk' && gated.length > 0 && gated.every(m => m.status !== 'FAIL')),
     requirement('arm-ldlj', 'smooth.armL/R.ldlj inside the printed pooled talk band', ldlj.map(x => `${x.id} ${fixed(x.value)} [${fixed(x.band.lo, 2)}, ${fixed(x.band.hi, 2)}]`).join(', '), ldlj.every(x => x.inside)),

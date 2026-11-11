@@ -5,16 +5,38 @@ import type { Pop } from './kinematics'
 import type { CriterionReport, LoadedRun } from './report'
 
 import { isFinger } from '../metrics/bones'
-import { POP_CONSTANTS, pops } from './kinematics'
+import { POP_CONSTANTS, pops, traceParent } from './kinematics'
 import { criterionReport, formatReport, requirement } from './report'
 
-export const POPS_VERSION = 1
+export const POPS_VERSION = 2
 
-/** Plan 2.6: the shoulder, upper arm, lower arm and hand of both sides are required; fingers are reported only. */
-export const armPopBones: readonly MotionTraceBone[] = (['left', 'right'] as const).flatMap(side => (['Shoulder', 'UpperArm', 'LowerArm', 'Hand'] as const).map(joint => `${side}${joint}` as const))
+/**
+ * Unit M3: the spine, chest, upper chest, neck, head and the shoulder, upper arm, lower arm and hand of both sides are
+ * required; fingers are reported only. A rig without one of these bones skips it.
+ */
+export const upperBodyPopBones: readonly MotionTraceBone[] = [
+  'spine',
+  'chest',
+  'upperChest',
+  'neck',
+  'head',
+  ...(['left', 'right'] as const).flatMap(side => (['Shoulder', 'UpperArm', 'LowerArm', 'Hand'] as const).map(joint => `${side}${joint}` as const)),
+]
 
+/**
+ * Unit M3 attribution: a pop is charged to the bone that stepped. A bone's pop is dropped when its direct trace parent
+ * pops on the same frame, because only the parent's own step reaches the child's relative velocity; chains follow
+ * transitively. A grandparent's velocity step that the parent carries smoothly does not count.
+ */
 export function popEvents(p: PreparedTrace, bones: readonly MotionTraceBone[], from = Number.NEGATIVE_INFINITY, to = Number.POSITIVE_INFINITY): Pop[] {
-  return bones.flatMap(bone => pops(p, bone)).filter(pop => pop.t >= from && pop.t <= to)
+  const parentFrames = (bone: MotionTraceBone): Set<number> => {
+    const parent = traceParent(p, bone)
+    return new Set(parent ? pops(p, parent).map(pop => pop.index) : [])
+  }
+  return bones.flatMap((bone) => {
+    const inherited = parentFrames(bone)
+    return pops(p, bone).filter(pop => !inherited.has(pop.index))
+  }).filter(pop => pop.t >= from && pop.t <= to)
 }
 
 export function popCount(p: PreparedTrace, bones: readonly MotionTraceBone[], from?: number, to?: number): number {
@@ -22,7 +44,7 @@ export function popCount(p: PreparedTrace, bones: readonly MotionTraceBone[], fr
 }
 
 export interface PopsDetail {
-  readonly arm: readonly Pop[]
+  readonly upperBody: readonly Pop[]
   readonly fingers: readonly Pop[]
 }
 
@@ -38,11 +60,11 @@ export const POPS_DETECTION_LIMIT = {
 } as const
 
 export function popsReport(run: LoadedRun): CriterionReport<PopsDetail> {
-  const arm = popEvents(run.p, armPopBones)
+  const upperBody = popEvents(run.p, upperBodyPopBones)
   const fingers = popEvents(run.p, run.input.trace.rig.bones.filter(isFinger))
   return criterionReport('pops', POPS_VERSION, [run.dir], [...Object.entries(POP_CONSTANTS).map(([name, c]) => ({ name, ...c })), POPS_DETECTION_LIMIT], [
-    requirement('arm-pops', 'pops on the shoulder, upper arm, lower arm and hand of both sides = 0', `${arm.length}`, arm.length === 0),
-  ], { arm, fingers })
+    requirement('upper-body-pops', 'pops on the spine, chest, upper chest, neck, head and both shoulders, upper arms, lower arms and hands = 0 (a step charged to the bone that stepped)', `${upperBody.length}`, upperBody.length === 0),
+  ], { upperBody, fingers })
 }
 
 export function formatPops(report: CriterionReport<PopsDetail>): string {
@@ -54,8 +76,8 @@ export function formatPops(report: CriterionReport<PopsDetail>): string {
     return [...by].map(([bone, n]) => `${bone} ${n}`).join(', ') || 'none'
   }
   return formatReport(report, [
-    `arm pops by bone: ${counts(report.detail.arm)}`,
-    ...report.detail.arm.map(line),
+    `upper-body pops by bone: ${counts(report.detail.upperBody)}`,
+    ...report.detail.upperBody.map(line),
     `finger pops (report only): ${report.detail.fingers.length}; ${counts(report.detail.fingers)}`,
   ])
 }

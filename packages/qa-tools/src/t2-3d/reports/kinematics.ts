@@ -8,11 +8,9 @@ export type Side = 'left' | 'right'
 export const SIDES: readonly Side[] = ['left', 'right']
 
 /**
- * Plan 2.1 constants, fixed before any gesture exists; D_MIN corrected in unit M2.
- * D_MIN: half of architecture 4a's smallest stroke, the frame form `[0.05, -0.03, 0]` (0.0583 A), at the lowest energy
- * gain `clamp(0.55 + 0.9 E, 0.5, 1.5) = 0.5`, in arm lengths A.
- * APEX_SECONDS: 4a's longest stroke (250 ms) plus the follower group delay (about 40 ms), rounded to 300 ms.
- * APEX_RATIO: twice the ratio of 4a's post-stroke drift speed (about 0.15 A/s) to a gain-0.5 beat's peak (0.57 A/s).
+ * Plan 2.1 constants, fixed before any gesture exists; D_MIN corrected in unit M2. Each carries its derivation in
+ * `source`: D_MIN is half of 4a's smallest stroke at the lowest gain, the apex window 4a's longest stroke plus the
+ * follower delay, and the apex ratio twice 4a's hold drift over a gain-0.5 beat's peak speed.
  */
 export const STROKE_CONSTANTS = {
   minTravel: { value: 0.0146, unit: 'A', source: 'unit M2: half of 4a smallest stroke, frame |[0.05,-0.03,0]| = 0.0583 A, at gain 0.5' },
