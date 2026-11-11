@@ -182,7 +182,11 @@ export class BodyCollision {
         const norm = Math.hypot(gx, gz)
         if (norm < 1e-9)
           break
-        const angle = Math.min(6 * DEG, d.depth / Math.hypot(d.x, d.y, d.z))
+        // Turning by `angle` about the controllable axis moves the contact along its normal by `angle * norm`, and
+        // norm (d x n on the chest X and Z axes) is at most |d|, so this is the smallest rotation that clears it. The
+        // 1e-6 lever skin lands the linear step just outside the margin, so a grazing contact clears continuously
+        // instead of falling through to the guard scan's one-sixteenth step.
+        const angle = Math.min(6 * DEG, (d.depth + 1e-6 * Math.hypot(d.x, d.y, d.z)) / norm)
         channels[start + 2] += angle * gx / norm
         channels[start + 3] += angle * gz / norm
         if (d.forearm)

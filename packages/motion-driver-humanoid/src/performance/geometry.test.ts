@@ -88,6 +88,42 @@ describe('canonical geometry', () => {
     expect(collision.correction.left).toBeGreaterThan(0)
   })
 
+  it.each(fixtureRigs)('moves an arm continuously while it grazes into a proxy and out again on $name', ({ traits }) => {
+    const rest = createBodyPerformer({ traits, seed: 1 }).restChannels()
+    const collision = new BodyCollision(traits, rest)
+    const abduct = channelIndex('leftAbduct')
+    const probe = rest.slice()
+    probe[channelIndex('leftFlex')] = 0
+    probe[channelIndex('leftElbow')] = 3 * DEG
+    collision.prepare(probe)
+    let clear = 10 * DEG
+    let inside = -15 * DEG
+    for (let i = 0; i < 40; i++) {
+      probe[abduct] = (clear + inside) / 2
+      if (collision.measure('left', probe).depth > 0)
+        inside = probe[abduct]
+      else
+        clear = probe[abduct]
+    }
+    // A slow idle drift (0.6 deg/s) crosses the contact abduction by 0.5 deg and returns.
+    const step = 0.005 * DEG
+    const path = [...Array.from({ length: 200 }, (_, i) => clear + 0.5 * DEG - i * step), ...Array.from({ length: 200 }, (_, i) => clear - 0.5 * DEG + i * step)]
+    const arm = [2, 3, 4, 5].map(j => ARM_START.left + j)
+    const output: number[][] = []
+    for (const target of path) {
+      const channels = probe.slice()
+      channels[abduct] = target
+      collision.correct(channels, output.length + 1)
+      expect(collision.penetration.left).toBe(0)
+      output.push(arm.map(index => channels[index]))
+    }
+    let jerk = 0
+    for (let t = 2; t < output.length; t++)
+      jerk = Math.max(jerk, ...arm.map((_, j) => Math.abs(output[t][j] - 2 * output[t - 1][j] + output[t - 2][j])))
+    // A one-sixteenth guard-blend step is 2-4 deg; the approach itself changes velocity by at most 0.005 deg per tick.
+    expect(jerk / DEG).toBeLessThan(0.02)
+  })
+
   it('protects head proxies as well as torso proxies', () => {
     const head: BodyCollider = { bone: 'head', shape: 'sphere', radius: 1.1, centre: { x: 0, y: 0, z: 0 }, rotation: { yaw: 0, pitch: 0, roll: 0 } }
     const rig = { ...traits, colliders: [...proxyColliders(traits), head] }
