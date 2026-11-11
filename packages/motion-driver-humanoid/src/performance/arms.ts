@@ -1,0 +1,184 @@
+import type { SecondOrderCoefficients, SecondOrderState } from '../dynamics'
+import type { BodySide } from './channels'
+import type { BodyPerformanceInput, BodyRigTraits } from './contracts'
+
+import { advanceSecondOrder, secondOrderCoefficients } from '../dynamics'
+import { createActivityGate, createDriftNoise, deriveSeed, gaussian } from '../noise'
+import { createRandomStream } from '../random'
+import { ARM_START, BODY_CHANNELS, BODY_TICK, DEG, SIDES } from './channels'
+import { BodySkeleton } from './skeleton'
+
+/** Angles from a straight-down arm with palm toward thigh, not from an MMD bind pose. */
+export interface ArmRestPose {
+  readonly clavElev: number
+  readonly clavProt: number
+  readonly flex: number
+  readonly abduct: number
+  readonly twist: number
+  readonly elbow: number
+  readonly pron: number
+  readonly wflex: number
+  readonly wdev: number
+  readonly fingerCurl: readonly (readonly [number, number, number])[]
+}
+
+export const DEFAULT_ARM_REST_POSE: ArmRestPose = {
+  clavElev: -5 * DEG,
+  clavProt: 0,
+  flex: 4 * DEG,
+  abduct: 12 * DEG,
+  twist: 0,
+  elbow: 12 * DEG,
+  pron: 0,
+  wflex: 8 * DEG,
+  wdev: 0,
+  fingerCurl: [[10 * DEG, 0, 0], [15 * DEG, 20 * DEG, 10 * DEG], [17.25 * DEG, 23 * DEG, 11.5 * DEG], [19.5 * DEG, 26 * DEG, 13 * DEG], [21.75 * DEG, 29 * DEG, 14.5 * DEG]],
+}
+const relaxed = [2.2, 2.2, 1.15, 1.15, 2, 1.8, 2, 2.2, 2.2] as const
+const active = [4, 4, 4.5, 4.5, 4, 4.5, 4, 4.5, 4.5] as const
+const damping = [0.7, 0.7, 0.45, 0.45, 0.7, 0.6, 0.7, 0.5, 0.5] as const
+const noiseDegrees = [0.6, 0.3, 0.8, 0.5, 1.5, 1.2, 1.5, 2, 1.5] as const
+const offsetDegrees = [0, 0, 2.5, 2, 0, 4, 8, 4, 0] as const
+const clampDrag = (x: number, degrees: number) => Math.max(-degrees * DEG, Math.min(degrees * DEG, x))
+
+/** Independent arm identities feed shared secondary dynamics after layer blending. */
+export class BodyArms {
+  readonly rest = new Float32Array(BODY_CHANNELS.length)
+  private readonly desired = new Float64Array(BODY_CHANNELS.length)
+  private readonly random
+  private readonly gates
+  private readonly noises
+  private readonly states: SecondOrderState[]
+  private readonly coefficients: SecondOrderCoefficients[]
+  private readonly frequencies = new Float64Array(BODY_CHANNELS.length)
+  private readonly zetas = new Float64Array(BODY_CHANNELS.length)
+  private readonly skeleton: BodySkeleton
+  private readonly shoulder = {
+    left: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 },
+    right: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 },
+  }
+
+  private warm = false
+  private redraw = 70
+  private tension = 0
+
+  constructor(private readonly traits: BodyRigTraits, seed: number) {
+    this.skeleton = new BodySkeleton(traits)
+    this.random = createRandomStream(deriveSeed(seed, 12))
+    this.gates = { left: createActivityGate({ seed: deriveSeed(seed, 10) }), right: createActivityGate({ seed: deriveSeed(seed, 11) }) }
+    // Streams 32..57 and 64..89 remain independent even when a rig lacks fingers.
+    const noise = (base: number) => Array.from({ length: 26 }, (_, i) => createDriftNoise({ seed: deriveSeed(seed, base + i) }))
+    this.noises = { left: noise(32), right: noise(64) }
+    this.drawRest()
+    this.rest.set(this.desired)
+    this.states = Array.from(this.rest, value => ({ y: value, v: 0, x: value }))
+    this.coefficients = Array.from(this.rest, () => secondOrderCoefficients({ f: 2, zeta: 1, r: 0 }, BODY_TICK))
+  }
+
+  private drawRest(): void {
+    const p = DEFAULT_ARM_REST_POSE
+    const base = [p.clavElev, p.clavProt, p.flex, p.abduct, p.twist, p.elbow, p.pron, p.wflex, p.wdev]
+    for (const side of SIDES) {
+      const start = ARM_START[side]
+      for (let j = 0; j < 9; j++)
+        this.desired[start + j] = base[j] + (2 * this.random() - 1) * offsetDegrees[j] * DEG
+      const scale = 1 + (2 * this.random() - 1) * 0.12
+      for (let finger = 0; finger < 5; finger++) {
+        for (let joint = 0; joint < 3; joint++)
+          this.desired[start + 9 + finger * 3 + joint] = p.fingerCurl[finger][joint] * scale
+      }
+      this.desired[start + 24] = 0
+      this.desired[start + 25] = 10 * DEG
+    }
+    this.redraw = Math.max(40, Math.min(120, Math.exp(Math.log(70) + 0.3 * gaussian(this.random))))
+  }
+
+  generate(input: BodyPerformanceInput, out: Float64Array, support: number): void {
+    this.redraw -= BODY_TICK
+    if (this.redraw <= 0)
+      this.drawRest()
+    for (const side of SIDES) {
+      const start = ARM_START[side]
+      const gate = this.gates[side].step(BODY_TICK) * input.posture.amplitude
+      const sharedCurl = this.noises[side][25].step(BODY_TICK) * 3 * DEG * gate
+      for (let j = 0; j < 26; j++) {
+        this.rest[start + j] = this.desired[start + j] + (this.rest[start + j] - this.desired[start + j]) * Math.exp(-BODY_TICK / 3)
+        let noise = 0
+        if (j < 25) {
+          const value = this.noises[side][j].step(BODY_TICK) * gate
+          noise = j < 9 ? value * noiseDegrees[j] * DEG : 0.6 * sharedCurl + 0.4 * value * 3 * DEG
+        }
+        out[start + j] += this.rest[start + j] + noise
+      }
+      const onSupport = (side === 'right' ? 1 : -1) * support > 0
+      out[start + 5] += (onSupport ? -2 : 3) * DEG * Math.abs(support)
+      out[start + 3] += input.armLift[side]
+    }
+  }
+
+  follow(input: BodyPerformanceInput, targets: Float64Array, activation: Float64Array): void {
+    this.tension = Math.max(0, Math.min(1, input.mood.tension))
+    for (const side of SIDES) {
+      const start = ARM_START[side]
+      for (let j = 0; j < 2; j++)
+        targets[start + j] = this.advance(start + j, targets[start + j], activation[start + j])
+    }
+    // Shoulder velocity comes from the followed clavicle, not its unfiltered target.
+    this.skeleton.update(targets)
+    const pitch = targets[7] + targets[10] + targets[13]
+    const roll = targets[8] + targets[11] + targets[14]
+    for (const side of SIDES) {
+      const start = ARM_START[side]
+      const sigma = side === 'left' ? 1 : -1
+      const position = this.skeleton.arm(side, targets).shoulder
+      const previous = this.shoulder[side]
+      const tau = Math.exp(-BODY_TICK / 0.03)
+      const arm = this.traits.arms[side]
+      const length = (Math.hypot(arm.upperArm.x, arm.upperArm.y, arm.upperArm.z) + Math.hypot(arm.forearm.x, arm.forearm.y, arm.forearm.z)) / 2
+      const vx = this.warm ? (position.x - previous.x) / BODY_TICK + input.rootVelocity.x : 0
+      const vy = this.warm ? (position.y - previous.y) / BODY_TICK + input.rootVelocity.y : 0
+      const vz = this.warm ? (position.z - previous.z) / BODY_TICK + input.rootVelocity.z : 0
+      previous.vx = vx + (previous.vx - vx) * tau
+      previous.vy = vy + (previous.vy - vy) * tau
+      previous.vz = vz + (previous.vz - vz) * tau
+      previous.x = position.x
+      previous.y = position.y
+      previous.z = position.z
+      targets[start + 2] += (1 - activation[start + 2]) * (0.85 * pitch + clampDrag(-0.09 * previous.vz / length, 10))
+      targets[start + 3] += (1 - activation[start + 3]) * (-sigma * 0.85 * roll + clampDrag(-0.09 * sigma * previous.vx / length, 10))
+      this.followSide(side, targets, activation)
+    }
+    this.warm = true
+  }
+
+  private advance(index: number, target: number, used: number): number {
+    const j = (index - ARM_START.left) % 28
+    const f0 = j < 9 ? relaxed[j] : 2.5
+    const f1 = j < 9 ? active[j] : 4
+    const z0 = j < 9 ? damping[j] : 0.6
+    const f = (f0 + (f1 - f0) * used) * (0.7 + 0.9 * this.tension)
+    const zeta = Math.min(1, (z0 + ((j === 2 || j === 3) ? 0.35 * used : 0)) * (0.8 + 0.5 * this.tension))
+    if (Math.abs(f - this.frequencies[index]) > 0.01 * f || Math.abs(zeta - this.zetas[index]) > 0.01 * zeta) {
+      this.coefficients[index] = secondOrderCoefficients({ f, zeta, r: 0 }, BODY_TICK)
+      this.frequencies[index] = f
+      this.zetas[index] = zeta
+    }
+    advanceSecondOrder(this.states[index], target, this.coefficients[index])
+    return this.states[index].y
+  }
+
+  private followSide(side: BodySide, targets: Float64Array, activation: Float64Array): void {
+    const start = ARM_START[side]
+    for (let j = 2; j < 26; j++) {
+      const index = start + j
+      let drag = 0
+      if (j === 5)
+        drag = clampDrag(-0.045 * this.states[start + 2].v, 8)
+      else if (j === 7 || j === 8)
+        drag = clampDrag(-0.06 * this.states[start + 5].v, 25)
+      else if (j >= 9 && j < 24)
+        drag = clampDrag(-0.05 * this.states[start + 7].v, 12)
+      targets[index] = this.advance(index, targets[index] + drag, activation[index])
+    }
+  }
+}

@@ -1,4 +1,10 @@
 import type { RestRelativeRotation, RigTraits, Vec3 } from '../types'
+import type { TurnStep } from './turn-planner'
+
+import { TurnPlanner } from './turn-planner'
+
+export { createTurnPlanner } from './turn-planner'
+export type { TurnFrame, TurnInput, TurnStep } from './turn-planner'
 
 export interface LookAtInput {
   /** Target angles in the stance frame. Positive pitch looks down, forward is +Z. */
@@ -11,15 +17,6 @@ export interface LookAtInput {
 }
 
 export type LookAtOptions = Partial<Pick<RigTraits, 'eyeYawLimit' | 'eyePitchLimit'>>
-
-export interface TurnStep {
-  readonly foot: 'left' | 'right'
-  /** Seconds since controller creation. Emitted once, at the start of the step. */
-  readonly startTime: number
-  readonly duration: number
-  /** Signed facing change, in radians, for this step (not an absolute foot yaw). */
-  readonly yaw: number
-}
 
 export interface LookAtFrame {
   readonly rotations: Readonly<Record<'spine' | 'chest' | 'neck' | 'head', RestRelativeRotation>>
@@ -39,14 +36,6 @@ const distribution = {
   head: { yawShare: 0.45, yawLimit: 35, pitchShare: 0.5, up: 25, down: 30, omega: 7 },
 } as const
 const boneNames = ['spine', 'chest', 'neck', 'head'] as const
-const turnStart = 60 * radians
-const turnImmediate = 90 * radians
-const turnStop = 20 * radians
-const turnRemainder = 15 * radians
-const stepDuration = 0.4
-const stepYawLimit = 22.5 * radians
-const dwellDuration = 0.5
-const refractoryDuration = 1.5
 
 function finite(value: number) {
   return Number.isFinite(value) ? value : 0
@@ -114,13 +103,19 @@ class LookAtController {
     head: jointSprings(),
   }
 
-  private time = 0
-  private dwell = 0
-  private dwellDirection = 0
-  private refractoryUntil = 0
-  private turning = false
-  private nextFoot: TurnStep['foot'] = 'left'
-  private activeStep: { start: number, yaw: number, elapsed: number } | null = null
+  private targetYaw = 0
+  private targetPitch = 0
+  private readonly turns = new TurnPlanner((elapsed, fromFacing, toFacing) => {
+    const yaw = wrap(this.targetYaw - fromFacing)
+    const nextYaw = yaw - (toFacing - fromFacing)
+    for (const bone of boneNames) {
+      const tuning = distribution[bone]
+      const yawLimit = tuning.yawLimit * radians
+      advanceSpring(this.springs[bone].yaw, yaw * tuning.yawShare, nextYaw * tuning.yawShare, tuning.omega, elapsed, -yawLimit, yawLimit)
+      advanceSpring(this.springs[bone].pitch, this.targetPitch * tuning.pitchShare, this.targetPitch * tuning.pitchShare, tuning.omega, elapsed, -tuning.up * radians, tuning.down * radians)
+    }
+  })
+
   private readonly eyeYawLimit: number
   private readonly eyePitchLimit: number
 
@@ -130,98 +125,10 @@ class LookAtController {
   }
 
   step(input: LookAtInput, dt: number): LookAtFrame {
-    dt = Math.max(0, finite(dt))
-    const targetYaw = wrap(finite(input.targetYaw))
-    const targetPitch = clamp(finite(input.targetPitch), -Math.PI / 2, Math.PI / 2)
-    let facingYaw = finite(input.facingYaw)
-    let remaining = dt
-    let turnStarted = false
-    const turnSteps: TurnStep[] = []
-    const advance = (elapsed: number, nextFacing = facingYaw) => {
-      const yaw = wrap(targetYaw - facingYaw)
-      // Unwrap the end relative to the start, so crossing +/-pi does not spin joints.
-      const nextYaw = yaw - (nextFacing - facingYaw)
-      for (const bone of boneNames) {
-        const tuning = distribution[bone]
-        const yawLimit = tuning.yawLimit * radians
-        const up = -tuning.up * radians
-        const down = tuning.down * radians
-        advanceSpring(this.springs[bone].yaw, yaw * tuning.yawShare, nextYaw * tuning.yawShare, tuning.omega, elapsed, -yawLimit, yawLimit)
-        advanceSpring(this.springs[bone].pitch, targetPitch * tuning.pitchShare, targetPitch * tuning.pitchShare, tuning.omega, elapsed, up, down)
-      }
-      facingYaw = nextFacing
-      this.time += elapsed
-    }
-
-    if (input.allowTurn === false) {
-      this.turning = false
-      this.activeStep = null
-      this.dwell = 0
-      this.dwellDirection = 0
-      advance(remaining)
-      remaining = 0
-    }
-
-    // Split at dwell, step, and refractory boundaries rather than quantizing them to frames.
-    while (remaining > 1e-12) {
-      const error = wrap(targetYaw - facingYaw)
-      const magnitude = Math.abs(error)
-      if (!this.turning) {
-        if (this.time < this.refractoryUntil) {
-          const elapsed = Math.min(remaining, this.refractoryUntil - this.time)
-          advance(elapsed)
-          remaining -= elapsed
-          continue
-        }
-        if (magnitude <= turnStart) {
-          this.dwell = 0
-          this.dwellDirection = 0
-          advance(remaining)
-          remaining = 0
-          continue
-        }
-        if (this.dwellDirection !== Math.sign(error))
-          this.dwell = 0
-        this.dwellDirection = Math.sign(error)
-        if (magnitude <= turnImmediate && this.dwell < dwellDuration - 1e-12) {
-          const elapsed = Math.min(remaining, dwellDuration - this.dwell)
-          this.dwell += elapsed
-          advance(elapsed)
-          remaining -= elapsed
-          if (this.dwell < dwellDuration - 1e-12)
-            continue
-        }
-        this.turning = true
-        turnStarted = true
-        this.dwell = 0
-      }
-
-      // Finish planted steps before stopping; the lower threshold prevents chatter.
-      if (!this.activeStep && magnitude < turnStop) {
-        this.turning = false
-        this.refractoryUntil = this.time + refractoryDuration
-        continue
-      }
-      if (!this.activeStep) {
-        const yaw = Math.sign(error) * Math.min(stepYawLimit, Math.max(0, magnitude - turnRemainder))
-        this.activeStep = { start: facingYaw, yaw, elapsed: 0 }
-        turnSteps.push({ foot: this.nextFoot, startTime: this.time, duration: stepDuration, yaw })
-        this.nextFoot = this.nextFoot === 'left' ? 'right' : 'left'
-      }
-      const elapsed = Math.min(remaining, stepDuration - this.activeStep.elapsed)
-      this.activeStep.elapsed += elapsed
-      advance(elapsed, this.activeStep.start + this.activeStep.yaw * this.activeStep.elapsed / stepDuration)
-      remaining -= elapsed
-      if (this.activeStep.elapsed >= stepDuration - 1e-12) {
-        this.activeStep = null
-        if (Math.abs(wrap(targetYaw - facingYaw)) < turnStop) {
-          this.turning = false
-          this.refractoryUntil = this.time + refractoryDuration
-        }
-      }
-    }
-
-    const yaw = wrap(targetYaw - facingYaw)
+    this.targetYaw = wrap(finite(input.targetYaw))
+    this.targetPitch = clamp(finite(input.targetPitch), -Math.PI / 2, Math.PI / 2)
+    const turn = this.turns.step(input, dt)
+    const yaw = wrap(this.targetYaw - turn.facingYaw)
     const rotations = {
       spine: { yaw: 0, pitch: 0, roll: 0 },
       chest: { yaw: 0, pitch: 0, roll: 0 },
@@ -240,13 +147,13 @@ class LookAtController {
       rotations,
       eyes: {
         yaw: clamp(yaw - bodyYaw, -this.eyeYawLimit, this.eyeYawLimit),
-        pitch: clamp(targetPitch - bodyPitch, -this.eyePitchLimit, this.eyePitchLimit),
+        pitch: clamp(this.targetPitch - bodyPitch, -this.eyePitchLimit, this.eyePitchLimit),
         roll: 0,
       },
-      facingYaw,
-      turning: this.turning,
-      turnStarted,
-      turnSteps,
+      facingYaw: turn.facingYaw,
+      turning: turn.turning,
+      turnStarted: turn.turnStarted,
+      turnSteps: [...turn.turnSteps],
     }
   }
 }

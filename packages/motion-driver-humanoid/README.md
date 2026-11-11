@@ -19,10 +19,13 @@ deterministic motion algorithms for reusable character motion drivers.
   `createActivityGate`, for independent seeded drift and moving holds.
 - `./foot-contact`: planted foot anchors, eased contact, shared pelvis reach
   correction, signed knee pre-bend, and body-turn step arcs.
-- `./look-at`: `createLookAt`, look-at and turn-step contracts, and `aimEyes`.
+- `./look-at`: `createLookAt`, `createTurnPlanner`, look-at and turn-step contracts, and `aimEyes`.
 - `./locomotion`: `createLocomotion`, a deterministic procedural gait with root
   motion, planted world foot anchors, body channels, and arm swing.
 - `./rest-pose`: `createArmRest`, the relaxed arm, hand, and finger rest pose.
+- `./performance`: `createBodyPerformer`, a pure whole-body performer on a
+  120 Hz grid, its rig/input/frame contracts, channels, FK, arm-key solver,
+  collision corrector, and extensible `PerformanceLayer` contract.
 - `./motion-trace`: `MotionTraceV1`, little-endian float32 block codec, canonical
   humanoid parents, and `MotionTraceRecorder`. The recorder accepts plain vectors
   and rest-normalised world quaternions in +Y up, +Z forward axes, removes hips
@@ -250,7 +253,7 @@ gestures never loop; actions loop when the name contains loop, ループ, repeat
 
 ## Dynamics primitives
 
-`./dynamics` holds pure building blocks for scalar secondary motion. No existing motion driver uses it yet.
+`./dynamics` holds pure building blocks for scalar secondary motion, used by the body performer.
 
 ```ts
 import { advanceSecondOrder, secondOrderCoefficients } from '@proj-airi/motion-driver-humanoid/dynamics'
@@ -292,7 +295,7 @@ for renderer-neutral motion synthesis, not for bone writes or wall-clock schedul
 
 ## Noise primitives
 
-`./noise` holds seeded aperiodic drift and moving holds. No existing motion driver uses it yet.
+`./noise` holds seeded aperiodic drift and moving holds, used by the body performer.
 
 ```ts
 import { createActivityGate, createDriftNoise, deriveSeed } from '@proj-airi/motion-driver-humanoid/noise'
@@ -318,6 +321,132 @@ streams never change.
 
 Time steps are finite, nonnegative seconds. A zero tick consumes no draw and
 returns the current value. No step method allocates.
+
+## Whole-body performance
+
+```ts
+import { BODY_TICK, createBodyPerformer } from '@proj-airi/motion-driver-humanoid/performance'
+
+const performer = createBodyPerformer({ traits, seed: 7 })
+const reference = performer.restChannels()
+// In the adapter's fixed clock, after the gait has advanced by BODY_TICK:
+const frame = performer.step(input)
+// Copy frame.channels before the next step if retaining it for interpolation.
+```
+
+The performer owns posture, seeded support transfers, aperiodic sway, breath,
+arm rest and secondary dynamics, gaze planning, layer composition, soft limits,
+and final arm collision correction. It never integrates root position, chooses
+a director goal, reads a clock, writes a bone, or imports Natural. Nothing uses
+this subpath in the scene yet. The existing weight-shift, rest-pose and look-at
+exports retain their behavior.
+
+`step` advances exactly `BODY_TICK` (1/120 second), regardless of display rate.
+The adapter supplies interpolated continuous inputs, consumes discrete events
+once, and interpolates the previous and current channel buffers for display.
+The frame, channel array, diagnostics, and turn-event array are borrowed until
+the next `step` or `reset`. `restChannels()` returns an owned, collision-cleared
+snapshot of the seed's initial reference. `reset()` rewinds all streams, timers,
+filters, layer state and collision correction; use it on a teleport or rebase.
+
+The complete plain-data contracts are in
+[`contracts.ts`](src/performance/contracts.ts). `BodyRigTraits` supplies finite
+model-space bind geometry, one to four spine positions in hierarchy order,
+the spine's parent relationship, arm segment vectors, feet and structural
+capabilities. Axes are +X character left, +Y up, +Z forward. Upper-arm and
+forearm vectors are bind-position differences; lengths are derived once.
+Canonical bind frames are world-aligned. Physics-owned bones are removed by the
+adapter; partial-finger mapping and toe IK stay with it.
+
+`BodyCollider` attaches a sphere, Y-axis capsule or box to `hips`, `spine0`
+through `spine3`, `neck` or `head`. Its centre and intrinsic YXZ rotation are in
+that ancestor's rest-aligned frame. Sizes are model units; capsule length
+excludes the caps and box sizes are half-extents. Ancestors must exist in the
+supplied chain. An empty collider list requests a proportional torso capsule
+and head sphere. Only kinematic obstacles belong here.
+
+`BodyPerformanceInput.head.attitude` is Natural's posture alone, converted to
+radians, and `head.terms` keeps the six other terms separate. `head.slow` is the
+slow posture component. The adapter reads `controller.bodyIntent()`, resolves
+the gaze goal, converts Natural units, and maps breath, voice, mood, energy,
+latest event records, directive, clip ownership and root velocity. Inputs are
+finite; amplitudes/rates are nonnegative, weights/tension/voice are [0,1],
+valence/arousal and forced support are [-1,1]. Event times are active seconds.
+Positive support names the RIGHT foot, so its pelvis displacement is negative X.
+
+The channel table contains 77 scalars: pelvis XYZ in leg lengths; hips,
+three torso controls, neck and head in intrinsic YXZ radians; and per side nine
+arm angles, fifteen finger curls, spread, thumb opposition, foot pitch and toe
+bend. Arm angles use a straight-down, palm-toward-thigh reference:
+`U = Rx(-flex) Rz(side * abduct) Ry(-side * twist)`, then
+`F = U Rx(-elbow) Ry(-side * pron)` and
+`H = F Rz(-side * wflex) Rx(wdev)`. Positive foot pitch lifts the toes.
+`channelGroup` assigns each channel one clip group; pelvis and hips belong to
+`lowerBody`. `BodySkeleton` evaluates this FK in borrowed scratch transforms
+and `spineWeights` distributes the three controls without changing their sum.
+The adapter must apply arm bind-frame conversion and compensate clavicle
+rotation, rather than treating these angles as bone-local Euler deltas.
+`solveArmKey` performs load-time two-bone IK in this same reference; targets
+use arm lengths, swivel and returned angles use radians. A geometrically
+unreachable key returns null. Check its limits and clearance before playback.
+Nonnegative channels use a C1 lower knee that preserves zero exactly; the
+generic tanh lower knee would bend an otherwise neutral toe. Their upper knee
+and all signed channel limits use the shared `softLimit` primitive.
+
+The frame's `gaze` is the planned stance-frame direction, not the raw target.
+Aim each eye from its rendered head transform toward that line and clamp to
+the rig's eye limits; `eyes` is the canonical FK residual for diagnostics.
+Large unreachable shifts saturate the eyes until head/body turning catches up.
+`lidClose` is closure [0,1], whereas Natural's `blinkFactor` is openness:
+the adapter combines `max(1 - blinkFactor, lidClose)`.
+`createTurnPlanner().step({ targetYaw, facingYaw, allowTurn }, dt)` preserves
+the old dwell, hysteresis, refractory and planted-step timing without running
+look-at springs. Its frame and event array are borrowed until the next call.
+
+Optional `layers` are performer-owned instances, reset at creation and reset.
+Their order is emotion, act, gesture, cue, reaction after base, gaze and gait.
+A layer's optional `plan` may replace support and gaze before the generators;
+its `step` then emits masked additive or override targets, weight, sequence and
+optional additive channels, morph requests, foot-step events and act feedback.
+The stack supplies smooth entry/exit and inertializes sequence changes.
+Mixed override/additive output supports arm gestures with additive torso
+motion. The context exposes full intent, capabilities, initial rest, the
+previous frame, tick and time. Layers implement clip admission/cancellation
+from `input.owned`; generators and followers keep integrating beneath clips.
+The adapter applies `1 - owned[group]` exactly once at bone writes.
+
+`gait.channels` is already mapped to this table: pelvis, hips and feet override
+by gait weight, and torso/arm terms add. `armLift` is the existing hang solver's
+per-side abduction addition, in radians. No gait or clip contract changes here.
+Missing leg IK zeroes pelvis/foot channels and reduces weight rotations.
+One spine bone receives all controls at reduced amplitude and collapses the
+weight cascade to its longest torso delay. Missing clavicles/fingers/toe bend
+drop those channels; missing twist limits pronation to 60 degrees. In this
+slice, adapters keep pronation on the hand and upper-arm twist on the arm;
+dedicated twist-bone writes belong to the later adapter work.
+
+Collision runs after dynamics and limits, using the same lower-half upper-arm
+and extended-forearm sample capsules as the MMD gate, with its clearance margin.
+Corrections persist and decay. Gradient steps are followed by a discrete scan
+toward the guard pose; scanning, unlike bisection, does not assume clearance
+is monotone among multiple obstacles. `capabilities.gestures` checks each
+guard at load. `headClearance` additionally solves and clears a reachable
+head-side anchor within joint limits; later acts still validate their own keys.
+If the guard is blocked, that arm loses gesture capability and correction
+returns toward its initial rest instead. Guard blending also resets twist,
+so the checked endpoint and the applied endpoint are the same pose.
+An impossible current proxy configuration throws `BodyCollisionError` instead
+of returning a penetrating pose. Proxy clearance proves neither post-physics
+clearance nor interpolation safety on an imported asset; the adapter unit owns
+those rendered gates.
+
+The three-bone weight curve divides the former mid-torso roll share between
+mid and upper controls, preserving the total tilt while giving the upper
+joint its own arrival. Small fixations below the recruitment threshold do not
+start a head turn; slow pursuit beyond it recruits the head with a gentle
+creep. These resolve the note's unspecified upper roll and its conflicting
+small-shift creep/zero-head descriptions. All tuning remains private; tests
+assert signs, ordering, bounds, clearance, replay and response shape.
 
 ## Checks
 
