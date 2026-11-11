@@ -170,7 +170,7 @@ When any scorer definition changes, bump `CUE_CONTRACT_SCORER.version` in the sa
 
 `qa:model run` sends a scenario to a chat endpoint and writes one transcript record per reply. The design, the provenance of every field, and the reasons are in the [model evaluation ADR](../../docs/ai/adr/2026-10-29-model-eval-levels.md#m2-live-runs).
 
-No real model has been run with this command. Every test and the acceptance run used the replay server as the endpoint, so the tooling is verified and no model result exists yet.
+The first real runs, of `granite4:latest` on 2026-11-10, are committed as the `live-2026-11-10-granite4-general` and `live-2026-11-10-granite4-relationship-stages` sets. Every test uses the replay server as the endpoint.
 
 ```bash
 pnpm qa:model run --scenario <id|file.json> --base-url <url> --model <id> [--config <name>] [--history raw|canonical] [--out <dir>] [--machine-label <label>] [--json]

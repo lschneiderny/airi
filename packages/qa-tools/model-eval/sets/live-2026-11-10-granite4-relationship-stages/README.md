@@ -17,7 +17,9 @@ pnpm qa:model run --scenario relationship-stages --base-url http://127.0.0.1:114
 pnpm qa:model score <run dir>/transcripts.jsonl
 ```
 
-The producing runs are `.temp/qa/20261110-181348-model-run-relationship-stages/` and `.temp/qa/20261110-181407-model-score-score/`, on commit `44a561d64`. Their `run.json` records `dirty: true` because the checkout held untracked planning files; no tracked file differed. The scorer is `cue-contract-score` version 4, and its fixtures passed 29/29. `summary.json` and `summary.md` were copied from the score run. The summary labels each stage as a config, for example `default@close`.
+The model run is `.temp/qa/20261110-181348-model-run-relationship-stages/`, on commit `44a561d64`. Its `run.json` records `dirty: true` because the checkout held untracked planning files; no tracked file differed. `transcripts.jsonl` is unchanged since that run.
+
+The summary was scored again on 2026-11-10 after the runtime's cue recovery changed: the producing score run is `.temp/qa/20261110-201922-model-score-score/`, on commit `4b8a3454f` with a clean checkout. The scorer is `cue-contract-score` version 5, and its fixtures passed 34/34. `summary.json` and `summary.md` were copied from that run. No metric differs from the first score run, `.temp/qa/20261110-181407-model-score-score/` with scorer version 4; only the scorer version, the fixture count, and the source hashes changed. The summary labels each stage as a config, for example `default@close`.
 
 ## What it shows
 

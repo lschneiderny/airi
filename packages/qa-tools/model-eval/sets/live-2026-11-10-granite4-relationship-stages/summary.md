@@ -1,9 +1,9 @@
 # Model evaluation summary
 
-Scorer: cue-contract-score v4
-Closure digest: 887500035bdc8cac10acb88b27d486b0a4bca29dd51cd4373bf698a23e5016f1
+Scorer: cue-contract-score v5
+Closure digest: c03569650319f584163d3eeda3c0c4896d5429975b7e5c4b9207e27c997b8c06
 Contract version: 0922aabf01ac
-Fixtures passed/total: 29/29
+Fixtures passed/total: 34/34
 
 Heuristic columns are not persona judgment.
 

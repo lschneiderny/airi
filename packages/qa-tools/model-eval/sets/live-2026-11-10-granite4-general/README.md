@@ -17,17 +17,19 @@ pnpm qa:model run --scenario general --base-url http://127.0.0.1:11434/v1 --mode
 pnpm qa:model score <run dir>/transcripts.jsonl --exposed-actions wave:gesture
 ```
 
-The producing runs are `.temp/qa/20261110-181301-model-run-general/` and `.temp/qa/20261110-181405-model-score-score/`, on commit `44a561d64`. Their `run.json` records `dirty: true` because the checkout held untracked planning files; no tracked file differed. The scorer is `cue-contract-score` version 4, and its fixtures passed 29/29. `summary.json` and `summary.md` were copied from the score run.
+The model run is `.temp/qa/20261110-181301-model-run-general/`, on commit `44a561d64`. Its `run.json` records `dirty: true` because the checkout held untracked planning files; no tracked file differed. `transcripts.jsonl` is unchanged since that run.
+
+The summary was scored again on 2026-11-10 after the runtime's cue recovery changed: the producing score run is `.temp/qa/20261110-201921-model-score-score/`, on commit `4b8a3454f` with a clean checkout. The scorer is `cue-contract-score` version 5, and its fixtures passed 34/34. `summary.json` and `summary.md` were copied from that run. The first score run, `.temp/qa/20261110-181405-model-score-score/` with scorer version 4, read the same replies with the earlier recovery. Four numbers differ from it: `leadCue` (0 to 6), `nonverbal.silentMarkers` (0 to 2), `style.meanWords` (16.2 to 19.7), and `chunkVariant` (2 to 0). A score of the same transcripts on commit `64e16ae71`, the last one with the earlier recovery, reproduced the first run's numbers, so the four differences come from the recovery change alone.
 
 ## What it shows
 
 Counts are quoted from `summary.json`. The style columns are heuristics, not persona judgments.
 
-- Every reply opened with a malformed marker, `|<ACT ...|>` instead of `<|ACT ...|>`. The runtime recovered all six (`outcomes.recovered = 6`, `parsed = 0`), and no reply led with a valid cue (`leadCue = 0`). This is run-to-run variation, not an effect of the scenario: two uncommitted repeats on the same day wrote well-formed opening markers, one of them with the identical prompt, and one repeat ended every reply with a stray `|>` instead. The scenario sets no seed, so a single run does not show how often each habit occurs.
+- Every reply opened with a malformed marker, `|<ACT ...|>` instead of `<|ACT ...|>`. The runtime recovered all six (`outcomes.recovered = 6`, `parsed = 0`). Since the recovery takes the leading `|` as part of the swapped marker, the recovered cue leads every reply (`leadCue = 6`). With the earlier recovery the `|` was spoken text in front of the cue, so no reply led with a cue (`leadCue = 0`). This is run-to-run variation, not an effect of the scenario: two uncommitted repeats on the same day wrote well-formed opening markers, one of them with the identical prompt, and one repeat ended every reply with a stray `|>` instead. The scenario sets no seed, so a single run does not show how often each habit occurs.
 - Four of six replies wrote the cue twice, once bare and once as JSON (`acts = 11`, `forms.bare = 5`, `forms.json = 6`).
 - The exposed gesture was used once and correctly: `actionsAccepted = 1`, `actionsUnknown = 0`.
-- Two replies carried a `|<SILENT|>` marker in front of ordinary speech.
-- Replies averaged 16.2 words. The first turn took 43.4 s, which includes loading the model; later turns took 0.3 to 0.8 s.
+- Two replies carried a `|<SILENT|>` marker in front of ordinary speech (`nonverbal.silentMarkers = 2`). The runtime now recovers and consumes that marker and speaks the text after it. With the earlier recovery it stayed text, and the app's live speech lost the rest of both replies.
+- Replies averaged 19.7 words, counting the speech after those two markers; the earlier score counted 16.2. The first turn took 43.4 s, which includes loading the model; later turns took 0.3 to 0.8 s.
 
 Do not rank models with this set alone: it is one run of six turns with default sampling and no seed. Comparing models or prompt changes needs repeated or seeded runs.
 

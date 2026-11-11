@@ -3,14 +3,14 @@
     "schema": "airi.cue-contract-score.run/v1",
     "scorer": {
       "id": "cue-contract-score",
-      "version": 4,
-      "fileSha": "5ac03ef22a00018573435f8fa636447df157913a4a9f611bcc207a35ae225df7"
+      "version": 5,
+      "fileSha": "ca1663442e34b213cbe5cee8761b2fe15112e65f83370e6556191a82f791288d"
     },
     "sources": {
       "files": [
         {
           "repoPath": "packages/core-agent/src/runtime/chat-orchestrator-runtime.ts",
-          "sha256": "79531bb9eaea74e7f2efd987c10ee073e0c10a577799ae400b25bf5b2bd17eda"
+          "sha256": "5785ebe399dc6b57601eba632427fe3f63b624f1edec17f589aca97ce3d20df7"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-compliance.ts",
@@ -18,15 +18,15 @@
         },
         {
           "repoPath": "packages/core-agent/src/runtime/cue-contract-fixtures.ts",
-          "sha256": "e16aaaabfb96c0d3d197d674dbac2c689f6f780f61f9d8eb795a716af2ca88bf"
+          "sha256": "438a356d46636aeb334b79d343bf614b1f5f870ae45c6c75a3b6831ad62563f5"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/llm-marker-parser.ts",
-          "sha256": "3600831f3c0025e82589326e40db3e9fb60c37b484d5c98d113442fc23d2fde7"
+          "sha256": "b0ce1d46a82a0e22cbd6691a962dcfe995efb06643c73941c05aa7523ff51926"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/recovered-cue.ts",
-          "sha256": "2c51cecae222a6fb1d2e5995fbde08f791a8b0dd5e425afa07c3e3f0120db9eb"
+          "sha256": "88c805defdb97bad14390992efa59c1ae1ce2e45fd91007053af8991b0aa3715"
         },
         {
           "repoPath": "packages/core-agent/src/runtime/reply-replay.ts",
@@ -62,7 +62,7 @@
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/cue-contract.ts",
-          "sha256": "5ac03ef22a00018573435f8fa636447df157913a4a9f611bcc207a35ae225df7"
+          "sha256": "ca1663442e34b213cbe5cee8761b2fe15112e65f83370e6556191a82f791288d"
         },
         {
           "repoPath": "packages/qa-tools/src/model/score/legacy-score.ts",
@@ -78,17 +78,17 @@
         },
         {
           "repoPath": "packages/stage-shared/src/stage-contract/index.ts",
-          "sha256": "6aa66a946b94b438aad288d21a987122b2cbb66faf114309ccb602c74dabb2fe"
+          "sha256": "e0a1ce8624ab21d35fb8a4d55b63c736b979be54d4edcc998ef1e0b74032a4f7"
         }
       ],
-      "closureDigest": "887500035bdc8cac10acb88b27d486b0a4bca29dd51cd4373bf698a23e5016f1",
-      "coreAgentDistSha256": "ebf6073f7007ba78309e172833758621e1405b479149ff62baee6e016d4b596f"
+      "closureDigest": "c03569650319f584163d3eeda3c0c4896d5429975b7e5c4b9207e27c997b8c06",
+      "coreAgentDistSha256": "d1062d14c65b930eb1ef25840c63c4b3d231cc35fe7c15f28455e4313b275740"
     },
     "fixtures": {
       "id": "cue-contract-fixtures",
-      "version": 2,
-      "passed": 29,
-      "total": 29
+      "version": 4,
+      "passed": 34,
+      "total": 34
     },
     "set": "general",
     "runKey": "general@1/granite4:latest/default",
@@ -109,7 +109,7 @@
       "rejected": 0,
       "none": 0
     },
-    "leadCue": 0,
+    "leadCue": 6,
     "acts": 11,
     "actsInert": 0,
     "invalidEmotion": 0,
@@ -144,7 +144,7 @@
       "bareGestureAttempts": 0,
       "breaks": 0,
       "breaksIgnored": 0,
-      "silentMarkers": 0,
+      "silentMarkers": 2,
       "wordless": 0,
       "silentNoCue": 0,
       "asciiFaces": 0
@@ -161,7 +161,7 @@
     "stageRejected": 0,
     "unknownMarkers": [],
     "residualReplies": 0,
-    "chunkVariant": 2,
+    "chunkVariant": 0,
     "style": {
       "emoji": 0,
       "stageDirection": 0,
@@ -169,7 +169,7 @@
       "personaFace": 0,
       "aiBreak": 0,
       "exampleEcho": 0,
-      "meanWords": 16.166666666666668
+      "meanWords": 19.666666666666668
     },
     "timing": {
       "replies": 6,
