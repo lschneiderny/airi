@@ -12,9 +12,12 @@ import { measureTrace } from '../metrics'
 import { CORE } from '../metrics/bones'
 import { conjugate, multiply } from '../metrics/math'
 import { analyticTrace, angleX, angleY, detectors } from '../metrics/test-trace'
+import { readManifest } from '../reference/manifest'
 import { motionQualityGate } from './definition'
+import { heldoutFailureUnits, HOLDOUT_VALIDATION } from './holdouts'
 import { judgeTrace } from './judge'
-import { parseBands } from './load'
+import { loadBands, parseBands } from './load'
+import { buildReference } from './reference'
 
 const repoRoot = resolve(import.meta.dirname, '../../../../..')
 const bands = parseBands(JSON.parse(await readFile(resolve(repoRoot, motionQualityGate.bandsFile), 'utf8')))
@@ -40,6 +43,33 @@ function richMotion(hz = 60, noise = false): DecodedMotionTrace {
 }
 
 describe('gate validity with committed bands', () => {
+  it('enforces the approved held-out rule on frozen human bands and optionally re-ingested clips', async () => {
+    const committed = await loadBands(repoRoot)
+    expect(committed.fixture).toBe(false)
+    expect(Object.values(committed.classes).flatMap(c => c.holdout)).not.toHaveLength(0)
+    for (const [scenario, c] of Object.entries(committed.classes)) {
+      for (const [id, band] of Object.entries(c.metrics)) {
+        const failures = heldoutFailureUnits(c, id).length
+        if (band.status === 'GATED')
+          expect(failures, `${scenario} ${id}`).toBeLessThan(HOLDOUT_VALIDATION.reportAtFailures)
+        if (band.basis === 'fitted' && failures >= HOLDOUT_VALIDATION.reportAtFailures) {
+          expect(band.status, `${scenario} ${id}`).toBe('REPORT')
+          expect(band.detail).toBe(`holdout-failures: ${failures}`)
+        }
+      }
+    }
+    expect(motionQualityGate.gatedMetrics).toEqual(Object.fromEntries(Object.entries(committed.classes).map(([scenario, c]) => [
+      scenario,
+      Object.fromEntries(Object.entries(c.metrics).filter(([, band]) => band.status === 'GATED').map(([id, band]) => [id, band.side])),
+    ])))
+    const directory = process.env.AIRI_QA_MOCAP_DIR
+    if (directory) {
+      const manifest = await readManifest(resolve(directory, 'clips.json'))
+      const rebuilt = await buildReference({ directory, manifest, gitSha: committed.tool.gitSha, signal: new AbortController().signal })
+      expect(rebuilt.classes).toEqual(committed.classes)
+    }
+  }, 300000)
+
   it('fails the in-phase sine in both chain and dimensionality families', () => {
     const verdict = judgeTrace(sine(), bands, identity)
     expect(verdict.verdict).toBe('FAIL')
