@@ -84,10 +84,13 @@ export function emotionTrials(p: PreparedTrace): EmotionTrial[] {
 /**
  * S3 / assignment: d(e,f)=|mean(p_e)-mean(p_f)|/sqrt(mean |p-mean(p_own)|²), all pairs including placebo.
  * min/median separation are standard-deviation units; armShare is squared arm displacement / total.
+ * minSeparationFromNeutral is min over every emotion e other than neutral of min(d(e,neutral), d(e,placebo)),
+ * with the same sigma; the neutral-placebo pair is excluded because neutral has no posture of its own.
+ * It is skipped when the pool has no `neutral` condition, like a pool with too few trials.
  * Trials may originate in multiple traces; the shared present bone intersection aligns their vectors.
  */
 export function emotionMetrics(trials: readonly EmotionTrial[]): MetricResult[] {
-  const ids = ['emotion.minSeparation', 'emotion.medianSeparation', 'emotion.armShare'] as const
+  const ids = ['emotion.minSeparation', 'emotion.medianSeparation', 'emotion.armShare', 'emotion.minSeparationFromNeutral'] as const
   const conditions = [...new Set(trials.map(t => t.condition))].sort()
   const placebo = conditions.find(c => trials.some(t => t.condition === c && t.placebo))
   const groups = new Map(conditions.map(c => [c, trials.filter(t => t.condition === c)]))
@@ -103,13 +106,18 @@ export function emotionMetrics(trials: readonly EmotionTrial[]): MetricResult[] 
   }))
   const squaredDistance = (a: readonly number[], b: readonly number[]) => finite(a.reduce((s, v, i) => s + (v - b[i]) ** 2, 0), 'posture squared distance')
   const sigma = Math.sqrt(mean(trials.map(t => squaredDistance(vector(t), centres.get(t.condition) ?? []))))
+  const separation = (a: string, b: string) => finite(Math.sqrt(squaredDistance(centres.get(a) ?? [], centres.get(b) ?? [])) / sigma, 'emotion separation')
   const pairs: number[] = []
   for (let i = 0; i < conditions.length; i++) {
     for (let j = i + 1; j < conditions.length; j++) {
       if (sigma > 1e-18)
-        pairs.push(finite(Math.sqrt(squaredDistance(centres.get(conditions[i]) ?? [], centres.get(conditions[j]) ?? [])) / sigma, 'emotion separation'))
+        pairs.push(separation(conditions[i], conditions[j]))
     }
   }
+  const neutral = conditions.find(c => c === 'neutral')
+  const fromNeutral = neutral && sigma > 1e-18
+    ? conditions.filter(c => c !== placebo && c !== neutral).flatMap(c => [separation(c, neutral), separation(c, placebo)])
+    : []
   const shares = conditions.filter(c => c !== placebo).flatMap((c) => {
     const a = centres.get(c) ?? []
     const b = centres.get(placebo) ?? []
@@ -121,5 +129,8 @@ export function emotionMetrics(trials: readonly EmotionTrial[]): MetricResult[] 
     result(ids[0], 'standard-deviations', 'trace', sigma > 1e-18 ? Math.min(...pairs) : null),
     result(ids[1], 'standard-deviations', 'trace', sigma > 1e-18 ? median(pairs) : null),
     result(ids[2], 'fraction', 'trace', shares.length ? mean(shares) : null),
+    neutral
+      ? result(ids[3], 'standard-deviations', 'trace', fromNeutral.length ? Math.min(...fromNeutral) : null)
+      : skipped(ids[3], 'standard-deviations', 'trace', 'no-neutral-condition'),
   ]
 }

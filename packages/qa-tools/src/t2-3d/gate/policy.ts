@@ -1,6 +1,6 @@
 import type { MotionScenarioClass } from '@proj-airi/motion-driver-humanoid/motion-trace'
 
-import type { BandRule, MetricBand, Side } from './types'
+import type { BandRule, ClassBands, MetricBand, Side } from './types'
 
 import { CHAIN_PAIRS, SIGNAL_BONES } from '../metrics/bones'
 
@@ -91,6 +91,27 @@ export function mirroredName(id: string): string | null {
 export function sideGroup(policy: MetricPolicy, policies: readonly MetricPolicy[]): readonly string[] {
   const mirror = mirroredName(policy.id)
   return policies.filter(p => p.fit && (p.id === policy.id || p.id === mirror)).map(p => p.id)
+}
+
+export const STANDING_SPEAKER = {
+  rule: 'In the talk class, every gated band fitted per clip from the talk window clips becomes REPORT. Those windows and their activity floors come from talk reference performers who locomote. The values are still measured and printed; the fitted bounds stay in the file.',
+  reason: 'talk reference performers locomote; floors are not valid for a standing speaker',
+  source: 'User decision, 2026-11-11: "Speech gate: Rules now, reference later (Recommended)".',
+} as const
+
+/**
+ * Version 3 reports the talk class's clip-unit fitted bands instead of gating them. Episode
+ * bands, declared bands, detector parameters and held-out verdicts are kept as fitted, and
+ * every other class is returned unchanged.
+ */
+export function reportStandingSpeaker(scenario: MotionScenarioClass, c: ClassBands): ClassBands {
+  if (scenario !== 'talk')
+    return c
+  const metrics = Object.fromEntries(Object.entries(c.metrics).map(([id, band]) => [
+    id,
+    band.basis === 'fitted' && band.unit === 'clip' && band.status === 'GATED' ? { ...band, status: 'REPORT', detail: STANDING_SPEAKER.reason } satisfies MetricBand : band,
+  ] as const))
+  return { ...c, metrics }
 }
 
 export function reportBand(policy: MetricPolicy): MetricBand {
