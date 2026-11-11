@@ -412,9 +412,26 @@ head cue to the cue layer. A step may also return its `gesture`, `cue`,
 of each kind, and `diagnostics.gesture.activation` is the weight the stack
 applied to each arm through gesture-order layers. Hosts turn report sequence
 changes into trace events. `HAND_SHAPES` holds architecture 4a's six hand
-shapes as data; no layer consumes them yet. Layers implement clip admission/cancellation
+shapes as data; the emotion layer blends the open and fist shapes. Layers implement clip admission/cancellation
 from `input.owned`; generators and followers keep integrating beneath clips.
 The adapter applies `1 - owned[group]` exactly once at bone writes.
+
+`createEmotionLayer()` (`src/performance/emotions.ts`, not yet registered by the
+MMD body) is the additive emotion posture layer of architecture 4c. Each emotion
+in `BODY_EMOTIONS` adds a trunk, shoulder, elbow, pelvis and hand posture at the
+weight `held.level x held.strength`, or at an unheld pulse's intensity, through
+its own second-order response (so happy sinks before it lifts and surprise rings).
+An unheld pulse holds its body pose as long as Natural holds the face: it rises
+with Natural's impulse attack, holds for the band's `faceHold`, and releases with
+the band's `faceReleaseTau`, so face and body read as one reaction. A slight
+pulse moves no body. Each posture's `scale` is its size against architecture
+4c's table; the sources and the emotions that do not reach the separation bar
+are in the goal-3 evidence `g3/b/amplitude-sources.md`. Neutral writes nothing,
+nor does any emotion term reach a group owned above 0.5. Think requests the
+thinking hand, and sad, love and flustered the hand to chest, through
+`plan.armForm` while their weight exceeds 0.5; angry and think force the
+support. The layer's `modulation` exposes 4c's tempo, amplitude, tension and
+breath depth for the generators, and `sighSeq` counts sighing onsets.
 
 `gait.channels` is already mapped to this table: pelvis, hips and feet override
 by gait weight, and torso/arm terms add. `armLift` is the existing hang solver's
