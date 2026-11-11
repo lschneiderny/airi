@@ -57,8 +57,11 @@ reaching feature parity with the Live2D and VRM renderers:
 It builds on [`@moeru/three-mmd`](https://github.com/moeru-ai/three-mmd) for
 PMX/PMD loading, VMD animation building, IK, append-bone propagation, toon
 materials, outlines, and the shared runtime update order. Physics comes from
-`@moeru/three-mmd-physics-ammo` and is loaded lazily, so the Ammo WASM runtime
-is initialized only after a live MMD model is mounted.
+`@moeru/three-mmd-physics-ammo` and is loaded lazily, so the Ammo runtime is
+initialized only after a live MMD model is mounted. That package bundles
+`ammojs-typed`, which is Bullet compiled to WebAssembly and then translated to
+plain JavaScript (wasm2js); it loads no WebAssembly module. One fixed physics
+step costs about 10 ms of main-thread time for a full model.
 
 ## How to use
 
@@ -393,7 +396,7 @@ running (no model, the Classic driver, or the classic window).
 | --- | --- |
 | `loadedModelKey`, `driver` | The mounted model key (`null` without a model) and `natural` or `classic`. |
 | `fps { last, mean60s }`, `timings { <stage>: { lastMs, p95Ms } }` | Rolling frame rate and per-stage timings over the last 600 samples. |
-| `measurement` | The explicit measurement window: `state`, `durationMs`, `frames`, `fps`, `readbackMs { meanMs, maxMs }` (the host's alpha readback cost, `reportReadback`) and `physicsResets` (resets callers requested through `requestPhysicsReset`; loop wraps are not counted). |
+| `measurement` | The explicit measurement window: `state`, `durationMs`, `frames`, `fps`, `readbackMs { meanMs, maxMs }` (the host's alpha readback cost, `reportReadback`) and `physicsResets` (resets callers requested through `requestPhysicsReset`; loop wraps are not counted). While the window runs, each stage's `p95Ms` covers its last 600 frames; once it stops, `p95Ms` covers the whole window. `meanMs` and `maxMs` always cover the whole window. |
 | `rig` | The `MMDRigProfile` of the loaded model. Its `spineChain`, `toeBend`, `twist` and `structure` fields are appended to the diagnostics snapshot, and `capabilities { gestures, headClearance }` is the performer's load-time result per side (`null` without a performer). |
 | `natural { events, energy, headYaw }` | Natural event count, requested energy and the head bone's local yaw in radians as `body-head` wrote it. |
 | `feet { maxError, errorL, errorR, contact }` | Ankle error after IK and physics in model units, and the foot-contact weight. |
@@ -671,4 +674,4 @@ Pure motion math belongs in `@proj-airi/motion-driver-humanoid` or
 
 - For VRM avatars use `@proj-airi/stage-ui-three`; for Live2D use
   `@proj-airi/stage-ui-live2d`; for Spine use `@proj-airi/stage-ui-spine`.
-- In environments without WebGL/WASM support (MMD physics requires Ammo WASM).
+- In environments without WebGL support.

@@ -7,7 +7,7 @@ import { isMMDMaterial } from '@moeru/three-mmd/materials'
 import { BufferAttribute, Mesh, ShaderMaterial } from 'three'
 
 import { MORPH_CANDIDATES, VOWEL_SLOTS } from '../../../constants/morphs'
-import { applyBoneMorphs, convertBoneMorphs } from './bone-morph'
+import { BONE_MORPH_STRIDE, composeBoneMorphs, convertBoneMorphs } from './bone-morph'
 import { combineMorphChannels } from './combine'
 import { createMorphExpansion } from './expand'
 import { MaterialMorphApplier } from './material'
@@ -55,6 +55,7 @@ export function createMMDMorphRuntime(mmd: MMD) {
   let materialOverrides: Readonly<Record<string, number>> = {}
   let effective: number[] = []
   let boneStageReady = false
+  let bonePose = new Float64Array(mesh.skeleton.bones.length * BONE_MORPH_STRIDE)
   const vowelNames = new Set(VOWEL_SLOTS.flatMap(slot => MORPH_CANDIDATES[slot]))
   const morphs = pmx.morphs.map((morph, index) => ({
     index,
@@ -103,7 +104,15 @@ export function createMMDMorphRuntime(mmd: MMD) {
     },
     applyBoneStage(cleanPose: readonly MorphBonePose[]) {
       effective = evaluate()
-      writeBones(applyBoneMorphs(cleanPose, boneMorphs, effective))
+      if (bonePose.length !== cleanPose.length * BONE_MORPH_STRIDE)
+        bonePose = new Float64Array(cleanPose.length * BONE_MORPH_STRIDE)
+      composeBoneMorphs(cleanPose, boneMorphs, effective, bonePose)
+      for (let index = 0; index < cleanPose.length; index++) {
+        const o = index * BONE_MORPH_STRIDE
+        const bone = mesh.skeleton.bones[index]
+        bone.position.set(bonePose[o], bonePose[o + 1], bonePose[o + 2])
+        bone.quaternion.set(bonePose[o + 3], bonePose[o + 4], bonePose[o + 5], bonePose[o + 6])
+      }
       boneStageReady = true
     },
     applySurfaceStage() {

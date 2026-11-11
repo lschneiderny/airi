@@ -44,6 +44,18 @@ describe('mmd frame metrics', () => {
     expect(metrics.measurement()?.fps).toBe(10)
   })
 
+  it('reports the rolling 600-frame p95 while a measurement runs and the full-run p95 once it stops', () => {
+    const metrics = new MMDFrameMetrics()
+    metrics.startMeasurement()
+    for (let frame = 0; frame < 900; frame++) {
+      metrics.recordStage('pose', frame < 300 ? 10 : 1)
+      metrics.recordFrame(1 / 60)
+    }
+    expect(metrics.measurement()?.stages.pose).toEqual({ meanMs: (300 * 10 + 600) / 900, p95Ms: 1, maxMs: 10 })
+    metrics.stopMeasurement()
+    expect(metrics.measurement()?.stages.pose.p95Ms).toBe(10)
+  })
+
   it('reports the alpha readback mean and max over the last second, and omits the field without samples', () => {
     const metrics = new MMDFrameMetrics()
     metrics.startMeasurement()

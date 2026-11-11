@@ -16,19 +16,28 @@ export interface FrameMeasurement {
 }
 
 const readbackWindowMs = 1000
+const ringSize = 600
 
-function percentile95(samples: readonly number[]) {
-  const sorted = [...samples].sort((a, b) => a - b)
+/** Sorts in place; callers pass a copy they own. */
+function sortedPercentile95(sorted: Float64Array) {
+  sorted.sort()
   return sorted[Math.max(0, Math.ceil(sorted.length * 0.95) - 1)] ?? 0
 }
 
-/** Rolling readouts and full-run captures have independent storage and lifetimes. */
+interface StageRing { samples: Float64Array, count: number, cursor: number, lastMs: number }
+interface MeasuredStage { samples: number[], sumMs: number, maxMs: number, fullP95Ms?: number }
+
+/**
+ * Rolling readouts and full-run captures have independent storage and lifetimes. Diagnostics read both at 10 Hz, so a
+ * read sorts a 600-sample window in a reused buffer, and the full-run p95 is sorted once, when the measurement stops.
+ */
 export class MMDFrameMetrics {
-  private readonly stageSamples = new Map<string, { samples: number[], cursor: number, lastMs: number }>()
+  private readonly stageSamples = new Map<string, StageRing>()
+  private readonly scratch = new Float64Array(ringSize)
   private readonly frameIntervals: number[] = []
   private frameCursor = 0
   private readonly measuredIntervals: number[] = []
-  private readonly measuredStages = new Map<string, number[]>()
+  private readonly measuredStages = new Map<string, MeasuredStage>()
   private durationMs = 0
   private state: FrameMeasurement['state'] = 'idle'
   private readonly readbacks: { atMs: number, ms: number }[] = []
@@ -43,20 +52,32 @@ export class MMDFrameMetrics {
   recordStage(id: string, ms: number): void {
     let ring = this.stageSamples.get(id)
     if (!ring) {
-      ring = { samples: [], cursor: 0, lastMs: 0 }
+      ring = { samples: new Float64Array(ringSize), count: 0, cursor: 0, lastMs: 0 }
       this.stageSamples.set(id, ring)
     }
     ring.samples[ring.cursor] = ms
-    ring.cursor = (ring.cursor + 1) % 600
+    ring.cursor = (ring.cursor + 1) % ringSize
+    ring.count = Math.min(ring.count + 1, ringSize)
     ring.lastMs = ms
     if (this.state === 'running') {
-      let samples = this.measuredStages.get(id)
-      if (!samples) {
-        samples = []
-        this.measuredStages.set(id, samples)
+      let measured = this.measuredStages.get(id)
+      if (!measured) {
+        measured = { samples: [], sumMs: 0, maxMs: 0 }
+        this.measuredStages.set(id, measured)
       }
-      samples.push(ms)
+      measured.samples.push(ms)
+      measured.sumMs += ms
+      measured.maxMs = Math.max(measured.maxMs, ms)
     }
+  }
+
+  /** The p95 of a stage's rolling window, sorted in the shared scratch buffer. */
+  private ringPercentile95(ring: StageRing | undefined) {
+    if (!ring)
+      return 0
+    const window = this.scratch.subarray(0, ring.count)
+    window.set(ring.samples.subarray(0, ring.count))
+    return sortedPercentile95(window)
   }
 
   /** RAF interval in seconds, before the simulation's 50 ms clamp. */
@@ -83,10 +104,11 @@ export class MMDFrameMetrics {
   }
 
   timings(): Record<string, StageTiming> {
-    return Object.fromEntries([...this.stageSamples].map(([id, ring]) => [
-      id,
-      { lastMs: ring.lastMs, p95Ms: percentile95(ring.samples) },
-    ]))
+    const timings: Record<string, StageTiming> = {}
+    this.stageSamples.forEach((ring, id) => {
+      timings[id] = { lastMs: ring.lastMs, p95Ms: this.ringPercentile95(ring) }
+    })
+    return timings
   }
 
   fps() {
@@ -111,24 +133,27 @@ export class MMDFrameMetrics {
       this.state = 'done'
   }
 
+  /** While running, a stage's `p95Ms` covers its last 600 frames; once stopped, it covers the whole run. */
   measurement(): FrameMeasurement | null {
     if (this.state === 'idle')
       return null
     const frames = this.measuredIntervals.length
+    const stages: FrameMeasurement['stages'] = {}
+    this.measuredStages.forEach((measured, id) => {
+      let p95Ms: number
+      if (this.state === 'done')
+        p95Ms = measured.fullP95Ms ??= sortedPercentile95(Float64Array.from(measured.samples))
+      else
+        p95Ms = this.ringPercentile95(this.stageSamples.get(id))
+      stages[id] = { meanMs: measured.sumMs / measured.samples.length, p95Ms, maxMs: measured.maxMs }
+    })
     return {
       state: this.state,
       durationMs: this.durationMs,
       frames,
       fps: this.durationMs > 0 ? frames / (this.durationMs / 1000) : 0,
       physicsResets: this.physicsResets,
-      stages: Object.fromEntries([...this.measuredStages].map(([id, samples]) => [
-        id,
-        {
-          meanMs: samples.reduce((sum, value) => sum + value, 0) / samples.length,
-          p95Ms: percentile95(samples),
-          maxMs: samples.reduce((max, value) => Math.max(max, value), 0),
-        },
-      ])),
+      stages,
       ...(this.readbacks.length > 0
         ? {
             readbackMs: {
