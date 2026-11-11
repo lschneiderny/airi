@@ -355,7 +355,7 @@ describe('procedural gait', () => {
   })
 
   it('continuity: start, stop and turn blends change no channel faster than steady walking does', () => {
-    // The adapter applies weight * locomotion + (1 - weight) * weight-shift.
+    // The adapter blends the gait over the idle pose by the gait weight.
     const channels: Array<[string, (frame: LocomotionFrame) => number, number]> = [
       ...pelvisChannels.map(channel => [channel, (frame: LocomotionFrame) => frame.weight * frame.body[channel], 0.001 * legLength] as [string, (frame: LocomotionFrame) => number, number]),
       ...angleChannels.map(channel => [channel, (frame: LocomotionFrame) => frame.weight * frame.body[channel], 0.05 * rad] as [string, (frame: LocomotionFrame) => number, number]),

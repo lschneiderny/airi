@@ -19,10 +19,9 @@ deterministic motion algorithms for reusable character motion drivers.
   `createActivityGate`, for independent seeded drift and moving holds.
 - `./foot-contact`: planted foot anchors, eased contact, shared pelvis reach
   correction, signed knee pre-bend, and body-turn step arcs.
-- `./look-at`: `createLookAt`, `createTurnPlanner`, look-at and turn-step contracts, and `aimEyes`.
+- `./look-at`: `createTurnPlanner`, the turn-step contracts, and `aimEyes`.
 - `./locomotion`: `createLocomotion`, a deterministic procedural gait with root
   motion, planted world foot anchors, body channels, and arm swing.
-- `./rest-pose`: `createArmRest`, the relaxed arm, hand, and finger rest pose.
 - `./performance`: `createBodyPerformer`, a pure whole-body performer on a
   120 Hz grid, its rig/input/frame contracts, channels, FK, arm-key solver,
   collision corrector, and extensible `PerformanceLayer` contract.
@@ -37,7 +36,6 @@ deterministic motion algorithms for reusable character motion drivers.
   Drain is non-destructive and supports arbitrary ranges across 600-frame chunks;
   only the first range includes the header (with total frames) and sorted events.
 - `./types`: canonical humanoid and finger bones, rig traits, positions, rotations (with `rotationToMatrix` and `mirrorRotation`), and body intents.
-- `./weight-shift`: deterministic seeded weight shift and Natural body composition.
 
 ## Usage
 
@@ -46,8 +44,7 @@ import type { BodyIntent, HumanoidBoneName, RigTraits } from '@proj-airi/motion-
 
 import { decideBody, initialBodyDirectorMemory } from '@proj-airi/motion-driver-humanoid/director'
 import { createFootContact, planFootSteps } from '@proj-airi/motion-driver-humanoid/foot-contact'
-import { createLookAt } from '@proj-airi/motion-driver-humanoid/look-at'
-import { createWeightShift } from '@proj-airi/motion-driver-humanoid/weight-shift'
+import { aimEyes, createTurnPlanner } from '@proj-airi/motion-driver-humanoid/look-at'
 ```
 
 Create one foot-contact planner per rig with mesh-local bind hip, knee, and ankle
@@ -73,22 +70,20 @@ pivot. Feed the landed ankle back to the contact planner after releasing that fo
 example when the gait hands its final anchors back after a walk.
 
 ```ts
-import { createLookAt } from '@proj-airi/motion-driver-humanoid/look-at'
+import { createTurnPlanner } from '@proj-airi/motion-driver-humanoid/look-at'
 
-const lookAt = createLookAt({ eyeYawLimit: 0.35, eyePitchLimit: 0.25 })
-const frame = lookAt.step({ targetYaw: 0.5, targetPitch: 0.1, facingYaw: 0 }, 1 / 60)
+const turns = createTurnPlanner()
+const frame = turns.step({ targetYaw: 0.5, facingYaw: 0 }, 1 / 120)
 ```
 
-Targets and facing use the same stance frame: +Z forward, positive yaw toward
-+X, positive pitch downward. Feed actual facing back each frame; when the facing
-command is applied directly, feed back `frame.facingYaw`. Rotations are absolute
-rest-relative parent-frame angles, not incremental bone writes.
+Target and facing yaw use the stance frame: +Z forward, positive yaw toward +X.
+Feed actual facing back each frame; when the facing command is applied directly,
+feed back `frame.facingYaw`. The whole-body performer plans the head and torso
+toward a gaze target; this planner only decides when the feet turn the body.
 
-The spine, chest, neck, and head share yaw/pitch through critically damped
-springs. Eye output covers the remaining angular error within rig limits.
-`aimEyes` separately computes per-eye world-aligned angles from world positions
-and a target; adapters must account for each animated eye parent's orientation
-before applying these angles. Neither helper imports renderer math types.
+`aimEyes` computes per-eye world-aligned angles from world positions and a
+target; adapters must account for each animated eye parent's orientation before
+applying these angles. Neither helper imports renderer math types.
 
 A continuous yaw error above 60 degrees starts a turn after 0.5 seconds; an
 error above 90 degrees starts immediately. Turns finish planted steps, aim for
@@ -103,8 +98,8 @@ Pass `allowTurn: false` while another planner owns facing, such as locomotion:
 no turn steps are planned and `facingYaw` passes through.
 
 Time is supplied only through `dt` in seconds, with no clocks or randomness.
-Springs integrate their response analytically, including the changing facing
-during turns. Non-finite target angles become zero; coincident or non-finite
+Dwell, step and refractory boundaries are split inside a tick rather than
+quantized to it. Non-finite target angles become zero; coincident or non-finite
 world targets aim eyes forward. Negative or non-finite `dt` advances no time.
 
 ### Locomotion
@@ -133,12 +128,13 @@ Planted foot targets are frozen world anchors. Landing targets are re-planned un
 changes. The pelvis drop is the design bob, sized from the planned stance spans, plus
 a reach floor that may lower it by at most 0.01 L for off-centre stances. A leash
 shortens root travel if a planted ankle would end farther than 0.985 L from its hip;
-`leashClamps` counts those ticks and stays zero in normal driving. Body channels use `composeWeightShift` field names and
-signs: blend them as `lerp(weightShift, frame.body, frame.weight)` and duck
-weight-shift by `1 - frame.weight`. While `frame.weight > 0`, the gait owns the foot
+`leashClamps` counts those ticks and stays zero in normal driving. `frame.body` holds
+`GaitBodyChannels` (pelvis translation with positive `pelvisLateral` toward the
+character's right, and torso rotations in radians); the adapter maps them into the
+performer's `gait.channels`, which blends them by `frame.weight`. While `frame.weight > 0`, the gait owns the foot
 targets: seed it with the contact planner's planted anchors (converted to world),
 and hand `frame.feet` back through `setAnchors` when it returns to idle. Pass
-`frame.root.yaw` to look-at as `facingYaw` with `allowTurn: false` while moving.
+`frame.root.yaw` to the turn planner as `facingYaw` with `allowTurn: false` while moving.
 `rebase` teleports the root, re-plants both feet at the bind ankle offsets, and
 makes the next frame `idle`; use it for drag and teleports. The seed only breaks
 first-foot ties.
@@ -212,25 +208,12 @@ locomotion, rest pose and clip masks in
 clip metadata and clip performances in
 [the clip actions ADR](../../docs/ai/adr/2026-11-03-mmd-clip-actions.md).
 
-## Arm rest pose and clip masks
+## Rotations and clip masks
 
 `RestRelativeRotation` is intrinsic YXZ Euler: `R = Ry(yaw) * Rx(pitch) * Rz(roll)`.
 `rotationToMatrix` and `matrixToRotation` convert it, and `mirrorRotation` flips
 yaw and roll for the right side. Bind frames must be world-aligned (MMD and
 normalized VRM bones both are).
-
-`createArmRest().step(input, dt)` returns rest-relative rotations for the shoulder,
-upper arm, lower arm, hand, and finger bones. The body-space angles in
-`DEFAULT_ARM_REST_POSE` are the same for every rig. `bindArmAngle` (36 degrees
-for an MMD A-pose, 0 for a T-pose) converts them into rig-local rotations, so
-both rigs end with the same world forearm direction. Pass `thumbAxis`, measured
-by the adapter, to curl the thumb about its own axis. Breath (-1..1) rolls the
-shoulder by 0.8 degrees and counter-rolls the upper arm by 0.6 degrees. Torso roll
-goes through a critically damped spring with omega 6. Locomotion `swing` adds
-forward pitch and elbow flex, scaled by `swingWeight`. Every group's output is
-scaled by `1 - owned[group]`. Thumb curl entries map to Metacarpal, Proximal,
-Distal; other fingers map to Proximal, Intermediate, Distal and have no
-Metacarpal output.
 
 `buildClipBoneMask(tracks, bones)` runs once per clip. A quaternion track counts as
 animated when a key differs from identity, or from the first key, by more than
@@ -398,9 +381,8 @@ the rig's eye limits; `eyes` is the canonical FK residual for diagnostics.
 Large unreachable shifts saturate the eyes until head/body turning catches up.
 `lidClose` is closure [0,1], whereas Natural's `blinkFactor` is openness:
 the adapter combines `max(1 - blinkFactor, lidClose)`.
-`createTurnPlanner().step({ targetYaw, facingYaw, allowTurn }, dt)` preserves
-the old dwell, hysteresis, refractory and planted-step timing without running
-look-at springs. Its frame and event array are borrowed until the next call.
+`createTurnPlanner().step({ targetYaw, facingYaw, allowTurn }, dt)` plans
+the dwell, hysteresis, refractory and planted-step timing of body turns. Its frame and event array are borrowed until the next call.
 
 Optional `layers` are performer-owned instances, reset at creation and reset.
 Their order is emotion, act, gesture, cue, reaction after base, gaze and gait.

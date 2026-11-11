@@ -1,41 +1,9 @@
 import type { RestRelativeRotation, RigTraits, Vec3 } from '../types'
-import type { TurnStep } from './turn-planner'
-
-import { TurnPlanner } from './turn-planner'
 
 export { createTurnPlanner } from './turn-planner'
 export type { TurnFrame, TurnInput, TurnStep } from './turn-planner'
 
-export interface LookAtInput {
-  /** Target angles in the stance frame. Positive pitch looks down, forward is +Z. */
-  readonly targetYaw: number
-  readonly targetPitch: number
-  /** Actual facing in the same stance frame; feed back the previous command when unobstructed. */
-  readonly facingYaw: number
-  /** False while another planner (locomotion) owns facing: no turn steps, facing passes through. Default true. */
-  readonly allowTurn?: boolean
-}
-
 export type LookAtOptions = Partial<Pick<RigTraits, 'eyeYawLimit' | 'eyePitchLimit'>>
-
-export interface LookAtFrame {
-  readonly rotations: Readonly<Record<'spine' | 'chest' | 'neck' | 'head', RestRelativeRotation>>
-  /** Residual eye aim after the distributed body rotations, in the head frame. */
-  readonly eyes: RestRelativeRotation
-  readonly facingYaw: number
-  readonly turning: boolean
-  readonly turnStarted: boolean
-  readonly turnSteps: readonly TurnStep[]
-}
-
-const radians = Math.PI / 180
-const distribution = {
-  spine: { yawShare: 0.1, yawLimit: 10, pitchShare: 0.05, up: 5, down: 5, omega: 3 },
-  chest: { yawShare: 0.15, yawLimit: 10, pitchShare: 0.1, up: 8, down: 8, omega: 3 },
-  neck: { yawShare: 0.3, yawLimit: 25, pitchShare: 0.35, up: 20, down: 25, omega: 5 },
-  head: { yawShare: 0.45, yawLimit: 35, pitchShare: 0.5, up: 25, down: 30, omega: 7 },
-} as const
-const boneNames = ['spine', 'chest', 'neck', 'head'] as const
 
 function finite(value: number) {
   return Number.isFinite(value) ? value : 0
@@ -43,123 +11,6 @@ function finite(value: number) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
-}
-
-function wrap(value: number) {
-  return Math.atan2(Math.sin(value), Math.cos(value))
-}
-
-// Mutable position/velocity belong to one controller, never to a rig or renderer.
-interface Spring {
-  value: number
-  velocity: number
-}
-
-function advanceSpring(spring: Spring, start: number, end: number, omega: number, dt: number, min: number, max: number) {
-  if (dt <= 0)
-    return
-  const slope = (end - start) / dt
-  const boundaries = [0, dt]
-  if (slope !== 0) {
-    for (const limit of [min, max]) {
-      const crossing = (limit - start) / slope
-      if (crossing > 0 && crossing < dt)
-        boundaries.push(crossing)
-    }
-  }
-  boundaries.sort((a, b) => a - b)
-  for (let i = 1; i < boundaries.length; i++) {
-    const from = boundaries[i - 1]
-    const to = boundaries[i]
-    if (from === undefined || to === undefined)
-      continue
-    const elapsed = to - from
-    const target = clamp(start + slope * from, min, max)
-    const targetEnd = clamp(start + slope * to, min, max)
-    const velocity = (targetEnd - target) / elapsed
-    // Exact critically damped response to linear forcing. A turn's changing facing
-    // must not become a different stair-step target at each display refresh rate.
-    const offset = spring.value - target + 2 * velocity / omega
-    const impulse = spring.velocity - velocity + omega * offset
-    const decay = Math.exp(-omega * elapsed)
-    const value = targetEnd - 2 * velocity / omega + (offset + impulse * elapsed) * decay
-    spring.velocity = velocity + (spring.velocity - velocity - omega * impulse * elapsed) * decay
-    spring.value = clamp(value, min, max)
-    if (spring.value !== value)
-      spring.velocity = 0
-  }
-}
-
-function jointSprings() {
-  return { yaw: { value: 0, velocity: 0 }, pitch: { value: 0, velocity: 0 } }
-}
-
-/** Owns only deterministic motion state. All time comes from step's elapsed seconds. */
-class LookAtController {
-  private readonly springs = {
-    spine: jointSprings(),
-    chest: jointSprings(),
-    neck: jointSprings(),
-    head: jointSprings(),
-  }
-
-  private targetYaw = 0
-  private targetPitch = 0
-  private readonly turns = new TurnPlanner((elapsed, fromFacing, toFacing) => {
-    const yaw = wrap(this.targetYaw - fromFacing)
-    const nextYaw = yaw - (toFacing - fromFacing)
-    for (const bone of boneNames) {
-      const tuning = distribution[bone]
-      const yawLimit = tuning.yawLimit * radians
-      advanceSpring(this.springs[bone].yaw, yaw * tuning.yawShare, nextYaw * tuning.yawShare, tuning.omega, elapsed, -yawLimit, yawLimit)
-      advanceSpring(this.springs[bone].pitch, this.targetPitch * tuning.pitchShare, this.targetPitch * tuning.pitchShare, tuning.omega, elapsed, -tuning.up * radians, tuning.down * radians)
-    }
-  })
-
-  private readonly eyeYawLimit: number
-  private readonly eyePitchLimit: number
-
-  constructor(options: LookAtOptions) {
-    this.eyeYawLimit = Math.abs(finite(options.eyeYawLimit ?? 0.35))
-    this.eyePitchLimit = Math.abs(finite(options.eyePitchLimit ?? 0.25))
-  }
-
-  step(input: LookAtInput, dt: number): LookAtFrame {
-    this.targetYaw = wrap(finite(input.targetYaw))
-    this.targetPitch = clamp(finite(input.targetPitch), -Math.PI / 2, Math.PI / 2)
-    const turn = this.turns.step(input, dt)
-    const yaw = wrap(this.targetYaw - turn.facingYaw)
-    const rotations = {
-      spine: { yaw: 0, pitch: 0, roll: 0 },
-      chest: { yaw: 0, pitch: 0, roll: 0 },
-      neck: { yaw: 0, pitch: 0, roll: 0 },
-      head: { yaw: 0, pitch: 0, roll: 0 },
-    }
-    let bodyYaw = 0
-    let bodyPitch = 0
-    for (const bone of boneNames) {
-      rotations[bone].yaw = this.springs[bone].yaw.value
-      rotations[bone].pitch = this.springs[bone].pitch.value
-      bodyYaw += rotations[bone].yaw
-      bodyPitch += rotations[bone].pitch
-    }
-    return {
-      rotations,
-      eyes: {
-        yaw: clamp(yaw - bodyYaw, -this.eyeYawLimit, this.eyeYawLimit),
-        pitch: clamp(this.targetPitch - bodyPitch, -this.eyePitchLimit, this.eyePitchLimit),
-        roll: 0,
-      },
-      facingYaw: turn.facingYaw,
-      turning: turn.turning,
-      turnStarted: turn.turnStarted,
-      turnSteps: [...turn.turnSteps],
-    }
-  }
-}
-
-export function createLookAt(options: LookAtOptions = {}) {
-  return new LookAtController(options)
 }
 
 /**

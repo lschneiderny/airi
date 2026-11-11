@@ -1,6 +1,5 @@
 import type { Foot, FootAnchor, TurnStep } from '../foot-contact'
 import type { LocomotionPace, RigTraits, Vec3 } from '../types'
-import type { NaturalBodyComposition } from '../weight-shift'
 
 import { planFootSteps } from '../foot-contact'
 import { createRandomStream } from '../random'
@@ -26,6 +25,22 @@ export interface LocomotionInput {
   readonly idleSupport: number
   /** Current planted anchors in world space; the gait seeds from them when it leaves idle. */
   readonly plantedFeet: Record<Foot, FootAnchor>
+}
+
+/**
+ * The gait's body offsets for one tick: pelvis translation in model units (positive `pelvisLateral` toward the
+ * character's right, as the reach model in this module assumes) and rotations in radians.
+ */
+export interface GaitBodyChannels {
+  pelvisLateral: number
+  pelvisDrop: number
+  pelvisForeAft: number
+  lowerBodyRoll: number
+  lowerBodyYaw: number
+  upperBodyRoll: number
+  chestCounterRoll: number
+  spinePitch: number
+  chestPitch: number
 }
 
 export interface LocomotionFoot {
@@ -56,12 +71,12 @@ export interface LocomotionFrame {
   readonly feet: Record<Foot, LocomotionFoot>
   /** Same sign as WeightShiftOutput.s. */
   readonly support: number
-  readonly body: NaturalBodyComposition & { readonly chestCounterYaw: number }
+  readonly body: GaitBodyChannels & { readonly chestCounterYaw: number }
   readonly armSwing: Record<Foot, {
     readonly flexion: number
     readonly elbowFlex: number
   }>
-  /** Blend factor; weight-shift duck is 1 - weight. */
+  /** Blend factor: lower-body channels override the idle pose by it, torso and arm channels add. */
   readonly weight: number
   readonly events: readonly GaitEvent[]
 }
@@ -105,7 +120,7 @@ const blendDuration = 0.3
 const leanOmega = 4
 const paceSpeeds: Record<LocomotionPace, number> = { stroll: 0.6, walk: 1 }
 const sides = ['left', 'right'] as const
-/** Lateral sign: left = -1, right = +1, matching weight-shift. */
+/** Lateral sign: left = -1, right = +1, matching `support`. */
 const footSign: Record<Foot, 1 | -1> = { left: -1, right: 1 }
 
 function finite(value: number) {

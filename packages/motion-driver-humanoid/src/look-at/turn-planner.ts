@@ -31,9 +31,6 @@ const refractoryDuration = 1.5
 const finite = (value: number) => Number.isFinite(value) ? value : 0
 const wrap = (value: number) => Math.atan2(Math.sin(value), Math.cos(value))
 
-/** Internal substep callback lets the existing look-at springs retain exact turn integration. */
-export type TurnAdvance = (elapsed: number, fromFacing: number, toFacing: number) => void
-
 export class TurnPlanner {
   private time = 0
   private dwell = 0
@@ -44,10 +41,7 @@ export class TurnPlanner {
   private readonly steps: TurnStep[] = []
   private readonly frame = { facingYaw: 0, turning: false, turnStarted: false, turnSteps: this.steps }
 
-  constructor(private readonly onAdvance?: TurnAdvance) {}
-
   private advance(elapsed: number, nextFacing = this.frame.facingYaw): void {
-    this.onAdvance?.(elapsed, this.frame.facingYaw, nextFacing)
     this.frame.facingYaw = nextFacing
     this.time += elapsed
   }
